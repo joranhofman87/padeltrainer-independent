@@ -22,6 +22,8 @@
 \ir _assert.sql
 \ir _cron_fp.sql
 \ir _fence.sql
+\ir _cron_inflight.sql
+\ir _acl.sql
 
 SELECT pg_temp.assert(
   (SELECT count(*) FROM information_schema.tables
@@ -46,33 +48,16 @@ SELECT pg_temp.assert_eq(pg_temp.cron_config_fp(),
   (SELECT cron_config_fp FROM rollout_clone.snapshot_marker),
   'the clone''s cron configuration matches the fingerprint recorded in the marker');
 
--- the marker/fence objects are owner-only in the clone too
-DO $acl$
-DECLARE r text;
-BEGIN
-  FOREACH r IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-      IF has_schema_privilege(r, 'rollout_clone', 'USAGE') THEN
-        RAISE EXCEPTION 'clone ACL: role % can USE the rollout_clone schema', r;
-      END IF;
-      IF has_function_privilege(r, 'rollout_clone.fence_cron_job()', 'EXECUTE') THEN
-        RAISE EXCEPTION 'clone ACL: role % can EXECUTE the fence function', r;
-      END IF;
-    END IF;
-  END LOOP;
-  IF has_schema_privilege('public', 'rollout_clone', 'USAGE') THEN
-    RAISE EXCEPTION 'clone ACL: PUBLIC can USE the rollout_clone schema';
-  END IF;
-END $acl$;
+-- the marker/fence objects are owner-only in the clone too — the SAME matrix
+-- the seal proved source-side, so a lockdown can never be checked at one end only
+SELECT pg_temp.assert_marker_acls('clone');
 
 SELECT pg_temp.assert_eq((SELECT count(*) FROM cron.job WHERE active)::bigint, 0::bigint,
   'clone has ZERO ACTIVE cron jobs (also proves the restore point precedes the production resume)');
 
-SELECT pg_temp.assert_eq((SELECT count(*) FROM cron.job_run_details WHERE status = 'running')::bigint, 0::bigint,
-  'clone has ZERO RUNNING cron executions');
-
-SELECT pg_temp.assert_eq((SELECT count(*) FROM net.http_request_queue)::bigint, 0::bigint,
-  'clone pg_net request queue is EMPTY');
+-- the same complete predicate the arm used: no run in any non-terminal state,
+-- nothing queued, and cron.log_run on so the count means something
+SELECT pg_temp.assert_cron_quiet('clone');
 
 SELECT pg_temp.assert_eq(
   (SELECT count(*) FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid

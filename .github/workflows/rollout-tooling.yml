@@ -66,8 +66,11 @@ jobs:
       - name: Worktree pooler link (fresh link before any linked db push)
         run: bash scripts/rollout/notif-10ca3/verify/worktree-link-test.sh
 
-      - name: Clone safety (quiesced source + inert clone gate)
+      - name: Clone safety (fenced window + atomic exit; artifact-interpreting)
         run: bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
+
+      - name: Clone safety on a REAL Postgres (executes the SQL artifacts)
+        run: node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
 
       - name: Shell syntax check
         run: |

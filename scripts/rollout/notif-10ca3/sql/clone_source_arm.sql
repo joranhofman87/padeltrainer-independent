@@ -11,6 +11,8 @@
 \ir _assert.sql
 \ir _cron_fp.sql
 \ir _fence.sql
+\ir _cron_inflight.sql
+\ir _acl.sql
 
 BEGIN;
 SET LOCAL lock_timeout = '15s';
@@ -30,10 +32,11 @@ SELECT pg_temp.assert_eq(pg_temp.cron_config_fp(), pg_temp.snapshot_config_fp(),
   'cron configuration is UNCHANGED since the seal (the fence held)');
 SELECT pg_temp.assert_eq((SELECT count(*) FROM cron.job WHERE active)::bigint, 0::bigint,
   'zero ACTIVE cron jobs');
-SELECT pg_temp.assert_eq((SELECT count(*) FROM cron.job_run_details WHERE status = 'running')::bigint, 0::bigint,
-  'zero RUNNING cron executions (drained)');
-SELECT pg_temp.assert_eq((SELECT count(*) FROM net.http_request_queue)::bigint, 0::bigint,
-  'pg_net request queue is EMPTY');
+-- the complete predicate, re-proven under the lock: no run in ANY non-terminal
+-- state (starting/connecting/sending/running or anything a future pg_cron adds)
+-- and nothing queued. cron.log_run must be on or this cannot be certified.
+SELECT pg_temp.assert_cron_quiet('arm');
+SELECT pg_temp.assert_marker_acls('arm');
 
 UPDATE rollout_clone.snapshot_marker
    SET state = 'sealed', armed_at = clock_timestamp()

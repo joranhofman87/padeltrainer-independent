@@ -16,11 +16,12 @@
 --   CFGFP <md5>      the cron CONFIGURATION fingerprint the seal will require
 --   FENCEABLE <yes|no>  can this role create the fence trigger on cron.job?
 --   PRIORWINDOW <n>  a sealed window already exists (must be 0 before sealing)
---   RUNNING <n> | NETQUEUE <n> | HOOKTRIG <n> | FDWSRV <n> | OUTFN <schema.name>
+--   INFLIGHT <n> | LOGRUN <on|off> | NETQUEUE <n> | HOOKTRIG <n> | FDWSRV <n> | OUTFN <schema.name>
 --   EXT <name> | VAULTCOUNT <n>
 -- ===========================================================================
 \ir _assert.sql
 \ir _cron_fp.sql
+\ir _cron_inflight.sql
 
 \pset tuples_only on
 \pset format unaligned
@@ -43,7 +44,10 @@ SELECT format('FENCEABLE %s',
 
 SELECT format('PRIORWINDOW %s', count(*)) FROM information_schema.schemata WHERE schema_name = 'rollout_clone';
 
-SELECT format('RUNNING %s', count(*)) FROM cron.job_run_details WHERE status = 'running';
+-- every NON-TERMINAL run, not just status='running' (pg_cron also uses
+-- starting/connecting/sending before a job reaches 'running')
+SELECT format('INFLIGHT %s', pg_temp.cron_inflight());
+SELECT format('LOGRUN %s', coalesce(nullif(current_setting('cron.log_run', true), ''), 'unreadable'));
 SELECT format('NETQUEUE %s', count(*)) FROM net.http_request_queue;
 
 -- supabase database webhooks are triggers on supabase_functions.http_request

@@ -24,13 +24,23 @@ LANGUAGE sql STABLE AS $fp$
   FROM cron.job
 $fp$;
 
--- the same shape, computed from the sealed snapshot, so the two are comparable
+-- The same shape, computed from the sealed snapshot, so the two are comparable.
+--
+-- LANGUAGE plpgsql, not sql, and deliberately so: this helper is defined BEFORE
+-- the seal transaction creates rollout_clone.snapshot_job_state, and a LANGUAGE
+-- sql body is resolved at CREATE time, so the definition itself would fail with
+-- "relation does not exist". plpgsql resolves at first execution, by which time
+-- the table exists. (Caught by verify/clone-safety-pg.mjs executing the real
+-- artifacts on a real server — no amount of reading the text finds this.)
 CREATE OR REPLACE FUNCTION pg_temp.snapshot_config_fp() RETURNS text
-LANGUAGE sql STABLE AS $fp$
+LANGUAGE plpgsql STABLE AS $fp$
+DECLARE v text;
+BEGIN
   SELECT coalesce(md5(string_agg(
            jobid::text  || chr(31) || jobname  || chr(31) || schedule || chr(31) ||
            database     || chr(31) || username || chr(31) || command_md5 || chr(31) ||
            nodename     || chr(31) || nodeport::text,
            E'\n' ORDER BY jobid)), 'EMPTY-CRON-SET')
-  FROM rollout_clone.snapshot_job_state
-$fp$;
+    INTO v FROM rollout_clone.snapshot_job_state;
+  RETURN v;
+END $fp$;

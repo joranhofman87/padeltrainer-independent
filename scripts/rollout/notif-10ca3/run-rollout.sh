@@ -538,7 +538,10 @@ SRC_MANIFEST="$EVID/clone-source-manifest.txt"
 read_source_inventory() {   # $1 = prod url -> writes $2 (raw safe lines)
   run_sql "$1" "$SQL_DIR/clone_source_inventory.sql" > "$2" 2>&1 \
     || die "clone-source inventory FAILED to read (connection/permissions?) — refusing to classify blind"
-  grep -qE '^(NETQUEUE|RUNNING) ' "$2" || die "clone-source inventory produced no counts — refusing to proceed on a partial read"
+  local k
+  for k in NETQUEUE INFLIGHT LOGRUN CFGFP FENCEABLE PRIORWINDOW; do
+    grep -q "^${k} " "$2" || die "clone-source inventory produced no ${k} record — refusing to proceed on a partial read"
+  done
 }
 
 # FAIL CLOSED on anything not in the reviewed set, and on any outbound mechanism
@@ -601,9 +604,14 @@ assert_source_is_sealable() {   # $1 = inventory file
   [[ -n "$prior"     ]] || die "inventory is missing PRIORWINDOW — refusing to proceed on an incomplete read"
   [[ "$fenceable" == yes ]] \
     || die "this role cannot create a trigger on cron.job, so the durable fence CANNOT be installed. Without the fence a job created after the seal would reach a clone. Connect as the owner of cron.job (or have it granted) and retry — the procedure fails closed rather than sealing an unprotected window."
+  local logrun; logrun="$(awk '$1=="LOGRUN"{print $2}' "$inv" | tr 'A-Z' 'a-z')"
+  case "$logrun" in
+    on|true|yes|1) ;;
+    *) die "cron.log_run is '${logrun}': cron.job_run_details is not populated, so an in-flight cron run cannot be observed and a zero drain count would be a FALSE GREEN. Enable cron.log_run and retry — the procedure fails closed rather than certifying quiescence it cannot see.";;
+  esac
   [[ "$prior" -eq 0 ]] \
     || die "a sealed window ALREADY exists in this database (rollout_clone). Resume it with 'clone-source-resume --yes <url>', or recover an abandoned one explicitly with 'clone-source-abandon --yes --nonce <its nonce> <url>'. Nothing is ever overwritten implicitly."
-  ok "source is sealable: this role owns cron.job (fence installable) and no prior window is open"
+  ok "source is sealable: this role owns cron.job (fence installable), cron.log_run is on, no prior window is open"
 }
 
 source_config_fp() {   # $1 = inventory file -> the cron CONFIGURATION fingerprint
@@ -683,28 +691,34 @@ cmd_clone_source_quiesce() {
     sed -n 's/^\(ERROR\|psql\|NOTICE\).*/&/p' "$EVID/clone-source-seal.txt" | head -6 >&2
     die "clone-source quiesce aborted at the seal (production is untouched)"
   fi
-  printf '%s\n' "$nonce" > "$EVID/clone-source-nonce.txt"
-  chmod 600 "$EVID/clone-source-nonce.txt" 2>/dev/null || true
   ok "SEALED: prior state captured, every job paused, cron.job FENCED (fence proven effective), marker committed"
 
-  # export the captured prior state as human-readable evidence + cross-check
-  export_source_manifest "$url"
-
-  # drain: the fence guarantees nothing can be added or re-activated meanwhile
-  local drain_rc=0 arm_rc=0
-  quiesce_drain "$url" || drain_rc=$?
-  if [[ "$drain_rc" -eq 0 ]]; then
-    run_sql_soft "$url" "$SQL_DIR/clone_source_arm.sql" -v "nonce=$nonce" \
-      > "$EVID/clone-source-arm.txt" 2>&1 || arm_rc=$?
-  fi
-  if [[ "$drain_rc" -ne 0 || "$arm_rc" -ne 0 ]]; then
-    warn "the window could not be ARMED — leaving the sealed window is the ONLY safe exit; resuming now"
-    [[ "$arm_rc" -eq 0 ]] || sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-arm.txt" | head -5 >&2
-    # allow_unarmed=1: by definition this window never reached 'sealed', and the
-    # atomic resume is the only safe way out of it
-    clone_source_leave_window "$url" "$nonce" 1 \
-      || warn "AUTOMATIC RESUME ALSO FAILED — production is still PAUSED and FENCED. Run 'clone-source-abandon --yes --nonce <the nonce in evidence/clone-source-nonce.txt> <url>' IMMEDIATELY"
-    die "clone-source quiesce aborted before arming"
+  # =========================================================================
+  # EVERYTHING BELOW HAPPENS WITH PRODUCTION PAUSED AND FENCED.
+  #
+  # A local failure here — a full disk, a read-only evidence directory, a
+  # dropped connection, an undrainable source — must NEVER exit while cron is
+  # stopped: notification-email-worker and notification-whatsapp-worker would
+  # stay down indefinitely. The steps therefore run in a SUBSHELL, so even a
+  # `die` inside them becomes a status the parent can act on, and every non-zero
+  # status routes through the atomic exit from the window.
+  # =========================================================================
+  local post_rc=0
+  ( post_seal_steps "$url" "$nonce" ) || post_rc=$?
+  if [[ "$post_rc" -ne 0 ]]; then
+    warn "a step AFTER the seal failed (exit ${post_rc}) — production is PAUSED and FENCED; leaving the window now"
+    if clone_source_leave_window "$url" "$nonce" 1; then
+      die_rc "$post_rc" "clone-source quiesce FAILED after the seal (original exit ${post_rc}); production was RESTORED to its exact prior state and is running normally"
+    fi
+    warn "=========================================================================="
+    warn "AUTOMATIC RESUME ALSO FAILED. PRODUCTION REMAINS PAUSED AND FENCED."
+    warn "Email and WhatsApp delivery are STOPPED until this is resolved. Run:"
+    warn "  run-rollout.sh clone-source-abandon --yes --nonce ${nonce} <prod_conn_url>"
+    warn "(the nonce is printed here because the failure may have been the very"
+    warn " write of evidence/clone-source-nonce.txt — it is a provenance id, not"
+    warn " a credential)"
+    warn "=========================================================================="
+    die_rc "$post_rc" "clone-source quiesce FAILED after the seal (original exit ${post_rc}) AND the automatic resume also failed"
   fi
 
   ok "WINDOW ARMED — $(sed -n 's/^ARM_OBSERVED_AFTER_COMMIT //p' "$EVID/clone-source-arm.txt" | tail -1) (observed after commit; INFORMATIONAL ONLY)"
@@ -713,6 +727,24 @@ cmd_clone_source_quiesce() {
   warn "carry this run's ARMED marker and a still-effective fence, which only holds for"
   warn "restore points inside this window. Then run:"
   warn "  run-rollout.sh clone-source-resume --yes <prod_conn_url>"
+}
+
+# Runs in a subshell (see the caller): any failure, including a `die`, becomes a
+# non-zero status rather than an exit that would strand production paused.
+post_seal_steps() {   # $1 url, $2 nonce
+  local url="$1" nonce="$2"
+  printf '%s\n' "$nonce" > "$EVID/clone-source-nonce.txt" \
+    || die "could not persist the snapshot nonce to evidence/"
+  chmod 600 "$EVID/clone-source-nonce.txt" 2>/dev/null || true
+  [[ "$(cat "$EVID/clone-source-nonce.txt" 2>/dev/null)" == "$nonce" ]] \
+    || die "the persisted nonce does not read back correctly"
+  export_source_manifest "$url"
+  quiesce_drain "$url" || die "the source did not reach a stable quiet state"
+  run_sql_soft "$url" "$SQL_DIR/clone_source_arm.sql" -v "nonce=$nonce" \
+    > "$EVID/clone-source-arm.txt" 2>&1 || {
+      sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-arm.txt" | head -5 >&2
+      die "the window could not be ARMED"
+    }
 }
 
 # The captured relation is the authority; this is its human-readable shadow.
@@ -724,15 +756,43 @@ export_source_manifest() {   # $1 url
   validate_source_manifest "$SRC_MANIFEST"
 }
 
-quiesce_drain() {   # $1 url ; wait for in-flight executions to finish
-  local url="$1" n i
-  for i in 1 2 3 4 5 6 7 8 9 10; do
-    n="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc "SELECT count(*) FROM cron.job_run_details WHERE status = 'running'")" || return 1
-    [[ "$n" == 0 ]] && { ok "zero running cron executions (drained)"; return 0; }
-    log "waiting for ${n} running cron execution(s) to finish (${i}/10)"
-    sleep "${QUIESCE_WAIT_SECS:-15}"    # test suites set 0; production always waits
+# Quiescence is a STABLE property, not an instant. Two things go wrong with
+# "sample once, see zero, proceed":
+#   * pg_cron reaches 'running' only after starting -> connecting -> sending, so
+#     a job about to issue an outbound request can read as zero (see
+#     sql/_cron_inflight.sql — the count is by complement of the terminal set);
+#   * the scheduler needs a cycle to observe active=false, so a zero read taken
+#     immediately after the pause can be followed by a fresh start.
+# We therefore require N consecutive quiet samples separated by a
+# scheduler-observation interval, and any non-quiet sample resets the streak.
+quiesce_drain() {   # $1 url
+  local url="$1"
+  local need="${QUIESCE_QUIET_SAMPLES:-2}" gap="${QUIESCE_SETTLE_SECS:-60}" tries="${QUIESCE_MAX_SAMPLES:-20}"
+  [[ "$need" =~ ^[0-9]+$ && "$need" -ge 2 ]] || { warn "QUIESCE_QUIET_SAMPLES must be >= 2 (a single zero sample proves nothing)"; return 1; }
+  [[ "$gap"  =~ ^[0-9]+$ ]] || { warn "QUIESCE_SETTLE_SECS must be a non-negative integer"; return 1; }
+  [[ "$tries" =~ ^[0-9]+$ && "$tries" -ge "$need" ]] || { warn "QUIESCE_MAX_SAMPLES must be >= QUIESCE_QUIET_SAMPLES"; return 1; }
+  local streak=0 i out rc inflight queued logrun
+  for (( i = 1; i <= tries; i++ )); do
+    rc=0
+    out="$(psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/cron_quiet_sample.sql" 2>/dev/null | sed -n 's/^SAMPLE //p' | tail -1)" || rc=$?
+    [[ "$rc" -eq 0 && -n "$out" ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return 1; }
+    read -r inflight queued logrun <<<"$out"
+    case "$(printf '%s' "$logrun" | tr 'A-Z' 'a-z')" in
+      on|true|yes|1) ;;
+      *) warn "cron.log_run is '${logrun}' — in-flight runs are unobservable; refusing to certify a drain"; return 1;;
+    esac
+    if [[ "$inflight" == 0 && "$queued" == 0 ]]; then
+      streak=$((streak + 1))
+      log "quiet sample ${streak}/${need} (in-flight 0, queued 0)"
+      [[ "$streak" -ge "$need" ]] && { ok "drained: ${need} consecutive quiet samples ${gap}s apart"; return 0; }
+    else
+      [[ "$streak" -eq 0 ]] || warn "quiet streak BROKEN by a late start (in-flight ${inflight}, queued ${queued}) — restarting the count"
+      streak=0
+      log "waiting: ${inflight} cron run(s) in flight, ${queued} queued (sample ${i}/${tries})"
+    fi
+    sleep "$gap"                        # one scheduler-observation interval
   done
-  warn "cron executions still running after the wait"
+  warn "cron did not stay quiet for ${need} consecutive samples within ${tries} tries"
   return 1
 }
 

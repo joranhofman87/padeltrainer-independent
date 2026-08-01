@@ -43,6 +43,45 @@ stub syntax OK
   PASS  …and it LEFT THE WINDOW atomically: unpaused, unfenced, unmarked
   PASS  an exported manifest with a TRUNCATED final record is refused (never silently dropped)
   PASS  a failed manifest export is refused
+-- the drain: a stable quiet interval over the COMPLETE in-flight set --
+  PASS  a run in status 'starting' blocks the drain (not just 'running')
+  PASS  …and the window was left, so production is running normally ('starting')
+  PASS  a run in status 'connecting' blocks the drain (not just 'running')
+  PASS  …and the window was left, so production is running normally ('connecting')
+  PASS  a run in status 'sending' blocks the drain (not just 'running')
+  PASS  …and the window was left, so production is running normally ('sending')
+  PASS  a run in status 'running' blocks the drain (not just 'running')
+  PASS  …and the window was left, so production is running normally ('running')
+  PASS  a run in status 'a-future-state-nobody-anticipated' blocks the drain (not just 'running')
+  PASS  …and the window was left, so production is running normally ('a-future-state-nobody-anticipated')
+  PASS  only TERMINAL runs in the history do not block the drain
+  PASS  cron.log_run=off stops the procedure in the READ-ONLY step (a zero count would be a false green)
+  PASS  …and the drain refuses to certify quiescence it cannot observe
+  PASS  a ZERO sample followed by a late start RESETS the streak (the scheduler had not yet observed the pause)
+  PASS  a single quiet sample is refused by configuration (>= 2 required)
+-- after the seal, NO local failure may leave production paused --
+  PASS  quiesce fails (non-zero) on a failed nonce write (full or read-only disk)
+  PASS  …every prior active state was RESTORED after a failed nonce write (full or read-only disk)
+  PASS  …no fence was left behind after a failed nonce write (full or read-only disk)
+  PASS  …no marker was left behind after a failed nonce write (full or read-only disk)
+  PASS  quiesce fails (non-zero) on a failed manifest export
+  PASS  …every prior active state was RESTORED after a failed manifest export
+  PASS  …no fence was left behind after a failed manifest export
+  PASS  …no marker was left behind after a failed manifest export
+  PASS  quiesce fails (non-zero) on a manifest whose final record is truncated
+  PASS  …every prior active state was RESTORED after a manifest whose final record is truncated
+  PASS  …no fence was left behind after a manifest whose final record is truncated
+  PASS  …no marker was left behind after a manifest whose final record is truncated
+  PASS  quiesce fails (non-zero) on a source that never goes quiet
+  PASS  …every prior active state was RESTORED after a source that never goes quiet
+  PASS  …no fence was left behind after a source that never goes quiet
+  PASS  …no marker was left behind after a source that never goes quiet
+  PASS  quiesce fails (non-zero) on a failed arm transaction
+  PASS  …every prior active state was RESTORED after a failed arm transaction
+  PASS  …no fence was left behind after a failed arm transaction
+  PASS  …no marker was left behind after a failed arm transaction
+  PASS  if the automatic resume ALSO fails, it says so unmistakably
+  PASS  …and prints the exact recovery command including the nonce (the failure may have been the nonce write itself)
 == resume: ONE atomic transition, and the whole-history invariant ==
   PASS  resume succeeds
   PASS  a job that was ALREADY inactive is restored to inactive (not blanket-enabled)
@@ -61,7 +100,8 @@ stub syntax OK
   PASS  a clone carrying a DIFFERENT run's marker is refused (exact nonce)
   PASS  a clone whose marker objects are reachable by anon/authenticated/service_role is refused
   PASS  a clone whose cron CONFIGURATION drifted from the sealed one is refused
-  PASS  clone with non-zero C_RUNNING is refused
+  PASS  a clone with a run in 'sending' is refused (the COMPLETE non-terminal set, not just 'running')
+  PASS  a clone whose cron.log_run is off is refused (its quiescence is unprovable)
   PASS  clone with non-zero C_NETQ is refused
   PASS  clone with non-zero C_HOOK is refused
   PASS  clone with non-zero C_OUTTRIG is refused
@@ -104,8 +144,8 @@ stub syntax OK
 -- (2) the atomic transition --
   PASS  MUTANT (unfence removed from resume) leaves production FENCED after resume — the unfence must be inside the same transaction
   PASS  MUTANT (no fence check at resume) resumes a window whose fence had already been dropped — the check is load-bearing
-  PASS  baseline: the arm artifact refuses to arm with 3 executions still running
-  PASS  MUTANT (drain assertion deleted from arm) ARMS a window with 3 executions still running — the SQL assertion, not just the shell wait, is load-bearing
+  PASS  baseline: the arm artifact refuses to arm with a run in 'sending'
+  PASS  MUTANT (quiet assertion deleted from arm) ARMS a window with a run still in 'sending' — the SQL assertion, not just the shell drain, is load-bearing
   PASS  MUTANT (armed check deleted) accepts a clone restored BEFORE the arm commit — the state check bounds the window's near edge
   PASS  MUTANT (clone fence check deleted) accepts a clone from OUTSIDE the fenced window — the fence bounds the window's far edge
 -- (3) exact restoration --
@@ -115,7 +155,7 @@ stub syntax OK
 -- (4) marker ownership and lifecycle --
   PASS  MUTANT (both prior-window guards deleted) OVERWRITES another run's marker — refusing to reuse a window is load-bearing
   PASS  MUTANT (advisory lock deleted) seals while another quiesce is running — run-level exclusion is load-bearing
-  PASS  MUTANT (REVOKE deleted) leaves the marker objects on ambient default grants — the explicit lockdown is load-bearing
+  PASS  MUTANT (lockdown and its source-side assertion deleted) leaves the marker objects on ambient default grants — the explicit revoke is load-bearing
   PASS  MUTANT (clone ACL check deleted) accepts a clone whose marker objects are world-readable — verifying ACLs in the CLONE is load-bearing
 -- (5) timing honesty --
   PASS  now() is stored as sealed_tx_start and labelled transaction-start, not the commit instant
@@ -125,4 +165,4 @@ stub syntax OK
   PASS  the seal artifact states plainly that its lock ends at COMMIT
   PASS  the runbook states plainly that the lock ends at COMMIT
   PASS  no surviving AFFIRMATIVE claim that the lock protects the window after commit
-================  108 passed, 0 failed  ================
+================  146 passed, 0 failed  ================

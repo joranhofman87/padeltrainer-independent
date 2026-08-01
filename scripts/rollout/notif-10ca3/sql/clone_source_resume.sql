@@ -22,6 +22,7 @@
 \ir _assert.sql
 \ir _cron_fp.sql
 \ir _fence.sql
+\ir _cron_inflight.sql
 
 BEGIN;
 SET LOCAL lock_timeout = '15s';

@@ -26,6 +26,8 @@
 \ir _assert.sql
 \ir _cron_fp.sql
 \ir _fence.sql
+\ir _cron_inflight.sql
+\ir _acl.sql
 
 BEGIN;
 SET LOCAL lock_timeout = '15s';
@@ -74,22 +76,10 @@ CREATE TABLE rollout_clone.snapshot_job_state (
   prior_active boolean NOT NULL
 );
 
--- owner only. These objects decide whether a clone is trusted, so they must not
--- inherit ambient defaults (this project has been bitten by default grants).
-REVOKE ALL ON SCHEMA rollout_clone FROM PUBLIC;
-REVOKE ALL ON ALL TABLES IN SCHEMA rollout_clone FROM PUBLIC;
-REVOKE ALL ON ALL FUNCTIONS IN SCHEMA rollout_clone FROM PUBLIC;
-DO $acl$
-DECLARE r text;
-BEGIN
-  FOREACH r IN ARRAY ARRAY['anon','authenticated','service_role'] LOOP
-    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-      EXECUTE format('REVOKE ALL ON SCHEMA rollout_clone FROM %I', r);
-      EXECUTE format('REVOKE ALL ON ALL TABLES IN SCHEMA rollout_clone FROM %I', r);
-      EXECUTE format('REVOKE ALL ON ALL FUNCTIONS IN SCHEMA rollout_clone FROM %I', r);
-    END IF;
-  END LOOP;
-END $acl$;
+-- owner only. Locked down here for the tables, and AGAIN after the fence
+-- function is created below — a bulk "ALL FUNCTIONS" revoke cannot reach a
+-- function that does not exist yet.
+SELECT pg_temp.lock_down_marker_objects();
 
 -- (5) capture the EXACT prior state BEFORE pausing. This relation — not a file
 --     and not shell text — is the authority for restoration.
@@ -110,7 +100,9 @@ BEGIN
     coalesce((SELECT nonce FROM rollout_clone.snapshot_marker LIMIT 1), '<pending>')
     USING ERRCODE = '42501';
 END $fence$;
-REVOKE ALL ON FUNCTION rollout_clone.fence_cron_job() FROM PUBLIC;
+-- the fence function is created AFTER the first lockdown, so redo it: this is
+-- the named-role revoke the earlier bulk statement could not have covered.
+SELECT pg_temp.lock_down_marker_objects();
 
 CREATE TRIGGER rollout_clone_fence_dml
   BEFORE INSERT OR UPDATE OR DELETE ON cron.job
@@ -122,9 +114,14 @@ CREATE TRIGGER rollout_clone_fence_truncate
 -- (8) PROVE the fence — presence is not effectiveness
 SELECT pg_temp.assert_fence_effective('seal');
 
--- (9) inert at the boundary
+-- (9) inert at the boundary, and the ACL matrix PROVEN before we commit
 SELECT pg_temp.assert_eq((SELECT count(*) FROM cron.job WHERE active)::bigint, 0::bigint,
   'zero ACTIVE cron jobs');
+SELECT pg_temp.assert_marker_acls('seal');
+-- NB: in-flight runs are NOT required to be zero here. Jobs have only just been
+-- paused, so a run that started moments ago is still legitimately finishing.
+-- Draining is proven by clone_source_arm.sql over a stable quiet interval, and
+-- only an ARMED window may be restored from.
 SELECT pg_temp.assert_eq((SELECT count(*) FROM net.http_request_queue)::bigint, 0::bigint,
   'pg_net request queue is EMPTY');
 

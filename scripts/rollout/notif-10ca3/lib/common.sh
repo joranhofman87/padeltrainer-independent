@@ -12,6 +12,9 @@ log()  { printf '[%s] %s\n'      "$(_ts)" "$*" >&2; }
 ok()   { printf '[%s] OK   %s\n' "$(_ts)" "$*" >&2; }
 warn() { printf '[%s] WARN %s\n' "$(_ts)" "$*" >&2; }
 die()  { printf '[%s] FAIL %s\n' "$(_ts)" "$*" >&2; exit 1; }
+# die preserving a specific status — used where the ORIGINAL failure's exit code
+# must survive a compensating action taken after it
+die_rc() { local c="$1"; shift; printf '[%s] FAIL %s\n' "$(_ts)" "$*" >&2; exit "$c"; }
 
 require_cmd() {
   # require_cmd psql "install the Supabase CLI / libpq"

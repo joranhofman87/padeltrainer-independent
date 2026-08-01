@@ -58,6 +58,9 @@ sql/acl_matrix.sql          self-contained ACL lockdown assertions
 sql/ledger_verification.sql append-only ledger + email-table consistency invariants
 sql/clone_source_inventory.sql READ-ONLY outbound inventory (names/counts/md5 only)
 sql/_cron_fp.sql            THE cron configuration fingerprint, defined once
+sql/_cron_inflight.sql      THE in-flight definition (complement of terminal)
+sql/_acl.sql                the marker/fence ACL matrix, both sides
+sql/cron_quiet_sample.sql   one quiescence sample for the drain loop
 sql/_fence.sql              assert the cron.job fence is installed AND effective
 sql/clone_source_seal.sql   capture + pause + FENCE + mark, in ONE transaction
 sql/clone_source_arm.sql    promote 'sealing' -> 'sealed' once drained
@@ -284,9 +287,10 @@ the seal transaction**, not merely before it — see below.
 #    fence can be installed, and whether a window is already open.
 run-rollout.sh clone-source-inventory "$PROD"
 
-# 2. Capture + pause + FENCE + mark in ONE transaction, drain in-flight
-#    executions, then ARM. Reversible by construction: cron.alter_job only,
-#    never cron.unschedule.
+# 2. Capture + pause + FENCE + mark in ONE transaction, wait for a STABLE quiet
+#    interval, then ARM. Reversible by construction: cron.alter_job only, never
+#    cron.unschedule. After the seal commits, every failure — including a local
+#    one — leaves the window automatically; it never exits with cron stopped.
 run-rollout.sh clone-source-quiesce --yes "$PROD"
 #    -> records the run nonce in evidence/clone-source-nonce.txt.
 #       Take every clone restore INSIDE the armed, fenced window.
@@ -331,6 +335,30 @@ and `DELETE` against `cron.job` are attempted in a subtransaction and each must 
 rejected *by the fence*. A seal whose trigger silently failed to install is
 refused, and no marker is committed.
 
+#### Draining is a stable property, not an instant
+
+Two ways a drain check reads zero while a job is about to send:
+
+- **pg_cron has more than one in-flight state.** A run goes
+  `starting -> connecting -> sending -> running` before it is "running", so
+  counting only `status = 'running'` misses a job that is seconds away from
+  issuing an outbound request. The bundle defines in-flight **by the complement
+  of the terminal set** (`succeeded`, `failed`) in `sql/_cron_inflight.sql`, so a
+  future pg_cron state — or `NULL` — counts as in flight rather than being
+  silently ignored.
+- **The scheduler needs a cycle to see the pause.** A zero read taken
+  immediately after `active := false` can be followed by a fresh start. The drain
+  therefore requires **N consecutive quiet samples separated by a
+  scheduler-observation interval** (`QUIESCE_QUIET_SAMPLES`, minimum and default
+  2; `QUIESCE_SETTLE_SECS`, default 60). Any non-quiet sample resets the streak,
+  and each sample checks the pg_net queue as well.
+
+`cron.job_run_details` is only populated when **`cron.log_run` is on**, so a zero
+count means nothing without it. The read-only inventory reports `LOGRUN`, and the
+procedure refuses to start — and the arm refuses to certify — when it is off.
+The arm re-proves the same predicate under the lock, and the clone gate applies
+it again inside the clone.
+
 #### The sealed window
 
 `sql/clone_source_seal.sql` is one transaction that takes
@@ -355,6 +383,16 @@ unchanged. **Only an armed window may be restored from.**
 
 A seal failure rolls the whole transaction back, so **nothing is paused, fenced or
 marked** — there is no compensating restore to get wrong.
+
+**After the seal commits, production is stopped.** Everything from that point on
+— persisting the nonce, exporting the evidence manifest, validating it, draining,
+arming — runs in a subshell, so even a fatal error becomes a status the caller
+acts on. Every non-zero status routes through the atomic exit from the window
+(`allow_unarmed = 1`), the original exit code is preserved, and if the automatic
+resume *also* fails the tooling says so unmistakably and prints the exact
+`clone-source-abandon` command including the nonce — because the failure may have
+been the very write of `evidence/clone-source-nonce.txt`. A full disk must never
+translate into email and WhatsApp being down.
 
 #### The exact restore-point contract
 
@@ -434,7 +472,8 @@ asserts, **inside the clone**: the marker table exists with exactly one row
 carrying this run's nonce and `state = 'sealed'`; the fence is present and probes
 effective; the clone's cron configuration equals the sealed fingerprint; the
 marker objects are owner-only; zero active cron jobs, zero running executions, an
-empty pg_net queue, no database-webhook triggers, no outbound-capable triggers
+empty pg_net queue, `cron.log_run` on with zero runs in **any** non-terminal
+state, no database-webhook triggers, no outbound-capable triggers
 (**including nested call paths**, via a recursive closure over `pg_proc`), and no
 foreign servers. Nothing is printed but names and counts.
 
