@@ -1,0 +1,27 @@
+$ node .../verify/verify-artifacts.mjs
+
+rollout artifact proof — PR615 migrations pinned @ 2b247f43afe8
+applied base email chain + on-main digest chain (PRE state)
+[PRE] preflight (delta absent):
+  PASS  preflight PASS (un-migrated)  — 9 assertions passed
+        · note: A_window input: email_address_state rows=0 total_bytes=24576 (~0.0 MiB)
+        · note: CAP_LOCK (recommended lock_timeout)      = 3000 ms
+        · note: CAP_STMT (recommended statement_timeout) = 31000 ms
+  PASS  preflight mutation: is_suppressed present -> fail  — correctly failed: ASSERT FAILED: email_address_state.is_suppressed is ABSENT (migration 20261006100000 not applied)
+applied the three 20261006* PR #615 migrations (POST state)
+[POST] postflight:
+  PASS  postflight PASS  — 26 assertions passed
+  PASS  postflight mutation: digest engine enabled -> fail  — correctly failed: ASSERT FAILED: no notification_event_types row has digest_engine_enabled = true (engine OFF) (actual=1 expected=0)
+  PASS  postflight mutation: drop append-only trigger -> fail  — correctly failed: ASSERT FAILED: append-only: trg_orphan_actions_immutable present
+[POST] acl_matrix:
+  PASS  acl_matrix PASS  — 76 assertions passed
+  PASS  acl mutation: grant anon INSERT on state -> fail  — correctly failed: ASSERT FAILED: public.notification_orphan_reconcile_state: anon no INSERT
+  PASS  acl mutation: grant authenticated EXECUTE on internal helper -> fail  — correctly failed: ASSERT FAILED: public.email_event_rank(text): authenticated no EXECUTE
+[POST] ledger_verification:
+  PASS  ledger_verification PASS  — 8 assertions passed
+  PASS  ledger mutation: out-of-domain state row -> fail  — correctly failed: ASSERT FAILED: email_address_state.state is within its domain for all rows
+[POST] academy_fixture (precedence + rollback):
+  PASS  academy_fixture PASS  — 10 assertions passed
+  PASS  fixture mutation: no manager claim -> 42501 auth failure  — blocked: not authorized for academy aca00000-0000-0000-0000-000000000001
+  PASS  fixture mutation: drop reg-bounced seed -> case1 fails  — blocked: ASSERT FAILED: case1 registered billing_email override wins over profiles.email
+================  13 passed, 0 failed  ================

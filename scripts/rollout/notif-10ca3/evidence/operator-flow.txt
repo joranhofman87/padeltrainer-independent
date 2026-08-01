@@ -1,0 +1,48 @@
+$ bash .../verify/operator-flow-test.sh
+
+== fresh-drain recovery: prefix1 with exact canary evidence ==
+  PASS  prefix1 resume (fresh drain) exits 0
+  PASS  pushed the V2,V3 suffix -> ledger all
+  PASS  gate turned OFF after verify
+  PASS  default-pin path did NOT call gh (no re-merge)
+  PASS  original pre-manifest NOT overwritten
+== fresh-drain recovery: prefix2 ==
+  PASS  prefix2 resume exits 0
+  PASS  pushed the V3 suffix -> ledger all
+== NO suffix push without exact canary evidence ==
+  PASS  empty drain evidence aborts resume
+  PASS  NO suffix push occurred (ledger still prefix1)
+  PASS  gate stays ON after aborted drain
+== gate OFF is re-enabled + drained (not merely refused) ==
+  PASS  gate-off prefix1 re-enables + drains + completes
+  PASS  suffix pushed after re-enable+drain
+== no-loss catches a lost key even after a successful push ==
+  PASS  post-push no-loss violation aborts (gate stays ON)
+  PASS  gate stays ON when no-loss fails
+== reviewed-recovery-SHA trust ==
+  PASS  merged + green + head-match RECOVERY_PR accepted
+  PASS  UNMERGED recovery PR rejected
+  PASS  head-MISMATCH recovery rejected
+  PASS  FAILING-checks recovery PR rejected
+== refusals: none / invalid ==
+  PASS  refuses 'none' (use apply615)
+  PASS  refuses INVALID subset {V2}
+== already all: verify-only, no drain ==
+  PASS  already-all verifies + exits 0
+  PASS  already-all turns gate OFF
+== clean-evidence: guarded destruction of recovery material ==
+  PASS  REFUSED on ledger=prefix1 (recovery material)
+  PASS  prefix1 refusal preserved all files
+  PASS  REFUSED on ledger=prefix2
+  PASS  prefix2 refusal preserved all files
+  PASS  REFUSED on missing post-manifest
+  PASS  REFUSED on corrupt pre-manifest
+  PASS  corrupt-manifest refusal preserved all files
+  PASS  REFUSED on failed no-loss comparison
+  PASS  no-loss refusal preserved all files
+  PASS  REFUSED while the maintenance gate is ON
+  PASS  gate-ON refusal preserved all files
+  PASS  REFUSED without --yes
+  PASS  all + gate-OFF + valid manifests + no-loss -> cleanup succeeds
+  PASS  manifests + salt deleted only after all prerequisites
+================  36 passed, 0 failed  ================

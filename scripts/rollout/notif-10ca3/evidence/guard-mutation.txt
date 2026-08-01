@@ -1,0 +1,67 @@
+$ bash .../verify/guard-mutation-test.sh
+
+== guard 1: EXACT identity allow-list ==
+  PASS  real assert_host_user_is_ref rejects look-alike host
+  PASS  MUTANT substring-identity wrongly accepts look-alike (guard load-bearing)
+  PASS  real assert_conn_url_is_ref rejects spoofed-host URL
+== guard 2: EXACT pending-migration set ==
+  PASS  real pending-guard rejects an extra 4th migration
+  PASS  real pending-guard rejects a missing migration
+  PASS  MUTANT subset-pending wrongly accepts a superset (guard load-bearing)
+== guard 3: authoritative drain proof (exact canary correlation) ==
+  PASS  exact canary evidence + clean window passes
+  PASS  unrelated/stale blocked (dated 2000) fails exact correlation
+  PASS  WRONG canary id fails
+  PASS  gate BYPASS (post-gate provider_send_started) fails
+  PASS  pre-gate finished send is NOT a bypass (exact local boundary)
+  PASS  in-flight straggler fails
+  PASS  record_failed fails
+  PASS  EMPTY widened snapshot fails exact correlation (no false-green)
+  PASS  MUTANT --allow-sends wrongly accepts a bypass (gate guard load-bearing)
+  PASS  MUTANT require-blocked(any) wrongly accepts the stale-2000 event (exact-id guard load-bearing)
+  PASS  MUTANT without --assert-all-finished wrongly accepts a straggler (guard load-bearing)
+  PASS  MUTANT without --require-invocation wrongly accepts an EMPTY window (guard load-bearing)
+  PASS  assert_drain_proven rejects elapsed < min
+  PASS  assert_drain_proven accepts elapsed>=min & 0 sends
+== guard 3b: FAIL-CLOSED response validation (empty/missing/truncated) ==
+  PASS  empty .result fails exact correlation (narrow-ok/wide-empty defeated)
+  PASS  missing .result fails closed
+  PASS  truncated page (== LIMIT) fails closed
+  PASS  valid response with the exact canary passes
+== guard 4: 400s drain-window floor ==
+  PASS  assert_drain_window rejects 180s (< 400s function wall)
+  PASS  assert_drain_window rejects 120s default of prior version
+  PASS  assert_drain_window accepts 520s floor
+== guard 5: --project-ref scoping on deploy/secret ==
+  PASS  run-rollout.sh has no unscoped secrets/deploy commands
+  PASS  MUTANT (project-ref stripped) is caught by the scoping check
+== guard 6: SHA-pin drift ==
+  PASS  assert_sha_matches_pin rejects a drifted head
+  PASS  assert_sha_matches_pin accepts the exact pin
+== guard 7: ledger classification (only ordered prefixes) ==
+  PASS  classify none
+  PASS  classify prefix1 {V1}
+  PASS  classify prefix2 {V1,V2}
+  PASS  classify all
+  PASS  classify {V2} = invalid
+  PASS  classify {V1,V3} = invalid
+  PASS  MUTANT count-classifier wrongly calls {V1,V3} a prefix (guard load-bearing)
+== guard 8: manifest COMPLETENESS + snapshot-consistency + no-loss ==
+  PASS  validate_manifest accepts a complete, consistent manifest
+  PASS  validate_manifest rejects zero fingerprints with positive counts
+  PASS  validate_manifest rejects an omitted fingerprint (count mismatch)
+  PASS  validate_manifest rejects duplicate fingerprints
+  PASS  validate_manifest rejects a malformed fingerprint line
+  PASS  validate_manifest rejects an unknown line
+  PASS  validate_manifest rejects an unknown EV key (explicit allow-list)
+  PASS  validate_manifest rejects eas_bad_state_rows > eas_rows (impossible)
+  PASS  validate_manifest rejects a missing EV key
+  PASS  no-loss accepts NEW rows (pre-gate finish / webhook) + changed readers
+  PASS  no-loss rejects a LOST email_address_state key
+  PASS  no-loss rejects a LOST email_delivery_events id
+  PASS  no-loss rejects unchanged reader fingerprints
+== guard 9: the production drain wait has no env backdoor ==
+  PASS  run-rollout.sh has NO env-based drain-wait shortcut
+  PASS  the wait advances only via the real clock (date/sleep)
+  PASS  MUTANT re-introducing a fast-drain env flag is caught
+================  54 passed, 0 failed  ================
