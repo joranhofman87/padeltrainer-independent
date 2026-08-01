@@ -1,0 +1,5 @@
+# Extensions with outbound / external capability that are EXPECTED in production.
+# Anything else (http, dblink, wrappers, postgres_fdw, ...) stops the procedure.
+# extname	rationale
+pg_cron	scheduler; every job is paused and proven inactive at the snapshot boundary
+pg_net	async HTTP; the request queue is proven empty at the snapshot boundary

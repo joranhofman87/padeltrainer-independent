@@ -41,10 +41,20 @@ WHERE NOT t.tgisinternal
 
 SELECT format('FDWSRV %s', count(*)) FROM pg_foreign_server;
 
+-- OUTFN: the TRANSITIVE closure of outbound-capable functions. A helper that
+-- only indirectly reaches net.http_* is still an outbound mechanism, so a direct
+-- prosrc scan alone would under-report. Depth is bounded by the recursion.
+WITH RECURSIVE outbound(oid) AS (
+  SELECT p.oid FROM pg_proc p
+   WHERE p.prosrc ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
+  UNION
+  SELECT c.oid FROM pg_proc c JOIN outbound o ON true
+   WHERE c.oid <> o.oid
+     AND c.prosrc ~* ('\m' || (SELECT proname FROM pg_proc WHERE oid = o.oid) || '\M')
+)
 SELECT format('OUTFN %s.%s', n.nspname, p.proname)
-FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public'
-  AND p.prosrc ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
+FROM outbound ob JOIN pg_proc p ON p.oid = ob.oid JOIN pg_namespace n ON n.oid = p.pronamespace
+WHERE n.nspname NOT IN ('pg_catalog','information_schema','net','cron','extensions','vault','pgsodium','supabase_functions','graphql','graphql_public','realtime','storage','auth')
 ORDER BY 1;
 
 SELECT format('EXT %s', extname) FROM pg_extension

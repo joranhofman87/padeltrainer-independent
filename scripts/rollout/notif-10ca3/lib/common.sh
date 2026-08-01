@@ -369,3 +369,19 @@ run_sql() {
     || die "SQL artifact failed (non-zero psql exit): $file"
   ok "$(basename "$file") passed"
 }
+
+# Non-fatal variant of run_sql: RETURNS the psql exit status instead of exiting.
+# Required wherever a failure must trigger a compensating action (e.g. restoring
+# production cron) — `die` would exit the shell before the handler could run,
+# even on the left of `||`.
+run_sql_soft() {
+  local url="$1" file="$2"; shift 2
+  require_cmd psql
+  [[ -f "$file" ]] || { warn "sql file not found: $file"; return 1; }
+  local rc=0
+  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$file" "$@" || rc=$?
+  return "$rc"
+}
+
+# portable md5 of stdin (md5sum on linux, md5 -q on darwin)
+md5_stdin() { if command -v md5sum >/dev/null 2>&1; then md5sum | awk '{print $1}'; else md5 -q; fi; }

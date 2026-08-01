@@ -57,7 +57,10 @@ sql/postflight.sql          post-migration delta present + INERT + digest-disabl
 sql/acl_matrix.sql          self-contained ACL lockdown assertions
 sql/ledger_verification.sql append-only ledger + email-table consistency invariants
 sql/clone_source_inventory.sql READ-ONLY outbound inventory (names/counts/md5 only)
-sql/clone_isolation.sql     clone-side inertness assertion (no live cron/pg_net/webhooks)
+sql/clone_source_seal.sql   THE SNAPSHOT BOUNDARY: locked tx, exact-set + inert
+                            assertions, commits the provenance marker
+sql/clone_source_unseal.sql removes the marker from production at resume
+sql/clone_isolation.sql     clone-side PROVENANCE (marker nonce) + inertness
 clone-safety/reviewed-cron-jobs.tsv  the reviewed job allow-list + outbound classification
 logfetch/fetch-edge-logs.sh Management API edge-log retrieval + authoritative drain proof
 logfetch/verify-step6-send.sh  step-6 send verifier (explicit --from-file only; no default)
@@ -258,32 +261,91 @@ secret (count only — contents are never read).
 create cron jobs at runtime (`enrich-locations-background`,
 `fetch-location-logos-background`, `invoice-health-check-daily` — declared in
 migrations, absent from the live set today). The inventory therefore **fails
-closed on any job outside `clone-safety/reviewed-cron-jobs.tsv`**, and is
-re-verified immediately before the snapshot instant is taken.
+closed on any job outside `clone-safety/reviewed-cron-jobs.tsv`**, on any job
+whose live outbound classification differs from the reviewed one, on any
+outbound-capable function outside `clone-safety/reviewed-outbound-functions.tsv`
+(computed as a **transitive closure**, so a helper that only indirectly reaches
+`net.http_*` still counts) and on any extension outside
+`clone-safety/reviewed-extensions.tsv`. The exact job set is re-verified **inside
+the seal transaction**, not merely before it — see below.
 
 ```bash
 # 1. READ-ONLY. Safe against production; displays names/counts only — never a
 #    cron command, pg_net URL/header/body, Vault secret or customer row.
 run-rollout.sh clone-source-inventory "$PROD"
 
-# 2. Pause every reviewed job, PROVE the source is inert, then record the PITR
-#    instant. Reversible by construction: cron.alter_job(active := false) only —
-#    never cron.unschedule. Writes evidence/clone-source-manifest.txt (the exact
-#    prior active state of every job) BEFORE pausing anything.
+# 2. Pause every reviewed job, let in-flight executions drain, then SEAL the
+#    snapshot boundary. Reversible by construction: cron.alter_job(active :=
+#    false) only — never cron.unschedule. Writes evidence/clone-source-manifest.txt
+#    (the exact prior active state of every job) BEFORE pausing anything.
 run-rollout.sh clone-source-quiesce --yes "$PROD"
-#    -> prints the approved UTC instant; take every PITR restore at/after it.
+#    -> commits a marker row and records its nonce in
+#       evidence/clone-source-nonce.txt. Take every restore INSIDE the sealed
+#       window (see "the restore-point contract" below).
 
 # 3. Restore production the moment the snapshots are taken. Restores each job to
 #    its EXACT recorded prior state (a job that was already inactive stays
-#    inactive) and verifies there is no drift.
+#    inactive), proves EXACT SET EQUALITY against the manifest, then removes the
+#    marker from production (unseal).
 run-rollout.sh clone-source-resume --yes "$PROD"
 ```
 
-`clone-source-quiesce` stops on: an unreviewed job, a failed status read, a
-partial pause, running executions, a non-empty pg_net queue, or a failed
-timestamp read — and on **every** one of those it restores production first. It
-never leaves production paused silently. If the automatic restore also fails it
-says so loudly; run `clone-source-resume --yes` immediately.
+#### The snapshot boundary
+
+Everything that makes a snapshot safe must hold **at the same instant** and keep
+holding until the restore point is taken. Separate queries cannot give that: the
+`schedule_*_job` functions call `cron.schedule` at runtime, so a job can appear
+between an "all inactive" check and the snapshot.
+
+`sql/clone_source_seal.sql` is therefore one transaction that takes
+`LOCK TABLE cron.job IN ACCESS EXCLUSIVE MODE` — `cron.schedule` and
+`cron.alter_job` both write that table, so no session can add, remove or
+re-activate a job for the rest of it — and then, under that lock, asserts:
+
+1. the live job set's `md5(string_agg(jobid || ':' || jobname ORDER BY jobid))`
+   equals the fingerprint of the manifest captured **before the pause** (a job
+   that arrived after the capture fails here),
+2. zero ACTIVE cron jobs,
+3. zero RUNNING executions,
+4. an empty `net.http_request_queue`,
+
+and only then creates `rollout_clone.snapshot_marker` and inserts a 32-hex
+per-run nonce. **The COMMIT of that transaction is the snapshot boundary** — the
+marker row and all four assertions share it.
+
+#### The restore-point contract
+
+Provenance is proven by the clone's own database, never by a caller-supplied
+timestamp. Two checks together define an exact window:
+
+| check on the clone | what it proves |
+| --- | --- |
+| `rollout_clone.snapshot_marker` contains **this run's exact nonce** | the restore point is **at or after the SEAL commit** |
+| zero ACTIVE cron jobs | the restore point is **before the resume** (which re-activates jobs) |
+
+Only a restore point **inside the sealed window** satisfies both. A restore taken
+before the seal has no marker; one taken after `clone-source-resume` has no
+marker either (resume drops it) and has active cron. The marker also carries the
+cron fingerprint sealed at the boundary, and the clone's live set must still
+match it.
+
+`clone-source-quiesce` stops on: an unreviewed job, drifted outbound
+classification, an unreviewed outbound function or extension, a failed status
+read, a partial pause, running executions, a non-empty pg_net queue, a job that
+arrived after the capture, or a failed seal — and on **every** one of those it
+restores production first. It never leaves production paused silently. If the
+automatic restore also fails it says so loudly; run `clone-source-resume --yes`
+immediately.
+
+#### Restoration is exact
+
+`clone-source-resume` validates the manifest's **grammar and uniqueness before
+any field is interpolated into SQL** (tag must be `JOB`, id a plain integer, name
+`[A-Za-z0-9_.-]+`, state exactly `true`/`false`, ids and names unique), restores
+each job bound by **both id and name**, and then proves exact set equality with a
+`FULL OUTER JOIN` against the recorded set. A job that was **added** since
+capture, removed, recreated under a new id, or renamed makes resume **fail
+loudly** — it is never silently ignored.
 
 **Production cron is paused between steps 2 and 3.** Keep that window short:
 `notification-email-worker` is the invoice-email pump, so queued sends simply
@@ -293,11 +355,16 @@ wait — nothing is lost, but nothing goes out either.
 
 Every clone-touching command (`preflight --clone`, `clone-push`,
 `clone-make-prefix`, `verify-clone`) refuses to run until `assert_clone_isolated`
-passes. It requires `CLONE_SOURCE_TS` to equal the approved instant from step 2
-— proving the clone came from the **quiesced** snapshot and not a live one — and
-then asserts on the clone itself: zero active cron jobs, zero running executions,
-an empty pg_net queue, no database-webhook triggers, no other outbound triggers,
-no foreign servers. Nothing is printed but names and counts.
+passes. It reads the nonce recorded by the seal and asserts, **inside the clone**:
+the marker table exists, it carries exactly one row, that row's nonce is this
+run's exact nonce, its cron fingerprint still describes the clone's cron set,
+zero active cron jobs, zero running executions, an empty pg_net queue, no
+database-webhook triggers, no outbound-capable triggers (**including nested call
+paths**, via a recursive closure over `pg_proc`), and no foreign servers. Nothing
+is printed but names and counts.
+
+No environment variable can satisfy this gate. If the nonce file is missing or
+malformed, or the clone does not carry the marker, **no clone command runs**.
 
 ### Four-clone execution model (A/B/C/D)
 
@@ -307,13 +374,14 @@ directly from the same approved production instant** — A, B, C and D:
 
 ```bash
 export EXPECTED_REF=ficwbdrzefmblkbkomzw
-export CLONE_SOURCE_TS='<the instant printed by clone-source-quiesce>'
 export CLONE_REF=<this rehearsal's clone ref>        # must differ from EXPECTED_REF
+# provenance needs no variable: evidence/clone-source-nonce.txt + the clone's own
+# marker row are the proof. Keep that file for the whole rehearsal window.
 CLONE="postgresql://postgres@db.$CLONE_REF.supabase.co:5432/postgres?sslmode=require"
 ```
 
 - **Never clone from another clone.** Each restore comes from the same approved
-  production instant, so all four start identical and A's migrations cannot leak
+  restore point inside the sealed window, so all four start identical and A's migrations cannot leak
   into B/C/D.
 - Each clone has **its own `CLONE_REF` and its own password**; identity is proven
   independently per rehearsal (`CLONE_REF != EXPECTED_REF`, URL addresses
@@ -327,7 +395,7 @@ CLONE="postgresql://postgres@db.$CLONE_REF.supabase.co:5432/postgres?sslmode=req
 **Sequential single-clone option** (one project, restored between rehearsals) is
 still supported and costs less: run A, restore, run B, restore, run C, restore,
 run D. It needs no extra handoffs beyond the restore itself, but every restore
-must come from the same approved instant.
+must come from a restore point inside the sealed window.
 
 ### Reproducing A–D on a PRODUCTION-SCALE clone (step 8, owner-only)
 
