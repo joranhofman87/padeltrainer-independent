@@ -73,14 +73,70 @@ mk_worktree() {
   ( cd "$WT" && assert_config_project_ref_is "$EXPECTED_REF" )
   ok "rollout worktree @ ${sha:0:12} identity-validated"
 }
-push_dry_run_pending() {   # inside worktree; parse the CLI bullets
-  NO_COLOR=1 supabase db push --linked --dry-run 2>&1 1>/dev/null \
-    | sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' | sort -u
+# --- dry-run pending set, with the CLI's failure reason PRESERVED --------------
+# The old shape was `supabase ... 2>&1 1>/dev/null | sed …`: the CLI prints its
+# pending bullets on stderr, so stderr was piped into a 14-digit-number parser —
+# which also swallowed every FATAL diagnostic. A real failure became an aborted
+# pipeline with no message at all (observed: dryrun615 exited 1 after the identity
+# gates with nothing printed). The same helper backs apply615 and resume615, where
+# a silent failure would land mid-maintenance-window with the gate already ON.
+#
+# Contract:
+#   * combined stdout+stderr is captured to a per-call 0600 temp file;
+#   * the CLI's exit code is captured EXPLICITLY, never inferred from a pipeline;
+#   * exit 0  -> parse, emit ONLY the normalised 14-digit versions on stdout;
+#   * exit !0 -> the parser is NEVER invoked, a bounded redacted diagnostic goes to
+#                stderr, nothing goes to stdout, and the CLI's own code is returned
+#                so the caller fails closed (an empty stdout can never read as a
+#                successful "nothing pending");
+#   * the capture file is securely deleted on both paths; a cleanup failure is
+#     itself a failure, but never replaces or masks the original CLI code/message.
+# (mutation-pinned: verify/dryrun-diagnostics-test.sh)
+
+# Bounded, secret-free rendition of a captured CLI diagnostic.
+# Redaction is done by jq with the secrets read from the ENVIRONMENT (`env.X`) and
+# matched as LITERALS via 1-arg `split`, so no secret is ever placed in argv and no
+# regex metacharacter in a password can corrupt the pattern.
+ROLLOUT_DIAG_MAX_LINES=20
+ROLLOUT_DIAG_MAX_COLS=200
+redact_diag() {   # $1 = captured file -> prints a safe rendition on stdout
+  require_cmd jq
+  jq -R -r --argjson cols "$ROLLOUT_DIAG_MAX_COLS" '
+      def lit_redact($v): if ($v | length) > 0 then (split($v) | join("***REDACTED***")) else . end;
+      lit_redact(env.SUPABASE_DB_PASSWORD // "")
+      | lit_redact(env.SUPABASE_ACCESS_TOKEN // "")
+      | lit_redact(env.MANAGER_TOKEN // "")
+      | lit_redact(env.PGPASSWORD // "")
+      | gsub("(?<a>authorization[ \t]*:[ \t]*bearer[ \t]+)[^ \t]+"; "\(.a)***REDACTED***"; "i")
+      | gsub("(?<p>postgres(?:ql)?://[^:@/ \t]+:)[^@ \t]+@"; "\(.p)***REDACTED***@"; "i")
+      | .[0:$cols]
+    ' "$1" 2>/dev/null | head -n "$ROLLOUT_DIAG_MAX_LINES"
 }
-clone_dry_run_pending() {  # inside worktree; explicit --db-url variant (clone only)
-  NO_COLOR=1 supabase db push --db-url "$1" --dry-run 2>&1 1>/dev/null \
-    | sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' | sort -u
+
+dry_run_pending() {   # $@ = target selector (--linked | --db-url URL)
+  require_cmd supabase
+  local cap rc=0 crc=0
+  cap="$(mktemp -t rollout-dryrun-XXXXXX)" || die "cannot create a temp file for the CLI output"
+  chmod 600 "$cap" 2>/dev/null || true
+  NO_COLOR=1 supabase db push "$@" --dry-run >"$cap" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    warn "supabase db push --dry-run FAILED (exit ${rc}) — the pending set was NOT parsed"
+    if [[ -s "$cap" ]]; then
+      warn "CLI output (secrets redacted, first ${ROLLOUT_DIAG_MAX_LINES} lines):"
+      redact_diag "$cap" >&2
+    else
+      warn "the CLI produced NO output; command was: supabase db push $* --dry-run (exit ${rc})"
+    fi
+    secure_delete "$cap" || warn "could not securely delete the CLI capture ${cap} — remove it by hand"
+    return "$rc"                       # the ORIGINAL CLI code, never a cleanup code
+  fi
+  sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' "$cap" | sort -u
+  secure_delete "$cap" || crc=1
+  [[ "$crc" -eq 0 ]] || { warn "the dry run succeeded but its capture could not be securely deleted"; return 1; }
+  return 0
 }
+push_dry_run_pending()  { dry_run_pending --linked; }
+clone_dry_run_pending() { dry_run_pending --db-url "$1"; }
 
 # --- authoritative, blocking drain proof -----------------------------------
 prove_drain() {
@@ -210,7 +266,7 @@ cmd_dryrun615() {
   mk_worktree "$PR615_SHA"
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
     require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD for the dry-run connection"
-    local pending; pending="$(push_dry_run_pending)"
+    local pending; pending="$(push_dry_run_pending)" || die "dry run failed (see the CLI diagnostic above)"
     log "db push --dry-run pending:"; printf '%s\n' "$pending" >&2
     assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS" )
   ok "dry run verified: exactly $V1,$V2,$V3 pending"
@@ -236,7 +292,8 @@ cmd_apply615() {
   git fetch origin
   mk_worktree "$(pr_merge_sha 615)"
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
-    assert_pending_is_expected "$(push_dry_run_pending)" "$EXPECTED_VERSIONS" )
+    local p2; p2="$(push_dry_run_pending)" || die "dry run failed before the #615 merge push"
+    assert_pending_is_expected "$p2" "$EXPECTED_VERSIONS" )
 
   log "activating maintenance gate"
   supabase secrets set INVOICE_EMAIL_MAINTENANCE=1 --project-ref "$EXPECTED_REF"
@@ -253,7 +310,8 @@ cmd_apply615() {
   capture_manifest "$prod" pre
 
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
-    assert_pending_is_expected "$(push_dry_run_pending)" "$EXPECTED_VERSIONS"
+    local p3; p3="$(push_dry_run_pending)" || die "dry run failed inside the maintenance window — gate stays ON"
+    assert_pending_is_expected "$p3" "$EXPECTED_VERSIONS"
     log "db push (lock_timeout=${CAP_LOCK}ms statement_timeout=${CAP_STMT}ms)"
     PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" supabase db push --linked --yes ) || {
       die "db push failed. ledger=$(ledger_status "$prod"). Gate stays ON. Run 'resume615 --yes' or 'rollback615 $prod'."
@@ -335,7 +393,7 @@ cmd_clone_push() {
   suffix="$(expected_pending_suffix "$st" "$V1" "$V2" "$V3")"
   clone_push_preamble "$url"
   ( cd "$WT"
-    local pending; pending="$(clone_dry_run_pending "$url")"
+    local pending; pending="$(clone_dry_run_pending "$url")" || die "clone dry run failed (see the CLI diagnostic above)"
     log "clone db push --dry-run pending:"; printf '%s\n' "$pending" >&2
     assert_pending_is_expected "$pending" "$suffix"
     log "clone db push (lock_timeout=${CAP_LOCK}ms statement_timeout=${CAP_STMT}ms)"
@@ -370,7 +428,8 @@ cmd_clone_make_prefix() {
   ( cd "$WT"
     local v; for v in $prune; do rm -f supabase/migrations/"${v}"_*.sql; done
     log "worktree pruned to the first ${depth} migration(s); dry-run:"
-    assert_pending_is_expected "$(clone_dry_run_pending "$url")" "$want"
+    local pw; pw="$(clone_dry_run_pending "$url")" || die "clone dry run failed"
+    assert_pending_is_expected "$pw" "$want"
     PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" \
       supabase db push --db-url "$url" --yes ) || die "partial (prefix) push failed"
   local st2; st2="$(ledger_status "$url")"
@@ -507,7 +566,8 @@ cmd_resume615() {
       git fetch origin
       mk_worktree "$resume_sha"
       ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
-        assert_pending_is_expected "$(push_dry_run_pending)" "$suffix"
+        local pr; pr="$(push_dry_run_pending)" || die "resume dry run failed — gate stays ON"
+        assert_pending_is_expected "$pr" "$suffix"
         log "resume db push (suffix; lock_timeout=${CAP_LOCK}ms statement_timeout=${CAP_STMT}ms)"
         PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" supabase db push --linked --yes ) \
         || die "resume db push failed. ledger=$(ledger_status "$prod"). Gate stays ON."

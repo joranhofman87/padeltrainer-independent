@@ -1,0 +1,66 @@
+$ bash scripts/rollout/notif-10ca3/verify/dryrun-diagnostics-test.sh
+
+  PASS  shim carries the real dry_run_pending / clone_dry_run_pending text
+== push helper ==
+  PASS  (push 1) success exits 0
+  PASS  (push 1) emits the exact normalised version list
+  PASS  (push 2) informational noise is discarded; only versions returned
+  PASS  (push 3) the CLI's real exit code (7) is returned
+  PASS  (push 3) the CLI diagnostic is visible
+  PASS  (push 4) silent CLI failure still returns its code
+  PASS  (push 4) fallback names the command and the exit code
+  PASS  (push 5) all four secret values redacted (literal match, regex metachars intact)
+  PASS  (push 5) redaction markers present (the line is still shown)
+  PASS  (push 6) plain and percent-encoded URI passwords redacted
+  PASS  (push 6) the non-secret part of the URL is preserved (still diagnosable)
+  PASS  (push 7) failure stays nonzero (never an empty success)
+  PASS  (push 8) the parser was NOT run: stdout is empty despite version text in the error
+  PASS  (push 9) capture removed on success
+  PASS  (push 9) capture removed on failure
+  PASS  (push 10) cleanup failure does NOT replace the CLI's exit code
+  PASS  (push 10) cleanup failure does NOT mask the CLI diagnostic
+  PASS  (push 10) the cleanup failure is itself reported
+== clone helper ==
+  PASS  (clone 1) success exits 0
+  PASS  (clone 1) emits the exact normalised version list
+  PASS  (clone 2) informational noise is discarded; only versions returned
+  PASS  (clone 3) the CLI's real exit code (7) is returned
+  PASS  (clone 3) the CLI diagnostic is visible
+  PASS  (clone 4) silent CLI failure still returns its code
+  PASS  (clone 4) fallback names the command and the exit code
+  PASS  (clone 5) all four secret values redacted (literal match, regex metachars intact)
+  PASS  (clone 5) redaction markers present (the line is still shown)
+  PASS  (clone 6) plain and percent-encoded URI passwords redacted
+  PASS  (clone 6) the non-secret part of the URL is preserved (still diagnosable)
+  PASS  (clone 7) failure stays nonzero (never an empty success)
+  PASS  (clone 8) the parser was NOT run: stdout is empty despite version text in the error
+  PASS  (clone 9) capture removed on success
+  PASS  (clone 9) capture removed on failure
+  PASS  (clone 10) cleanup failure does NOT replace the CLI's exit code
+  PASS  (clone 10) cleanup failure does NOT mask the CLI diagnostic
+  PASS  (clone 10) the cleanup failure is itself reported
+== callers observe the helper's status (no discarded command substitution) ==
+  PASS  no caller passes the helper's output straight into an argument
+  PASS  cmd_dryrun615 fails closed on a dry-run failure
+  PASS  cmd_apply615 fails closed on a dry-run failure
+  PASS  cmd_resume615 fails closed on a dry-run failure
+  PASS  cmd_clone_push fails closed on a dry-run failure
+  PASS  cmd_clone_make_prefix fails closed on a dry-run failure
+  PASS  diagnostic output is bounded by line and column caps
+  PASS  the old 2>&1 1>/dev/null parser pipeline is gone (only referenced in the explanatory comment)
+  PASS  no set -x
+  PASS  the exact-pending-set assertion is unchanged and still shared
+== end to end: dryrun615 surfaces the reason and fails closed ==
+  PASS  dryrun615 fails closed when the CLI fails (exit 1)
+  PASS  dryrun615 SURFACES the CLI reason (the original defect)
+  PASS  dryrun615 output is redacted
+  PASS  dryrun615 makes no verification claim after a failure
+== MUTANTS ==
+  PASS  MUTANT (old 2>&1|sed pipeline) LOSES the CLI reason — capturing to a file is load-bearing
+  PASS  MUTANT (ignores the CLI status) reports SUCCESS on a failed dry run — the status check is load-bearing
+  PASS  MUTANT (parses after failure) emits a pending set from an ERROR message — the ordering is load-bearing
+  PASS  MUTANT (raw diagnostic) LEAKS the password — redaction is load-bearing
+  PASS  MUTANT (returns 0 on failure) yields an EMPTY successful pending set — returning the CLI code is load-bearing
+  PASS  MUTANT (clone left on the old pipeline) LOSES the reason — both helpers must share the contract
+  PASS  ...while the linked helper in the same mutant still reports it (the two are independently covered)
+================  58 passed, 0 failed  ================
