@@ -315,6 +315,64 @@ OUT="$(STUB_RC=7 STUB_OUT="connection refused" run_mut "$M" push)"
 grep -q 'connection refused' <<<"$OUT" && pass "...while the linked helper in the same mutant still reports it (the two are independently covered)" || fail "mutant (f) push path also broken"
 rm -f "$M"
 
+echo "== the PENDING PARSER's own failure must not be discarded =="
+# The parser used to run bare — `sed … | sort -u` straight to stdout — after which
+# secure_delete and `return 0` overwrote `$?`. Reproduced at the reviewed SHA:
+# supabase rc=0 with a valid bullet + sort rc=42 gave helper rc=0 and EMPTY stdout,
+# i.e. a crashed parser reading as "nothing pending".
+SORTFAIL="$ROOT/sortfail"; mkdir -p "$SORTFAIL"; printf '#!/usr/bin/env bash\nexit 42\n' > "$SORTFAIL/sort"
+SEDFAIL="$ROOT/sedfail";  mkdir -p "$SEDFAIL";  printf '#!/usr/bin/env bash\nexit 9\n'  > "$SEDFAIL/sed"
+HEADFAIL="$ROOT/headfail"; mkdir -p "$HEADFAIL"; printf '#!/usr/bin/env bash\nexit 11\n' > "$HEADFAIL/head"
+chmod +x "$SORTFAIL/sort" "$SEDFAIL/sed" "$HEADFAIL/head"
+parser_run(){ # $1 extra PATH prefix
+  ( PATH="$1:$BIN:$PATH" TMPDIR="$ROOT/tmp" STUB_RC=0 STUB_OUT=" • ${V1}_a.sql" bash -c "
+      source '$SHIM'; set +e; out=\"\$(push_dry_run_pending)\"; rc=\$?; set -e
+      printf 'RC=%s\nSTDOUT<<%s>>\n' \"\$rc\" \"\$out\"" ) 2>&1; }
+OUT="$(parser_run "$SORTFAIL")"
+grep -q 'RC=42' <<<"$OUT" && pass "(P1) sort rc=42: the helper returns the PARSER's code (42), not 0" || fail "(P1) parser failure discarded: $(grep -o 'RC=[0-9]*' <<<"$OUT")"
+grep -q 'STDOUT<<>>' <<<"$OUT" && pass "(P1) sort rc=42: stdout stays EMPTY (never a phantom pending set)" || fail "(P1) stdout not empty"
+grep -q 'PARSER failed' <<<"$OUT" && pass "(P1) sort rc=42: a bounded generic parser-failure diagnostic is emitted" || fail "(P1) no parser diagnostic"
+[[ "$(caps)" == 0 ]] && pass "(P1) sort rc=42: the capture was securely deleted" || fail "(P1) $(caps) capture(s) stranded"
+OUT="$(parser_run "$SEDFAIL")"
+grep -q 'RC=9' <<<"$OUT" && pass "(P2) sed rc=9: the helper returns the parser's code (9)" || fail "(P2) sed failure discarded"
+grep -q 'STDOUT<<>>' <<<"$OUT" && pass "(P2) sed rc=9: stdout stays EMPTY" || fail "(P2) stdout not empty"
+[[ "$(caps)" == 0 ]] && pass "(P2) sed rc=9: the capture was securely deleted" || fail "(P2) capture stranded"
+grep -q "${V1}" <<<"$(sed -n '/STDOUT<</,$p' <<<"$OUT")" && fail "(P2) raw captured output was parsed/printed after failure" \
+  || pass "(P2) no raw captured output is parsed or printed on parser failure"
+
+echo "== parser dependencies are preflighted BEFORE the CLI runs =="
+for miss in sed sort; do
+  MINP="$ROOT/min_no_$miss"; mkdir -p "$MINP"
+  for t in mktemp chmod rm sed sort dd wc tr head grep date basename cat od jq; do
+    [[ "$t" == "$miss" ]] && continue
+    src="$(command -v "$t" 2>/dev/null)"; [[ -n "$src" ]] && ln -sf "$src" "$MINP/$t"
+  done
+  ln -sf "$BIN/supabase" "$MINP/supabase"
+  /bin/rm -f "$ARGV"
+  ( PATH="$MINP" TMPDIR="$ROOT/tmp" STUB_ARGV_FILE="$ARGV" STUB_RC=0 bash -c "
+      source '$SHIM'; set +e; push_dry_run_pending" ) >/dev/null 2>&1
+  [[ ! -f "$ARGV" ]] && pass "(P3) missing $miss: the supabase CLI was NEVER invoked" || fail "(P3) the CLI ran without $miss"
+  [[ "$(caps)" == 0 ]] && pass "(P3) missing $miss: no capture was created" || fail "(P3) capture created without $miss"
+done
+
+echo "== parser failure + cleanup failure: both reported, parser code wins =="
+OUT="$( PATH="$SORTFAIL:$RMFAIL:$NOSHRED:$BIN:$PATH" TMPDIR="$ROOT/tmp" STUB_RC=0 STUB_OUT=" • ${V1}_a.sql" bash -c "
+    source '$SHIM'; set +e; out=\"\$(push_dry_run_pending)\"; rc=\$?; set -e; printf 'RC=%s\n' \"\$rc\"" 2>&1 )"
+grep -q 'RC=42' <<<"$OUT" && pass "(P4) cleanup failure does NOT replace the parser's code (42)" || fail "(P4) code became $(grep -o 'RC=[0-9]*' <<<"$OUT")"
+grep -q 'PARSER failed' <<<"$OUT" && grep -q 'remove it by hand' <<<"$OUT" \
+  && pass "(P4) BOTH the parser failure and the cleanup failure are reported" || fail "(P4) one of the two failures is silent"
+/bin/rm -f "$ROOT"/tmp/rollout-dryrun-* 2>/dev/null || true
+
+echo "== a BOUNDING-stage failure in redact_diag withholds the diagnostic =="
+OUT="$( PATH="$HEADFAIL:$BIN:$PATH" TMPDIR="$ROOT/tmp" STUB_RC=8 \
+        STUB_OUT="fatal: password authentication failed for FAKE_CLONE_PW_123" bash -c "
+    source '$SHIM'; set +e; out=\"\$(push_dry_run_pending)\"; rc=\$?; set -e; printf 'RC=%s\n' \"\$rc\"" 2>&1 )"
+grep -q 'FAKE_CLONE_PW_123' <<<"$OUT" && fail "(P5) a failed bounding stage leaked the raw secret" \
+  || pass "(P5) bounding-stage failure: the raw secret is ABSENT"
+grep -q 'could NOT be sanitised' <<<"$OUT" && pass "(P5) bounding-stage failure uses the generic withholding message" || fail "(P5) no generic message"
+grep -q 'RC=8' <<<"$OUT" && pass "(P5) bounding-stage failure preserves the CLI's original code (8)" || fail "(P5) CLI code replaced"
+[[ "$(caps)" == 0 ]] && pass "(P5) bounding-stage failure: cleanup was still attempted" || fail "(P5) capture stranded"
+
 echo "== end to end: the CLONE path leaks nothing and fails closed =="
 # Not a static assertion: the real `clone-push` subcommand is driven with a
 # credential-bearing clone URL and a CLI that fails silently.
@@ -339,6 +397,21 @@ E2EC="$( PATH="$BIN:$PATH" EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzz
          bash "$RR" clone-push --yes "$LEAKY_PLAIN" 2>&1 )"
 grep -q 'FAKE_CLONE_PW_123' <<<"$E2EC" && fail "clone-push leaked a credential from the CLI's own output" \
   || pass "clone-push END TO END: a credential in the CLI's output is redacted"
+
+echo "== MUTANT: restoring the bare parse/cleanup/return-0 flow =="
+M="$(mut bareparse 'local parsed prc=0||=||local parsed prc=0; sed -n "s/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p" "$cap" | sort -u; secure_delete "$cap" >/dev/null 2>&1; return 0
+  UNREACHED() { :; }')"
+grep -q 'UNREACHED' "$M" && pass "mutant (h) built: bare parse -> cleanup -> return 0 restored" || fail "mutant (h) not applied"
+OUT="$( PATH="$SORTFAIL:$BIN:$PATH" TMPDIR="$ROOT/tmp" STUB_RC=0 STUB_OUT=" • ${V1}_a.sql" bash -c "
+    sh=\"$ROOT/hshim.sh\"
+    { echo 'set -Eeuo pipefail'; echo \"source '$HERE/../lib/common.sh'\"
+      sed -n '/^ROLLOUT_DIAG_MAX_LINES=/,/^clone_dry_run_pending()/p' '$M'
+      sed -n '/^push_dry_run_pending()/p;/^clone_dry_run_pending()/p' '$M'; } > \"\$sh\"
+    source \"\$sh\"; set +e; out=\"\$(push_dry_run_pending)\"; rc=\$?; set -e; printf 'RC=%s\nSTDOUT<<%s>>\n' \"\$rc\" \"\$out\"" 2>&1 )"
+grep -q 'RC=0' <<<"$OUT" && grep -q 'STDOUT<<>>' <<<"$OUT" \
+  && pass "MUTANT (bare parse flow) reports SUCCESS with an EMPTY set on a crashed parser — capturing the parser status is load-bearing" \
+  || fail "mutant (h) not distinguishable"
+/bin/rm -f "$M"
 
 echo "== MUTANT: restoring \$* in the fallback must be caught =="
 M="$(mut argvleak 'warn "the CLI produced NO output; operation: db push --dry-run against the ${label} (exit ${rc})"||=||warn "the CLI produced NO output; command was: supabase db push $* --dry-run (exit ${rc})"')"

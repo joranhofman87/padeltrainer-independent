@@ -103,8 +103,9 @@ ROLLOUT_DIAG_MAX_COLS=200
 # never skip the caller's secure_delete nor replace the CLI's own exit code. It
 # also never falls back to raw output — if sanitisation fails there is simply
 # nothing to show.
-redact_diag() {   # $1 = captured file -> prints a safe rendition on stdout; !0 on failure
-  command -v jq >/dev/null 2>&1 || return 1
+# The jq program alone. Split out so the caller can wrap the FULL pipeline —
+# sanitiser AND bounding stage — in one pipefail subshell.
+redact_jq() {   # $1 = captured file
   jq -R -r --argjson cols "$ROLLOUT_DIAG_MAX_COLS" '
       def lit_redact($v): if ($v | length) > 0 then (split($v) | join("***REDACTED***")) else . end;
       lit_redact(env.SUPABASE_DB_PASSWORD // "")
@@ -114,8 +115,18 @@ redact_diag() {   # $1 = captured file -> prints a safe rendition on stdout; !0 
       | gsub("(?<a>authorization[ \t]*:[ \t]*bearer[ \t]+)[^ \t]+"; "\(.a)***REDACTED***"; "i")
       | gsub("(?<p>postgres(?:ql)?://[^:@/ \t]+:)[^@ \t]+@"; "\(.p)***REDACTED***@"; "i")
       | .[0:$cols]
-    ' "$1" 2>/dev/null | head -n "$ROLLOUT_DIAG_MAX_LINES"
-  return "${PIPESTATUS[0]}"
+    ' "$1" 2>/dev/null
+}
+redact_diag() {   # $1 = captured file -> prints a safe rendition on stdout; !0 on failure
+  command -v jq >/dev/null 2>&1 || return 1
+  local rendered rc=0
+  # `set -o pipefail` INSIDE the subshell so BOTH stages are checked regardless of
+  # the caller's shell options: inspecting only PIPESTATUS[0] would let a failed
+  # bounding stage publish an unbounded — or truncated-mid-secret — rendition.
+  rendered="$( set -o pipefail; redact_jq "$1" | head -n "$ROLLOUT_DIAG_MAX_LINES" )" || rc=$?
+  [[ "$rc" -eq 0 ]] || return "$rc"
+  [[ -n "$rendered" ]] || return 1
+  printf '%s\n' "$rendered"
 }
 
 # $1 = a NON-SECRET target label used in diagnostics; $2.. = the CLI's target argv.
@@ -131,6 +142,9 @@ dry_run_pending() {   # $1 label, $2.. selector (--linked | --db-url URL)
   # sensitive: a missing sanitiser afterwards would strand the capture and lose
   # the CLI's reason and code.
   require_cmd jq
+  # the PARSER's dependencies are preflighted too: discovering a missing sed or
+  # sort after the CLI has run would strand a sensitive capture.
+  require_cmd sed; require_cmd sort
   local cap rc=0 crc=0 prev_umask
   prev_umask="$(umask)"; umask 077
   cap="$(mktemp -t rollout-dryrun-XXXXXX)" || { umask "$prev_umask"; die "cannot create a temp file for the CLI output"; }
@@ -154,9 +168,23 @@ dry_run_pending() {   # $1 label, $2.. selector (--linked | --db-url URL)
     secure_delete "$cap" || warn "could not securely delete the CLI capture — remove it by hand"
     return "$rc"                       # the ORIGINAL CLI code, never a cleanup code
   fi
-  sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' "$cap" | sort -u
+  # The parser's status must be CAPTURED, not discarded. It used to run bare —
+  # `sed … | sort -u` straight to stdout — after which secure_delete and `return 0`
+  # overwrote `$?`. The helper is invoked through command substitution on the left
+  # of `||`, so errexit cannot protect it: a failing sort produced exit 0 with
+  # EMPTY stdout, i.e. a parser crash reading as "nothing pending".
+  # (reproduced with a stubbed sort returning 42)
+  local parsed prc=0
+  parsed="$( set -o pipefail
+             sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' "$cap" | sort -u )" || prc=$?
+  if [[ "$prc" -ne 0 ]]; then
+    warn "the dry run succeeded but the pending-migration PARSER failed (exit ${prc}) — no pending set was produced; the raw capture is never printed"
+    secure_delete "$cap" || warn "could not securely delete the CLI capture — remove it by hand"
+    return "$prc"                    # the PARSER's code, never a cleanup code
+  fi
   secure_delete "$cap" || crc=1
   [[ "$crc" -eq 0 ]] || { warn "the dry run succeeded but its capture could not be securely deleted"; return 1; }
+  printf '%s\n' "$parsed"           # published ONLY after the parser succeeded
   return 0
 }
 push_dry_run_pending()  { dry_run_pending "linked project"          --linked; }

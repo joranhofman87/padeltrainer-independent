@@ -82,13 +82,38 @@ $ bash scripts/rollout/notif-10ca3/verify/dryrun-diagnostics-test.sh
   PASS  MUTANT (returns 0 on failure) yields an EMPTY successful pending set — returning the CLI code is load-bearing
   PASS  MUTANT (clone left on the old pipeline) LOSES the reason — both helpers must share the contract
   PASS  ...while the linked helper in the same mutant still reports it (the two are independently covered)
+== the PENDING PARSER's own failure must not be discarded ==
+  PASS  (P1) sort rc=42: the helper returns the PARSER's code (42), not 0
+  PASS  (P1) sort rc=42: stdout stays EMPTY (never a phantom pending set)
+  PASS  (P1) sort rc=42: a bounded generic parser-failure diagnostic is emitted
+  PASS  (P1) sort rc=42: the capture was securely deleted
+  PASS  (P2) sed rc=9: the helper returns the parser's code (9)
+  PASS  (P2) sed rc=9: stdout stays EMPTY
+  PASS  (P2) sed rc=9: the capture was securely deleted
+  PASS  (P2) no raw captured output is parsed or printed on parser failure
+== parser dependencies are preflighted BEFORE the CLI runs ==
+  PASS  (P3) missing sed: the supabase CLI was NEVER invoked
+  PASS  (P3) missing sed: no capture was created
+  PASS  (P3) missing sort: the supabase CLI was NEVER invoked
+  PASS  (P3) missing sort: no capture was created
+== parser failure + cleanup failure: both reported, parser code wins ==
+  PASS  (P4) cleanup failure does NOT replace the parser's code (42)
+  PASS  (P4) BOTH the parser failure and the cleanup failure are reported
+== a BOUNDING-stage failure in redact_diag withholds the diagnostic ==
+  PASS  (P5) bounding-stage failure: the raw secret is ABSENT
+  PASS  (P5) bounding-stage failure uses the generic withholding message
+  PASS  (P5) bounding-stage failure preserves the CLI's original code (8)
+  PASS  (P5) bounding-stage failure: cleanup was still attempted
 == end to end: the CLONE path leaks nothing and fails closed ==
   PASS  clone-push fails closed when the CLI fails (exit 1)
   PASS  clone-push END TO END: the clone password never appears in its output
   PASS  clone-push names the target class in the fallback
   PASS  clone-push makes no pending-set claim after a CLI failure
   PASS  clone-push END TO END: a credential in the CLI's output is redacted
+== MUTANT: restoring the bare parse/cleanup/return-0 flow ==
+  PASS  mutant (h) built: bare parse -> cleanup -> return 0 restored
+  PASS  MUTANT (bare parse flow) reports SUCCESS with an EMPTY set on a crashed parser — capturing the parser status is load-bearing
 == MUTANT: restoring $* in the fallback must be caught ==
   PASS  mutant (g) built: $* restored in the no-output fallback
   PASS  MUTANT ($* in the fallback) LEAKS the clone password — the label/argv separation is load-bearing
-================  81 passed, 0 failed  ================
+================  101 passed, 0 failed  ================
