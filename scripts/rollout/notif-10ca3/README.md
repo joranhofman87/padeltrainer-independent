@@ -21,8 +21,8 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | SQL artifacts execute on the real chain; every assertion mutation-pinned | `node …/verify/verify-artifacts.mjs` | [verify-run.txt](evidence/verify-run.txt) | 13/13 |
 | A/B/C/D/E rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 21/21 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
-| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 46/46 |
-| operator control flow (resume615 fresh-drain / recovery-SHA / no-loss) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 22/22 |
+| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 54/54 |
+| operator control flow (resume615 fresh-drain / recovery-SHA / no-loss / clean-evidence) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 36/36 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
