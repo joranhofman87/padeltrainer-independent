@@ -283,10 +283,28 @@ cmd_verify_clone() { local url="${1:-}"; require_arg "$url" "usage: verify-clone
   run_artifact "$url" academy_fixture.sql
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql
   ok "clone verification battery passed (post-migration)"; }
-cmd_preflight()  { require_arg "${1:-}" "usage: preflight <conn_url>"; run_artifact "$1"  preflight.sql; }
-cmd_postflight() { local url="${1:-}"; require_arg "$url" "usage: postflight <conn_url>"
+# These three take a <conn_url> and are DECISION-CRITICAL: preflight's CAP_STMT is
+# what bounds the production push, postflight is the documented gate-OFF
+# authorization, and ledger-status decides resume615-vs-apply615. Run against the
+# wrong database (typo, a stale clone URL in scrollback, wrong project) they would
+# report green about a database nobody is rolling out. So they now assert the
+# target is EXPECTED_REF by default; a clone must be named explicitly with
+# --clone, which is loud and cannot happen by accident.
+# (mutation-pinned: verify/operator-flow-test.sh)
+target_guard() {   # $1 url, $2 = "--clone" | ""
+  if [[ "${2:-}" == "--clone" ]]; then
+    warn "targeting a NON-PRODUCTION clone by explicit --clone (identity check skipped)"
+  else
+    assert_conn_url_is_ref "$EXPECTED_REF" "$1"
+  fi
+}
+cmd_preflight()  { local url="${1:-}"; require_arg "$url" "usage: preflight <conn_url> [--clone]"
+  target_guard "$url" "${2:-}"; run_artifact "$url" preflight.sql; }
+cmd_postflight() { local url="${1:-}"; require_arg "$url" "usage: postflight <conn_url> [--clone]"
+  target_guard "$url" "${2:-}"
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql; }
-cmd_ledger_status() { local url="${1:-}"; require_arg "$url" "usage: ledger-status <conn_url>"; echo "ledger state: $(ledger_status "$url")"; }
+cmd_ledger_status() { local url="${1:-}"; require_arg "$url" "usage: ledger-status <conn_url> [--clone]"
+  target_guard "$url" "${2:-}"; echo "ledger state: $(ledger_status "$url")"; }
 
 # Delete the pseudonymous manifests + secret salt — ONLY once the rollout is
 # provably COMPLETE. The pre-manifest + salt are the only recovery material for
@@ -319,7 +337,7 @@ cmd_clean_evidence() {
   # is deliberately NOT deleted here (drain evidence; PII-free by design).
   local f n=0
   for f in "$pre" "$post" "$EVID/manifest-salt.txt"; do
-    if [[ -f "$f" ]]; then command -v shred >/dev/null 2>&1 && shred -u "$f" 2>/dev/null || rm -f "$f"; n=$((n+1)); fi
+    if [[ -f "$f" ]]; then secure_delete "$f"; n=$((n+1)); fi
   done
   ok "rollout complete + verified — cleaned ${n} pseudonymous file(s) (manifests + salt)"
 }

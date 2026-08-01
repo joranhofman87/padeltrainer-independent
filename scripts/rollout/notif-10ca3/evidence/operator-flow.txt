@@ -1,4 +1,4 @@
-$ bash .../verify/operator-flow-test.sh
+$ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
 
 == fresh-drain recovery: prefix1 with exact canary evidence ==
   PASS  prefix1 resume (fresh drain) exits 0
@@ -45,4 +45,18 @@ $ bash .../verify/operator-flow-test.sh
   PASS  REFUSED without --yes
   PASS  all + gate-OFF + valid manifests + no-loss -> cleanup succeeds
   PASS  manifests + salt deleted only after all prerequisites
-================  36 passed, 0 failed  ================
+== target identity on the read-only decision commands ==
+  PASS  preflight rejects a look-alike host URL
+  PASS  preflight rejects a different project ref
+  PASS  preflight accepts a non-prod clone with explicit --clone
+  PASS  postflight rejects a look-alike host URL
+  PASS  postflight rejects a different project ref
+  PASS  postflight accepts a non-prod clone with explicit --clone
+  PASS  ledger-status rejects a look-alike host URL
+  PASS  ledger-status rejects a different project ref
+  PASS  ledger-status accepts a non-prod clone with explicit --clone
+  PASS  MUTANT without target_guard accepts a wrong-ref URL (guard is load-bearing)
+== secure_delete overwrites before unlinking (shred absent on darwin) ==
+  PASS  secure_delete removed the file (34 bytes)
+  PASS  overwrite step destroys the plaintext in place
+================  48 passed, 0 failed  ================

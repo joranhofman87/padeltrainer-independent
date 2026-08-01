@@ -22,7 +22,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | A–F rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute / clone-battery) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 28/28 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 54/54 |
-| operator control flow (resume615 fresh-drain / recovery-SHA / no-loss / clean-evidence) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 36/36 |
+| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / target identity) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 48/48 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
@@ -111,6 +111,11 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
 - **No SHA drift.** #615/#616 heads are pinned in `PINS.env`; `apply615`/`phase616`
   assert the live head equals the reviewed pin and merge with
   `gh pr merge --match-head-commit`, so only the CI-tested commit ships.
+- **Target identity on read-only decision commands.** `preflight`, `postflight`
+  and `ledger-status` assert the connection URL is `EXPECTED_REF` by default —
+  preflight's `CAP_STMT` bounds the production push, postflight authorizes
+  gate-OFF, and ledger-status decides resume-vs-apply, so a wrong URL must never
+  report green. Target a clone by passing an explicit `--clone`.
 - **Explicit targeting.** every `supabase functions deploy` / `secrets set|unset`
   carries `--project-ref $EXPECTED_REF`; `db push` runs from a detached worktree
   with `SUPABASE_PROJECT_ID=$EXPECTED_REF` and the worktree's own
@@ -143,7 +148,9 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
   salt are written `0600` under `umask 077`; the salt is passed to psql via the
   environment (`\getenv`, psql ≥ 16) so it never appears in process arguments.
   Delete them after the rollout with `run-rollout.sh clean-evidence --yes <url>`
-  (`shred`) — the pre-manifest + salt are the ONLY recovery material for
+  (`shred` when available; otherwise the bytes are overwritten in place and then
+  unlinked, with a warning — note that on SSD/CoW filesystems an overwrite is not
+  a guarantee, so the real controls are the `0600` perms and short retention) — the pre-manifest + salt are the ONLY recovery material for
   `resume615`, so cleanup refuses (preserving every file) unless ALL of:
   exact project identity, `ledger=all`, valid pre/post manifests, a passing
   no-loss comparison, passing postflight/ACL/ledger verification, and the
@@ -174,7 +181,7 @@ this order and never in one invocation:
 
 ```bash
 # phase 1 — BEFORE pushing to the clone (asserts delta ABSENT, emits A_window/CAPs)
-run-rollout.sh preflight "$CLONE"
+run-rollout.sh preflight "$CLONE" --clone
 
 # apply the migrations to the clone
 PGOPTIONS="-c lock_timeout=3000 -c statement_timeout=$CAP_STMT" \

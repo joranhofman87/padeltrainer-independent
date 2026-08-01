@@ -187,6 +187,31 @@ expected_pending_suffix() { # $1 state  $2 V1  $3 V2  $4 V3 -> newline list (emp
   esac
 }
 
+# Delete a file holding pseudonymous personal data, overwriting first.
+#
+# `shred` is a GNU coreutils tool and is ABSENT on macOS (and `gshred` is only
+# present with coreutils installed) — the operator machine for this rollout is
+# darwin. The previous `shred -u ... || rm -f` therefore silently degraded to a
+# plain unlink while the runbook promised secure erasure. We now overwrite the
+# bytes ourselves when shred is unavailable, and say plainly what happened.
+#
+# HONEST LIMIT: on SSDs, APFS/btrfs/ZFS copy-on-write, or any journalling
+# filesystem, an in-place overwrite does NOT guarantee the old blocks are gone.
+# The real controls remain the 0600 permissions and the short retention window.
+secure_delete() {
+  local f="$1" size
+  [[ -f "$f" ]] || return 0
+  if command -v shred >/dev/null 2>&1; then
+    shred -u "$f" 2>/dev/null && { ok "securely deleted (shred): $(basename "$f")"; return 0; }
+  elif command -v gshred >/dev/null 2>&1; then
+    gshred -u "$f" 2>/dev/null && { ok "securely deleted (gshred): $(basename "$f")"; return 0; }
+  fi
+  size="$(wc -c < "$f" | tr -d ' ')"
+  dd if=/dev/urandom of="$f" bs=1 count="$size" conv=notrunc 2>/dev/null || true
+  rm -f "$f"
+  warn "shred unavailable — overwrote $(basename "$f") ($size bytes) then unlinked (not guaranteed on SSD/CoW)"
+}
+
 # per-run salt for the fingerprint manifest (no raw email PII in evidence)
 gen_salt() {
   if command -v openssl >/dev/null 2>&1; then openssl rand -hex 16

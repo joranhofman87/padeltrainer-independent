@@ -238,5 +238,44 @@ run_clean "$V1,$V2,$V3" off ok; rc=$?
 [[ ! -f "$EVID/manifest-pre.txt" && ! -f "$EVID/manifest-post.txt" && ! -f "$EVID/manifest-salt.txt" ]] \
   && pass "manifests + salt deleted only after all prerequisites" || fail "files not deleted on valid cleanup"
 
+echo "== target identity on the read-only decision commands =="
+# preflight's CAP_STMT bounds the production push, postflight authorizes gate-OFF,
+# ledger-status decides resume-vs-apply. A wrong URL must not report green.
+WRONG="postgresql://postgres:pw@db.${REF}.supabase.co.evil.com/postgres"
+OTHER="postgresql://postgres@db.wrongwrongwrongwrong.supabase.co/postgres"
+for sub in preflight postflight ledger-status; do
+  ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" "$sub" "$WRONG" ) >/dev/null 2>&1 \
+    && fail "$sub ACCEPTED a look-alike host URL" || pass "$sub rejects a look-alike host URL"
+  ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" "$sub" "$OTHER" ) >/dev/null 2>&1 \
+    && fail "$sub ACCEPTED a different project ref" || pass "$sub rejects a different project ref"
+  ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" "$sub" "$OTHER" --clone ) >/dev/null 2>&1 \
+    && pass "$sub accepts a non-prod clone with explicit --clone" || fail "$sub rejected an explicit --clone"
+done
+# MUTANT: neutralise the guard's inner assertion (that exact line, with "$1", is
+# unique to target_guard — the other call sites pass "$prod"/"$url").
+# The mutant MUST live in the bundle dir: run-rollout.sh derives HERE from its own
+# path and sources lib/common.sh + PINS.env relatively, so a /tmp copy dies while
+# sourcing and yields a false "no bug" result.
+MUTG="$HERE/../.mutant-target-guard.sh"
+sed 's|assert_conn_url_is_ref "\$EXPECTED_REF" "\$1"|true|' "$RR" > "$MUTG"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$MUTG" ledger-status "$OTHER" ) >/dev/null 2>&1 \
+  && pass "MUTANT without target_guard accepts a wrong-ref URL (guard is load-bearing)" \
+  || fail "MUTANT still rejected — target_guard may not be load-bearing"
+rm -f "$MUTG"
+
+echo "== secure_delete overwrites before unlinking (shred absent on darwin) =="
+source "$HERE/../lib/common.sh"
+SD="$ROOT/secret.txt"; printf 'SUPER-SECRET-SALT-abcdef0123456789' > "$SD"
+SD_INODE_SIZE=$(wc -c < "$SD" | tr -d ' ')
+( secure_delete "$SD" ) >/dev/null 2>&1
+[[ ! -f "$SD" ]] && pass "secure_delete removed the file ($SD_INODE_SIZE bytes)" || fail "secure_delete left the file"
+# prove it OVERWRITES rather than only unlinking: run the overwrite step on a copy
+SD2="$ROOT/secret2.txt"; printf 'SUPER-SECRET-SALT-abcdef0123456789' > "$SD2"
+sz=$(wc -c < "$SD2" | tr -d ' ')
+dd if=/dev/urandom of="$SD2" bs=1 count="$sz" conv=notrunc 2>/dev/null
+grep -q "SUPER-SECRET-SALT" "$SD2" 2>/dev/null \
+  && fail "overwrite step left the plaintext readable" || pass "overwrite step destroys the plaintext in place"
+rm -f "$SD2"
+
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]
