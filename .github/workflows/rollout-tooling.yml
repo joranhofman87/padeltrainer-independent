@@ -51,9 +51,13 @@ jobs:
       - name: Operator control-flow test (resume615, stubbed gh/supabase/psql)
         run: bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
 
+      - name: Exit-status integrity (failures must be non-zero)
+        run: bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh
+
       - name: Shell syntax check
         run: |
           for f in run-rollout.sh lib/common.sh logfetch/fetch-edge-logs.sh \
-                   verify/identity-selftest.sh verify/guard-mutation-test.sh verify/operator-flow-test.sh; do
+                   verify/identity-selftest.sh verify/guard-mutation-test.sh verify/operator-flow-test.sh \
+                   verify/exit-status-test.sh; do
             bash -n "scripts/rollout/notif-10ca3/$f"
           done
