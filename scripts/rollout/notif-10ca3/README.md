@@ -22,7 +22,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | A–F rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute / clone-battery) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 28/28 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 78/78 |
-| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 136/136 |
+| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 145/145 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
@@ -387,14 +387,45 @@ provider smoke check, **never** as step-6 evidence.
 *Setup.* **Strongly preferred: pick an invoice that ALREADY resolves to an address
 you control, and change nothing.** `get_invoice_recipient_identity` resolves the
 recipient as: the academy-scoped override `academy_player_metadata.billing_email`
-→ the linked profile's email → the guest's own email. Confirm the resolved
-address without editing anything:
+→ the linked profile's email → the guest's own email.
+
+Three things can each turn the send into a **200 that proves nothing**, so screen
+for all three up front. This query is read-only and returns **booleans only — it
+never prints a recipient address**:
 
 ```sql
-SELECT public.get_invoice_recipient_email('<invoice uuid>');
+SELECT i.id,
+       i.invoice_number,
+       i.invoice_date,
+       i.status,
+       -- resolved by the SAME canonical resolver the edge function uses
+       (NULLIF(btrim(public.get_invoice_recipient_email(i.id)), '')
+          IS NOT DISTINCT FROM '<an address you control>')            AS resolves_to_me,
+       -- duplicate-send guard: sent_at NULL or >= 2 minutes old (RECENT_SEND_WINDOW_MS)
+       (i.sent_at IS NULL OR i.sent_at <= now() - interval '2 minutes') AS recent_guard_clear,
+       -- same suppression function the edge function calls, on the same resolved address
+       (NOT COALESCE(
+          public.is_email_suppressed(NULLIF(btrim(public.get_invoice_recipient_email(i.id)), '')),
+          false))                                                     AS recipient_not_suppressed
+  FROM public.invoices i
+ WHERE i.academy_profile_id = '<your academy uuid>'
+   AND i.status <> 'cancelled'
+ ORDER BY i.invoice_date DESC
+ LIMIT 50;
 ```
 
-Only if no such invoice exists do you redirect one, and then the edit must be
+Pick a row where **all three booleans are true**. Notes on reading it:
+- `is_email_suppressed` is `EXISTS(...)`, so it returns `false` for a NULL/empty
+  address — `recipient_not_suppressed` alone does not prove a recipient exists.
+  `resolves_to_me` is what proves that, which is why all three are required.
+- `recent_guard_clear` is a moving target: if you re-send within two minutes of a
+  previous send it flips back to false. Re-run the query immediately before
+  sending, not once at the start of the session.
+- Both `is_email_suppressed(text)` and `get_invoice_recipient_email(uuid)` are
+  `service_role`-only (revoked from `anon`/`authenticated`), so run this as
+  `postgres`/service role, not from the client.
+
+Only if no row satisfies all three do you redirect one, and then the edit must be
 **row-exact**. `academy_player_metadata` is keyed by `id`; a predicate like
 `academy_profile_id = … AND (profile_id = … OR guest_player_id = …)` can match
 zero rows (silently doing nothing, so you send to the real player) or several
@@ -447,20 +478,62 @@ send in this window is the expected outcome. `evidence/edge-log-lines.txt` is a
 local working file, **gitignored** via `evidence/.gitignore` — the fetch writes it
 and it is never committed, so treat what you find there as ephemeral.)
 
-*Pass — all four:*
-1. the email **arrives** at the controlled recipient, correct branding/reply-to;
-2. logs for that one `invocationId` show `event:provider_send_started` →
-   `event:finished {"outcome":"sent"}`, with **no** `event:blocked` and **no**
-   `record_failed` (the `--fail-on-record-failed` run above exits 6 if there is);
-3. **delivery tracking** recorded it: `get_invoices_delivery_status` reports
-   `sent` for that invoice (later `delivered` when the Resend webhook lands), and
-   the invoice shows as sent in the UI;
-4. no Slack alert fired.
+*Correlate EXACTLY — a busy window contains other invocations.* Anything you
+assert must be tied to **your** invocation id or **your** invoice id. Never read
+"there is a `finished sent` in the window" as evidence: it may belong to someone
+else's send. Bind the two ids first, then run the counts:
 
-*Stop (any one = FAIL, do not advance):* `503 invoice_email_maintenance` (gate
-unexpectedly ON); `500 email_not_configured`; `{"success":false,"error":"no_email"}`;
-**`record_failed`** in logs (the send worked but tracking did not — exactly what
-#615 exists to fix; report it); `finished {"outcome":"send_failed"}`.
+```bash
+LINES=scripts/rollout/notif-10ca3/evidence/edge-log-lines.txt
+INVOICE='<invoice uuid>'
+# the invocation that sent YOUR invoice (must print exactly one line)
+grep 'event:provider_send_started' "$LINES" | grep -F "\"invoiceId\":\"$INVOICE\""
+INVOCATION='<invocationId from that line>'
+
+# --- must be exactly 1 each ---
+grep -c "event:provider_send_started.*\"invocationId\":\"$INVOCATION\"" "$LINES"
+grep    "event:finished.*\"invocationId\":\"$INVOCATION\"" "$LINES" | grep -c '"outcome":"sent"'
+# --- must be exactly 0 each ---
+grep -c "event:blocked.*\"invocationId\":\"$INVOCATION\"" "$LINES"
+grep "event:finished.*\"invocationId\":\"$INVOCATION\"" "$LINES" | grep -cE '"outcome":"(send_failed|error)"'
+grep -c "record_failed.*\"invoiceId\":\"$INVOICE\"" "$LINES"
+grep -c "status_update_failed.*\"invoiceId\":\"$INVOICE\"" "$LINES"
+```
+
+`record_failed` and `status_update_failed` log an **`invoiceId`, not an
+`invocationId`** (see `_shared/invoice-delivery-tracking.ts` and
+`send-invoice-email/index.ts`), so those two are correlated by invoice id — that
+is exact for a single send of a single invoice. (`record_failed` also exists in
+`resend-webhook`, but that logs under the `[RESEND-WEBHOOK]` prefix, which this
+`[SEND-INVOICE-EMAIL]`-filtered fetch never returns.)
+
+*Pass — all five:*
+1. the email **arrives** at the controlled recipient, correct branding/reply-to;
+2. **exactly one** `event:provider_send_started` for `$INVOCATION`, and **exactly
+   one** `event:finished {"outcome":"sent"}` for that same id;
+3. **zero** `event:blocked` for `$INVOCATION`, zero `finished` for it with any
+   other outcome, and zero `record_failed` / `status_update_failed` for
+   `$INVOICE`;
+4. **delivery tracking** recorded it: `SELECT public.get_invoice_delivery_status('<invoice uuid>')`
+   reports `sent` (later `delivered` when the Resend webhook lands), and the
+   invoice shows as sent in the UI. Use the singular RPC — the plural
+   `get_invoices_delivery_status` returns a `linked_email` column you do not want
+   in your evidence;
+5. no Slack alert fired.
+
+*Stop — any one of these is a FAIL, do not advance.* **Three of them return HTTP
+200**, so "the UI said it worked" is not evidence:
+
+| what you see | why it is not step-6 evidence |
+|---|---|
+| `{"success":true,"skipped":"recently_sent"}` (**HTTP 200**) | the duplicate-send guard short-circuited: `invoices.sent_at` was under 2 minutes old. **Nothing was sent**, no `provider_send_started`, no tracking. Wait out the window (or pick another invoice) and re-run the candidate query. |
+| `{"success":false,"error":"email_suppressed"}` (**HTTP 200**) | the resolved address is `hard_bounced`/`complained`, so the send was skipped by design. Nothing was sent. Choose an invoice whose `recipient_not_suppressed` is true — do **not** pass `force=true` to punch through it. |
+| any `status_update_failed` for `$INVOICE` (**HTTP 200**, email delivered) | the email went out but the invoice's `sent_at`/`status` stamp failed, so the UI and the DB now disagree. The send is real; the verification is not complete. Report it. |
+| `{"success":false,"error":"no_email"}` (HTTP 200) | no recipient resolved — the override never applied, or you picked the wrong row. |
+| `503 invoice_email_maintenance` | the gate is unexpectedly ON. Stop and check why before anything else. |
+| `500 email_not_configured` | Resend config missing on the deployed function. |
+| `record_failed` for `$INVOICE` | the send worked but delivery tracking did not — exactly the defect #615 exists to fix. Report it; do not advance. |
+| `finished {"outcome":"send_failed"}` or `{"outcome":"error"}` for `$INVOCATION` | the provider rejected it or the handler threw. |
 
 *Evidence to retain (PII-safe):* the `invocationId`, event names + timestamps,
 the invoice id, and the resulting delivery status. **Never** paste recipient

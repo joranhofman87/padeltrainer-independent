@@ -156,4 +156,14 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
   PASS  MUTANT (broad OR predicate instead of the PK) is REJECTED
   PASS  MUTANT (no RETURNING) is REJECTED
   PASS  MUTANT (no zero-match ABORT) is REJECTED
-================  136 passed, 0 failed  ================
+== README step-6 false-green STOPs, screening booleans + exact correlation ==
+  PASS  step 6 names the 3 HTTP-200 false greens, screens all 3 booleans, and correlates by exact invocation+invoice
+  PASS  the row-exact override + restoration procedure is still intact
+  PASS  MUTANT (drops '"skipped":"recently_sent"') is REJECTED
+  PASS  MUTANT (drops '"error":"email_suppressed"') is REJECTED
+  PASS  MUTANT (drops 'AS recent_guard_clear') is REJECTED
+  PASS  MUTANT (drops 'AS recipient_not_suppressed') is REJECTED
+  PASS  MUTANT (drops 'AS resolves_to_me') is REJECTED
+  PASS  MUTANT (window-only correlation, no id binding) is REJECTED
+  PASS  MUTANT (bare address SELECT) is REJECTED
+================  145 passed, 0 failed  ================
