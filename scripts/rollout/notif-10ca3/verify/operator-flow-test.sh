@@ -212,6 +212,24 @@ echo "== refusals: none / invalid =="
 run "" on ok ok;   [[ $? -ne 0 ]] && pass "refuses 'none' (use apply615)" || fail "resumed on none"
 run "$V2" on ok ok;[[ $? -ne 0 ]] && pass "refuses INVALID subset {V2}" || fail "resumed on invalid"
 
+echo "== resume615 refuses an unbounded cap BEFORE touching the gate =="
+run_caps(){ # $1 CAP_STMT  $2 CAP_LOCK — prefix1 clone, gate currently OFF
+  rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"
+  printf '%s' "$V1" > "$STATEDIR/ledger"; printf 'off' > "$STATEDIR/gate"
+  printf 'ok' > "$STATEDIR/DRAIN_EVIDENCE"; printf 'ok' > "$STATEDIR/MANIFEST_MODE"; place_pre
+  PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+    MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT="$1" CAP_LOCK="$2" \
+    bash "$RR" resume615 --yes >/dev/null 2>&1; }
+run_caps 0 3000; rc=$?
+[[ "$rc" -ne 0 ]] && pass "resume615[CAP_STMT=0]: refuses (0 disables statement_timeout)" || fail "resumed with CAP_STMT=0"
+[[ "$(cat "$STATEDIR/ledger")" == "$V1" ]] && pass "resume615[CAP_STMT=0]: no suffix push" || fail "ledger advanced to $(cat "$STATEDIR/ledger")"
+[[ "$(cat "$STATEDIR/gate")" == off ]] && pass "resume615[CAP_STMT=0]: the maintenance gate was never touched" || fail "gate=$(cat "$STATEDIR/gate")"
+run_caps 30000 0; rc=$?
+[[ "$rc" -ne 0 ]] && pass "resume615[CAP_LOCK=0]: refuses (unbounded lock wait)" || fail "resumed with CAP_LOCK=0"
+[[ "$(cat "$STATEDIR/gate")" == off ]] && pass "resume615[CAP_LOCK=0]: the gate was never touched" || fail "gate=$(cat "$STATEDIR/gate")"
+run_caps 30000 3000; rc=$?
+[[ "$rc" == 0 && "$(cat "$STATEDIR/ledger")" == "$V1,$V2,$V3" ]] && pass "resume615[valid caps]: still completes (the guard is not over-strict)" || fail "valid caps rejected (exit=$rc)"
+
 echo "== already all: verify-only, no drain =="
 run "$V1,$V2,$V3" on ok ok; rc=$?
 [[ "$rc" == 0 ]] && pass "already-all verifies + exits 0" || fail "exit=$rc"
@@ -412,6 +430,23 @@ seed_clone "" "$PR615_SHA" green
 [[ $? -ne 0 ]] && pass "clone-push[no CAP_STMT]: refuses an unbounded push" || fail "pushed without CAP_STMT"
 no_push && pass "clone-push[no CAP_STMT]: pushed nothing" || fail "pushed without a statement cap"
 
+# PostgreSQL reads 0 as "no limit", so a present-but-zero cap is an UNBOUNDED push
+# wearing a bounded label. Exercised end to end, not just at the validator.
+caps_run(){ # $1 CAP_STMT  $2 CAP_LOCK  ; runs clone-push from the decoy checkout
+  ( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" \
+      CAP_STMT="$1" CAP_LOCK="$2" bash "$RR" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1; }
+seed_clone "" "$PR615_SHA" green; caps_run 0 3000
+[[ $? -ne 0 ]] && pass "clone-push[CAP_STMT=0]: refuses (0 disables the timeout in PG)" || fail "pushed with CAP_STMT=0"
+no_push && pass "clone-push[CAP_STMT=0]: pushed nothing" || fail "an unbounded push happened"
+seed_clone "" "$PR615_SHA" green; caps_run 30000 0
+[[ $? -ne 0 ]] && pass "clone-push[CAP_LOCK=0]: refuses (unbounded lock wait)" || fail "pushed with CAP_LOCK=0"
+no_push && pass "clone-push[CAP_LOCK=0]: pushed nothing" || fail "an unbounded lock wait was allowed"
+seed_clone "" "$PR615_SHA" green; caps_run "3000 -c statement_timeout=0" 3000
+[[ $? -ne 0 ]] && pass "clone-push[smuggled -c option]: refuses" || fail "accepted an injected PGOPTIONS option"
+no_push && pass "clone-push[smuggled -c option]: pushed nothing" || fail "pushed with an injected option"
+seed_clone "" "$PR615_SHA" green; caps_run 30000 3000
+[[ $? -eq 0 && "$(ledger_now)" == "$V1,$V2,$V3" ]] && pass "clone-push[valid caps]: still succeeds (the guard is not over-strict)" || fail "valid caps were rejected"
+
 echo "== clone-make-prefix: rehearsal C's prefix is created by the REAL CLI =="
 seed_clone "" "$PR615_SHA" green; clone_run clone-make-prefix --yes 1 "$CLONE_URL"; rc=$?
 [[ "$rc" == 0 ]] && pass "clone-make-prefix 1: exits 0 on a pristine clone" || fail "exit=$rc"
@@ -553,6 +588,39 @@ F7="$SDIR/mut-unlink.txt"; printf 'SECRET-SALT-0123456789' > "$F7"
 [[ "$rc7" -eq 0 && -f "$F7" ]] && pass "MUTANT (no unlink guard) reports SUCCESS while the file still exists — the guard is load-bearing" \
                                || fail "MUTANT did not exhibit the fail-open behaviour (exit=$rc7)"
 rm -f "$F7" "$MUTC"
+
+echo "== README step-6 recipient override must stay ROW-EXACT =="
+# The documented UPDATE runs against PRODUCTION by hand, so its shape is a safety
+# control like any guard here. A broad `academy_profile_id AND (profile_id OR
+# guest_player_id)` predicate can hit 0 rows (the send silently goes to the real
+# player) or several (the restore writes one captured value across all of them).
+RM="$HERE/../README.md"
+S6="$ROOT/step6.md"; sed -n '/^### Step 6 —/,/^## /p' "$RM" > "$S6"
+# the contract, as a predicate, so the SAME checks can be run against mutants
+s6_row_exact(){ local f="$1"
+  [[ -s "$f" ]] || return 1
+  [[ "$(grep -c 'UPDATE public.academy_player_metadata' "$f")" == 2 ]] || return 1   # redirect + restore
+  [[ "$(grep -c "^ WHERE id = '<meta id>'" "$f")" == 2 ]] || return 1               # both keyed by the PK
+  [[ "$(grep -c '^RETURNING id, billing_email' "$f")" == 2 ]] || return 1           # affected rows visible
+  grep -A 3 'UPDATE public.academy_player_metadata' "$f" | grep -q 'OR guest_player_id' && return 1
+  grep -q '0 rows → ABORT'  "$f" || return 1                                        # no implicit INSERT
+  grep -q '>1 rows → ABORT' "$f" || return 1
+  grep -q 'get_invoice_recipient_email' "$f" || return 1                            # the no-edit path first
+  return 0; }
+[[ -s "$S6" ]] && pass "step-6 section found in the README" || fail "step-6 section not found"
+s6_row_exact "$S6" && pass "step 6 is row-exact: 2 UPDATEs, both keyed by academy_player_metadata.id, both RETURNING, 0-row and >1-row aborts, no-edit path offered" \
+                   || fail "step-6 override contract violated"
+grep -qi 'gitignore' "$S6" && pass "edge-log-lines.txt described as gitignored, not a checked-in sample" || fail "stale evidence wording"
+# MUTANTS: each mistake Codex called out must be REJECTED by the predicate
+sed "s|^ WHERE id = '<meta id>'\$| WHERE academy_profile_id = 'a' AND (profile_id = 'p' OR guest_player_id = 'g')|" "$S6" > "$ROOT/s6-broador.md"
+s6_row_exact "$ROOT/s6-broador.md" && fail "MUTANT broad-OR UPDATE accepted (0 or many rows)" \
+                                   || pass "MUTANT (broad OR predicate instead of the PK) is REJECTED"
+grep -v '^RETURNING id, billing_email' "$S6" > "$ROOT/s6-noret.md"
+s6_row_exact "$ROOT/s6-noret.md" && fail "MUTANT without RETURNING accepted (affected-row count invisible)" \
+                                 || pass "MUTANT (no RETURNING) is REJECTED"
+grep -v '0 rows → ABORT' "$S6" > "$ROOT/s6-noabort.md"
+s6_row_exact "$ROOT/s6-noabort.md" && fail "MUTANT without the zero-match abort accepted" \
+                                   || pass "MUTANT (no zero-match ABORT) is REJECTED"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

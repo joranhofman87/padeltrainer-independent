@@ -140,7 +140,45 @@ reject "no-loss rejects a LOST email_address_state key"   assert_manifest_no_los
 reject "no-loss rejects a LOST email_delivery_events id"  assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_edeloss.txt"
 reject "no-loss rejects unchanged reader fingerprints"    assert_manifest_no_loss "$TMP/man_pre.txt" "$TMP/man_readersame.txt"
 
-echo "== guard 9: the production drain wait has no env backdoor =="
+echo "== guard 9: timeout caps must be POSITIVE integers (0 disables them in PG) =="
+# statement_timeout=0 / lock_timeout=0 mean "no limit" to PostgreSQL, so a cap of
+# 0 removes the bound while every log line still claims the push is bounded. The
+# values also go into PGOPTIONS unquoted, so an embedded ' -c ...' would smuggle
+# in a second option.
+accept "real cap-guard accepts a positive integer"        assert_timeout_ms CAP_STMT 30000
+accept "real cap-guard accepts the CAP_LOCK default 3000" assert_timeout_ms CAP_LOCK 3000
+reject "real cap-guard rejects 0 (PostgreSQL: DISABLED)"  assert_timeout_ms CAP_STMT 0
+reject "real cap-guard rejects 000"                       assert_timeout_ms CAP_STMT 000
+reject "real cap-guard rejects a negative value"          assert_timeout_ms CAP_STMT -1
+reject "real cap-guard rejects an explicit +"             assert_timeout_ms CAP_STMT +30000
+reject "real cap-guard rejects a non-numeric value"       assert_timeout_ms CAP_STMT abc
+reject "real cap-guard rejects a unit suffix (30s)"       assert_timeout_ms CAP_STMT 30s
+reject "real cap-guard rejects a float"                   assert_timeout_ms CAP_STMT 3000.5
+reject "real cap-guard rejects an empty value"            assert_timeout_ms CAP_STMT ""
+reject "real cap-guard rejects whitespace"                assert_timeout_ms CAP_STMT " 3000"
+reject "real cap-guard rejects a trailing newline"        assert_timeout_ms CAP_STMT "$(printf '3000\n')x"
+reject "real cap-guard rejects a smuggled second -c option" assert_timeout_ms CAP_STMT "3000 -c statement_timeout=0"
+# assert_caps must validate BOTH, including CAP_LOCK's default path
+caps_with(){ ( CAP_STMT="$1"; CAP_LOCK="$2"; assert_caps ); }
+caps_stmt_only(){ ( CAP_STMT="$1"; unset CAP_LOCK; assert_caps ); }
+accept "assert_caps accepts both positive"                caps_with 30000 3000
+accept "assert_caps accepts an unset CAP_LOCK (default 3000)" caps_stmt_only 30000
+reject "assert_caps rejects CAP_STMT=0"                   caps_with 0 3000
+reject "assert_caps rejects CAP_LOCK=0 (lock wait unbounded)" caps_with 30000 0
+reject "assert_caps rejects an exported junk CAP_LOCK"    caps_with 30000 "0 -c lock_timeout=0"
+# MUTANT: the pre-fix guard — presence only
+mutant_cap(){ [[ -n "${1:-}" ]]; }
+accept "MUTANT presence-only cap check wrongly accepts 0 (guard is load-bearing)" mutant_cap 0
+accept "MUTANT presence-only cap check wrongly accepts '3000 -c statement_timeout=0'" mutant_cap "3000 -c statement_timeout=0"
+# every command that pushes must validate the caps before doing so
+for fn in cmd_apply615 cmd_resume615 clone_push_preamble; do
+  sed -n "/^${fn}()/,/^}/p" "$RR" | grep -q 'assert_caps' \
+    && pass "$fn validates the caps before it can push" || fail "$fn does not call assert_caps"
+done
+grep -q 'require_env CAP_STMT' "$RR" && fail "a presence-only CAP_STMT check survives in run-rollout.sh" \
+                                     || pass "no presence-only CAP_STMT check remains"
+
+echo "== guard 10: the production drain wait has no env backdoor =="
 no_wait_backdoor(){ ! grep -qE 'ROLLOUT_TEST_FAST_DRAIN|elapsed=("?\$min"?|"?\$\{min)' "$1"; }
 accept "run-rollout.sh has NO env-based drain-wait shortcut" no_wait_backdoor "$RR"
 grep -q 'while :; do now_epoch="\$(date -u +%s)"' "$RR" && pass "the wait advances only via the real clock (date/sleep)" || fail "wait loop not found"

@@ -27,6 +27,13 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
 == refusals: none / invalid ==
   PASS  refuses 'none' (use apply615)
   PASS  refuses INVALID subset {V2}
+== resume615 refuses an unbounded cap BEFORE touching the gate ==
+  PASS  resume615[CAP_STMT=0]: refuses (0 disables statement_timeout)
+  PASS  resume615[CAP_STMT=0]: no suffix push
+  PASS  resume615[CAP_STMT=0]: the maintenance gate was never touched
+  PASS  resume615[CAP_LOCK=0]: refuses (unbounded lock wait)
+  PASS  resume615[CAP_LOCK=0]: the gate was never touched
+  PASS  resume615[valid caps]: still completes (the guard is not over-strict)
 == already all: verify-only, no drain ==
   PASS  already-all verifies + exits 0
   PASS  already-all turns gate OFF
@@ -99,6 +106,13 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
   PASS  clone-push[checks red]: pushed nothing
   PASS  clone-push[no CAP_STMT]: refuses an unbounded push
   PASS  clone-push[no CAP_STMT]: pushed nothing
+  PASS  clone-push[CAP_STMT=0]: refuses (0 disables the timeout in PG)
+  PASS  clone-push[CAP_STMT=0]: pushed nothing
+  PASS  clone-push[CAP_LOCK=0]: refuses (unbounded lock wait)
+  PASS  clone-push[CAP_LOCK=0]: pushed nothing
+  PASS  clone-push[smuggled -c option]: refuses
+  PASS  clone-push[smuggled -c option]: pushed nothing
+  PASS  clone-push[valid caps]: still succeeds (the guard is not over-strict)
 == clone-make-prefix: rehearsal C's prefix is created by the REAL CLI ==
   PASS  clone-make-prefix 1: exits 0 on a pristine clone
   PASS  clone-make-prefix 1: the CLI applied exactly V1 (later files pruned in the worktree)
@@ -135,4 +149,11 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
   PASS  secure_delete: the symlink itself was left in place for the operator
   PASS  mutant (g) built: unlink guard removed from the real helper
   PASS  MUTANT (no unlink guard) reports SUCCESS while the file still exists — the guard is load-bearing
-================  117 passed, 0 failed  ================
+== README step-6 recipient override must stay ROW-EXACT ==
+  PASS  step-6 section found in the README
+  PASS  step 6 is row-exact: 2 UPDATEs, both keyed by academy_player_metadata.id, both RETURNING, 0-row and >1-row aborts, no-edit path offered
+  PASS  edge-log-lines.txt described as gitignored, not a checked-in sample
+  PASS  MUTANT (broad OR predicate instead of the PK) is REJECTED
+  PASS  MUTANT (no RETURNING) is REJECTED
+  PASS  MUTANT (no zero-match ABORT) is REJECTED
+================  136 passed, 0 failed  ================

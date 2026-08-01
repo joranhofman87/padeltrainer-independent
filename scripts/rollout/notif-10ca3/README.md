@@ -21,8 +21,8 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | SQL artifacts execute on the real chain; every assertion mutation-pinned | `node …/verify/verify-artifacts.mjs` | [verify-run.txt](evidence/verify-run.txt) | 13/13 |
 | A–F rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute / clone-battery) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 28/28 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
-| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 54/54 |
-| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 117/117 |
+| critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 78/78 |
+| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 136/136 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
@@ -125,6 +125,14 @@ run-rollout.sh clean-evidence --yes "$PROD"
 - **No SHA drift.** #615/#616 heads are pinned in `PINS.env`; `apply615`/`phase616`
   assert the live head equals the reviewed pin and merge with
   `gh pr merge --match-head-commit`, so only the CI-tested commit ships.
+- **The caps must actually cap.** PostgreSQL reads `statement_timeout=0` and
+  `lock_timeout=0` as **disabled**, so a cap of `0` would unbound the migration
+  while every log line still said "bounded"; and both values are interpolated
+  into `PGOPTIONS`, where `3000 -c statement_timeout=0` would smuggle in a second
+  option. `assert_caps` therefore requires `CAP_STMT` **and** `CAP_LOCK` (default
+  3000) to be positive decimal integers — no 0, sign, unit, whitespace or extra
+  `-c` — and runs before the merge, before the gate changes, and before any push
+  in `apply615`, `resume615`, `clone-push` and `clone-make-prefix`.
 - **Target identity on every URL-taking command.** `preflight`, `postflight`,
   `ledger-status` and `rollback615` assert the connection URL is `EXPECTED_REF`
   by default. All four are **decision** commands: preflight's `CAP_STMT` bounds
@@ -376,26 +384,47 @@ so no delivery tracking) and the invoice-status stamp is skipped. A test send
 proves only that the provider accepted a message — useful as an optional
 provider smoke check, **never** as step-6 evidence.
 
-*Setup.* Pick a real invoice whose **resolved recipient is an address you
-control**. `get_invoice_recipient_identity` resolves the recipient as: the
-academy-scoped override `academy_player_metadata.billing_email` → the linked
-profile's email → the guest's own email. Redirecting one to yourself means
-temporarily changing **production routing**, so capture the old value first and
-restore it afterwards — an "ephemeral" override that is never put back keeps
-sending that player's invoices to the wrong inbox forever:
+*Setup.* **Strongly preferred: pick an invoice that ALREADY resolves to an address
+you control, and change nothing.** `get_invoice_recipient_identity` resolves the
+recipient as: the academy-scoped override `academy_player_metadata.billing_email`
+→ the linked profile's email → the guest's own email. Confirm the resolved
+address without editing anything:
 
 ```sql
--- BEFORE: record the current value verbatim (NULL and 'absent row' are different states)
-SELECT academy_profile_id, profile_id, guest_player_id, billing_email
+SELECT public.get_invoice_recipient_email('<invoice uuid>');
+```
+
+Only if no such invoice exists do you redirect one, and then the edit must be
+**row-exact**. `academy_player_metadata` is keyed by `id`; a predicate like
+`academy_profile_id = … AND (profile_id = … OR guest_player_id = …)` can match
+zero rows (silently doing nothing, so you send to the real player) or several
+(so the restore later writes one captured value across all of them). Work from
+the primary key and require exactly one affected row:
+
+```sql
+-- 1. find the ONE metadata row and record its id + exact prior value.
+--    NULL and 'no row at all' are different states — note which you got.
+SELECT id, academy_profile_id, profile_id, guest_player_id, billing_email
   FROM public.academy_player_metadata
- WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
-   AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
--- redirect for the test (same WHERE clause)
-UPDATE public.academy_player_metadata SET billing_email = '<address you control>'
- WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
+ WHERE academy_profile_id = '<academy uuid>'
    AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
 ```
-Confirm the gate probe reads `{"status":"active","maintenance":false}` first.
+- **0 rows → ABORT.** Do not create one. Choose a different invoice; an inserted
+  row changes which override exists and there is no clean way to unwind it.
+- **>1 rows → ABORT.** Resolve the duplicate first, or choose another invoice.
+- **exactly 1 row → continue**, using its `id` (call it `<meta id>`) and its
+  `billing_email` (call it `<prior value>`).
+
+```sql
+-- 2. redirect BY PRIMARY KEY; RETURNING must print exactly one row
+UPDATE public.academy_player_metadata
+   SET billing_email = '<address you control>'
+ WHERE id = '<meta id>'
+RETURNING id, billing_email;   -- expect: 1 row, the address you control
+```
+If that `RETURNING` prints anything other than one row, stop and investigate
+before sending. Then confirm the gate probe reads
+`{"status":"active","maintenance":false}`.
 
 *Action.* Send that one invoice from the academy/trainer invoice UI. Not a
 preview, not a test send. Note the **invoice id** and the wall-clock minute.
@@ -414,8 +443,9 @@ grep '<invoice uuid>' scripts/rollout/notif-10ca3/evidence/edge-log-lines.txt
 The matching `event:provider_send_started` line carries
 `{"invocationId":"…","invoiceId":"…"}` — that uuid is your correlation id for
 everything below. (`--allow-sends` is required here: unlike the drain proof, a
-send in this window is the expected outcome. The fetch overwrites the checked-in
-sample `evidence/edge-log-lines.txt`; do not commit the production copy.)
+send in this window is the expected outcome. `evidence/edge-log-lines.txt` is a
+local working file, **gitignored** via `evidence/.gitignore` — the fetch writes it
+and it is never committed, so treat what you find there as ephemeral.)
 
 *Pass — all four:*
 1. the email **arrives** at the controlled recipient, correct branding/reply-to;
@@ -437,22 +467,21 @@ the invoice id, and the resulting delivery status. **Never** paste recipient
 addresses, response bodies, message bodies, or any token.
 
 *Cleanup.* The send itself needs none — it is a normal business email. But if you
-changed `billing_email` (or any other routing field) for the test, **restore the
-captured value and verify the restore**, pass or fail:
+redirected the recipient, **restore by the same primary key and verify it**, pass
+or fail. Use `NULL` (unquoted) if the prior value was NULL:
 
 ```sql
-UPDATE public.academy_player_metadata SET billing_email = <the BEFORE value, or NULL>
- WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
-   AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
--- verify: this must return exactly the BEFORE row
-SELECT academy_profile_id, profile_id, guest_player_id, billing_email
-  FROM public.academy_player_metadata
- WHERE academy_profile_id = '<academy uuid>' AND removed_at IS NULL
-   AND (profile_id = '<player uuid>' OR guest_player_id = '<guest uuid>');
+-- restore BY THE SAME id; RETURNING must print exactly one row
+UPDATE public.academy_player_metadata
+   SET billing_email = <prior value, or NULL>
+ WHERE id = '<meta id>'
+RETURNING id, billing_email;
+-- verify: must equal the prior value recorded in step 1, and be exactly 1 row
+SELECT id, billing_email FROM public.academy_player_metadata WHERE id = '<meta id>';
 ```
-Step 6 is not complete until that SELECT matches what you recorded. If you
-created a metadata row that did not exist before, delete it rather than leaving
-it with a NULL override.
+Step 6 is not complete until that SELECT returns one row whose `billing_email` is
+byte-identical to what you recorded (`NULL` included). Since the setup aborts
+rather than inserting, there is never a row to delete.
 
 Then:
 1. Provide `EXPECTED_REF`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`,

@@ -219,7 +219,9 @@ cmd_dryrun615() {
 cmd_apply615() {
   require_yes "${1:-}"; require_cmd gh; require_cmd supabase; require_cmd curl; require_cmd jq; require_cmd psql
   require_env MANAGER_TOKEN "set MANAGER_TOKEN"
-  require_env CAP_STMT "set CAP_STMT (ms) from preflight"
+  # BOTH caps validated BEFORE the merge, the gate change and the push: a cap of 0
+  # would disable the timeout Postgres-side and unbound the production window.
+  assert_caps
   require_env SUPABASE_ACCESS_TOKEN "set SUPABASE_ACCESS_TOKEN"
   require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD"
   require_env PROD_CONN_URL "set PROD_CONN_URL (password via PGPASSWORD)"
@@ -306,7 +308,7 @@ cmd_verify_clone() {
 clone_push_preamble() {   # $1 = clone url
   require_cmd gh; require_cmd supabase; require_cmd psql
   assert_clone_url "$1"                         # clone identity, and provably not production
-  require_env CAP_STMT "set CAP_STMT (ms) — clone expectation from the clone preflight"
+  assert_caps                                   # positive integers; 0 would disable the cap
   git fetch origin
   assert_sha_matches_pin "$(pr_head_sha 615)" "$PR615_SHA" "#615 head"
   gh pr checks 615 || die "#615 checks are not green — refusing to rehearse an unreviewed migration set"
@@ -471,7 +473,7 @@ EOF
 cmd_resume615() {
   require_yes "${1:-}"; require_cmd supabase; require_cmd curl; require_cmd jq; require_cmd psql
   require_env MANAGER_TOKEN "set MANAGER_TOKEN"
-  require_env CAP_STMT "set CAP_STMT (ms)"
+  assert_caps            # before the gate is re-enabled and before the suffix push
   require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD"
   require_env SUPABASE_ACCESS_TOKEN "set SUPABASE_ACCESS_TOKEN"
   require_env PROD_CONN_URL "set PROD_CONN_URL (password via PGPASSWORD)"

@@ -163,6 +163,30 @@ assert_drain_window() {
   ok "drain window ${min}s >= floor ${ROLLOUT_DRAIN_FLOOR}s"
 }
 
+# The whole rollout is "bounded": every migration runs under an explicit
+# statement_timeout + lock_timeout so a runaway rewrite or a lock wait can never
+# hold the gate open indefinitely. PostgreSQL treats **0 as DISABLED**, so a cap
+# of `0` silently removes exactly the bound the plan depends on while every log
+# line still says "bounded". The values are also interpolated into `PGOPTIONS`
+# unquoted, so a value like `3000 -c statement_timeout=0` would smuggle in a
+# second option. Both caps must therefore be a POSITIVE DECIMAL INTEGER, nothing
+# else — no 0, no sign, no units, no whitespace, no extra `-c`.
+# (mutation-pinned: verify/guard-mutation-test.sh + verify/operator-flow-test.sh)
+assert_timeout_ms() {   # $1 = name  $2 = value
+  local n="$1" v="${2-}"
+  [[ -n "$v" ]] || die "$n is unset/empty — set it to a positive integer in milliseconds"
+  [[ "$v" =~ ^[0-9]+$ ]] \
+    || die "$n='$v' is not a plain decimal integer — no signs, spaces, units or extra '-c' options are accepted (it goes straight into PGOPTIONS)"
+  [[ "$v" -gt 0 ]] || die "$n='$v' — PostgreSQL treats 0 as DISABLED; the rollout must stay bounded"
+  ok "$n = ${v}ms (positive, bounded)"
+}
+# Validate BOTH caps before anything irreversible. CAP_LOCK's 3000ms default is
+# validated too, so a bad exported value can never slip through the default path.
+assert_caps() {
+  assert_timeout_ms CAP_STMT "${CAP_STMT:-}"
+  assert_timeout_ms CAP_LOCK "${CAP_LOCK:-3000}"
+}
+
 # Classify the migration ledger. Accepts ONLY the legitimate ordered prefixes.
 # Any other subset ({V2}, {V1,V3}, ...) is 'invalid' and must stop recovery.
 classify_ledger() { # $1 sorted-csv  $2 V1  $3 V2  $4 V3 -> none|prefix1|prefix2|all|invalid
