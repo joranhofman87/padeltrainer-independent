@@ -269,10 +269,20 @@ cmd_apply615() {
   ok "Phase 2 complete: #615 applied; gate OFF; digest engine still disabled"
 }
 
-cmd_verify_clone() { local url="${1:-}"; require_arg "$url" "usage: verify-clone <clone_conn_url>"
-  run_artifact "$url" preflight.sql; run_artifact "$url" academy_fixture.sql
+# POST-migration clone battery. The clone rehearsal is TWO-PHASE and these
+# artifacts are mutually exclusive by design:
+#   phase 1 (BEFORE `db push` to the clone):  run-rollout.sh preflight "$CLONE"
+#                                             -> asserts the #615 delta is ABSENT
+#   phase 2 (AFTER  `db push` to the clone):  run-rollout.sh verify-clone "$CLONE"
+#                                             -> asserts the delta is PRESENT + correct
+# preflight.sql must NOT appear below: it asserts `is_suppressed is ABSENT` while
+# postflight.sql asserts it EXISTS and academy_fixture.sql calls the re-emitted
+# reader, so including it made this battery unpassable in EITHER clone state.
+# (regression-pinned: verify/rehearsals.mjs rehearsal F)
+cmd_verify_clone() { local url="${1:-}"; require_arg "$url" "usage: verify-clone <clone_conn_url>   # run AFTER db push to the clone"
+  run_artifact "$url" academy_fixture.sql
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql
-  ok "clone verification battery passed"; }
+  ok "clone verification battery passed (post-migration)"; }
 cmd_preflight()  { require_arg "${1:-}" "usage: preflight <conn_url>"; run_artifact "$1"  preflight.sql; }
 cmd_postflight() { local url="${1:-}"; require_arg "$url" "usage: postflight <conn_url>"
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql; }

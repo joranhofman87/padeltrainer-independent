@@ -19,7 +19,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | proof | command | evidence | result |
 |---|---|---|---|
 | SQL artifacts execute on the real chain; every assertion mutation-pinned | `node …/verify/verify-artifacts.mjs` | [verify-run.txt](evidence/verify-run.txt) | 13/13 |
-| A/B/C/D/E rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 21/21 |
+| A–F rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute / clone-battery) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 28/28 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 54/54 |
 | operator control flow (resume615 fresh-drain / recovery-SHA / no-loss / clean-evidence) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 36/36 |
@@ -54,7 +54,7 @@ sql/ledger_verification.sql append-only ledger + email-table consistency invaria
 logfetch/fetch-edge-logs.sh Management API edge-log retrieval + authoritative drain proof
 verify/chain.mjs            shared embedded-PG setup + SHA-pinned migration source
 verify/verify-artifacts.mjs SQL-artifact proof (+ mutations)
-verify/rehearsals.mjs       executable A/B/C/D rehearsals
+verify/rehearsals.mjs       executable A–F rehearsals (incl. step-8 clone battery)
 verify/identity-selftest.sh identity allow-list proof
 verify/guard-mutation-test.sh critical-guard mutation proofs
 verify/operator-flow-test.sh  resume615 control-flow proof (stubbed gh/supabase/psql)
@@ -166,9 +166,27 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
 - **D — full.** Applies all three, asserts the baseline row counts are preserved,
   and runs academy_fixture + postflight + acl + ledger on the full clone.
 
-The owner reproduces A/B/C/D against prod-scale snapshots by pointing
-`supabase db push --db-url "$CLONE"` (or `--linked` in a clone project) at a
-disposable clone and running `run-rollout.sh verify-clone "$CLONE"`.
+The owner reproduces A/B/C/D against prod-scale snapshots on a disposable clone.
+The clone battery is **TWO-PHASE**, because the artifacts have deliberately
+opposite preconditions — `preflight.sql` asserts the #615 delta is **ABSENT**
+while `postflight.sql`/`academy_fixture.sql` require it **PRESENT**. Run them in
+this order and never in one invocation:
+
+```bash
+# phase 1 — BEFORE pushing to the clone (asserts delta ABSENT, emits A_window/CAPs)
+run-rollout.sh preflight "$CLONE"
+
+# apply the migrations to the clone
+PGOPTIONS="-c lock_timeout=3000 -c statement_timeout=$CAP_STMT" \
+  supabase db push --db-url "$CLONE"
+
+# phase 2 — AFTER the push (fixture + postflight + ACL + ledger)
+run-rollout.sh verify-clone "$CLONE"
+```
+
+`verify-clone` therefore contains **no** `preflight.sql`; rehearsal F pins that
+(it reads the artifact list out of `run-rollout.sh`, so re-adding a
+contradictory artifact fails locally and in CI before a clone cycle is wasted).
 
 ---
 
