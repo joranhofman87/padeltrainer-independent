@@ -273,6 +273,7 @@ const MANAGED = {
     'supabase/functions/_shared/auth.test.ts',
     'supabase/functions/_shared/digest-worker-entry.test.ts',
     'supabase/functions/_shared/digest-worker-handler.test.ts',
+    'supabase/functions/_shared/send-invoice-email-maintenance.test.ts',
     'supabase/functions/_shared/service-role-auth.test.ts',
   ],
   // No literal — caught by the HELPER_SIGNAL pass. Each consumes the legacy key transitively and must be
