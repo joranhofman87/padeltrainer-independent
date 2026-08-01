@@ -161,6 +161,10 @@ EOF
 chmod +x "$BIN"/*
 
 EVID="$ROOT/evidence"
+# clone commands are gated on assert_clone_isolated; seed the approved inert
+# snapshot up-front so every gated invocation below exercises clone behaviour.
+APPROVED_NONCE="a1b2c3d4e5f60718293a4b5c6d7e8f90"
+mkdir -p "$EVID"; printf '%s\n' "$APPROVED_NONCE" > "$EVID/clone-source-nonce.txt"
 place_pre(){ mkdir -p "$EVID"
   { echo "EAS $FA"; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E2";
     printf 'EV eas_rows=2\nEV ede_rows=2\nEV eas_bad_state_rows=1\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \
@@ -306,7 +310,8 @@ for sub in preflight postflight ledger-status; do
   # EXPECTED_REF, and match the URL exactly.
   ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" "$sub" "$OTHER" --clone ) >/dev/null 2>&1 \
     && fail "$sub accepted --clone without CLONE_REF" || pass "$sub rejects --clone without CLONE_REF"
-  ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF=wrongwrongwrongwrong bash "$RR" "$sub" "$OTHER" --clone ) >/dev/null 2>&1 \
+  ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF=wrongwrongwrongwrong \
+      bash "$RR" "$sub" "$OTHER" --clone ) >/dev/null 2>&1 \
     && pass "$sub accepts a named clone (CLONE_REF matches the URL, != prod)" || fail "$sub rejected a properly named clone"
 done
 # MUTANT: neutralise the guard's inner assertion (that exact line, with "$1", is
@@ -366,10 +371,10 @@ PROD_URL="postgresql://postgres@db.${REF}.supabase.co/postgres"
 ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$REF" bash "$RR" verify-clone "$PROD_URL" --clone ) >/dev/null 2>&1 \
   && fail "verify-clone accepted CLONE_REF == EXPECTED_REF (production!)" \
   || pass "verify-clone rejects CLONE_REF == EXPECTED_REF (refuses production)"
-( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" verify-clone "$PROD_URL" --clone ) >/dev/null 2>&1 \
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" verify-clone "$PROD_URL" --clone ) >/dev/null 2>&1 \
   && fail "verify-clone accepted the PRODUCTION url under --clone" \
   || pass "verify-clone rejects the production URL even with --clone"
-( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" clone-push --yes "$PROD_URL" ) >/dev/null 2>&1 \
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" clone-push --yes "$PROD_URL" ) >/dev/null 2>&1 \
   && fail "clone-push accepted the production URL" || pass "clone-push rejects the production URL"
 ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$REF" bash "$RR" clone-push --yes "$PROD_URL" ) >/dev/null 2>&1 \
   && fail "clone-push accepted CLONE_REF == EXPECTED_REF" || pass "clone-push rejects CLONE_REF == EXPECTED_REF"
@@ -395,8 +400,12 @@ seed_clone(){ # $1 ledger  $2 #615 head sha  $3 checks(green|red)
   rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"
   printf '%s' "$1" > "$STATEDIR/ledger"
   printf '%s' "$2" > "$STATEDIR/rec_head"; printf '%s' "$3" > "$STATEDIR/rec_checks"; }
+# clone commands are gated on assert_clone_isolated: it needs the approved inert
+# snapshot marker on file. Seed the nonce so these tests
+# exercise the clone behaviour; the gate itself is proven in clone-safety-test.sh.
 clone_run(){ # run a clone subcommand FROM THE DECOY CHECKOUT
-  ( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 \
+  ( cd "$DECOY" && PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" \
+      CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 \
       bash "$RR" "$@" ) >/dev/null 2>&1; }
 ledger_now(){ cat "$STATEDIR/ledger" 2>/dev/null; }
 pushed_from(){ cat "$STATEDIR/push_cwd" 2>/dev/null; }
@@ -438,14 +447,15 @@ seed_clone "" "$PR615_SHA" red; clone_run clone-push --yes "$CLONE_URL"; rc=$?
 no_push && pass "clone-push[checks red]: pushed nothing" || fail "pushed with failing checks"
 
 seed_clone "" "$PR615_SHA" green
-( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1
+( cd "$DECOY" && PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1
 [[ $? -ne 0 ]] && pass "clone-push[no CAP_STMT]: refuses an unbounded push" || fail "pushed without CAP_STMT"
 no_push && pass "clone-push[no CAP_STMT]: pushed nothing" || fail "pushed without a statement cap"
 
 # PostgreSQL reads 0 as "no limit", so a present-but-zero cap is an UNBOUNDED push
 # wearing a bounded label. Exercised end to end, not just at the validator.
 caps_run(){ # $1 CAP_STMT  $2 CAP_LOCK  ; runs clone-push from the decoy checkout
-  ( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" \
+  ( cd "$DECOY" && PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" \
+      EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" \
       CAP_STMT="$1" CAP_LOCK="$2" bash "$RR" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1; }
 seed_clone "" "$PR615_SHA" green; caps_run 0 3000
 [[ $? -ne 0 ]] && pass "clone-push[CAP_STMT=0]: refuses (0 disables the timeout in PG)" || fail "pushed with CAP_STMT=0"
@@ -492,7 +502,7 @@ sed 's|assert_pending_is_expected "\$pending" "\$suffix"|assert_pending_is_expec
 grep -q 'assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS"' "$MUTP" \
   && pass "mutant (i) built: clone-push demands the full set again" || fail "mutant (i) sed did not apply"
 seed_clone "$V1" "$PR615_SHA" green
-( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 bash "$MUTP" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1 \
+( cd "$DECOY" && PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 bash "$MUTP" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1 \
   && fail "MUTANT (demand all three) still accepted a prefix1 clone" \
   || pass "MUTANT (demand all three) CANNOT resume prefix1 — suffix classification is load-bearing"
 rm -f "$MUTP"
@@ -501,7 +511,7 @@ MUTS="$HERE/../.mutant-clone-source.sh"
 sed 's|^  mk_worktree "\$PR615_SHA".*|  WT="$PWD"|' "$RR" > "$MUTS"
 grep -q '^  WT="\$PWD"' "$MUTS" && pass "mutant (ii) built: pinned worktree replaced by the current checkout" || fail "mutant (ii) sed did not apply"
 seed_clone "" "$PR615_SHA" green
-( cd "$DECOY" && PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 bash "$MUTS" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1 \
+( cd "$DECOY" && PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" CAP_STMT=30000 bash "$MUTS" clone-push --yes "$CLONE_URL" ) >/dev/null 2>&1 \
   && fail "MUTANT pushed the checkout's migrations to the clone undetected" \
   || pass "MUTANT (checkout instead of pin) is REJECTED — the decoy set != the pinned set"
 no_push && pass "MUTANT never reached a push (nothing from the wrong tree was applied)" || fail "MUTANT applied $(pushed_pending)"

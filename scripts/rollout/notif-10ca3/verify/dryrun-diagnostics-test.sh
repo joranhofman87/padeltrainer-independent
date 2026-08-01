@@ -393,7 +393,11 @@ if printf '%s ' "$@" | grep -q -- '-Atqc'; then echo ""; exit 0; fi   # ledger: 
 exit 0
 EOF
 chmod +x "$BIN/psql"
-E2EC="$( PATH="$BIN:$PATH" EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzzzzzzzzzzzzz \
+# clone commands are gated on assert_clone_isolated; seed the approved inert
+# snapshot so this test reaches the CLI fallback it is actually about.
+CS_EVID="$ROOT/cs-evid"; mkdir -p "$CS_EVID"; printf '%s\n' "a1b2c3d4e5f60718293a4b5c6d7e8f90" > "$CS_EVID/clone-source-nonce.txt"
+E2EC="$( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$CS_EVID" \
+         EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzzzzzzzzzzzzz \
          CAP_STMT=30000 STUB_RC=4 STUB_OUT='' \
          bash "$RR" clone-push --yes "$LEAKY_PLAIN" 2>&1 )"; e2ecrc=$?
 [[ "$e2ecrc" -ne 0 ]] && pass "clone-push fails closed when the CLI fails (exit $e2ecrc)" || fail "clone-push reported success"
@@ -403,7 +407,8 @@ grep -q 'explicit clone target' <<<"$E2EC" && pass "clone-push names the target 
 grep -q 'pending migration set ==' <<<"$E2EC" && fail "clone-push claimed a verified pending set after a CLI failure" \
   || pass "clone-push makes no pending-set claim after a CLI failure"
 # ...and with a credential inside the CLI's own output
-E2EC="$( PATH="$BIN:$PATH" EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzzzzzzzzzzzzz \
+E2EC="$( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$CS_EVID" \
+         EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzzzzzzzzzzzzz \
          CAP_STMT=30000 STUB_RC=4 STUB_OUT="connect failed: $LEAKY_PLAIN" \
          bash "$RR" clone-push --yes "$LEAKY_PLAIN" 2>&1 )"
 grep -q 'FAKE_CLONE_PW_123' <<<"$E2EC" && fail "clone-push leaked a credential from the CLI's own output" \

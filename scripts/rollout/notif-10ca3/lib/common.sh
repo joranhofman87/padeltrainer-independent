@@ -12,6 +12,9 @@ log()  { printf '[%s] %s\n'      "$(_ts)" "$*" >&2; }
 ok()   { printf '[%s] OK   %s\n' "$(_ts)" "$*" >&2; }
 warn() { printf '[%s] WARN %s\n' "$(_ts)" "$*" >&2; }
 die()  { printf '[%s] FAIL %s\n' "$(_ts)" "$*" >&2; exit 1; }
+# die preserving a specific status — used where the ORIGINAL failure's exit code
+# must survive a compensating action taken after it
+die_rc() { local c="$1"; shift; printf '[%s] FAIL %s\n' "$(_ts)" "$*" >&2; exit "$c"; }
 
 require_cmd() {
   # require_cmd psql "install the Supabase CLI / libpq"
@@ -369,3 +372,17 @@ run_sql() {
     || die "SQL artifact failed (non-zero psql exit): $file"
   ok "$(basename "$file") passed"
 }
+
+# Non-fatal variant of run_sql: RETURNS the psql exit status instead of exiting.
+# Required wherever a failure must trigger a compensating action (e.g. restoring
+# production cron) — `die` would exit the shell before the handler could run,
+# even on the left of `||`.
+run_sql_soft() {
+  local url="$1" file="$2"; shift 2
+  require_cmd psql
+  [[ -f "$file" ]] || { warn "sql file not found: $file"; return 1; }
+  local rc=0
+  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$file" "$@" || rc=$?
+  return "$rc"
+}
+
