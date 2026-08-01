@@ -18,6 +18,23 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "missing required command: $1 ${2:+($2)}"
 }
 
+# Required-env / required-arg guards.
+#
+# These exist because `: "${VAR:?msg}"` is UNSAFE in any script that installs an
+# EXIT trap: in bash 3.2 a parameter-expansion failure resets $? to 0 BEFORE the
+# trap runs, so the script prints the fatal message and then exits 0 — a silent
+# false success. (Verified: identical script without a trap exits 1.) `die`
+# calls `exit 1` explicitly, which survives the trap on every path.
+# Never reintroduce `${VAR:?}` in a trap-installing script.
+# (mutation-pinned by verify/exit-status-test.sh)
+require_env() {
+  local n="$1"
+  [[ -n "${!n:-}" ]] || die "${2:-missing required environment variable: $n}"
+}
+require_arg() {
+  [[ -n "${1:-}" ]] || die "${2:-missing required argument}"
+}
+
 # portable ISO8601-UTC <-> epoch (BSD/macOS `date -j -f`, GNU `date -d`)
 iso_to_epoch() { date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || date -u -d "$1" +%s; }
 epoch_to_iso() { date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }

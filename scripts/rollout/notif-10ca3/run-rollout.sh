@@ -32,7 +32,7 @@ source "$HERE/lib/common.sh"
 # shellcheck source=PINS.env
 source "$HERE/PINS.env"     # PR615_SHA, PR616_SHA (reviewed + CI-tested pins)
 
-: "${EXPECTED_REF:?set EXPECTED_REF to the target project ref (20 chars)}"
+require_env EXPECTED_REF "set EXPECTED_REF to the target project ref (20 chars)"
 assert_ref_format "$EXPECTED_REF"
 [[ "${PR615_SHA:-}" =~ ^[0-9a-f]{40}$ && "${PR616_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || die "PINS.env missing valid PR615_SHA/PR616_SHA"
 MIN_DRAIN_SECONDS="${MIN_DRAIN_SECONDS:-$ROLLOUT_DRAIN_FLOOR}"
@@ -41,10 +41,18 @@ V1=20261006100000; V2=20261006110000; V3=20261006120000
 EXPECTED_VERSIONS="$(printf '%s\n%s\n%s\n' "$V1" "$V2" "$V3")"
 
 WT=""
-# NB: must return 0 — an EXIT trap whose last command is non-zero overrides the
-# script's exit status, which would make a successful no-worktree path (e.g.
-# resume615 on an already-'all' ledger) exit non-zero.
-cleanup() { [[ -n "$WT" && -d "$WT" ]] && git worktree remove --force "$WT" 2>/dev/null; return 0; }
+# EXIT trap: PRESERVE the original exit status. Capture $? first, keep worktree
+# removal best-effort (its failure must never change the result), then exit with
+# the captured status explicitly. The previous `return 0` masked failures; a
+# bare non-zero last command masks successes. Both directions are pinned by
+# verify/exit-status-test.sh.
+cleanup() {
+  local rc=$?
+  if [[ -n "$WT" && -d "$WT" ]]; then
+    git worktree remove --force "$WT" >/dev/null 2>&1 || true
+  fi
+  exit "$rc"
+}
 trap cleanup EXIT
 require_yes() { [[ "${1:-}" == "--yes" ]] || die "refusing prod-mutating step without --yes"; }
 run_artifact() { run_sql "$1" "$SQL_DIR/$2"; }
@@ -70,7 +78,8 @@ push_dry_run_pending() {   # inside worktree; parse the CLI bullets
 # --- authoritative, blocking drain proof -----------------------------------
 prove_drain() {
   local t_gate="$1" min="$MIN_DRAIN_SECONDS"
-  : "${SUPABASE_ACCESS_TOKEN:?PAT required}"; : "${MANAGER_TOKEN:?manager JWT required}"
+  require_env SUPABASE_ACCESS_TOKEN "PAT required"
+  require_env MANAGER_TOKEN "manager JWT required"
   assert_drain_window "$min"
   local fn="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email" resp code body canary_id
   # 1) safe authenticated NON-probe canary MUST 503; capture the EXACT invocationId
@@ -126,7 +135,7 @@ persist_salt() {  # write the per-run secret salt 0600
 }
 capture_manifest() {
   local url="$1" tag="$2"; local out="$EVID/manifest-${tag}.txt"; require_cmd psql
-  : "${ROLLOUT_SALT:?internal: manifest salt not set}"
+  require_env ROLLOUT_SALT "internal: manifest salt not set"
   # salt via env (\getenv in manifest.sql) so it never appears in process args; 0600 output
   ( umask 077; ROLLOUT_SALT="$ROLLOUT_SALT" psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/manifest.sql" | sed '/^$/d' > "$out" ) \
     || die "manifest capture ($tag) failed"
@@ -141,8 +150,8 @@ capture_manifest() {
 resolve_recovery_sha() {
   if [[ -z "${RECOVERY_PR:-}" && -z "${RECOVERY_SHA:-}" ]]; then printf '%s' "$PR615_SHA"; return 0; fi
   require_cmd gh
-  : "${RECOVERY_PR:?a differing recovery requires RECOVERY_PR (the reviewed PR number)}"
-  : "${RECOVERY_SHA:?a differing recovery requires RECOVERY_SHA (the reviewed head SHA)}"
+  require_env RECOVERY_PR "a differing recovery requires RECOVERY_PR (the reviewed PR number)"
+  require_env RECOVERY_SHA "a differing recovery requires RECOVERY_SHA (the reviewed head SHA)"
   [[ "$RECOVERY_SHA" =~ ^[0-9a-f]{40}$ ]] || die "RECOVERY_SHA must be a 40-hex commit"
   git fetch origin
   assert_sha_matches_pin "$(pr_head_sha "$RECOVERY_PR")" "$RECOVERY_SHA" "recovery PR #$RECOVERY_PR head"
@@ -172,7 +181,7 @@ cmd_check_identity() {
 
 cmd_phase616() {
   require_yes "${1:-}"; require_cmd gh; require_cmd supabase; require_cmd curl; require_cmd jq
-  : "${MANAGER_TOKEN:?set MANAGER_TOKEN (academy manager JWT)}"
+  require_env MANAGER_TOKEN "set MANAGER_TOKEN (academy manager JWT)"
   log "Phase 1 (#616): pin-checked merge + deploy from merge-SHA worktree + verify gate OFF"
   git fetch origin
   assert_sha_matches_pin "$(pr_head_sha 616)" "$PR616_SHA" "#616 head"
@@ -193,7 +202,7 @@ cmd_dryrun615() {
   assert_sha_matches_pin "$(pr_head_sha 615)" "$PR615_SHA" "#615 head"
   mk_worktree "$PR615_SHA"
   ( cd "$WT"; export SUPABASE_PROJECT_ID="$EXPECTED_REF"
-    : "${SUPABASE_DB_PASSWORD:?set SUPABASE_DB_PASSWORD for the dry-run connection}"
+    require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD for the dry-run connection"
     local pending; pending="$(push_dry_run_pending)"
     log "db push --dry-run pending:"; printf '%s\n' "$pending" >&2
     assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS" )
@@ -202,9 +211,12 @@ cmd_dryrun615() {
 
 cmd_apply615() {
   require_yes "${1:-}"; require_cmd gh; require_cmd supabase; require_cmd curl; require_cmd jq; require_cmd psql
-  : "${MANAGER_TOKEN:?}"; : "${CAP_STMT:?set CAP_STMT (ms) from preflight}"
-  : "${SUPABASE_ACCESS_TOKEN:?}"; : "${SUPABASE_DB_PASSWORD:?}"
-  local CAP_LOCK="${CAP_LOCK:-3000}" prod="${PROD_CONN_URL:?set PROD_CONN_URL (password via PGPASSWORD)}"
+  require_env MANAGER_TOKEN "set MANAGER_TOKEN"
+  require_env CAP_STMT "set CAP_STMT (ms) from preflight"
+  require_env SUPABASE_ACCESS_TOKEN "set SUPABASE_ACCESS_TOKEN"
+  require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD"
+  require_env PROD_CONN_URL "set PROD_CONN_URL (password via PGPASSWORD)"
+  local CAP_LOCK="${CAP_LOCK:-3000}" prod="$PROD_CONN_URL"
   assert_conn_url_is_ref "$EXPECTED_REF" "$prod"
   local probe="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email?probe=1"
 
@@ -257,14 +269,14 @@ cmd_apply615() {
   ok "Phase 2 complete: #615 applied; gate OFF; digest engine still disabled"
 }
 
-cmd_verify_clone() { local url="${1:?usage: verify-clone <clone_conn_url>}"
+cmd_verify_clone() { local url="${1:-}"; require_arg "$url" "usage: verify-clone <clone_conn_url>"
   run_artifact "$url" preflight.sql; run_artifact "$url" academy_fixture.sql
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql
   ok "clone verification battery passed"; }
-cmd_preflight()  { run_artifact "${1:?usage: preflight <conn_url>}"  preflight.sql; }
-cmd_postflight() { local url="${1:?usage: postflight <conn_url>}"
+cmd_preflight()  { require_arg "${1:-}" "usage: preflight <conn_url>"; run_artifact "$1"  preflight.sql; }
+cmd_postflight() { local url="${1:-}"; require_arg "$url" "usage: postflight <conn_url>"
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql; }
-cmd_ledger_status() { local url="${1:?usage: ledger-status <conn_url>}"; echo "ledger state: $(ledger_status "$url")"; }
+cmd_ledger_status() { local url="${1:-}"; require_arg "$url" "usage: ledger-status <conn_url>"; echo "ledger state: $(ledger_status "$url")"; }
 
 # Delete the pseudonymous manifests + secret salt — ONLY once the rollout is
 # provably COMPLETE. The pre-manifest + salt are the only recovery material for
@@ -272,9 +284,9 @@ cmd_ledger_status() { local url="${1:?usage: ledger-status <conn_url>}"; echo "l
 # any failure preserves all files. (mutation-tested by operator-flow-test.sh)
 cmd_clean_evidence() {
   require_yes "${1:-}"
-  local url="${2:?usage: clean-evidence --yes <prod_conn_url>}"
+  local url="${2:-}"; require_arg "$url" "usage: clean-evidence --yes <prod_conn_url>"
   require_cmd psql; require_cmd curl; require_cmd jq
-  : "${MANAGER_TOKEN:?set MANAGER_TOKEN (academy manager JWT) for the gate probe}"
+  require_env MANAGER_TOKEN "set MANAGER_TOKEN (academy manager JWT) for the gate probe"
   # 1) exact project identity
   assert_conn_url_is_ref "$EXPECTED_REF" "$url"
   # 2) rollout complete: all three migrations in the ledger
@@ -303,7 +315,7 @@ cmd_clean_evidence() {
 }
 
 cmd_rollback615() {
-  local url="${1:?usage: rollback615 <conn_url>}" st; st="$(ledger_status "$url")"
+  local url="${1:-}" st; require_arg "$url" "usage: rollback615 <conn_url>"; st="$(ledger_status "$url")"
   cat >&2 <<EOF
 [recovery] migration-ledger state = ${st}
 
@@ -330,8 +342,12 @@ EOF
 # uninterrupted gating).
 cmd_resume615() {
   require_yes "${1:-}"; require_cmd supabase; require_cmd curl; require_cmd jq; require_cmd psql
-  : "${MANAGER_TOKEN:?}"; : "${CAP_STMT:?set CAP_STMT (ms)}"; : "${SUPABASE_DB_PASSWORD:?}"; : "${SUPABASE_ACCESS_TOKEN:?}"
-  local CAP_LOCK="${CAP_LOCK:-3000}" prod="${PROD_CONN_URL:?set PROD_CONN_URL (password via PGPASSWORD)}"
+  require_env MANAGER_TOKEN "set MANAGER_TOKEN"
+  require_env CAP_STMT "set CAP_STMT (ms)"
+  require_env SUPABASE_DB_PASSWORD "set SUPABASE_DB_PASSWORD"
+  require_env SUPABASE_ACCESS_TOKEN "set SUPABASE_ACCESS_TOKEN"
+  require_env PROD_CONN_URL "set PROD_CONN_URL (password via PGPASSWORD)"
+  local CAP_LOCK="${CAP_LOCK:-3000}" prod="$PROD_CONN_URL"
   assert_conn_url_is_ref "$EXPECTED_REF" "$prod"
   local probe="https://${EXPECTED_REF}.functions.supabase.co/send-invoice-email?probe=1" body
   # reuse the ORIGINAL apply615 manifest + salt (never re-capture pre)

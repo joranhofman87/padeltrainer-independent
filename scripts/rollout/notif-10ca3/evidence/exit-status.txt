@@ -1,0 +1,46 @@
+$ bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh   # macOS bash 3.2 (operator shell)
+
+== 1. missing required env returns nonzero (the reported blocker) ==
+  PASS  phase616 --yes with MANAGER_TOKEN unset (exit=1)
+  PASS  apply615 --yes with MANAGER_TOKEN unset (exit=1)
+  PASS  resume615 --yes with MANAGER_TOKEN unset (exit=1)
+  PASS  clean-evidence --yes with MANAGER_TOKEN unset (exit=1)
+  PASS  EXPECTED_REF entirely unset (exit=1)
+== 2. a failing prerequisite/command under set -e returns nonzero ==
+  PASS  malformed EXPECTED_REF (assert_ref_format) (exit=1)
+  PASS  look-alike conn URL (identity allow-list) (exit=1)
+  PASS  preflight with psql absent (require_cmd) (exit=1)
+== 3. explicit die remains nonzero ==
+  PASS  prod-mutating step without --yes (require_yes) (exit=1)
+  PASS  missing required argument (require_arg) (exit=1)
+  PASS  unknown subcommand (usage -> exit 2) (exit=2)
+== 4. successful no-worktree command still returns zero ==
+  PASS  check-identity against a valid direct conn URL (exit=0)
+  PASS  rollback615 read-only guidance path (stubbed psql) (exit=0)
+  PASS  ledger-status read-only path (stubbed psql) (exit=0)
+== 5-6. the REAL cleanup(): invocation, success preservation, failure preservation ==
+  PASS  extracted the REAL cleanup() from run-rollout.sh (contains git worktree remove --force)
+-- 5a. cleanup is really invoked; successful cleanup preserves exit 0 --
+  PASS  success + successful cleanup -> exit 0
+  PASS  cleanup invoked git with the exact argv: worktree remove --force <WT>
+-- 5b. cleanup failing (git exit 3) must NOT turn success into failure --
+  PASS  success + FAILING cleanup (git exit 3) -> still exit 0
+  PASS  the failing cleanup really ran (git invoked)
+-- 6. a DISTINCT original failure status survives a failing cleanup exactly --
+  PASS  original exit 7 + failing cleanup (git exit 3) -> exit 7 exactly
+  PASS  cleanup ran on the failure path too (git invoked)
+-- 6b. implicit set -e failure + failing cleanup preserves non-zero --
+  PASS  set -e failure + failing cleanup -> exit 1 (non-zero preserved)
+== MUTATION (1): ${VAR:?} POST-TRAP reintroduces the reported bug ==
+  note  this bash (3.2.57(1)-release) DESTROYS $? before the EXIT trap (the hazard is live here)
+  PASS  MUTANT post-trap ${VAR:?} exits 0 here — require_env is load-bearing on this shell
+  PASS  run-rollout.sh contains no ${VAR:?} guards (all via require_env/require_arg)
+== MUTATION (3): broken cleanup variants must FAIL the 5b/6 assertions ==
+  PASS  MUTANT cleanup(no-||true) corrupts success (exit=3) — assertion 5b is load-bearing
+  PASS  MUTANT cleanup(no-||true) loses the distinct status 7 (exit=3) — assertion 6 is load-bearing
+  PASS  MUTANT cleanup(return-0) corrupts success (exit=3) — assertion 5b is load-bearing
+  PASS  MUTANT cleanup(return-0) loses the distinct status 7 (exit=3) — assertion 6 is load-bearing
+== MUTATION (2): a fixed-status EXIT trap corrupts the result ==
+  PASS  MUTANT bare-status trap corrupts SUCCESS -> exit$rc is load-bearing
+  PASS  run-rollout.sh cleanup captures $? and exits with it
+================  30 passed, 0 failed  ================
