@@ -198,18 +198,49 @@ expected_pending_suffix() { # $1 state  $2 V1  $3 V2  $4 V3 -> newline list (emp
 # HONEST LIMIT: on SSDs, APFS/btrfs/ZFS copy-on-write, or any journalling
 # filesystem, an in-place overwrite does NOT guarantee the old blocks are gone.
 # The real controls remain the 0600 permissions and the short retention window.
+# FAILS CLOSED: if the overwrite cannot be performed, the file is PRESERVED and a
+# non-zero status returned — never unlink-and-claim-overwritten. Overwrite is
+# block-sized (not bs=1) so it stays bounded on large manifests.
 secure_delete() {
-  local f="$1" size
+  local f="$1" size blocks
   [[ -f "$f" ]] || return 0
   if command -v shred >/dev/null 2>&1; then
     shred -u "$f" 2>/dev/null && { ok "securely deleted (shred): $(basename "$f")"; return 0; }
+    warn "shred failed on $(basename "$f") — falling back to overwrite"
   elif command -v gshred >/dev/null 2>&1; then
     gshred -u "$f" 2>/dev/null && { ok "securely deleted (gshred): $(basename "$f")"; return 0; }
+    warn "gshred failed on $(basename "$f") — falling back to overwrite"
   fi
-  size="$(wc -c < "$f" | tr -d ' ')"
-  dd if=/dev/urandom of="$f" bs=1 count="$size" conv=notrunc 2>/dev/null || true
-  rm -f "$f"
+  size="$(wc -c < "$f" 2>/dev/null | tr -d ' ')" || { warn "cannot size $(basename "$f") — PRESERVED"; return 1; }
+  blocks=$(( (size + 65535) / 65536 ))
+  if ! dd if=/dev/urandom of="$f" bs=65536 count="$blocks" conv=notrunc 2>/dev/null; then
+    warn "OVERWRITE FAILED for $(basename "$f") — file PRESERVED, not deleted (delete it manually once you can overwrite it)"
+    return 1
+  fi
+  if ! rm -f "$f"; then
+    warn "overwrote $(basename "$f") but UNLINK FAILED — the plaintext is destroyed; remove the file manually"
+    return 1
+  fi
   warn "shred unavailable — overwrote $(basename "$f") ($size bytes) then unlinked (not guaranteed on SSD/CoW)"
+  return 0
+}
+
+# ---------------------------------------------------------------------------
+# clone identity — a clone is named EXPLICITLY and must NOT be production
+# ---------------------------------------------------------------------------
+# Clone-only commands (verify-clone, clone-push, the A-D rehearsals) write to the
+# target: academy_fixture.sql INSERTs before it ROLLBACKs, and clone-push applies
+# migrations. Running any of them against production would be a production write.
+# So a clone must be named by CLONE_REF, CLONE_REF must differ from EXPECTED_REF,
+# and the URL must address CLONE_REF exactly. "--clone" alone is not enough.
+assert_clone_url() {   # $1 = url ; uses CLONE_REF + EXPECTED_REF
+  local url="$1"
+  [[ -n "${CLONE_REF:-}" ]] || die "clone commands require CLONE_REF (the disposable clone's project ref)"
+  assert_ref_format "$CLONE_REF"
+  [[ "$CLONE_REF" != "${EXPECTED_REF:-}" ]] \
+    || die "CLONE_REF equals EXPECTED_REF ($EXPECTED_REF) — refusing: this is PRODUCTION, not a clone"
+  assert_conn_url_is_ref "$CLONE_REF" "$url"
+  ok "clone target verified as CLONE_REF '$CLONE_REF' (and != production '$EXPECTED_REF')"
 }
 
 # per-run salt for the fingerprint manifest (no raw email PII in evidence)

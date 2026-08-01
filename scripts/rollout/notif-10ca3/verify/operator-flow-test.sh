@@ -248,8 +248,12 @@ for sub in preflight postflight ledger-status; do
     && fail "$sub ACCEPTED a look-alike host URL" || pass "$sub rejects a look-alike host URL"
   ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" "$sub" "$OTHER" ) >/dev/null 2>&1 \
     && fail "$sub ACCEPTED a different project ref" || pass "$sub rejects a different project ref"
+  # --clone alone is NOT sufficient any more: CLONE_REF must be set, differ from
+  # EXPECTED_REF, and match the URL exactly.
   ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" "$sub" "$OTHER" --clone ) >/dev/null 2>&1 \
-    && pass "$sub accepts a non-prod clone with explicit --clone" || fail "$sub rejected an explicit --clone"
+    && fail "$sub accepted --clone without CLONE_REF" || pass "$sub rejects --clone without CLONE_REF"
+  ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF=wrongwrongwrongwrong bash "$RR" "$sub" "$OTHER" --clone ) >/dev/null 2>&1 \
+    && pass "$sub accepts a named clone (CLONE_REF matches the URL, != prod)" || fail "$sub rejected a properly named clone"
 done
 # MUTANT: neutralise the guard's inner assertion (that exact line, with "$1", is
 # unique to target_guard — the other call sites pass "$prod"/"$url").
@@ -276,6 +280,91 @@ dd if=/dev/urandom of="$SD2" bs=1 count="$sz" conv=notrunc 2>/dev/null
 grep -q "SUPER-SECRET-SALT" "$SD2" 2>/dev/null \
   && fail "overwrite step left the plaintext readable" || pass "overwrite step destroys the plaintext in place"
 rm -f "$SD2"
+
+echo "== clone migration SOURCE: the migrations exist ONLY at the pinned SHA =="
+# Step 8 happens BEFORE #615 merges. Pushing from main would push nothing — the
+# rehearsal hid this by calling applyPr615() (pinned source) directly.
+source "$HERE/../PINS.env"
+MIGS="20261006100000_email_delivery_concurrency_suppression.sql 20261006110000_reconcile_orphan_provider_events.sql 20261006120000_readers_canonical_is_suppressed.sql"
+absent_on_main=0; present_at_pin=0
+for m in $MIGS; do
+  git -C "$HERE/../../../.." cat-file -e "origin/main:supabase/migrations/$m" 2>/dev/null || absent_on_main=$((absent_on_main+1))
+  git -C "$HERE/../../../.." cat-file -e "$PR615_SHA:supabase/migrations/$m" 2>/dev/null && present_at_pin=$((present_at_pin+1))
+done
+[[ "$absent_on_main" -eq 3 ]] && pass "all 3 migrations are ABSENT on origin/main (a push from main would apply none)" \
+                             || fail "expected 3 migrations absent on main, got $absent_on_main"
+[[ "$present_at_pin" -eq 3 ]] && pass "all 3 migrations are PRESENT at PR615_SHA (${PR615_SHA:0:12})" \
+                              || fail "expected 3 migrations at the pin, got $present_at_pin"
+grep -q 'mk_worktree "\$PR615_SHA"' "$RR" && pass "clone-push builds its worktree at PR615_SHA (not main)" \
+                                          || fail "clone-push does not use PR615_SHA"
+sed -n '/^cmd_clone_push/,/^}/p' "$RR" | grep -q -- '--db-url "\$url"' \
+  && pass "clone-push targets the clone via --db-url (never the ambient linked project)" \
+  || fail "clone-push does not use --db-url"
+sed -n '/^cmd_clone_push/,/^}/p' "$RR" | grep -q 'gh pr merge' \
+  && fail "clone-push must NEVER merge #615" || pass "clone-push never merges #615"
+
+echo "== clone identity (CLONE_REF) on clone-only commands =="
+CLONE_REF_OK=zzzzzzzzzzzzzzzzzzzz
+CLONE_URL="postgresql://postgres@db.${CLONE_REF_OK}.supabase.co/postgres"
+PROD_URL="postgresql://postgres@db.${REF}.supabase.co/postgres"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" verify-clone "$CLONE_URL" ) >/dev/null 2>&1 \
+  && fail "verify-clone ran WITHOUT --clone" || pass "verify-clone requires explicit --clone"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" verify-clone "$CLONE_URL" --clone ) >/dev/null 2>&1 \
+  && fail "verify-clone ran without CLONE_REF" || pass "verify-clone requires CLONE_REF"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$REF" bash "$RR" verify-clone "$PROD_URL" --clone ) >/dev/null 2>&1 \
+  && fail "verify-clone accepted CLONE_REF == EXPECTED_REF (production!)" \
+  || pass "verify-clone rejects CLONE_REF == EXPECTED_REF (refuses production)"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" verify-clone "$PROD_URL" --clone ) >/dev/null 2>&1 \
+  && fail "verify-clone accepted the PRODUCTION url under --clone" \
+  || pass "verify-clone rejects the production URL even with --clone"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$CLONE_REF_OK" bash "$RR" clone-push --yes "$PROD_URL" ) >/dev/null 2>&1 \
+  && fail "clone-push accepted the production URL" || pass "clone-push rejects the production URL"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" CLONE_REF="$REF" bash "$RR" clone-push --yes "$PROD_URL" ) >/dev/null 2>&1 \
+  && fail "clone-push accepted CLONE_REF == EXPECTED_REF" || pass "clone-push rejects CLONE_REF == EXPECTED_REF"
+for sub in preflight postflight ledger-status rollback615; do
+  ( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$RR" "$sub" "$OTHER" ) >/dev/null 2>&1 \
+    && fail "$sub ACCEPTED a wrong-ref URL" || pass "$sub rejects a wrong-ref URL (identity-guarded)"
+done
+# MUTANT: --clone degraded back to a plain skip
+sed 's|    assert_clone_url "\$1"          # NOT a skip.*|    true|' "$RR" > "$HERE/../.mutant-clone.sh"
+( PATH="$BIN:$PATH" EXPECTED_REF="$REF" bash "$HERE/../.mutant-clone.sh" ledger-status "$OTHER" --clone ) >/dev/null 2>&1 \
+  && pass "MUTANT (--clone skips identity) accepts a wrong-ref URL — assert_clone_url is load-bearing" \
+  || fail "MUTANT still rejected — clone guard may not be load-bearing"
+rm -f "$HERE/../.mutant-clone.sh"
+
+echo "== secure_delete FAILS CLOSED (production helper, not a stand-in) =="
+SDIR="$ROOT/sd"; mkdir -p "$SDIR"
+# (a) normal path: overwrite+unlink succeeds
+F1="$SDIR/ok.txt"; printf 'SECRET-SALT-0123456789' > "$F1"
+( secure_delete "$F1" ) >/dev/null 2>&1; rc1=$?
+[[ "$rc1" -eq 0 && ! -f "$F1" ]] && pass "secure_delete: success path removes the file (exit 0)" \
+                                 || fail "secure_delete success path: exit=$rc1 exists=$([[ -f $F1 ]] && echo yes || echo no)"
+# (b) overwrite FAILURE must PRESERVE the file and return non-zero
+F2="$SDIR/ro.txt"; printf 'SECRET-SALT-0123456789' > "$F2"; chmod 444 "$F2"
+( secure_delete "$F2" ) >/dev/null 2>&1; rc2=$?
+if [[ "$rc2" -ne 0 && -f "$F2" ]]; then
+  grep -q "SECRET-SALT" "$F2" && pass "secure_delete: overwrite failure PRESERVES the file and returns $rc2" \
+                              || fail "file preserved but content already destroyed"
+else
+  fail "secure_delete failed open: exit=$rc2 exists=$([[ -f $F2 ]] && echo yes || echo no)"
+fi
+chmod 644 "$F2"; rm -f "$F2"
+# (c) MUTANT: restore `dd ... || true` + unconditional rm -> deletes despite overwrite failure
+cat > "$ROOT/mutant-sd.sh" <<'MEOF'
+secure_delete_mutant() {
+  local f="$1" size
+  [[ -f "$f" ]] || return 0
+  size="$(wc -c < "$f" | tr -d ' ')"
+  dd if=/dev/urandom of="$f" bs=65536 count=1 conv=notrunc 2>/dev/null || true
+  rm -f "$f"
+  return 0
+}
+MEOF
+source "$ROOT/mutant-sd.sh"
+F3="$SDIR/mut.txt"; printf 'SECRET-SALT-0123456789' > "$F3"; chmod 444 "$F3"
+( secure_delete_mutant "$F3" ) >/dev/null 2>&1; rc3=$?
+[[ "$rc3" -eq 0 && ! -f "$F3" ]] && pass "MUTANT (dd||true + unconditional rm) deletes despite overwrite failure — fail-closed is load-bearing" \
+                                 || fail "MUTANT did not exhibit the fail-open behaviour (exit=$rc3)"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

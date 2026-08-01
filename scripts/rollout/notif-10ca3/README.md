@@ -22,7 +22,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | A–F rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute / clone-battery) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 28/28 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 54/54 |
-| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / target identity) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 48/48 |
+| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / clone+prod identity / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 70/70 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
@@ -66,34 +66,48 @@ evidence/                   captured run outputs
 
 ## Rollout order (operator)
 
+`check-identity` and `phase616` are **already DONE** — #616 is merged (`429d35c3`)
+and deployed, and the gate is OFF. **Do not run `phase616` again**; re-running it
+would attempt a second merge/deploy of an already-shipped PR. The remaining steps
+are 6→11 below.
+
 ```bash
 export EXPECTED_REF=<20-char-project-ref>
 export SUPABASE_ACCESS_TOKEN=<PAT>          # Dashboard -> Account -> Access Tokens
 export SUPABASE_DB_PASSWORD=<db password>   # consumed by the CLI; never echoed
-export MANAGER_TOKEN=<academy-manager JWT>  # for the gate probe/canary (NOT service_role)
+export MANAGER_TOKEN=<academy-manager JWT>  # freshly minted, short-lived; NOT service_role
 # psql auth via PGPASSWORD — keep the password OUT of argv and the connection URL
 export PGPASSWORD="$SUPABASE_DB_PASSWORD"
 PROD="postgresql://postgres@db.$EXPECTED_REF.supabase.co:5432/postgres?sslmode=require"
 
-# 0. identity — refuse to run against the wrong project
+# [DONE] identity — refuse to run against the wrong project
 run-rollout.sh check-identity
 
-# 1. #616: pin-checked merge (--match-head-commit) + deploy from the merge-SHA
-#    worktree (--project-ref) + verify gate OFF
+# [DONE] #616: pin-checked merge (--match-head-commit) + deploy from the merge-SHA
+#        worktree (--project-ref) + verify gate OFF
 run-rollout.sh phase616 --yes
-#    then production-verify #616: send a real invoice email and confirm delivery.
 
-# 2. #615 dry run: pinned head-SHA worktree + real `supabase db push --dry-run`;
+# 6. [PENDING — blocks everything below] production-verify #616 with ONE REAL
+#    (non-test) invoice send; see "Step 6" below for the pass/fail contract.
+
+# 7. #615 dry run: pinned head-SHA worktree + real `supabase db push --dry-run`;
 #    asserts EXACTLY 20261006100000/110000/120000 pending
 run-rollout.sh dryrun615
 
-# 3. preflight on prod (read-only): row counts, delta absent, CAP_STMT
+# 8. rehearsals A–D on a production-scale disposable clone (see "Reproducing A–D on a PRODUCTION-SCALE clone") —
+#    clone-push + verify-clone, never against prod
+
+# 9. preflight on prod (read-only): row counts, delta absent, CAP_STMT
+#    (this production value is authoritative; the clone's is only an expectation)
 run-rollout.sh preflight "$PROD"
 
-# 4. #615 maintenance window (gate ON -> AUTHORITATIVE DRAIN PROOF -> dry-run==3 ->
-#    bounded db push from the worktree -> postflight/acl/ledger + baseline compare -> gate OFF)
+# 10. #615 maintenance window (gate ON -> AUTHORITATIVE DRAIN PROOF -> dry-run==3 ->
+#     bounded db push from the worktree -> postflight/acl/ledger + baseline compare -> gate OFF)
 CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
   run-rollout.sh apply615 --yes         # MIN_DRAIN_SECONDS defaults to the 520s floor
+
+# 11. no-loss comparison, then destroy the retained evidence
+run-rollout.sh clean-evidence --yes "$PROD"
 ```
 
 - **The push cannot be reached without an EXACT drain proof.** After the gate is
@@ -111,11 +125,15 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
 - **No SHA drift.** #615/#616 heads are pinned in `PINS.env`; `apply615`/`phase616`
   assert the live head equals the reviewed pin and merge with
   `gh pr merge --match-head-commit`, so only the CI-tested commit ships.
-- **Target identity on read-only decision commands.** `preflight`, `postflight`
-  and `ledger-status` assert the connection URL is `EXPECTED_REF` by default —
-  preflight's `CAP_STMT` bounds the production push, postflight authorizes
-  gate-OFF, and ledger-status decides resume-vs-apply, so a wrong URL must never
-  report green. Target a clone by passing an explicit `--clone`.
+- **Target identity on every URL-taking command.** `preflight`, `postflight`,
+  `ledger-status` and `rollback615` assert the connection URL is `EXPECTED_REF`
+  by default — preflight's `CAP_STMT` bounds the production push, postflight
+  authorizes gate-OFF, ledger-status decides resume-vs-apply, and `rollback615`
+  drops objects — so a wrong URL must never report green. `--clone` is **not an
+  identity bypass**: it swaps the assertion to `CLONE_REF`, which must be set,
+  well-formed, **different from `EXPECTED_REF`**, and matched exactly by the URL.
+  The write-bearing clone commands (`clone-push`, `verify-clone`) *require*
+  `--clone` and refuse to run without it.
 - **Explicit targeting.** every `supabase functions deploy` / `secrets set|unset`
   carries `--project-ref $EXPECTED_REF`; `db push` runs from a detached worktree
   with `SUPABASE_PROJECT_ID=$EXPECTED_REF` and the worktree's own
@@ -173,27 +191,72 @@ CAP_STMT=<ms-from-preflight> PROD_CONN_URL="$PROD" \
 - **D — full.** Applies all three, asserts the baseline row counts are preserved,
   and runs academy_fixture + postflight + acl + ledger on the full clone.
 
-The owner reproduces A/B/C/D against prod-scale snapshots on a disposable clone.
-The clone battery is **TWO-PHASE**, because the artifacts have deliberately
-opposite preconditions — `preflight.sql` asserts the #615 delta is **ABSENT**
-while `postflight.sql`/`academy_fixture.sql` require it **PRESENT**. Run them in
-this order and never in one invocation:
+### Reproducing A–D on a PRODUCTION-SCALE clone (step 8, owner-only)
+
+Two things make this non-obvious, and both are enforced by the tooling:
+
+- **The migrations are not on `main`.** Step 8 happens *before* #615 merges, so
+  the three `20261006*` files exist **only** at `PR615_SHA`. A `db push` from
+  `main` would apply **nothing**. `clone-push` builds a detached worktree at the
+  reviewed pin and pushes from there — it never merges #615 and never uses the
+  ambient linked project (it passes `--db-url`).
+- **Clone commands write.** `academy_fixture.sql` INSERTs before it ROLLBACKs, and
+  `clone-push` applies migrations. So every clone command demands `CLONE_REF`,
+  proves `CLONE_REF != EXPECTED_REF`, and proves the URL addresses `CLONE_REF`
+  exactly. `--clone` alone is not accepted.
 
 ```bash
-# phase 1 — BEFORE pushing to the clone (asserts delta ABSENT, emits A_window/CAPs)
-run-rollout.sh preflight "$CLONE" --clone
-
-# apply the migrations to the clone
-PGOPTIONS="-c lock_timeout=3000 -c statement_timeout=$CAP_STMT" \
-  supabase db push --db-url "$CLONE"
-
-# phase 2 — AFTER the push (fixture + postflight + ACL + ledger)
-run-rollout.sh verify-clone "$CLONE"
+export EXPECTED_REF=<prod ref>     # never the clone
+export CLONE_REF=<clone ref>       # must differ from EXPECTED_REF
+export PGPASSWORD='<clone password>'
+CLONE="postgresql://postgres@db.$CLONE_REF.supabase.co:5432/postgres?sslmode=require"
 ```
 
-`verify-clone` therefore contains **no** `preflight.sql`; rehearsal F pins that
-(it reads the artifact list out of `run-rollout.sh`, so re-adding a
-contradictory artifact fails locally and in CI before a clone cycle is wasted).
+Each rehearsal needs its **own pristine snapshot** — B and C leave the clone in a
+deliberately broken state. Restore/recreate the clone between them.
+
+**A — measure the real rewrite window.** On a fresh prod-scale clone:
+```bash
+run-rollout.sh preflight "$CLONE" --clone          # emits rows/bytes + CAP_LOCK/CAP_STMT expectations
+CAP_STMT=<from preflight> run-rollout.sh clone-push --yes "$CLONE"   # time this
+```
+*Evidence:* `preflight` output (row count, MiB, CAP values) + wall-clock duration of the push → `evidence/cloneA-<date>.txt`.
+*Pass:* push completes inside `CAP_STMT`. *Fail:* statement timeout → CAP is too low for prod scale; re-derive before step 9.
+
+**B — bounded lock abort.** Fresh snapshot. In psql session 1:
+```sql
+BEGIN; LOCK TABLE public.email_address_state IN ACCESS EXCLUSIVE MODE;  -- hold it
+```
+Then, in session 2, run the same `clone-push`. *Pass:* it aborts on `lock_timeout`
+(**SQLSTATE 55P03**) and `run-rollout.sh preflight "$CLONE" --clone` still passes
+— i.e. the delta is **absent**, nothing partial landed. Release the lock
+(`ROLLBACK`). *Fail:* the push blocks past `CAP_LOCK`, or preflight now fails.
+
+**C — prefix recovery.** Fresh snapshot. Apply only the first migration from the
+pinned worktree, then confirm the ledger reports a prefix and the suffix applies:
+```bash
+run-rollout.sh ledger-status "$CLONE" --clone      # expect prefix1 after one file
+CAP_STMT=<...> run-rollout.sh clone-push --yes "$CLONE"   # pushes the remaining suffix
+run-rollout.sh ledger-status "$CLONE" --clone      # expect all
+```
+*Pass:* `prefix1` → `all`, and `verify-clone` then passes. *Fail:* any `invalid`
+ledger state — stop and investigate; do not carry that state into step 9.
+
+**D — clean full apply + verification.** Fresh snapshot:
+```bash
+run-rollout.sh preflight "$CLONE" --clone                  # phase 1: delta ABSENT
+CAP_STMT=<from A> run-rollout.sh clone-push --yes "$CLONE"
+run-rollout.sh verify-clone "$CLONE" --clone               # phase 2: fixture+postflight+ACL+ledger
+```
+*Pass:* all four artifacts green. Capture the output as `evidence/cloneD-<date>.txt`.
+
+**Cleanup:** destroy every clone/snapshot afterwards — they hold production data.
+
+The battery is **two-phase** by construction: `preflight.sql` asserts the delta is
+**ABSENT** while `postflight.sql`/`academy_fixture.sql` require it **PRESENT**, so
+`verify-clone` contains **no** `preflight.sql`. Rehearsal F pins that by reading
+the artifact list out of `run-rollout.sh`, so re-adding a contradictory artifact
+fails locally and in CI before a clone cycle is wasted.
 
 ---
 
@@ -276,12 +339,64 @@ PR is merged, checks-green, and head-matched).
 
 ---
 
-## Remaining manual production-only steps
+## Current status + remaining production-only steps
 
-1. Merge + deploy **#616**, verify a real invoice email delivers.
-2. Provide `EXPECTED_REF`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`,
-   `MANAGER_TOKEN`, `PROD_CONN_URL`, `CAP_STMT`.
-3. Run A–D on prod-scale clones (record `A_window`/`CAP_STMT`).
-4. Execute `apply615` — the drain proof + dry-run==3 + recovery gates are built in.
+**#616 is MERGED and DEPLOYED** (merge commit `429d35c3`); `send-invoice-email`
+runs from that exact SHA and the maintenance gate is **OFF**. **#615 remains
+OPEN, draft, and pinned** at `PR615_SHA` — none of its migrations are deployed,
+and it is merged **only** by `apply615`, never by hand. The digest engine is
+disabled throughout.
+
+**PENDING — step 6:** one real (non-test) invoice send, verified end to end.
+Everything after it is blocked on it.
+
+### Step 6 — real-invoice delivery verification (owner performs)
+
+**It MUST be a real, non-test send.** A `testEmail` send cannot prove step 6:
+`recordInvoiceEmailEvent` returns early for test sends (no `record_email_event`,
+so no delivery tracking) and the invoice-status stamp is skipped. A test send
+proves only that the provider accepted a message — useful as an optional
+provider smoke check, **never** as step-6 evidence.
+
+*Setup:* pick a real invoice whose **resolved recipient is an address you
+control** (the resolution order is the academy `billing_email` override → linked
+profile email → guest email, so set the academy billing-email override on a test
+player if needed). Confirm the probe reads
+`{"status":"active","maintenance":false}` first.
+
+*Action:* send that one invoice from the academy/trainer invoice UI. Not a
+preview, not a test send.
+
+*Pass — all four:*
+1. the email **arrives** at the controlled recipient, correct branding/reply-to;
+2. logs for that one `invocationId` show `event:provider_send_started` →
+   `event:finished {"outcome":"sent"}`, with **no** `event:blocked` and **no**
+   `record_failed`;
+3. **delivery tracking** recorded it: `get_invoices_delivery_status` reports
+   `sent` for that invoice (later `delivered` when the Resend webhook lands), and
+   the invoice shows as sent in the UI;
+4. no Slack alert fired.
+
+*Stop (any one = FAIL, do not advance):* `503 invoice_email_maintenance` (gate
+unexpectedly ON); `500 email_not_configured`; `{"success":false,"error":"no_email"}`;
+**`record_failed`** in logs (the send worked but tracking did not — exactly what
+#615 exists to fix; report it); `finished {"outcome":"send_failed"}`.
+
+*Evidence to retain (PII-safe):* the `invocationId`, event names + timestamps,
+the invoice id, and the resulting delivery status. **Never** paste recipient
+addresses, message bodies, or any token.
+
+*Cleanup:* none — a successful send is a normal business email.
+
+Then:
+1. Provide `EXPECTED_REF`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`,
+   `PROD_CONN_URL`, and a **freshly minted** `MANAGER_TOKEN` (short-lived; mint it
+   immediately before the step that needs it — never reuse an exposed one).
+2. Run rehearsals **A–D on a production-scale clone** (see "Reproducing A–D on a PRODUCTION-SCALE clone" above) and record the
+   clone's `A_window` / CAP expectations.
+3. `preflight "$PROD"` immediately before the window — the **production-derived**
+   `CAP_STMT` is authoritative; the clone's value is only an expectation. Stop on
+   an unexplained divergence.
+4. `apply615 --yes` — pin check, merge, drain proof, bounded push, verification.
 5. Turn the gate OFF only after `postflight`/`acl_matrix`/`ledger_verification`
-   pass. The digest engine stays disabled the entire time.
+   pass, then `clean-evidence --yes "$PROD"`.

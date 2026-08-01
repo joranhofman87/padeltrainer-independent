@@ -17,10 +17,12 @@
 #   * recovery accepts ONLY none / {V1} / {V1,V2} / all; anything else stops.
 #
 # Subcommands: check-identity [url] | phase616 --yes | dryrun615 |
-#   preflight <url> | apply615 --yes | verify-clone <url> | postflight <url> |
-#   ledger-status <url> | rollback615 <url>
+#   preflight <url> | apply615 --yes | resume615 --yes | postflight <url> |
+#   ledger-status <url> | rollback615 <url> | clean-evidence --yes <url> |
+#   clone-push --yes <clone_url> | verify-clone <clone_url> --clone
 #
-# Env: EXPECTED_REF. Prod steps also need SUPABASE_ACCESS_TOKEN (PAT),
+# Env: EXPECTED_REF. Clone commands also need CLONE_REF (!= EXPECTED_REF).
+#   Prod steps also need SUPABASE_ACCESS_TOKEN (PAT),
 #   SUPABASE_DB_PASSWORD, MANAGER_TOKEN. DB password via PGPASSWORD/PGPASSFILE
 #   (never in argv or a connection URL). MIN_DRAIN_SECONDS defaults to the floor.
 # ===========================================================================
@@ -279,10 +281,44 @@ cmd_apply615() {
 # postflight.sql asserts it EXISTS and academy_fixture.sql calls the re-emitted
 # reader, so including it made this battery unpassable in EITHER clone state.
 # (regression-pinned: verify/rehearsals.mjs rehearsal F)
-cmd_verify_clone() { local url="${1:-}"; require_arg "$url" "usage: verify-clone <clone_conn_url>   # run AFTER db push to the clone"
+# CLONE-ONLY and WRITE-BEARING: academy_fixture.sql INSERTs a fixture graph before
+# it ROLLBACKs, so running this against production would write to production.
+# It therefore requires explicit --clone AND a CLONE_REF that is format-valid,
+# different from EXPECTED_REF, and matched exactly by the URL.
+cmd_verify_clone() {
+  local url="${1:-}"; require_arg "$url" "usage: CLONE_REF=<ref> verify-clone <clone_conn_url> --clone   # AFTER db push to the clone"
+  [[ "${2:-}" == "--clone" ]] || die "verify-clone REQUIRES explicit --clone (it writes a fixture; never run it against production)"
+  assert_clone_url "$url"
   run_artifact "$url" academy_fixture.sql
   run_artifact "$url" postflight.sql; run_artifact "$url" acl_matrix.sql; run_artifact "$url" ledger_verification.sql
   ok "clone verification battery passed (post-migration)"; }
+
+# STEP 8 clone push. #615 is NOT merged at step 8, so its three migrations exist
+# ONLY at PR615_SHA — pushing from main/#620 would push nothing. This applies them
+# to the CLONE from a detached worktree at the reviewed pin. It never merges #615
+# and never uses the ambient linked project (--db-url targets the clone directly).
+cmd_clone_push() {
+  require_yes "${1:-}"
+  local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-push --yes <clone_conn_url>"
+  require_cmd gh; require_cmd supabase
+  assert_clone_url "$url"                       # clone identity, and provably not production
+  require_env CAP_STMT "set CAP_STMT (ms) — clone expectation from the clone preflight"
+  local CAP_LOCK="${CAP_LOCK:-3000}"
+  git fetch origin
+  assert_sha_matches_pin "$(pr_head_sha 615)" "$PR615_SHA" "#615 head"
+  gh pr checks 615 || die "#615 checks are not green — refusing to rehearse an unreviewed migration set"
+  mk_worktree "$PR615_SHA"                      # the migrations live HERE, not on main
+  ( cd "$WT"
+    local pending
+    pending="$(NO_COLOR=1 supabase db push --db-url "$url" --dry-run 2>&1 1>/dev/null \
+      | sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' | sort -u)"
+    log "clone db push --dry-run pending:"; printf '%s\n' "$pending" >&2
+    assert_pending_is_expected "$pending" "$EXPECTED_VERSIONS"
+    log "clone db push (lock_timeout=${CAP_LOCK}ms statement_timeout=${CAP_STMT}ms)"
+    PGOPTIONS="-c lock_timeout=${CAP_LOCK} -c statement_timeout=${CAP_STMT}" \
+      supabase db push --db-url "$url" --yes ) || die "clone db push failed"
+  ok "clone migrated from the reviewed pin ${PR615_SHA:0:12} (#615 NOT merged)"
+}
 # These three take a <conn_url> and are DECISION-CRITICAL: preflight's CAP_STMT is
 # what bounds the production push, postflight is the documented gate-OFF
 # authorization, and ledger-status decides resume615-vs-apply615. Run against the
@@ -293,7 +329,7 @@ cmd_verify_clone() { local url="${1:-}"; require_arg "$url" "usage: verify-clone
 # (mutation-pinned: verify/operator-flow-test.sh)
 target_guard() {   # $1 url, $2 = "--clone" | ""
   if [[ "${2:-}" == "--clone" ]]; then
-    warn "targeting a NON-PRODUCTION clone by explicit --clone (identity check skipped)"
+    assert_clone_url "$1"          # NOT a skip: proves CLONE_REF is set, != prod, and matches the URL
   else
     assert_conn_url_is_ref "$EXPECTED_REF" "$1"
   fi
@@ -343,7 +379,8 @@ cmd_clean_evidence() {
 }
 
 cmd_rollback615() {
-  local url="${1:-}" st; require_arg "$url" "usage: rollback615 <conn_url>"; st="$(ledger_status "$url")"
+  local url="${1:-}" st; require_arg "$url" "usage: rollback615 <conn_url> [--clone]"
+  target_guard "$url" "${2:-}"; st="$(ledger_status "$url")"
   cat >&2 <<EOF
 [recovery] migration-ledger state = ${st}
 
@@ -436,6 +473,7 @@ case "$sub" in
   apply615)       cmd_apply615 "$@";;
   resume615)      cmd_resume615 "$@";;
   verify-clone)   cmd_verify_clone "$@";;
+  clone-push)     cmd_clone_push "$@";;
   postflight)     cmd_postflight "$@";;
   ledger-status)  cmd_ledger_status "$@";;
   clean-evidence) cmd_clean_evidence "$@";;
@@ -444,7 +482,8 @@ case "$sub" in
 usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
   check-identity [url] | phase616 --yes | dryrun615 | preflight <url> | apply615 --yes |
   resume615 --yes | verify-clone <url> | postflight <url> | ledger-status <url> |
-  rollback615 <url> | clean-evidence --yes <url>
+  rollback615 <url> [--clone] | clean-evidence --yes <url> |
+  CLONE_REF=<ref> clone-push --yes <clone_url> | CLONE_REF=<ref> verify-clone <clone_url> --clone
 EOF
      exit 2;;
 esac

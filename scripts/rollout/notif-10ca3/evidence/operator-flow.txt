@@ -48,15 +48,40 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
 == target identity on the read-only decision commands ==
   PASS  preflight rejects a look-alike host URL
   PASS  preflight rejects a different project ref
-  PASS  preflight accepts a non-prod clone with explicit --clone
+  PASS  preflight rejects --clone without CLONE_REF
+  PASS  preflight accepts a named clone (CLONE_REF matches the URL, != prod)
   PASS  postflight rejects a look-alike host URL
   PASS  postflight rejects a different project ref
-  PASS  postflight accepts a non-prod clone with explicit --clone
+  PASS  postflight rejects --clone without CLONE_REF
+  PASS  postflight accepts a named clone (CLONE_REF matches the URL, != prod)
   PASS  ledger-status rejects a look-alike host URL
   PASS  ledger-status rejects a different project ref
-  PASS  ledger-status accepts a non-prod clone with explicit --clone
+  PASS  ledger-status rejects --clone without CLONE_REF
+  PASS  ledger-status accepts a named clone (CLONE_REF matches the URL, != prod)
   PASS  MUTANT without target_guard accepts a wrong-ref URL (guard is load-bearing)
 == secure_delete overwrites before unlinking (shred absent on darwin) ==
   PASS  secure_delete removed the file (34 bytes)
   PASS  overwrite step destroys the plaintext in place
-================  48 passed, 0 failed  ================
+== clone migration SOURCE: the migrations exist ONLY at the pinned SHA ==
+  PASS  all 3 migrations are ABSENT on origin/main (a push from main would apply none)
+  PASS  all 3 migrations are PRESENT at PR615_SHA (2b247f43afe8)
+  PASS  clone-push builds its worktree at PR615_SHA (not main)
+  PASS  clone-push targets the clone via --db-url (never the ambient linked project)
+  PASS  clone-push never merges #615
+== clone identity (CLONE_REF) on clone-only commands ==
+  PASS  verify-clone requires explicit --clone
+  PASS  verify-clone requires CLONE_REF
+  PASS  verify-clone rejects CLONE_REF == EXPECTED_REF (refuses production)
+  PASS  verify-clone rejects the production URL even with --clone
+  PASS  clone-push rejects the production URL
+  PASS  clone-push rejects CLONE_REF == EXPECTED_REF
+  PASS  preflight rejects a wrong-ref URL (identity-guarded)
+  PASS  postflight rejects a wrong-ref URL (identity-guarded)
+  PASS  ledger-status rejects a wrong-ref URL (identity-guarded)
+  PASS  rollback615 rejects a wrong-ref URL (identity-guarded)
+  PASS  MUTANT (--clone skips identity) accepts a wrong-ref URL — assert_clone_url is load-bearing
+== secure_delete FAILS CLOSED (production helper, not a stand-in) ==
+  PASS  secure_delete: success path removes the file (exit 0)
+  PASS  secure_delete: overwrite failure PRESERVES the file and returns 1
+  PASS  MUTANT (dd||true + unconditional rm) deletes despite overwrite failure — fail-closed is load-bearing
+================  70 passed, 0 failed  ================
