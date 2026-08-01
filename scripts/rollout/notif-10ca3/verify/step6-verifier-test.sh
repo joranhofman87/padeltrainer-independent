@@ -130,6 +130,44 @@ run "$ROOT/prefix.txt" "$TARGET_IC"; rc=$?
 ( bash "$VS" --invoice "$TARGET_IC" --from-file "$ROOT/does-not-exist.txt" ) >/dev/null 2>&1
 [[ $? -eq 1 ]] && pass "missing log file -> setup error (exit 1)" || fail "accepted a missing log file"
 
+echo "== a malformed record MID-WINDOW cannot be silently skipped =="
+# `jq -R` reports a per-input error() on stderr and then CONTINUES to the next
+# input, exiting 0. So before the parse-completeness guard, a bad record in the
+# MIDDLE of a window was dropped and the verification proceeded on the survivors
+# — the documented fail-closed property only held when the bad line was the sole
+# input. The verifier now requires one parsed record per input line.
+midbad(){ noise; started 1000001 "$TARGET_INV" "$TARGET_IC"
+  printf '1000002\tthis-record-has-no-tab-separator\n'
+  finished 1000003 "$TARGET_INV" "$TARGET_IC" sent; }
+MIDBAD="$(mk midbad midbad)"
+run "$MIDBAD" "$TARGET_IC"; rc=$?
+[[ "$rc" -eq 2 ]] && pass "a malformed record mid-window -> fail closed (exit 2), not skipped" || fail "mid-window malformed record was skipped (exit=$rc)"
+blankmid(){ noise; started 1000001 "$TARGET_INV" "$TARGET_IC"; printf '\n'
+  finished 1000003 "$TARGET_INV" "$TARGET_IC" sent; }
+run "$(mk blankmid blankmid)" "$TARGET_IC"; rc=$?
+[[ "$rc" -eq 2 ]] && pass "a BLANK line mid-window -> fail closed (exit 2)" || fail "blank line was skipped (exit=$rc)"
+# MUTANT = the PRE-FIX state: trust jq's exit status alone. Both added checks are
+# neutralised together, because they form one guard — the stderr test alone also
+# catches a dropped record, so neither is independently killable, and claiming
+# otherwise would be a mutation pin that proves less than it says.
+MPC="$HERE/../logfetch/.mutant-nocount.sh"
+python3 - "$VS" "$MPC" <<'PYX'
+import sys
+src, dst = sys.argv[1], sys.argv[2]
+s = open(src).read()
+a = 'if [[ -s "$TSV.err" ]]; then fail_closed'
+b = '[[ "$in_n" -eq "$out_n" ]] \\'
+assert s.count(a) == 1 and s.count(b) == 1, "guard anchors not unique"
+s = s.replace(a, 'if false; then fail_closed', 1).replace(b, '[[ 1 -eq 1 ]] \\', 1)
+open(dst, "w").write(s)
+PYX
+grep -q 'if false; then fail_closed' "$MPC" && grep -q '\[\[ 1 -eq 1 \]\]' "$MPC" \
+  && pass "mutant built: back to trusting jq's exit status alone (the pre-fix state)" || fail "mutant not applied"
+( bash "$MPC" --invoice "$TARGET_IC" --from-file "$MIDBAD" ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (jq exit status alone) verifies a window with a SKIPPED record — the parse-completeness guard is load-bearing" \
+               || fail "mutant not distinguishable"
+rm -f "$MPC"
+
 echo "== output carries no PII =="
 OUT="$( bash "$VS" --invoice "$TARGET_IC" --from-file "$CLEAN" 2>&1 )"
 grep -qiE '@|password|bearer|authorization|"email"' <<<"$OUT" \
