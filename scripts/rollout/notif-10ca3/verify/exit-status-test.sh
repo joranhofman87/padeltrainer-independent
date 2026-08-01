@@ -88,30 +88,76 @@ expect_zero "rollback615 read-only guidance path (stubbed psql)" \
 expect_zero "ledger-status read-only path (stubbed psql)" \
   env PATH="$TMP/bin:$PATH" EXPECTED_REF="$REF" bash "$RR" ledger-status "$URL"
 
-echo "== 5. successful worktree cleanup does not change success =="
-cat > "$TMP/wt_ok.sh" <<EOS
-set -Eeuo pipefail
-WT=""
-cleanup() { local rc=\$?; if [[ -n "\$WT" && -d "\$WT" ]]; then rm -rf "\$WT" >/dev/null 2>&1 || true; fi; exit "\$rc"; }
-trap cleanup EXIT
-WT="\$(mktemp -d)"; echo "\$WT" > "$TMP/wt_path"
-:
-EOS
-bash "$TMP/wt_ok.sh" >/dev/null 2>&1; rc=$?
-wt="$(cat "$TMP/wt_path" 2>/dev/null || echo)"
-[[ "$rc" -eq 0 ]] && pass "success + real worktree cleanup stays exit=0" || fail "worktree cleanup corrupted success (exit=$rc)"
-[[ -n "$wt" && ! -d "$wt" ]] && pass "the worktree was actually removed (cleanup really ran)" || fail "cleanup did not remove the worktree"
+echo "== 5-6. the REAL cleanup(): invocation, success preservation, failure preservation =="
+# These drive the PRODUCTION cleanup() text extracted verbatim from run-rollout.sh
+# (not a copy that could drift), with:
+#   * an EXISTING $WT, so the `-d "$WT"` branch actually executes — a nonexistent
+#     path silently skips cleanup and proves nothing;
+#   * a stubbed `git` that RECORDS its exact argv and can succeed or fail on demand,
+#     so we assert the real `worktree remove --force <WT>` call and can drive a
+#     genuine cleanup failure (rm -rf on an ordinary dir tests neither).
+cat > "$TMP/bin/git" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$GIT_CALL_LOG"
+[[ "${GIT_STUB_MODE:-ok}" == "fail" ]] && exit 3
+exit 0
+EOF
+chmod +x "$TMP/bin/git"
 
-echo "== 6. cleanup failure does not hide the original failure =="
-cat > "$TMP/wt_cleanfail.sh" <<'EOS'
-set -Eeuo pipefail
-WT="/definitely/not/a/real/path"
-cleanup() { local rc=$?; if [[ -n "$WT" && -d "$WT" ]]; then rm -rf "$WT" >/dev/null 2>&1 || true; fi; exit "$rc"; }
-trap cleanup EXIT
-false
-EOS
-bash "$TMP/wt_cleanfail.sh" >/dev/null 2>&1
-[[ $? -ne 0 ]] && pass "original failure survives a no-op/failing cleanup" || fail "cleanup masked the original failure"
+# extract the production cleanup() verbatim; harness_body is what runs before exit
+run_with_real_cleanup() { # $1 wt  $2 git-mode  $3 body ; echoes exit status
+  local wt="$1" mode="$2" body="$3" h="$TMP/harness.sh"
+  { echo 'set -Eeuo pipefail'
+    printf 'WT=%q\n' "$wt"
+    sed -n '/^cleanup() {/,/^}/p' "$RR"      # the REAL function, verbatim
+    echo 'trap cleanup EXIT'
+    echo "$body"
+  } > "$h"
+  : > "$GIT_CALL_LOG"
+  PATH="$TMP/bin:$PATH" GIT_STUB_MODE="$mode" GIT_CALL_LOG="$GIT_CALL_LOG" bash "$h" >/dev/null 2>&1
+  echo $?
+}
+export GIT_CALL_LOG="$TMP/git_calls.log"
+# sanity: the extraction really captured the production function
+sed -n '/^cleanup() {/,/^}/p' "$RR" | grep -q 'git worktree remove --force' \
+  && pass "extracted the REAL cleanup() from run-rollout.sh (contains git worktree remove --force)" \
+  || fail "could not extract production cleanup() — test would be vacuous"
+
+echo "-- 5a. cleanup is really invoked; successful cleanup preserves exit 0 --"
+WT1="$(mktemp -d)"
+rc="$(run_with_real_cleanup "$WT1" ok ':')"
+[[ "$rc" -eq 0 ]] && pass "success + successful cleanup -> exit 0" || fail "successful cleanup corrupted success (exit=$rc)"
+if grep -qxF "worktree remove --force $WT1" "$GIT_CALL_LOG"; then
+  pass "cleanup invoked git with the exact argv: worktree remove --force <WT>"
+else
+  fail "cleanup did not invoke 'worktree remove --force $WT1' (log: $(tr '\n' '|' < "$GIT_CALL_LOG"))"
+fi
+rmdir "$WT1" 2>/dev/null || true
+
+echo "-- 5b. cleanup failing (git exit 3) must NOT turn success into failure --"
+WT2="$(mktemp -d)"
+rc="$(run_with_real_cleanup "$WT2" fail ':')"
+[[ "$rc" -eq 0 ]] && pass "success + FAILING cleanup (git exit 3) -> still exit 0" \
+                  || fail "best-effort cleanup failure corrupted success (exit=$rc)"
+grep -qxF "worktree remove --force $WT2" "$GIT_CALL_LOG" \
+  && pass "the failing cleanup really ran (git invoked)" || fail "failing-cleanup case never invoked git"
+rmdir "$WT2" 2>/dev/null || true
+
+echo "-- 6. a DISTINCT original failure status survives a failing cleanup exactly --"
+WT3="$(mktemp -d)"
+rc="$(run_with_real_cleanup "$WT3" fail 'exit 7')"
+[[ "$rc" -eq 7 ]] && pass "original exit 7 + failing cleanup (git exit 3) -> exit 7 exactly" \
+                  || fail "expected exit 7, got $rc (cleanup status leaked or masked the original)"
+grep -qxF "worktree remove --force $WT3" "$GIT_CALL_LOG" \
+  && pass "cleanup ran on the failure path too (git invoked)" || fail "failure path never invoked cleanup"
+rmdir "$WT3" 2>/dev/null || true
+
+echo "-- 6b. implicit set -e failure + failing cleanup preserves non-zero --"
+WT4="$(mktemp -d)"
+rc="$(run_with_real_cleanup "$WT4" fail 'false')"
+[[ "$rc" -ne 0 ]] && pass "set -e failure + failing cleanup -> exit $rc (non-zero preserved)" \
+                  || fail "cleanup masked an implicit set -e failure"
+rmdir "$WT4" 2>/dev/null || true
 
 echo "== MUTATION (1): \${VAR:?} POST-TRAP reintroduces the reported bug =="
 # Two constraints on this mutant:
@@ -163,6 +209,29 @@ if grep -qE '\$\{[A-Za-z_0-9]+:\?' "$RR"; then
 else
   pass "run-rollout.sh contains no \${VAR:?} guards (all via require_env/require_arg)"
 fi
+
+echo "== MUTATION (3): broken cleanup variants must FAIL the 5b/6 assertions =="
+# Proves 5b/6 are load-bearing rather than green decoration. Both mutants leak the
+# cleanup's own status (git exit 3): they corrupt success AND overwrite a distinct
+# original failure. The real cleanup yields 0 and 7 respectively.
+run_variant() { # $1 cleanup-body  $2 git-mode  $3 body -> exit status
+  local wt h="$TMP/mutvar.sh"; wt="$(mktemp -d)"
+  { echo 'set -Eeuo pipefail'; printf 'WT=%q\n' "$wt"; echo "cleanup() { $1 }"; echo 'trap cleanup EXIT'; echo "$3"; } > "$h"
+  : > "$GIT_CALL_LOG"
+  PATH="$TMP/bin:$PATH" GIT_STUB_MODE="$2" GIT_CALL_LOG="$GIT_CALL_LOG" bash "$h" >/dev/null 2>&1; local r=$?
+  rmdir "$wt" 2>/dev/null || true; return "$r"
+}
+M_NOTRUE='local rc=$?; if [[ -n "$WT" && -d "$WT" ]]; then git worktree remove --force "$WT" >/dev/null 2>&1; fi; exit "$rc";'
+M_RET0='if [[ -n "$WT" && -d "$WT" ]]; then git worktree remove --force "$WT" >/dev/null 2>&1; fi; return 0;'
+for mv in "no-||true:$M_NOTRUE" "return-0:$M_RET0"; do
+  mname="${mv%%:*}"; mbody="${mv#*:}"
+  run_variant "$mbody" fail ':'; a=$?
+  run_variant "$mbody" fail 'exit 7'; b=$?
+  [[ "$a" -ne 0 ]] && pass "MUTANT cleanup($mname) corrupts success (exit=$a) — assertion 5b is load-bearing" \
+                   || fail "MUTANT cleanup($mname) did not corrupt success; 5b would not catch it"
+  [[ "$b" -ne 7 ]] && pass "MUTANT cleanup($mname) loses the distinct status 7 (exit=$b) — assertion 6 is load-bearing" \
+                   || fail "MUTANT cleanup($mname) preserved 7; assertion 6 would not catch it"
+done
 
 echo "== MUTATION (2): a fixed-status EXIT trap corrupts the result =="
 # bare non-zero last command in the trap turns SUCCESS into failure
