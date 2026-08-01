@@ -31,12 +31,16 @@ LIMIT=1000
 REF=""; START=""; END=""; DIALECT="auto"; DRY_RUN=0
 EXPECT_ZERO_SENDS=1; ASSERT_ALL_FINISHED=0; REQUIRE_BLOCKED=0; FAIL_ON_RECORD_FAILED=0
 REQUIRE_INVOCATION=""; GATE_AT_EPOCH=""; FROM_FILE=""; FROM_RESPONSE=""
+VERIFY_INVOICE=""
+EVID_DIR="${ROLLOUT_EVIDENCE_DIR:-$HERE/../evidence}"
+EVID_FILE="$EVID_DIR/edge-log-lines.txt"
 usage() {
   cat >&2 <<'EOF'
 usage: fetch-edge-logs.sh (--ref R --start ISO --end ISO | --from-response f.json | --from-file f.txt)
   [--dialect auto|clickhouse|legacy] [--allow-sends] [--assert-all-finished]
   [--require-blocked] [--require-invocation ID] [--gate-at-epoch N]
   [--fail-on-record-failed] [--dry-run]
+  [--verify-step6-invoice <invoice-uuid>]   # step 6: fetch AND verify atomically
 env: SUPABASE_ACCESS_TOKEN (PAT; required for the live path)
 EOF
   exit 1
@@ -52,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --gate-at-epoch) GATE_AT_EPOCH="$2"; shift 2;;
     --fail-on-record-failed) FAIL_ON_RECORD_FAILED=1; shift;;
     --from-file) FROM_FILE="$2"; shift 2;; --from-response) FROM_RESPONSE="$2"; shift 2;;
+    --verify-step6-invoice) VERIFY_INVOICE="$2"; shift 2;;
     --dry-run) DRY_RUN=1; shift;;
     -h|--help) usage;;
     *) die "unknown arg: $1";;
@@ -111,14 +116,57 @@ analyse_lines() { # $1 epoch<TAB>msg file -> code
   return 0
 }
 
+# --- fresh-evidence ownership -----------------------------------------------
+# THE contract: only the window normalised during THIS run is ever verified.
+#   * $LINES lives in a per-run temp dir and is the ONLY file handed to the
+#     verifier (explicitly, via --from-file);
+#   * every input path (live / --from-response / --from-file) funnels through
+#     `finish`, so no early `exit` can skip verification or slip a different file
+#     in front of it;
+#   * a live attempt REMOVES the persistent evidence file before it starts, so a
+#     failed fetch can never leave apparently-current evidence behind;
+#   * the persistent copy is written only AFTER a successful normalisation, and
+#     exists purely for diagnosis — nothing reads it back.
+# (Before this, the fetch wrote a fixed path and the verifier defaulted to
+# reading that same path independently: a failed fetch left the previous run's
+# file in place and the next verification consumed it.)
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 LINES="$TMP/lines.txt"
 
-if [[ -n "$FROM_RESPONSE" ]]; then extract_response "$FROM_RESPONSE" "$LINES"; rc=0; analyse_lines "$LINES" || rc=$?; exit "$rc"; fi
-if [[ -n "$FROM_FILE" ]]; then [[ -f "$FROM_FILE" ]] || die "--from-file not found"; rc=0; analyse_lines "$FROM_FILE" || rc=$?; exit "$rc"; fi
+# Verification runs ONLY on a clean analysis of the fresh window. Any failure —
+# fetch, normalisation, or analysis — propagates unchanged and the verifier is
+# never invoked. (mutation-pinned: verify/logfetch-integration-test.sh)
+finish() {   # $1 = analysis rc
+  local rc="$1" vrc=0
+  if [[ "$rc" != 0 ]]; then
+    [[ -n "$VERIFY_INVOICE" ]] && warn "analysis failed (rc=${rc}) — step-6 verification NOT run, nothing was verified"
+    exit "$rc"
+  fi
+  if [[ -n "$VERIFY_INVOICE" ]]; then
+    log "step-6 verification against the freshly normalised window (${LINES##*/})"
+    "$HERE/verify-step6-send.sh" --invoice "$VERIFY_INVOICE" --from-file "$LINES" || vrc=$?
+    [[ "$vrc" == 0 ]] || exit "$vrc"
+  fi
+  exit 0
+}
+
+if [[ -n "$FROM_RESPONSE" ]]; then
+  extract_response "$FROM_RESPONSE" "$LINES"; rc=0; analyse_lines "$LINES" || rc=$?; finish "$rc"
+fi
+if [[ -n "$FROM_FILE" ]]; then
+  [[ -f "$FROM_FILE" ]] || die "--from-file not found"
+  cp "$FROM_FILE" "$LINES"          # verify the same bytes we analysed, never a path we did not read
+  rc=0; analyse_lines "$LINES" || rc=$?; finish "$rc"
+fi
 
 [[ -n "$REF" && -n "$START" && -n "$END" ]] || usage
 assert_ref_format "$REF"; require_cmd curl; require_cmd jq
+# validate the invoice BEFORE any network access, so a typo cannot burn a fetch
+if [[ -n "$VERIFY_INVOICE" ]]; then
+  [[ "$VERIFY_INVOICE" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+    || die "--verify-step6-invoice is not a uuid"
+  [[ "$DRY_RUN" == 0 ]] || die "--dry-run cannot verify anything; drop one of --dry-run / --verify-step6-invoice"
+fi
 iso_re='^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
 [[ "$START" =~ $iso_re ]] || die "--start must be ISO8601 UTC"
 [[ "$END"   =~ $iso_re ]] || die "--end must be ISO8601 UTC"
@@ -135,6 +183,25 @@ if [[ "$DRY_RUN" == 1 ]]; then
     "$API" "$(sql_for_dialect "$d")" "$START" "$END" >&2
   ok "dry-run only; no network call"; exit 0
 fi
+# A LIVE ATTEMPT STARTS HERE. Invalidate the previous window first — before the
+# token check, before the request — so that if anything below fails there is no
+# stale file left looking like current evidence. (This is the exact false-green
+# that a failed fetch produced: SUPABASE_ACCESS_TOKEN was absent, the fetch died,
+# and the previous run's file stayed on disk.)
+# FAIL CLOSED. `rm` must not sit on the left of `&&` or inside an `if` condition:
+# bash exempts non-final commands of an AND-list from `set -e`, so a failed
+# deletion would be silently ignored and the fetch would proceed with the stale
+# window still on disk. Delete explicitly, then assert the postcondition. `-e` is
+# false for a DANGLING symlink, so `-L` is tested too — otherwise a symlink here
+# would be skipped by the guard and later written THROUGH by the cp below. A
+# directory (or anything else `rm -f` cannot remove) aborts the run.
+if [[ -e "$EVID_FILE" || -L "$EVID_FILE" ]]; then
+  rm -f -- "$EVID_FILE" \
+    || die "could not invalidate the previous evidence file (${EVID_FILE}) — refusing the live fetch"
+  [[ ! -e "$EVID_FILE" && ! -L "$EVID_FILE" ]] \
+    || die "previous evidence still present after removal (${EVID_FILE}) — refusing the live fetch"
+  log "invalidated the previous window: ${EVID_FILE##*/}"
+fi
 [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]] || die "SUPABASE_ACCESS_TOKEN required"
 RESP="$TMP/resp.json"
 if [[ "$DIALECT" == "auto" ]]; then
@@ -143,8 +210,8 @@ if [[ "$DIALECT" == "auto" ]]; then
     warn "ClickHouse dialect rejected — retrying legacy"; do_query legacy > "$RESP" || die "request failed (legacy)"; fi
 else do_query "$DIALECT" > "$RESP" || die "Management API request failed"; fi
 extract_response "$RESP" "$LINES"
-mkdir -p "$HERE/../evidence"; cp "$LINES" "$HERE/../evidence/edge-log-lines.txt"
-log "window ${START} .. ${END} (ref ${REF}); lines -> evidence/edge-log-lines.txt"
+mkdir -p "$EVID_DIR"; cp "$LINES" "$EVID_FILE"      # diagnosis copy only; never read back
+log "window ${START} .. ${END} (ref ${REF}); lines -> ${EVID_FILE##*/}"
 rc=0; analyse_lines "$LINES" || rc=$?
 [[ "$rc" == 0 ]] && ok "drain analysis passed for this window"
-exit "$rc"
+finish "$rc"

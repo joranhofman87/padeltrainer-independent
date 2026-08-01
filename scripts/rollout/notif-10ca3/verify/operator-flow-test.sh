@@ -644,10 +644,15 @@ s6_hardened(){ local f="$1"
   # (c) correlation is delegated to the EXECUTABLE verifier, not to prose counts.
   #     A block of `grep -c` calls with "must be exactly 1" written beside them
   #     enforces nothing, so its return is a regression.
-  grep -q 'verify-step6-send.sh --invoice' "$f" || return 1
-  grep -q 'exits \*\*0\*\*'                "$f" || return 1
+  #     Fetch and verification must be ONE command: a separate verifier step can
+  #     read a file some EARLIER fetch left behind.
+  grep -q -- '--verify-step6-invoice' "$f" || return 1
+  grep -q 'exits \*\*0\*\*'             "$f" || return 1
+  grep -q 'NO verification happened'    "$f" || return 1
   grep -qE '^ *grep +-c' "$f" && return 1        # a COMMAND, not a prose mention of one
+  grep -qE "^ *grep '<invoice uuid>'" "$f" && return 1                    # manual log grep
   grep -q "INVOCATION='<invocationId from that line>'" "$f" && return 1   # hand transcription
+  grep -qE '^ *scripts/.*verify-step6-send\.sh --invoice' "$f" && return 1  # separate verifier step
   grep -q 'record_failed'        "$f" || return 1
   grep -q 'status_update_failed' "$f" || return 1
   # (d) delivery status read via the PII-free singular RPC
@@ -664,7 +669,7 @@ for pat in '"skipped":"recently_sent"' '"error":"email_suppressed"' 'AS recent_g
                                  || pass "MUTANT (drops '$pat') is REJECTED"
 done
 # reverting to the unenforced grep/count prose must not pass
-{ grep -v 'verify-step6-send.sh --invoice' "$S6"
+{ grep -v -- '--verify-step6-invoice' "$S6"
   printf '%s\n' "INVOCATION='<invocationId from that line>'" \
     'grep -c "event:provider_send_started.*$INVOCATION" "$LINES"   # must be exactly 1'; } > "$ROOT/s6-greps.md"
 s6_hardened "$ROOT/s6-greps.md" && fail "MUTANT reverting to unenforced grep counts accepted" \
