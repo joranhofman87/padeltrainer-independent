@@ -39,6 +39,25 @@ $ bash scripts/rollout/notif-10ca3/verify/dryrun-diagnostics-test.sh
   PASS  (clone 10) cleanup failure does NOT replace the CLI's exit code
   PASS  (clone 10) cleanup failure does NOT mask the CLI diagnostic
   PASS  (clone 10) the cleanup failure is itself reported
+== NO credential may reach a diagnostic (clone target argv) ==
+  PASS  no-output fallback: plain clone password ABSENT from the diagnostic
+  PASS  no-output fallback still returns the CLI's code
+  PASS  the fallback names the target CLASS, not the connection string
+  PASS  no-output fallback: percent-encoded clone password ABSENT
+  PASS  a credential inside the CLI's own output is redacted too
+  PASS  no diagnostic line interpolates the argv (only the CLI invocation uses "$@")
+== diagnostic prerequisites exist BEFORE the CLI runs ==
+  PASS  jq missing: the supabase CLI was NEVER invoked
+  PASS  jq missing: no capture file was created
+  PASS  0600 hardening failure: the supabase CLI was NEVER invoked
+  PASS  0600 hardening failure is reported explicitly
+  PASS  0600 hardening failure: the empty capture was cleaned up
+== a runtime sanitiser failure is safe, bounded and non-masking ==
+  PASS  sanitiser failure: the raw diagnostic is WITHHELD, not printed
+  PASS  sanitiser failure: a generic safe message is emitted
+  PASS  sanitiser failure: the CLI's original exit code (8) is preserved
+  PASS  sanitiser failure: the capture was still securely deleted
+  PASS  an empty sanitiser result is not described as a displayed diagnostic
 == callers observe the helper's status (no discarded command substitution) ==
   PASS  no caller passes the helper's output straight into an argument
   PASS  cmd_dryrun615 fails closed on a dry-run failure
@@ -63,4 +82,13 @@ $ bash scripts/rollout/notif-10ca3/verify/dryrun-diagnostics-test.sh
   PASS  MUTANT (returns 0 on failure) yields an EMPTY successful pending set — returning the CLI code is load-bearing
   PASS  MUTANT (clone left on the old pipeline) LOSES the reason — both helpers must share the contract
   PASS  ...while the linked helper in the same mutant still reports it (the two are independently covered)
-================  58 passed, 0 failed  ================
+== end to end: the CLONE path leaks nothing and fails closed ==
+  PASS  clone-push fails closed when the CLI fails (exit 1)
+  PASS  clone-push END TO END: the clone password never appears in its output
+  PASS  clone-push names the target class in the fallback
+  PASS  clone-push makes no pending-set claim after a CLI failure
+  PASS  clone-push END TO END: a credential in the CLI's output is redacted
+== MUTANT: restoring $* in the fallback must be caught ==
+  PASS  mutant (g) built: $* restored in the no-output fallback
+  PASS  MUTANT ($* in the fallback) LEAKS the clone password — the label/argv separation is load-bearing
+================  81 passed, 0 failed  ================

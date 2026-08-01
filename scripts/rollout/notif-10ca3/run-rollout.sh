@@ -99,8 +99,12 @@ mk_worktree() {
 # regex metacharacter in a password can corrupt the pattern.
 ROLLOUT_DIAG_MAX_LINES=20
 ROLLOUT_DIAG_MAX_COLS=200
-redact_diag() {   # $1 = captured file -> prints a safe rendition on stdout
-  require_cmd jq
+# NON-THROWING: returns non-zero instead of exiting, so a broken sanitiser can
+# never skip the caller's secure_delete nor replace the CLI's own exit code. It
+# also never falls back to raw output — if sanitisation fails there is simply
+# nothing to show.
+redact_diag() {   # $1 = captured file -> prints a safe rendition on stdout; !0 on failure
+  command -v jq >/dev/null 2>&1 || return 1
   jq -R -r --argjson cols "$ROLLOUT_DIAG_MAX_COLS" '
       def lit_redact($v): if ($v | length) > 0 then (split($v) | join("***REDACTED***")) else . end;
       lit_redact(env.SUPABASE_DB_PASSWORD // "")
@@ -111,23 +115,43 @@ redact_diag() {   # $1 = captured file -> prints a safe rendition on stdout
       | gsub("(?<p>postgres(?:ql)?://[^:@/ \t]+:)[^@ \t]+@"; "\(.p)***REDACTED***@"; "i")
       | .[0:$cols]
     ' "$1" 2>/dev/null | head -n "$ROLLOUT_DIAG_MAX_LINES"
+  return "${PIPESTATUS[0]}"
 }
 
-dry_run_pending() {   # $@ = target selector (--linked | --db-url URL)
+# $1 = a NON-SECRET target label used in diagnostics; $2.. = the CLI's target argv.
+# The label and the argv are kept strictly apart: the argv for a clone carries
+# `--db-url postgresql://user:PASSWORD@host/db`, so interpolating "$*"/"$@" into a
+# message printed the clone's password verbatim (reproduced with a stubbed CLI
+# returning a non-zero code and no output). Diagnostics may name the operation,
+# the target CLASS and the exit code — never the connection string.
+dry_run_pending() {   # $1 label, $2.. selector (--linked | --db-url URL)
+  local label="$1"; shift
   require_cmd supabase
-  local cap rc=0 crc=0
-  cap="$(mktemp -t rollout-dryrun-XXXXXX)" || die "cannot create a temp file for the CLI output"
-  chmod 600 "$cap" 2>/dev/null || true
+  # every diagnostic prerequisite must exist BEFORE the CLI writes anything
+  # sensitive: a missing sanitiser afterwards would strand the capture and lose
+  # the CLI's reason and code.
+  require_cmd jq
+  local cap rc=0 crc=0 prev_umask
+  prev_umask="$(umask)"; umask 077
+  cap="$(mktemp -t rollout-dryrun-XXXXXX)" || { umask "$prev_umask"; die "cannot create a temp file for the CLI output"; }
+  umask "$prev_umask"
+  # the 0600 contract is enforced, not attempted: if it cannot be established the
+  # empty capture is removed and the CLI is never run.
+  chmod 600 "$cap" || { rm -f "$cap"; die "cannot restrict the CLI capture to 0600 — refusing to run the dry run"; }
   NO_COLOR=1 supabase db push "$@" --dry-run >"$cap" 2>&1 || rc=$?
   if [[ "$rc" -ne 0 ]]; then
     warn "supabase db push --dry-run FAILED (exit ${rc}) — the pending set was NOT parsed"
-    if [[ -s "$cap" ]]; then
+    local safe=""
+    if [[ -s "$cap" ]]; then safe="$(redact_diag "$cap")" || safe=""; fi
+    if [[ -n "$safe" ]]; then
       warn "CLI output (secrets redacted, first ${ROLLOUT_DIAG_MAX_LINES} lines):"
-      redact_diag "$cap" >&2
+      printf '%s\n' "$safe" >&2
+    elif [[ -s "$cap" ]]; then
+      warn "the CLI produced output but it could NOT be sanitised — WITHHOLDING it; raw output is never printed"
     else
-      warn "the CLI produced NO output; command was: supabase db push $* --dry-run (exit ${rc})"
+      warn "the CLI produced NO output; operation: db push --dry-run against the ${label} (exit ${rc})"
     fi
-    secure_delete "$cap" || warn "could not securely delete the CLI capture ${cap} — remove it by hand"
+    secure_delete "$cap" || warn "could not securely delete the CLI capture — remove it by hand"
     return "$rc"                       # the ORIGINAL CLI code, never a cleanup code
   fi
   sed -n 's/.*[[:space:]]\([0-9]\{14\}\)_[A-Za-z0-9_]*\.sql.*/\1/p' "$cap" | sort -u
@@ -135,8 +159,8 @@ dry_run_pending() {   # $@ = target selector (--linked | --db-url URL)
   [[ "$crc" -eq 0 ]] || { warn "the dry run succeeded but its capture could not be securely deleted"; return 1; }
   return 0
 }
-push_dry_run_pending()  { dry_run_pending --linked; }
-clone_dry_run_pending() { dry_run_pending --db-url "$1"; }
+push_dry_run_pending()  { dry_run_pending "linked project"          --linked; }
+clone_dry_run_pending() { dry_run_pending "explicit clone target"  --db-url "$1"; }
 
 # --- authoritative, blocking drain proof -----------------------------------
 prove_drain() {

@@ -151,6 +151,72 @@ url2: postgresql://postgres:p%40ss%2Aword@db.x.supabase.co:5432/postgres" run_he
   /bin/rm -f "$ROOT"/tmp/rollout-dryrun-* 2>/dev/null || true
 done
 
+echo "== NO credential may reach a diagnostic (clone target argv) =="
+# The failure fallback used to interpolate "$*", which for the clone helper is
+# `--db-url postgresql://user:PASSWORD@host/db`. Reproduced at the reviewed SHA:
+# the password appeared verbatim. The label and the argv are now strictly separate.
+LEAKY_PLAIN='postgresql://postgres:FAKE_CLONE_PW_123@db.zzzzzzzzzzzzzzzzzzzz.supabase.co:5432/postgres'
+LEAKY_PCT='postgresql://postgres:p%40ss%2AWORD9@db.zzzzzzzzzzzzzzzzzzzz.supabase.co:5432/postgres'
+clone_with_url(){ # $1 url ; env STUB_RC/STUB_OUT ; runs the REAL clone helper
+  ( PATH="$BIN:$PATH" TMPDIR="$ROOT/tmp" bash -c "
+      source '$SHIM'
+      set +e; out=\"\$(clone_dry_run_pending '$1')\"; rc=\$?; set -e
+      printf 'RC=%s\nSTDOUT<<%s>>\n' \"\$rc\" \"\$out\"" ) 2>&1; }
+OUT="$(STUB_RC=3 STUB_OUT="" clone_with_url "$LEAKY_PLAIN")"
+grep -q 'FAKE_CLONE_PW_123' <<<"$OUT" && fail "no-output fallback leaked the plain clone password" \
+  || pass "no-output fallback: plain clone password ABSENT from the diagnostic"
+grep -q 'RC=3' <<<"$OUT" && pass "no-output fallback still returns the CLI's code" || fail "code lost"
+grep -q 'explicit clone target' <<<"$OUT" && pass "the fallback names the target CLASS, not the connection string" || fail "no target class in the fallback"
+OUT="$(STUB_RC=3 STUB_OUT="" clone_with_url "$LEAKY_PCT")"
+grep -qE 'p%40ss%2AWORD9' <<<"$OUT" && fail "no-output fallback leaked the percent-encoded clone password" \
+  || pass "no-output fallback: percent-encoded clone password ABSENT"
+# and with output present, the URL in the CLI's own text is still redacted
+OUT="$(STUB_RC=4 STUB_OUT="could not connect to $LEAKY_PLAIN" clone_with_url "$LEAKY_PLAIN")"
+grep -q 'FAKE_CLONE_PW_123' <<<"$OUT" && fail "the credential leaked through the CLI's own output" \
+  || pass "a credential inside the CLI's own output is redacted too"
+# the argv pass-through `supabase db push "$@"` is legitimate; what must never
+# happen is argv reaching a DIAGNOSTIC line.
+sed -n '/^dry_run_pending()/,/^}/p' "$RR" | grep -E '^\s*(warn|log|ok|die|printf|echo)\b' | grep -qE '\$\*|\$@' \
+  && fail "a diagnostic line in dry_run_pending interpolates \$* or \$@" \
+  || pass "no diagnostic line interpolates the argv (only the CLI invocation uses \"\$@\")"
+
+echo "== diagnostic prerequisites exist BEFORE the CLI runs =="
+# jq missing -> stop before invoking supabase, so no sensitive capture is created
+MIN="$ROOT/minbin"; mkdir -p "$MIN"
+for t in mktemp chmod rm sed sort dd wc tr head grep date basename cat od uname stat ls id umask sleep; do
+  src="$(command -v "$t" 2>/dev/null)"; [[ -n "$src" ]] && ln -sf "$src" "$MIN/$t"
+done
+ln -sf "$BIN/supabase" "$MIN/supabase"
+ARGV="$ROOT/supabase-was-invoked"; : > "$ARGV"; /bin/rm -f "$ARGV"
+OUT="$( PATH="$MIN" TMPDIR="$ROOT/tmp" STUB_ARGV_FILE="$ARGV" STUB_RC=0 bash -c "
+    source '$SHIM'; set +e; push_dry_run_pending; printf 'RC=%s\n' \$?" 2>&1 )"
+[[ ! -f "$ARGV" ]] && pass "jq missing: the supabase CLI was NEVER invoked" || fail "the CLI ran without a sanitiser available"
+[[ "$(caps)" == 0 ]] && pass "jq missing: no capture file was created" || fail "a capture was left behind"
+# chmod failure -> stop before invoking supabase, leave no capture
+CHFAIL="$ROOT/chfail"; mkdir -p "$CHFAIL"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$CHFAIL/chmod"; chmod +x "$CHFAIL/chmod"
+/bin/rm -f "$ARGV"
+OUT="$( PATH="$CHFAIL:$BIN:$PATH" TMPDIR="$ROOT/tmp" STUB_ARGV_FILE="$ARGV" STUB_RC=0 bash -c "
+    source '$SHIM'; set +e; push_dry_run_pending; printf 'RC=%s\n' \$?" 2>&1 )"
+[[ ! -f "$ARGV" ]] && pass "0600 hardening failure: the supabase CLI was NEVER invoked" || fail "the CLI ran with an unsecured capture"
+grep -q '0600' <<<"$OUT" && pass "0600 hardening failure is reported explicitly" || fail "silent permission failure"
+[[ "$(caps)" == 0 ]] && pass "0600 hardening failure: the empty capture was cleaned up" || fail "$(caps) capture(s) left behind"
+
+echo "== a runtime sanitiser failure is safe, bounded and non-masking =="
+# jq PRESENT but broken, and the CLI has already written a secret-bearing diagnostic
+JQFAIL="$ROOT/jqfail"; mkdir -p "$JQFAIL"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$JQFAIL/jq"; chmod +x "$JQFAIL/jq"
+OUT="$( PATH="$JQFAIL:$BIN:$PATH" TMPDIR="$ROOT/tmp" STUB_RC=8 \
+        STUB_OUT="fatal: password authentication failed for FAKE_CLONE_PW_123" bash -c "
+    source '$SHIM'; set +e; out=\"\$(push_dry_run_pending)\"; rc=\$?; set -e; printf 'RC=%s\n' \"\$rc\"" 2>&1 )"
+grep -q 'FAKE_CLONE_PW_123' <<<"$OUT" && fail "raw output was printed when sanitisation failed" \
+  || pass "sanitiser failure: the raw diagnostic is WITHHELD, not printed"
+grep -q 'could NOT be sanitised' <<<"$OUT" && pass "sanitiser failure: a generic safe message is emitted" || fail "no generic message"
+grep -q 'RC=8' <<<"$OUT" && pass "sanitiser failure: the CLI's original exit code (8) is preserved" || fail "the CLI code was replaced"
+[[ "$(caps)" == 0 ]] && pass "sanitiser failure: the capture was still securely deleted" || fail "$(caps) capture(s) stranded"
+grep -q 'secrets redacted' <<<"$OUT" && fail "claimed a redacted diagnostic was displayed when none was" \
+  || pass "an empty sanitiser result is not described as a displayed diagnostic"
+
 echo "== callers observe the helper's status (no discarded command substitution) =="
 # In argument position a command substitution's exit status is DISCARDED, so
 # `assert_pending_is_expected "$(helper)" …` would silently proceed with "".
@@ -231,7 +297,7 @@ OUT="$(STUB_RC=1 STUB_OUT="fatal: could not apply ${V1}_a.sql" run_mut "$M" push
 grep -q "STDOUT<<${V1}>>" <<<"$OUT" && pass "MUTANT (parses after failure) emits a pending set from an ERROR message — the ordering is load-bearing" || fail "mutant (c) not distinguishable"
 rm -f "$M"
 # (d) raw unredacted diagnostics
-M="$(mut raw 'redact_diag "$cap" >&2||=||cat "$cap" >&2')"
+M="$(mut raw 'safe="$(redact_diag "$cap")" || safe=""||=||safe="$(cat "$cap")"')"
 OUT="$(STUB_RC=9 SUPABASE_DB_PASSWORD='p@ss.w*rd[1]' STUB_OUT="db=p@ss.w*rd[1]" run_mut "$M" push)"
 grep -q 'p@ss\.w\*rd\[1\]' <<<"$OUT" && pass "MUTANT (raw diagnostic) LEAKS the password — redaction is load-bearing" || fail "mutant (d) not distinguishable"
 rm -f "$M"
@@ -242,11 +308,50 @@ grep -q 'RC=0' <<<"$OUT" && grep -q 'STDOUT<<>>' <<<"$OUT" \
   && pass "MUTANT (returns 0 on failure) yields an EMPTY successful pending set — returning the CLI code is load-bearing" || fail "mutant (e) not distinguishable"
 rm -f "$M"
 # (f) fix the linked helper only, leave the clone path silent
-M="$(mut clonesilent 'clone_dry_run_pending() { dry_run_pending --db-url "$1"; }||=||clone_dry_run_pending() { NO_COLOR=1 supabase db push --db-url "$1" --dry-run 2>&1 1>/dev/null | sed -n "s/.*\([0-9]\{14\}\)_.*/\1/p" | sort -u; }')"
+M="$(mut clonesilent 'clone_dry_run_pending() { dry_run_pending "explicit clone target"  --db-url "$1"; }||=||clone_dry_run_pending() { NO_COLOR=1 supabase db push --db-url "$1" --dry-run 2>&1 1>/dev/null | sed -n "s/.*\([0-9]\{14\}\)_.*/\1/p" | sort -u; }')"
 OUT="$(STUB_RC=7 STUB_OUT="connection refused" run_mut "$M" clone)"
 grep -q 'connection refused' <<<"$OUT" && fail "mutant (f) clone still shows the reason" || pass "MUTANT (clone left on the old pipeline) LOSES the reason — both helpers must share the contract"
 OUT="$(STUB_RC=7 STUB_OUT="connection refused" run_mut "$M" push)"
 grep -q 'connection refused' <<<"$OUT" && pass "...while the linked helper in the same mutant still reports it (the two are independently covered)" || fail "mutant (f) push path also broken"
+rm -f "$M"
+
+echo "== end to end: the CLONE path leaks nothing and fails closed =="
+# Not a static assertion: the real `clone-push` subcommand is driven with a
+# credential-bearing clone URL and a CLI that fails silently.
+cat > "$BIN/psql" <<'EOF'
+#!/usr/bin/env bash
+if printf '%s ' "$@" | grep -q -- '-Atqc'; then echo ""; exit 0; fi   # ledger: none
+exit 0
+EOF
+chmod +x "$BIN/psql"
+E2EC="$( PATH="$BIN:$PATH" EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzzzzzzzzzzzzz \
+         CAP_STMT=30000 STUB_RC=4 STUB_OUT='' \
+         bash "$RR" clone-push --yes "$LEAKY_PLAIN" 2>&1 )"; e2ecrc=$?
+[[ "$e2ecrc" -ne 0 ]] && pass "clone-push fails closed when the CLI fails (exit $e2ecrc)" || fail "clone-push reported success"
+grep -q 'FAKE_CLONE_PW_123' <<<"$E2EC" && fail "clone-push leaked the clone password end to end" \
+  || pass "clone-push END TO END: the clone password never appears in its output"
+grep -q 'explicit clone target' <<<"$E2EC" && pass "clone-push names the target class in the fallback" || fail "no target class"
+grep -q 'pending migration set ==' <<<"$E2EC" && fail "clone-push claimed a verified pending set after a CLI failure" \
+  || pass "clone-push makes no pending-set claim after a CLI failure"
+# ...and with a credential inside the CLI's own output
+E2EC="$( PATH="$BIN:$PATH" EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzzzzzzzzzzzzz \
+         CAP_STMT=30000 STUB_RC=4 STUB_OUT="connect failed: $LEAKY_PLAIN" \
+         bash "$RR" clone-push --yes "$LEAKY_PLAIN" 2>&1 )"
+grep -q 'FAKE_CLONE_PW_123' <<<"$E2EC" && fail "clone-push leaked a credential from the CLI's own output" \
+  || pass "clone-push END TO END: a credential in the CLI's output is redacted"
+
+echo "== MUTANT: restoring \$* in the fallback must be caught =="
+M="$(mut argvleak 'warn "the CLI produced NO output; operation: db push --dry-run against the ${label} (exit ${rc})"||=||warn "the CLI produced NO output; command was: supabase db push $* --dry-run (exit ${rc})"')"
+grep -q 'command was: supabase db push \$\*' "$M" && pass "mutant (g) built: \$* restored in the no-output fallback" || fail "mutant (g) not applied"
+OUT="$( PATH="$BIN:$PATH" TMPDIR="$ROOT/tmp" STUB_RC=3 STUB_OUT="" bash -c "
+    sh=\"$ROOT/gshim.sh\"
+    { echo 'set -Eeuo pipefail'; echo \"source '$HERE/../lib/common.sh'\"
+      sed -n '/^ROLLOUT_DIAG_MAX_LINES=/,/^clone_dry_run_pending()/p' '$M'
+      sed -n '/^push_dry_run_pending()/p;/^clone_dry_run_pending()/p' '$M'; } > \"\$sh\"
+    source \"\$sh\"; set +e; clone_dry_run_pending '$LEAKY_PLAIN'" 2>&1 )"
+grep -q 'FAKE_CLONE_PW_123' <<<"$OUT" \
+  && pass "MUTANT (\$* in the fallback) LEAKS the clone password — the label/argv separation is load-bearing" \
+  || fail "mutant (g) not distinguishable"
 rm -f "$M"
 
 echo "================  ${P} passed, ${F} failed  ================"
