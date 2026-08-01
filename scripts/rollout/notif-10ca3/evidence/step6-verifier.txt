@@ -1,0 +1,47 @@
+$ bash scripts/rollout/notif-10ca3/verify/step6-verifier-test.sh
+
+== the clean target send passes amid unrelated concurrent sends ==
+  PASS  clean send + concurrent unrelated traffic -> exit 0
+  PASS  the other party's own send verifies independently
+== starts: missing / duplicated ==
+  PASS  NO provider_send_started for the invoice -> nonzero (3)
+  PASS  DUPLICATE provider_send_started -> nonzero (3)
+  PASS  TWO invocations for one invoice -> nonzero (ambiguous binding)
+== finishes: missing / duplicated / belonging to another invocation ==
+  PASS  NO finished for the invocation -> nonzero (3)
+  PASS  DUPLICATE finished{sent} -> nonzero (3)
+  PASS  a finish from ANOTHER invocation does not satisfy the target -> nonzero
+  PASS  the window's ONLY sent finish, owned by another invocation -> nonzero
+== forbidden events ==
+  PASS  finished{send_failed} -> nonzero (3)
+  PASS  finished{error} (no invoiceId, as the handler emits) -> nonzero
+  PASS  event:blocked for the invocation -> nonzero (gate was ON)
+  PASS  record_failed for the invoice -> nonzero (sent but untracked)
+  PASS  status_update_failed for the invoice -> nonzero (UI/DB disagree)
+  PASS  another invoice's record/status failures do NOT fail ours (exact invoice binding)
+== fail closed on malformed input ==
+  PASS  EMPTY log file -> nonzero (3), never a vacuous pass
+  PASS  line without epoch<TAB> -> fail closed (exit 2)
+  PASS  non-JSON payload -> fail closed (exit 2)
+  PASS  malformed invocationId -> fail closed (exit 2)
+  PASS  lifecycle event without invocationId -> fail closed (exit 2)
+  PASS  record_failed without invoiceId -> fail closed (cannot prove it is unrelated)
+  PASS  foreign log prefix -> fail closed (input did not come from the documented fetch)
+  PASS  non-uuid --invoice -> usage error (exit 1)
+  PASS  missing log file -> setup error (exit 1)
+== output carries no PII ==
+  PASS  verifier output is counts + uuids only (no address/token shapes)
+  PASS  the bound invocation id is reported as evidence
+== MUTANTS: every cardinality + the id binding are load-bearing ==
+  PASS  mutant (a) built: finished{sent} accepts >=1
+  PASS  MUTANT (>=1 finishes) ACCEPTS duplicates — the ==1 check is load-bearing
+  PASS  mutant (b) built: BOTH start cardinalities relaxed to >=1
+  PASS  MUTANT (>=1 starts) ACCEPTS duplicate starts — the ==1 check is load-bearing
+  PASS  mutant (c) built: record_failed check neutralised
+  PASS  MUTANT (ignores record_failed) ACCEPTS an untracked send — the check is load-bearing
+  PASS  mutant (d) built: blocked check neutralised
+  PASS  MUTANT (ignores blocked) ACCEPTS a gated invocation — the check is load-bearing
+  PASS  mutant (e) built: every finished count matched by window, not by id
+  PASS  MUTANT (window-only) ACCEPTS another invocation's finish — exact id binding is load-bearing
+  PASS  the REAL verifier still passes the clean fixture (not vacuously strict)
+================  37 passed, 0 failed  ================

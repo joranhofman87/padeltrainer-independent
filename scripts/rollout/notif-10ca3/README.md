@@ -24,6 +24,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 78/78 |
 | operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 145/145 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
+| step-6 send verifier enforces the exact invocation/invoice cardinalities | `bash …/verify/step6-verifier-test.sh` | [step6-verifier.txt](evidence/step6-verifier.txt) | 37/37 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege
@@ -52,6 +53,7 @@ sql/postflight.sql          post-migration delta present + INERT + digest-disabl
 sql/acl_matrix.sql          self-contained ACL lockdown assertions
 sql/ledger_verification.sql append-only ledger + email-table consistency invariants
 logfetch/fetch-edge-logs.sh Management API edge-log retrieval + authoritative drain proof
+logfetch/verify-step6-send.sh  step-6 send verifier: exact invocation/invoice cardinalities
 verify/chain.mjs            shared embedded-PG setup + SHA-pinned migration source
 verify/verify-artifacts.mjs SQL-artifact proof (+ mutations)
 verify/rehearsals.mjs       executable A–F rehearsals (incl. step-8 clone battery)
@@ -59,6 +61,7 @@ verify/identity-selftest.sh identity allow-list proof
 verify/guard-mutation-test.sh critical-guard mutation proofs
 verify/operator-flow-test.sh  resume615 + clone-command runtime proof (stubbed gh/git/supabase/psql)
 verify/exit-status-test.sh    exit-status integrity proof (masked-failure regression)
+verify/step6-verifier-test.sh executable fixtures + mutants for the step-6 verifier
 evidence/                   captured run outputs
 ```
 
@@ -478,48 +481,51 @@ send in this window is the expected outcome. `evidence/edge-log-lines.txt` is a
 local working file, **gitignored** via `evidence/.gitignore` — the fetch writes it
 and it is never committed, so treat what you find there as ephemeral.)
 
-*Correlate EXACTLY — a busy window contains other invocations.* Anything you
-assert must be tied to **your** invocation id or **your** invoice id. Never read
-"there is a `finished sent` in the window" as evidence: it may belong to someone
-else's send. Bind the two ids first, then run the counts:
+*Correlate EXACTLY — and let the tool do it.* A busy window contains other
+people's sends, so "there is a `finished sent` in the window" is not evidence.
+This used to be a block of `grep -c` calls with "must be exactly 1" written next
+to them in prose — nothing enforced those numbers, so a mis-read, or an empty
+result, looked exactly like a pass. It is now **executable and fails loudly**:
 
 ```bash
-LINES=scripts/rollout/notif-10ca3/evidence/edge-log-lines.txt
-INVOICE='<invoice uuid>'
-# the invocation that sent YOUR invoice (must print exactly one line)
-grep 'event:provider_send_started' "$LINES" | grep -F "\"invoiceId\":\"$INVOICE\""
-INVOCATION='<invocationId from that line>'
-
-# --- must be exactly 1 each ---
-grep -c "event:provider_send_started.*\"invocationId\":\"$INVOCATION\"" "$LINES"
-grep    "event:finished.*\"invocationId\":\"$INVOCATION\"" "$LINES" | grep -c '"outcome":"sent"'
-# --- must be exactly 0 each ---
-grep -c "event:blocked.*\"invocationId\":\"$INVOCATION\"" "$LINES"
-grep "event:finished.*\"invocationId\":\"$INVOCATION\"" "$LINES" | grep -cE '"outcome":"(send_failed|error)"'
-grep -c "record_failed.*\"invoiceId\":\"$INVOICE\"" "$LINES"
-grep -c "status_update_failed.*\"invoiceId\":\"$INVOICE\"" "$LINES"
+scripts/rollout/notif-10ca3/logfetch/verify-step6-send.sh --invoice '<invoice uuid>'
 ```
 
-`record_failed` and `status_update_failed` log an **`invoiceId`, not an
-`invocationId`** (see `_shared/invoice-delivery-tracking.ts` and
-`send-invoice-email/index.ts`), so those two are correlated by invoice id — that
-is exact for a single send of a single invoice. (`record_failed` also exists in
-`resend-webhook`, but that logs under the `[RESEND-WEBHOOK]` prefix, which this
-`[SEND-INVOICE-EMAIL]`-filtered fetch never returns.)
+It reads the file the fetch just wrote (`evidence/edge-log-lines.txt` by default,
+override with `--from-file`), parses every record **structurally** with `jq`
+rather than grepping free text, derives the invocation itself from the single
+`provider_send_started` carrying your invoice id — **you never transcribe an
+invocation id** — and exits non-zero unless all six hold:
 
-*Pass — all five:*
+| # | enforced |
+|---|---|
+| 1 | exactly ONE `provider_send_started` for the invoice (this binds the invocation) |
+| 2 | exactly ONE `provider_send_started` for that invocation |
+| 3 | exactly ONE `finished {"outcome":"sent"}` for that invocation |
+| 4 | ZERO `finished` with any other outcome for that invocation |
+| 5 | ZERO `blocked` for that invocation |
+| 6 | ZERO `record_failed` and ZERO `status_update_failed` for the invoice |
+
+Exit codes: `0` pass · `1` usage/setup · `2` malformed input (fail closed) · `3`
+verification FAILED. An empty or unparseable log file is a **failure**, never a
+vacuous pass. Output is counts plus the two correlation uuids only — no address,
+body, or token. Checks 1–5 key on the invocation; check 6 keys on the invoice,
+because `record_failed` and `status_update_failed` log an **`invoiceId` and not
+an `invocationId`** (`_shared/invoice-delivery-tracking.ts`,
+`send-invoice-email/index.ts`) — exact for a single send of a single invoice.
+(`record_failed` also exists in `resend-webhook`, but that logs under the
+`[RESEND-WEBHOOK]` prefix, which this `[SEND-INVOICE-EMAIL]`-filtered fetch never
+returns.)
+
+*Pass — all four:*
 1. the email **arrives** at the controlled recipient, correct branding/reply-to;
-2. **exactly one** `event:provider_send_started` for `$INVOCATION`, and **exactly
-   one** `event:finished {"outcome":"sent"}` for that same id;
-3. **zero** `event:blocked` for `$INVOCATION`, zero `finished` for it with any
-   other outcome, and zero `record_failed` / `status_update_failed` for
-   `$INVOICE`;
-4. **delivery tracking** recorded it: `SELECT public.get_invoice_delivery_status('<invoice uuid>')`
+2. `verify-step6-send.sh --invoice '<invoice uuid>'` exits **0**;
+3. **delivery tracking** recorded it: `SELECT public.get_invoice_delivery_status('<invoice uuid>')`
    reports `sent` (later `delivered` when the Resend webhook lands), and the
    invoice shows as sent in the UI. Use the singular RPC — the plural
    `get_invoices_delivery_status` returns a `linked_email` column you do not want
    in your evidence;
-5. no Slack alert fired.
+4. no Slack alert fired.
 
 *Stop — any one of these is a FAIL, do not advance.* **Three of them return HTTP
 200**, so "the UI said it worked" is not evidence:

@@ -641,14 +641,15 @@ s6_hardened(){ local f="$1"
   grep -q 'public.get_invoice_recipient_email' "$f" || return 1
   # ...and never selecting the address itself
   grep -q 'SELECT public.get_invoice_recipient_email(' "$f" && return 1
-  # (c) correlation is bound to the exact invocation AND the exact invoice
-  grep -q 'event:provider_send_started.*invocationId.*\$INVOCATION' "$f" || return 1
-  grep -q 'event:finished.*invocationId.*\$INVOCATION'              "$f" || return 1
-  grep -q 'event:blocked.*invocationId.*\$INVOCATION'               "$f" || return 1
-  grep -q 'record_failed.*invoiceId.*\$INVOICE'                     "$f" || return 1
-  grep -q 'status_update_failed.*invoiceId.*\$INVOICE'              "$f" || return 1
-  grep -q '"outcome":"sent"'                                        "$f" || return 1
-  grep -qF '"outcome":"(send_failed|error)"'                          "$f" || return 1
+  # (c) correlation is delegated to the EXECUTABLE verifier, not to prose counts.
+  #     A block of `grep -c` calls with "must be exactly 1" written beside them
+  #     enforces nothing, so its return is a regression.
+  grep -q 'verify-step6-send.sh --invoice' "$f" || return 1
+  grep -q 'exits \*\*0\*\*'                "$f" || return 1
+  grep -qE '^ *grep +-c' "$f" && return 1        # a COMMAND, not a prose mention of one
+  grep -q "INVOCATION='<invocationId from that line>'" "$f" && return 1   # hand transcription
+  grep -q 'record_failed'        "$f" || return 1
+  grep -q 'status_update_failed' "$f" || return 1
   # (d) delivery status read via the PII-free singular RPC
   grep -q 'get_invoice_delivery_status'    "$f" || return 1
   return 0; }
@@ -662,10 +663,12 @@ for pat in '"skipped":"recently_sent"' '"error":"email_suppressed"' 'AS recent_g
   s6_hardened "$ROOT/s6-drop.md" && fail "MUTANT dropping '$pat' accepted" \
                                  || pass "MUTANT (drops '$pat') is REJECTED"
 done
-# a time-window-only assertion (correlation stripped) must not pass
-sed 's/\$INVOCATION/[0-9a-f-]*/g; s/\$INVOICE/[0-9a-f-]*/g' "$S6" > "$ROOT/s6-window.md"
-s6_hardened "$ROOT/s6-window.md" && fail "MUTANT correlating by time window only accepted" \
-                                 || pass "MUTANT (window-only correlation, no id binding) is REJECTED"
+# reverting to the unenforced grep/count prose must not pass
+{ grep -v 'verify-step6-send.sh --invoice' "$S6"
+  printf '%s\n' "INVOCATION='<invocationId from that line>'" \
+    'grep -c "event:provider_send_started.*$INVOCATION" "$LINES"   # must be exactly 1'; } > "$ROOT/s6-greps.md"
+s6_hardened "$ROOT/s6-greps.md" && fail "MUTANT reverting to unenforced grep counts accepted" \
+                                || pass "MUTANT (manual grep counts + hand-transcribed INVOCATION) is REJECTED"
 # re-exposing the raw recipient address in the candidate query must not pass
 { cat "$S6"; echo "SELECT public.get_invoice_recipient_email('<invoice uuid>');"; } > "$ROOT/s6-pii.md"
 s6_hardened "$ROOT/s6-pii.md" && fail "MUTANT selecting the raw recipient address accepted" \

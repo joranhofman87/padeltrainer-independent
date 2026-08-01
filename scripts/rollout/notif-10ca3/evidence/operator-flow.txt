@@ -164,6 +164,6 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
   PASS  MUTANT (drops 'AS recent_guard_clear') is REJECTED
   PASS  MUTANT (drops 'AS recipient_not_suppressed') is REJECTED
   PASS  MUTANT (drops 'AS resolves_to_me') is REJECTED
-  PASS  MUTANT (window-only correlation, no id binding) is REJECTED
+  PASS  MUTANT (manual grep counts + hand-transcribed INVOCATION) is REJECTED
   PASS  MUTANT (bare address SELECT) is REJECTED
 ================  145 passed, 0 failed  ================
