@@ -69,6 +69,11 @@ resp_recfail_other(){
     row "2026-08-01T12:38:41Z" "$(ev_fin "$INV" "$IC" sent)"; printf ','
     row "2026-08-01T12:38:42Z" "$(ev_recfail "$OIC")"
     printf ']}'; } > "$1"; }
+resp_other_only(){   # a complete, healthy window that does NOT contain our invoice
+  { printf '{"error":null,"result":['
+    row "2026-08-01T12:38:39Z" "$(ev_start "$OINV" "$OIC")"; printf ','
+    row "2026-08-01T12:38:42Z" "$(ev_fin "$OINV" "$OIC" sent)"
+    printf ']}'; } > "$1"; }
 resp_empty(){ printf '{"error":null,"result":[]}' > "$1"; }
 resp_malformed(){ printf '{"error":"boom","result":null}' > "$1"; }
 
@@ -97,6 +102,9 @@ offline(){ # $1 evidence dir, $2 script, $3 response file, rest: extra args
   ( ROLLOUT_EVIDENCE_DIR="$ev" bash "$script" --from-response "$resp" \
       --allow-sends --assert-all-finished --fail-on-record-failed "$@" ) >/dev/null 2>&1; }
 
+printf '{"error":null,"result":[]}' > "$ROOT/ok0.json"
+resp_ok "$ROOT/ok.json"          # built up-front: several sections below consume it
+
 echo "== THE REGRESSION: a failed fetch must not let a stale window be verified =="
 EV="$ROOT/ev1"; seed_stale "$EV"
 [[ -s "$EV/edge-log-lines.txt" ]] && pass "seeded a VALID successful stale window for the same invoice" || fail "seed failed"
@@ -111,8 +119,44 @@ EV="$ROOT/ev2"; seed_stale "$EV"
 [[ "$rc" -ne 0 ]] && pass "live fetch with a failing transport -> nonzero ($rc)" || fail "transport failure reported success"
 [[ ! -f "$EV/edge-log-lines.txt" ]] && pass "stale window invalidated on transport failure too" || fail "stale file survived"
 
+# A FAILED deletion must abort BEFORE the fetch. `rm` fails only for the evidence
+# file so the rest of the script (temp cleanup) behaves normally.
+RMBIN="$ROOT/rmfail"; mkdir -p "$RMBIN"
+cat > "$RMBIN/rm" <<'EOF'
+#!/usr/bin/env bash
+for a in "$@"; do case "$a" in *edge-log-lines.txt) echo "rm: Operation not permitted" >&2; exit 1;; esac; done
+exec /bin/rm "$@"
+EOF
+cat > "$RMBIN/curl" <<'EOF'
+#!/usr/bin/env bash
+: > "${CURL_MARKER:-/dev/null}"
+if [[ -n "${STUB_RESPONSE:-}" && -f "${STUB_RESPONSE}" ]]; then cat "$STUB_RESPONSE"; exit 0; fi
+exit 7
+EOF
+chmod +x "$RMBIN/rm" "$RMBIN/curl"
+EV="$ROOT/ev_rmfail"; seed_stale "$EV"; MARKER="$ROOT/curl-was-called"
+OUT="$( PATH="$RMBIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EV" CURL_MARKER="$MARKER"         SUPABASE_ACCESS_TOKEN=stub-not-a-real-token STUB_RESPONSE="$ROOT/ok0.json"         bash "$FEL" --ref "$REF" --start 2026-08-01T12:37:00Z --end 2026-08-01T12:41:00Z         --allow-sends --assert-all-finished --fail-on-record-failed --verify-step6-invoice "$IC" 2>&1 )"; rc=$?
+[[ "$rc" -ne 0 ]] && pass "a FAILED invalidation aborts the run (exit $rc, not silently ignored)" || fail "failed rm was ignored; run continued with exit 0"
+[[ ! -f "$MARKER" ]] && pass "no fetch was attempted after the failed invalidation (curl never ran)" || fail "curl ran despite the failed invalidation"
+grep -q '\[step6\]' <<<"$OUT" && fail "the verifier ran after a failed invalidation" || pass "the verifier never ran after a failed invalidation"
+[[ -s "$EV/edge-log-lines.txt" ]] && pass "the stale window is PRESERVED (not silently half-deleted)" || fail "stale file vanished"
+grep -q 'refusing the live fetch' <<<"$OUT" && pass "the refusal is explicit and names the cause" || fail "no explicit refusal message"
+
+echo "== non-regular evidence paths =="
+EV="$ROOT/ev_link"; mkdir -p "$EV"; printf 'REAL-TARGET\n' > "$ROOT/link-target.txt"
+ln -s "$ROOT/link-target.txt" "$EV/edge-log-lines.txt"
+export STUB_RESPONSE="$ROOT/ok.json"
+( export SUPABASE_ACCESS_TOKEN=stub-not-a-real-token; live "$EV" "$FEL" --verify-step6-invoice "$IC" ); rc=$?
+[[ "$rc" -eq 0 ]] && pass "a SYMLINK at the evidence path is removed, not written through" || fail "symlink path failed (exit=$rc)"
+grep -q REAL-TARGET "$ROOT/link-target.txt" && pass "the symlink target was left untouched" || fail "the fetch wrote through the symlink"
+unset STUB_RESPONSE
+EV="$ROOT/ev_dir"; mkdir -p "$EV/edge-log-lines.txt"
+( export SUPABASE_ACCESS_TOKEN=stub-not-a-real-token; live "$EV" "$FEL" --verify-step6-invoice "$IC" ); rc=$?
+[[ "$rc" -ne 0 ]] && pass "a DIRECTORY at the evidence path aborts the run" || fail "directory at the evidence path accepted"
+[[ -d "$EV/edge-log-lines.txt" ]] && pass "the unremovable path is left in place for the operator" || fail "directory disappeared"
+
 echo "== a fresh, current window verifies =="
-EV="$ROOT/ev3"; mkdir -p "$EV"; resp_ok "$ROOT/ok.json"
+EV="$ROOT/ev3"; mkdir -p "$EV"
 export STUB_RESPONSE="$ROOT/ok.json"
 ( export SUPABASE_ACCESS_TOKEN=stub-not-a-real-token; live "$EV" "$FEL" --verify-step6-invoice "$IC" ); rc=$?
 [[ "$rc" -eq 0 ]] && pass "fresh live window + integrated verification -> exit 0" || fail "clean live run rejected (exit=$rc)"
@@ -181,14 +225,25 @@ echo "== MUTANTS: each reopens the stale-evidence path and must be killed =="
 mutant(){ local name="$1"; local sedexpr="$2"; local m="$HERE/../logfetch/.mutant-$name.sh"
   sed "$sedexpr" "$FEL" > "$m"; printf '%s' "$m"; }
 
-# (i) verify the PERSISTENT file instead of the fresh temp
+# (i) verify the PERSISTENT file instead of the fresh temp.
+# This must be scored on an OFFLINE path. On the live path the fresh window is
+# copied to $EVID_FILE *before* finish, so mutant and baseline read identical
+# bytes and the mutant is behaviourally equivalent — an earlier version of this
+# test scored it there and proved nothing. Offline, $EVID_FILE is never written,
+# so it still holds the PREVIOUS window: the two inputs genuinely differ.
 M="$(mutant stalefile 's|--from-file "$LINES"|--from-file "$EVID_FILE"|')"
 grep -q -- '--from-file "$EVID_FILE"' "$M" && pass "mutant (i) built: verifier reads the persistent file" || fail "mutant (i) sed did not apply"
-EV="$ROOT/m1"; seed_stale "$EV"; export STUB_RESPONSE="$ROOT/ok.json"
-( export SUPABASE_ACCESS_TOKEN=stub-not-a-real-token; live "$EV" "$M" --verify-step6-invoice "$OIC" ); rc=$?
-[[ "$rc" -eq 0 ]] && pass "MUTANT (persistent file) verifies the WRONG window — fresh-temp binding is load-bearing" \
-                  || fail "mutant (i) not distinguishable (exit=$rc)"
-unset STUB_RESPONSE
+EV="$ROOT/m1"; seed_stale "$EV"                       # stale window: OUR invoice, clean + successful
+resp_other_only "$ROOT/other_only.json"               # fresh window: only the OTHER invoice
+# baseline: the fresh window does not contain our invoice -> must FAIL
+offline "$EV" "$FEL" "$ROOT/other_only.json" --verify-step6-invoice "$IC"; brc=$?
+[[ "$brc" -ne 0 ]] && pass "baseline: fresh window lacking the invoice -> nonzero ($brc)" || fail "baseline wrongly passed"
+[[ -s "$EV/edge-log-lines.txt" ]] && pass "baseline left the persistent file untouched (offline path writes nothing)" || fail "offline path wrote the persistent file"
+# mutant: reads the STALE persistent file instead -> wrongly PASSES
+offline "$EV" "$M" "$ROOT/other_only.json" --verify-step6-invoice "$IC"; mrc=$?
+[[ "$mrc" -eq 0 && "$brc" -ne 0 ]] \
+  && pass "MUTANT (persistent file) passes on a STALE window the baseline rejects — fresh-temp binding is load-bearing" \
+  || fail "mutant (i) not distinguishable (baseline=$brc mutant=$mrc)"
 
 # (ii) ignore the fetch/analysis exit status
 M="$(mutant ignorerc 's|^  local rc="$1" vrc=0|  local rc=0 vrc=0|')"
@@ -214,8 +269,8 @@ EV="$ROOT/m4"; seed_stale "$EV"
                || fail "mutant (iv) still rejected"
 
 # (v) remove the prior-evidence invalidation
-M="$(mutant noinvalidate 's|^if \[\[ -f "$EVID_FILE" \]\]; then rm -f "$EVID_FILE".*|:|')"
-grep -qv 'invalidated the previous window' "$M" && pass "mutant (v) built: invalidation removed" || fail "mutant (v) sed did not apply"
+M="$(mutant noinvalidate 's#^if \[\[ -e "$EVID_FILE" || -L "$EVID_FILE" \]\]; then#if false; then#')"
+grep -q '^if false; then' "$M" && pass "mutant (v) built: the invalidation block is skipped" || fail "mutant (v) sed did not apply"
 EV="$ROOT/m5"; seed_stale "$EV"
 ( unset SUPABASE_ACCESS_TOKEN; live "$EV" "$M" --verify-step6-invoice "$IC" )
 [[ -f "$EV/edge-log-lines.txt" ]] && pass "MUTANT (no invalidation) leaves a stale window looking current — invalidation is load-bearing" \

@@ -25,7 +25,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 145/145 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | step-6 send verifier enforces the exact invocation/invoice cardinalities | `bash …/verify/step6-verifier-test.sh` | [step6-verifier.txt](evidence/step6-verifier.txt) | 37/37 |
-| step-6 fetch+verify is atomic; a failed fetch can never leave verifiable stale evidence | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 32/32 |
+| step-6 fetch+verify is atomic; a failed fetch can never leave verifiable stale evidence | `bash …/verify/logfetch-integration-test.sh` | [logfetch-integration.txt](evidence/logfetch-integration.txt) | 43/43 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
 The harnesses boot an embedded Postgres, reproduce the Supabase default-privilege

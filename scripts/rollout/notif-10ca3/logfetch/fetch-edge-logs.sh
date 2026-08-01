@@ -188,7 +188,20 @@ fi
 # stale file left looking like current evidence. (This is the exact false-green
 # that a failed fetch produced: SUPABASE_ACCESS_TOKEN was absent, the fetch died,
 # and the previous run's file stayed on disk.)
-if [[ -f "$EVID_FILE" ]]; then rm -f "$EVID_FILE" && log "invalidated the previous window: ${EVID_FILE##*/}"; fi
+# FAIL CLOSED. `rm` must not sit on the left of `&&` or inside an `if` condition:
+# bash exempts non-final commands of an AND-list from `set -e`, so a failed
+# deletion would be silently ignored and the fetch would proceed with the stale
+# window still on disk. Delete explicitly, then assert the postcondition. `-e` is
+# false for a DANGLING symlink, so `-L` is tested too — otherwise a symlink here
+# would be skipped by the guard and later written THROUGH by the cp below. A
+# directory (or anything else `rm -f` cannot remove) aborts the run.
+if [[ -e "$EVID_FILE" || -L "$EVID_FILE" ]]; then
+  rm -f -- "$EVID_FILE" \
+    || die "could not invalidate the previous evidence file (${EVID_FILE}) — refusing the live fetch"
+  [[ ! -e "$EVID_FILE" && ! -L "$EVID_FILE" ]] \
+    || die "previous evidence still present after removal (${EVID_FILE}) — refusing the live fetch"
+  log "invalidated the previous window: ${EVID_FILE##*/}"
+fi
 [[ -n "${SUPABASE_ACCESS_TOKEN:-}" ]] || die "SUPABASE_ACCESS_TOKEN required"
 RESP="$TMP/resp.json"
 if [[ "$DIALECT" == "auto" ]]; then
