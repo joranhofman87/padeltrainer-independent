@@ -122,6 +122,7 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
   PASS  secure_delete: success path removes the file (exit 0)
   PASS  secure_delete: overwrite failure PRESERVES the file and returns 1
   PASS  MUTANT (dd||true + unconditional rm) deletes despite overwrite failure — fail-closed is load-bearing
+  PASS  secure_delete: the manual overwrite+unlink path succeeds even where shred exists
   PASS  secure_delete: UNLINK failure returns non-zero (1)
   PASS  secure_delete: the file that could not be unlinked still EXISTS (honest state)
   PASS  secure_delete: the plaintext was destroyed before the failed unlink
@@ -134,4 +135,4 @@ $ bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh
   PASS  secure_delete: the symlink itself was left in place for the operator
   PASS  mutant (g) built: unlink guard removed from the real helper
   PASS  MUTANT (no unlink guard) reports SUCCESS while the file still exists — the guard is load-bearing
-================  116 passed, 0 failed  ================
+================  117 passed, 0 failed  ================

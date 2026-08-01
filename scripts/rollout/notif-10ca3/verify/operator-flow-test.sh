@@ -498,10 +498,25 @@ F3="$SDIR/mut.txt"; printf 'SECRET-SALT-0123456789' > "$F3"; chmod 444 "$F3"
 # result does not depend on the uid or the filesystem: the overwrite succeeds, the
 # unlink does not, and the file therefore STILL EXISTS. That must be reported as a
 # failure — an evidence file that is still on disk was not cleaned.
+# shred/gshred are ALSO stubbed to fail, so BOTH platforms take the same branch:
+# the unlink guard lives in the manual overwrite path (the darwin production
+# path), and a working `shred -u` unlinks internally and never reaches it. Ubuntu
+# CI ships GNU coreutils and macOS does not, so without these stubs this case
+# silently covered only one of the two.
+SHREDBIN="$ROOT/noshred"; mkdir -p "$SHREDBIN"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$SHREDBIN/shred"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$SHREDBIN/gshred"
 RMBIN="$ROOT/rmfail"; mkdir -p "$RMBIN"
-printf '#!/usr/bin/env bash\necho "rm: Operation not permitted" >&2\nexit 1\n' > "$RMBIN/rm"; chmod +x "$RMBIN/rm"
+printf '#!/usr/bin/env bash\necho "rm: Operation not permitted" >&2\nexit 1\n' > "$RMBIN/rm"
+chmod +x "$SHREDBIN"/shred "$SHREDBIN"/gshred "$RMBIN"/rm
+# the manual overwrite+unlink path must SUCCEED on every platform, not only where
+# shred happens to be missing
+F0="$SDIR/fallback-ok.txt"; printf 'SECRET-SALT-0123456789' > "$F0"
+( PATH="$SHREDBIN:$PATH"; secure_delete "$F0" ) >/dev/null 2>&1; rc0=$?
+[[ "$rc0" -eq 0 && ! -f "$F0" ]] && pass "secure_delete: the manual overwrite+unlink path succeeds even where shred exists" \
+                                 || fail "forced-fallback success path: exit=$rc0 exists=$([[ -f $F0 ]] && echo yes || echo no)"
 F4="$SDIR/unlinkfail.txt"; printf 'SECRET-SALT-0123456789' > "$F4"
-( PATH="$RMBIN:$PATH"; secure_delete "$F4" ) >/dev/null 2>&1; rc4=$?
+( PATH="$RMBIN:$SHREDBIN:$PATH"; secure_delete "$F4" ) >/dev/null 2>&1; rc4=$?
 [[ "$rc4" -ne 0 ]] && pass "secure_delete: UNLINK failure returns non-zero ($rc4)" || fail "unlink failure reported success"
 [[ -f "$F4" ]] && pass "secure_delete: the file that could not be unlinked still EXISTS (honest state)" || fail "file vanished under a failing rm"
 grep -q "SECRET-SALT" "$F4" 2>/dev/null && fail "plaintext survived the overwrite" || pass "secure_delete: the plaintext was destroyed before the failed unlink"
@@ -511,7 +526,7 @@ rm -f "$F4"
 rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"
 printf '%s,%s,%s' "$V1" "$V2" "$V3" > "$STATEDIR/ledger"; printf 'off' > "$STATEDIR/gate"
 place_pre; place_post ok
-CE_OUT="$( PATH="$RMBIN:$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
+CE_OUT="$( PATH="$RMBIN:$SHREDBIN:$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" PROD_CONN_URL="$PROD" \
   MANAGER_TOKEN=x SUPABASE_ACCESS_TOKEN=x SUPABASE_DB_PASSWORD=x CAP_STMT=30000 \
   bash "$RR" clean-evidence --yes "$PROD" 2>&1 )"; rc5=$?
 [[ "$rc5" -ne 0 ]] && pass "clean-evidence: exits non-zero when the evidence could not be deleted" || fail "clean-evidence exited 0 with undeleted evidence"
@@ -534,7 +549,7 @@ MUTC="$ROOT/mutant-common-unlink.sh"
 sed 's|^  if ! rm -f "$f"; then.*|  rm -f "$f"; if false; then|' "$HERE/../lib/common.sh" > "$MUTC"
 grep -q 'rm -f "$f"; if false; then' "$MUTC" && pass "mutant (g) built: unlink guard removed from the real helper" || fail "mutant (g) sed did not apply"
 F7="$SDIR/mut-unlink.txt"; printf 'SECRET-SALT-0123456789' > "$F7"
-( PATH="$RMBIN:$PATH"; source "$MUTC"; secure_delete "$F7" ) >/dev/null 2>&1; rc7=$?
+( PATH="$RMBIN:$SHREDBIN:$PATH"; source "$MUTC"; secure_delete "$F7" ) >/dev/null 2>&1; rc7=$?
 [[ "$rc7" -eq 0 && -f "$F7" ]] && pass "MUTANT (no unlink guard) reports SUCCESS while the file still exists — the guard is load-bearing" \
                                || fail "MUTANT did not exhibit the fail-open behaviour (exit=$rc7)"
 rm -f "$F7" "$MUTC"

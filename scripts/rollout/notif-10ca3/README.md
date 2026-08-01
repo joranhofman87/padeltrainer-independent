@@ -22,7 +22,7 @@ directory (`.github/workflows/rollout-tooling.yml`), and all at once via
 | A–F rehearsals (measure / lock-abort / prefix-recovery / full / state-recompute / clone-battery) | `node …/verify/rehearsals.mjs` | [rehearsals.txt](evidence/rehearsals.txt) | 28/28 |
 | exact-identity allow-list rejects look-alike hosts / wrong refs | `bash …/verify/identity-selftest.sh` | [identity-selftest.txt](evidence/identity-selftest.txt) | 14/14 |
 | critical guards fail when weakened (mutation) | `bash …/verify/guard-mutation-test.sh` | [guard-mutation.txt](evidence/guard-mutation.txt) | 54/54 |
-| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 116/116 |
+| operator control flow (resume615 / recovery-SHA / no-loss / clean-evidence / full clone-command matrix / secure-delete) | `bash …/verify/operator-flow-test.sh` | [operator-flow.txt](evidence/operator-flow.txt) | 117/117 |
 | exit-status integrity (a failure can never report success) | `bash …/verify/exit-status-test.sh` | [exit-status.txt](evidence/exit-status.txt) | 30/30 |
 | log-retrieval request well-formed + window-bounded | `bash …/logfetch/fetch-edge-logs.sh --dry-run` | [logfetch-dryrun.txt](evidence/logfetch-dryrun.txt) | OK |
 
