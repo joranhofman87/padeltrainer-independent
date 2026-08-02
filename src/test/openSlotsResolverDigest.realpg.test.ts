@@ -107,6 +107,10 @@ beforeAll(async () => {
       tenant_academy_profile_id uuid, tenant_trainer_id uuid, visibility_scope text,
       related_booking_ids uuid[], related_invoice_id uuid, related_payment_id text,
       idempotency_key text, collapse_key text, scheduled_for timestamptz,
+      -- worker-lifecycle columns (20260910100000) the instant claim RPC needs
+      attempts int NOT NULL DEFAULT 0, max_attempts int NOT NULL DEFAULT 5,
+      locked_at timestamptz, locked_by text, next_attempt_at timestamptz,
+      failed_at timestamptz, last_error text,
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT notification_outbox_status_check CHECK (status IN
         ('pending','processing','sent','delivered','failed','skipped','cancelled')),
@@ -140,6 +144,9 @@ beforeAll(async () => {
   // The REAL migration chain, in order.
   for (const f of [
     '20260911100000_notification_resolver.sql',
+    // the INSTANT worker's claim RPC — in the chain so the engine-on tests can prove the
+    // instant worker and the digest engine do not race for the same row
+    '20260912100000_notification_email_worker.sql',
     '20261002100000_notification_digest_schema_foundation.sql',
     '20261003100000_notification_digest_acl_lockdown.sql',
     '20261004100000_notification_digest_state_machine.sql',
@@ -184,6 +191,7 @@ afterAll(async () => { if (c) await c.end(); if (epg) await epg.stop(); });
 async function applyC() {
   await c.query(MIG('20261011100000_notif_10cb_resolver_open_slots_digest.sql'));
   await c.query(MIG('20261011110000_notif_10cb_enqueue_digest_branch.sql'));
+  await c.query(MIG('20261011120000_notif_10cb_instant_claim_excludes_digest.sql'));
 }
 
 async function enqueue(subject: string, payload: object = {}) {
@@ -410,6 +418,67 @@ describe('C — engine ON mints one complete digest member', () => {
   it('a missing subtype is REFUSED rather than silently rendered', async () => {
     await expect(enqueue('na:nosubtype', { data: { trainer_name: 'Coach Ana' } }))
       .rejects.toThrow(/subtype/i);
+  });
+});
+
+// ===========================================================================
+// The instant worker and the digest engine must never contend for one row. A digest member is
+// written status='pending' with scheduled_for = its digest boundary, and materialization does
+// NOT make it non-pending — so without an explicit delivery_mode predicate the instant claim
+// would sweep up every digest member the moment its boundary passed, either terminal-failing it
+// (no subject/html) or sending it individually. Found in review of this slice.
+describe('C — the INSTANT claim never touches a digest member', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    await applyC();
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=true WHERE key='open_slots_player'`);
+  });
+  afterAll(async () => {
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=false WHERE key='open_slots_player'`);
+  });
+
+  const claim = async () => (await c.query(
+    `SELECT * FROM public.claim_notification_outbox_batch('email', 'instant-worker', 20, 15)`)).rows;
+
+  it('a DUE digest member is not claimed, and stays pending for the materializer', async () => {
+    await enqueue('na:race', ITEM);
+    // fast-forward past the boundary — the exact moment the instant worker would grab it
+    await c.query(`UPDATE public.notification_outbox SET scheduled_for = now() - interval '1 hour'
+                    WHERE delivery_mode='digest'`);
+    expect(await claim()).toHaveLength(0);
+    const { rows } = await c.query(`SELECT status, locked_by, attempts FROM public.notification_outbox`);
+    expect(rows[0].status).toBe('pending');     // untouched: no status flip
+    expect(rows[0].locked_by).toBeNull();       // and no lock token stamped
+    expect(rows[0].attempts).toBe(0);           // and no attempt burned
+  });
+
+  it('a legacy INSTANT row is still claimed — the narrowing is digest-only', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
+                   VALUES ($1,'open_slots_player','instant')`, [USER]);
+    await enqueue('na:instant-claimable', ITEM);
+    const claimed = await claim();
+    expect(claimed).toHaveLength(1);
+    expect(claimed[0].event_type).toBe('open_slots_player');
+  });
+
+  it('the REAP path leaves a stuck digest member alone', async () => {
+    await enqueue('na:reap', ITEM);
+    await c.query(`UPDATE public.notification_outbox
+                      SET status='processing', locked_at = now() - interval '2 hours',
+                          attempts = max_attempts
+                    WHERE delivery_mode='digest'`);
+    await claim();
+    const { rows } = await c.query(`SELECT status, last_error FROM public.notification_outbox`);
+    expect(rows[0].status).toBe('processing');  // NOT terminal-failed by the instant worker
+    expect(rows[0].last_error).toBeNull();
+  });
+
+  it('the stale-RECLAIM path leaves a digest member alone', async () => {
+    await enqueue('na:reclaim', ITEM);
+    await c.query(`UPDATE public.notification_outbox
+                      SET status='processing', locked_at = now() - interval '2 hours', attempts = 1
+                    WHERE delivery_mode='digest'`);
+    expect(await claim()).toHaveLength(0);
   });
 });
 
