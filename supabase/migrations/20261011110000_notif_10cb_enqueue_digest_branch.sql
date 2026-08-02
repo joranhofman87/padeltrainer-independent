@@ -1,8 +1,16 @@
 -- 10c-b C (part 2) — enqueue_notification gains the DIGEST branch.
 --
 -- Forward-only CREATE OR REPLACE of the resolver. Same signature, so privileges and the
--- COMMENT from 20260911100000 persist; this file re-states the whole body because
--- plpgsql has no partial replacement.
+-- COMMENT persist; this file re-states the whole body because plpgsql has no partial
+-- replacement.
+--
+-- THE BASELINE IS 20260922100000, NOT 20260911100000. The resolver was introduced in
+-- 20260911100000 but REPLACED by 20260922100000_notification_whatsapp_booking_optin_cadence,
+-- which added the WhatsApp booking-opt-in cadence branch (§6a). Rebasing this body on the
+-- September 11 text would silently delete that branch and stop WhatsApp for every opted-in
+-- guest and for account holders with no explicit v2 row — a live regression with nothing to do
+-- with digests. That branch is preserved verbatim below. Any future replacement of this
+-- function must diff against the LATEST deployed definition, not the original one.
 --
 -- WHAT CHANGED, and nothing else changed:
 --
@@ -184,6 +192,22 @@ BEGIN
       FROM public.notification_preferences_v2
       WHERE user_id = v_user_id AND event_type = p_event_key;
     END IF;
+    -- WHATSAPP: AN EXPLICIT BOOKING OPT-IN *IS* THE OPT-IN. (Preserved verbatim from
+    -- 20260922100000 — the TRUE pre-C baseline of this function. prefs_v2 is user_id-keyed, so
+    -- a GUEST can never express a cadence and would stay pinned to the 'off' default forever;
+    -- and a logged-in player has no WhatsApp control on required_delivery events. So when the
+    -- person has expressed NO preference, an opted-in IN-SCOPE contact supplies the cadence,
+    -- but only for events flagged whatsapp_optin_via_booking. An EXPLICIT preference still
+    -- wins, INCLUDING 'off'.)
+    IF v_channel = 'whatsapp'
+       AND v_freq IS NULL
+       AND v_evt.whatsapp_optin_via_booking
+       AND public.whatsapp_optin_in_scope(
+             v_person_id, v_user_id, v_guest_id,
+             p_tenant_academy_profile_id, p_tenant_trainer_id) THEN
+      v_freq := 'instant';
+    END IF;
+
     v_freq := coalesce(v_freq, v_default_freq);
 
     -- 6b. required delivery guarantees the EMAIL channel: it can't be off or digested.

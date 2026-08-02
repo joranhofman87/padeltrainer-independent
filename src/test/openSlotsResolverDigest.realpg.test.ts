@@ -153,6 +153,10 @@ beforeAll(async () => {
     // the INSTANT worker's claim RPC — in the chain so the engine-on tests can prove the
     // instant worker and the digest engine do not race for the same row
     '20260912100000_notification_email_worker.sql',
+    // The TRUE pre-C baseline of enqueue_notification: this migration REPLACED the Sept-11
+    // resolver, adding the WhatsApp booking-opt-in cadence branch. Without it in the chain,
+    // C could silently drop that branch and every test here would still pass.
+    '20260922100000_notification_whatsapp_booking_optin_cadence.sql',
     '20261002100000_notification_digest_schema_foundation.sql',
     '20261003100000_notification_digest_acl_lockdown.sql',
     '20261004100000_notification_digest_state_machine.sql',
@@ -275,6 +279,60 @@ describe('C — ships INERT (asserted as applied, not as later re-set)', () => {
 
   it('applying C makes open_slots_player the ONLY cutover event', () => {
     expect(cutoverAsShipped).toEqual(['open_slots_player']);
+  });
+});
+
+// ===========================================================================
+// C replaces enqueue_notification wholesale, so it can silently DELETE a branch added by a
+// later migration than the one it was based on. The WhatsApp booking-opt-in cadence
+// (20260922100000) is exactly such a branch: it lets an opted-in, in-scope contact supply the
+// cadence when no explicit v2 preference exists — the only way a GUEST can ever receive
+// WhatsApp. Losing it would stop live WhatsApp delivery with nothing to do with digests.
+describe('C — preserves the WhatsApp booking-opt-in cadence (non-cutover regression guard)', () => {
+  const WA_EVENT = 'booking_confirmed_player';
+
+  beforeAll(async () => {
+    await applyC();
+    await c.query(`
+      INSERT INTO public.notification_event_types
+        (key, supports_email, supports_whatsapp, whatsapp_optin_via_booking, default_email_frequency,
+         default_whatsapp_frequency, template_email)
+      VALUES ('${WA_EVENT}', true, true, true, 'instant', 'off', 'booking_confirmed_player')
+      ON CONFLICT (key) DO UPDATE SET supports_whatsapp = true, whatsapp_optin_via_booking = true;
+      INSERT INTO public.notification_contacts
+        (user_id, person_id, channel, destination_normalized, destination_redacted,
+         consent_status, consent_scope, consent_trainer_id, is_primary)
+      VALUES ('${USER}', '${PERSON}', 'whatsapp', '+31600000000', '•••0000',
+              'opted_in', 'tenant', '${TRAINER}', true)
+      ON CONFLICT DO NOTHING;`);
+  });
+
+  it('an opted-in contact still supplies the cadence when NO explicit v2 preference exists', async () => {
+    await c.query(`DELETE FROM public.notification_outbox;
+                   DELETE FROM public.notification_preferences_v2 WHERE event_type='${WA_EVENT}';`);
+    const { rows } = await c.query(
+      `SELECT channel FROM public.enqueue_notification(
+         p_event_key := '${WA_EVENT}', p_recipient_user_id := $1,
+         p_tenant_trainer_id := $2, p_idempotency_subject := 'wa-optin') ORDER BY channel`,
+      [USER, TRAINER]);
+    // WhatsApp must be present: default_whatsapp_frequency is 'off', so ONLY the opt-in branch
+    // can produce this row. If C dropped that branch, only the email row appears.
+    expect(rows.map((r) => r.channel)).toContain('whatsapp');
+  });
+
+  it("an EXPLICIT 'off' preference still wins over the booking opt-in", async () => {
+    await c.query(`DELETE FROM public.notification_outbox`);
+    await c.query(`INSERT INTO public.notification_preferences_v2
+                     (user_id, event_type, email_frequency, whatsapp_frequency)
+                   VALUES ($1,'${WA_EVENT}','instant','off')
+                   ON CONFLICT (user_id, event_type)
+                   DO UPDATE SET whatsapp_frequency='off'`, [USER]);
+    const { rows } = await c.query(
+      `SELECT channel FROM public.enqueue_notification(
+         p_event_key := '${WA_EVENT}', p_recipient_user_id := $1,
+         p_tenant_trainer_id := $2, p_idempotency_subject := 'wa-off')`, [USER, TRAINER]);
+    expect(rows.map((r) => r.channel)).not.toContain('whatsapp');
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE event_type='${WA_EVENT}'`);
   });
 });
 
