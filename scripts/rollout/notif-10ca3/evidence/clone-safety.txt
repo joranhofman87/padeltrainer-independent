@@ -42,9 +42,11 @@ $ bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
   PASS  …and a pristine baseline fingerprint was recorded
   PASS  a baseline containing a NON-synthetic address is refused
   PASS  …and not recorded
-TABLES email_address_state,email_delivery_events,invoices
-  PASS  the generator writes ONLY the two tables #615 locks, plus the invoice ids their FK needs (email_address_state,email_delivery_events,invoices)
-  PASS  …and those invoice rows carry nothing but a generated uuid
+TABLES email_address_state,email_delivery_events,invoices,trainer_profiles
+  PASS  the generator writes ONLY the two tables #615 locks plus the minimum FK parent graph (email_address_state,email_delivery_events,invoices,trainer_profiles)
+  PASS  …and every invoice field is synthetic (SYN- numbering, placeholder name)
+  PASS  …and the trainer parent carries only a uuid and the literal 'synthetic'
+  PASS  …filling exactly the NOT NULL columns the live schema declares, not a hard-coded guess
   PASS  every generated address uses the reserved, undeliverable example.invalid TLD
   PASS  the generator is deterministic — no executable Math.random (repeatable rehearsals)
 -- the build is inert WHILE it runs, not only afterwards --
@@ -55,6 +57,7 @@ TABLES email_address_state,email_delivery_events,invoices
   PASS  …and stand-in, sanitize and push are textually in that order, so it cannot drift
   PASS  a target with REAL pg_cron/pg_net is refused (stand-ins cannot shadow them)
   PASS  a chain that cannot be sanitized aborts the build (fail closed on the unknown)
+  PASS  …including a chain that merely MOVED — main changing forces a re-review
   PASS  …and nothing was pushed
   PASS  …and no schema was pushed to it
 -- reset is a REAL rebuild, not a row reload --
@@ -87,4 +90,4 @@ TABLES email_address_state,email_delivery_events,invoices
   PASS  MUTANT (baseline check removed from the gate) rehearses against a drifted target — a failed migration could leave a reusable false green
   PASS  MUTANT (shim AND deactivation removed) builds the schema with nothing keeping cron inert — one of the two is load-bearing
   PASS  MUTANT (wipe removed from reset) leaves the previous rehearsal's schema, shims and ledger in place — the wipe is what makes a reset pristine
-================  77 passed, 0 failed  ================
+================  80 passed, 0 failed  ================

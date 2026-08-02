@@ -28,18 +28,22 @@ $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
   PASS  the baseline fingerprint covers shape, size, distribution and bloat
   PASS  …and asserts every address is synthetic
 [5] the real #615 migrations: timing and ACCESS EXCLUSIVE behaviour
-  PASS  the three pinned migrations apply to the synthetic baseline  — 319 ms at 4k/12k rows
+  PASS  the three pinned migrations apply to the synthetic baseline  — 331 ms at 4k/12k rows
   PASS  the generated column exists after the rewrite
   PASS  the migration CHANGES the shape fingerprint, so a migrated target can never pass as pristine  — SHAPE 2a1ccb -> SHAPE c51528
   PASS  …and no timing/lock evidence carries an address or reason string
 [5b] the ADVERTISED lifecycle: sanitize -> full chain -> #615 -> wipe -> rebuild
-  PASS  the migration chain sanitizes (pg_cron/pg_net CREATE EXTENSION neutralised)  — SANITIZED files=552 neutralised_extension_statements=3 out=/var/folders/8k/2_zj7yyx3vvbzp_
+  PASS  the migration chain sanitizes (pg_cron/pg_net CREATE EXTENSION neutralised)  — SANITIZED files=552 neutralised_extension_statements=3 chain_sha256=74dc74407bc130ee out=/
   PASS  the FULL sanitized chain applies to a bare project (552/552)
   PASS  …and pg_cron / pg_net are NOT installed on the result
   PASS  …and ZERO cron jobs are active on the result (0 recorded by the stand-in)
   PASS  …the stand-in was actually exercised — the chain reached it rather than a real extension
   PASS  …and nothing reached the network
   PASS  …the chain created storage state that a naive wipe would leave behind (5 bucket(s))
+  PASS  the synthetic generator runs against the FULL migrated schema  — BYTES email_address_state.heap generated=98304 measured=98304 drift=0.
+  PASS  …creating a VALID invoice parent graph (trainer_id, invoice_number, due_date, player_name are NOT NULL)
+  PASS  …and linking events to it, so with_invoice_pct is real
+  PASS  …with every synthetic address still undeliverable
   PASS  #615 applies on top of the freshly built chain
   PASS  the wipe clears the storage buckets a schema drop cannot reach
   PASS  …and every storage policy the chain created
@@ -47,6 +51,7 @@ $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
   PASS  the wiped target passes the empty-project proof again
   PASS  the FULL chain REPLAYS after the wipe (552/552) — no duplicate bucket, no duplicate policy
   PASS  …and #615 is gone again, so the rebuilt target is genuinely pre-migration
+  PASS  the generator runs again on the REBUILT schema — the full cycle closes
 [6] the real migration under contention: abort, and ZERO delta
   PASS  the REAL migration ABORTS on lock_timeout while a reader holds the table  — 55P03
   PASS  …leaving ZERO schema delta (shape fingerprint unchanged)  — SHAPE 2a1ccb vs SHAPE 2a1ccb
@@ -54,5 +59,5 @@ $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
   PASS  …and the generated column was NOT added
   PASS  …and zero ledger delta — the ledger INSERT was in the same transaction, so this is not vacuous  — ledger=0
   PASS  …(control: an uncontended ledger insert DOES land, so the assertion has teeth)
-  PASS  uncontended, the same migration APPLIES — the abort was contention, not broken SQL  — 120 ms over 2k rows
-================  48 passed, 0 failed  ================
+  PASS  uncontended, the same migration APPLIES — the abort was contention, not broken SQL  — 115 ms over 2k rows
+================  53 passed, 0 failed  ================

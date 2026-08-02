@@ -33,6 +33,28 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
   PASS  restoring sql/withdrawn/clone_isolation.sql verbatim into sql/ is CAUGHT
   PASS  restoring sql/withdrawn/clone_unfence.sql verbatim into sql/ is CAUGHT
   PASS  the withdrawn artifact really does split CREATE TRIGGER and its ON clause across lines
+== the sanitizer is fail-closed against a MOVING main ==
+  PASS  the migration chain is pinned by reviewed digest
+  PASS  …with a well-formed sha256 and file count
+  PASS  extensions are an ALLOW-list (an unreviewed one is refused, not ignored)
+  PASS  patterns are matched on comment-stripped text, so formatting cannot hide a construct
+  PASS  the outbound sweep covers supabase_functions.http_request
+  PASS  the outbound sweep covers extensions.http_
+  PASS  the outbound sweep covers dblink
+  PASS  the outbound sweep covers CREATEs+(FOREIGNs+TABLE|SERVER
+  PASS  the outbound sweep covers schedule_in_database
+  PASS  the outbound sweep covers COPY
+  PASS  the outbound sweep covers pg_read_
+  PASS  a chain with ONE new migration is REFUSED until it is re-reviewed and re-pinned
+  PASS  …and says exactly that, with both digests
+  PASS  …printing both digests so the reviewer can diff them
+  PASS  an UNREVIEWED outbound extension is named and refused
+  PASS  a top-level supabase_functions.http_request call is refused
+  PASS  …and a comment between CREATE and EXTENSION does not hide it
+== the synthetic history follows the BACKFILL predicate, not every event ==
+  PASS  the generator's state-producing set is exactly the backfill's
+  PASS  …and the sizing query measures the same set
+  PASS  …and BOTH match the predicate in the pinned migration itself
 == the ADR exists and is referenced from the refusal path ==
   PASS  ADR-001 is present
   PASS  ADR cites the Supabase guidance on net.http_request_queue triggers
@@ -42,4 +64,4 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
 == the README no longer instructs anyone to run the withdrawn procedure ==
   PASS  README shows no runnable clone-source-quiesce step
   PASS  README links the ADR
-================  35 passed, 0 failed  ================
+================  55 passed, 0 failed  ================

@@ -428,7 +428,7 @@ CAP_STMT=<from preflight> run-rollout.sh clone-push --yes "$CLONE"   # time this
 *Evidence:* `preflight` output (row count, MiB, CAP values) + wall-clock duration of the push → `evidence/cloneA-<date>.txt`.
 *Pass:* push completes inside `CAP_STMT`. *Fail:* statement timeout → CAP is too low for prod scale; re-derive before step 9.
 
-**B — bounded lock abort.** Fresh snapshot. In psql session 1:
+**B — bounded lock abort.** Freshly rebuilt synthetic baseline. In psql session 1:
 ```sql
 BEGIN; LOCK TABLE public.email_address_state IN ACCESS EXCLUSIVE MODE;  -- hold it
 ```
@@ -437,7 +437,7 @@ Then, in session 2, run the same `clone-push`. *Pass:* it aborts on `lock_timeou
 — i.e. the delta is **absent**, nothing partial landed. Release the lock
 (`ROLLBACK`). *Fail:* the push blocks past `CAP_LOCK`, or preflight now fails.
 
-**C — prefix recovery.** Fresh snapshot. The prefix is *created on purpose*, by
+**C — prefix recovery.** Freshly rebuilt synthetic baseline. The prefix is *created on purpose*, by
 the real CLI: `clone-make-prefix` hands `supabase db push` a detached worktree at
 `PR615_SHA` with the later migration files **pruned**, so the CLI applies exactly
 the first file and writes exactly that ledger row. No hand-written INSERT into
@@ -457,7 +457,7 @@ manufacture a prefix over existing state — and accepts depth `1` or `2` only.
 `invalid` ledger state — stop and investigate; do not carry it into step 9.
 *Evidence:* the three `ledger-status` lines → `evidence/cloneC-<date>.txt`.
 
-**D — clean full apply + verification.** Fresh snapshot:
+**D — clean full apply + verification.** Freshly rebuilt synthetic baseline:
 ```bash
 run-rollout.sh preflight "$CLONE" --clone                  # phase 1: delta ABSENT
 CAP_STMT=<from A> run-rollout.sh clone-push --yes "$CLONE"

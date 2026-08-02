@@ -91,7 +91,7 @@ cat > "$BIN/node" <<'EOF'
 # the real node is needed for the scale-file read; only the synth loader is stubbed
 if [[ "$*" == *sanitize-migrations.mjs* ]]; then
   : > "$STATEDIR/SANITIZE_WAS_CALLED"
-  [[ "$(cat "$STATEDIR/SANITIZE_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "refusing: unsanitizable" >&2; exit 4; }
+  [[ "$(cat "$STATEDIR/SANITIZE_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "refusing: the migration chain has CHANGED since it was reviewed" >&2; exit 4; }
   d="${@: -1}"; mkdir -p "$d"; echo "SANITIZED files=552 neutralised_extension_statements=3 out=$d"; exit 0
 fi
 if [[ "$*" == *build-baseline.mjs* ]]; then
@@ -211,13 +211,19 @@ TBL=$(python3 -c "
 import re,sys
 s=open('$HERE/../synth/build-baseline.mjs').read()
 print(','.join(sorted(set(re.findall(r'public\.([a-z_]+)', s)))))")
-# invoices is written only because with_invoice_pct drives a real FK on
-# email_delivery_events — synthetic ids and nothing else about them.
-[[ "$TBL" == "email_address_state,email_delivery_events,invoices" ]] \
-  && pass "the generator writes ONLY the two tables #615 locks, plus the invoice ids their FK needs ($TBL)" \
+# Beyond the two tables #615 locks, the generator writes only the minimum parent
+# graph the real FKs require: invoices (NOT NULL trainer_id/invoice_number/
+# due_date/player_name) and the single trainer_profiles row those point at.
+[[ "$TBL" == "email_address_state,email_delivery_events,invoices,trainer_profiles" ]] \
+  && pass "the generator writes ONLY the two tables #615 locks plus the minimum FK parent graph ($TBL)" \
   || fail "generator touches other tables: $TBL"
-sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs" | grep -qE 'INSERT INTO public\.invoices \(id\) SELECT gen_random_uuid' \
-  && pass "…and those invoice rows carry nothing but a generated uuid" || fail "invoice rows carry more than an id"
+GEN="$HERE/../synth/build-baseline.mjs"
+sed -e 's|//.*$||' "$GEN" | grep -qE "invoice_number = .SYN-" \
+  && pass "…and every invoice field is synthetic (SYN- numbering, placeholder name)" || fail "invoice rows are not obviously synthetic"
+sed -e 's|//.*$||' "$GEN" | grep -qE "vals = names\.map\(\(k\) => \(k === 'id' \? 'gen_random_uuid\(\)' : \`'synthetic'\`\)\)" \
+  && pass "…and the trainer parent carries only a uuid and the literal 'synthetic'" || fail "trainer parent carries real-looking data"
+sed -e 's|//.*$||' "$GEN" | grep -qE "is_nullable='NO' AND column_default IS NULL" \
+  && pass "…filling exactly the NOT NULL columns the live schema declares, not a hard-coded guess" || fail "parent columns are hard-coded"
 grep -q 'example.invalid' "$HERE/../synth/build-baseline.mjs" \
   && pass "every generated address uses the reserved, undeliverable example.invalid TLD" || fail "addresses are not on a reserved TLD"
 sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs" | grep -qE 'Math\.random' \
@@ -244,6 +250,8 @@ crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
 seed; measured yes; echo 1 > "$STATEDIR/SANITIZE_FAIL"
 crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
 [[ $? -ne 0 ]] && pass "a chain that cannot be sanitized aborts the build (fail closed on the unknown)" || fail "unsanitizable chain accepted"
+grep -q 'CHANGED since it was reviewed' "$ROOT/out.txt" \
+  && pass "…including a chain that merely MOVED — main changing forces a re-review" || fail "no re-review message"
 [[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and nothing was pushed" || fail "pushed an unsanitized chain"
 [[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and no schema was pushed to it" || fail "pushed despite an unshimmable target"
 

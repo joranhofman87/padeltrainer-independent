@@ -241,6 +241,43 @@ try {
       const buckets = await scalar(fresh, `SELECT count(*)::int AS v FROM storage.buckets`);
       rec(`…the chain created storage state that a naive wipe would leave behind (${buckets} bucket(s))`, buckets > 0);
 
+      // THE GENERATOR AGAINST THE REAL MIGRATED SCHEMA. Previously it was only
+      // ever exercised against the simplified pre-state, where `invoices` has a
+      // single `id` column — so its invoice insert could never have run here.
+      const fullScale = JSON.parse(JSON.stringify(scale));
+      fullScale.tables.email_address_state.rows = 800;
+      fullScale.tables.email_delivery_events.rows = 2400;
+      fullScale.byte_tolerance_pct = 20;
+      const fsFile = join(sanDir, 'scale-full.json');
+      let genOut = '', genErr = null;
+      // learn this schema's real sizes, then pin them, so the envelope check is
+      // exercised rather than skipped
+      for (const pass of [1, 2]) {
+        writeFileSync(fsFile, JSON.stringify(fullScale));
+        try {
+          genOut = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+          genErr = null; break;
+        } catch (x) {
+          genErr = x;
+          const seen = String(x.stdout || '').match(/BYTES (\S+)\.(\w+) generated=(\d+)/g) || [];
+          if (pass === 2 || !seen.length) break;
+          for (const line of seen) {
+            const [, t, what, got] = line.match(/BYTES (\S+)\.(\w+) generated=(\d+)/);
+            fullScale.tables[t][`${what}_bytes`] = Number(got);
+          }
+        }
+      }
+      rec('the synthetic generator runs against the FULL migrated schema',
+          genErr === null, genErr ? String(genErr.stdout || genErr.stderr || genErr).slice(0, 200) : genOut.trim().slice(0, 70));
+      rec('…creating a VALID invoice parent graph (trainer_id, invoice_number, due_date, player_name are NOT NULL)',
+          Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.invoices`)) > 0);
+      rec('…and linking events to it, so with_invoice_pct is real',
+          Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE invoice_id IS NOT NULL`)) > 0);
+      rec('…with every synthetic address still undeliverable',
+          Number(await scalar(fresh, `SELECT ((SELECT count(*) FROM public.email_address_state WHERE email NOT LIKE '%@%.example.invalid')
+                 + (SELECT count(*) FROM public.email_delivery_events WHERE recipient_email NOT LIKE '%@%.example.invalid'))::int AS v`)) === 0);
+
       // apply #615, exactly as rehearsal A does
       await applyPr615(fresh);
       rec('#615 applies on top of the freshly built chain',
@@ -267,6 +304,15 @@ try {
       rec('…and #615 is gone again, so the rebuilt target is genuinely pre-migration',
           await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
                                WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 0);
+      // the generator must run on the REBUILT schema too — a reset that leaves a
+      // target the loader cannot fill is not a reset
+      let genErr2 = null;
+      try {
+        execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+      } catch (x) { genErr2 = x; }
+      rec('the generator runs again on the REBUILT schema — the full cycle closes',
+          genErr2 === null, genErr2 ? String(genErr2.stdout || genErr2.stderr || genErr2).slice(0, 180) : '');
     } catch (x) {
       rec('the advertised build/wipe/rebuild lifecycle completes', false, String(x.message).slice(0, 160));
     } finally { await fresh.end().catch(() => {}); rmSync(sanDir, { recursive: true, force: true }); }

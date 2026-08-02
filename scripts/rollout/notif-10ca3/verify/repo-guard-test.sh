@@ -16,6 +16,8 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 B="$HERE/.."
+ROOT="$(mktemp -d)"
+trap 'rm -rf "$ROOT"' EXIT
 P=0; F=0
 pass(){ P=$((P+1)); echo "  PASS  $*"; }
 fail(){ F=$((F+1)); echo "  FAIL  $*"; }
@@ -128,6 +130,56 @@ grep -A2 'CREATE TRIGGER rollout_clone_fence_netq' "$B/sql/withdrawn/clone_sourc
   | grep -q 'ON net.http_request_queue' \
   && pass "the withdrawn artifact really does split CREATE TRIGGER and its ON clause across lines" \
   || fail "the multi-line premise of this test no longer holds"
+
+echo "== the sanitizer is fail-closed against a MOVING main =="
+PIN="$B/clone-safety/reviewed-migration-chain.json"
+[[ -s "$PIN" ]] && pass "the migration chain is pinned by reviewed digest" || fail "no reviewed-chain pin"
+node -e "const p=require('$PIN'); process.exit(/^[0-9a-f]{64}$/.test(p.sha256) && p.files>0 ? 0 : 1)" \
+  && pass "…with a well-formed sha256 and file count" || fail "malformed pin"
+SAN="$B/synth/sanitize-migrations.mjs"
+grep -q 'ALLOWED_EXT' "$SAN" && pass "extensions are an ALLOW-list (an unreviewed one is refused, not ignored)" || fail "extensions are still a deny-list"
+grep -q 'stripComments' "$SAN" && pass "patterns are matched on comment-stripped text, so formatting cannot hide a construct" || fail "no comment stripping"
+for pat in 'supabase_functions\.http_request' 'extensions\.http_' 'dblink' 'CREATE\\s\+\(FOREIGN\\s\+TABLE\|SERVER' 'schedule_in_database' 'COPY' 'pg_read_'; do
+  grep -qE "$pat" "$SAN" && pass "the outbound sweep covers ${pat//\\/}" || fail "sweep misses ${pat//\\/}"
+done
+# the pin must actually bite
+TMPSRC="$ROOT/movingmain"; mkdir -p "$TMPSRC"
+cp "$B/../../../supabase/migrations/"*.sql "$TMPSRC/" 2>/dev/null
+printf 'SELECT 1;\n' > "$TMPSRC/29990101000000_a_new_migration.sql"
+node "$SAN" "$TMPSRC" "$ROOT/sanout" >/dev/null 2>&1
+[[ $? -ne 0 ]] && pass "a chain with ONE new migration is REFUSED until it is re-reviewed and re-pinned" || fail "the pin does not bite"
+# capture, then match: under `set -o pipefail` the producer's non-zero exit (which
+# is the POINT here) would make a successful grep look like a failed pipeline
+OUT="$(node "$SAN" "$TMPSRC" "$ROOT/sanout" 2>&1 || true)"
+grep -q 'has CHANGED since it was reviewed' <<<"$OUT" \
+  && pass "…and says exactly that, with both digests" || fail "no actionable pin message"
+grep -q 'reviewed: [0-9a-f]\{64\}' <<<"$OUT" && grep -q 'current : [0-9a-f]\{64\}' <<<"$OUT" \
+  && pass "…printing both digests so the reviewer can diff them" || fail "digests not printed"
+printf 'CREATE EXTENSION IF NOT EXISTS http;\n' > "$TMPSRC/29990101000001_outbound.sql"
+OUT="$(node "$SAN" "$TMPSRC" "$ROOT/sanout" 2>&1 || true)"
+grep -q 'unreviewed extension "http"' <<<"$OUT" \
+  && pass "an UNREVIEWED outbound extension is named and refused" || fail "unreviewed extension not caught"
+printf 'SELECT supabase_functions.http_request();\n' > "$TMPSRC/29990101000002_hook.sql"
+OUT="$(node "$SAN" "$TMPSRC" "$ROOT/sanout" 2>&1 || true)"
+grep -q 'invokes supabase_functions.http_request' <<<"$OUT" \
+  && pass "a top-level supabase_functions.http_request call is refused" || fail "http_request call not caught"
+printf 'CREATE /* sneaky */ EXTENSION IF NOT EXISTS dblink;\n' > "$TMPSRC/29990101000003_cmt.sql"
+OUT="$(node "$SAN" "$TMPSRC" "$ROOT/sanout" 2>&1 || true)"
+grep -q 'unreviewed extension "dblink"' <<<"$OUT" \
+  && pass "…and a comment between CREATE and EXTENSION does not hide it" || fail "comment-split CREATE EXTENSION slipped past"
+rm -rf "$TMPSRC" "$ROOT/sanout"
+
+echo "== the synthetic history follows the BACKFILL predicate, not every event =="
+GEN="$B/synth/build-baseline.mjs"
+grep -q "STATE_PRODUCING = \['sent', 'delivered', 'bounced', 'complained', 'operator_reset'\]" "$GEN" \
+  && pass "the generator's state-producing set is exactly the backfill's" || fail "generator predicate drifted"
+ADR="$B/docs/ADR-001-clone-safety-fence-withdrawn.md"
+grep -q "event_type IN ('sent', 'delivered', 'bounced', 'complained', 'operator_reset')" "$ADR" \
+  && pass "…and the sizing query measures the same set" || fail "the sizing histogram counts every event type"
+# coupled to the migration itself, so a change there fails here
+git -C "$B/../../.." show "$(node -e "process.stdout.write(require('fs').readFileSync('$B/PINS.env','utf8').match(/PR615_SHA=([0-9a-f]{40})/)[1])"):supabase/migrations/20261006100000_email_delivery_concurrency_suppression.sql" 2>/dev/null \
+  | grep -q "event_type IN ('sent', 'delivered', 'bounced', 'complained', 'operator_reset')" \
+  && pass "…and BOTH match the predicate in the pinned migration itself" || fail "the pinned migration's predicate no longer matches"
 
 echo "== the ADR exists and is referenced from the refusal path =="
 ADR="$B/docs/ADR-001-clone-safety-fence-withdrawn.md"

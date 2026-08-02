@@ -76,6 +76,12 @@ const addr = (i, width) => pad(`s${i}`, Math.max(2, (width || 32) - DOMAIN.lengt
 // The backfill walks STATE-PRODUCING events per address, so the shape of that
 // history — not just the total row count — drives its cost. Weight each address
 // by a p50/p90/max histogram rather than spreading events uniformly.
+// The #615 backfill scans only STATE-PRODUCING events:
+//   event_type IN ('sent','delivered','bounced','complained','operator_reset')
+// (20261006100000, the state_changed_at derivation). Counting every event type
+// inflates the history and mis-sizes the backfill, so the histogram is measured
+// and generated over exactly this set. (mutation-pinned: clone-safety-test.sh)
+const STATE_PRODUCING = ['sent', 'delivered', 'bounced', 'complained', 'operator_reset'];
 const hist = DE.events_per_address || {};
 const p50 = Math.max(1, hist.p50 || 1), p90 = Math.max(p50, hist.p90 || p50), pmax = Math.max(p90, hist.max || p90);
 const eventsFor = (k) => { const r = rnd(); return r < 0.5 ? p50 : r < 0.9 ? p90 : pmax; };
@@ -87,18 +93,64 @@ try {
   const t0 = Date.now();
   await c.query('BEGIN');
   await c.query('TRUNCATE public.email_delivery_events, public.email_address_state');
-  // with_invoice_pct drives a real FK column, so the referenced rows must exist.
-  // Synthetic invoice ids only — no invoice is copied, and nothing else about
-  // them is populated.
+  // with_invoice_pct drives a real FK column, so the referenced rows must exist
+  // AND satisfy the real table's constraints: trainer_id (FK to trainer_profiles,
+  // nullable in the current schema but kept consistent), invoice_number (unique
+  // per trainer), due_date and player_name are all NOT NULL. The earlier version
+  // inserted only `id` and passed only because the test schema was simplified —
+  // against the real migrated schema it could never have run.
+  //
+  // Everything here is synthetic: a generated uuid, a sequence number and a
+  // placeholder name on the reserved-invalid domain. No invoice is copied.
   const wantInv = Math.max(0, Math.min(100, Number(DE.with_invoice_pct || 0)));
   const invIds = [];
   if (wantInv > 0) {
     const nInv = Math.max(1, Math.ceil(DE.rows * wantInv / 100 / 4));
-    for (let i = 0; i < nInv; i += 5000) {
-      const chunk = Math.min(5000, nInv - i);
+    // the parent graph, only as deep as the FKs actually require
+    const cols = new Set((await c.query(
+      `SELECT column_name FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='invoices'`)).rows.map(r => r.column_name));
+    let trainerId = null;
+    if (cols.has('trainer_id')) {
+      const tp = await c.query(`SELECT to_regclass('public.trainer_profiles') AS t`);
+      if (tp.rows[0].t) {
+        const tcols = new Set((await c.query(
+          `SELECT column_name FROM information_schema.columns
+            WHERE table_schema='public' AND table_name='trainer_profiles'
+              AND is_nullable='NO' AND column_default IS NULL`)).rows.map(r => r.column_name));
+        const names = ['id', ...[...tcols].filter((k) => k !== 'id')];
+        const vals = names.map((k) => (k === 'id' ? 'gen_random_uuid()' : `'synthetic'`));
+        const r = await c.query(
+          `INSERT INTO public.trainer_profiles (${names.join(',')}) VALUES (${vals.join(',')}) RETURNING id`);
+        trainerId = r.rows[0].id;
+      }
+    }
+    const has = (k) => cols.has(k);
+    for (let i = 0; i < nInv; i += 2000) {
+      const n = Math.min(2000, nInv - i);
+      const rows = [];
+      for (let k = 0; k < n; k++) {
+        const row = {};
+        if (has('trainer_id'))     row.trainer_id = trainerId;
+        if (has('invoice_number')) row.invoice_number = `SYN-${i + k}`;
+        if (has('due_date'))       row.due_date = '2026-01-01';
+        if (has('player_name'))    row.player_name = 'synthetic player';
+        rows.push(row);
+      }
+      const names = Object.keys(rows[0]);
+      if (!names.length) {
+        const r = await c.query(
+          `INSERT INTO public.invoices (id) SELECT gen_random_uuid() FROM generate_series(1, $1) RETURNING id`, [n]);
+        for (const x of r.rows) invIds.push(x.id);
+        continue;
+      }
+      const params = [];
+      const vals = rows.map((row, k) => '(' + names.map((nm, j) => {
+        params.push(row[nm]); return `$${k * names.length + j + 1}`;
+      }).join(',') + ')').join(',');
       const r = await c.query(
-        `INSERT INTO public.invoices (id) SELECT gen_random_uuid() FROM generate_series(1, $1) RETURNING id`, [chunk]);
-      for (const row of r.rows) invIds.push(row.id);
+        `INSERT INTO public.invoices (${names.join(',')}) VALUES ${vals} RETURNING id`, params);
+      for (const x of r.rows) invIds.push(x.id);
     }
   }
 
@@ -130,8 +182,16 @@ try {
     while (rows.length < 5000 && written < DE.rows) {
       const a = addr(ai % Math.max(1, AS.rows), AS.avg_email_len || 32);
       const n = Math.min(eventsFor(ai), DE.rows - written);
+      // the per-address budget is the STATE-PRODUCING history; non-producing
+      // types are drawn from their own share so they neither pad nor starve it
+      const producing = Object.fromEntries(Object.entries(DE.event_type_distribution)
+        .filter(([k2]) => STATE_PRODUCING.includes(k2)));
+      const other = Object.fromEntries(Object.entries(DE.event_type_distribution)
+        .filter(([k2]) => !STATE_PRODUCING.includes(k2)));
+      const otherShare = Object.values(other).reduce((a, b) => a + b, 0)
+        / Math.max(1, Object.values(DE.event_type_distribution).reduce((a, b) => a + b, 0));
       for (let k = 0; k < n; k++) {
-        const et = pick(DE.event_type_distribution);
+        const et = (rnd() < otherShare && Object.keys(other).length) ? pick(other) : pick(producing);
         rows.push([
           a, et,
           et === 'bounced' ? (rnd() < 0.5 ? 'hard' : 'soft') : null,

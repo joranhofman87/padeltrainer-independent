@@ -171,10 +171,22 @@ the chain also runs `CREATE EXTENSION pg_cron` / `pg_net` (20260117134212,
   `CREATE EXTENSION` statements — and if they succeed, the target has a real
   scheduler and a real network primitive again.
 
-So the migration **source is sanitized**: `synth/sanitize-migrations.mjs`
-neutralises exactly those two `CREATE EXTENSION` statements (and *refuses* the
-build on anything else that could reach outside the box — `dblink`,
-`postgres_fdw`, `http`, `wrappers`, `CREATE SERVER`, `schedule_in_database`), and
+So the migration **source is sanitized**, fail-closed two ways, because `main`
+moves and a pattern list can only reject the constructs someone already thought of:
+
+1. **A reviewed-chain digest.** `synth/sanitize-migrations.mjs` hashes every
+   migration and requires the result to equal the pinned value in
+   `clone-safety/reviewed-migration-chain.json`. *Any* change — one new
+   migration, one edited line — refuses the build until a human re-reviews the
+   diff and re-pins. This is the guard that survives an unknown construct.
+2. **A pattern sweep over comment-stripped text**, so `CREATE /* x */ EXTENSION`
+   cannot hide anything. Extensions are an **allow-list** (`pgcrypto`, `pg_trgm`,
+   … reviewed as inert); anything else is refused rather than ignored.
+   `pg_cron`/`pg_net` are the two that are *neutralised* instead. The sweep also
+   refuses `supabase_functions.http_request`, `extensions.http_*`, bare `http_*`,
+   `dblink`, FDW plumbing, `cron.schedule_in_database`, `pg_read_file` and
+   `COPY … PROGRAM`.
+
 `sql/platform_stub.sql` supplies inert `cron`/`net` objects beforehand. Every
 `cron.schedule` in the chain then records intent and schedules nothing; every
 `net.http_post` is counted and never made. The stub fails closed if the real
@@ -239,8 +251,13 @@ carries widths and distributions rather than just row counts.
 Row counts; average widths for **every** width-driving column of the pre-#615
 shape; the complete index set (created by the same migrations); the `state` and
 `event_type` distributions; and the **per-address event history**
-(`events_per_address` p50/p90/max), because the backfill walks state-producing
-events per address rather than the table uniformly.
+(`events_per_address` p50/p90/max) measured over **exactly the backfill's own
+predicate** — `event_type IN ('sent','delivered','bounced','complained',
+'operator_reset')`. Counting every event type would inflate the history with rows
+the backfill never touches (`failed`, `send_failed`, `delivery_delayed`), and the
+generator would then distribute those through a budget sized for the others. The
+generator uses the same set, and `verify/repo-guard-test.sh` pins both against the
+predicate in the pinned migration itself.
 
 **Row counts alone are not scale.** An `ACCESS EXCLUSIVE` rewrite walks *pages*,
 so the scale file also carries measured `heap_bytes`, `index_bytes` and
@@ -312,11 +329,19 @@ SELECT round(100.0 * count(*) FILTER (WHERE resend_event_id IS NOT NULL) / great
          AS with_invoice_pct
 FROM public.email_delivery_events;
 
--- events_per_address: the histogram the backfill's cost follows
+-- events_per_address: the histogram the backfill's cost follows.
+-- FILTERED TO THE BACKFILL'S OWN PREDICATE. 20261006100000 derives
+-- state_changed_at from STATE-PRODUCING events only:
+--   event_type IN ('sent','delivered','bounced','complained','operator_reset')
+-- Counting every event type would inflate the history with rows the backfill
+-- never touches (failed / send_failed / delivery_delayed), and the generator
+-- would then distribute those through a budget sized for the others.
 SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY n)::int AS p50,
        percentile_disc(0.9) WITHIN GROUP (ORDER BY n)::int AS p90,
        max(n)::int                                        AS max
-FROM (SELECT count(*) AS n FROM public.email_delivery_events GROUP BY recipient_email) x;
+FROM (SELECT count(*) AS n FROM public.email_delivery_events
+       WHERE event_type IN ('sent', 'delivered', 'bounced', 'complained', 'operator_reset')
+       GROUP BY recipient_email) x;
 
 -- bloat: dead_tuple_ratio = n_dead_tup / greatest(n_live_tup, 1)
 SELECT relname, n_live_tup, n_dead_tup FROM pg_stat_user_tables
