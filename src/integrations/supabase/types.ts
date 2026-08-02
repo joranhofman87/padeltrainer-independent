@@ -2686,26 +2686,44 @@ export type Database = {
       email_address_state: {
         Row: {
           email: string
+          is_suppressed: boolean | null
           last_event_at: string | null
           last_event_type: string | null
+          last_reset_at: string | null
+          provider_suppressed_active: boolean
+          provider_suppression_changed_at: string | null
+          provider_suppression_event_id: string | null
           reason: string | null
           state: string
+          state_changed_at: string | null
           updated_at: string
         }
         Insert: {
           email: string
+          is_suppressed?: boolean | null
           last_event_at?: string | null
           last_event_type?: string | null
+          last_reset_at?: string | null
+          provider_suppressed_active?: boolean
+          provider_suppression_changed_at?: string | null
+          provider_suppression_event_id?: string | null
           reason?: string | null
           state?: string
+          state_changed_at?: string | null
           updated_at?: string
         }
         Update: {
           email?: string
+          is_suppressed?: boolean | null
           last_event_at?: string | null
           last_event_type?: string | null
+          last_reset_at?: string | null
+          provider_suppressed_active?: boolean
+          provider_suppression_changed_at?: string | null
+          provider_suppression_event_id?: string | null
           reason?: string | null
           state?: string
+          state_changed_at?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -4660,6 +4678,77 @@ export type Database = {
           whatsapp_optin_via_booking?: boolean
         }
         Relationships: []
+      }
+      notification_orphan_reconcile_actions: {
+        Row: {
+          acted_at: string
+          action: string
+          actor: string
+          id: number
+          prior_error_code: string | null
+          reason: string
+          resend_event_id: string
+        }
+        Insert: {
+          acted_at?: string
+          action: string
+          actor: string
+          id?: never
+          prior_error_code?: string | null
+          reason: string
+          resend_event_id: string
+        }
+        Update: {
+          acted_at?: string
+          action?: string
+          actor?: string
+          id?: never
+          prior_error_code?: string | null
+          reason?: string
+          resend_event_id?: string
+        }
+        Relationships: []
+      }
+      notification_orphan_reconcile_state: {
+        Row: {
+          attempts: number
+          channel: string
+          digest_group_id: string
+          last_error_code: string | null
+          next_eligible_at: string
+          quarantined: boolean
+          resend_event_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          channel: string
+          digest_group_id: string
+          last_error_code?: string | null
+          next_eligible_at?: string
+          quarantined?: boolean
+          resend_event_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          digest_group_id?: string
+          last_error_code?: string | null
+          next_eligible_at?: string
+          quarantined?: boolean
+          resend_event_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_orphan_reconcile_state_resend_event_id_fkey"
+            columns: ["resend_event_id"]
+            isOneToOne: true
+            referencedRelation: "notification_provider_events"
+            referencedColumns: ["resend_event_id"]
+          },
+        ]
       }
       notification_outbox: {
         Row: {
@@ -9585,6 +9674,18 @@ export type Database = {
         Returns: string
       }
       digits_only: { Args: { _value: string }; Returns: string }
+      email_event_rank: { Args: { p_event_type: string }; Returns: number }
+      email_state_transition: {
+        Args: {
+          p_at: string
+          p_bounce_type: string
+          p_event_type: string
+          p_last_reset_at: string
+          p_state: string
+          p_state_changed_at: string
+        }
+        Returns: Record<string, unknown>
+      }
       enqueue_booking_notification: {
         Args: { p_booking_ids: string[]; p_kind: string }
         Returns: number
@@ -10408,10 +10509,20 @@ export type Database = {
         Args: { _profile_id: string }
         Returns: Json
       }
-      link_notification_provider_event: {
-        Args: { p_digest_group_id: string; p_resend_event_id: string }
-        Returns: boolean
-      }
+      link_notification_provider_event:
+        | {
+            Args: { p_digest_group_id: string; p_resend_event_id: string }
+            Returns: boolean
+          }
+        | {
+            Args: {
+              p_digest_group_id: string
+              p_now: string
+              p_resend_event_id: string
+              p_run_id: string
+            }
+            Returns: boolean
+          }
       mark_skipped_alerts_sent: { Args: { p_ids: string[] }; Returns: number }
       materialize_notification_digest_groups: {
         Args: {
@@ -10609,6 +10720,18 @@ export type Database = {
         Returns: undefined
       }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
+      notification_orphan_reconcile_permanent_reason: {
+        Args: { p_code: string }
+        Returns: boolean
+      }
+      notification_orphan_reconcile_requeue: {
+        Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
+        Returns: boolean
+      }
+      notification_orphan_reconcile_resolve: {
+        Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
+        Returns: boolean
+      }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
@@ -10722,6 +10845,22 @@ export type Database = {
         }
         Returns: number
       }
+      reconcile_orphan_provider_events: {
+        Args: {
+          p_channel: string
+          p_limit: number
+          p_now: string
+          p_run_id: string
+        }
+        Returns: {
+          deferred: number
+          errors: number
+          examined: number
+          has_more: boolean
+          linked: number
+          quarantined: number
+        }[]
+      }
       reconcile_payments: {
         Args: { _since?: string }
         Returns: {
@@ -10812,6 +10951,7 @@ export type Database = {
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
+      reset_email_suppression: { Args: { p_email: string }; Returns: undefined }
       resolve_guest_member_contacts: {
         Args: { _guest_ids: string[] }
         Returns: {

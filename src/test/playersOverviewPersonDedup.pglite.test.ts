@@ -137,7 +137,9 @@ beforeAll(async () => {
     CREATE TABLE public.invoices (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid, trainer_id uuid,
       player_id uuid, guest_player_id uuid, status text, due_date date, paid_at timestamptz);
-    CREATE TABLE public.email_address_state (email text, state text);
+    CREATE TABLE public.email_address_state (email text, state text,
+      provider_suppressed_active boolean NOT NULL DEFAULT false,
+      is_suppressed boolean GENERATED ALWAYS AS ((state IN ('hard_bounced','complained')) OR provider_suppressed_active) STORED);
     CREATE TABLE public.cycles (
       id uuid PRIMARY KEY, name text, owner_type text, owner_id uuid, status text, type text,
       start_date date, end_date date, price_per_session numeric, location_id uuid, category_id uuid,
@@ -242,6 +244,7 @@ beforeAll(async () => {
   for (const f of [
     '20260827100000_phase32_players_overview_person_dedup.sql',
     '20260901110000_phase33e_overview_type_has_login.sql', // 3.3e: player_type = person has-login
+    '20261006120000_readers_canonical_is_suppressed.sql',  // 10c-a3: email_undeliverable → canonical is_suppressed
   ]) {
     await db.exec(
       readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8')
@@ -409,6 +412,17 @@ describe('get_players_overview — one row per person (Phase 3.2)', () => {
       UPDATE public.guest_players SET email = 'bram@x.nl' WHERE id = '${GA}';
       DELETE FROM public.email_address_state WHERE email = 'roster-bram@club.nl';
     `);
+  });
+
+  it('email_undeliverable now reflects the CANONICAL is_suppressed — a provider suppression with NO bounce flags too (10c-a3)', async () => {
+    // an address on Resend's suppression list but with state='ok' (never bounced) — the OLD raw-state predicate would
+    // MISS it; the re-emitted reader reads the canonical is_suppressed and badges it.
+    await db.exec(`INSERT INTO public.email_address_state (email, state, provider_suppressed_active)
+                   VALUES ('bram@x.nl', 'ok', true);`);
+    const bram = (await overview(MGR_USER)).find((r) => r.person_id === PERSON1)!;
+    expect(bram.email).toBe('bram@x.nl');
+    expect(bram.email_undeliverable).toBe(true);   // via the provider-suppression axis, not a bounce
+    await db.exec(`DELETE FROM public.email_address_state WHERE email = 'bram@x.nl';`);
   });
 
   it('a multi-guest person is filterable by EVERY owning trainer, not just the primary ref\'s', async () => {
