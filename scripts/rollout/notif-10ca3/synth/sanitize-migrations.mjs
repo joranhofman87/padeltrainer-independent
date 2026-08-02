@@ -124,7 +124,18 @@ if (!pinned || typeof pinned.sha256 !== 'string') {
     `      thought of. Re-review the diff, then re-pin with:\n` +
     `        node synth/sanitize-migrations.mjs <src> <out> --write-pin`);
 }
+// F3: an UNSAFE chain must never be pinnable. The digest mismatch is the only
+// refusal --write-pin is allowed to clear; every other refusal (an unreviewed
+// extension, an outbound call, a surviving CREATE EXTENSION) blocks pinning, or
+// re-pinning would launder exactly what the sweep just found.
+const unsafeRefusals = refusals.filter((r) => !r.includes('has CHANGED since it was reviewed')
+                                           && !r.includes('reviewed-chain pin'));
 if (process.argv.includes('--write-pin')) {
+  if (unsafeRefusals.length) {
+    console.error('refusing to PIN a chain that is not safe to build from:\n  ' + unsafeRefusals.join('\n  '));
+    console.error('\nFix or explicitly neutralise each of these first. Pinning is a record that\nthe chain was reviewed and found inert — it is not a way to silence the sweep.');
+    process.exit(5);
+  }
   writeFileSync(PIN_FILE, JSON.stringify({
     _comment: 'Digest of the migration chain reviewed for outbound behaviour. Re-pin only after reviewing the diff.',
     sha256: chainDigest, files: scanned, pinned_at: new Date().toISOString().slice(0, 10),

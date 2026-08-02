@@ -51,6 +51,14 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
   PASS  an UNREVIEWED outbound extension is named and refused
   PASS  a top-level supabase_functions.http_request call is refused
   PASS  …and a comment between CREATE and EXTENSION does not hide it
+== an UNSAFE chain cannot be pinned (pin ordering) ==
+  PASS  --write-pin REFUSES a chain the sweep found unsafe
+  PASS  …and does not print PINNED
+  PASS  …and the pin file is untouched, byte for byte
+  PASS  …naming exactly what made it unsafe
+  PASS  a SAFE but changed chain still refuses to BUILD until re-pinned
+  PASS  MUTANT (safety check removed from --write-pin) PINS an unsafe chain — checking before writing is load-bearing
+  PASS  …and the real pin is restored byte for byte after the mutation
 == the synthetic history follows the BACKFILL predicate, not every event ==
   PASS  the generator's state-producing set is exactly the backfill's
   PASS  …and the sizing query measures the same set
@@ -64,4 +72,4 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
 == the README no longer instructs anyone to run the withdrawn procedure ==
   PASS  README shows no runnable clone-source-quiesce step
   PASS  README links the ADR
-================  55 passed, 0 failed  ================
+================  62 passed, 0 failed  ================

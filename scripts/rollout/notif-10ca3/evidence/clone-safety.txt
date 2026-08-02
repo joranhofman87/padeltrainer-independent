@@ -68,6 +68,17 @@ TABLES email_address_state,email_delivery_events,invoices,trainer_profiles
   PASS  …through the SAME build path, so a reset cannot drift from the build
   PASS  the wipe empties the migration ledger (leaving it would apply a SUFFIX next time)
   PASS  …and drops the schema, so columns/functions/constraints really are gone
+-- a FIRST build that fails part-way is recoverable, and only explicitly --
+  PASS  a generator failure fails the first build
+  PASS  …and records NO fingerprint, so nothing false is left behind
+  PASS  …but the schema DID land, so the target is no longer empty (the stuck state)
+  PASS  a plain retry is refused — the target is not empty
+  PASS  …and the refusal names the recovery command instead of leaving the operator stuck
+  PASS  a plain reset is refused too — there is no baseline to verify against
+  PASS  …and it too points at --recover
+  PASS  clone-reset-baseline --recover wipes, rebuilds and records a pristine baseline
+  PASS  …and the fingerprint now exists
+  PASS  --recover is REFUSED once a baseline exists (it discards a target; that must stay deliberate)
 == a rehearsal cannot start from a drifted or failed-migration baseline ==
   PASS  an untouched target matches its recorded baseline
   PASS  a target whose SHAPE changed (a part-applied migration) is refused
@@ -90,4 +101,4 @@ TABLES email_address_state,email_delivery_events,invoices,trainer_profiles
   PASS  MUTANT (baseline check removed from the gate) rehearses against a drifted target — a failed migration could leave a reusable false green
   PASS  MUTANT (shim AND deactivation removed) builds the schema with nothing keeping cron inert — one of the two is load-bearing
   PASS  MUTANT (wipe removed from reset) leaves the previous rehearsal's schema, shims and ledger in place — the wipe is what makes a reset pristine
-================  80 passed, 0 failed  ================
+================  90 passed, 0 failed  ================

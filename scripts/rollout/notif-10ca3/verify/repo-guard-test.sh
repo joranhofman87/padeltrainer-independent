@@ -17,7 +17,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 B="$HERE/.."
 ROOT="$(mktemp -d)"
-trap 'rm -rf "$ROOT"' EXIT
+trap 'rm -rf "$ROOT"; rm -f "$HERE/../synth/.pinmutant.mjs"' EXIT
 P=0; F=0
 pass(){ P=$((P+1)); echo "  PASS  $*"; }
 fail(){ F=$((F+1)); echo "  FAIL  $*"; }
@@ -168,6 +168,42 @@ OUT="$(node "$SAN" "$TMPSRC" "$ROOT/sanout" 2>&1 || true)"
 grep -q 'unreviewed extension "dblink"' <<<"$OUT" \
   && pass "…and a comment between CREATE and EXTENSION does not hide it" || fail "comment-split CREATE EXTENSION slipped past"
 rm -rf "$TMPSRC" "$ROOT/sanout"
+
+echo "== an UNSAFE chain cannot be pinned (pin ordering) =="
+TMPSRC="$ROOT/pinorder"; mkdir -p "$TMPSRC"
+cp "$B/../../../supabase/migrations/"*.sql "$TMPSRC/" 2>/dev/null
+cp "$PIN" "$ROOT/pin.bak"   # a FILE copy: $(cat) strips the trailing newline
+printf 'CREATE EXTENSION IF NOT EXISTS http;\n' > "$TMPSRC/29990101000009_unsafe.sql"
+OUT="$(node "$SAN" "$TMPSRC" "$ROOT/pinout" --write-pin 2>&1 || true)"
+grep -q 'refusing to PIN' <<<"$OUT" && pass "--write-pin REFUSES a chain the sweep found unsafe" || fail "an unsafe chain was pinnable"
+grep -q 'PINNED' <<<"$OUT" && fail "it printed PINNED for an unsafe chain" || pass "…and does not print PINNED"
+cmp -s "$PIN" "$ROOT/pin.bak" && pass "…and the pin file is untouched, byte for byte" || { fail "the pin file was rewritten"; cp "$ROOT/pin.bak" "$PIN"; }
+grep -q 'unreviewed extension "http"' <<<"$OUT" && pass "…naming exactly what made it unsafe" || fail "no reason given"
+# the SAFE-but-changed case must still be pinnable, or the flag is useless
+printf 'SELECT 1;\n' > "$TMPSRC/29990101000009_unsafe.sql"
+OUT="$(node "$SAN" "$TMPSRC" "$ROOT/pinout" 2>&1 || true)"
+grep -q 'has CHANGED since it was reviewed' <<<"$OUT" && pass "a SAFE but changed chain still refuses to BUILD until re-pinned" || fail "changed chain built"
+# mutation: restore the pre-fix ordering (write before the sweep is consulted)
+MUT="$B/synth/.pinmutant.mjs"   # beside the real one: PIN_FILE is resolved relative to the script
+python3 - "$SAN" "$MUT" <<'PYX'
+import sys, re
+src, dst = sys.argv[1], sys.argv[2]
+s = open(src).read()
+# assembled from chr(10) so no literal newline can appear inside the regex source
+nl = chr(10)
+pat = "  if \\(unsafeRefusals\\.length\\) \\{[\\s\\S]*?" + nl + "  \\}" + nl
+m = re.search(pat, s)
+assert m, "guard block not found"
+open(dst, "w").write(s[:m.start()] + s[m.end():])
+PYX
+printf 'CREATE EXTENSION IF NOT EXISTS http;\n' > "$TMPSRC/29990101000009_unsafe.sql"
+OUT="$(node "$MUT" "$TMPSRC" "$ROOT/pinout" --write-pin 2>&1 || true)"
+grep -q 'PINNED' <<<"$OUT" \
+  && pass "MUTANT (safety check removed from --write-pin) PINS an unsafe chain — checking before writing is load-bearing" \
+  || fail "pin-ordering mutant not distinguishable"
+cp "$ROOT/pin.bak" "$PIN"        # the mutant rewrote it; restore byte-exactly
+rm -rf "$TMPSRC" "$ROOT/pinout" "$MUT"
+cmp -s "$PIN" "$ROOT/pin.bak" && pass "…and the real pin is restored byte for byte after the mutation" || fail "pin left mutated"
 
 echo "== the synthetic history follows the BACKFILL predicate, not every event =="
 GEN="$B/synth/build-baseline.mjs"

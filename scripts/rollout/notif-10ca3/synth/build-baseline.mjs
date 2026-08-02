@@ -174,57 +174,96 @@ try {
       (email, state, last_event_type, reason) VALUES ${vals}`, chunk.flat());
   }
 
-  // --- email_delivery_events: history weighted per address -----------------
+  // --- email_delivery_events -----------------------------------------------
+  // The measured histogram counts STATE-PRODUCING events per address, because
+  // that is what #615's backfill scans. So each address gets exactly that many
+  // producing events; the non-producing types are allocated SEPARATELY, which
+  // keeps both the measured total rows and the measured event-type distribution
+  // intact instead of eating into the history budget.
   const reason = pad('synthetic-reason', Math.max(4, DE.avg_reason_len || 24));
-  let written = 0, ai = 0;
-  while (written < DE.rows) {
-    const rows = [];
-    while (rows.length < 5000 && written < DE.rows) {
-      const a = addr(ai % Math.max(1, AS.rows), AS.avg_email_len || 32);
-      const n = Math.min(eventsFor(ai), DE.rows - written);
-      // the per-address budget is the STATE-PRODUCING history; non-producing
-      // types are drawn from their own share so they neither pad nor starve it
-      const producing = Object.fromEntries(Object.entries(DE.event_type_distribution)
-        .filter(([k2]) => STATE_PRODUCING.includes(k2)));
-      const other = Object.fromEntries(Object.entries(DE.event_type_distribution)
-        .filter(([k2]) => !STATE_PRODUCING.includes(k2)));
-      const otherShare = Object.values(other).reduce((a, b) => a + b, 0)
-        / Math.max(1, Object.values(DE.event_type_distribution).reduce((a, b) => a + b, 0));
-      for (let k = 0; k < n; k++) {
-        const et = (rnd() < otherShare && Object.keys(other).length) ? pick(other) : pick(producing);
-        rows.push([
-          a, et,
-          et === 'bounced' ? (rnd() < 0.5 ? 'hard' : 'soft') : null,
-          reason,
-          rnd() * 100 < (DE.resend_event_id_pct || 0) ? `evt_${written + k}` : null,
-          `msg_${written + k}`,
-          invIds.length && rnd() * 100 < wantInv ? invIds[(written + k) % invIds.length] : null,
-        ]);
-      }
-      written += n; ai++;
+  const dist = DE.event_type_distribution;
+  const distTotal = Object.values(dist).reduce((a, b) => a + b, 0) || 1;
+  const producing = Object.fromEntries(Object.entries(dist).filter(([k]) => STATE_PRODUCING.includes(k)));
+  const other     = Object.fromEntries(Object.entries(dist).filter(([k]) => !STATE_PRODUCING.includes(k)));
+  const producingShare = Object.values(producing).reduce((a, b) => a + b, 0) / distTotal;
+  const producingTotal = Math.min(DE.rows, Math.round(DE.rows * producingShare));
+  const otherTotal = DE.rows - producingTotal;
+
+  // EXACT QUOTAS, not weighted draws. A rehearsal fixture should reproduce the
+  // measured distribution exactly; random draws leave a couple of percent of
+  // noise that then has to be absorbed by a tolerance, which only hides drift.
+  // Largest-remainder apportionment so the parts sum to the whole.
+  const quota = (weights, n) => {
+    const tot = Object.values(weights).reduce((a, b) => a + b, 0) || 1;
+    const exact = Object.entries(weights).map(([k, w]) => [k, n * w / tot]);
+    const out = Object.fromEntries(exact.map(([k, v]) => [k, Math.floor(v)]));
+    let left = n - Object.values(out).reduce((a, b) => a + b, 0);
+    for (const [k] of exact.map(([k, v]) => [k, v - Math.floor(v)]).sort((a, b) => b[1] - a[1])) {
+      if (left <= 0) break; out[k]++; left--;
     }
-    if (!rows.length) break;
+    return out;
+  };
+  // a deterministic pool: exact counts, interleaved so no address gets one type
+  const pool = (counts) => {
+    const items = [];
+    for (const [k, n] of Object.entries(counts)) for (let i = 0; i < n; i++) items.push(k);
+    for (let i = items.length - 1; i > 0; i--) {           // deterministic shuffle
+      const j = Math.floor(rnd() * (i + 1)); [items[i], items[j]] = [items[j], items[i]];
+    }
+    return items;
+  };
+
+  const buf = [];
+  let written = 0;
+  const flush = async (force) => {
+    if (!buf.length || (!force && buf.length < 5000)) return;
+    const rows = buf.splice(0, buf.length);
     const vals = rows.map((_, k) =>
       `($${k * 7 + 1}, $${k * 7 + 2}, $${k * 7 + 3}, $${k * 7 + 4}, $${k * 7 + 5}, $${k * 7 + 6}, $${k * 7 + 7})`).join(',');
     await c.query(`INSERT INTO public.email_delivery_events
       (recipient_email, event_type, bounce_type, reason, resend_event_id, resend_email_id, invoice_id)
       VALUES ${vals}`, rows.flat());
-  }
-  await c.query('COMMIT');
+  };
+  const emit = (a, et) => {
+    buf.push([a, et,
+      et === 'bounced' ? (rnd() < 0.5 ? 'hard' : 'soft') : null,
+      reason,
+      rnd() * 100 < (DE.resend_event_id_pct || 0) ? `evt_${written}` : null,
+      `msg_${written}`,
+      invIds.length && rnd() * 100 < wantInv ? invIds[written % invIds.length] : null]);
+    written++;
+  };
 
-  // --- bloat approximation -------------------------------------------------
-  // A freshly loaded table is perfectly packed; a long-lived one is not. Update
-  // then leave a documented fraction of dead tuples WITHOUT vacuuming, so the
-  // rewrite has to walk a comparable number of pages. This is an approximation
-  // and the ADR says so — it is not a claim of physical equivalence.
-  const ratio = Number(scale.bloat?.dead_tuple_ratio || 0);
-  if (ratio > 0) {
-    await c.query(`UPDATE public.email_address_state SET state = state
-                   WHERE ctid IN (SELECT ctid FROM public.email_address_state
-                                  ORDER BY email LIMIT greatest(1, (${AS.rows} * ${ratio})::int))`);
+  // (1) the state-producing history: exactly eventsFor(address) per address
+  const producingPool = pool(quota(producing, producingTotal));
+  let ai = 0, producingWritten = 0;
+  while (producingWritten < producingTotal) {
+    const a = addr(ai % Math.max(1, AS.rows), AS.avg_email_len || 32);
+    const n = Math.min(eventsFor(ai), producingTotal - producingWritten);
+    for (let k = 0; k < n; k++) { emit(a, producingPool[producingWritten]); producingWritten++; }
+    ai++;
+    await flush(false);
   }
-  await c.query('ANALYZE public.email_address_state');
-  await c.query('ANALYZE public.email_delivery_events');
+  // (2) the non-producing remainder, spread over the same addresses, drawn from
+  //     their own share so the overall type distribution still matches
+  if (Object.keys(other).length && otherTotal > 0) {
+    const otherPool = pool(quota(other, otherTotal));
+    for (let k = 0; k < otherTotal; k++) {
+      emit(addr(k % Math.max(1, AS.rows), AS.avg_email_len || 32), otherPool[k]);
+      await flush(false);
+    }
+  } else if (otherTotal > 0) {
+    const extra = pool(quota(producing, otherTotal));
+    for (let k = 0; k < otherTotal; k++) emit(addr(k % Math.max(1, AS.rows), AS.avg_email_len || 32), extra[k]);
+  }
+  await flush(true);
+
+  // NOTE: no COMMIT yet. The byte-envelope check below is part of the load, not
+  // a report on it — committing first would leave a target full of data that
+  // failed validation, with no fingerprint recorded, which neither
+  // clone-build-baseline (target no longer empty) nor clone-reset-baseline (no
+  // baseline on file) could then recover. Everything through validation is one
+  // transaction; a failure rolls the data back and the target stays pristine.
 
   const n1 = (await c.query('SELECT count(*)::int AS v FROM public.email_address_state')).rows[0].v;
   const n2 = (await c.query('SELECT count(*)::int AS v FROM public.email_delivery_events')).rows[0].v;
@@ -257,11 +296,17 @@ try {
     }
   }
   if (drift) {
+    await c.query('ROLLBACK');
     console.error(`FAIL: the generated baseline is outside the measured byte envelope, so a timing
-measured on it would not bound production. Adjust the widths/history in the scale
+measured on it would not bound production. The load has been ROLLED BACK — the
+target is unchanged and can be rebuilt. Adjust the widths/history in the scale
 file (or widen byte_tolerance_pct deliberately, and say so in the evidence).`);
     process.exit(6);
   }
+  // validated: now it may become durable
+  await c.query('COMMIT');
+  await c.query('ANALYZE public.email_address_state');
+  await c.query('ANALYZE public.email_delivery_events');
   console.log(`SYNTH email_address_state=${n1} email_delivery_events=${n2} elapsed_ms=${Date.now() - t0} all_addresses_synthetic=yes`);
 } catch (e) {
   await c.query('ROLLBACK').catch(() => {});

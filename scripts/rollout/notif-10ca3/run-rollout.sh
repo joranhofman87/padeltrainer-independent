@@ -918,7 +918,21 @@ cmd_clone_build_baseline() {
   require_yes "${1:-}"
   local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-build-baseline --yes <clone_conn_url>"
   require_cmd psql; require_cmd supabase; require_cmd node
-  assert_rehearsal_target "$url"
+  # A build that failed PART-WAY (a broken db push, a generator abort) leaves a
+  # target that is no longer empty and has no fingerprint on file. Without this
+  # hint the operator is stuck between a build that refuses a non-empty target
+  # and a reset that refuses a missing baseline.
+  # subshell: assert_rehearsal_target ends in `die`, which EXITS — without this
+  # the branch below could never run and the operator would just see the raw
+  # "target is not empty" error with no way forward.
+  if ! ( assert_rehearsal_target "$url" ) >/dev/null 2>&1; then
+    [[ -s "$BASELINE_FP" ]] \
+      && die "this target already carries a recorded baseline — use 'clone-baseline-verify' or 'clone-reset-baseline --yes'" \
+      || die "the target is NOT empty and no baseline is on file, so a previous build failed part-way. Recover with:
+    clone-reset-baseline --yes --recover <clone_url>
+  which wipes it back to bare metal, rebuilds, and records the baseline. (A plain
+  reset refuses without a recorded baseline, precisely so this case is explicit.)"
+  fi
   assert_scale_is_measured
   mkdir -p "$EVID"
   clone_build_schema_and_data "$url"
@@ -1008,18 +1022,40 @@ cmd_clone_baseline_verify() {
 #
 # Still no production snapshot is restored, and still no customer data exists.
 cmd_clone_reset_baseline() {
-  require_yes "${1:-}"
-  local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-reset-baseline --yes <clone_conn_url>"
+  require_yes "${1:-}"; shift
+  local recover=0 url=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --recover) recover=1; shift;;
+      *) url="$1"; shift;;
+    esac
+  done
+  require_arg "$url" "usage: CLONE_REF=<ref> clone-reset-baseline --yes [--recover] <clone_conn_url>"
   require_cmd psql; require_cmd supabase; require_cmd node; assert_clone_url "$url"
-  [[ -s "$BASELINE_FP" ]] || die "no recorded baseline — run clone-build-baseline first"
+  if [[ "$recover" -eq 1 ]]; then
+    # RECOVERY. Only for a target whose FIRST build failed before any fingerprint
+    # was recorded. It is explicit precisely because it will happily discard a
+    # half-built target — which is correct there and wrong anywhere else.
+    [[ -s "$BASELINE_FP" ]] \
+      && die "--recover is only for a target with NO recorded baseline; this one has one, so use a plain reset (it verifies against the recorded fingerprint)"
+    warn "RECOVERING a part-built target: wiping to bare metal and rebuilding from scratch"
+  else
+    [[ -s "$BASELINE_FP" ]] \
+      || die "no recorded baseline — if a first build failed part-way, use 'clone-reset-baseline --yes --recover <url>'; otherwise run clone-build-baseline first"
+  fi
   assert_scale_is_measured
-  warn "wiping the rehearsal target to bare metal (schema + shims + migration ledger)"
+  warn "wiping the rehearsal target to bare metal (schema + stand-ins + migration ledger)"
   run_artifact "$url" clone_wipe.sql
   run_artifact "$url" empty_project_check.sql
   ok "target is bare and inert again; rebuilding"
   clone_build_schema_and_data "$url"
-  cmd_clone_baseline_verify "$url"
-  ok "rehearsal target REBUILT and byte-identical to the recorded pristine baseline"
+  if [[ "$recover" -eq 1 ]]; then
+    clone_capture_baseline "$url"
+    ok "target RECOVERED and a pristine baseline recorded"
+  else
+    cmd_clone_baseline_verify "$url"
+    ok "rehearsal target REBUILT and byte-identical to the recorded pristine baseline"
+  fi
 }
 
 # CLONE-SIDE GATE for the supported model. No rehearsal command may touch a
@@ -1311,7 +1347,7 @@ supported rehearsal target (empty disposable project + SYNTHETIC scale data):
   clone-verify-empty     <clone_url>             # prove it is empty + outbound-inert
   clone-build-baseline   --yes <clone_url>       # schema from main, schedules off, synthetic rows
   clone-baseline-verify  <clone_url>             # target == recorded pristine baseline
-  clone-reset-baseline   --yes <clone_url>       # between rehearsals; no snapshot restore
+  clone-reset-baseline   --yes [--recover] <clone_url>  # between rehearsals; --recover for a part-built target
 clone-only (CLONE_REF=<ref> != EXPECTED_REF, CAP_STMT=<ms>; provenance = the sealed marker):
   clone-push --yes <clone_url>                 # push the MISSING suffix from PR615_SHA
   clone-make-prefix --yes <1|2> <clone_url>    # rehearsal C: real partial apply

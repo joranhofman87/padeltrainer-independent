@@ -42,6 +42,7 @@ S="$STATEDIR"; sfile(){ cat "$S/$1" 2>/dev/null || echo "$2"; }
 has(){ grep -q -- "$1" "$f" 2>/dev/null; }
 boom(){ echo "ERROR:  $1" >&2; exit 3; }
 if [[ "$f" == *empty_project_check.sql ]]; then
+  [[ -e "$STATEDIR/SCHEMA" ]] && boom "target is not empty (a previous build left a schema behind)"
   for k in E_CRON E_NETQ E_VAULT E_HOOK E_OUTTRIG E_FDW E_AUTH; do
     [[ "$(sfile $k 0)" == 0 ]] || boom "target is not pristine ($k)"
   done
@@ -270,6 +271,26 @@ grep -q 'DELETE FROM supabase_migrations.schema_migrations' "$SQLD/clone_wipe.sq
   && pass "the wipe empties the migration ledger (leaving it would apply a SUFFIX next time)" || fail "ledger not cleared"
 grep -q 'DROP SCHEMA IF EXISTS public CASCADE' "$SQLD/clone_wipe.sql" \
   && pass "…and drops the schema, so columns/functions/constraints really are gone" || fail "schema not dropped"
+
+echo "-- a FIRST build that fails part-way is recoverable, and only explicitly --"
+seed; measured yes; echo 1 > "$STATEDIR/SYNTH_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a generator failure fails the first build" || fail "failed build reported success"
+[[ ! -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] && pass "…and records NO fingerprint, so nothing false is left behind" || fail "a fingerprint was recorded for a failed build"
+[[ -e "$STATEDIR/SCHEMA" ]] && pass "…but the schema DID land, so the target is no longer empty (the stuck state)" || fail "no partial state to recover from"
+rm -f "$STATEDIR/SYNTH_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a plain retry is refused — the target is not empty" || fail "retry accepted a non-empty target"
+grep -q 'clone-reset-baseline --yes --recover' "$ROOT/out.txt" \
+  && pass "…and the refusal names the recovery command instead of leaving the operator stuck" || fail "no recovery path offered"
+crun bash "$RR" clone-reset-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a plain reset is refused too — there is no baseline to verify against" || fail "plain reset accepted"
+grep -q -- '--recover' "$ROOT/out.txt" && pass "…and it too points at --recover" || fail "reset does not mention --recover"
+crun bash "$RR" clone-reset-baseline --yes --recover "$CLONE_URL"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "clone-reset-baseline --recover wipes, rebuilds and records a pristine baseline" || fail "recovery failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
+[[ -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] && pass "…and the fingerprint now exists" || fail "no baseline after recovery"
+crun bash "$RR" clone-reset-baseline --yes --recover "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "--recover is REFUSED once a baseline exists (it discards a target; that must stay deliberate)" || fail "--recover accepted with a baseline on file"
 
 echo "== a rehearsal cannot start from a drifted or failed-migration baseline =="
 seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"

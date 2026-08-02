@@ -278,6 +278,75 @@ try {
           Number(await scalar(fresh, `SELECT ((SELECT count(*) FROM public.email_address_state WHERE email NOT LIKE '%@%.example.invalid')
                  + (SELECT count(*) FROM public.email_delivery_events WHERE recipient_email NOT LIKE '%@%.example.invalid'))::int AS v`)) === 0);
 
+      // ---- F1: a failed byte envelope must ROLL BACK, not commit and strand ----
+      {
+        const before = Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events`));
+        const badScale = JSON.parse(JSON.stringify(fullScale));
+        badScale.tables.email_address_state.total_bytes =
+          Math.round(badScale.tables.email_address_state.total_bytes * 3);
+        const badFile = join(sanDir, 'scale-envelope-fail.json');
+        writeFileSync(badFile, JSON.stringify(badScale));
+        let refused = false;
+        try {
+          execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, badFile],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        } catch { refused = true; }
+        rec('a load that fails the byte envelope is REFUSED', refused);
+        const after = Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events`));
+        rec('…and ROLLED BACK — the prior contents survive, so the target is not stranded mid-build',
+            after === before, `${before} -> ${after}`);
+        // the load TRUNCATEs first, so a commit-then-validate ordering would have
+        // left 0 rows here; this is what distinguishes rollback from persistence
+        rec('…(the load truncates first, so a committed failure would show 0 rows)', after > 0, `rows=${after}`);
+      }
+
+      // ---- F2: the generated history matches the BACKFILL predicate ----
+      {
+        const PRED = `event_type IN ('sent','delivered','bounced','complained','operator_reset')`;
+        const h = (await fresh.query(`
+          SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY n)::int AS p50,
+                 percentile_disc(0.9) WITHIN GROUP (ORDER BY n)::int AS p90,
+                 max(n)::int AS mx
+          FROM (SELECT count(*) AS n FROM public.email_delivery_events
+                 WHERE ${PRED} GROUP BY recipient_email) x`)).rows[0];
+        const want = fullScale.tables.email_delivery_events.events_per_address;
+        rec(`the FILTERED p50 matches the configured history (${h.p50} vs ${want.p50})`, h.p50 === want.p50);
+        rec(`…p90 matches (${h.p90} vs ${want.p90})`, h.p90 === want.p90);
+        rec(`…and max does not exceed it (${h.mx} <= ${want.max})`, h.mx <= want.max);
+
+        const total = Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events`));
+        rec(`the measured total row count is preserved (${total})`,
+            total === fullScale.tables.email_delivery_events.rows);
+        const dist = fullScale.tables.email_delivery_events.event_type_distribution;
+        const sum = Object.values(dist).reduce((a, b) => a + b, 0);
+        const got = Object.fromEntries((await fresh.query(
+          `SELECT event_type, count(*)::int AS n FROM public.email_delivery_events GROUP BY event_type`))
+          .rows.map((r) => [r.event_type, r.n]));
+        // EXACT: the generator apportions by largest remainder, so every type
+        // must match its measured share to the row. A tolerance here would only
+        // hide drift.
+        const bad = [];
+        const wantCounts = (() => {
+          const ex = Object.entries(dist).map(([k, w]) => [k, total * w / sum]);
+          const o = Object.fromEntries(ex.map(([k, v]) => [k, Math.floor(v)]));
+          let left = total - Object.values(o).reduce((a, b) => a + b, 0);
+          for (const [k] of ex.map(([k, v]) => [k, v - Math.floor(v)]).sort((a, b) => b[1] - a[1])) {
+            if (left <= 0) break; o[k]++; left--;
+          }
+          return o;
+        })();
+        for (const [t, w] of Object.entries(wantCounts)) {
+          if ((got[t] || 0) !== w) bad.push(`${t}: got ${got[t] || 0}, want ${w}`);
+        }
+        rec('every event type matches its measured share EXACTLY (apportioned, not sampled)',
+            bad.length === 0, bad.join('; '));
+
+        const nonProducing = Number(await scalar(fresh,
+          `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE NOT (${PRED})`));
+        rec(`non-producing types are allocated SEPARATELY, not out of the history budget (${nonProducing} rows)`,
+            nonProducing > 0);
+      }
+
       // apply #615, exactly as rehearsal A does
       await applyPr615(fresh);
       rec('#615 applies on top of the freshly built chain',
