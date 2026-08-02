@@ -4637,6 +4637,7 @@ export type Database = {
           default_email_frequency: string
           default_push_frequency: string
           default_whatsapp_frequency: string
+          digest_cutover: boolean
           digest_engine_enabled: boolean
           key: string
           max_per_user_per_day: number | null
@@ -4649,6 +4650,7 @@ export type Database = {
           supports_push: boolean
           supports_whatsapp: boolean
           template_email: string | null
+          template_version: number
           template_whatsapp: string | null
           updated_at: string
           visibility_scope: string
@@ -4662,6 +4664,7 @@ export type Database = {
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
+          digest_cutover?: boolean
           digest_engine_enabled?: boolean
           key: string
           max_per_user_per_day?: number | null
@@ -4674,6 +4677,7 @@ export type Database = {
           supports_push?: boolean
           supports_whatsapp?: boolean
           template_email?: string | null
+          template_version?: number
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -4687,6 +4691,7 @@ export type Database = {
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
+          digest_cutover?: boolean
           digest_engine_enabled?: boolean
           key?: string
           max_per_user_per_day?: number | null
@@ -4699,6 +4704,7 @@ export type Database = {
           supports_push?: boolean
           supports_whatsapp?: boolean
           template_email?: string | null
+          template_version?: number
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -10620,6 +10626,10 @@ export type Database = {
         }
         Returns: string
       }
+      notif_digest_boundary_at: {
+        Args: { p_frequency: string; p_now: string; p_timezone: string }
+        Returns: string
+      }
       notif_digest_bucket_apply: {
         Args: {
           p_attempt_id: string
@@ -10683,6 +10693,10 @@ export type Database = {
         Args: { p_destination: string }
         Returns: string
       }
+      notif_digest_event_stop_reason: {
+        Args: { p_member_id: string }
+        Returns: string
+      }
       notif_digest_finalize_group: {
         Args: {
           p_group_id: string
@@ -10691,6 +10705,14 @@ export type Database = {
           p_terminal_state: string
         }
         Returns: undefined
+      }
+      notif_digest_group_locale: {
+        Args: { p_person_id: string; p_user_id: string }
+        Returns: string
+      }
+      notif_digest_item_for_event: {
+        Args: { p_event_key: string; p_locale: string; p_payload: Json }
+        Returns: Json
       }
       notif_digest_item_open_slots_v1: {
         Args: { p_data: Json; p_locale: string; p_subtype: string }
@@ -10724,6 +10746,13 @@ export type Database = {
       }
       notif_digest_quiet_hours_bump: {
         Args: { p_now: string; p_tz: string }
+        Returns: string
+      }
+      notif_digest_recipient_timezone: {
+        Args: {
+          p_tenant_academy_profile_id: string
+          p_tenant_trainer_id: string
+        }
         Returns: string
       }
       notif_digest_release_reservations: {
