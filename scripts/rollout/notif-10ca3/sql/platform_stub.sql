@@ -126,16 +126,11 @@ CREATE TABLE IF NOT EXISTS vault.secrets (
   created_at timestamptz DEFAULT now());
 CREATE OR REPLACE VIEW vault.decrypted_secrets AS
   SELECT id, name, secret AS decrypted_secret, created_at FROM vault.secrets;
-CREATE OR REPLACE FUNCTION vault.create_secret(new_secret text, new_name text DEFAULT NULL,
-                                               new_description text DEFAULT NULL) RETURNS uuid
-LANGUAGE plpgsql AS $$
-DECLARE i uuid;
-BEGIN INSERT INTO vault.secrets (name, secret) VALUES (new_name, new_secret)
-      ON CONFLICT (name) DO UPDATE SET secret = EXCLUDED.secret RETURNING id INTO i; RETURN i; END $$;
-CREATE OR REPLACE FUNCTION vault.update_secret(secret_id uuid, new_secret text DEFAULT NULL,
-                                               new_name text DEFAULT NULL, new_description text DEFAULT NULL)
-RETURNS void LANGUAGE plpgsql AS $$
-BEGIN UPDATE vault.secrets SET secret = coalesce(new_secret, secret) WHERE id = secret_id; END $$;
+-- vault.create_secret / vault.update_secret are deliberately NOT defined here.
+-- No migration calls them (the only mentions in the chain are comments), and
+-- defining them would make this file match the legacy-service-role-key guard's
+-- sender pattern — correctly, since that pattern exists to inventory exactly
+-- such definitions. A rehearsal stand-in must not look like a credential path.
 
 -- realtime publication: migrations ALTER PUBLICATION supabase_realtime
 DO $$

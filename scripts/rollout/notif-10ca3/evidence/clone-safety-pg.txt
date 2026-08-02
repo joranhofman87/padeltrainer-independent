@@ -28,7 +28,7 @@ $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
   PASS  the baseline fingerprint covers shape, size, distribution and bloat
   PASS  …and asserts every address is synthetic
 [5] the real #615 migrations: timing and ACCESS EXCLUSIVE behaviour
-  PASS  the three pinned migrations apply to the synthetic baseline  — 299 ms at 4k/12k rows
+  PASS  the three pinned migrations apply to the synthetic baseline  — 319 ms at 4k/12k rows
   PASS  the generated column exists after the rewrite
   PASS  the migration CHANGES the shape fingerprint, so a migrated target can never pass as pristine  — SHAPE 2a1ccb -> SHAPE c51528
   PASS  …and no timing/lock evidence carries an address or reason string
@@ -54,5 +54,5 @@ $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
   PASS  …and the generated column was NOT added
   PASS  …and zero ledger delta — the ledger INSERT was in the same transaction, so this is not vacuous  — ledger=0
   PASS  …(control: an uncontended ledger insert DOES land, so the assertion has teeth)
-  PASS  uncontended, the same migration APPLIES — the abort was contention, not broken SQL  — 113 ms over 2k rows
+  PASS  uncontended, the same migration APPLIES — the abort was contention, not broken SQL  — 120 ms over 2k rows
 ================  48 passed, 0 failed  ================
