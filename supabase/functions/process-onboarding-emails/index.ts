@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireAdmin, requireServiceRole } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { claimMissingTemplateFailure, countsAsFailure, type MissingTemplateClient } from "../_shared/onboarding-missing-template.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -181,36 +182,28 @@ const handler = async (req: Request): Promise<Response> => {
       const rawTemplate = Array.isArray(rawItem.template) ? rawItem.template[0] : rawItem.template;
       const queueItem = { ...rawItem, template: rawTemplate } as QueuedEmail;
       if (!queueItem.template) {
-        // OWNERSHIP CAS. This path runs BEFORE claim_onboarding_email_queue_item,
-        // so without a status guard two overlapping invocations both see the same
-        // pending row, both write 'failed', both increment failCount — and since
-        // failCount drives notifySlackEdgeError below, both fire the operator alert
-        // for one broken row. Guarding the transition on status='pending' and
-        // reading back the affected row makes exactly one run the owner: the loser
-        // updates zero rows and stays silent.
-        const { data: owned, error: failErr } = await supabase
-          .from("onboarding_email_queue")
-          .update({
-            status: "failed",
-            error_message: "Template not found",
-          })
-          .eq("id", queueItem.id)
-          .eq("status", "pending")
-          .select("id");
-
-        if (failErr) {
-          // A genuine RPC failure must stay visible rather than masquerade as
-          // "another run owns it".
-          console.error(`Could not mark queue item ${queueItem.id} failed:`, failErr.message);
-          failCount++;
-          continue;
-        }
-        if (!owned || owned.length === 0) {
+        // Ownership lives in ONE production-owned primitive (_shared/
+        // onboarding-missing-template.ts) so the concurrency guard is exercised by
+        // tests directly rather than re-implemented by them. See that file for why
+        // this path needs a CAS at all: it runs before the claim, so two
+        // overlapping invocations would otherwise both count the failure and both
+        // fire the end-of-run Slack alert for a single broken row.
+        // The primitive declares only the narrow builder surface it needs, so the
+        // tests can supply a faithful stand-in; the real client is structurally
+        // wider. Cast at this adapter boundary rather than loosening the contract
+        // the tests rely on.
+        const outcome = await claimMissingTemplateFailure(
+          supabase as unknown as MissingTemplateClient,
+          queueItem.id,
+        );
+        if (outcome.kind === "error") {
+          console.error(`Could not mark queue item ${queueItem.id} failed:`, outcome.message);
+        } else if (outcome.kind === "already_handled") {
           console.log(`Queue item ${queueItem.id} missing-template already handled by another run, skipping`);
-          continue;
+        } else {
+          console.error(`Template not found for queue item ${queueItem.id}`);
         }
-        console.error(`Template not found for queue item ${queueItem.id}`);
-        failCount++;
+        if (countsAsFailure(outcome)) failCount++;
         continue;
       }
 

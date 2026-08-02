@@ -58,6 +58,7 @@ beforeAll(async () => {
     );`);
   await c.query(MIG('20261008100000_open_slots_player_event.sql'));
   await c.query(MIG('20261009100000_notif_10cb_review_corrections.sql'));
+  await c.query(MIG('20261010100000_open_slots_item_types_and_plurals.sql'));
 }, 180_000);
 
 afterAll(async () => {
@@ -103,6 +104,7 @@ describe('10c-b B — open_slots_player catalog row', () => {
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true WHERE key='open_slots_player'`);
     await c.query(MIG('20261008100000_open_slots_player_event.sql'));
     await c.query(MIG('20261009100000_notif_10cb_review_corrections.sql'));
+    await c.query(MIG('20261010100000_open_slots_item_types_and_plurals.sql'));
     const { rows } = await c.query(`SELECT digest_engine_enabled FROM public.notification_event_types WHERE key='open_slots_player'`);
     expect(rows[0].digest_engine_enabled).toBe(false);
   });
@@ -259,7 +261,7 @@ describe('10c-b review #2 — subtype-structural validation rejects impossible v
     await rejects('new_availability', 'en', { ...OK_NEW, slot_count: 2.5 });
     await rejects('new_availability', 'en', { ...OK_NEW, slot_count: '3' });
     const ok = await item('new_availability', 'en', { ...OK_NEW, slot_count: 1 });
-    expect(ok.body).toBe('1 new slots on 2026-08-10.');
+    expect(ok.body).toBe('1 new slot on 2026-08-10.');
   });
 
   it('enforces the permitted field combination per subtype', async () => {
@@ -312,5 +314,50 @@ describe('10c-b review #3 — the credential deny-list covers the Supabase PAT s
     // closed field set + per-field validation, not from this list being complete.
     const out = await item('new_availability', 'en', withDate('xyzcorp-KEY-abcdefghijkl'));
     expect(out.title).toBe('New availability from xyzcorp-KEY-abcdefghijkl');
+  });
+});
+
+describe('10c-b review r2 #2 — textual fields must be JSON strings, not stringified anything', () => {
+  const base = { date_from: '2026-08-10' };
+  it('rejects array, object, number and boolean trainer_name', async () => {
+    for (const v of [['a', 'b'], { x: 1 }, 42, true, false]) {
+      await rejects('new_availability', 'en', { ...base, trainer_name: v });
+    }
+  });
+  it('rejects non-string values in every other textual field', async () => {
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: 20260810 });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', date_to: ['2026-08-16'] });
+    await rejects('slot_reopened', 'en', { trainer_name: 'Ana', slot_date: { d: 1 } });
+    await rejects('slot_reopened', 'en', { trainer_name: 'Ana', slot_date: '2026-08-12', slot_time: 1930 });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', url: true });
+  });
+  it('an explicit JSON null is treated as absent, not as the text "null"', async () => {
+    const out = await item('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', date_to: null, url: null });
+    expect(out.body).toBe('New slots on 2026-08-10.');
+    expect('url' in out).toBe(false);
+  });
+});
+
+describe('10c-b review r2 #3 — frozen copy is correctly inflected', () => {
+  const N = (n?: number) => ({ trainer_name: 'Ana', date_from: '2026-08-10', ...(n === undefined ? {} : { slot_count: n }) });
+
+  it('EN: absent count keeps the fallback, 1 is singular, >1 is plural', async () => {
+    expect((await item('new_availability', 'en', N())).body).toBe('New slots on 2026-08-10.');
+    expect((await item('new_availability', 'en', N(1))).body).toBe('1 new slot on 2026-08-10.');
+    expect((await item('new_availability', 'en', N(4))).body).toBe('4 new slots on 2026-08-10.');
+  });
+
+  it('NL: absent count keeps the fallback, 1 is singular, >1 is plural', async () => {
+    expect((await item('new_availability', 'nl', N())).body).toBe('Nieuwe momenten op 2026-08-10.');
+    expect((await item('new_availability', 'nl', N(1))).body).toBe('1 nieuw moment op 2026-08-10.');
+    expect((await item('new_availability', 'nl', N(4))).body).toBe('4 nieuwe momenten op 2026-08-10.');
+  });
+
+  it('inflection is applied in the date-RANGE phrasing too', async () => {
+    const r = (loc: string, n: number) => item('new_availability', loc, { trainer_name: 'Ana', date_from: '2026-08-10', date_to: '2026-08-16', slot_count: n });
+    expect((await r('en', 1)).body).toBe('1 new slot between 2026-08-10 and 2026-08-16.');
+    expect((await r('en', 5)).body).toBe('5 new slots between 2026-08-10 and 2026-08-16.');
+    expect((await r('nl', 1)).body).toBe('1 nieuw moment tussen 2026-08-10 en 2026-08-16.');
+    expect((await r('nl', 5)).body).toBe('5 nieuwe momenten tussen 2026-08-10 en 2026-08-16.');
   });
 });
