@@ -73,7 +73,6 @@ const handler = async (req: Request): Promise<Response> => {
       p_terminal: opts.terminal ?? false,
     });
 
-  let cronLockHeld = false;
   try {
     const guard = requireServiceRole(req);
     if (guard) return guard;
@@ -81,11 +80,15 @@ const handler = async (req: Request): Promise<Response> => {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) return json({ error: "RESEND_API_KEY not configured" }, 500);
 
-    // single-flight: skip this tick if another run holds the lock. Fail-open — an RPC
-    // error leaves cronLockHeld=false and we proceed (the atomic claim is the real guard).
-    const { data: cronLocked } = await supabase.rpc("try_lock_cron_job", { p_job_name: JOB });
-    if (cronLocked === false) return json({ processed: 0, skipped: "locked" });
-    cronLockHeld = cronLocked === true;
+    // NO cron single-flight lock (10c-b/CRON-SF-WEDGE). The session-scoped
+    // try_lock_cron_job pair was removed: it spanned many pooled PostgREST requests
+    // with no session affinity, so its unlock could land on a different backend and
+    // wedge this job until that connection recycled. Nothing is lost — the atomic
+    // claim below IS the concurrency boundary: claim_notification_outbox_batch takes
+    // rows FOR UPDATE SKIP LOCKED and stamps this run's worker token on each, so two
+    // concurrent invocations claim DISJOINT rows and cannot duplicate a send, and
+    // record_notification_send_result is token-guarded so a superseded run's late
+    // write no-ops. (The old comment here already conceded the claim was the real guard.)
 
     // 1. atomically claim due (or stale-orphaned) email rows under our lock token
     const { data: claimed, error: claimErr } = await supabase.rpc("claim_notification_outbox_batch", {
@@ -201,14 +204,6 @@ const handler = async (req: Request): Promise<Response> => {
       // alerting is best-effort — never mask the original error
     }
     return json({ error: msg }, 500);
-  } finally {
-    if (cronLockHeld) {
-      try {
-        await supabase.rpc("unlock_cron_job", { p_job_name: JOB });
-      } catch {
-        // best-effort: the lock is session-scoped and auto-releases when the connection recycles
-      }
-    }
   }
 };
 

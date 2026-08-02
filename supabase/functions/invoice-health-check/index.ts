@@ -31,23 +31,31 @@ serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  let cronLockHeld = false;
+  const JOB = "invoice-health-check";
+  // DURABLE lease, not a session advisory lock (10c-b/CRON-SF-WEDGE). This job is
+  // the one of the four that genuinely needs whole-RUN exclusion: it has no atomic
+  // claim to lean on — it is a read-only sweep whose output is operator Slack
+  // alerts, so two overlapping runs double-post every alert. The lease lives in
+  // cron_job_leases: expiry is DATA, so a crashed run frees the job at locked_until
+  // instead of wedging it until a pooled connection recycles, and release is
+  // owner-token guarded so no other run can free ours.
+  let leaseToken: string | null = null;
 
   try {
-    // CRON-SF-02: single-flight — bail if another run holds the lock so two
-    // overlapping firings don't re-run the anomaly scan and double-post the
-    // Slack alert (read-only, so the gap is duplicate work + alert noise only).
-    const { data: cronLocked } = await supabase.rpc("try_lock_cron_job", { p_job_name: "invoice-health-check" });
-    if (cronLocked === false) {
-      // Another run holds the lock → skip this duplicate firing.
+    // Fail-CLOSED on a live lease: a NULL token means someone else owns this tick.
+    const { data: acquired, error: leaseErr } = await supabase.rpc("acquire_cron_lease", {
+      p_job_name: JOB,
+      p_ttl_seconds: 900,
+    });
+    if (leaseErr) throw new Error(`cron lease acquire failed: ${leaseErr.message}`);
+    if (!acquired) {
+      // Another run holds a live lease → skip this duplicate firing.
       return new Response(
         JSON.stringify({ status: "skipped", reason: "locked" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
-    // Fail-open: only release if we actually acquired it (RPC error / not-yet-deployed
-    // → proceed without the guard rather than halt the health check).
-    cronLockHeld = cronLocked === true;
+    leaseToken = acquired as string;
 
     const anomalies: InvoiceAnomaly[] = [];
 
@@ -274,8 +282,15 @@ serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } finally {
-    if (cronLockHeld) {
-      try { await supabase.rpc("unlock_cron_job", { p_job_name: "invoice-health-check" }); } catch { /* best-effort; auto-releases on connection recycle */ }
+    // Release only OUR lease. release_cron_lease is an owner-token CAS, so if this
+    // run already lost the lease to expiry it releases nothing and the current owner
+    // is untouched. A missed release is bounded by the TTL — it can never wedge.
+    if (leaseToken) {
+      try {
+        await supabase.rpc("release_cron_lease", { p_job_name: JOB, p_owner_token: leaseToken });
+      } catch {
+        /* best-effort: the lease expires on its own at locked_until */
+      }
     }
   }
 });

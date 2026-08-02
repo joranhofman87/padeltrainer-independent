@@ -55,7 +55,6 @@ const handler = async (req: Request): Promise<Response> => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  let cronLockHeld = false;
 
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -133,22 +132,14 @@ const handler = async (req: Request): Promise<Response> => {
     const guard = requireServiceRole(req);
     if (guard) return guard;
 
-    // CRON-SF-01: single-flight. Bail if another run already holds the job lock
-    // (a slow run spilling past the next tick, a Vercel retry, or a manual call
-    // mid-cron) so we don't redo the whole queue flush. The per-row atomic claim
-    // already prevents double-SEND; this removes the duplicated work + DB load.
-    const { data: cronLocked } = await supabase.rpc("try_lock_cron_job", { p_job_name: "process-onboarding-emails" });
-    if (cronLocked === false) {
-      // Another run holds the lock → skip this duplicate firing.
-      return new Response(
-        JSON.stringify({ processed: 0, skipped: "locked" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    // Fail-open: only release if we actually acquired it. An RPC error (or the
-    // RPC not yet deployed) leaves cronLockHeld false → proceed without the guard
-    // (the per-row atomic claim still prevents double-send), never halt the job.
-    cronLockHeld = cronLocked === true;
+    // NO cron single-flight lock (10c-b/CRON-SF-WEDGE). The session-scoped
+    // try_lock_cron_job pair was removed: it spanned many pooled PostgREST
+    // round-trips with no session affinity, so its unlock could land on a
+    // different backend and wedge this job until that connection recycled.
+    // Correctness never depended on it — every queue item is taken through
+    // claim_onboarding_email_queue_item, a per-row atomic CAS, so an item another
+    // concurrent run already claimed is skipped here rather than sent twice.
+    // Two overlapping runs therefore duplicate some read work, never a send.
 
     // fetch pending emails that are due
     const { data: pendingEmails, error: fetchError } = await supabase
@@ -343,13 +334,6 @@ const handler = async (req: Request): Promise<Response> => {
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } finally {
-    // Release the single-flight lock on every exit path. The session advisory
-    // lock also auto-releases when the pooled connection recycles, so a missed
-    // unlock can at worst skip one cron tick — never wedge the job.
-    if (cronLockHeld) {
-      try { await supabase.rpc("unlock_cron_job", { p_job_name: "process-onboarding-emails" }); } catch { /* best-effort */ }
-    }
   }
 };
 
