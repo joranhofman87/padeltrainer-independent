@@ -51,9 +51,12 @@ CREATE TABLE IF NOT EXISTS public.cron_job_leases (
   acquired_at   timestamptz NOT NULL DEFAULT now(),
   locked_until  timestamptz NOT NULL,
   renewed_at    timestamptz,
-  release_count bigint      NOT NULL DEFAULT 0,
-  CONSTRAINT chk_cron_lease_window CHECK (locked_until > acquired_at)
+  release_count bigint      NOT NULL DEFAULT 0
 );
+-- Deliberately NO `CHECK (locked_until > acquired_at)`. A lease in the past is
+-- not a corrupt row — it is precisely how this design expresses "expired", which
+-- is the state release_cron_lease writes and the state an abandoned lease decays
+-- into. Constraining the ordering would forbid the mechanism.
 
 COMMENT ON TABLE public.cron_job_leases IS
   'Durable single-flight leases for scheduled edge functions. Replaces the session-scoped try_lock_cron_job advisory lock (CRON-SF-WEDGE): expiry is data, so a crashed holder cannot wedge the job past locked_until, and release is owner-token guarded.';
@@ -143,7 +146,7 @@ BEGIN
   -- Free the job by expiring it in place (keeps the row for observability) rather
   -- than deleting, so release_count/acquired_at remain queryable for liveness.
   UPDATE public.cron_job_leases
-     SET locked_until  = acquired_at + interval '1 microsecond',
+     SET locked_until  = now(),
          release_count = release_count + 1
    WHERE job_name    = btrim(p_job_name)
      AND owner_token = p_owner_token;

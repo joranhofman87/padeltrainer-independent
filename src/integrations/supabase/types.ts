@@ -2561,6 +2561,33 @@ export type Database = {
           },
         ]
       }
+      cron_job_leases: {
+        Row: {
+          acquired_at: string
+          job_name: string
+          locked_until: string
+          owner_token: string
+          release_count: number
+          renewed_at: string | null
+        }
+        Insert: {
+          acquired_at?: string
+          job_name: string
+          locked_until: string
+          owner_token: string
+          release_count?: number
+          renewed_at?: string | null
+        }
+        Update: {
+          acquired_at?: string
+          job_name?: string
+          locked_until?: string
+          owner_token?: string
+          release_count?: number
+          renewed_at?: string | null
+        }
+        Relationships: []
+      }
       cycles: {
         Row: {
           category_id: string | null
@@ -9335,6 +9362,10 @@ export type Database = {
         Returns: boolean
       }
       accept_rebook_rules: { Args: { _token: string }; Returns: undefined }
+      acquire_cron_lease: {
+        Args: { p_job_name: string; p_ttl_seconds?: number }
+        Returns: string
+      }
       admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
         Args: { p_invoice_id: string; p_reason: string }
@@ -10653,6 +10684,14 @@ export type Database = {
         }
         Returns: undefined
       }
+      notif_digest_item_open_slots_v1: {
+        Args: { p_data: Json; p_locale: string; p_subtype: string }
+        Returns: Json
+      }
+      notif_digest_item_reject_unsafe: {
+        Args: { p_text: string }
+        Returns: undefined
+      }
       notif_digest_ledger: {
         Args: {
           p_action: string
@@ -10948,9 +10987,21 @@ export type Database = {
           outcome: string
         }[]
       }
+      release_cron_lease: {
+        Args: { p_job_name: string; p_owner_token: string }
+        Returns: boolean
+      }
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
+      renew_cron_lease: {
+        Args: {
+          p_job_name: string
+          p_owner_token: string
+          p_ttl_seconds?: number
+        }
+        Returns: boolean
+      }
       reset_email_suppression: { Args: { p_email: string }; Returns: undefined }
       resolve_guest_member_contacts: {
         Args: { _guest_ids: string[] }
@@ -11074,12 +11125,10 @@ export type Database = {
         }
         Returns: undefined
       }
-      try_lock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
       unclaim_rebook_member_open_notice: {
         Args: { _cycle_id: string }
         Returns: undefined
       }
-      unlock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
       unschedule_all_background_pg_cron_jobs: {
         Args: never
         Returns: undefined
