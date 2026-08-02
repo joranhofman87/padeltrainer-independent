@@ -96,5 +96,26 @@ BEGIN
 END;
 $$;
 
+-- ===========================================================================
+-- The predicate above is CORRECT but, on its own, only a residual filter.
+-- `idx_notification_outbox_due` (20260910100000) is keyed (status, scheduled_for,
+-- next_attempt_at) WHERE status IN ('pending','processing') — it knows nothing about
+-- delivery_mode. A digest member stays `pending` from enqueue until the materializer takes it
+-- (materialization assigns digest_group_id but deliberately does NOT change status), so after a
+-- big daily/weekly boundary passes, a large backlog of DUE digest rows sits directly in that
+-- index. The instant claim would then walk and discard them to fill its LIMIT: with the OR,
+-- the ORDER BY and SKIP LOCKED, a bounded number of RETURNED rows does not imply a bounded
+-- number of SCANNED rows.
+--
+-- This is an enablement-time cost, not a live one (the engine ships disabled), but it is
+-- cheaper to land the instant-only partial index with the predicate it serves than to discover
+-- it under load. `channel` leads because the claim always filters on it.
+CREATE INDEX IF NOT EXISTS idx_notification_outbox_due_instant
+  ON public.notification_outbox (channel, scheduled_for, next_attempt_at)
+  WHERE status IN ('pending','processing') AND delivery_mode IS DISTINCT FROM 'digest';
+
+COMMENT ON INDEX public.idx_notification_outbox_due_instant IS
+  'Instant-worker claim path: due/reclaimable rows that are NOT digest members. Keeps a large due digest backlog out of the instant claim scan entirely rather than filtering it out row by row.';
+
 COMMENT ON FUNCTION public.claim_notification_outbox_batch(text, text, int, int) IS
   'Notification v2 INSTANT worker: atomically claim (FOR UPDATE SKIP LOCKED) due pending rows AND reclaim stale-processing rows orphaned by a crashed worker (reaping any stuck past max_attempts), mark them processing + increment attempts under the caller''s lock token, and return the send payload. Digest members (delivery_mode=''digest'') are NEVER claimed, reclaimed or reaped here — the digest state machine owns them. service_role only.';

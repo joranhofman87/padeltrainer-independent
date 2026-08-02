@@ -480,6 +480,51 @@ describe('C — the INSTANT claim never touches a digest member', () => {
                     WHERE delivery_mode='digest'`);
     expect(await claim()).toHaveLength(0);
   });
+
+  // The predicate alone is only a RESIDUAL filter: idx_notification_outbox_due knows nothing
+  // about delivery_mode, so a large DUE digest backlog would be walked and discarded to fill
+  // the instant claim's LIMIT. Pin that the instant-only partial index keeps it out of the scan.
+  it('a large DUE digest backlog is not scanned by the instant claim', async () => {
+    await c.query(`
+      INSERT INTO public.notification_outbox
+        (channel, event_type, status, scheduled_for, delivery_mode, idempotency_key,
+         destination_normalized, recipient_user_id, payload,
+         recipient_key, destination_fingerprint, digest_frequency, digest_boundary_at, digest_item)
+      SELECT 'email', 'open_slots_player', 'pending', now() - interval '1 hour', 'digest',
+             'bulk:' || g, 'p@example.com', '${USER}', '{}'::jsonb,
+             'p:${PERSON}', repeat('a', 64), 'weekly', now() - interval '1 hour',
+             jsonb_build_object('v',1,'event','open_slots_player','subtype','new_availability',
+                                'locale','en','title','t','body','b')
+        FROM generate_series(1, 20000) g;
+      INSERT INTO public.notification_outbox
+        (channel, event_type, status, scheduled_for, idempotency_key,
+         destination_normalized, recipient_user_id, payload)
+      SELECT 'email', 'open_slots_player', 'pending', now() - interval '1 minute',
+             'inst:' || g, 'p@example.com', '${USER}', '{}'::jsonb
+        FROM generate_series(1, 5) g;
+      ANALYZE public.notification_outbox;`);
+
+    // EXPLAIN the claim's OWN due-selection predicate (same shape as the deployed CTE).
+    const { rows } = await c.query(`
+      EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+      SELECT o.id FROM public.notification_outbox o
+       WHERE o.channel = 'email'
+         AND o.delivery_mode IS DISTINCT FROM 'digest'
+         AND ((o.status = 'pending' AND o.scheduled_for <= now()
+               AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= now()))
+           OR (o.status = 'processing'
+               AND o.locked_at < now() - interval '15 minutes' AND o.attempts < o.max_attempts))
+       ORDER BY o.scheduled_for
+       LIMIT 20`);
+    const plan = JSON.stringify(rows[0]['QUERY PLAN']);
+    // the instant-only partial index is chosen...
+    expect(plan).toContain('idx_notification_outbox_due_instant');
+    // ...and the 20000 due digest rows are never walked and discarded
+    const removed = /"Rows Removed by Filter": (\d+)/g;
+    let m: RegExpExecArray | null; let worst = 0;
+    while ((m = removed.exec(plan)) !== null) worst = Math.max(worst, Number(m[1]));
+    expect(worst).toBeLessThan(1000);
+  }, 180_000);
 });
 
 // ===========================================================================
