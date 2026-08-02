@@ -115,6 +115,12 @@ beforeAll(async () => {
       CONSTRAINT notification_outbox_status_check CHECK (status IN
         ('pending','processing','sent','delivered','failed','skipped','cancelled')),
       UNIQUE (channel, idempotency_key));
+    -- The PRODUCTION baseline index (20260910100000). Without it the scale test below would
+    -- compare the new partial index against a sequential scan instead of the real baseline,
+    -- and would therefore "prove" an improvement that production never lacked.
+    CREATE INDEX idx_notification_outbox_due
+      ON public.notification_outbox (status, scheduled_for, next_attempt_at)
+      WHERE status IN ('pending','processing');
 
     CREATE TABLE public.email_suppression_stub (email text PRIMARY KEY);
     CREATE FUNCTION public.is_email_suppressed(p_email text) RETURNS boolean LANGUAGE sql STABLE AS
@@ -202,6 +208,45 @@ async function enqueue(subject: string, payload: object = {}) {
     [USER, TRAINER, subject, JSON.stringify(payload)],
   );
   return rows;
+}
+
+/**
+ * Pull the `due` CTE's SELECT out of the DEPLOYED claim_notification_outbox_batch body and
+ * parameter-substitute it, so the plan we assert on is the one production actually runs. A
+ * hand-written lookalike would keep passing after the RPC's predicate, ordering or index
+ * changed — exactly the regression this test exists to catch.
+ */
+async function extractDueQuery(): Promise<string> {
+  const { rows } = await c.query(
+    `SELECT pg_get_functiondef(p.oid) AS def FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname='public' AND p.proname='claim_notification_outbox_batch'`);
+  const def: string = rows[0].def;
+  const start = def.indexOf('SELECT o.id');
+  const end = def.indexOf('LIMIT greatest(p_limit, 0)', start);
+  if (start < 0 || end < 0) throw new Error('could not locate the due CTE in the deployed function');
+  return def.slice(start, end)
+    .replace(/p_channel/g, `'email'`)
+    .replace(/greatest\(p_stale_after_minutes, 1\)/g, '15')
+    + ' LIMIT 20';
+}
+
+/** Every index name appearing anywhere in a parsed EXPLAIN plan tree. */
+function indexNames(node: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  if (typeof node['Index Name'] === 'string') out.push(node['Index Name'] as string);
+  for (const child of (node['Plans'] as Array<Record<string, unknown>>) ?? []) out.push(...indexNames(child));
+  return out;
+}
+
+/** Worst "Rows Removed by Filter" anywhere in the tree. Walks the PARSED plan: the value is a
+ *  JSON number, so regexing JSON.stringify output silently matches nothing and asserts nothing. */
+function worstRowsRemoved(node: Record<string, unknown>): number {
+  let worst = Number(node['Rows Removed by Filter'] ?? 0);
+  for (const child of (node['Plans'] as Array<Record<string, unknown>>) ?? []) {
+    worst = Math.max(worst, worstRowsRemoved(child));
+  }
+  return worst;
 }
 
 const ITEM = {
@@ -502,28 +547,30 @@ describe('C — the INSTANT claim never touches a digest member', () => {
       SELECT 'email', 'open_slots_player', 'pending', now() - interval '1 minute',
              'inst:' || g, 'p@example.com', '${USER}', '{}'::jsonb
         FROM generate_series(1, 5) g;
+      -- the STALE-RECLAIM arm needs digest rows in 'processing' too, otherwise that half of
+      -- the OR contributes nothing and the plan is only pinned for the fresh-due arm
+      INSERT INTO public.notification_outbox
+        (channel, event_type, status, scheduled_for, delivery_mode, idempotency_key,
+         destination_normalized, recipient_user_id, payload, locked_at, attempts, max_attempts,
+         recipient_key, destination_fingerprint, digest_frequency, digest_boundary_at, digest_item)
+      SELECT 'email', 'open_slots_player', 'processing', now() - interval '3 hours', 'digest',
+             'stale:' || g, 'p@example.com', '${USER}', '{}'::jsonb,
+             now() - interval '2 hours', 1, 5,
+             'p:${PERSON}', repeat('a', 64), 'weekly', now() - interval '3 hours',
+             jsonb_build_object('v',1,'event','open_slots_player','subtype','new_availability',
+                                'locale','en','title','t','body','b')
+        FROM generate_series(1, 5000) g;
       ANALYZE public.notification_outbox;`);
 
-    // EXPLAIN the claim's OWN due-selection predicate (same shape as the deployed CTE).
-    const { rows } = await c.query(`
-      EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
-      SELECT o.id FROM public.notification_outbox o
-       WHERE o.channel = 'email'
-         AND o.delivery_mode IS DISTINCT FROM 'digest'
-         AND ((o.status = 'pending' AND o.scheduled_for <= now()
-               AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= now()))
-           OR (o.status = 'processing'
-               AND o.locked_at < now() - interval '15 minutes' AND o.attempts < o.max_attempts))
-       ORDER BY o.scheduled_for
-       LIMIT 20`);
-    const plan = JSON.stringify(rows[0]['QUERY PLAN']);
-    // the instant-only partial index is chosen...
-    expect(plan).toContain('idx_notification_outbox_due_instant');
-    // ...and the 20000 due digest rows are never walked and discarded
-    const removed = /"Rows Removed by Filter": (\d+)/g;
-    let m: RegExpExecArray | null; let worst = 0;
-    while ((m = removed.exec(plan)) !== null) worst = Math.max(worst, Number(m[1]));
-    expect(worst).toBeLessThan(1000);
+    // EXPLAIN the DEPLOYED query, extracted from pg_get_functiondef — not a hand-written
+    // lookalike, which could silently drift from the RPC it claims to pin.
+    const due = await extractDueQuery();
+    const { rows } = await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${due}`);
+    const plan = rows[0]['QUERY PLAN'][0].Plan;
+
+    expect(indexNames(plan)).toContain('idx_notification_outbox_due_instant');
+    // the 20000 due digest rows are never walked and discarded
+    expect(worstRowsRemoved(plan)).toBeLessThan(1000);
   }, 180_000);
 });
 
