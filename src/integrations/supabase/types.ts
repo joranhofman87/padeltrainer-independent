@@ -10600,6 +10600,14 @@ export type Database = {
         }
         Returns: string
       }
+      notif_digest_assert_hhmm: {
+        Args: { p_label: string; p_value: string }
+        Returns: string
+      }
+      notif_digest_assert_iso_date: {
+        Args: { p_label: string; p_value: string }
+        Returns: string
+      }
       notif_digest_assert_run: {
         Args: { p_channel: string; p_phase: string; p_run_id: string }
         Returns: undefined
