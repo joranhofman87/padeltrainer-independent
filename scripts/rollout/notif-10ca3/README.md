@@ -86,7 +86,8 @@ verify/step6-verifier-test.sh executable fixtures + mutants for the step-6 verif
 verify/logfetch-integration-test.sh fresh-evidence contract: fetch+verify is atomic
 verify/dryrun-diagnostics-test.sh   the dry run must surface the CLI failure reason (redacted)
 verify/worktree-link-test.sh       the rollout worktree links its OWN pooler before any push
-verify/clone-safety-test.sh        quiesce/restore + clone inertness gate proofs
+verify/clone-safety-test.sh        withdrawn-path refusal + supported rehearsal proofs
+verify/repo-guard-test.sh          static guard: no extension fence/ownership bypass can return
 evidence/                   captured run outputs
 ```
 
@@ -406,14 +407,20 @@ Three things make this non-obvious, and all are enforced by the tooling:
 ```bash
 export EXPECTED_REF=<prod ref>     # never the clone
 export CLONE_REF=<clone ref>       # must differ from EXPECTED_REF
-export PGPASSWORD='<clone password>'
+export PGPASSWORD='<disposable project password>'   # never in the URL
 CLONE="postgresql://postgres@db.$CLONE_REF.supabase.co:5432/postgres?sslmode=require"
 ```
 
-Each rehearsal needs its **own pristine snapshot** — B and C leave the clone in a
-deliberately broken state. Restore/recreate the clone between them.
+Each rehearsal must start from the **recorded pristine baseline** — B and C leave
+the target in a deliberately broken state, and A/D leave all three migrations
+applied. Rebuild between them; **never restore a production snapshot**:
 
-**A — measure the real rewrite window.** On a fresh prod-scale clone:
+```bash
+run-rollout.sh clone-baseline-verify "$CLONE"        # before each rehearsal
+run-rollout.sh clone-reset-baseline --yes "$CLONE"   # wipe + full rebuild after each
+```
+
+**A — measure the real rewrite window.** On a freshly rebuilt synthetic target:
 ```bash
 run-rollout.sh preflight "$CLONE" --clone          # emits rows/bytes + CAP_LOCK/CAP_STMT expectations
 CAP_STMT=<from preflight> run-rollout.sh clone-push --yes "$CLONE"   # time this
@@ -458,7 +465,10 @@ run-rollout.sh verify-clone "$CLONE" --clone               # phase 2: fixture+po
 ```
 *Pass:* all four artifacts green. Capture the output as `evidence/cloneD-<date>.txt`.
 
-**Cleanup:** destroy every clone/snapshot afterwards — they hold production data.
+**Cleanup:** destroy the disposable project afterwards. It holds **no production
+data** — every row in it is synthetic and every address is on the undeliverable
+`example.invalid` TLD — but a project that exists is a project someone can point
+at production credentials, so remove it once the evidence is captured.
 
 The battery is **two-phase** by construction: `preflight.sql` asserts the delta is
 **ABSENT** while `postflight.sql`/`academy_fixture.sql` require it **PRESENT**, so

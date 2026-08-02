@@ -161,23 +161,47 @@ job the migrations created (`cron.alter_job` only, never `cron.unschedule`) and
 `sql/rehearsal_inert_check.sql` re-proves inertness for the loaded target. That
 pause needs no fence: there is no live workload to protect against.
 
-**The build is inert while it runs.** 14 migrations on `main` call
-`cron.schedule`, several baking a hard-coded endpoint into the job command.
-Deactivating *after* `supabase db push` would leave live jobs for the duration of
-the build, so `sql/cron_noop_shim.sql` is installed **first**: it provides a
-`cron` schema whose `schedule`/`alter_job`/`unschedule` record intent and execute
-nothing, and a `net` shim that counts outbound calls instead of making them. It
-fails closed if the real `pg_cron`/`pg_net` are present, since they cannot be
-shadowed — which is why the target must be a project without them.
+**The build is inert while it runs — by construction.** Migrations call
+`cron.schedule`, several baking a hard-coded endpoint into the job command, and
+the chain also runs `CREATE EXTENSION pg_cron` / `pg_net` (20260117134212,
+20260330204208). Two consequences the first attempt got wrong:
+
+* deactivating *after* `supabase db push` leaves live jobs for the whole build;
+* pre-creating stand-in `cron`/`net` objects **collides** with those
+  `CREATE EXTENSION` statements — and if they succeed, the target has a real
+  scheduler and a real network primitive again.
+
+So the migration **source is sanitized**: `synth/sanitize-migrations.mjs`
+neutralises exactly those two `CREATE EXTENSION` statements (and *refuses* the
+build on anything else that could reach outside the box — `dblink`,
+`postgres_fdw`, `http`, `wrappers`, `CREATE SERVER`, `schedule_in_database`), and
+`sql/platform_stub.sql` supplies inert `cron`/`net` objects beforehand. Every
+`cron.schedule` in the chain then records intent and schedules nothing; every
+`net.http_post` is counted and never made. The stub fails closed if the real
+extensions are already installed, since they cannot be shadowed.
+
+This is executed, not asserted: `verify/clone-safety-pg.mjs` sanitizes the real
+chain, applies **all 552 migrations** to a bare database, confirms `pg_cron`/
+`pg_net` are absent and zero cron jobs are active, applies #615, wipes, and
+replays all 552 again.
 
 **Reset is a rebuild, not a row reload.** After A or D the target carries all
 three #615 migrations — columns, functions, tables, constraints and three ledger
 rows; after C it carries a prefix; a failed migration can leave a mixture.
 Truncating two tables reverses none of that. `clone-reset-baseline` therefore
-runs `sql/clone_wipe.sql` (drop `public`, drop the shims, **empty the migration
-ledger** — leaving it would make the next push apply a *suffix*), re-proves the
-target is bare, and rebuilds through the **same code path** as the original
-build so a reset cannot drift from what it claims to restore.
+runs `sql/clone_wipe.sql`, re-proves the target is bare, and rebuilds through the
+**same code path** as the original build so a reset cannot drift from what it
+claims to restore.
+
+The wipe has to reach further than `DROP SCHEMA public`. Migrations insert
+`storage.buckets` rows with **no** `ON CONFLICT` and create policies on
+`storage.objects`; both live in a platform-owned schema and survive. So does the
+migration ledger — leaving it makes the next push apply a *suffix*. The wipe
+therefore also clears storage buckets and objects, drops every policy on
+`storage.objects`, clears Vault secrets, drops database-webhook triggers, and
+empties `supabase_migrations.schema_migrations`, then **asserts** each of those is
+zero. The real-Postgres suite proves it by replaying the full chain after a wipe:
+no duplicate bucket, no duplicate policy.
 
 **Reusable baseline.** `sql/baseline_fingerprint.sql` records the shape (columns,
 types, nullability, index set), the size (row counts and total relation bytes),
@@ -253,19 +277,48 @@ tooling **refuses to build a baseline** until it says `"measured"`. Filling it
 needs one read-only query against production, which is a separate authorization:
 
 ```sql
-SELECT 'email_address_state' AS t, count(*) AS rows,
-       avg(length(email))::int AS avg_email_len,
-       pg_total_relation_size('public.email_address_state') AS bytes
+-- Produces EVERY field rehearsal-scale.json requires. Counts, lengths, byte
+-- sizes and category names only — no address, no reason text, no identifier.
+
+-- sizes (heap and index separately: a rewrite walks the heap, a constraint
+-- validation walks indexes, and the right total with the wrong split is not
+-- the same relation)
+SELECT 'email_address_state' AS t,
+       count(*)                                        AS rows,
+       avg(length(email))::int                         AS avg_email_len,
+       avg(length(coalesce(reason, '')))::int          AS avg_reason_len,
+       pg_relation_size('public.email_address_state')  AS heap_bytes,
+       pg_indexes_size('public.email_address_state')   AS index_bytes,
+       pg_total_relation_size('public.email_address_state') AS total_bytes
 FROM public.email_address_state
 UNION ALL
-SELECT 'email_delivery_events', count(*),
+SELECT 'email_delivery_events',
+       count(*),
+       NULL,
        avg(length(coalesce(reason, '')))::int,
+       pg_relation_size('public.email_delivery_events'),
+       pg_indexes_size('public.email_delivery_events'),
        pg_total_relation_size('public.email_delivery_events')
 FROM public.email_delivery_events;
 
+-- distributions
 SELECT state, count(*) FROM public.email_address_state GROUP BY state;
 SELECT event_type, count(*) FROM public.email_delivery_events GROUP BY event_type;
 
+-- the two percentages the event rows depend on
+SELECT round(100.0 * count(*) FILTER (WHERE resend_event_id IS NOT NULL) / greatest(count(*), 1))::int
+         AS resend_event_id_pct,
+       round(100.0 * count(*) FILTER (WHERE invoice_id      IS NOT NULL) / greatest(count(*), 1))::int
+         AS with_invoice_pct
+FROM public.email_delivery_events;
+
+-- events_per_address: the histogram the backfill's cost follows
+SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY n)::int AS p50,
+       percentile_disc(0.9) WITHIN GROUP (ORDER BY n)::int AS p90,
+       max(n)::int                                        AS max
+FROM (SELECT count(*) AS n FROM public.email_delivery_events GROUP BY recipient_email) x;
+
+-- bloat: dead_tuple_ratio = n_dead_tup / greatest(n_live_tup, 1)
 SELECT relname, n_live_tup, n_dead_tup FROM pg_stat_user_tables
 WHERE schemaname = 'public' AND relname IN ('email_address_state', 'email_delivery_events');
 ```

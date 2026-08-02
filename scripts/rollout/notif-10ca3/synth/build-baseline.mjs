@@ -41,14 +41,20 @@ const AS = scale.tables.email_address_state;
 const DE = scale.tables.email_delivery_events;
 for (const [n, t] of [['email_address_state', AS], ['email_delivery_events', DE]]) {
   if (!Number.isInteger(t.rows) || t.rows <= 0) { console.error(`refusing: ${n}.rows must be a positive integer`); process.exit(4); }
-  if (!Number.isInteger(t.total_bytes) || t.total_bytes <= 0) {
-    console.error(`refusing: ${n}.total_bytes must be measured — row counts alone do not establish
-scale, because the rewrite walks PAGES. See ADR-001 section 7.`);
-    process.exit(4);
+  for (const k of ['heap_bytes', 'index_bytes', 'total_bytes']) {
+    if (!Number.isInteger(t[k]) || t[k] <= 0) {
+      console.error(`refusing: ${n}.${k} must be measured — row counts alone do not establish
+scale, because a rewrite walks PAGES and a constraint validation walks indexes.
+See ADR-001 section 7.`);
+      process.exit(4);
+    }
   }
 }
 const TOL = Number(scale.byte_tolerance_pct ?? 0);
-if (!(TOL > 0 && TOL <= 50)) { console.error('refusing: byte_tolerance_pct must be in (0, 50]'); process.exit(4); }
+// 20% is the widest band in which a measured window is still a usable bound;
+// beyond that the number stops constraining anything. Widen it only deliberately
+// and say so in the evidence (ADR-001 section 6.3).
+if (!(TOL > 0 && TOL <= 20)) { console.error('refusing: byte_tolerance_pct must be in (0, 20]'); process.exit(4); }
 
 // deterministic, seedless-but-reproducible generator (no Math.random: a rehearsal
 // must be repeatable, and the harness forbids nondeterminism in fixtures)
@@ -81,6 +87,20 @@ try {
   const t0 = Date.now();
   await c.query('BEGIN');
   await c.query('TRUNCATE public.email_delivery_events, public.email_address_state');
+  // with_invoice_pct drives a real FK column, so the referenced rows must exist.
+  // Synthetic invoice ids only — no invoice is copied, and nothing else about
+  // them is populated.
+  const wantInv = Math.max(0, Math.min(100, Number(DE.with_invoice_pct || 0)));
+  const invIds = [];
+  if (wantInv > 0) {
+    const nInv = Math.max(1, Math.ceil(DE.rows * wantInv / 100 / 4));
+    for (let i = 0; i < nInv; i += 5000) {
+      const chunk = Math.min(5000, nInv - i);
+      const r = await c.query(
+        `INSERT INTO public.invoices (id) SELECT gen_random_uuid() FROM generate_series(1, $1) RETURNING id`, [chunk]);
+      for (const row of r.rows) invIds.push(row.id);
+    }
+  }
 
   // --- email_address_state: every width-driving column of the PRE-#615 shape,
   //     not a subset. provider_suppressed_active does not exist yet — the
@@ -118,15 +138,16 @@ try {
           reason,
           rnd() * 100 < (DE.resend_event_id_pct || 0) ? `evt_${written + k}` : null,
           `msg_${written + k}`,
+          invIds.length && rnd() * 100 < wantInv ? invIds[(written + k) % invIds.length] : null,
         ]);
       }
       written += n; ai++;
     }
     if (!rows.length) break;
     const vals = rows.map((_, k) =>
-      `($${k * 6 + 1}, $${k * 6 + 2}, $${k * 6 + 3}, $${k * 6 + 4}, $${k * 6 + 5}, $${k * 6 + 6})`).join(',');
+      `($${k * 7 + 1}, $${k * 7 + 2}, $${k * 7 + 3}, $${k * 7 + 4}, $${k * 7 + 5}, $${k * 7 + 6}, $${k * 7 + 7})`).join(',');
     await c.query(`INSERT INTO public.email_delivery_events
-      (recipient_email, event_type, bounce_type, reason, resend_event_id, resend_email_id)
+      (recipient_email, event_type, bounce_type, reason, resend_event_id, resend_email_id, invoice_id)
       VALUES ${vals}`, rows.flat());
   }
   await c.query('COMMIT');
@@ -157,12 +178,23 @@ try {
   // envelope or the derived CAP_STMT is not a bound on anything.
   let drift = false;
   for (const [t, spec] of [['email_address_state', AS], ['email_delivery_events', DE]]) {
-    const got = Number((await c.query(`SELECT pg_total_relation_size('public.${t}')::bigint AS v`)).rows[0].v);
-    const want = Number(spec.total_bytes);
-    const pct = want ? Math.abs(got - want) / want * 100 : 100;
-    const ok = pct <= TOL;
-    console.log(`BYTES ${t} generated=${got} measured=${want} drift=${pct.toFixed(1)}% tolerance=${TOL}% ${ok ? 'ok' : 'OUT_OF_TOLERANCE'}`);
-    if (!ok) drift = true;
+    // heap and index are checked SEPARATELY: a relation can hit the right total
+    // with the wrong split, and a rewrite walks the heap while a constraint
+    // validation walks indexes too.
+    for (const [what, sizeSql, want] of [
+      ['heap',  `pg_relation_size('public.${t}')`,        Number(spec.heap_bytes)],
+      ['index', `pg_indexes_size('public.${t}')`,         Number(spec.index_bytes)],
+      ['total', `pg_total_relation_size('public.${t}')`,  Number(spec.total_bytes)],
+    ]) {
+      if (!Number.isFinite(want) || want <= 0) {
+        console.error(`refusing: ${t}.${what}_bytes must be measured (got ${want})`); process.exit(4);
+      }
+      const got = Number((await c.query(`SELECT ${sizeSql}::bigint AS v`)).rows[0].v);
+      const pct = Math.abs(got - want) / want * 100;
+      const ok = pct <= TOL;
+      console.log(`BYTES ${t}.${what} generated=${got} measured=${want} drift=${pct.toFixed(1)}% tolerance=${TOL}% ${ok ? 'ok' : 'OUT_OF_TOLERANCE'}`);
+      if (!ok) drift = true;
+    }
   }
   if (drift) {
     console.error(`FAIL: the generated baseline is outside the measured byte envelope, so a timing

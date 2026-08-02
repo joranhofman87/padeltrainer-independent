@@ -10,6 +10,12 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
   PASS  no executable file contains creating or recreating pg_cron or pg_net
   PASS  no executable file contains granting TRIGGER on an extension table
   PASS  no executable file contains a REASSIGN OWNED
+== the two by-design exemptions are exactly the two expected files ==
+  PASS  exactly two files are exempt from the pattern scan
+  PASS  exempt: this suite, which must name the patterns to search for them
+  PASS  exempt: the sanitizer, which must name them to NEUTRALISE them
+  PASS  the sanitizer only matches CREATE EXTENSION; it never emits one
+  PASS  …and replaces it with a commented, self-describing marker
 == the withdrawn artifacts are retained but unreachable ==
   PASS  retained for review: sql/withdrawn/clone_source_seal.sql
   PASS  …and absent from the executable artifact set
@@ -36,4 +42,4 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
 == the README no longer instructs anyone to run the withdrawn procedure ==
   PASS  README shows no runnable clone-source-quiesce step
   PASS  README links the ADR
-================  30 passed, 0 failed  ================
+================  35 passed, 0 failed  ================

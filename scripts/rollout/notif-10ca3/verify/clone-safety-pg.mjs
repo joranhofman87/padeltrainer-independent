@@ -16,7 +16,7 @@
 // ===========================================================================
 import pg from 'pg';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { boot, SQL_DIR, installPreState, applyPr615, migPR615, PR615_MIGS, REPO } from './chain.mjs';
@@ -113,13 +113,13 @@ try {
   console.log('\n[4] real schema + synthetic baseline + the real #615 migrations');
   await installPreState(c);
   const scale = {
-    source: 'measured', measured_at: '2026-08-02', byte_tolerance_pct: 50,
+    source: 'measured', measured_at: '2026-08-02', byte_tolerance_pct: 20,
     tables: {
       email_address_state: { rows: 4000, avg_email_len: 32, avg_reason_len: 24,
-        heap_bytes: 1, index_bytes: 1, total_bytes: 900000,
+        heap_bytes: 483328, index_bytes: 425984, total_bytes: 942080,
         state_distribution: { ok: 3600, soft_bounced: 200, hard_bounced: 120, complained: 80 } },
       email_delivery_events: { rows: 12000, avg_reason_len: 24, resend_event_id_pct: 60, with_invoice_pct: 40,
-        heap_bytes: 1, index_bytes: 1, total_bytes: 4000000,
+        heap_bytes: 1916928, index_bytes: 2162688, total_bytes: 4112384,
         event_type_distribution: { sent: 7000, delivered: 3500, bounced: 900, complained: 300,
                                    delivery_delayed: 150, failed: 100, send_failed: 50 },
         events_per_address: { p50: 2, p90: 6, max: 20 } },
@@ -138,7 +138,10 @@ try {
       { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
     rec('the synthetic generator loads a production-scale baseline', /all_addresses_synthetic=yes/.test(synthOut),
         synthOut.trim().slice(0, 80));
-  } catch (x) { rec('the synthetic generator loads a production-scale baseline', false, String(x.stderr || x).slice(0, 120)); }
+  } catch (x) {
+    const detail = `${String(x.stdout || '').match(/BYTES[^\n]*/g)?.join(' | ') || ''} ${String(x.stderr || x)}`;
+    rec('the synthetic generator loads a production-scale baseline', false, detail.slice(0, 700));
+  }
   rec('email_address_state loaded to the configured scale',
       await scalar(c, `SELECT count(*)::int AS v FROM public.email_address_state`) === 4000);
   rec('email_delivery_events loaded to the configured scale',
@@ -148,6 +151,28 @@ try {
                             + (SELECT count(*) FROM public.email_delivery_events WHERE recipient_email NOT LIKE '%@%.example.invalid'))::int AS v`) === 0);
   const other = await scalar(c, `SELECT count(*)::int AS v FROM public.notification_outbox`);
   rec('ONLY the two affected tables received scale data (notification_outbox untouched)', other === 0);
+
+  // …and the envelope check must have TEETH: the same load with a deliberately
+  // wrong measured size has to be refused, or the "ok" above means nothing.
+  {
+    const bad = JSON.parse(JSON.stringify(scale));
+    bad.tables.email_address_state.total_bytes = Math.round(bad.tables.email_address_state.total_bytes * 2);
+    const badFile = join(dir, 'scale-bad.json');
+    writeFileSync(badFile, JSON.stringify(bad));
+    let refused = false;
+    try {
+      execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, badFile],
+        { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+    } catch { refused = true; }
+    rec('a baseline 2x outside the measured byte envelope is REFUSED (the check has teeth)', refused);
+  }
+  rec('with_invoice_pct is enforced, not merely declared — invoice_id is populated',
+      Number(await scalar(c, `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE invoice_id IS NOT NULL`)) > 0);
+  rec('…and resend_event_id_pct likewise',
+      Number(await scalar(c, `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE resend_event_id IS NOT NULL`)) > 0);
+  rec('the per-address event history is not uniform (the backfill cost follows it)',
+      Number(await scalar(c, `SELECT (max(n) - min(n))::int AS v FROM
+        (SELECT count(*) n FROM public.email_delivery_events GROUP BY recipient_email) x`)) > 0);
 
   const fp1 = artifactText('baseline_fingerprint.sql');
   const before = await allRows(c, fp1);
@@ -173,6 +198,80 @@ try {
 
   // ---- the lock proof that matters: run the REAL migration while another
   //      session holds a conflicting lock, and require it to abort cleanly ----
+  console.log('\n[5b] the ADVERTISED lifecycle: sanitize -> full chain -> #615 -> wipe -> rebuild');
+  {
+    const sanDir = mkdtempSync(join(tmpdir(), 'rollout-san-'));
+    const out = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/sanitize-migrations.mjs'),
+      join(REPO, 'supabase/migrations'), join(sanDir, 'migrations')], { encoding: 'utf8' });
+    rec('the migration chain sanitizes (pg_cron/pg_net CREATE EXTENSION neutralised)',
+        /neutralised_extension_statements=[1-9]/.test(out), out.trim().slice(0, 90));
+
+    const fresh = conn(); await fresh.connect();
+    const applyChain = async (cl) => {
+      const files = readdirSync(join(sanDir, 'migrations')).filter(f => f.endsWith('.sql')).sort();
+      let n = 0;
+      for (const f of files) { await cl.query(readFileSync(join(sanDir, 'migrations', f), 'utf8')); n++; }
+      return { n, total: files.length };
+    };
+    try {
+      // bare project -> stub -> FULL chain, exactly as clone-build-baseline does it
+      await fresh.query(`DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS auth CASCADE;
+        DROP SCHEMA IF EXISTS storage CASCADE; DROP SCHEMA IF EXISTS vault CASCADE;
+        DROP SCHEMA IF EXISTS cron CASCADE; DROP SCHEMA IF EXISTS net CASCADE; CREATE SCHEMA public;
+        DROP PUBLICATION IF EXISTS supabase_realtime;`);
+      await fresh.query(`CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY)`)
+        .catch(async () => { await fresh.query(`CREATE SCHEMA IF NOT EXISTS supabase_migrations;
+          CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY)`); });
+      await fresh.query(`DELETE FROM supabase_migrations.schema_migrations`);
+      await runArtifact(fresh, 'platform_stub.sql');
+      const r1 = await applyChain(fresh);
+      rec(`the FULL sanitized chain applies to a bare project (${r1.n}/${r1.total})`, r1.n === r1.total);
+      rec('…and pg_cron / pg_net are NOT installed on the result',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM pg_extension WHERE extname IN ('pg_cron','pg_net')`) === 0);
+      // The safety property is ZERO ACTIVE, not "some recorded": the chain both
+      // schedules and unschedules, so the surviving count is incidental.
+      const scheduled = await scalar(fresh, `SELECT count(*)::int AS v FROM cron.job`);
+      rec(`…and ZERO cron jobs are active on the result (${scheduled} recorded by the stand-in)`,
+          await scalar(fresh, `SELECT count(*)::int AS v FROM cron.job WHERE active`) === 0);
+      rec('…the stand-in was actually exercised — the chain reached it rather than a real extension',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                               WHERE n.nspname='cron' AND p.proname='schedule'`) >= 1);
+      rec('…and nothing reached the network', await scalar(fresh, `SELECT count(*)::int AS v FROM net.blocked_outbound_attempts`) >= 0
+          && await scalar(fresh, `SELECT count(*)::int AS v FROM net.http_request_queue`) === 0);
+      const buckets = await scalar(fresh, `SELECT count(*)::int AS v FROM storage.buckets`);
+      rec(`…the chain created storage state that a naive wipe would leave behind (${buckets} bucket(s))`, buckets > 0);
+
+      // apply #615, exactly as rehearsal A does
+      await applyPr615(fresh);
+      rec('#615 applies on top of the freshly built chain',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1);
+      await fresh.query(`INSERT INTO supabase_migrations.schema_migrations
+        SELECT unnest(ARRAY['20261006100000','20261006110000','20261006120000'])`);
+
+      // THE RESET: wipe -> prove bare -> rebuild the FULL chain again
+      await runArtifact(fresh, 'clone_wipe.sql');
+      rec('the wipe clears the storage buckets a schema drop cannot reach',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM storage.buckets`) === 0);
+      rec('…and every storage policy the chain created',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM pg_policies WHERE schemaname='storage' AND tablename='objects'`) === 0);
+      rec('…and the migration ledger, so the rebuild is the FULL chain not a suffix',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM supabase_migrations.schema_migrations`) === 0);
+      let e2 = await tryArtifact(fresh, 'empty_project_check.sql');
+      rec('the wiped target passes the empty-project proof again', e2 === null, e2?.message.slice(0, 80));
+
+      await runArtifact(fresh, 'platform_stub.sql');
+      const r2 = await applyChain(fresh);
+      rec(`the FULL chain REPLAYS after the wipe (${r2.n}/${r2.total}) — no duplicate bucket, no duplicate policy`,
+          r2.n === r2.total);
+      rec('…and #615 is gone again, so the rebuilt target is genuinely pre-migration',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 0);
+    } catch (x) {
+      rec('the advertised build/wipe/rebuild lifecycle completes', false, String(x.message).slice(0, 160));
+    } finally { await fresh.end().catch(() => {}); rmSync(sanDir, { recursive: true, force: true }); }
+  }
+
   console.log('\n[6] the real migration under contention: abort, and ZERO delta');
   const holder = conn(); await holder.connect();
   const runner = conn(); await runner.connect();
@@ -195,10 +294,15 @@ try {
     await holder.query('BEGIN');
     await holder.query(`SELECT count(*) FROM public.email_address_state`);
     await runner.query(`SET lock_timeout = '800ms'`);
+    // The CLI applies a migration AND records it in the ledger in ONE transaction.
+    // Testing only the migration would make "zero ledger delta" true no matter
+    // what, so the ledger insert is included here exactly as the CLI does it.
     let err = null;
     try {
       await runner.query('BEGIN');
       await runner.query(migPR615(PR615_MIGS[0]));
+      await runner.query(`INSERT INTO supabase_migrations.schema_migrations (version) VALUES ($1)`,
+        [PR615_MIGS[0].slice(0, 14)]);
       await runner.query('COMMIT');
     } catch (x) { err = x; await runner.query('ROLLBACK').catch(() => {}); }
     rec('the REAL migration ABORTS on lock_timeout while a reader holds the table',
@@ -214,7 +318,13 @@ try {
     rec('…zero function delta', fnBefore === fnAfter, `${fnBefore} -> ${fnAfter}`);
     rec('…and the generated column was NOT added', colBefore === 0 && colAfter === 0);
     const ledger = await scalar(c, `SELECT count(*)::int AS v FROM supabase_migrations.schema_migrations`).catch(() => 0);
-    rec('…and zero ledger delta (nothing was recorded as applied)', Number(ledger) === 0, `ledger=${ledger}`);
+    rec('…and zero ledger delta — the ledger INSERT was in the same transaction, so this is not vacuous',
+        Number(ledger) === 0, `ledger=${ledger}`);
+    // and prove the ledger write would otherwise have landed: same statement, no contention
+    await c.query(`INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('ledger-probe')`);
+    rec('…(control: an uncontended ledger insert DOES land, so the assertion has teeth)',
+        Number(await scalar(c, `SELECT count(*)::int AS v FROM supabase_migrations.schema_migrations`)) === 1);
+    await c.query(`DELETE FROM supabase_migrations.schema_migrations`);
 
     // uncontended, the same migration succeeds — so the abort was the lock, not the SQL
     const t1 = process.hrtime.bigint();

@@ -53,8 +53,8 @@ if [[ "$f" == *rehearsal_inert_check.sql ]]; then
   done
   echo "NOTE: rehearsal target inert"; exit 0
 fi
-if [[ "$f" == *cron_noop_shim.sql ]]; then
-  [[ "$(sfile SHIM_FAIL 0)" == 0 ]] || boom "real pg_cron/pg_net present; shim refused"
+if [[ "$f" == *platform_stub.sql ]]; then
+  [[ "$(sfile SHIM_FAIL 0)" == 0 ]] || boom "real pg_cron/pg_net present; stand-in refused"
   : > "$S/SHIM"; echo 0 > "$S/I_ACTIVE"; echo "NOTE: inert shims installed"; exit 0
 fi
 if [[ "$f" == *clone_wipe.sql ]]; then
@@ -79,8 +79,9 @@ EOF
 cat > "$BIN/supabase" <<'EOF'
 #!/usr/bin/env bash
 : > "$STATEDIR/SUPABASE_WAS_CALLED"
-# a push is only meaningful once the shims exist; record the ordering
+# a push is only meaningful once the stand-ins exist AND the source is sanitized
 [[ -e "$STATEDIR/SHIM" ]] && : > "$STATEDIR/PUSH_AFTER_SHIM" || : > "$STATEDIR/PUSH_BEFORE_SHIM"
+[[ "$*" == *--workdir* ]] && : > "$STATEDIR/PUSH_FROM_SANITIZED"
 : > "$STATEDIR/SCHEMA"; : > "$STATEDIR/LEDGER"
 [[ "$(cat "$STATEDIR/PUSH_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "push failed" >&2; exit 1; }
 exit 0
@@ -88,6 +89,11 @@ EOF
 cat > "$BIN/node" <<'EOF'
 #!/usr/bin/env bash
 # the real node is needed for the scale-file read; only the synth loader is stubbed
+if [[ "$*" == *sanitize-migrations.mjs* ]]; then
+  : > "$STATEDIR/SANITIZE_WAS_CALLED"
+  [[ "$(cat "$STATEDIR/SANITIZE_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "refusing: unsanitizable" >&2; exit 4; }
+  d="${@: -1}"; mkdir -p "$d"; echo "SANITIZED files=552 neutralised_extension_statements=3 out=$d"; exit 0
+fi
 if [[ "$*" == *build-baseline.mjs* ]]; then
   : > "$STATEDIR/SYNTH_WAS_CALLED"
   [[ "$(cat "$STATEDIR/SYNTH_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "synth failed" >&2; exit 1; }
@@ -188,7 +194,7 @@ seed; measured yes
 crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"; rc=$?
 [[ "$rc" -eq 0 ]] && pass "a measured scale builds the baseline" || fail "baseline build failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
 [[ -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…schema comes from a db push (main), not from the #615 pin" || fail "no schema build"
-grep -q 'from main' "$ROOT/out.txt" && pass "…and the log says so, so the migrations under test are applied separately" || fail "schema source not stated"
+grep -q 'from sanitized main' "$ROOT/out.txt" && pass "…and the log says so, so the migrations under test are applied separately" || fail "schema source not stated"
 [[ "$(cat "$STATEDIR/I_ACTIVE" 2>/dev/null)" == 0 ]] && pass "…every schedule the migrations created was deactivated" || fail "schedules left active"
 [[ -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] && pass "…and a pristine baseline fingerprint was recorded" || fail "no baseline recorded"
 seed; measured yes; echo VIOLATION > "$STATEDIR/SYNTH"
@@ -205,8 +211,13 @@ TBL=$(python3 -c "
 import re,sys
 s=open('$HERE/../synth/build-baseline.mjs').read()
 print(','.join(sorted(set(re.findall(r'public\.([a-z_]+)', s)))))")
-[[ "$TBL" == "email_address_state,email_delivery_events" ]] \
-  && pass "the generator writes ONLY the two tables #615 locks ($TBL)" || fail "generator touches other tables: $TBL"
+# invoices is written only because with_invoice_pct drives a real FK on
+# email_delivery_events — synthetic ids and nothing else about them.
+[[ "$TBL" == "email_address_state,email_delivery_events,invoices" ]] \
+  && pass "the generator writes ONLY the two tables #615 locks, plus the invoice ids their FK needs ($TBL)" \
+  || fail "generator touches other tables: $TBL"
+sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs" | grep -qE 'INSERT INTO public\.invoices \(id\) SELECT gen_random_uuid' \
+  && pass "…and those invoice rows carry nothing but a generated uuid" || fail "invoice rows carry more than an id"
 grep -q 'example.invalid' "$HERE/../synth/build-baseline.mjs" \
   && pass "every generated address uses the reserved, undeliverable example.invalid TLD" || fail "addresses are not on a reserved TLD"
 sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs" | grep -qE 'Math\.random' \
@@ -219,13 +230,21 @@ crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
 [[ -e "$STATEDIR/PUSH_AFTER_SHIM" && ! -e "$STATEDIR/PUSH_BEFORE_SHIM" ]] \
   && pass "the inert cron/pg_net shims are installed BEFORE the schema build (14 migrations on main call cron.schedule)" \
   || fail "the schema was pushed before the shims existed"
-sed -n '/^clone_build_schema_and_data()/,/^}/p' "$RR" | grep -nq 'cron_noop_shim.sql' \
-  && pass "the shim is part of the shared build path" || fail "no shim in the build path"
-awk '/^clone_build_schema_and_data\(\)/{b=1} b&&/cron_noop_shim.sql/{shim=NR} b&&/supabase db push/{push=NR} b&&/^}/{exit} END{exit !(shim && push && shim < push)}' "$RR" \
-  && pass "…and textually precedes the push, so the ordering cannot drift" || fail "shim does not precede the push"
+sed -n '/^clone_build_schema_and_data()/,/^}/p' "$RR" | grep -nq 'platform_stub.sql' \
+  && pass "the inert stand-in is part of the shared build path" || fail "no stand-in in the build path"
+[[ -e "$STATEDIR/SANITIZE_WAS_CALLED" ]] \
+  && pass "the migration source is SANITIZED (the chain installs pg_cron/pg_net; stand-ins alone would collide)" || fail "source not sanitized"
+[[ -e "$STATEDIR/PUSH_FROM_SANITIZED" ]] \
+  && pass "…and the push runs against the sanitized directory, not the repo's" || fail "pushed the raw chain"
+awk '/^clone_build_schema_and_data\(\)/{b=1} b&&/platform_stub.sql/{shim=NR} b&&/sanitize-migrations.mjs/{san=NR} b&&/supabase db push/{push=NR} b&&/^}/{exit} END{exit !(shim && san && push && shim < san && san < push)}' "$RR" \
+  && pass "…and stand-in, sanitize and push are textually in that order, so it cannot drift" || fail "build ordering is wrong"
 seed; measured yes; echo 1 > "$STATEDIR/SHIM_FAIL"
 crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
-[[ $? -ne 0 ]] && pass "a target with REAL pg_cron/pg_net is refused (the shim cannot shadow them)" || fail "shim refusal ignored"
+[[ $? -ne 0 ]] && pass "a target with REAL pg_cron/pg_net is refused (stand-ins cannot shadow them)" || fail "stand-in refusal ignored"
+seed; measured yes; echo 1 > "$STATEDIR/SANITIZE_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a chain that cannot be sanitized aborts the build (fail closed on the unknown)" || fail "unsanitizable chain accepted"
+[[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and nothing was pushed" || fail "pushed an unsanitized chain"
 [[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and no schema was pushed to it" || fail "pushed despite an unshimmable target"
 
 echo "-- reset is a REAL rebuild, not a row reload --"
@@ -329,7 +348,7 @@ rm -f "$M"
 # deactivation is belt-and-braces behind it. Either alone is masked by the other,
 # so they are mutated TOGETHER and the claim is scoped to that: SOMETHING must
 # keep the build's cron jobs from becoming active.
-M="$(mut noinert '  run_artifact "$url" cron_noop_shim.sql||=||  :' clone_build_schema_and_data)"
+M="$(mut noinert '  run_artifact "$url" platform_stub.sql||=||  :' clone_build_schema_and_data)"
 python3 - "$M" <<'PYX'
 import sys,re
 p=sys.argv[1]; s=open(p).read()

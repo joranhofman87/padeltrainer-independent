@@ -532,6 +532,7 @@ cmd_verify_clone() {
 # inert. (mutation-pinned: verify/clone-safety-test.sh)
 # Reviewed floor for the scheduler-observation interval between quiet samples.
 # Deliberately not overridable: see quiesce_drain.
+REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 QUIESCE_MIN_SETTLE_SECS=15
 REVIEWED_JOBS="$HERE/clone-safety/reviewed-cron-jobs.tsv"
 SRC_MANIFEST="$EVID/clone-source-manifest.txt"
@@ -929,23 +930,30 @@ cmd_clone_build_baseline() {
 # The build itself. Shared by build and reset so a reset cannot drift from the
 # thing it claims to restore.
 clone_build_schema_and_data() {   # $1 url
-  local url="$1"
+  local url="$1" san rc=0
 
-  # 1) INERT FIRST. 14 migrations on main call cron.schedule, some baking a
-  #    hard-coded endpoint into the command. Deactivating after the push would
-  #    leave a live job for the duration of the build, so the scheduling and
-  #    outbound surfaces are shimmed BEFORE the first migration runs: calls are
-  #    recorded, nothing is ever scheduled and nothing can reach the network.
-  run_artifact "$url" cron_noop_shim.sql
+  # 1) INERT FIRST — and inert by CONSTRUCTION, not by hope. The chain installs
+  #    pg_cron and pg_net (20260117134212, 20260330204208), so pre-creating
+  #    stand-ins and leaving those statements in place would collide with the
+  #    extension and then hand the target a real scheduler anyway. The source is
+  #    therefore SANITIZED (those CREATE EXTENSION statements neutralised, and
+  #    anything else that could reach outside the box refused), and the inert
+  #    stand-ins go in before it runs.
+  run_artifact "$url" platform_stub.sql
+  san="$(mktemp -d "${TMPDIR:-/tmp}/rollout-sanitized-XXXXXX")" || die "could not create a sanitized migration directory"
+  node "$HERE/synth/sanitize-migrations.mjs" "$REPO_ROOT/supabase/migrations" "$san/migrations" \
+    || { rm -rf "$san"; die "the migration chain could not be sanitized — see the refusals above"; }
 
-  # 2) schema from main — NOT from the #615 pin. The migrations under test are
-  #    applied later, on their own, or the measurement means nothing.
-  log "building schema on the rehearsal target from main (scheduling shimmed inert)"
-  NO_COLOR=1 supabase db push --db-url "$url" \
-    || die "schema build failed on the rehearsal target"
+  # 2) schema from the sanitized MAIN chain — NOT from the #615 pin. The
+  #    migrations under test are applied later, on their own, or the measurement
+  #    means nothing.
+  log "building schema on the rehearsal target from sanitized main"
+  ( cd "$san" && printf 'project_id = "%s"\n' "$CLONE_REF" > config.toml \
+    && NO_COLOR=1 supabase db push --db-url "$url" --workdir "$san" ) || rc=$?
+  rm -rf "$san"
+  [[ "$rc" -eq 0 ]] || die "schema build failed on the rehearsal target (exit ${rc})"
 
-  # 3) belt and braces: prove nothing became active, and report what production
-  #    WOULD be running so the difference is visible rather than assumed
+  # 3) belt and braces: prove nothing became active, and that the target is inert
   run_artifact "$url" clone_deactivate_schedules.sql
   run_artifact "$url" rehearsal_inert_check.sql
 

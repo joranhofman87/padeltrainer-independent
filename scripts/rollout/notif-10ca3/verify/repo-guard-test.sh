@@ -22,9 +22,14 @@ fail(){ F=$((F+1)); echo "  FAIL  $*"; }
 
 # Everything in the bundle EXCEPT the retained-for-review copies and this suite
 # (which necessarily names the forbidden patterns in order to search for them).
+# Two files necessarily NAME the forbidden constructs in order to act on them:
+# this suite (which searches for them) and the sanitizer (which neutralises them).
+# The exemption is explicit and asserted below, not a silent skip.
+EXEMPT_BY_DESIGN=(repo-guard-test.sh sanitize-migrations.mjs)
 executable_files(){
   find "$B" -type f \( -name '*.sh' -o -name '*.sql' -o -name '*.mjs' -o -name '*.js' \) \
-    -not -path '*/sql/withdrawn/*' -not -path '*/evidence/*' -not -name 'repo-guard-test.sh'
+    -not -path '*/sql/withdrawn/*' -not -path '*/evidence/*' \
+    -not -name 'repo-guard-test.sh' -not -name 'sanitize-migrations.mjs'
 }
 # Strip SQL/# comments so prose describing the ban is not mistaken for the ban,
 # then COLLAPSE THE FILE TO ONE LINE. A line-oriented grep cannot see
@@ -67,6 +72,23 @@ CREATE[[:space:]]+EXTENSION[^;]*(pg_cron|pg_net)	creating or recreating pg_cron 
 GRANT[[:space:]]+TRIGGER[[:space:]]+ON[^;]*(cron\.job|net\.http_request_queue)	granting TRIGGER on an extension table
 REASSIGN[[:space:]]+OWNED	a REASSIGN OWNED
 PATS
+
+echo "== the two by-design exemptions are exactly the two expected files =="
+[[ "${#EXEMPT_BY_DESIGN[@]}" -eq 2 ]] && pass "exactly two files are exempt from the pattern scan" || fail "the exemption list has grown"
+for f in "${EXEMPT_BY_DESIGN[@]}"; do
+  case "$f" in
+    repo-guard-test.sh)       pass "exempt: this suite, which must name the patterns to search for them";;
+    sanitize-migrations.mjs)  pass "exempt: the sanitizer, which must name them to NEUTRALISE them";;
+    *) fail "unexpected exemption: $f";;
+  esac
+done
+# and the sanitizer must only ever REMOVE those statements, never emit one
+sed -e 's|//.*$||' "$B/synth/sanitize-migrations.mjs" \
+  | grep -qE "(writeFileSync|query|exec)[^)]*CREATE[[:space:]]+EXTENSION" \
+  && fail "the sanitizer EMITS a CREATE EXTENSION rather than only matching one" \
+  || pass "the sanitizer only matches CREATE EXTENSION; it never emits one"
+grep -q 'NEUTRALISED' "$B/synth/sanitize-migrations.mjs" \
+  && pass "…and replaces it with a commented, self-describing marker" || fail "no neutralisation marker"
 
 echo "== the withdrawn artifacts are retained but unreachable =="
 for f in clone_source_seal.sql clone_source_arm.sql clone_isolation.sql clone_unfence.sql; do
