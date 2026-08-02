@@ -28,9 +28,20 @@ BEGIN
   END LOOP;
 END $$;
 
+-- ONE TRANSACTION. A stub that failed part-way used to leave a non-empty target
+-- that neither a retry (not empty) nor --recover (no marker yet) would accept.
+-- All of this now lands together or not at all.
+BEGIN;
+
 CREATE SCHEMA IF NOT EXISTS cron;
 CREATE SCHEMA IF NOT EXISTS net;
 CREATE SCHEMA IF NOT EXISTS extensions;
+
+-- The recovery marker is created FIRST, not last: if anything below fails the
+-- transaction rolls back and the target is untouched, but if a LATER step (the
+-- migration push) fails, the marker is already there for --recover to key on.
+CREATE TABLE IF NOT EXISTS net.rehearsal_target_marker (built_at timestamptz NOT NULL DEFAULT now());
+INSERT INTO net.rehearsal_target_marker DEFAULT VALUES;
 
 CREATE TABLE IF NOT EXISTS cron.job (
   jobid    bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -140,9 +151,6 @@ BEGIN
   END IF;
 END $$;
 
--- A marker the wipe keys on, so clone_wipe.sql can prove it is looking at a
--- target this tooling built rather than at anything else.
-CREATE TABLE IF NOT EXISTS net.rehearsal_target_marker (built_at timestamptz NOT NULL DEFAULT now());
-INSERT INTO net.rehearsal_target_marker DEFAULT VALUES;
+COMMIT;
 
 SELECT pg_temp.note('inert cron/net stand-ins installed; the sanitized chain will never install the real extensions');

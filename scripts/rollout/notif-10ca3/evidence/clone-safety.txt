@@ -68,6 +68,17 @@ TABLES email_address_state,email_delivery_events,invoices,trainer_profiles
   PASS  …through the SAME build path, so a reset cannot drift from the build
   PASS  the wipe empties the migration ledger (leaving it would apply a SUFFIX next time)
   PASS  …and drops the schema, so columns/functions/constraints really are gone
+-- recovery is offered ONLY for a target this tooling part-built --
+  PASS  a non-empty target that this tooling did NOT build is refused
+  PASS  …and --recover is explicitly NOT offered for it (destroying someone else's project is the wrong answer)
+  PASS  …while the ORIGINAL diagnostic is still shown (the failing check is named), not replaced by a generic message
+  PASS  a clone-IDENTITY failure fails as itself
+  PASS  …and never recommends --recover (auth/connectivity/identity are not recoverable by wiping)
+-- a stub that dies PART-WAY leaves nothing behind --
+  PASS  a stand-in install that dies part-way fails the build
+  PASS  …and left NOTHING behind (the artifact is one transaction), so a plain retry works
+  PASS  the stand-in artifact is wrapped in a single transaction
+  PASS  …and the recovery marker is created INSIDE it, early, so a later failure is still recoverable
 -- a FIRST build that fails part-way is recoverable, and only explicitly --
   PASS  a generator failure fails the first build
   PASS  …and records NO fingerprint, so nothing false is left behind
@@ -101,4 +112,4 @@ TABLES email_address_state,email_delivery_events,invoices,trainer_profiles
   PASS  MUTANT (baseline check removed from the gate) rehearses against a drifted target — a failed migration could leave a reusable false green
   PASS  MUTANT (shim AND deactivation removed) builds the schema with nothing keeping cron inert — one of the two is load-bearing
   PASS  MUTANT (wipe removed from reset) leaves the previous rehearsal's schema, shims and ledger in place — the wipe is what makes a reset pristine
-================  90 passed, 0 failed  ================
+================  99 passed, 0 failed  ================

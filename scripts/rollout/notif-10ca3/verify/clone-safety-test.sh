@@ -55,12 +55,13 @@ if [[ "$f" == *rehearsal_inert_check.sql ]]; then
   echo "NOTE: rehearsal target inert"; exit 0
 fi
 if [[ "$f" == *platform_stub.sql ]]; then
+  [[ "$(sfile STUB_PARTIAL 0)" == 1 ]] && { echo "ERROR:  stub died part-way" >&2; exit 3; }
   [[ "$(sfile SHIM_FAIL 0)" == 0 ]] || boom "real pg_cron/pg_net present; stand-in refused"
-  : > "$S/SHIM"; echo 0 > "$S/I_ACTIVE"; echo "NOTE: inert shims installed"; exit 0
+  : > "$S/SHIM"; : > "$S/MARKER_TBL"; echo 0 > "$S/I_ACTIVE"; echo "NOTE: inert stand-ins installed"; exit 0
 fi
 if [[ "$f" == *clone_wipe.sql ]]; then
   [[ -e "$S/SHIM" ]] || boom "refusing to wipe: shims absent"
-  rm -f "$S/SHIM" "$S/SCHEMA" "$S/LEDGER"; echo "NOTE: wiped"; exit 0
+  rm -f "$S/SHIM" "$S/MARKER_TBL" "$S/SCHEMA" "$S/LEDGER"; echo "NOTE: wiped"; exit 0
 fi
 if [[ "$f" == *clone_deactivate_schedules.sql ]]; then
   [[ "$(sfile DEACT_FAIL 0)" == 0 ]] || boom "could not deactivate schedules"
@@ -271,6 +272,34 @@ grep -q 'DELETE FROM supabase_migrations.schema_migrations' "$SQLD/clone_wipe.sq
   && pass "the wipe empties the migration ledger (leaving it would apply a SUFFIX next time)" || fail "ledger not cleared"
 grep -q 'DROP SCHEMA IF EXISTS public CASCADE' "$SQLD/clone_wipe.sql" \
   && pass "…and drops the schema, so columns/functions/constraints really are gone" || fail "schema not dropped"
+
+echo "-- recovery is offered ONLY for a target this tooling part-built --"
+seed; measured yes; echo 1 > "$STATEDIR/E_VAULT"      # a foreign, non-empty project
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a non-empty target that this tooling did NOT build is refused" || fail "foreign target accepted"
+grep -q -- '--recover is NOT offered' "$ROOT/out.txt" \
+  && pass "…and --recover is explicitly NOT offered for it (destroying someone else's project is the wrong answer)" || fail "recover offered for a foreign target"
+grep -q 'E_VAULT' "$ROOT/out.txt" \
+  && pass "…while the ORIGINAL diagnostic is still shown (the failing check is named), not replaced by a generic message" \
+  || fail "the real diagnostic was suppressed"
+seed; measured yes
+# CLONE_REF == EXPECTED_REF is a genuine identity failure, not an emptiness one
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$REF" bash "$RR" clone-build-baseline --yes "$CLONE_URL" ) >"$ROOT/out.txt" 2>&1
+[[ $? -ne 0 ]] && pass "a clone-IDENTITY failure fails as itself" || fail "identity failure accepted"
+grep -q -- '--recover' "$ROOT/out.txt" && fail "an identity failure recommends destructive recovery" \
+  || pass "…and never recommends --recover (auth/connectivity/identity are not recoverable by wiping)"
+
+echo "-- a stub that dies PART-WAY leaves nothing behind --"
+seed; measured yes; echo 1 > "$STATEDIR/STUB_PARTIAL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a stand-in install that dies part-way fails the build" || fail "partial stub accepted"
+[[ ! -e "$STATEDIR/MARKER_TBL" && ! -e "$STATEDIR/SHIM" ]] \
+  && pass "…and left NOTHING behind (the artifact is one transaction), so a plain retry works" || fail "partial stub state survived"
+grep -q '^BEGIN;' "$SQLD/platform_stub.sql" && grep -q '^COMMIT;' "$SQLD/platform_stub.sql" \
+  && pass "the stand-in artifact is wrapped in a single transaction" || fail "stub is not transactional"
+awk '/^BEGIN;/{b=NR} /rehearsal_target_marker/{m=NR} /^COMMIT;/{c=NR} END{exit !(b && m && c && b<m && m<c)}' "$SQLD/platform_stub.sql" \
+  && pass "…and the recovery marker is created INSIDE it, early, so a later failure is still recoverable" || fail "marker is not created early inside the transaction"
+rm -f "$STATEDIR/STUB_PARTIAL"
 
 echo "-- a FIRST build that fails part-way is recoverable, and only explicitly --"
 seed; measured yes; echo 1 > "$STATEDIR/SYNTH_FAIL"

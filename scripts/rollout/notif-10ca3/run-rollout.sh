@@ -818,7 +818,7 @@ clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
   fi
   if [[ "$rc" -ne 0 ]]; then
     warn "resume transaction FAILED and rolled back — production remains paused and fenced with its marker intact"
-    [[ -n "$cap" ]] && sed -n 's/^\(ERROR\|psql\).*/&/p' "$cap" 2>/dev/null | head -6 >&2
+    [[ -n "$cap" ]] && grep -E '^(ERROR|psql)' "$cap" 2>/dev/null | head -6 >&2
     [[ "$cap_tmp" -eq 1 ]] && warn "the diagnostics above came from a temporary capture, which is now removed"
     discard_temp_capture "$cap" "$cap_tmp"
     return "$rc"
@@ -918,21 +918,38 @@ cmd_clone_build_baseline() {
   require_yes "${1:-}"
   local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-build-baseline --yes <clone_conn_url>"
   require_cmd psql; require_cmd supabase; require_cmd node
-  # A build that failed PART-WAY (a broken db push, a generator abort) leaves a
-  # target that is no longer empty and has no fingerprint on file. Without this
-  # hint the operator is stuck between a build that refuses a non-empty target
-  # and a reset that refuses a missing baseline.
-  # subshell: assert_rehearsal_target ends in `die`, which EXITS — without this
-  # the branch below could never run and the operator would just see the raw
-  # "target is not empty" error with no way forward.
-  if ! ( assert_rehearsal_target "$url" ) >/dev/null 2>&1; then
-    [[ -s "$BASELINE_FP" ]] \
-      && die "this target already carries a recorded baseline — use 'clone-baseline-verify' or 'clone-reset-baseline --yes'" \
-      || die "the target is NOT empty and no baseline is on file, so a previous build failed part-way. Recover with:
+  # Identity first, and FATALLY: an auth, connectivity or wrong-ref failure must
+  # surface as itself. Recommending a destructive recovery for those would be
+  # actively harmful.
+  assert_clone_url "$url"
+
+  # Only now, the emptiness question. A build that failed PART-WAY leaves a
+  # target that is no longer empty and has no fingerprint, and without a hint the
+  # operator is stuck between a build that refuses a non-empty target and a reset
+  # that refuses a missing baseline. The ORIGINAL diagnostic is always shown.
+  local probe rc=0
+  probe="$(mktemp "${TMPDIR:-/tmp}/rollout-empty-XXXXXX")" || die "could not create a probe capture"
+  run_sql_soft "$url" "$SQL_DIR/empty_project_check.sql" > "$probe" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    warn "the target did not pass the empty-project check:"
+    grep -E '^(ERROR|psql|NOTICE)' "$probe" | sed 's/^/  /' | head -6 >&2
+    local partial=0
+    grep -q 'not a pristine disposable project\|is not empty\|rehearsal_target_marker\|holds .* Vault\|auth user' "$probe" && partial=1
+    if [[ "$partial" -eq 1 ]] && psql "$url" -v ON_ERROR_STOP=1 -Atqc \
+         "SELECT 1 FROM net.rehearsal_target_marker LIMIT 1" >/dev/null 2>&1; then
+      rm -f "$probe"
+      [[ -s "$BASELINE_FP" ]] \
+        && die "this target already carries a recorded baseline — use 'clone-baseline-verify' or 'clone-reset-baseline --yes'" \
+        || die "the target carries THIS TOOLING'S marker but no baseline is on file, so a previous build failed part-way. Recover with:
     clone-reset-baseline --yes --recover <clone_url>
-  which wipes it back to bare metal, rebuilds, and records the baseline. (A plain
-  reset refuses without a recorded baseline, precisely so this case is explicit.)"
+  which wipes it back to bare metal, rebuilds, and records the baseline."
+    fi
+    rm -f "$probe"
+    die "the target is not usable as a rehearsal target — see the diagnostic above. --recover is NOT offered: it is only for a target this tooling part-built (one carrying net.rehearsal_target_marker), and destroying anything else would be the wrong answer."
   fi
+  rm -f "$probe"
+  ok "rehearsal target verified EMPTY and outbound-inert (nothing to quiesce, nothing to fence)"
+
   assert_scale_is_measured
   mkdir -p "$EVID"
   clone_build_schema_and_data "$url"

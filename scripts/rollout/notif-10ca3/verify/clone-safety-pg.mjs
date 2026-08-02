@@ -278,9 +278,19 @@ try {
           Number(await scalar(fresh, `SELECT ((SELECT count(*) FROM public.email_address_state WHERE email NOT LIKE '%@%.example.invalid')
                  + (SELECT count(*) FROM public.email_delivery_events WHERE recipient_email NOT LIKE '%@%.example.invalid'))::int AS v`)) === 0);
 
-      // ---- F1: a failed byte envelope must ROLL BACK, not commit and strand ----
+      // ---- a failed byte envelope must ROLL BACK, proven by a SENTINEL ----
+      // Row counts alone cannot show this: the loader TRUNCATEs and reloads the
+      // same number of rows, so a commit-before-validate ordering produces 2400
+      // rows too. A sentinel row inserted BEFORE the load is truncated by it and
+      // only comes back if the transaction rolled back.
       {
-        const before = Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events`));
+        const SENT = 'rollback-sentinel@rehearsal.example.invalid';
+        await fresh.query(`INSERT INTO public.email_address_state (email, state) VALUES ($1,'ok')
+                           ON CONFLICT (email) DO NOTHING`, [SENT]);
+        const hasSent = async (cl) => Number(await scalar(cl,
+          `SELECT count(*)::int AS v FROM public.email_address_state WHERE email = '${SENT}'`)) === 1;
+        rec('sentinel seeded before the failing load', await hasSent(fresh));
+
         const badScale = JSON.parse(JSON.stringify(fullScale));
         badScale.tables.email_address_state.total_bytes =
           Math.round(badScale.tables.email_address_state.total_bytes * 3);
@@ -292,12 +302,68 @@ try {
             { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
         } catch { refused = true; }
         rec('a load that fails the byte envelope is REFUSED', refused);
-        const after = Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events`));
-        rec('…and ROLLED BACK — the prior contents survive, so the target is not stranded mid-build',
-            after === before, `${before} -> ${after}`);
-        // the load TRUNCATEs first, so a commit-then-validate ordering would have
-        // left 0 rows here; this is what distinguishes rollback from persistence
-        rec('…(the load truncates first, so a committed failure would show 0 rows)', after > 0, `rows=${after}`);
+        rec('…and ROLLED BACK — the sentinel the load truncated is back', await hasSent(fresh));
+
+        // MUTANT: commit before validating, the pre-fix ordering
+        // beside the real one: a mutant in a temp dir cannot resolve `import pg`,
+        // so it would exit before running and the sentinel would survive for the
+        // wrong reason (which is exactly what happened the first time).
+        const mut = join(REPO, 'scripts/rollout/notif-10ca3/synth/.commit-first-mutant.mjs');
+        {
+          // the pre-fix ordering, built by exact string surgery: commit BEFORE
+          // the envelope check, and drop the compensating rollback
+          const src = readFileSync(join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), 'utf8');
+          const beforeDrift = '  let drift = false;';
+          const rollbackInDrift = "  if (drift) {\n    await c.query('ROLLBACK');";
+          if (!src.includes(beforeDrift) || !src.includes(rollbackInDrift)) {
+            rec('the commit-first mutant could be built (anchors still present)', false, 'anchors moved');
+          }
+          let m = src.replace(beforeDrift, "  await c.query('COMMIT');\n" + beforeDrift);
+          m = m.replace(rollbackInDrift, '  if (drift) {');
+          m = m.replace("  // validated: now it may become durable\n  await c.query('COMMIT');", '  // validated (mutant: already committed)');
+          writeFileSync(mut, m);
+        }
+        await fresh.query(`INSERT INTO public.email_address_state (email, state) VALUES ($1,'ok')
+                           ON CONFLICT (email) DO NOTHING`, [SENT]);
+        let mutRefused = false;
+        try {
+          execFileSync('node', [mut, url, badFile],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        } catch { mutRefused = true; }
+        const sentSurvived = await hasSent(fresh);
+        rec('MUTANT (COMMIT hoisted above validation) still refuses…', mutRefused);
+        rec('…but the sentinel is GONE — it committed the failed load, which is exactly the stranding this fix prevents',
+            sentSurvived === false, `sentinel present=${sentSurvived}`);
+        rmSync(mut, { force: true });
+
+        // put the target back for the assertions that follow
+        execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+      }
+
+      // ---- bloat must actually be injected ----
+      {
+        const out = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        const m = out.match(/BLOAT dead_tuple_ratio=([\d.]+) rows_updated=(\d+) of (\d+)/);
+        rec('the generator reports its bloat injection', m !== null, (out.match(/BLOAT[^\n]*/) || [''])[0]);
+        if (m) {
+          const [, r, updated, rows] = m;
+          rec(`…and honours dead_tuple_ratio (${r} of ${rows} = ${Math.round(Number(rows) * Number(r))}, updated ${updated})`,
+              Number(updated) === Math.max(1, Math.round(Number(rows) * Number(r))) && Number(updated) > 0);
+        }
+        const badBloat = JSON.parse(JSON.stringify(fullScale));
+        badBloat.bloat = {};                       // ratio absent entirely
+        const bf = join(sanDir, 'scale-nobloat.json');
+        writeFileSync(bf, JSON.stringify(badBloat));
+        let bloatRefused = false;
+        try {
+          execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, bf],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        } catch { bloatRefused = true; }
+        rec('a scale file with NO dead_tuple_ratio is refused (the ADR promises injected bloat)', bloatRefused);
+        execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
       }
 
       // ---- F2: the generated history matches the BACKFILL predicate ----
@@ -312,7 +378,8 @@ try {
         const want = fullScale.tables.email_delivery_events.events_per_address;
         rec(`the FILTERED p50 matches the configured history (${h.p50} vs ${want.p50})`, h.p50 === want.p50);
         rec(`…p90 matches (${h.p90} vs ${want.p90})`, h.p90 === want.p90);
-        rec(`…and max does not exceed it (${h.mx} <= ${want.max})`, h.mx <= want.max);
+        rec(`…and max matches EXACTLY (${h.mx} vs ${want.max}) — "<=" would pass a generator that never reaches the measured maximum`,
+            h.mx === want.max);
 
         const total = Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events`));
         rec(`the measured total row count is preserved (${total})`,

@@ -265,6 +265,31 @@ try {
   // baseline on file) could then recover. Everything through validation is one
   // transaction; a failure rolls the data back and the target stays pristine.
 
+  // BLOAT. A freshly loaded table is perfectly packed; a table that has absorbed
+  // years of updates is not, and an ACCESS EXCLUSIVE rewrite has to walk its
+  // pages. Update a documented fraction of rows WITHOUT vacuuming so the dead
+  // tuples are still there when the envelope is measured. (This was silently
+  // dropped when the COMMIT moved below validation — the ADR promised it and
+  // nothing asserted it, so BLOAT is now reported and checked.)
+  const ratio = Number(scale.bloat?.dead_tuple_ratio ?? -1);
+  if (!(ratio >= 0 && ratio <= 1)) {
+    await c.query('ROLLBACK');
+    console.error('refusing: bloat.dead_tuple_ratio must be a fraction in [0, 1]'); process.exit(4);
+  }
+  let bloated = 0;
+  if (ratio > 0) {
+    const want = Math.max(1, Math.round(AS.rows * ratio));
+    const r = await c.query(
+      `UPDATE public.email_address_state SET state = state
+        WHERE ctid IN (SELECT ctid FROM public.email_address_state ORDER BY email LIMIT $1)`, [want]);
+    bloated = r.rowCount;
+    if (bloated !== want) {
+      await c.query('ROLLBACK');
+      console.error(`FAIL: bloat injection updated ${bloated} of ${want} rows`); process.exit(7);
+    }
+  }
+  console.log(`BLOAT dead_tuple_ratio=${ratio} rows_updated=${bloated} of ${AS.rows}`);
+
   const n1 = (await c.query('SELECT count(*)::int AS v FROM public.email_address_state')).rows[0].v;
   const n2 = (await c.query('SELECT count(*)::int AS v FROM public.email_delivery_events')).rows[0].v;
   const bad = (await c.query(`SELECT
