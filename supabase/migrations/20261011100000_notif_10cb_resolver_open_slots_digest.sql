@@ -1,0 +1,336 @@
+-- 10c-b C — RESOLVER COMPLETION for the open-slots digest cutover.
+--
+-- What this migration adds, and the ONE rule that shapes all of it:
+--
+-- THE BLAST-RADIUS RULE. `supports_digest` is NOT a cutover marker. Eight events
+-- already carry supports_digest=true (booking_confirmed_staff, booking_request_staff,
+-- booking_cancelled_staff, session_reminder_player, payment_received_staff,
+-- invoice_paid_staff, rebook_paid_staff, review_received_trainer) and the settings UI
+-- lets a user store 'daily'/'weekly' against any of them TODAY. Those preferences
+-- currently produce a delayed INSTANT outbox row (resolver §6d). Re-routing behavior on
+-- `supports_digest` would silently stop mail for every existing daily/weekly subscriber
+-- on those eight events — a live-delivery regression that is not part of 10c-b.
+--
+-- So digest routing is gated on an EXPLICIT per-event cutover flag, `digest_cutover`,
+-- set true for `open_slots_player` ONLY. Every other event keeps its byte-for-byte
+-- existing behavior, including the delayed-instant daily/weekly path. Whether that
+-- delayed-instant behavior is the right product answer for those eight events is a
+-- real question, but it is PRE-EXISTING and belongs to 10c-c; it is not decided here.
+--
+-- ENGINE-OFF SEMANTICS (owner-resolved). For a cutover event on a daily/weekly
+-- preference while `digest_engine_enabled = false`:
+--   * NOT downgraded to an instant email (that would spam a user who asked for a digest);
+--   * NO pending digest row, NO delayed instant row, NO backlog that can burst later —
+--     the row is written `status='skipped'` with `delivery_mode` left NULL, so it is
+--     invisible to BOTH the instant email worker (claims status='pending') AND the
+--     materializer (scans delivery_mode='digest'). There is nothing to drain on enablement.
+--   * an EXPLICIT, auditable outcome: skip_reason='digest_engine_disabled'.
+--   * enablement therefore affects FUTURE events only, by construction.
+--
+-- 'off' still means no delivery. 'instant' still produces a normal instant row with no
+-- digest fields. Required-delivery, consent, suppression, contact, tenant, idempotency,
+-- grant and public-surface behavior are all unchanged.
+
+-- ===========================================================================
+-- 1. The explicit per-event cutover gate + the template version that participates in
+--    the canonical grouping key.
+ALTER TABLE public.notification_event_types
+  ADD COLUMN IF NOT EXISTS digest_cutover   boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS template_version int     NOT NULL DEFAULT 1;
+
+-- A cutover event must at minimum be digest-capable. (The converse is deliberately NOT
+-- constrained: supports_digest without cutover is exactly the eight untouched events.)
+ALTER TABLE public.notification_event_types
+  DROP CONSTRAINT IF EXISTS chk_event_types_cutover_implies_supports_digest;
+ALTER TABLE public.notification_event_types
+  ADD CONSTRAINT chk_event_types_cutover_implies_supports_digest
+  CHECK (NOT digest_cutover OR supports_digest);
+
+-- open_slots_player is the ONE cutover event in 10c-b. Its engine stays disabled.
+UPDATE public.notification_event_types
+   SET digest_cutover = true, template_version = 1, updated_at = now()
+ WHERE key = 'open_slots_player';
+
+COMMENT ON COLUMN public.notification_event_types.digest_cutover IS
+  'Explicit per-event digest-cutover gate. ONLY a cutover event is routed through the v2 digest engine (or given the engine-off skipped outcome). Never infer cutover from supports_digest: eight pre-existing events carry supports_digest and must keep their legacy delayed-instant daily/weekly behavior.';
+
+-- ===========================================================================
+-- 2. §TZ — recipient timezone: academy → trainer → Europe/Amsterdam.
+CREATE OR REPLACE FUNCTION public.notif_digest_recipient_timezone(
+  p_tenant_academy_profile_id uuid,
+  p_tenant_trainer_id         uuid
+) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_tz text;
+BEGIN
+  IF p_tenant_academy_profile_id IS NOT NULL THEN
+    SELECT nullif(btrim(a.timezone), '') INTO v_tz
+      FROM public.academy_profiles a WHERE a.id = p_tenant_academy_profile_id;
+    IF v_tz IS NOT NULL THEN RETURN v_tz; END IF;
+  END IF;
+  IF p_tenant_trainer_id IS NOT NULL THEN
+    SELECT nullif(btrim(t.timezone), '') INTO v_tz
+      FROM public.trainer_profiles t WHERE t.id = p_tenant_trainer_id;
+    IF v_tz IS NOT NULL THEN RETURN v_tz; END IF;
+  END IF;
+  RETURN 'Europe/Amsterdam';
+END $$;
+
+COMMENT ON FUNCTION public.notif_digest_recipient_timezone(uuid,uuid) IS
+  'ADR 0008 §TZ: resolve the digest recipient timezone academy -> trainer -> Europe/Amsterdam.';
+
+-- ===========================================================================
+-- 3. §BND — the immutable digest boundary, DST-correct.
+--
+-- daily  = the next 09:00 LOCAL at or after enqueue.
+-- weekly = the next MONDAY 09:00 LOCAL at or after enqueue (Monday is fixed in 10c-a).
+--
+-- Correctness note: the arithmetic is done on the LOCAL WALL CLOCK (`AT TIME ZONE tz`
+-- yields a plain timestamp), then converted back exactly once. Adding '1 day'/'7 days'
+-- to a timestamptz would add 24/168 fixed hours and drift by an hour across a DST
+-- transition; adding them to a local timestamp lands on the same wall-clock time on the
+-- target day, which is what "next 09:00 local" means. 09:00 is never an ambiguous or
+-- non-existent local time in the European DST regime (transitions happen at 02:00/03:00).
+CREATE OR REPLACE FUNCTION public.notif_digest_boundary_at(
+  p_now       timestamptz,
+  p_frequency text,
+  p_timezone  text
+) RETURNS timestamptz
+LANGUAGE plpgsql IMMUTABLE
+SET search_path = public
+AS $$
+DECLARE
+  v_tz    text := coalesce(nullif(btrim(p_timezone), ''), 'Europe/Amsterdam');
+  v_local timestamp;
+  v_cand  timestamp;
+BEGIN
+  IF p_now IS NULL THEN
+    RAISE EXCEPTION 'notif_digest_boundary_at: p_now is required';
+  END IF;
+  IF p_frequency IS NULL OR p_frequency NOT IN ('daily','weekly') THEN
+    RAISE EXCEPTION 'notif_digest_boundary_at: frequency must be daily or weekly (got %)', p_frequency;
+  END IF;
+
+  v_local := p_now AT TIME ZONE v_tz;
+
+  IF p_frequency = 'daily' THEN
+    v_cand := date_trunc('day', v_local) + interval '9 hours';
+    IF v_cand < v_local THEN
+      v_cand := date_trunc('day', v_local) + interval '1 day' + interval '9 hours';
+    END IF;
+  ELSE
+    -- date_trunc('week', ...) is ISO: it lands on Monday 00:00 local.
+    v_cand := date_trunc('week', v_local) + interval '9 hours';
+    IF v_cand < v_local THEN
+      v_cand := date_trunc('week', v_local) + interval '7 days' + interval '9 hours';
+    END IF;
+  END IF;
+
+  RETURN v_cand AT TIME ZONE v_tz;
+END $$;
+
+COMMENT ON FUNCTION public.notif_digest_boundary_at(timestamptz,text,text) IS
+  'ADR 0008 §BND: the immutable digest boundary — next 09:00 local (daily) or next Monday 09:00 local (weekly), at or after p_now. DST-correct: arithmetic runs on the local wall clock, converted back once.';
+
+-- ===========================================================================
+-- 4. Group locale — binary nl/en, matching notif_digest_item_open_slots_v1's own
+--    deterministic fallback so the item locale and the GROUP locale can never diverge
+--    (they are both canonical-key inputs; a divergence would split or mis-merge groups).
+CREATE OR REPLACE FUNCTION public.notif_digest_group_locale(
+  p_person_id uuid,
+  p_user_id   uuid
+) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE v_lang text;
+BEGIN
+  IF p_person_id IS NOT NULL THEN
+    SELECT nullif(btrim(p.preferred_language), '') INTO v_lang
+      FROM public.persons p WHERE p.id = p_person_id;
+  END IF;
+  IF v_lang IS NULL AND p_user_id IS NOT NULL THEN
+    SELECT nullif(btrim(pr.preferred_language), '') INTO v_lang
+      FROM public.profiles pr WHERE pr.user_id = p_user_id;
+  END IF;
+  RETURN CASE WHEN lower(coalesce(v_lang, '')) LIKE 'nl%' THEN 'nl' ELSE 'en' END;
+END $$;
+
+COMMENT ON FUNCTION public.notif_digest_group_locale(uuid,uuid) IS
+  'Binary nl/en digest group locale (persons.preferred_language -> profiles.preferred_language -> en). Mirrors notif_digest_item_open_slots_v1 so item locale and group locale never diverge.';
+
+-- ===========================================================================
+-- 5. TRUSTED item minting. The digest item is rendered by service-role SQL from
+--    STRUCTURED caller fields — never by the edge function, and never accepted as
+--    pre-rendered content. This is the only path a digest item may enter the outbox.
+CREATE OR REPLACE FUNCTION public.notif_digest_item_for_event(
+  p_event_key text,
+  p_locale    text,
+  p_payload   jsonb
+) RETURNS jsonb
+LANGUAGE plpgsql IMMUTABLE
+SET search_path = public
+AS $$
+DECLARE v_subtype text;
+BEGIN
+  IF p_event_key = 'open_slots_player' THEN
+    v_subtype := nullif(btrim(coalesce(p_payload->>'subtype', '')), '');
+    IF v_subtype IS NULL THEN
+      RAISE EXCEPTION 'notif_digest_item_for_event: open_slots_player payload needs a subtype';
+    END IF;
+    -- The renderer owns validation (subtype allow-list, ISO date/time, safety, URL shape)
+    -- and determinism. `data` is the structured sub-object; a caller cannot inject copy.
+    RETURN public.notif_digest_item_open_slots_v1(
+      v_subtype, p_locale, coalesce(p_payload->'data', '{}'::jsonb));
+  END IF;
+  RAISE EXCEPTION 'notif_digest_item_for_event: no trusted item builder for event %', p_event_key;
+END $$;
+
+COMMENT ON FUNCTION public.notif_digest_item_for_event(text,text,jsonb) IS
+  'Trusted server-side digest-item dispatch. Mints the immutable typed item from STRUCTURED payload fields via the event''s own validating renderer. Edge-rendered content is never trusted or accepted.';
+
+-- ===========================================================================
+-- 6. MANDATORY v1 -> v2 PREFERENCE BACKFILL, before producer cutover.
+--
+-- Why this is not optional (verified in code): send-email maps new_availability /
+-- slot_reopened onto notification_preferences.open_slots_digest and ENFORCES it —
+-- 'off' suppresses, 'daily'/'weekly' queue into the v1 notification_queue. The column
+-- is NOT NULL DEFAULT 'weekly'. Cutting the producer over to enqueue_notification
+-- without carrying those choices across would silently resume mail for every user who
+-- had set 'off'.
+--
+-- Rules:
+--   * an EXISTING explicit v2 row WINS (ON CONFLICT DO NOTHING) — a user who already
+--     expressed a v2 cadence is never overwritten by their stale legacy value;
+--   * off / instant / daily / weekly are carried across EXACTLY;
+--   * any other legacy value is ignored rather than coerced (fail-safe: an unknown
+--     cadence must not silently become 'instant' and start mailing);
+--   * re-running creates no duplicates and no drift — it is a pure no-op the second time;
+--   * a user with NO legacy row keeps the reviewed catalog default (weekly) by having
+--     no v2 row at all, which is exactly how the resolver reads a default.
+INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+SELECT np.user_id, 'open_slots_player', np.open_slots_digest
+  FROM public.notification_preferences np
+ WHERE np.user_id IS NOT NULL
+   AND np.open_slots_digest IN ('off','instant','daily','weekly')
+   AND EXISTS (SELECT 1 FROM auth.users u WHERE u.id = np.user_id)
+ON CONFLICT (user_id, event_type) DO NOTHING;
+
+-- ===========================================================================
+-- 7. §PS EVENT POLICY HOOK — the open-slots stop checks.
+--
+-- ADR §PS reserved an "event policy hook [10c-b]" alongside the generic live checks.
+-- The generic notif_digest_member_stop_reason already re-runs the resolver's live email
+-- lookup and covers: contact revoked/opted-out/out-of-scope, no destination, LIVE
+-- destination no longer fingerprinting to the frozen value, hard suppression, and
+-- preference 'off'. This adds what is specific to open slots:
+--   * the follower row still EXISTS, and
+--   * notify_new_availability is still TRUE.
+-- Both are evaluated at prepare AND before every attempt, because a player can unfollow
+-- (or mute) a trainer between enqueue and send, and a frozen digest must not go out to
+-- someone who has since opted out of exactly this notification.
+CREATE OR REPLACE FUNCTION public.notif_digest_event_stop_reason(p_member_id uuid) RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE o record;
+BEGIN
+  SELECT o2.event_type, o2.recipient_user_id, o2.tenant_trainer_id
+    INTO o FROM public.notification_outbox o2 WHERE o2.id = p_member_id;
+  IF NOT FOUND THEN RETURN 'missing_member'; END IF;
+
+  IF o.event_type = 'open_slots_player' THEN
+    -- The follow relationship is keyed by profiles.id; the outbox freezes the auth user.
+    -- No live profile / no follow row / muted flag all STOP the member.
+    IF o.tenant_trainer_id IS NULL OR o.recipient_user_id IS NULL THEN
+      RETURN 'follow_revoked';
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1
+        FROM public.trainer_followers tf
+        JOIN public.profiles pr ON pr.id = tf.player_id
+       WHERE tf.trainer_id = o.tenant_trainer_id
+         AND pr.user_id = o.recipient_user_id
+         AND tf.notify_new_availability IS TRUE
+    ) THEN
+      RETURN 'follow_revoked';
+    END IF;
+  END IF;
+
+  RETURN NULL;
+END $$;
+
+COMMENT ON FUNCTION public.notif_digest_event_stop_reason(uuid) IS
+  'ADR 0008 §PS event policy hook (10c-b): per-event stop checks layered on the generic live checks. open_slots_player stops when the follower row is gone or notify_new_availability is false.';
+
+-- Layer the hook into the ONE stop predicate both prepare and begin already call, so a
+-- new check cannot be wired into one path and forgotten in the other.
+CREATE OR REPLACE FUNCTION public.notif_digest_member_stop_reason(p_member_id uuid) RETURNS text
+  LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE o record; v_required boolean; v_dest text; v_event_stop text;
+BEGIN
+  SELECT o2.destination_fingerprint, o2.recipient_person_id, o2.recipient_user_id, o2.recipient_guest_player_id,
+         o2.tenant_academy_profile_id, o2.tenant_trainer_id, o2.event_type
+    INTO o FROM public.notification_outbox o2 WHERE o2.id = p_member_id;
+  IF NOT FOUND THEN RETURN 'missing_member'; END IF;
+  SELECT coalesce(et.required_delivery, false) INTO v_required
+    FROM public.notification_event_types et WHERE et.key = o.event_type;
+  v_required := coalesce(v_required, false);
+
+  -- RE-RUN the resolver's LIVE email lookup verbatim (never trust outbox.contact_id — its FK is ON DELETE
+  -- SET NULL, so a deleted contact leaves NULL and any frozen fallback would fail OPEN): ownership
+  -- (person/user/guest), revocation, opt-out, tenant consent scope, and global-only-for-account-holders.
+  SELECT c.destination_normalized INTO v_dest
+    FROM public.notification_contacts c
+   WHERE c.channel = 'email' AND c.revoked_at IS NULL AND c.consent_status <> 'opted_out'
+     AND (c.consent_scope <> 'global' OR o.recipient_user_id IS NOT NULL)
+     AND public.is_notification_consent_in_scope(
+           c.consent_scope, c.consent_academy_profile_id, c.consent_trainer_id,
+           o.tenant_academy_profile_id, o.tenant_trainer_id)
+     AND ( (o.recipient_person_id IS NOT NULL AND c.person_id = o.recipient_person_id)
+        OR (o.recipient_user_id   IS NOT NULL AND c.user_id   = o.recipient_user_id)
+        OR (o.recipient_guest_player_id IS NOT NULL AND c.guest_player_id = o.recipient_guest_player_id) )
+   ORDER BY c.is_primary DESC, c.verified_at DESC NULLS LAST
+   LIMIT 1;
+  IF NOT FOUND THEN
+    IF o.recipient_user_id IS NOT NULL THEN
+      -- global fallback ONLY for account holders (their own login email) — resolver semantics.
+      SELECT p.email INTO v_dest FROM public.persons p WHERE p.user_id = o.recipient_user_id;
+      IF v_dest IS NULL OR length(btrim(v_dest)) = 0 THEN RETURN 'no_destination'; END IF;
+    ELSE
+      RETURN 'contact_revoked';   -- guest/person-only: no live in-scope owned contact → STOP. Frozen data
+    END IF;                       -- is NEVER a live-deliverability substitute.
+  END IF;
+  IF v_dest IS NULL OR length(btrim(v_dest)) = 0 THEN RETURN 'no_destination'; END IF;
+
+  -- the LIVE destination must still fingerprint to the member's frozen destination_fingerprint —
+  -- a changed contact/account email means this frozen digest would go to the WRONG (old) address.
+  IF o.destination_fingerprint IS NOT NULL
+     AND notif_digest_destination_fingerprint(v_dest) <> o.destination_fingerprint THEN
+    RETURN 'destination_changed';
+  END IF;
+  IF public.is_email_suppressed(v_dest) THEN RETURN 'suppressed'; END IF;   -- required never bypasses this
+
+  IF NOT v_required AND o.recipient_user_id IS NOT NULL AND EXISTS (
+       SELECT 1 FROM public.notification_preferences_v2 p
+        WHERE p.user_id = o.recipient_user_id AND p.event_type = o.event_type AND p.email_frequency = 'off') THEN
+    RETURN 'preference_off';                                 -- ONLY this is required_delivery-exempt
+  END IF;
+
+  -- 10c-b: the per-event policy hook, evaluated LAST so the generic deliverability
+  -- reasons stay the reported cause when both apply. Required-delivery does NOT bypass
+  -- it: an event-specific opt-out (unfollow/mute) is a consent signal, not a cadence.
+  v_event_stop := public.notif_digest_event_stop_reason(p_member_id);
+  IF v_event_stop IS NOT NULL THEN RETURN v_event_stop; END IF;
+
+  RETURN NULL;
+END $$;
+
+-- ===========================================================================
+-- 8. Grants. Helpers are owner-invoked by the SECURITY DEFINER RPCs; they are NOT
+--    part of the service_role RPC allow-list (ADR §Round-8: a forged direct call to a
+--    helper must not be able to bypass run/ownership/ledger invariants).
+REVOKE ALL ON FUNCTION public.notif_digest_recipient_timezone(uuid,uuid)          FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.notif_digest_boundary_at(timestamptz,text,text)     FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.notif_digest_group_locale(uuid,uuid)               FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.notif_digest_item_for_event(text,text,jsonb)        FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.notif_digest_event_stop_reason(uuid)                FROM PUBLIC, anon, authenticated, service_role;
