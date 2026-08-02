@@ -2,8 +2,13 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireAdmin, requireServiceRole } from "../_shared/auth.ts";
-import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import { claimMissingTemplateFailure, countsAsFailure, type MissingTemplateClient } from "../_shared/onboarding-missing-template.ts";
+import {
+  claimMissingTemplateFailure,
+  emitOnboardingRunAlert,
+  newOnboardingRunTally,
+  recordMissingTemplateOutcome,
+  type MissingTemplateClient,
+} from "../_shared/onboarding-missing-template.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -174,8 +179,10 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Processing ${pendingEmails.length} pending emails`);
 
-    let successCount = 0;
-    let failCount = 0;
+    // The tally and its single end-of-run alert are production primitives in
+    // _shared/onboarding-missing-template.ts, so the Deno suite exercises this exact
+    // wiring (this module is unimportable — `serve(handler)` runs at import time).
+    const tally = newOnboardingRunTally(pendingEmails.length);
 
     for (const rawItem of pendingEmails) {
       // Handle the template which comes as an array from the join
@@ -203,7 +210,7 @@ const handler = async (req: Request): Promise<Response> => {
         } else {
           console.error(`Template not found for queue item ${queueItem.id}`);
         }
-        if (countsAsFailure(outcome)) failCount++;
+        recordMissingTemplateOutcome(tally, outcome);
         continue;
       }
 
@@ -258,7 +265,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       if (claimError) {
         console.error(`Claim failed for ${queueItem.id}:`, claimError);
-        failCount++;
+        tally.failCount++;
         continue;
       }
 
@@ -291,7 +298,7 @@ const handler = async (req: Request): Promise<Response> => {
           status: "sent",
         });
 
-        successCount++;
+        tally.successCount++;
       } catch (emailError: unknown) {
         console.error(`Failed to send email for queue item ${queueItem.id}:`, emailError);
 
@@ -317,27 +324,17 @@ const handler = async (req: Request): Promise<Response> => {
           status: "failed",
         });
 
-        failCount++;
+        tally.failCount++;
       }
     }
 
-    // Per-item failures return HTTP 200, so the daily-emails cron wrapper's
-    // alertCronFailure (non-2xx only) never sees them. Each failed item is
-    // already marked 'failed' in the queue (won't retry), so a silent failure
-    // means an onboarding email that never goes out — alert.
-    if (failCount > 0) {
-      await notifySlackEdgeError(
-        "process-onboarding-emails",
-        `${failCount} onboarding email(s) failed to send`,
-        { failCount, successCount, processed: pendingEmails.length },
-      );
-    }
+    await emitOnboardingRunAlert(tally);
 
     return new Response(
       JSON.stringify({
-        processed: pendingEmails.length,
-        success: successCount,
-        failed: failCount,
+        processed: tally.processed,
+        success: tally.successCount,
+        failed: tally.failCount,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );

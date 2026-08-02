@@ -6,16 +6,26 @@
 // the previous version of this proof re-implemented the SQL in the test and could
 // therefore stay green while production regressed.
 //
-// The alert count is MEASURED, not inferred. process-onboarding-emails fires ONE
-// end-of-run Slack alert per invocation when its failure tally is non-zero, so two
-// concurrent invocations over a single broken row must produce exactly one alert
-// in total. The `invocation()` helper below reproduces exactly that rule using the
-// production `countsAsFailure`.
+// The alert count is OBSERVED, not inferred. `invocation()` below drives the same
+// production primitives the handler drives — recordMissingTemplateOutcome (the
+// outcome → failCount link) and emitOnboardingRunAlert (the call that reaches
+// notifySlackEdgeError) — and counts the notifier calls that actually happen. An
+// earlier version of this suite computed `alerts = failCount > 0 ? 1 : 0` itself,
+// which stayed green whether or not production still alerted at all. It does not
+// any more: the MUTANT tests at the bottom pin that severing countsAsFailure from
+// the tally, or deleting the notify call, drops the observed count to zero.
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { notifySlackEdgeError } from "./edge-slack.ts";
 import {
   claimMissingTemplateFailure,
   countsAsFailure,
+  DEFAULT_RUN_ALERT_NOTIFIER,
+  emitOnboardingRunAlert,
+  newOnboardingRunTally,
+  recordMissingTemplateOutcome,
   type MissingTemplateClient,
+  type MissingTemplateOutcome,
+  type OnboardingRunTally,
 } from "./onboarding-missing-template.ts";
 
 /**
@@ -49,12 +59,30 @@ function fakeDb(initialStatus = "pending") {
   return { client, row, setError: (m: string | null) => { failNextWith = m; } };
 }
 
-/** One invocation of the worker's missing-template path: claim, tally, then alert once if the tally is non-zero. */
+/** Records every alert production actually emitted, so `alerts` is a measurement. */
+function spyNotifier() {
+  const calls: Array<{ fn: string; message: string; context?: Record<string, unknown> }> = [];
+  return {
+    calls,
+    notify: (fn: string, message: string, context?: Record<string, unknown>) => {
+      calls.push({ fn, message, context });
+      return Promise.resolve();
+    },
+  };
+}
+
+/**
+ * One invocation of the worker's missing-template path, driven through the SAME
+ * production primitives as process-onboarding-emails: claim → recordMissingTemplate-
+ * Outcome → emitOnboardingRunAlert. Nothing here re-derives the alerting rule.
+ */
 async function invocation(client: MissingTemplateClient) {
-  let failCount = 0;
+  const tally = newOnboardingRunTally(1);
+  const spy = spyNotifier();
   const outcome = await claimMissingTemplateFailure(client, "q1");
-  if (countsAsFailure(outcome)) failCount++;
-  return { outcome, failCount, alerts: failCount > 0 ? 1 : 0 };
+  recordMissingTemplateOutcome(tally, outcome);
+  await emitOnboardingRunAlert(tally, spy.notify);
+  return { outcome, tally, alerts: spy.calls.length, alertCalls: spy.calls };
 }
 
 Deno.test("two concurrent invocations: exactly one owner and exactly ONE Slack alert", async () => {
@@ -101,11 +129,37 @@ Deno.test("a genuine write error stays VISIBLE and is not mistaken for another o
   assertEquals(run.alerts, 1);
 });
 
+Deno.test("the emitted alert carries the production function name and counts", async () => {
+  const db = fakeDb();
+  const run = await invocation(db.client);
+  assertEquals(run.alerts, 1);
+  assertEquals(run.alertCalls[0].fn, "process-onboarding-emails");
+  assertEquals(run.alertCalls[0].message, "1 onboarding email(s) failed to send");
+  assertEquals(run.alertCalls[0].context, { failCount: 1, successCount: 0, processed: 1 });
+});
+
+Deno.test("a clean run emits NO alert at all", async () => {
+  const spy = spyNotifier();
+  const emitted = await emitOnboardingRunAlert(newOnboardingRunTally(3), spy.notify);
+  assertEquals(emitted, false);
+  assertEquals(spy.calls.length, 0, "a run with no failures must stay silent");
+});
+
+// The injected spy above proves the call HAPPENS, but not that the un-injected
+// default still reaches Slack — swapping the default for a no-op would leave every
+// test above green. Pin the identity of the default transport too.
+Deno.test("the default notifier IS notifySlackEdgeError", () => {
+  assertEquals(DEFAULT_RUN_ALERT_NOTIFIER, notifySlackEdgeError);
+});
+
 // ---------------------------------------------------------------------------
-// MUTATION PIN. This reproduces the pre-fix production statement — no status
-// guard — and asserts it exhibits the exact double-alert defect the suite above
-// forbids. If someone deletes `.eq("status", "pending")` from the production
-// primitive, the tests above start behaving like this one and fail.
+// MUTATION PINS. Each reproduces one deletion the suite above must not survive,
+// and asserts the mutant's behaviour DIFFERS from the production baseline.
+
+// (1) The ownership guard. Reproduces the pre-fix production statement — no status
+// guard — and asserts it exhibits the exact double-alert defect the suite forbids.
+// If someone deletes `.eq("status", "pending")` from the production primitive, the
+// tests above start behaving like this one and fail.
 Deno.test("MUTANT: without the status guard both invocations own it and BOTH alert", async () => {
   const db = fakeDb();
   const unguarded = async () => {
@@ -120,4 +174,63 @@ Deno.test("MUTANT: without the status guard both invocations own it and BOTH ale
   };
   const [x, y] = await Promise.all([unguarded(), unguarded()]);
   assertEquals(x + y, 2, "the unguarded statement double-counts — this is the defect being pinned");
+});
+
+// (2) The outcome → failCount link. A tally that ignores countsAsFailure never arms
+// the alert, so a broken row goes out silently. Baseline: 1 alert. Mutant: 0.
+Deno.test("MUTANT: severing countsAsFailure from the tally silences the alert", async () => {
+  const db = fakeDb();
+  const outcome = await claimMissingTemplateFailure(db.client, "q1");
+  assertEquals(outcome.kind, "owned");
+
+  const baselineTally = newOnboardingRunTally(1);
+  const baselineSpy = spyNotifier();
+  recordMissingTemplateOutcome(baselineTally, outcome);
+  await emitOnboardingRunAlert(baselineTally, baselineSpy.notify);
+  assertEquals(baselineSpy.calls.length, 1, "production baseline alerts on an owned failure");
+
+  const mutantRecord = (_tally: OnboardingRunTally, _outcome: MissingTemplateOutcome) => {
+    /* countsAsFailure disconnected — failCount never rises */
+  };
+  const mutantTally = newOnboardingRunTally(1);
+  const mutantSpy = spyNotifier();
+  mutantRecord(mutantTally, outcome);
+  await emitOnboardingRunAlert(mutantTally, mutantSpy.notify);
+  assertEquals(mutantTally.failCount, 0);
+  assertEquals(mutantSpy.calls.length, 0, "the mutant is silent — this is the defect being pinned");
+
+  assertEquals(
+    baselineSpy.calls.length === mutantSpy.calls.length,
+    false,
+    "baseline and mutant must differ, or the test proves nothing",
+  );
+});
+
+// (3) The notify call itself. An emitter that tallies but never notifies produces no
+// operator signal. Baseline: 1 call. Mutant: 0.
+Deno.test("MUTANT: an emitter without the notify call raises no alert", async () => {
+  const tally = newOnboardingRunTally(1);
+  tally.failCount = 1;
+
+  const baselineSpy = spyNotifier();
+  assertEquals(await emitOnboardingRunAlert(tally, baselineSpy.notify), true);
+  assertEquals(baselineSpy.calls.length, 1);
+
+  const mutantSpy = spyNotifier();
+  const mutantEmit = (t: OnboardingRunTally) => Promise.resolve(t.failCount > 0);
+  assertEquals(await mutantEmit(tally), true, "the mutant still REPORTS an alert…");
+  assertEquals(mutantSpy.calls.length, 0, "…but never made one — this is the defect being pinned");
+
+  assertEquals(
+    baselineSpy.calls.length === mutantSpy.calls.length,
+    false,
+    "baseline and mutant must differ, or the test proves nothing",
+  );
+});
+
+// countsAsFailure stays directly covered: it is the predicate production folds in.
+Deno.test("countsAsFailure: owned and error count; already_handled does not", () => {
+  assertEquals(countsAsFailure({ kind: "owned" }), true);
+  assertEquals(countsAsFailure({ kind: "error", message: "boom" }), true);
+  assertEquals(countsAsFailure({ kind: "already_handled" }), false);
 });
