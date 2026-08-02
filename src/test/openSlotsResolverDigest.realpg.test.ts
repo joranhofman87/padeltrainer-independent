@@ -217,18 +217,29 @@ async function enqueue(subject: string, payload: object = {}) {
  * changed — exactly the regression this test exists to catch.
  */
 async function extractDueQuery(): Promise<string> {
+  // Pin the EXACT overload by signature: filtering on proname alone would silently pick an
+  // arbitrary definition if an overload were ever added.
   const { rows } = await c.query(
-    `SELECT pg_get_functiondef(p.oid) AS def FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname='public' AND p.proname='claim_notification_outbox_batch'`);
+    `SELECT pg_get_functiondef(
+       'public.claim_notification_outbox_batch(text,text,int,int)'::regprocedure) AS def`);
   const def: string = rows[0].def;
-  const start = def.indexOf('SELECT o.id');
-  const end = def.indexOf('LIMIT greatest(p_limit, 0)', start);
-  if (start < 0 || end < 0) throw new Error('could not locate the due CTE in the deployed function');
-  return def.slice(start, end)
+
+  // Anchor on the CTE itself rather than the first textual 'SELECT o.id', which a comment or a
+  // future earlier query could shadow.
+  const cte = /WITH due AS \(\s*(SELECT o\.id[\s\S]*?)LIMIT greatest\(p_limit, 0\)/.exec(def);
+  if (!cte) throw new Error('could not locate the due CTE in the deployed function');
+  const sql = cte[1]
     .replace(/p_channel/g, `'email'`)
     .replace(/greatest\(p_stale_after_minutes, 1\)/g, '15')
     + ' LIMIT 20';
+
+  // Fail LOUDLY if the extracted slice stopped representing the RPC's actual semantics.
+  for (const marker of [`delivery_mode IS DISTINCT FROM 'digest'`, `o.status = 'pending'`,
+    `o.status = 'processing'`, 'ORDER BY o.scheduled_for', 'FOR UPDATE SKIP LOCKED']) {
+    if (!sql.includes(marker)) throw new Error(`extracted due query lost its "${marker}" semantics`);
+  }
+  if (/p_[a-z_]+/.test(sql)) throw new Error(`extracted due query still has unsubstituted params: ${sql}`);
+  return sql;
 }
 
 /** Every index name appearing anywhere in a parsed EXPLAIN plan tree. */
@@ -547,8 +558,18 @@ describe('C — the INSTANT claim never touches a digest member', () => {
       SELECT 'email', 'open_slots_player', 'pending', now() - interval '1 minute',
              'inst:' || g, 'p@example.com', '${USER}', '{}'::jsonb
         FROM generate_series(1, 5) g;
-      -- the STALE-RECLAIM arm needs digest rows in 'processing' too, otherwise that half of
-      -- the OR contributes nothing and the plan is only pinned for the fresh-due arm
+      -- ELIGIBLE stale reclaim: non-digest 'processing' rows past the stale window with retries
+      -- left. These are what actually exercise the second arm of the OR — the digest rows below
+      -- cannot, because they fail the outer predicate and are absent from the partial index.
+      INSERT INTO public.notification_outbox
+        (channel, event_type, status, scheduled_for, idempotency_key,
+         destination_normalized, recipient_user_id, payload, locked_at, attempts, max_attempts)
+      SELECT 'email', 'open_slots_player', 'processing', now() - interval '4 hours',
+             'stale-inst:' || g, 'p@example.com', '${USER}', '{}'::jsonb,
+             now() - interval '2 hours', 1, 5
+        FROM generate_series(1, 10) g;
+      -- NEGATIVE backlog coverage: stale-LOOKING digest rows that must be excluded entirely,
+      -- not merely filtered out row by row.
       INSERT INTO public.notification_outbox
         (channel, event_type, status, scheduled_for, delivery_mode, idempotency_key,
          destination_normalized, recipient_user_id, payload, locked_at, attempts, max_attempts,
@@ -571,6 +592,16 @@ describe('C — the INSTANT claim never touches a digest member', () => {
     expect(indexNames(plan)).toContain('idx_notification_outbox_due_instant');
     // the 20000 due digest rows are never walked and discarded
     expect(worstRowsRemoved(plan)).toBeLessThan(1000);
+
+    // POSITIVE stale coverage: the query really returns eligible reclaim rows, so the second
+    // arm of the OR is proven to work — not merely proven not to crash. 5 fresh + 10 stale.
+    const { rows: got } = await c.query(due);
+    expect(got).toHaveLength(15);
+    const { rows: kinds } = await c.query(
+      `SELECT status, count(*)::int AS n FROM public.notification_outbox
+        WHERE id = ANY($1::uuid[]) GROUP BY status ORDER BY status`,
+      [got.map((r: { id: string }) => r.id)]);
+    expect(kinds).toEqual([{ status: 'pending', n: 5 }, { status: 'processing', n: 10 }]);
   }, 180_000);
 });
 
