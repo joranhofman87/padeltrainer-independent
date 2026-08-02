@@ -10700,6 +10700,10 @@ export type Database = {
         Args: { p_text: string }
         Returns: undefined
       }
+      notif_digest_json_text: {
+        Args: { p_data: Json; p_field: string }
+        Returns: string
+      }
       notif_digest_ledger: {
         Args: {
           p_action: string
