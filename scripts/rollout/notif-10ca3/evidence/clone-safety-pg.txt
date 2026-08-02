@@ -1,73 +1,87 @@
 $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
 
-[1] the fence really blocks every write path to cron.job
-  PASS  the seal artifact runs clean on a real Postgres
-  PASS  three fence triggers exist (two on cron.job, one on the pg_net queue)
-  PASS  fence rejects direct INSERT (what cron.schedule does)  — 42501
-  PASS  fence rejects direct UPDATE  — 42501
-  PASS  fence rejects direct DELETE (what cron.unschedule does)  — 42501
-  PASS  fence rejects TRUNCATE  — 42501
-  PASS  fence rejects cron.alter_job (SECURITY DEFINER path)  — 42501
-  PASS  fence rejects a zero-row UPDATE  — 42501
-  PASS  fence rejects a direct pg_net queue INSERT  — 42501
-  PASS  fence rejects net.http_post() (the pg_net enqueue path)  — 42501
-  PASS  no cron row was created by any blocked attempt
-  PASS  no outbound request was queued by any blocked attempt
-[2] the seal is atomic: a failure leaves nothing behind
-  PASS  seal REFUSES with a non-empty pg_net queue  — ASSERT FAILED: pg_net request queue is EMPTY (actual=1 expec
-  PASS  …no rollout_clone schema was left behind
-  PASS  …no fence trigger was left behind on either table
-  PASS  …every job is still ACTIVE (nothing was paused)
-  PASS  seal REFUSES when the live configuration is not the reviewed one
-  PASS  …and again left nothing behind
-[3] in-flight runs: every NON-TERMINAL pg_cron state blocks arming
-  PASS  arm REFUSES with a run in status 'starting'
-  PASS  arm REFUSES with a run in status 'connecting'
-  PASS  arm REFUSES with a run in status 'sending'
-  PASS  arm REFUSES with a run in status 'running'
-  PASS  arm REFUSES with a run in status NULL
-  PASS  arm REFUSES with a run in status 'a-future-state-nobody-anticipated'
-  PASS  arm proceeds with only terminal 'succeeded' runs
-  PASS  arm proceeds with only terminal 'failed' runs
-  PASS  arm REFUSES with a queued pg_net request (defence behind the fence)
-[4] cron.log_run must be on, or quiescence is unprovable
-  PASS  arm REFUSES when cron.log_run is off (a zero count would be a false green)  — arm: cron.log_run is "off" — job_run_details is not populated, so a zero in-flig
-  PASS  …and proceeds once it is on
-[5] the ACL matrix is enforced source-side, before the commit
-  PASS  anon has no USAGE, no EXECUTE on the fence function and no table access
-  PASS  authenticated has no USAGE, no EXECUTE on the fence function and no table access
-  PASS  service_role has no USAGE, no EXECUTE on the fence function and no table access
-  PASS  PUBLIC cannot EXECUTE the fence function
-  PASS  a leaked grant is caught by the SAME matrix at the next checkpoint  — arm: role anon can USE the rollout_clone schema
-[6] resume: exact restoration, and atomic on failure
-  PASS  resume REFUSES when a command changed under the same id and name  — ASSERT FAILED: cron configuration matches the sealed snapshot EXACTLY 
-  PASS  …and rolled back completely: all three fences still installed
-  PASS  …marker still present
-  PASS  …every job still inactive
-  PASS  inside the window: marker present AND zero active jobs
-  PASS  after resume: marker gone
-  PASS  after resume: fence gone
-  PASS  after resume: EXACT prior active states restored (1 and 9 active, 10 inactive)
-[7] a SECOND session never observes a marker beside active cron
-  PASS  mid-transaction, another session cannot read cron.job at all (it blocks on the lock)  — 57014
-  PASS  …and still sees the PRE state: the marker is present  — marker=1
-  PASS  after the commit it sees the POST state (marker gone, prior actives restored)  — marker=0 active=2
-  PASS  so no committed state carries a valid marker beside active cron
-[7b] pg_net is FROZEN across the armed window, from another session
-  PASS  another session cannot enqueue via a direct INSERT after the arm  — 42501
-  PASS  another session cannot enqueue via net.http_post() after the arm  — 42501
-  PASS  the queue is still empty, so nothing can cross into a clone
-  PASS  the clone gate re-proves the queue fence inside the clone
-  PASS  resume drops the queue fence atomically with everything else
-  PASS  …and pg_net can enqueue again once the window is closed
-[8] lifecycle: no implicit reuse, and real run-level exclusion
-  PASS  a second seal is REFUSED while a window is open  — ASSERT FAILED: no prior sealed window exists (if this fails:
-  PASS  …and the original marker is untouched
-  PASS  a concurrent run holding the advisory lock blocks a second seal  — ASSERT FAILED: no other clone-safety quiesce/resume is runni
-[9] the clone gate, executed against a real restored state
-  PASS  a state inside the armed, fenced window passes the clone gate
-  PASS  a different run's nonce is refused
-  PASS  a clone with a run in 'sending' is refused (not just 'running')
-  PASS  a clone missing ONLY the pg_net queue fence is refused
-  PASS  a clone whose fences are gone is refused (restore point outside the window)
-================  60 passed, 0 failed  ================
+[1] empty-project proof on a genuinely empty database
+  PASS  empty_project_check passes on a pristine target
+  PASS  empty_project_check REFUSES a target holding a cron job
+  PASS  empty_project_check REFUSES a target holding a queued pg_net request
+  PASS  empty_project_check REFUSES a target holding a recorded pg_net response
+  PASS  empty_project_check REFUSES a target holding a Vault secret
+  PASS  empty_project_check REFUSES a target holding an FDW server
+[1b] APPLICATION state must fail the empty-project proof
+  PASS  empty_project_check REFUSES a target with a customer table with a row
+  PASS  empty_project_check REFUSES a target with an empty application table
+  PASS  empty_project_check REFUSES a target with a view in public
+  PASS  empty_project_check REFUSES a target with a migration-ledger entry
+  PASS  empty_project_check REFUSES a target with a storage bucket
+  PASS  MUTANT (application-state check removed) ACCEPTS a project holding a customer table — the check is load-bearing
+[2] outbound triggers are caught, including nested call paths
+  PASS  a trigger that only INDIRECTLY reaches net.http_* is caught
+[3] schedule deactivation and the loaded-target inertness gate
+  PASS  the inertness gate REFUSES while jobs are active
+  PASS  clone_deactivate_schedules runs clean
+  PASS  …and every job is now inactive
+  PASS  …and no job was unscheduled (the schedule is part of what is verified)
+  PASS  the inertness gate now PASSES
+[4] real schema + synthetic baseline + the real #615 migrations
+  PASS  the synthetic generator loads a production-scale baseline  — BLOAT email_address_state ratio=0.1 rows_updated=400 of 4000
+  PASS  email_address_state loaded to the configured scale
+  PASS  email_delivery_events loaded to the configured scale
+  PASS  every address is on the reserved undeliverable TLD — no customer identifier exists in the target
+  PASS  ONLY the two affected tables received scale data (notification_outbox untouched)
+  PASS  a baseline 2x outside the measured byte envelope is REFUSED (the check has teeth)
+  PASS  with_invoice_pct is enforced, not merely declared — invoice_id is populated
+  PASS  …and resend_event_id_pct likewise
+  PASS  the per-address event history is not uniform (the backfill cost follows it)
+  PASS  the baseline fingerprint covers shape, size, distribution and bloat
+  PASS  …and asserts every address is synthetic
+[5] the real #615 migrations: timing and ACCESS EXCLUSIVE behaviour
+  PASS  the three pinned migrations apply to the synthetic baseline  — 305 ms at 4k/12k rows
+  PASS  the generated column exists after the rewrite
+  PASS  the migration CHANGES the shape fingerprint, so a migrated target can never pass as pristine  — SHAPE 2a1ccb -> SHAPE c51528
+  PASS  …and no timing/lock evidence carries an address or reason string
+[5b] the ADVERTISED lifecycle: sanitize -> full chain -> #615 -> wipe -> rebuild
+  PASS  the migration chain sanitizes (pg_cron/pg_net CREATE EXTENSION neutralised)  — SANITIZED files=552 neutralised_extension_statements=3 chain_sha256=74dc74407bc130ee out=/
+  PASS  the FULL sanitized chain applies to a bare project (552/552)
+  PASS  …and pg_cron / pg_net are NOT installed on the result
+  PASS  …and ZERO cron jobs are active on the result (0 recorded by the stand-in)
+  PASS  …the stand-in was actually exercised — the chain reached it rather than a real extension
+  PASS  …and nothing reached the network
+  PASS  …the chain created storage state that a naive wipe would leave behind (5 bucket(s))
+  PASS  the synthetic generator runs against the FULL migrated schema  — BLOAT email_address_state ratio=0.1 rows_updated=80 of 800
+  PASS  …creating a VALID invoice parent graph (trainer_id, invoice_number, due_date, player_name are NOT NULL)
+  PASS  …and linking events to it, so with_invoice_pct is real
+  PASS  …with every synthetic address still undeliverable
+  PASS  sentinel seeded before the failing load
+  PASS  a load that fails the byte envelope is REFUSED
+  PASS  …and ROLLED BACK — the sentinel the load truncated is back
+  PASS  MUTANT (COMMIT hoisted above validation) still refuses…
+  PASS  …but the sentinel is GONE — it committed the failed load, which is exactly the stranding this fix prevents  — sentinel present=false
+  PASS  the generator reports its bloat injection  — BLOAT email_address_state ratio=0.1 rows_updated=80 of 800
+  PASS  …and honours dead_tuple_ratio (0.1 of 800 = 80, updated 80)
+  PASS  bloat is PHYSICALLY present in email_address_state (n_dead_tup=80)
+  PASS  …and in email_delivery_events (n_dead_tup=120) — the ratio is per-table, matching the sizing query
+  PASS  MUTANT (UPDATE removed, message kept) leaves ZERO dead tuples — the physical check catches what a message check would not  — n_dead_tup=0
+  PASS  a scale file with NO per-table bloat ratios is refused (the ADR promises injected bloat)
+  PASS  the FILTERED p50 matches the configured history (2 vs 2)
+  PASS  …p90 matches (6 vs 6)
+  PASS  …and max matches EXACTLY (20 vs 20) — "<=" would pass a generator that never reaches the measured maximum
+  PASS  the measured total row count is preserved (2400)
+  PASS  every event type matches its measured share EXACTLY (apportioned, not sampled)
+  PASS  non-producing types are allocated SEPARATELY, not out of the history budget (60 rows)
+  PASS  #615 applies on top of the freshly built chain
+  PASS  the wipe clears the storage buckets a schema drop cannot reach
+  PASS  …and every storage policy the chain created
+  PASS  …and the migration ledger, so the rebuild is the FULL chain not a suffix
+  PASS  the wiped target passes the empty-project proof again
+  PASS  the FULL chain REPLAYS after the wipe (552/552) — no duplicate bucket, no duplicate policy
+  PASS  …and #615 is gone again, so the rebuilt target is genuinely pre-migration
+  PASS  the generator runs again on the REBUILT schema — the full cycle closes
+[6] the real migration under contention: abort, and ZERO delta
+  PASS  the REAL migration ABORTS on lock_timeout while a reader holds the table  — 55P03
+  PASS  …leaving ZERO schema delta (shape fingerprint unchanged)  — SHAPE 2a1ccb vs SHAPE 2a1ccb
+  PASS  …zero function delta  — 52 -> 52
+  PASS  …and the generated column was NOT added
+  PASS  …and zero ledger delta — the ledger INSERT was in the same transaction, so this is not vacuous  — ledger=0
+  PASS  …(control: an uncontended ledger insert DOES land, so the assertion has teeth)
+  PASS  uncontended, the same migration APPLIES — the abort was contention, not broken SQL  — 114 ms over 2k rows
+================  76 passed, 0 failed  ================

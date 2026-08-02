@@ -66,8 +66,11 @@ jobs:
       - name: Worktree pooler link (fresh link before any linked db push)
         run: bash scripts/rollout/notif-10ca3/verify/worktree-link-test.sh
 
-      - name: Clone safety (fenced window + atomic exit; artifact-interpreting)
+      - name: Clone safety (withdrawn path unreachable + supported rehearsal)
         run: bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
+
+      - name: Repo guard (no extension-table fence or ownership bypass can return)
+        run: bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
 
       - name: Clone safety on a REAL Postgres (executes the SQL artifacts)
         run: node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
@@ -79,6 +82,7 @@ jobs:
                    verify/identity-selftest.sh verify/guard-mutation-test.sh verify/operator-flow-test.sh \
                    verify/exit-status-test.sh verify/step6-verifier-test.sh \
                    verify/logfetch-integration-test.sh verify/dryrun-diagnostics-test.sh \
-                   verify/worktree-link-test.sh verify/clone-safety-test.sh; do
+                   verify/worktree-link-test.sh verify/clone-safety-test.sh \
+                   verify/repo-guard-test.sh; do
             bash -n "scripts/rollout/notif-10ca3/$f"
           done

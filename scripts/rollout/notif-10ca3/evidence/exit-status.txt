@@ -1,4 +1,4 @@
-$ bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh   # macOS bash 3.2 (operator shell)
+$ bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh
 
 == 1. missing required env returns nonzero (the reported blocker) ==
   PASS  phase616 --yes with MANAGER_TOKEN unset (exit=1)
@@ -43,4 +43,13 @@ $ bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh   # macOS bash 3.2
 == MUTATION (2): a fixed-status EXIT trap corrupts the result ==
   PASS  MUTANT bare-status trap corrupts SUCCESS -> exit$rc is load-bearing
   PASS  run-rollout.sh cleanup captures $? and exits with it
-================  30 passed, 0 failed  ================
+== render_diag cannot alter control flow ==
+  PASS  render_diag returns 0 with ZERO matching lines (a grep pipeline would fail here)
+  PASS  …and with MORE lines than the limit (no SIGPIPE to a producer)
+  PASS  …printing exactly the limit (3 of 10)
+  PASS  …and with an UNREADABLE file (the capture may never have been created)
+  PASS  …and with no file at all
+  PASS  a caller's ORIGINAL status survives rendering (exit 7 preserved)
+  PASS  MUTANT (grep|head pipeline) LOSES the original status on zero matches (got 1) — the helper is load-bearing
+  PASS  no unguarded producer|head diagnostic pipeline remains in run-rollout.sh
+================  38 passed, 0 failed  ================

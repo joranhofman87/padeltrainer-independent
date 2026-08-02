@@ -532,6 +532,7 @@ cmd_verify_clone() {
 # inert. (mutation-pinned: verify/clone-safety-test.sh)
 # Reviewed floor for the scheduler-observation interval between quiet samples.
 # Deliberately not overridable: see quiesce_drain.
+REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 QUIESCE_MIN_SETTLE_SECS=15
 REVIEWED_JOBS="$HERE/clone-safety/reviewed-cron-jobs.tsv"
 SRC_MANIFEST="$EVID/clone-source-manifest.txt"
@@ -596,26 +597,6 @@ assert_inventory_is_reviewed() {   # $1 = inventory file
   ok "inventory reviewed: $(awk '$1=="CRONJOB"{n++} END{print n+0}' "$inv") cron job(s), all known; no webhooks/outbound triggers/FDWs"
 }
 
-# The fence is a TRIGGER on cron.job, so it requires ownership of that table.
-# Learn that in the READ-ONLY step, never mid-window. Also refuse to start a new
-# window while an old one is still open.
-assert_source_is_sealable() {   # $1 = inventory file
-  local inv="$1" fenceable prior
-  fenceable="$(awk '$1=="FENCEABLE"{print $2}' "$inv")"
-  prior="$(awk '$1=="PRIORWINDOW"{print $2}' "$inv")"
-  [[ -n "$fenceable" ]] || die "inventory is missing FENCEABLE — refusing to proceed on an incomplete read"
-  [[ -n "$prior"     ]] || die "inventory is missing PRIORWINDOW — refusing to proceed on an incomplete read"
-  [[ "$fenceable" == yes ]] \
-    || die "this role cannot create a trigger on cron.job, so the durable fence CANNOT be installed. Without the fence a job created after the seal would reach a clone. Connect as the owner of cron.job (or have it granted) and retry — the procedure fails closed rather than sealing an unprotected window."
-  local logrun; logrun="$(awk '$1=="LOGRUN"{print $2}' "$inv" | tr 'A-Z' 'a-z')"
-  case "$logrun" in
-    on|true|yes|1) ;;
-    *) die "cron.log_run is '${logrun}': cron.job_run_details is not populated, so an in-flight cron run cannot be observed and a zero drain count would be a FALSE GREEN. Enable cron.log_run and retry — the procedure fails closed rather than certifying quiescence it cannot see.";;
-  esac
-  [[ "$prior" -eq 0 ]] \
-    || die "a sealed window ALREADY exists in this database (rollout_clone). Resume it with 'clone-source-resume --yes <url>', or recover an abandoned one explicitly with 'clone-source-abandon --yes --nonce <its nonce> <url>'. Nothing is ever overwritten implicitly."
-  ok "source is sealable: this role owns cron.job (fence installable), cron.log_run is on, no prior window is open"
-}
 
 source_config_fp() {   # $1 = inventory file -> the cron CONFIGURATION fingerprint
   local fp; fp="$(awk '$1=="CFGFP"{print $2}' "$1")"
@@ -656,13 +637,17 @@ cmd_clone_source_inventory() {   # READ-ONLY; safe to run against production
   local inv="$EVID/clone-source-inventory.txt"
   read_source_inventory "$url" "$inv"
   assert_inventory_is_reviewed "$inv"
-  assert_source_is_sealable "$inv"
+  # NOT assert_source_is_sealable: fenceability was a requirement of the
+  # WITHDRAWN design (ADR-001). Synthetic rehearsals never fence production, so
+  # gating this read-only audit on FENCEABLE would block it permanently for a
+  # property nothing needs any more. It is still REPORTED below.
   awk '$1=="CRONJOB"{printf "  %-38s active=%-5s outbound=%s\n",$2,$3,$4}
        $1=="INFLIGHT"{printf "  cron runs in flight    : %s\n",$2}
        $1=="LOGRUN"{printf "  cron.log_run           : %s\n",$2}
        $1=="NETQUEUE"{printf "  pg_net queued requests : %s\n",$2}
        $1=="VAULTCOUNT"{printf "  vault secrets (count)  : %s\n",$2}
        $1=="CFGFP"{printf "  cron configuration fp  : %s\n",$2}
+       $1=="FENCEABLE"{printf "  fenceable (informational, ADR-001): %s\n",$2}
        $1=="OUTFN"{printf "  outbound-capable fn    : %s\n",$2}' "$inv" >&2
   ok "clone-source inventory complete (read-only, no commands/URLs/secrets displayed) -> ${inv##*/}"
 }
@@ -673,84 +658,60 @@ cmd_clone_source_inventory() {   # READ-ONLY; safe to run against production
 # A seal failure changes NOTHING (single transaction, rolled back), so there is
 # no compensating restore to get wrong. Only an ARM failure needs one, and that
 # is the same atomic resume the operator would run by hand.
-cmd_clone_source_quiesce() {
-  require_yes "${1:-}"
-  local url="${2:-}"; require_arg "$url" "usage: clone-source-quiesce --yes <prod_conn_url>"
-  require_cmd psql; assert_conn_url_is_ref "$EXPECTED_REF" "$url"
-  mkdir -p "$EVID"
-  local inv="$EVID/clone-source-inventory.txt"
-  read_source_inventory "$url" "$inv"
-  assert_inventory_is_reviewed "$inv"
-  assert_source_is_sealable "$inv"
-
-  local nonce fp seal_rc=0
-  nonce="$(gen_salt)$(gen_salt)"                 # 32 hex chars of per-run entropy
-  fp="$(source_config_fp "$inv")"
-
-  # run_sql_soft, NOT run_sql: `die` would exit before the diagnostics below
-  run_sql_soft "$url" "$SQL_DIR/clone_source_seal.sql" -v "nonce=$nonce" -v "expect_fp=$fp" \
-    > "$EVID/clone-source-seal.txt" 2>&1 || seal_rc=$?
-  if [[ "$seal_rc" -ne 0 ]]; then
-    warn "SEAL FAILED — the transaction rolled back, so NOTHING was paused, fenced or marked"
-    sed -n 's/^\(ERROR\|psql\|NOTICE\).*/&/p' "$EVID/clone-source-seal.txt" | head -6 >&2
-    die "clone-source quiesce aborted at the seal (production is untouched)"
-  fi
-  ok "SEALED: prior state captured, every job paused, cron.job FENCED (fence proven effective), marker committed"
-
-  # =========================================================================
-  # EVERYTHING BELOW HAPPENS WITH PRODUCTION PAUSED AND FENCED.
-  #
-  # A local failure here — a full disk, a read-only evidence directory, a
-  # dropped connection, an undrainable source — must NEVER exit while cron is
-  # stopped: notification-email-worker and notification-whatsapp-worker would
-  # stay down indefinitely. The steps therefore run in a SUBSHELL, so even a
-  # `die` inside them becomes a status the parent can act on, and every non-zero
-  # status routes through the atomic exit from the window.
-  # =========================================================================
-  local post_rc=0
-  ( post_seal_steps "$url" "$nonce" ) || post_rc=$?
-  if [[ "$post_rc" -ne 0 ]]; then
-    warn "a step AFTER the seal failed (exit ${post_rc}) — production is PAUSED and FENCED; leaving the window now"
-    if clone_source_leave_window "$url" "$nonce" 1; then
-      die_rc "$post_rc" "clone-source quiesce FAILED after the seal (original exit ${post_rc}); production was RESTORED to its exact prior state and is running normally"
-    fi
-    warn "=========================================================================="
-    warn "AUTOMATIC RESUME ALSO FAILED. PRODUCTION REMAINS PAUSED AND FENCED."
-    warn "Email and WhatsApp delivery are STOPPED until this is resolved. Run:"
-    warn "  run-rollout.sh clone-source-abandon --yes --nonce ${nonce} <prod_conn_url>"
-    warn "(the nonce is printed here because the failure may have been the very"
-    warn " write of evidence/clone-source-nonce.txt — it is a provenance id, not"
-    warn " a credential)"
-    warn "=========================================================================="
-    die_rc "$post_rc" "clone-source quiesce FAILED after the seal (original exit ${post_rc}) AND the automatic resume also failed"
-  fi
-
-  ok "WINDOW ARMED — $(sed -n 's/^ARM_OBSERVED_AFTER_COMMIT //p' "$EVID/clone-source-arm.txt" | tail -1) (observed after commit; INFORMATIONAL ONLY)"
-  warn "Provenance is established by the marker nonce in the database, never by a timestamp."
-  warn "PRODUCTION CRON IS PAUSED AND FENCED. Restore every clone now; each clone must"
-  warn "carry this run's ARMED marker and a still-effective fence, which only holds for"
-  warn "restore points inside this window. Then run:"
-  warn "  run-rollout.sh clone-source-resume --yes <prod_conn_url>"
+# ===========================================================================
+# UNSUPPORTED — the extension-table fence design is withdrawn (ADR-001)
+# ===========================================================================
+# The sealed-window design fenced cron.job and net.http_request_queue with
+# deliberately-failing statement triggers. Both halves are unsupported:
+#
+#   * Supabase documents that triggers on net.http_request_queue — especially
+#     failing ones — can disrupt pg_net itself:
+#     https://supabase.com/docs/guides/troubleshooting/webhook-debugging-guide-M8sk47
+#   * CREATE TRIGGER can be reached with the table's TRIGGER privilege, but
+#     DROP TRIGGER requires ownership of the table. cron.job and
+#     net.http_request_queue are extension-managed, so a GRANT TRIGGER produces
+#     a fence that can be installed and NEVER removed by the same role. The
+#     production inventory of 2026-08-02 returned FENCEABLE no for exactly this
+#     reason.
+#
+# The supported remedies (taking ownership of extension tables, joining the
+# extension-owner role, dropping/recreating the extension, or installing the
+# trigger through a privileged wrapper) are all explicitly out of scope: each
+# one trades a rehearsal convenience for a permanent change to how production's
+# scheduler and outbound queue are owned.
+#
+# This guard therefore refuses BEFORE any connection is opened, before psql is
+# required, and before any state is read or written. It is not a warning.
+# (mutation-pinned: verify/clone-safety-test.sh, verify/repo-guard-test.sh)
+UNSUPPORTED_ADR="docs/ADR-001-clone-safety-fence-withdrawn.md"
+refuse_unsupported_fence() {   # $1 = the command name the operator typed
+  warn "=========================================================================="
+  warn "'$1' is WITHDRAWN and cannot run."
+  warn ""
+  warn "It installs statement triggers on cron.job and net.http_request_queue to"
+  warn "freeze the snapshot window. Supabase advises against triggers on"
+  warn "net.http_request_queue (a failing one can disrupt pg_net), and DROP TRIGGER"
+  warn "needs OWNERSHIP of these extension-managed tables — which a GRANT TRIGGER"
+  warn "does not confer. The fence could therefore be installed and never removed."
+  warn ""
+  warn "Production inventory (read-only, 2026-08-02) confirmed: FENCEABLE no."
+  warn ""
+  warn "Use the supported replacement instead — an empty, disposable project"
+  warn "loaded with SYNTHETIC data at production scale:"
+  warn "    clone-verify-empty      <clone_url>"
+  warn "    clone-build-baseline    --yes <clone_url>"
+  warn "    clone-reset-baseline    --yes <clone_url>   # between rehearsals"
+  warn ""
+  warn "Rationale, threat model and the open Supabase Support question:"
+  warn "    scripts/rollout/notif-10ca3/${UNSUPPORTED_ADR}"
+  warn "=========================================================================="
+  die "$1 is withdrawn (ADR-001); nothing was connected to, read or changed"
 }
 
-# Runs in a subshell (see the caller): any failure, including a `die`, becomes a
-# non-zero status rather than an exit that would strand production paused.
-post_seal_steps() {   # $1 url, $2 nonce
-  local url="$1" nonce="$2" rc=0
-  printf '%s\n' "$nonce" > "$EVID/clone-source-nonce.txt" \
-    || die_rc "$?" "could not persist the snapshot nonce to evidence/"
-  chmod 600 "$EVID/clone-source-nonce.txt" 2>/dev/null || true
-  [[ "$(cat "$EVID/clone-source-nonce.txt" 2>/dev/null)" == "$nonce" ]] \
-    || die "the persisted nonce does not read back correctly"
-  export_source_manifest "$url"
-  quiesce_drain "$url" || die_rc "$?" "the source did not reach a stable quiet state"
-  rc=0
-  run_sql_soft "$url" "$SQL_DIR/clone_source_arm.sql" -v "nonce=$nonce" \
-    > "$EVID/clone-source-arm.txt" 2>&1 || rc=$?
-  if [[ "$rc" -ne 0 ]]; then
-    sed -n 's/^\(ERROR\|psql\).*/&/p' "$EVID/clone-source-arm.txt" 2>/dev/null | head -5 >&2
-    die_rc "$rc" "the window could not be ARMED"
-  fi
+cmd_clone_source_quiesce() {
+  # FIRST STATEMENT. No require_yes, no argument parsing, no require_cmd psql, no
+  # identity assertion — none of those may run, because none of them may connect.
+  refuse_unsupported_fence "clone-source-quiesce"
 }
 
 # The captured relation is the authority; this is its human-readable shadow.
@@ -857,7 +818,7 @@ clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
   fi
   if [[ "$rc" -ne 0 ]]; then
     warn "resume transaction FAILED and rolled back — production remains paused and fenced with its marker intact"
-    [[ -n "$cap" ]] && sed -n 's/^\(ERROR\|psql\).*/&/p' "$cap" 2>/dev/null | head -6 >&2
+    render_diag "$cap" 6
     [[ "$cap_tmp" -eq 1 ]] && warn "the diagnostics above came from a temporary capture, which is now removed"
     discard_temp_capture "$cap" "$cap_tmp"
     return "$rc"
@@ -912,27 +873,225 @@ read_recorded_nonce() {
   printf '%s' "$n"
 }
 
-# CLONE-ONLY. Lift the write barrier on a disposable clone when a rehearsal's
-# migrations must create cron jobs. The marker is kept, so provenance stays
-# provable; only the fence goes. Never valid against production.
-cmd_clone_unfence() {
-  require_yes "${1:-}"
-  local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-unfence --yes <clone_conn_url>"
-  require_cmd psql; assert_clone_url "$url"
-  assert_clone_isolated "$url"          # prove provenance + inertness BEFORE lifting anything
-  run_artifact "$url" clone_unfence.sql
-  warn "this clone is no longer fenced: cron.job is writable here. It remains inert"
-  warn "(no active jobs) and it is disposable — destroy it as soon as evidence is captured."
+
+# ===========================================================================
+# SUPPORTED REHEARSAL TARGET — empty project + synthetic scale data (ADR-001)
+# ===========================================================================
+# Replaces "restore production, then fence it". Nothing about production is
+# copied: no cron jobs, no pg_net queue or responses, no Vault secrets, no
+# webhooks or outbound triggers, no FDWs, no auth users, no customer rows. The
+# target is outbound-inert BY CONSTRUCTION, which is a stronger property than a
+# restored project that has been quiesced.
+SCALE_FILE="$HERE/clone-safety/rehearsal-scale.json"
+BASELINE_FP="$EVID/rehearsal-baseline-fingerprint.txt"
+
+# The target must be a real, distinct, disposable project — the same identity
+# proof the old flow used, because that part was never the problem.
+assert_rehearsal_target() {   # $1 = url
+  assert_clone_url "$1"
+  run_artifact "$1" empty_project_check.sql
+  ok "rehearsal target verified EMPTY and outbound-inert (nothing to quiesce, nothing to fence)"
 }
 
-assert_clone_isolated() {   # $1 = clone url
-  local url="$1" nonce
-  nonce="$(read_recorded_nonce)"
-  # The proof is inside the clone: an ARMED marker with this exact nonce, a fence
-  # that is still EFFECTIVE, the sealed configuration, and no active cron. An
-  # environment variable never establishes provenance.
-  run_sql "$url" "$SQL_DIR/clone_isolation.sql" -v "nonce=$nonce"
-  ok "clone provenance PROVEN by its own armed marker inside a still-fenced window; clone verified inert"
+cmd_clone_verify_empty() {
+  local url="${1:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-verify-empty <clone_conn_url>"
+  require_cmd psql
+  assert_rehearsal_target "$url"
+}
+
+# A rehearsal is only honest if its scale was MEASURED. Invented row counts
+# produce an invented timing result, so the file must say so explicitly.
+assert_scale_is_measured() {
+  require_cmd node
+  [[ -f "$SCALE_FILE" ]] || die "missing rehearsal scale file: $SCALE_FILE"
+  local src
+  src="$(node -e 'process.stdout.write(String(require(process.argv[1]).source))' "$SCALE_FILE")" \
+    || die "could not read $SCALE_FILE"
+  [[ "$src" == measured ]] \
+    || die "rehearsal-scale.json has source=\"${src}\": the affected-table row counts have not been measured against production. A rehearsal built on invented numbers is not evidence. Fill it from the READ-ONLY sizing query in ${UNSUPPORTED_ADR} section 7 and set source=\"measured\"."
+  ok "rehearsal scale is marked measured"
+}
+
+# Build the pristine baseline: schema from MAIN (pre-#615), every schedule
+# deactivated, then synthetic rows in ONLY the two tables #615 locks.
+cmd_clone_build_baseline() {
+  require_yes "${1:-}"
+  local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-build-baseline --yes <clone_conn_url>"
+  require_cmd psql; require_cmd supabase; require_cmd node
+  # Identity first, and FATALLY: an auth, connectivity or wrong-ref failure must
+  # surface as itself. Recommending a destructive recovery for those would be
+  # actively harmful.
+  assert_clone_url "$url"
+
+  # Only now, the emptiness question. A build that failed PART-WAY leaves a
+  # target that is no longer empty and has no fingerprint, and without a hint the
+  # operator is stuck between a build that refuses a non-empty target and a reset
+  # that refuses a missing baseline. The ORIGINAL diagnostic is always shown.
+  local probe rc=0
+  probe="$(mktemp "${TMPDIR:-/tmp}/rollout-empty-XXXXXX")" || die "could not create a probe capture"
+  run_sql_soft "$url" "$SQL_DIR/empty_project_check.sql" > "$probe" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    warn "the target did not pass the empty-project check:"
+    render_diag "$probe" 6 '  ' 
+    # Eligibility comes from the DURABLE MARKER, not from the wording of the
+    # error above. Matching human-readable fragments meant a message change
+    # could silently withdraw a valid recovery — or offer a destructive one.
+    local marker rc2=0
+    marker="$(psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -Atqc \
+      "SELECT count(*) FROM net.rehearsal_target_marker" 2>/dev/null)" || rc2=$?
+    if [[ "$rc2" -eq 0 && "$marker" =~ ^[0-9]+$ && "$marker" -ge 1 ]]; then
+      rm -f "$probe"
+      [[ -s "$BASELINE_FP" ]] \
+        && die "this target already carries a recorded baseline — use 'clone-baseline-verify' or 'clone-reset-baseline --yes'" \
+        || die "the target carries THIS TOOLING'S marker (${marker} row(s)) but no baseline is on file, so a previous build failed part-way. Recover with:
+    clone-reset-baseline --yes --recover <clone_url>
+  which wipes it back to bare metal, rebuilds, and records the baseline."
+    fi
+    rm -f "$probe"
+    die "the target is not usable as a rehearsal target — see the diagnostic above. --recover is NOT offered: it is only for a target this tooling part-built (one carrying net.rehearsal_target_marker), and destroying anything else would be the wrong answer."
+  fi
+  rm -f "$probe"
+  ok "rehearsal target verified EMPTY and outbound-inert (nothing to quiesce, nothing to fence)"
+
+  assert_scale_is_measured
+  mkdir -p "$EVID"
+  clone_build_schema_and_data "$url"
+  clone_capture_baseline "$url"
+  ok "PRISTINE BASELINE built. Every rehearsal must start from this fingerprint;"
+  ok "use 'clone-reset-baseline --yes <url>' between rehearsals B/C/D."
+}
+
+# The build itself. Shared by build and reset so a reset cannot drift from the
+# thing it claims to restore.
+clone_build_schema_and_data() {   # $1 url
+  local url="$1" san rc=0
+
+  # 1) INERT FIRST — and inert by CONSTRUCTION, not by hope. The chain installs
+  #    pg_cron and pg_net (20260117134212, 20260330204208), so pre-creating
+  #    stand-ins and leaving those statements in place would collide with the
+  #    extension and then hand the target a real scheduler anyway. The source is
+  #    therefore SANITIZED (those CREATE EXTENSION statements neutralised, and
+  #    anything else that could reach outside the box refused), and the inert
+  #    stand-ins go in before it runs.
+  run_artifact "$url" platform_stub.sql
+  san="$(mktemp -d "${TMPDIR:-/tmp}/rollout-sanitized-XXXXXX")" || die "could not create a sanitized migration directory"
+  node "$HERE/synth/sanitize-migrations.mjs" "$REPO_ROOT/supabase/migrations" "$san/migrations" \
+    || { rm -rf "$san"; die "the migration chain could not be sanitized — see the refusals above"; }
+
+  # 2) schema from the sanitized MAIN chain — NOT from the #615 pin. The
+  #    migrations under test are applied later, on their own, or the measurement
+  #    means nothing.
+  log "building schema on the rehearsal target from sanitized main"
+  ( cd "$san" && printf 'project_id = "%s"\n' "$CLONE_REF" > config.toml \
+    && NO_COLOR=1 supabase db push --db-url "$url" --workdir "$san" ) || rc=$?
+  rm -rf "$san"
+  [[ "$rc" -eq 0 ]] || die "schema build failed on the rehearsal target (exit ${rc})"
+
+  # 3) belt and braces: prove nothing became active, and that the target is inert
+  run_artifact "$url" clone_deactivate_schedules.sql
+  run_artifact "$url" rehearsal_inert_check.sql
+
+  # 4) synthetic scale data — only the affected tables
+  log "loading synthetic scale data (no production value is read or copied)"
+  node "$HERE/synth/build-baseline.mjs" "$url" "$SCALE_FILE" \
+    || die "synthetic baseline load failed"
+}
+
+clone_capture_baseline() {   # $1 url
+  local tmp rc=0
+  tmp="$(mktemp "${TMPDIR:-/tmp}/rollout-baseline-XXXXXX")" || die "could not create a baseline capture"
+  psql "$1" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline_fingerprint.sql" > "$tmp" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then rm -f "$tmp"; die "could not fingerprint the baseline (psql exit ${rc})"; fi
+  grep -q '^SYNTHETIC ok$' "$tmp" || { rm -f "$tmp"; die "baseline contains a NON-SYNTHETIC address — refusing to record it"; }
+  mv "$tmp" "$BASELINE_FP"; chmod 600 "$BASELINE_FP" 2>/dev/null || true
+  ok "baseline fingerprint recorded -> ${BASELINE_FP##*/}"
+}
+
+# Re-assert the recorded fingerprint. A rehearsal that starts from a drifted
+# baseline is refused — including one drifted by a FAILED migration, which is
+# exactly the false green this guard exists to prevent.
+cmd_clone_baseline_verify() {
+  local url="${1:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-baseline-verify <clone_conn_url>"
+  require_cmd psql; assert_clone_url "$url"
+  [[ -s "$BASELINE_FP" ]] || die "no recorded baseline — run clone-build-baseline first"
+  local tmp rc=0
+  tmp="$(mktemp "${TMPDIR:-/tmp}/rollout-baseline-XXXXXX")" || die "could not create a comparison capture"
+  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline_fingerprint.sql" > "$tmp" 2>&1 || rc=$?
+  if [[ "$rc" -ne 0 ]]; then rm -f "$tmp"; die "could not fingerprint the target (psql exit ${rc})"; fi
+  if ! diff -q "$BASELINE_FP" "$tmp" >/dev/null 2>&1; then
+    warn "the target does NOT match the recorded pristine baseline:"
+    diff "$BASELINE_FP" "$tmp" > "$tmp.diff" 2>/dev/null || true
+    { local dn=0 dl; while IFS= read -r dl || [[ -n "$dl" ]]; do
+        printf '  %s\n' "$dl" >&2; dn=$((dn + 1)); [[ "$dn" -ge 20 ]] && break
+      done < "$tmp.diff"; } || true
+    rm -f "$tmp.diff"
+    rm -f "$tmp"
+    die "rehearsal target has drifted — run 'clone-reset-baseline --yes <url>' before rehearsing"
+  fi
+  rm -f "$tmp"
+  ok "rehearsal target matches the recorded pristine baseline exactly"
+}
+
+# Between rehearsals: reload the synthetic data and prove the fingerprint is
+# identical to the recorded baseline. No production snapshot is restored.
+# Between rehearsals: a REAL rebuild, not a row reload.
+#
+# Rehearsals B and C deliberately leave the target broken, and A/D leave all
+# three #615 migrations applied — new columns, functions, tables, constraints and
+# three ledger rows. Truncating two tables cannot reverse any of that, so a
+# reset that only reloaded rows would hand the next rehearsal a migrated target
+# and call it pristine. The target is therefore wiped to bare metal (schema,
+# shims and migration ledger) and rebuilt by the same code path as the original
+# build, then the fingerprint is required to match byte for byte.
+#
+# Still no production snapshot is restored, and still no customer data exists.
+cmd_clone_reset_baseline() {
+  require_yes "${1:-}"; shift
+  local recover=0 url=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --recover) recover=1; shift;;
+      *) url="$1"; shift;;
+    esac
+  done
+  require_arg "$url" "usage: CLONE_REF=<ref> clone-reset-baseline --yes [--recover] <clone_conn_url>"
+  require_cmd psql; require_cmd supabase; require_cmd node; assert_clone_url "$url"
+  if [[ "$recover" -eq 1 ]]; then
+    # RECOVERY. Only for a target whose FIRST build failed before any fingerprint
+    # was recorded. It is explicit precisely because it will happily discard a
+    # half-built target — which is correct there and wrong anywhere else.
+    [[ -s "$BASELINE_FP" ]] \
+      && die "--recover is only for a target with NO recorded baseline; this one has one, so use a plain reset (it verifies against the recorded fingerprint)"
+    warn "RECOVERING a part-built target: wiping to bare metal and rebuilding from scratch"
+  else
+    [[ -s "$BASELINE_FP" ]] \
+      || die "no recorded baseline — if a first build failed part-way, use 'clone-reset-baseline --yes --recover <url>'; otherwise run clone-build-baseline first"
+  fi
+  assert_scale_is_measured
+  warn "wiping the rehearsal target to bare metal (schema + stand-ins + migration ledger)"
+  run_artifact "$url" clone_wipe.sql
+  run_artifact "$url" empty_project_check.sql
+  ok "target is bare and inert again; rebuilding"
+  clone_build_schema_and_data "$url"
+  if [[ "$recover" -eq 1 ]]; then
+    clone_capture_baseline "$url"
+    ok "target RECOVERED and a pristine baseline recorded"
+  else
+    cmd_clone_baseline_verify "$url"
+    ok "rehearsal target REBUILT and byte-identical to the recorded pristine baseline"
+  fi
+}
+
+# CLONE-SIDE GATE for the supported model. No rehearsal command may touch a
+# target until it is proven INERT and byte-identical to the recorded pristine
+# baseline. There is no marker and no fence to check any more: the target never
+# held production state, so there is no provenance question to answer — only an
+# inertness one, and it is answered directly. (ADR-001 §5)
+assert_clone_isolated() {   # $1 = target url
+  local url="$1"
+  run_artifact "$url" rehearsal_inert_check.sql
+  cmd_clone_baseline_verify "$url"
+  ok "rehearsal target proven inert and matching the pristine baseline"
 }
 
 # Shared preamble for the two clone-migrating commands: clone identity (provably
@@ -1186,9 +1345,12 @@ case "$sub" in
   clone-make-prefix) cmd_clone_make_prefix "$@";;
   clone-source-inventory) cmd_clone_source_inventory "$@";;
   clone-source-quiesce)   cmd_clone_source_quiesce "$@";;
+  clone-verify-empty)     cmd_clone_verify_empty "$@";;
+  clone-build-baseline)   cmd_clone_build_baseline "$@";;
+  clone-baseline-verify)  cmd_clone_baseline_verify "$@";;
+  clone-reset-baseline)   cmd_clone_reset_baseline "$@";;
   clone-source-resume)    cmd_clone_source_resume "$@";;
   clone-source-abandon)   cmd_clone_source_abandon "$@";;
-  clone-unfence)          cmd_clone_unfence "$@";;
   postflight)     cmd_postflight "$@";;
   ledger-status)  cmd_ledger_status "$@";;
   clean-evidence) cmd_clean_evidence "$@";;
@@ -1198,16 +1360,22 @@ usage: EXPECTED_REF=<ref> $0 <subcommand> [args]
   check-identity [url] | phase616 --yes | dryrun615 | preflight <url> | apply615 --yes |
   resume615 --yes | postflight <url> | ledger-status <url> |
   rollback615 <url> [--clone] | clean-evidence --yes <url>
-clone SAFETY (production, before any clone exists):
-  clone-source-inventory <prod_url>          # READ-ONLY outbound inventory
-  clone-source-quiesce --yes <prod_url>      # capture+pause+FENCE+mark (1 tx), drain, ARM
+production audit (READ-ONLY):
+  clone-source-inventory <prod_url>          # outbound inventory; mutates nothing
+WITHDRAWN (refuses before connecting — see docs/ADR-001):
+  clone-source-quiesce                       # extension-table fences are unsupported
+RECOVERY ONLY, for a window opened by the withdrawn tooling:
   clone-source-resume  --yes <prod_url>      # ONE atomic tx: unfence + exact restore + unmark
   clone-source-abandon --yes --nonce <n> <prod_url>   # explicit stale-window recovery
+supported rehearsal target (empty disposable project + SYNTHETIC scale data):
+  clone-verify-empty     <clone_url>             # prove it is empty + outbound-inert
+  clone-build-baseline   --yes <clone_url>       # schema from main, schedules off, synthetic rows
+  clone-baseline-verify  <clone_url>             # target == recorded pristine baseline
+  clone-reset-baseline   --yes [--recover] <clone_url>  # between rehearsals; --recover for a part-built target
 clone-only (CLONE_REF=<ref> != EXPECTED_REF, CAP_STMT=<ms>; provenance = the sealed marker):
   clone-push --yes <clone_url>                 # push the MISSING suffix from PR615_SHA
   clone-make-prefix --yes <1|2> <clone_url>    # rehearsal C: real partial apply
   verify-clone <clone_url> --clone             # post-migration battery
-  clone-unfence --yes <clone_url>              # clone-only: lift the write barrier
 EOF
      exit 2;;
 esac

@@ -98,6 +98,9 @@ cat > "$BIN/psql" <<'EOF'
 #!/usr/bin/env bash
 if printf '%s ' "$@" | grep -q -- '-Atqc'; then cat "$STATEDIR/ledger" 2>/dev/null; echo; exit 0; fi
 f=""; prev=""; for a in "$@"; do [[ "$prev" == "-f" ]] && f="$a"; prev="$a"; done
+if [[ "$f" == *rehearsal_inert_check.sql ]]; then echo "NOTE: inert"; exit 0; fi
+if [[ "$f" == *baseline_fingerprint.sql ]]; then
+  printf 'SHAPE shape0\nROWS email_address_state 1000\nSYNTHETIC ok\n'; exit 0; fi
 if [[ "$f" == *manifest.sql ]]; then
   mode="$(cat "$STATEDIR/MANIFEST_MODE" 2>/dev/null || echo ok)"
   echo "EAS $FA"; if [[ "$mode" == loss ]]; then er=2; else echo "EAS $FB"; er=3; fi; echo "EAS $FN"
@@ -163,8 +166,10 @@ chmod +x "$BIN"/*
 EVID="$ROOT/evidence"
 # clone commands are gated on assert_clone_isolated; seed the approved inert
 # snapshot up-front so every gated invocation below exercises clone behaviour.
-APPROVED_NONCE="a1b2c3d4e5f60718293a4b5c6d7e8f90"
-mkdir -p "$EVID"; printf '%s\n' "$APPROVED_NONCE" > "$EVID/clone-source-nonce.txt"
+# The clone gate is now inertness + pristine-baseline (ADR-001): the marker/fence
+# model is withdrawn. Seed a recorded baseline so these tests reach the flow they
+# are actually about.
+mkdir -p "$EVID"; printf 'SHAPE shape0\nROWS email_address_state 1000\nSYNTHETIC ok\n' > "$EVID/rehearsal-baseline-fingerprint.txt"
 place_pre(){ mkdir -p "$EVID"
   { echo "EAS $FA"; echo "EAS $FB"; echo "EDE $E1"; echo "EDE $E2";
     printf 'EV eas_rows=2\nEV ede_rows=2\nEV eas_bad_state_rows=1\nEV reader_academy_md5=%s\nEV reader_overview_md5=%s\n' \

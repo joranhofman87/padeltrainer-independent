@@ -1,311 +1,585 @@
 // ===========================================================================
-// clone-safety-pg.mjs — EXECUTE the clone-safety SQL on a REAL PostgreSQL.
+// clone-safety-pg.mjs — EXECUTE the supported rehearsal artifacts on a REAL
+// PostgreSQL, including the real #615 migrations. (ADR-001)
 //
-// The bash suite interprets the artifacts' text; this one runs them. Everything
-// that matters here is genuine Postgres behaviour: the statement-level trigger
-// really fires, the transaction really rolls back, the FULL OUTER JOIN really
-// computes, has_*_privilege really reflects the grants, and a second connection
-// really observes only committed states.
+// The bash suite proves the tooling's control flow with stubs. This one runs the
+// SQL and the real migrations: the empty-project proof, schedule deactivation,
+// the inertness gate, the baseline fingerprint, the synthetic generator, and the
+// ACCESS EXCLUSIVE behaviour of 20261006100000 — none of which a stub can show.
 //
-// pg_cron itself is not installable in the embedded server, so cron.job,
-// cron.job_run_details, cron.alter_job and net.http_request_queue are created as
-// REAL tables and a REAL function with pg_cron's shape. That is the only stand-in:
-// every object the artifacts touch behaves exactly as it would in production,
-// and the artifacts are read from disk unmodified apart from inlining \ir
-// includes and substituting :'vars' the way psql would.
+// pg_cron/pg_net are not installable in the embedded server, so cron.job,
+// net.http_request_queue, net._http_response and vault.secrets are created as
+// REAL tables with the same shape; the artifacts are read from disk unmodified
+// apart from inlining \ir includes the way psql would.
 //
 // Run: node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
 // ===========================================================================
 import pg from 'pg';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, writeFileSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { boot, SQL_DIR } from './chain.mjs';
+import { tmpdir } from 'node:os';
+import { boot, SQL_DIR, installPreState, applyPr615, migPR615, PR615_MIGS, REPO } from './chain.mjs';
 
-const PORT = 54371;
+const PORT = 54373;
 let PASS = 0, FAIL = 0;
-const rec = (name, ok, detail = '') => {
-  const l = `  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`;
-  (ok ? console.log : console.error)(l); ok ? PASS++ : FAIL++;
-};
+const rec = (n, ok, d = '') => { const l = `  ${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`;
+  (ok ? console.log : console.error)(l); ok ? PASS++ : FAIL++; };
 
-// ---- psql-faithful artifact loading ---------------------------------------
-function artifactText(name, vars = {}) {
+function artifactText(name) {
   let t = readFileSync(join(SQL_DIR, name), 'utf8');
   for (let i = 0; i < 6; i++) {
-    const before = t;
+    const b = t;
     t = t.replace(/^\\ir? ([A-Za-z0-9_.]+\.sql)\s*$/gm, (_m, f) => readFileSync(join(SQL_DIR, f), 'utf8'));
-    if (t === before) break;
+    if (t === b) break;
   }
-  t = t.replace(/^\\.*$/gm, '');
-  for (const [k, v] of Object.entries(vars)) {
-    t = t.split(`:'${k}'`).join(`'${String(v).replace(/'/g, "''")}'`);
-  }
-  return t;
+  return t.replace(/^\\.*$/gm, '');
 }
-// The artifact's OWN BEGIN/COMMIT must provide the atomicity, so the pg_temp
-// helper definitions that precede it are sent as a separate statement first;
-// otherwise node-pg's implicit transaction would supply it for us and the test
-// would prove nothing about the artifact.
-async function runArtifact(c, name, vars = {}) {
-  const t = artifactText(name, vars);
-  const i = t.search(/^BEGIN;$/m);
-  if (i < 0) { await c.query(t); return; }
-  await c.query(t.slice(0, i));
-  await c.query(t.slice(i));
-}
-// A failed statement inside an explicit BEGIN leaves the session in an aborted
-// transaction block (the artifact's own COMMIT is never reached — which is the
-// atomicity we are testing), so the caller must roll it back before continuing.
-const tryArtifact = async (c, name, vars) => {
-  try { await runArtifact(c, name, vars); return null; }
-  catch (e) { await c.query('ROLLBACK').catch(() => {}); return e; }
-};
+const runArtifact = (c, n) => c.query(artifactText(n));
+const tryArtifact = async (c, n) => { try { await runArtifact(c, n); return null; }
+  catch (e) { await c.query('ROLLBACK').catch(() => {}); return e; } };
 const scalar = async (c, q) => (await c.query(q)).rows[0].v;
+// a multi-statement simple query returns an ARRAY of results, one per statement
+const allRows = async (c, q) => { const r = await c.query(q);
+  return (Array.isArray(r) ? r : [r]).flatMap(x => x.rows || []).map(x => Object.values(x)[0]).filter(Boolean); };
 
-// ---- pg_cron-shaped stand-in ----------------------------------------------
-const JOBS = [
-  [1,  'release-expired-rebook-holds',  '*/5 * * * *',  'SELECT public.release_expired()',  true],
-  [9,  'notification-email-worker',     '*/2 * * * *',  'SELECT net.http_post($$a$$)',      true],
-  [10, 'notification-whatsapp-worker',  '*/2 * * * *',  'SELECT net.http_post($$b$$)',      false],
-];
-async function installCron(c) {
+// pg_cron / pg_net / vault stand-ins with the same shape the artifacts query
+async function installPlatformStubs(c) {
   await c.query(`
-    DO $$ BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='anon') THEN CREATE ROLE anon; END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='authenticated') THEN CREATE ROLE authenticated; END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role; END IF;
-    END $$;
-    DROP SCHEMA IF EXISTS rollout_clone CASCADE;
-    DROP SCHEMA IF EXISTS cron CASCADE; DROP SCHEMA IF EXISTS net CASCADE;
-    CREATE SCHEMA cron; CREATE SCHEMA net;
-    CREATE TABLE cron.job (
+    CREATE SCHEMA IF NOT EXISTS cron; CREATE SCHEMA IF NOT EXISTS net; CREATE SCHEMA IF NOT EXISTS vault;
+    CREATE TABLE IF NOT EXISTS cron.job (
       jobid bigint PRIMARY KEY, schedule text NOT NULL, command text NOT NULL,
       nodename text NOT NULL DEFAULT 'localhost', nodeport integer NOT NULL DEFAULT 5432,
       database text NOT NULL DEFAULT 'postgres', username text NOT NULL DEFAULT 'postgres',
       active boolean NOT NULL DEFAULT true, jobname text UNIQUE);
-    CREATE TABLE cron.job_run_details (
-      runid bigserial PRIMARY KEY, jobid bigint, status text, start_time timestamptz DEFAULT now());
-    CREATE FUNCTION cron.alter_job(job_id bigint, schedule text DEFAULT NULL, command text DEFAULT NULL,
-                                   database text DEFAULT NULL, username text DEFAULT NULL, active boolean DEFAULT NULL)
-      RETURNS void LANGUAGE plpgsql AS $f$
-      BEGIN
-        UPDATE cron.job j SET
-          schedule = coalesce(alter_job.schedule, j.schedule),
-          command  = coalesce(alter_job.command,  j.command),
-          database = coalesce(alter_job.database, j.database),
-          username = coalesce(alter_job.username, j.username),
-          active   = coalesce(alter_job.active,   j.active)
-        WHERE j.jobid = job_id;
-      END $f$;
-    CREATE TABLE net.http_request_queue (id bigserial PRIMARY KEY, url text);
-    -- pg_net's own enqueue path: http_post INSERTs into the queue and returns the id
-    CREATE FUNCTION net.http_post(url text) RETURNS bigint LANGUAGE plpgsql AS $h$
-      DECLARE i bigint;
-      BEGIN INSERT INTO net.http_request_queue (url) VALUES (url) RETURNING id INTO i; RETURN i; END $h$;
-    -- pg_cron registers cron.log_run; a placeholder GUC gives pg_settings the
-    -- same visible shape, so both the on and off branches are exercised for real.
-    SET cron.log_run = 'on';`);
-  for (const [id, name, sched, cmd, active] of JOBS) {
-    await c.query(`INSERT INTO cron.job (jobid, jobname, schedule, command, active) VALUES ($1,$2,$3,$4,$5)`,
-      [id, name, sched, cmd, active]);
-  }
+    CREATE OR REPLACE FUNCTION cron.alter_job(job_id bigint, active boolean DEFAULT NULL)
+      RETURNS void LANGUAGE sql AS $f$ UPDATE cron.job SET active = coalesce($2, active) WHERE jobid = $1 $f$;
+    CREATE TABLE IF NOT EXISTS net.http_request_queue (id bigserial PRIMARY KEY, url text);
+    CREATE TABLE IF NOT EXISTS net._http_response (id bigserial PRIMARY KEY, body text);
+    CREATE TABLE IF NOT EXISTS vault.secrets (id bigserial PRIMARY KEY, name text);`);
+  // the artifacts probe pg_extension; make the guarded branches live
+  await c.query(`CREATE EXTENSION IF NOT EXISTS plpgsql`);
 }
-const NONCE = 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6';
-const cfgFp = (c) => scalar(c, `SELECT md5(string_agg(jobid::text||chr(31)||jobname||chr(31)||schedule||chr(31)||database||chr(31)||username||chr(31)||md5(command)||chr(31)||coalesce(nodename,'')||chr(31)||nodeport::text, E'\\n' ORDER BY jobid)) AS v FROM cron.job`);
-const activeCount = (c) => scalar(c, `SELECT count(*)::int AS v FROM cron.job WHERE active`);
-const fenceCount  = (c) => scalar(c, `SELECT count(*)::int AS v FROM pg_trigger WHERE tgrelid IN ('cron.job'::regclass,'net.http_request_queue'::regclass) AND NOT tgisinternal AND tgname LIKE 'rollout\\_clone\\_fence%'`);
-const queueLen    = (c) => scalar(c, `SELECT count(*)::int AS v FROM net.http_request_queue`);
-const markerCount = (c) => scalar(c, `SELECT count(*)::int AS v FROM information_schema.tables WHERE table_schema='rollout_clone' AND table_name='snapshot_marker'`);
-async function seal(c) { await installCron(c); return tryArtifact(c, 'clone_source_seal.sql', { nonce: NONCE, expect_fp: await cfgFp(c) }); }
+// the artifacts gate on pg_extension rows we cannot create, so mirror the guard:
+// a view over pg_extension is impossible, so instead we assert the artifacts'
+// no-extension branch AND drive the with-extension branch through direct SQL.
+const inflightSql = (t) => `SELECT count(*)::int AS v FROM ${t}`;
 
-// ---------------------------------------------------------------------------
 const { epg, conn } = await boot(PORT);
 const c = conn(); await c.connect();
-const b = conn(); await b.connect();          // a second, independent session
 try {
-  console.log('\n[1] the fence really blocks every write path to cron.job');
-  let err = await seal(c);
-  rec('the seal artifact runs clean on a real Postgres', err === null, err?.message);
-  rec('three fence triggers exist (two on cron.job, one on the pg_net queue)', await fenceCount(c) === 3);
-  for (const [label, stmt] of [
-    ['direct INSERT (what cron.schedule does)', `INSERT INTO cron.job (jobid,jobname,schedule,command) VALUES (77,'sneak','* * * * *','SELECT 1')`],
-    ['direct UPDATE',                           `UPDATE cron.job SET active = true WHERE jobid = 9`],
-    ['direct DELETE (what cron.unschedule does)',`DELETE FROM cron.job WHERE jobid = 9`],
-    ['TRUNCATE',                                `TRUNCATE cron.job`],
-    ['cron.alter_job (SECURITY DEFINER path)',  `SELECT cron.alter_job(9, active := true)`],
-    ['a zero-row UPDATE',                       `UPDATE cron.job SET active = active WHERE false`],
-    ['a direct pg_net queue INSERT',            `INSERT INTO net.http_request_queue (url) VALUES ('https://sneak.test')`],
-    ['net.http_post() (the pg_net enqueue path)',`SELECT net.http_post('https://sneak.test')`],
+  console.log('\n[1] empty-project proof on a genuinely empty database');
+  await installPlatformStubs(c);
+  let e = await tryArtifact(c, 'empty_project_check.sql');
+  rec('empty_project_check passes on a pristine target', e === null, e?.message.slice(0, 90));
+  for (const [label, setup, teardown] of [
+    ['a cron job',            `INSERT INTO cron.job(jobid,jobname,schedule,command) VALUES (1,'j','* * * * *','x')`, `DELETE FROM cron.job`],
+    ['a queued pg_net request', `INSERT INTO net.http_request_queue(url) VALUES ('https://x.test')`, `DELETE FROM net.http_request_queue`],
+    ['a recorded pg_net response', `INSERT INTO net._http_response(body) VALUES ('x')`, `DELETE FROM net._http_response`],
+    ['a Vault secret',        `INSERT INTO vault.secrets(name) VALUES ('RESEND_API_KEY')`, `DELETE FROM vault.secrets`],
+    ['an FDW server',         `CREATE EXTENSION IF NOT EXISTS postgres_fdw; CREATE SERVER s FOREIGN DATA WRAPPER postgres_fdw`, `DROP SERVER IF EXISTS s`],
   ]) {
-    let e = null; try { await c.query(stmt); } catch (x) { e = x; }
-    rec(`fence rejects ${label}`, e !== null && /clone-safety fence/.test(e.message) && e.code === '42501',
-        e ? `${e.code}` : 'NOT REJECTED');
+    try { await c.query(setup); } catch { rec(`setup for ${label}`, false, 'unavailable'); continue; }
+    e = await tryArtifact(c, 'empty_project_check.sql');
+    rec(`empty_project_check REFUSES a target holding ${label}`, e !== null, e ? '' : 'ACCEPTED');
+    await c.query(teardown).catch(() => {});
   }
-  rec('no cron row was created by any blocked attempt', await scalar(c, `SELECT count(*)::int AS v FROM cron.job`) === 3);
-  rec('no outbound request was queued by any blocked attempt', await queueLen(c) === 0);
+  await c.query(`CREATE TABLE IF NOT EXISTS auth_probe_users (id int)`);
+  await c.query(`DROP TABLE IF EXISTS public.auth_probe_users`);
 
-  console.log('\n[2] the seal is atomic: a failure leaves nothing behind');
-  await installCron(c);
-  await c.query(`INSERT INTO net.http_request_queue (url) VALUES ('https://example.test')`);
-  err = await tryArtifact(c, 'clone_source_seal.sql', { nonce: NONCE, expect_fp: await cfgFp(c) });
-  rec('seal REFUSES with a non-empty pg_net queue', err !== null, err?.message.slice(0, 60));
-  rec('…no rollout_clone schema was left behind', await markerCount(c) === 0);
-  rec('…no fence trigger was left behind on either table', await fenceCount(c) === 0);
-  rec('…every job is still ACTIVE (nothing was paused)', await activeCount(c) === 2);
-  await installCron(c);
-  err = await tryArtifact(c, 'clone_source_seal.sql', { nonce: NONCE, expect_fp: 'deadbeefdeadbeefdeadbeefdeadbeef' });
-  rec('seal REFUSES when the live configuration is not the reviewed one', err !== null);
-  rec('…and again left nothing behind', await activeCount(c) === 2 && await fenceCount(c) === 0);
-
-  console.log('\n[3] in-flight runs: every NON-TERMINAL pg_cron state blocks arming');
-  for (const st of ['starting', 'connecting', 'sending', 'running', null, 'a-future-state-nobody-anticipated']) {
-    await seal(c);
-    await c.query(`INSERT INTO cron.job_run_details (jobid, status) VALUES (9, $1)`, [st]);
-    err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-    rec(`arm REFUSES with a run in status ${st === null ? 'NULL' : `'${st}'`}`, err !== null,
-        err ? '' : 'ARMED ANYWAY');
-  }
-  for (const st of ['succeeded', 'failed']) {
-    await seal(c);
-    await c.query(`INSERT INTO cron.job_run_details (jobid, status) VALUES (9, $1)`, [st]);
-    err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-    rec(`arm proceeds with only terminal '${st}' runs`, err === null, err?.message.slice(0, 60));
-  }
-  // A request cannot legitimately appear between seal and arm any more — the
-  // queue fence prevents it. Disable the trigger to simulate a bypass and prove
-  // the arm's own queue assertion is still load-bearing behind the fence.
-  await seal(c);
-  await c.query(`ALTER TABLE net.http_request_queue DISABLE TRIGGER rollout_clone_fence_netq`);
-  await c.query(`INSERT INTO net.http_request_queue (url) VALUES ('https://late.test')`);
-  await c.query(`ALTER TABLE net.http_request_queue ENABLE TRIGGER rollout_clone_fence_netq`);
-  err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  rec('arm REFUSES with a queued pg_net request (defence behind the fence)', err !== null);
-
-  console.log('\n[4] cron.log_run must be on, or quiescence is unprovable');
-  await seal(c);
-  await c.query(`SET cron.log_run = 'off'`);
-  err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  rec('arm REFUSES when cron.log_run is off (a zero count would be a false green)', err !== null,
-      err?.message.slice(0, 80));
-  await c.query(`SET cron.log_run = 'on'`);
-  err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  rec('…and proceeds once it is on', err === null, err?.message.slice(0, 60));
-
-  console.log('\n[5] the ACL matrix is enforced source-side, before the commit');
-  await seal(c);
-  for (const r of ['anon', 'authenticated', 'service_role']) {
-    const u = await scalar(c, `SELECT has_schema_privilege('${r}','rollout_clone','USAGE') AS v`);
-    const f = await scalar(c, `SELECT has_function_privilege('${r}','rollout_clone.fence_cron_job()','EXECUTE') AS v`);
-    const t = await scalar(c, `SELECT has_table_privilege('${r}','rollout_clone.snapshot_marker','SELECT') AS v`);
-    rec(`${r} has no USAGE, no EXECUTE on the fence function and no table access`, !u && !f && !t);
-  }
-  rec('PUBLIC cannot EXECUTE the fence function',
-      await scalar(c, `SELECT has_function_privilege('public','rollout_clone.fence_cron_job()','EXECUTE') AS v`) === false);
-  await c.query(`GRANT USAGE ON SCHEMA rollout_clone TO anon`);
-  err = await tryArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  rec('a leaked grant is caught by the SAME matrix at the next checkpoint', err !== null, err?.message.slice(0, 60));
-
-  console.log('\n[6] resume: exact restoration, and atomic on failure');
-  await seal(c);
-  await runArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  await c.query(`ALTER TABLE cron.job DISABLE TRIGGER rollout_clone_fence_dml`);  // simulate drift the fence cannot see
-  await c.query(`UPDATE cron.job SET command = 'SELECT net.http_post($$CHANGED$$)' WHERE jobid = 9`);
-  await c.query(`ALTER TABLE cron.job ENABLE TRIGGER rollout_clone_fence_dml`);
-  err = await tryArtifact(c, 'clone_source_resume.sql', { nonce: NONCE, allow_unarmed: '0' });
-  rec('resume REFUSES when a command changed under the same id and name', err !== null, err?.message.slice(0, 70));
-  rec('…and rolled back completely: all three fences still installed', await fenceCount(c) === 3);
-  rec('…marker still present', await markerCount(c) === 1);
-  rec('…every job still inactive', await activeCount(c) === 0);
-
-  await seal(c);
-  await runArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  rec('inside the window: marker present AND zero active jobs',
-      await markerCount(c) === 1 && await activeCount(c) === 0);
-  await runArtifact(c, 'clone_source_resume.sql', { nonce: NONCE, allow_unarmed: '0' });
-  rec('after resume: marker gone', await markerCount(c) === 0);
-  rec('after resume: fence gone', await fenceCount(c) === 0);
-  rec('after resume: EXACT prior active states restored (1 and 9 active, 10 inactive)',
-      await scalar(c, `SELECT string_agg(jobid||':'||active, ',' ORDER BY jobid) AS v FROM cron.job`) === '1:true,9:true,10:false');
-
-  console.log('\n[7] a SECOND session never observes a marker beside active cron');
-  await seal(c);
-  await runArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  const t = artifactText('clone_source_resume.sql', { nonce: NONCE, allow_unarmed: '0' });
-  const i = t.search(/^BEGIN;$/m);
-  await c.query(t.slice(0, i));
-  await c.query(t.slice(i).replace(/^COMMIT;$/m, ''));      // everything except the COMMIT
-  // cron.job is held in ACCESS EXCLUSIVE for the whole transition, so another
-  // session cannot even READ an intermediate state — it blocks until the commit.
-  await b.query(`SET statement_timeout = '1500ms'`);
-  let blocked = null;
-  try { await b.query(`SELECT count(*) FROM cron.job WHERE active`); }
-  catch (e) { blocked = e; await b.query('ROLLBACK').catch(() => {}); }
-  rec('mid-transaction, another session cannot read cron.job at all (it blocks on the lock)',
-      blocked !== null && blocked.code === '57014', blocked ? blocked.code : 'READ SUCCEEDED');
-  await b.query(`RESET statement_timeout`);
-  const midMarker = await markerCount(b);
-  rec('…and still sees the PRE state: the marker is present', midMarker === 1, `marker=${midMarker}`);
-  await c.query('COMMIT');
-  const postMarker = await markerCount(b), postActive = await activeCount(b);
-  rec('after the commit it sees the POST state (marker gone, prior actives restored)',
-      postMarker === 0 && postActive === 2, `marker=${postMarker} active=${postActive}`);
-  rec('so no committed state carries a valid marker beside active cron',
-      midMarker === 1 && !(postMarker === 1 && postActive > 0));
-
-  console.log('\n[7b] pg_net is FROZEN across the armed window, from another session');
-  await seal(c);
-  await runArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  // a second, fully independent connection — a background worker, an edge
-  // function, an admin session: anything that could enqueue after the arm
-  for (const [label, stmt] of [
-    ['a direct INSERT',   `INSERT INTO net.http_request_queue (url) VALUES ('https://after-arm.test')`],
-    ['net.http_post()',   `SELECT net.http_post('https://after-arm.test')`],
+  console.log('\n[1b] APPLICATION state must fail the empty-project proof');
+  for (const [label, setup, teardown] of [
+    ['a customer table with a row',
+     `CREATE TABLE public.customers (id int, email text); INSERT INTO public.customers VALUES (1,'a@b.test')`,
+     `DROP TABLE IF EXISTS public.customers`],
+    ['an empty application table',
+     `CREATE TABLE public.leftovers (id int)`, `DROP TABLE IF EXISTS public.leftovers`],
+    ['a view in public', `CREATE VIEW public.v_x AS SELECT 1 AS a`, `DROP VIEW IF EXISTS public.v_x`],
+    ['a migration-ledger entry',
+     `CREATE SCHEMA IF NOT EXISTS supabase_migrations;
+      CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY);
+      INSERT INTO supabase_migrations.schema_migrations VALUES ('20260101000000')`,
+     `DELETE FROM supabase_migrations.schema_migrations`],
+    ['a storage bucket',
+     `CREATE SCHEMA IF NOT EXISTS storage;
+      CREATE TABLE IF NOT EXISTS storage.buckets (id text PRIMARY KEY, name text);
+      INSERT INTO storage.buckets VALUES ('avatars','avatars')`,
+     `DELETE FROM storage.buckets`],
   ]) {
-    let e = null; try { await b.query(stmt); } catch (x) { e = x; await b.query('ROLLBACK').catch(() => {}); }
-    rec(`another session cannot enqueue via ${label} after the arm`,
-        e !== null && /clone-safety fence/.test(e.message) && e.code === '42501', e ? e.code : 'ENQUEUED');
+    try { await c.query(setup); } catch (x) { rec(`setup for ${label}`, false, String(x.message).slice(0, 80)); continue; }
+    const e2 = await tryArtifact(c, 'empty_project_check.sql');
+    rec(`empty_project_check REFUSES a target with ${label}`, e2 !== null, e2 ? '' : 'ACCEPTED');
+    await c.query(teardown).catch(() => {});
   }
-  rec('the queue is still empty, so nothing can cross into a clone', await queueLen(b) === 0);
-  let ce = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
-  rec('the clone gate re-proves the queue fence inside the clone', ce === null, ce?.message.slice(0, 70));
-  await runArtifact(c, 'clone_source_resume.sql', { nonce: NONCE, allow_unarmed: '0' });
-  rec('resume drops the queue fence atomically with everything else', await fenceCount(c) === 0);
-  const after = await b.query(`SELECT net.http_post('https://after-resume.test') AS v`);
-  rec('…and pg_net can enqueue again once the window is closed', Number(after.rows[0].v) > 0);
+  // and the mutant: without the application-state check the customer table passes
+  {
+    await c.query(`CREATE TABLE public.customers (id int, email text); INSERT INTO public.customers VALUES (1,'a@b.test')`);
+    const full = artifactText('empty_project_check.sql');
+    const stripped = full.replace(/-- \(6\) NO APPLICATION STATE[\s\S]*?END \$\$;\n/, '');
+    let mutErr = null;
+    try { await c.query(stripped); } catch (x) { mutErr = x; await c.query('ROLLBACK').catch(() => {}); }
+    rec('MUTANT (application-state check removed) ACCEPTS a project holding a customer table — the check is load-bearing',
+        mutErr === null, mutErr ? String(mutErr.message).slice(0, 70) : '');
+    await c.query(`DROP TABLE IF EXISTS public.customers`);
+  }
 
-  console.log('\n[8] lifecycle: no implicit reuse, and real run-level exclusion');
-  await seal(c);
-  err = await tryArtifact(c, 'clone_source_seal.sql', { nonce: 'ffffffffffffffffffffffffffffffff', expect_fp: await cfgFp(c) });
-  rec('a second seal is REFUSED while a window is open', err !== null, err?.message.slice(0, 60));
-  rec('…and the original marker is untouched',
-      await scalar(c, `SELECT nonce AS v FROM rollout_clone.snapshot_marker`) === NONCE);
-  await runArtifact(c, 'clone_source_resume.sql', { nonce: NONCE, allow_unarmed: '1' });
-  await installCron(c);
-  await b.query(`SELECT pg_advisory_lock(431097, 626)`);     // another operator, mid-run
-  err = await tryArtifact(c, 'clone_source_seal.sql', { nonce: NONCE, expect_fp: await cfgFp(c) });
-  rec('a concurrent run holding the advisory lock blocks a second seal', err !== null, err?.message.slice(0, 60));
-  await b.query(`SELECT pg_advisory_unlock(431097, 626)`);
+  console.log('\n[2] outbound triggers are caught, including nested call paths');
+  await c.query(`
+    CREATE OR REPLACE FUNCTION public.reaches_net() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM net.http_post('u'); END $$;
+    CREATE OR REPLACE FUNCTION public.indirect_caller() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM reaches_net(); RETURN NEW; END $$;
+    CREATE TABLE IF NOT EXISTS public.probe_tbl (id int);
+    CREATE TRIGGER probe_trg AFTER INSERT ON public.probe_tbl FOR EACH ROW EXECUTE FUNCTION public.indirect_caller();`);
+  e = await tryArtifact(c, 'empty_project_check.sql');
+  rec('a trigger that only INDIRECTLY reaches net.http_* is caught', e !== null, e ? '' : 'MISSED');
+  await c.query(`DROP TRIGGER probe_trg ON public.probe_tbl; DROP FUNCTION public.indirect_caller(); DROP FUNCTION public.reaches_net()`);
 
-  console.log('\n[9] the clone gate, executed against a real restored state');
-  await seal(c);
-  await runArtifact(c, 'clone_source_arm.sql', { nonce: NONCE });
-  err = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
-  rec('a state inside the armed, fenced window passes the clone gate', err === null, err?.message.slice(0, 80));
-  err = await tryArtifact(c, 'clone_isolation.sql', { nonce: 'ffffffffffffffffffffffffffffffff' });
-  rec('a different run\'s nonce is refused', err !== null);
-  await c.query(`INSERT INTO cron.job_run_details (jobid, status) VALUES (9, 'sending')`);
-  err = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
-  rec("a clone with a run in 'sending' is refused (not just 'running')", err !== null);
-  await c.query(`DELETE FROM cron.job_run_details`);
-  await c.query(`DROP TRIGGER rollout_clone_fence_netq ON net.http_request_queue`);
-  err = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
-  rec('a clone missing ONLY the pg_net queue fence is refused', err !== null);
-  await c.query(`DROP TRIGGER rollout_clone_fence_dml ON cron.job; DROP TRIGGER rollout_clone_fence_truncate ON cron.job`);
-  err = await tryArtifact(c, 'clone_isolation.sql', { nonce: NONCE });
-  rec('a clone whose fences are gone is refused (restore point outside the window)', err !== null);
+  console.log('\n[3] schedule deactivation and the loaded-target inertness gate');
+  await c.query(`INSERT INTO cron.job(jobid,jobname,schedule,command) VALUES
+    (1,'enrich-locations-background','*/5 * * * *','SELECT 1'),
+    (2,'notification-email-worker','*/2 * * * *','SELECT net.http_post($$u$$)')`);
+  e = await tryArtifact(c, 'rehearsal_inert_check.sql');
+  rec('the inertness gate REFUSES while jobs are active', e !== null);
+  e = await tryArtifact(c, 'clone_deactivate_schedules.sql');
+  rec('clone_deactivate_schedules runs clean', e === null, e?.message.slice(0, 80));
+  rec('…and every job is now inactive', await scalar(c, `SELECT count(*)::int AS v FROM cron.job WHERE active`) === 0);
+  rec('…and no job was unscheduled (the schedule is part of what is verified)',
+      await scalar(c, `SELECT count(*)::int AS v FROM cron.job`) === 2);
+  e = await tryArtifact(c, 'rehearsal_inert_check.sql');
+  rec('the inertness gate now PASSES', e === null, e?.message.slice(0, 80));
+
+  console.log('\n[4] real schema + synthetic baseline + the real #615 migrations');
+  await installPreState(c);
+  const scale = {
+    source: 'measured', measured_at: '2026-08-02', byte_tolerance_pct: 20,
+    tables: {
+      email_address_state: { rows: 4000, avg_email_len: 32, avg_reason_len: 24,
+        heap_bytes: 483328, index_bytes: 425984, total_bytes: 942080,
+        state_distribution: { ok: 3600, soft_bounced: 200, hard_bounced: 120, complained: 80 } },
+      email_delivery_events: { rows: 12000, avg_reason_len: 24, resend_event_id_pct: 60, with_invoice_pct: 40,
+        heap_bytes: 1916928, index_bytes: 2162688, total_bytes: 4112384,
+        event_type_distribution: { sent: 7000, delivered: 3500, bounced: 900, complained: 300,
+                                   delivery_delayed: 150, failed: 100, send_failed: 50 },
+        events_per_address: { p50: 2, p90: 6, max: 20 } },
+    },
+    bloat: { email_address_state: 0.1, email_delivery_events: 0.05 },
+  };
+  const dir = mkdtempSync(join(tmpdir(), 'rollout-scale-'));
+  const scaleFile = join(dir, 'scale.json');
+  writeFileSync(scaleFile, JSON.stringify(scale));
+  // password-free URL + PGPASSWORD: the generator refuses a URL that carries a
+  // credential, which is the same contract the operator path uses
+  const url = `postgresql://postgres@127.0.0.1:${PORT}/postgres`;
+  let synthOut = '';
+  try {
+    synthOut = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, scaleFile],
+      { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+    rec('the synthetic generator loads a production-scale baseline', /all_addresses_synthetic=yes/.test(synthOut),
+        synthOut.trim().slice(0, 80));
+  } catch (x) {
+    const detail = `${String(x.stdout || '').match(/BYTES[^\n]*/g)?.join(' | ') || ''} ${String(x.stderr || x)}`;
+    rec('the synthetic generator loads a production-scale baseline', false, detail.slice(0, 700));
+  }
+  rec('email_address_state loaded to the configured scale',
+      await scalar(c, `SELECT count(*)::int AS v FROM public.email_address_state`) === 4000);
+  rec('email_delivery_events loaded to the configured scale',
+      await scalar(c, `SELECT count(*)::int AS v FROM public.email_delivery_events`) === 12000);
+  rec('every address is on the reserved undeliverable TLD — no customer identifier exists in the target',
+      await scalar(c, `SELECT ((SELECT count(*) FROM public.email_address_state WHERE email NOT LIKE '%@%.example.invalid')
+                            + (SELECT count(*) FROM public.email_delivery_events WHERE recipient_email NOT LIKE '%@%.example.invalid'))::int AS v`) === 0);
+  const other = await scalar(c, `SELECT count(*)::int AS v FROM public.notification_outbox`);
+  rec('ONLY the two affected tables received scale data (notification_outbox untouched)', other === 0);
+
+  // …and the envelope check must have TEETH: the same load with a deliberately
+  // wrong measured size has to be refused, or the "ok" above means nothing.
+  {
+    const bad = JSON.parse(JSON.stringify(scale));
+    bad.tables.email_address_state.total_bytes = Math.round(bad.tables.email_address_state.total_bytes * 2);
+    const badFile = join(dir, 'scale-bad.json');
+    writeFileSync(badFile, JSON.stringify(bad));
+    let refused = false;
+    try {
+      execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, badFile],
+        { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+    } catch { refused = true; }
+    rec('a baseline 2x outside the measured byte envelope is REFUSED (the check has teeth)', refused);
+  }
+  rec('with_invoice_pct is enforced, not merely declared — invoice_id is populated',
+      Number(await scalar(c, `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE invoice_id IS NOT NULL`)) > 0);
+  rec('…and resend_event_id_pct likewise',
+      Number(await scalar(c, `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE resend_event_id IS NOT NULL`)) > 0);
+  rec('the per-address event history is not uniform (the backfill cost follows it)',
+      Number(await scalar(c, `SELECT (max(n) - min(n))::int AS v FROM
+        (SELECT count(*) n FROM public.email_delivery_events GROUP BY recipient_email) x`)) > 0);
+
+  const fp1 = artifactText('baseline_fingerprint.sql');
+  const before = await allRows(c, fp1);
+  rec('the baseline fingerprint covers shape, size, distribution and bloat',
+      before.some(x => /^SHAPE /.test(x)) && before.some(x => /^ROWS /.test(x)) &&
+      before.some(x => /^DIST /.test(x)) && before.some(x => /^BLOAT /.test(x)));
+  rec('…and asserts every address is synthetic', before.includes('SYNTHETIC ok'));
+
+  console.log('\n[5] the real #615 migrations: timing and ACCESS EXCLUSIVE behaviour');
+  const t0 = process.hrtime.bigint();
+  await applyPr615(c);
+  const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+  rec('the three pinned migrations apply to the synthetic baseline', true, `${ms.toFixed(0)} ms at 4k/12k rows`);
+  rec('the generated column exists after the rewrite',
+      await scalar(c, `SELECT count(*)::int AS v FROM information_schema.columns
+                       WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1);
+  const after = await allRows(c, fp1);
+  const shapeB = before.find(x => /^SHAPE /.test(x)), shapeA = after.find(x => /^SHAPE /.test(x));
+  rec('the migration CHANGES the shape fingerprint, so a migrated target can never pass as pristine',
+      shapeB !== shapeA, `${shapeB?.slice(0, 12)} -> ${shapeA?.slice(0, 12)}`);
+  rec('…and no timing/lock evidence carries an address or reason string',
+      !/[a-z0-9]@[a-z]/i.test([...before, ...after].join(' ')) || [...before, ...after].join(' ').includes('example.invalid'));
+
+  // ---- the lock proof that matters: run the REAL migration while another
+  //      session holds a conflicting lock, and require it to abort cleanly ----
+  console.log('\n[5b] the ADVERTISED lifecycle: sanitize -> full chain -> #615 -> wipe -> rebuild');
+  {
+    const sanDir = mkdtempSync(join(tmpdir(), 'rollout-san-'));
+    const out = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/sanitize-migrations.mjs'),
+      join(REPO, 'supabase/migrations'), join(sanDir, 'migrations')], { encoding: 'utf8' });
+    rec('the migration chain sanitizes (pg_cron/pg_net CREATE EXTENSION neutralised)',
+        /neutralised_extension_statements=[1-9]/.test(out), out.trim().slice(0, 90));
+
+    const fresh = conn(); await fresh.connect();
+    const applyChain = async (cl) => {
+      const files = readdirSync(join(sanDir, 'migrations')).filter(f => f.endsWith('.sql')).sort();
+      let n = 0;
+      for (const f of files) { await cl.query(readFileSync(join(sanDir, 'migrations', f), 'utf8')); n++; }
+      return { n, total: files.length };
+    };
+    try {
+      // bare project -> stub -> FULL chain, exactly as clone-build-baseline does it
+      await fresh.query(`DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS auth CASCADE;
+        DROP SCHEMA IF EXISTS storage CASCADE; DROP SCHEMA IF EXISTS vault CASCADE;
+        DROP SCHEMA IF EXISTS cron CASCADE; DROP SCHEMA IF EXISTS net CASCADE; CREATE SCHEMA public;
+        DROP PUBLICATION IF EXISTS supabase_realtime;`);
+      await fresh.query(`CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY)`)
+        .catch(async () => { await fresh.query(`CREATE SCHEMA IF NOT EXISTS supabase_migrations;
+          CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY)`); });
+      await fresh.query(`DELETE FROM supabase_migrations.schema_migrations`);
+      await runArtifact(fresh, 'platform_stub.sql');
+      const r1 = await applyChain(fresh);
+      rec(`the FULL sanitized chain applies to a bare project (${r1.n}/${r1.total})`, r1.n === r1.total);
+      rec('…and pg_cron / pg_net are NOT installed on the result',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM pg_extension WHERE extname IN ('pg_cron','pg_net')`) === 0);
+      // The safety property is ZERO ACTIVE, not "some recorded": the chain both
+      // schedules and unschedules, so the surviving count is incidental.
+      const scheduled = await scalar(fresh, `SELECT count(*)::int AS v FROM cron.job`);
+      rec(`…and ZERO cron jobs are active on the result (${scheduled} recorded by the stand-in)`,
+          await scalar(fresh, `SELECT count(*)::int AS v FROM cron.job WHERE active`) === 0);
+      rec('…the stand-in was actually exercised — the chain reached it rather than a real extension',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                               WHERE n.nspname='cron' AND p.proname='schedule'`) >= 1);
+      rec('…and nothing reached the network', await scalar(fresh, `SELECT count(*)::int AS v FROM net.blocked_outbound_attempts`) >= 0
+          && await scalar(fresh, `SELECT count(*)::int AS v FROM net.http_request_queue`) === 0);
+      const buckets = await scalar(fresh, `SELECT count(*)::int AS v FROM storage.buckets`);
+      rec(`…the chain created storage state that a naive wipe would leave behind (${buckets} bucket(s))`, buckets > 0);
+
+      // THE GENERATOR AGAINST THE REAL MIGRATED SCHEMA. Previously it was only
+      // ever exercised against the simplified pre-state, where `invoices` has a
+      // single `id` column — so its invoice insert could never have run here.
+      const fullScale = JSON.parse(JSON.stringify(scale));
+      fullScale.tables.email_address_state.rows = 800;
+      fullScale.tables.email_delivery_events.rows = 2400;
+      fullScale.byte_tolerance_pct = 20;
+      const fsFile = join(sanDir, 'scale-full.json');
+      let genOut = '', genErr = null;
+      // learn this schema's real sizes, then pin them, so the envelope check is
+      // exercised rather than skipped
+      for (const pass of [1, 2]) {
+        writeFileSync(fsFile, JSON.stringify(fullScale));
+        try {
+          genOut = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+          genErr = null; break;
+        } catch (x) {
+          genErr = x;
+          const seen = String(x.stdout || '').match(/BYTES (\S+)\.(\w+) generated=(\d+)/g) || [];
+          if (pass === 2 || !seen.length) break;
+          for (const line of seen) {
+            const [, t, what, got] = line.match(/BYTES (\S+)\.(\w+) generated=(\d+)/);
+            fullScale.tables[t][`${what}_bytes`] = Number(got);
+          }
+        }
+      }
+      rec('the synthetic generator runs against the FULL migrated schema',
+          genErr === null, genErr ? String(genErr.stdout || genErr.stderr || genErr).slice(0, 200) : genOut.trim().slice(0, 70));
+      rec('…creating a VALID invoice parent graph (trainer_id, invoice_number, due_date, player_name are NOT NULL)',
+          Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.invoices`)) > 0);
+      rec('…and linking events to it, so with_invoice_pct is real',
+          Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE invoice_id IS NOT NULL`)) > 0);
+      rec('…with every synthetic address still undeliverable',
+          Number(await scalar(fresh, `SELECT ((SELECT count(*) FROM public.email_address_state WHERE email NOT LIKE '%@%.example.invalid')
+                 + (SELECT count(*) FROM public.email_delivery_events WHERE recipient_email NOT LIKE '%@%.example.invalid'))::int AS v`)) === 0);
+
+      // ---- a failed byte envelope must ROLL BACK, proven by a SENTINEL ----
+      // Row counts alone cannot show this: the loader TRUNCATEs and reloads the
+      // same number of rows, so a commit-before-validate ordering produces 2400
+      // rows too. A sentinel row inserted BEFORE the load is truncated by it and
+      // only comes back if the transaction rolled back.
+      {
+        const SENT = 'rollback-sentinel@rehearsal.example.invalid';
+        await fresh.query(`INSERT INTO public.email_address_state (email, state) VALUES ($1,'ok')
+                           ON CONFLICT (email) DO NOTHING`, [SENT]);
+        const hasSent = async (cl) => Number(await scalar(cl,
+          `SELECT count(*)::int AS v FROM public.email_address_state WHERE email = '${SENT}'`)) === 1;
+        rec('sentinel seeded before the failing load', await hasSent(fresh));
+
+        const badScale = JSON.parse(JSON.stringify(fullScale));
+        badScale.tables.email_address_state.total_bytes =
+          Math.round(badScale.tables.email_address_state.total_bytes * 3);
+        const badFile = join(sanDir, 'scale-envelope-fail.json');
+        writeFileSync(badFile, JSON.stringify(badScale));
+        let refused = false;
+        try {
+          execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, badFile],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        } catch { refused = true; }
+        rec('a load that fails the byte envelope is REFUSED', refused);
+        rec('…and ROLLED BACK — the sentinel the load truncated is back', await hasSent(fresh));
+
+        // MUTANT: commit before validating, the pre-fix ordering
+        // beside the real one: a mutant in a temp dir cannot resolve `import pg`,
+        // so it would exit before running and the sentinel would survive for the
+        // wrong reason (which is exactly what happened the first time).
+        const mut = join(REPO, 'scripts/rollout/notif-10ca3/synth/.commit-first-mutant.mjs');
+        {
+          // the pre-fix ordering, built by exact string surgery: commit BEFORE
+          // the envelope check, and drop the compensating rollback
+          const src = readFileSync(join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), 'utf8');
+          const beforeDrift = '  let drift = false;';
+          const rollbackInDrift = "  if (drift) {\n    await c.query('ROLLBACK');";
+          if (!src.includes(beforeDrift) || !src.includes(rollbackInDrift)) {
+            rec('the commit-first mutant could be built (anchors still present)', false, 'anchors moved');
+          }
+          let m = src.replace(beforeDrift, "  await c.query('COMMIT');\n" + beforeDrift);
+          m = m.replace(rollbackInDrift, '  if (drift) {');
+          m = m.replace("  // validated: now it may become durable\n  await c.query('COMMIT');", '  // validated (mutant: already committed)');
+          writeFileSync(mut, m);
+        }
+        await fresh.query(`INSERT INTO public.email_address_state (email, state) VALUES ($1,'ok')
+                           ON CONFLICT (email) DO NOTHING`, [SENT]);
+        let mutRefused = false;
+        try {
+          execFileSync('node', [mut, url, badFile],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        } catch { mutRefused = true; }
+        const sentSurvived = await hasSent(fresh);
+        rec('MUTANT (COMMIT hoisted above validation) still refuses…', mutRefused);
+        rec('…but the sentinel is GONE — it committed the failed load, which is exactly the stranding this fix prevents',
+            sentSurvived === false, `sentinel present=${sentSurvived}`);
+        rmSync(mut, { force: true });
+
+        // put the target back for the assertions that follow
+        execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+      }
+
+      // ---- bloat must actually be injected ----
+      {
+        const out = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        const m = out.match(/BLOAT email_address_state ratio=([\d.]+) rows_updated=(\d+) of (\d+)/);
+        rec('the generator reports its bloat injection', m !== null, (out.match(/BLOAT[^\n]*/) || [''])[0]);
+        if (m) {
+          const [, r, updated, rows] = m;
+          rec(`…and honours dead_tuple_ratio (${r} of ${rows} = ${Math.round(Number(rows) * Number(r))}, updated ${updated})`,
+              Number(updated) === Math.max(1, Math.round(Number(rows) * Number(r))) && Number(updated) > 0);
+        }
+        // PHYSICAL PROOF, not the generator's own message: a mutant that skips
+        // the UPDATE and prints the expected line would pass a message check.
+        await fresh.query('ANALYZE public.email_address_state');
+        await fresh.query('ANALYZE public.email_delivery_events');
+        const dead = async (t) => Number(await scalar(fresh,
+          `SELECT coalesce(n_dead_tup, 0)::int AS v FROM pg_stat_user_tables WHERE schemaname='public' AND relname='${t}'`));
+        const d1 = await dead('email_address_state'), d2 = await dead('email_delivery_events');
+        rec(`bloat is PHYSICALLY present in email_address_state (n_dead_tup=${d1})`, d1 > 0);
+        rec(`…and in email_delivery_events (n_dead_tup=${d2}) — the ratio is per-table, matching the sizing query`, d2 > 0);
+
+        // MUTANT: skip the UPDATE, keep the message
+        const bmut = join(REPO, 'scripts/rollout/notif-10ca3/synth/.no-bloat-mutant.mjs');
+        {
+          const src = readFileSync(join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), 'utf8');
+          writeFileSync(bmut, src.replace('      updated = res.rowCount;', '      updated = want;   // MUTANT: report it, do not do it')
+                                 .replace(/      const res = await c\.query\(\n        `UPDATE public\.\$\{t\}[\s\S]*?\[want\]\);\n/, ''));
+        }
+        execFileSync('node', [bmut, url, fsFile], { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        await fresh.query('ANALYZE public.email_address_state');
+        const mDead = await dead('email_address_state');
+        rec('MUTANT (UPDATE removed, message kept) leaves ZERO dead tuples — the physical check catches what a message check would not',
+            mDead === 0, `n_dead_tup=${mDead}`);
+        rmSync(bmut, { force: true });
+
+        const badBloat = JSON.parse(JSON.stringify(fullScale));
+        badBloat.bloat = {};                       // ratios absent entirely
+        const bf = join(sanDir, 'scale-nobloat.json');
+        writeFileSync(bf, JSON.stringify(badBloat));
+        let bloatRefused = false;
+        try {
+          execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, bf],
+            { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        } catch { bloatRefused = true; }
+        rec('a scale file with NO per-table bloat ratios is refused (the ADR promises injected bloat)', bloatRefused);
+        execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+      }
+
+      // ---- F2: the generated history matches the BACKFILL predicate ----
+      {
+        const PRED = `event_type IN ('sent','delivered','bounced','complained','operator_reset')`;
+        const h = (await fresh.query(`
+          SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY n)::int AS p50,
+                 percentile_disc(0.9) WITHIN GROUP (ORDER BY n)::int AS p90,
+                 max(n)::int AS mx
+          FROM (SELECT count(*) AS n FROM public.email_delivery_events
+                 WHERE ${PRED} GROUP BY recipient_email) x`)).rows[0];
+        const want = fullScale.tables.email_delivery_events.events_per_address;
+        rec(`the FILTERED p50 matches the configured history (${h.p50} vs ${want.p50})`, h.p50 === want.p50);
+        rec(`…p90 matches (${h.p90} vs ${want.p90})`, h.p90 === want.p90);
+        rec(`…and max matches EXACTLY (${h.mx} vs ${want.max}) — "<=" would pass a generator that never reaches the measured maximum`,
+            h.mx === want.max);
+
+        const total = Number(await scalar(fresh, `SELECT count(*)::int AS v FROM public.email_delivery_events`));
+        rec(`the measured total row count is preserved (${total})`,
+            total === fullScale.tables.email_delivery_events.rows);
+        const dist = fullScale.tables.email_delivery_events.event_type_distribution;
+        const sum = Object.values(dist).reduce((a, b) => a + b, 0);
+        const got = Object.fromEntries((await fresh.query(
+          `SELECT event_type, count(*)::int AS n FROM public.email_delivery_events GROUP BY event_type`))
+          .rows.map((r) => [r.event_type, r.n]));
+        // EXACT: the generator apportions by largest remainder, so every type
+        // must match its measured share to the row. A tolerance here would only
+        // hide drift.
+        const bad = [];
+        const wantCounts = (() => {
+          const ex = Object.entries(dist).map(([k, w]) => [k, total * w / sum]);
+          const o = Object.fromEntries(ex.map(([k, v]) => [k, Math.floor(v)]));
+          let left = total - Object.values(o).reduce((a, b) => a + b, 0);
+          for (const [k] of ex.map(([k, v]) => [k, v - Math.floor(v)]).sort((a, b) => b[1] - a[1])) {
+            if (left <= 0) break; o[k]++; left--;
+          }
+          return o;
+        })();
+        for (const [t, w] of Object.entries(wantCounts)) {
+          if ((got[t] || 0) !== w) bad.push(`${t}: got ${got[t] || 0}, want ${w}`);
+        }
+        rec('every event type matches its measured share EXACTLY (apportioned, not sampled)',
+            bad.length === 0, bad.join('; '));
+
+        const nonProducing = Number(await scalar(fresh,
+          `SELECT count(*)::int AS v FROM public.email_delivery_events WHERE NOT (${PRED})`));
+        rec(`non-producing types are allocated SEPARATELY, not out of the history budget (${nonProducing} rows)`,
+            nonProducing > 0);
+      }
+
+      // apply #615, exactly as rehearsal A does
+      await applyPr615(fresh);
+      rec('#615 applies on top of the freshly built chain',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1);
+      await fresh.query(`INSERT INTO supabase_migrations.schema_migrations
+        SELECT unnest(ARRAY['20261006100000','20261006110000','20261006120000'])`);
+
+      // THE RESET: wipe -> prove bare -> rebuild the FULL chain again
+      await runArtifact(fresh, 'clone_wipe.sql');
+      rec('the wipe clears the storage buckets a schema drop cannot reach',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM storage.buckets`) === 0);
+      rec('…and every storage policy the chain created',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM pg_policies WHERE schemaname='storage' AND tablename='objects'`) === 0);
+      rec('…and the migration ledger, so the rebuild is the FULL chain not a suffix',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM supabase_migrations.schema_migrations`) === 0);
+      let e2 = await tryArtifact(fresh, 'empty_project_check.sql');
+      rec('the wiped target passes the empty-project proof again', e2 === null, e2?.message.slice(0, 80));
+
+      await runArtifact(fresh, 'platform_stub.sql');
+      const r2 = await applyChain(fresh);
+      rec(`the FULL chain REPLAYS after the wipe (${r2.n}/${r2.total}) — no duplicate bucket, no duplicate policy`,
+          r2.n === r2.total);
+      rec('…and #615 is gone again, so the rebuilt target is genuinely pre-migration',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 0);
+      // the generator must run on the REBUILT schema too — a reset that leaves a
+      // target the loader cannot fill is not a reset
+      let genErr2 = null;
+      try {
+        execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
+          { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+      } catch (x) { genErr2 = x; }
+      rec('the generator runs again on the REBUILT schema — the full cycle closes',
+          genErr2 === null, genErr2 ? String(genErr2.stdout || genErr2.stderr || genErr2).slice(0, 180) : '');
+    } catch (x) {
+      rec('the advertised build/wipe/rebuild lifecycle completes', false, String(x.message).slice(0, 160));
+    } finally { await fresh.end().catch(() => {}); rmSync(sanDir, { recursive: true, force: true }); }
+  }
+
+  console.log('\n[6] the real migration under contention: abort, and ZERO delta');
+  const holder = conn(); await holder.connect();
+  const runner = conn(); await runner.connect();
+  try {
+    // rebuild a pre-#615 target so the migration has real work to do
+    // installPreState also builds auth.*, so that schema must go too or it
+    // collides on re-install
+    await c.query(`DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS auth CASCADE;
+                   CREATE SCHEMA public`);
+    await c.query(`DELETE FROM supabase_migrations.schema_migrations`).catch(() => {});
+    await installPreState(c);
+    await c.query(`INSERT INTO public.email_address_state (email, state)
+                   SELECT 's'||g||'@rehearsal.example.invalid', 'ok' FROM generate_series(1, 2000) g`);
+    const shapeBefore = (await allRows(c, fp1)).find(x => /^SHAPE /.test(x));
+    const fnBefore = await scalar(c, `SELECT count(*)::int AS v FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'`);
+    const colBefore = await scalar(c, `SELECT count(*)::int AS v FROM information_schema.columns
+                                       WHERE table_name='email_address_state' AND column_name='is_suppressed'`);
+
+    // a reader holds the table; the migration cannot get ACCESS EXCLUSIVE
+    await holder.query('BEGIN');
+    await holder.query(`SELECT count(*) FROM public.email_address_state`);
+    await runner.query(`SET lock_timeout = '800ms'`);
+    // The CLI applies a migration AND records it in the ledger in ONE transaction.
+    // Testing only the migration would make "zero ledger delta" true no matter
+    // what, so the ledger insert is included here exactly as the CLI does it.
+    let err = null;
+    try {
+      await runner.query('BEGIN');
+      await runner.query(migPR615(PR615_MIGS[0]));
+      await runner.query(`INSERT INTO supabase_migrations.schema_migrations (version) VALUES ($1)`,
+        [PR615_MIGS[0].slice(0, 14)]);
+      await runner.query('COMMIT');
+    } catch (x) { err = x; await runner.query('ROLLBACK').catch(() => {}); }
+    rec('the REAL migration ABORTS on lock_timeout while a reader holds the table',
+        err !== null && err.code === '55P03', err ? err.code : 'IT COMMITTED');
+    await holder.query('COMMIT');
+
+    const shapeAfter = (await allRows(c, fp1)).find(x => /^SHAPE /.test(x));
+    const fnAfter = await scalar(c, `SELECT count(*)::int AS v FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'`);
+    const colAfter = await scalar(c, `SELECT count(*)::int AS v FROM information_schema.columns
+                                      WHERE table_name='email_address_state' AND column_name='is_suppressed'`);
+    rec('…leaving ZERO schema delta (shape fingerprint unchanged)', shapeBefore === shapeAfter,
+        `${shapeBefore?.slice(0, 12)} vs ${shapeAfter?.slice(0, 12)}`);
+    rec('…zero function delta', fnBefore === fnAfter, `${fnBefore} -> ${fnAfter}`);
+    rec('…and the generated column was NOT added', colBefore === 0 && colAfter === 0);
+    const ledger = await scalar(c, `SELECT count(*)::int AS v FROM supabase_migrations.schema_migrations`).catch(() => 0);
+    rec('…and zero ledger delta — the ledger INSERT was in the same transaction, so this is not vacuous',
+        Number(ledger) === 0, `ledger=${ledger}`);
+    // and prove the ledger write would otherwise have landed: same statement, no contention
+    await c.query(`INSERT INTO supabase_migrations.schema_migrations (version) VALUES ('ledger-probe')`);
+    rec('…(control: an uncontended ledger insert DOES land, so the assertion has teeth)',
+        Number(await scalar(c, `SELECT count(*)::int AS v FROM supabase_migrations.schema_migrations`)) === 1);
+    await c.query(`DELETE FROM supabase_migrations.schema_migrations`);
+
+    // uncontended, the same migration succeeds — so the abort was the lock, not the SQL
+    const t1 = process.hrtime.bigint();
+    await c.query(migPR615(PR615_MIGS[0]));
+    const ms1 = Number(process.hrtime.bigint() - t1) / 1e6;
+    rec('uncontended, the same migration APPLIES — the abort was contention, not broken SQL',
+        await scalar(c, `SELECT count(*)::int AS v FROM information_schema.columns
+                         WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1,
+        `${ms1.toFixed(0)} ms over 2k rows`);
+  } finally { await holder.end().catch(() => {}); await runner.end().catch(() => {}); }
 } finally {
-  await c.end().catch(() => {}); await b.end().catch(() => {});
-  await epg.stop().catch(() => {});
+  await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }
 console.log(`\n================  ${PASS} passed, ${FAIL} failed  ================`);
 process.exit(FAIL === 0 ? 0 : 1);

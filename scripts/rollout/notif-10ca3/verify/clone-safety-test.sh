@@ -1,37 +1,28 @@
 #!/usr/bin/env bash
 # ===========================================================================
-# clone-safety-test.sh — the sealed window must be DURABLE, and leaving it must
-# be ATOMIC.
+# clone-safety-test.sh — the withdrawn path must be unreachable, and the
+# supported rehearsal path must be fail-closed. (ADR-001)
 #
-# A Supabase restore copies pg_cron jobs, the pg_net queue, database webhooks,
-# Auth data and Vault-readable secrets, so a restored project boots with REAL
-# credentials and resumes cron immediately. Production inventory (read-only,
-# 2026-08-01) found notification-email-worker and notification-whatsapp-worker
-# on */2 issuing outbound HTTP.
+# The previous design restored production and fenced it with statement triggers
+# on cron.job and net.http_request_queue. Supabase advises against triggers on
+# that queue, and DROP TRIGGER needs OWNERSHIP of these extension-managed tables,
+# so the fence could be installed and never removed — production inventory
+# returned FENCEABLE no. The fence is withdrawn.
 #
-# An ACCESS EXCLUSIVE lock ends at COMMIT, so it cannot protect the interval in
-# which restores are actually requested. public.schedule_*_job are SECURITY
-# DEFINER and run as their owner, so role-level REVOKEs cannot stop them either.
-# The fence is therefore a statement-level trigger on cron.job: it fires for any
-# role, is copied into the clone, and needs no local shell.
+# What is tested here:
+#   1. clone-source-quiesce refuses BEFORE psql, a connection, or any change
+#   2. recovery (resume/abandon) still works, only with explicit window evidence
+#   3. the supported target must be empty, inert, identity-checked and synthetic
+#   4. a rehearsal cannot start from a drifted or failed-migration baseline
 #
-# The psql stub INTERPRETS the SQL artifacts — it enforces exactly the assertions
-# and performs exactly the effects the artifact text contains — so deleting a
-# statement FROM THE SQL changes behaviour and is genuinely mutation-testable.
-# It also records every COMMITTED state to a log, which lets the suite assert a
-# property over all of them rather than at hand-picked moments.
-#
-# No network, no production: psql is stubbed and every state is synthetic.
+# No network, no production: psql/supabase/node are stubbed and state is synthetic.
 # Run: bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
 # ===========================================================================
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RR="$HERE/../run-rollout.sh"; SQLD="$HERE/../sql"; export SQLD
 ROOT="$(mktemp -d)"
-restore_sql(){ local f; for f in "$ROOT"/sqlbak/*; do [[ -e "$f" ]] || continue; cp "$f" "$SQLD/$(basename "$f")"; done; }
-trap 'restore_sql; chmod -R u+w "$ROOT" 2>/dev/null; rm -rf "$ROOT"; rm -f "$HERE/../.mutant-"*.sh' EXIT
-mkdir -p "$ROOT/sqlbak"
-
+trap 'chmod -R u+w "$ROOT" 2>/dev/null; rm -rf "$ROOT"; rm -f "$HERE/../.mutant-"*.sh' EXIT
 P=0; F=0
 pass(){ P=$((P+1)); echo "  PASS  $*"; }
 fail(){ F=$((F+1)); echo "  FAIL  $*"; }
@@ -42,551 +33,349 @@ PROD_URL="postgresql://postgres@db.${REF}.supabase.co:5432/postgres"
 CLONE_URL="postgresql://postgres@db.${CLONE}.supabase.co:5432/postgres"
 BIN="$ROOT/bin"; mkdir -p "$BIN"; export STATEDIR="$ROOT/state"; mkdir -p "$STATEDIR"
 EVID="$ROOT/evidence"; mkdir -p "$EVID"; export EVIDDIR="$EVID"
-# The scheduler-observation interval is NOT disabled here: the tooling refuses an
-# interval below its reviewed floor, and doing so in tests would exercise a
-# configuration production can never have. `sleep` is stubbed instead, so the
-# real value is used and only the wall clock is skipped.
-export QUIESCE_SETTLE_SECS=15
-export QUIESCE_MAX_SAMPLES=6
-cat > "$BIN/sleep" <<'SEOF'
-#!/usr/bin/env bash
-src="$(cat "$STATEDIR/SLEEP_RC" 2>/dev/null || echo 0)"
-[[ "$src" != 0 ]] && exit "$src"                                   # EINTR / killed
-[[ "$(cat "$STATEDIR/SLEEP_FAIL" 2>/dev/null)" == 1 ]] && exit 1
-exit 0
-SEOF
-chmod +x "$BIN/sleep"
 
-# --- psql stub --------------------------------------------------------------
-# $STATEDIR/jobs rows:  id <TAB> name <TAB> active <TAB> outbound <TAB> cfg
-#   cfg stands in for every behaviour-bearing field the real fingerprint covers
-#   (schedule, database, username, command hash, node) collapsed into one token.
 cat > "$BIN/psql" <<'EOF'
 #!/usr/bin/env bash
-args="$*"
-f=""; prev=""; nonce=""; expect_fp=""; allow_unarmed=0
-for a in "$@"; do
-  [[ "$prev" == "-f" ]] && f="$a"
-  [[ "$a" == nonce=*         ]] && nonce="${a#nonce=}"
-  [[ "$a" == expect_fp=*     ]] && expect_fp="${a#expect_fp=}"
-  [[ "$a" == allow_unarmed=* ]] && allow_unarmed="${a#allow_unarmed=}"
-  prev="$a"
-done
-S="$STATEDIR"
-sfile(){ cat "$S/$1" 2>/dev/null || echo "$2"; }
-md5s(){ if command -v md5sum >/dev/null 2>&1; then md5sum | awk '{print $1}'; else md5 -q; fi; }
-# the cron CONFIGURATION fingerprint: id, name and every behaviour-bearing field
-cfgfp(){ awk -F'\t' '{printf "%s:%s:%s\n", $1, $2, $5}' "$S/jobs" | sort -n | md5s; }
-snapfp(){ awk -F'\t' '{printf "%s:%s:%s\n", $1, $2, $4}' "$S/SNAP" 2>/dev/null | sort -n | md5s; }
-actives(){ awk -F'\t' '$3=="true"' "$S/jobs" | grep -c . || true; }
-# In flight = every run whose status is NOT terminal, with the terminal set read
-# OUT OF the artifact — so deleting or widening it there changes this too.
-terminals(){ sed -n "s/.*SELECT ARRAY\[\(.*\)\].*/\1/p" "$SQLD/_cron_inflight.sql" | head -1 | tr -d "' " ; }
-inflight(){ local t; t=",$(terminals),"
-  awk -v t="$t" '{ if (index(t, ","$1",") == 0) n++ } END{ print n+0 }' "$S/runs" 2>/dev/null || echo 0; }
-logrun_on(){ case "$(sfile LOGRUN on)" in on|true|yes|1) return 0;; *) return 1;; esac; }
-has(){ grep -q -- "$1" "$f"; }
+: > "$STATEDIR/PSQL_WAS_CALLED"
+f=""; prev=""; for a in "$@"; do [[ "$prev" == "-f" ]] && f="$a"; prev="$a"; done
+S="$STATEDIR"; sfile(){ cat "$S/$1" 2>/dev/null || echo "$2"; }
+has(){ grep -q -- "$1" "$f" 2>/dev/null; }
 boom(){ echo "ERROR:  $1" >&2; exit 3; }
-# every COMMITTED state, for whole-history invariants
-commit_log(){ printf 'marker=%s state=%s fence=%s active=%s  (%s)\n' \
-  "$( [[ -s "$S/MARKER" ]] && echo present || echo none )" "$(sfile MSTATE -)" \
-  "$( [[ -e "$S/FENCE" ]] && echo 1 || echo 0 )" "$(actives)" "$1" >> "$S/commits.log"; }
-
-if [[ "$f" == *clone_source_inventory.sql ]]; then
-  [[ "$(sfile INV_FAIL 0)" == 1 ]] && { echo "connection failed" >&2; exit 1; }
-  while IFS=$'\t' read -r id n act out cfg; do [[ -n "$n" ]] && echo "CRONJOB $n $act $out"; done < "$S/jobs"
-  echo "CFGFP $(cfgfp)"
-  echo "FENCEABLE $(sfile FENCEABLE yes)"
-  echo "PRIORWINDOW $( [[ -s "$S/MARKER" ]] && echo 1 || echo 0 )"
-  echo "INFLIGHT $(inflight)"; echo "LOGRUN $(sfile LOGRUN on)"; echo "NETQUEUE $(sfile NETQUEUE 0)"
-  echo "HOOKTRIG $(sfile HOOKTRIG 0)"; echo "OUTTRIG $(sfile OUTTRIG 0)"
-  echo "FDWSRV $(sfile FDWSRV 0)"
-  [[ -s "$S/outfns" ]] && while read -r n; do [[ -n "$n" ]] && echo "OUTFN $n"; done < "$S/outfns"
-  [[ -s "$S/exts"   ]] && while read -r n; do [[ -n "$n" ]] && echo "EXT $n";   done < "$S/exts"
-  echo "VAULTCOUNT 1"; exit 0
+if [[ "$f" == *empty_project_check.sql ]]; then
+  [[ -e "$STATEDIR/SCHEMA" ]] && boom "$(sfile EMPTY_MSG 'target is not empty (a previous build left a schema behind)')"
+  for k in E_CRON E_NETQ E_VAULT E_HOOK E_OUTTRIG E_FDW E_AUTH; do
+    [[ "$(sfile $k 0)" == 0 ]] || boom "target is not pristine ($k)"
+  done
+  echo "NOTE: empty-project check ok"; exit 0
 fi
-
-if [[ "$f" == *cron_quiet_sample.sql ]]; then
-  src="$(sfile SAMPLE_RC 0)"; [[ "$src" != 0 ]] && { echo "psql: could not connect" >&2; exit "$src"; }
-  # a LATE START: the scheduler had not yet observed active=false when the first
-  # sample was taken, so a run appears after a zero reading
-  n="$(( $(sfile SAMPLE_N 0) + 1 ))"; echo "$n" > "$S/SAMPLE_N"
-  [[ "$(sfile LATE_START_AT 0)" == "$n" ]] && printf 'starting\n' >> "$S/runs"
-  echo "SAMPLE $(inflight) $(sfile NETQUEUE 0) $(sfile LOGRUN on)"; exit 0
+if [[ "$f" == *rehearsal_inert_check.sql ]]; then
+  for k in I_ACTIVE I_NETQ I_VAULT I_HOOK I_OUTTRIG I_FDW I_AUTH; do
+    [[ "$(sfile $k 0)" == 0 ]] || boom "rehearsal target not inert ($k)"
+  done
+  echo "NOTE: rehearsal target inert"; exit 0
 fi
-if [[ "$f" == *clone_source_seal.sql ]]; then
-  # --- preconditions: everything checkable BEFORE any effect (one transaction,
-  #     so a failure here must leave the database untouched)
-  has "pg_try_advisory_xact_lock" && { [[ "$(sfile ADVLOCK free)" == free ]] || boom "another quiesce is running"; }
-  has "schema_name = 'rollout_clone'" && { [[ ! -s "$S/MARKER" ]] || boom "a prior sealed window exists"; }
-  has ":'expect_fp'" && { [[ "$(cfgfp)" == "$expect_fp" ]] || boom "cron configuration is not the reviewed set"; }
-  has "net.http_request_queue" && { [[ "$(sfile NETQUEUE 0)" == 0 ]] || boom "pg_net queue not empty"; }
-  [[ -n "$nonce" ]] || boom "no nonce"
-  # --- effects, in the artifact's own order
-  has "INSERT INTO rollout_clone.snapshot_job_state" \
-    && awk -F'\t' '{printf "%s\t%s\t%s\t%s\n", $1, $2, $3, $5}' "$S/jobs" > "$S/SNAP"
-  has "SELECT cron.alter_job(jobid, active := false) FROM cron.job WHERE active" \
-    && { awk -F'\t' '{print $1"\t"$2"\tfalse\t"$4"\t"$5}' "$S/jobs" > "$S/j.n"; mv "$S/j.n" "$S/jobs"; }
-  has "CREATE TRIGGER rollout_clone_fence_dml"  && : > "$S/FENCE"
-  has "CREATE TRIGGER rollout_clone_fence_netq" && : > "$S/NETQ_FENCE"
-  if has "assert_fence_effective('seal')"; then
-    [[ -e "$S/FENCE" ]]      || boom "fence probe FAILED: cron.job still writable"
-    [[ -e "$S/NETQ_FENCE" ]] || boom "fence probe FAILED: the pg_net queue is still writable"
-  fi
-  has "FROM cron.job WHERE active" && { [[ "$(actives)" == 0 ]] || boom "active jobs at the boundary"; }
-  printf '%s\n' "$nonce" > "$S/MARKER"; echo sealing > "$S/MSTATE"; cfgfp > "$S/MFP"
-  # the disk fills / the volume goes read-only the instant after the seal commits
-  [[ "$(sfile EVID_LOCK_AFTER_SEAL 0)" == 1 && -n "${EVIDDIR:-}" ]] && chmod 500 "$EVIDDIR"
-  has "lock_down_marker_objects" && : > "$S/ACL_LOCKED"
-  has "assert_marker_acls('seal')" && { [[ -e "$S/ACL_LOCKED" ]] || boom "marker ACLs are not locked down at the seal"; }
-  commit_log seal
-  echo "SEAL_OBSERVED_AFTER_COMMIT 2026-08-01T18:00:00.123456Z"; exit 0
+if [[ "$f" == *platform_stub.sql ]]; then
+  [[ "$(sfile STUB_PARTIAL 0)" == 1 ]] && { echo "ERROR:  stub died part-way" >&2; exit 3; }
+  [[ "$(sfile SHIM_FAIL 0)" == 0 ]] || boom "real pg_cron/pg_net present; stand-in refused"
+  : > "$S/SHIM"; : > "$S/MARKER_TBL"; echo 0 > "$S/I_ACTIVE"; echo "NOTE: inert stand-ins installed"; exit 0
 fi
-
-if [[ "$f" == *clone_source_arm.sql ]]; then
-  [[ "$(sfile ARM_FAIL 0)" == 1 ]] && boom "arm refused (injected)"
-  arc="$(sfile ARM_FAIL_RC 0)"; [[ "$arc" != 0 ]] && { echo "psql: connection failure" >&2; exit "$arc"; }
-  has "state = 'sealing'" && { [[ "$(cat "$S/MARKER" 2>/dev/null)" == "$nonce" && "$(sfile MSTATE -)" == sealing ]] || boom "no un-armed marker for this nonce"; }
-  has "assert_fence_effective('arm')" && { [[ -e "$S/FENCE" ]] || boom "fence not effective at arm"; }
-  has "snapshot_config_fp" && { [[ "$(cfgfp)" == "$(snapfp)" ]] || boom "cron configuration changed since the seal"; }
-  has "FROM cron.job WHERE active" && { [[ "$(actives)" == 0 ]] || boom "active jobs at arm"; }
-  if has "assert_cron_quiet('arm')"; then
-    logrun_on || boom "cron.log_run is off — quiescence is unprovable"
-    [[ "$(inflight)" == 0 ]] || boom "$(inflight) cron run(s) still in flight at arm"
-    [[ "$(sfile NETQUEUE 0)" == 0 ]] || boom "pg_net queue not empty at arm"
-  fi
-  has "assert_marker_acls('arm')" && { [[ -e "$S/ACL_LOCKED" ]] || boom "marker ACLs are not locked down"; }
-  echo sealed > "$S/MSTATE"; commit_log arm
-  echo "ARM_OBSERVED_AFTER_COMMIT 2026-08-01T18:05:00.654321Z"; exit 0
+if [[ "$f" == *clone_wipe.sql ]]; then
+  [[ -e "$S/SHIM" ]] || boom "refusing to wipe: shims absent"
+  rm -f "$S/SHIM" "$S/MARKER_TBL" "$S/SCHEMA" "$S/LEDGER"; echo "NOTE: wiped"; exit 0
 fi
-
+if [[ "$f" == *clone_deactivate_schedules.sql ]]; then
+  [[ "$(sfile DEACT_FAIL 0)" == 0 ]] || boom "could not deactivate schedules"
+  echo 0 > "$S/I_ACTIVE"; echo "NOTE: schedules off"; exit 0
+fi
+if [[ "$f" == *baseline_fingerprint.sql ]]; then
+  [[ "$(sfile FP_FAIL 0)" == 0 ]] && { printf 'SHAPE %s\nROWS email_address_state %s\nSYNTHETIC %s\n' \
+      "$(sfile SHAPE shape0)" "$(sfile NROWS 1000)" "$(sfile SYNTH ok)"; exit 0; }
+  echo "ERROR: fingerprint failed" >&2; exit 3
+fi
 if [[ "$f" == *clone_source_resume.sql ]]; then
-  [[ "$(sfile RESUME_FAIL 0)" == 1 ]] && boom "resume refused (injected)"
-  has "state = 'sealed' OR" && {
-    [[ "$(cat "$S/MARKER" 2>/dev/null)" == "$nonce" ]] || boom "marker nonce mismatch"
-    [[ "$(sfile MSTATE -)" == sealed || "$allow_unarmed" == 1 ]] || boom "window is not armed"; }
-  has "assert_fence_effective('resume')" && { [[ -e "$S/FENCE" ]] || boom "fence not effective at resume"; }
-  has "snapshot_config_fp" && { [[ "$(cfgfp)" == "$(snapfp)" ]] || boom "configuration drifted while the window was open"; }
-  # effects — all of them, or none: this whole block is ONE transaction
-  cp "$S/jobs" "$S/jobs.tx"
-  has "DROP TRIGGER rollout_clone_fence_netq" && touch "$S/UNFENCED_NETQ.tx"
-  has "DROP TRIGGER rollout_clone_fence_dml" && rm -f "$S/FENCE.tx" && touch "$S/UNFENCED.tx"
-  if has "SELECT cron.alter_job(s.jobid, active := s.prior_active)"; then
-    awk -F'\t' 'NR==FNR{p[$1"|"$2]=$3; next}
-                { k=$1"|"$2; print $1"\t"$2"\t"((k in p)?p[k]:$3)"\t"$4"\t"$5 }' \
-        "$S/SNAP" "$S/jobs.tx" > "$S/jobs.n" && mv "$S/jobs.n" "$S/jobs.tx"
-  fi
-  if has "FULL OUTER JOIN rollout_clone.snapshot_job_state"; then
-    # cfgcmp: only compare the behaviour-bearing config when the artifact still does
-    cfgcmp=0; has "IS DISTINCT FROM s.command_md5" && cfgcmp=1
-    mism="$(awk -F'\t' -v cc="$cfgcmp" 'NR==FNR{s[$1"|"$2]=$3"\t"$4; seen[$1"|"$2]=1; next}
-              { k=$1"|"$2
-                if (!(k in s)) { n++ }
-                else { split(s[k],e,"\t"); if ($3!=e[1] || (cc==1 && $5!=e[2])) n++; delete seen[k] } }
-              END{ for (k in seen) n++; print n+0 }' "$S/SNAP" "$S/jobs.tx")"
-    [[ "$mism" == 0 ]] && : || { rm -f "$S/jobs.tx" "$S/UNFENCED.tx"; boom "${mism} job(s) differ from the sealed set"; }
-  fi
-  # COMMIT: apply every effect at once
-  mv "$S/jobs.tx" "$S/jobs"
-  [[ -e "$S/UNFENCED.tx" ]] && { rm -f "$S/FENCE" "$S/UNFENCED.tx"; }
-  [[ -e "$S/UNFENCED_NETQ.tx" ]] && { rm -f "$S/NETQ_FENCE" "$S/UNFENCED_NETQ.tx"; }
-  has "DROP TABLE rollout_clone.snapshot_marker" && rm -f "$S/MARKER" "$S/MSTATE" "$S/MFP" "$S/SNAP" "$S/ACL_LOCKED"
-  commit_log resume
-  echo "RESUME_OBSERVED_AFTER_COMMIT 2026-08-01T18:40:00.111222Z"; exit 0
+  [[ "$(sfile RESUME_FAIL 0)" == 0 ]] || boom "resume refused (injected)"
+  rm -f "$S/WINDOW"; echo "NOTE: resumed"; exit 0
 fi
-
-if [[ "$f" == *clone_isolation.sql ]]; then
-  C="$S/clone"
-  cl(){ cat "$C/$1" 2>/dev/null || echo "$2"; }
-  clcfg(){ awk -F'\t' '{printf "%s:%s:%s\n", $1, $2, $5}' "$C/jobs" 2>/dev/null | sort -n | md5s; }
-  clsnap(){ awk -F'\t' '{printf "%s:%s:%s\n", $1, $2, $4}' "$C/SNAP" 2>/dev/null | sort -n | md5s; }
-  has "table_name = 'snapshot_marker'" && { [[ -s "$C/MARKER" ]] || boom "clone carries no snapshot marker"; }
-  has "WHERE nonce = :'nonce'" && { [[ "$(cl MARKER)" == "$nonce" ]] || boom "clone marker nonce mismatch"; }
-  has "'sealed'," && { [[ "$(cl MSTATE -)" == sealed ]] || boom "clone marker is not ARMED"; }
-  if has "assert_fence_effective('clone')"; then
-    [[ -e "$C/FENCE" ]]      || boom "the clone's cron fence is gone — restore point is outside the window"
-    [[ -e "$C/NETQ_FENCE" ]] || boom "the clone's pg_net queue fence is gone — restore point is outside the window"
-  fi
-  has "snapshot_config_fp" && { [[ "$(clcfg)" == "$(clsnap)" ]] || boom "clone cron configuration differs from the sealed one"; }
-  has "assert_marker_acls('clone')" && { [[ -e "$C/ACL_LOCKED" ]] || boom "clone marker objects are not owner-only"; }
-  has "FROM cron.job WHERE active" && { [[ "$(awk -F'\t' '$3=="true"' "$C/jobs" 2>/dev/null | grep -c . || true)" == 0 ]] || boom "clone active cron"; }
-  if has "assert_cron_quiet('clone')"; then
-    case "$(cl C_LOGRUN on)" in on|true|yes|1) ;; *) boom "clone cron.log_run is off";; esac
-    [[ "$(awk '$1!="succeeded" && $1!="failed"' "$C/runs" 2>/dev/null | grep -c . || true)" == 0 ]] || boom "clone has a run in flight"
-    [[ "$(cl C_NETQ 0)" == 0 ]] || boom "clone queue"
-  fi
-  has "proname = 'http_request'"    && { [[ "$(cl C_HOOK 0)"    == 0 ]] || boom "clone webhooks"; }
-  has "including nested call paths" && { [[ "$(cl C_OUTTRIG 0)" == 0 ]] || boom "clone outbound triggers"; }
-  has "pg_foreign_server"           && { [[ "$(cl C_FDW 0)"     == 0 ]] || boom "clone FDW"; }
-  echo "NOTE: clone isolation ok"; exit 0
-fi
-
-if [[ "$f" == *clone_unfence.sql ]]; then
-  rm -f "$S/clone/FENCE"; echo "NOTE: clone unfenced"; exit 0
-fi
-
-if [[ "$args" == *-Atqc* ]]; then
-  q="${*: -1}"
-  case "$q" in
-    *"rollout_clone.snapshot_job_state"*)
-      [[ "$(sfile EXPORT_FAIL 0)" == 1 ]] && exit 1
-      awk -F'\t' '{printf "JOB\t%s\t%s\t%s\n", $1, $2, $3}' "$S/SNAP"
-      [[ "$(sfile EXPORT_TRUNC 0)" == 1 ]] && printf 'JOB\t77\ttruncated-tail\tfalse'   # no newline
-      exit 0;;
-    # a runtime schedule_*_job / direct cron.schedule attempt
-    *"ENQUEUE_ATTEMPT"*)
-      [[ -e "$S/NETQ_FENCE" ]] && { echo "ERROR:  clone-safety fence: the pg_net request queue is FROZEN" >&2; exit 3; }
-      echo "$(( $(sfile NETQUEUE 0) + 1 ))" > "$S/NETQUEUE"; echo ok; exit 0;;
-    *"SCHEDULE_ATTEMPT"*)
-      [[ -e "$S/FENCE" ]] && { echo "ERROR:  clone-safety fence: cron.job is FROZEN" >&2; exit 3; }
-      printf '%s\tsneaked-in-job\ttrue\tyes\tcfg-new\n' "$(( $(wc -l < "$S/jobs") + 90 ))" >> "$S/jobs"
-      echo ok; exit 0;;
-    *"status = 'running'"*) echo "$(inflight)"; exit 0;;
-  esac
-  echo ""; exit 0
-fi
+# the durable recovery-eligibility probe: a COUNT, answered from real state
+case "$*" in
+  *rehearsal_target_marker*)
+    [[ -e "$S/MARKER_TBL" ]] && { echo 1; exit 0; }
+    echo 'ERROR:  relation "net.rehearsal_target_marker" does not exist' >&2; exit 1;;
+esac
 exit 0
 EOF
-chmod +x "$BIN/psql"
-bash -n "$BIN/psql" && echo "stub syntax OK"
-PRODJOBS=$'1\trelease-expired-rebook-holds\ttrue\tno\tcfg-1\n9\tnotification-email-worker\ttrue\tyes\tcfg-9\n10\tnotification-whatsapp-worker\ttrue\tyes\tcfg-10'
-# The evidence directory is cleared too: a capture file left by an earlier case
-# would let a redirection succeed into an "unwritable" directory (a new file
-# cannot be created there, but an existing one can still be opened), which would
-# silently mask exactly the failure mode under test.
-seed(){ rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; printf '%s\n' "$PRODJOBS" > "$STATEDIR/jobs"
-  chmod u+w "$EVID" 2>/dev/null; rm -rf "$EVID"/*; }
-CAPTMP="$ROOT/captmp"; mkdir -p "$CAPTMP"
-run(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" TMPDIR="$CAPTMP" "$@" ) >"$ROOT/out.txt" 2>&1; }
-# counted in the directory the tooling was TOLD to use — the point of the
-# explicit mktemp template is that this is knowable
-stray_captures(){ ls "$CAPTMP" 2>/dev/null | grep -c '^rollout-resume-' || true; }
-actives(){ awk -F'\t' '$3=="true"' "$STATEDIR/jobs" | grep -c . || true; }
-nonce_file="$EVID/clone-source-nonce.txt"
-# a runtime schedule_*_job / direct cron.schedule attempt against the source
-attempt_schedule(){ ( PATH="$BIN:$PATH" psql "$PROD_URL" -Atqc "SELECT SCHEDULE_ATTEMPT" ) >/dev/null 2>&1; }
-# a privileged net.http_post() during the window
-attempt_enqueue(){ ( PATH="$BIN:$PATH" psql "$PROD_URL" -Atqc "SELECT ENQUEUE_ATTEMPT" ) >/dev/null 2>&1; }
-# take a restore point: a Supabase restore copies the whole database state
-take_restore_point(){ rm -rf "$STATEDIR/clone"; mkdir -p "$STATEDIR/clone"
-  cp "$STATEDIR"/jobs "$STATEDIR/clone/" 2>/dev/null
-  for k in MARKER MSTATE MFP SNAP FENCE NETQ_FENCE ACL_LOCKED runs; do [[ -e "$STATEDIR/$k" ]] && cp "$STATEDIR/$k" "$STATEDIR/clone/$k"; done; true; }
-clone_gate(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" \
-  CAP_STMT=30000 SUPABASE_DB_PASSWORD=x bash "$RR" "$@" ) >"$ROOT/c.txt" 2>&1; }
-# Drive ONE artifact directly. Downstream guards in later artifacts would
-# otherwise mask a mutation in an earlier one, so a claim about a single
-# artifact is proven against that artifact alone.
-md5s(){ if command -v md5sum >/dev/null 2>&1; then md5sum | awk '{print $1}'; else md5 -q; fi; }
-fp_of_jobs(){ awk -F'\t' '{printf "%s:%s:%s\n", $1, $2, $5}' "$STATEDIR/jobs" | sort -n | md5s; }
-artifact(){ local a="$1"; shift; ( PATH="$BIN:$PATH" psql "$PROD_URL" -f "$SQLD/$a" "$@" ) >"$ROOT/a.txt" 2>&1; }
-NONCE_FIX=0123456789abcdef0123456789abcdef
+cat > "$BIN/supabase" <<'EOF'
+#!/usr/bin/env bash
+: > "$STATEDIR/SUPABASE_WAS_CALLED"
+# a push is only meaningful once the stand-ins exist AND the source is sanitized
+[[ -e "$STATEDIR/SHIM" ]] && : > "$STATEDIR/PUSH_AFTER_SHIM" || : > "$STATEDIR/PUSH_BEFORE_SHIM"
+[[ "$*" == *--workdir* ]] && : > "$STATEDIR/PUSH_FROM_SANITIZED"
+: > "$STATEDIR/SCHEMA"; : > "$STATEDIR/LEDGER"
+[[ "$(cat "$STATEDIR/PUSH_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "push failed" >&2; exit 1; }
+exit 0
+EOF
+cat > "$BIN/node" <<'EOF'
+#!/usr/bin/env bash
+# the real node is needed for the scale-file read; only the synth loader is stubbed
+if [[ "$*" == *sanitize-migrations.mjs* ]]; then
+  : > "$STATEDIR/SANITIZE_WAS_CALLED"
+  [[ "$(cat "$STATEDIR/SANITIZE_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "refusing: the migration chain has CHANGED since it was reviewed" >&2; exit 4; }
+  d="${@: -1}"; mkdir -p "$d"; echo "SANITIZED files=552 neutralised_extension_statements=3 out=$d"; exit 0
+fi
+if [[ "$*" == *build-baseline.mjs* ]]; then
+  : > "$STATEDIR/SYNTH_WAS_CALLED"
+  [[ "$(cat "$STATEDIR/SYNTH_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "synth failed" >&2; exit 1; }
+  echo "SYNTH email_address_state=1000 email_delivery_events=5000 all_addresses_synthetic=yes"; exit 0
+fi
+exec /usr/bin/env -i PATH="/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin" node "$@"
+EOF
+chmod +x "$BIN/psql" "$BIN/supabase" "$BIN/node"
 
-echo "== read-only inventory: safe metadata, fail closed, and SEALABILITY =="
-seed; run bash "$RR" clone-source-inventory "$PROD_URL"; rc=$?
-[[ "$rc" -eq 0 ]] && pass "inventory of a reviewed, sealable source succeeds" || fail "inventory rejected a reviewed set (exit $rc): $(tail -2 "$ROOT/out.txt")"
-grep -qE 'md5|command|http|Bearer|apikey|token' "$EVID/clone-source-inventory.txt" && fail "the inventory artifact contains command/secret-shaped text" \
-  || pass "the inventory artifact carries no command, URL, header or secret text"
-[[ "$(actives)" == 3 ]] && pass "inventory is READ-ONLY: nothing was paused" || fail "inventory mutated state"
-grep -q 'cron runs in flight' "$ROOT/out.txt" && pass "the human-readable inventory shows the IN-FLIGHT count (the formatter tracks the emitted record)" || fail "inventory display omits the in-flight count"
-grep -q 'cron.log_run *:' "$ROOT/out.txt" && pass "…and whether cron.log_run makes that count meaningful" || fail "inventory display omits cron.log_run"
-seed; echo no > "$STATEDIR/FENCEABLE"
-run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "a role that CANNOT create the fence trigger stops the procedure in the READ-ONLY step" || fail "unfenceable source accepted"
-grep -q 'fails closed rather than sealing an unprotected window' "$ROOT/out.txt" \
-  && pass "…and says so, rather than degrading to a weaker guarantee" || fail "no fail-closed explanation"
-seed; printf 'deadbeefdeadbeefdeadbeefdeadbeef\n' > "$STATEDIR/MARKER"
-run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an EXISTING sealed window stops a new one (never overwritten implicitly)" || fail "prior window ignored"
-grep -q 'clone-source-abandon' "$ROOT/out.txt" && pass "…and names the explicit, reviewed recovery path" || fail "no recovery path named"
-seed; printf '77\ta-brand-new-runtime-job\ttrue\tyes\tcfg-77\n' >> "$STATEDIR/jobs"
-run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an UNREVIEWED job (added at runtime by schedule_*_job) stops the procedure" || fail "unknown job accepted"
-seed; awk -F'\t' '$1==1{print $1"\t"$2"\t"$3"\tyes\t"$5; next}{print}' "$STATEDIR/jobs" > "$STATEDIR/j2"; mv "$STATEDIR/j2" "$STATEDIR/jobs"
-run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "OUTBOUND CLASSIFICATION DRIFT on a reviewed job stops the procedure" || fail "classification drift accepted"
-seed; printf 'public.blast_everyone\n' > "$STATEDIR/outfns"
-run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an UNREVIEWED outbound-capable function (incl. nested paths) stops the procedure" || fail "unknown OUTFN accepted"
-seed; printf 'pg_net\nhttp\n' > "$STATEDIR/exts"
-run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an UNREVIEWED extension with external capability stops the procedure" || fail "unknown EXT accepted"
-for k in HOOKTRIG OUTTRIG FDWSRV; do
-  seed; echo 1 > "$STATEDIR/$k"; run bash "$RR" clone-source-inventory "$PROD_URL"
-  [[ $? -ne 0 ]] && pass "a non-zero ${k} count stops the procedure" || fail "${k} accepted"
-done
-seed; echo 1 > "$STATEDIR/INV_FAIL"; run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "a FAILED inventory read stops the procedure (never classifies blind)" || fail "failed read accepted"
-seed; run bash "$RR" clone-source-inventory "$CLONE_URL"
-[[ $? -ne 0 ]] && pass "inventory refuses a non-production URL (exact identity)" || fail "wrong-ref URL accepted"
-
-echo "== quiesce: one transaction, then a DURABLE fence, then ARM =="
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
-[[ "$rc" -eq 0 ]] && pass "quiesce succeeds on a reviewed, sealable source" || fail "quiesce failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
-[[ "$(actives)" == 0 ]] && pass "every cron job is paused" || fail "$(actives) job(s) still active"
-[[ -e "$STATEDIR/FENCE" ]] && pass "the fence is installed on cron.job" || fail "no fence installed"
-[[ "$(cat "$STATEDIR/MSTATE")" == sealed ]] && pass "the window is ARMED after the drain" || fail "window not armed"
-[[ -e "$STATEDIR/ACL_LOCKED" ]] && pass "the marker/fence objects are revoked from PUBLIC/anon/authenticated/service_role" || fail "ACLs not locked down"
-grep -qE '^[0-9a-f]{32,}$' "$nonce_file" && pass "a high-entropy snapshot NONCE was recorded" || fail "no nonce recorded"
-[[ "$(cat "$nonce_file")" == "$(cat "$STATEDIR/MARKER")" ]] && pass "the marker COMMITTED IN THE DATABASE carries exactly the recorded nonce" || fail "marker/nonce mismatch"
-grep -q 'cron.alter_job' "$RR" "$SQLD/clone_source_seal.sql" && pass "the pause uses cron.alter_job (reversible)" || fail "no cron.alter_job"
-grep -qE '^[^-]*cron\.unschedule' "$SQLD/clone_source_seal.sql" "$SQLD/clone_source_resume.sql" && fail "cron.unschedule is CALLED (irreversible)" \
-  || pass "cron.unschedule is never called (only named in the comment that forbids it)"
-
-echo "-- THE POST-SEAL RACE: a job attempted after the seal must be REJECTED --"
-attempt_schedule
-[[ $? -ne 0 ]] && pass "a schedule_*_job / cron.schedule attempt INSIDE the armed window is rejected AT THE SOURCE" || fail "a job was created inside the sealed window"
-[[ "$(wc -l < "$STATEDIR/jobs" | tr -d ' ')" == 3 ]] && pass "…and no job row was created (the fence rejects, it does not merely detect)" || fail "a job row appeared"
-grep -q 'FOR EACH STATEMENT' "$SQLD/clone_source_seal.sql" \
-  && pass "the fence is STATEMENT-level, so it fires even for a zero-row write" || fail "fence is not statement-level"
-grep -q 'BEFORE TRUNCATE ON cron.job' "$SQLD/clone_source_seal.sql" \
-  && pass "TRUNCATE on cron.job is fenced too" || fail "TRUNCATE is not fenced"
-grep -q 'assert_fence_effective' "$SQLD/clone_source_seal.sql" \
-  && pass "the seal PROVES the fence by probing it, not by asserting its presence" || fail "fence is not probed"
-attempt_enqueue
-[[ $? -ne 0 ]] && pass "a privileged net.http_post() INSIDE the window is rejected — the pg_net queue is fenced, not merely sampled" || fail "an outbound request was enqueued inside the window"
-[[ "$(cat "$STATEDIR/NETQUEUE" 2>/dev/null || echo 0)" == 0 ]] \
-  && pass "…and nothing was queued, so nothing can cross into a clone" || fail "a request was queued inside the window"
-grep -q 'BEFORE INSERT ON net.http_request_queue' "$SQLD/clone_source_seal.sql" \
-  && pass "only the queue's INSERT path is fenced (pg_net's worker still retires rows with UPDATE/DELETE)" || fail "queue fence is missing or over-broad"
-
-echo "-- the seal is one transaction: a failure changes NOTHING --"
-for cond in "NETQUEUE 5 queued pg_net requests" "ADVLOCK held a concurrent quiesce"; do
-  set -- $cond; key="$1"; val="$2"; shift 2; desc="$*"
-  seed; echo "$val" > "$STATEDIR/$key"
-  run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-  [[ $? -ne 0 ]] && pass "quiesce refuses with ${desc}" || fail "${desc} accepted"
-  [[ "$(actives)" == 3 && ! -e "$STATEDIR/FENCE" && ! -s "$STATEDIR/MARKER" ]] \
-    && pass "…and NOTHING was paused, fenced or marked (${desc})" || fail "partial effect left behind after ${desc}"
-done
-seed; printf 'running\nrunning\nrunning\n' > "$STATEDIR/runs"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "quiesce refuses when in-flight executions never drain" || fail "undrained source armed"
-[[ "$(actives)" == 3 && ! -e "$STATEDIR/FENCE" && ! -s "$STATEDIR/MARKER" ]] \
-  && pass "…and it LEFT THE WINDOW atomically: unpaused, unfenced, unmarked" || fail "production left paused/fenced after a drain failure"
-seed; echo 1 > "$STATEDIR/EXPORT_TRUNC"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an exported manifest with a TRUNCATED final record is refused (never silently dropped)" || fail "truncated manifest accepted"
-seed; echo 1 > "$STATEDIR/EXPORT_FAIL"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "a failed manifest export is refused" || fail "failed export accepted"
-
-echo "-- the drain: a stable quiet interval over the COMPLETE in-flight set --"
-for st in starting connecting sending running a-future-state-nobody-anticipated; do
-  seed; printf '%s\n' "$st" > "$STATEDIR/runs"
-  run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-  [[ $? -ne 0 ]] && pass "a run in status '${st}' blocks the drain (not just 'running')" || fail "'${st}' passed the drain"
-  [[ "$(actives)" == 3 && ! -e "$STATEDIR/FENCE" && ! -s "$STATEDIR/MARKER" ]] \
-    && pass "…and the window was left, so production is running normally ('${st}')" || fail "production left paused after '${st}'"
-done
-seed; printf 'succeeded\nfailed\n' > "$STATEDIR/runs"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -eq 0 ]] && pass "only TERMINAL runs in the history do not block the drain" || fail "terminal runs blocked the drain: $(tail -2 "$ROOT/out.txt")"
-seed; echo off > "$STATEDIR/LOGRUN"
-run bash "$RR" clone-source-inventory "$PROD_URL"
-[[ $? -ne 0 ]] && pass "cron.log_run=off stops the procedure in the READ-ONLY step (a zero count would be a false green)" || fail "log_run=off accepted"
-seed; echo off > "$STATEDIR/LOGRUN"; echo yes > "$STATEDIR/SKIP_SEALABLE"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "…and the drain refuses to certify quiescence it cannot observe" || fail "drain certified an unobservable source"
-seed; echo 2 > "$STATEDIR/LATE_START_AT"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-grep -q 'quiet streak BROKEN by a late start' "$ROOT/out.txt" \
-  && pass "a ZERO sample followed by a late start RESETS the streak (the scheduler had not yet observed the pause)" || fail "late start not observed"
-seed; export QUIESCE_QUIET_SAMPLES=1
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "a single quiet sample is refused by configuration (>= 2 required)" || fail "one sample accepted"
-unset QUIESCE_QUIET_SAMPLES
-
-echo "-- the scheduler-observation interval cannot be configured away --"
-seed; export QUIESCE_SETTLE_SECS=0
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "a ZERO settle interval is REFUSED (two 'stable' samples would be back-to-back)" || fail "zero interval accepted"
-[[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" ]] && pass "…and the window was left, so production runs normally" || fail "production left paused"
-export QUIESCE_SETTLE_SECS=5
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an interval below the reviewed floor is REFUSED" || fail "sub-floor interval accepted"
-export QUIESCE_SETTLE_SECS=15
-seed; echo 1 > "$STATEDIR/SLEEP_FAIL"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an INTERRUPTED sleep is refused (the interval did not elapse, so the samples are not separated)" || fail "failed sleep treated as elapsed"
-[[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" ]] && pass "…and production was restored after the failed sleep" || fail "production left paused after a failed sleep"
-
-echo "-- after the seal, NO local failure may leave production paused --"
-post_seal_failure(){ # $1 description, $2 setup
-  seed; eval "$2"
-  run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; local rc=$?
-  [[ "$rc" -ne 0 ]] && pass "quiesce fails (non-zero) on ${1}" || fail "${1} reported success"
-  [[ "$(actives)" == 3 ]] && pass "…every prior active state was RESTORED after ${1}" || fail "cron left paused after ${1} (actives=$(actives))"
-  [[ ! -e "$STATEDIR/FENCE" ]] && pass "…no fence was left behind after ${1}" || fail "fence left after ${1}"
-  [[ ! -s "$STATEDIR/MARKER" ]] && pass "…no marker was left behind after ${1}" || fail "marker left after ${1}"
+SCALE="$HERE/../clone-safety/rehearsal-scale.json"
+seed(){ rm -rf "$STATEDIR"; mkdir -p "$STATEDIR"; chmod u+w "$EVID" 2>/dev/null; rm -rf "$EVID"/*; }
+run(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" "$@" ) >"$ROOT/out.txt" 2>&1; }
+crun(){ ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" "$@" ) >"$ROOT/out.txt" 2>&1; }
+measured(){ python3 - "$SCALE" "$1" <<'PY'
+import json,sys
+p,mode=sys.argv[1],sys.argv[2]
+d=json.load(open(p))
+if mode=='yes':
+    d['source']='measured'; d['measured_at']='2026-08-02'
+    d['byte_tolerance_pct']=50
+    d['tables']['email_address_state'].update(rows=1000, avg_email_len=32, avg_reason_len=24, total_bytes=500000)
+    d['tables']['email_address_state']['state_distribution']={'ok':900,'soft_bounced':50,'hard_bounced':30,'complained':20}
+    d['tables']['email_delivery_events'].update(rows=5000, avg_reason_len=24, total_bytes=2000000,
+        resend_event_id_pct=60, with_invoice_pct=40)
+    d['tables']['email_delivery_events']['events_per_address']={'p50':2,'p90':6,'max':20}
+    d['tables']['email_delivery_events']['event_type_distribution']={'sent':3000,'delivered':1500,'bounced':300,'complained':100,'delivery_delayed':50,'failed':30,'send_failed':20}
+else:
+    d['source']='placeholder'; d['measured_at']=None
+    d['tables']['email_address_state'].update(rows=0, total_bytes=0)
+    d['tables']['email_delivery_events'].update(rows=0, total_bytes=0)
+json.dump(d,open(p,'w'),indent=2)
+PY
 }
-post_seal_failure "a failed nonce write (full or read-only disk)" 'mkdir -p "$EVID/clone-source-nonce.txt"'
-rm -rf "$EVID/clone-source-nonce.txt"
-post_seal_failure "a failed manifest export" 'echo 1 > "$STATEDIR/EXPORT_FAIL"'
-post_seal_failure "a manifest whose final record is truncated" 'echo 1 > "$STATEDIR/EXPORT_TRUNC"'
-post_seal_failure "a source that never goes quiet" 'printf "running\n" > "$STATEDIR/runs"'
-post_seal_failure "a failed arm transaction" 'echo 1 > "$STATEDIR/ARM_FAIL"'
-seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
-chmod u+w "$EVID" 2>/dev/null
-[[ "$rc" -ne 0 ]] && pass "quiesce fails when the ENTIRE evidence directory becomes unwritable after the seal" || fail "unwritable evidence dir reported success"
-[[ "$(actives)" == 3 ]] && pass "…and the resume STILL EXECUTED: every prior active state is restored" || fail "resume did not run when evidence was unwritable (actives=$(actives))"
-[[ ! -e "$STATEDIR/FENCE" ]] && pass "…the fences are gone" || fail "fence left behind"
-[[ ! -s "$STATEDIR/MARKER" ]] && pass "…the marker is gone" || fail "marker left behind"
+cp "$SCALE" "$ROOT/scale.orig.json"
+restore_scale(){ cp "$ROOT/scale.orig.json" "$SCALE"; }
+trap 'restore_scale; chmod -R u+w "$ROOT" 2>/dev/null; rm -rf "$ROOT"; rm -f "$HERE/../.mutant-"*.sh' EXIT
 
-echo "-- the ORIGINAL failure status survives the recovery --"
-seed; echo 7 > "$STATEDIR/ARM_FAIL_RC"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
-[[ "$rc" -eq 7 ]] && pass "an underlying psql exit 7 is preserved through the automatic resume (not flattened to 1)" || fail "exit status flattened to ${rc}"
-[[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" ]] && pass "…and production was still restored" || fail "production left paused"
-
-for c in "a sampling psql exit 7:SAMPLE_RC:7" "an interrupted sleep exit 9:SLEEP_RC:9"; do
-  desc="${c%%:*}"; rest="${c#*:}"; knob="${rest%%:*}"; want="${rest##*:}"
-  seed; echo "$want" > "$STATEDIR/$knob"
-  run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rc=$?
-  [[ "$rc" -eq "$want" ]] && pass "${desc} survives the automatic recovery (exit ${rc}, not a flattened 1)" || fail "${desc} flattened to ${rc}"
-  [[ "$(actives)" == 3 && ! -s "$STATEDIR/MARKER" && ! -e "$STATEDIR/FENCE" ]] \
-    && pass "…and production was still fully restored after ${desc}" || fail "production left paused after ${desc}"
-done
-
-echo "-- the fallback capture never outlives the recovery --"
-seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; chmod u+w "$EVID" 2>/dev/null
-[[ "$(actives)" == 3 ]] && pass "recovery succeeded via the temp-file fallback" || fail "recovery did not run"
-grep -q 'resume diagnostics go to '"$CAPTMP" "$ROOT/out.txt" \
-  && pass "the fallback capture is created where the caller's TMPDIR points (not a fixed system path)" || fail "fallback capture ignored TMPDIR"
-[[ "$(stray_captures)" == 0 ]] && pass "…and no rollout-resume-* temp capture was left behind (success path)" || fail "$(stray_captures) stray capture(s) after a successful resume"
-seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"; echo 1 > "$STATEDIR/RESUME_FAIL"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; chmod u+w "$EVID" 2>/dev/null
-grep -q 'PRODUCTION REMAINS PAUSED AND FENCED' "$ROOT/out.txt" && pass "a failed resume via the fallback is still reported loudly" || fail "failed fallback resume not reported"
-[[ "$(stray_captures)" == 0 ]] && pass "…and no temp capture was left behind (failure path either)" || fail "$(stray_captures) stray capture(s) after a failed resume"
-
-seed; echo 1 > "$STATEDIR/ARM_FAIL"; echo 1 > "$STATEDIR/RESUME_FAIL"
+echo "== the withdrawn fence path is unreachable =="
+# A working PATH with INSTRUMENTED tools: the point is not that psql is missing,
+# it is that the refusal happens before the tooling would ever reach for it.
+seed
 run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-grep -q 'PRODUCTION REMAINS PAUSED AND FENCED' "$ROOT/out.txt" \
-  && pass "if the automatic resume ALSO fails, it says so unmistakably" || fail "no loud report of a failed recovery"
-grep -q 'clone-source-abandon --yes --nonce' "$ROOT/out.txt" \
-  && pass "…and prints the exact recovery command including the nonce (the failure may have been the nonce write itself)" || fail "no recovery command with the nonce"
-
-echo "== resume: ONE atomic transition, and the whole-history invariant =="
-seed; printf '1\trelease-expired-rebook-holds\tfalse\tno\tcfg-1\n9\tnotification-email-worker\ttrue\tyes\tcfg-9\n10\tnotification-whatsapp-worker\ttrue\tyes\tcfg-10\n' > "$STATEDIR/jobs"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-run bash "$RR" clone-source-resume --yes "$PROD_URL"; rc=$?
-[[ "$rc" -eq 0 ]] && pass "resume succeeds" || fail "resume failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
-[[ "$(awk -F'\t' '$1==1{print $3}' "$STATEDIR/jobs")" == false ]] \
-  && pass "a job that was ALREADY inactive is restored to inactive (not blanket-enabled)" || fail "prior-inactive job was wrongly enabled"
-[[ "$(actives)" == 2 ]] && pass "the two previously-active jobs are active again" || fail "actives=$(actives)"
-[[ ! -s "$STATEDIR/MARKER" && ! -e "$STATEDIR/FENCE" && ! -e "$STATEDIR/NETQ_FENCE" ]] \
-  && pass "resume removes the marker and BOTH fences" || fail "marker or a fence left behind"
-attempt_enqueue
-[[ $? -eq 0 ]] && pass "after resume, pg_net can enqueue again (the queue fence is not sticky)" || fail "queue left fenced after resume"
-[[ -s "$nonce_file" ]] && pass "the nonce file is RETAINED (clones are verified after production resumes)" || fail "nonce discarded at resume"
-attempt_schedule
-[[ $? -eq 0 ]] && pass "after resume, cron.job is writable again (the fence is not sticky)" || fail "production left fenced after resume"
-
-echo "-- no COMMITTED state ever carries a valid marker beside active cron --"
-bad="$(awk '/marker=present/ && !/active=0/' "$STATEDIR/commits.log" | wc -l | tr -d ' ')"
-n="$(wc -l < "$STATEDIR/commits.log" | tr -d ' ')"
-[[ "$n" -ge 3 && "$bad" == 0 ]] \
-  && pass "across all ${n} committed states, marker-present ALWAYS implies zero active cron" \
-  || fail "${bad} committed state(s) carried a marker beside active cron: $(cat "$STATEDIR/commits.log")"
-
-echo "-- a hypothetical restore on each side of every commit --"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; NONCE="$(cat "$nonce_file")"
-take_restore_point; clone_gate preflight "$CLONE_URL" --clone
-[[ $? -eq 0 ]] && pass "restore point INSIDE the armed window: accepted" || fail "armed-window restore rejected: $(tail -2 "$ROOT/c.txt")"
-echo sealing > "$STATEDIR/clone/MSTATE"; clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "restore point BEFORE the arm commit (marker still 'sealing'): refused" || fail "un-armed restore accepted"
-take_restore_point; rm -f "$STATEDIR/clone/MARKER" "$STATEDIR/clone/MSTATE" "$STATEDIR/clone/FENCE"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "restore point BEFORE the seal commit (no marker, no fence): refused" || fail "pre-seal restore accepted"
-take_restore_point; run bash "$RR" clone-source-resume --yes "$PROD_URL"
-rm -rf "$STATEDIR/clone"; mkdir -p "$STATEDIR/clone"; cp "$STATEDIR/jobs" "$STATEDIR/clone/"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "restore point AFTER the resume commit (marker gone, cron live): refused" || fail "post-resume restore accepted"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; NONCE="$(cat "$nonce_file")"
-take_restore_point; rm -f "$STATEDIR/clone/FENCE"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a clone whose FENCE is missing is refused (its restore point is outside the window)" || fail "unfenced clone accepted"
-take_restore_point; printf 'deadbeefdeadbeefdeadbeefdeadbeef\n' > "$STATEDIR/clone/MARKER"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a clone carrying a DIFFERENT run's marker is refused (exact nonce)" || fail "foreign marker accepted"
-take_restore_point; rm -f "$STATEDIR/clone/ACL_LOCKED"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a clone whose marker objects are reachable by anon/authenticated/service_role is refused" || fail "leaky marker ACLs accepted"
-take_restore_point; awk -F'\t' '$1==9{print $1"\t"$2"\t"$3"\t"$4"\tcfg-CHANGED"; next}{print}' "$STATEDIR/clone/jobs" > "$STATEDIR/clone/j2"; mv "$STATEDIR/clone/j2" "$STATEDIR/clone/jobs"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a clone whose cron CONFIGURATION drifted from the sealed one is refused" || fail "clone config drift accepted"
-take_restore_point; printf 'sending\n' > "$STATEDIR/clone/runs"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a clone with a run in 'sending' is refused (the COMPLETE non-terminal set, not just 'running')" || fail "clone in-flight run accepted"
-take_restore_point; echo off > "$STATEDIR/clone/C_LOGRUN"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a clone whose cron.log_run is off is refused (its quiescence is unprovable)" || fail "clone with log_run off accepted"
-take_restore_point
-for k in C_NETQ C_HOOK C_OUTTRIG C_FDW; do
-  echo 1 > "$STATEDIR/clone/$k"; clone_gate preflight "$CLONE_URL" --clone
-  [[ $? -ne 0 ]] && pass "clone with non-zero ${k} is refused" || fail "${k} accepted on the clone"
-  rm -f "$STATEDIR/clone/$k"
-done
-awk -F'\t' 'NR==1{print $1"\t"$2"\ttrue\t"$4"\t"$5; next}{print}' "$STATEDIR/clone/jobs" > "$STATEDIR/clone/j2"; mv "$STATEDIR/clone/j2" "$STATEDIR/clone/jobs"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a clone with an ACTIVE cron job is refused" || fail "active-cron clone accepted"
-take_restore_point
-mv "$nonce_file" "$ROOT/n.bak"; clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "with NO sealed snapshot on file, no clone command may run" || fail "ran without a sealed snapshot"
-printf 'not-hex!!\n' > "$nonce_file"; clone_gate preflight "$CLONE_URL" --clone
-[[ $? -ne 0 ]] && pass "a malformed recorded nonce is refused" || fail "malformed nonce accepted"
-mv "$ROOT/n.bak" "$nonce_file"
-for sub in clone-push clone-make-prefix verify-clone clone-unfence; do
-  sed -n "/^cmd_${sub//-/_}()/,/^}/p" "$RR" | grep -q 'assert_clone_isolated' \
-    && pass "$sub is gated on the isolation assertion" || fail "$sub is NOT gated"
+rc=$?
+[[ "$rc" -ne 0 ]] && pass "clone-source-quiesce REFUSES (exit ${rc})" || fail "quiesce ran"
+[[ ! -e "$STATEDIR/PSQL_WAS_CALLED" ]] && pass "…without ever invoking psql — the refusal precedes any connection" || fail "psql was invoked"
+[[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and without invoking the Supabase CLI" || fail "supabase was invoked"
+[[ ! -s "$EVID/clone-source-nonce.txt" ]] && pass "…and wrote no window evidence" || fail "window evidence written"
+grep -q 'withdrawn' "$ROOT/out.txt" && pass "…and says the command is withdrawn" || fail "no withdrawal notice"
+grep -q 'FENCEABLE no' "$ROOT/out.txt" && pass "…citing the measured production result" || fail "does not cite FENCEABLE no"
+grep -q 'ADR-001' "$ROOT/out.txt" && pass "…and points at the ADR" || fail "no ADR reference"
+grep -q 'clone-build-baseline' "$ROOT/out.txt" && pass "…and names the supported replacement" || fail "no replacement named"
+grep -q 'nothing was connected to, read or changed' "$ROOT/out.txt" && pass "…and states plainly that nothing was touched" || fail "no no-op statement"
+for a in seal arm fence marker; do
+  grep -qi "clone-source-$a)" "$RR" && fail "a '$a' subcommand is still dispatchable" || pass "no '$a' subcommand exists"
 done
 
-echo "-- restoration is exact over EVERY behaviour-bearing field --"
-exact_case(){ # $1 = description, $2.. = mutation applied to $STATEDIR/jobs after quiesce
-  seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; "$@" >/dev/null
-  run bash "$RR" clone-source-resume --yes "$PROD_URL"; }
-add_job(){ printf '99\tadded-after-capture\tfalse\tyes\tcfg-99\n' >> "$STATEDIR/jobs"; }
-drop_job(){ sed -i.bak '$d' "$STATEDIR/jobs"; rm -f "$STATEDIR/jobs.bak"; }
-rename_job(){ awk -F'\t' '$1==9{print $1"\trenamed-worker\t"$3"\t"$4"\t"$5; next}{print}' "$STATEDIR/jobs" > "$STATEDIR/j2"; mv "$STATEDIR/j2" "$STATEDIR/jobs"; }
-reid_job(){ awk -F'\t' '$1==9{print "42\t"$2"\t"$3"\t"$4"\t"$5; next}{print}' "$STATEDIR/jobs" > "$STATEDIR/j2"; mv "$STATEDIR/j2" "$STATEDIR/jobs"; }
-recfg_job(){ awk -F'\t' '$1==9{print $1"\t"$2"\t"$3"\t"$4"\tcfg-9-CHANGED"; next}{print}' "$STATEDIR/jobs" > "$STATEDIR/j2"; mv "$STATEDIR/j2" "$STATEDIR/jobs"; }
-for c in "a job ADDED after capture:add_job" "a job MISSING at resume:drop_job" \
-         "a job RENAMED under the same id:rename_job" "a job whose ID CHANGED:reid_job" \
-         "a same-id/same-name job whose SCHEDULE, COMMAND, USER, DATABASE or NODE changed:recfg_job"; do
-  desc="${c%%:*}"; fn="${c##*:}"
-  exact_case "$fn"
-  [[ $? -ne 0 ]] && pass "${desc} makes resume fail loudly" || fail "${desc} was silently accepted"
-done
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; recfg_job
+echo "== recovery survives, and only with explicit window evidence =="
+seed
+crun bash "$RR" clone-source-resume --yes "$PROD_URL"
+[[ $? -ne 0 ]] && pass "resume refuses with NO recorded window" || fail "resume ran without a window"
+seed; printf 'a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6\n' > "$EVID/clone-source-nonce.txt"
 run bash "$RR" clone-source-resume --yes "$PROD_URL"
-[[ "$(actives)" == 0 ]] && pass "…and a failed resume restores NOTHING (one transaction: all or none)" || fail "resume applied partial effects"
-grep -q 'production remains paused and fenced with its marker intact' "$ROOT/out.txt" \
-  && pass "…and says production is still paused and fenced, so the operator retries" || fail "no actionable failure message"
-
-echo "-- explicit, reviewed stale-window recovery --"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; NONCE="$(cat "$nonce_file")"
-echo sealing > "$STATEDIR/MSTATE"    # a run that died between seal and arm
-run bash "$RR" clone-source-resume --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "an UN-ARMED window is not resumable by the ordinary path" || fail "un-armed window resumed silently"
-run bash "$RR" clone-source-abandon --yes --nonce "$NONCE" "$PROD_URL"; rc=$?
-[[ "$rc" -eq 0 ]] && pass "clone-source-abandon recovers it when the operator names the nonce" || fail "abandon failed (exit $rc)"
-[[ "$(actives)" == 3 && ! -e "$STATEDIR/FENCE" && ! -s "$STATEDIR/MARKER" ]] && pass "…restoring prior state and removing the fence and marker" || fail "abandon left state behind"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-run bash "$RR" clone-source-abandon --yes --nonce deadbeefdeadbeefdeadbeefdeadbeef "$PROD_URL"
-[[ $? -ne 0 ]] && pass "abandon with the WRONG nonce is refused (no window is cleared by accident)" || fail "wrong-nonce abandon accepted"
+[[ $? -eq 0 ]] && pass "resume works for a window whose nonce is on file (recovery preserved)" || fail "recovery broken: $(tail -2 "$ROOT/out.txt")"
+seed
 run bash "$RR" clone-source-abandon --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "abandon without --nonce is refused" || fail "abandon without a nonce accepted"
+[[ $? -ne 0 ]] && pass "abandon refuses without --nonce" || fail "abandon ran without a nonce"
+seed
+run bash "$RR" clone-source-abandon --yes --nonce deadbeefdeadbeefdeadbeefdeadbeef "$PROD_URL"
+[[ $? -eq 0 ]] && pass "abandon works when the operator names the nonce" || fail "abandon broken"
+seed
+run bash "$RR" clone-source-abandon --yes --nonce not-hex "$PROD_URL"
+[[ $? -ne 0 ]] && pass "a malformed nonce is refused" || fail "malformed nonce accepted"
 
-echo "-- clone-unfence is clone-only and gated --"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; take_restore_point
-clone_gate clone-unfence --yes "$PROD_URL"
-[[ $? -ne 0 ]] && pass "clone-unfence refuses a production URL" || fail "clone-unfence accepted production"
-clone_gate clone-unfence --yes "$CLONE_URL"; rc=$?
-[[ "$rc" -eq 0 ]] && pass "clone-unfence lifts the barrier on a proven clone" || fail "clone-unfence failed on a clone (exit $rc): $(tail -2 "$ROOT/c.txt")"
-[[ ! -e "$STATEDIR/clone/FENCE" && -s "$STATEDIR/clone/MARKER" ]] \
-  && pass "…removing only the fence; the marker stays so provenance remains provable" || fail "clone-unfence removed the wrong thing"
-[[ -e "$STATEDIR/FENCE" ]] && pass "…and production's own fence is untouched" || fail "clone-unfence touched production"
+echo "== the rehearsal target must be a real, distinct, EMPTY project =="
+seed; measured yes
+crun bash "$RR" clone-verify-empty "$CLONE_URL"
+[[ $? -eq 0 ]] && pass "an empty, inert, correctly-identified target is accepted" || fail "empty target rejected: $(tail -2 "$ROOT/out.txt")"
+seed; measured yes
+crun bash "$RR" clone-verify-empty "$PROD_URL"
+[[ $? -ne 0 ]] && pass "a PRODUCTION url is refused as a rehearsal target" || fail "production accepted as a target"
+seed; measured yes
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$REF" bash "$RR" clone-verify-empty "$CLONE_URL" ) >/dev/null 2>&1
+[[ $? -ne 0 ]] && pass "a CLONE_REF equal to production is refused" || fail "CLONE_REF==EXPECTED_REF accepted"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="not-a-ref" bash "$RR" clone-verify-empty "$CLONE_URL" ) >/dev/null 2>&1
+[[ $? -ne 0 ]] && pass "a malformed CLONE_REF is refused" || fail "malformed CLONE_REF accepted"
+for k in E_CRON E_NETQ E_VAULT E_HOOK E_OUTTRIG E_FDW E_AUTH; do
+  seed; measured yes; echo 1 > "$STATEDIR/$k"
+  crun bash "$RR" clone-verify-empty "$CLONE_URL"
+  [[ $? -ne 0 ]] && pass "a target with non-zero ${k} is refused BEFORE anything is loaded" || fail "${k} accepted"
+done
+
+echo "== the baseline is synthetic, measured, and only the affected tables =="
+seed; measured no
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "an UNMEASURED scale file is refused (invented rows give an invented timing)" || fail "placeholder scale accepted"
+[[ ! -e "$STATEDIR/SYNTH_WAS_CALLED" ]] && pass "…and no data was loaded" || fail "data loaded despite an unmeasured scale"
+seed; measured yes
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "a measured scale builds the baseline" || fail "baseline build failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
+[[ -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…schema comes from a db push (main), not from the #615 pin" || fail "no schema build"
+grep -q 'from sanitized main' "$ROOT/out.txt" && pass "…and the log says so, so the migrations under test are applied separately" || fail "schema source not stated"
+[[ "$(cat "$STATEDIR/I_ACTIVE" 2>/dev/null)" == 0 ]] && pass "…every schedule the migrations created was deactivated" || fail "schedules left active"
+[[ -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] && pass "…and a pristine baseline fingerprint was recorded" || fail "no baseline recorded"
+seed; measured yes; echo VIOLATION > "$STATEDIR/SYNTH"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a baseline containing a NON-synthetic address is refused" || fail "non-synthetic baseline recorded"
+[[ ! -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] && pass "…and not recorded" || fail "non-synthetic baseline was recorded"
+python3 - "$HERE/../synth/build-baseline.mjs" <<'PY'
+import re,sys
+s=open(sys.argv[1]).read()
+tbl=set(re.findall(r'public\.([a-z_]+)', s))
+print("TABLES " + ",".join(sorted(tbl)))
+PY
+TBL=$(python3 -c "
+import re,sys
+s=open('$HERE/../synth/build-baseline.mjs').read()
+print(','.join(sorted(set(re.findall(r'public\.([a-z_]+)', s)))))")
+# Beyond the two tables #615 locks, the generator writes only the minimum parent
+# graph the real FKs require: invoices (NOT NULL trainer_id/invoice_number/
+# due_date/player_name) and the single trainer_profiles row those point at.
+[[ "$TBL" == "email_address_state,email_delivery_events,invoices,trainer_profiles" ]] \
+  && pass "the generator writes ONLY the two tables #615 locks plus the minimum FK parent graph ($TBL)" \
+  || fail "generator touches other tables: $TBL"
+GEN="$HERE/../synth/build-baseline.mjs"
+grep -qF 'SYN-' "$GEN" \
+  && pass "…and every invoice field is synthetic (SYN- numbering, placeholder name)" || fail "invoice rows are not obviously synthetic"
+grep -qF "'synthetic'" "$GEN" \
+  && pass "…and the trainer parent's only literal value is 'synthetic'" || fail "trainer parent carries real-looking data"
+grep -qF 'information_schema.columns' "$GEN" && grep -qF 'is_nullable' "$GEN" \
+  && pass "…filling exactly the NOT NULL columns the live schema declares, not a hard-coded guess" || fail "parent columns are hard-coded"
+grep -q 'example.invalid' "$HERE/../synth/build-baseline.mjs" \
+  && pass "every generated address uses the reserved, undeliverable example.invalid TLD" || fail "addresses are not on a reserved TLD"
+# capture then match: `producer | grep -q` under pipefail reports the PRODUCER's
+# status, which is the same false-green shape this suite exists to catch
+GENSRC="$(sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs")"
+grep -qF 'Math.random' <<<"$GENSRC" \
+  && fail "the generator is nondeterministic" \
+  || pass "the generator is deterministic — no executable Math.random (repeatable rehearsals)"
+
+echo "-- the build is inert WHILE it runs, not only afterwards --"
+seed; measured yes
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ -e "$STATEDIR/PUSH_AFTER_SHIM" && ! -e "$STATEDIR/PUSH_BEFORE_SHIM" ]] \
+  && pass "the inert cron/pg_net shims are installed BEFORE the schema build (14 migrations on main call cron.schedule)" \
+  || fail "the schema was pushed before the shims existed"
+sed -n '/^clone_build_schema_and_data()/,/^}/p' "$RR" | grep -nq 'platform_stub.sql' \
+  && pass "the inert stand-in is part of the shared build path" || fail "no stand-in in the build path"
+[[ -e "$STATEDIR/SANITIZE_WAS_CALLED" ]] \
+  && pass "the migration source is SANITIZED (the chain installs pg_cron/pg_net; stand-ins alone would collide)" || fail "source not sanitized"
+[[ -e "$STATEDIR/PUSH_FROM_SANITIZED" ]] \
+  && pass "…and the push runs against the sanitized directory, not the repo's" || fail "pushed the raw chain"
+awk '/^clone_build_schema_and_data\(\)/{b=1} b&&/platform_stub.sql/{shim=NR} b&&/sanitize-migrations.mjs/{san=NR} b&&/supabase db push/{push=NR} b&&/^}/{exit} END{exit !(shim && san && push && shim < san && san < push)}' "$RR" \
+  && pass "…and stand-in, sanitize and push are textually in that order, so it cannot drift" || fail "build ordering is wrong"
+seed; measured yes; echo 1 > "$STATEDIR/SHIM_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a target with REAL pg_cron/pg_net is refused (stand-ins cannot shadow them)" || fail "stand-in refusal ignored"
+seed; measured yes; echo 1 > "$STATEDIR/SANITIZE_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a chain that cannot be sanitized aborts the build (fail closed on the unknown)" || fail "unsanitizable chain accepted"
+grep -q 'CHANGED since it was reviewed' "$ROOT/out.txt" \
+  && pass "…including a chain that merely MOVED — main changing forces a re-review" || fail "no re-review message"
+[[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and nothing was pushed" || fail "pushed an unsanitized chain"
+[[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and no schema was pushed to it" || fail "pushed despite an unshimmable target"
+
+echo "-- reset is a REAL rebuild, not a row reload --"
+seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+rm -f "$STATEDIR/SUPABASE_WAS_CALLED" "$STATEDIR/PUSH_AFTER_SHIM"
+crun bash "$RR" clone-reset-baseline --yes "$CLONE_URL"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "reset succeeds" || fail "reset failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
+grep -q 'wiping the rehearsal target to bare metal' "$ROOT/out.txt" \
+  && pass "…by WIPING schema, shims and the migration ledger (reloading rows cannot undo a migration)" || fail "reset did not wipe"
+[[ -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and re-pushing the full migration chain" || fail "reset did not rebuild the schema"
+[[ -e "$STATEDIR/PUSH_AFTER_SHIM" ]] && pass "…with the shims installed first, again" || fail "rebuild pushed before shimming"
+sed -n '/^cmd_clone_reset_baseline()/,/^}/p' "$RR" | grep -q 'clone_build_schema_and_data' \
+  && pass "…through the SAME build path, so a reset cannot drift from the build" || fail "reset uses a different path"
+grep -q 'DELETE FROM supabase_migrations.schema_migrations' "$SQLD/clone_wipe.sql" \
+  && pass "the wipe empties the migration ledger (leaving it would apply a SUFFIX next time)" || fail "ledger not cleared"
+grep -q 'DROP SCHEMA IF EXISTS public CASCADE' "$SQLD/clone_wipe.sql" \
+  && pass "…and drops the schema, so columns/functions/constraints really are gone" || fail "schema not dropped"
+
+echo "-- recovery is offered ONLY for a target this tooling part-built --"
+seed; measured yes; echo 1 > "$STATEDIR/E_VAULT"      # a foreign, non-empty project
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a non-empty target that this tooling did NOT build is refused" || fail "foreign target accepted"
+grep -q -- '--recover is NOT offered' "$ROOT/out.txt" \
+  && pass "…and --recover is explicitly NOT offered for it (destroying someone else's project is the wrong answer)" || fail "recover offered for a foreign target"
+grep -q 'E_VAULT' "$ROOT/out.txt" \
+  && pass "…while the ORIGINAL diagnostic is still shown (the failing check is named), not replaced by a generic message" \
+  || fail "the real diagnostic was suppressed"
+seed; measured yes
+# CLONE_REF == EXPECTED_REF is a genuine identity failure, not an emptiness one
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$REF" bash "$RR" clone-build-baseline --yes "$CLONE_URL" ) >"$ROOT/out.txt" 2>&1
+[[ $? -ne 0 ]] && pass "a clone-IDENTITY failure fails as itself" || fail "identity failure accepted"
+grep -q -- '--recover' "$ROOT/out.txt" && fail "an identity failure recommends destructive recovery" \
+  || pass "…and never recommends --recover (auth/connectivity/identity are not recoverable by wiping)"
+
+echo "-- recovery eligibility comes from the MARKER, not the error wording --"
+seed; measured yes; echo 1 > "$STATEDIR/SYNTH_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"     # leaves schema + marker, no baseline
+rm -f "$STATEDIR/SYNTH_FAIL"
+echo "a completely different message" > "$STATEDIR/EMPTY_MSG"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+grep -q 'clone-reset-baseline --yes --recover' "$ROOT/out.txt" \
+  && pass "with the marker PRESENT, recovery is still offered even though the error wording changed" \
+  || fail "wording change withdrew a valid recovery"
+grep -q 'a completely different message' "$ROOT/out.txt" \
+  && pass "…and the changed diagnostic itself is still shown" || fail "diagnostic not propagated"
+rm -f "$STATEDIR/MARKER_TBL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+grep -q -- '--recover is NOT offered' "$ROOT/out.txt" \
+  && pass "with the marker ABSENT, recovery is refused regardless of wording" || fail "recovery offered without a marker"
+rm -f "$STATEDIR/EMPTY_MSG"
+
+echo "-- a stub that dies PART-WAY leaves nothing behind --"
+seed; measured yes; echo 1 > "$STATEDIR/STUB_PARTIAL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a stand-in install that dies part-way fails the build" || fail "partial stub accepted"
+[[ ! -e "$STATEDIR/MARKER_TBL" && ! -e "$STATEDIR/SHIM" ]] \
+  && pass "…and left NOTHING behind (the artifact is one transaction), so a plain retry works" || fail "partial stub state survived"
+grep -q '^BEGIN;' "$SQLD/platform_stub.sql" && grep -q '^COMMIT;' "$SQLD/platform_stub.sql" \
+  && pass "the stand-in artifact is wrapped in a single transaction" || fail "stub is not transactional"
+awk '/^BEGIN;/{b=NR} /rehearsal_target_marker/{m=NR} /^COMMIT;/{c=NR} END{exit !(b && m && c && b<m && m<c)}' "$SQLD/platform_stub.sql" \
+  && pass "…and the recovery marker is created INSIDE it, early, so a later failure is still recoverable" || fail "marker is not created early inside the transaction"
+rm -f "$STATEDIR/STUB_PARTIAL"
+
+echo "-- a FIRST build that fails part-way is recoverable, and only explicitly --"
+seed; measured yes; echo 1 > "$STATEDIR/SYNTH_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a generator failure fails the first build" || fail "failed build reported success"
+[[ ! -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] && pass "…and records NO fingerprint, so nothing false is left behind" || fail "a fingerprint was recorded for a failed build"
+[[ -e "$STATEDIR/SCHEMA" ]] && pass "…but the schema DID land, so the target is no longer empty (the stuck state)" || fail "no partial state to recover from"
+rm -f "$STATEDIR/SYNTH_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a plain retry is refused — the target is not empty" || fail "retry accepted a non-empty target"
+grep -q 'clone-reset-baseline --yes --recover' "$ROOT/out.txt" \
+  && pass "…and the refusal names the recovery command instead of leaving the operator stuck" || fail "no recovery path offered"
+crun bash "$RR" clone-reset-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a plain reset is refused too — there is no baseline to verify against" || fail "plain reset accepted"
+grep -q -- '--recover' "$ROOT/out.txt" && pass "…and it too points at --recover" || fail "reset does not mention --recover"
+crun bash "$RR" clone-reset-baseline --yes --recover "$CLONE_URL"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "clone-reset-baseline --recover wipes, rebuilds and records a pristine baseline" || fail "recovery failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
+[[ -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] && pass "…and the fingerprint now exists" || fail "no baseline after recovery"
+crun bash "$RR" clone-reset-baseline --yes --recover "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "--recover is REFUSED once a baseline exists (it discards a target; that must stay deliberate)" || fail "--recover accepted with a baseline on file"
+
+echo "== a rehearsal cannot start from a drifted or failed-migration baseline =="
+seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+crun bash "$RR" clone-baseline-verify "$CLONE_URL"
+[[ $? -eq 0 ]] && pass "an untouched target matches its recorded baseline" || fail "fresh baseline did not verify"
+echo shape-CHANGED > "$STATEDIR/SHAPE"
+crun bash "$RR" clone-baseline-verify "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a target whose SHAPE changed (a part-applied migration) is refused" || fail "drifted shape accepted"
+echo shape0 > "$STATEDIR/SHAPE"; echo 999 > "$STATEDIR/NROWS"
+crun bash "$RR" clone-baseline-verify "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a target whose ROW COUNT changed is refused" || fail "drifted rows accepted"
+crun bash "$RR" clone-reset-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "reset also fails while the target still reports drift" || fail "reset reported success on a drifted target"
+echo 1000 > "$STATEDIR/NROWS"
+crun bash "$RR" clone-reset-baseline --yes "$CLONE_URL"
+[[ $? -eq 0 ]] && pass "reset restores the pristine baseline WITHOUT a production snapshot" || fail "reset failed"
+[[ -e "$STATEDIR/SYNTH_WAS_CALLED" ]] && pass "…by reloading synthetic data" || fail "reset did not reload"
+seed
+crun bash "$RR" clone-baseline-verify "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "with no recorded baseline, verification refuses" || fail "verified against nothing"
+
+echo "== the clone gate is wired into every target-touching command =="
+for sub in clone-push clone-make-prefix verify-clone; do
+  sed -n "/^cmd_${sub//-/_}()/,/^}/p" "$RR" | grep -q 'assert_clone_isolated' \
+    && pass "$sub is gated" || fail "$sub is NOT gated"
+done
+sed -n '/^assert_clone_isolated()/,/^}/p' "$RR" | grep -q 'rehearsal_inert_check.sql' \
+  && pass "the gate proves INERTNESS (no marker, no fence — there is no provenance question)" || fail "gate does not check inertness"
+sed -n '/^assert_clone_isolated()/,/^}/p' "$RR" | grep -q 'cmd_clone_baseline_verify' \
+  && pass "…and that the target still matches the pristine baseline" || fail "gate does not check the baseline"
 
 echo "== MUTANTS =="
 mut(){ local n="$1"; local expr="$2"; local sc="${3:-}"; local m="$HERE/../.mutant-$n.sh"
@@ -599,241 +388,72 @@ if scope:
     b=m.group(0); assert b.count(old)==1, (scope, b.count(old))
     s=s[:m.start()]+b.replace(old,new,1)+s[m.end():]
 else:
-    assert s.count(old)==1, (old[:40], s.count(old))
+    assert s.count(old)==1, (old[:50], s.count(old))
     s=s.replace(old,new,1)
 open(dst,"w").write(s)
 PYX
   printf '%s' "$m"; }
-# SQL mutants: the stub enforces exactly the assertions and performs exactly the
-# effects the artifact contains, so deleting a statement really does weaken it.
-sqlmut(){ local f="$SQLD/$1"; [[ -e "$ROOT/sqlbak/$1" ]] || cp "$f" "$ROOT/sqlbak/$1"
-  python3 - "$f" "$2" <<'PYX'
+
+M="$(mut norefuse '  refuse_unsupported_fence "clone-source-quiesce"||=||  warn "withdrawn (advisory only)"; return 0' cmd_clone_source_quiesce)"
+seed
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (refusal downgraded to a warning) lets the withdrawn command proceed — a hard die, not a warn, is load-bearing" || fail "norefuse mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut noempty '  run_artifact "$1" empty_project_check.sql||=||  :' assert_rehearsal_target)"
+seed; measured yes; echo 1 > "$STATEDIR/E_VAULT"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" bash "$M" clone-verify-empty "$CLONE_URL" ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (empty-project check removed) accepts a target holding Vault secrets — proving inertness before loading is load-bearing" || fail "noempty mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut nomeasured '  assert_scale_is_measured||=||  :' cmd_clone_build_baseline)"
+seed; measured no
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" bash "$M" clone-build-baseline --yes "$CLONE_URL" ) >/dev/null 2>&1
+[[ $? -eq 0 && -e "$STATEDIR/SYNTH_WAS_CALLED" ]] \
+  && pass "MUTANT (measured-scale check removed) builds a baseline from placeholder row counts — an invented scale would be reported as a real timing" || fail "nomeasured mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut nosynth '  grep -q '"'"'^SYNTHETIC ok$'"'"' "$tmp" || { rm -f "$tmp"; die "baseline contains a NON-SYNTHETIC address — refusing to record it"; }||=||  :' clone_capture_baseline)"
+seed; measured yes; echo VIOLATION > "$STATEDIR/SYNTH"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" bash "$M" clone-build-baseline --yes "$CLONE_URL" ) >/dev/null 2>&1
+[[ -s "$EVID/rehearsal-baseline-fingerprint.txt" ]] \
+  && pass "MUTANT (synthetic assertion removed) records a baseline containing a real-looking address — the PII guard is load-bearing" || fail "nosynth mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut nobaseline '  cmd_clone_baseline_verify "$url"||=||  :' assert_clone_isolated)"
+seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+echo shape-CHANGED > "$STATEDIR/SHAPE"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" CAP_STMT=30000 \
+  bash "$M" verify-clone "$CLONE_URL" --clone ) >/dev/null 2>&1
+[[ $? -eq 0 ]] && pass "MUTANT (baseline check removed from the gate) rehearses against a drifted target — a failed migration could leave a reusable false green" || fail "nobaseline mutant not distinguishable"
+rm -f "$M"
+
+# The shim makes every scheduled job inert at creation, and the post-push
+# deactivation is belt-and-braces behind it. Either alone is masked by the other,
+# so they are mutated TOGETHER and the claim is scoped to that: SOMETHING must
+# keep the build's cron jobs from becoming active.
+M="$(mut noinert '  run_artifact "$url" platform_stub.sql||=||  :' clone_build_schema_and_data)"
+python3 - "$M" <<'PYX'
 import sys,re
-f,pat=sys.argv[1],sys.argv[2]
-s=open(f).read(); n=len(re.findall(pat,s,re.M)); assert n==1, (pat,n)
-open(f,"w").write(re.sub(pat,"-- MUTANT: statement deleted",s,flags=re.M))
+p=sys.argv[1]; s=open(p).read()
+m=re.search(r"^clone_build_schema_and_data\(\) \{.*?^\}$", s, re.S|re.M)
+b=m.group(0).replace('  run_artifact "$url" clone_deactivate_schedules.sql', '  :', 1)
+open(p,"w").write(s[:m.start()]+b+s[m.end():])
 PYX
-}
-sqlmut_all(){ local f="$SQLD/$1"; [[ -e "$ROOT/sqlbak/$1" ]] || cp "$f" "$ROOT/sqlbak/$1"
-  python3 - "$f" "$2" <<'PYX'
-import sys,re
-f,pat=sys.argv[1],sys.argv[2]
-s=open(f).read(); n=len(re.findall(pat,s,re.M)); assert n>=1, (pat,n)
-open(f,"w").write(re.sub(pat,"-- MUTANT: statement deleted",s,flags=re.M))
-PYX
-}
-unsqlmut(){ cp "$ROOT/sqlbak/$1" "$SQLD/$1"; }
-
-echo "-- (1) the durable fence --"
-# Each artifact is driven DIRECTLY here: a mutation in the seal would otherwise be
-# masked by the fence checks in arm, resume and the clone gate, and a mutant that
-# a different guard catches proves nothing about the one under test.
-seed; artifact clone_source_seal.sql -v "nonce=$NONCE_FIX" -v "expect_fp=$(fp_of_jobs)"
-[[ $? -eq 0 && -e "$STATEDIR/FENCE" ]] && pass "baseline: the seal artifact alone installs the fence" || fail "baseline seal did not fence"
-attempt_schedule
-[[ $? -ne 0 ]] && pass "baseline: a cron.schedule attempt after that seal is rejected" || fail "baseline fence not effective"
-
-# the fence MECHANISM removed: the trigger and the probe that proves it. Both go
-# together — with no trigger to install there is nothing for a probe to verify,
-# so the claim is scoped to the mechanism as a whole.
-sqlmut clone_source_seal.sql "^CREATE TRIGGER rollout_clone_fence_dml\n  BEFORE INSERT OR UPDATE OR DELETE ON cron\.job\n  FOR EACH STATEMENT EXECUTE FUNCTION rollout_clone\.fence_cron_job\(\);$"
-sqlmut clone_source_seal.sql "^SELECT pg_temp\.assert_fence_effective\('seal'\);$"
-seed; artifact clone_source_seal.sql -v "nonce=$NONCE_FIX" -v "expect_fp=$(fp_of_jobs)"
-sealed_rc=$?
-attempt_schedule; sched_rc=$?
-[[ "$sealed_rc" -eq 0 && "$sched_rc" -eq 0 ]] \
-  && pass "MUTANT (fence mechanism removed) SEALS a window in which a job can still be CREATED — the fence, not the commit lock, is what makes the window durable" \
-  || fail "fence mutant not distinguishable (seal=$sealed_rc schedule=$sched_rc)"
-[[ "$(grep -c 'sneaked-in-job' "$STATEDIR/jobs")" == 1 ]] \
-  && pass "…and that job is a real, ACTIVE row a clone would boot and run" || fail "no job row appeared under the mutant"
-unsqlmut clone_source_seal.sql
-
-# presence vs effectiveness: with the trigger gone but the PROBE kept, the seal
-# must refuse. That is the whole difference the probe makes.
-sqlmut clone_source_seal.sql "^CREATE TRIGGER rollout_clone_fence_dml\n  BEFORE INSERT OR UPDATE OR DELETE ON cron\.job\n  FOR EACH STATEMENT EXECUTE FUNCTION rollout_clone\.fence_cron_job\(\);$"
-seed; artifact clone_source_seal.sql -v "nonce=$NONCE_FIX" -v "expect_fp=$(fp_of_jobs)"
-[[ $? -ne 0 ]] && pass "MUTANT (trigger deleted, probe kept) is REFUSED at the seal — probing is what turns 'the artifact says it fences' into 'the fence works'" || fail "probe did not catch a missing fence"
-[[ ! -s "$STATEDIR/MARKER" ]] && pass "…and no marker was committed, so no restore point looks valid" || fail "marker committed without a fence"
-unsqlmut clone_source_seal.sql
-
-M="$(mut nofenceable 'assert_source_is_sealable "$inv"||=||:' cmd_clone_source_quiesce)"
-seed; echo no > "$STATEDIR/FENCEABLE"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-[[ $? -eq 0 ]] && pass "MUTANT (no sealability check) proceeds on a source where the fence cannot be installed — the read-only check is load-bearing" || fail "nofenceable mutant not distinguishable"
+seed; measured yes; echo 1 > "$STATEDIR/PRE_ACTIVE"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" bash "$M" clone-build-baseline --yes "$CLONE_URL" ) >/dev/null 2>&1
+[[ ! -e "$STATEDIR/SHIM" && ! -e "$STATEDIR/I_ACTIVE" ]] \
+  && pass "MUTANT (shim AND deactivation removed) builds the schema with nothing keeping cron inert — one of the two is load-bearing" \
+  || fail "noinert mutant not distinguishable"
 rm -f "$M"
 
-NETQ_TRIG="^CREATE TRIGGER rollout_clone_fence_netq\n  BEFORE INSERT ON net\\.http_request_queue\n  FOR EACH STATEMENT EXECUTE FUNCTION rollout_clone\\.fence_cron_job\\(\\);$"
-sqlmut clone_source_seal.sql "$NETQ_TRIG"
-sqlmut clone_source_seal.sql "^SELECT pg_temp\\.assert_fence_effective\\('seal'\\);$"
-seed; artifact clone_source_seal.sql -v "nonce=$NONCE_FIX" -v "expect_fp=$(fp_of_jobs)"
-sealed_rc=$?; attempt_enqueue; enq_rc=$?
-[[ "$sealed_rc" -eq 0 && "$enq_rc" -eq 0 ]] \
-  && pass "MUTANT (pg_net queue fence removed) SEALS a window in which an outbound request can still be ENQUEUED — sampling the queue is not the same as freezing it" \
-  || fail "netq fence mutant not distinguishable (seal=$sealed_rc enqueue=$enq_rc)"
-[[ "$(cat "$STATEDIR/NETQUEUE" 2>/dev/null || echo 0)" != 0 ]] \
-  && pass "…and that request would be copied into every clone taken from this window" || fail "no request queued under the mutant"
-unsqlmut clone_source_seal.sql
-
-M="$(mut nocleanup '  discard_temp_capture "$cap" "$cap_tmp"
-  ok "production cron restored to its EXACT recorded set, configuration and active state; fences and marker removed"||=||  ok "production cron restored to its EXACT recorded set, configuration and active state; fences and marker removed"' clone_source_leave_window)"
-seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" EVIDDIR="$EVID" TMPDIR="$CAPTMP" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >"$ROOT/m.txt" 2>&1
-chmod u+w "$EVID" 2>/dev/null
-[[ "$(stray_captures)" -ge 1 ]] && pass "MUTANT (cleanup omitted on the success path) STRANDS a rollout-resume-* temp file — the cleanup is load-bearing" || fail "nocleanup mutant not distinguishable"
-rm -f "$CAPTMP"/rollout-resume-* "$M"
-
-M="$(mut nostatus '    [[ "$rc" -eq 0 ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return "$rc"; }||=||    [[ "$rc" -eq 0 ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return 1; }' quiesce_drain)"
-seed; echo 7 > "$STATEDIR/SAMPLE_RC"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" TMPDIR="$CAPTMP" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-[[ $? -eq 1 ]] && pass "MUTANT (sampling status normalised) reports exit 1 for an underlying psql exit 7 — propagating the real status is load-bearing" || fail "nostatus mutant not distinguishable"
+M="$(mut norebuild '  run_artifact "$url" clone_wipe.sql||=||  :' cmd_clone_reset_baseline)"
+seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" bash "$M" clone-reset-baseline --yes "$CLONE_URL" ) >/dev/null 2>&1
+[[ -e "$STATEDIR/SHIM" ]] \
+  && pass "MUTANT (wipe removed from reset) leaves the previous rehearsal's schema, shims and ledger in place — the wipe is what makes a reset pristine" \
+  || fail "norebuild mutant not distinguishable"
 rm -f "$M"
-
-M="$(mut nosleepstatus '    sleep "$gap" || { rc=$?
-      warn "the scheduler-observation sleep failed or was interrupted (exit ${rc}) — the interval did not elapse, so the samples are not separated"
-      return "$rc"; }||=||    sleep "$gap" || { warn "sleep failed"; return 1; }' quiesce_drain)"
-seed; echo 9 > "$STATEDIR/SLEEP_RC"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" TMPDIR="$CAPTMP" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-[[ $? -eq 1 ]] && pass "MUTANT (sleep status normalised) reports exit 1 for an interrupted sleep — an interrupt exit such as 130 would be indistinguishable from a refusal" || fail "nosleepstatus mutant not distinguishable"
-rm -f "$M"
-
-M="$(mut nofloor '  [[ "$gap"  =~ ^[0-9]+$ && "$gap" -ge "$QUIESCE_MIN_SETTLE_SECS" ]] \
-    || { warn "QUIESCE_SETTLE_SECS must be an integer >= ${QUIESCE_MIN_SETTLE_SECS}s (the scheduler needs a cycle to observe active=false); got '"'"'${gap}'"'"'"; return 1; }||=||  :' quiesce_drain)"
-seed; ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" QUIESCE_SETTLE_SECS=0 bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-[[ $? -eq 0 ]] && pass "MUTANT (interval floor removed) accepts a ZERO interval, so the two 'stable' samples are back-to-back — the floor is load-bearing" || fail "nofloor mutant not distinguishable"
-rm -f "$M"
-
-M="$(mut nosleepcheck '    sleep "$gap" || { rc=$?
-      warn "the scheduler-observation sleep failed or was interrupted (exit ${rc}) — the interval did not elapse, so the samples are not separated"
-      return "$rc"; }||=||    sleep "$gap" || true' quiesce_drain)"
-seed; echo 1 > "$STATEDIR/SLEEP_FAIL"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-[[ $? -eq 0 ]] && pass "MUTANT (unchecked sleep) treats an INTERRUPTED sleep as an elapsed interval — checking it is load-bearing" || fail "nosleepcheck mutant not distinguishable"
-rm -f "$M"
-
-M="$(mut hardredirect '  if [[ -n "$cap" ]]; then
-    run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" \
-      > "$cap" 2>&1 || rc=$?
-  else
-    run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" \
-      >&2 || rc=$?
-  fi||=||  run_sql_soft "$url" "$SQL_DIR/clone_source_resume.sql" -v "nonce=$nonce" -v "allow_unarmed=$unarmed" > "$EVID/clone-source-resume.txt" 2>&1 || rc=$?' clone_source_leave_window)"
-seed; echo 1 > "$STATEDIR/EVID_LOCK_AFTER_SEAL"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" EVIDDIR="$EVID" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-chmod u+w "$EVID" 2>/dev/null
-[[ "$(actives)" == 0 ]] \
-  && pass "MUTANT (recovery redirects into the evidence dir) never runs the resume when that dir is unwritable — production LEFT PAUSED; the best-effort capture is load-bearing" || fail "hardredirect mutant not distinguishable"
-rm -f "$M"
-
-echo "-- (2) the atomic transition --"
-sqlmut clone_source_resume.sql "^DROP TRIGGER rollout_clone_fence_dml ON cron\.job;$"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-run bash "$RR" clone-source-resume --yes "$PROD_URL"
-[[ -e "$STATEDIR/FENCE" ]] && pass "MUTANT (unfence removed from resume) leaves production FENCED after resume — the unfence must be inside the same transaction" || fail "unfence mutant not distinguishable"
-unsqlmut clone_source_resume.sql
-
-sqlmut clone_source_resume.sql "^SELECT pg_temp\.assert_fence_effective\('resume'\);$"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; rm -f "$STATEDIR/FENCE"
-run bash "$RR" clone-source-resume --yes "$PROD_URL"
-[[ $? -eq 0 ]] && pass "MUTANT (no fence check at resume) resumes a window whose fence had already been dropped — the check is load-bearing" || fail "resume-fence mutant not distinguishable"
-unsqlmut clone_source_resume.sql
-
-ARM_DRAIN="^SELECT pg_temp\\.assert_cron_quiet\\('arm'\\);$"
-seed; artifact clone_source_seal.sql -v "nonce=$NONCE_FIX" -v "expect_fp=$(fp_of_jobs)"
-printf 'sending\n' > "$STATEDIR/runs"
-artifact clone_source_arm.sql -v "nonce=$NONCE_FIX"
-[[ $? -ne 0 ]] && pass "baseline: the arm artifact refuses to arm with a run in 'sending'" || fail "baseline arm accepted an in-flight source"
-sqlmut clone_source_arm.sql "$ARM_DRAIN"
-artifact clone_source_arm.sql -v "nonce=$NONCE_FIX"
-[[ $? -eq 0 && "$(cat "$STATEDIR/MSTATE")" == sealed ]] \
-  && pass "MUTANT (quiet assertion deleted from arm) ARMS a window with a run still in 'sending' — the SQL assertion, not just the shell drain, is load-bearing" || fail "arm-drain mutant not distinguishable"
-unsqlmut clone_source_arm.sql
-
-sqlmut clone_isolation.sql "^SELECT pg_temp\.assert_eq\(\(SELECT state FROM rollout_clone\.snapshot_marker\), 'sealed',\n  'the clone''s marker is ARMED \(restore point is at/after the arm commit, so in-flight executions had drained\)'\);$"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; take_restore_point; echo sealing > "$STATEDIR/clone/MSTATE"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -eq 0 ]] && pass "MUTANT (armed check deleted) accepts a clone restored BEFORE the arm commit — the state check bounds the window's near edge" || fail "armed-state mutant not distinguishable"
-unsqlmut clone_isolation.sql
-
-sqlmut clone_isolation.sql "^SELECT pg_temp\.assert_fence_effective\('clone'\);$"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; take_restore_point; rm -f "$STATEDIR/clone/FENCE"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -eq 0 ]] && pass "MUTANT (clone fence check deleted) accepts a clone from OUTSIDE the fenced window — the fence bounds the window's far edge" || fail "clone-fence mutant not distinguishable"
-unsqlmut clone_isolation.sql
-
-echo "-- (3) exact restoration --"
-# resume compares the configuration twice: once as a whole-set fingerprint (b) and
-# once field-by-field in the FULL OUTER JOIN (e). Deleting either alone is caught
-# by the other, so they are mutated TOGETHER and the claim is scoped to that:
-# comparing every behaviour-bearing field, somewhere, is load-bearing.
-CFG_B="^SELECT pg_temp\.assert_eq\(pg_temp\.cron_config_fp\(\), pg_temp\.snapshot_config_fp\(\),\n  'cron configuration matches the sealed snapshot EXACTLY \(schedule, database, username, command hash and node all included\)'\);$"
-CFG_E="^       OR md5\(j\.command\)            IS DISTINCT FROM s\.command_md5$"
-sqlmut clone_source_resume.sql "$CFG_B"
-sqlmut clone_source_resume.sql "$CFG_E"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; recfg_job
-run bash "$RR" clone-source-resume --yes "$PROD_URL"
-[[ $? -eq 0 ]] && pass "MUTANT (every configuration comparison deleted) re-enables a job whose COMMAND changed under the same id and name — a same-id/same-name drift is otherwise invisible" || fail "config-compare mutant not distinguishable"
-unsqlmut clone_source_resume.sql
-
-SET_E="^SELECT pg_temp\.assert_eq\(\n  \(SELECT count\(\*\)\n     FROM cron\.job j\n     FULL OUTER JOIN rollout_clone\.snapshot_job_state s\n(.|\n)*?  'production cron restored to its EXACT recorded set, configuration and active state'\);$"
-sqlmut clone_source_resume.sql "$CFG_B"
-sqlmut clone_source_resume.sql "$SET_E"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; add_job
-run bash "$RR" clone-source-resume --yes "$PROD_URL"
-[[ $? -eq 0 ]] && pass "MUTANT (set-equality proof and the fingerprint compare deleted) resumes with an EXTRA job unnoticed — exact set equality is load-bearing" || fail "set-equality mutant not distinguishable"
-unsqlmut clone_source_resume.sql
-
-M="$(mut noval 'validate_source_manifest "$SRC_MANIFEST"||=||:' export_source_manifest)"
-seed; echo 1 > "$STATEDIR/EXPORT_TRUNC"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-[[ $? -eq 0 ]] && pass "MUTANT (no manifest validation) accepts an evidence manifest whose final record is truncated — the fail-closed check is load-bearing" || fail "manifest mutant not distinguishable"
-rm -f "$M"
-
-echo "-- (4) marker ownership and lifecycle --"
-sqlmut clone_source_seal.sql "^SELECT pg_temp\.assert\(\n  \(SELECT count\(\*\) FROM information_schema\.schemata WHERE schema_name = 'rollout_clone'\) = 0,\n  'no prior sealed window exists \(if this fails: a previous run was not resumed — use clone-source-abandon with its nonce\)'\);$"
-M="$(mut nopriorwindow '  [[ "$prior" -eq 0 ]] \
-    || die "a sealed window ALREADY exists in this database (rollout_clone). Resume it with '"'"'clone-source-resume --yes <url>'"'"', or recover an abandoned one explicitly with '"'"'clone-source-abandon --yes --nonce <its nonce> <url>'"'"'. Nothing is ever overwritten implicitly."||=||  :' assert_source_is_sealable)"
-seed; printf 'deadbeefdeadbeefdeadbeefdeadbeef\n' > "$STATEDIR/MARKER"; echo sealed > "$STATEDIR/MSTATE"
-( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" bash "$M" clone-source-quiesce --yes "$PROD_URL" ) >/dev/null 2>&1
-if [[ $? -eq 0 ]] && [[ "$(cat "$STATEDIR/MARKER")" != "deadbeefdeadbeefdeadbeefdeadbeef" ]]; then
-  pass "MUTANT (both prior-window guards deleted) OVERWRITES another run's marker — refusing to reuse a window is load-bearing"
-else fail "prior-window mutant not distinguishable"; fi
-unsqlmut clone_source_seal.sql; rm -f "$M"
-
-sqlmut clone_source_seal.sql "^SELECT pg_temp\.assert\(pg_try_advisory_xact_lock\(431097, 626\),\n  'no other clone-safety quiesce/resume is running \(advisory lock acquired\)'\);$"
-seed; echo held > "$STATEDIR/ADVLOCK"
-run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ $? -eq 0 ]] && pass "MUTANT (advisory lock deleted) seals while another quiesce is running — run-level exclusion is load-bearing" || fail "advisory-lock mutant not distinguishable"
-unsqlmut clone_source_seal.sql
-
-sqlmut_all clone_source_seal.sql "^SELECT pg_temp\\.lock_down_marker_objects\\(\\);$"
-sqlmut clone_source_seal.sql "^SELECT pg_temp\\.assert_marker_acls\\('seal'\\);$"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"
-[[ ! -e "$STATEDIR/ACL_LOCKED" ]] && pass "MUTANT (lockdown and its source-side assertion deleted) leaves the marker objects on ambient default grants — the explicit revoke is load-bearing" || fail "ACL mutant not distinguishable"
-unsqlmut clone_source_seal.sql
-
-sqlmut clone_isolation.sql "^SELECT pg_temp\\.assert_marker_acls\\('clone'\\);$"
-seed; run bash "$RR" clone-source-quiesce --yes "$PROD_URL"; take_restore_point; rm -f "$STATEDIR/clone/ACL_LOCKED"
-clone_gate preflight "$CLONE_URL" --clone
-[[ $? -eq 0 ]] && pass "MUTANT (clone ACL check deleted) accepts a clone whose marker objects are world-readable — verifying ACLs in the CLONE is load-bearing" || fail "clone-ACL mutant not distinguishable"
-unsqlmut clone_isolation.sql
-
-echo "-- (5) timing honesty --"
-grep -q 'sealed_tx_start' "$SQLD/clone_source_seal.sql" && grep -q 'TRANSACTION START, not the commit instant' "$SQLD/clone_source_seal.sql" \
-  && pass "now() is stored as sealed_tx_start and labelled transaction-start, not the commit instant" || fail "now() still presented as the commit instant"
-grep -q 'OBSERVED_AFTER_COMMIT' "$SQLD/clone_source_seal.sql" && grep -q 'clock_timestamp' "$SQLD/clone_source_seal.sql" \
-  && pass "the informational instant is clock_timestamp() read AFTER the commit" || fail "no post-commit reading"
-grep -q 'HH24:MI:SS.US' "$SQLD/clone_source_seal.sql" && pass "it is rendered to microseconds, not truncated to seconds" || fail "still second-resolution"
-grep -q 'Provenance is established by the marker nonce in the database, never by a timestamp' "$RR" \
-  && pass "the operator is told only the nonce establishes provenance" || fail "no provenance disclaimer"
-README="$HERE/../README.md"
-# the honest statement must be present, in the artifact AND in the runbook...
-grep -q 'releases its \|lock is released at commit\|ends at COMMIT\|ends at commit' "$SQLD/clone_source_seal.sql" \
-  && pass "the seal artifact states plainly that its lock ends at COMMIT" || fail "the seal does not say its lock ends at commit"
-grep -q 'ends at `COMMIT`' "$README" && pass "the runbook states plainly that the lock ends at COMMIT" || fail "the runbook does not say the lock ends at commit"
-# ...and no AFFIRMATIVE claim to the contrary may survive anywhere
-aff="$(grep -rihE '(commit lock|the lock) [a-z ]*protect' "$SQLD" "$RR" "$README" 2>/dev/null | grep -vciE 'never claims|does not protect|cannot protect|protects nothing' || true)"
-[[ "$aff" -eq 0 ]] && pass "no surviving AFFIRMATIVE claim that the lock protects the window after commit" \
-  || fail "${aff} affirmative lock-protection claim(s) survive"
 
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

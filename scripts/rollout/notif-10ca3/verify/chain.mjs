@@ -78,7 +78,11 @@ export function boot(port) {
     const { mkdtempSync } = await import('node:fs');
     const { tmpdir } = await import('node:os');
     const dir = mkdtempSync(join(tmpdir(), 'rollout-chain-'));
-    const epg = new EmbeddedPostgres({ databaseDir: dir, user: 'postgres', password: 'postgres', port, persistent: false });
+    // UTF8, not the initdb default: the migration chain contains a self-test
+    // whose translate() strings are multi-byte, and a SQL_ASCII cluster reports a
+    // length mismatch that has nothing to do with the migration.
+    const epg = new EmbeddedPostgres({ databaseDir: dir, user: 'postgres', password: 'postgres', port,
+      persistent: false, initdbFlags: ['--encoding=UTF8', '--locale=en_US.UTF-8'] });
     await epg.initialise();
     await epg.start();
     const url = `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`;

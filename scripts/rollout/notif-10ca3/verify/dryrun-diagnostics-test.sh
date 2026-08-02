@@ -390,12 +390,17 @@ echo "== end to end: the CLONE path leaks nothing and fails closed =="
 cat > "$BIN/psql" <<'EOF'
 #!/usr/bin/env bash
 if printf '%s ' "$@" | grep -q -- '-Atqc'; then echo ""; exit 0; fi   # ledger: none
+f=""; prev=""; for a in "$@"; do [[ "$prev" == "-f" ]] && f="$a"; prev="$a"; done
+if [[ "$f" == *baseline_fingerprint.sql ]]; then
+  printf 'SHAPE shape0\nROWS email_address_state 1000\nSYNTHETIC ok\n'; exit 0; fi
 exit 0
 EOF
 chmod +x "$BIN/psql"
 # clone commands are gated on assert_clone_isolated; seed the approved inert
 # snapshot so this test reaches the CLI fallback it is actually about.
-CS_EVID="$ROOT/cs-evid"; mkdir -p "$CS_EVID"; printf '%s\n' "a1b2c3d4e5f60718293a4b5c6d7e8f90" > "$CS_EVID/clone-source-nonce.txt"
+# the clone gate is now inertness + pristine baseline (ADR-001), not a marker
+CS_EVID="$ROOT/cs-evid"; mkdir -p "$CS_EVID"
+printf 'SHAPE shape0\nROWS email_address_state 1000\nSYNTHETIC ok\n' > "$CS_EVID/rehearsal-baseline-fingerprint.txt"
 E2EC="$( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$CS_EVID" \
          EXPECTED_REF=ficwbdrzefmblkbkomzw CLONE_REF=zzzzzzzzzzzzzzzzzzzz \
          CAP_STMT=30000 STUB_RC=4 STUB_OUT='' \

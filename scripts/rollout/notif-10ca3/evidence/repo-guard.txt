@@ -1,0 +1,75 @@
+$ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
+
+== no executable path may fence an extension table ==
+  PASS  no executable file creates a trigger on net.http_request_queue (Supabase advises against it)
+  PASS  no executable file creates a trigger on cron.job (DROP TRIGGER would need ownership)
+== no executable path may bypass extension-object ownership ==
+  PASS  no executable file contains an OWNER TO reassignment
+  PASS  no executable file contains granting membership in a privileged role
+  PASS  no executable file contains dropping pg_cron or pg_net
+  PASS  no executable file contains creating or recreating pg_cron or pg_net
+  PASS  no executable file contains granting TRIGGER on an extension table
+  PASS  no executable file contains a REASSIGN OWNED
+== the two by-design exemptions are exactly the two expected files ==
+  PASS  exactly two files are exempt from the pattern scan
+  PASS  exempt: this suite, which must name the patterns to search for them
+  PASS  exempt: the sanitizer, which must name them to NEUTRALISE them
+  PASS  the sanitizer only matches CREATE EXTENSION; it never emits one
+  PASS  …and replaces it with a commented, self-describing marker
+== the withdrawn artifacts are retained but unreachable ==
+  PASS  retained for review: sql/withdrawn/clone_source_seal.sql
+  PASS  …and absent from the executable artifact set
+  PASS  retained for review: sql/withdrawn/clone_source_arm.sql
+  PASS  …and absent from the executable artifact set
+  PASS  retained for review: sql/withdrawn/clone_isolation.sql
+  PASS  …and absent from the executable artifact set
+  PASS  retained for review: sql/withdrawn/clone_unfence.sql
+  PASS  …and absent from the executable artifact set
+  PASS  no executable file loads anything from sql/withdrawn/
+  PASS  the withdrawn directory explains itself and links the ADR
+== MUTATION: restore the exact withdrawn artifact into an executable path ==
+  PASS  restoring sql/withdrawn/clone_source_seal.sql verbatim into sql/ is CAUGHT
+  PASS  restoring sql/withdrawn/clone_source_arm.sql verbatim into sql/ is CAUGHT
+  PASS  restoring sql/withdrawn/clone_isolation.sql verbatim into sql/ is CAUGHT
+  PASS  restoring sql/withdrawn/clone_unfence.sql verbatim into sql/ is CAUGHT
+  PASS  the withdrawn artifact really does split CREATE TRIGGER and its ON clause across lines
+== the sanitizer is fail-closed against a MOVING main ==
+  PASS  the migration chain is pinned by reviewed digest
+  PASS  …with a well-formed sha256 and file count
+  PASS  extensions are an ALLOW-list (an unreviewed one is refused, not ignored)
+  PASS  patterns are matched on comment-stripped text, so formatting cannot hide a construct
+  PASS  the outbound sweep covers supabase_functions.http_request
+  PASS  the outbound sweep covers extensions.http_
+  PASS  the outbound sweep covers dblink
+  PASS  the outbound sweep covers CREATEs+(FOREIGNs+TABLE|SERVER
+  PASS  the outbound sweep covers schedule_in_database
+  PASS  the outbound sweep covers COPY
+  PASS  the outbound sweep covers pg_read_
+  PASS  a chain with ONE new migration is REFUSED until it is re-reviewed and re-pinned
+  PASS  …and says exactly that, with both digests
+  PASS  …printing both digests so the reviewer can diff them
+  PASS  an UNREVIEWED outbound extension is named and refused
+  PASS  a top-level supabase_functions.http_request call is refused
+  PASS  …and a comment between CREATE and EXTENSION does not hide it
+== an UNSAFE chain cannot be pinned (pin ordering) ==
+  PASS  --write-pin REFUSES a chain the sweep found unsafe
+  PASS  …and does not print PINNED
+  PASS  …and the pin file is untouched, byte for byte
+  PASS  …naming exactly what made it unsafe
+  PASS  a SAFE but changed chain still refuses to BUILD until re-pinned
+  PASS  MUTANT (safety check removed from --write-pin) PINS an unsafe chain — checking before writing is load-bearing
+  PASS  …and the real pin is restored byte for byte after the mutation
+== the synthetic history follows the BACKFILL predicate, not every event ==
+  PASS  the generator's state-producing set is exactly the backfill's
+  PASS  …and the sizing query measures the same set
+  PASS  …and BOTH match the predicate in the pinned migration itself
+== the ADR exists and is referenced from the refusal path ==
+  PASS  ADR-001 is present
+  PASS  ADR cites the Supabase guidance on net.http_request_queue triggers
+  PASS  ADR states the CREATE/DROP privilege asymmetry
+  PASS  the refusal points the operator at the ADR
+  PASS  ADR carries the drafted Supabase Support question
+== the README no longer instructs anyone to run the withdrawn procedure ==
+  PASS  README shows no runnable clone-source-quiesce step
+  PASS  README links the ADR
+================  62 passed, 0 failed  ================
