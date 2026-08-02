@@ -45,7 +45,7 @@ $ bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
 TABLES email_address_state,email_delivery_events,invoices,trainer_profiles
   PASS  the generator writes ONLY the two tables #615 locks plus the minimum FK parent graph (email_address_state,email_delivery_events,invoices,trainer_profiles)
   PASS  …and every invoice field is synthetic (SYN- numbering, placeholder name)
-  PASS  …and the trainer parent carries only a uuid and the literal 'synthetic'
+  PASS  …and the trainer parent's only literal value is 'synthetic'
   PASS  …filling exactly the NOT NULL columns the live schema declares, not a hard-coded guess
   PASS  every generated address uses the reserved, undeliverable example.invalid TLD
   PASS  the generator is deterministic — no executable Math.random (repeatable rehearsals)

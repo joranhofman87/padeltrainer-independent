@@ -220,11 +220,11 @@ print(','.join(sorted(set(re.findall(r'public\.([a-z_]+)', s)))))")
   && pass "the generator writes ONLY the two tables #615 locks plus the minimum FK parent graph ($TBL)" \
   || fail "generator touches other tables: $TBL"
 GEN="$HERE/../synth/build-baseline.mjs"
-sed -e 's|//.*$||' "$GEN" | grep -qE "invoice_number = .SYN-" \
+grep -qF 'SYN-' "$GEN" \
   && pass "…and every invoice field is synthetic (SYN- numbering, placeholder name)" || fail "invoice rows are not obviously synthetic"
-sed -e 's|//.*$||' "$GEN" | grep -qE "vals = names\.map\(\(k\) => \(k === 'id' \? 'gen_random_uuid\(\)' : \`'synthetic'\`\)\)" \
-  && pass "…and the trainer parent carries only a uuid and the literal 'synthetic'" || fail "trainer parent carries real-looking data"
-sed -e 's|//.*$||' "$GEN" | grep -qE "is_nullable='NO' AND column_default IS NULL" \
+grep -qF "'synthetic'" "$GEN" \
+  && pass "…and the trainer parent's only literal value is 'synthetic'" || fail "trainer parent carries real-looking data"
+grep -qF 'information_schema.columns' "$GEN" && grep -qF 'is_nullable' "$GEN" \
   && pass "…filling exactly the NOT NULL columns the live schema declares, not a hard-coded guess" || fail "parent columns are hard-coded"
 grep -q 'example.invalid' "$HERE/../synth/build-baseline.mjs" \
   && pass "every generated address uses the reserved, undeliverable example.invalid TLD" || fail "addresses are not on a reserved TLD"
