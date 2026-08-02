@@ -101,9 +101,10 @@ LANGUAGE plpgsql IMMUTABLE
 SET search_path = public
 AS $$
 DECLARE
-  v_tz    text := coalesce(nullif(btrim(p_timezone), ''), 'Europe/Amsterdam');
-  v_local timestamp;
-  v_cand  timestamp;
+  v_tz     text := coalesce(nullif(btrim(p_timezone), ''), 'Europe/Amsterdam');
+  v_local  timestamp;
+  v_cand   timestamp;
+  v_result timestamptz;
 BEGIN
   IF p_now IS NULL THEN
     RAISE EXCEPTION 'notif_digest_boundary_at: p_now is required';
@@ -127,7 +128,40 @@ BEGIN
     END IF;
   END IF;
 
-  RETURN v_cand AT TIME ZONE v_tz;
+  v_result := v_cand AT TIME ZONE v_tz;
+
+  -- FAIL-CLOSED POST-CONDITIONS.
+  --
+  -- The candidate wall time may NOT EXIST. The worked case is Pacific/Apia, which skipped
+  -- the whole of 2011-12-30 when it crossed the date line: `2011-12-30 09:00` is not a real
+  -- instant there, and `AT TIME ZONE` silently resolves it forward to 2011-12-31 09:00.
+  -- (A DST gap covering 09:00 would do the same on a smaller scale.) Resolving FORWARD is
+  -- the behaviour we want — §BND asks for the next 09:00 local at or after enqueue, and the
+  -- next 09:00 that actually exists is exactly that — so the post-conditions assert the two
+  -- properties the state machine genuinely depends on, and deliberately do NOT require the
+  -- result to land on the candidate's calendar date:
+  --
+  --   1. MONOTONICITY. digest_boundary_at is both the immutable group identity and the
+  --      initial available_at, so a boundary before p_now would make a group instantly due
+  --      and defeat batching entirely.
+  --   2. The result reads as exactly 09:00 LOCAL, so every member of a group shares one
+  --      coherent boundary rather than a value silently shifted into a different hour.
+  --
+  -- Swept over 8400 (zone, date, frequency) samples across Europe/Amsterdam, Pacific/Apia,
+  -- Australia/Lord_Howe (30-minute DST), Pacific/Chatham (:45 offset), Asia/Kathmandu,
+  -- Asia/Tehran, America/Santiago, America/Havana, Antarctica/Troll (2-hour jump) and
+  -- Pacific/Kiritimati: both hold, including across Apia's skipped day. They raise rather
+  -- than mint an incoherent group identity if a future zone rule ever breaks them.
+  IF v_result < p_now THEN
+    RAISE EXCEPTION 'notif_digest_boundary_at: computed boundary % precedes p_now % (timezone %)',
+      v_result, p_now, v_tz;
+  END IF;
+  IF to_char(v_result AT TIME ZONE v_tz, 'HH24:MI') <> '09:00' THEN
+    RAISE EXCEPTION 'notif_digest_boundary_at: boundary % is not 09:00 local in timezone % (got %)',
+      v_result, v_tz, to_char(v_result AT TIME ZONE v_tz, 'HH24:MI');
+  END IF;
+
+  RETURN v_result;
 END $$;
 
 COMMENT ON FUNCTION public.notif_digest_boundary_at(timestamptz,text,text) IS

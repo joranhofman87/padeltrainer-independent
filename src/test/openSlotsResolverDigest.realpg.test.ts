@@ -37,6 +37,10 @@ const PROFILE = '33333333-3333-3333-3333-333333333333';
 const TRAINER = '44444444-4444-4444-4444-444444444444';
 const ACADEMY = '55555555-5555-5555-5555-555555555555';
 
+/** Captured in beforeAll, straight after C is applied, before any test mutates the catalog. */
+let engineFlagAsShipped: boolean | undefined;
+let cutoverAsShipped: string[] = [];
+
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'osresolver-rp-'));
   epg = new EmbeddedPostgres({ databaseDir: dir, user: 'postgres', password: 'postgres', port: PORT, persistent: false });
@@ -160,6 +164,18 @@ beforeAll(async () => {
       destination_redacted, consent_status, consent_scope, is_primary)
       VALUES ('${PERSON}','${USER}','email','p@example.com','p***@example.com','opted_in','global', true);
   `);
+
+  // Apply C ONCE here and capture the engine flag BEFORE any test can touch it. Every
+  // engine-on/engine-off suite below explicitly sets the flag, so without this capture the
+  // whole file would stay green even if C shipped the engine ENABLED — the single most
+  // consequential thing this release must not do.
+  await applyC();
+  engineFlagAsShipped = (await c.query(
+    `SELECT digest_engine_enabled FROM public.notification_event_types WHERE key='open_slots_player'`
+  )).rows[0].digest_engine_enabled;
+  cutoverAsShipped = (await c.query(
+    `SELECT key FROM public.notification_event_types WHERE digest_cutover ORDER BY key`
+  )).rows.map((r) => r.key);
 }, 300_000);
 
 afterAll(async () => { if (c) await c.end(); if (epg) await epg.stop(); });
@@ -184,6 +200,19 @@ const ITEM = {
   subtype: 'new_availability',
   data: { trainer_name: 'Coach Ana', date_from: '2026-08-10', date_to: '2026-08-16', slot_count: 3 },
 };
+
+// ===========================================================================
+describe('C — ships INERT (asserted as applied, not as later re-set)', () => {
+  it('applying C leaves digest_engine_enabled FALSE for open_slots_player', () => {
+    // Read from the capture taken immediately after the migrations ran. Asserting the live
+    // column here instead would prove nothing: later suites set it deliberately.
+    expect(engineFlagAsShipped).toBe(false);
+  });
+
+  it('applying C makes open_slots_player the ONLY cutover event', () => {
+    expect(cutoverAsShipped).toEqual(['open_slots_player']);
+  });
+});
 
 // ===========================================================================
 describe('C — the mandatory v1 → v2 preference backfill', () => {
@@ -433,6 +462,43 @@ describe('C — §BND boundaries are DST-correct', () => {
 
   it('rejects a frequency that is not daily/weekly', async () => {
     await expect(boundary('2026-08-10 06:00:00+02', 'instant')).rejects.toThrow(/daily or weekly/);
+  });
+
+  // PROPERTY TEST. The two invariants the state machine actually depends on, swept across
+  // zones chosen to be hostile: Pacific/Apia skipped an entire calendar day (2011-12-30),
+  // Lord_Howe runs 30-minute DST, Chatham sits at :45, Troll jumps two hours at once, and
+  // Kiritimati crossed the date line. If a zone rule ever put a DST gap over 09:00, the
+  // function's fail-closed post-condition raises rather than minting a bad group identity —
+  // so this sweep would fail loudly instead of silently drifting the boundary.
+  it('boundary is always >= now AND always exactly 09:00 local, across hostile timezones', async () => {
+    const zones = ['Europe/Amsterdam', 'Pacific/Apia', 'Australia/Lord_Howe', 'Asia/Kathmandu',
+      'America/Santiago', 'Pacific/Chatham', 'Asia/Tehran', 'America/Havana',
+      'Antarctica/Troll', 'Pacific/Kiritimati'];
+    const { rows } = await c.query(`
+      SELECT count(*)::int                                        AS checked,
+             count(*) FILTER (WHERE b <  n)::int                  AS not_monotone,
+             count(*) FILTER (WHERE to_char(b AT TIME ZONE z,'HH24:MI') <> '09:00')::int AS not_nine
+        FROM (
+          SELECT public.notif_digest_boundary_at(n, f, z) AS b, n, z
+            FROM unnest($1::text[]) z,
+                 unnest(ARRAY['daily','weekly']) f,
+                 generate_series(0, 419) d,
+                 LATERAL (SELECT '2011-01-01T00:00:00Z'::timestamptz + (d * 3 || ' days')::interval AS n) s
+        ) t`, [zones]);
+    expect(rows[0].checked).toBe(8400);
+    expect(rows[0].not_monotone).toBe(0);
+    expect(rows[0].not_nine).toBe(0);
+  }, 120_000);
+
+  it('a SKIPPED CALENDAR DAY resolves forward to the next real 09:00, still monotone', async () => {
+    // Pacific/Apia skipped all of 2011-12-30 crossing the date line, so `2011-12-30 09:00`
+    // is not a real instant. This is the case a naive round-trip check would either miss
+    // (the local TIME still reads 09:00 — the trap) or wrongly reject.
+    // 2011-12-29T20:00Z is 10:00 local in Apia (offset was still -10), i.e. past that day's
+    // 09:00 — so the daily candidate is 2011-12-30 09:00, the wall time that never happened.
+    const r = await boundary('2011-12-29 20:00:00+00', 'daily', 'Pacific/Apia');
+    expect(r.local).toBe('2011-12-31 Sat 09:00');   // the 30th does not exist; forward to the 31st
+    expect(new Date(r.abs).getTime()).toBeGreaterThanOrEqual(new Date('2011-12-29T20:00:00Z').getTime());
   });
 });
 
