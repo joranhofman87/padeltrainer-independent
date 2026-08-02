@@ -26,20 +26,25 @@ executable_files(){
   find "$B" -type f \( -name '*.sh' -o -name '*.sql' -o -name '*.mjs' -o -name '*.js' \) \
     -not -path '*/sql/withdrawn/*' -not -path '*/evidence/*' -not -name 'repo-guard-test.sh'
 }
-# strip SQL/# comments so prose describing the ban is not mistaken for the ban
-live_lines(){ sed -e 's/--.*$//' -e 's/^[[:space:]]*#.*$//' "$1"; }
+# Strip SQL/# comments so prose describing the ban is not mistaken for the ban,
+# then COLLAPSE THE FILE TO ONE LINE. A line-oriented grep cannot see
+#     CREATE TRIGGER x
+#       BEFORE INSERT ON net.http_request_queue
+# which is exactly how the withdrawn artifact formats it — so pasting it back
+# would have passed. Normalising whitespace first removes that escape hatch.
+live_lines(){ sed -e 's/--.*$//' -e 's/^[[:space:]]*#.*$//' "$1" | tr '\n' ' ' | tr -s '[:space:]' ' '; }
 
 echo "== no executable path may fence an extension table =="
 hits=0
 while IFS= read -r f; do
-  live_lines "$f" | grep -qiE 'CREATE[[:space:]]+(OR[[:space:]]+REPLACE[[:space:]]+)?(CONSTRAINT[[:space:]]+)?TRIGGER[^;]*\bON[[:space:]]+net\.http_request_queue' \
+  live_lines "$f" | grep -qiE 'CREATE[[:space:]]+(OR[[:space:]]+REPLACE[[:space:]]+)?(CONSTRAINT[[:space:]]+)?TRIGGER[^;]*[[:space:]]ON[[:space:]]+net\.http_request_queue' \
     && { fail "creates a trigger on net.http_request_queue: ${f#$B/}"; hits=$((hits+1)); }
 done < <(executable_files)
 [[ "$hits" -eq 0 ]] && pass "no executable file creates a trigger on net.http_request_queue (Supabase advises against it)"
 
 hits=0
 while IFS= read -r f; do
-  live_lines "$f" | grep -qiE 'CREATE[[:space:]]+(OR[[:space:]]+REPLACE[[:space:]]+)?(CONSTRAINT[[:space:]]+)?TRIGGER[^;]*\bON[[:space:]]+cron\.job\b' \
+  live_lines "$f" | grep -qiE 'CREATE[[:space:]]+(OR[[:space:]]+REPLACE[[:space:]]+)?(CONSTRAINT[[:space:]]+)?TRIGGER[^;]*[[:space:]]ON[[:space:]]+cron\.job[^A-Za-z_]' \
     && { fail "creates a trigger on cron.job: ${f#$B/}"; hits=$((hits+1)); }
 done < <(executable_files)
 [[ "$hits" -eq 0 ]] && pass "no executable file creates a trigger on cron.job (DROP TRIGGER would need ownership)"
@@ -74,6 +79,33 @@ while IFS= read -r f; do
 done < <(executable_files)
 [[ "$hits" -eq 0 ]] && pass "no executable file loads anything from sql/withdrawn/"
 [[ -f "$B/sql/withdrawn/README.md" ]] && pass "the withdrawn directory explains itself and links the ADR" || fail "no withdrawn/README.md"
+
+# The nested run below re-invokes this suite; without this flag it would recurse.
+if [[ -n "${REPO_GUARD_NESTED:-}" ]]; then
+  echo "================  ${P} passed, ${F} failed  ================"
+  [[ "$F" -eq 0 ]]; exit
+fi
+
+echo "== MUTATION: restore the exact withdrawn artifact into an executable path =="
+# The strongest test of this guard is the thing it exists to stop: copy the real
+# withdrawn file back, unmodified, and require the guard to fail.
+# Restored under its CANONICAL name — the realistic regression is someone moving
+# the file back, not renaming it. Each artifact is then caught by whichever rule
+# applies to it: the seal by the multi-line CREATE TRIGGER match, the isolation
+# gate by "absent from the executable artifact set".
+for src in clone_source_seal.sql clone_source_arm.sql clone_isolation.sql clone_unfence.sql; do
+  [[ -e "$B/sql/$src" ]] && { fail "$src already exists in sql/ — cannot run the restore mutation"; continue; }
+  cp "$B/sql/withdrawn/$src" "$B/sql/$src"
+  REPO_GUARD_NESTED=1 bash "$HERE/repo-guard-test.sh" >/dev/null 2>&1; rc=$?
+  rm -f "$B/sql/$src"
+  [[ "$rc" -ne 0 ]] && pass "restoring sql/withdrawn/$src verbatim into sql/ is CAUGHT" \
+                    || fail "the guard MISSED the verbatim withdrawn artifact $src"
+done
+# and the multi-line form specifically, since that is what a line-oriented grep missed
+grep -A2 'CREATE TRIGGER rollout_clone_fence_netq' "$B/sql/withdrawn/clone_source_seal.sql" \
+  | grep -q 'ON net.http_request_queue' \
+  && pass "the withdrawn artifact really does split CREATE TRIGGER and its ON clause across lines" \
+  || fail "the multi-line premise of this test no longer holds"
 
 echo "== the ADR exists and is referenced from the refusal path =="
 ADR="$B/docs/ADR-001-clone-safety-fence-withdrawn.md"

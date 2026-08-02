@@ -19,7 +19,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { boot, SQL_DIR, installPreState, applyPr615, REPO } from './chain.mjs';
+import { boot, SQL_DIR, installPreState, applyPr615, migPR615, PR615_MIGS, REPO } from './chain.mjs';
 
 const PORT = 54373;
 let PASS = 0, FAIL = 0;
@@ -113,13 +113,16 @@ try {
   console.log('\n[4] real schema + synthetic baseline + the real #615 migrations');
   await installPreState(c);
   const scale = {
-    source: 'measured', measured_at: '2026-08-02',
+    source: 'measured', measured_at: '2026-08-02', byte_tolerance_pct: 50,
     tables: {
-      email_address_state: { rows: 4000, avg_email_len: 32,
+      email_address_state: { rows: 4000, avg_email_len: 32, avg_reason_len: 24,
+        heap_bytes: 1, index_bytes: 1, total_bytes: 900000,
         state_distribution: { ok: 3600, soft_bounced: 200, hard_bounced: 120, complained: 80 } },
-      email_delivery_events: { rows: 12000, avg_reason_len: 24,
+      email_delivery_events: { rows: 12000, avg_reason_len: 24, resend_event_id_pct: 60, with_invoice_pct: 40,
+        heap_bytes: 1, index_bytes: 1, total_bytes: 4000000,
         event_type_distribution: { sent: 7000, delivered: 3500, bounced: 900, complained: 300,
-                                   delivery_delayed: 150, failed: 100, send_failed: 50 } },
+                                   delivery_delayed: 150, failed: 100, send_failed: 50 },
+        events_per_address: { p50: 2, p90: 6, max: 20 } },
     },
     bloat: { dead_tuple_ratio: 0.1 },
   };
@@ -168,25 +171,60 @@ try {
   rec('…and no timing/lock evidence carries an address or reason string',
       !/[a-z0-9]@[a-z]/i.test([...before, ...after].join(' ')) || [...before, ...after].join(' ').includes('example.invalid'));
 
-  // the lock the rollout actually cares about
-  const held = await c.query(`
-    SELECT mode FROM pg_locks l JOIN pg_class r ON r.oid = l.relation
-    WHERE r.relname = 'email_address_state' AND l.pid = pg_backend_pid()`);
-  rec('the migration session holds/held a lock on email_address_state', held.rowCount >= 0, `${held.rowCount} lock row(s)`);
-  const b = conn(); await b.connect();
+  // ---- the lock proof that matters: run the REAL migration while another
+  //      session holds a conflicting lock, and require it to abort cleanly ----
+  console.log('\n[6] the real migration under contention: abort, and ZERO delta');
+  const holder = conn(); await holder.connect();
+  const runner = conn(); await runner.connect();
   try {
-    await c.query('BEGIN'); await c.query(`LOCK TABLE public.email_address_state IN ACCESS EXCLUSIVE MODE`);
-    await b.query(`SET statement_timeout='1200ms'`);
-    let blocked = null;
-    try { await b.query(`SELECT count(*) FROM public.email_address_state`); }
-    catch (x) { blocked = x; await b.query('ROLLBACK').catch(() => {}); }
-    rec('ACCESS EXCLUSIVE on the rewritten table blocks readers (the window the rollout budgets for)',
-        blocked !== null && blocked.code === '57014', blocked ? blocked.code : 'NOT BLOCKED');
-    await c.query('COMMIT');
-    await b.query(`RESET statement_timeout`);
-    rec('…and readers proceed once it is released',
-        Number((await b.query(`SELECT count(*)::int AS v FROM public.email_address_state`)).rows[0].v) === 4000);
-  } finally { await b.end().catch(() => {}); }
+    // rebuild a pre-#615 target so the migration has real work to do
+    // installPreState also builds auth.*, so that schema must go too or it
+    // collides on re-install
+    await c.query(`DROP SCHEMA IF EXISTS public CASCADE; DROP SCHEMA IF EXISTS auth CASCADE;
+                   CREATE SCHEMA public`);
+    await c.query(`DELETE FROM supabase_migrations.schema_migrations`).catch(() => {});
+    await installPreState(c);
+    await c.query(`INSERT INTO public.email_address_state (email, state)
+                   SELECT 's'||g||'@rehearsal.example.invalid', 'ok' FROM generate_series(1, 2000) g`);
+    const shapeBefore = (await allRows(c, fp1)).find(x => /^SHAPE /.test(x));
+    const fnBefore = await scalar(c, `SELECT count(*)::int AS v FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'`);
+    const colBefore = await scalar(c, `SELECT count(*)::int AS v FROM information_schema.columns
+                                       WHERE table_name='email_address_state' AND column_name='is_suppressed'`);
+
+    // a reader holds the table; the migration cannot get ACCESS EXCLUSIVE
+    await holder.query('BEGIN');
+    await holder.query(`SELECT count(*) FROM public.email_address_state`);
+    await runner.query(`SET lock_timeout = '800ms'`);
+    let err = null;
+    try {
+      await runner.query('BEGIN');
+      await runner.query(migPR615(PR615_MIGS[0]));
+      await runner.query('COMMIT');
+    } catch (x) { err = x; await runner.query('ROLLBACK').catch(() => {}); }
+    rec('the REAL migration ABORTS on lock_timeout while a reader holds the table',
+        err !== null && err.code === '55P03', err ? err.code : 'IT COMMITTED');
+    await holder.query('COMMIT');
+
+    const shapeAfter = (await allRows(c, fp1)).find(x => /^SHAPE /.test(x));
+    const fnAfter = await scalar(c, `SELECT count(*)::int AS v FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public'`);
+    const colAfter = await scalar(c, `SELECT count(*)::int AS v FROM information_schema.columns
+                                      WHERE table_name='email_address_state' AND column_name='is_suppressed'`);
+    rec('…leaving ZERO schema delta (shape fingerprint unchanged)', shapeBefore === shapeAfter,
+        `${shapeBefore?.slice(0, 12)} vs ${shapeAfter?.slice(0, 12)}`);
+    rec('…zero function delta', fnBefore === fnAfter, `${fnBefore} -> ${fnAfter}`);
+    rec('…and the generated column was NOT added', colBefore === 0 && colAfter === 0);
+    const ledger = await scalar(c, `SELECT count(*)::int AS v FROM supabase_migrations.schema_migrations`).catch(() => 0);
+    rec('…and zero ledger delta (nothing was recorded as applied)', Number(ledger) === 0, `ledger=${ledger}`);
+
+    // uncontended, the same migration succeeds — so the abort was the lock, not the SQL
+    const t1 = process.hrtime.bigint();
+    await c.query(migPR615(PR615_MIGS[0]));
+    const ms1 = Number(process.hrtime.bigint() - t1) / 1e6;
+    rec('uncontended, the same migration APPLIES — the abort was contention, not broken SQL',
+        await scalar(c, `SELECT count(*)::int AS v FROM information_schema.columns
+                         WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1,
+        `${ms1.toFixed(0)} ms over 2k rows`);
+  } finally { await holder.end().catch(() => {}); await runner.end().catch(() => {}); }
 } finally {
   await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }

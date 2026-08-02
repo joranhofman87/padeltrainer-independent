@@ -41,7 +41,14 @@ const AS = scale.tables.email_address_state;
 const DE = scale.tables.email_delivery_events;
 for (const [n, t] of [['email_address_state', AS], ['email_delivery_events', DE]]) {
   if (!Number.isInteger(t.rows) || t.rows <= 0) { console.error(`refusing: ${n}.rows must be a positive integer`); process.exit(4); }
+  if (!Number.isInteger(t.total_bytes) || t.total_bytes <= 0) {
+    console.error(`refusing: ${n}.total_bytes must be measured — row counts alone do not establish
+scale, because the rewrite walks PAGES. See ADR-001 section 7.`);
+    process.exit(4);
+  }
 }
+const TOL = Number(scale.byte_tolerance_pct ?? 0);
+if (!(TOL > 0 && TOL <= 50)) { console.error('refusing: byte_tolerance_pct must be in (0, 50]'); process.exit(4); }
 
 // deterministic, seedless-but-reproducible generator (no Math.random: a rehearsal
 // must be repeatable, and the harness forbids nondeterminism in fixtures)
@@ -56,10 +63,16 @@ const pick = (dist) => {
 const pad = (s, n) => (s.length >= n ? s : s + 'x'.repeat(n - s.length));
 // RFC 6761 reserved TLD — undeliverable by definition, and asserted in SQL too.
 // The index leads the local part so the address is UNIQUE by construction (the
-// table is keyed on it); padding only widens it to the measured average, never
-// truncates, because a truncated local part would collide.
+// table is keyed on it); padding only widens it to the measured average.
 const DOMAIN = '@rehearsal.example.invalid';
 const addr = (i, width) => pad(`s${i}`, Math.max(2, (width || 32) - DOMAIN.length)) + DOMAIN;
+
+// The backfill walks STATE-PRODUCING events per address, so the shape of that
+// history — not just the total row count — drives its cost. Weight each address
+// by a p50/p90/max histogram rather than spreading events uniformly.
+const hist = DE.events_per_address || {};
+const p50 = Math.max(1, hist.p50 || 1), p90 = Math.max(p50, hist.p90 || p50), pmax = Math.max(p90, hist.max || p90);
+const eventsFor = (k) => { const r = rnd(); return r < 0.5 ? p50 : r < 0.9 ? p90 : pmax; };
 
 const { Client } = pg;
 const c = new Client({ connectionString: url });
@@ -69,31 +82,52 @@ try {
   await c.query('BEGIN');
   await c.query('TRUNCATE public.email_delivery_events, public.email_address_state');
 
-  // --- email_address_state -------------------------------------------------
+  // --- email_address_state: every width-driving column of the PRE-#615 shape,
+  //     not a subset. provider_suppressed_active does not exist yet — the
+  //     migration adds it, which is the rewrite being measured.
   const asRows = [];
   for (let i = 0; i < AS.rows; i++) {
-    asRows.push([addr(i, AS.avg_email_len || 32), pick(AS.state_distribution)]);
+    const st = pick(AS.state_distribution);
+    asRows.push([
+      addr(i, AS.avg_email_len || 32),
+      st,
+      st === 'ok' ? 'delivered' : st === 'complained' ? 'complained' : 'bounced',
+      pad('synthetic-reason', Math.max(0, AS.avg_reason_len || 0)) || null,
+    ]);
   }
   for (let i = 0; i < asRows.length; i += 5000) {
     const chunk = asRows.slice(i, i + 5000);
-    const vals = chunk.map((_, k) => `($${k * 2 + 1}, $${k * 2 + 2})`).join(',');
-    await c.query(`INSERT INTO public.email_address_state (email, state) VALUES ${vals}`, chunk.flat());
+    const vals = chunk.map((_, k) => `($${k * 4 + 1}, $${k * 4 + 2}, $${k * 4 + 3}, $${k * 4 + 4})`).join(',');
+    await c.query(`INSERT INTO public.email_address_state
+      (email, state, last_event_type, reason) VALUES ${vals}`, chunk.flat());
   }
 
-  // --- email_delivery_events ----------------------------------------------
+  // --- email_delivery_events: history weighted per address -----------------
   const reason = pad('synthetic-reason', Math.max(4, DE.avg_reason_len || 24));
-  for (let i = 0; i < DE.rows; i += 5000) {
-    const n = Math.min(5000, DE.rows - i);
+  let written = 0, ai = 0;
+  while (written < DE.rows) {
     const rows = [];
-    for (let k = 0; k < n; k++) {
-      const et = pick(DE.event_type_distribution);
-      rows.push([addr((i + k) % Math.max(1, AS.rows), AS.avg_email_len || 32), et,
-                 et === 'bounced' ? (rnd() < 0.5 ? 'hard' : 'soft') : null, reason]);
+    while (rows.length < 5000 && written < DE.rows) {
+      const a = addr(ai % Math.max(1, AS.rows), AS.avg_email_len || 32);
+      const n = Math.min(eventsFor(ai), DE.rows - written);
+      for (let k = 0; k < n; k++) {
+        const et = pick(DE.event_type_distribution);
+        rows.push([
+          a, et,
+          et === 'bounced' ? (rnd() < 0.5 ? 'hard' : 'soft') : null,
+          reason,
+          rnd() * 100 < (DE.resend_event_id_pct || 0) ? `evt_${written + k}` : null,
+          `msg_${written + k}`,
+        ]);
+      }
+      written += n; ai++;
     }
-    const vals = rows.map((_, k) => `($${k * 4 + 1}, $${k * 4 + 2}, $${k * 4 + 3}, $${k * 4 + 4})`).join(',');
-    await c.query(
-      `INSERT INTO public.email_delivery_events (recipient_email, event_type, bounce_type, reason) VALUES ${vals}`,
-      rows.flat());
+    if (!rows.length) break;
+    const vals = rows.map((_, k) =>
+      `($${k * 6 + 1}, $${k * 6 + 2}, $${k * 6 + 3}, $${k * 6 + 4}, $${k * 6 + 5}, $${k * 6 + 6})`).join(',');
+    await c.query(`INSERT INTO public.email_delivery_events
+      (recipient_email, event_type, bounce_type, reason, resend_event_id, resend_email_id)
+      VALUES ${vals}`, rows.flat());
   }
   await c.query('COMMIT');
 
@@ -117,6 +151,25 @@ try {
       (SELECT count(*) FROM public.email_address_state   WHERE email           NOT LIKE '%@%.example.invalid')
     + (SELECT count(*) FROM public.email_delivery_events WHERE recipient_email NOT LIKE '%@%.example.invalid') AS v`)).rows[0].v;
   if (Number(bad) !== 0) { console.error(`FAIL: ${bad} row(s) carry a non-synthetic address`); process.exit(5); }
+
+  // BYTE EQUIVALENCE. Row counts do not establish scale: an ACCESS EXCLUSIVE
+  // rewrite walks pages, so the generated relation must land within the measured
+  // envelope or the derived CAP_STMT is not a bound on anything.
+  let drift = false;
+  for (const [t, spec] of [['email_address_state', AS], ['email_delivery_events', DE]]) {
+    const got = Number((await c.query(`SELECT pg_total_relation_size('public.${t}')::bigint AS v`)).rows[0].v);
+    const want = Number(spec.total_bytes);
+    const pct = want ? Math.abs(got - want) / want * 100 : 100;
+    const ok = pct <= TOL;
+    console.log(`BYTES ${t} generated=${got} measured=${want} drift=${pct.toFixed(1)}% tolerance=${TOL}% ${ok ? 'ok' : 'OUT_OF_TOLERANCE'}`);
+    if (!ok) drift = true;
+  }
+  if (drift) {
+    console.error(`FAIL: the generated baseline is outside the measured byte envelope, so a timing
+measured on it would not bound production. Adjust the widths/history in the scale
+file (or widen byte_tolerance_pct deliberately, and say so in the evidence).`);
+    process.exit(6);
+  }
   console.log(`SYNTH email_address_state=${n1} email_delivery_events=${n2} elapsed_ms=${Date.now() - t0} all_addresses_synthetic=yes`);
 } catch (e) {
   await c.query('ROLLBACK').catch(() => {});

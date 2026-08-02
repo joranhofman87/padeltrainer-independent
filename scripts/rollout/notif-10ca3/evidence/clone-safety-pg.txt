@@ -16,7 +16,7 @@ $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
   PASS  …and no job was unscheduled (the schedule is part of what is verified)
   PASS  the inertness gate now PASSES
 [4] real schema + synthetic baseline + the real #615 migrations
-  PASS  the synthetic generator loads a production-scale baseline  — SYNTH email_address_state=4000 email_delivery_events=12000 elapsed_ms=143 all_ad
+  PASS  the synthetic generator loads a production-scale baseline  — BYTES email_address_state generated=942080 measured=900000 drift=4.7% tolerance=
   PASS  email_address_state loaded to the configured scale
   PASS  email_delivery_events loaded to the configured scale
   PASS  every address is on the reserved undeliverable TLD — no customer identifier exists in the target
@@ -24,11 +24,15 @@ $ node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
   PASS  the baseline fingerprint covers shape, size, distribution and bloat
   PASS  …and asserts every address is synthetic
 [5] the real #615 migrations: timing and ACCESS EXCLUSIVE behaviour
-  PASS  the three pinned migrations apply to the synthetic baseline  — 260 ms at 4k/12k rows
+  PASS  the three pinned migrations apply to the synthetic baseline  — 246 ms at 4k/12k rows
   PASS  the generated column exists after the rewrite
   PASS  the migration CHANGES the shape fingerprint, so a migrated target can never pass as pristine  — SHAPE 2a1ccb -> SHAPE c51528
   PASS  …and no timing/lock evidence carries an address or reason string
-  PASS  the migration session holds/held a lock on email_address_state  — 0 lock row(s)
-  PASS  ACCESS EXCLUSIVE on the rewritten table blocks readers (the window the rollout budgets for)  — 57014
-  PASS  …and readers proceed once it is released
-================  26 passed, 0 failed  ================
+[6] the real migration under contention: abort, and ZERO delta
+  PASS  the REAL migration ABORTS on lock_timeout while a reader holds the table  — 55P03
+  PASS  …leaving ZERO schema delta (shape fingerprint unchanged)  — SHAPE 2a1ccb vs SHAPE 2a1ccb
+  PASS  …zero function delta  — 52 -> 52
+  PASS  …and the generated column was NOT added
+  PASS  …and zero ledger delta (nothing was recorded as applied)  — ledger=0
+  PASS  uncontended, the same migration APPLIES — the abort was contention, not broken SQL  — 99 ms over 2k rows
+================  29 passed, 0 failed  ================

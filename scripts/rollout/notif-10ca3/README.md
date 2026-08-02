@@ -59,14 +59,19 @@ sql/ledger_verification.sql append-only ledger + email-table consistency invaria
 sql/clone_source_inventory.sql READ-ONLY outbound inventory (names/counts/md5 only)
 sql/_cron_fp.sql            THE cron configuration fingerprint, defined once
 sql/_cron_inflight.sql      THE in-flight definition (complement of terminal)
-sql/_fence.sql              prove both outbound fences are installed AND effective
-sql/_acl.sql                the marker/fence ACL matrix, both sides
-sql/cron_quiet_sample.sql   one quiescence sample for the drain loop
-sql/clone_source_seal.sql   capture + pause + FENCE + mark, in ONE transaction
-sql/clone_source_arm.sql    promote 'sealing' -> 'sealed' once drained
-sql/clone_source_resume.sql ONE atomic transition out of the window
-sql/clone_unfence.sql       clone-only: lift the write barrier on a clone
-sql/clone_isolation.sql     clone-side PROVENANCE (armed marker + live fence)
+sql/_fence.sql              fence assertions — used ONLY by the retained recovery path
+sql/_acl.sql                the marker/fence ACL matrix (recovery path only)
+sql/cron_quiet_sample.sql   one quiescence sample (recovery path only)
+sql/clone_source_resume.sql ONE atomic transition out of a window opened by the
+                            WITHDRAWN tooling (recovery only)
+sql/empty_project_check.sql prove a disposable target is EMPTY and outbound-inert
+sql/cron_noop_shim.sql      inert cron/pg_net shims, installed BEFORE the build
+sql/clone_deactivate_schedules.sql  belt-and-braces: nothing active on the target
+sql/rehearsal_inert_check.sql       the clone-side inertness gate
+sql/baseline_fingerprint.sql        shape + size + distribution + ledger identity
+sql/clone_wipe.sql          reset to bare metal (schema + shims + migration ledger)
+sql/withdrawn/*             the withdrawn fence design, retained for review only
+synth/build-baseline.mjs    synthetic scale loader (no production value is read)
 clone-safety/reviewed-cron-jobs.tsv  the reviewed job allow-list + outbound classification
 logfetch/fetch-edge-logs.sh Management API edge-log retrieval + authoritative drain proof
 logfetch/verify-step6-send.sh  step-6 send verifier (explicit --from-file only; no default)
@@ -117,7 +122,7 @@ run-rollout.sh phase616 --yes
 #    asserts EXACTLY 20261006100000/110000/120000 pending
 run-rollout.sh dryrun615
 
-# 8. rehearsals A–D on a production-scale disposable clone (see "Reproducing A–D on a PRODUCTION-SCALE clone") —
+# 8. rehearsals A–D on ONE synthetic, empty-project target (see "One target for A–D") —
 #    clone-make-prefix + clone-push + verify-clone, never against prod
 
 # 9. preflight on prod (read-only): row counts, delta absent, CAP_STMT
@@ -310,6 +315,11 @@ state, so there is no provenance question, no marker and no fence. Four
 production snapshot restores become **one empty project**, and **no customer PII
 leaves production at all**.
 
+The build is inert *while it runs*: `sql/cron_noop_shim.sql` goes in **before**
+the first migration, so the 14 migrations that call `cron.schedule` record intent
+and schedule nothing, and no outbound call can leave the box. It fails closed if
+the real `pg_cron`/`pg_net` are installed, because they cannot be shadowed.
+
 #### Is the timing rehearsal still honest?
 
 Yes, for the property that matters, with caveats stated in ADR-001 §6. Only
@@ -337,46 +347,52 @@ lengths, byte sizes and category names only — no address, no reason text, no r
 explicit prior-window evidence. Production reports `PRIORWINDOW 0`, so there is
 nothing to recover; the path is retained rather than weakened.
 
-### Four-clone execution model (A/B/C/D)
+### One target for A–D — rebuilt between rehearsals, never re-restored
 
-Rehearsals **B and C deliberately leave the clone broken**, so each rehearsal
-needs its own pristine start. Restore **four independent disposable projects
-directly from the same approved production instant** — A, B, C and D:
+Rehearsals **B and C deliberately leave the target broken**, and **A and D leave
+all three #615 migrations applied** — new columns, functions, tables, constraints
+and three ledger rows. Reloading rows cannot reverse any of that, so
+`clone-reset-baseline` performs a **real rebuild**:
+
+1. `clone_wipe.sql` — drop `public`, drop the shims, and **empty the migration
+   ledger** (leaving it would make the next `db push` apply a *suffix*, silently
+   producing a prefix-migrated target);
+2. `empty_project_check.sql` — prove the target is bare and inert again;
+3. the **same build code path** as the original baseline, so a reset cannot drift
+   from the thing it claims to restore;
+4. the fingerprint must match the recorded baseline byte for byte.
 
 ```bash
-export EXPECTED_REF=ficwbdrzefmblkbkomzw
-export CLONE_REF=<this rehearsal's clone ref>        # must differ from EXPECTED_REF
-# provenance needs no variable: evidence/clone-source-nonce.txt + the clone's own
-# marker row are the proof. Keep that file for the whole rehearsal window.
-CLONE="postgresql://postgres@db.$CLONE_REF.supabase.co:5432/postgres?sslmode=require"
+export CLONE_REF=<disposable ref>          # must differ from EXPECTED_REF
+CLONE="postgresql://postgres.$CLONE_REF@<region>.pooler.supabase.com:5432/postgres"
+
+run-rollout.sh clone-verify-empty    "$CLONE"        # once, before anything
+run-rollout.sh clone-build-baseline  --yes "$CLONE"  # once
+# — rehearsal A —
+run-rollout.sh clone-reset-baseline  --yes "$CLONE"  # rebuild
+# — rehearsal B —   … and so on for C and D
 ```
 
-- **Never clone from another clone.** Each restore comes from the same approved
-  restore point inside the sealed window, so all four start identical and A's migrations cannot leak
-  into B/C/D.
-- Each clone has **its own `CLONE_REF` and its own password**; identity is proven
-  independently per rehearsal (`CLONE_REF != EXPECTED_REF`, URL addresses
-  `CLONE_REF` exactly).
-- **Destroy each clone as soon as its evidence is captured.**
-- **Cost and sensitivity:** four projects run in parallel for the duration, each
-  billed as a full project at production scale — and **each contains a complete
-  copy of real customer data**. That is the reason for the isolation gate and for
-  destroying them promptly.
+- **One project, not four.** Restoring four production snapshots was the cost and
+  the hazard; a rebuild is neither.
+- **No production snapshot is ever restored**, so no marker, no provenance
+  instant and no fence exist to reason about.
+- The target holds **no customer data at all**, so an accidental leak has nothing
+  to leak.
+- **Destroy the project as soon as the evidence is captured.**
 
-**Sequential single-clone option** (one project, restored between rehearsals) is
-still supported and costs less: run A, restore, run B, restore, run C, restore,
-run D. It needs no extra handoffs beyond the restore itself, but every restore
-must come from a restore point inside the sealed window.
+### Applying #615 to the rehearsal target (step 8, owner-only)
 
-### Reproducing A–D on a PRODUCTION-SCALE clone (step 8, owner-only)
-
-Two things make this non-obvious, and both are enforced by the tooling:
+Three things make this non-obvious, and all are enforced by the tooling:
 
 - **The migrations are not on `main`.** Step 8 happens *before* #615 merges, so
   the three `20261006*` files exist **only** at `PR615_SHA`. A `db push` from
   `main` would apply **nothing**. `clone-push` builds a detached worktree at the
   reviewed pin and pushes from there — it never merges #615 and never uses the
   ambient linked project (it passes `--db-url`).
+- **The target is synthetic, not a copy.** It is built by `clone-build-baseline`
+  from an empty project (see above) and rebuilt by `clone-reset-baseline` between
+  rehearsals. No production snapshot is restored at any point.
 - **Clone commands write.** `academy_fixture.sql` INSERTs before it ROLLBACKs, and
   `clone-push` applies migrations. So every clone command demands `CLONE_REF`,
   proves `CLONE_REF != EXPECTED_REF`, and proves the URL addresses `CLONE_REF`
@@ -740,7 +756,7 @@ Then:
 1. Provide `EXPECTED_REF`, `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`,
    `PROD_CONN_URL`, and a **freshly minted** `MANAGER_TOKEN` (short-lived; mint it
    immediately before the step that needs it — never reuse an exposed one).
-2. Run rehearsals **A–D on a production-scale clone** (see "Reproducing A–D on a PRODUCTION-SCALE clone" above) and record the
+2. Run rehearsals **A–D on the synthetic rehearsal target** (see "One target for A–D" above) and record the
    clone's `A_window` / CAP expectations.
 3. `preflight "$PROD"` immediately before the window — the **production-derived**
    `CAP_STMT` is authoritative; the clone's value is only an expectation. Stop on

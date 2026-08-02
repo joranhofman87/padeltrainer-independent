@@ -21,6 +21,12 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
   PASS  …and absent from the executable artifact set
   PASS  no executable file loads anything from sql/withdrawn/
   PASS  the withdrawn directory explains itself and links the ADR
+== MUTATION: restore the exact withdrawn artifact into an executable path ==
+  PASS  restoring sql/withdrawn/clone_source_seal.sql verbatim into sql/ is CAUGHT
+  PASS  restoring sql/withdrawn/clone_source_arm.sql verbatim into sql/ is CAUGHT
+  PASS  restoring sql/withdrawn/clone_isolation.sql verbatim into sql/ is CAUGHT
+  PASS  restoring sql/withdrawn/clone_unfence.sql verbatim into sql/ is CAUGHT
+  PASS  the withdrawn artifact really does split CREATE TRIGGER and its ON clause across lines
 == the ADR exists and is referenced from the refusal path ==
   PASS  ADR-001 is present
   PASS  ADR cites the Supabase guidance on net.http_request_queue triggers
@@ -30,4 +36,4 @@ $ bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh
 == the README no longer instructs anyone to run the withdrawn procedure ==
   PASS  README shows no runnable clone-source-quiesce step
   PASS  README links the ADR
-================  25 passed, 0 failed  ================
+================  30 passed, 0 failed  ================

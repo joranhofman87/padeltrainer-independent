@@ -46,6 +46,20 @@ TABLES email_address_state,email_delivery_events
   PASS  the generator writes ONLY the two tables #615 locks (email_address_state,email_delivery_events)
   PASS  every generated address uses the reserved, undeliverable example.invalid TLD
   PASS  the generator is deterministic — no executable Math.random (repeatable rehearsals)
+-- the build is inert WHILE it runs, not only afterwards --
+  PASS  the inert cron/pg_net shims are installed BEFORE the schema build (14 migrations on main call cron.schedule)
+  PASS  the shim is part of the shared build path
+  PASS  …and textually precedes the push, so the ordering cannot drift
+  PASS  a target with REAL pg_cron/pg_net is refused (the shim cannot shadow them)
+  PASS  …and no schema was pushed to it
+-- reset is a REAL rebuild, not a row reload --
+  PASS  reset succeeds
+  PASS  …by WIPING schema, shims and the migration ledger (reloading rows cannot undo a migration)
+  PASS  …and re-pushing the full migration chain
+  PASS  …with the shims installed first, again
+  PASS  …through the SAME build path, so a reset cannot drift from the build
+  PASS  the wipe empties the migration ledger (leaving it would apply a SUFFIX next time)
+  PASS  …and drops the schema, so columns/functions/constraints really are gone
 == a rehearsal cannot start from a drifted or failed-migration baseline ==
   PASS  an untouched target matches its recorded baseline
   PASS  a target whose SHAPE changed (a part-applied migration) is refused
@@ -66,5 +80,6 @@ TABLES email_address_state,email_delivery_events
   PASS  MUTANT (measured-scale check removed) builds a baseline from placeholder row counts — an invented scale would be reported as a real timing
   PASS  MUTANT (synthetic assertion removed) records a baseline containing a real-looking address — the PII guard is load-bearing
   PASS  MUTANT (baseline check removed from the gate) rehearses against a drifted target — a failed migration could leave a reusable false green
-  PASS  MUTANT (deactivation removed) leaves the schema build's cron jobs ACTIVE on the target — deactivation is load-bearing
-================  59 passed, 0 failed  ================
+  PASS  MUTANT (shim AND deactivation removed) builds the schema with nothing keeping cron inert — one of the two is load-bearing
+  PASS  MUTANT (wipe removed from reset) leaves the previous rehearsal's schema, shims and ledger in place — the wipe is what makes a reset pristine
+================  72 passed, 0 failed  ================

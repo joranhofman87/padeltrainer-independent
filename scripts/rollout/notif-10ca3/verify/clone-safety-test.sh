@@ -53,6 +53,14 @@ if [[ "$f" == *rehearsal_inert_check.sql ]]; then
   done
   echo "NOTE: rehearsal target inert"; exit 0
 fi
+if [[ "$f" == *cron_noop_shim.sql ]]; then
+  [[ "$(sfile SHIM_FAIL 0)" == 0 ]] || boom "real pg_cron/pg_net present; shim refused"
+  : > "$S/SHIM"; echo 0 > "$S/I_ACTIVE"; echo "NOTE: inert shims installed"; exit 0
+fi
+if [[ "$f" == *clone_wipe.sql ]]; then
+  [[ -e "$S/SHIM" ]] || boom "refusing to wipe: shims absent"
+  rm -f "$S/SHIM" "$S/SCHEMA" "$S/LEDGER"; echo "NOTE: wiped"; exit 0
+fi
 if [[ "$f" == *clone_deactivate_schedules.sql ]]; then
   [[ "$(sfile DEACT_FAIL 0)" == 0 ]] || boom "could not deactivate schedules"
   echo 0 > "$S/I_ACTIVE"; echo "NOTE: schedules off"; exit 0
@@ -71,6 +79,9 @@ EOF
 cat > "$BIN/supabase" <<'EOF'
 #!/usr/bin/env bash
 : > "$STATEDIR/SUPABASE_WAS_CALLED"
+# a push is only meaningful once the shims exist; record the ordering
+[[ -e "$STATEDIR/SHIM" ]] && : > "$STATEDIR/PUSH_AFTER_SHIM" || : > "$STATEDIR/PUSH_BEFORE_SHIM"
+: > "$STATEDIR/SCHEMA"; : > "$STATEDIR/LEDGER"
 [[ "$(cat "$STATEDIR/PUSH_FAIL" 2>/dev/null || echo 0)" == 1 ]] && { echo "push failed" >&2; exit 1; }
 exit 0
 EOF
@@ -96,14 +107,17 @@ p,mode=sys.argv[1],sys.argv[2]
 d=json.load(open(p))
 if mode=='yes':
     d['source']='measured'; d['measured_at']='2026-08-02'
-    d['tables']['email_address_state'].update(rows=1000, avg_email_len=32)
+    d['byte_tolerance_pct']=50
+    d['tables']['email_address_state'].update(rows=1000, avg_email_len=32, avg_reason_len=24, total_bytes=500000)
     d['tables']['email_address_state']['state_distribution']={'ok':900,'soft_bounced':50,'hard_bounced':30,'complained':20}
-    d['tables']['email_delivery_events'].update(rows=5000, avg_reason_len=24)
+    d['tables']['email_delivery_events'].update(rows=5000, avg_reason_len=24, total_bytes=2000000,
+        resend_event_id_pct=60, with_invoice_pct=40)
+    d['tables']['email_delivery_events']['events_per_address']={'p50':2,'p90':6,'max':20}
     d['tables']['email_delivery_events']['event_type_distribution']={'sent':3000,'delivered':1500,'bounced':300,'complained':100,'delivery_delayed':50,'failed':30,'send_failed':20}
 else:
     d['source']='placeholder'; d['measured_at']=None
-    d['tables']['email_address_state'].update(rows=0)
-    d['tables']['email_delivery_events'].update(rows=0)
+    d['tables']['email_address_state'].update(rows=0, total_bytes=0)
+    d['tables']['email_delivery_events'].update(rows=0, total_bytes=0)
 json.dump(d,open(p,'w'),indent=2)
 PY
 }
@@ -199,6 +213,37 @@ sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs" | grep -qE 'Math\.random'
   && fail "the generator is nondeterministic" \
   || pass "the generator is deterministic — no executable Math.random (repeatable rehearsals)"
 
+echo "-- the build is inert WHILE it runs, not only afterwards --"
+seed; measured yes
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ -e "$STATEDIR/PUSH_AFTER_SHIM" && ! -e "$STATEDIR/PUSH_BEFORE_SHIM" ]] \
+  && pass "the inert cron/pg_net shims are installed BEFORE the schema build (14 migrations on main call cron.schedule)" \
+  || fail "the schema was pushed before the shims existed"
+sed -n '/^clone_build_schema_and_data()/,/^}/p' "$RR" | grep -nq 'cron_noop_shim.sql' \
+  && pass "the shim is part of the shared build path" || fail "no shim in the build path"
+awk '/^clone_build_schema_and_data\(\)/{b=1} b&&/cron_noop_shim.sql/{shim=NR} b&&/supabase db push/{push=NR} b&&/^}/{exit} END{exit !(shim && push && shim < push)}' "$RR" \
+  && pass "…and textually precedes the push, so the ordering cannot drift" || fail "shim does not precede the push"
+seed; measured yes; echo 1 > "$STATEDIR/SHIM_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+[[ $? -ne 0 ]] && pass "a target with REAL pg_cron/pg_net is refused (the shim cannot shadow them)" || fail "shim refusal ignored"
+[[ ! -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and no schema was pushed to it" || fail "pushed despite an unshimmable target"
+
+echo "-- reset is a REAL rebuild, not a row reload --"
+seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+rm -f "$STATEDIR/SUPABASE_WAS_CALLED" "$STATEDIR/PUSH_AFTER_SHIM"
+crun bash "$RR" clone-reset-baseline --yes "$CLONE_URL"; rc=$?
+[[ "$rc" -eq 0 ]] && pass "reset succeeds" || fail "reset failed (exit $rc): $(tail -3 "$ROOT/out.txt")"
+grep -q 'wiping the rehearsal target to bare metal' "$ROOT/out.txt" \
+  && pass "…by WIPING schema, shims and the migration ledger (reloading rows cannot undo a migration)" || fail "reset did not wipe"
+[[ -e "$STATEDIR/SUPABASE_WAS_CALLED" ]] && pass "…and re-pushing the full migration chain" || fail "reset did not rebuild the schema"
+[[ -e "$STATEDIR/PUSH_AFTER_SHIM" ]] && pass "…with the shims installed first, again" || fail "rebuild pushed before shimming"
+sed -n '/^cmd_clone_reset_baseline()/,/^}/p' "$RR" | grep -q 'clone_build_schema_and_data' \
+  && pass "…through the SAME build path, so a reset cannot drift from the build" || fail "reset uses a different path"
+grep -q 'DELETE FROM supabase_migrations.schema_migrations' "$SQLD/clone_wipe.sql" \
+  && pass "the wipe empties the migration ledger (leaving it would apply a SUFFIX next time)" || fail "ledger not cleared"
+grep -q 'DROP SCHEMA IF EXISTS public CASCADE' "$SQLD/clone_wipe.sql" \
+  && pass "…and drops the schema, so columns/functions/constraints really are gone" || fail "schema not dropped"
+
 echo "== a rehearsal cannot start from a drifted or failed-migration baseline =="
 seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
 crun bash "$RR" clone-baseline-verify "$CLONE_URL"
@@ -280,11 +325,31 @@ echo shape-CHANGED > "$STATEDIR/SHAPE"
 [[ $? -eq 0 ]] && pass "MUTANT (baseline check removed from the gate) rehearses against a drifted target — a failed migration could leave a reusable false green" || fail "nobaseline mutant not distinguishable"
 rm -f "$M"
 
-M="$(mut nodeact '  run_artifact "$url" clone_deactivate_schedules.sql||=||  :' cmd_clone_build_baseline)"
-seed; measured yes
+# The shim makes every scheduled job inert at creation, and the post-push
+# deactivation is belt-and-braces behind it. Either alone is masked by the other,
+# so they are mutated TOGETHER and the claim is scoped to that: SOMETHING must
+# keep the build's cron jobs from becoming active.
+M="$(mut noinert '  run_artifact "$url" cron_noop_shim.sql||=||  :' clone_build_schema_and_data)"
+python3 - "$M" <<'PYX'
+import sys,re
+p=sys.argv[1]; s=open(p).read()
+m=re.search(r"^clone_build_schema_and_data\(\) \{.*?^\}$", s, re.S|re.M)
+b=m.group(0).replace('  run_artifact "$url" clone_deactivate_schedules.sql', '  :', 1)
+open(p,"w").write(s[:m.start()]+b+s[m.end():])
+PYX
+seed; measured yes; echo 1 > "$STATEDIR/PRE_ACTIVE"
 ( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" bash "$M" clone-build-baseline --yes "$CLONE_URL" ) >/dev/null 2>&1
-[[ ! -e "$STATEDIR/I_ACTIVE" ]] \
-  && pass "MUTANT (deactivation removed) leaves the schema build's cron jobs ACTIVE on the target — deactivation is load-bearing" || fail "nodeact mutant not distinguishable"
+[[ ! -e "$STATEDIR/SHIM" && ! -e "$STATEDIR/I_ACTIVE" ]] \
+  && pass "MUTANT (shim AND deactivation removed) builds the schema with nothing keeping cron inert — one of the two is load-bearing" \
+  || fail "noinert mutant not distinguishable"
+rm -f "$M"
+
+M="$(mut norebuild '  run_artifact "$url" clone_wipe.sql||=||  :' cmd_clone_reset_baseline)"
+seed; measured yes; crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+( PATH="$BIN:$PATH" ROLLOUT_EVIDENCE_DIR="$EVID" EXPECTED_REF="$REF" CLONE_REF="$CLONE" bash "$M" clone-reset-baseline --yes "$CLONE_URL" ) >/dev/null 2>&1
+[[ -e "$STATEDIR/SHIM" ]] \
+  && pass "MUTANT (wipe removed from reset) leaves the previous rehearsal's schema, shims and ledger in place — the wipe is what makes a reset pristine" \
+  || fail "norebuild mutant not distinguishable"
 rm -f "$M"
 
 echo "================  ${P} passed, ${F} failed  ================"

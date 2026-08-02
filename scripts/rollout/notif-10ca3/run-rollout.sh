@@ -596,26 +596,6 @@ assert_inventory_is_reviewed() {   # $1 = inventory file
   ok "inventory reviewed: $(awk '$1=="CRONJOB"{n++} END{print n+0}' "$inv") cron job(s), all known; no webhooks/outbound triggers/FDWs"
 }
 
-# The fence is a TRIGGER on cron.job, so it requires ownership of that table.
-# Learn that in the READ-ONLY step, never mid-window. Also refuse to start a new
-# window while an old one is still open.
-assert_source_is_sealable() {   # $1 = inventory file
-  local inv="$1" fenceable prior
-  fenceable="$(awk '$1=="FENCEABLE"{print $2}' "$inv")"
-  prior="$(awk '$1=="PRIORWINDOW"{print $2}' "$inv")"
-  [[ -n "$fenceable" ]] || die "inventory is missing FENCEABLE — refusing to proceed on an incomplete read"
-  [[ -n "$prior"     ]] || die "inventory is missing PRIORWINDOW — refusing to proceed on an incomplete read"
-  [[ "$fenceable" == yes ]] \
-    || die "this role cannot create a trigger on cron.job, so the durable fence CANNOT be installed. Without the fence a job created after the seal would reach a clone. Connect as the owner of cron.job (or have it granted) and retry — the procedure fails closed rather than sealing an unprotected window."
-  local logrun; logrun="$(awk '$1=="LOGRUN"{print $2}' "$inv" | tr 'A-Z' 'a-z')"
-  case "$logrun" in
-    on|true|yes|1) ;;
-    *) die "cron.log_run is '${logrun}': cron.job_run_details is not populated, so an in-flight cron run cannot be observed and a zero drain count would be a FALSE GREEN. Enable cron.log_run and retry — the procedure fails closed rather than certifying quiescence it cannot see.";;
-  esac
-  [[ "$prior" -eq 0 ]] \
-    || die "a sealed window ALREADY exists in this database (rollout_clone). Resume it with 'clone-source-resume --yes <url>', or recover an abandoned one explicitly with 'clone-source-abandon --yes --nonce <its nonce> <url>'. Nothing is ever overwritten implicitly."
-  ok "source is sealable: this role owns cron.job (fence installable), cron.log_run is on, no prior window is open"
-}
 
 source_config_fp() {   # $1 = inventory file -> the cron CONFIGURATION fingerprint
   local fp; fp="$(awk '$1=="CFGFP"{print $2}' "$1")"
@@ -656,13 +636,17 @@ cmd_clone_source_inventory() {   # READ-ONLY; safe to run against production
   local inv="$EVID/clone-source-inventory.txt"
   read_source_inventory "$url" "$inv"
   assert_inventory_is_reviewed "$inv"
-  assert_source_is_sealable "$inv"
+  # NOT assert_source_is_sealable: fenceability was a requirement of the
+  # WITHDRAWN design (ADR-001). Synthetic rehearsals never fence production, so
+  # gating this read-only audit on FENCEABLE would block it permanently for a
+  # property nothing needs any more. It is still REPORTED below.
   awk '$1=="CRONJOB"{printf "  %-38s active=%-5s outbound=%s\n",$2,$3,$4}
        $1=="INFLIGHT"{printf "  cron runs in flight    : %s\n",$2}
        $1=="LOGRUN"{printf "  cron.log_run           : %s\n",$2}
        $1=="NETQUEUE"{printf "  pg_net queued requests : %s\n",$2}
        $1=="VAULTCOUNT"{printf "  vault secrets (count)  : %s\n",$2}
        $1=="CFGFP"{printf "  cron configuration fp  : %s\n",$2}
+       $1=="FENCEABLE"{printf "  fenceable (informational, ADR-001): %s\n",$2}
        $1=="OUTFN"{printf "  outbound-capable fn    : %s\n",$2}' "$inv" >&2
   ok "clone-source inventory complete (read-only, no commands/URLs/secrets displayed) -> ${inv##*/}"
 }
@@ -936,25 +920,39 @@ cmd_clone_build_baseline() {
   assert_rehearsal_target "$url"
   assert_scale_is_measured
   mkdir -p "$EVID"
-
-  # 1) schema only, from main — NOT from the #615 pin. The migrations under test
-  #    must be applied later, on their own, or the measurement is meaningless.
-  log "building schema on the rehearsal target from main"
-  NO_COLOR=1 supabase db push --db-url "$url" \
-    || die "schema build failed on the rehearsal target"
-
-  # 2) whatever schedules those migrations created must not run here
-  run_artifact "$url" clone_deactivate_schedules.sql
-
-  # 3) synthetic scale data — only the affected tables
-  log "loading synthetic scale data (no production value is read or copied)"
-  node "$HERE/synth/build-baseline.mjs" "$url" "$SCALE_FILE" \
-    || die "synthetic baseline load failed"
-
-  # 4) freeze the identity of this baseline
+  clone_build_schema_and_data "$url"
   clone_capture_baseline "$url"
   ok "PRISTINE BASELINE built. Every rehearsal must start from this fingerprint;"
   ok "use 'clone-reset-baseline --yes <url>' between rehearsals B/C/D."
+}
+
+# The build itself. Shared by build and reset so a reset cannot drift from the
+# thing it claims to restore.
+clone_build_schema_and_data() {   # $1 url
+  local url="$1"
+
+  # 1) INERT FIRST. 14 migrations on main call cron.schedule, some baking a
+  #    hard-coded endpoint into the command. Deactivating after the push would
+  #    leave a live job for the duration of the build, so the scheduling and
+  #    outbound surfaces are shimmed BEFORE the first migration runs: calls are
+  #    recorded, nothing is ever scheduled and nothing can reach the network.
+  run_artifact "$url" cron_noop_shim.sql
+
+  # 2) schema from main — NOT from the #615 pin. The migrations under test are
+  #    applied later, on their own, or the measurement means nothing.
+  log "building schema on the rehearsal target from main (scheduling shimmed inert)"
+  NO_COLOR=1 supabase db push --db-url "$url" \
+    || die "schema build failed on the rehearsal target"
+
+  # 3) belt and braces: prove nothing became active, and report what production
+  #    WOULD be running so the difference is visible rather than assumed
+  run_artifact "$url" clone_deactivate_schedules.sql
+  run_artifact "$url" rehearsal_inert_check.sql
+
+  # 4) synthetic scale data — only the affected tables
+  log "loading synthetic scale data (no production value is read or copied)"
+  node "$HERE/synth/build-baseline.mjs" "$url" "$SCALE_FILE" \
+    || die "synthetic baseline load failed"
 }
 
 clone_capture_baseline() {   # $1 url
@@ -990,16 +988,30 @@ cmd_clone_baseline_verify() {
 
 # Between rehearsals: reload the synthetic data and prove the fingerprint is
 # identical to the recorded baseline. No production snapshot is restored.
+# Between rehearsals: a REAL rebuild, not a row reload.
+#
+# Rehearsals B and C deliberately leave the target broken, and A/D leave all
+# three #615 migrations applied — new columns, functions, tables, constraints and
+# three ledger rows. Truncating two tables cannot reverse any of that, so a
+# reset that only reloaded rows would hand the next rehearsal a migrated target
+# and call it pristine. The target is therefore wiped to bare metal (schema,
+# shims and migration ledger) and rebuilt by the same code path as the original
+# build, then the fingerprint is required to match byte for byte.
+#
+# Still no production snapshot is restored, and still no customer data exists.
 cmd_clone_reset_baseline() {
   require_yes "${1:-}"
   local url="${2:-}"; require_arg "$url" "usage: CLONE_REF=<ref> clone-reset-baseline --yes <clone_conn_url>"
-  require_cmd psql; require_cmd node; assert_clone_url "$url"
+  require_cmd psql; require_cmd supabase; require_cmd node; assert_clone_url "$url"
   [[ -s "$BASELINE_FP" ]] || die "no recorded baseline — run clone-build-baseline first"
   assert_scale_is_measured
-  run_artifact "$url" clone_deactivate_schedules.sql
-  node "$HERE/synth/build-baseline.mjs" "$url" "$SCALE_FILE" || die "synthetic reload failed"
+  warn "wiping the rehearsal target to bare metal (schema + shims + migration ledger)"
+  run_artifact "$url" clone_wipe.sql
+  run_artifact "$url" empty_project_check.sql
+  ok "target is bare and inert again; rebuilding"
+  clone_build_schema_and_data "$url"
   cmd_clone_baseline_verify "$url"
-  ok "rehearsal target reset to the pristine baseline"
+  ok "rehearsal target REBUILT and byte-identical to the recorded pristine baseline"
 }
 
 # CLONE-SIDE GATE for the supported model. No rehearsal command may touch a

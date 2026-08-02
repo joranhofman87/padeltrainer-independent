@@ -161,6 +161,24 @@ job the migrations created (`cron.alter_job` only, never `cron.unschedule`) and
 `sql/rehearsal_inert_check.sql` re-proves inertness for the loaded target. That
 pause needs no fence: there is no live workload to protect against.
 
+**The build is inert while it runs.** 14 migrations on `main` call
+`cron.schedule`, several baking a hard-coded endpoint into the job command.
+Deactivating *after* `supabase db push` would leave live jobs for the duration of
+the build, so `sql/cron_noop_shim.sql` is installed **first**: it provides a
+`cron` schema whose `schedule`/`alter_job`/`unschedule` record intent and execute
+nothing, and a `net` shim that counts outbound calls instead of making them. It
+fails closed if the real `pg_cron`/`pg_net` are present, since they cannot be
+shadowed — which is why the target must be a project without them.
+
+**Reset is a rebuild, not a row reload.** After A or D the target carries all
+three #615 migrations — columns, functions, tables, constraints and three ledger
+rows; after C it carries a prefix; a failed migration can leave a mixture.
+Truncating two tables reverses none of that. `clone-reset-baseline` therefore
+runs `sql/clone_wipe.sql` (drop `public`, drop the shims, **empty the migration
+ledger** — leaving it would make the next push apply a *suffix*), re-proves the
+target is bare, and rebuilds through the **same code path** as the original
+build so a reset cannot drift from what it claims to restore.
+
 **Reusable baseline.** `sql/baseline_fingerprint.sql` records the shape (columns,
 types, nullability, index set), the size (row counts and total relation bytes),
 the distribution (state and event-type mix) and a bloat reading for the two
@@ -194,9 +212,17 @@ carries widths and distributions rather than just row counts.
 
 ### 6.2 What is reproduced
 
-Row counts, average column widths, the complete index set (created by the same
-migrations), the `state` distribution on `email_address_state` and the
-`event_type` distribution on `email_delivery_events`.
+Row counts; average widths for **every** width-driving column of the pre-#615
+shape; the complete index set (created by the same migrations); the `state` and
+`event_type` distributions; and the **per-address event history**
+(`events_per_address` p50/p90/max), because the backfill walks state-producing
+events per address rather than the table uniformly.
+
+**Row counts alone are not scale.** An `ACCESS EXCLUSIVE` rewrite walks *pages*,
+so the scale file also carries measured `heap_bytes`, `index_bytes` and
+`total_bytes`, and the generator **fails** if the relation it produced falls
+outside `byte_tolerance_pct` of the measured size. Without that check a derived
+`CAP_STMT` would not bound anything.
 
 ### 6.3 Caveats — stated, not hidden
 
