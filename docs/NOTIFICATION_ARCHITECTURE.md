@@ -220,10 +220,13 @@ Data model (5 tables) is specified in Codex's plan; the deltas we apply are in
    one row per recipient per channel" and "webhook-vs-verify race → no
    duplicates" guarantees (a duplicate delivery re-derives the same per-recipient
    keys and no-ops on the unique index), while still fanning out to N recipients.
-8. **Worker concurrency = atomic claims, NOT the session cron lock.** The v2 digest worker (10c-a3) uses the SQL
-   state machine's `claim` (`FOR UPDATE SKIP LOCKED` + ownership stamp) as its single concurrency boundary and
-   does **not** take `try_lock_cron_job` — that session-scoped advisory lock has a cross-pooled-session wedge
-   hazard (see `docs/OBSERVABILITY_AND_RECOVERY.md` → CRON-SF-WEDGE) and must not be inherited by new workers.
+8. **Worker concurrency = atomic claims; the session cron lock no longer exists.** The v2 digest worker
+   (10c-a3) uses the SQL state machine's `claim` (`FOR UPDATE SKIP LOCKED` + ownership stamp) as its single
+   concurrency boundary. The session-scoped `try_lock_cron_job` / `unlock_cron_job` pair was **retired in
+   10c-b** (`20261007100000_cron_durable_lease.sql` drops both) because of its cross-pooled-session wedge
+   hazard — see `docs/OBSERVABILITY_AND_RECOVERY.md` → CRON-SF-WEDGE (CLOSED). A new worker gets its exclusion
+   from its own atomic claim; only a job with **no** claim (today just `invoice-health-check`) may take the
+   durable `acquire_cron_lease` / `release_cron_lease` owner-token lease, which self-heals via TTL.
    Recovery is via the state machine's stale-lock reclaim + exponential backoff + max attempts.
 
 ---
@@ -347,7 +350,7 @@ Prerequisites:
      **lease → confirm** pair (lease bumps `ops_alert_attempts`; only a confirmed Slack
      send sets `ops_alerted_at`), so a Slack failure re-tries (at-least-once, bounded).
    - **Edge fn** `notification-email-worker`: `requireServiceRole` guard →
-     `try_lock_cron_job` single-flight (fail-open) → claim under a fresh `crypto.randomUUID()`
+     claim under a fresh `crypto.randomUUID()`
      token → per row: validate payload, re-check `is_email_suppressed` (**fail CLOSED** —
      on check error, retry rather than risk sending to a bad address), `sendResendEmail`
      with a stable **`Idempotency-Key`** (`notification-outbox-<id>`, so a retry after

@@ -181,14 +181,35 @@ const handler = async (req: Request): Promise<Response> => {
       const rawTemplate = Array.isArray(rawItem.template) ? rawItem.template[0] : rawItem.template;
       const queueItem = { ...rawItem, template: rawTemplate } as QueuedEmail;
       if (!queueItem.template) {
-        console.error(`Template not found for queue item ${queueItem.id}`);
-        await supabase
+        // OWNERSHIP CAS. This path runs BEFORE claim_onboarding_email_queue_item,
+        // so without a status guard two overlapping invocations both see the same
+        // pending row, both write 'failed', both increment failCount — and since
+        // failCount drives notifySlackEdgeError below, both fire the operator alert
+        // for one broken row. Guarding the transition on status='pending' and
+        // reading back the affected row makes exactly one run the owner: the loser
+        // updates zero rows and stays silent.
+        const { data: owned, error: failErr } = await supabase
           .from("onboarding_email_queue")
           .update({
             status: "failed",
             error_message: "Template not found",
           })
-          .eq("id", queueItem.id);
+          .eq("id", queueItem.id)
+          .eq("status", "pending")
+          .select("id");
+
+        if (failErr) {
+          // A genuine RPC failure must stay visible rather than masquerade as
+          // "another run owns it".
+          console.error(`Could not mark queue item ${queueItem.id} failed:`, failErr.message);
+          failCount++;
+          continue;
+        }
+        if (!owned || owned.length === 0) {
+          console.log(`Queue item ${queueItem.id} missing-template already handled by another run, skipping`);
+          continue;
+        }
+        console.error(`Template not found for queue item ${queueItem.id}`);
         failCount++;
         continue;
       }

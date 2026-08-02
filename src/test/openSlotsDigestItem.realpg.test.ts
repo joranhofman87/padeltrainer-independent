@@ -57,6 +57,7 @@ beforeAll(async () => {
       CONSTRAINT chk_event_types_digest_engine_implies_supports CHECK (NOT digest_engine_enabled OR supports_digest)
     );`);
   await c.query(MIG('20261008100000_open_slots_player_event.sql'));
+  await c.query(MIG('20261009100000_notif_10cb_review_corrections.sql'));
 }, 180_000);
 
 afterAll(async () => {
@@ -101,6 +102,7 @@ describe('10c-b B — open_slots_player catalog row', () => {
   it('re-running the migration cannot silently enable the engine', async () => {
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true WHERE key='open_slots_player'`);
     await c.query(MIG('20261008100000_open_slots_player_event.sql'));
+    await c.query(MIG('20261009100000_notif_10cb_review_corrections.sql'));
     const { rows } = await c.query(`SELECT digest_engine_enabled FROM public.notification_event_types WHERE key='open_slots_player'`);
     expect(rows[0].digest_engine_enabled).toBe(false);
   });
@@ -155,16 +157,16 @@ describe('10c-b B — v1 digest item: deterministic rendering', () => {
     }
   });
 
-  it('degrades gracefully when optional data is absent', async () => {
-    const en = await item('new_availability', 'en', { trainer_name: 'Ana' });
-    expect(en.body).toBe('New slots are available.');
-    expect(en.data).toEqual({ trainer_name: 'Ana' });   // jsonb_strip_nulls drops the absent keys
+  it('degrades gracefully when the OPTIONAL fields are absent (date_from is mandatory)', async () => {
+    const en = await item('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10' });
+    expect(en.body).toBe('New slots on 2026-08-10.');
+    expect(en.data).toEqual({ trainer_name: 'Ana', date_from: '2026-08-10' });
     expect('url' in en).toBe(false);
   });
 
   it('rejects an unknown subtype and a missing trainer_name', async () => {
     await rejects('marketing_blast', 'en', NEW);
-    await rejects('new_availability', 'en', { date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { date_from: '2026-08-10' });   // no trainer_name
   });
 });
 
@@ -176,44 +178,139 @@ describe('10c-b B — v1 digest item: content safety is fail-closed', () => {
   });
 
   it('refuses an email address in free text', async () => {
-    await rejects('new_availability', 'en', { trainer_name: 'Ana <ana@example.com>' });
-    await rejects('new_availability', 'en', { trainer_name: 'ana@example.com' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana <ana@example.com>', date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { trainer_name: 'ana@example.com', date_from: '2026-08-10' });
   });
 
   it('refuses a phone-like number in free text', async () => {
-    await rejects('new_availability', 'en', { trainer_name: 'Ana 06 12 34 56 78' });
-    await rejects('new_availability', 'en', { trainer_name: 'Ana +31612345678' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana 06 12 34 56 78', date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana +31612345678', date_from: '2026-08-10' });
   });
 
   it('refuses token/secret shapes', async () => {
-    await rejects('new_availability', 'en', { trainer_name: 'eyJhbGciOiJIUzI1NiJ9xxxx' });
-    await rejects('new_availability', 'en', { trainer_name: 'Bearer abcdefghijkl' });
-    await rejects('new_availability', 'en', { trainer_name: 're_abcdefghijkl' });
+    await rejects('new_availability', 'en', { trainer_name: 'eyJhbGciOiJIUzI1NiJ9xxxx', date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { trainer_name: 'Bearer abcdefghijkl', date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { trainer_name: 're_abcdefghijkl', date_from: '2026-08-10' });
   });
 
   it('refuses URLs, schemes and angle brackets in free text', async () => {
-    await rejects('new_availability', 'en', { trainer_name: 'Ana https://evil.example' });
-    await rejects('new_availability', 'en', { trainer_name: 'Ana //evil.example' });
-    await rejects('new_availability', 'en', { trainer_name: 'javascript:alert(1)' });
-    await rejects('new_availability', 'en', { trainer_name: '<script>x</script>' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana https://evil.example', date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana //evil.example', date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { trainer_name: 'javascript:alert(1)', date_from: '2026-08-10' });
+    await rejects('new_availability', 'en', { trainer_name: '<script>x</script>', date_from: '2026-08-10' });
   });
 
   it('accepts an app-relative url and refuses anything else', async () => {
-    const ok = await item('new_availability', 'en', { trainer_name: 'Ana', url: '/trainers/ana/slots' });
+    const ok = await item('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', url: '/trainers/ana/slots' });
     expect(ok.url).toBe('/trainers/ana/slots');
     for (const bad of ['https://evil.example/x', '//evil.example', 'trainers/ana', '/a/../../etc', 'javascript:x']) {
-      await rejects('new_availability', 'en', { trainer_name: 'Ana', url: bad });
+      await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', url: bad });
     }
   });
 
   it('rejects an out-of-range or non-integer slot_count', async () => {
-    await rejects('new_availability', 'en', { trainer_name: 'Ana', slot_count: 999999 });
-    await rejects('new_availability', 'en', { trainer_name: 'Ana', slot_count: 'many' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', slot_count: 999999 });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', slot_count: 'many' });
   });
 
   it('bounds a very long trainer name rather than letting one item dominate the budget', async () => {
-    const out = await item('new_availability', 'en', { trainer_name: 'A'.repeat(500) });
+    const out = await item('new_availability', 'en', { trainer_name: 'A'.repeat(500), date_from: '2026-08-10' });
     expect(String(out.title).length).toBeLessThanOrEqual(200);
     expect((out.data as Record<string, string>).trainer_name.length).toBe(80);
+  });
+});
+
+describe('10c-b review #2 — subtype-structural validation rejects impossible values', () => {
+  const OK_NEW = { trainer_name: 'Ana', date_from: '2026-08-10' };
+
+  it('rejects a date-SHAPED string that is not a real calendar day', async () => {
+    // the exact class a ^\\d{4}-\\d{2}-\\d{2}$ regex cannot catch
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-02-30' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-13-01' });
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-00-10' });
+    // ... but a real leap day is accepted
+    const leap = await item('new_availability', 'en', { trainer_name: 'Ana', date_from: '2028-02-29' });
+    expect(leap.body).toBe('New slots on 2028-02-29.');
+  });
+
+  it('rejects malformed and out-of-range dates', async () => {
+    for (const d of ['2026-8-10', '10-08-2026', '2026/08/10', '20260810', '1899-01-01', '2200-01-01']) {
+      await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: d });
+    }
+  });
+
+  it('enforces date ordering: date_to before date_from is refused, equal is allowed', async () => {
+    await rejects('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-16', date_to: '2026-08-10' });
+    const same = await item('new_availability', 'en', { trainer_name: 'Ana', date_from: '2026-08-10', date_to: '2026-08-10' });
+    expect(same.body).toBe('New slots on 2026-08-10.');   // collapses to the single-day phrasing
+  });
+
+  it('enforces strict HH:MM for slot_time', async () => {
+    for (const t of ['25:00', '23:99', '7:30', '19:30:00', '1930', 'evening']) {
+      await rejects('slot_reopened', 'en', { trainer_name: 'Ana', slot_date: '2026-08-12', slot_time: t });
+    }
+    const ok = await item('slot_reopened', 'en', { trainer_name: 'Ana', slot_date: '2026-08-12', slot_time: '00:00' });
+    expect(ok.body).toBe('A spot opened up on 2026-08-12 at 00:00.');
+  });
+
+  it('slot_count must be a whole number that means something', async () => {
+    await rejects('new_availability', 'en', { ...OK_NEW, slot_count: 0 });
+    await rejects('new_availability', 'en', { ...OK_NEW, slot_count: -3 });
+    await rejects('new_availability', 'en', { ...OK_NEW, slot_count: 2.5 });
+    await rejects('new_availability', 'en', { ...OK_NEW, slot_count: '3' });
+    const ok = await item('new_availability', 'en', { ...OK_NEW, slot_count: 1 });
+    expect(ok.body).toBe('1 new slots on 2026-08-10.');
+  });
+
+  it('enforces the permitted field combination per subtype', async () => {
+    // cross-subtype fields are REJECTED, not silently dropped
+    await rejects('new_availability', 'en', { ...OK_NEW, slot_date: '2026-08-12' });
+    await rejects('new_availability', 'en', { ...OK_NEW, slot_time: '19:30' });
+    await rejects('slot_reopened', 'en', { trainer_name: 'Ana', slot_date: '2026-08-12', date_from: '2026-08-10' });
+    await rejects('slot_reopened', 'en', { trainer_name: 'Ana', slot_date: '2026-08-12', slot_count: 2 });
+    // each subtype's own required field is mandatory
+    await rejects('new_availability', 'en', { trainer_name: 'Ana' });
+    await rejects('slot_reopened', 'en', { trainer_name: 'Ana' });
+  });
+
+  it('refuses an unknown field: v1 is a CLOSED schema', async () => {
+    await rejects('new_availability', 'en', { ...OK_NEW, surprise: 'x' });
+    await rejects('new_availability', 'en', { ...OK_NEW, trainerName: 'x' });
+  });
+
+  it('refuses a non-object data payload', async () => {
+    await rejects('new_availability', 'en', ['not', 'an', 'object']);
+    await rejects('new_availability', 'en', 'nope');
+  });
+});
+
+describe('10c-b review #3 — the credential deny-list covers the Supabase PAT shape', () => {
+  const withDate = (name: string) => ({ trainer_name: name, date_from: '2026-08-10' });
+
+  it('rejects a Supabase PERSONAL ACCESS TOKEN (sbp_)', async () => {
+    await rejects('new_availability', 'en', withDate('sbp_0123456789abcdefghij'));
+    await rejects('new_availability', 'en', withDate('token sbp_0123456789abcdefghij here'));
+  });
+
+  it('still rejects the previously covered shapes', async () => {
+    for (const bad of ['eyJhbGciOiJIUzI1NiJ9xxxx', 'sb_secret_0123456789abc', 'sb_publishable_0123456789abc',
+                       'sk-0123456789abcdefgh', 're_0123456789abcdefgh', 'Bearer abcdefghijkl']) {
+      await rejects('new_availability', 'en', withDate(bad));
+    }
+  });
+
+  it('is DISCRIMINATING: ordinary names that merely resemble a prefix are accepted', async () => {
+    // the guard must not be a blunt substring match — these are real names/words
+    for (const good of ['Sbren Petersen', 'Eskil Skovgaard', 'Rebecca', 'Sky Anderson', 'Sebastiaan']) {
+      const out = await item('new_availability', 'en', withDate(good));
+      expect(out.title).toBe(`New availability from ${good}`);
+    }
+  });
+
+  it('does NOT claim exhaustive detection: an unknown vendor shape passes the deny-list', async () => {
+    // Documented honestly rather than pretended away: containment comes from the
+    // closed field set + per-field validation, not from this list being complete.
+    const out = await item('new_availability', 'en', withDate('xyzcorp-KEY-abcdefghijkl'));
+    expect(out.title).toBe('New availability from xyzcorp-KEY-abcdefghijkl');
   });
 });

@@ -31,14 +31,26 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 ### Channel B — Cron alerting
 - `alertCronFailure` (`api/_lib/cron.ts:59`) fires only when a sub-job returns `ok:false`. Wired into `api/cron/daily-emails.ts` and `api/cron/daily-maintenance.ts` (schedules in `vercel.json`: `0 12 * * *` and `0 6 * * *`).
 - Many crons also self-alert internally (e.g. `invoice-health-check/index.ts:166`), closing the "HTTP 200 with partial failures inside" blind spot for wired jobs.
-- **Single-flight lock (⚠ has a known wedge hazard — see below):** several crons take an advisory lock via `try_lock_cron_job` / `unlock_cron_job` (migration `20260614190000_cron_single_flight_lock.sql`) to reduce concurrent double-runs.
+- **Single-flight (CRON-SF-WEDGE is CLOSED — see below):** the session-scoped `try_lock_cron_job` / `unlock_cron_job` advisory pair was **retired in 10c-b** (`20261007100000_cron_durable_lease.sql` drops both). Three of the four workers rely on their existing atomic claim; `invoice-health-check` takes a **durable owner-token + `locked_until` lease** (`acquire_cron_lease` / `renew_cron_lease` / `release_cron_lease`).
 - **Gap:** Vercel does not page on a cron that *never fires* (missed schedule) — no heartbeat. See backlog OBS-P1-2.
 
-### ⚠ Known reliability hazard — session-scoped cron single-flight lock (CRON-SF-WEDGE)
-`try_lock_cron_job` is a **session-level** `pg_try_advisory_lock`. The lock and its `unlock_cron_job` run as **separate pooled PostgREST requests with no session affinity**, so the unlock can execute on a *different* backend than the one that acquired the lock — leaving the lock **held on the acquiring session until that pooled connection is recycled**. A healthy run can therefore wedge the job (every subsequent tick sees `try_lock` return false and bails) for an unbounded time, not "one connection lifetime" as the migration comment claims. The auto-release-on-recycle only bounds a *crashed* run, not this cross-session case.
-- **Affected v1 workers (still use the lock):** `notification-email-worker`, `notification-whatsapp-worker`, `invoice-health-check`, `process-onboarding-emails`.
-- **NOT affected:** `notification-digest-worker` (10c-a3) deliberately does **not** use this lock — the SQL state machine's atomic `claim` (`FOR UPDATE SKIP LOCKED` + ownership stamp) is its concurrency boundary.
-- **Acceptance criteria for the fix (must land before 10c-b enables the digest cron):** replace the session advisory lock with either (a) reliance on the underlying atomic/idempotent claim where the job is already safe (drop the lock), or (b) a **durable owner-token + `locked_until` expiry lease** (a table row updated by a `WHERE locked_until < now()` CAS) that is pooling-safe and self-heals via TTL. Add a test simulating unlock-on-a-different-session and asserting the next tick is not wedged. Tracked as a background task in this session; convert to a durable issue/PR before scheduling any new cron.
+### ✅ CLOSED — session-scoped cron single-flight lock (CRON-SF-WEDGE)
+**The hazard.** `try_lock_cron_job` was a **session-level** `pg_try_advisory_lock`. It and its `unlock_cron_job` ran as **separate pooled PostgREST requests with no session affinity**, so the unlock could execute on a *different* backend than the one that acquired the lock — leaving the lock **held on the acquiring session until that pooled connection was recycled**. A healthy run could therefore wedge the job (every later tick saw `try_lock` return false and bailed) for an unbounded time.
+
+**The fix (10c-b, migration `20261007100000_cron_durable_lease.sql`).** Resolved per worker against its real concurrency boundary, rather than by substituting another lock. Both advisory RPCs are **dropped**, so the class cannot be reintroduced by habit.
+
+| Worker | Decision | Why that is sufficient |
+|---|---|---|
+| `notification-email-worker` | lock **removed** | `claim_notification_outbox_batch` claims `FOR UPDATE SKIP LOCKED` and stamps a per-run worker token, so concurrent invocations take **disjoint** rows; `record_notification_send_result` is token-guarded, so a superseded run's late write no-ops. |
+| `notification-whatsapp-worker` | lock **removed** | Same atomic claim, same token guard. |
+| `process-onboarding-emails` | lock **removed** | Every item passes `claim_onboarding_email_queue_item`, a per-row atomic CAS (`pending → sent`). Its missing-template path is separately CAS-guarded (`WHERE status='pending'`) so overlapping runs cannot both own — or both alert on — one failure. |
+| `invoice-health-check` | **durable lease** | The only one with **no** atomic claim: a read-only sweep whose output is operator Slack alerts, so two overlapping runs double-post. Whole-run exclusion is genuine here. |
+
+**Why the lease cannot wedge or be stolen.** Expiry is **data** (`locked_until`), so a crashed holder frees the job at TTL with no connection recycling and no operator action. Acquisition is a single atomic `INSERT … ON CONFLICT DO UPDATE … WHERE locked_until <= now()`, evaluated under the row lock `ON CONFLICT` already holds, so two racing acquirers cannot both win. `release_cron_lease` and `renew_cron_lease` are **owner-token CAS**: a wrong or stale token changes nothing. Release is **idempotent** — the first live-owner release returns true and increments `release_count` once; any repeat returns false and leaves telemetry untouched. TTL is bounded 30–3600 s (zero would hand out an already-expired lease so every caller "wins"; unbounded would recreate the wedge).
+
+**NOT affected:** `notification-digest-worker` (10c-a3) never used this lock — the SQL state machine's atomic `claim` is its boundary.
+
+**Evidence.** `src/test/cronDurableLease.realpg.test.ts` (real multi-connection Postgres; backend distinctness asserted via `pg_backend_pid()`) covers acquire-on-A/release-from-B, a backend that disconnects mid-run, 2- and 8-way acquisition races, stale-token renew/release, and release idempotency. `src/test/onboardingMissingTemplateCas.realpg.test.ts` covers the missing-template ownership CAS. `scripts/db/rehearse-phase45-integrity.mjs` rehearses the lease end to end (25 checks). All are mutation-pinned: deleting the acquisition CAS predicate fails 4 of 8 lease assertions, and dropping the release liveness guard fails the idempotency assertions.
 
 ### Channel C — Client PostHog
 `src/lib/logger.ts`: `logger.error` always captures `$exception`; `logger.warn` captures only in prod; `logger.info` is a no-op in prod. **Browser only — never sees an edge-function or server failure.**
@@ -71,7 +83,7 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 - Full plan: [`docs/payments/PAYMENT_RECONCILIATION_PLAN.md`](payments/PAYMENT_RECONCILIATION_PLAN.md).
 
 ### `invoice-health-check` edge fn
-- `supabase/functions/invoice-health-check/index.ts` — cron-run (daily-maintenance), single-flight locked. Scans for invoice anomalies via `_shared/invoice-health-checks.ts`; self-alerts to Slack (`:166`) with `status: anomalies_found | healthy`.
+- `supabase/functions/invoice-health-check/index.ts` — cron-run (daily-maintenance), single-flight via the durable `cron_job_leases` lease. Scans for invoice anomalies via `_shared/invoice-health-checks.ts`; self-alerts to Slack (`:166`) with `status: anomalies_found | healthy`.
 
 ### `invoice-storage-gc` edge fn (Theme B / storage lifecycle)
 - `supabase/functions/invoice-storage-gc/index.ts` — cron-run (daily-maintenance), service-role/admin only. Reaps orphaned objects from the private `invoices` bucket: an object is LIVE iff its key prefix matches some invoice's `render_path` (stamped by `generate-invoice`, B1); unmatched objects are deleted only after a **90-day grace** on `updated_at`, **capped at 200/run**. Report-vs-apply gate + the cap are the pure `planInvoiceGcDeletion` helper (`_shared/invoice-storage-gc.ts`).

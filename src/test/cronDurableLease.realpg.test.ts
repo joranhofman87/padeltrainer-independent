@@ -35,6 +35,7 @@ beforeAll(async () => {
   // the RPCs the migration drops must exist first, so the DROP is exercised for real
   await boot.query(MIG('20260614190000_cron_single_flight_lock.sql'));
   await boot.query(MIG('20261007100000_cron_durable_lease.sql'));
+  await boot.query(MIG('20261009100000_notif_10cb_review_corrections.sql'));
   await boot.end();
   a = new Client({ connectionString: url }); await a.connect();
   b = new Client({ connectionString: url }); await b.connect();
@@ -130,5 +131,54 @@ describe('10c-b A — durable cron lease across DIFFERENT pooled sessions', () =
       `INSERT INTO public.cron_job_leases (job_name, owner_token, locked_until)
        VALUES ('direct', gen_random_uuid(), now() + interval '1 hour')`)).rejects.toThrow();
     await a.query('RESET ROLE');
+  });
+});
+
+describe('10c-b review #4 — release_cron_lease is idempotent per its contract', () => {
+  const counters = async (job: string) =>
+    (await b.query('SELECT release_count::int AS rc, locked_until FROM public.cron_job_leases WHERE job_name=$1', [job])).rows[0];
+
+  it('first live-owner release returns true and increments release_count exactly once', async () => {
+    const tok = await acquire(a, 'idem-1') as string;
+    expect((await counters('idem-1')).rc).toBe(0);
+    expect(await release(a, 'idem-1', tok)).toBe(true);
+    expect((await counters('idem-1')).rc).toBe(1);
+  });
+
+  it('a SECOND release by the same owner returns false and changes no telemetry', async () => {
+    const tok = await acquire(a, 'idem-2') as string;
+    expect(await release(a, 'idem-2', tok)).toBe(true);
+    const after = await counters('idem-2');
+    // repeat several times — the count must not creep
+    for (let i = 0; i < 3; i++) expect(await release(a, 'idem-2', tok)).toBe(false);
+    const later = await counters('idem-2');
+    expect(later.rc).toBe(after.rc);
+    expect(later.rc).toBe(1);
+    expect(new Date(later.locked_until).getTime()).toBe(new Date(after.locked_until).getTime());
+  });
+
+  it('the repeat release is refused ACROSS sessions too, not just within one', async () => {
+    const tok = await acquire(a, 'idem-3') as string;
+    expect(await release(a, 'idem-3', tok)).toBe(true);
+    expect(await release(b, 'idem-3', tok)).toBe(false);      // different backend, same stale token
+    expect((await counters('idem-3')).rc).toBe(1);
+  });
+
+  it('a wrong owner never touches telemetry', async () => {
+    const tok = await acquire(a, 'idem-4') as string;
+    const before = await counters('idem-4');
+    expect(await release(b, 'idem-4', '00000000-0000-0000-0000-000000000000')).toBe(false);
+    expect((await counters('idem-4')).rc).toBe(before.rc);
+    expect(await release(a, 'idem-4', tok)).toBe(true);
+  });
+
+  it('releasing, re-acquiring and releasing again counts each real release once', async () => {
+    const t1 = await acquire(a, 'idem-5') as string;
+    expect(await release(a, 'idem-5', t1)).toBe(true);
+    const t2 = await acquire(b, 'idem-5') as string;
+    expect(t2).not.toBe(t1);
+    expect(await release(a, 'idem-5', t1)).toBe(false);       // the OLD token is inert
+    expect(await release(b, 'idem-5', t2)).toBe(true);
+    expect((await counters('idem-5')).rc).toBe(2);            // exactly two genuine releases
   });
 });
