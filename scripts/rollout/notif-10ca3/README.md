@@ -241,279 +241,101 @@ run-rollout.sh clean-evidence --yes "$PROD"
 - **D — full.** Applies all three, asserts the baseline row counts are preserved,
   and runs academy_fixture + postflight + acl + ledger on the full clone.
 
-### Clone safety — a restored project is NOT inert (do this FIRST)
+### Clone safety — the fence is WITHDRAWN; rehearsals use an empty project
 
-A Supabase restore copies **pg_cron jobs, the pg_net queue, database webhooks,
-Auth data and Vault-readable secrets**. The clone therefore boots with **real
-credentials** and resumes cron immediately. The read-only production inventory
-(2026-08-01) found:
+> **Read [`docs/ADR-001-clone-safety-fence-withdrawn.md`](docs/ADR-001-clone-safety-fence-withdrawn.md) before
+> anything in this section.** The previous procedure — restore a production
+> snapshot, then freeze it with statement triggers on `cron.job` and
+> `net.http_request_queue` — is withdrawn and `clone-source-quiesce` now refuses
+> before it opens a connection.
 
-| job | schedule | outbound |
-|---|---|---|
-| `notification-email-worker` | `*/2 * * * *` | **yes — real invoice/notification email** |
-| `notification-whatsapp-worker` | `*/2 * * * *` | **yes — real WhatsApp** |
-| `notify-rebook-member-open` | `*/15 * * * *` | yes |
-| `auto-rebook-reminder` | `0 6-19 * * *` | yes |
-| `release-expired-rebook-holds` | `*/5 * * * *` | no |
-| `release-expired-guest-slot-holds` | `*/5 * * * *` | no |
-| `expire-lapsed-priority-claims` | `*/15 * * * *` | no |
+Two independent reasons, either of which is fatal:
 
-**A naive clone would contact real customers within two minutes of booting.**
-No webhooks, outbound triggers or FDWs exist; pg_net queue was empty; one Vault
-secret (count only — contents are never read).
+* Supabase advises against triggers on `net.http_request_queue`, and a
+  *deliberately failing* one especially, because it can disrupt pg_net:
+  <https://supabase.com/docs/guides/troubleshooting/webhook-debugging-guide-M8sk47>
+* `CREATE TRIGGER` needs the table's `TRIGGER` privilege; **`DROP TRIGGER` needs
+  ownership**. These are extension-managed tables, so a `GRANT TRIGGER` produces
+  a fence that can be installed and never removed.
 
-**The job set is not static.** `public.schedule_enrichment_job`,
-`public.schedule_logo_fetch_job` and `public.schedule_invoice_health_check_job`
-create cron jobs at runtime (`enrich-locations-background`,
-`fetch-location-logos-background`, `invoice-health-check-daily` — declared in
-migrations, absent from the live set today). The inventory therefore **fails
-closed on any job outside `clone-safety/reviewed-cron-jobs.tsv`**, on any job
-whose live outbound classification differs from the reviewed one, on any
-outbound-capable function outside `clone-safety/reviewed-outbound-functions.tsv`
-(computed as a **transitive closure**, so a helper that only indirectly reaches
-`net.http_*` still counts) and on any extension outside
-`clone-safety/reviewed-extensions.tsv`. The exact job set is re-verified **inside
-the seal transaction**, not merely before it — see below.
+Production inventory (read-only, 2026-08-02) returned **`FENCEABLE no`** — the
+guard refusing in the read-only step, exactly as designed. Taking ownership of
+extension objects, joining the extension-owner role, or wrapping the trigger in a
+`SECURITY DEFINER` function would each make it work and are all rejected: a
+rehearsal mechanism must not be the reason production's ownership model changes.
+
+The withdrawn artifacts are kept, unmodified, under
+[`sql/withdrawn/`](sql/withdrawn/README.md) for review. Nothing loads them.
+
+#### What a restore would have copied (the threat that drove the fence)
+
+| copied by a database restore | earliest external send |
+| --- | --- |
+| `cron.job` — `notification-email-worker`, `notification-whatsapp-worker` on `*/2` | **~2 minutes** after boot |
+| `net.http_request_queue` | seconds after boot |
+| Vault secrets — **production's provider API keys** | enables the above |
+| database webhooks, outbound triggers (incl. nested paths), FDW servers | first write/query |
+| `auth.users` and live sessions, and **every customer row** | — |
+
+**Not** copied by a database restore: Edge Functions (the workers themselves),
+Vercel deployments and env, project settings/API keys/JWT secret, Storage objects,
+the Cloudflare Worker. A restored clone is therefore *dangerous because of the
+database state it carries* and *unfaithful because of the infrastructure it
+lacks* — see ADR-001 §3.
+
+#### The supported replacement
 
 ```bash
-# 0. PREREQUISITE. The fence (below) is a trigger on cron.job, so the connecting
-#    role must OWN cron.job. The read-only inventory reports FENCEABLE yes/no and
-#    the procedure refuses to start otherwise — it never downgrades to a weaker
-#    guarantee.
-
-# 1. READ-ONLY. Safe against production; displays names/counts only — never a
-#    cron command, pg_net URL/header/body, Vault secret or customer row. Also
-#    reports the cron CONFIGURATION fingerprint the seal will pin, whether the
-#    fence can be installed, and whether a window is already open.
+# 0. READ-ONLY production audit; mutates nothing, needs no window
 run-rollout.sh clone-source-inventory "$PROD"
 
-# 2. Capture + pause + FENCE + mark in ONE transaction, wait for a STABLE quiet
-#    interval, then ARM. Reversible by construction: cron.alter_job only, never
-#    cron.unschedule. After the seal commits, every failure — including a local
-#    one — leaves the window automatically; it never exits with cron stopped.
-run-rollout.sh clone-source-quiesce --yes "$PROD"
-#    -> records the run nonce in evidence/clone-source-nonce.txt.
-#       Take every clone restore INSIDE the armed, fenced window.
+# 1. Start from an EMPTY, disposable, identity-verified project and PROVE it is
+#    outbound-inert before anything is loaded: no cron jobs, empty pg_net queue
+#    AND response table, no Vault secrets, no webhooks, no outbound triggers
+#    (including nested call paths), no FDWs, no auth users.
+CLONE_REF=<disposable ref> run-rollout.sh clone-verify-empty "$CLONE"
 
-# 3. Leave the window in ONE atomic transaction: verify, unfence, restore the
-#    exact prior configuration and state, prove equality, drop the marker.
-run-rollout.sh clone-source-resume --yes "$PROD"
+# 2. Build the pristine baseline: schema from MAIN (not the #615 pin), every
+#    schedule the migrations created deactivated, then SYNTHETIC rows in only the
+#    two tables #615 locks, at MEASURED production scale.
+CLONE_REF=<ref> run-rollout.sh clone-build-baseline --yes "$CLONE"
 
-# — recovery — a run that died between seal and arm leaves a window open. It is
-#   never cleared implicitly; the operator must read the nonce and name it.
-run-rollout.sh clone-source-abandon --yes --nonce <nonce> "$PROD"
+# 3. Before each rehearsal, and after any that broke the target:
+CLONE_REF=<ref> run-rollout.sh clone-baseline-verify "$CLONE"
+CLONE_REF=<ref> run-rollout.sh clone-reset-baseline --yes "$CLONE"
 ```
 
-#### Why a fence, and not just the lock
+Inertness is **proven, not manufactured**: the target never held production
+state, so there is no provenance question, no marker and no fence. Four
+production snapshot restores become **one empty project**, and **no customer PII
+leaves production at all**.
 
-An `ACCESS EXCLUSIVE` lock ends at `COMMIT`. Production stays paused while the
-restores are actually requested, and during that interval nothing stopped a new
-job from appearing:
+#### Is the timing rehearsal still honest?
 
-- `public.schedule_enrichment_job`, `schedule_logo_fetch_job` and
-  `schedule_invoice_health_check_job` are **`SECURITY DEFINER`** — they execute as
-  their owner, so role-level `REVOKE`s on `cron.schedule` do not stop them;
-- a direct `cron.schedule` from any sufficiently privileged session does the same.
+Yes, for the property that matters, with caveats stated in ADR-001 §6. Only
+`20261006100000` locks existing data — a full rewrite of `email_address_state`
+(generated `STORED` column) and a full validation scan of `email_delivery_events`
+(CHECK constraint), plus a backfill. **Every one of those costs is driven by row
+count, tuple width, index set and value distribution — none reads what a value
+means.** The scale file therefore carries widths and distributions, not just row
+counts, and injects a configured dead-tuple ratio to approximate bloat.
 
-A clone restored after that point boots with an **active** job. Detecting it at
-clone startup is too late — a copied worker may already have sent. **This bundle
-therefore never claims the commit lock protects the window.**
+The result is a **sound lower bound** on the window and an **exact reproduction of
+the locking behaviour**. It is not production's physical page layout, and the
+runbook carries that caveat into the go/no-go decision.
 
-**Two tables must be frozen, not one.** `cron.job` is the obvious one. The pg_net
-request queue is the other: observing that `net.http_request_queue` is empty at
-the boundary proves nothing, because a privileged `net.http_post()` after the arm
-enqueues a row that the restore copies into the clone, where the clone's own
-pg_net worker can dispatch it **before clone isolation ever runs**.
+#### Remaining prerequisite
 
-The fence is therefore a set of statement-level `BEFORE` triggers:
+`clone-safety/rehearsal-scale.json` ships with `source: "placeholder"` and the
+tooling **refuses to build a baseline** until it says `"measured"`. Filling it
+needs one read-only production sizing query (ADR-001 §7) that returns counts,
+lengths, byte sizes and category names only — no address, no reason text, no row.
 
-| table | verbs fenced | why |
-| --- | --- | --- |
-| `cron.job` | `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` | a new or re-activated job would run in the clone |
-| `net.http_request_queue` | `INSERT` only | `INSERT` is the only way a request is created; pg_net's own worker retires rows with `UPDATE`/`DELETE` and must keep working |
+#### Recovery (only for a window opened by the withdrawn tooling)
 
-and it satisfies:
-
-| requirement | how the trigger satisfies it |
-| --- | --- |
-| blocks `schedule_*_job`, `cron.schedule`, `cron.alter_job`, `cron.unschedule` | a trigger fires for every role and every `SECURITY DEFINER` path; all four write `cron.job` |
-| rejects at the source, not after clone startup | the write raises `42501` and never happens |
-| survives the sealing session | ordinary database state — no long-lived shell |
-| present in the clone | a restore copies triggers and functions |
-| fires even for a zero-row write | statement-level, so it does not depend on matching a row |
-
-Both tables must therefore be owned by the connecting role; the read-only
-inventory's `FENCEABLE` reports the conjunction.
-
-Presence is not effectiveness, so **every artifact probes it**: `INSERT`, `UPDATE`
-and `DELETE` against `cron.job` are attempted in a subtransaction and each must be
-rejected *by the fence*. A seal whose trigger silently failed to install is
-refused, and no marker is committed.
-
-#### Draining is a stable property, not an instant
-
-Two ways a drain check reads zero while a job is about to send:
-
-- **pg_cron has more than one in-flight state.** A run goes
-  `starting -> connecting -> sending -> running` before it is "running", so
-  counting only `status = 'running'` misses a job that is seconds away from
-  issuing an outbound request. The bundle defines in-flight **by the complement
-  of the terminal set** (`succeeded`, `failed`) in `sql/_cron_inflight.sql`, so a
-  future pg_cron state — or `NULL` — counts as in flight rather than being
-  silently ignored.
-- **The scheduler needs a cycle to see the pause.** A zero read taken
-  immediately after `active := false` can be followed by a fresh start. The drain
-  therefore requires **N consecutive quiet samples separated by a
-  scheduler-observation interval** (`QUIESCE_QUIET_SAMPLES`, minimum and default
-  2; `QUIESCE_SETTLE_SECS`, default 60). Any non-quiet sample resets the streak,
-  and each sample checks the pg_net queue as well. The interval has a **reviewed
-  floor of 15s that is not overridable** — zero would make the two "stable"
-  samples back-to-back, which is the false green the loop exists to prevent — and
-  an interrupted or failed `sleep` is never read as an elapsed interval. Tests
-  stub `sleep`; they do not lower the interval.
-
-`cron.job_run_details` is only populated when **`cron.log_run` is on**, so a zero
-count means nothing without it. The read-only inventory reports `LOGRUN`, and the
-procedure refuses to start — and the arm refuses to certify — when it is off.
-The arm re-proves the same predicate under the lock, and the clone gate applies
-it again inside the clone.
-
-#### The sealed window
-
-`sql/clone_source_seal.sql` is one transaction that takes
-`LOCK TABLE cron.job IN ACCESS EXCLUSIVE MODE` and then, in order:
-
-1. takes an advisory lock (no two runs may seal at once);
-2. refuses if a `rollout_clone` window already exists — nothing is ever
-   overwritten implicitly;
-3. asserts the live **cron configuration fingerprint** equals the reviewed one;
-4. creates `rollout_clone` and **revokes it from `PUBLIC`, `anon`, `authenticated`
-   and `service_role`** — owner only;
-5. captures every behaviour-bearing field of every job into
-   `rollout_clone.snapshot_job_state` — the authority for restoration;
-6. pauses every active job;
-7. installs the fence **and probes it**;
-8. asserts zero active jobs and an empty `pg_net` queue;
-9. commits the marker as `state = 'sealing'`.
-
-`sql/clone_source_arm.sql` then promotes it to `'sealed'` once in-flight
-executions have drained, re-proving the fence and that the configuration is
-unchanged. **Only an armed window may be restored from.**
-
-A seal failure rolls the whole transaction back, so **nothing is paused, fenced or
-marked** — there is no compensating restore to get wrong.
-
-**After the seal commits, production is stopped.** Everything from that point on
-— persisting the nonce, exporting the evidence manifest, validating it, draining,
-arming — runs in a subshell, so even a fatal error becomes a status the caller
-acts on. Every non-zero status routes through the atomic exit from the window
-(`allow_unarmed = 1`), the original exit code is preserved, and if the automatic
-resume *also* fails the tooling says so unmistakably and prints the exact
-`clone-source-abandon` command including the nonce. The **actual** failure status
-of a failing **subprocess** is preserved end to end — a `psql` exit 7 or an
-interrupted `sleep`'s exit 9 leaves quiesce with that same status, not a
-flattened 1. (The tooling's *own* refusals — a bad `QUIESCE_*` value, `log_run`
-off, the streak never completing, an empty sample — have no subprocess status
-behind them and exit 1; the claim is deliberately no broader than that.)
-
-The resume's diagnostic capture is **best effort**: evidence directory → a temp
-file under `$TMPDIR` → stderr, so an unwritable evidence directory can never be
-the reason the database resume does not run. A fallback temp capture is removed
-on **both** the success and failure paths, and a cleanup failure warns without
-replacing the resume's status — because the failure may have
-been the very write of `evidence/clone-source-nonce.txt`. A full disk must never
-translate into email and WhatsApp being down.
-
-#### The exact restore-point contract
-
-Provenance is proven by the clone's own database, never by a caller-supplied
-timestamp. Four checks bound the window from both ends:
-
-| check on the clone | what it proves |
-| --- | --- |
-| marker carries **this run's exact nonce** | restore point is at/after the **SEAL** commit |
-| marker `state = 'sealed'` | restore point is at/after the **ARM** commit (drained) |
-| the **fence is present and probes effective** | restore point is before the **RESUME** commit |
-| zero ACTIVE cron jobs | restore point is before the **RESUME** commit |
-
-Only a restore point inside the armed, fenced window satisfies all four.
-
-#### Leaving the window is one atomic transition
-
-`sql/clone_source_resume.sql` holds `ACCESS EXCLUSIVE` on `cron.job` for a single
-transaction that verifies the sealed state and configuration, drops the fence,
-restores every prior active state from `snapshot_job_state`, proves exact
-equality, and drops the marker. Therefore:
-
-- **before** the commit: marker present, every job inactive, fence in force;
-- **after** the commit: marker absent, fence gone, exact prior state restored;
-- there is **no committed state in which a valid marker coexists with active
-  cron**, so no restore point can produce a clone that boots and sends;
-- a failure at any step rolls everything back — production stays paused and fenced
-  with its marker intact and the operator retries. Nothing is left half-restored.
-
-The suite asserts that property over *every* committed state the procedure passes
-through, not at hand-picked moments.
-
-#### Restoration is exact
-
-Restoration is server-side and transactional. It reads
-`rollout_clone.snapshot_job_state`, captured by the seal from `cron.job` itself —
-**no manifest text is ever interpolated into SQL**. The comparison covers every
-behaviour-bearing field:
-
-`jobid`, `jobname`, `schedule`, `database`, `username`, `md5(command)`,
-`nodename`, `nodeport`, and the prior `active` state.
-
-A `FULL OUTER JOIN` counts missing, extra, renamed, re-id'd and drifted rows in
-one number, so a job **added** since capture, removed, recreated under a new id,
-renamed, or whose **command or schedule changed while its id and name stayed the
-same** all make resume fail loudly.
-
-`evidence/clone-source-manifest.txt` is exported from that relation as
-human-readable evidence and cross-check only. It is still validated fail-closed —
-including a **truncated final line**, which `read` would otherwise drop silently.
-
-#### Marker ownership and lifecycle
-
-- one row by construction (`only_row boolean PRIMARY KEY CHECK (only_row)`);
-- `CREATE SCHEMA` without `IF NOT EXISTS`, and an explicit pre-check: a second
-  seal **fails** rather than replacing a live or stale marker;
-- an advisory lock excludes concurrent quiesce/resume runs;
-- `REVOKE ALL` from `PUBLIC`, `anon`, `authenticated`, `service_role` on the
-  schema, its tables and the fence function — verified again **in the clone**;
-- stale-window recovery is explicit and reviewed: `clone-source-abandon` requires
-  the operator to read the nonce out of the database and pass it back.
-
-#### On timestamps
-
-`now()` inside the seal is **transaction-start** time; it is stored as
-`sealed_tx_start` and is never presented as the commit instant. The seal, arm and
-resume each additionally print a `*_OBSERVED_AFTER_COMMIT` reading taken with
-`clock_timestamp()` after the commit returned, at microsecond resolution, and
-labelled informational. **Only the database nonce establishes provenance.**
-
-### Clone-side isolation — enforced, not assumed
-
-Every clone-touching command (`preflight --clone`, `clone-push`,
-`clone-make-prefix`, `verify-clone`, `clone-unfence`) refuses to run until
-`assert_clone_isolated` passes. It reads the nonce recorded by the seal and
-asserts, **inside the clone**: the marker table exists with exactly one row
-carrying this run's nonce and `state = 'sealed'`; the fence is present and probes
-effective; the clone's cron configuration equals the sealed fingerprint; the
-marker objects are owner-only; zero active cron jobs, zero running executions, an
-empty pg_net queue, `cron.log_run` on with zero runs in **any** non-terminal
-state, no database-webhook triggers, no outbound-capable triggers
-(**including nested call paths**, via a recursive closure over `pg_proc`), and no
-foreign servers. Nothing is printed but names and counts.
-
-No environment variable can satisfy this gate.
-
-**A clone stays fenced.** That is deliberate: it keeps the clone inert. The
-pending #615 set creates no cron jobs, so rehearsals A–D are unaffected. A future
-rehearsal whose migrations *do* call `cron.schedule` must first run
-`clone-unfence --yes "$CLONE"` — which is clone-only, gated on the same isolation
-proof, and keeps the marker so provenance stays provable.
+`clone-source-resume` and `clone-source-abandon` are unchanged and still require
+explicit prior-window evidence. Production reports `PRIORWINDOW 0`, so there is
+nothing to recover; the path is retained rather than weakened.
 
 ### Four-clone execution model (A/B/C/D)
 

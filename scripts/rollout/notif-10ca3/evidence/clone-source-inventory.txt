@@ -1,0 +1,24 @@
+[2026-08-02T08:31:41Z] psql -f clone_source_inventory.sql
+CRONJOB release-expired-rebook-holds t no
+CRONJOB release-expired-guest-slot-holds t no
+CRONJOB expire-lapsed-priority-claims t no
+CRONJOB notify-rebook-member-open t yes
+CRONJOB auto-rebook-reminder t yes
+CRONJOB notification-email-worker t yes
+CRONJOB notification-whatsapp-worker t yes
+CFGFP 2aa1033186c035af8e67a233371419d7
+FENCEABLE no
+PRIORWINDOW 0
+INFLIGHT 0
+LOGRUN on
+NETQUEUE 0
+HOOKTRIG 0
+OUTTRIG 0
+FDWSRV 0
+OUTFN public.schedule_enrichment_job
+OUTFN public.schedule_invoice_health_check_job
+OUTFN public.schedule_logo_fetch_job
+EXT pg_cron
+EXT pg_net
+VAULTCOUNT 1
+[2026-08-02T08:31:42Z] OK   clone_source_inventory.sql passed

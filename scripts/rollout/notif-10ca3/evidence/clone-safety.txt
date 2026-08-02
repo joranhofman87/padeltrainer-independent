@@ -1,205 +1,70 @@
 $ bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh
 
-stub syntax OK
-== read-only inventory: safe metadata, fail closed, and SEALABILITY ==
-  PASS  inventory of a reviewed, sealable source succeeds
-  PASS  the inventory artifact carries no command, URL, header or secret text
-  PASS  inventory is READ-ONLY: nothing was paused
-  PASS  the human-readable inventory shows the IN-FLIGHT count (the formatter tracks the emitted record)
-  PASS  …and whether cron.log_run makes that count meaningful
-  PASS  a role that CANNOT create the fence trigger stops the procedure in the READ-ONLY step
-  PASS  …and says so, rather than degrading to a weaker guarantee
-  PASS  an EXISTING sealed window stops a new one (never overwritten implicitly)
-  PASS  …and names the explicit, reviewed recovery path
-  PASS  an UNREVIEWED job (added at runtime by schedule_*_job) stops the procedure
-  PASS  OUTBOUND CLASSIFICATION DRIFT on a reviewed job stops the procedure
-  PASS  an UNREVIEWED outbound-capable function (incl. nested paths) stops the procedure
-  PASS  an UNREVIEWED extension with external capability stops the procedure
-  PASS  a non-zero HOOKTRIG count stops the procedure
-  PASS  a non-zero OUTTRIG count stops the procedure
-  PASS  a non-zero FDWSRV count stops the procedure
-  PASS  a FAILED inventory read stops the procedure (never classifies blind)
-  PASS  inventory refuses a non-production URL (exact identity)
-== quiesce: one transaction, then a DURABLE fence, then ARM ==
-  PASS  quiesce succeeds on a reviewed, sealable source
-  PASS  every cron job is paused
-  PASS  the fence is installed on cron.job
-  PASS  the window is ARMED after the drain
-  PASS  the marker/fence objects are revoked from PUBLIC/anon/authenticated/service_role
-  PASS  a high-entropy snapshot NONCE was recorded
-  PASS  the marker COMMITTED IN THE DATABASE carries exactly the recorded nonce
-  PASS  the pause uses cron.alter_job (reversible)
-  PASS  cron.unschedule is never called (only named in the comment that forbids it)
--- THE POST-SEAL RACE: a job attempted after the seal must be REJECTED --
-  PASS  a schedule_*_job / cron.schedule attempt INSIDE the armed window is rejected AT THE SOURCE
-  PASS  …and no job row was created (the fence rejects, it does not merely detect)
-  PASS  the fence is STATEMENT-level, so it fires even for a zero-row write
-  PASS  TRUNCATE on cron.job is fenced too
-  PASS  the seal PROVES the fence by probing it, not by asserting its presence
-  PASS  a privileged net.http_post() INSIDE the window is rejected — the pg_net queue is fenced, not merely sampled
-  PASS  …and nothing was queued, so nothing can cross into a clone
-  PASS  only the queue's INSERT path is fenced (pg_net's worker still retires rows with UPDATE/DELETE)
--- the seal is one transaction: a failure changes NOTHING --
-  PASS  quiesce refuses with queued pg_net requests
-  PASS  …and NOTHING was paused, fenced or marked (queued pg_net requests)
-  PASS  quiesce refuses with a concurrent quiesce
-  PASS  …and NOTHING was paused, fenced or marked (a concurrent quiesce)
-  PASS  quiesce refuses when in-flight executions never drain
-  PASS  …and it LEFT THE WINDOW atomically: unpaused, unfenced, unmarked
-  PASS  an exported manifest with a TRUNCATED final record is refused (never silently dropped)
-  PASS  a failed manifest export is refused
--- the drain: a stable quiet interval over the COMPLETE in-flight set --
-  PASS  a run in status 'starting' blocks the drain (not just 'running')
-  PASS  …and the window was left, so production is running normally ('starting')
-  PASS  a run in status 'connecting' blocks the drain (not just 'running')
-  PASS  …and the window was left, so production is running normally ('connecting')
-  PASS  a run in status 'sending' blocks the drain (not just 'running')
-  PASS  …and the window was left, so production is running normally ('sending')
-  PASS  a run in status 'running' blocks the drain (not just 'running')
-  PASS  …and the window was left, so production is running normally ('running')
-  PASS  a run in status 'a-future-state-nobody-anticipated' blocks the drain (not just 'running')
-  PASS  …and the window was left, so production is running normally ('a-future-state-nobody-anticipated')
-  PASS  only TERMINAL runs in the history do not block the drain
-  PASS  cron.log_run=off stops the procedure in the READ-ONLY step (a zero count would be a false green)
-  PASS  …and the drain refuses to certify quiescence it cannot observe
-  PASS  a ZERO sample followed by a late start RESETS the streak (the scheduler had not yet observed the pause)
-  PASS  a single quiet sample is refused by configuration (>= 2 required)
--- the scheduler-observation interval cannot be configured away --
-  PASS  a ZERO settle interval is REFUSED (two 'stable' samples would be back-to-back)
-  PASS  …and the window was left, so production runs normally
-  PASS  an interval below the reviewed floor is REFUSED
-  PASS  an INTERRUPTED sleep is refused (the interval did not elapse, so the samples are not separated)
-  PASS  …and production was restored after the failed sleep
--- after the seal, NO local failure may leave production paused --
-  PASS  quiesce fails (non-zero) on a failed nonce write (full or read-only disk)
-  PASS  …every prior active state was RESTORED after a failed nonce write (full or read-only disk)
-  PASS  …no fence was left behind after a failed nonce write (full or read-only disk)
-  PASS  …no marker was left behind after a failed nonce write (full or read-only disk)
-  PASS  quiesce fails (non-zero) on a failed manifest export
-  PASS  …every prior active state was RESTORED after a failed manifest export
-  PASS  …no fence was left behind after a failed manifest export
-  PASS  …no marker was left behind after a failed manifest export
-  PASS  quiesce fails (non-zero) on a manifest whose final record is truncated
-  PASS  …every prior active state was RESTORED after a manifest whose final record is truncated
-  PASS  …no fence was left behind after a manifest whose final record is truncated
-  PASS  …no marker was left behind after a manifest whose final record is truncated
-  PASS  quiesce fails (non-zero) on a source that never goes quiet
-  PASS  …every prior active state was RESTORED after a source that never goes quiet
-  PASS  …no fence was left behind after a source that never goes quiet
-  PASS  …no marker was left behind after a source that never goes quiet
-  PASS  quiesce fails (non-zero) on a failed arm transaction
-  PASS  …every prior active state was RESTORED after a failed arm transaction
-  PASS  …no fence was left behind after a failed arm transaction
-  PASS  …no marker was left behind after a failed arm transaction
-  PASS  quiesce fails when the ENTIRE evidence directory becomes unwritable after the seal
-  PASS  …and the resume STILL EXECUTED: every prior active state is restored
-  PASS  …the fences are gone
-  PASS  …the marker is gone
--- the ORIGINAL failure status survives the recovery --
-  PASS  an underlying psql exit 7 is preserved through the automatic resume (not flattened to 1)
-  PASS  …and production was still restored
-  PASS  a sampling psql exit 7 survives the automatic recovery (exit 7, not a flattened 1)
-  PASS  …and production was still fully restored after a sampling psql exit 7
-  PASS  an interrupted sleep exit 9 survives the automatic recovery (exit 9, not a flattened 1)
-  PASS  …and production was still fully restored after an interrupted sleep exit 9
--- the fallback capture never outlives the recovery --
-  PASS  recovery succeeded via the temp-file fallback
-  PASS  the fallback capture is created where the caller's TMPDIR points (not a fixed system path)
-  PASS  …and no rollout-resume-* temp capture was left behind (success path)
-  PASS  a failed resume via the fallback is still reported loudly
-  PASS  …and no temp capture was left behind (failure path either)
-  PASS  if the automatic resume ALSO fails, it says so unmistakably
-  PASS  …and prints the exact recovery command including the nonce (the failure may have been the nonce write itself)
-== resume: ONE atomic transition, and the whole-history invariant ==
-  PASS  resume succeeds
-  PASS  a job that was ALREADY inactive is restored to inactive (not blanket-enabled)
-  PASS  the two previously-active jobs are active again
-  PASS  resume removes the marker and BOTH fences
-  PASS  after resume, pg_net can enqueue again (the queue fence is not sticky)
-  PASS  the nonce file is RETAINED (clones are verified after production resumes)
-  PASS  after resume, cron.job is writable again (the fence is not sticky)
--- no COMMITTED state ever carries a valid marker beside active cron --
-  PASS  across all 3 committed states, marker-present ALWAYS implies zero active cron
--- a hypothetical restore on each side of every commit --
-  PASS  restore point INSIDE the armed window: accepted
-  PASS  restore point BEFORE the arm commit (marker still 'sealing'): refused
-  PASS  restore point BEFORE the seal commit (no marker, no fence): refused
-  PASS  restore point AFTER the resume commit (marker gone, cron live): refused
-  PASS  a clone whose FENCE is missing is refused (its restore point is outside the window)
-  PASS  a clone carrying a DIFFERENT run's marker is refused (exact nonce)
-  PASS  a clone whose marker objects are reachable by anon/authenticated/service_role is refused
-  PASS  a clone whose cron CONFIGURATION drifted from the sealed one is refused
-  PASS  a clone with a run in 'sending' is refused (the COMPLETE non-terminal set, not just 'running')
-  PASS  a clone whose cron.log_run is off is refused (its quiescence is unprovable)
-  PASS  clone with non-zero C_NETQ is refused
-  PASS  clone with non-zero C_HOOK is refused
-  PASS  clone with non-zero C_OUTTRIG is refused
-  PASS  clone with non-zero C_FDW is refused
-  PASS  a clone with an ACTIVE cron job is refused
-  PASS  with NO sealed snapshot on file, no clone command may run
-  PASS  a malformed recorded nonce is refused
-  PASS  clone-push is gated on the isolation assertion
-  PASS  clone-make-prefix is gated on the isolation assertion
-  PASS  verify-clone is gated on the isolation assertion
-  PASS  clone-unfence is gated on the isolation assertion
--- restoration is exact over EVERY behaviour-bearing field --
-  PASS  a job ADDED after capture makes resume fail loudly
-  PASS  a job MISSING at resume makes resume fail loudly
-  PASS  a job RENAMED under the same id makes resume fail loudly
-  PASS  a job whose ID CHANGED makes resume fail loudly
-  PASS  a same-id/same-name job whose SCHEDULE, COMMAND, USER, DATABASE or NODE changed makes resume fail loudly
-  PASS  …and a failed resume restores NOTHING (one transaction: all or none)
-  PASS  …and says production is still paused and fenced, so the operator retries
--- explicit, reviewed stale-window recovery --
-  PASS  an UN-ARMED window is not resumable by the ordinary path
-  PASS  clone-source-abandon recovers it when the operator names the nonce
-  PASS  …restoring prior state and removing the fence and marker
-  PASS  abandon with the WRONG nonce is refused (no window is cleared by accident)
-  PASS  abandon without --nonce is refused
--- clone-unfence is clone-only and gated --
-  PASS  clone-unfence refuses a production URL
-  PASS  clone-unfence lifts the barrier on a proven clone
-  PASS  …removing only the fence; the marker stays so provenance remains provable
-  PASS  …and production's own fence is untouched
+== the withdrawn fence path is unreachable ==
+  PASS  clone-source-quiesce REFUSES (exit 1)
+  PASS  …without ever invoking psql — the refusal precedes any connection
+  PASS  …and without invoking the Supabase CLI
+  PASS  …and wrote no window evidence
+  PASS  …and says the command is withdrawn
+  PASS  …citing the measured production result
+  PASS  …and points at the ADR
+  PASS  …and names the supported replacement
+  PASS  …and states plainly that nothing was touched
+  PASS  no 'seal' subcommand exists
+  PASS  no 'arm' subcommand exists
+  PASS  no 'fence' subcommand exists
+  PASS  no 'marker' subcommand exists
+== recovery survives, and only with explicit window evidence ==
+  PASS  resume refuses with NO recorded window
+  PASS  resume works for a window whose nonce is on file (recovery preserved)
+  PASS  abandon refuses without --nonce
+  PASS  abandon works when the operator names the nonce
+  PASS  a malformed nonce is refused
+== the rehearsal target must be a real, distinct, EMPTY project ==
+  PASS  an empty, inert, correctly-identified target is accepted
+  PASS  a PRODUCTION url is refused as a rehearsal target
+  PASS  a CLONE_REF equal to production is refused
+  PASS  a malformed CLONE_REF is refused
+  PASS  a target with non-zero E_CRON is refused BEFORE anything is loaded
+  PASS  a target with non-zero E_NETQ is refused BEFORE anything is loaded
+  PASS  a target with non-zero E_VAULT is refused BEFORE anything is loaded
+  PASS  a target with non-zero E_HOOK is refused BEFORE anything is loaded
+  PASS  a target with non-zero E_OUTTRIG is refused BEFORE anything is loaded
+  PASS  a target with non-zero E_FDW is refused BEFORE anything is loaded
+  PASS  a target with non-zero E_AUTH is refused BEFORE anything is loaded
+== the baseline is synthetic, measured, and only the affected tables ==
+  PASS  an UNMEASURED scale file is refused (invented rows give an invented timing)
+  PASS  …and no data was loaded
+  PASS  a measured scale builds the baseline
+  PASS  …schema comes from a db push (main), not from the #615 pin
+  PASS  …and the log says so, so the migrations under test are applied separately
+  PASS  …every schedule the migrations created was deactivated
+  PASS  …and a pristine baseline fingerprint was recorded
+  PASS  a baseline containing a NON-synthetic address is refused
+  PASS  …and not recorded
+TABLES email_address_state,email_delivery_events
+  PASS  the generator writes ONLY the two tables #615 locks (email_address_state,email_delivery_events)
+  PASS  every generated address uses the reserved, undeliverable example.invalid TLD
+  PASS  the generator is deterministic — no executable Math.random (repeatable rehearsals)
+== a rehearsal cannot start from a drifted or failed-migration baseline ==
+  PASS  an untouched target matches its recorded baseline
+  PASS  a target whose SHAPE changed (a part-applied migration) is refused
+  PASS  a target whose ROW COUNT changed is refused
+  PASS  reset also fails while the target still reports drift
+  PASS  reset restores the pristine baseline WITHOUT a production snapshot
+  PASS  …by reloading synthetic data
+  PASS  with no recorded baseline, verification refuses
+== the clone gate is wired into every target-touching command ==
+  PASS  clone-push is gated
+  PASS  clone-make-prefix is gated
+  PASS  verify-clone is gated
+  PASS  the gate proves INERTNESS (no marker, no fence — there is no provenance question)
+  PASS  …and that the target still matches the pristine baseline
 == MUTANTS ==
--- (1) the durable fence --
-  PASS  baseline: the seal artifact alone installs the fence
-  PASS  baseline: a cron.schedule attempt after that seal is rejected
-  PASS  MUTANT (fence mechanism removed) SEALS a window in which a job can still be CREATED — the fence, not the commit lock, is what makes the window durable
-  PASS  …and that job is a real, ACTIVE row a clone would boot and run
-  PASS  MUTANT (trigger deleted, probe kept) is REFUSED at the seal — probing is what turns 'the artifact says it fences' into 'the fence works'
-  PASS  …and no marker was committed, so no restore point looks valid
-  PASS  MUTANT (no sealability check) proceeds on a source where the fence cannot be installed — the read-only check is load-bearing
-  PASS  MUTANT (pg_net queue fence removed) SEALS a window in which an outbound request can still be ENQUEUED — sampling the queue is not the same as freezing it
-  PASS  …and that request would be copied into every clone taken from this window
-  PASS  MUTANT (cleanup omitted on the success path) STRANDS a rollout-resume-* temp file — the cleanup is load-bearing
-  PASS  MUTANT (sampling status normalised) reports exit 1 for an underlying psql exit 7 — propagating the real status is load-bearing
-  PASS  MUTANT (sleep status normalised) reports exit 1 for an interrupted sleep — an interrupt exit such as 130 would be indistinguishable from a refusal
-  PASS  MUTANT (interval floor removed) accepts a ZERO interval, so the two 'stable' samples are back-to-back — the floor is load-bearing
-  PASS  MUTANT (unchecked sleep) treats an INTERRUPTED sleep as an elapsed interval — checking it is load-bearing
-  PASS  MUTANT (recovery redirects into the evidence dir) never runs the resume when that dir is unwritable — production LEFT PAUSED; the best-effort capture is load-bearing
--- (2) the atomic transition --
-  PASS  MUTANT (unfence removed from resume) leaves production FENCED after resume — the unfence must be inside the same transaction
-  PASS  MUTANT (no fence check at resume) resumes a window whose fence had already been dropped — the check is load-bearing
-  PASS  baseline: the arm artifact refuses to arm with a run in 'sending'
-  PASS  MUTANT (quiet assertion deleted from arm) ARMS a window with a run still in 'sending' — the SQL assertion, not just the shell drain, is load-bearing
-  PASS  MUTANT (armed check deleted) accepts a clone restored BEFORE the arm commit — the state check bounds the window's near edge
-  PASS  MUTANT (clone fence check deleted) accepts a clone from OUTSIDE the fenced window — the fence bounds the window's far edge
--- (3) exact restoration --
-  PASS  MUTANT (every configuration comparison deleted) re-enables a job whose COMMAND changed under the same id and name — a same-id/same-name drift is otherwise invisible
-  PASS  MUTANT (set-equality proof and the fingerprint compare deleted) resumes with an EXTRA job unnoticed — exact set equality is load-bearing
-  PASS  MUTANT (no manifest validation) accepts an evidence manifest whose final record is truncated — the fail-closed check is load-bearing
--- (4) marker ownership and lifecycle --
-  PASS  MUTANT (both prior-window guards deleted) OVERWRITES another run's marker — refusing to reuse a window is load-bearing
-  PASS  MUTANT (advisory lock deleted) seals while another quiesce is running — run-level exclusion is load-bearing
-  PASS  MUTANT (lockdown and its source-side assertion deleted) leaves the marker objects on ambient default grants — the explicit revoke is load-bearing
-  PASS  MUTANT (clone ACL check deleted) accepts a clone whose marker objects are world-readable — verifying ACLs in the CLONE is load-bearing
--- (5) timing honesty --
-  PASS  now() is stored as sealed_tx_start and labelled transaction-start, not the commit instant
-  PASS  the informational instant is clock_timestamp() read AFTER the commit
-  PASS  it is rendered to microseconds, not truncated to seconds
-  PASS  the operator is told only the nonce establishes provenance
-  PASS  the seal artifact states plainly that its lock ends at COMMIT
-  PASS  the runbook states plainly that the lock ends at COMMIT
-  PASS  no surviving AFFIRMATIVE claim that the lock protects the window after commit
-================  180 passed, 0 failed  ================
+  PASS  MUTANT (refusal downgraded to a warning) lets the withdrawn command proceed — a hard die, not a warn, is load-bearing
+  PASS  MUTANT (empty-project check removed) accepts a target holding Vault secrets — proving inertness before loading is load-bearing
+  PASS  MUTANT (measured-scale check removed) builds a baseline from placeholder row counts — an invented scale would be reported as a real timing
+  PASS  MUTANT (synthetic assertion removed) records a baseline containing a real-looking address — the PII guard is load-bearing
+  PASS  MUTANT (baseline check removed from the gate) rehearses against a drifted target — a failed migration could leave a reusable false green
+  PASS  MUTANT (deactivation removed) leaves the schema build's cron jobs ACTIVE on the target — deactivation is load-bearing
+================  59 passed, 0 failed  ================

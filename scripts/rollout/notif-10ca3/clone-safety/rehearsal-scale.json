@@ -1,0 +1,36 @@
+{
+  "_comment": [
+    "Production-equivalent scale for the #615 rehearsal baseline.",
+    "The two affected tables are the only ones that receive scale data, because",
+    "they are the only ones 20261006100000 locks and rewrites:",
+    "  email_address_state    ALTER TABLE ... ADD COLUMN is_suppressed ... STORED  (full rewrite)",
+    "  email_delivery_events  DROP/ADD CHECK constraint                            (full validation scan)",
+    "plus the backfill, whose cost follows the state/event-type distribution below.",
+    "",
+    "source MUST be 'measured' before clone-build-baseline will run. Invented",
+    "numbers produce an invented timing result, so the tooling refuses them.",
+    "Fill these from a READ-ONLY production sizing query (see ADR-001 §7)."
+  ],
+  "source": "placeholder",
+  "measured_at": null,
+  "measured_by": null,
+  "tables": {
+    "email_address_state": {
+      "rows": 0,
+      "avg_email_len": 0,
+      "state_distribution": { "ok": 0, "soft_bounced": 0, "hard_bounced": 0, "complained": 0 }
+    },
+    "email_delivery_events": {
+      "rows": 0,
+      "avg_reason_len": 0,
+      "event_type_distribution": {
+        "sent": 0, "delivered": 0, "bounced": 0, "complained": 0,
+        "delivery_delayed": 0, "failed": 0, "send_failed": 0
+      }
+    }
+  },
+  "bloat": {
+    "_comment": "dead:live ratio to approximate a long-lived table; see ADR-001 §6.3",
+    "dead_tuple_ratio": 0.0
+  }
+}
