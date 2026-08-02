@@ -373,6 +373,31 @@ run_sql() {
   ok "$(basename "$file") passed"
 }
 
+# Bounded diagnostic rendering that CANNOT alter control flow.
+#
+# `grep ... | head -N >&2` looks harmless and is not: under `set -Eeuo pipefail`
+# a zero-match grep fails the pipeline, and `head` closing early can SIGPIPE the
+# producer. Either can abort before the caller returns the ORIGINAL status or
+# cleans up its capture — and one of these sits in the production recovery path.
+#
+# This reads the file with the shell only, prints at most $2 matching lines to
+# stderr, and ALWAYS returns 0. (mutation-pinned: verify/exit-status-test.sh)
+render_diag() {   # $1 file, $2 max lines, $3 optional prefix
+  local f="${1:-}" max="${2:-6}" prefix="${3:-}" n=0 line
+  [[ -n "$f" && -r "$f" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      ERROR*|error*|psql:*|FATAL*|NOTICE*|WARNING*)
+        printf '%s%s\n' "$prefix" "$line" >&2
+        n=$((n + 1))
+        [[ "$n" -ge "$max" ]] && break
+        ;;
+    esac
+  done < "$f"
+  [[ "$n" -eq 0 ]] && printf '%s(no diagnostic lines in %s)\n' "$prefix" "${f##*/}" >&2
+  return 0
+}
+
 # Non-fatal variant of run_sql: RETURNS the psql exit status instead of exiting.
 # Required wherever a failure must trigger a compensating action (e.g. restoring
 # production cron) — `die` would exit the shell before the handler could run,

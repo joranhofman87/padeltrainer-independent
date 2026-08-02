@@ -85,6 +85,43 @@ try {
     await c.query(teardown).catch(() => {});
   }
   await c.query(`CREATE TABLE IF NOT EXISTS auth_probe_users (id int)`);
+  await c.query(`DROP TABLE IF EXISTS public.auth_probe_users`);
+
+  console.log('\n[1b] APPLICATION state must fail the empty-project proof');
+  for (const [label, setup, teardown] of [
+    ['a customer table with a row',
+     `CREATE TABLE public.customers (id int, email text); INSERT INTO public.customers VALUES (1,'a@b.test')`,
+     `DROP TABLE IF EXISTS public.customers`],
+    ['an empty application table',
+     `CREATE TABLE public.leftovers (id int)`, `DROP TABLE IF EXISTS public.leftovers`],
+    ['a view in public', `CREATE VIEW public.v_x AS SELECT 1 AS a`, `DROP VIEW IF EXISTS public.v_x`],
+    ['a migration-ledger entry',
+     `CREATE SCHEMA IF NOT EXISTS supabase_migrations;
+      CREATE TABLE IF NOT EXISTS supabase_migrations.schema_migrations (version text PRIMARY KEY);
+      INSERT INTO supabase_migrations.schema_migrations VALUES ('20260101000000')`,
+     `DELETE FROM supabase_migrations.schema_migrations`],
+    ['a storage bucket',
+     `CREATE SCHEMA IF NOT EXISTS storage;
+      CREATE TABLE IF NOT EXISTS storage.buckets (id text PRIMARY KEY, name text);
+      INSERT INTO storage.buckets VALUES ('avatars','avatars')`,
+     `DELETE FROM storage.buckets`],
+  ]) {
+    try { await c.query(setup); } catch (x) { rec(`setup for ${label}`, false, String(x.message).slice(0, 80)); continue; }
+    const e2 = await tryArtifact(c, 'empty_project_check.sql');
+    rec(`empty_project_check REFUSES a target with ${label}`, e2 !== null, e2 ? '' : 'ACCEPTED');
+    await c.query(teardown).catch(() => {});
+  }
+  // and the mutant: without the application-state check the customer table passes
+  {
+    await c.query(`CREATE TABLE public.customers (id int, email text); INSERT INTO public.customers VALUES (1,'a@b.test')`);
+    const full = artifactText('empty_project_check.sql');
+    const stripped = full.replace(/-- \(6\) NO APPLICATION STATE[\s\S]*?END \$\$;\n/, '');
+    let mutErr = null;
+    try { await c.query(stripped); } catch (x) { mutErr = x; await c.query('ROLLBACK').catch(() => {}); }
+    rec('MUTANT (application-state check removed) ACCEPTS a project holding a customer table — the check is load-bearing',
+        mutErr === null, mutErr ? String(mutErr.message).slice(0, 70) : '');
+    await c.query(`DROP TABLE IF EXISTS public.customers`);
+  }
 
   console.log('\n[2] outbound triggers are caught, including nested call paths');
   await c.query(`
@@ -124,7 +161,7 @@ try {
                                    delivery_delayed: 150, failed: 100, send_failed: 50 },
         events_per_address: { p50: 2, p90: 6, max: 20 } },
     },
-    bloat: { dead_tuple_ratio: 0.1 },
+    bloat: { email_address_state: 0.1, email_delivery_events: 0.05 },
   };
   const dir = mkdtempSync(join(tmpdir(), 'rollout-scale-'));
   const scaleFile = join(dir, 'scale.json');
@@ -345,15 +382,39 @@ try {
       {
         const out = execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
           { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
-        const m = out.match(/BLOAT dead_tuple_ratio=([\d.]+) rows_updated=(\d+) of (\d+)/);
+        const m = out.match(/BLOAT email_address_state ratio=([\d.]+) rows_updated=(\d+) of (\d+)/);
         rec('the generator reports its bloat injection', m !== null, (out.match(/BLOAT[^\n]*/) || [''])[0]);
         if (m) {
           const [, r, updated, rows] = m;
           rec(`…and honours dead_tuple_ratio (${r} of ${rows} = ${Math.round(Number(rows) * Number(r))}, updated ${updated})`,
               Number(updated) === Math.max(1, Math.round(Number(rows) * Number(r))) && Number(updated) > 0);
         }
+        // PHYSICAL PROOF, not the generator's own message: a mutant that skips
+        // the UPDATE and prints the expected line would pass a message check.
+        await fresh.query('ANALYZE public.email_address_state');
+        await fresh.query('ANALYZE public.email_delivery_events');
+        const dead = async (t) => Number(await scalar(fresh,
+          `SELECT coalesce(n_dead_tup, 0)::int AS v FROM pg_stat_user_tables WHERE schemaname='public' AND relname='${t}'`));
+        const d1 = await dead('email_address_state'), d2 = await dead('email_delivery_events');
+        rec(`bloat is PHYSICALLY present in email_address_state (n_dead_tup=${d1})`, d1 > 0);
+        rec(`…and in email_delivery_events (n_dead_tup=${d2}) — the ratio is per-table, matching the sizing query`, d2 > 0);
+
+        // MUTANT: skip the UPDATE, keep the message
+        const bmut = join(REPO, 'scripts/rollout/notif-10ca3/synth/.no-bloat-mutant.mjs');
+        {
+          const src = readFileSync(join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), 'utf8');
+          writeFileSync(bmut, src.replace('      updated = res.rowCount;', '      updated = want;   // MUTANT: report it, do not do it')
+                                 .replace(/      const res = await c\.query\(\n        `UPDATE public\.\$\{t\}[\s\S]*?\[want\]\);\n/, ''));
+        }
+        execFileSync('node', [bmut, url, fsFile], { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
+        await fresh.query('ANALYZE public.email_address_state');
+        const mDead = await dead('email_address_state');
+        rec('MUTANT (UPDATE removed, message kept) leaves ZERO dead tuples — the physical check catches what a message check would not',
+            mDead === 0, `n_dead_tup=${mDead}`);
+        rmSync(bmut, { force: true });
+
         const badBloat = JSON.parse(JSON.stringify(fullScale));
-        badBloat.bloat = {};                       // ratio absent entirely
+        badBloat.bloat = {};                       // ratios absent entirely
         const bf = join(sanDir, 'scale-nobloat.json');
         writeFileSync(bf, JSON.stringify(badBloat));
         let bloatRefused = false;
@@ -361,7 +422,7 @@ try {
           execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, bf],
             { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
         } catch { bloatRefused = true; }
-        rec('a scale file with NO dead_tuple_ratio is refused (the ADR promises injected bloat)', bloatRefused);
+        rec('a scale file with NO per-table bloat ratios is refused (the ADR promises injected bloat)', bloatRefused);
         execFileSync('node', [join(REPO, 'scripts/rollout/notif-10ca3/synth/build-baseline.mjs'), url, fsFile],
           { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres' } });
       }

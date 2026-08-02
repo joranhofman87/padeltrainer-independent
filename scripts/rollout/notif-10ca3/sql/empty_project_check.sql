@@ -99,4 +99,48 @@ BEGIN
   RAISE NOTICE 'zero auth users';
 END $$;
 
-SELECT pg_temp.note('empty-project check: no cron jobs, no queued/recorded pg_net traffic, no Vault secrets, no webhooks or outbound triggers, no FDWs, no auth users — outbound-inert by construction, not by quiescing');
+-- (6) NO APPLICATION STATE. The checks above prove the target cannot SEND;
+--     these prove it is genuinely FRESH. Without them a project holding customer
+--     tables and rows — but no cron, Vault or auth — passes, and the baseline
+--     loader then TRUNCATEs and rewrites tables that are not ours to touch.
+--     Platform-owned schemas are allow-listed; `public` must be empty.
+DO $$
+DECLARE n bigint; sample text;
+BEGIN
+  SELECT count(*), min(c.relname) INTO n, sample
+  FROM pg_class c JOIN pg_namespace ns ON ns.oid = c.relnamespace
+  WHERE ns.nspname = 'public'
+    AND c.relkind IN ('r', 'p', 'v', 'm', 'f')      -- tables, partitions, views, matviews, foreign
+    AND c.relname NOT IN ('spatial_ref_sys');       -- reviewed: PostGIS ships it, never app data
+  IF n <> 0 THEN
+    RAISE EXCEPTION 'public holds % application relation(s) (e.g. %) — this is not a fresh project, and the baseline loader must never truncate tables it did not create', n, sample;
+  END IF;
+END $$;
+
+-- (7) NO MIGRATION LEDGER. A ledger entry means a chain was already applied
+--     here; the next `db push` would then apply a SUFFIX and the "full chain"
+--     claim would be false.
+DO $$
+DECLARE n bigint := 0;
+BEGIN
+  IF to_regclass('supabase_migrations.schema_migrations') IS NOT NULL THEN
+    EXECUTE 'SELECT count(*) FROM supabase_migrations.schema_migrations' INTO n;
+  END IF;
+  IF n <> 0 THEN
+    RAISE EXCEPTION 'the migration ledger already holds % row(s) — this project has been built before', n;
+  END IF;
+END $$;
+
+-- (8) NO STORAGE OBJECTS OR BUCKETS. Both are platform-owned and survive a
+--     schema drop, so their presence means prior application state.
+DO $$
+DECLARE b bigint := 0; o bigint := 0;
+BEGIN
+  IF to_regclass('storage.buckets') IS NOT NULL THEN EXECUTE 'SELECT count(*) FROM storage.buckets' INTO b; END IF;
+  IF to_regclass('storage.objects') IS NOT NULL THEN EXECUTE 'SELECT count(*) FROM storage.objects' INTO o; END IF;
+  IF b <> 0 OR o <> 0 THEN
+    RAISE EXCEPTION 'storage holds % bucket(s) and % object(s) — this is not a fresh project', b, o;
+  END IF;
+END $$;
+
+SELECT pg_temp.note('empty-project check: no cron jobs, no queued/recorded pg_net traffic, no Vault secrets, no webhooks or outbound triggers, no FDWs, no auth users, no application relations, no migration ledger, no storage state — fresh AND outbound-inert by construction');

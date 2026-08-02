@@ -250,5 +250,32 @@ grep -q 'local rc=\$?' "$RR" && grep -q 'exit "\$rc"' "$RR" \
   && pass "run-rollout.sh cleanup captures \$? and exits with it" \
   || fail "run-rollout.sh cleanup does not preserve the original status"
 
+echo "== render_diag cannot alter control flow =="
+D="$(mktemp -d)"
+: > "$D/empty"
+printf 'ERROR:  one\nnoise\nERROR:  two\n' > "$D/two"
+printf 'ERROR:  %s\n' 1 2 3 4 5 6 7 8 9 10 > "$D/ten"
+( set -Eeuo pipefail; source "$HERE/../lib/common.sh"; render_diag "$D/empty" 6 >/dev/null 2>&1 ) 
+[[ $? -eq 0 ]] && pass "render_diag returns 0 with ZERO matching lines (a grep pipeline would fail here)" || fail "zero-match render_diag failed"
+( set -Eeuo pipefail; source "$HERE/../lib/common.sh"; render_diag "$D/ten" 3 >/dev/null 2>&1 )
+[[ $? -eq 0 ]] && pass "…and with MORE lines than the limit (no SIGPIPE to a producer)" || fail "over-limit render_diag failed"
+n=$( ( source "$HERE/../lib/common.sh"; render_diag "$D/ten" 3 ) 2>&1 | grep -c '^ERROR' )
+[[ "$n" -eq 3 ]] && pass "…printing exactly the limit ($n of 10)" || fail "printed $n lines, expected 3"
+( set -Eeuo pipefail; source "$HERE/../lib/common.sh"; render_diag "$D/does-not-exist" 6 >/dev/null 2>&1 )
+[[ $? -eq 0 ]] && pass "…and with an UNREADABLE file (the capture may never have been created)" || fail "missing-file render_diag failed"
+( set -Eeuo pipefail; source "$HERE/../lib/common.sh"; render_diag "" 6 >/dev/null 2>&1 )
+[[ $? -eq 0 ]] && pass "…and with no file at all" || fail "empty-arg render_diag failed"
+rc=$( ( set -Eeuo pipefail; source "$HERE/../lib/common.sh"
+        f(){ render_diag "$D/empty" 6 2>/dev/null; return 7; }; f ) >/dev/null 2>&1; echo $? )
+[[ "$rc" -eq 7 ]] && pass "a caller's ORIGINAL status survives rendering (exit 7 preserved)" || fail "status became $rc"
+# MUTANT: the pre-fix pipeline shape
+mrc=$( ( set -Eeuo pipefail
+         f(){ grep -E '^(ERROR|psql)' "$D/empty" | head -6 >&2; return 7; }; f ) >/dev/null 2>&1; echo $? )
+[[ "$mrc" -ne 7 ]] && pass "MUTANT (grep|head pipeline) LOSES the original status on zero matches (got ${mrc}) — the helper is load-bearing" || fail "pipeline mutant not distinguishable"
+grep -rn '| head -' "$HERE/../run-rollout.sh" | grep -v 'ROLLOUT_DIAG_MAX_LINES' | grep -qv '^$' \
+  && fail "an unguarded producer|head diagnostic pipeline remains in run-rollout.sh" \
+  || pass "no unguarded producer|head diagnostic pipeline remains in run-rollout.sh"
+rm -rf "$D"
+
 echo "================  ${P} passed, ${F} failed  ================"
 [[ "$F" -eq 0 ]]

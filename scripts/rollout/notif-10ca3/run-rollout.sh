@@ -818,7 +818,7 @@ clone_source_leave_window() {   # $1 url, $2 nonce, $3 allow_unarmed(0|1)
   fi
   if [[ "$rc" -ne 0 ]]; then
     warn "resume transaction FAILED and rolled back — production remains paused and fenced with its marker intact"
-    [[ -n "$cap" ]] && grep -E '^(ERROR|psql)' "$cap" 2>/dev/null | head -6 >&2
+    render_diag "$cap" 6
     [[ "$cap_tmp" -eq 1 ]] && warn "the diagnostics above came from a temporary capture, which is now removed"
     discard_temp_capture "$cap" "$cap_tmp"
     return "$rc"
@@ -932,15 +932,18 @@ cmd_clone_build_baseline() {
   run_sql_soft "$url" "$SQL_DIR/empty_project_check.sql" > "$probe" 2>&1 || rc=$?
   if [[ "$rc" -ne 0 ]]; then
     warn "the target did not pass the empty-project check:"
-    grep -E '^(ERROR|psql|NOTICE)' "$probe" | sed 's/^/  /' | head -6 >&2
-    local partial=0
-    grep -q 'not a pristine disposable project\|is not empty\|rehearsal_target_marker\|holds .* Vault\|auth user' "$probe" && partial=1
-    if [[ "$partial" -eq 1 ]] && psql "$url" -v ON_ERROR_STOP=1 -Atqc \
-         "SELECT 1 FROM net.rehearsal_target_marker LIMIT 1" >/dev/null 2>&1; then
+    render_diag "$probe" 6 '  ' 
+    # Eligibility comes from the DURABLE MARKER, not from the wording of the
+    # error above. Matching human-readable fragments meant a message change
+    # could silently withdraw a valid recovery — or offer a destructive one.
+    local marker rc2=0
+    marker="$(psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -Atqc \
+      "SELECT count(*) FROM net.rehearsal_target_marker" 2>/dev/null)" || rc2=$?
+    if [[ "$rc2" -eq 0 && "$marker" =~ ^[0-9]+$ && "$marker" -ge 1 ]]; then
       rm -f "$probe"
       [[ -s "$BASELINE_FP" ]] \
         && die "this target already carries a recorded baseline — use 'clone-baseline-verify' or 'clone-reset-baseline --yes'" \
-        || die "the target carries THIS TOOLING'S marker but no baseline is on file, so a previous build failed part-way. Recover with:
+        || die "the target carries THIS TOOLING'S marker (${marker} row(s)) but no baseline is on file, so a previous build failed part-way. Recover with:
     clone-reset-baseline --yes --recover <clone_url>
   which wipes it back to bare metal, rebuilds, and records the baseline."
     fi
@@ -1017,7 +1020,11 @@ cmd_clone_baseline_verify() {
   if [[ "$rc" -ne 0 ]]; then rm -f "$tmp"; die "could not fingerprint the target (psql exit ${rc})"; fi
   if ! diff -q "$BASELINE_FP" "$tmp" >/dev/null 2>&1; then
     warn "the target does NOT match the recorded pristine baseline:"
-    diff "$BASELINE_FP" "$tmp" | head -20 >&2
+    diff "$BASELINE_FP" "$tmp" > "$tmp.diff" 2>/dev/null || true
+    { local dn=0 dl; while IFS= read -r dl || [[ -n "$dl" ]]; do
+        printf '  %s\n' "$dl" >&2; dn=$((dn + 1)); [[ "$dn" -ge 20 ]] && break
+      done < "$tmp.diff"; } || true
+    rm -f "$tmp.diff"
     rm -f "$tmp"
     die "rehearsal target has drifted — run 'clone-reset-baseline --yes <url>' before rehearsing"
   fi

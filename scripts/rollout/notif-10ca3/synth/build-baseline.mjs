@@ -265,30 +265,41 @@ try {
   // baseline on file) could then recover. Everything through validation is one
   // transaction; a failure rolls the data back and the target stays pristine.
 
-  // BLOAT. A freshly loaded table is perfectly packed; a table that has absorbed
-  // years of updates is not, and an ACCESS EXCLUSIVE rewrite has to walk its
-  // pages. Update a documented fraction of rows WITHOUT vacuuming so the dead
-  // tuples are still there when the envelope is measured. (This was silently
-  // dropped when the COMMIT moved below validation — the ADR promised it and
-  // nothing asserted it, so BLOAT is now reported and checked.)
-  const ratio = Number(scale.bloat?.dead_tuple_ratio ?? -1);
-  if (!(ratio >= 0 && ratio <= 1)) {
-    await c.query('ROLLBACK');
-    console.error('refusing: bloat.dead_tuple_ratio must be a fraction in [0, 1]'); process.exit(4);
-  }
-  let bloated = 0;
-  if (ratio > 0) {
-    const want = Math.max(1, Math.round(AS.rows * ratio));
-    const r = await c.query(
-      `UPDATE public.email_address_state SET state = state
-        WHERE ctid IN (SELECT ctid FROM public.email_address_state ORDER BY email LIMIT $1)`, [want]);
-    bloated = r.rowCount;
-    if (bloated !== want) {
+  // BLOAT, PER TABLE. A freshly loaded relation is perfectly packed; one that has
+  // absorbed years of updates is not, and an ACCESS EXCLUSIVE rewrite walks its
+  // pages. Update a documented fraction of each affected table WITHOUT vacuuming
+  // so the dead tuples are still there when the envelope is measured.
+  //
+  // The ratio is per-table because the production sizing query returns
+  // n_live_tup/n_dead_tup for BOTH affected tables — a single scalar would have
+  // left the query and the generator disagreeing about what was measured.
+  const bloatSpec = scale.bloat || {};
+  const BLOAT_TABLES = ['email_address_state', 'email_delivery_events'];
+  for (const t of BLOAT_TABLES) {
+    const r = Number(bloatSpec[t]);
+    if (!(r >= 0 && r <= 1)) {
       await c.query('ROLLBACK');
-      console.error(`FAIL: bloat injection updated ${bloated} of ${want} rows`); process.exit(7);
+      console.error(`refusing: bloat.${t} must be a fraction in [0, 1] (got ${bloatSpec[t]})`); process.exit(4);
     }
   }
-  console.log(`BLOAT dead_tuple_ratio=${ratio} rows_updated=${bloated} of ${AS.rows}`);
+  for (const t of BLOAT_TABLES) {
+    const ratio = Number(bloatSpec[t]);
+    const rows = t === 'email_address_state' ? AS.rows : DE.rows;
+    const key = t === 'email_address_state' ? 'email' : 'id';
+    let updated = 0;
+    if (ratio > 0) {
+      const want = Math.max(1, Math.round(rows * ratio));
+      const res = await c.query(
+        `UPDATE public.${t} SET ${key} = ${key}
+          WHERE ctid IN (SELECT ctid FROM public.${t} ORDER BY ${key} LIMIT $1)`, [want]);
+      updated = res.rowCount;
+      if (updated !== want) {
+        await c.query('ROLLBACK');
+        console.error(`FAIL: bloat injection updated ${updated} of ${want} rows in ${t}`); process.exit(7);
+      }
+    }
+    console.log(`BLOAT ${t} ratio=${ratio} rows_updated=${updated} of ${rows}`);
+  }
 
   const n1 = (await c.query('SELECT count(*)::int AS v FROM public.email_address_state')).rows[0].v;
   const n2 = (await c.query('SELECT count(*)::int AS v FROM public.email_delivery_events')).rows[0].v;

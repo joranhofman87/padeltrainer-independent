@@ -56,8 +56,9 @@
     }
   },
   "bloat": {
-    "_comment": "dead:live ratio approximating a long-lived table; ADR-001 section 6.3",
-    "dead_tuple_ratio": 0.0
+    "_comment": "dead:live ratio PER TABLE, approximating a long-lived relation (ADR-001 6.3). The production sizing query returns n_live_tup/n_dead_tup for both affected tables, so both are configured and both are generated.",
+    "email_address_state": 0.0,
+    "email_delivery_events": 0.0
   },
   "byte_tolerance_pct": 15
 }

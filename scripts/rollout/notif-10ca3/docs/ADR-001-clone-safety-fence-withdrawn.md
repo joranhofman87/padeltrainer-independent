@@ -269,8 +269,11 @@ outside `byte_tolerance_pct` of the measured size. Without that check a derived
 
 - **Physical bloat and page layout.** A freshly loaded table is perfectly packed;
   a table that has absorbed years of updates is not, and a rewrite must walk its
-  pages. The baseline injects a configured `dead_tuple_ratio` of dead tuples
-  without vacuuming to approximate this. It is an **approximation**, not physical
+  pages. The baseline injects a configured **per-table** dead-tuple ratio
+  (`bloat.email_address_state`, `bloat.email_delivery_events`) without vacuuming,
+  matching the sizing query, which returns `n_live_tup`/`n_dead_tup` for **both**
+  affected tables. The effect is verified physically (`pg_stat_user_tables`), not
+  from the generator\u2019s own log line. It is an **approximation**, not physical
   equivalence, and a measured window should be treated as a *lower bound*.
 - **Hardware and concurrency.** The disposable project must be the same instance
   size as production, and the measurement is taken with no concurrent workload —

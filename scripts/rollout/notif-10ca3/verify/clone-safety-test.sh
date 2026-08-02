@@ -42,7 +42,7 @@ S="$STATEDIR"; sfile(){ cat "$S/$1" 2>/dev/null || echo "$2"; }
 has(){ grep -q -- "$1" "$f" 2>/dev/null; }
 boom(){ echo "ERROR:  $1" >&2; exit 3; }
 if [[ "$f" == *empty_project_check.sql ]]; then
-  [[ -e "$STATEDIR/SCHEMA" ]] && boom "target is not empty (a previous build left a schema behind)"
+  [[ -e "$STATEDIR/SCHEMA" ]] && boom "$(sfile EMPTY_MSG 'target is not empty (a previous build left a schema behind)')"
   for k in E_CRON E_NETQ E_VAULT E_HOOK E_OUTTRIG E_FDW E_AUTH; do
     [[ "$(sfile $k 0)" == 0 ]] || boom "target is not pristine ($k)"
   done
@@ -76,6 +76,12 @@ if [[ "$f" == *clone_source_resume.sql ]]; then
   [[ "$(sfile RESUME_FAIL 0)" == 0 ]] || boom "resume refused (injected)"
   rm -f "$S/WINDOW"; echo "NOTE: resumed"; exit 0
 fi
+# the durable recovery-eligibility probe: a COUNT, answered from real state
+case "$*" in
+  *rehearsal_target_marker*)
+    [[ -e "$S/MARKER_TBL" ]] && { echo 1; exit 0; }
+    echo 'ERROR:  relation "net.rehearsal_target_marker" does not exist' >&2; exit 1;;
+esac
 exit 0
 EOF
 cat > "$BIN/supabase" <<'EOF'
@@ -228,7 +234,10 @@ grep -qF 'information_schema.columns' "$GEN" && grep -qF 'is_nullable' "$GEN" \
   && pass "…filling exactly the NOT NULL columns the live schema declares, not a hard-coded guess" || fail "parent columns are hard-coded"
 grep -q 'example.invalid' "$HERE/../synth/build-baseline.mjs" \
   && pass "every generated address uses the reserved, undeliverable example.invalid TLD" || fail "addresses are not on a reserved TLD"
-sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs" | grep -qE 'Math\.random' \
+# capture then match: `producer | grep -q` under pipefail reports the PRODUCER's
+# status, which is the same false-green shape this suite exists to catch
+GENSRC="$(sed -e 's|//.*$||' "$HERE/../synth/build-baseline.mjs")"
+grep -qF 'Math.random' <<<"$GENSRC" \
   && fail "the generator is nondeterministic" \
   || pass "the generator is deterministic — no executable Math.random (repeatable rehearsals)"
 
@@ -288,6 +297,23 @@ seed; measured yes
 [[ $? -ne 0 ]] && pass "a clone-IDENTITY failure fails as itself" || fail "identity failure accepted"
 grep -q -- '--recover' "$ROOT/out.txt" && fail "an identity failure recommends destructive recovery" \
   || pass "…and never recommends --recover (auth/connectivity/identity are not recoverable by wiping)"
+
+echo "-- recovery eligibility comes from the MARKER, not the error wording --"
+seed; measured yes; echo 1 > "$STATEDIR/SYNTH_FAIL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"     # leaves schema + marker, no baseline
+rm -f "$STATEDIR/SYNTH_FAIL"
+echo "a completely different message" > "$STATEDIR/EMPTY_MSG"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+grep -q 'clone-reset-baseline --yes --recover' "$ROOT/out.txt" \
+  && pass "with the marker PRESENT, recovery is still offered even though the error wording changed" \
+  || fail "wording change withdrew a valid recovery"
+grep -q 'a completely different message' "$ROOT/out.txt" \
+  && pass "…and the changed diagnostic itself is still shown" || fail "diagnostic not propagated"
+rm -f "$STATEDIR/MARKER_TBL"
+crun bash "$RR" clone-build-baseline --yes "$CLONE_URL"
+grep -q -- '--recover is NOT offered' "$ROOT/out.txt" \
+  && pass "with the marker ABSENT, recovery is refused regardless of wording" || fail "recovery offered without a marker"
+rm -f "$STATEDIR/EMPTY_MSG"
 
 echo "-- a stub that dies PART-WAY leaves nothing behind --"
 seed; measured yes; echo 1 > "$STATEDIR/STUB_PARTIAL"
