@@ -104,7 +104,10 @@ DECLARE
   v_tz     text := coalesce(nullif(btrim(p_timezone), ''), 'Europe/Amsterdam');
   v_local  timestamp;
   v_cand   timestamp;
+  v_try    timestamptz;
   v_result timestamptz;
+  v_step   interval;
+  v_i      int;
 BEGIN
   IF p_now IS NULL THEN
     RAISE EXCEPTION 'notif_digest_boundary_at: p_now is required';
@@ -114,18 +117,45 @@ BEGIN
   END IF;
 
   v_local := p_now AT TIME ZONE v_tz;
+  -- The cadence step IS the contract: daily advances a day, weekly advances a WEEK so the
+  -- boundary stays a Monday. Advancing weekly by a day would silently break "weekly = Monday".
+  v_step := CASE WHEN p_frequency = 'daily' THEN interval '1 day' ELSE interval '7 days' END;
 
   IF p_frequency = 'daily' THEN
     v_cand := date_trunc('day', v_local) + interval '9 hours';
-    IF v_cand < v_local THEN
-      v_cand := date_trunc('day', v_local) + interval '1 day' + interval '9 hours';
-    END IF;
   ELSE
     -- date_trunc('week', ...) is ISO: it lands on Monday 00:00 local.
     v_cand := date_trunc('week', v_local) + interval '9 hours';
-    IF v_cand < v_local THEN
-      v_cand := date_trunc('week', v_local) + interval '7 days' + interval '9 hours';
+  END IF;
+
+  -- EXPLICIT cadence-aware advancement. Two things can make a candidate unusable:
+  --   * it is already past (the common case — today's 09:00 has been and gone), or
+  --   * the wall time DOES NOT EXIST (a gap swallowed it; Pacific/Apia skipped all of
+  --     2011-12-30, and a future DST rule could put a gap over 09:00).
+  -- Relying on PostgreSQL's silent normalization for the second case is what would break the
+  -- fixed-Monday contract: a skipped Monday normalizes to TUESDAY 09:00, which still reads as
+  -- 09:00 local and is still >= p_now, so post-conditions alone cannot catch it. Stepping by
+  -- the cadence instead keeps the weekday invariant true by construction.
+  --
+  -- AMBIGUOUS 09:00 (a fall-back that repeated the hour) is a documented, bounded imprecision:
+  -- PostgreSQL resolves the pair to one instant, and if that one precedes p_now we advance a
+  -- whole cadence step rather than using the second occurrence. That fails LATE, never early —
+  -- monotonicity, the 09:00 wall time and the weekday all still hold. No current IANA rule
+  -- makes 09:00 ambiguous in any zone this product serves.
+  v_result := NULL;
+  FOR v_i IN 1..8 LOOP
+    v_try := v_cand AT TIME ZONE v_tz;
+    -- round-trip equality is the existence test: a gap-swallowed wall time comes back different
+    IF (v_try AT TIME ZONE v_tz) = v_cand AND v_try >= p_now THEN
+      v_result := v_try;
+      EXIT;
     END IF;
+    v_cand := v_cand + v_step;
+  END LOOP;
+
+  IF v_result IS NULL THEN
+    RAISE EXCEPTION 'notif_digest_boundary_at: no valid % boundary within 8 steps of % in timezone %',
+      p_frequency, p_now, v_tz;
   END IF;
 
   v_result := v_cand AT TIME ZONE v_tz;
@@ -159,6 +189,12 @@ BEGIN
   IF to_char(v_result AT TIME ZONE v_tz, 'HH24:MI') <> '09:00' THEN
     RAISE EXCEPTION 'notif_digest_boundary_at: boundary % is not 09:00 local in timezone % (got %)',
       v_result, v_tz, to_char(v_result AT TIME ZONE v_tz, 'HH24:MI');
+  END IF;
+  -- weekly = MONDAY, fixed in 10c-a. Asserted, not merely intended: this is the invariant a
+  -- silent normalization would break, and the cadence-aware step above is what keeps it true.
+  IF p_frequency = 'weekly' AND extract(isodow FROM (v_result AT TIME ZONE v_tz)) <> 1 THEN
+    RAISE EXCEPTION 'notif_digest_boundary_at: weekly boundary % is not a Monday in timezone % (isodow %)',
+      v_result, v_tz, extract(isodow FROM (v_result AT TIME ZONE v_tz));
   END IF;
 
   RETURN v_result;

@@ -477,17 +477,37 @@ describe('C — §BND boundaries are DST-correct', () => {
     const { rows } = await c.query(`
       SELECT count(*)::int                                        AS checked,
              count(*) FILTER (WHERE b <  n)::int                  AS not_monotone,
-             count(*) FILTER (WHERE to_char(b AT TIME ZONE z,'HH24:MI') <> '09:00')::int AS not_nine
+             count(*) FILTER (WHERE to_char(b AT TIME ZONE z,'HH24:MI') <> '09:00')::int AS not_nine,
+             count(*) FILTER (WHERE f = 'weekly'
+                                AND extract(isodow FROM (b AT TIME ZONE z)) <> 1)::int   AS not_monday,
+             -- MINIMALITY: no earlier valid boundary of the same cadence may exist. Stepping
+             -- back one cadence must land strictly before now (else we skipped a valid slot).
+             -- ...but only counts as a counter-example if that earlier wall time actually
+             -- EXISTS. Apia's skipped 2011-12-30 09:00 round-trips to the 31st, so it is not
+             -- an earlier valid boundary at all.
+             count(*) FILTER (WHERE prev_exists AND prev_abs >= n)::int                  AS not_minimal
         FROM (
-          SELECT public.notif_digest_boundary_at(n, f, z) AS b, n, z
-            FROM unnest($1::text[]) z,
-                 unnest(ARRAY['daily','weekly']) f,
-                 generate_series(0, 419) d,
-                 LATERAL (SELECT '2011-01-01T00:00:00Z'::timestamptz + (d * 3 || ' days')::interval AS n) s
+          SELECT b, n, z, f,
+                 (prev_local AT TIME ZONE z)                       AS prev_abs,
+                 ((prev_local AT TIME ZONE z) AT TIME ZONE z) = prev_local AS prev_exists
+            FROM (
+              SELECT b, n, z, f,
+                     (b AT TIME ZONE z)
+                       - (CASE WHEN f='daily' THEN interval '1 day' ELSE interval '7 days' END) AS prev_local
+                FROM (
+                  SELECT public.notif_digest_boundary_at(n, f, z) AS b, n, z, f
+                    FROM unnest($1::text[]) z,
+                         unnest(ARRAY['daily','weekly']) f,
+                         generate_series(0, 419) d,
+                         LATERAL (SELECT '2011-01-01T00:00:00Z'::timestamptz + (d * 3 || ' days')::interval AS n) s
+                ) raw
+            ) p
         ) t`, [zones]);
     expect(rows[0].checked).toBe(8400);
     expect(rows[0].not_monotone).toBe(0);
     expect(rows[0].not_nine).toBe(0);
+    expect(rows[0].not_monday).toBe(0);   // weekly stays Monday even across a skipped day
+    expect(rows[0].not_minimal).toBe(0);  // and is the EARLIEST qualifying boundary
   }, 120_000);
 
   it('a SKIPPED CALENDAR DAY resolves forward to the next real 09:00, still monotone', async () => {
