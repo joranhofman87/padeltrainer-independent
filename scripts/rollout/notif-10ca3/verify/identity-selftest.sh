@@ -53,6 +53,13 @@ ok_case  callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?s
 # parameter and the value is a legal sslmode, so only the key rule stops it.
 bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?host=require"
 
+# libpq URIs accept a COMMA-SEPARATED host list and FAIL OVER along it. Taking the host before the
+# first ':' and the port after the last ':' read this as one valid host on a valid port — while psql
+# would try the expected host on a dead port and then connect to the second one.
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:1,attacker.example:5432/postgres"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co,attacker.example/postgres"
+bad_case callurl "postgresql://postgres.${REF}:pw@aws-0-eu.pooler.supabase.com:5432,attacker.example:5432/postgres"
+
 # The PATH is the database name, and with the query string constrained it is the only source of one.
 # An empty path means "the database named after the user" — a different connection than the one
 # being validated.

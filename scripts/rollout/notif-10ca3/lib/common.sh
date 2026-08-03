@@ -149,7 +149,20 @@ assert_conn_url_is_ref() {
     hostport="$authority"
   fi
   local user="${userinfo%%:*}"          # drop :password if present — never stored/echoed
+  # ONE HOST. libpq URIs accept a COMMA-SEPARATED host list and fail over down it, so
+  #
+  #   postgresql://postgres@db.<expected>.supabase.co:1,attacker.example:5432/postgres
+  #
+  # names the expected project first — on a port nothing listens to — and then fails over to the
+  # second host, which is where the credentials and the rollout SQL actually go. Taking the host
+  # before the first ':' and the port after the last ':' reads that as one valid host with a valid
+  # port, so it passed every check.
+  [[ "$hostport" != *,* ]] \
+    || die "connection url names MULTIPLE HOSTS — refusing: libpq fails over along a comma-separated host list, so a first host that satisfies this check does not decide where psql connects"
   local host="${hostport%%:*}"
+  # ...and the authority must be exactly host[:port]; a second colon is not a port spec we parse.
+  [[ "$hostport" != *:*:* ]] \
+    || die "connection url authority '$hostport' is not a single host[:port]"
   # THE PATH IS THE DATABASE NAME, and it was never looked at. With the query string banned it is
   # the only place a dbname can come from, so it must be the one this rollout targets — an empty
   # path silently means "the database named after the user", which is a different connection.

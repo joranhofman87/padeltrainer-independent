@@ -26,6 +26,31 @@ export type HandlerDeps = {
   run: (config: { resendApiKey: string; supabaseUrl: string; serviceKey: string }) => Promise<WorkerSummary>;
 };
 
+/** THE ONE reason-selection rule, shared by the returned-summary path and the THROWN path.
+ *  They were separate, and the thrown path answered "invocation_error" for everything — so a run
+ *  that quarantined an orphan, or hit a correlation mismatch, and then threw while finishing left
+ *  its only alert generically classified. The axis that actually failed must be named on both.
+ *
+ *  The ORDER is the one the returned path already used, unchanged, with the correlation-mismatch
+ *  arm added on top (a manual hold that no retry clears). Sharing the rule is the fix; reordering
+ *  the existing axes would be a separate behaviour change nobody asked for. */
+export function digestAlertReason(
+  s: Partial<Pick<WorkerSummary,
+    "correlationMismatches" | "groupErrors" | "orphanErrors" | "orphansQuarantined" | "reconcileErrors">>,
+  fallback: string,
+): string {
+  const mismatches = s.correlationMismatches ?? 0;
+  const groups = s.groupErrors ?? 0;
+  const orphans = s.orphanErrors ?? 0;
+  const quarantined = s.orphansQuarantined ?? 0;
+  const reconcile = s.reconcileErrors ?? 0;
+  if (mismatches > 0) return "correlation_mismatch";
+  if (groups > 0) return "group_errors";
+  if ((orphans > 0 || quarantined > 0) && reconcile === 0) return "orphan_errors";
+  if (reconcile > 0) return "reconcile_errors";
+  return fallback;
+}
+
 export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<HandlerResult> {
   // alert is best-effort by contract; wrap it so even a throwing impl can never break or mask the response.
   const safeAlert = async (payload: Record<string, unknown>): Promise<void> => {
@@ -66,7 +91,7 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
       // finish fails after a correlation mismatch has already opened its manual hold, this is the
       // only alert that fires — and "invocation_error" hides the one cause that requires a human.
       // Same precedence as the healthy-return branch below.
-      reason: (partial?.correlationMismatches ?? 0) > 0 ? "correlation_mismatch" : "invocation_error",
+      reason: digestAlertReason(partial ?? {}, "invocation_error"),
       dispatch_run: partial?.dispatchRunId ?? null, materialize_run: partial?.materializeRunId ?? null,
       group_errors: partial?.groupErrors ?? null, reconcile_errors: partial?.reconcileErrors ?? null,
       // The orphan counts travel here too. A run can strand — and QUARANTINE — a provider event
@@ -95,13 +120,7 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
       // tripped with retry_at NULL, which no backoff ever clears — so nothing sends again until a
       // human acts. Without its own arm it fell through to "reconcile_errors", which is the very
       // mislabelling this chain was written to stop.
-      reason: summary.correlationMismatches > 0
-        ? "correlation_mismatch"
-        : summary.groupErrors > 0
-          ? "group_errors"
-          : (summary.orphanErrors > 0 || summary.orphansQuarantined > 0) && summary.reconcileErrors === 0
-            ? "orphan_errors"
-            : "reconcile_errors",
+      reason: digestAlertReason(summary, "reconcile_errors"),
       dispatch_run: summary.dispatchRunId ?? null, materialize_run: summary.materializeRunId ?? null,
       group_errors: summary.groupErrors, reconcile_errors: summary.reconcileErrors,
       orphan_errors: summary.orphanErrors, orphans_quarantined: summary.orphansQuarantined,

@@ -223,8 +223,43 @@ Deno.test("a mismatch followed by a THROWN failure still alerts as correlation_m
   assertEquals(h.alerts[0].correlation_mismatches, 1);
 });
 
-Deno.test("a thrown failure with NO mismatch still reads invocation_error", async () => {
+Deno.test("a thrown failure with NO failing axis still reads invocation_error", async () => {
   const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, correlationMismatches: 0 });
   await runDigestWorkerHandler(h.deps);
   assertEquals(h.alerts[0].reason, "invocation_error");
+});
+
+// The thrown path used to answer "invocation_error" for EVERY axis, not just this one. Both paths
+// now share digestAlertReason, so each axis is named wherever it is reported from.
+Deno.test("the thrown path names a group failure too", async () => {
+  const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, groupErrors: 3 });
+  await runDigestWorkerHandler(h.deps);
+  assertEquals(h.alerts[0].reason, "group_errors");
+});
+
+Deno.test("the thrown path names a quarantined orphan too", async () => {
+  const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, orphanErrors: 1, orphansQuarantined: 1 });
+  await runDigestWorkerHandler(h.deps);
+  assertEquals(h.alerts[0].reason, "orphan_errors");
+});
+
+Deno.test("the thrown path names a reconcile failure too", async () => {
+  const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, reconcileErrors: 2 });
+  await runDigestWorkerHandler(h.deps);
+  assertEquals(h.alerts[0].reason, "reconcile_errors");
+});
+
+// One rule, so the two paths cannot drift apart again.
+Deno.test("both paths agree on the reason for the same summary", async () => {
+  for (const s of [
+    { correlationMismatches: 1 }, { groupErrors: 1 }, { orphanErrors: 1, orphansQuarantined: 1 },
+    { reconcileErrors: 1 }, { groupErrors: 1, orphanErrors: 1 },
+  ]) {
+    const thrown = throwingHarness({ dispatchRunId: DISPATCH_RUN, ...s });
+    await runDigestWorkerHandler(thrown.deps);
+    const returned = alertHarness({ ...BASE, correlationMismatches: 0, ...s });
+    await runDigestWorkerHandler(returned.deps);
+    assertEquals(thrown.alerts[0].reason, returned.alerts[0].reason,
+      `the two paths disagree for ${JSON.stringify(s)}`);
+  }
 });

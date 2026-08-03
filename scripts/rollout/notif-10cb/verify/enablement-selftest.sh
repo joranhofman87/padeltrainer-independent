@@ -191,6 +191,14 @@ run "refuses a url with trailing keyword parameters appended" 1 -- \
 # the reason is the discriminator.
 grep -qF 'contains whitespace' "$TMP/out" && ok "...and it is the whitespace rule that refuses it" \
   || { bad "...and it is the whitespace rule that refuses it"; cat "$TMP/out"; }
+
+# libpq URIs take a COMMA-SEPARATED host list and FAIL OVER along it, so the first host deciding
+# nothing is the whole problem. Every multi-host form is also caught by the single-host[:port] shape
+# check or the exact host compare, so — as with whitespace — the REASON is the discriminator.
+run "refuses a url naming MULTIPLE HOSTS to fail over between" 1 -- \
+  status "postgresql://postgres.${REF}:pw@aws-0-eu-central-1.pooler.supabase.com:1,attacker.example:5432/postgres"
+grep -qF 'MULTIPLE HOSTS' "$TMP/out" && ok "...and it is the multi-host rule that refuses it" \
+  || { bad "...and it is the multi-host rule that refuses it"; cat "$TMP/out"; }
 run "refuses anything that does not start with a postgres scheme" 1 -- \
   status "host=db.tsrqponmlkjihgfedcba.supabase.co user=postgres"
 

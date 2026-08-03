@@ -1,3 +1,9 @@
+-- Every relation here is SCHEMA-QUALIFIED, `pg_temp._gate_job` included. An unqualified name is
+-- resolved through search_path, and search_path can be set per role or per database — which the
+-- client-side PG* stripping cannot touch. With `search_path = hostile, pg_temp, public` a permanent
+-- `hostile._gate_job` resolves BEFORE the temp table, and a view that returns a reviewed jobid to
+-- the hash assertions and a different one to the arm puts the arbitrary-job problem straight back.
+--
 -- EVERY cron.job READ BELOW GOES THROUGH `_gate_job`, the ONE row the caller resolved (and, in
 -- activate.sql, LOCKED) before including this file. Re-looking the job up by name in each assertion
 -- was unsound: under READ COMMITTED every statement takes a fresh snapshot, so a job that was absent
@@ -8,9 +14,9 @@
 -- 1. the job must EXIST and still be INACTIVE. Arming an already-armed job is not idempotent
 --    reassurance — it means someone else armed it, and the runbook's sequencing assumption
 --    (switch on, canary reconciled, THEN arm) no longer holds.
-SELECT pg_temp.assert_eq((SELECT count(*)::int FROM _gate_job), 1,
+SELECT pg_temp.assert_eq((SELECT count(*)::int FROM pg_temp._gate_job), 1,
   'the digest cron job exists (exactly one, owned by the current user)');
-SELECT pg_temp.assert(NOT (SELECT active FROM cron.job WHERE jobid = (SELECT jobid FROM _gate_job)),
+SELECT pg_temp.assert(NOT (SELECT active FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   'the digest cron is still INACTIVE (if not, someone armed it out of band — stop)');
 -- ...and the liveness read a monitor uses must agree with the row we resolved. If these two ever
 -- disagree, the job the monitor watches is not the job about to be armed.
@@ -41,12 +47,12 @@ SELECT pg_temp.assert((SELECT job_present FROM public.notif_digest_worker_livene
 -- owner-scoped, exactly as pg_cron scopes named-job uniqueness by (jobname, username)
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM cron.job
-    WHERE jobid = (SELECT jobid FROM _gate_job)), 1,
+    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)), 1,
   'exactly one notification-digest-worker job is owned by the current user');
 
 SELECT pg_temp.assert_eq(
   (SELECT schedule::text FROM cron.job
-    WHERE jobid = (SELECT jobid FROM _gate_job)),
+    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   '*/5 * * * *'::text,
   'the cron schedule is the reviewed one (a drifted schedule is a different rollout)');
 
@@ -54,7 +60,7 @@ SELECT pg_temp.assert_eq(
 -- connected to. A job pointed at another database would tick somewhere this preflight never looked.
 SELECT pg_temp.assert_eq(
   (SELECT database::text FROM cron.job
-    WHERE jobid = (SELECT jobid FROM _gate_job)),
+    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   current_database()::text,
   'the cron job runs in THIS database (a job bound to another database ticks somewhere this preflight cannot see)');
 
@@ -68,12 +74,12 @@ SELECT pg_temp.assert_eq(
 -- through the pooler too.)
 SELECT pg_temp.assert_eq(
   (SELECT nodename::text FROM cron.job
-    WHERE jobid = (SELECT jobid FROM _gate_job)),
+    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   'localhost'::text,
   'the cron job executes on THIS node (a re-pointed nodename runs the command against another server)');
 SELECT pg_temp.assert_eq(
   (SELECT nodeport::int FROM cron.job
-    WHERE jobid = (SELECT jobid FROM _gate_job)),
+    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   current_setting('port')::int,
   'the cron job executes on THIS port (a re-pointed nodeport runs the command against another server)');
 
@@ -81,7 +87,7 @@ SELECT pg_temp.assert_eq(
 -- actual danger, and so this survives a legitimate future re-wording of the command.
 SELECT pg_temp.assert(
   (SELECT command LIKE '%https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker%'
-     FROM cron.job WHERE jobid = (SELECT jobid FROM _gate_job)),
+     FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   'the cron command posts to the reviewed notification-digest-worker endpoint');
 
 -- ...and NOTHING else. A second url in the same command is how the bearer leaves: the reviewed
@@ -89,7 +95,7 @@ SELECT pg_temp.assert(
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM (
      SELECT regexp_matches(command, 'https?://[^'' ]+', 'g') AS u
-       FROM cron.job WHERE jobid = (SELECT jobid FROM _gate_job)) s
+       FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)) s
    WHERE s.u[1] <> 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
   'the cron command names NO url other than the reviewed endpoint');
 
@@ -97,11 +103,11 @@ SELECT pg_temp.assert_eq(
 -- the secret is sitting in cron.job in plaintext, readable by anything that can read the catalog.
 SELECT pg_temp.assert(
   (SELECT command LIKE '%vault.decrypted_secrets%' AND command LIKE '%service_role_key%'
-     FROM cron.job WHERE jobid = (SELECT jobid FROM _gate_job)),
+     FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   'the cron command reads the service_role key from Vault at tick time');
 SELECT pg_temp.assert(
   (SELECT command !~ '(eyJ[A-Za-z0-9_-]{10,}|sb_secret_[A-Za-z0-9_-]{5,}|sbp_[A-Za-z0-9_-]{5,})'
-     FROM cron.job WHERE jobid = (SELECT jobid FROM _gate_job)),
+     FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   'the cron command contains NO inline credential (it must resolve the bearer from Vault, never store it)');
 
 -- The authority: the whole command, whitespace-normalised, hashed, must be the reviewed one.
@@ -120,7 +126,7 @@ SELECT pg_temp.assert(
 -- gate reject every correct job.
 SELECT pg_temp.assert_eq(
   (SELECT md5(btrim(regexp_replace(command, '\s+', ' ', 'g')))::text FROM cron.job
-    WHERE jobid = (SELECT jobid FROM _gate_job)),
+    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   '0c693083584cffe135e52115ec56c2f0'::text,
   'the cron command is EXACTLY the reviewed command (any drift must be re-reviewed, not armed)');
 

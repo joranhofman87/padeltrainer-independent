@@ -475,9 +475,62 @@ try {
       await c.query('ROLLBACK');
       await other.query(`ROLLBACK`).catch(() => {});
     }
+
+    // The canary's GROUPS must be frozen too. A Resend callback needs no worker run — it passes a
+    // null run id — so a bounce arriving after "this canary delivered" has passed can move the
+    // group out of `sent` before the transaction commits the cron as active.
+    const groupLock = activateSrc.match(/SELECT g\.id FROM public\.notification_digest_groups[\s\S]*?FOR SHARE;/)?.[0];
+    rec('activate.sql still locks the canary\'s groups FOR SHARE', !!groupLock,
+      groupLock ? '' : 'no FOR SHARE on the canary groups in activate.sql');
+    if (groupLock) {
+      await c.query('BEGIN');
+      await c.query(groupLock.split(":'run_id'").join(`'${RUN}'`));
+      await other.query(`SET lock_timeout = '600ms'`);
+      let groupBlocked = false;
+      try {
+        await other.query(
+          `UPDATE public.notification_digest_groups SET state = 'failed_terminal' WHERE id = '${GROUP}'`);
+      } catch (e) { groupBlocked = e.code === '55P03'; }
+      rec('the canary-group lock BLOCKS a webhook re-stating the group mid-activation', groupBlocked,
+        groupBlocked ? '' : 'a callback changed the canary group while activation was deciding');
+      await c.query('ROLLBACK');
+      await other.query(`ROLLBACK`).catch(() => {});
+    }
   } finally {
     await other.end().catch(() => {});
   }
+
+  // ── a hostile search_path must not redirect the gate ─────────────────────
+  // search_path can be set per ROLE or per DATABASE, which the client-side PG* stripping cannot
+  // touch. With `hostile` ahead of pg_temp, an unqualified `_gate_job` resolves to a permanent
+  // relation first — and a view that hands the hash assertions a reviewed jobid and the arm a
+  // different one puts the arbitrary-job problem straight back. Every reference is therefore
+  // schema-qualified; this proves it, by planting exactly that trap.
+  await seedBaseline();
+  await c.query(`
+    DROP SCHEMA IF EXISTS hostile CASCADE;
+    CREATE SCHEMA hostile;
+    INSERT INTO cron.job (jobname, schedule, command, active)
+      VALUES ('attacker-job', '* * * * *', 'SELECT 1', false);
+    CREATE TABLE hostile._gate_job AS
+      SELECT jobid FROM cron.job WHERE jobname = 'attacker-job';`);
+  await c.query(`SET search_path = hostile, pg_temp, public`);
+  {
+    const err = await activate();
+    rec('a hostile search_path cannot redirect the gate to another job',
+      err === null, err ?? '');
+    const armed = (await c.query(
+      `SELECT jobname FROM cron.job WHERE active`)).rows.map((r) => r.jobname);
+    rec('...and the job it armed is the reviewed one, not the planted one',
+      armed.length === 1 && armed[0] === 'notification-digest-worker',
+      `armed: ${JSON.stringify(armed)}`);
+    // The planted permanent table must still be there — if the "read-only" preflight's DROP had
+    // resolved through search_path it would have destroyed a real table.
+    const still = await c.query(`SELECT to_regclass('hostile._gate_job') IS NOT NULL AS ok`);
+    rec('...and the preflight never dropped the permanent table of that name', still.rows[0].ok === true);
+  }
+  await c.query(`SET search_path = "$user", public`);
+  await c.query(`DROP SCHEMA hostile CASCADE`);
 
   // ── canary_verify carries the same mismatch guard ────────────────────────
   await seedBaseline();

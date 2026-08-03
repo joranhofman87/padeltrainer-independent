@@ -188,7 +188,10 @@ Deno.test("a THROWN run keeps the orphan diagnostics — it is the only alert th
   })));
   const r = await runDigestWorkerHandler(h.deps);
   assertEquals(r.http, 500);
-  assertEquals(h.alerts[0].reason, "invocation_error");
+  // ...and it NAMES the axis. This asserted "invocation_error" while its own comment complained
+  // that the quarantine was hidden behind a bare "invocation_error" — the counts travelled but the
+  // classification did not. Both paths now share one reason-selection rule.
+  assertEquals(h.alerts[0].reason, "orphan_errors");
   assertEquals(h.alerts[0].orphan_errors, 1);
   assertEquals(h.alerts[0].orphans_quarantined, 1);
 });

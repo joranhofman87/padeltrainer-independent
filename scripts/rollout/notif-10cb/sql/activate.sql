@@ -46,6 +46,18 @@ CREATE TEMP TABLE _gate_job AS
    WHERE jobname = 'notification-digest-worker' AND username = current_user
      FOR UPDATE;
 
+-- FREEZE THE CANARY'S OWN GROUPS TOO. The run-ledger lock stops a new dispatch run, but a Resend
+-- CALLBACK needs no run: apply_notification_provider_event passes a null run id, so a bounce or a
+-- suppression arriving mid-activation can move the canary's group out of `sent` into
+-- `failed_terminal` AFTER the "this canary delivered" assertion has passed and before this
+-- transaction commits the cron as active. That assertion is load-bearing — it is the only evidence
+-- that the provider path works — so the groups THIS canary attempted are locked FOR SHARE, which
+-- blocks those rows only and leaves the rest of the live email path alone.
+SELECT g.id FROM public.notification_digest_groups g
+ WHERE EXISTS (SELECT 1 FROM public.notification_digest_attempts a
+                WHERE a.digest_group_id = g.id AND a.worker_run_id = :'run_id'::uuid)
+   FOR SHARE;
+
 \i _activation_assertions.sql
 
 -- ARM — by the jobid of the row we just locked and verified, never by a fresh name lookup, and
@@ -55,22 +67,22 @@ SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM (
      SELECT cron.alter_job(j.jobid, active := true)
        FROM cron.job j
-      WHERE j.jobid = (SELECT jobid FROM _gate_job)) s), 1,
+      WHERE j.jobid = (SELECT jobid FROM pg_temp._gate_job)) s), 1,
   'exactly one job was armed');
 
 -- POSTCONDITION, read back inside the same transaction: THAT row really is active now.
 SELECT pg_temp.assert(
-  (SELECT j.active FROM cron.job j WHERE j.jobid = (SELECT jobid FROM _gate_job)),
+  (SELECT j.active FROM cron.job j WHERE j.jobid = (SELECT jobid FROM pg_temp._gate_job)),
   'the digest cron is now ACTIVE');
 
 -- ...and it is STILL the reviewed job. Under the row lock this cannot have changed; asserting it
 -- anyway means the transaction's final word is about the job that will actually tick.
 SELECT pg_temp.assert_eq(
   (SELECT md5(btrim(regexp_replace(command, '\s+', ' ', 'g')))::text FROM cron.job
-    WHERE jobid = (SELECT jobid FROM _gate_job)),
+    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   '0c693083584cffe135e52115ec56c2f0'::text,
   'the armed job is still EXACTLY the reviewed command');
 
-DROP TABLE _gate_job;
+DROP TABLE pg_temp._gate_job;
 
 COMMIT;
