@@ -27,15 +27,25 @@ beforeAll(async () => {
   await c.connect();
   await c.query(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
-    -- the run ledger the liveness read summarises (the real shape, narrowed to what it reads)
-    CREATE TABLE public.notification_worker_runs (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), worker text, channel text NOT NULL,
-      phase text NOT NULL, status text NOT NULL, started_at timestamptz NOT NULL DEFAULT now(),
-      finished_at timestamptz);
-    -- a MINIMAL pg_cron stub: enough to observe what the migration does, and no more.
+    CREATE ROLE other_owner;`);
+  // The run ledger is created by the REAL foundation migration's own DDL rather than a
+  // hand-written lookalike: inventing it is how the first version of this suite ended up
+  // asserting against a `finished_at` column production does not have, while the liveness RPC
+  // would have RAISED on every call.
+  const foundation = readFileSync(
+    join(process.cwd(), 'supabase', 'migrations', '20261002100000_notification_digest_schema_foundation.sql'), 'utf8');
+  const runsDdl = foundation.slice(
+    foundation.indexOf('CREATE TABLE IF NOT EXISTS public.notification_worker_runs'),
+  );
+  await c.query(runsDdl.slice(0, runsDdl.indexOf(');') + 2));
+  await c.query(`
+    -- a MINIMAL pg_cron stub: enough to observe what the migration does, and no more. jobname is
+    -- UNIQUE PER USERNAME, exactly as real pg_cron scopes it — a globally unique jobname would
+    -- make the owner-scoping this migration relies on untestable and its lookups look safe.
     CREATE SCHEMA cron;
-    CREATE TABLE cron.job (jobid bigserial PRIMARY KEY, jobname text UNIQUE, schedule text, command text,
-                           active boolean NOT NULL DEFAULT true);
+    CREATE TABLE cron.job (jobid bigserial PRIMARY KEY, jobname text, schedule text, command text,
+                           username text NOT NULL DEFAULT current_user,
+                           active boolean NOT NULL DEFAULT true, UNIQUE (jobname, username));
     CREATE FUNCTION cron.schedule(p_name text, p_schedule text, p_command text) RETURNS bigint
       LANGUAGE sql AS $$ INSERT INTO cron.job (jobname, schedule, command) VALUES (p_name, p_schedule, p_command) RETURNING jobid $$;
     CREATE FUNCTION cron.alter_job(p_jobid bigint, active boolean) RETURNS void
@@ -58,7 +68,8 @@ beforeEach(async () => {
 });
 
 const job = async () =>
-  (await c.query(`SELECT jobname, schedule, active FROM cron.job WHERE jobname='notification-digest-worker'`)).rows[0];
+  (await c.query(`SELECT jobid, jobname, schedule, command, username, active FROM cron.job
+                   WHERE jobname='notification-digest-worker' AND username=current_user`)).rows[0];
 const liveness = async () => (await c.query(`SELECT * FROM public.notif_digest_worker_liveness()`)).rows[0];
 
 describe('F — the digest cron is installed INERT', () => {
@@ -69,6 +80,11 @@ describe('F — the digest cron is installed INERT', () => {
     expect(j, 'the job must exist — Stage 3 acceptance is "present but INACTIVE"').toBeTruthy();
     expect(j.active, 'ACTIVATION IS AN OWNER GATE').toBe(false);
     expect(j.schedule).toBe('*/5 * * * *');
+    // ...and the stored command is the thing that will actually run, so assert what it does:
+    // the right endpoint, and a bearer read from Vault AT TICK TIME (never a baked-in key).
+    expect(j.command).toContain('/functions/v1/notification-digest-worker');
+    expect(j.command).toContain("'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')");
+    expect(j.command, 'no key may ever be frozen into the schedule').not.toContain('eyJ.SERVICE_ROLE_TEST');
   });
 
   it('a re-run NEVER disarms a job the owner has already activated', async () => {
@@ -83,7 +99,8 @@ describe('F — the digest cron is installed INERT', () => {
 
     const after = await job();
     expect(after.active, 'an owner activation survives a re-run').toBe(true);
-    expect(after.jobid).toBe(before.jobid);
+    expect(after.jobid, 'the same job, not a replacement').toBe(before.jobid);
+    expect(before.jobid).toBeDefined();
     expect((await c.query(`SELECT count(*)::int n FROM cron.job`)).rows[0].n, 'and no duplicate job').toBe(1);
   });
 
@@ -97,14 +114,37 @@ describe('F — the digest cron is installed INERT', () => {
     // ...whereas production, given an existing job, leaves it alone — asserted above.
   });
 
-  it('skips cleanly when the Vault secret is absent (a fresh reset must not fail)', async () => {
+  it('installs INACTIVE even with no Vault secret — skipping would strand the rollout', async () => {
+    // The other worker crons skip, correctly: they are created ARMED, so a missing secret means
+    // ticking with no bearer. This one is created DISABLED and reads Vault at TICK time, so
+    // skipping would be worse than pointless — on a restore where migrations run before
+    // out-of-band secrets, the migration is recorded as applied and adding the key later never
+    // creates the job, while the registry claims "installed inactive" over nothing at all.
     await c.query(`DELETE FROM vault.decrypted_secrets WHERE name='service_role_key'`);
     try {
       await c.query(MIG);
-      expect(await job(), 'no key → no schedule, and no error').toBeUndefined();
+      const j = await job();
+      expect(j, 'the job is installed regardless').toBeTruthy();
+      expect(j.active, 'and still inert').toBe(false);
     } finally {
       await c.query(`INSERT INTO vault.decrypted_secrets VALUES ('service_role_key','eyJ.SERVICE_ROLE_TEST.sig')`);
     }
+  });
+
+  it('never touches ANOTHER owner\'s job of the same name', async () => {
+    // Real pg_cron scopes named-job uniqueness by (jobname, username). A bare jobname lookup can
+    // see another role's job — and the post-schedule lookup could then disable THAT one, leaving
+    // the job this migration just created armed. The jobid comes from cron.schedule's own return
+    // value for exactly that reason.
+    await c.query(`INSERT INTO cron.job (jobname, schedule, command, username, active)
+                   VALUES ('notification-digest-worker','* * * * *','SELECT 1','other_owner', true)`);
+    await c.query(MIG);
+    const mine = await job();
+    expect(mine, 'ours is created despite the name collision').toBeTruthy();
+    expect(mine.active, 'and it is the one that gets disabled').toBe(false);
+    const theirs = (await c.query(
+      `SELECT active FROM cron.job WHERE jobname='notification-digest-worker' AND username='other_owner'`)).rows[0];
+    expect(theirs.active, "another owner's job is not ours to disarm").toBe(true);
   });
 });
 
@@ -122,14 +162,14 @@ describe('F — the liveness read', () => {
   it('a SUCCEEDED dispatch run is what counts — a failing one is not liveness', async () => {
     // A worker invoked on schedule that fails every time is exactly as undelivered as one never
     // invoked. A monitor watching "did it run" would see a green light straight through that.
-    await c.query(`INSERT INTO public.notification_worker_runs (channel, phase, status, finished_at)
-                   VALUES ('email','dispatch','failed', now() - interval '2 minutes')`);
+    await c.query(`INSERT INTO public.notification_worker_runs (worker, channel, phase, status, ended_at)
+                   VALUES ('w','email','dispatch','failed', now() - interval '2 minutes')`);
     let l = await liveness();
     expect(l.last_success_at, 'a failed run is NOT a success').toBeNull();
     expect(l.last_status, 'but it IS the last thing that finished').toBe('failed');
 
-    await c.query(`INSERT INTO public.notification_worker_runs (channel, phase, status, finished_at)
-                   VALUES ('email','dispatch','succeeded', now() - interval '1 minute')`);
+    await c.query(`INSERT INTO public.notification_worker_runs (worker, channel, phase, status, ended_at)
+                   VALUES ('w','email','dispatch','succeeded', now() - interval '1 minute')`);
     l = await liveness();
     expect(l.last_success_at).not.toBeNull();
     expect(Number(l.seconds_since_success)).toBeGreaterThanOrEqual(55);
@@ -138,16 +178,18 @@ describe('F — the liveness read', () => {
   });
 
   it('ignores other phases and channels — this is the DISPATCH liveness', async () => {
-    await c.query(`INSERT INTO public.notification_worker_runs (channel, phase, status, finished_at) VALUES
-      ('email','materialize','succeeded', now()),
-      ('whatsapp','dispatch','succeeded', now())`);
+    await c.query(`INSERT INTO public.notification_worker_runs (worker, channel, phase, status, ended_at) VALUES
+      ('w','email','materialize','succeeded', now()),
+      ('w','whatsapp','dispatch','succeeded', now())`);
     expect((await liveness()).last_success_at, 'a materialize run proves nothing about delivery').toBeNull();
   });
 
   it('an unfinished run is not liveness either', async () => {
-    await c.query(`INSERT INTO public.notification_worker_runs (channel, phase, status)
-                   VALUES ('email','dispatch','running')`);
+    // A run is BORN unfinished: status NULL, ended_at NULL. Finishing is the only update.
+    await c.query(`INSERT INTO public.notification_worker_runs (worker, channel, phase)
+                   VALUES ('w','email','dispatch')`);
     expect((await liveness()).last_finished_at).toBeNull();
+    expect((await liveness()).last_success_at).toBeNull();
   });
 
   it('service_role only — it is an operator/monitor read, not a public one', async () => {

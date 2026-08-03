@@ -36,9 +36,15 @@ BEGIN
     sr_key := NULL;
   END;
 
+  -- NO VAULT GUARD, and that is a difference from the other worker crons on purpose. They are
+  -- created ARMED, so a missing secret would mean ticking with no bearer; skipping is right for
+  -- them. This job is created DISABLED, its stored command reads the Vault secret at TICK time,
+  -- and the owner only arms it after the runbook's checks. Skipping here would be worse than
+  -- pointless: on a restore where migrations run before out-of-band secrets, the migration would
+  -- be recorded as applied and adding the key later would never create the job — the rollout
+  -- would report "installed inactive" over nothing at all.
   IF sr_key IS NULL OR sr_key = '' THEN
-    RAISE NOTICE 'Vault secret service_role_key not set — skipping notification-digest-worker schedule';
-    RETURN;
+    RAISE NOTICE 'Vault secret service_role_key not set — installing notification-digest-worker INACTIVE anyway (the command reads Vault at tick time)';
   END IF;
 
   -- IDEMPOTENT, AND NON-DESTRUCTIVE. The other worker crons in this repo unschedule-then-schedule,
@@ -46,7 +52,10 @@ BEGIN
   -- this job is that an OWNER decides when it becomes active, and an unschedule/reschedule would
   -- silently disarm a job the owner had already enabled — the rollout would look complete while
   -- nothing ran. So an existing job is left exactly as the owner left it, active or not.
-  SELECT jobid INTO v_jobid FROM cron.job WHERE jobname = 'notification-digest-worker';
+  -- OWNER-SCOPED. Real pg_cron scopes named-job uniqueness by (jobname, username), so a bare
+  -- jobname lookup can see — and act on — another role's job of the same name.
+  SELECT jobid INTO v_jobid
+    FROM cron.job WHERE jobname = 'notification-digest-worker' AND username = current_user;
   IF v_jobid IS NOT NULL THEN
     RAISE NOTICE 'notification-digest-worker already scheduled (jobid %) — leaving its active state untouched', v_jobid;
     RETURN;
@@ -54,7 +63,10 @@ BEGIN
 
   -- Every 5 minutes once enabled: a digest boundary is hourly at worst, so this is responsive
   -- without being chatty, and the worker is bounded per invocation anyway.
-  PERFORM cron.schedule('notification-digest-worker', '*/5 * * * *', $cmd$
+  -- Take the jobid from cron.schedule's OWN return value. Re-looking it up by name afterwards
+  -- could select a different role's job created in between, disable THAT one, and leave the job
+  -- this migration just created armed — the exact opposite of what this migration is for.
+  v_jobid := cron.schedule('notification-digest-worker', '*/5 * * * *', $cmd$
     SELECT net.http_post(
       url := 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker',
       headers := jsonb_build_object(
@@ -65,7 +77,6 @@ BEGIN
     ) AS request_id;
   $cmd$);
 
-  SELECT jobid INTO v_jobid FROM cron.job WHERE jobname = 'notification-digest-worker';
   -- INERT BY CONSTRUCTION: disabled in the same transaction that created it, so there is no
   -- window in which a scheduler tick could fire it.
   PERFORM cron.alter_job(v_jobid, active := false);
@@ -104,7 +115,8 @@ BEGIN
   -- raising, so the job half degrades to "not present" instead of taking the whole call down.
   BEGIN
     SELECT true, j.active INTO v_present, v_active
-      FROM cron.job j WHERE j.jobname = 'notification-digest-worker';
+      FROM cron.job j
+     WHERE j.jobname = 'notification-digest-worker' AND j.username = current_user;
   EXCEPTION WHEN others THEN
     v_present := false; v_active := false;
   END;
@@ -112,18 +124,21 @@ BEGIN
 
   RETURN QUERY
   WITH runs AS (
-    SELECT r.finished_at, r.status
+    -- `ended_at`, not `finished_at`: the ledger's own column name
+    -- (20261002100000_notification_digest_schema_foundation.sql). A run is born unfinished with
+    -- status NULL and finish is the only update, so "finished at all" is ended_at IS NOT NULL.
+    SELECT r.ended_at, r.status
       FROM public.notification_worker_runs r
-     WHERE r.phase = 'dispatch' AND r.channel = 'email' AND r.finished_at IS NOT NULL
+     WHERE r.phase = 'dispatch' AND r.channel = 'email' AND r.ended_at IS NOT NULL
   ),
-  ok AS (SELECT max(finished_at) AS at FROM runs WHERE status = 'succeeded'),
-  last AS (SELECT finished_at, status FROM runs ORDER BY finished_at DESC LIMIT 1)
+  ok AS (SELECT max(ended_at) AS at FROM runs WHERE status = 'succeeded'),
+  last AS (SELECT ended_at, status FROM runs ORDER BY ended_at DESC LIMIT 1)
   SELECT
     v_present,
     coalesce(v_active, false),
     ok.at,
     CASE WHEN ok.at IS NULL THEN NULL ELSE round(extract(epoch FROM (now() - ok.at))::numeric, 0) END,
-    last.finished_at,
+    last.ended_at,
     last.status
   FROM ok LEFT JOIN last ON true;
 END $$;
