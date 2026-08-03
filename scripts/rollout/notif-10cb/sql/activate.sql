@@ -19,13 +19,32 @@ BEGIN;
 
 \i ../../notif-10ca3/sql/_assert.sql
 
--- LOCK FIRST, THEN LOOK. FOR UPDATE on the exact (jobname, username) row — pg_cron scopes named-job
--- uniqueness that way, so a bare jobname lookup can see another role's job. Nothing else can alter
--- this row until we commit or abort. A missing row locks nothing, which is why the assertions below
--- (which fail closed on a NULL) still have to run.
-SELECT jobid FROM cron.job
- WHERE jobname = 'notification-digest-worker' AND username = current_user
-   FOR UPDATE;
+-- FREEZE THE EVIDENCE. Every canary assertion below is a predicate over notification_worker_runs —
+-- "this is the newest dispatch run, nothing is in flight". Without a lock a service-role invocation
+-- can start a new dispatch run immediately after that predicate is evaluated and be mid-send by the
+-- time this transaction commits the cron as active, so activation would have succeeded on evidence
+-- that was already stale. SHARE conflicts with the ROW EXCLUSIVE an INSERT takes, so no new run can
+-- begin until this transaction ends — and it is a short transaction taken once, under an owner gate,
+-- against a cron that is still inactive.
+--
+-- HONEST RESIDUAL: this does not freeze webhook-driven transitions. A Resend callback can still
+-- advance a group's provider status while this runs. It cannot start a SEND (that needs a dispatch
+-- run, which this blocks), and rollback remains available; the alternative — locking the group,
+-- circuit and orphan tables too — would block the live email path for the whole activation.
+LOCK TABLE public.notification_worker_runs IN SHARE MODE;
+
+-- LOCK FIRST, THEN LOOK, AND KEEP THE ROW. FOR UPDATE on the exact (jobname, username) row —
+-- pg_cron scopes named-job uniqueness that way, so a bare jobname lookup can see another role's job.
+--
+-- The result is MATERIALISED here rather than re-looked-up per assertion. Under READ COMMITTED each
+-- statement takes a fresh snapshot, so if the job was ABSENT the FOR UPDATE locked nothing, and
+-- another session could insert one that every later name-based assertion would then happily read —
+-- and a job altered between two assertions would be checked in one and armed by the other. Capturing
+-- the jobid once means every assertion, the arm, and the postcondition all refer to the same row.
+CREATE TEMP TABLE _gate_job AS
+  SELECT jobid FROM cron.job
+   WHERE jobname = 'notification-digest-worker' AND username = current_user
+     FOR UPDATE;
 
 \i _activation_assertions.sql
 
@@ -36,21 +55,22 @@ SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM (
      SELECT cron.alter_job(j.jobid, active := true)
        FROM cron.job j
-      WHERE j.jobname = 'notification-digest-worker' AND j.username = current_user) s), 1,
+      WHERE j.jobid = (SELECT jobid FROM _gate_job)) s), 1,
   'exactly one job was armed');
 
--- POSTCONDITION, read back inside the same transaction: it really is active now.
+-- POSTCONDITION, read back inside the same transaction: THAT row really is active now.
 SELECT pg_temp.assert(
-  (SELECT j.active FROM cron.job j
-    WHERE j.jobname = 'notification-digest-worker' AND j.username = current_user),
+  (SELECT j.active FROM cron.job j WHERE j.jobid = (SELECT jobid FROM _gate_job)),
   'the digest cron is now ACTIVE');
 
 -- ...and it is STILL the reviewed job. Under the row lock this cannot have changed; asserting it
 -- anyway means the transaction's final word is about the job that will actually tick.
 SELECT pg_temp.assert_eq(
   (SELECT md5(btrim(regexp_replace(command, '\s+', ' ', 'g')))::text FROM cron.job
-    WHERE jobname = 'notification-digest-worker' AND username = current_user),
+    WHERE jobid = (SELECT jobid FROM _gate_job)),
   '0c693083584cffe135e52115ec56c2f0'::text,
   'the armed job is still EXACTLY the reviewed command');
+
+DROP TABLE _gate_job;
 
 COMMIT;

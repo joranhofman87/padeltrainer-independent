@@ -97,8 +97,48 @@ assert_conn_url_is_ref() {
     || die "connection url contains whitespace — refusing: whitespace is what turns a url into libpq keyword/value conninfo, where a later host= overrides the authority"
   [[ "$url" != *[[:cntrl:]]* ]] \
     || die "connection url contains a control character — refusing"
-  # strip scheme
+  case "$url" in *\#*) die "refusing a connection url with a fragment" ;; esac
+
+  # THE QUERY STRING IS AN ALLOW-LIST OF ONE. libpq reads `host`, `hostaddr`, `port`, `user`,
+  # `dbname`, `service` and `options` out of the URI query string, and they OVERRIDE the authority:
+  #
+  #   postgresql://postgres@db.<expected>.supabase.co:5432/postgres?host=db.<other>.supabase.co
+  #
+  # names the expected project in its authority, passes an authority-only validator, and connects to
+  # <other>. `options=-csearch_path=…` re-points every unqualified reference besides. Only `sslmode`
+  # is permitted, and only at strengths that do not downgrade TLS; a percent-encoded key is refused
+  # outright rather than decoded and compared, because `%68ost` and `host` must not be able to
+  # differ here.
+  local query="" q pair k v seen_sslmode=0
+  case "$url" in *\?*) query="${url#*\?}" ;; esac
+  if [[ -n "$query" ]]; then
+    local IFS_SAVE="$IFS"; IFS='&'
+    for pair in $query; do
+      IFS="$IFS_SAVE"
+      k="${pair%%=*}"; v="${pair#*=}"
+      # DELIBERATELY REDUNDANT, and recorded as such rather than pretended otherwise: the exact
+      # `== sslmode` comparison below already rejects every encoded spelling, so no test can
+      # isolate this line and a mutation that deletes it survives. It is kept because it gives the
+      # precise diagnosis, and because it becomes load-bearing the moment the allow-list grows or
+      # anyone decodes keys before comparing them.
+      [[ "$k" =~ ^[A-Za-z]+$ ]] \
+        || die "connection url query parameter '$k' is not a plain name — refusing (a percent-encoded key could name an identity parameter such as host or options)"
+      [[ "$k" == "sslmode" ]] \
+        || die "connection url query parameter '$k' is not permitted — only sslmode is, because libpq lets host/hostaddr/port/user/dbname/service/options override the authority this check validates"
+      case "$v" in
+        require|verify-ca|verify-full) : ;;
+        *) die "sslmode='$v' would weaken or disable TLS for a production connection — use require, verify-ca or verify-full" ;;
+      esac
+      [[ "$seen_sslmode" -eq 0 ]] || die "connection url repeats sslmode — libpq takes the LAST occurrence, so a duplicate is a way to hide the effective value"
+      seen_sslmode=1
+      IFS='&'
+    done
+    IFS="$IFS_SAVE"
+  fi
+
+  # strip scheme, then the query — everything below parses the authority + path only
   local rest="${url#*://}"
+  rest="${rest%%\?*}"
   # userinfo@authority/...   -> split at first '/'
   local authority="${rest%%/*}"
   local userinfo="" hostport=""
@@ -110,6 +150,19 @@ assert_conn_url_is_ref() {
   fi
   local user="${userinfo%%:*}"          # drop :password if present — never stored/echoed
   local host="${hostport%%:*}"
+  # THE PATH IS THE DATABASE NAME, and it was never looked at. With the query string banned it is
+  # the only place a dbname can come from, so it must be the one this rollout targets — an empty
+  # path silently means "the database named after the user", which is a different connection.
+  local path="/${rest#*/}"
+  [[ "$rest" == */* ]] || path=""
+  [[ "$path" == "/postgres" ]] \
+    || die "connection url must name the 'postgres' database (got path '${path:-<none>}') — an empty or different path is a different connection than the one being validated"
+  # An explicit port must be a plain number: anything else is not a port, and would mean the
+  # authority did not parse the way this validator assumed.
+  if [[ "$hostport" == *:* ]]; then
+    local port="${hostport##*:}"
+    [[ "$port" =~ ^[0-9]+$ ]] || die "connection url port '$port' is not numeric"
+  fi
   # percent-decoded user (pooler user 'postgres.<ref>' contains a dot, no encoding needed,
   # but a URL may encode it) — decode the single common case of %2E -> '.'
   user="${user//%2E/.}"; user="${user//%2e/.}"

@@ -61,7 +61,12 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
     deps.log({ event: "digest_worker_invocation_error" });
     const partial = e instanceof DigestWorkerError ? e.summary : undefined;
     await safeAlert({
-      event: "digest_worker_run_failed", reason: "invocation_error",
+      event: "digest_worker_run_failed",
+      // A MISMATCH THAT IS FOLLOWED BY A THROW STILL NEEDS NAMING. If the next claim or the final
+      // finish fails after a correlation mismatch has already opened its manual hold, this is the
+      // only alert that fires — and "invocation_error" hides the one cause that requires a human.
+      // Same precedence as the healthy-return branch below.
+      reason: (partial?.correlationMismatches ?? 0) > 0 ? "correlation_mismatch" : "invocation_error",
       dispatch_run: partial?.dispatchRunId ?? null, materialize_run: partial?.materializeRunId ?? null,
       group_errors: partial?.groupErrors ?? null, reconcile_errors: partial?.reconcileErrors ?? null,
       // The orphan counts travel here too. A run can strand — and QUARANTINE — a provider event

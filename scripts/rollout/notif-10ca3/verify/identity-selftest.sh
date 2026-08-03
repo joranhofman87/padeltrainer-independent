@@ -31,6 +31,41 @@ ok_case  callurl "postgres://postgres.${REF}:pw@aws-0-eu.pooler.supabase.com:654
 bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co.evil.com/postgres"
 bad_case callurl "postgresql://postgres.otherotherotherother:pw@aws-0.pooler.supabase.com/postgres"
 
+# libpq takes host / hostaddr / port / user / dbname / service / options from the URI QUERY STRING
+# and lets them OVERRIDE the authority — so every one of these names the EXPECTED project in its
+# authority and would connect somewhere else. Only sslmode is allow-listed.
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?host=db.wrongwrongwrongwrong.supabase.co"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?hostaddr=203.0.113.10"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?user=postgres.wrongwrongwrongwrong"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?dbname=elsewhere"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?service=other"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?options=-csearch_path%3Devil"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?sslmode=require&host=db.wrongwrongwrongwrong.supabase.co"
+# a percent-encoded KEY must be refused rather than decoded and compared — `%68ost` and `host`
+# must not be able to differ here
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?%68ost=db.wrongwrongwrongwrong.supabase.co"
+# libpq takes the LAST occurrence, so a duplicate is a way to hide the effective value
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?sslmode=require&sslmode=disable"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?sslmode=disable"
+ok_case  callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?sslmode=verify-full"
+# THE DISCRIMINATOR FOR THE KEY ALLOW-LIST. Every case above is also caught by the sslmode VALUE
+# check, so deleting "the key must be sslmode" left them all green. Here the key is an identity
+# parameter and the value is a legal sslmode, so only the key rule stops it.
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/postgres?host=require"
+
+# The PATH is the database name, and with the query string constrained it is the only source of one.
+# An empty path means "the database named after the user" — a different connection than the one
+# being validated.
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432/otherdb"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:5432"
+bad_case callurl "postgresql://postgres:pw@db.${REF}.supabase.co:notaport/postgres"
+
+# libpq accepts keyword/value conninfo as well as URIs, and the URI parser reads it wrongly: this
+# splits at the first '://' into an authority naming the EXPECTED project, then psql connects to the
+# host named later in the same string.
+bad_case callurl "dbname=postgresql://postgres@db.${REF}.supabase.co/postgres host=db.wrongwrongwrongwrong.supabase.co"
+bad_case callurl "postgres.${REF}:pw@aws-0-eu.pooler.supabase.com:5432/postgres"   # no scheme -> psql reads it as a DBNAME
+
 echo "url_add_query (safe append):"
 [[ "$(url_add_query 'https://h/p' k v)"       == 'https://h/p?k=v'      ]] && { P=$((P+1)); echo "  PASS  first param uses ?"; } || { F=$((F+1)); echo "  FAIL first param"; }
 [[ "$(url_add_query 'https://h/p?a=1' k v)"   == 'https://h/p?a=1&k=v'  ]] && { P=$((P+1)); echo "  PASS  second param uses &"; } || { F=$((F+1)); echo "  FAIL second param"; }

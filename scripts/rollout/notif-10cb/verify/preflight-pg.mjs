@@ -429,6 +429,56 @@ try {
       !!err && err.includes('the digest cron job exists'), err ?? 'it reported success over a missing job');
   }
 
+  // ── the locks, proven with a SECOND connection ───────────────────────────
+  // Everything above runs on one client, so it can show that a refused activation rolls back but
+  // NOT that the locks exclude anything. The two lock statements are read out of activate.sql
+  // itself rather than retyped, so deleting either one from the artifact fails these outright
+  // instead of quietly testing a lock the gate no longer takes.
+  const activateSrc = readFileSync(join(SQL_DIR, 'activate.sql'), 'utf8');
+  const tableLock = activateSrc.match(/^LOCK TABLE [^\n]+;$/m)?.[0];
+  const rowLock = activateSrc.match(/CREATE TEMP TABLE _gate_job AS[\s\S]*?FOR UPDATE;/)?.[0];
+
+  await seedBaseline();
+  const other = conn();
+  await other.connect();
+  try {
+    rec('activate.sql still takes a table lock on the run ledger', !!tableLock,
+      tableLock ? '' : 'no LOCK TABLE statement in activate.sql');
+    rec('activate.sql still locks the job row FOR UPDATE', !!rowLock,
+      rowLock ? '' : 'no FOR UPDATE row capture in activate.sql');
+
+    if (tableLock && rowLock) {
+      // The row lock must actually exclude a concurrent modification of THAT job.
+      await c.query('BEGIN');
+      await c.query(rowLock);
+      await other.query(`SET lock_timeout = '600ms'`);
+      let blocked = false;
+      try { await other.query(`UPDATE cron.job SET schedule = '*/9 * * * *'`); }
+      catch (e) { blocked = e.code === '55P03'; }          // lock_not_available
+      rec('the job row lock BLOCKS a concurrent change to that job', blocked,
+        blocked ? '' : 'another session altered the job while activation held it');
+      await c.query('ROLLBACK');
+      await other.query(`ROLLBACK`).catch(() => {});
+
+      // ...and the table lock must exclude a new dispatch run starting mid-activation, which is
+      // what makes "this canary is still the newest run" true at COMMIT and not merely at check time.
+      await c.query('BEGIN');
+      await c.query(tableLock);
+      await other.query(`SET lock_timeout = '600ms'`);
+      let runBlocked = false;
+      try {
+        await other.query(`INSERT INTO public.notification_worker_runs
+          (worker, channel, phase, status) VALUES ('x', 'email', 'dispatch', NULL)`);
+      } catch (e) { runBlocked = e.code === '55P03'; }
+      rec('the run-ledger lock BLOCKS a new dispatch run starting mid-activation', runBlocked,
+        runBlocked ? '' : 'a new worker run was inserted while activation was deciding');
+      await c.query('ROLLBACK');
+      await other.query(`ROLLBACK`).catch(() => {});
+    }
+  } finally {
+    await other.end().catch(() => {});
+  }
+
   // ── canary_verify carries the same mismatch guard ────────────────────────
   await seedBaseline();
   await c.query(`UPDATE public.notification_digest_attempts

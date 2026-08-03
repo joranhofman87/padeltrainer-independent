@@ -186,6 +186,11 @@ run "refuses libpq KEYWORD conninfo that hides the expected ref in a dbname=" 1 
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || { bad "...and ran nothing against it"; cat "$PSQL_LOG"; }
 run "refuses a url with trailing keyword parameters appended" 1 -- \
   status "${URL} hostaddr=203.0.113.10"
+# ...and it must be the WHITESPACE rule that stops it. Every whitespace case is also caught by the
+# scheme or database-path check, so asserting only "refused" left the whitespace guard unpinned:
+# the reason is the discriminator.
+grep -qF 'contains whitespace' "$TMP/out" && ok "...and it is the whitespace rule that refuses it" \
+  || { bad "...and it is the whitespace rule that refuses it"; cat "$TMP/out"; }
 run "refuses anything that does not start with a postgres scheme" 1 -- \
   status "host=db.tsrqponmlkjihgfedcba.supabase.co user=postgres"
 
