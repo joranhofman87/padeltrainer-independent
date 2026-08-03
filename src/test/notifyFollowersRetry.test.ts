@@ -248,6 +248,27 @@ describe('deploy-overlap compatibility', () => {
     expect(markerGapOf({})).toBe(0);
   });
 
+  it('a marker gap on an INCOMPLETE attempt survives into the final outcome', async () => {
+    // The gap can only ever be reported by the attempt that created those rows: the next attempt
+    // sees `no_row` for them and reports nothing. Keeping it only when the SAME attempt completed
+    // therefore threw the warning away in exactly the case it mattered.
+    const inv = invoker([
+      { error: null, data: { incomplete: true, enqueued: 5, failed: 1, deferred: 0, legacy_marker_failed: 5 } },
+      { error: null, data: { incomplete: false, enqueued: 0, failed: 0, deferred: 0, no_row: 6 } },
+    ]);
+    const out = await notifyFollowers(BODY, { client: inv.client });
+    expect(out).toEqual({ complete: true, attempts: 2, markerGap: 5 });
+  });
+
+  it('a marker gap survives even when the run never completes', async () => {
+    const inv = invoker([
+      { error: { message: 'incomplete' }, data: { legacy_marker_failed: 3 } },
+    ]);
+    const out = await notifyFollowers(BODY, { client: inv.client });
+    expect(out.complete).toBe(false);
+    expect(out.markerGap).toBe(3);
+  });
+
   it('a genuinely complete run of EITHER version is not retried', () => {
     // The judgement itself, exercised directly on both response shapes.
     expect(runReportedIncomplete({ message: 'Notified 10 followers', sent: 10, remaining: 0 })).toBe(false);

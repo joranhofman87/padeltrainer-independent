@@ -142,16 +142,38 @@ const handler = async (req: Request): Promise<Response> => {
     // (and final) attempt happens without holding the cursor back.
     const retrying: Array<{ id: string; user_id: string; isRetry: true }> = [];
     if (resumeState.retryPlayerIds.length > 0) {
-      const { data: retryProfiles, error: retryError } = await supabase
-        .from("profiles")
-        .select("id, user_id")
-        .in("id", resumeState.retryPlayerIds);
-      if (retryError) {
-        console.error("Retry profile lookup failed:", retryError.message);
-        return json({ error: "profile_lookup_failed" }, 500);
+      // THE RETRY SET IS AN INPUT, SO IT IS AUTHORISED LIKE ONE. Uuid-validating and capping the
+      // ids bounds their shape and volume, not their authority: without this intersection an
+      // authenticated trainer could post any player's profile id and mint an open_slots_player
+      // row for a stranger. The live follower check in the worker would stop delivery, but only
+      // once the worker carrying it is deployed — and nothing in the deploy order guarantees that
+      // ordering — so the enqueue itself must be gated here.
+      //
+      // Intersecting against the CURRENT enabled follower rows also does the right thing for a
+      // follower who unfollowed between hops: their retry simply stops existing.
+      const { data: authorised, error: authorisedError } = await supabase
+        .from("trainer_followers")
+        .select("player_id")
+        .eq("trainer_id", trainerId)
+        .eq("notify_new_availability", true)
+        .in("player_id", resumeState.retryPlayerIds);
+      if (authorisedError) {
+        console.error("Retry authorisation lookup failed:", authorisedError.message);
+        return json({ error: "follower_lookup_failed" }, 500);
       }
-      for (const p of retryProfiles ?? []) {
-        if (p.user_id) retrying.push({ id: p.id, user_id: p.user_id, isRetry: true });
+      const authorisedIds = (authorised ?? []).map((r) => r.player_id as string);
+      if (authorisedIds.length > 0) {
+        const { data: retryProfiles, error: retryError } = await supabase
+          .from("profiles")
+          .select("id, user_id")
+          .in("id", authorisedIds);
+        if (retryError) {
+          console.error("Retry profile lookup failed:", retryError.message);
+          return json({ error: "profile_lookup_failed" }, 500);
+        }
+        for (const p of retryProfiles ?? []) {
+          if (p.user_id) retrying.push({ id: p.id, user_id: p.user_id, isRetry: true });
+        }
       }
     }
     const discovered: Array<{ id: string; user_id: string }> = [];
@@ -162,11 +184,17 @@ const handler = async (req: Request): Promise<Response> => {
     let cursor: string | null = resumeState.afterPlayerId;
     let lastDiscovered: string | null = cursor;
     let discoveryStoppedEarly = false;
+    // Both discovery bounds count FOLLOWER ROWS READ, not deliverable recipients. Counting
+    // recipients let a run of followers whose profile has no user_id — guests, unlinked rows —
+    // hold both guards at zero: leading pages of them scanned past the ceiling AND past the
+    // discovery budget, and a large enough run could burn the whole invocation before a single
+    // enqueue or continuation. Rows read is what actually advances, so it is what bounds.
+    let followerRowsRead = 0;
     for (;;) {
-      if (discovered.length >= MAX_PER_RUN) { discoveryStoppedEarly = true; break; }
-      // `discovered.length > 0` keeps every hop monotonic: a hop always reads at least one page,
+      if (followerRowsRead >= MAX_PER_RUN) { discoveryStoppedEarly = true; break; }
+      // `followerRowsRead > 0` keeps every hop monotonic: a hop always reads at least one page,
       // so the chain cannot stall on a cursor it never advances.
-      if (discovered.length > 0 && Date.now() - start > DISCOVERY_BUDGET_MS) {
+      if (followerRowsRead > 0 && Date.now() - start > DISCOVERY_BUDGET_MS) {
         discoveryStoppedEarly = true;
         break;
       }
@@ -187,6 +215,7 @@ const handler = async (req: Request): Promise<Response> => {
         return json({ error: "follower_lookup_failed" }, 500);
       }
       if (!followerPage || followerPage.length === 0) break;
+      followerRowsRead += followerPage.length;
       cursor = followerPage[followerPage.length - 1].player_id;
       lastDiscovered = cursor;
 
@@ -369,10 +398,11 @@ const handler = async (req: Request): Promise<Response> => {
       lastDiscovered,
       incomingCursor: resumeState.afterPlayerId,
     });
-    if (plan.droppedRetries > 0) {
-      // No silent caps: say how many failed recipients were NOT carried forward.
-      console.error(`notify-followers dropped ${plan.droppedRetries} failed recipients beyond the retry carry cap`);
-      errors.push(`${plan.droppedRetries} failed recipients exceeded the retry carry cap`);
+    if (plan.overflowed) {
+      // No silent caps: an outage-scale failure count is reported, and the hop re-covers its own
+      // range rather than triaging which of them to forget.
+      console.error("notify-followers: retry set exceeded the carry cap — re-covering this range");
+      errors.push("retry set exceeded the carry cap; the range is being re-covered");
     }
     const nextCursor = plan.nextCursor;
     counts.deferred = plan.deferred;

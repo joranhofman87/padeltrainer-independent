@@ -162,6 +162,11 @@ export async function notifyFollowers(
       ...(opts.accessToken ? { headers: { Authorization: `Bearer ${opts.accessToken}` } } : {}),
     });
   let lastError: string | undefined;
+  // Accumulated ACROSS attempts. A marker gap reported by attempt 1 cannot reappear on attempt 2
+  // — those recipients answer `no_row` the second time — so keeping it only when the SAME attempt
+  // completed threw the warning away in exactly the case it mattered: an incomplete first attempt
+  // that also failed its marker writes.
+  let markerGap = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     let result: { data: unknown; error: { message: string } | null };
@@ -170,22 +175,26 @@ export async function notifyFollowers(
     } catch (e) {
       // A thrown transport error is retryable on the same terms.
       lastError = e instanceof Error ? e.message : "invoke_threw";
-      if (attempt === maxAttempts) return { complete: false, attempts: attempt, lastError };
+      if (attempt === maxAttempts) {
+        return { complete: false, attempts: attempt, lastError, ...(markerGap ? { markerGap } : {}) };
+      }
       continue;
     }
 
     // BOTH signals matter. A non-2xx arrives as `error`; a pre-cutover handler reports its
     // un-notified tail in the BODY of a 200. Ignoring the body is what let a partial legacy run
     // look complete and skip the retry entirely.
-    const markerGap = markerGapOf(result.data);
+    markerGap = Math.max(markerGap, markerGapOf(result.data));
     if (!result.error && !runReportedIncomplete(result.data)) {
       return { complete: true, attempts: attempt, ...(markerGap ? { markerGap } : {}) };
     }
 
     lastError = result.error?.message ?? "run_reported_incomplete";
-    if (attempt === maxAttempts) return { complete: false, attempts: attempt, lastError };
+    if (attempt === maxAttempts) {
+      return { complete: false, attempts: attempt, lastError, ...(markerGap ? { markerGap } : {}) };
+    }
   }
 
   // Unreachable for maxAttempts >= 1; keeps the function total for a caller passing 0.
-  return { complete: false, attempts: 0, lastError };
+  return { complete: false, attempts: 0, lastError, ...(markerGap ? { markerGap } : {}) };
 }

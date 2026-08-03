@@ -592,7 +592,8 @@ const PLAN = {
 
 Deno.test("plan: a clean, complete run owes nothing", () => {
   assertEquals(planRunOutcome(PLAN), {
-    deferred: 0, nextCursor: "e", retryIds: [], droppedRetries: 0, incomplete: false,
+    deferred: 0, nextCursor: "e", retryIds: [], droppedRetries: 0, overflowed: false,
+    incomplete: false,
   });
 });
 
@@ -644,12 +645,34 @@ Deno.test("plan: many failures do not slow the cursor down at all", () => {
   assertEquals(out.deferred, 40_021);
 });
 
-Deno.test("plan: the retry carry is CAPPED, and the excess is reported rather than dropped silently", () => {
+Deno.test("plan: MORE owed retries than the cap re-covers the range — it never forgets the excess", () => {
+  // Truncating to the cap would advance the cursor past the ids that did not fit and lose them
+  // for good, and a pre-cutover caller (which reads neither the status nor the body) is exactly
+  // the case server-side continuation exists to cover. A failure count that large is an outage,
+  // not a triage problem, so the hop re-covers its own range and re-attempts all of them.
   const ids = Array.from({ length: MAX_RETRY_CARRY + 7 }, (_, i) => `p${i}`);
-  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true });
-  assertEquals(out.retryIds.length, MAX_RETRY_CARRY);
-  assertEquals(out.droppedRetries, 7);
+  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true, incomingCursor: "a" });
+  assertEquals(out.overflowed, true);
+  assertEquals(out.retryIds, [], "no triage — nothing is singled out to remember or forget");
+  assertEquals(out.nextCursor, "a", "the whole range is re-covered");
+  assertEquals(out.deferred, PLAN.discoveredIds.length + ids.length);
   assertEquals(out.incomplete, true);
+});
+
+Deno.test("MUTANT: truncating the retry set silently forgets everyone past the cap", () => {
+  const ids = Array.from({ length: MAX_RETRY_CARRY + 7 }, (_, i) => `p${i}`);
+  const mutant = ids.slice(0, MAX_RETRY_CARRY);
+  assertEquals(mutant.length, MAX_RETRY_CARRY, "the mutant drops 7 recipients...");
+  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true, incomingCursor: "a" });
+  assertEquals(out.nextCursor, "a", "...production keeps the cursor so none are lost");
+});
+
+Deno.test("plan: exactly AT the cap is still carried normally", () => {
+  const ids = Array.from({ length: MAX_RETRY_CARRY }, (_, i) => `p${i}`);
+  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true, incomingCursor: "a" });
+  assertEquals(out.overflowed, false);
+  assertEquals(out.retryIds.length, MAX_RETRY_CARRY);
+  assertEquals(out.nextCursor, "e");
 });
 
 Deno.test("plan: duplicate failure ids are collapsed", () => {

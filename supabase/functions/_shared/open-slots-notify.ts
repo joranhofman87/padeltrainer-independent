@@ -303,11 +303,14 @@ export type ResumeState = {
 export const MAX_CONTINUATION_DEPTH = 20;
 
 /**
- * How many failed recipients one hop may hand to the next. Excess is reported, never hidden.
+ * How many failed recipients one hop may hand to the next.
  *
  * Kept small deliberately: the retry set is processed BEFORE discovery, so a large one would eat
  * a hop's wall clock and starve the tail it is supposed to leave room for. At 50 the prefix is
  * five chunks, a small fraction of what a hop gets through.
+ *
+ * Exceeding it is NOT truncation — see planRunOutcome. Truncating would advance the cursor past
+ * the ids that did not fit and lose them; the hop re-covers its own range instead.
  */
 export const MAX_RETRY_CARRY = 50;
 
@@ -487,31 +490,40 @@ export function planRunOutcome(args: {
   nextCursor: string | null;
   retryIds: string[];
   droppedRetries: number;
+  /** True when so many recipients are owed a retry that the hop re-covers its range instead. */
+  overflowed: boolean;
   incomplete: boolean;
 } {
   const total = args.discoveredIds.length;
   const processed = Math.min(Math.max(args.processedDiscovered, 0), total);
   // Un-attempted retries come first: they have been owed the longest.
   const unique = [...new Set([...args.unprocessedRetryIds, ...args.freshFailureIds])];
-  const retryIds = unique.slice(0, MAX_RETRY_CARRY);
-  const droppedRetries = unique.length - retryIds.length;
 
-  const nextCursor = resumeCursorAfter(
-    args.discoveredIds,
-    processed,
-    args.lastDiscovered,
-    args.incomingCursor,
-  );
-  const deferred = Math.max(total - processed, 0)
-    + Math.max(args.beyondDiscovery, 0)
-    + retryIds.length;
+  // MASS FAILURE: more owed retries than one hop may carry is not a triage problem, it is an
+  // outage. Truncating the set here would advance the cursor past the ids that did not fit and
+  // forget them for good — and a pre-cutover caller, which ignores both the status and the body,
+  // is exactly the case server-side continuation exists to cover. So the hop declines to triage:
+  // it re-covers its own range instead, which re-attempts every one of them. Already-enqueued
+  // recipients collapse to `no_row`, so the repeat costs nothing but a pass, and the hop cap
+  // still bounds how long a persistent outage can spin.
+  const overflowed = unique.length > MAX_RETRY_CARRY;
+  const retryIds = overflowed ? [] : unique;
+  const droppedRetries = 0;
+
+  const nextCursor = overflowed
+    ? args.incomingCursor
+    : resumeCursorAfter(args.discoveredIds, processed, args.lastDiscovered, args.incomingCursor);
+  const deferred = overflowed
+    ? total + Math.max(args.beyondDiscovery, 0) + unique.length
+    : Math.max(total - processed, 0) + Math.max(args.beyondDiscovery, 0) + retryIds.length;
 
   return {
     deferred,
     nextCursor,
     retryIds,
     droppedRetries,
-    incomplete: deferred > 0 || args.beyondUnknown || args.anyFailure || droppedRetries > 0,
+    overflowed,
+    incomplete: deferred > 0 || args.beyondUnknown || args.anyFailure,
   };
 }
 
