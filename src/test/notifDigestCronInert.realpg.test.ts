@@ -158,6 +158,12 @@ describe('F — the digest cron is installed INERT', () => {
     // A partial restore that carries only another owner's active, same-named job would otherwise
     // report present + armed, and a monitor would see a green light over a job we do not own and
     // cannot drive. Dropping the liveness predicate would leave every other test here green.
+    //
+    // The function is installed EXPLICITLY here, then our own job removed, so the state under
+    // test is constructed by this test rather than left behind by whichever one ran before it.
+    // Relying on that would make the test pass or fail on ordering, not on behaviour.
+    await c.query(MIG);
+    await c.query(`DELETE FROM cron.job WHERE jobname='notification-digest-worker' AND username=current_user`);
     await c.query(`INSERT INTO cron.job (jobname, schedule, command, username, active)
                    VALUES ('notification-digest-worker','* * * * *','SELECT 1','other_owner', true)`);
     const l = (await c.query(`SELECT * FROM public.notif_digest_worker_liveness()`)).rows[0];
