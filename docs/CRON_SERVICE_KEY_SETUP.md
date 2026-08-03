@@ -67,7 +67,7 @@ exists) reschedules them cleanly. On a DB with no `pg_cron` or no Vault secret i
 |---|---|---|---|
 | `notification-email-worker` | `*/2 * * * *` | **Yes** | v2 email outbox drainer. Self-auth via `requireServiceRole`. |
 | `notification-whatsapp-worker` | `*/2 * * * *` | **Yes** | v2 WhatsApp outbox drainer. Self-auth via `requireServiceRole`. |
-| `notification-digest-worker` | *(not scheduled)* | **Yes** (when scheduled) | 10c-a3 digest worker — deployed but INERT; its cron is a gated 10c-b step. Same Vault-key path when enabled. |
+| `notification-digest-worker` | `*/5 * * * *` **INACTIVE** | **Yes** (at tick time, once armed) | 10c-b F installs the job DISABLED in the same transaction that creates it (`20261012100000`), so it exists but never ticks. Arming it is an owner gate: `cron.alter_job(jobid, active := true)`, after the send switch is on and one canary is reconciled. The migration is non-destructive — a re-run never re-arms or disarms an existing job — and installs even when the Vault secret is absent, because the stored command reads Vault at tick time. Verify with `SELECT * FROM public.notif_digest_worker_liveness()`. |
 | `notify-rebook-member-open` | `*/15 * * * *` | **Yes** | Rebook "sessions opened" email. No fallback. |
 | `auto-rebook-reminder` | `0 6-19 * * *` | **Yes** | Rebook deadline reminder (daytime-only). No fallback. |
 | `invoice-health-check-daily` | `0 6 * * *` | **Yes** (legacy) | Redundant duplicate of the Vercel maintenance job; posts to `invoice-health-check` with a `Bearer` from the old `sr_key` path. Pause/unschedule in an emergency. |

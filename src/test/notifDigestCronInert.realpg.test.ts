@@ -46,8 +46,13 @@ beforeAll(async () => {
     CREATE TABLE cron.job (jobid bigserial PRIMARY KEY, jobname text, schedule text, command text,
                            username text NOT NULL DEFAULT current_user,
                            active boolean NOT NULL DEFAULT true, UNIQUE (jobname, username));
+    -- Real cron.schedule UPSERTS on (jobname, username): a second call with the same name UPDATES
+    -- the existing job rather than failing. Modelling it as a plain INSERT would turn the race
+    -- this migration guards against into a uniqueness error and hide the behaviour entirely.
     CREATE FUNCTION cron.schedule(p_name text, p_schedule text, p_command text) RETURNS bigint
-      LANGUAGE sql AS $$ INSERT INTO cron.job (jobname, schedule, command) VALUES (p_name, p_schedule, p_command) RETURNING jobid $$;
+      LANGUAGE sql AS $$ INSERT INTO cron.job (jobname, schedule, command) VALUES (p_name, p_schedule, p_command)
+        ON CONFLICT (jobname, username) DO UPDATE SET schedule = EXCLUDED.schedule, command = EXCLUDED.command
+        RETURNING jobid $$;
     CREATE FUNCTION cron.alter_job(p_jobid bigint, active boolean) RETURNS void
       LANGUAGE sql AS $$ UPDATE cron.job SET active = $2 WHERE jobid = $1 $$;
     CREATE FUNCTION cron.unschedule(p_name text) RETURNS boolean
@@ -82,7 +87,9 @@ describe('F — the digest cron is installed INERT', () => {
     expect(j.schedule).toBe('*/5 * * * *');
     // ...and the stored command is the thing that will actually run, so assert what it does:
     // the right endpoint, and a bearer read from Vault AT TICK TIME (never a baked-in key).
-    expect(j.command).toContain('/functions/v1/notification-digest-worker');
+    // The FULL url, not just the path: pointing the same path at another Supabase project would
+    // send this project's Vault service-role bearer to that one the moment it is armed.
+    expect(j.command).toContain("url := 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'");
     expect(j.command).toContain("'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')");
     expect(j.command, 'no key may ever be frozen into the schedule').not.toContain('eyJ.SERVICE_ROLE_TEST');
   });
@@ -145,6 +152,20 @@ describe('F — the digest cron is installed INERT', () => {
     const theirs = (await c.query(
       `SELECT active FROM cron.job WHERE jobname='notification-digest-worker' AND username='other_owner'`)).rows[0];
     expect(theirs.active, "another owner's job is not ours to disarm").toBe(true);
+  });
+
+  it("the LIVENESS read is owner-scoped too — another owner's job is not ours to report", async () => {
+    // A partial restore that carries only another owner's active, same-named job would otherwise
+    // report present + armed, and a monitor would see a green light over a job we do not own and
+    // cannot drive. Dropping the liveness predicate would leave every other test here green.
+    await c.query(`INSERT INTO cron.job (jobname, schedule, command, username, active)
+                   VALUES ('notification-digest-worker','* * * * *','SELECT 1','other_owner', true)`);
+    const l = (await c.query(`SELECT * FROM public.notif_digest_worker_liveness()`)).rows[0];
+    expect([l.job_present, l.job_active], 'we own no such job').toEqual([false, false]);
+
+    await c.query(MIG);
+    const ours = (await c.query(`SELECT * FROM public.notif_digest_worker_liveness()`)).rows[0];
+    expect([ours.job_present, ours.job_active], 'and now we own one, inert').toEqual([true, false]);
   });
 });
 

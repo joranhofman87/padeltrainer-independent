@@ -52,6 +52,17 @@ BEGIN
   -- this job is that an OWNER decides when it becomes active, and an unschedule/reschedule would
   -- silently disarm a job the owner had already enabled — the rollout would look complete while
   -- nothing ran. So an existing job is left exactly as the owner left it, active or not.
+  -- SERIALIZE the check-then-create. Real pg_cron's named cron.schedule UPDATES an existing job
+  -- of the same name rather than failing, so a check that is not serialized against a concurrent
+  -- application of this same migration could see "absent", then update a job the other apply had
+  -- just created, and disable it. A transaction-scoped advisory lock closes that.
+  --
+  -- RESIDUAL, stated rather than papered over: this cannot serialize against an OPERATOR running
+  -- cron.alter_job(active := true) by hand at the same instant, because that path takes no such
+  -- lock. It is out of scope by sequencing, not by luck — activation is an owner gate performed
+  -- from the runbook AFTER the deploy that applies this migration, never during it.
+  PERFORM pg_advisory_xact_lock(hashtextextended('cron:notification-digest-worker', 0));
+
   -- OWNER-SCOPED. Real pg_cron scopes named-job uniqueness by (jobname, username), so a bare
   -- jobname lookup can see — and act on — another role's job of the same name.
   SELECT jobid INTO v_jobid
