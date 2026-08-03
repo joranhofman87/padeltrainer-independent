@@ -46,11 +46,21 @@ BEGIN
   IF v_title IS NULL THEN
     RAISE EXCEPTION 'notif_open_slots_instant_payload: item has no title';
   END IF;
+  -- The legacy send-email template carried a "Book Now" action AND a "Manage notification
+  -- preferences" link. Dropping them would remove the notification's primary action and — more
+  -- seriously — its OPT-OUT ROUTE, which a recurring engagement email must always carry.
+  -- Both are absolute links to fixed app paths, matching the legacy template exactly.
   RETURN jsonb_build_object(
     'subject', v_title,
     'html',
       '<p>' || public.notif_open_slots_escape_html(v_title) || '</p>'
       || coalesce('<p>' || public.notif_open_slots_escape_html(v_body) || '</p>', '')
+      || '<p style="margin-top:24px;"><a href="https://padeltrainer.ai/nl/trainers"'
+      || ' style="background:#F97316;color:#ffffff;padding:12px 24px;text-decoration:none;'
+      || 'border-radius:6px;display:inline-block;">Book Now</a></p>'
+      || '<p style="margin-top:24px;font-size:12px;color:#6b7280;">'
+      || '<a href="https://padeltrainer.ai/app/player/settings/notifications">'
+      || 'Manage notification preferences</a></p>'
   );
 END $$;
 

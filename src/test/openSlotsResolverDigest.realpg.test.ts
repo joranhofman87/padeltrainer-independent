@@ -990,10 +990,21 @@ describe('D — an instant open-slots row carries server-rendered subject/html',
     expect(rows[0].payload.subtype).toBe('new_availability');
   });
 
-  it('the rendered html is escaped', async () => {
+  it('the rendered html ESCAPES the trainer name and carries the opt-out route', async () => {
+    // Assert on the PAYLOAD the resolver produced, not on the escape helper in isolation —
+    // removing the escape calls from notif_open_slots_instant_payload would leave a
+    // helper-only test green while production emitted raw markup.
     const { rows } = await c.query(
-      `SELECT public.notif_open_slots_escape_html($1) AS out`, ['a<b>&"c\'']);
-    expect(rows[0].out).toBe('a&lt;b&gt;&amp;&quot;c&#39;');
+      `SELECT public.notif_open_slots_instant_payload(
+         jsonb_build_object('title','A <b>bold</b> & "risky" name', 'body','body & more')) AS p`);
+    const html = rows[0].p.html as string;
+    expect(html).toContain('&lt;b&gt;');
+    expect(html).toContain('&amp;');
+    expect(html).not.toContain('<b>bold</b>');
+    // the legacy template's primary action AND opt-out route must survive the cutover
+    expect(html).toContain('Book Now');
+    expect(html).toContain('/app/player/settings/notifications');
+    expect(rows[0].p.subject).toBe('A <b>bold</b> & "risky" name');
   });
 
   it('a DIGEST row still carries no subject/html — rendering happens at send time there', async () => {
@@ -1006,5 +1017,35 @@ describe('D — an instant open-slots row carries server-rendered subject/html',
     expect(rows[0].payload.subject).toBeUndefined();
     expect(rows[0].digest_item).not.toBeNull();
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=false WHERE key='open_slots_player'`);
+  });
+});
+
+// ===========================================================================
+describe('D — ACL: the instant worker can call the stop policy, other helpers stay locked', () => {
+  beforeAll(async () => { await applyC(); });
+
+  it('service_role CAN execute notif_digest_event_stop_reason (the worker needs it)', async () => {
+    const { rows } = await c.query(
+      `SELECT has_function_privilege('service_role',
+         'public.notif_digest_event_stop_reason(uuid)', 'EXECUTE') AS ok`);
+    expect(rows[0].ok).toBe(true);
+  });
+
+  it('the other new helpers remain revoked from service_role', async () => {
+    // Round-8 posture: only the top-level SECURITY DEFINER RPCs may invoke these, so a forged
+    // direct service_role call cannot bypass run/ownership/ledger invariants. The stop-policy
+    // helper above is the deliberate exception — it is a pure read that mutates nothing.
+    for (const sig of [
+      'public.notif_digest_boundary_at(timestamptz,text,text)',
+      'public.notif_digest_recipient_timezone(uuid,uuid)',
+      'public.notif_digest_group_locale(uuid,uuid)',
+      'public.notif_digest_item_for_event(text,text,jsonb)',
+      'public.notif_open_slots_instant_payload(jsonb)',
+      'public.notif_open_slots_escape_html(text)',
+    ]) {
+      const { rows } = await c.query(
+        `SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS ok`, [sig]);
+      expect(rows[0].ok, `${sig} must stay revoked from service_role`).toBe(false);
+    }
   });
 });

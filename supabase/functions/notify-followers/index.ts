@@ -98,9 +98,10 @@ const handler = async (req: Request): Promise<Response> => {
       .single();
     const trainerName = trainerProfile.business_name?.trim() || profile?.full_name || "Your trainer";
 
-    // Followers who still want new-availability alerts. This flag is re-checked live before
-    // prepare and before every send attempt by the §PS event hook, so unfollowing between
-    // enqueue and delivery still stops the notification.
+    // Followers who still want new-availability alerts. The flag is re-checked LIVE before
+    // delivery by the §PS event hook — before prepare and before every attempt on the digest
+    // path, and immediately before send in the instant email worker — so unfollowing between
+    // enqueue and delivery still stops the notification on both routes.
     const { data: followers, error: followersError } = await supabase
       .from("trainer_followers")
       .select("player_id, notify_new_availability")

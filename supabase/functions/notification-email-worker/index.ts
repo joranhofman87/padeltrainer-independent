@@ -142,6 +142,34 @@ const handler = async (req: Request): Promise<Response> => {
         continue;
       }
 
+      // 10c-b D: the EVENT-SPECIFIC live stop policy (ADR 0008 §PS). Enqueue and send are now
+      // separated in time, so consent can be withdrawn in between — a player can unfollow the
+      // trainer, clear notify_new_availability, or turn the preference off after the row was
+      // written. The digest path re-checks this before prepare and before every attempt; the
+      // instant path had no equivalent, so a still-pending row would have sent anyway.
+      // Returns NULL immediately for events with no policy, so this costs one cheap lookup.
+      // FAIL CLOSED, exactly like the suppression gate: an errored check does NOT send.
+      let stopReason: string | null = null;
+      let stopErr: unknown = null;
+      try {
+        const res = await supabase.rpc("notif_digest_event_stop_reason", { p_member_id: row.outbox_id });
+        stopReason = res.data as string | null;
+        stopErr = res.error;
+      } catch (e) {
+        stopErr = e;
+      }
+      if (stopErr) {
+        await recordResult(row.outbox_id, "failed", { error: "stop_policy_check_failed", terminal: false });
+        failed++;
+        continue;
+      }
+      if (stopReason) {
+        // Terminal: consent for THIS notification is gone. Retrying would not restore it.
+        await recordResult(row.outbox_id, "failed", { error: stopReason, terminal: true });
+        suppressed++;
+        continue;
+      }
+
       // provider-idempotent: keyed on the stable outbox id → a retry after Resend already
       // accepted the send (our timeout, a stale takeover) is a no-op in Resend's 24h window.
       const outcome = await sendResendEmail(
