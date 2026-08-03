@@ -768,23 +768,39 @@ Deno.test("MUTANT: an uncapped retry set lets a forged body drive an unbounded p
 });
 
 Deno.test("plan: a retry the hop never REACHED is carried on, not spent", () => {
-  // The retry prefix is processed first, so a wall-clock budget that runs out inside it leaves
-  // recipients that have had no second attempt at all. Carrying only fresh failures would drop
-  // them: their retry would be recorded as spent when it never happened.
+  // Retries sit at the TAIL of the recipient list, so a budget that runs out before reaching them
+  // leaves recipients that have had no second attempt at all. Carrying only fresh failures would
+  // drop them: their retry would be recorded as spent when it never happened.
+  //
+  // The fixture respects the handler's ordering invariant: un-reached retries imply discovery was
+  // worked through first, so a fresh failure among the discovered recipients is possible here —
+  // under the previous retries-first ordering this same state was unreachable.
   const out = planRunOutcome({
-    ...PLAN, processedDiscovered: 0, incomingCursor: "a",
+    ...PLAN, processedDiscovered: PLAN.discoveredIds.length,
     unprocessedRetryIds: ["r1", "r2"], freshFailureIds: ["c"], anyFailure: true,
   });
   assertEquals(out.retryIds, ["r1", "r2", "c"], "un-attempted first — they have waited longest");
-  assertEquals(out.deferred, 4 + 3, "the whole un-processed range plus everyone owed a retry");
+  assertEquals(out.deferred, 3, "everyone owed a retry; discovery itself is done");
+});
+
+Deno.test("plan: un-reached retries are carried even when NOTHING failed this hop", () => {
+  // The case the previous fixture could not express, and the one a mutant would exploit: keeping
+  // unprocessed retries only when a fresh failure exists.
+  const out = planRunOutcome({
+    ...PLAN, processedDiscovered: PLAN.discoveredIds.length,
+    unprocessedRetryIds: ["r1", "r2"], freshFailureIds: [], anyFailure: false,
+  });
+  assertEquals(out.retryIds, ["r1", "r2"]);
+  assertEquals(out.deferred, 2);
+  assertEquals(out.incomplete, true);
 });
 
 Deno.test("MUTANT: dropping un-reached retries spends an attempt that never happened", () => {
   const mutant = (fresh: string[]) => fresh;
-  assertEquals(mutant(["c"]), ["c"], "the mutant carries only the fresh failure...");
+  assertEquals(mutant([]), [], "the mutant carries nothing when nothing fresh failed...");
   assertEquals(
-    planRunOutcome({ ...PLAN, unprocessedRetryIds: ["r1"], freshFailureIds: ["c"], anyFailure: true })
+    planRunOutcome({ ...PLAN, unprocessedRetryIds: ["r1"], freshFailureIds: [], anyFailure: false })
       .retryIds,
-    ["r1", "c"],
+    ["r1"],
   );
 });

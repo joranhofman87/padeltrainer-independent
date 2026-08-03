@@ -305,9 +305,9 @@ export const MAX_CONTINUATION_DEPTH = 20;
 /**
  * How many failed recipients one hop may hand to the next.
  *
- * A prefix this size cannot starve the tail: the retry prefix and discovery share ONE wall-clock
- * budget and one chunk loop, so a long prefix simply means the hop gets through fewer discovered
- * followers — the cursor still advances, and anything the prefix did not reach is carried on.
+ * A set this size cannot starve discovery, because retries are processed LAST: the one chunk a
+ * hop is guaranteed to run is always a discovery chunk, so the cursor advances every hop no
+ * matter how many retries are owed. Whatever the budget does not reach is carried forward.
  *
  * Beyond it, the excess is reported rather than carried. That degrades those recipients from two
  * attempts to one; it does not lose the tail. The earlier design re-covered the hop's own range
@@ -478,9 +478,9 @@ export function planRunOutcome(args: {
   /** Ids this hop failed to enqueue that were NOT already retries. */
   freshFailureIds: string[];
   /**
-   * Retry ids this hop never got to, because its wall-clock budget ran out inside the retry
-   * prefix. They are still owed their second attempt, so they are carried on — dropping them
-   * would silently spend an attempt that never happened.
+   * Retry ids this hop never got to, because its wall-clock budget ran out before the retry
+   * TAIL of the recipient list. They are still owed their second attempt, so they are carried on
+   * — dropping them would silently spend an attempt that never happened.
    */
   unprocessedRetryIds: string[];
   /** True when any recipient at all failed, retries included. */

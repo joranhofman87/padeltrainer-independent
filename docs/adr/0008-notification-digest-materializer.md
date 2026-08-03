@@ -827,8 +827,15 @@ sending a request shape the new handler must interpret rather than trust.
    retry, and that is carried as an explicit, capped set of ids rather than by holding the cursor
    back — holding it back conflated the two jobs, cost a hop or two per failure, and let enough
    failures exhaust the hop cap before the undiscovered tail was ever reached. Only a FRESH
-   failure is carried, so every recipient gets exactly two attempts, the retry is bound to an
-   identity rather than a position, and the set provably shrinks to empty. The
+   failure is carried, and the retry is bound to an identity rather than a position, so the set
+   provably shrinks to empty. Retries are processed LAST, after discovery, so the one chunk a hop
+   is guaranteed to run always advances the cursor.
+
+   A recipient therefore gets **at most** two attempts, and the exceptions are named rather than
+   implied: more simultaneous failures than the carry cap (`retries_not_carried` in the response),
+   and a chain that reaches the hop cap with retries still owed (`deferred` in the response). Both
+   are reported; neither is silent. Retry ids are also authorised on every hop against the
+   trainer's currently enabled follower rows, so the set can carry no authority of its own. The
    current caller ALSO judges completeness from the response body (`remaining` / `errors` on the
    old shape, `incomplete` / `failed` / `deferred` on the new one) and retries, so client retry
    and server continuation are independent lines of defence.

@@ -138,8 +138,8 @@ const handler = async (req: Request): Promise<Response> => {
     // discovery meant slow paging could consume the whole edge lifetime and leave nothing for
     // the enqueues, so a run could burn its wall clock and enqueue nothing at all.
     const DISCOVERY_BUDGET_MS = 40_000;
-    // Recipients a previous hop failed to enqueue, processed FIRST and flagged, so their second
-    // (and final) attempt happens without holding the cursor back.
+    // Recipients a previous hop failed to enqueue, carried for their second (and final) attempt.
+    // They are processed LAST — see the ordering note where the two lists are joined.
     const retrying: Array<{ id: string; user_id: string; isRetry: true }> = [];
     if (resumeState.retryPlayerIds.length > 0) {
       // THE RETRY SET IS AN INPUT, SO IT IS AUTHORISED LIKE ONE. Uuid-validating and capping the
@@ -236,9 +236,21 @@ const handler = async (req: Request): Promise<Response> => {
       if (followerPage.length < PAGE) break;
     }
 
-    // Retries first: they are already owed, and putting them ahead of newly discovered followers
-    // keeps the cursor arithmetic below about discovery alone.
-    const recipients: Array<{ id: string; user_id: string; isRetry?: true }> = [...retrying, ...discovered];
+    // DISCOVERY FIRST, RETRIES LAST — and this ordering is load-bearing.
+    //
+    // Putting retries first sounded fairer (they have waited longest) and starved the thing that
+    // actually has to finish. The two lists share one wall-clock budget and one chunk loop, and
+    // only the FIRST chunk of a hop is guaranteed to run; a long retry prefix could therefore
+    // consume the whole hop, leave `processedDiscovered` at zero, hand back the same cursor, and
+    // do that on every hop until the cap — so the healthy tail was never discovered and the
+    // retries themselves drained ten at a time.
+    //
+    // With discovery first the guaranteed chunk is always a discovery chunk, so the cursor
+    // advances on every hop and the tail drains at full speed. Retries are not lost by being
+    // last: whatever the budget does not reach is carried forward, and once discovery is
+    // exhausted the hops are all retries. A second attempt yielding to a first attempt is also
+    // the right priority when something has to give.
+    const recipients: Array<{ id: string; user_id: string; isRetry?: true }> = [...discovered, ...retrying];
     // "No followers with an account" is only TRUE when discovery actually finished. Returning it
     // after an early stop turned a page of unlinked profiles into a clean 200 with the tail
     // undiscovered — and a pre-cutover caller, which reads neither status nor body, never comes
@@ -392,11 +404,11 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const plan = planRunOutcome({
       discoveredIds: discovered.map((r) => r.id),
-      // The retry prefix is not part of the cursor's world; only what came from discovery is.
-      processedDiscovered: Math.max(processed - retrying.length, 0),
+      // Discovery comes first in the list, so the processed count applies to it directly.
+      processedDiscovered: Math.min(processed, discovered.length),
       freshFailureIds,
       // A retry the budget never reached has not had its attempt; it is owed, not spent.
-      unprocessedRetryIds: retrying.slice(Math.min(processed, retrying.length)).map((r) => r.id),
+      unprocessedRetryIds: retrying.slice(Math.max(processed - discovered.length, 0)).map((r) => r.id),
       anyFailure,
       beyondDiscovery,
       beyondUnknown,
@@ -448,7 +460,18 @@ const handler = async (req: Request): Promise<Response> => {
           resume_retry_player_ids: plan.retryIds,
         }),
       })
-        .then((r) => { if (!r.ok) console.error("notify-followers self-reinvoke returned", r.status); })
+        .then(async (r) => {
+          if (!r.ok) console.error("notify-followers self-reinvoke returned", r.status);
+          // A continuation hop's OWN marker gap can never reach the app: this parent has already
+          // answered, and a later app retry sees `no_row` for those recipients. The function log
+          // is the only place it can land, so the parent reads the child's body and says so
+          // rather than discarding it.
+          try {
+            const body = await r.json() as Record<string, unknown> | null;
+            const gap = body && typeof body.legacy_marker_failed === "number" ? body.legacy_marker_failed : 0;
+            if (gap > 0) console.error(`notify-followers continuation reported legacy_marker_failed=${gap}`);
+          } catch { /* a body we cannot read tells us nothing; the child logged it itself */ }
+        })
         .catch((e) => console.error("notify-followers self-reinvoke failed:", e));
       const edgeRuntime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
       if (edgeRuntime?.waitUntil) edgeRuntime.waitUntil(chain);
