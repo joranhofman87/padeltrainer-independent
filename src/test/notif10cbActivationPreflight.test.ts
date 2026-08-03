@@ -156,19 +156,45 @@ describe('G — verifying and arming are one transaction', () => {
   // waits for group locks, so an unbounded wait behind a slow webhook — or a deadlock against the
   // orphan reconciler, which holds group locks across its loop — would stall every worker-run write
   // rather than failing an owner-driven step that is always safe to re-run.
+  // COMMENTS STRIPPED FIRST. These files explain themselves at length, and every property below is
+  // also *described* in prose next to the statement that implements it — so a search over the raw
+  // text passes when the statement is commented out. That is the vacuous-assertion trap this slice
+  // has hit repeatedly, in a new place.
+  const activeSql = ACTIVATE.replace(/--.*$/gm, '');
+
   it('activate.sql bounds every lock wait before taking any lock', () => {
-    const timeout = ACTIVATE.search(/SET LOCAL lock_timeout\s*=/);
-    expect(timeout, 'activate.sql must set a bounded lock_timeout').toBeGreaterThan(-1);
-    expect(timeout).toBeLessThan(ACTIVATE.indexOf('LOCK TABLE'));
-    expect(timeout).toBeLessThan(ACTIVATE.indexOf('FOR UPDATE'));
-    expect(timeout).toBeLessThan(ACTIVATE.indexOf('FOR SHARE'));
+    const m = activeSql.match(/SET LOCAL lock_timeout\s*=\s*'([^']+)'/);
+    expect(m, 'activate.sql must set a lock_timeout').not.toBeNull();
+    // PostgreSQL treats 0 as DISABLED — the same footgun assert_timeout_ms guards in the shell
+    // library. A zero here removes exactly the bound while every comment still says "bounded".
+    expect(m![1]).toMatch(/^[1-9][0-9]*(ms|s|min)?$/);
+    const at = activeSql.search(/SET LOCAL lock_timeout/);
+    for (const lock of ['LOCK TABLE', 'FOR UPDATE', 'FOR SHARE']) {
+      expect(at, `lock_timeout must precede ${lock}`).toBeLessThan(activeSql.indexOf(lock));
+    }
+  });
+
+  // lock_timeout bounds EACH acquisition; the ordered FOR SHARE can take many group locks, so a
+  // succession of blockers that each release in time would still stall activation indefinitely.
+  it('activate.sql also caps the total statement time', () => {
+    const m = activeSql.match(/SET LOCAL statement_timeout\s*=\s*'([^']+)'/);
+    expect(m, 'activate.sql must cap the whole statement, not just each lock wait').not.toBeNull();
+    expect(m![1]).toMatch(/^[1-9][0-9]*(ms|s|min)?$/);
   });
 
   // Two transactions taking overlapping group sets in opposite orders is the classic deadlock.
   it('activate.sql locks the canary groups in a deterministic order', () => {
-    const groupLock = ACTIVATE.match(/SELECT g\.id FROM public\.notification_digest_groups[\s\S]*?FOR SHARE;/)?.[0];
+    const groupLock = activeSql.match(/SELECT g\.id FROM public\.notification_digest_groups[\s\S]*?FOR SHARE;/)?.[0];
     expect(groupLock, 'activate.sql must lock the canary groups').toBeTruthy();
     expect(groupLock!).toMatch(/ORDER BY g\.id\s*\n\s*FOR SHARE;/);
+  });
+
+  // The cheap refusal must come BEFORE the group locks, or activation queues behind the very run
+  // that is going to invalidate it — while holding the run-ledger lock.
+  it('activate.sql refuses an in-flight dispatch run before taking group locks', () => {
+    const check = activeSql.indexOf('no dispatch run is in flight');
+    expect(check, 'activate.sql must pre-check for an in-flight run').toBeGreaterThan(-1);
+    expect(check).toBeLessThan(activeSql.indexOf('FOR SHARE'));
   });
 
   it('activate.sql arms by jobid and count-checks the arm', () => {

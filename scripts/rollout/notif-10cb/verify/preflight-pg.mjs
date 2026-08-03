@@ -7,8 +7,9 @@
 // order, under which gate. It cannot prove that an artifact's assertions are
 // true statements about a database, and the four findings this closes are all of
 // exactly that kind: a drifted cron command, a stale canary, an `accepted`
-// attempt over a correlation mismatch, a tripped breaker. A stub answers "the
-// preflight ran"; only a real server answers "the preflight would have REFUSED".
+// attempt over a correlation mismatch, a tripped breaker, an orphan a webhook
+// left un-quarantined. A stub answers "the preflight ran"; only a real server
+// answers "the preflight would have REFUSED".
 //
 // Every scenario below is a mutation of one fact away from a passing baseline,
 // and asserts the preflight FAILS on it. A scenario that passes when it should
@@ -542,6 +543,26 @@ try {
       await c.query('ROLLBACK');
       await other.query(`ROLLBACK`).catch(() => {});
     }
+    // THE EARLY IN-FLIGHT REFUSAL, observed through a FULL activation under contention. The
+    // in-flight run is also caught by the shared assertions, so a scenario without contention
+    // cannot tell the early check from the late one. Here another session holds a canary group:
+    // with the early refusal, activation fails FAST naming the in-flight run; without it,
+    // activation reaches the group lock and dies on lock_timeout (55P03) instead.
+    await seedBaseline();
+    await c.query(`INSERT INTO public.notification_worker_runs
+      (run_id, worker, channel, phase, status, started_at)
+      VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', NULL, now())`);
+    await other.query('BEGIN');
+    await other.query(`SELECT id FROM public.notification_digest_groups WHERE id = '${GROUP}' FOR UPDATE`);
+    {
+      const err = await activate();
+      rec('activation refuses an in-flight run BEFORE queueing on a held canary group',
+        !!err && err.includes('no dispatch run is in flight'),
+        err ?? 'it armed the cron while a run was in flight');
+      rec('...and did not die on the lock instead',
+        !!err && !err.includes('lock timeout') && !err.includes('canceling statement'), err ?? '');
+    }
+    await other.query('ROLLBACK');
   } finally {
     await other.end().catch(() => {});
   }
@@ -585,7 +606,7 @@ try {
   await c.query(`SET search_path = "$user", public`);
   await c.query(`DROP SCHEMA hostile CASCADE`);
 
-  // ── canary_verify carries the same mismatch guard ────────────────────────
+  // ── canary_verify carries the same guards ────────────────────────────────
   await seedBaseline();
   await c.query(`UPDATE public.notification_digest_attempts
     SET provider_message_id = 'resend-msg-DIFFERENT' WHERE attempt_id = '${ATTEMPT}'`);
@@ -593,6 +614,23 @@ try {
     const err = await canaryVerify();
     rec('canary_verify ALSO refuses a correlation mismatch',
       !!err && err.includes('disagrees with its group about the provider message id'), err ?? 'it PASSED');
+  }
+
+  // The canary subcommand prints "reconciled AND verified to have delivered". It must not say that
+  // over an orphan the webhook left un-quarantined against this canary's own group — activation
+  // would still catch it, but the operator's verdict at canary time would have been false.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_provider_events
+      (resend_event_id, provider_message_id, digest_group_id, status, occurred_at)
+      VALUES ('evt-canary-orphan', 'resend-msg-SOMETHING-ELSE', NULL, 'delivered', now());
+    INSERT INTO public.notification_orphan_reconcile_state
+      (resend_event_id, channel, digest_group_id, next_eligible_at)
+      VALUES ('evt-canary-orphan', 'email', '${GROUP}', now())`);
+  {
+    const err = await canaryVerify();
+    rec('canary_verify refuses an un-quarantined orphan on this canary\'s group',
+      !!err && err.includes('still unreconciled against a group this canary sent'), err ?? 'it PASSED');
   }
 } finally {
   await c.end().catch(() => {});

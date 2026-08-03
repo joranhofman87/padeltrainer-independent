@@ -55,3 +55,16 @@ SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_provider_circuit
     WHERE channel = 'email' AND state <> 'closed'), 0,
   'the email provider circuit is CLOSED after the canary (a manual hold is state=open with retry_at NULL)');
+
+-- ...and no provider event may be left UNRECONCILED against a group this canary sent. A tag/message
+-- mismatch arriving by webhook takes the uncorrelated branch of apply_notification_provider_event
+-- (20261006110000): it enrols an orphan with `quarantined = false` and leaves the group `sent` and
+-- the circuit closed, so every assertion above passes over it. Without this, `canary` printed
+-- "reconciled AND verified to have delivered" over exactly that state, and only the activation
+-- preflight would have caught it — an operator verdict that was simply false.
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_orphan_reconcile_state o
+    WHERE EXISTS (SELECT 1 FROM public.notification_digest_attempts a
+                   WHERE a.digest_group_id = o.digest_group_id
+                     AND a.worker_run_id = :'run_id'::uuid)), 0,
+  'no provider event is still unreconciled against a group this canary sent');

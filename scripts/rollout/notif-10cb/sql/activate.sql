@@ -23,8 +23,15 @@ BEGIN;
 -- blocks every worker-run insert and finish. It also removes the deadlock as a hang: activation and
 -- reconcile_orphan_provider_events can acquire overlapping group sets in different orders, and this
 -- turns that into a fast, clean refusal instead. Activation is an owner-driven step that is always
--- safe to re-run, so failing closed after five seconds is strictly better than holding the line.
+-- safe to re-run, so failing closed is strictly better than holding the line.
+--
+-- BOTH bounds are needed, and the reason is that lock_timeout applies to EACH lock acquisition
+-- separately. The ordered FOR SHARE can take many group locks (the worker's per-invocation cap is
+-- in the hundreds), so a series of blockers that each release inside five seconds would keep
+-- activation waiting far longer than five seconds while it holds the SHARE lock on the run ledger.
+-- statement_timeout caps that whole statement, so the TOTAL stall is bounded, not just each wait.
 SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '30s';
 
 \i ../../notif-10ca3/sql/_assert.sql
 
@@ -36,10 +43,11 @@ SET LOCAL lock_timeout = '5s';
 -- begin until this transaction ends — and it is a short transaction taken once, under an owner gate,
 -- against a cron that is still inactive.
 --
--- HONEST RESIDUAL: this does not freeze webhook-driven transitions. A Resend callback can still
--- advance a group's provider status while this runs. It cannot start a SEND (that needs a dispatch
--- run, which this blocks), and rollback remains available; the alternative — locking the group,
--- circuit and orphan tables too — would block the live email path for the whole activation.
+-- HONEST RESIDUAL, as it now stands: the canary's OWN groups are locked below, so a callback cannot
+-- unmake this canary's evidence mid-transaction. What is still unfrozen is transitions on UNRELATED
+-- groups, and any callback that arrives AFTER this commits — neither of which says anything about
+-- whether the canary delivered. Locking the circuit and orphan tables as well would block the live
+-- email path for the whole activation, which is a worse trade than the residual.
 LOCK TABLE public.notification_worker_runs IN SHARE MODE;
 
 -- LOCK FIRST, THEN LOOK, AND KEEP THE ROW. FOR UPDATE on the exact (jobname, username) row —
