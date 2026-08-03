@@ -42,7 +42,11 @@ beforeAll(async () => {
     CREATE TABLE public.persons (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, email text);`);
   for (const f of ['20261002100000_notification_digest_schema_foundation.sql', '20261003100000_notification_digest_acl_lockdown.sql',
     '20261004100000_notification_digest_state_machine.sql', '20261005100000_notification_digest_render_oversize.sql',
-    '20261005110000_notification_digest_request_hash_bytea_fix.sql']) {
+    '20261005110000_notification_digest_request_hash_bytea_fix.sql',
+    // 10c-b E gave this its FIRST caller: the worker now drains the orphan reconcile queue, so
+    // the fixture must carry the migration that defines it. Without it the drain would throw on
+    // every run — which is exactly what the suite should catch if the migration is ever dropped.
+    '20261006110000_reconcile_orphan_provider_events.sql']) {
     await c.query(readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'));
   }
   await c.end();
@@ -56,6 +60,9 @@ beforeEach(async () => {
     await c.query(`TRUNCATE public.notification_digest_groups, public.notification_digest_attempts,
       public.notification_digest_group_attempts, public.notification_provider_events, public.notification_provider_circuit,
       public.notification_send_counters, public.notification_send_reservations, public.notification_worker_runs,
+      -- notification_orphan_reconcile_state is NOT listed: it CASCADEs from notification_provider_events.
+      -- notification_orphan_reconcile_actions must NEVER be listed — it is owner-effectively append-only
+      -- (an immutable-row trigger refuses TRUNCATE), which is the point of an operator audit.
       public.notification_outbox, public.email_suppression_stub, public.notification_preferences_v2, public.notification_contacts,
       public.persons RESTART IDENTITY CASCADE`);
   } finally { await c.end(); }
@@ -63,7 +70,14 @@ beforeEach(async () => {
 
 const NOW = new Date('2026-07-01T10:00:00Z');
 const BD = "'2026-07-01 06:00:00+00'::timestamptz";
-const FIXED_LIMITS: WorkerLimits = { maxMaterializeGroups: 200, maxMaterializeMembers: 5000, maxAttempts: 100, sweepLimit: 500, wallClockMs: 60_000 };
+const FIXED_LIMITS: WorkerLimits = { maxMaterializeGroups: 200, maxMaterializeMembers: 5000, maxAttempts: 100, sweepLimit: 500, orphanReconcileLimit: 200, wallClockMs: 60_000 };
+
+/**
+ * Functions that RETURN TABLE. PostgREST gives the caller an ARRAY OF OBJECTS for these, so the
+ * fixture must too — `SELECT fn(...)` would hand back a composite string and the worker would
+ * read every field as undefined while looking perfectly green.
+ */
+const TABLE_RETURNING_RPCS = new Set(['reconcile_orphan_provider_events']);
 
 /** Named-arg RPC caller: object keys → `p_x => $n` (jsonb-cast for object values). Throws on DB error. */
 function mkRpc(c: pg.Client) {
@@ -71,6 +85,10 @@ function mkRpc(c: pg.Client) {
     const keys = Object.keys(args);
     const named = keys.map((k, i) => (args[k] !== null && typeof args[k] === 'object') ? `${k} => $${i + 1}::jsonb` : `${k} => $${i + 1}`).join(', ');
     const vals = keys.map((k) => (args[k] !== null && typeof args[k] === 'object') ? JSON.stringify(args[k]) : args[k]);
+    if (TABLE_RETURNING_RPCS.has(name)) {
+      const t = await c.query(`SELECT * FROM public.${name}(${named})`, vals);
+      return t.rows;
+    }
     const r = await c.query(`SELECT public.${name}(${named}) AS result`, vals);
     return r.rows[0]?.result ?? null;
   };
@@ -534,6 +552,73 @@ describe('10c-a3 digest worker — fault injection', () => {
       expect(g2.state).toBe('sent');
       const atts = (await c.query(`SELECT count(*)::int n, count(DISTINCT provider_idempotency_key)::int k FROM public.notification_digest_attempts WHERE digest_group_id=$1`, [g1.id])).rows[0];
       expect(atts.n).toBe(2); expect(atts.k).toBe(1);
+    } finally { await c.end(); }
+  });
+});
+
+// ===========================================================================
+describe('10c-b E — the orphan provider-event lifecycle', () => {
+  it('an EARLY callback is enrolled, then correlated by the worker drain', async () => {
+    // The gap E closes. A Resend callback can arrive before its group binds provider_message_id
+    // — the webhook enrols it rather than dropping it — and until E nothing drained that queue.
+    // The SQL shipped INERT and said so: "Deploy BEFORE any webhook may ack an `orphan` (PR-2)".
+    // Without a drain, the group aged out through the stale sweep as if the send had gone
+    // unanswered, and the callback sat in the queue for ever.
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:orph', 'orph@example.com', [{ title: 't' }]);
+      // Materialize WITHOUT dispatching (maxAttempts 0): the group exists but has no attempt at
+      // all, so there is nothing to correlate a provider message id against. That is precisely
+      // the window in which a callback can arrive first — and note a crashed send is NOT it: the
+      // attempt row is live by then, so the bind succeeds and the transition applies immediately.
+      await runDigestWorker(mkDeps(c, { limits: { ...FIXED_LIMITS, maxAttempts: 0 } }));
+      const gid = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='p:orph'`)).rows[0].id;
+
+      const outcome = (await c.query(
+        `SELECT public.apply_notification_provider_event(
+           p_run_id => NULL, p_resend_event_id => 'evt_early', p_provider_message_id => 're_early',
+           p_digest_group_id => $1, p_status => 'delivered',
+           p_occurred_at => $2::timestamptz, p_now => $2::timestamptz) AS r`,
+        // the fixture clock, not wall time: the drain runs at NOW, and a row enrolled at real
+        // "now" would not be due yet.
+        [gid, NOW.toISOString()])).rows[0].r;
+      expect(outcome, 'nothing to correlate yet → enrolled, not applied and not lost').toBe('orphan');
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_orphan_reconcile_state`)).rows[0].n).toBe(1);
+
+      // The next run dispatches the group (binding re_early) and, in the SAME invocation, drains
+      // the queue — so the early callback finally reaches its group.
+      const summary = await runDigestWorker(mkDeps(c, {
+        send: () => ({ kind: 'response', httpStatus: 202, providerMessageId: 're_early', errorName: null, retryAfterSeconds: null }),
+      }));
+      expect(summary.orphansExamined).toBeGreaterThanOrEqual(1);
+      expect(summary.orphansLinked).toBe(1);
+      const linked = (await c.query(
+        `SELECT digest_group_id FROM public.notification_provider_events WHERE resend_event_id='evt_early'`)).rows[0];
+      expect(linked.digest_group_id, 'correlated to its ORIGINAL tagged group').toBe(gid);
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_orphan_reconcile_state`)).rows[0].n)
+        .toBe(0);
+    } finally { await c.end(); }
+  });
+
+  it('a drain that THROWS makes the run unhealthy — never a silent 200', async () => {
+    // The queue is the only path by which an early callback reaches its group, so a broken drain
+    // reported as healthy would hide groups that go on to age out as undelivered.
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:orph2', 'orph2@example.com', [{ title: 't' }]);
+      const base = mkDeps(c);
+      const summary = await runDigestWorker({
+        ...base,
+        rpc: async (name, args) => {
+          if (name === 'reconcile_orphan_provider_events') throw new Error('drain exploded');
+          return base.rpc(name, args);
+        },
+      });
+      expect(summary.orphanErrors).toBe(1);
+      expect(summary.status, 'an unhealthy run is never reported as a healthy 200').toBe('error');
+      // ...and the send itself still happened: a drain failure must not stop delivery.
+      expect((await c.query(`SELECT state FROM public.notification_digest_groups WHERE recipient_key='p:orph2'`))
+        .rows[0].state).toBe('sent');
     } finally { await c.end(); }
   });
 });

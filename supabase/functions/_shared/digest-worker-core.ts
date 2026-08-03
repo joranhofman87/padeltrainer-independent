@@ -34,6 +34,8 @@ export type WorkerLimits = {
   maxMaterializeMembers: number;
   maxAttempts: number; // hard cap on dispatch-loop iterations per invocation
   sweepLimit: number;
+  /** Orphan provider events examined per invocation (10c-b E). */
+  orphanReconcileLimit: number;
   wallClockMs: number; // per-invocation runtime budget
 };
 
@@ -85,6 +87,10 @@ export type WorkerSummary = {
   recorded: number;
   groupErrors: number;
   reconcileErrors: number;   // reconciliation failures — a run whose reconcile fails is NOT operationally provable
+  orphansExamined: number;   // 10c-b E — orphan provider events looked at this invocation
+  orphansLinked: number;     // ...and correlated to their tagged group
+  orphansQuarantined: number;// ...and given up on until an operator acts
+  orphanErrors: number;      // an orphan drain that threw — unhealthy, never fatal
 };
 
 /** Thrown by a run-level failure, carrying a PII-free partial summary so the handler's alert keeps the run IDs
@@ -109,6 +115,8 @@ function safeSummary(s: WorkerSummary): Partial<WorkerSummary> {
     sweptStale: s.sweptStale, materialized: s.materialized, claimed: s.claimed, sent: s.sent,
     deferred: s.deferred, oversizeSplit: s.oversizeSplit, oversizeFailed: s.oversizeFailed,
     recorded: s.recorded, groupErrors: s.groupErrors, reconcileErrors: s.reconcileErrors,
+    orphansExamined: s.orphansExamined, orphansLinked: s.orphansLinked,
+    orphansQuarantined: s.orphansQuarantined, orphanErrors: s.orphanErrors,
   };
 }
 
@@ -124,6 +132,7 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
   const s: WorkerSummary = {
     status: "ok", sweptStale: 0, materialized: 0, claimed: 0, sent: 0, deferred: 0,
     oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0, reconcileErrors: 0,
+    orphansExamined: 0, orphansLinked: 0, orphansQuarantined: 0, orphanErrors: 0,
   };
 
   // req — INERT unless enabled AND configured: return with ZERO database calls. Disabled (switch off) is a
@@ -195,6 +204,33 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
       }
     }
 
+    // (3b) ORPHAN PROVIDER EVENTS (10c-b E). A Resend callback can arrive before its group binds
+    // a provider_message_id — the webhook stores it and enrols it here rather than dropping it.
+    // Until E nothing drained that queue: the SQL shipped inert with its own producer missing, so
+    // an early `delivered` never reached its group and the group aged out through the stale sweep
+    // as if the send had gone unanswered. Bounded per invocation and BEST-EFFORT in the same sense
+    // as a group error: a failure is counted and makes the run unhealthy, but never crashes the
+    // worker or re-sends anything, because linking an event only replays a transition the state
+    // machine already knows how to apply idempotently.
+    try {
+      const rows = await deps.rpc("reconcile_orphan_provider_events", {
+        p_run_id: dispRun, p_channel: deps.channel, p_now: nowIso(),
+        p_limit: deps.limits.orphanReconcileLimit,
+      }) as Array<Record<string, unknown>> | null;
+      const row = Array.isArray(rows) ? rows[0] : rows;
+      if (row) {
+        s.orphansExamined = Number(row.examined ?? 0);
+        s.orphansLinked = Number(row.linked ?? 0);
+        s.orphansQuarantined = Number(row.quarantined ?? 0);
+        // has_more is not a failure: the next invocation continues the queue. It is logged so a
+        // queue that never drains is visible rather than merely slow.
+        deps.log({ event: "orphan_reconcile", run: dispRun, metrics: row });
+      }
+    } catch (e) {
+      s.orphanErrors++;
+      deps.log({ event: "orphan_reconcile_failed", run: dispRun, error: safeErr(e) });
+    }
+
     // (4) reconcile the dispatch run (best-effort) + log run IDs and dimensional metrics (all PII-free).
     const dr = await reconcileSafe(dispRun);
     s.reconcile = dr.metrics;
@@ -203,7 +239,10 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
     // req — finish truthfully: any per-group failure OR any RECONCILIATION failure (materialize or dispatch)
     // makes the run 'failed' → status 'error' → HTTP 500 + one alert. A reconcile outage must NOT read as a
     // healthy 200 (the run is not operationally provable), even though the send work itself committed.
-    const failed = s.groupErrors > 0 || s.reconcileErrors > 0;
+    // An orphan drain that threw makes the run unhealthy for the same reason a reconcile failure
+    // does: the queue is the only path by which an early callback reaches its group, so a silent
+    // 200 over a broken drain hides groups that will age out as undelivered.
+    const failed = s.groupErrors > 0 || s.reconcileErrors > 0 || s.orphanErrors > 0;
     await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: failed ? "failed" : "succeeded" });
     s.status = failed ? "error" : "ok";
     deps.log({ event: "digest_worker_done", dispatch_run: dispRun, ...s });
