@@ -23,6 +23,31 @@ export type NotifyFollowersBody =
   | { slot_count: number; date_from: string; date_to: string }
   | { slot_count: number; single_slot: { date: string; time: string }; booking_id?: string };
 
+/**
+ * DEPLOY-OVERLAP: send BOTH shapes.
+ *
+ * The compatibility work so far only covered edge-deployed-first (the new handler accepts a
+ * legacy `date_range`). The other order is just as real: the frontend deploys automatically, so
+ * a NEW bundle can reach the OLD handler, which reads `date_range` — getting `undefined`, mailing
+ * an undefined range and keying every later batch on the same `na:undefined` so they collapse
+ * into one another. Emitting the legacy field alongside the ISO ones makes BOTH handler versions
+ * understand the identical request. The new handler ignores `date_range` whenever ISO fields are
+ * present, so this cannot re-introduce display-text dates.
+ *
+ * REMOVE together with the handler-side compatibility branch, after one rollout + cache window.
+ */
+export function withLegacyCompatFields(body: NotifyFollowersBody): Record<string, unknown> {
+  if (!("date_from" in body)) return { ...body };
+  const fmt = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return { day: String(d), mon: MON[m - 1], year: String(y) };
+  };
+  const a = fmt(body.date_from);
+  const b = fmt(body.date_to);
+  return { ...body, date_range: `${a.mon} ${a.day} - ${b.mon} ${b.day}, ${b.year}` };
+}
+
 export type NotifyFollowersOutcome = {
   /** True only when a run reported no failed and no deferred recipients. */
   complete: boolean;
@@ -67,7 +92,7 @@ export async function notifyFollowers(
   const maxAttempts = opts.maxAttempts ?? NOTIFY_FOLLOWERS_MAX_ATTEMPTS;
   const invoke = () =>
     opts.client.functions.invoke(ROUTE, {
-      body,
+      body: withLegacyCompatFields(body),
       ...(opts.accessToken ? { headers: { Authorization: `Bearer ${opts.accessToken}` } } : {}),
     });
   let lastError: string | undefined;

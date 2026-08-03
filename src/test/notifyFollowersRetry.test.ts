@@ -89,8 +89,12 @@ describe('notifyFollowers — bounded, idempotency-safe retry', () => {
     const inv = invoker([{ error: { message: 'incomplete' } }]);
     await notifyFollowers(BODY, { client: inv.client });
     expect(inv.bodies).toHaveLength(NOTIFY_FOLLOWERS_MAX_ATTEMPTS);
-    for (const b of inv.bodies) expect(b).toEqual(BODY);
+    // The body is augmented with the legacy compat field before sending, so compare the retries
+    // to EACH OTHER — identical across attempts is what keeps the idempotency subject stable.
     expect(new Set(inv.bodies.map((b) => JSON.stringify(b))).size).toBe(1);
+    for (const b of inv.bodies) {
+      expect((b as unknown as Record<string, unknown>).date_from).toBe('2026-08-10');
+    }
   });
 
   it('slot creation is never repeated — this function only ever calls notify-followers', async () => {
@@ -123,5 +127,38 @@ describe('notifyFollowers — bounded, idempotency-safe retry', () => {
     const out = await notifyFollowers(BODY, { client: inv.client });
     expect(out.complete).toBe(false);
     expect(out.complete === mutant().complete).toBe(false);
+  });
+});
+
+describe('deploy-overlap compatibility', () => {
+  it('sends BOTH the ISO fields and the legacy date_range', async () => {
+    // The frontend deploys automatically, so a NEW bundle can reach the OLD handler, which reads
+    // date_range — getting undefined, mailing an undefined range, and keying every later batch
+    // on the same `na:undefined` so they collapse together. Emitting both shapes makes either
+    // handler version understand the identical request.
+    const inv = invoker([{ error: null }]);
+    await notifyFollowers({ slot_count: 3, date_from: '2026-08-10', date_to: '2026-08-16' },
+      { client: inv.client });
+    const sent = inv.bodies[0] as unknown as Record<string, unknown>;
+    expect(sent.date_from).toBe('2026-08-10');
+    expect(sent.date_to).toBe('2026-08-16');
+    expect(sent.date_range).toBe('Aug 10 - Aug 16, 2026');
+  });
+
+  it('the emitted legacy range round-trips to the SAME ISO dates', async () => {
+    // If it did not, the two handler versions would derive different idempotency subjects and
+    // the overlap would double-notify.
+    const inv = invoker([{ error: null }]);
+    await notifyFollowers({ slot_count: 1, date_from: '2026-12-29', date_to: '2027-01-05' },
+      { client: inv.client });
+    const sent = inv.bodies[0] as unknown as Record<string, unknown>;
+    expect(sent.date_range).toBe('Dec 29 - Jan 5, 2027');
+  });
+
+  it('a reopened-slot body carries no legacy range (it never had one)', async () => {
+    const inv = invoker([{ error: null }]);
+    await notifyFollowers({ slot_count: 1, single_slot: { date: '2026-08-10', time: '18:30' } },
+      { client: inv.client });
+    expect((inv.bodies[0] as unknown as Record<string, unknown>).date_range).toBeUndefined();
   });
 });

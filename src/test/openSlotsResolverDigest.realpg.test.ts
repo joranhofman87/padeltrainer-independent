@@ -130,6 +130,7 @@ beforeAll(async () => {
       user_id uuid NOT NULL, event_type text NOT NULL,
       email_frequency text NOT NULL DEFAULT 'instant' CHECK (email_frequency IN ('instant','daily','weekly','off')),
       whatsapp_frequency text NOT NULL DEFAULT 'off', push_frequency text NOT NULL DEFAULT 'off',
+      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE (user_id, event_type));
     -- the LEGACY v1 preference table, with the real column default
     CREATE TABLE public.notification_preferences (
@@ -142,6 +143,10 @@ beforeAll(async () => {
     CREATE TABLE public.person_links (guest_player_id uuid, person_id uuid);
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, timezone text NOT NULL DEFAULT 'Europe/Amsterdam');
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, timezone text NOT NULL DEFAULT 'Europe/Amsterdam');
+    -- the LEGACY dedup table, present so the "no dual route" assertion actually runs
+    CREATE TABLE public.notification_sends (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), dedup_key text NOT NULL UNIQUE,
+      created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE public.trainer_followers (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), player_id uuid NOT NULL, trainer_id uuid NOT NULL,
       notify_new_availability boolean NOT NULL DEFAULT true, UNIQUE (player_id, trainer_id));
@@ -203,6 +208,7 @@ async function applyC() {
   await c.query(MIG('20261011130000_notif_10cb_open_slots_instant_payload.sql'));
   await c.query(MIG('20261011110000_notif_10cb_enqueue_digest_branch.sql'));
   await c.query(MIG('20261011120000_notif_10cb_instant_claim_excludes_digest.sql'));
+  await c.query(MIG('20261011140000_notif_10cb_cutover_compat.sql'));
 }
 
 async function enqueue(subject: string, payload: object = {}) {
@@ -359,10 +365,16 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     expect(rows.map((r) => r.email_frequency)).toEqual(['off', 'instant', 'daily', 'weekly']);
   });
 
-  it('an EXPLICIT v2 preference wins over the legacy value', async () => {
+  it('the BACKFILL never overwrites an explicit v2 preference', async () => {
+    // Two different events, deliberately distinguished:
+    //   * the one-time BACKFILL must not clobber a cadence the user already chose in v2;
+    //   * a LIVE legacy write (cached bundle) is a fresh user action and DOES apply — that is
+    //     the bridge trigger, asserted separately below.
+    // So set the legacy value first (the bridge mirrors it), then choose 'daily' in v2, then
+    // re-run the migration and prove the backfill leaves that choice alone.
     await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'off')`, [USER]);
-    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
-                   VALUES ($1,'open_slots_player','daily')`, [USER]);
+    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='daily'
+                    WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
     await applyC();
     const { rows } = await c.query(
       `SELECT email_frequency FROM public.notification_preferences_v2 WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
@@ -380,6 +392,30 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
       `SELECT email_frequency FROM public.notification_preferences_v2 WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
     expect(rows).toHaveLength(1);                 // no duplicate
     expect(rows[0].email_frequency).toBe('off');  // no drift: the rerun did not resurrect 'weekly'
+  });
+
+  it('BRIDGE: a cached bundle writing the v1 column mirrors forward into v2', async () => {
+    // Without this, the removed-from-the-UI v1 column could still be written by a cached page
+    // while delivery read only v2 — the settings would say the opposite of what happens.
+    await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'off')`, [USER]);
+    let { rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0].email_frequency).toBe('off');
+
+    await c.query(`UPDATE public.notification_preferences SET open_slots_digest='weekly' WHERE user_id=$1`, [USER]);
+    ({ rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]));
+    expect(rows[0].email_frequency).toBe('weekly');
+  });
+
+  it('BRIDGE: an unknown legacy cadence is ignored, never coerced into sending', async () => {
+    await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'fortnightly')`, [USER]);
+    const { rows } = await c.query(
+      `SELECT count(*)::int AS n FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0].n).toBe(0);
   });
 
   it('no legacy row → no v2 row, so the reviewed catalog weekly default governs', async () => {
@@ -946,11 +982,11 @@ describe('D — notify-followers dedup rests on the resolver idempotency key', (
     await enqueue(SUBJECT, ITEM);
     // notification_sends is untouched by the new route (it is retired on its own boundary in
     // 10c-d, not here) — so a row appearing in it would mean the legacy path still ran.
-    const { rows } = await c.query(`SELECT to_regclass('public.notification_sends') IS NOT NULL AS exists`);
-    if (rows[0].exists) {
-      const { rows: legacy } = await c.query(`SELECT count(*)::int AS n FROM public.notification_sends`);
-      expect(legacy[0].n).toBe(0);
-    }
+    // The fixture CREATES the legacy table (below, in beforeAll) precisely so this assertion
+    // runs — a `to_regclass IS NOT NULL` conditional silently skipped it before, which made the
+    // headline claim of this test vacuous.
+    const { rows: legacy } = await c.query(`SELECT count(*)::int AS n FROM public.notification_sends`);
+    expect(legacy[0].n).toBe(0);
     const { rows: v2 } = await c.query(
       `SELECT count(*)::int AS n FROM public.notification_outbox WHERE event_type='open_slots_player'`);
     expect(v2[0].n).toBe(1);
@@ -1024,11 +1060,13 @@ describe('D — an instant open-slots row carries server-rendered subject/html',
 describe('D — ACL: the instant worker can call the stop policy, other helpers stay locked', () => {
   beforeAll(async () => { await applyC(); });
 
-  it('service_role CAN execute notif_digest_event_stop_reason (the worker needs it)', async () => {
-    const { rows } = await c.query(
-      `SELECT has_function_privilege('service_role',
-         'public.notif_digest_event_stop_reason(uuid)', 'EXECUTE') AS ok`);
-    expect(rows[0].ok).toBe(true);
+  it('service_role can execute ONLY the complete policy, not the event hook', async () => {
+    // The worker calls notif_digest_member_stop_reason, which is SECURITY DEFINER and invokes
+    // the event hook as its owner. Granting the hook too would widen the allowlist for no caller.
+    const q = async (sig: string) => (await c.query(
+      `SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS ok`, [sig])).rows[0].ok;
+    expect(await q('public.notif_digest_member_stop_reason(uuid)')).toBe(true);
+    expect(await q('public.notif_digest_event_stop_reason(uuid)')).toBe(false);
   });
 
   it('the other new helpers remain revoked from service_role', async () => {
@@ -1042,6 +1080,7 @@ describe('D — ACL: the instant worker can call the stop policy, other helpers 
       'public.notif_digest_item_for_event(text,text,jsonb)',
       'public.notif_open_slots_instant_payload(jsonb)',
       'public.notif_open_slots_escape_html(text)',
+      'public.notif_digest_event_stop_reason(uuid)',
     ]) {
       const { rows } = await c.query(
         `SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS ok`, [sig]);

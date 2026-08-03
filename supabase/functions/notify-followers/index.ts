@@ -70,6 +70,9 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // The wall-clock budget covers the WHOLE invocation, discovery included — starting it after
+    // the queries would let paging consume the edge timeout and leave nothing for the sends.
+    const start = Date.now();
 
     // Trainer identity comes from the AUTHENTICATED user, never from request data.
     const { data: trainerProfile, error: trainerError } = await supabase
@@ -112,31 +115,51 @@ const handler = async (req: Request): Promise<Response> => {
     const PAGE = 500;
     const MAX_RECIPIENTS = 20000;   // a hard ceiling so one trainer cannot run unbounded
     const recipients: Array<{ id: string; user_id: string }> = [];
-    let truncated = false;
+    let truncated = 0;
 
-    for (let from = 0; ; from += PAGE) {
-      if (recipients.length >= MAX_RECIPIENTS) { truncated = true; break; }
-      const { data: followerPage, error: followersError } = await supabase
+    // TRUTHFUL TOTAL first, so an omitted tail is reported as a NUMBER rather than a shrug.
+    const { count: followerTotal, error: countError } = await supabase
+      .from("trainer_followers")
+      .select("player_id", { count: "exact", head: true })
+      .eq("trainer_id", trainerId)
+      .eq("notify_new_availability", true);
+    if (countError) {
+      console.error("Follower count failed:", countError.message);
+      return json({ error: "follower_lookup_failed" }, 500);
+    }
+
+    // KEYSET paging, not offset. With `.range(from, …)` a follower deleted between pages shifts
+    // every later row left, silently skipping one — and the run would still report success.
+    // Paging from the last seen player_id cannot skip a row that was never read.
+    let cursor: string | null = null;
+    for (;;) {
+      if (recipients.length >= MAX_RECIPIENTS) {
+        truncated = Math.max((followerTotal ?? 0) - recipients.length, 1);
+        break;
+      }
+      let q = supabase
         .from("trainer_followers")
         .select("player_id")
         .eq("trainer_id", trainerId)
         .eq("notify_new_availability", true)
-        .order("player_id", { ascending: true })     // stable order → stable paging
-        .range(from, from + PAGE - 1);
+        .order("player_id", { ascending: true })
+        .limit(PAGE);
+      if (cursor) q = q.gt("player_id", cursor);
 
-      // A failed READ must not read as "nobody to notify". Returning 200/zero here would make a
+      const { data: followerPage, error: followersError } = await q;
+      // A failed READ must not read as "nobody to notify": returning 200/zero here would make a
       // database outage indistinguishable from a trainer with no followers.
       if (followersError) {
         console.error("Follower lookup failed:", followersError.message);
         return json({ error: "follower_lookup_failed" }, 500);
       }
       if (!followerPage || followerPage.length === 0) break;
+      cursor = followerPage[followerPage.length - 1].player_id;
 
       const { data: players, error: playersError } = await supabase
         .from("profiles")
         .select("id, user_id")
         .in("id", followerPage.map((f) => f.player_id));
-
       if (playersError) {
         console.error("Follower profile lookup failed:", playersError.message);
         return json({ error: "profile_lookup_failed" }, 500);
@@ -162,7 +185,6 @@ const handler = async (req: Request): Promise<Response> => {
     // duplicate.
     const CHUNK_SIZE = 10;
     const TIME_BUDGET_MS = 110_000;
-    const start = Date.now();
 
     for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
       if (Date.now() - start > TIME_BUDGET_MS) {
@@ -200,9 +222,10 @@ const handler = async (req: Request): Promise<Response> => {
     // An INCOMPLETE run must not return 200. Nothing re-invokes this function on a schedule and
     // the sole caller ignores the body, so a deferred or failed recipient is LOST unless the
     // caller can see the run was incomplete. A non-2xx is the only signal it can act on.
-    // Truncation is a REAL incompleteness: those followers exist and were never processed.
-    if (truncated) counts.deferred += 1;
-    const incomplete = counts.failed > 0 || counts.deferred > 0 || truncated;
+    // Truncation is a REAL incompleteness, reported as the ACTUAL number omitted rather than a
+    // token 1 — an operator reading "deferred: 1" for 30000 skipped followers is being misled.
+    if (truncated > 0) counts.deferred += truncated;
+    const incomplete = counts.failed > 0 || counts.deferred > 0;
     return json({
       message: `Enqueued ${counts.enqueued} follower notification(s)`,
       subtype: notify.subtype,

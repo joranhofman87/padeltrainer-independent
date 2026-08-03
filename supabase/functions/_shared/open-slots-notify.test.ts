@@ -342,3 +342,21 @@ Deno.test("MUTANT: a reopened payload carrying slot_count would raise in the ren
   const p = digestPayload(r.req, "x") as { data: Record<string, unknown> };
   assertEquals("slot_count" in p.data, false, "...production omits it");
 });
+
+Deno.test("legacy parser: a YEAR-CROSSING batch is converted, not rejected", () => {
+  // The legacy format prints the year only on the right. Applying it to both ends turned
+  // "Dec 29 - Jan 5, 2027" into an inverted 2027-12-29..2027-01-05 and DROPPED the
+  // notification — a real case for recurring slots created across New Year.
+  const r = parseNotifyRequest({ slot_count: 4, date_range: "Dec 29 - Jan 5, 2027" });
+  assertEquals(r.ok, true);
+  if (!r.ok) return;
+  assertEquals((r.req as { dateFrom: string; dateTo: string }).dateFrom, "2026-12-29");
+  assertEquals((r.req as { dateFrom: string; dateTo: string }).dateTo, "2027-01-05");
+});
+
+Deno.test("MUTANT: applying the printed year to BOTH ends inverts a New Year range", () => {
+  const mutant = { from: "2027-12-29", to: "2027-01-05" };
+  assertEquals(mutant.to < mutant.from, true, "the mutant produces an inverted range...");
+  const r = parseNotifyRequest({ slot_count: 4, date_range: "Dec 29 - Jan 5, 2027" });
+  assertEquals(r.ok, true, "...production accepts it");
+});

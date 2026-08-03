@@ -66,7 +66,11 @@ export function parseLegacyDateRange(value: string): { from: string; to: string 
   const tm = LEGACY_MONTHS[toMon];
   if (!fm || !tm) return null;
   const pad = (n: string) => n.padStart(2, "0");
-  const from = `${year}-${String(fm).padStart(2, "0")}-${pad(fromDay)}`;
+  // The legacy format carries the year only on the RIGHT. A batch that crosses New Year
+  // ("Dec 29 - Jan 5, 2027") therefore has a left-hand year one LOWER than the printed one —
+  // applying the printed year to both ends would invert the range and drop the notification.
+  const fromYear = tm < fm ? String(Number(year) - 1) : year;
+  const from = `${fromYear}-${String(fm).padStart(2, "0")}-${pad(fromDay)}`;
   const to = `${year}-${String(tm).padStart(2, "0")}-${pad(toDay)}`;
   // The converted values go through the SAME validation as a native ISO body.
   if (!isIsoDate(from) || !isIsoDate(to)) return null;
