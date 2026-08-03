@@ -41,6 +41,7 @@ import {
   parseResumeState,
   planRunOutcome,
   shouldContinue,
+  splitProcessed,
   tally,
 } from "../_shared/open-slots-notify.ts";
 
@@ -249,7 +250,8 @@ const handler = async (req: Request): Promise<Response> => {
     // advances on every hop and the tail drains at full speed. Retries are not lost by being
     // last: whatever the budget does not reach is carried forward, and once discovery is
     // exhausted the hops are all retries. A second attempt yielding to a first attempt is also
-    // the right priority when something has to give.
+    // the right priority when something has to give. Termination is the cursor's job, not the
+    // retry set's — see planRunOutcome.
     const recipients: Array<{ id: string; user_id: string; isRetry?: true }> = [...discovered, ...retrying];
     // "No followers with an account" is only TRUE when discovery actually finished. Returning it
     // after an early stop turned a page of unlinked profiles into a clean 200 with the tail
@@ -404,11 +406,15 @@ const handler = async (req: Request): Promise<Response> => {
     }
     const plan = planRunOutcome({
       discoveredIds: discovered.map((r) => r.id),
-      // Discovery comes first in the list, so the processed count applies to it directly.
-      processedDiscovered: Math.min(processed, discovered.length),
       freshFailureIds,
-      // A retry the budget never reached has not had its attempt; it is owed, not spent.
-      unprocessedRetryIds: retrying.slice(Math.max(processed - discovered.length, 0)).map((r) => r.id),
+      // The split of `processed` across the two segments is production logic with its own tests
+      // (splitProcessed); doing it inline here would put the one piece of arithmetic that decides
+      // both the cursor and the owed retries in the file the suite cannot import.
+      ...splitProcessed({
+        discoveredCount: discovered.length,
+        retryIds: retrying.map((r) => r.id),
+        processed,
+      }),
       anyFailure,
       beyondDiscovery,
       beyondUnknown,

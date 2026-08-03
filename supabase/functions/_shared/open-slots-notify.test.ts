@@ -18,6 +18,7 @@ import {
   MAX_CONTINUATION_DEPTH,
   MAX_RETRY_CARRY,
   newCounts,
+  splitProcessed,
   planRunOutcome,
   shouldContinue,
   parseLegacyDateRange,
@@ -580,7 +581,7 @@ const PLAN = {
   // Discovery resumes at `player_id > cursor`, so the incoming cursor is by construction NOT a
   // member of discoveredIds. An earlier fixture violated that and hid a defect for a whole round.
   discoveredIds: ["b", "c", "d", "e"],
-  processedDiscovered: 4,
+  processedDiscovered: 4,   // a whole, small discovery set — the chunk loop got through it
   freshFailureIds: [] as string[],
   unprocessedRetryIds: [] as string[],
   anyFailure: false,
@@ -707,9 +708,12 @@ Deno.test("plan: a partly processed hop resumes from the last recipient it handl
   assertEquals(out.nextCursor, "c");
 });
 
-Deno.test("plan: a hop that processed no DISCOVERED recipient hands back its own cursor", () => {
-  // e.g. the whole wall-clock budget went on the retry prefix. Re-covering the same range is the
-  // only expressible way to say "start here again" under an exclusive `> cursor` scan.
+Deno.test("plan: DEFENSIVE — zero discovered progress hands back the hop's own cursor", () => {
+  // Deliberately labelled defensive: with discovery ordered FIRST and the first chunk always
+  // running, the handler cannot currently produce this state for a non-empty discovery set. It is
+  // still the only correct answer if it ever did — under an exclusive `> cursor` scan, re-sending
+  // the incoming cursor is the only way to express "start here again" — so the branch stays and
+  // says what it is, rather than being tested as though production reached it.
   assertEquals(planRunOutcome({ ...PLAN, processedDiscovered: 0, incomingCursor: "a" }).nextCursor, "a");
   assertEquals(planRunOutcome({ ...PLAN, processedDiscovered: 0, incomingCursor: null }).nextCursor, null);
 });
@@ -775,20 +779,29 @@ Deno.test("plan: a retry the hop never REACHED is carried on, not spent", () => 
   // The fixture respects the handler's ordering invariant: un-reached retries imply discovery was
   // worked through first, so a fresh failure among the discovered recipients is possible here —
   // under the previous retries-first ordering this same state was unreachable.
+  // Chunk-realistic: 10 discovered recipients are exactly the one chunk a hop is guaranteed, so
+  // the two retries behind them are genuinely un-reached when the budget then expires.
+  const ids = Array.from({ length: 10 }, (_, i) => `d${i}`);
+  const split = splitProcessed({ discoveredCount: 10, retryIds: ["r1", "r2"], processed: 10 });
+  assertEquals(split.unprocessedRetryIds, ["r1", "r2"], "the handler's own arithmetic, not a stub");
   const out = planRunOutcome({
-    ...PLAN, processedDiscovered: PLAN.discoveredIds.length,
-    unprocessedRetryIds: ["r1", "r2"], freshFailureIds: ["c"], anyFailure: true,
+    ...PLAN, discoveredIds: ids, lastDiscovered: "d9",
+    processedDiscovered: split.processedDiscovered,
+    unprocessedRetryIds: split.unprocessedRetryIds, freshFailureIds: ["d3"], anyFailure: true,
   });
-  assertEquals(out.retryIds, ["r1", "r2", "c"], "un-attempted first — they have waited longest");
+  assertEquals(out.retryIds, ["r1", "r2", "d3"], "un-attempted first — they have waited longest");
   assertEquals(out.deferred, 3, "everyone owed a retry; discovery itself is done");
 });
 
 Deno.test("plan: un-reached retries are carried even when NOTHING failed this hop", () => {
   // The case the previous fixture could not express, and the one a mutant would exploit: keeping
   // unprocessed retries only when a fresh failure exists.
+  const ids = Array.from({ length: 10 }, (_, i) => `d${i}`);
+  const split = splitProcessed({ discoveredCount: 10, retryIds: ["r1", "r2"], processed: 10 });
   const out = planRunOutcome({
-    ...PLAN, processedDiscovered: PLAN.discoveredIds.length,
-    unprocessedRetryIds: ["r1", "r2"], freshFailureIds: [], anyFailure: false,
+    ...PLAN, discoveredIds: ids, lastDiscovered: "d9",
+    processedDiscovered: split.processedDiscovered,
+    unprocessedRetryIds: split.unprocessedRetryIds, freshFailureIds: [], anyFailure: false,
   });
   assertEquals(out.retryIds, ["r1", "r2"]);
   assertEquals(out.deferred, 2);
@@ -798,9 +811,56 @@ Deno.test("plan: un-reached retries are carried even when NOTHING failed this ho
 Deno.test("MUTANT: dropping un-reached retries spends an attempt that never happened", () => {
   const mutant = (fresh: string[]) => fresh;
   assertEquals(mutant([]), [], "the mutant carries nothing when nothing fresh failed...");
+  const split = splitProcessed({ discoveredCount: 10, retryIds: ["r1"], processed: 10 });
   assertEquals(
-    planRunOutcome({ ...PLAN, unprocessedRetryIds: ["r1"], freshFailureIds: [], anyFailure: false })
-      .retryIds,
+    planRunOutcome({
+      ...PLAN, discoveredIds: Array.from({ length: 10 }, (_, i) => `d${i}`), lastDiscovered: "d9",
+      processedDiscovered: split.processedDiscovered,
+      unprocessedRetryIds: split.unprocessedRetryIds, freshFailureIds: [], anyFailure: false,
+    }).retryIds,
     ["r1"],
   );
+});
+
+// ===========================================================================
+// splitProcessed — the arithmetic the handler used to do inline.
+// ===========================================================================
+
+Deno.test("split: the recipient list is discovered-then-retries, and one number says how far it got", () => {
+  // 12 discovered + 3 retries. A hop that got through the first chunk of 10 has touched no retry.
+  assertEquals(splitProcessed({ discoveredCount: 12, retryIds: ["r1", "r2", "r3"], processed: 10 }),
+    { processedDiscovered: 10, unprocessedRetryIds: ["r1", "r2", "r3"] });
+  // ...through 20 of 15: everything, retries included.
+  assertEquals(splitProcessed({ discoveredCount: 12, retryIds: ["r1", "r2", "r3"], processed: 20 }),
+    { processedDiscovered: 12, unprocessedRetryIds: [] });
+  // ...straddling the boundary: all discovery plus the first two retries.
+  assertEquals(splitProcessed({ discoveredCount: 12, retryIds: ["r1", "r2", "r3"], processed: 14 }),
+    { processedDiscovered: 12, unprocessedRetryIds: ["r3"] });
+});
+
+Deno.test("split: no discovery at all means every retry is still owed after the first chunk", () => {
+  assertEquals(splitProcessed({ discoveredCount: 0, retryIds: ["r1", "r2"], processed: 1 }),
+    { processedDiscovered: 0, unprocessedRetryIds: ["r2"] });
+  assertEquals(splitProcessed({ discoveredCount: 0, retryIds: ["r1", "r2"], processed: 0 }),
+    { processedDiscovered: 0, unprocessedRetryIds: ["r1", "r2"] });
+});
+
+Deno.test("MUTANT: slicing the retries by `processed` alone drops every un-reached retry", () => {
+  // The exact regression: with 10 discovered and 2 retries, a hop that stops after the first
+  // chunk has reached NO retry — but `retryIds.slice(processed)` reads that as "both done".
+  const mutant = ["r1", "r2"].slice(10);
+  assertEquals(mutant, [], "the mutant loses both...");
+  assertEquals(
+    splitProcessed({ discoveredCount: 10, retryIds: ["r1", "r2"], processed: 10 }).unprocessedRetryIds,
+    ["r1", "r2"],
+  );
+});
+
+Deno.test("MUTANT: counting processedDiscovered without the clamp overstates the cursor", () => {
+  // 12 discovered, 3 retries, everything processed: an unclamped count would say 15 discovered
+  // and walk the cursor past recipients that do not exist.
+  const mutant = 15;
+  assertEquals(mutant > 12, true, "the mutant claims more discovery than there was...");
+  assertEquals(splitProcessed({ discoveredCount: 12, retryIds: ["r1", "r2", "r3"], processed: 15 })
+    .processedDiscovered, 12);
 });

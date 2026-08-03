@@ -437,6 +437,9 @@ export function tally(counts: NotifyCounts, outcome: EnqueueOutcome): void {
  *  * processed NONE of them → the cursor this hop was itself handed, so the next hop re-covers
  *    exactly the same range. Because the query is `> cursor`, no cursor exists strictly between
  *    a recipient and its predecessor, so this is the only way to express "start here again".
+ *    DEFENSIVE only: discovery is processed first and the first chunk always runs, so a hop with
+ *    a non-empty discovery set cannot currently reach it. It stays because it is the correct
+ *    answer if that ever changes, not because production exercises it.
  *  * completed all of them → the last follower id DISCOVERY read, which can be past the final
  *    recipient because followers without an account are discovered and then dropped.
  */
@@ -461,15 +464,41 @@ export function resumeCursorAfter(
  *
  * Only FRESH failures are carried: a recipient that arrived in this hop's retry set and failed
  * again is not handed on. That bounds every recipient to two attempts regardless of where in the
- * run it sat, binds the retry to an identity rather than to a position (so an unfollow between
- * hops cannot spend someone else's attempt), and guarantees the set shrinks to empty. A retry the
- * hop never REACHED is different from one that failed — it has not had its attempt yet, so it is
- * carried on rather than quietly discarded.
+ * run it sat, and binds the retry to an identity rather than to a position, so an unfollow
+ * between hops cannot spend someone else's attempt. A retry the hop never REACHED is different
+ * from one that failed — it has not had its attempt yet, so it is carried on rather than quietly
+ * discarded.
+ *
+ * TERMINATION comes from the CURSOR and the hop cap, not from the retry set shrinking. Retries
+ * are processed last, so a hop whose discovery work fills the budget carries the same set on
+ * unchanged; what it cannot do is stand still, because the cursor advances every hop. Once
+ * discovery is exhausted the hops are all retries and the set does drain — and if the hop cap
+ * arrives first, the survivors are reported as `deferred` rather than silently forgotten. The
+ * retry set and the tail are bounded by the same cap, so neither can starve the other.
  *
  * `beyondDiscovery` is followers discovery never reached. `beyondUnknown` says the count of those
  * could not be READ: the run is then incomplete by construction, because reporting a clean total
  * from a failed count is exactly the fail-open that hides a tail.
  */
+/**
+ * Split what a hop actually got through into "discovered" and "retries not reached".
+ *
+ * Small, and load-bearing: the recipient list is `[...discovered, ...retries]` and the chunk loop
+ * reports ONE number for how far it got, so this is the arithmetic that decides both where the
+ * cursor lands and which retries are still owed. Getting it wrong by one term silently spends a
+ * second attempt that never happened — and it lives here, not inline in the handler, precisely so
+ * the suite exercises it instead of injecting its already-computed answer.
+ */
+export function splitProcessed(
+  args: { discoveredCount: number; retryIds: string[]; processed: number },
+): { processedDiscovered: number; unprocessedRetryIds: string[] } {
+  const processed = Math.max(args.processed, 0);
+  return {
+    processedDiscovered: Math.min(processed, args.discoveredCount),
+    unprocessedRetryIds: args.retryIds.slice(Math.max(processed - args.discoveredCount, 0)),
+  };
+}
+
 export function planRunOutcome(args: {
   /** Discovered (non-retry) recipients, in cursor order. */
   discoveredIds: string[];

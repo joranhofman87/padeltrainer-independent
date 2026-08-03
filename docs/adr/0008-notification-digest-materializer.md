@@ -827,9 +827,15 @@ sending a request shape the new handler must interpret rather than trust.
    retry, and that is carried as an explicit, capped set of ids rather than by holding the cursor
    back — holding it back conflated the two jobs, cost a hop or two per failure, and let enough
    failures exhaust the hop cap before the undiscovered tail was ever reached. Only a FRESH
-   failure is carried, and the retry is bound to an identity rather than a position, so the set
-   provably shrinks to empty. Retries are processed LAST, after discovery, so the one chunk a hop
-   is guaranteed to run always advances the cursor.
+   failure is carried, and the retry is bound to an identity rather than a position, so a
+   recipient cannot have someone else's attempt spent for it. Retries are processed LAST, after
+   discovery, so the one chunk a hop is guaranteed to run always advances the cursor.
+
+   TERMINATION is the cursor's, not the retry set's. A hop whose discovery work fills the budget
+   carries the same retry set on unchanged — what it cannot do is stand still. Once discovery is
+   exhausted the hops are all retries and the set drains; if the hop cap arrives first, the
+   survivors are reported as `deferred`. The tail and the retry set are bounded by the same cap,
+   so neither starves the other.
 
    A recipient therefore gets **at most** two attempts, and the exceptions are named rather than
    implied: more simultaneous failures than the carry cap (`retries_not_carried` in the response),
