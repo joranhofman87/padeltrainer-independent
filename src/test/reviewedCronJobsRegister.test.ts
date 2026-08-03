@@ -41,6 +41,57 @@ const SCHEDULING_CALL =
 const migrationFiles = () => readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort();
 
 /**
+ * Blank out SQL comments, preserving every byte offset (spaces in, newlines kept), and NEVER
+ * touching the inside of a string or dollar-quoted block — a command body legitimately contains
+ * `--` and `/*`.
+ *
+ * Everything below scans the blanked copy. Reading the raw text meant a commented-out assignment
+ * could be selected as the "nearest" one: an outbound assignment followed by
+ * `-- cron_command := 'SELECT local_only();';` classified the job as non-outbound, silently.
+ */
+export function blankComments(sql: string): string {
+  const out = sql.split('');
+  let i = 0;
+  const blank = (from: number, to: number) => {
+    for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' ';
+  };
+  while (i < sql.length) {
+    if (sql[i] === '$') {
+      const tag = sql.slice(i).match(/^\$[A-Za-z_]*\$/);
+      if (tag) {
+        const e = sql.indexOf(tag[0], i + tag[0].length);
+        i = e < 0 ? sql.length : e + tag[0].length;
+        continue;
+      }
+    }
+    if (sql[i] === "'") {
+      i++;
+      while (i < sql.length) {
+        if (sql[i] === "'" && sql[i + 1] === "'") { i += 2; continue; }
+        if (sql[i] === "'") { i++; break; }
+        if (sql[i] === '\\') { i += 2; continue; }
+        i++;
+      }
+      continue;
+    }
+    if (sql[i] === '-' && sql[i + 1] === '-') {
+      const e = sql.indexOf('\n', i);
+      blank(i, e < 0 ? sql.length : e);
+      i = e < 0 ? sql.length : e;
+      continue;
+    }
+    if (sql[i] === '/' && sql[i + 1] === '*') {
+      const e = sql.indexOf('*/', i + 2);
+      blank(i, e < 0 ? sql.length : e + 2);
+      i = e < 0 ? sql.length : e + 2;
+      continue;
+    }
+    i++;
+  }
+  return out.join('');
+}
+
+/**
  * Split the argument list of a `cron.schedule(...)` call starting at the '(' index. Respects
  * nested parens, single-quoted strings (with '' escapes) and dollar-quoted blocks, so a command
  * containing commas or parentheses cannot split an argument in the wrong place.
@@ -143,9 +194,11 @@ export function nearestAssignment(sql: string, ident: string, callAt: number): s
   // TEXTUAL PRECEDENCE IS NOT CONTROL FLOW. If a branch, a loop, or another routine's body sits
   // between the assignment and the call, the value that actually reaches cron.schedule may come
   // from somewhere else — an IF assigning an outbound command in one arm and a local one in the
-  // last arm would always be read from the last. Refuse rather than pick the textual predecessor.
+  // last arm would always be read from the last, and an assignment inside an EXCEPTION arm would
+  // be preferred over the outbound value the normal path actually keeps. Refuse rather than pick
+  // the textual predecessor. (BEGIN/END are in the list precisely so a block boundary counts.)
   const between = sql.slice(best.end, callAt);
-  if (/\b(IF|ELSIF|ELSE|CASE|LOOP|WHILE|DECLARE|CREATE\s+(OR\s+REPLACE\s+)?FUNCTION)\b/i.test(between)) return null;
+  if (/\b(IF|ELSIF|ELSE|CASE|LOOP|WHILE|EXCEPTION|BEGIN|END|DECLARE|CREATE\s+(OR\s+REPLACE\s+)?FUNCTION)\b/i.test(between)) return null;
   return best.expr;
 }
 
@@ -174,11 +227,19 @@ export function classifyCommand(expr: string): 'yes' | 'no' | null {
 
   // `format(<literal template>, …)`: format always emits its template text, so a marker in the
   // TEMPLATE is definite. Its absence is not — an argument could supply one — so that is UNKNOWN.
-  const fmt = expr.trim().match(/^format\s*\(/i);
+  // ...and the format() call must BE the whole expression. splitArgs finds its closing paren, but
+  // `format('{"x":"net.http_post","y":"SELECT 1"}')::jsonb ->> 'y'` evaluates to `SELECT 1` while
+  // still starting with `format(` — so the paren has to consume everything.
+  const trimmed = expr.trim();
+  const fmt = trimmed.match(/^format\s*\(/i);
   if (fmt) {
-    const args = splitArgs(expr.trim(), fmt[0].length - 1);
-    const template = args && args.length ? unquote(args[0]) : null;
-    if (template !== null && OUTBOUND.test(template)) return 'yes';
+    const open = fmt[0].length - 1;
+    const args = splitArgs(trimmed, open);
+    const consumed = args ? open + 1 + args.join(',').length + 1 : -1;
+    if (args && consumed === trimmed.length) {
+      const template = args.length ? unquote(args[0]) : null;
+      if (template !== null && OUTBOUND.test(template)) return 'yes';
+    }
   }
   return null;
 }
@@ -221,11 +282,13 @@ function splitTopLevel(expr: string, op: string): string[] | null {
 }
 
 /** Every cron.schedule / cron.unschedule call, in migration order. */
-function cronCalls() {
+export function scanMigration(file: string, rawSql: string) {
   const schedules: Call[] = [];
   const unresolved: string[] = [];
-  for (const file of migrationFiles()) {
-    const sql = readFileSync(join(MIGRATIONS, file), 'utf8');
+  {
+    // Scanned COMMENT-BLANKED, offsets preserved: a commented-out call or assignment
+    // must not be read as live code.
+    const sql = blankComments(rawSql);
     for (const m of sql.matchAll(SCHEDULING_CALL)) {
       const kind = m[1].toLowerCase().startsWith('unschedule') ? 'unschedule' : 'schedule';
       const args = splitArgs(sql, m.index! + m[0].length - 1);
@@ -255,6 +318,18 @@ function cronCalls() {
       }
       schedules.push({ file, name, outbound, raw: args[2] });
     }
+  }
+  return { schedules, unresolved };
+}
+
+/** Every migration, in apply order. */
+function cronCalls() {
+  const schedules: Call[] = [];
+  const unresolved: string[] = [];
+  for (const file of migrationFiles()) {
+    const r = scanMigration(file, readFileSync(join(MIGRATIONS, file), 'utf8'));
+    schedules.push(...r.schedules);
+    unresolved.push(...r.unresolved);
   }
   return { schedules, unresolved };
 }
@@ -378,6 +453,63 @@ describe('H — the cron parser cannot be fooled the ways it was', () => {
       '',
     ].join('\n');
     expect(nearestAssignment(sql, 'cron_command', sql.indexOf('cron.schedule'))).toBeNull();
+  });
+
+  it('never reads a COMMENTED-OUT assignment as the live one', () => {
+    // Silent false negative: the live command is outbound, the commented one is not, and reading
+    // the raw text picked the comment because it is nearer.
+    const raw = [
+      "  cron_command := 'SELECT net.http_post(url := ''x'');';",
+      "  -- cron_command := 'SELECT public.local_only();';",
+      "  PERFORM cron.schedule('a', '* * * * *', cron_command);",
+      '',
+    ].join('\n');
+    const sql = blankComments(raw);
+    expect(sql).toHaveLength(raw.length);                       // offsets preserved
+    expect(nearestAssignment(sql, 'cron_command', sql.indexOf('cron.schedule'))).toMatch(/http_post/);
+  });
+
+  it('the real scan path ignores commented-out code, not just the helper', () => {
+    // Exercises scanMigration — the function the suite actually runs over the migrations — rather
+    // than blankComments in isolation. Testing only the helper left the INTEGRATION unpinned:
+    // removing the blanking from the scan passed every test.
+    const raw = [
+      "  cron_command := 'SELECT net.http_post(url := ''x'');';",
+      "  -- cron_command := 'SELECT public.local_only();';",
+      "  PERFORM cron.schedule('live-one', '* * * * *', cron_command);",
+      "  -- PERFORM cron.schedule('ghost-job', '* * * * *', $c$SELECT 1;$c$);",
+      '',
+    ].join('\n');
+    const r = scanMigration('synthetic.sql', raw);
+    expect(r.unresolved).toEqual([]);
+    expect(r.schedules.map((s) => s.name)).toEqual(['live-one']);   // the commented call is not a job
+    expect(r.schedules[0].outbound).toBe('yes');                    // ...from the LIVE assignment
+  });
+
+  it('blanks comments WITHOUT touching a command body that contains them', () => {
+    // A cron command legitimately contains `--` and `/*`; blanking inside it would corrupt the
+    // very text being classified.
+    const body = "$c$ SELECT net.http_post(url := 'u'); -- keep me\n /* and me */ $c$";
+    expect(blankComments(body)).toBe(body);
+  });
+
+  it('refuses an assignment made in an EXCEPTION arm', () => {
+    const sql = [
+      "  cron_command := 'SELECT net.http_post(url := ''x'');';",
+      '  BEGIN',
+      '  EXCEPTION WHEN others THEN',
+      "    cron_command := 'SELECT public.local_only();';",
+      '  END;',
+      "  PERFORM cron.schedule('a', '* * * * *', cron_command);",
+      '',
+    ].join('\n');
+    expect(nearestAssignment(sql, 'cron_command', sql.indexOf('cron.schedule'))).toBeNull();
+  });
+
+  it('requires format() to BE the whole expression', () => {
+    // Starts with `format(` and its literal carries the marker, but it evaluates to `SELECT 1`.
+    expect(classifyCommand(
+      `format('{"x":"net.http_post","y":"SELECT 1"}')::jsonb ->> 'y'`)).toBeNull();
   });
 
   it('DECODES E-string escapes rather than reading them as text', () => {
