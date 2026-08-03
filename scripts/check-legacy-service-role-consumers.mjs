@@ -271,6 +271,7 @@ const MANAGED = {
   ],
   'tests': [
     'supabase/functions/_shared/auth.test.ts',
+    'supabase/functions/_shared/digest-worker-correlation.test.ts',
     'supabase/functions/_shared/digest-worker-entry.test.ts',
     'supabase/functions/_shared/digest-worker-handler.test.ts',
     'supabase/functions/_shared/send-invoice-email-maintenance.test.ts',
@@ -438,6 +439,7 @@ const EXEMPT_ALLOWLIST = {
   'e2e/local/rebook-upfront-webhook.spec.ts': { anon: 'local-demo' },
   'tests/rebooking-enforcement.spec.ts': { anon: 'local-demo' },
   'supabase/functions/_shared/auth.test.ts': { serviceRole: 'local-demo' },
+  'supabase/functions/_shared/digest-worker-correlation.test.ts': { serviceRole: 'local-demo' },
   'supabase/functions/_shared/digest-worker-entry.test.ts': { serviceRole: 'local-demo' },
   'supabase/functions/_shared/digest-worker-handler.test.ts': { serviceRole: 'local-demo' },
   'supabase/functions/_shared/service-role-auth.test.ts': { serviceRole: 'local-demo' },

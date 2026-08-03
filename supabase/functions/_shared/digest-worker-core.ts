@@ -91,6 +91,7 @@ export type WorkerSummary = {
   orphansLinked: number;     // ...and correlated to their tagged group
   orphansQuarantined: number;// ...and given up on until an operator acts
   orphanErrors: number;      // orphan link failures — thrown OR returned in-band — unhealthy, never fatal
+  correlationMismatches: number; // provider accepted a message the group is NOT bound to — MANUAL HOLD
 };
 
 /** Thrown by a run-level failure, carrying a PII-free partial summary so the handler's alert keeps the run IDs
@@ -117,6 +118,7 @@ function safeSummary(s: WorkerSummary): Partial<WorkerSummary> {
     recorded: s.recorded, groupErrors: s.groupErrors, reconcileErrors: s.reconcileErrors,
     orphansExamined: s.orphansExamined, orphansLinked: s.orphansLinked,
     orphansQuarantined: s.orphansQuarantined, orphanErrors: s.orphanErrors,
+    correlationMismatches: s.correlationMismatches,
   };
 }
 
@@ -128,11 +130,28 @@ function safeErr(e: unknown): string {
   return redactDetail(msg, 120) || "error";
 }
 
+/** `record_notification_digest_result` RETURNS text, and a scalar RPC comes back differently
+ *  depending on the client: a bare string, a one-row/one-column array, or a single-key object. The
+ *  lesson this suite already paid for is that assuming ONE shape makes the read `undefined` and
+ *  every assertion over it look green, so all three are normalised. Returns null when the outcome
+ *  cannot be read at all — which the caller treats as unproven, never as "fine". */
+function recordedOutcome(v: unknown, depth = 0): string | null {
+  if (depth > 3) return null;
+  if (typeof v === "string") return v;
+  if (Array.isArray(v)) return v.length ? recordedOutcome(v[0], depth + 1) : null;
+  if (v && typeof v === "object") {
+    const vals = Object.values(v as Record<string, unknown>);
+    return vals.length === 1 ? recordedOutcome(vals[0], depth + 1) : null;
+  }
+  return null;
+}
+
 export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> {
   const s: WorkerSummary = {
     status: "ok", sweptStale: 0, materialized: 0, claimed: 0, sent: 0, deferred: 0,
     oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0, reconcileErrors: 0,
     orphansExamined: 0, orphansLinked: 0, orphansQuarantined: 0, orphanErrors: 0,
+    correlationMismatches: 0,
   };
 
   // req — INERT unless enabled AND configured: return with ZERO database calls. Disabled (switch off) is a
@@ -256,7 +275,8 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
     // permanent operator-required item behind one best-effort Slack call. The SQL states the same
     // contract at its own tail: alert while errors > 0 OR quarantined > 0.
     const failed = s.groupErrors > 0 || s.reconcileErrors > 0
-      || s.orphanErrors > 0 || s.orphansQuarantined > 0;
+      || s.orphanErrors > 0 || s.orphansQuarantined > 0
+      || s.correlationMismatches > 0;
     await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: failed ? "failed" : "succeeded" });
     s.status = failed ? "error" : "ok";
     deps.log({ event: "digest_worker_done", dispatch_run: dispRun, ...s });
@@ -335,9 +355,35 @@ async function dispatchGroup(
       await deps.rpc("record_notification_digest_result", { p_run_id: dispRun, p_attempt_id: att, p_transport: result.transport, p_http_status: null, p_error_name: null, p_provider_message_id: null, p_now: nowIso(), p_retry_after_seconds: null });
       deps.log({ event: "attempt_recorded", group: g, attempt: att, transport: result.transport });
     } else {
-      await deps.rpc("record_notification_digest_result", { p_run_id: dispRun, p_attempt_id: att, p_transport: null, p_http_status: result.httpStatus, p_error_name: result.errorName, p_provider_message_id: result.providerMessageId, p_now: nowIso(), p_retry_after_seconds: result.retryAfterSeconds });
-      deps.log({ event: "attempt_recorded", group: g, attempt: att, http_status: result.httpStatus, error_name: result.errorName ?? null });
-      if (result.httpStatus >= 200 && result.httpStatus < 300 && result.providerMessageId) s.sent++;
+      // THE RETURN VALUE IS EVIDENCE, NOT DECORATION. record_notification_digest_result writes the
+      // attempt row as `accepted` BEFORE it tests whether the group is already bound to a DIFFERENT
+      // provider message (20261004100000:1038 vs :1091). On a mismatch it manual-holds the channel
+      // — a breaker tripped with retry_at NULL, which no backoff ever clears — and reports it ONLY
+      // by returning 'correlation_mismatch'. Discarding that return left the attempt reading
+      // `accepted`, the group counted as sent, and the run finishing `succeeded` over a permanently
+      // mis-correlated send: the scheduler would go on ticking green while email was held open.
+      //
+      // It belongs in the same disjunction as `orphansQuarantined` and for the same stated reason —
+      // "no retry can fix this, a human must decide".
+      const rec = await deps.rpc("record_notification_digest_result", { p_run_id: dispRun, p_attempt_id: att, p_transport: null, p_http_status: result.httpStatus, p_error_name: result.errorName, p_provider_message_id: result.providerMessageId, p_now: nowIso(), p_retry_after_seconds: result.retryAfterSeconds });
+      const outcome = recordedOutcome(rec);
+      const mismatch = outcome === "correlation_mismatch";
+      if (mismatch) s.correlationMismatches++;
+      // An UNREADABLE outcome is not a passing one. If the recorded class cannot be read, we cannot
+      // say this send correlated, so the group is counted as errored — the same "not operationally
+      // provable" rule the reconcile and orphan paths already follow — rather than silently assumed
+      // clean, which is the failure mode that let a mismatch through in the first place.
+      if (outcome === null) {
+        s.groupErrors++;
+        deps.log({ event: "attempt_outcome_unreadable", group: g, attempt: att });
+      }
+      deps.log({ event: "attempt_recorded", group: g, attempt: att, http_status: result.httpStatus, error_name: result.errorName ?? null, correlation_mismatch: mismatch });
+      // A mismatch is NOT a send: the message the provider accepted is not the one this group is
+      // correlated to, so counting it would report a delivery that cannot be reconciled to anything.
+      // Nor is an UNREADABLE outcome — `sent` must mean "the state machine recorded a clean accept",
+      // and an HTTP 2xx alone is exactly the evidence that turned out not to be sufficient.
+      if (outcome !== null && !mismatch
+          && result.httpStatus >= 200 && result.httpStatus < 300 && result.providerMessageId) s.sent++;
     }
     s.recorded++;
     return;

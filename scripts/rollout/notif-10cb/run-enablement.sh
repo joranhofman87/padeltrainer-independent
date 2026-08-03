@@ -62,15 +62,19 @@ usage() {
 usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
 
   status <db_url>                 read-only: engine flags, cron state, liveness, counters
+  preflight <db_url> <run_id>     read-only DRY RUN of the activation gate — every assertion,
+                                  nothing armed. Not the gate itself: `activate` re-checks under a
+                                  row lock in the same transaction as the arm
   smoke-disabled --switch-off-confirmed <db_url>
                                   read-only: capture counters either side of the disabled
                                   invocation. Requires you to have verified DIGEST_SEND_ENABLED
                                   is off — no SQL can see an edge env var
   canary --yes <db_url> <run_id>  reconcile ONE canary's ACTUAL returned run id
   activate --yes <db_url> <run_id>
-                                  run activation_preflight FOR THAT CANARY RUN, then arm the cron.
-                                  The run id is the one `canary` just verified — activation is
-                                  never allowed to rest on some older rollout's evidence
+                                  verify FOR THAT CANARY RUN and arm the cron, in ONE transaction
+                                  against the LOCKED job row. The run id is the one `canary` just
+                                  verified — activation is never allowed to rest on some older
+                                  rollout's evidence, nor on a job that changed after the check
   rollback --yes --switch-off-confirmed <db_url>
                                   set DIGEST_SEND_ENABLED=false FIRST (owner action, outside this
                                   script), then this clears the event flag, deactivates the cron,
@@ -141,6 +145,17 @@ case "$SUB" in
     ok "status read (no mutation)"
     ;;
 
+  preflight)
+    # A DRY RUN of the activation gate — every assertion, nothing armed, no --yes required because
+    # it changes nothing. Useful for finding out what still needs fixing before the owner is asked
+    # to arm. It is NOT the gate: `activate` re-runs all of it under a row lock in the same
+    # transaction as the arm, because anything checked in a separate statement can change after.
+    url="$(db_url)"
+    run_id="$(require_run_id "${ARGS[1]:-}" "the activation preflight")"
+    run_sql "$url" activation_preflight.sql -v run_id="${run_id}"
+    ok "preflight passed for canary run ${run_id} — NOTHING was armed"
+    ;;
+
   smoke-disabled)
     # THE PRECONDITION THIS CANNOT SEE. The worker's real kill switch is the DIGEST_SEND_ENABLED
     # env var on the edge function, not a database flag — so no SQL here can verify it, and a
@@ -186,13 +201,12 @@ case "$SUB" in
     # be run at all) and `activate` would still arm, reporting a green preflight built entirely
     # from evidence that predates the thing it claims to have checked.
     run_id="$(require_run_id "${ARGS[1]:-}" "arming the digest cron")"
-    # PREFLIGHT FIRST, and it must pass. It refuses if the engine is off, if the cron is already
-    # armed or is not the reviewed job, if any group is mid-send, if an orphan is quarantined, if
-    # the email circuit is not closed, or if THIS run is not a fresh, clean, delivering canary.
-    run_sql "$url" activation_preflight.sql -v run_id="${run_id}"
-    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
-      "SELECT cron.alter_job(jobid, active := true) FROM cron.job
-        WHERE jobname = '${JOB_NAME}' AND username = current_user;"
+    # ONE ARTIFACT, ONE TRANSACTION. activate.sql locks the job row, runs every assertion against
+    # the LOCKED row, arms that exact jobid, and asserts the postcondition — all before it commits.
+    # Running the preflight here and arming in a second statement is what this replaced: the job
+    # could be altered or deleted in between, and an arm-by-name matching zero rows succeeds
+    # silently, so the script would report ARMED over a job that was no longer there.
+    run_sql "$url" activate.sql -v run_id="${run_id}"
     run_sql "$url" status.sql
     ok "digest cron ARMED — watch the external monitor and notif_digest_worker_liveness()"
     ;;

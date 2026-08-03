@@ -15,7 +15,8 @@ of the mutating subcommands is an owner decision made from the runbook, not by a
 | 2 | `smoke-disabled <url>` | Read-only. Capture counters either side of a disabled invocation through the real Vault/pg_net path. The invocation must answer **exactly** `200 {"status":"disabled","reason":"disabled"}` and move **no** counter. |
 | 3 | *(owner)* enable the send switch | — |
 | 4 | `canary --yes <url> <run_id>` | Reconciles the **actual** run id the canary invocation returned. Cron still inactive. |
-| 5 | `activate --yes <url> <run_id>` | Runs `activation_preflight.sql` **for that canary run**, then arms the cron. |
+| 5 | `preflight <url> <run_id>` | Read-only **dry run** of the whole activation gate. Arms nothing. |
+| 5 | `activate --yes <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
 | 6 | `rollback --yes <url>` | Engine off **and** cron inactive, then proves both. |
 
 **Arming the cron before enabling the switch would schedule a worker that finds nothing to do and
@@ -23,28 +24,56 @@ reports healthy** — a green light over an engine that is still off. The prefli
 a good deal more besides: an already-armed job, more or fewer than one cutover event, any other
 event with the engine on, a group mid-send or awaiting evidence, and any quarantined orphan.
 
-## Three things the preflight refuses that are easy to get wrong
+## Verification and arming are one transaction
+
+`activate.sql` opens a transaction, takes `FOR UPDATE` on the exact `(jobname, username)` row,
+runs every assertion against **that locked row**, arms **that jobid**, and asserts the postcondition
+before committing. The assertions themselves live in `sql/_activation_assertions.sql`, shared with
+the read-only dry run so the two cannot drift into checking different things.
+
+It is written that way because checking in one statement and arming in another is a
+time-of-check/time-of-use hole. Between the two the job can be altered, re-pointed or unscheduled,
+and everything the check proved describes a job that is no longer there. Worse, arming *by name*
+when the job has been deleted matches zero rows and **succeeds** — so the tooling would report the
+cron as ARMED over nothing at all.
+
+## Three things the gate refuses that are easy to get wrong
 
 * **A job that merely has the right NAME.** The F migration deliberately leaves an existing
   `notification-digest-worker` job alone (an unschedule/reschedule would silently disarm an
   activation the owner had already performed), so the job present at activation time may not be the
   one that was reviewed. Its stored command is what a tick executes, and that command posts a
   Vault-decrypted `service_role` bearer to whatever url it names. The preflight therefore checks the
-  schedule, the database, the owner, the endpoint, that **no other** url appears, that the bearer is
-  read from Vault at tick time rather than inlined, and finally that the whole command hashes to the
-  reviewed value. `src/test/notif10cbActivationPreflight.test.ts` recomputes that hash from the
+  schedule, the **node** it dispatches to (`nodename`/`nodeport` — a re-pointed job runs the reviewed
+  command, hash and all, against a different server), the database, the owner, the endpoint, that
+  **no other** url appears, that the bearer is read from Vault at tick time rather than inlined, and
+  finally that the whole command hashes to the reviewed value. `src/test/notif10cbActivationPreflight.test.ts` recomputes that hash from the
   migration on every CI run, so the two cannot drift apart in silence.
 * **Evidence from a previous rollout.** `activate` takes the canary's run id and every canary
-  assertion is scoped to it. It must also be the newest dispatch run (nothing in flight, nothing
-  newer) and less than six hours old — otherwise "a canary succeeded" stays permanently true from an
-  earlier attempt, and a canary that failed today cannot stop an activation.
+  assertion is scoped to it. It must also be the newest dispatch run — nothing in flight, nothing
+  that **started** after it, nothing that **ended** after it — and less than six hours old.
+  Otherwise "a canary succeeded" stays permanently true from an earlier attempt, and a canary that
+  failed today cannot stop an activation. Both timestamps are compared because ordering by
+  completion alone misses a run that started later and failed fast.
 * **An `accepted` attempt that did not correlate.** `record_notification_digest_result` writes the
   attempt as `accepted` *before* it notices the group is bound to a different provider message; it
   then manual-holds the channel and returns `correlation_mismatch`, which the worker does not read.
   So the run finishes `succeeded` over a permanently mis-correlated send. The preflight compares the
   attempt's provider message id against its group's, checks the run's ledger for a `global_config`
   event, and requires the email circuit to be **closed**. `canary_verify.sql` checks the same three,
-  so the operator finds out at canary time rather than at activation.
+  so the operator finds out at canary time rather than at activation. The **worker** now reads that
+  return value too: a mismatch increments `correlationMismatches`, is not counted as a send, and
+  makes the run fail — before this it discarded the return, so once the cron was armed it would have
+  gone on reporting a healthy 200 every five minutes while the channel was held open.
+
+## The connection string is not just a url either
+
+`assert_conn_url_is_ref` parses a URI. libpq accepts a **second** form — keyword/value conninfo
+(`host=… user=… dbname=…`, last occurrence winning) — and on that form the URI parser reads the
+wrong thing entirely. A value like `dbname=postgresql://postgres.<expected>@<expected-pooler>/…
+host=<other> dbname=postgres` splits at the first `://` into an authority naming the expected
+project, passes every check, and is then handed to psql, which connects to `<other>`. So the string
+must start with `postgresql://` or `postgres://` and contain no whitespace or control characters.
 
 ## Two rules that are asserted, not merely written down
 

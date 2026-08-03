@@ -71,6 +71,7 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
       // reproduce the diagnostic.
       orphan_errors: partial?.orphanErrors ?? null,
       orphans_quarantined: partial?.orphansQuarantined ?? null,
+      correlation_mismatches: partial?.correlationMismatches ?? null,
       claimed: partial?.claimed ?? null, sent: partial?.sent ?? null,
     });
     return { status: "error", http: 500, body: { status: "error" } };
@@ -85,14 +86,21 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
       // thing here that needs a human — so it is named, and it keeps the run red on every
       // invocation until someone resolves it (the queue's own alert contract). A single
       // best-effort Slack call that happens to fail must not be the only notice it ever gets.
-      reason: summary.groupErrors > 0
-        ? "group_errors"
-        : (summary.orphanErrors > 0 || summary.orphansQuarantined > 0) && summary.reconcileErrors === 0
-          ? "orphan_errors"
-          : "reconcile_errors",
+      // A CORRELATION MISMATCH OUTRANKS EVERYTHING HERE. It manual-holds the channel — a breaker
+      // tripped with retry_at NULL, which no backoff ever clears — so nothing sends again until a
+      // human acts. Without its own arm it fell through to "reconcile_errors", which is the very
+      // mislabelling this chain was written to stop.
+      reason: summary.correlationMismatches > 0
+        ? "correlation_mismatch"
+        : summary.groupErrors > 0
+          ? "group_errors"
+          : (summary.orphanErrors > 0 || summary.orphansQuarantined > 0) && summary.reconcileErrors === 0
+            ? "orphan_errors"
+            : "reconcile_errors",
       dispatch_run: summary.dispatchRunId ?? null, materialize_run: summary.materializeRunId ?? null,
       group_errors: summary.groupErrors, reconcile_errors: summary.reconcileErrors,
       orphan_errors: summary.orphanErrors, orphans_quarantined: summary.orphansQuarantined,
+      correlation_mismatches: summary.correlationMismatches,
       claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
     });
   }

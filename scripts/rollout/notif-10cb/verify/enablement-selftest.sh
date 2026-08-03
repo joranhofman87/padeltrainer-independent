@@ -90,16 +90,32 @@ run "activate REFUSES a url belonging to another project" 1 -- activate --yes "$
 
 # ── what the mutating steps actually do ───────────────────────────────────────
 RUN_ID="11111111-1111-4111-8111-111111111111"
-run "activate runs its PREFLIGHT before arming" 0 -- activate --yes "$URL" "$RUN_ID"
-logged "run_id=$RUN_ID" && ok "activate passes the canary run id INTO the preflight" \
-  || { bad "activate passes the canary run id INTO the preflight"; cat "$PSQL_LOG"; }
-if logged 'activation_preflight.sql' && logged 'active := true'; then
-  # order matters: preflight must be the FIRST thing, arming the last
-  if [[ "$(grep -n 'activation_preflight.sql' "$PSQL_LOG" | cut -d: -f1 | head -1)" -lt \
-        "$(grep -n 'active := true' "$PSQL_LOG" | cut -d: -f1 | head -1)" ]]; then
-    ok "preflight runs BEFORE the cron is armed"
-  else bad "preflight runs BEFORE the cron is armed"; fi
-else bad "activate runs preflight then arms"; fi
+run "activate verifies and arms in ONE artifact" 0 -- activate --yes "$URL" "$RUN_ID"
+logged "run_id=$RUN_ID" && ok "activate passes the canary run id INTO the gate" \
+  || { bad "activate passes the canary run id INTO the gate"; cat "$PSQL_LOG"; }
+logged 'activate.sql' && ok "activate runs the transactional activate.sql" || bad "activate runs the transactional activate.sql"
+
+# THE ARM MUST NOT BE A SEPARATE STATEMENT. Checking in one psql process and arming by name in
+# another is a time-of-check/time-of-use hole: between them the job can be altered, replaced or
+# deleted, and an arm-by-name matching ZERO rows succeeds silently — so the script would report
+# ARMED over a job that is no longer there. activate.sql locks the row, asserts, arms that jobid and
+# checks the postcondition inside one transaction, so no bare `active := true` may appear here.
+if grep -qF -- 'active := true' "$PSQL_LOG"; then
+  bad "the cron is armed only inside the transactional artifact (found a separate arm statement)"
+  cat "$PSQL_LOG"
+else
+  ok "the cron is armed only inside the transactional artifact"
+fi
+grep -qF 'FOR UPDATE' "$HERE/../sql/activate.sql" && ok "activate.sql locks the job row before asserting" \
+  || bad "activate.sql locks the job row before asserting"
+grep -qE '^\s*BEGIN;' "$HERE/../sql/activate.sql" && grep -qE '^\s*COMMIT;' "$HERE/../sql/activate.sql" \
+  && ok "activate.sql is one explicit transaction" || bad "activate.sql is one explicit transaction"
+
+# The read-only dry run exists, changes nothing, and needs no --yes.
+run "preflight is read-only and needs no --yes" 0 -- preflight "$URL" "$RUN_ID"
+logged 'activation_preflight.sql' && ok "preflight runs the dry-run artifact" || bad "preflight runs the dry-run artifact"
+if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+run "preflight REFUSES without a canary run id" 1 -- preflight "$URL"
 
 # The worker's REAL kill switch is an edge env var no SQL can see, so the script refuses to
 # pretend it verified one: the operator asserts it.
@@ -122,7 +138,7 @@ else bad "rollback switches the engine off BEFORE the cron"; fi
 # proved the arm command was actually downstream of it rather than merely printed before it.
 export PSQL_LOG="$TMP/log.preflight_fail"; : > "$PSQL_LOG"
 set +e
-STUB_FAIL_ON=activation_preflight EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes "$URL" "$RUN_ID" >"$TMP/out" 2>&1
+STUB_FAIL_ON=activate.sql EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes "$URL" "$RUN_ID" >"$TMP/out" 2>&1
 pf_rc=$?
 set -e
 [[ "$pf_rc" != "0" ]] && ok "a failing preflight fails the activate subcommand (rc=$pf_rc)" \
@@ -161,18 +177,44 @@ run "refuses a url whose query string overrides the host" 1 -- \
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
 run "refuses a query string even on a read-only subcommand" 1 -- status "${URL}?user=postgres"
 
+# libpq accepts TWO connection-string forms and the guard only ever parsed one. Keyword/value
+# conninfo (`host=... user=... dbname=...`, last occurrence winning) split at the first '://' into
+# an authority naming the EXPECTED project, passed every check, and was then read by psql as
+# keywords — connecting to the host named later in the same string.
+run "refuses libpq KEYWORD conninfo that hides the expected ref in a dbname=" 1 -- \
+  status "dbname=${URL} host=db.tsrqponmlkjihgfedcba.supabase.co user=postgres dbname=postgres"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || { bad "...and ran nothing against it"; cat "$PSQL_LOG"; }
+run "refuses a url with trailing keyword parameters appended" 1 -- \
+  status "${URL} hostaddr=203.0.113.10"
+run "refuses anything that does not start with a postgres scheme" 1 -- \
+  status "host=db.tsrqponmlkjihgfedcba.supabase.co user=postgres"
+
+# THE DISCRIMINATOR FOR THE SCHEME RULE. Every conninfo case above contains whitespace, so all of
+# them are refused by the whitespace rule whether or not the scheme is checked — deleting the scheme
+# check left them all green. This one has NO whitespace and its authority names the EXPECTED project,
+# so it sails through the host/user validation; only "it must start with postgres(ql)://" stops it.
+# psql would read a string with no scheme and no '=' as a DBNAME and connect to PGHOST/the local
+# socket instead, which is a different server with a passing ref check.
+run "refuses a scheme-LESS string whose authority names the expected project" 1 -- \
+  status "postgres.${REF}:pw@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || { bad "...and ran nothing against it"; cat "$PSQL_LOG"; }
+run "still accepts the ordinary postgresql:// url" 0 -- status "$URL"
+
 # ── the artifacts it runs must actually exist ────────────────────────────────
 # The stub never opens the file it is handed, so a broken `\i` inside an artifact — or a missing
 # artifact altogether — would otherwise pass here and fail only in front of an operator.
-for f in status.sql activation_preflight.sql rollback_verify.sql; do
+for f in status.sql activation_preflight.sql activate.sql _activation_assertions.sql rollback_verify.sql; do
   [[ -f "$HERE/../sql/$f" ]] && ok "artifact $f exists" || bad "artifact $f exists"
 done
-for f in activation_preflight.sql rollback_verify.sql; do
-  inc="$(grep -o '\\i [^ ]*' "$HERE/../sql/$f" | awk '{print $2}')"
-  if [[ -n "$inc" ]]; then
-    ( cd "$HERE/../sql" && [[ -f "$inc" ]] ) && ok "$f includes a path that resolves from sql/" \
-      || bad "$f includes a path that resolves from sql/ (got '$inc')"
-  fi
+for f in activation_preflight.sql activate.sql canary_verify.sql rollback_verify.sql; do
+  # EVERY \i, not just the first: activate.sql and activation_preflight.sql each pull in the
+  # shared assertions as well as the assert helpers, and a broken second include fails only in
+  # front of an operator.
+  while read -r inc; do
+    [[ -n "$inc" ]] || continue
+    ( cd "$HERE/../sql" && [[ -f "$inc" ]] ) && ok "$f include resolves from sql/: $inc" \
+      || bad "$f include resolves from sql/ (got '$inc')"
+  done < <(grep -o '^\\i [^ ]*' "$HERE/../sql/$f" | awk '{print $2}')
 done
 
 # ── sourcing must not execute ────────────────────────────────────────────────

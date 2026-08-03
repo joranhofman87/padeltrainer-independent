@@ -78,6 +78,25 @@ assert_host_user_is_ref() {
 # Usage: assert_conn_url_is_ref "$EXPECTED_REF" "$CONN_URL"
 assert_conn_url_is_ref() {
   local ref="$1" url="$2"
+  # IT MUST ACTUALLY BE A URI. libpq accepts TWO connection-string forms, and the other one is
+  # keyword/value conninfo — `host=... user=... dbname=...`, last occurrence winning. Everything
+  # below parses a URI, and on a keyword string it parses the wrong thing entirely: a value like
+  #
+  #   dbname=postgresql://postgres.<expected>@<expected-pooler>/postgres host=<other> dbname=postgres
+  #
+  # splits at the first '://' into an authority that names the EXPECTED project, passes every check
+  # here, and is then handed to psql — which reads it as keyword conninfo and connects to <other>.
+  # Whitespace is what makes that possible (it separates the keywords), and no legitimate connection
+  # URI for this bundle contains any, so both are refused: the scheme must lead, and the string must
+  # be a single unbroken token.
+  case "$url" in
+    postgresql://*|postgres://*) : ;;
+    *) die "connection string must be a postgresql:// or postgres:// URI — libpq also accepts keyword/value conninfo (host=... user=...), which would defeat the EXPECTED_REF check entirely" ;;
+  esac
+  [[ "$url" != *[[:space:]]* ]] \
+    || die "connection url contains whitespace — refusing: whitespace is what turns a url into libpq keyword/value conninfo, where a later host= overrides the authority"
+  [[ "$url" != *[[:cntrl:]]* ]] \
+    || die "connection url contains a control character — refusing"
   # strip scheme
   local rest="${url#*://}"
   # userinfo@authority/...   -> split at first '/'
@@ -443,7 +462,7 @@ run_sql() {
   require_cmd psql
   [[ -f "$file" ]] || die "sql file not found: $file"
   log "psql -f $(basename "$file")"
-  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$file" "$@" \
+  psql_safe "$url" -v ON_ERROR_STOP=1 -q -f "$file" "$@" \
     || die "SQL artifact failed (non-zero psql exit): $file"
   ok "$(basename "$file") passed"
 }
@@ -482,7 +501,7 @@ run_sql_soft() {
   require_cmd psql
   [[ -f "$file" ]] || { warn "sql file not found: $file"; return 1; }
   local rc=0
-  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$file" "$@" || rc=$?
+  psql_safe "$url" -v ON_ERROR_STOP=1 -q -f "$file" "$@" || rc=$?
   return "$rc"
 }
 

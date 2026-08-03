@@ -106,11 +106,18 @@ try {
     CREATE SCHEMA cron;
     CREATE TABLE cron.job (
       jobid bigserial PRIMARY KEY, schedule text NOT NULL, command text NOT NULL,
-      nodename text NOT NULL DEFAULT 'localhost', nodeport integer NOT NULL DEFAULT 5432,
+      -- pg_cron dispatches a job to (nodename, nodeport); a normally-scheduled job carries this
+      -- server's own. Hard-coding 5432 here would make the baseline fail on the embedded server's
+      -- port and hide what the node assertions actually do.
+      nodename text NOT NULL DEFAULT 'localhost',
+      nodeport integer NOT NULL DEFAULT current_setting('port')::int,
       database text NOT NULL DEFAULT current_database(),
       username text NOT NULL DEFAULT current_user,
       active boolean NOT NULL DEFAULT true, jobname text,
-      UNIQUE (jobname, username));`);
+      UNIQUE (jobname, username));
+    -- alter_job by jobid, as real pg_cron does — activate.sql arms the id it locked, never a name.
+    CREATE FUNCTION cron.alter_job(job_id bigint, active boolean DEFAULT NULL)
+      RETURNS void LANGUAGE sql AS $f$ UPDATE cron.job SET active = coalesce($2, active) WHERE jobid = $1 $f$;`);
 
   // The catalog columns the preflight reads (20260910100000 + C's 20261011100000).
   await c.query(`
@@ -209,6 +216,16 @@ try {
     () => c.query(`UPDATE cron.job SET database = 'some_other_db'`),
     'the cron job runs in THIS database');
 
+  // pg_cron dispatches to (nodename, nodeport). A re-pointed node executes the reviewed command —
+  // hash and all — against a different server entirely, so every other assertion still passes.
+  await refuses('a job re-pointed to another NODENAME is refused',
+    () => c.query(`UPDATE cron.job SET nodename = 'replica.internal'`),
+    'executes on THIS node');
+
+  await refuses('a job re-pointed to another NODEPORT is refused',
+    () => c.query(`UPDATE cron.job SET nodeport = nodeport + 1`),
+    'executes on THIS port');
+
   await refuses('a command posting to a DIFFERENT ENDPOINT is refused',
     () => c.query(`UPDATE cron.job SET command = replace(command,
       'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker',
@@ -261,13 +278,23 @@ try {
       (run_id, worker, channel, phase, status, started_at, ended_at)
       VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', 'failed',
               now() - interval '1 minute', now())`),
-    'no dispatch/email run is in flight or newer than this canary');
+    'in flight, started after, or ended after this canary');
 
   await refuses('a dispatch run IN FLIGHT alongside the canary is refused',
     () => c.query(`INSERT INTO public.notification_worker_runs
       (run_id, worker, channel, phase, status, started_at)
       VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', NULL, now())`),
-    'no dispatch/email run is in flight or newer than this canary');
+    'in flight, started after, or ended after this canary');
+
+  // ORDERING BY COMPLETION HAS A HOLE. A run that STARTED after the canary and failed FAST — so it
+  // also ENDED before the canary did — is newer by invocation and invisible to an ended_at
+  // comparison. This is the scenario that made the ordering wrong, so it is pinned explicitly.
+  await refuses('a run that STARTED after the canary but ended BEFORE it is refused',
+    () => c.query(`INSERT INTO public.notification_worker_runs
+      (run_id, worker, channel, phase, status, started_at, ended_at)
+      VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', 'failed',
+              now() - interval '2 minutes 30 seconds', now() - interval '2 minutes 10 seconds')`),
+    'in flight, started after, or ended after this canary');
 
   await refuses('a canary older than the freshness window is refused',
     () => c.query(`UPDATE public.notification_worker_runs
@@ -353,6 +380,54 @@ try {
     () => c.query(`INSERT INTO public.notification_orphan_reconcile_state
       (provider_message_id, quarantined) VALUES ('orphan-1', true)`),
     'no orphan provider event is quarantined');
+
+  // ── activate.sql: verify and arm, atomically ─────────────────────────────
+  // The preflight proves what the world looked like at CHECK time. Arming in a separate statement
+  // meant the job could be altered, replaced or deleted in between — and an arm-by-name matching
+  // zero rows succeeds silently, so the tooling would report ARMED over a job that was gone.
+  const activate = async () => {
+    try { await c.query(artifactText('activate.sql', { run_id: RUN })); return null; }
+    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
+  };
+  const jobActive = async () =>
+    (await c.query(`SELECT active FROM cron.job WHERE jobname='notification-digest-worker'
+                     AND username=current_user`)).rows[0]?.active ?? null;
+
+  await seedBaseline();
+  {
+    const err = await activate();
+    rec('activate ARMS the cron when every assertion passes', err === null, err ?? '');
+    rec('...and the job really is active afterwards', (await jobActive()) === true);
+  }
+
+  // A FAILING assertion must leave the world untouched — that is what the transaction is for.
+  await seedBaseline();
+  await c.query(`UPDATE cron.job SET schedule = '*/1 * * * *'`);
+  {
+    const err = await activate();
+    rec('activate REFUSES a drifted job', !!err && err.includes('the cron schedule is the reviewed one'),
+      err ?? 'it armed the job');
+    rec('...and the cron is STILL INACTIVE (the transaction rolled back)', (await jobActive()) === false);
+  }
+
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_worker_runs SET status = 'failed' WHERE run_id = '${RUN}'`);
+  {
+    const err = await activate();
+    rec('activate REFUSES a canary that did not succeed', !!err && err.includes('the canary run SUCCEEDED'),
+      err ?? 'it armed the job');
+    rec('...and armed nothing', (await jobActive()) === false);
+  }
+
+  // THE SILENT NO-OP. Arming by name when the job has been unscheduled matches zero rows and
+  // SUCCEEDS — the failure that made the old flow report a cron it had not armed.
+  await seedBaseline();
+  await c.query(`DELETE FROM cron.job`);
+  {
+    const err = await activate();
+    rec('activate FAILS LOUDLY when the job has vanished (never a silent no-op)',
+      !!err && err.includes('the digest cron job exists'), err ?? 'it reported success over a missing job');
+  }
 
   // ── canary_verify carries the same mismatch guard ────────────────────────
   await seedBaseline();

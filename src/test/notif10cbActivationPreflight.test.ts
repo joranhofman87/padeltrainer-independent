@@ -18,7 +18,12 @@ import { join } from 'node:path';
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 
 const MIGRATION = read('supabase', 'migrations', '20261012100000_notif_10cb_digest_cron_inert.sql');
-const PREFLIGHT = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activation_preflight.sql');
+// The assertions live in a shared include, pulled in by BOTH the read-only dry run
+// (activation_preflight.sql) and the transactional gate (activate.sql), so the two can never
+// diverge into checking different things.
+const PREFLIGHT = read('scripts', 'rollout', 'notif-10cb', 'sql', '_activation_assertions.sql');
+const ACTIVATE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activate.sql');
+const DRY_RUN = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activation_preflight.sql');
 
 /** The same normalisation the preflight applies in SQL: btrim + collapse whitespace runs. */
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -109,7 +114,7 @@ describe('G — the preflight is bound to one named canary run', () => {
   });
 
   it('requires the canary to be the newest dispatch run and to be recent', () => {
-    expect(PREFLIGHT).toContain('in flight or newer than this canary');
+    expect(PREFLIGHT).toContain('in flight, started after, or ended after this canary');
     expect(PREFLIGHT).toMatch(/now\(\) - ended_at <= interval '6 hours'/);
   });
 
@@ -122,6 +127,40 @@ describe('G — the preflight is bound to one named canary run', () => {
 
   it('requires the email circuit to be closed', () => {
     expect(PREFLIGHT).toMatch(/channel = 'email' AND state <> 'closed'/);
+  });
+});
+
+describe('G — verifying and arming are one transaction', () => {
+  // Checking in one statement and arming in another is a time-of-check/time-of-use hole: between
+  // them the job can be altered, replaced or unscheduled, and an arm-by-name matching ZERO rows
+  // succeeds silently — reporting a cron as ARMED over a job that is no longer there.
+  it('both wrappers run the SAME shared assertions', () => {
+    expect(ACTIVATE).toContain('\\i _activation_assertions.sql');
+    expect(DRY_RUN).toContain('\\i _activation_assertions.sql');
+  });
+
+  it('activate.sql locks the job row BEFORE it asserts anything', () => {
+    const lock = ACTIVATE.indexOf('FOR UPDATE');
+    const assertions = ACTIVATE.indexOf('\\i _activation_assertions.sql');
+    expect(lock).toBeGreaterThan(-1);
+    expect(lock).toBeLessThan(assertions);
+  });
+
+  it('activate.sql is a single explicit transaction', () => {
+    expect(ACTIVATE).toMatch(/^\s*BEGIN;/m);
+    expect(ACTIVATE).toMatch(/^\s*COMMIT;/m);
+    expect(ACTIVATE.indexOf('BEGIN;')).toBeLessThan(ACTIVATE.indexOf('FOR UPDATE'));
+  });
+
+  it('activate.sql arms by jobid and count-checks the arm', () => {
+    expect(ACTIVATE).toContain('cron.alter_job(j.jobid, active := true)');
+    expect(ACTIVATE).toContain('exactly one job was armed');
+  });
+
+  // The dry run must stay a dry run, or "preflight" silently becomes a second way to arm.
+  it('the dry run arms nothing', () => {
+    expect(DRY_RUN).not.toContain('alter_job');
+    expect(DRY_RUN).not.toContain('active := true');
   });
 });
 
