@@ -779,8 +779,16 @@ sending a request shape the new handler must interpret rather than trust.
 
 1. **Cross-version dedup — ONE-WAY, and that asymmetry is the design.** The new handler RECORDS
    the pre-cutover key in `notification_sends` for every recipient it handled, so a ROLLBACK to
-   the old handler finds the key claimed and does not send a second copy. A `failed` recipient is
-   never recorded — it still needs notifying.
+   the old handler usually finds the key claimed and does not send a second copy. A `failed`
+   recipient is never recorded — it still needs notifying.
+
+   That rollback protection is **best-effort, not a guarantee**, and the ordering says why: the
+   marker is a second statement, not part of the enqueue. If the enqueue succeeds and the marker
+   write fails — or a rollback routes a retry into the window between them — the old handler can
+   claim and send while the durable v2 row also sends. So the residual runs in BOTH directions,
+   and a rollback of the edge function is an operator action that must observe the same quiesce as
+   the roll-forward. Marker failures are counted and returned as `legacy_marker_failed` rather
+   than only logged, so the weakened window is visible.
 
    It deliberately does **not** read that ledger to skip anyone. A legacy row is a claim taken
    BEFORE the pre-cutover send, and the old handler deleted it again when the send failed, so a

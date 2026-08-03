@@ -457,12 +457,24 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     // simply DO UPDATE. The settings page upserts a PARTIAL row when the user changes any OTHER
     // legacy control; open_slots_digest then takes its column default. Mirroring that would
     // resume mail for someone who had opted out.
+    // Pin the PRODUCTION declaration, not the fixture's. The fixture creates this table itself,
+    // so querying information_schema alone only proves the fixture agrees with itself: if
+    // production's default became 'daily', that check would stay green while a partial legacy
+    // INSERT started taking the trigger's UPDATE branch and overwriting an explicit v2 'off'.
+    const prodDdl = readFileSync(
+      join(process.cwd(), 'supabase', 'migrations',
+        '20260210090026_6e534231-28a9-46ef-9065-7a16c9ccdea5.sql'), 'utf8');
+    const declared = /open_slots_digest\s+text\s+NOT NULL\s+DEFAULT\s+'([a-z]+)'/.exec(prodDdl);
+    expect(declared, 'the production column declaration must be findable').not.toBeNull();
+    expect(declared![1], 'the whole discrimination rests on this default being the ambiguous one')
+      .toBe('weekly');
+    // ...and the fixture must not drift from it, or every other assertion here is about a
+    // different table from the one that ships.
     const { rows: def } = await c.query(
       `SELECT column_default FROM information_schema.columns
         WHERE table_schema='public' AND table_name='notification_preferences'
           AND column_name='open_slots_digest'`);
-    expect(def[0].column_default, 'the whole discrimination rests on this default')
-      .toContain("'weekly'");
+    expect(def[0].column_default).toContain(`'${declared![1]}'`);
 
     await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
                    VALUES ($1,'open_slots_player','off')`, [USER]);

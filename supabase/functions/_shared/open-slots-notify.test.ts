@@ -504,10 +504,12 @@ Deno.test("MUTANT: a bridge key missing the anchor prefix cannot match a legacy 
 // ===========================================================================
 
 Deno.test("resume state: absent, malformed and hostile values all fall back to a fresh run", () => {
-  assertEquals(parseResumeState(null), { afterPlayerId: null, depth: 0 });
-  assertEquals(parseResumeState({}), { afterPlayerId: null, depth: 0 });
-  assertEquals(parseResumeState({ resume_after_player_id: "not-a-uuid" }), { afterPlayerId: null, depth: 0 });
-  assertEquals(parseResumeState({ resume_after_player_id: 42 }), { afterPlayerId: null, depth: 0 });
+  assertEquals(parseResumeState(null), { afterPlayerId: null, depth: 0, retrying: false });
+  assertEquals(parseResumeState({}), { afterPlayerId: null, depth: 0, retrying: false });
+  assertEquals(parseResumeState({ resume_after_player_id: "not-a-uuid" }),
+    { afterPlayerId: null, depth: 0, retrying: false });
+  assertEquals(parseResumeState({ resume_after_player_id: 42 }),
+    { afterPlayerId: null, depth: 0, retrying: false });
   assertEquals(parseResumeState({ continuation_depth: -5 }).depth, 0);
   assertEquals(parseResumeState({ continuation_depth: 1.5 }).depth, 0);
 });
@@ -515,7 +517,9 @@ Deno.test("resume state: absent, malformed and hostile values all fall back to a
 Deno.test("resume state: a valid cursor is carried and the hop count is CLAMPED", () => {
   const id = "11111111-1111-4111-8111-111111111111";
   assertEquals(parseResumeState({ resume_after_player_id: id, continuation_depth: 3 }),
-    { afterPlayerId: id, depth: 3 });
+    { afterPlayerId: id, depth: 3, retrying: false });
+  assertEquals(parseResumeState({ resume_retry: true }).retrying, true);
+  assertEquals(parseResumeState({ resume_retry: "yes" }).retrying, false, "only a real boolean");
   assertEquals(
     parseResumeState({ continuation_depth: 10_000 }).depth,
     MAX_CONTINUATION_DEPTH,
@@ -535,34 +539,36 @@ Deno.test("MUTANT: an unclamped hop count lets a forged body chain without bound
 // ===========================================================================
 
 Deno.test("resume cursor: a partly processed run carries on from the LAST recipient handled", () => {
-  assertEquals(resumeCursorAfter(["a", "b", "c", "d"], 2, "d"), "b");
+  assertEquals(resumeCursorAfter(["b", "c", "d", "e"], 2, "e", "a"), "c");
 });
 
 Deno.test("resume cursor: a fully processed run carries on from the last DISCOVERED follower", () => {
   // Discovery reads followers; recipients drop the ones with no account. Resuming from the last
   // recipient would re-read those accountless followers on every hop.
-  assertEquals(resumeCursorAfter(["a", "b"], 2, "z"), "z");
-  assertEquals(resumeCursorAfter([], 0, "z"), "z");
+  assertEquals(resumeCursorAfter(["b", "c"], 2, "z", "a"), "z");
+  assertEquals(resumeCursorAfter([], 0, "z", "a"), "z");
 });
 
-Deno.test("resume cursor: nothing processed and nothing discovered yields NO cursor", () => {
-  assertEquals(resumeCursorAfter(["a", "b"], 0, null), null);
+Deno.test("resume cursor: nothing completed hands back the cursor this hop was given", () => {
+  // Not null-unless-first-hop: the incoming cursor re-covers exactly this range, which is the
+  // only expressible retry under an exclusive `> cursor` scan.
+  assertEquals(resumeCursorAfter(["b", "c"], 0, "c", "a"), "a");
+  assertEquals(resumeCursorAfter(["b", "c"], 0, "c", null), null, "first hop → from the beginning");
 });
 
 Deno.test("continuation is taken only when it must, and can, make progress", () => {
-  const base = { deferred: 5, processed: 10, nextCursor: "p", depth: 0 };
+  const base = { deferred: 5, processed: 10, depth: 0 };
   assertEquals(shouldContinue(base), true);
   assertEquals(shouldContinue({ ...base, deferred: 0 }), false, "nothing owed");
-  assertEquals(shouldContinue({ ...base, processed: 0 }), false, "no progress → the chain would spin");
-  assertEquals(shouldContinue({ ...base, nextCursor: null }), false, "no cursor → the hop repeats itself");
+  assertEquals(shouldContinue({ ...base, processed: 0 }), false, "did nothing → the chain would spin");
   assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH }), false, "hop bound reached");
   assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH - 1 }), true);
 });
 
 Deno.test("MUTANT: chaining without a progress check spins on the same cursor for ever", () => {
   const mutant = (a: { deferred: number }) => a.deferred > 0;
-  assertEquals(mutant({ deferred: 5 }), true, "the mutant chains with zero progress...");
-  assertEquals(shouldContinue({ deferred: 5, processed: 0, nextCursor: "p", depth: 0 }), false);
+  assertEquals(mutant({ deferred: 5 }), true, "the mutant chains having done nothing...");
+  assertEquals(shouldContinue({ deferred: 5, processed: 0, depth: 0 }), false);
 });
 
 // ===========================================================================
@@ -602,18 +608,23 @@ Deno.test("MUTANT: claiming a FAILED recipient silently suppresses its retry", (
 // planRunOutcome — what the run may claim to have completed.
 // ===========================================================================
 
+// Discovery resumes at `player_id > cursor`, so the incoming cursor is by construction NOT a
+// member of recipientIds. An earlier version of this fixture violated that and made the stall
+// guard look reachable when in production it never fired.
 const PLAN = {
-  recipientIds: ["a", "b", "c", "d"],
+  recipientIds: ["b", "c", "d", "e"],
   processed: 4,
   firstFailureIndex: -1,
   beyondDiscovery: 0,
   beyondUnknown: false,
-  lastDiscovered: "d",
+  lastDiscovered: "e",
   incomingCursor: null as string | null,
+  retrying: false,
 };
 
 Deno.test("plan: a clean, complete run owes nothing and is complete", () => {
-  assertEquals(planRunOutcome(PLAN), { deferred: 0, nextCursor: "d", incomplete: false });
+  assertEquals(planRunOutcome(PLAN),
+    { deferred: 0, nextCursor: "e", incomplete: false, repeating: false });
 });
 
 Deno.test("plan: deferred is EXACT at the ceiling and for a real tail", () => {
@@ -629,25 +640,46 @@ Deno.test("plan: a FAILURE bounds completion — the cursor never steps over an 
   // and the continuation carried on with the tail, never coming back. A pre-cutover caller
   // ignores the 500, so that follower was lost in silence.
   const out = planRunOutcome({ ...PLAN, processed: 4, firstFailureIndex: 1 });
-  assertEquals(out.nextCursor, "a", "resume BEFORE the failed recipient, not after it");
-  assertEquals(out.deferred, 3, "b, c and d are all still owed");
+  assertEquals(out.nextCursor, "b", "resume BEFORE the failed recipient, not after it");
+  assertEquals(out.deferred, 3, "c, d and e are all still owed");
   assertEquals(out.incomplete, true);
+  assertEquals(out.repeating, false);
 });
 
-Deno.test("plan: a failure in the FIRST position yields no cursor rather than a bogus one", () => {
-  const out = planRunOutcome({ ...PLAN, firstFailureIndex: 0 });
-  assertEquals(out.nextCursor, null);
-  assertEquals(out.deferred, 4);
+Deno.test("plan: a first-position failure REPEATS the hop's own range rather than abandoning it", () => {
+  // The cursor is exclusive, so there is no value strictly between the failed recipient and its
+  // predecessor: re-covering the same range is the ONLY way to retry it. Returning null here —
+  // which the previous version did, since the incoming cursor is never among recipientIds — made
+  // shouldContinue decline, and an arbitrarily large tail was abandoned on one failed enqueue.
+  const first = planRunOutcome({ ...PLAN, firstFailureIndex: 0, incomingCursor: "a" });
+  assertEquals(first.nextCursor, "a", "hand back the SAME cursor — that is the retry");
+  assertEquals(first.repeating, true);
+  assertEquals(first.deferred, 4);
+  assertEquals(shouldContinue({ deferred: first.deferred, processed: 4, depth: 1 }), true);
+
+  // ...and on the very first hop, "the same range" is the whole set, expressed as a null cursor.
+  const fromStart = planRunOutcome({ ...PLAN, firstFailureIndex: 0, incomingCursor: null });
+  assertEquals(fromStart.nextCursor, null);
+  assertEquals(fromStart.repeating, true);
+  assertEquals(shouldContinue({ deferred: fromStart.deferred, processed: 4, depth: 0 }), true);
 });
 
-Deno.test("plan: the retry is bounded — a second hop on the same cursor moves PAST the failure", () => {
-  // Without this the chain would hand itself the identical cursor and spin to the hop cap on one
-  // persistently failing recipient. One retry, then the run reports it as failed and moves on.
-  const first = planRunOutcome({ ...PLAN, processed: 4, firstFailureIndex: 1, incomingCursor: null });
-  assertEquals(first.nextCursor, "a");
-  const second = planRunOutcome({ ...PLAN, processed: 4, firstFailureIndex: 1, incomingCursor: "a" });
-  assertEquals(second.nextCursor, "d", "no forward progress → advance past the failure");
-  assertEquals(second.incomplete, true, "...and still report the run as incomplete");
+Deno.test("plan: the retry is bounded — a hop that is ALREADY the retry moves past the failure", () => {
+  // Without this the chain would re-cover the identical range until the hop cap on one
+  // persistently failing recipient. `retrying` is set by the hop that scheduled the repeat, so
+  // exactly one retry is spent and the run then reports the recipient as failed and moves on.
+  const retry = planRunOutcome({
+    ...PLAN, processed: 4, firstFailureIndex: 0, incomingCursor: "a", retrying: true,
+  });
+  assertEquals(retry.nextCursor, "e", "forward progress instead of a third pass");
+  assertEquals(retry.repeating, false);
+  assertEquals(retry.incomplete, true, "...and the run is still reported incomplete");
+});
+
+Deno.test("plan: `retrying` only matters when NOTHING completed — real progress always advances", () => {
+  const out = planRunOutcome({ ...PLAN, processed: 4, firstFailureIndex: 2, retrying: true });
+  assertEquals(out.nextCursor, "c", "two recipients completed, so the cursor advances normally");
+  assertEquals(out.repeating, false);
 });
 
 Deno.test("plan: an UNREADABLE remaining count keeps the run incomplete", () => {
@@ -666,18 +698,41 @@ Deno.test("MUTANT: treating an unreadable count as zero reports a clean run over
 
 Deno.test("MUTANT: advancing past a failure loses that follower for good", () => {
   const mutant = (ids: string[], processed: number) => ids[processed - 1];
-  assertEquals(mutant(PLAN.recipientIds, 4), "d", "the mutant resumes after the whole chunk...");
-  assertEquals(planRunOutcome({ ...PLAN, firstFailureIndex: 1 }).nextCursor, "a");
+  assertEquals(mutant(PLAN.recipientIds, 4), "e", "the mutant resumes after the whole chunk...");
+  assertEquals(planRunOutcome({ ...PLAN, firstFailureIndex: 1 }).nextCursor, "b");
+});
+
+Deno.test("MUTANT: requiring a non-null cursor to continue abandons the tail on a first-position failure", () => {
+  const plan = planRunOutcome({ ...PLAN, firstFailureIndex: 0, incomingCursor: null });
+  const mutant = (nextCursor: string | null) => !!nextCursor;    // the old precondition
+  assertEquals(mutant(plan.nextCursor), false, "the mutant refuses to chain...");
+  assertEquals(shouldContinue({ deferred: plan.deferred, processed: 4, depth: 0 }), true);
 });
 
 Deno.test("continuation is taken when the tail size is unknown", () => {
   assertEquals(
-    shouldContinue({ deferred: 0, processed: 10, nextCursor: "p", depth: 0, beyondUnknown: true }),
+    shouldContinue({ deferred: 0, processed: 10, depth: 0, beyondUnknown: true }),
     true,
     "not knowing how big the tail is, is not a reason to abandon it",
   );
+  assertEquals(shouldContinue({ deferred: 0, processed: 10, depth: 0, beyondUnknown: false }), false);
+});
+
+Deno.test("plan: an unknown tail combined with a failure is still incomplete and still chains", () => {
+  const out = planRunOutcome({ ...PLAN, firstFailureIndex: 0, beyondUnknown: true, incomingCursor: "a" });
+  assertEquals(out.incomplete, true);
+  assertEquals(out.repeating, true);
   assertEquals(
-    shouldContinue({ deferred: 0, processed: 10, nextCursor: "p", depth: 0, beyondUnknown: false }),
-    false,
+    shouldContinue({ deferred: out.deferred, processed: 4, depth: 3, beyondUnknown: true }),
+    true,
   );
+});
+
+Deno.test("plan: an EMPTY recipient list never claims to be repeating", () => {
+  const out = planRunOutcome({
+    ...PLAN, recipientIds: [], processed: 0, lastDiscovered: "z", incomingCursor: "y",
+  });
+  assertEquals(out.repeating, false);
+  assertEquals(out.nextCursor, "z");
+  assertEquals(shouldContinue({ deferred: out.deferred, processed: 0, depth: 0 }), false);
 });

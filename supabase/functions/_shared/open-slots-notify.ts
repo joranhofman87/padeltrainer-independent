@@ -283,7 +283,16 @@ export function legacyDedupKey(
  * every invocation, and these two fields only say WHERE to carry on and HOW MANY hops have been
  * taken, so a forged value can at worst skip a caller's own followers or stop the chain early.
  */
-export type ResumeState = { afterPlayerId: string | null; depth: number };
+export type ResumeState = {
+  afterPlayerId: string | null;
+  depth: number;
+  /**
+   * True when the previous hop is REPEATING its own range because its first recipient failed.
+   * It is what bounds the retry to one attempt: a hop that is already a retry and fails the same
+   * way advances past the recipient instead of handing itself the same range again.
+   */
+  retrying: boolean;
+};
 
 export const MAX_CONTINUATION_DEPTH = 20;
 
@@ -294,7 +303,7 @@ export function parseResumeState(raw: unknown): ResumeState {
   const depth = typeof rawDepth === "number" && Number.isInteger(rawDepth) && rawDepth > 0
     ? Math.min(rawDepth, MAX_CONTINUATION_DEPTH)
     : 0;
-  return { afterPlayerId: after, depth };
+  return { afterPlayerId: after, depth, retrying: b.resume_retry === true };
 }
 
 /**
@@ -397,23 +406,28 @@ export function tally(counts: NotifyCounts, outcome: EnqueueOutcome): void {
 // ===========================================================================
 
 /**
- * Where the next hop must carry on from.
+ * Where the next hop must carry on from. The cursor is EXCLUSIVE — discovery resumes at
+ * `player_id > cursor` — and `null` legitimately means "from the beginning", not "nowhere".
  *
- * When the run stopped partway through the recipients it discovered, the cursor is the LAST
- * recipient it actually completed. When it completed all of them and only undiscovered
- * followers remain, it is the last follower id discovery read — which can be past the final
- * recipient, because followers without an account are discovered and then dropped.
- *
- * Returning null means "nothing to carry on from", and the caller must then not chain: a hop
- * that re-sent the same cursor would spin without progress.
+ *  * completed some but not all discovered recipients → the last one completed;
+ *  * completed NONE of them → the cursor this hop was itself handed, which re-covers exactly
+ *    the same range. That is the only way to retry a recipient that failed in first position:
+ *    because the query is `> cursor`, no cursor exists strictly between it and its predecessor.
+ *    (Returning null here instead was a real defect: on a resumed hop the incoming cursor is by
+ *    construction absent from `recipientIds`, so a first-position failure produced a null cursor,
+ *    the chain declined to continue, and an arbitrarily large tail was abandoned.)
+ *  * completed all of them → the last follower id DISCOVERY read, which can be past the final
+ *    recipient because followers without an account are discovered and then dropped.
  */
 export function resumeCursorAfter(
   recipientIds: string[],
   completed: number,
   lastDiscovered: string | null,
+  incomingCursor: string | null,
 ): string | null {
-  if (completed < recipientIds.length) return recipientIds[completed - 1] ?? null;
-  return lastDiscovered;
+  if (completed >= recipientIds.length) return lastDiscovered;
+  if (completed === 0) return incomingCursor;
+  return recipientIds[completed - 1];
 }
 
 /**
@@ -428,14 +442,20 @@ export function resumeCursorAfter(
  *    non-2xx (every pre-cutover bundle does) lost that follower silently. So completion stops at
  *    the first failure, and everything from there on is owed.
  *
- *  * **...but a failure may not stall the chain.** If bounding completion produces the SAME
- *    cursor the hop was handed, the hop made no forward progress and repeating it would spin
- *    until the hop cap. That is one retry per failing recipient — enough for a transient RPC
- *    error, and then the run moves past it and reports it as `failed` rather than looping.
+ *  * **...but a failure may not stall the chain.** When the FIRST recipient of a hop fails,
+ *    nothing was completed and the next hop can only re-cover the identical range. That is the
+ *    retry — worth exactly one attempt for a transient RPC error. `retrying` says the hop it is
+ *    planning for is ALREADY that retry, in which case the run advances past the recipient and
+ *    reports it as `failed` rather than handing itself the same range until the hop cap.
+ *    (Comparing the computed cursor to the incoming one cannot express this: discovery resumes
+ *    at `player_id > cursor`, so the incoming cursor is never among `recipientIds`.)
  *
  * `beyondDiscovery` is followers discovery never reached. `beyondUnknown` says the count of
  * those could not be READ: the run is then incomplete by construction, because reporting a
  * clean total from a failed count is exactly the fail-open that hides a tail.
+ *
+ * `repeating` tells the caller the continuation re-covers this hop's own range, so it must mark
+ * that hop as the retry.
  */
 export function planRunOutcome(args: {
   recipientIds: string[];
@@ -445,25 +465,30 @@ export function planRunOutcome(args: {
   beyondUnknown: boolean;
   lastDiscovered: string | null;
   incomingCursor: string | null;
-}): { deferred: number; nextCursor: string | null; incomplete: boolean } {
+  retrying: boolean;
+}): { deferred: number; nextCursor: string | null; incomplete: boolean; repeating: boolean } {
   const total = args.recipientIds.length;
   const processed = Math.min(Math.max(args.processed, 0), total);
   const bounded = args.firstFailureIndex >= 0
     ? Math.min(processed, args.firstFailureIndex)
     : processed;
 
-  let completed = bounded;
-  let nextCursor = resumeCursorAfter(args.recipientIds, completed, args.lastDiscovered);
-  if (nextCursor !== null && nextCursor === args.incomingCursor) {
-    // No forward progress — the failing recipient has already had its retry.
-    completed = processed;
-    nextCursor = resumeCursorAfter(args.recipientIds, completed, args.lastDiscovered);
-  }
+  // Nothing completed AND there was something to complete → the continuation would re-cover this
+  // hop's own range. Allowed exactly once.
+  const completed = bounded === 0 && total > 0 && args.retrying ? processed : bounded;
+  const repeating = completed === 0 && total > 0;
+  const nextCursor = resumeCursorAfter(
+    args.recipientIds,
+    completed,
+    args.lastDiscovered,
+    args.incomingCursor,
+  );
 
   const deferred = Math.max(total - completed, 0) + Math.max(args.beyondDiscovery, 0);
   return {
     deferred,
     nextCursor,
+    repeating,
     incomplete: deferred > 0 || args.beyondUnknown || args.firstFailureIndex >= 0,
   };
 }
@@ -473,23 +498,26 @@ export function planRunOutcome(args: {
  *
  * The tail cannot be left to the CALLER. A pre-cutover bundle ignores a non-2xx response
  * entirely, and nothing re-invokes this route on a schedule, so work only the client could
- * resume was simply lost. Chaining is allowed only when it is guaranteed to make progress —
- * at least one chunk handled, and a cursor to move past — and only within the hop bound, so a
- * pathological run cannot spawn an unbounded sequence of invocations. An unreadable remaining
- * count also chains: not knowing the size of the tail is not a reason to abandon it.
+ * resume was simply lost. Chaining is allowed only when the hop actually did something (at least
+ * one chunk handled) and only within the hop bound, so a pathological run cannot spawn an
+ * unbounded sequence of invocations. An unreadable remaining count also chains: not knowing the
+ * size of the tail is not a reason to abandon it.
+ *
+ * The cursor is deliberately NOT a precondition. `null` means "resume from the beginning", which
+ * is exactly what a first-position failure on the first hop must do; requiring a non-null cursor
+ * is what abandoned that tail. Progress is guaranteed by planRunOutcome instead: a hop either
+ * advances its cursor, or repeats its range once and is then forced past the failure.
  */
 export function shouldContinue(
   args: {
     deferred: number;
     processed: number;
-    nextCursor: string | null;
     depth: number;
     beyondUnknown?: boolean;
   },
 ): boolean {
   return (args.deferred > 0 || args.beyondUnknown === true)
     && args.processed > 0
-    && !!args.nextCursor
     && args.depth < MAX_CONTINUATION_DEPTH;
 }
 

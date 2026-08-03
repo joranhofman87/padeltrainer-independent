@@ -209,6 +209,9 @@ const handler = async (req: Request): Promise<Response> => {
     // may claim to have completed, so the continuation cursor cannot step over someone nobody
     // notified.
     let firstFailureIndex = -1;
+    // Recipients whose rollback marker could not be written. Not a delivery failure — the enqueue
+    // stands — but an operator needs to know the rollback guarantee is weaker for them.
+    let legacyMarkerFailures = 0;
 
     for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
       // The FIRST chunk always runs. A hop that enqueued nobody would hand the same cursor to
@@ -283,9 +286,15 @@ const handler = async (req: Request): Promise<Response> => {
             onConflict: "dedup_key",
             ignoreDuplicates: true,
           });
-        // Best-effort: the enqueue already happened and is itself idempotent, so a failed marker
-        // only weakens rollback protection. It must not turn a successful enqueue into a failure.
-        if (markError) console.error("Legacy dedup marker write failed:", markError.message);
+        // Best-effort, and NOT silent. The enqueue already happened and is itself idempotent, so
+        // a failed marker must not turn a successful enqueue into a failure — but it does weaken
+        // the rollback protection for those recipients, so it is counted and reported rather
+        // than only logged. Rollback protection is best-effort by construction anyway: the marker
+        // is a second statement, not part of the enqueue transaction.
+        if (markError) {
+          console.error("Legacy dedup marker write failed:", markError.message);
+          legacyMarkerFailures += handledKeys.length;
+        }
       }
 
       processed = Math.min(i + CHUNK_SIZE, recipients.length);
@@ -325,6 +334,7 @@ const handler = async (req: Request): Promise<Response> => {
       beyondUnknown,
       lastDiscovered,
       incomingCursor: resumeState.afterPlayerId,
+      retrying: resumeState.retrying,
     });
     const nextCursor = plan.nextCursor;
     counts.deferred = plan.deferred;
@@ -346,16 +356,17 @@ const handler = async (req: Request): Promise<Response> => {
     // TERMINATION: each hop processes at least one chunk and the cursor is strictly increasing,
     // so `deferred` shrinks monotonically; MAX_CONTINUATION_DEPTH bounds it regardless.
     let continued = false;
-    if (shouldContinue({
-      deferred: counts.deferred, processed, nextCursor, depth: resumeState.depth, beyondUnknown,
-    })) {
+    if (shouldContinue({ deferred: counts.deferred, processed, depth: resumeState.depth, beyondUnknown })) {
       const chain = fetch(`${supabaseUrl}/functions/v1/notify-followers`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: authHeader },
         body: JSON.stringify({
           ...(rawBody as Record<string, unknown>),
-          resume_after_player_id: nextCursor,
+          // A null cursor is meaningful — "resume from the beginning" — so it is sent as an
+          // explicit absence rather than a bogus id, and the retry marker rides alongside it.
+          ...(nextCursor ? { resume_after_player_id: nextCursor } : { resume_after_player_id: null }),
           continuation_depth: resumeState.depth + 1,
+          resume_retry: plan.repeating,
         }),
       })
         .then((r) => { if (!r.ok) console.error("notify-followers self-reinvoke returned", r.status); })
@@ -369,7 +380,8 @@ const handler = async (req: Request): Promise<Response> => {
     console.log(
       `open_slots_player ${notify.subtype} (hop ${resumeState.depth}): enqueued=${counts.enqueued} ` +
       `skipped=${counts.skipped} no_row=${counts.no_row} failed=${counts.failed} ` +
-      `deferred=${counts.deferred}${beyondUnknown ? "+unknown" : ""} continued=${continued}`,
+      `deferred=${counts.deferred}${beyondUnknown ? "+unknown" : ""} ` +
+      `markerFailures=${legacyMarkerFailures} continued=${continued}`,
     );
     if (errors.length > 0) console.error("Enqueue errors:", errors);
 
@@ -390,6 +402,7 @@ const handler = async (req: Request): Promise<Response> => {
       continued,
       ...counts,
       ...(beyondUnknown ? { deferred_unknown: true } : {}),
+      ...(legacyMarkerFailures > 0 ? { legacy_marker_failed: legacyMarkerFailures } : {}),
       errors: errors.length > 0 ? errors : undefined,
     }, incomplete ? 500 : 200);
   } catch (error: unknown) {
