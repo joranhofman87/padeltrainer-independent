@@ -51,43 +51,52 @@ const migrationFiles = () => readdirSync(MIGRATIONS).filter((n) => n.endsWith('.
  */
 export function blankComments(sql: string): string {
   const out = sql.split('');
-  let i = 0;
   const blank = (from: number, to: number) => {
     for (let k = from; k < to && k < out.length; k++) if (out[k] !== '\n') out[k] = ' ';
   };
-  while (i < sql.length) {
-    if (sql[i] === '$') {
-      const tag = sql.slice(i).match(/^\$[A-Za-z_]*\$/);
-      if (tag) {
-        const e = sql.indexOf(tag[0], i + tag[0].length);
-        i = e < 0 ? sql.length : e + tag[0].length;
+  // A dollar block is either EXECUTABLE (a routine body: `DO $do$`, `AS $$`, `AS $function$`) or
+  // DATA (the `$cmd$…$cmd$` command handed to cron.schedule). Comments must be blanked inside the
+  // first and left completely alone inside the second — and getting this wrong in either direction
+  // is a real defect. Skipping ALL dollar blocks meant comments were never blanked anywhere that
+  // mattered, because essentially every cron call in this repo sits inside a `DO $do$` body.
+  const isRoutineBody = (at: number) => /\b(DO|AS)\s*$/i.test(sql.slice(Math.max(0, at - 40), at));
+  const scan = (from: number, to: number) => {
+    let i = from;
+    while (i < to) {
+      if (sql[i] === '$') {
+        const tag = sql.slice(i, to).match(/^\$[A-Za-z_]*\$/);
+        if (tag) {
+          const close = sql.indexOf(tag[0], i + tag[0].length);
+          const end = close < 0 ? to : close;
+          if (isRoutineBody(i)) scan(i + tag[0].length, end);   // executable: look inside
+          i = close < 0 ? to : close + tag[0].length;           // data: skip entirely
+          continue;
+        }
+      }
+      if (sql[i] === "'") {
+        i++;
+        while (i < to) {
+          if (sql[i] === "'" && sql[i + 1] === "'") { i += 2; continue; }
+          if (sql[i] === "'") { i++; break; }
+          if (sql[i] === '\\') { i += 2; continue; }
+          i++;
+        }
         continue;
       }
-    }
-    if (sql[i] === "'") {
-      i++;
-      while (i < sql.length) {
-        if (sql[i] === "'" && sql[i + 1] === "'") { i += 2; continue; }
-        if (sql[i] === "'") { i++; break; }
-        if (sql[i] === '\\') { i += 2; continue; }
-        i++;
+      if (sql[i] === '-' && sql[i + 1] === '-') {
+        const e = sql.indexOf('\n', i);
+        const stop = e < 0 || e > to ? to : e;
+        blank(i, stop); i = stop; continue;
       }
-      continue;
+      if (sql[i] === '/' && sql[i + 1] === '*') {
+        const e = sql.indexOf('*/', i + 2);
+        const stop = e < 0 || e + 2 > to ? to : e + 2;
+        blank(i, stop); i = stop; continue;
+      }
+      i++;
     }
-    if (sql[i] === '-' && sql[i + 1] === '-') {
-      const e = sql.indexOf('\n', i);
-      blank(i, e < 0 ? sql.length : e);
-      i = e < 0 ? sql.length : e;
-      continue;
-    }
-    if (sql[i] === '/' && sql[i + 1] === '*') {
-      const e = sql.indexOf('*/', i + 2);
-      blank(i, e < 0 ? sql.length : e + 2);
-      i = e < 0 ? sql.length : e + 2;
-      continue;
-    }
-    i++;
-  }
+  };
+  scan(0, sql.length);
   return out.join('');
 }
 
@@ -205,12 +214,24 @@ export function nearestAssignment(sql: string, ident: string, callAt: number): s
 type Call = { file: string; name: string; outbound: 'yes' | 'no'; raw: string };
 
 /**
- * Classify a command EXPRESSION as outbound, definitively or not at all.
+ * Classify a command EXPRESSION as outbound — but only from a form whose text can be PROVEN.
  *
- * A whole literal is definite in both directions. Anything else — `format('…', x)`, a
- * concatenation — is only definite when a literal part already contains an outbound call: an
- * evaluated expression can only ADD to what its literals show, never remove it. If the literal
- * parts show nothing, `no` would be a guess, so it returns null and the caller fails loudly.
+ * THE RULE THIS REPLACED WAS WRONG, and it is worth saying so here rather than letting anyone
+ * re-derive it. It claimed "an evaluated expression can only ADD to what its literals show, never
+ * remove it, so a marker anywhere in the literals means yes". Both halves are false:
+ *   - `replace('… net.http_post …', 'http_post', 'noop')` REMOVES the marker and never reaches
+ *     the network, yet reads as outbound;
+ *   - `CASE WHEN … THEN 'net.ht' ELSE 'tp_post()' END` has mutually exclusive branches, and
+ *     reading their literals together MANUFACTURES a marker no branch produces.
+ * A wrong `yes` is not harmless either: it makes a correct `no` entry fail the register.
+ *
+ * So only three provable forms are accepted:
+ *   - a whole literal                       → definite, both ways
+ *   - a pure `||` concatenation of literals → definite, both ways (evaluated in order)
+ *   - `format(<literal template>, …)`, and only when the call IS the whole expression → `yes` if
+ *     the TEMPLATE carries the marker, since format always emits its template text; its absence
+ *     stays UNKNOWN, because an argument could supply one
+ * Everything else is UNKNOWN and fails loudly rather than being inferred.
  */
 export function classifyCommand(expr: string): 'yes' | 'no' | null {
   const whole = unquote(expr);
@@ -473,17 +494,41 @@ describe('H — the cron parser cannot be fooled the ways it was', () => {
     // Exercises scanMigration — the function the suite actually runs over the migrations — rather
     // than blankComments in isolation. Testing only the helper left the INTEGRATION unpinned:
     // removing the blanking from the scan passed every test.
+    // WRAPPED IN A `DO $do$` BODY, because that is where every cron call in this repo actually
+    // lives. A bare-SQL fixture passed even when the blanker skipped dollar blocks wholesale —
+    // i.e. when it did nothing at all in the only place that matters.
     const raw = [
+      'DO $do$',
+      'BEGIN',
       "  cron_command := 'SELECT net.http_post(url := ''x'');';",
       "  -- cron_command := 'SELECT public.local_only();';",
       "  PERFORM cron.schedule('live-one', '* * * * *', cron_command);",
       "  -- PERFORM cron.schedule('ghost-job', '* * * * *', $c$SELECT 1;$c$);",
+      'END $do$;',
       '',
     ].join('\n');
     const r = scanMigration('synthetic.sql', raw);
     expect(r.unresolved).toEqual([]);
     expect(r.schedules.map((s) => s.name)).toEqual(['live-one']);   // the commented call is not a job
     expect(r.schedules[0].outbound).toBe('yes');                    // ...from the LIVE assignment
+  });
+
+  it('leaves a COMMAND LITERAL inside a routine body untouched', () => {
+    // The other half of the same rule: `$cmd$…$cmd$` handed to cron.schedule is DATA. Blanking
+    // inside it would corrupt the very text being classified — and it legitimately contains `--`.
+    const raw = [
+      'DO $do$',
+      'BEGIN',
+      "  PERFORM cron.schedule('j', '* * * * *', $cmd$",
+      "    SELECT net.http_post(url := 'u');  -- a comment INSIDE the command",
+      '  $cmd$);',
+      'END $do$;',
+      '',
+    ].join('\n');
+    expect(blankComments(raw)).toContain('-- a comment INSIDE the command');
+    const r = scanMigration('synthetic.sql', raw);
+    expect(r.unresolved).toEqual([]);
+    expect(r.schedules.map((x) => [x.name, x.outbound])).toEqual([['j', 'yes']]);
   });
 
   it('blanks comments WITHOUT touching a command body that contains them', () => {
