@@ -582,6 +582,7 @@ const PLAN = {
   discoveredIds: ["b", "c", "d", "e"],
   processedDiscovered: 4,
   freshFailureIds: [] as string[],
+  unprocessedRetryIds: [] as string[],
   anyFailure: false,
   beyondDiscovery: 0,
   beyondUnknown: false,
@@ -720,4 +721,26 @@ Deno.test("MUTANT: an uncapped retry set lets a forged body drive an unbounded p
     `1111111${(i % 10)}-1111-4111-8111-${String(i).padStart(12, "0")}`);
   assertEquals(many.length > MAX_RETRY_CARRY, true, "the mutant would fetch all of them...");
   assertEquals(parseResumeState({ resume_retry_player_ids: many }).retryPlayerIds.length, MAX_RETRY_CARRY);
+});
+
+Deno.test("plan: a retry the hop never REACHED is carried on, not spent", () => {
+  // The retry prefix is processed first, so a wall-clock budget that runs out inside it leaves
+  // recipients that have had no second attempt at all. Carrying only fresh failures would drop
+  // them: their retry would be recorded as spent when it never happened.
+  const out = planRunOutcome({
+    ...PLAN, processedDiscovered: 0, incomingCursor: "a",
+    unprocessedRetryIds: ["r1", "r2"], freshFailureIds: ["c"], anyFailure: true,
+  });
+  assertEquals(out.retryIds, ["r1", "r2", "c"], "un-attempted first — they have waited longest");
+  assertEquals(out.deferred, 4 + 3, "the whole un-processed range plus everyone owed a retry");
+});
+
+Deno.test("MUTANT: dropping un-reached retries spends an attempt that never happened", () => {
+  const mutant = (fresh: string[]) => fresh;
+  assertEquals(mutant(["c"]), ["c"], "the mutant carries only the fresh failure...");
+  assertEquals(
+    planRunOutcome({ ...PLAN, unprocessedRetryIds: ["r1"], freshFailureIds: ["c"], anyFailure: true })
+      .retryIds,
+    ["r1", "c"],
+  );
 });

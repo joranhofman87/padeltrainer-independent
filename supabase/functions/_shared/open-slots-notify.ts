@@ -302,8 +302,14 @@ export type ResumeState = {
 
 export const MAX_CONTINUATION_DEPTH = 20;
 
-/** How many failed recipients one hop may hand to the next. Excess is reported, never hidden. */
-export const MAX_RETRY_CARRY = 200;
+/**
+ * How many failed recipients one hop may hand to the next. Excess is reported, never hidden.
+ *
+ * Kept small deliberately: the retry set is processed BEFORE discovery, so a large one would eat
+ * a hop's wall clock and starve the tail it is supposed to leave room for. At 50 the prefix is
+ * five chunks, a small fraction of what a hop gets through.
+ */
+export const MAX_RETRY_CARRY = 50;
 
 export function parseResumeState(raw: unknown): ResumeState {
   const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -449,7 +455,9 @@ export function resumeCursorAfter(
  * Only FRESH failures are carried: a recipient that arrived in this hop's retry set and failed
  * again is not handed on. That bounds every recipient to two attempts regardless of where in the
  * run it sat, binds the retry to an identity rather than to a position (so an unfollow between
- * hops cannot spend someone else's attempt), and guarantees the set shrinks to empty.
+ * hops cannot spend someone else's attempt), and guarantees the set shrinks to empty. A retry the
+ * hop never REACHED is different from one that failed — it has not had its attempt yet, so it is
+ * carried on rather than quietly discarded.
  *
  * `beyondDiscovery` is followers discovery never reached. `beyondUnknown` says the count of those
  * could not be READ: the run is then incomplete by construction, because reporting a clean total
@@ -462,6 +470,12 @@ export function planRunOutcome(args: {
   processedDiscovered: number;
   /** Ids this hop failed to enqueue that were NOT already retries. */
   freshFailureIds: string[];
+  /**
+   * Retry ids this hop never got to, because its wall-clock budget ran out inside the retry
+   * prefix. They are still owed their second attempt, so they are carried on — dropping them
+   * would silently spend an attempt that never happened.
+   */
+  unprocessedRetryIds: string[];
   /** True when any recipient at all failed, retries included. */
   anyFailure: boolean;
   beyondDiscovery: number;
@@ -477,7 +491,8 @@ export function planRunOutcome(args: {
 } {
   const total = args.discoveredIds.length;
   const processed = Math.min(Math.max(args.processedDiscovered, 0), total);
-  const unique = [...new Set(args.freshFailureIds)];
+  // Un-attempted retries come first: they have been owed the longest.
+  const unique = [...new Set([...args.unprocessedRetryIds, ...args.freshFailureIds])];
   const retryIds = unique.slice(0, MAX_RETRY_CARRY);
   const droppedRetries = unique.length - retryIds.length;
 

@@ -361,6 +361,8 @@ const handler = async (req: Request): Promise<Response> => {
       // The retry prefix is not part of the cursor's world; only what came from discovery is.
       processedDiscovered: Math.max(processed - retrying.length, 0),
       freshFailureIds,
+      // A retry the budget never reached has not had its attempt; it is owed, not spent.
+      unprocessedRetryIds: retrying.slice(Math.min(processed, retrying.length)).map((r) => r.id),
       anyFailure,
       beyondDiscovery,
       beyondUnknown,
