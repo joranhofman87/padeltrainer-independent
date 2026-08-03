@@ -796,11 +796,12 @@ sending a request shape the new handler must interpret rather than trust.
    deploy is precisely what kills an in-flight invocation. There is no send ledger to corroborate
    against (`send-email` records nothing durable for these types; only `notification_queue`, for
    daily/weekly). Honouring an unconfirmed claim would drop a follower AND report the run
-   successful, which is the failure class this slice exists to remove. The residual is therefore
-   one-directional and bounded — an old-handler send followed by a retry of the SAME batch that
-   lands on the new handler notifies twice — and it is closed by the deploy order above. A
-   duplicate is the failure we carry; a silent miss is not. The recording half is transition-only
-   and is removed with the rest of the compatibility branch.
+   successful, which is the failure class this slice exists to remove. The residual is therefore a
+   DUPLICATE in either direction — an old-handler send followed by a retry of the same batch that
+   lands on the new handler, or (when the marker write did not land) a v2 enqueue followed by a
+   rollback — bounded in both cases by the deploy order above. A duplicate is the failure we
+   carry; a silent miss is not. The recording half is transition-only and is removed with the rest
+   of the compatibility branch.
 2. **The legacy display range is ambiguous for multi-year batches (closed operationally).** The
    pre-cutover format printed the year only on the right: `Jan 1 - Jan 2, 2027` is what BOTH
    2027-01-01..2027-01-02 and 2026-01-01..2027-01-02 print, and the bulk-slot form can produce

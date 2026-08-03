@@ -205,10 +205,11 @@ const handler = async (req: Request): Promise<Response> => {
     // idempotency key makes an already-enqueued recipient a no-op rather than a duplicate.
     const CHUNK_SIZE = 10;
     let processed = 0;
-    // The index of the first recipient this run failed to enqueue, or -1. It bounds what the run
-    // may claim to have completed, so the continuation cursor cannot step over someone nobody
-    // notified.
-    let firstFailureIndex = -1;
+    // Every recipient this run failed to enqueue, by index. They bound what the run may claim to
+    // have completed, so the continuation cursor cannot step over someone nobody notified — and
+    // keeping ALL of them (not just the first) is what stops a retry hop from stepping over a
+    // second recipient that failed for the first time.
+    const failureIndices: number[] = [];
     // Recipients whose rollback marker could not be written. Not a delivery failure — the enqueue
     // stands — but an operator needs to know the rollback guarantee is weaker for them.
     let legacyMarkerFailures = 0;
@@ -272,9 +273,9 @@ const handler = async (req: Request): Promise<Response> => {
         const r = results[k];
         tally(counts, r.outcome);
         if (r.err) errors.push(r.err);
-        // The FIRST failure bounds what this run may claim to have completed: the continuation
-        // cursor must not advance past a recipient nobody notified.
-        if (r.outcome === "failed" && firstFailureIndex < 0) firstFailureIndex = i + k;
+        // A failure bounds what this run may claim to have completed: the continuation cursor
+        // must not advance past a recipient nobody notified.
+        if (r.outcome === "failed") failureIndices.push(i + k);
       }
       // Record what v2 has taken ownership of. A `failed` recipient is never recorded — nobody
       // notified it, and claiming the key would suppress the retry meant to reach it.
@@ -329,7 +330,7 @@ const handler = async (req: Request): Promise<Response> => {
     const plan = planRunOutcome({
       recipientIds: recipients.map((r) => r.id),
       processed,
-      firstFailureIndex,
+      failureIndices,
       beyondDiscovery,
       beyondUnknown,
       lastDiscovered,
@@ -394,7 +395,12 @@ const handler = async (req: Request): Promise<Response> => {
     //
     // `incomplete` comes from the plan, so an UNREADABLE remaining count keeps the run
     // incomplete instead of reporting a clean zero it cannot substantiate.
-    const incomplete = plan.incomplete || counts.failed > 0;
+    // A failed marker write also makes the run incomplete. Every recipient WAS enqueued, so this
+    // is not a delivery gap — but the rollback protection for them is missing, and the only way
+    // to restore it is another pass. Re-running is free of duplicates (the resolver's idempotency
+    // key collapses the enqueues), so the honest signal is worth more than a clean 200 that
+    // leaves the gap invisible. Status and body therefore agree, and the caller acts on it.
+    const incomplete = plan.incomplete || counts.failed > 0 || legacyMarkerFailures > 0;
     return json({
       message: `Enqueued ${counts.enqueued} follower notification(s)`,
       subtype: notify.subtype,

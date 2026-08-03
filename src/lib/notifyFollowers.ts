@@ -83,9 +83,11 @@ export function legacyDateRange(fromIso: string, toIso: string): string {
  * repeats the detail as `failed` / `deferred`.
  *
  * So completeness is judged from the BODY as well as the status, and every field either version
- * uses to express "not everyone was handled" is honoured. Unknown shapes are treated as complete
- * — the status code has already been checked by the caller, and inventing incompleteness would
- * retry runs that genuinely finished.
+ * uses to express "not everyone was handled" is honoured — including `legacy_marker_failed`,
+ * which means the enqueues landed but the cross-version rollback guard did not, and another pass
+ * is the only thing that can write it. Unknown shapes are treated as complete — the status code
+ * has already been checked by the caller, and inventing incompleteness would retry runs that
+ * genuinely finished.
  */
 export function runReportedIncomplete(data: unknown): boolean {
   if (!data || typeof data !== "object") return false;
@@ -95,6 +97,7 @@ export function runReportedIncomplete(data: unknown): boolean {
   if (positive(b.remaining)) return true;                              // pre-cutover handler
   if (positive(b.failed) || positive(b.deferred)) return true;         // cutover detail
   if (Array.isArray(b.errors) && b.errors.length > 0) return true;     // both versions
+  if (positive(b.legacy_marker_failed)) return true;                   // rollback guard not written
   if (typeof b.error === "string" && b.error.length > 0) return true;  // error body with a 200
   return false;
 }

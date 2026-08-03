@@ -445,10 +445,15 @@ export function resumeCursorAfter(
  *  * **...but a failure may not stall the chain.** When the FIRST recipient of a hop fails,
  *    nothing was completed and the next hop can only re-cover the identical range. That is the
  *    retry — worth exactly one attempt for a transient RPC error. `retrying` says the hop it is
- *    planning for is ALREADY that retry, in which case the run advances past the recipient and
+ *    planning for is ALREADY that retry, in which case the run steps over THAT recipient and
  *    reports it as `failed` rather than handing itself the same range until the hop cap.
  *    (Comparing the computed cursor to the incoming one cannot express this: discovery resumes
  *    at `player_id > cursor`, so the incoming cursor is never among `recipientIds`.)
+ *
+ *    It steps over exactly one recipient, not everything the hop touched. A retrying hop can get
+ *    much further than the one that scheduled it, so a SECOND recipient failing for the first
+ *    time is ordinary — and jumping to `processed` would carry the cursor past it, spending a
+ *    retry it never had.
  *
  * `beyondDiscovery` is followers discovery never reached. `beyondUnknown` says the count of
  * those could not be READ: the run is then incomplete by construction, because reporting a
@@ -460,7 +465,8 @@ export function resumeCursorAfter(
 export function planRunOutcome(args: {
   recipientIds: string[];
   processed: number;
-  firstFailureIndex: number;
+  /** Indices (into recipientIds) of every recipient this hop failed to enqueue, ascending. */
+  failureIndices: number[];
   beyondDiscovery: number;
   beyondUnknown: boolean;
   lastDiscovered: string | null;
@@ -469,13 +475,17 @@ export function planRunOutcome(args: {
 }): { deferred: number; nextCursor: string | null; incomplete: boolean; repeating: boolean } {
   const total = args.recipientIds.length;
   const processed = Math.min(Math.max(args.processed, 0), total);
-  const bounded = args.firstFailureIndex >= 0
-    ? Math.min(processed, args.firstFailureIndex)
-    : processed;
+  const failures = [...args.failureIndices].filter((n) => n >= 0).sort((a, b) => a - b);
 
-  // Nothing completed AND there was something to complete → the continuation would re-cover this
-  // hop's own range. Allowed exactly once.
-  const completed = bounded === 0 && total > 0 && args.retrying ? processed : bounded;
+  // A hop that is ALREADY the retry has spent the one attempt owed to the recipient it resumed
+  // at, so that recipient — and ONLY that recipient — is stepped over. Advancing all the way to
+  // `processed` instead would step over recipients that failed for the FIRST time later in the
+  // same hop, and they would never be retried at all: a hop can process much further than the
+  // one that scheduled it, so a second, unrelated failure is entirely normal here.
+  const spent = args.retrying && failures[0] === 0;
+  const remaining = spent ? failures.slice(1) : failures;
+  const bounded = remaining.length > 0 ? Math.min(processed, remaining[0]) : processed;
+  const completed = spent ? Math.max(bounded, Math.min(1, total)) : bounded;
   const repeating = completed === 0 && total > 0;
   const nextCursor = resumeCursorAfter(
     args.recipientIds,
@@ -489,7 +499,7 @@ export function planRunOutcome(args: {
     deferred,
     nextCursor,
     repeating,
-    incomplete: deferred > 0 || args.beyondUnknown || args.firstFailureIndex >= 0,
+    incomplete: deferred > 0 || args.beyondUnknown || failures.length > 0,
   };
 }
 

@@ -231,6 +231,19 @@ describe('deploy-overlap compatibility', () => {
     expect((await notifyFollowers(BODY, { client: inv.client })).complete).toBe(false);
   });
 
+  it('a failed rollback marker is retried — the enqueues landed, the guard did not', async () => {
+    // Every recipient was enqueued, so this is not a delivery gap; but the cross-version rollback
+    // guard is missing for them and only another pass can write it. Re-running is free of
+    // duplicates because the resolver de-duplicates the enqueues.
+    const inv = invoker([
+      { error: null, data: { incomplete: true, enqueued: 5, deferred: 0, failed: 0, legacy_marker_failed: 5 } },
+      { error: null, data: { incomplete: false, enqueued: 0, deferred: 0, failed: 0, no_row: 5 } },
+    ]);
+    expect(await notifyFollowers(BODY, { client: inv.client })).toEqual({ complete: true, attempts: 2 });
+    expect(runReportedIncomplete({ legacy_marker_failed: 1 })).toBe(true);
+    expect(runReportedIncomplete({ legacy_marker_failed: 0 })).toBe(false);
+  });
+
   it('a genuinely complete run of EITHER version is not retried', () => {
     // The judgement itself, exercised directly on both response shapes.
     expect(runReportedIncomplete({ message: 'Notified 10 followers', sent: 10, remaining: 0 })).toBe(false);
