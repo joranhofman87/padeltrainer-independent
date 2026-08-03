@@ -895,7 +895,7 @@ export function BulkCreateContent({
           // so a locale-formatted range like "Aug 10 - Aug 16, 2026" must never be the source
           // of truth — it is unparseable downstream and would change the event identity if the
           // format ever changed.
-          await supabase.functions.invoke("notify-followers", {
+          const notifyResult = await supabase.functions.invoke("notify-followers", {
             body: {
               slot_count: publicSlots.length,
               date_from: format(earliestStart, "yyyy-MM-dd"),
@@ -905,6 +905,17 @@ export function BulkCreateContent({
               Authorization: `Bearer ${session?.access_token}`,
             },
           });
+          // supabase-js turns a non-2xx into a RETURNED { error }, not a thrown exception, so
+          // the catch below never sees it. notify-followers answers 500 when a run was
+          // incomplete (failed or time-budget-deferred recipients) — without reading this the
+          // signal it went to the trouble of sending would be discarded and those followers
+          // would be silently lost.
+          if (notifyResult?.error) {
+            logger.warn("notify-followers reported an incomplete run", {
+              component: 'AddSlotDialog',
+              error: notifyResult.error.message,
+            });
+          }
         } catch {
           logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
         }
