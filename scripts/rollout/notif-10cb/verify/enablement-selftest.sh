@@ -161,12 +161,20 @@ for f in activation_preflight.sql rollback_verify.sql; do
 done
 
 # ── sourcing must not execute ────────────────────────────────────────────────
+# Uses `status`, which SUCCEEDS when run: with the guard, sourcing must refuse (non-zero, and no
+# psql at all); without it, sourcing would run the subcommand and log the artifact. Asserting only
+# "non-zero" was not a discriminator — a mutating subcommand exits non-zero on its own gates
+# whether or not the guard exists, so that version stayed green with the guard deleted.
+export PSQL_LOG="$TMP/log.source"; : > "$PSQL_LOG"
 set +e
-( EXPECTED_REF="$REF" bash -c 'set -- rollback --yes "$1"; source "$2"' _ "$URL" "$SCRIPT" >/dev/null 2>&1 )
+( EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" \
+  bash -c 'script="$2"; set -- status "$1"; source "$script"' _ "$URL" "$SCRIPT" >"$TMP/out" 2>&1 )
 src_rc=$?
 set -e
-[[ "$src_rc" != "0" ]] && ok "sourcing the dispatcher refuses instead of running it (rc=$src_rc)" \
-  || bad "sourcing the dispatcher refuses instead of running it"
+[[ "$src_rc" != "0" ]] && ok "sourcing refuses (rc=$src_rc) instead of running a subcommand that would have SUCCEEDED" \
+  || bad "sourcing refuses instead of running a subcommand that would have SUCCEEDED"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and sourcing reached no database at all" || { bad "...and sourcing reached no database at all"; cat "$PSQL_LOG"; }
+grep -qF 'must be EXECUTED, not sourced' "$TMP/out" && ok "...and says why" || bad "...and says why"
 
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
 [[ "$FAIL" == "0" ]]
