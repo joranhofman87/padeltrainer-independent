@@ -88,6 +88,8 @@ beforeEach(() => {
       whatsapp_optin_via_booking: true, default_email_frequency: 'daily' }),
     evt({ key: 'booking_request_staff', audience: 'academy_manager' }),
     evt({ key: 'review_received_trainer', audience: 'trainer', supports_digest: true }),
+    // the v2 event that REPLACED the legacy open_slots_digest column in 10c-b D
+    evt({ key: 'open_slots_player', supports_digest: true, default_email_frequency: 'weekly' }),
   ];
 });
 
@@ -180,10 +182,27 @@ describe('NotificationSettings v2', () => {
     // not just the "no v2 key" orphans: booking_confirmation / booking_reminder / payment_receipt
     // are still gated by live send-email paths (send-digest-emails, BookForPlayerDialog), so
     // dropping them would leave a live setting enforced but unreachable.
-    for (const k of ['booking_confirmation', 'booking_reminder', 'open_slots_digest',
+    for (const k of ['booking_confirmation', 'booking_reminder',
                      'upcoming_sessions_digest', 'payment_receipt', 'waitlist_update']) {
       expect(await screen.findByTestId(`pref-row-${k}`)).toBeInTheDocument();
     }
+  });
+
+  it('open_slots_digest is GONE from the v1 bridge — its cadence lives in v2 now', async () => {
+    // 10c-b D retired this control deliberately. notify-followers was the only live send-email
+    // path that consulted the column; it now calls enqueue_notification('open_slots_player'),
+    // whose cadence is notification_preferences_v2 — which slice C backfilled from this very
+    // column, preserving off/instant/daily/weekly exactly.
+    //
+    // The inverted assertion matters: leaving the legacy row visible would let a user edit a
+    // column NOTHING reads, silently diverging from the v2 preference that actually governs
+    // delivery. That is worse than removing it, which is why this is asserted rather than
+    // just deleted from the list above.
+    render(<NotificationSettings />);
+    await screen.findByTestId('pref-row-booking_confirmation');   // page has rendered
+    expect(screen.queryByTestId('pref-row-open_slots_digest')).not.toBeInTheDocument();
+    // and the v2 event that replaced it IS reachable
+    expect(await screen.findByTestId('pref-row-open_slots_player')).toBeInTheDocument();
   });
 
   it('keeps EVERY v1 staff preference reachable for staff', async () => {
@@ -195,14 +214,17 @@ describe('NotificationSettings v2', () => {
     }
   });
 
-  it('legacy fallbacks match the COLUMN DEFAULTs (open_slots_digest is weekly, not daily)', async () => {
+  it('legacy fallbacks match the COLUMN DEFAULTs (upcoming_sessions_digest is daily)', async () => {
     v1row = null; // no stored row → fall back to schema defaults
     render(<NotificationSettings />);
-    await screen.findByTestId('pref-row-open_slots_digest');
+    await screen.findByTestId('pref-row-upcoming_sessions_digest');
     // the i18n mock echoes the key, so assert the SELECTED frequency via the key suffix
     const freq = (testid: string) =>
       screen.getByTestId(testid).querySelector('[role="combobox"]')?.textContent?.split('.').pop();
-    expect(freq('pref-row-open_slots_digest')).toBe('weekly'); // NOT 'daily'
+    // open_slots_digest's weekly default is no longer asserted HERE — the column is off the
+    // bridge (see the test above). That default is now enforced where it matters: slice C's
+    // realpg suite proves the v1->v2 backfill preserves weekly, and that a user with no legacy
+    // row falls back to the catalog's weekly default for open_slots_player.
     expect(freq('pref-row-upcoming_sessions_digest')).toBe('daily');
     expect(freq('pref-row-booking_confirmation')).toBe('instant');
   });

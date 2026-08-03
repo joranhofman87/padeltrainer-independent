@@ -876,3 +876,76 @@ describe('C — §PS event stop policy for open slots', () => {
     expect(await stop()).toBe('preference_off');
   });
 });
+
+// ===========================================================================
+// 10c-b D — the notify-followers cutover's concurrency contract, proven against real Postgres.
+//
+// The route dropped its own `notification_sends` claim/release and now relies entirely on the
+// resolver's idempotency key (<event>:<subject>:<recipient>). That is only safe if a retried or
+// genuinely CONCURRENT invocation collapses to one logical row per follower — otherwise the
+// cutover traded a working dedup for a re-spam.
+describe('D — notify-followers dedup rests on the resolver idempotency key', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    await applyC();
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
+                   VALUES ($1,'open_slots_player','instant')
+                   ON CONFLICT (user_id,event_type) DO UPDATE SET email_frequency='instant'`, [USER]);
+  });
+
+  const SUBJECT = 'na:2026-08-10:2026-08-16';
+
+  it('a RETRY of the same event yields no second row, and returns nothing', async () => {
+    const first = await enqueue(SUBJECT, ITEM);
+    expect(first).toHaveLength(1);
+    const retry = await enqueue(SUBJECT, ITEM);
+    expect(retry).toHaveLength(0);          // classifyEnqueue -> already_existing, not failed
+    const { rows } = await c.query(`SELECT count(*)::int AS n FROM public.notification_outbox`);
+    expect(rows[0].n).toBe(1);
+  });
+
+  it('CONCURRENT invocations produce exactly ONE logical row', async () => {
+    // Eight parallel connections racing the same (event, subject, recipient), the way two
+    // overlapping edge invocations would.
+    const conns = await Promise.all(Array.from({ length: 8 }, async () => {
+      const cl = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+      await cl.connect();
+      return cl;
+    }));
+    try {
+      const results = await Promise.all(conns.map((cl) => cl.query(
+        `SELECT * FROM public.enqueue_notification(
+           p_event_key := 'open_slots_player', p_recipient_user_id := $1,
+           p_tenant_trainer_id := $2, p_idempotency_subject := $3, p_payload := $4::jsonb)`,
+        [USER, TRAINER, SUBJECT, JSON.stringify(ITEM)],
+      ).catch(() => ({ rows: [] }))));
+      const created = results.reduce((n, r) => n + r.rows.length, 0);
+      expect(created).toBe(1);              // exactly one invocation created the row
+    } finally {
+      await Promise.all(conns.map((cl) => cl.end()));
+    }
+    const { rows } = await c.query(`SELECT count(*)::int AS n FROM public.notification_outbox`);
+    expect(rows[0].n).toBe(1);
+  });
+
+  it('a DIFFERENT subject is a distinct event and does notify again', async () => {
+    await enqueue('na:2026-08-10:2026-08-16', ITEM);
+    await enqueue('na:2026-08-17:2026-08-23', ITEM);
+    const { rows } = await c.query(`SELECT count(*)::int AS n FROM public.notification_outbox`);
+    expect(rows[0].n).toBe(2);
+  });
+
+  it('no legacy/v2 dual route: the v2 row is the ONLY record of the event', async () => {
+    await enqueue(SUBJECT, ITEM);
+    // notification_sends is untouched by the new route (it is retired on its own boundary in
+    // 10c-d, not here) — so a row appearing in it would mean the legacy path still ran.
+    const { rows } = await c.query(`SELECT to_regclass('public.notification_sends') IS NOT NULL AS exists`);
+    if (rows[0].exists) {
+      const { rows: legacy } = await c.query(`SELECT count(*)::int AS n FROM public.notification_sends`);
+      expect(legacy[0].n).toBe(0);
+    }
+    const { rows: v2 } = await c.query(
+      `SELECT count(*)::int AS n FROM public.notification_outbox WHERE event_type='open_slots_player'`);
+    expect(v2[0].n).toBe(1);
+  });
+});

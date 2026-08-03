@@ -1,5 +1,38 @@
+// 10c-b D — open-slot follower alerts, CUT OVER to the v2 notification pipeline.
+//
+// This route used to POST send-email once per follower and dedup through its own
+// `notification_sends` table. It now calls enqueue_notification('open_slots_player', ...) once
+// per follower and lets the v2 resolver own preference, consent, suppression, contact
+// resolution and idempotency. The policy rules live in _shared/open-slots-notify.ts so the
+// suite exercises production code (this module ends in `serve(handler)` and cannot be imported).
+//
+// WHAT CHANGED THAT A READER MUST NOT MISS:
+//   * There is no "sent" count any more, and the response no longer claims one. This route
+//     ENQUEUES. Whether mail goes out is the worker's business, and while the digest engine is
+//     disabled a daily/weekly follower is deliberately recorded `skipped`/`digest_engine_disabled`
+//     rather than downgraded to an instant email.
+//   * Dedup is the resolver's idempotency key (`<event>:<subject>:<recipient>`), so a retry or
+//     two concurrent invocations collapse to ONE logical row per follower. The old
+//     notification_sends claim/release is GONE — running both would be a dual-write with two
+//     different notions of "already handled", and could produce a legacy send beside a v2 row.
+//   * The old per-follower filter read notification_preferences.email_new_availability — a
+//     column dropped in 20260210090026, whose error was discarded, so that filter had been
+//     silently inert. Preference is now enforced inside enqueue_notification against
+//     notification_preferences_v2, which slice C backfilled from the legacy open_slots_digest.
+//   * Dates arrive as validated ISO fields, never display text.
+//
+// Trainer identity is still taken from the authenticated user's trainer_profiles row and is
+// never read from the request body.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  classifyEnqueue,
+  digestPayload,
+  eventSubject,
+  newCounts,
+  parseNotifyRequest,
+  tally,
+} from "../_shared/open-slots-notify.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,18 +40,11 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface NotifyRequest {
-  slot_count: number;
-  date_range: string;
-  single_slot?: {
-    date: string;
-    time: string;
-  };
-  // BJ-08: the cancelled booking id, used as the per-event dedup anchor for a
-  // reopened slot so re-opens of a re-booked slot still notify (each cancellation
-  // is a distinct event). Optional — falls back to the slot date/time.
-  booking_id?: string;
-}
+const json = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", ...corsHeaders },
+  });
 
 const handler = async (req: Request): Promise<Response> => {
   if (req.method === "OPTIONS") {
@@ -28,35 +54,24 @@ const handler = async (req: Request): Promise<Response> => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    
-    // Verify authentication
+
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       console.error("No authorization header provided");
-      return new Response(
-        JSON.stringify({ error: "Authentication required" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return json({ error: "Authentication required" }, 401);
     }
 
-    // Create client to verify user token
     const supabaseAuth = createClient(supabaseUrl, supabaseServiceKey);
     const token = authHeader.replace("Bearer ", "");
-    
     const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
-    
     if (authError || !user) {
       console.error("Authentication failed:", authError?.message);
-      return new Response(
-        JSON.stringify({ error: "Unauthorized" }),
-        { status: 401, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return json({ error: "Unauthorized" }, 401);
     }
 
-    // Create service role client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get trainer profile from authenticated user - DO NOT trust trainer_id from request body
+    // Trainer identity comes from the AUTHENTICATED user, never from request data.
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
       .select("id, user_id, business_name")
@@ -65,207 +80,103 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (trainerError || !trainerProfile) {
       console.error("User is not a trainer:", trainerError?.message);
-      return new Response(
-        JSON.stringify({ error: "Only trainers can notify followers" }),
-        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return json({ error: "Only trainers can notify followers" }, 403);
     }
+    const trainerId = trainerProfile.id;
 
-    const trainer_id = trainerProfile.id;
-    const { slot_count, date_range, single_slot, booking_id }: NotifyRequest = await req.json();
-
-    if (!slot_count) {
-      return new Response(
-        JSON.stringify({ error: "Missing required field: slot_count" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+    const parsed = parseNotifyRequest(await req.json().catch(() => null));
+    if (!parsed.ok) {
+      return json({ error: parsed.error }, 400);
     }
+    const notify = parsed.req;
 
-    const isReopenedSlot = !!single_slot;
-
-    // Get trainer's name
+    // business_name takes precedence (matches the in-app trainer name resolver).
     const { data: profile } = await supabase
       .from("profiles")
       .select("full_name")
       .eq("user_id", trainerProfile.user_id)
       .single();
-
-    // business_name takes precedence (matches the in-app trainer name resolver).
     const trainerName = trainerProfile.business_name?.trim() || profile?.full_name || "Your trainer";
 
-    // Get followers who want notifications
+    // Followers who still want new-availability alerts. This flag is re-checked live before
+    // prepare and before every send attempt by the §PS event hook, so unfollowing between
+    // enqueue and delivery still stops the notification.
     const { data: followers } = await supabase
       .from("trainer_followers")
-      .select(`
-        player_id,
-        notify_new_availability
-      `)
-      .eq("trainer_id", trainer_id)
+      .select("player_id, notify_new_availability")
+      .eq("trainer_id", trainerId)
       .eq("notify_new_availability", true);
 
     if (!followers || followers.length === 0) {
-      return new Response(
-        JSON.stringify({ message: "No followers to notify", sent: 0 }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      return json({ message: "No followers to notify", ...newCounts() }, 200);
     }
 
-    // Get player info and their notification preferences
-    const playerIds = followers.map((f) => f.player_id);
-    
+    // enqueue_notification is user_id-keyed; trainer_followers.player_id is profiles.id.
     const { data: players } = await supabase
       .from("profiles")
-      .select("id, user_id, email, full_name")
-      .in("id", playerIds);
+      .select("id, user_id")
+      .in("id", followers.map((f) => f.player_id));
 
-    if (!players || players.length === 0) {
-      return new Response(
-        JSON.stringify({ message: "No players found", sent: 0 }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+    const recipients = (players ?? []).filter((p) => p.user_id);
+    if (recipients.length === 0) {
+      return json({ message: "No followers with an account", ...newCounts() }, 200);
     }
 
-    // Check global notification preferences
-    const userIds = players.map((p) => p.user_id);
-    const { data: preferences } = await supabase
-      .from("notification_preferences")
-      .select("user_id, email_new_availability")
-      .in("user_id", userIds);
-
-    const prefMap = new Map(preferences?.map((p) => [p.user_id, p.email_new_availability]) || []);
-
-    // Filter players who have global notifications enabled (or no preference set = default true)
-    const playersToNotify = players.filter((p) => {
-      const pref = prefMap.get(p.user_id);
-      return pref === undefined || pref === true;
-    });
-
-    if (playersToNotify.length === 0) {
-      return new Response(
-        JSON.stringify({ message: "All followers have disabled notifications", sent: 0 }),
-        { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    // Determine email type + a deterministic per-event dedup anchor (BJ-08).
-    // new_availability keys on the slot batch's date range; slot_reopened keys on
-    // the cancelled booking id (falls back to slot date/time). A re-trigger after
-    // an apparent timeout therefore re-uses the same keys and does NOT re-spam.
-    const emailType = isReopenedSlot ? "slot_reopened" : "new_availability";
-    const eventAnchor = isReopenedSlot
-      ? `sr:${booking_id ?? `${single_slot!.date}:${single_slot!.time}`}`
-      : `na:${date_range}`;
-    const dedupKeyFor = (playerId: string) => `${trainer_id}:${playerId}:${eventAnchor}`;
-
-    const recipients = playersToNotify.filter((p) => p.email);
-
-    let sentCount = 0;
-    let remaining = 0;
+    const subject = eventSubject(notify);
+    const payload = digestPayload(notify, trainerName);
+    const counts = newCounts();
     const errors: string[] = [];
 
-    // Bounded-concurrency batches with a per-chunk dedup claim and a wall-clock
-    // budget: a large follower set can't blow the edge timeout (serial → ~15x
-    // faster) and can't re-spam (claim-before-send). Un-processed chunks (budget
-    // hit) stay UN-claimed so a re-invoke continues them; a failed send releases
-    // its claim so it retries instead of being silently suppressed.
-    // 10 concurrent sends per chunk — a ~10x speedup over the old serial loop
-    // while staying near the email provider's rate ceiling. A 429 (or any send
-    // error) releases that claim, so it simply retries on the next run.
+    // Bounded processing: a large follower set must not blow the edge timeout. Un-processed
+    // recipients are reported as `deferred` and a re-invoke continues them — safely, because
+    // the resolver's idempotency key makes an already-enqueued recipient a no-op rather than a
+    // duplicate.
     const CHUNK_SIZE = 10;
     const TIME_BUDGET_MS = 110_000;
     const start = Date.now();
 
     for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
       if (Date.now() - start > TIME_BUDGET_MS) {
-        remaining = recipients.length - i;
+        counts.deferred = recipients.length - i;
         break;
       }
       const chunk = recipients.slice(i, i + CHUNK_SIZE);
 
-      // Claim this chunk: INSERT ... ON CONFLICT DO NOTHING returns only rows we
-      // actually inserted → exactly the players not yet notified for this event.
-      const { data: claimed } = await supabase
-        .from("notification_sends")
-        .upsert(
-          chunk.map((p) => ({ dedup_key: dedupKeyFor(p.id) })),
-          { onConflict: "dedup_key", ignoreDuplicates: true },
-        )
-        .select("dedup_key");
-      const claimedKeys = new Set((claimed ?? []).map((r) => r.dedup_key));
-      const toSend = chunk.filter((p) => claimedKeys.has(dedupKeyFor(p.id)));
+      const results = await Promise.all(chunk.map(async (player) => {
+        const { data, error } = await supabase.rpc("enqueue_notification", {
+          p_event_key: "open_slots_player",
+          p_recipient_user_id: player.user_id,
+          p_tenant_trainer_id: trainerId,
+          p_idempotency_subject: subject,
+          p_payload: payload,
+        });
+        if (error) return { outcome: "failed" as const, err: `enqueue failed for follower: ${error.message}` };
+        return { outcome: classifyEnqueue(data as Array<{ status?: string | null }>) };
+      }));
 
-      const results = await Promise.all(
-        toSend.map(async (player) => {
-          try {
-            const emailRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Bearer ${supabaseServiceKey}`,
-              },
-              body: JSON.stringify({
-                type: emailType,
-                to: player.email,
-                data: {
-                  playerName: player.full_name || "Player",
-                  trainerName,
-                  slotCount: slot_count,
-                  dateRange: date_range,
-                  ...(single_slot && {
-                    slotDate: single_slot.date,
-                    slotTime: single_slot.time,
-                  }),
-                },
-              }),
-            });
-            if (emailRes.ok) return { ok: true as const };
-            const errText = await emailRes.text();
-            return { ok: false as const, key: dedupKeyFor(player.id), err: `Failed to email ${player.email}: ${errText}` };
-          } catch (err) {
-            return { ok: false as const, key: dedupKeyFor(player.id), err: `Error emailing ${player.email}: ${(err as Error).message}` };
-          }
-        }),
-      );
-
-      const failedKeys: string[] = [];
       for (const r of results) {
-        if (r.ok) sentCount++;
-        else {
-          failedKeys.push(r.key);
-          errors.push(r.err);
-        }
-      }
-      // Release failed claims so they retry next run (never suppress a
-      // notification that didn't actually go out).
-      if (failedKeys.length > 0) {
-        await supabase.from("notification_sends").delete().in("dedup_key", failedKeys);
+        tally(counts, r.outcome);
+        if (r.err) errors.push(r.err);
       }
     }
 
     console.log(
-      `Notified ${sentCount} followers about ${isReopenedSlot ? "reopened slot" : "new availability"}` +
-        (remaining ? ` (${remaining} deferred — time budget)` : ""),
+      `open_slots_player ${notify.subtype}: enqueued=${counts.enqueued} skipped=${counts.skipped} ` +
+      `already_existing=${counts.already_existing} failed=${counts.failed} deferred=${counts.deferred}`,
     );
-    if (errors.length > 0) {
-      console.error("Email errors:", errors);
-    }
+    if (errors.length > 0) console.error("Enqueue errors:", errors);
 
-    return new Response(
-      JSON.stringify({
-        message: `Notified ${sentCount} followers`,
-        sent: sentCount,
-        remaining,
-        type: isReopenedSlot ? "reopened_slot" : "new_availability",
-        errors: errors.length > 0 ? errors : undefined,
-      }),
-      { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } },
-    );
-  } catch (error: any) {
+    // Truthful reporting: these are ENQUEUE outcomes, not deliveries.
+    return json({
+      message: `Enqueued ${counts.enqueued} follower notification(s)`,
+      subtype: notify.subtype,
+      ...counts,
+      errors: errors.length > 0 ? errors : undefined,
+    }, 200);
+  } catch (error: unknown) {
     console.error("Error in notify-followers function:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } }
-    );
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return json({ error: message }, 500);
   }
 };
 

@@ -18,7 +18,7 @@
 release-expired-rebook-holds	no	SQL-only: releases expired rebook holds
 release-expired-guest-slot-holds	no	SQL-only: releases expired guest slot holds
 expire-lapsed-priority-claims	no	SQL-only: expires lapsed priority claims
-notify-rebook-member-open	yes	invokes the notify-followers edge function
+notify-rebook-member-open	yes	sends rebook member-open emails directly via Resend (sendResendEmail)
 auto-rebook-reminder	yes	invokes the rebook reminder edge function
 notification-email-worker	yes	EVERY 2 MINUTES: drives real invoice/notification email sends
 notification-whatsapp-worker	yes	EVERY 2 MINUTES: drives real WhatsApp sends

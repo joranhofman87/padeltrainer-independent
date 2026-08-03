@@ -890,10 +890,16 @@ export function BulkCreateContent({
           );
 
           const { data: { session } } = await supabase.auth.getSession();
+          // STRUCTURED ISO dates, not display text (10c-b D). The notification copy is rendered
+          // server-side by trusted SQL and frozen into an immutable, hash-covered digest item,
+          // so a locale-formatted range like "Aug 10 - Aug 16, 2026" must never be the source
+          // of truth — it is unparseable downstream and would change the event identity if the
+          // format ever changed.
           await supabase.functions.invoke("notify-followers", {
             body: {
               slot_count: publicSlots.length,
-              date_range: `${format(earliestStart, "MMM d")} - ${format(latestEnd, "MMM d, yyyy")}`,
+              date_from: format(earliestStart, "yyyy-MM-dd"),
+              date_to: format(latestEnd, "yyyy-MM-dd"),
             },
             headers: {
               Authorization: `Bearer ${session?.access_token}`,

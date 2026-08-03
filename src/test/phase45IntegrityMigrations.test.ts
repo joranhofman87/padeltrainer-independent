@@ -99,25 +99,50 @@ describe("BJ-08 notification_sends dedup table", () => {
   });
 });
 
-describe("BJ-08 notify-followers edge function", () => {
+// BJ-08's dedup CONTRACT survives 10c-b D, but its mechanism moved. notify-followers no longer
+// claims rows in notification_sends before POSTing send-email — it calls
+// enqueue_notification('open_slots_player'), whose idempotency key
+// (<event>:<subject>:<recipient>) IS the dedup. The migration assertions above are unchanged:
+// notification_sends and its grants still exist, and the legacy table is retired on its own
+// reviewed boundary (10c-d), not here.
+describe("notify-followers edge function (post-10c-b-D)", () => {
   const src = readFileSync(
     join(process.cwd(), "supabase", "functions", "notify-followers", "index.ts"),
     "utf8",
   );
 
-  it("claims the dedup key before sending and releases failed claims", () => {
-    expect(src).toContain("notification_sends");
-    expect(src).toContain('onConflict: "dedup_key"');
-    expect(src).toContain("ignoreDuplicates: true");
-    // failed sends release their claim so they retry instead of being suppressed
-    expect(src).toContain('.from("notification_sends").delete().in("dedup_key", failedKeys)');
+  it("enqueues through the v2 resolver and never reaches the legacy sender", () => {
+    // Assert the CALL, not the word — the header comment mentions enqueue_notification too,
+    // so a bare toContain() would stay green if the rpc name were changed to anything else.
+    expect(src).toContain('.rpc("enqueue_notification"');
+    expect(src).toContain('p_event_key: "open_slots_player"');
+    // the legacy route is GONE — no direct send-email POST, no notification_sends claim.
+    // Either one surviving beside the v2 call would be a dual send.
+    // Assert on CODE, not prose: the header comment legitimately explains what was removed.
+    expect(src).not.toContain("functions/v1/send-email");
+    expect(src).not.toContain('from("notification_sends")');
+    expect(src).not.toContain('onConflict: "dedup_key"');
+  });
+
+  it("keeps dedup deterministic and derived from STRUCTURED fields", () => {
+    // the subject builder lives in the shared production module, not inline here
+    expect(src).toContain("eventSubject");
+    expect(src).toContain("p_idempotency_subject");
+    // display-formatted dates must never be the event identity again
+    expect(src).not.toContain("date_range");
   });
 
   it("batches with bounded concurrency and a wall-clock budget", () => {
     expect(src).toContain("CHUNK_SIZE");
     expect(src).toContain("TIME_BUDGET_MS");
     expect(src).toContain("Promise.all");
-    // no more serial per-follower await-fetch loop
     expect(src).not.toContain("for (const player of playersToNotify)");
+  });
+
+  it("reports enqueue outcomes and never claims a send", () => {
+    expect(src).toContain("already_existing");
+    expect(src).toContain("deferred");
+    // "sent" was the old, untrue count: this route enqueues, it does not deliver
+    expect(src).not.toContain("sentCount");
   });
 });
