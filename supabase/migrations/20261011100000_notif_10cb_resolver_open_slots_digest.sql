@@ -404,10 +404,13 @@ REVOKE ALL ON FUNCTION public.notif_digest_boundary_at(timestamptz,text,text)   
 REVOKE ALL ON FUNCTION public.notif_digest_group_locale(uuid,uuid)               FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.notif_digest_item_for_event(text,text,jsonb)        FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.notif_digest_event_stop_reason(uuid)                FROM PUBLIC, anon, authenticated, service_role;
--- ...with ONE exception. The INSTANT email worker must apply the same event stop policy before
--- it sends (10c-b D): enqueue and send are separated in time, so a player can unfollow between
--- them, and the digest path's pre-prepare/pre-attempt checks do not cover the instant path.
--- Unlike the other helpers this is a pure READ that returns a reason and mutates nothing, so
--- granting it cannot bypass any run/ownership/ledger invariant — the Round-8 concern that
+-- ...with ONE exception, and it is the COMPLETE policy rather than the event hook alone.
+-- The INSTANT email worker must apply the full live send policy before it sends (10c-b D):
+-- enqueue and send are separated in time, so the contact can be revoked or moved out of scope,
+-- the address can change, a suppression can land, the v2 preference can be turned off, or the
+-- player can unfollow — and the digest path's pre-prepare/pre-attempt checks cover none of that
+-- for an instant row. Both functions are pure READS that return a reason and mutate nothing, so
+-- granting them cannot bypass any run/ownership/ledger invariant — the Round-8 concern that
 -- motivates revoking the rest does not apply.
 GRANT EXECUTE ON FUNCTION public.notif_digest_event_stop_reason(uuid)             TO service_role;
+GRANT EXECUTE ON FUNCTION public.notif_digest_member_stop_reason(uuid)            TO service_role;

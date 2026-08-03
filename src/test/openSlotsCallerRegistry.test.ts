@@ -69,7 +69,9 @@ function discoverCallers(): string[] {
 describe('the notify-followers caller registry', () => {
   it('matches the real invoker set exactly', () => {
     const actual = discoverCallers();
-    const declared = CALLERS.map((c) => c.file).sort();
+    // CALLERS is `as const`, so `.map(c => c.file)` yields a literal-typed array and
+    // `.includes(someString)` is a TS2345. Widen deliberately — the register compares paths.
+    const declared: string[] = CALLERS.map((c) => c.file as string).sort();
 
     expect(
       actual.filter((f) => !declared.includes(f)),

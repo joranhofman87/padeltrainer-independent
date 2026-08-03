@@ -282,6 +282,17 @@ BEGIN
     v_boundary := NULL; v_item := NULL; v_fingerprint := NULL; v_prefixed_key := NULL;
     v_tmpl_version := NULL; v_payload_out := coalesce(p_payload, '{}'::jsonb);
 
+    -- FREEZE THE DESTINATION FINGERPRINT ON EVERY EMAIL ROW, not just digest members.
+    -- The live-send policy (notif_digest_member_stop_reason) refuses to send when the CURRENT
+    -- contact no longer fingerprints to the frozen value — but that check is written
+    -- `IF destination_fingerprint IS NOT NULL`, so a NULL silently disables it. Instant rows
+    -- previously had NULL here, which meant the worker would happily deliver to the frozen OLD
+    -- address after a user changed their email. Freezing it for instant rows too is what makes
+    -- the destination_changed stop reachable on that path.
+    IF v_channel = 'email' AND v_dest IS NOT NULL THEN
+      v_fingerprint := public.notif_digest_destination_fingerprint(v_dest);
+    END IF;
+
     IF v_channel = 'email' AND v_evt.digest_cutover AND v_freq IN ('daily','weekly') THEN
       IF v_evt.digest_engine_enabled THEN
         -- A real digest member. Every canonical grouping input is frozen HERE; the item
@@ -293,8 +304,7 @@ BEGIN
         v_locale        := public.notif_digest_group_locale(v_person_id, v_user_id);
         v_boundary      := public.notif_digest_boundary_at(v_now, v_freq, v_tz);
         v_item          := public.notif_digest_item_for_event(p_event_key, v_locale, coalesce(p_payload, '{}'::jsonb));
-        v_fingerprint   := public.notif_digest_destination_fingerprint(v_dest);
-        v_tmpl_version  := v_evt.template_version;
+        v_tmpl_version  := v_evt.template_version;   -- fingerprint already frozen above
         -- ADR §M1 prefixed recipient key: person is the stable identity, then account, then guest.
         v_prefixed_key  := CASE
           WHEN v_person_id IS NOT NULL THEN 'p:' || v_person_id::text

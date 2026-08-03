@@ -9,6 +9,7 @@
 // suppression (FAIL CLOSED), send via Resend (provider-idempotent), record the outcome
 // under our token → lease + confirm the ops Slack alert on skipped-required rows.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { evaluateInstantSendGate } from "../_shared/instant-send-gate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
@@ -104,71 +105,29 @@ const handler = async (req: Request): Promise<Response> => {
     let suppressed = 0;
 
     for (const row of rows) {
-      const dest = (row.destination_normalized ?? "").trim();
+      // THE SEND GATE lives in _shared/instant-send-gate.ts so it can be tested directly:
+      // renderability -> suppression -> the COMPLETE live policy, all fail-closed. The handler
+      // only executes the verdict, so the check order and terminal-ness cannot regress unseen.
       const payload = row.payload ?? {};
-      const subject = payload.subject;
-      const html = payload.html;
-
-      // a row that can never render is terminal — never burn retries on it
-      if (!dest || !subject || !html) {
+      const verdict = await evaluateInstantSendGate(row, {
+        isEmailSuppressed: async (email) => {
+          const r = await supabase.rpc("is_email_suppressed", { p_email: email });
+          return { data: r.data as boolean | null, error: r.error };
+        },
+        memberStopReason: async (outboxId) => {
+          const r = await supabase.rpc("notif_digest_member_stop_reason", { p_member_id: outboxId });
+          return { data: r.data as string | null, error: r.error };
+        },
+      });
+      if (verdict.action === "stop") {
         await recordResult(row.outbox_id, "failed", {
-          error: !dest ? "missing_destination" : "missing_subject_or_html",
-          terminal: true,
+          error: verdict.error,
+          terminal: verdict.terminal,
         });
-        failed++;
+        if (verdict.countAs === "suppressed") suppressed++; else failed++;
         continue;
       }
-
-      // suppression may have flipped since enqueue (a bounce/complaint webhook fired).
-      // FAIL CLOSED: if the check errors we do NOT send — record a retryable failure and
-      // try again next tick, rather than risk emailing a hard-bounced/complained address.
-      let blocked: boolean | null = null;
-      let supErr: unknown = null;
-      try {
-        const res = await supabase.rpc("is_email_suppressed", { p_email: dest });
-        blocked = res.data as boolean | null;
-        supErr = res.error;
-      } catch (e) {
-        supErr = e;
-      }
-      if (supErr) {
-        await recordResult(row.outbox_id, "failed", { error: "suppression_check_failed", terminal: false });
-        failed++;
-        continue;
-      }
-      if (blocked === true) {
-        await recordResult(row.outbox_id, "failed", { error: "email_suppressed", terminal: true });
-        suppressed++;
-        continue;
-      }
-
-      // 10c-b D: the EVENT-SPECIFIC live stop policy (ADR 0008 §PS). Enqueue and send are now
-      // separated in time, so consent can be withdrawn in between — a player can unfollow the
-      // trainer, clear notify_new_availability, or turn the preference off after the row was
-      // written. The digest path re-checks this before prepare and before every attempt; the
-      // instant path had no equivalent, so a still-pending row would have sent anyway.
-      // Returns NULL immediately for events with no policy, so this costs one cheap lookup.
-      // FAIL CLOSED, exactly like the suppression gate: an errored check does NOT send.
-      let stopReason: string | null = null;
-      let stopErr: unknown = null;
-      try {
-        const res = await supabase.rpc("notif_digest_event_stop_reason", { p_member_id: row.outbox_id });
-        stopReason = res.data as string | null;
-        stopErr = res.error;
-      } catch (e) {
-        stopErr = e;
-      }
-      if (stopErr) {
-        await recordResult(row.outbox_id, "failed", { error: "stop_policy_check_failed", terminal: false });
-        failed++;
-        continue;
-      }
-      if (stopReason) {
-        // Terminal: consent for THIS notification is gone. Retrying would not restore it.
-        await recordResult(row.outbox_id, "failed", { error: stopReason, terminal: true });
-        suppressed++;
-        continue;
-      }
+      const { dest, subject, html } = verdict;
 
       // provider-idempotent: keyed on the stable outbox id → a retry after Resend already
       // accepted the send (our timeout, a stale takeover) is a no-op in Resend's 24h window.

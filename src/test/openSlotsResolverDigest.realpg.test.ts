@@ -1049,3 +1049,98 @@ describe('D — ACL: the instant worker can call the stop policy, other helpers 
     }
   });
 });
+
+// ===========================================================================
+// D correction — the INSTANT path must be protected by the FULL live policy.
+//
+// The review found two halves of one defect: the worker consulted only the event hook, AND
+// instant rows carried a NULL destination_fingerprint, which makes
+// notif_digest_member_stop_reason's `IF destination_fingerprint IS NOT NULL` check silently
+// no-op. Together they meant an instant row would deliver to the FROZEN OLD address after a
+// user changed their email, and would ignore contact revocation and preference-off entirely.
+describe('D — instant rows are covered by the complete live send policy', () => {
+  let memberId: string;
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    await c.query(`UPDATE public.notification_contacts SET destination_normalized='p@example.com',
+                     revoked_at=NULL, consent_status='opted_in' WHERE user_id=$1 AND channel='email'`, [USER]);
+    await c.query(`DELETE FROM public.email_suppression_stub`);
+    await applyC();
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
+                   VALUES ($1,'open_slots_player','instant')
+                   ON CONFLICT (user_id,event_type) DO UPDATE SET email_frequency='instant'`, [USER]);
+    await enqueue('na:t:instant-policy', ITEM);
+    memberId = (await c.query(`SELECT id FROM public.notification_outbox LIMIT 1`)).rows[0].id;
+  });
+
+  const stop = async () => (await c.query(
+    `SELECT public.notif_digest_member_stop_reason($1) AS r`, [memberId])).rows[0].r;
+
+  it('an INSTANT row freezes destination_fingerprint (without it the check is a no-op)', async () => {
+    const { rows } = await c.query(
+      `SELECT delivery_mode, destination_fingerprint FROM public.notification_outbox`);
+    expect(rows[0].delivery_mode).toBeNull();              // genuinely instant, not a digest member
+    expect(rows[0].destination_fingerprint).toHaveLength(64);
+  });
+
+  it('a CHANGED address stops the instant row instead of mailing the frozen one', async () => {
+    expect(await stop()).toBeNull();
+    await c.query(`UPDATE public.notification_contacts SET destination_normalized='new@example.com'
+                    WHERE user_id=$1 AND channel='email'`, [USER]);
+    expect(await stop()).toBe('destination_changed');
+  });
+
+  it('revoking the contact alone does NOT stop an account holder — the login email still applies', async () => {
+    // Deliberately asserting the REAL semantics rather than the intuitive ones. For an account
+    // holder the resolver falls back to persons.email (their own login address), and the stop
+    // predicate re-runs that same lookup. Here persons.email is still p@example.com, so the
+    // address is unchanged and genuinely deliverable — revocation of a TENANT contact does not
+    // revoke the account address. Asserting a stop here would encode a fiction.
+    await c.query(`UPDATE public.notification_contacts SET revoked_at=now()
+                    WHERE user_id=$1 AND channel='email'`, [USER]);
+    expect(await stop()).toBeNull();
+  });
+
+  it('revoked contact AND a different account email DOES stop (frozen address is stale)', async () => {
+    await c.query(`UPDATE public.notification_contacts SET revoked_at=now()
+                    WHERE user_id=$1 AND channel='email'`, [USER]);
+    await c.query(`UPDATE public.persons SET email='moved@example.com' WHERE id=$1`, [PERSON]);
+    expect(await stop()).toBe('destination_changed');
+    await c.query(`UPDATE public.persons SET email='p@example.com' WHERE id=$1`, [PERSON]);
+  });
+
+  it('no live address at all stops the row', async () => {
+    await c.query(`UPDATE public.notification_contacts SET revoked_at=now()
+                    WHERE user_id=$1 AND channel='email'`, [USER]);
+    await c.query(`UPDATE public.persons SET email=NULL WHERE id=$1`, [PERSON]);
+    expect(await stop()).toBe('no_destination');
+    await c.query(`UPDATE public.persons SET email='p@example.com' WHERE id=$1`, [PERSON]);
+  });
+
+  it('preference switched off stops the instant row', async () => {
+    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='off'
+                    WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(await stop()).toBe('preference_off');
+  });
+
+  it('suppression stops the instant row', async () => {
+    await c.query(`INSERT INTO public.email_suppression_stub (email) VALUES ('p@example.com')`);
+    expect(await stop()).toBe('suppressed');
+    await c.query(`DELETE FROM public.email_suppression_stub`);
+  });
+
+  it('unfollowing stops the instant row (the event hook still applies)', async () => {
+    await c.query(`UPDATE public.trainer_followers SET notify_new_availability=false
+                    WHERE player_id='${PROFILE}' AND trainer_id='${TRAINER}'`);
+    expect(await stop()).toBe('follow_revoked');
+    await c.query(`UPDATE public.trainer_followers SET notify_new_availability=true
+                    WHERE player_id='${PROFILE}' AND trainer_id='${TRAINER}'`);
+  });
+
+  it('service_role can execute the FULL policy fn (the worker calls it directly)', async () => {
+    const { rows } = await c.query(
+      `SELECT has_function_privilege('service_role',
+         'public.notif_digest_member_stop_reason(uuid)', 'EXECUTE') AS ok`);
+    expect(rows[0].ok).toBe(true);
+  });
+});
