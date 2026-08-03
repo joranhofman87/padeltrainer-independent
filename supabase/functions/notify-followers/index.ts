@@ -367,7 +367,7 @@ const handler = async (req: Request): Promise<Response> => {
           // explicit absence rather than a bogus id, and the retry marker rides alongside it.
           ...(nextCursor ? { resume_after_player_id: nextCursor } : { resume_after_player_id: null }),
           continuation_depth: resumeState.depth + 1,
-          resume_retry: plan.repeating,
+          resume_retry: plan.retryScheduled,
         }),
       })
         .then((r) => { if (!r.ok) console.error("notify-followers self-reinvoke returned", r.status); })

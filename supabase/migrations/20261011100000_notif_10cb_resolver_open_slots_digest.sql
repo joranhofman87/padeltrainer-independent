@@ -316,10 +316,17 @@ BEGIN
   -- The two cases are distinguishable, and only by the VALUE: 'weekly' is exactly the column
   -- default, so an inserted 'weekly' is ambiguous and is treated as the incidental default;
   -- 'off' / 'instant' / 'daily' cannot be produced by the default and are therefore a real
-  -- choice about open slots, which applies. The residual is deliberately the SAFE one — a cached
-  -- page selecting 'weekly' over an existing v2 row is ignored, which can only fail towards LESS
-  -- mail, never towards resuming it after an opt-out. (The realpg suite pins the column default,
-  -- so this reasoning cannot silently rot if the default ever changes.)
+  -- choice about open slots, which applies.
+  --
+  -- THE RESIDUAL, stated accurately. A genuine 'weekly' choice made on a cached page IS lost
+  -- when a v2 row already exists, and that is not always "less mail": over an existing 'instant'
+  -- or 'daily' it leaves MORE mail than the user asked for. It is kept anyway, because the
+  -- alternative is strictly worse in kind rather than in degree — a DO UPDATE here would let the
+  -- incidental default overwrite an explicit 'off' and resume mail for someone who had opted
+  -- out. A cadence that is wrong is still consented mail; mail after an opt-out is not. So the
+  -- rule trades a cadence mismatch for a consent violation, deliberately, and only for the
+  -- lifetime of the cached bundle. (The realpg suite pins the column default AND both conflict
+  -- outcomes, so neither this reasoning nor its behaviour can silently rot.)
   IF NEW.open_slots_digest = 'weekly' THEN
     INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
     VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)

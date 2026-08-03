@@ -459,8 +459,9 @@ export function resumeCursorAfter(
  * those could not be READ: the run is then incomplete by construction, because reporting a
  * clean total from a failed count is exactly the fail-open that hides a tail.
  *
- * `repeating` tells the caller the continuation re-covers this hop's own range, so it must mark
- * that hop as the retry.
+ * `retryScheduled` tells the caller the next hop resumes AT a recipient that has already failed
+ * once, so it must be marked as that recipient's retry. It covers both shapes: re-covering this
+ * hop's own range (a first-position failure) and stopping just short of a later one.
  */
 export function planRunOutcome(args: {
   recipientIds: string[];
@@ -472,7 +473,7 @@ export function planRunOutcome(args: {
   lastDiscovered: string | null;
   incomingCursor: string | null;
   retrying: boolean;
-}): { deferred: number; nextCursor: string | null; incomplete: boolean; repeating: boolean } {
+}): { deferred: number; nextCursor: string | null; incomplete: boolean; retryScheduled: boolean } {
   const total = args.recipientIds.length;
   const processed = Math.min(Math.max(args.processed, 0), total);
   const failures = [...args.failureIndices].filter((n) => n >= 0).sort((a, b) => a - b);
@@ -486,7 +487,14 @@ export function planRunOutcome(args: {
   const remaining = spent ? failures.slice(1) : failures;
   const bounded = remaining.length > 0 ? Math.min(processed, remaining[0]) : processed;
   const completed = spent ? Math.max(bounded, Math.min(1, total)) : bounded;
-  const repeating = completed === 0 && total > 0;
+
+  // Does the NEXT hop resume at a recipient that has already failed once? That is the whole
+  // cross-hop protocol, and keying it on "the cursor did not move" was too narrow: a failure
+  // AFTER some successes moves the cursor to just before it, so the next hop is that recipient's
+  // SECOND attempt while being told it is the first — earning it a third, and burning two hops
+  // per failure. Enough persistent failures then exhaust MAX_CONTINUATION_DEPTH before the
+  // undiscovered tail is ever reached, and a caller that ignores the 500 loses it.
+  const retryScheduled = remaining.length > 0 && completed === remaining[0];
   const nextCursor = resumeCursorAfter(
     args.recipientIds,
     completed,
@@ -498,7 +506,7 @@ export function planRunOutcome(args: {
   return {
     deferred,
     nextCursor,
-    repeating,
+    retryScheduled,
     incomplete: deferred > 0 || args.beyondUnknown || failures.length > 0,
   };
 }
@@ -552,7 +560,19 @@ export function markableLegacyKeys(
 ): string[] {
   const out: string[] = [];
   for (const r of results) {
-    if (r.outcome === "failed") continue;
+    // ONLY an outcome that created a durable v2 row. `enqueued` and `skipped` both write one, so
+    // v2 demonstrably owns that recipient and the old handler must not send again.
+    //
+    // `no_row` does NOT qualify, and the reason is the ambiguity documented on classifyEnqueue:
+    // it means EITHER an idempotency conflict (a row already exists — marking would be right)
+    // OR that the resolver emitted nothing at all: preference 'off', no deliverable contact, a
+    // suppressed address. In the second case there is no v2 row, and the marker would suppress
+    // the old handler too. That is a silent miss — the failure this design refuses to trade for.
+    // A live example: a follower is 'off' at enqueue, later switches to 'instant', and a rollback
+    // then finds a marker standing in for a row that never existed.
+    //
+    // `failed` obviously does not qualify: nobody notified that recipient at all.
+    if (r.outcome !== "enqueued" && r.outcome !== "skipped") continue;
     const k = keys.get(r.id);
     if (k) out.push(k);
   }

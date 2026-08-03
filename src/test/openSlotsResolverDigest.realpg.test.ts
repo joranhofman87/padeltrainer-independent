@@ -486,6 +486,26 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     expect(rows[0].email_frequency, 'the incidental default must not resume mail').toBe('off');
   });
 
+  it("BRIDGE: the price of that rule — a genuine cached 'weekly' is lost over instant/daily", async () => {
+    // Stated as a test rather than left in a comment, because it is a REAL cost and the earlier
+    // justification ("can only fail towards less mail") was simply wrong: over an existing
+    // 'instant' or 'daily' the ignored 'weekly' leaves MORE mail than the user asked for.
+    // It is accepted anyway — the alternative lets the incidental default overwrite an explicit
+    // 'off', and a wrong cadence is still consented mail whereas mail after an opt-out is not.
+    for (const existing of ['instant', 'daily']) {
+      await c.query(`DELETE FROM public.notification_preferences_v2; DELETE FROM public.notification_preferences;`);
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                     VALUES ($1,'open_slots_player',$2)`, [USER, existing]);
+      await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest)
+                     VALUES ($1,'weekly')`, [USER]);
+      const { rows } = await c.query(
+        `SELECT email_frequency FROM public.notification_preferences_v2
+          WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+      expect(rows[0].email_frequency, `existing ${existing} is kept, not lowered to weekly`)
+        .toBe(existing);
+    }
+  });
+
   it('NO WINDOW: the bridge ships in the SAME migration as the backfill, ahead of it', async () => {
     // The defect this closes: with the trigger installed by a LATER migration, every legacy
     // write landing between the backfill and the trigger was recorded by neither, and that

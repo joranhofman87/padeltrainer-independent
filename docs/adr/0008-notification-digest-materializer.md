@@ -833,6 +833,10 @@ directions: the settings page upserts a partial row in which `open_slots_digest`
 default of `weekly`, which must never overwrite an explicit v2 `off`; but a user can also hold a
 v2 row and no v1 row at all, in which case a cached page's genuine opt-out arrives as an INSERT
 and must apply. `weekly` is exactly the column default and therefore ambiguous, so it only ever
-SEEDS; `off` / `instant` / `daily` cannot be produced by the default and therefore apply. The
-residual is deliberately the safe one — a cached page choosing `weekly` over an existing v2 row is
-ignored, which can only fail towards less mail, never towards resuming it after an opt-out.
+SEEDS; `off` / `instant` / `daily` cannot be produced by the default and therefore apply.
+
+The residual is a genuine `weekly` choice made on a cached page being lost when a v2 row already
+exists — and over an existing `instant` or `daily` that leaves MORE mail than the user asked for,
+not less. It is accepted deliberately: the alternative differs in kind rather than degree, because
+a `DO UPDATE` here would let the incidental default overwrite an explicit `off` and resume mail
+after an opt-out. A wrong cadence is still consented mail; mail after an opt-out is not.
