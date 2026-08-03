@@ -48,7 +48,7 @@ grep -qF 'status.sql' "$PSQL_LOG" && ok "status ran the read artifact" || bad "s
 run "activate REFUSES without --yes" 1 -- activate "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || { bad "...and touched the database not at all"; cat "$PSQL_LOG"; }
 
-run "rollback REFUSES without --yes" 1 -- rollback "$URL"
+run "rollback REFUSES without --yes" 1 -- rollback --switch-off-confirmed "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "rollback touched nothing without --yes" || bad "rollback touched nothing without --yes"
 
 run "canary REFUSES without --yes" 1 -- canary "$URL" "11111111-1111-4111-8111-111111111111"
@@ -67,7 +67,13 @@ if logged 'activation_preflight.sql' && logged 'active := true'; then
   else bad "preflight runs BEFORE the cron is armed"; fi
 else bad "activate runs preflight then arms"; fi
 
-run "rollback turns BOTH the engine and the cron off" 0 -- rollback --yes "$URL"
+# The worker's REAL kill switch is an edge env var no SQL can see, so the script refuses to
+# pretend it verified one: the operator asserts it.
+run "rollback REFUSES until the env switch is confirmed off" 1 -- rollback --yes "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and mutated nothing while refusing" || bad "...and mutated nothing while refusing"
+run "smoke-disabled REFUSES until the env switch is confirmed off" 1 -- smoke-disabled "$URL"
+
+run "rollback turns BOTH the engine and the cron off" 0 -- rollback --yes --switch-off-confirmed "$URL"
 logged 'digest_engine_enabled = false' && ok "rollback disables the engine" || bad "rollback disables the engine"
 logged 'active := false' && ok "rollback deactivates the cron" || bad "rollback deactivates the cron"
 logged 'rollback_verify.sql' && ok "rollback proves itself afterwards" || bad "rollback proves itself afterwards"
@@ -88,6 +94,36 @@ fi
 run "canary REFUSES a non-uuid run id" 1 -- canary --yes "$URL" "before-after-snapshot"
 run "canary reconciles the id it is given" 0 -- canary --yes "$URL" "11111111-1111-4111-8111-111111111111"
 logged 'reconcile_notification_digest_run' && ok "canary reconciles the ACTUAL run" || bad "canary reconciles the ACTUAL run"
+
+# ── the identity guard cannot be talked round ────────────────────────────────
+# libpq takes host/hostaddr/user/dbname from the QUERY STRING and lets them override the
+# authority, so a url that looks like EXPECTED_REF can still connect elsewhere.
+run "refuses a url whose query string overrides the host" 1 -- \
+  rollback --yes "${URL}?host=db.tsrqponmlkjihgfedcba.supabase.co"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
+run "refuses a query string even on a read-only subcommand" 1 -- status "${URL}?user=postgres"
+
+# ── the artifacts it runs must actually exist ────────────────────────────────
+# The stub never opens the file it is handed, so a broken `\i` inside an artifact — or a missing
+# artifact altogether — would otherwise pass here and fail only in front of an operator.
+for f in status.sql activation_preflight.sql rollback_verify.sql; do
+  [[ -f "$HERE/../sql/$f" ]] && ok "artifact $f exists" || bad "artifact $f exists"
+done
+for f in activation_preflight.sql rollback_verify.sql; do
+  inc="$(grep -o '\\i [^ ]*' "$HERE/../sql/$f" | awk '{print $2}')"
+  if [[ -n "$inc" ]]; then
+    ( cd "$HERE/../sql" && [[ -f "$inc" ]] ) && ok "$f includes a path that resolves from sql/" \
+      || bad "$f includes a path that resolves from sql/ (got '$inc')"
+  fi
+done
+
+# ── sourcing must not execute ────────────────────────────────────────────────
+set +e
+( EXPECTED_REF="$REF" bash -c 'set -- rollback --yes "$1"; source "$2"' _ "$URL" "$SCRIPT" >/dev/null 2>&1 )
+src_rc=$?
+set -e
+[[ "$src_rc" != "0" ]] && ok "sourcing the dispatcher refuses instead of running it (rc=$src_rc)" \
+  || bad "sourcing the dispatcher refuses instead of running it"
 
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
 [[ "$FAIL" == "0" ]]

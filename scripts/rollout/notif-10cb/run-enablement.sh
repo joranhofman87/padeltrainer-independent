@@ -31,6 +31,15 @@
 # never reads, prints or stores a secret.
 # ===========================================================================
 set -Eeuo pipefail
+
+# EXECUTED, NEVER SOURCED. Sourcing this file used to run the dispatcher: a parent shell that
+# happened to hold EXPECTED_REF and positional parameters would perform the mutation instead of
+# merely loading definitions, which is the opposite of "inert on import".
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+  printf 'run-enablement.sh must be EXECUTED, not sourced\n' >&2
+  return 2 2>/dev/null || exit 2
+fi
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SQL_DIR="$HERE/sql"
 # shellcheck source=../notif-10ca3/lib/common.sh
@@ -47,11 +56,16 @@ usage() {
 usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
 
   status <db_url>                 read-only: engine flags, cron state, liveness, counters
-  smoke-disabled <db_url>         read-only: assert the engine is off and capture counters,
-                                  then re-run after the disabled invocation to compare
+  smoke-disabled --switch-off-confirmed <db_url>
+                                  read-only: capture counters either side of the disabled
+                                  invocation. Requires you to have verified DIGEST_SEND_ENABLED
+                                  is off — no SQL can see an edge env var
   canary --yes <db_url> <run_id>  reconcile ONE canary's ACTUAL returned run id
   activate --yes <db_url>         run activation_preflight, then arm the cron
-  rollback --yes <db_url>         switch the engine off, deactivate the cron, prove both
+  rollback --yes --switch-off-confirmed <db_url>
+                                  set DIGEST_SEND_ENABLED=false FIRST (owner action, outside this
+                                  script), then this clears the event flag, deactivates the cron,
+                                  and proves both plus quiescence
 
 Every mutating subcommand requires --yes AND a db url whose host encodes EXPECTED_REF.
 USAGE
@@ -60,10 +74,15 @@ USAGE
 
 # --yes may appear anywhere after the subcommand; strip it and remember it.
 CONFIRMED=0
+SWITCH_OFF_CONFIRMED=0
 ARGS=()
 SUB="${1:-}"; shift || usage
 for a in "$@"; do
-  if [[ "$a" == "--yes" ]]; then CONFIRMED=1; else ARGS+=("$a"); fi
+  case "$a" in
+    --yes)                   CONFIRMED=1 ;;
+    --switch-off-confirmed)  SWITCH_OFF_CONFIRMED=1 ;;
+    *)                       ARGS+=("$a") ;;
+  esac
 done
 
 require_confirmed() {
@@ -73,8 +92,17 @@ require_confirmed() {
 db_url() {
   local url="${ARGS[0]:-}"
   [[ -n "$url" ]] || die "a database url is required"
-  # The url must belong to EXPECTED_REF. This is the guard that stops a correct
-  # command from being run against the wrong project.
+  # The url must belong to EXPECTED_REF. This is the guard that stops a correct command from
+  # being run against the wrong project.
+  #
+  # A QUERY STRING IS REFUSED OUTRIGHT, before that check. libpq accepts identity parameters —
+  # host, hostaddr, user, dbname — in the query string, and they OVERRIDE the authority. So a url
+  # whose authority names the expected project can still connect to a different one, and the
+  # authority-only validator would wave it through. There is no legitimate need for one here, so
+  # the safe rule is the simple one: no query string at all.
+  case "$url" in
+    *\?*) die "refusing a connection url with a query string: libpq query parameters (host, hostaddr, user, dbname) override the authority and would defeat the EXPECTED_REF check" ;;
+  esac
   assert_conn_url_is_ref "$EXPECTED_REF" "$url"
   printf '%s' "$url"
 }
@@ -91,6 +119,12 @@ case "$SUB" in
     ;;
 
   smoke-disabled)
+    # THE PRECONDITION THIS CANNOT SEE. The worker's real kill switch is the DIGEST_SEND_ENABLED
+    # env var on the edge function, not a database flag — so no SQL here can verify it, and a
+    # script that quietly assumed it would be inviting a live send under the word "disabled".
+    # The operator asserts it explicitly instead.
+    [[ "$SWITCH_OFF_CONFIRMED" == "1" ]] || die \
+      "smoke-disabled requires --switch-off-confirmed: verify DIGEST_SEND_ENABLED is unset/false on the notification-digest-worker function FIRST (this script cannot read an edge env var)"
     # Read-only on purpose. The INVOCATION itself is the operator's step (through the
     # Vault/pg_net path, exactly as the cron would); this captures the evidence either side of
     # it. Comparing the two captures is what makes "zero count deltas" a fact rather than a
@@ -132,9 +166,16 @@ case "$SUB" in
 
   rollback)
     require_confirmed "rollback"
+    # THREE things stop a send, and only two of them live in the database. The first is the
+    # DIGEST_SEND_ENABLED env var on the edge function: with it still true, a cron tick that
+    # started before — or between — the two statements below goes on sending the groups it has
+    # already claimed for the rest of its run. This script cannot read or set an edge env var, so
+    # it refuses to pretend: the operator turns the switch off FIRST and says so.
+    [[ "$SWITCH_OFF_CONFIRMED" == "1" ]] || die \
+      "rollback requires --switch-off-confirmed: set DIGEST_SEND_ENABLED=false on notification-digest-worker FIRST (that is the worker's real kill switch; this script cannot set it)"
     url="$(db_url)"
-    # BOTH, in this order: the switch first (stop creating work), then the cron (stop draining).
-    # Either alone still sends.
+    # Then BOTH database controls, in this order: the event flag first (stop creating work), then
+    # the cron (stop draining). Either alone still sends.
     psql "$url" -v ON_ERROR_STOP=1 -c \
       "UPDATE public.notification_event_types SET digest_engine_enabled = false, updated_at = now()
         WHERE key = '${EVENT_KEY}';"

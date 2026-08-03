@@ -4,7 +4,7 @@
 -- operator and a live digest send. Every assertion here is one that has a plausible failure mode
 -- in a real rollout; none of them is decoration.
 \set ON_ERROR_STOP on
-\i ../notif-10ca3/sql/_assert.sql
+\i ../../notif-10ca3/sql/_assert.sql
 
 -- 1. the job must EXIST and still be INACTIVE. Arming an already-armed job is not idempotent
 --    reassurance — it means someone else armed it, and the runbook's sequencing assumption
