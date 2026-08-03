@@ -300,6 +300,8 @@ const MANAGED_SQL = {
     { status: 'active', note: 'Vault-based notification-email-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260919110000_notification_whatsapp_worker_cron.sql':
     { status: 'active', note: 'Vault-based notification-whatsapp-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
+  'supabase/migrations/20261012100000_notif_10cb_digest_cron_inert.sql':
+    { status: 'active', note: 'Vault-based notification-digest-worker cron, INSTALLED INACTIVE (10c-b F) — activation is an owner gate, and a re-run never re-arms or disarms an existing job', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260606120000_phase5_email_idempotency_and_cron_ficwb.sql':
     { status: 'active-legacy', note: 'invoice-health-check-daily via app.settings (redundant with the Vercel maintenance job; app.settings reads empty on Supabase → effectively inert)', replacement: 'unschedule the redundant cron, or (Path B) sb_secret_ cutover' },
   'supabase/migrations/20260714110000_notify_rebook_member_open_cron.sql':
