@@ -38,14 +38,65 @@ export type NotifyFollowersBody =
  */
 export function withLegacyCompatFields(body: NotifyFollowersBody): Record<string, unknown> {
   if (!("date_from" in body)) return { ...body };
-  const fmt = (iso: string) => {
-    const [y, m, d] = iso.split("-").map(Number);
-    const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-    return { day: String(d), mon: MON[m - 1], year: String(y) };
+  return { ...body, date_range: legacyDateRange(body.date_from, body.date_to) };
+}
+
+/**
+ * The legacy display range, and the reason it prints BOTH years when they differ.
+ *
+ * The historical format put the year only on the right (`Aug 10 - Aug 16, 2026`). That is
+ * ambiguous the moment a batch crosses a year boundary: `Jan 1 - Jan 2, 2027` is what both
+ * 2027-01-01..2027-01-02 and 2026-01-01..2027-01-02 print, and no reader can tell which was
+ * meant. Bulk creation imposes no span limit — several entries, each recurring up to 52 weeks,
+ * with unrelated start dates — so multi-year batches are reachable, and the old handler would
+ * have keyed two different batches on the same dedup anchor. Printing both years whenever they
+ * differ makes every range this app emits parse back to exactly one pair of dates.
+ *
+ * The pre-cutover handler treats this string as opaque display text plus a dedup anchor, so the
+ * wider form is safe for it. It is byte-identical to the historical one for a same-year range,
+ * which is the overwhelmingly common case and the one already in flight during the deploy.
+ *
+ * Kept in step with the production parser by src/test/notifyFollowersRetry.test.ts, which
+ * round-trips this output through the edge function's own parseLegacyDateRange.
+ */
+export function legacyDateRange(fromIso: string, toIso: string): string {
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const part = (iso: string) => {
+    const [y, m, d] = iso.split("-");
+    return { y, mon: MON[Number(m) - 1], d: String(Number(d)) };
   };
-  const a = fmt(body.date_from);
-  const b = fmt(body.date_to);
-  return { ...body, date_range: `${a.mon} ${a.day} - ${b.mon} ${b.day}, ${b.year}` };
+  const a = part(fromIso);
+  const b = part(toIso);
+  return a.y === b.y
+    ? `${a.mon} ${a.d} - ${b.mon} ${b.d}, ${b.y}`
+    : `${a.mon} ${a.d}, ${a.y} - ${b.mon} ${b.d}, ${b.y}`;
+}
+
+/**
+ * Did the run REPORT itself incomplete, whichever handler version answered?
+ *
+ * A 2xx is not proof of completion, and this is the direction the cutover got wrong. The
+ * pre-cutover handler answers **200 for every run it survives**, putting the un-notified tail in
+ * the body: `remaining` for the recipients its wall-clock budget dropped, `errors` for the sends
+ * that failed. Treating any 200 as complete therefore turned a partial run into a silent success
+ * and no retry ever happened. The cutover handler states it directly with `incomplete`, and
+ * repeats the detail as `failed` / `deferred`.
+ *
+ * So completeness is judged from the BODY as well as the status, and every field either version
+ * uses to express "not everyone was handled" is honoured. Unknown shapes are treated as complete
+ * — the status code has already been checked by the caller, and inventing incompleteness would
+ * retry runs that genuinely finished.
+ */
+export function runReportedIncomplete(data: unknown): boolean {
+  if (!data || typeof data !== "object") return false;
+  const b = data as Record<string, unknown>;
+  const positive = (v: unknown) => typeof v === "number" && v > 0;
+  if (b.incomplete === true) return true;                              // cutover handler
+  if (positive(b.remaining)) return true;                              // pre-cutover handler
+  if (positive(b.failed) || positive(b.deferred)) return true;         // cutover detail
+  if (Array.isArray(b.errors) && b.errors.length > 0) return true;     // both versions
+  if (typeof b.error === "string" && b.error.length > 0) return true;  // error body with a 200
+  return false;
 }
 
 export type NotifyFollowersOutcome = {
@@ -108,9 +159,14 @@ export async function notifyFollowers(
       continue;
     }
 
-    if (!result.error) return { complete: true, attempts: attempt };
+    // BOTH signals matter. A non-2xx arrives as `error`; a pre-cutover handler reports its
+    // un-notified tail in the BODY of a 200. Ignoring the body is what let a partial legacy run
+    // look complete and skip the retry entirely.
+    if (!result.error && !runReportedIncomplete(result.data)) {
+      return { complete: true, attempts: attempt };
+    }
 
-    lastError = result.error.message;
+    lastError = result.error?.message ?? "run_reported_incomplete";
     if (attempt === maxAttempts) return { complete: false, attempts: attempt, lastError };
   }
 

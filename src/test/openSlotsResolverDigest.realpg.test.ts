@@ -351,11 +351,22 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
 
   it('carries off/instant/daily/weekly across EXACTLY, and ignores an unknown value', async () => {
     const users = ['off', 'instant', 'daily', 'weekly', 'fortnightly'];
+    // THE MIRROR TRIGGER IS DISABLED FOR THE SEED, deliberately. It is already installed by the
+    // time this suite runs, so a plain INSERT populates v2 through the BRIDGE — and this test
+    // would then stay green with the one-time backfill deleted outright, proving nothing about
+    // the migration it is named after. Disabling it makes these rows pre-existing legacy state,
+    // which is exactly the world the backfill exists for.
+    await c.query(`ALTER TABLE public.notification_preferences DISABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
     for (let i = 0; i < users.length; i++) {
       const u = `aaaaaaaa-0000-0000-0000-00000000000${i}`;
       await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [u]);
       await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,$2)`, [u, users[i]]);
     }
+    await c.query(`ALTER TABLE public.notification_preferences ENABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
+    expect((await c.query(
+      `SELECT count(*)::int AS n FROM public.notification_preferences_v2 WHERE event_type='open_slots_player'`
+    )).rows[0].n, 'the seed must reach v2 only through the backfill').toBe(0);
+
     await applyC();
 
     const { rows } = await c.query(
@@ -370,11 +381,15 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     //   * the one-time BACKFILL must not clobber a cadence the user already chose in v2;
     //   * a LIVE legacy write (cached bundle) is a fresh user action and DOES apply — that is
     //     the bridge trigger, asserted separately below.
-    // So set the legacy value first (the bridge mirrors it), then choose 'daily' in v2, then
-    // re-run the migration and prove the backfill leaves that choice alone.
+    // The legacy row is seeded with the bridge DISABLED so v2 is reached only by the statement
+    // under test; the v2 choice is then made explicitly. With the bridge left on, the row would
+    // arrive in v2 through the trigger and the assertion would hold even with no backfill at all.
+    await c.query(`ALTER TABLE public.notification_preferences DISABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
     await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'off')`, [USER]);
-    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='daily'
-                    WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    await c.query(`ALTER TABLE public.notification_preferences ENABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                   VALUES ($1,'open_slots_player','daily')
+                   ON CONFLICT (user_id, event_type) DO UPDATE SET email_frequency='daily'`, [USER]);
     await applyC();
     const { rows } = await c.query(
       `SELECT email_frequency FROM public.notification_preferences_v2 WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
@@ -383,8 +398,13 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
   });
 
   it('is rerun-safe: a second application creates no duplicate and no drift', async () => {
+    await c.query(`ALTER TABLE public.notification_preferences DISABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
     await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'weekly')`, [USER]);
+    await c.query(`ALTER TABLE public.notification_preferences ENABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
     await applyC();
+    expect((await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2 WHERE user_id=$1 AND event_type='open_slots_player'`,
+      [USER])).rows[0].email_frequency, 'the backfill, not the bridge, put this row here').toBe('weekly');
     await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='off'
                     WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
     await applyC();   // rerun
@@ -416,6 +436,34 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
       `SELECT count(*)::int AS n FROM public.notification_preferences_v2
         WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
     expect(rows[0].n).toBe(0);
+  });
+
+  it('NO WINDOW: the bridge ships in the SAME migration as the backfill, ahead of it', async () => {
+    // The defect this closes: with the trigger installed by a LATER migration, every legacy
+    // write landing between the backfill and the trigger was recorded by neither, and that
+    // user's preference was silently lost. Two independent proofs, because either alone is weak.
+    //
+    // 1. BEHAVIOURAL — applying only the backfill migration is enough to make the bridge live.
+    //    If the trigger moved back out into a later file, this write would not mirror.
+    await c.query(`DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_to_v2 ON public.notification_preferences`);
+    await c.query(MIG('20261011100000_notif_10cb_resolver_open_slots_digest.sql'));
+    await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'off')`, [USER]);
+    const { rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0]?.email_frequency, 'the bridge must be live as soon as the backfill has run').toBe('off');
+
+    // 2. ORDER WITHIN THE FILE — CREATE TRIGGER takes a lock that blocks concurrent writers
+    //    until the migration commits, so creating it BEFORE the backfill is what leaves no
+    //    instant at which a v1 write is unobserved. Reversing the two statements would restore
+    //    the window while leaving proof 1 green, so the order is pinned explicitly.
+    const sql = MIG('20261011100000_notif_10cb_resolver_open_slots_digest.sql');
+    const triggerAt = sql.indexOf('CREATE TRIGGER trg_mirror_open_slots_pref_to_v2');
+    const backfillAt = sql.indexOf("SELECT np.user_id, 'open_slots_player', np.open_slots_digest");
+    expect(triggerAt).toBeGreaterThan(-1);
+    expect(backfillAt).toBeGreaterThan(-1);
+    expect(triggerAt, 'the mirror trigger must be created before the one-time backfill runs')
+      .toBeLessThan(backfillAt);
   });
 
   it('no legacy row → no v2 row, so the reviewed catalog weekly default governs', async () => {

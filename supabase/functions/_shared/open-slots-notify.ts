@@ -50,35 +50,111 @@ const LEGACY_MONTHS: Record<string, number> = {
   Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
 };
 
+const LEGACY_MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
 /**
- * Convert the ONE legacy display range this app ever produced into ISO dates.
+ * The CANONICAL legacy display range, and the ONE place its format is defined.
  *
- * Exact expected shape: `MMM d - MMM d, yyyy` (e.g. "Aug 10 - Aug 16, 2026"). The year appears
- * only on the right-hand side, so it is applied to both ends — which is correct for a bulk-slot
- * batch, and any resulting inversion is caught by the isIsoDate + ordering checks in the caller.
+ * Two shapes, and the difference is a correctness fix rather than cosmetics:
+ *   * same year  -> `MMM d - MMM d, yyyy`   ("Aug 10 - Aug 16, 2026")
+ *   * different  -> `MMM d, yyyy - MMM d, yyyy`  ("Dec 29, 2026 - Jan 5, 2027")
+ *
+ * The historical producer printed the year ONLY on the right, which is ambiguous the moment a
+ * batch spans a year boundary: "Jan 1 - Jan 2, 2027" is produced by BOTH 2027-01-01..2027-01-02
+ * and 2026-01-01..2027-01-02, and nothing in the string distinguishes them. The bulk-slot form
+ * imposes no span limit — each entry recurs up to 52 weeks and a batch may contain several
+ * entries with unrelated start dates (`BulkCreateContent.tsx`) — so multi-year ranges are
+ * genuinely reachable. Emitting both years whenever they differ makes every string this app
+ * produces from now on parse back to exactly one range.
+ *
+ * The OLD handler treats this value as opaque display text plus a dedup anchor, so widening the
+ * format is safe for it: it renders the string and keys on it, and both remain self-consistent.
+ */
+export function formatLegacyDateRange(fromIso: string, toIso: string): string {
+  const part = (iso: string) => {
+    const [y, m, d] = iso.split("-");
+    return { y, mon: LEGACY_MONTH_NAMES[Number(m) - 1], d: String(Number(d)) };
+  };
+  const a = part(fromIso);
+  const b = part(toIso);
+  return a.y === b.y
+    ? `${a.mon} ${a.d} - ${b.mon} ${b.d}, ${b.y}`
+    : `${a.mon} ${a.d}, ${a.y} - ${b.mon} ${b.d}, ${b.y}`;
+}
+
+/**
+ * Convert a legacy display range back into ISO dates.
+ *
+ * Two accepted shapes, mirroring formatLegacyDateRange:
+ *
+ *  1. `MMM d, yyyy - MMM d, yyyy` — UNAMBIGUOUS. Both years are explicit, nothing is inferred.
+ *     This is what every current bundle emits for a year-crossing batch.
+ *
+ *  2. `MMM d - MMM d, yyyy` — the HISTORICAL shape, still sent by cached pre-cutover bundles.
+ *     The year is printed only on the right, so the left year is either that year or the one
+ *     before it. It is resolved to the SMALLEST non-negative span: the printed year for both
+ *     ends, dropping to year-1 on the left when that would invert the range. This is what fixes
+ *     a reachable 52-week series such as 2026-01-10 -> 2027-01-02 ("Jan 10 - Jan 2, 2027"),
+ *     which the previous month-only rollover test rejected outright.
+ *
+ *     LIMIT, stated rather than hidden: this shape CANNOT express a span of a year or more. A
+ *     cached pre-cutover bundle publishing a multi-year batch therefore yields the shorter
+ *     reading. Nothing in the string can distinguish the two, so the closure is operational —
+ *     the rollout deploys the frontend first and waits out the bundle-cache window before the
+ *     edge function is switched (see the cutover runbook), which is also what removes the
+ *     cross-version dedup overlap. Current bundles never emit this shape for a year crossing.
+ *
  * Returns null for ANY deviation; there is deliberately no fuzzy matching.
  */
 export function parseLegacyDateRange(value: string): { from: string; to: string } | null {
-  const m = /^([A-Z][a-z]{2}) (\d{1,2}) - ([A-Z][a-z]{2}) (\d{1,2}), (\d{4})$/.exec(value.trim());
+  const v = value.trim();
+  const pad = (n: string) => n.padStart(2, "0");
+  const iso = (year: string, mon: number, day: string) => `${year}-${pad(String(mon))}-${pad(day)}`;
+
+  const explicit = /^([A-Z][a-z]{2}) (\d{1,2}), (\d{4}) - ([A-Z][a-z]{2}) (\d{1,2}), (\d{4})$/.exec(v);
+  if (explicit) {
+    const [, fromMon, fromDay, fromYear, toMon, toDay, toYear] = explicit;
+    const fm = LEGACY_MONTHS[fromMon];
+    const tm = LEGACY_MONTHS[toMon];
+    if (!fm || !tm) return null;
+    const from = iso(fromYear, fm, fromDay);
+    const to = iso(toYear, tm, toDay);
+    if (!isIsoDate(from) || !isIsoDate(to)) return null;
+    return { from, to };
+  }
+
+  const m = /^([A-Z][a-z]{2}) (\d{1,2}) - ([A-Z][a-z]{2}) (\d{1,2}), (\d{4})$/.exec(v);
   if (!m) return null;
   const [, fromMon, fromDay, toMon, toDay, year] = m;
   const fm = LEGACY_MONTHS[fromMon];
   const tm = LEGACY_MONTHS[toMon];
   if (!fm || !tm) return null;
-  const pad = (n: string) => n.padStart(2, "0");
-  // The legacy format carries the year only on the RIGHT. A batch that crosses New Year
-  // ("Dec 29 - Jan 5, 2027") therefore has a left-hand year one LOWER than the printed one —
-  // applying the printed year to both ends would invert the range and drop the notification.
-  const fromYear = tm < fm ? String(Number(year) - 1) : year;
-  const from = `${fromYear}-${String(fm).padStart(2, "0")}-${pad(fromDay)}`;
-  const to = `${year}-${String(tm).padStart(2, "0")}-${pad(toDay)}`;
-  // The converted values go through the SAME validation as a native ISO body.
+  const to = iso(year, tm, toDay);
+  // Smallest non-negative span: the printed year unless that inverts the range, in which case
+  // the left end belongs to the year before. Comparing whole ISO dates (not months) is what
+  // makes a same-month crossing such as "Jan 10 - Jan 2, 2027" resolve instead of being dropped.
+  let from = iso(year, fm, fromDay);
+  if (from > to) from = iso(String(Number(year) - 1), fm, fromDay);
   if (!isIsoDate(from) || !isIsoDate(to)) return null;
   return { from, to };
 }
 
 export type NotifyRequest =
-  | { subtype: "new_availability"; slotCount: number; dateFrom: string; dateTo: string }
+  | {
+    subtype: "new_availability";
+    slotCount: number;
+    dateFrom: string;
+    dateTo: string;
+    /**
+     * The legacy display range EXACTLY as received, when the caller sent one. Used for one
+     * thing only: reconstructing the pre-cutover dedup key during the deploy overlap. Keeping
+     * the received string rather than re-deriving it guarantees the reconstructed key is
+     * byte-identical to whatever the old handler would have claimed for this same request.
+     */
+    legacyRange?: string;
+  }
   | { subtype: "slot_reopened"; slotCount: number; slotDate: string; slotTime: string; bookingId?: string };
 
 export type ParseResult =
@@ -147,7 +223,78 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
   if (!isIsoDate(b.date_from)) return { ok: false, error: "date_from must be an ISO date (YYYY-MM-DD)" };
   if (!isIsoDate(b.date_to)) return { ok: false, error: "date_to must be an ISO date (YYYY-MM-DD)" };
   if (b.date_to < b.date_from) return { ok: false, error: "date_to must not precede date_from" };
-  return { ok: true, req: { subtype: "new_availability", slotCount, dateFrom: b.date_from, dateTo: b.date_to } };
+  return {
+    ok: true,
+    req: {
+      subtype: "new_availability",
+      slotCount,
+      dateFrom: b.date_from,
+      dateTo: b.date_to,
+      ...(typeof b.date_range === "string" ? { legacyRange: b.date_range } : {}),
+    },
+  };
+}
+
+/**
+ * The PRE-CUTOVER dedup key for one recipient, or null when it cannot be reconstructed.
+ *
+ * WHY THIS EXISTS — the cutover has two independent dedup stores for as long as both handler
+ * versions are reachable. The old handler claims `notification_sends`; the new one relies on the
+ * resolver's `<event>:<subject>:<recipient>` idempotency key in `notification_outbox`. Neither
+ * store knows about the other, so this sequence double-notifies a follower:
+ *
+ *   old handler sends -> the HTTP response is lost -> the client retries -> the deploy flips ->
+ *   the new handler enqueues the same batch -> the follower is notified a second time.
+ *
+ * Matching the DATE semantics across versions does not help; the two versions simply do not read
+ * the same ledger. So the new handler consults the legacy ledger for the transition window, and
+ * records into it what it has handled, which makes exactly ONE notion of "already handled" apply
+ * across the deploy in both directions (including a rollback to the old handler).
+ *
+ * The key is byte-for-byte what `20260614210000_notification_sends_dedup.sql` documents and what
+ * the old handler built: `<trainer_id>:<player_id>:<anchor>`, anchor `na:<date_range display>` or
+ * `sr:<booking_id>` falling back to `sr:<date>:<time>`. `playerId` is the PROFILE id, which is
+ * what the old handler used — not the auth user id.
+ *
+ * Returns null when the request carries no legacy range at all, because there is then no string
+ * the old handler could have keyed on and therefore nothing to reconcile against.
+ *
+ * REMOVE with the rest of the compatibility branch, one full rollout + cache window after cutover.
+ */
+export function legacyDedupKey(
+  req: NotifyRequest,
+  trainerId: string,
+  playerId: string,
+): string | null {
+  if (!trainerId || !playerId) return null;
+  if (req.subtype === "slot_reopened") {
+    return `${trainerId}:${playerId}:sr:${req.bookingId ?? `${req.slotDate}:${req.slotTime}`}`;
+  }
+  if (!req.legacyRange) return null;
+  return `${trainerId}:${playerId}:na:${req.legacyRange}`;
+}
+
+/**
+ * A trusted self-continuation cursor.
+ *
+ * The run drains its own tail rather than depending on the caller to retry: a pre-cutover bundle
+ * ignores a non-2xx entirely, so a deferred tail that only the client could resume was simply
+ * lost. Nothing here widens trust — the trainer is still derived from the authenticated user on
+ * every invocation, and these two fields only say WHERE to carry on and HOW MANY hops have been
+ * taken, so a forged value can at worst skip a caller's own followers or stop the chain early.
+ */
+export type ResumeState = { afterPlayerId: string | null; depth: number };
+
+export const MAX_CONTINUATION_DEPTH = 20;
+
+export function parseResumeState(raw: unknown): ResumeState {
+  const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const after = isUuid(b.resume_after_player_id) ? b.resume_after_player_id : null;
+  const rawDepth = b.continuation_depth;
+  const depth = typeof rawDepth === "number" && Number.isInteger(rawDepth) && rawDepth > 0
+    ? Math.min(rawDepth, MAX_CONTINUATION_DEPTH)
+    : 0;
+  return { afterPlayerId: after, depth };
 }
 
 /**
@@ -206,7 +353,7 @@ export function digestPayload(req: NotifyRequest, trainerName: string): Record<s
  * missing/suppressed contact, or no deliverable channel. Reporting both as "already existing"
  * would make a whole cohort of never-notified followers look like successful de-duplication.
  */
-export type EnqueueOutcome = "enqueued" | "skipped" | "no_row" | "failed";
+export type EnqueueOutcome = "enqueued" | "skipped" | "no_row" | "failed" | "already_sent_legacy";
 
 export type NotifyCounts = {
   enqueued: number;
@@ -214,10 +361,12 @@ export type NotifyCounts = {
   no_row: number;
   failed: number;
   deferred: number;
+  /** Transition-only: the pre-cutover handler already notified this follower for this event. */
+  already_sent_legacy: number;
 };
 
 export function newCounts(): NotifyCounts {
-  return { enqueued: 0, skipped: 0, no_row: 0, failed: 0, deferred: 0 };
+  return { enqueued: 0, skipped: 0, no_row: 0, failed: 0, deferred: 0, already_sent_legacy: 0 };
 }
 
 /**
@@ -240,4 +389,109 @@ export function classifyEnqueue(rows: Array<{ status?: string | null }> | null |
 
 export function tally(counts: NotifyCounts, outcome: EnqueueOutcome): void {
   counts[outcome]++;
+}
+
+// ===========================================================================
+// RUN PROGRESS — the arithmetic that decides what is still owed, and to whom.
+//
+// These live here rather than inline in the handler for the same reason everything else does:
+// the handler cannot be imported, and each of these rules has already been wrong once.
+// ===========================================================================
+
+/**
+ * How many followers this run did NOT handle. EXACT — no floor, no token value.
+ *
+ * The previous form was `Math.max(total - collected, 1)`, which lied in both directions: at
+ * exactly the collection ceiling it reported 1 deferred when nothing at all had been omitted,
+ * and an operator reading "deferred: 1" for a trainer with 30000 followers had no idea that
+ * 10000 of them were skipped. Everything after the last processed recipient is owed, whether it
+ * was discovered (`discovered - processed`) or never reached (`beyondDiscovery`).
+ */
+export function deferredCount(
+  args: { discovered: number; processed: number; beyondDiscovery: number },
+): number {
+  const unprocessed = Math.max(args.discovered - args.processed, 0);
+  return unprocessed + Math.max(args.beyondDiscovery, 0);
+}
+
+/**
+ * Where the next hop must carry on from.
+ *
+ * When the run stopped partway through the recipients it discovered, the cursor is the LAST
+ * recipient it actually handled. When it handled all of them and only undiscovered followers
+ * remain, it is the last follower id discovery read — which can be past the final recipient,
+ * because followers without an account are discovered and then dropped.
+ *
+ * Returning null means "nothing to carry on from", and the caller must then not chain: a hop
+ * that re-sent the same cursor would spin without progress.
+ */
+export function resumeCursorAfter(
+  recipientIds: string[],
+  processed: number,
+  lastDiscovered: string | null,
+): string | null {
+  if (processed < recipientIds.length) return recipientIds[processed - 1] ?? null;
+  return lastDiscovered;
+}
+
+/**
+ * Should this run chain a continuation of itself?
+ *
+ * The tail cannot be left to the CALLER. A pre-cutover bundle ignores a non-2xx response
+ * entirely, and nothing re-invokes this route on a schedule, so work only the client could
+ * resume was simply lost. Chaining is allowed only when it is guaranteed to make progress —
+ * at least one chunk handled, and a cursor to move past — and only within the hop bound, so a
+ * pathological run cannot spawn an unbounded sequence of invocations.
+ */
+export function shouldContinue(
+  args: { deferred: number; processed: number; nextCursor: string | null; depth: number },
+): boolean {
+  return args.deferred > 0
+    && args.processed > 0
+    && !!args.nextCursor
+    && args.depth < MAX_CONTINUATION_DEPTH;
+}
+
+/**
+ * Which of this chunk the PRE-CUTOVER handler already notified, and which still need enqueueing.
+ *
+ * A recipient whose legacy key is already claimed was mailed by the old handler for this exact
+ * event; enqueueing them again is the double-notification the deploy overlap creates.
+ */
+export function partitionLegacyClaims<T extends { id: string }>(
+  chunk: T[],
+  keys: Map<string, string>,
+  claimed: Set<string>,
+): { toEnqueue: T[]; alreadySent: T[] } {
+  const toEnqueue: T[] = [];
+  const alreadySent: T[] = [];
+  for (const p of chunk) {
+    const k = keys.get(p.id);
+    if (k && claimed.has(k)) alreadySent.push(p);
+    else toEnqueue.push(p);
+  }
+  return { toEnqueue, alreadySent };
+}
+
+/**
+ * The legacy keys this run may record as handled.
+ *
+ * Recording is what makes the bridge symmetric — a ROLLBACK to the old handler then finds the
+ * key claimed and does not send a second copy. Two exclusions, and both matter:
+ *   * `failed` — nobody notified that recipient, so claiming the key would suppress the retry
+ *     that is supposed to reach them. This is the same release-on-failure rule the old handler
+ *     had, expressed as "never claim in the first place".
+ *   * `already_sent_legacy` — the key is by definition already there.
+ */
+export function markableLegacyKeys(
+  results: Array<{ outcome: EnqueueOutcome; id: string }>,
+  keys: Map<string, string>,
+): string[] {
+  const out: string[] = [];
+  for (const r of results) {
+    if (r.outcome === "failed" || r.outcome === "already_sent_legacy") continue;
+    const k = keys.get(r.id);
+    if (k) out.push(k);
+  }
+  return out;
 }

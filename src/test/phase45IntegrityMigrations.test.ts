@@ -116,12 +116,26 @@ describe("notify-followers edge function (post-10c-b-D)", () => {
     // so a bare toContain() would stay green if the rpc name were changed to anything else.
     expect(src).toContain('.rpc("enqueue_notification"');
     expect(src).toContain('p_event_key: "open_slots_player"');
-    // the legacy route is GONE — no direct send-email POST, no notification_sends claim.
-    // Either one surviving beside the v2 call would be a dual send.
+    // The legacy SEND route is GONE. That is the invariant — a direct send-email POST surviving
+    // beside the v2 call would be a dual send.
     // Assert on CODE, not prose: the header comment legitimately explains what was removed.
     expect(src).not.toContain("functions/v1/send-email");
-    expect(src).not.toContain('from("notification_sends")');
-    expect(src).not.toContain('onConflict: "dedup_key"');
+  });
+
+  it("uses the legacy ledger as a cross-version dedup BRIDGE, never as a send claim", () => {
+    // notification_sends is read and marked again — deliberately, and it is NOT a return to the
+    // old dual-write. The pre-cutover handler CLAIMED a key and then SENT; this handler consults
+    // the ledger to avoid re-notifying someone the old handler already mailed during the deploy
+    // overlap, and records what it handled so a rollback does not send a second copy. The send
+    // itself belongs entirely to the v2 worker.
+    expect(src).toContain('from("notification_sends")');
+    expect(src).toContain(".select(\"dedup_key\")");
+    expect(src).toContain('onConflict: "dedup_key"');
+    expect(src).toContain("ignoreDuplicates: true");
+    // The old claim/release dance is what must not come back: a release DELETE beside a send is
+    // the shape that made the legacy ledger authoritative over delivery.
+    expect(src).not.toContain('from("notification_sends")\n          .delete()');
+    expect(src).not.toMatch(/notification_sends[\s\S]{0,200}\.delete\(/);
   });
 
   it("keeps dedup deterministic and derived from STRUCTURED fields", () => {

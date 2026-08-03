@@ -260,6 +260,72 @@ COMMENT ON FUNCTION public.notif_digest_item_for_event(text,text,jsonb) IS
   'Trusted server-side digest-item dispatch. Mints the immutable typed item from STRUCTURED payload fields via the event''s own validating renderer. Edge-rendered content is never trusted or accepted.';
 
 -- ===========================================================================
+-- 5b. THE v1 -> v2 MIRROR BRIDGE — installed BEFORE the backfill, deliberately.
+--
+-- A cached settings bundle can still write notification_preferences.open_slots_digest after the
+-- v1 control is removed from the page, and nothing propagated that write forward: the settings
+-- UI would appear to work while delivery ignored it. So the legacy column mirrors forward for as
+-- long as it exists. One-way (v1 -> v2): v2 is the source of truth and a stale v1 page must
+-- never clobber a newer v2 choice.
+--
+-- WHY THE ORDER MATTERS. Installing the trigger AFTER the backfill leaves a window — every v1
+-- write landing between the two statements is in neither, so that user's choice is silently
+-- lost. CREATE TRIGGER takes a lock on notification_preferences that blocks concurrent writers
+-- until this migration commits, so with the trigger created FIRST there is no instant at which a
+-- v1 write is unobserved: anything already committed is caught by the backfill below, anything
+-- later is caught by the trigger, and anything concurrent waits for the lock and then fires it.
+CREATE OR REPLACE FUNCTION public.notif_mirror_open_slots_pref_to_v2()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NEW.user_id IS NULL THEN RETURN NEW; END IF;
+  -- Only the four cadences v2 understands; anything else is ignored rather than coerced into a
+  -- sending cadence (same rule as the backfill below).
+  IF NEW.open_slots_digest IS NULL OR NEW.open_slots_digest NOT IN ('off','instant','daily','weekly') THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = NEW.user_id) THEN RETURN NEW; END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    -- Only an actual CHANGE to this column is a user action. An unrelated UPDATE must not
+    -- resurrect a stale cadence over a newer v2 choice.
+    IF NEW.open_slots_digest IS NOT DISTINCT FROM OLD.open_slots_digest THEN
+      RETURN NEW;
+    END IF;
+    INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+    VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+    ON CONFLICT (user_id, event_type)
+    DO UPDATE SET email_frequency = EXCLUDED.email_frequency, updated_at = now();
+    RETURN NEW;
+  END IF;
+
+  -- INSERT is DIFFERENT, and getting this wrong re-enables mail after an opt-out.
+  --
+  -- The settings page upserts a PARTIAL row when the user changes any OTHER legacy control, and
+  -- open_slots_digest then takes its column DEFAULT of 'weekly' (20260210090026). That is not a
+  -- choice about open slots at all. Mirroring it with DO UPDATE would overwrite an explicit v2
+  -- 'off' with 'weekly' and start mailing someone who had opted out — and this affects the
+  -- CURRENT bundle, not just cached ones.
+  --
+  -- So an INSERT may only SEED a v2 row that does not exist yet. It can never overwrite one.
+  -- A cached page's genuine opt-out on a user who already has a v2 row arrives as an UPDATE
+  -- (the row exists), which is handled above.
+  INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+  VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+  ON CONFLICT (user_id, event_type) DO NOTHING;
+  RETURN NEW;
+END $$;
+
+COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_to_v2() IS
+  'Cutover bridge: mirrors a legacy notification_preferences.open_slots_digest write forward into notification_preferences_v2(open_slots_player), so a CACHED settings bundle cannot silently disagree with delivery. One-way (v1 -> v2). Installed before the backfill so no write falls between the two. Retire with the v1 column in 10c-d.';
+
+DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_to_v2 ON public.notification_preferences;
+CREATE TRIGGER trg_mirror_open_slots_pref_to_v2
+  AFTER INSERT OR UPDATE OF open_slots_digest ON public.notification_preferences
+  FOR EACH ROW EXECUTE FUNCTION public.notif_mirror_open_slots_pref_to_v2();
+
+-- ===========================================================================
 -- 6. MANDATORY v1 -> v2 PREFERENCE BACKFILL, before producer cutover.
 --
 -- Why this is not optional (verified in code): send-email maps new_availability /

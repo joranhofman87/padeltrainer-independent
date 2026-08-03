@@ -764,3 +764,48 @@ runbook (to be written when the cron lands) must instead:
    `cron.alter_job(jobid, active := true)` **only after the canary succeeds**. On any failure: set the switch
    **off** and leave the cron **inactive**.
 Never assert absolute-zero tables against a live system, and never delete the Vault-backed job to "pause" it.
+
+## 10c-b D — the notify-followers cutover: deploy ORDER is part of the design
+
+`notify-followers` moved from "POST send-email per follower, dedup in `notification_sends`" to
+"`enqueue_notification('open_slots_player')` per follower, dedup on the resolver's
+`<event>:<subject>:<recipient>` key". The two versions therefore keep their bookkeeping in two
+different ledgers, and the frontend and the edge function do not deploy at the same instant. Three
+consequences follow, and two of them cannot be closed by code alone.
+
+**Deploy order (required).** Migrations → **frontend** → wait out the bundle-cache window →
+**edge function**. Pushing the edge function first is the one order that leaves cached pages
+sending a request shape the new handler must interpret rather than trust.
+
+1. **Cross-version dedup (closed in code, both directions).** The new handler CONSULTS
+   `notification_sends` for the pre-cutover key before enqueueing and RECORDS the key for every
+   recipient it handled. So an old-handler send followed by a retry that lands on the new handler
+   does not notify twice, and a rollback to the old handler finds the key already claimed. A
+   `failed` recipient is deliberately never claimed — it still needs notifying. This bridge is
+   transition-only and is removed with the rest of the compatibility branch.
+2. **The legacy display range is ambiguous for multi-year batches (closed operationally).** The
+   pre-cutover format printed the year only on the right: `Jan 1 - Jan 2, 2027` is what BOTH
+   2027-01-01..2027-01-02 and 2026-01-01..2027-01-02 print, and the bulk-slot form can produce
+   either (several entries, each recurring up to 52 weeks, with unrelated start dates). Current
+   bundles now print **both** years whenever they differ, so nothing this app emits is ambiguous.
+   A CACHED pre-cutover bundle can still emit the old shape; it is parsed to the shortest
+   non-negative span, which is exact for every sub-year range (including a same-month 52-week
+   series such as `Jan 10 - Jan 2, 2027`, which the previous month-only rollover test rejected
+   outright) and short for a multi-year one. Waiting out the cache window before deploying the
+   edge function is what removes that last case.
+3. **A cached bundle ignores an incomplete run (closed in code, server-side).** The pre-cutover
+   caller never inspected the response, and the pre-cutover HANDLER answers 200 even when it
+   deferred recipients or hit send errors. So the run drains its own tail: on a deferred tail it
+   chains a bounded continuation of itself carrying a keyset cursor, forwarding the caller's own
+   Authorization header so the hop re-derives the same trainer and gains no privilege. The
+   current caller ALSO judges completeness from the response body (`remaining` / `errors` on the
+   old shape, `incomplete` / `failed` / `deferred` on the new one) and retries, so client retry
+   and server continuation are independent lines of defence.
+
+**Preference bridge.** `notification_preferences.open_slots_digest` mirrors forward into
+`notification_preferences_v2(open_slots_player)` for as long as the v1 column exists. The trigger
+is created in the SAME migration as the one-time backfill and BEFORE it: `CREATE TRIGGER` holds a
+lock on the table until the migration commits, so there is no instant at which a v1 write is
+recorded by neither. The mirror is one-way, and an INSERT may only SEED a v2 row — never overwrite
+one — because the settings page upserts a partial row in which `open_slots_digest` takes its
+column default of `weekly`, which would otherwise re-enable mail for a user who had opted out.
