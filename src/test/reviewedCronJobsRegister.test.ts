@@ -27,6 +27,16 @@ const TSV = join(process.cwd(), 'scripts', 'rollout', 'notif-10ca3', 'clone-safe
 /** The clone-safety inventory's own outbound test (sql/clone_source_inventory.sql). */
 const OUTBOUND = /net\.http_(post|get|delete)|http_post|http_get|dblink/i;
 
+/**
+ * Every way this repo can reach pg_cron's scheduling API. `cron.schedule(` alone was too narrow:
+ * `cron.schedule_in_database(...)` (which the repo's own sanitizer already treats as a clone
+ * hazard), a quoted identifier, whitespace around the dot, or a comment between the name and the
+ * paren were all invisible — and an unregistered job introduced through one of them left the
+ * "unreadable" list empty and passed.
+ */
+const SCHEDULING_CALL =
+  /(?:"?cron"?\s*\.\s*"?(schedule_in_database|schedule|unschedule)"?)\s*(?:--[^\n]*\n\s*|\/\*[\s\S]*?\*\/\s*)*\(/gi;
+
 /** Migrations apply in filename order; that order is what decides a job's final state. */
 const migrationFiles = () => readdirSync(MIGRATIONS).filter((n) => n.endsWith('.sql')).sort();
 
@@ -72,16 +82,73 @@ function splitArgs(sql: string, openParen: number): string[] | null {
   return null;
 }
 
+/**
+ * A WHOLE-ARGUMENT literal, or nothing. The greedy `^E?'(.*)'$` this replaced accepted
+ * `'SELECT net.ht' || 'tp_post(...)'` as a single literal and then classified the result
+ * non-outbound, while PostgreSQL evaluates it to a net.http_post call. Anything that is an
+ * EXPRESSION rather than one literal must fall through to the fail-loud path, not be guessed at.
+ */
 const unquote = (arg: string): string | null => {
   const t = arg.trim();
-  const dollar = t.match(/^(\$[A-Za-z_]*\$)([\s\S]*)\1$/);
-  if (dollar) return dollar[2];
-  const single = t.match(/^E?'([\s\S]*)'$/);
-  if (single) return single[1];
-  return null;
+  const dollar = t.match(/^\$[A-Za-z_]*\$/);
+  if (dollar) {
+    const end = t.indexOf(dollar[0], dollar[0].length);
+    // the closing tag must be the END of the argument — otherwise it is `$a$..$a$ || x`
+    if (end < 0 || end + dollar[0].length !== t.length) return null;
+    return t.slice(dollar[0].length, end);
+  }
+  if (!/^E?'/.test(t)) return null;
+  let i = t[0] === 'E' ? 2 : 1;
+  let out = '';
+  while (i < t.length) {
+    if (t[i] === "'" && t[i + 1] === "'") { out += "'"; i += 2; continue; }
+    if (t[i] === '\\' && t[0] === 'E') { out += t.slice(i, i + 2); i += 2; continue; }
+    if (t[i] === "'") { i++; break; }
+    out += t[i]; i++;
+  }
+  // ...and nothing may follow the closing quote: `'a' || 'b'` is a concatenation, not a literal.
+  return t.slice(i).trim() === '' ? out : null;
 };
 
-type Call = { file: string; name: string; command: string | null; raw: string };
+/**
+ * The value of `ident` as assigned NEAREST BEFORE `callAt` — not the file's first assignment.
+ * 20260606120000 assigns `cron_command` three times, so taking the first classified the
+ * fetch-logo and invoice jobs from the ENRICHMENT command. All three are outbound, so the
+ * result happened to be right, which is why no register mutant could see it; it is unit-tested
+ * below instead.
+ */
+export function nearestAssignment(sql: string, ident: string, callAt: number): string | null {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(ident)) return null;
+  let best: string | null = null;
+  for (const a of sql.matchAll(new RegExp(`\\b${ident}\\s*:=\\s*([\\s\\S]*?);\\s*\\n`, 'g'))) {
+    if (a.index! < callAt) best = a[1]; else break;
+  }
+  return best;
+}
+
+type Call = { file: string; name: string; outbound: 'yes' | 'no'; raw: string };
+
+/**
+ * Classify a command EXPRESSION as outbound, definitively or not at all.
+ *
+ * A whole literal is definite in both directions. Anything else — `format('…', x)`, a
+ * concatenation — is only definite when a literal part already contains an outbound call: an
+ * evaluated expression can only ADD to what its literals show, never remove it. If the literal
+ * parts show nothing, `no` would be a guess, so it returns null and the caller fails loudly.
+ */
+export function classifyCommand(expr: string): 'yes' | 'no' | null {
+  const whole = unquote(expr);
+  if (whole !== null) return OUTBOUND.test(whole) ? 'yes' : 'no';
+  const parts: string[] = [];
+  for (const m of expr.matchAll(/\$([A-Za-z_]*)\$([\s\S]*?)\$\1\$|E?'((?:''|\\.|[^'])*)'/g)) {
+    parts.push(m[2] ?? m[3] ?? '');
+  }
+  // Joined with NOTHING, because a concatenation can split the marker itself:
+  // `'SELECT net.ht' || 'tp_post(…)'` evaluates to a net.http_post call, and any separator
+  // between the parts hides it. Joining tightly can only make this MORE likely to say 'yes',
+  // which is the safe direction for "does this reach the network".
+  return OUTBOUND.test(parts.join('')) ? 'yes' : null;
+}
 
 /** Every cron.schedule / cron.unschedule call, in migration order. */
 function cronCalls() {
@@ -89,8 +156,8 @@ function cronCalls() {
   const unresolved: string[] = [];
   for (const file of migrationFiles()) {
     const sql = readFileSync(join(MIGRATIONS, file), 'utf8');
-    for (const m of sql.matchAll(/cron\.(schedule|unschedule)\s*\(/g)) {
-      const kind = m[1] as 'schedule' | 'unschedule';
+    for (const m of sql.matchAll(SCHEDULING_CALL)) {
+      const kind = m[1].toLowerCase().startsWith('unschedule') ? 'unschedule' : 'schedule';
       const args = splitArgs(sql, m.index! + m[0].length - 1);
       if (!args) { unresolved.push(`${file}: unparseable cron.${kind}( call`); continue; }
       const name = unquote(args[0]);
@@ -101,20 +168,22 @@ function cronCalls() {
       }
       if (kind !== 'schedule') continue;
       if (args.length < 3) { unresolved.push(`${file}: cron.schedule('${name}') with fewer than 3 arguments`); continue; }
-      let command = unquote(args[2]);
-      if (command === null) {
+      let outbound = classifyCommand(args[2]);
+      if (outbound === null) {
         // The command is an identifier (`cron_command`) — resolve its assignment in this file.
+        // THE NEAREST PRECEDING ASSIGNMENT, not the file's first. 20260606120000 assigns
+        // `cron_command` three times, so taking the first classified the fetch-logo and invoice
+        // jobs from the ENRICHMENT command — they are all outbound, so it happened to be
+        // harmless, which is the worst kind of wrong.
         const ident = args[2].trim();
-        if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(ident)) {
-          const assign = sql.match(new RegExp(`${ident}\\s*:=\\s*([\\s\\S]*?);\\s*\\n`));
-          if (assign) command = unquote(assign[1]) ?? assign[1];
-        }
+        const expr = nearestAssignment(sql, ident, m.index!);
+        if (expr !== null) outbound = classifyCommand(expr);
       }
-      if (command === null) {
-        unresolved.push(`${file}: cron.schedule('${name}') command could not be resolved: ${args[2].trim().slice(0, 60)}`);
+      if (outbound === null) {
+        unresolved.push(`${file}: cron.schedule('${name}') command could not be classified: ${args[2].trim().slice(0, 60)}`);
         continue;
       }
-      schedules.push({ file, name, command, raw: args[2] });
+      schedules.push({ file, name, outbound, raw: args[2] });
     }
   }
   return { schedules, unresolved };
@@ -170,9 +239,8 @@ describe('H — the clone-safety cron register covers every scheduled job', () =
     for (const [name, entry] of reviewed) {
       const s = lastSchedule.get(name);
       if (!s) continue;                                  // no static command; nothing to compare
-      const want = OUTBOUND.test(s.command!) ? 'yes' : 'no';
-      if (entry.outbound !== want) {
-        wrong.push(`${name}: reviewed='${entry.outbound}' but the command scheduled in ${s.file} is '${want}'`);
+      if (entry.outbound !== s.outbound) {
+        wrong.push(`${name}: reviewed='${entry.outbound}' but the command scheduled in ${s.file} is '${s.outbound}'`);
       }
     }
     expect(wrong).toEqual([]);
@@ -204,5 +272,49 @@ describe('H — the clone-safety cron register covers every scheduled job', () =
     expect(entry, 'notification-digest-worker must be in the reviewed cron set').toBeTruthy();
     expect(entry!.outbound).toBe('yes');
     expect(entry!.note).toMatch(/INACTIVE/i);
+  });
+});
+
+// ── the parser's own defects, pinned directly ───────────────────────────────────────────────
+// These three were all live bugs in the first version of this file, and none of them could be
+// caught by mutating the register: the real data happens to hide each one.
+describe('H — the cron parser cannot be fooled the ways it was', () => {
+  it('binds a command variable to the NEAREST PRECEDING assignment', () => {
+    const sql = [
+      "  cron_command := 'SELECT net.http_post(url := ''x'');';",
+      "  PERFORM cron.schedule('a', '* * * * *', cron_command);",
+      "  cron_command := 'SELECT public.some_local_thing();';",
+      "  PERFORM cron.schedule('b', '* * * * *', cron_command);",
+      '',
+    ].join('\n');
+    const callB = sql.lastIndexOf('cron.schedule');
+    const callA = sql.indexOf('cron.schedule');
+    expect(nearestAssignment(sql, 'cron_command', callA)).toMatch(/http_post/);
+    // ...and the SECOND call must not inherit the first command.
+    expect(nearestAssignment(sql, 'cron_command', callB)).toMatch(/some_local_thing/);
+    expect(nearestAssignment(sql, 'cron_command', callB)).not.toMatch(/http_post/);
+  });
+
+  it('does not mistake a CONCATENATION for a literal', () => {
+    // PostgreSQL evaluates this to a net.http_post call; a greedy ^'(.*)'$ read it as one
+    // literal whose text contains neither half, and classified it non-outbound.
+    expect(classifyCommand("'SELECT net.ht' || 'tp_post(url := ''x'');'")).toBe('yes');
+    // ...and an expression whose literals show nothing is UNKNOWN, never 'no'.
+    expect(classifyCommand("'SELECT ' || quote_ident(v_fn) || '();'")).toBeNull();
+  });
+
+  it('classifies a whole literal definitively in both directions', () => {
+    expect(classifyCommand("'SELECT public.release_expired_rebook_holds();'")).toBe('no');
+    expect(classifyCommand("$c$ SELECT net.http_post(url := 'x'); $c$")).toBe('yes');
+    // a dollar-quoted block followed by anything is an expression, not a literal
+    expect(classifyCommand("$c$ SELECT 1; $c$ || v_tail")).toBeNull();
+  });
+
+  it('sees every scheduling form, including schedule_in_database and quoted identifiers', () => {
+    for (const form of ['cron.schedule(', 'cron.schedule_in_database(', '"cron"."schedule"(',
+                        'cron . schedule(', 'cron.unschedule(']) {
+      SCHEDULING_CALL.lastIndex = 0;
+      expect(SCHEDULING_CALL.test(form), `${form} must be discovered`).toBe(true);
+    }
   });
 });
