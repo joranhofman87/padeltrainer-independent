@@ -98,12 +98,28 @@ const unquote = (arg: string): string | null => {
     return t.slice(dollar[0].length, end);
   }
   if (!/^E?'/.test(t)) return null;
-  let i = t[0] === 'E' ? 2 : 1;
+  // E'' ESCAPES ARE DECODED, NOT PRESERVED. `E'net.http_\x70ost(…)'` is `net.http_post(…)` to
+  // PostgreSQL; keeping the escape as text classified it non-outbound — a definite, wrong `no`
+  // that would then fail as CLASSIFICATION DRIFT mid-rollout. Any escape not decoded here returns
+  // null rather than a guess.
+  const escaped = t[0] === 'E';
+  let i = escaped ? 2 : 1;
   let out = '';
   while (i < t.length) {
     if (t[i] === "'" && t[i + 1] === "'") { out += "'"; i += 2; continue; }
-    if (t[i] === '\\' && t[0] === 'E') { out += t.slice(i, i + 2); i += 2; continue; }
     if (t[i] === "'") { i++; break; }
+    if (escaped && t[i] === '\\') {
+      const n = t[i + 1];
+      if (n === "'" || n === '\\' || n === '"') { out += n; i += 2; continue; }
+      if (n === 'n') { out += '\n'; i += 2; continue; }
+      if (n === 'r') { out += '\r'; i += 2; continue; }
+      if (n === 't') { out += '\t'; i += 2; continue; }
+      const hex = t.slice(i + 1).match(/^x([0-9a-fA-F]{1,2})/);
+      if (hex) { out += String.fromCharCode(parseInt(hex[1], 16)); i += 1 + hex[0].length; continue; }
+      const oct = t.slice(i + 1).match(/^([0-7]{1,3})/);
+      if (oct) { out += String.fromCharCode(parseInt(oct[1], 8)); i += 1 + oct[0].length; continue; }
+      return null;                                    // an escape we do not decode — fail closed
+    }
     out += t[i]; i++;
   }
   // ...and nothing may follow the closing quote: `'a' || 'b'` is a concatenation, not a literal.
@@ -119,11 +135,18 @@ const unquote = (arg: string): string | null => {
  */
 export function nearestAssignment(sql: string, ident: string, callAt: number): string | null {
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(ident)) return null;
-  let best: string | null = null;
+  let best: { expr: string; end: number } | null = null;
   for (const a of sql.matchAll(new RegExp(`\\b${ident}\\s*:=\\s*([\\s\\S]*?);\\s*\\n`, 'g'))) {
-    if (a.index! < callAt) best = a[1]; else break;
+    if (a.index! < callAt) best = { expr: a[1], end: a.index! + a[0].length }; else break;
   }
-  return best;
+  if (!best) return null;
+  // TEXTUAL PRECEDENCE IS NOT CONTROL FLOW. If a branch, a loop, or another routine's body sits
+  // between the assignment and the call, the value that actually reaches cron.schedule may come
+  // from somewhere else — an IF assigning an outbound command in one arm and a local one in the
+  // last arm would always be read from the last. Refuse rather than pick the textual predecessor.
+  const between = sql.slice(best.end, callAt);
+  if (/\b(IF|ELSIF|ELSE|CASE|LOOP|WHILE|DECLARE|CREATE\s+(OR\s+REPLACE\s+)?FUNCTION)\b/i.test(between)) return null;
+  return best.expr;
 }
 
 type Call = { file: string; name: string; outbound: 'yes' | 'no'; raw: string };
@@ -139,15 +162,62 @@ type Call = { file: string; name: string; outbound: 'yes' | 'no'; raw: string };
 export function classifyCommand(expr: string): 'yes' | 'no' | null {
   const whole = unquote(expr);
   if (whole !== null) return OUTBOUND.test(whole) ? 'yes' : 'no';
-  const parts: string[] = [];
-  for (const m of expr.matchAll(/\$([A-Za-z_]*)\$([\s\S]*?)\$\1\$|E?'((?:''|\\.|[^'])*)'/g)) {
-    parts.push(m[2] ?? m[3] ?? '');
+
+  // A PURE `||` CONCATENATION OF LITERALS. Joined with NOTHING, because a concatenation can split
+  // the marker itself — `'SELECT net.ht' || 'tp_post(…)'` evaluates to a net.http_post call, and
+  // any separator between the parts would hide it.
+  const pieces = splitTopLevel(expr, '||');
+  if (pieces && pieces.length > 1) {
+    const lits = pieces.map(unquote);
+    if (lits.every((l) => l !== null)) return OUTBOUND.test(lits.join('')) ? 'yes' : 'no';
   }
-  // Joined with NOTHING, because a concatenation can split the marker itself:
-  // `'SELECT net.ht' || 'tp_post(…)'` evaluates to a net.http_post call, and any separator
-  // between the parts hides it. Joining tightly can only make this MORE likely to say 'yes',
-  // which is the safe direction for "does this reach the network".
-  return OUTBOUND.test(parts.join('')) ? 'yes' : null;
+
+  // `format(<literal template>, …)`: format always emits its template text, so a marker in the
+  // TEMPLATE is definite. Its absence is not — an argument could supply one — so that is UNKNOWN.
+  const fmt = expr.trim().match(/^format\s*\(/i);
+  if (fmt) {
+    const args = splitArgs(expr.trim(), fmt[0].length - 1);
+    const template = args && args.length ? unquote(args[0]) : null;
+    if (template !== null && OUTBOUND.test(template)) return 'yes';
+  }
+  return null;
+}
+
+/** Split on a top-level operator, respecting quoting and parens. Null if the text is unbalanced. */
+function splitTopLevel(expr: string, op: string): string[] | null {
+  const args = splitArgs(`(${expr})`, 0);
+  if (!args) return null;
+  const inner = args[0];
+  const out: string[] = [];
+  let depth = 0, start = 0, i = 0;
+  while (i < inner.length) {
+    const ch = inner[i];
+    if (ch === '$') {
+      const tag = inner.slice(i).match(/^\$[A-Za-z_]*\$/);
+      if (tag) {
+        const e = inner.indexOf(tag[0], i + tag[0].length);
+        if (e < 0) return null;
+        i = e + tag[0].length;
+        continue;
+      }
+    }
+    if (ch === "'") {
+      i++;
+      while (i < inner.length) {
+        if (inner[i] === "'" && inner[i + 1] === "'") { i += 2; continue; }
+        if (inner[i] === "'") { i++; break; }
+        if (inner[i] === '\\') { i += 2; continue; }
+        i++;
+      }
+      continue;
+    }
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    else if (depth === 0 && inner.startsWith(op, i)) { out.push(inner.slice(start, i)); i += op.length; start = i; continue; }
+    i++;
+  }
+  out.push(inner.slice(start));
+  return out;
 }
 
 /** Every cron.schedule / cron.unschedule call, in migration order. */
@@ -293,6 +363,41 @@ describe('H — the cron parser cannot be fooled the ways it was', () => {
     // ...and the SECOND call must not inherit the first command.
     expect(nearestAssignment(sql, 'cron_command', callB)).toMatch(/some_local_thing/);
     expect(nearestAssignment(sql, 'cron_command', callB)).not.toMatch(/http_post/);
+  });
+
+  it('refuses a variable whose assignment is separated from the call by a BRANCH', () => {
+    // Textual precedence is not control flow: the IF's outbound arm may be the one that runs,
+    // while the last textual assignment is the local one.
+    const sql = [
+      "  IF v_env = 'prod' THEN",
+      "    cron_command := 'SELECT net.http_post(url := ''x'');';",
+      '  ELSE',
+      "    cron_command := 'SELECT public.local_only();';",
+      '  END IF;',
+      "  PERFORM cron.schedule('a', '* * * * *', cron_command);",
+      '',
+    ].join('\n');
+    expect(nearestAssignment(sql, 'cron_command', sql.indexOf('cron.schedule'))).toBeNull();
+  });
+
+  it('DECODES E-string escapes rather than reading them as text', () => {
+    // PostgreSQL stores `net.http_post`; leaving `\x70` as text classified this as non-outbound.
+    expect(classifyCommand(String.raw`E'SELECT net.http_\x70ost(url := ''x'');'`)).toBe('yes');
+    expect(classifyCommand(String.raw`E'SELECT net.http_\160ost(url := ''x'');'`)).toBe('yes');
+    // a plain E-string with no escape is still just a literal
+    expect(classifyCommand(String.raw`E'SELECT public.local_only();'`)).toBe('no');
+    // ...but an escape form this does not decode is UNKNOWN, never a definite answer
+    expect(classifyCommand(String.raw`E'SELECT net.http_\u0070ost();'`)).toBeNull();
+  });
+
+  it('does not claim an expression that could REMOVE or exclude its literals', () => {
+    // `replace(...)` evaluates to something that never reaches the network, so a `yes` read off
+    // its literals is simply wrong — and a wrong `yes` makes a correct `no` entry fail.
+    expect(classifyCommand("replace('SELECT net.http_post()', 'http_post', 'noop')")).toBeNull();
+    // mutually exclusive CASE branches must not be spliced into a marker no branch produces
+    expect(classifyCommand("CASE WHEN x THEN 'net.ht' ELSE 'tp_post()' END")).toBeNull();
+    // ...but format() IS accepted, because it always emits its template
+    expect(classifyCommand("format($c$SELECT net.http_post(url := 'u', headers := '%s');$c$, k)")).toBe('yes');
   });
 
   it('does not mistake a CONCATENATION for a literal', () => {
