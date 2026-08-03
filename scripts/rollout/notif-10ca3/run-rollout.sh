@@ -566,6 +566,18 @@ assert_inventory_is_reviewed() {   # $1 = inventory file
   for f in "$REVIEWED_JOBS" "$REVIEWED_FNS" "$REVIEWED_EXTS"; do
     [[ -f "$f" ]] || die "missing reviewed list: $f"
   done
+  # A job name outside the safe grammar is never classified — it is reported under its own key,
+  # because a name containing whitespace would forge the fields after it in this space-delimited
+  # record and read as a DIFFERENT, reviewed job.
+  if grep -q '^CRONJOB_UNSAFE_NAME ' "$inv"; then
+    n="$(grep -c '^CRONJOB_UNSAFE_NAME ' "$inv")"
+    die "${n} cron job(s) have a name outside the safe grammar ([A-Za-z0-9_.:-]) — they cannot be reconciled against the reviewed set and a whitespace name would forge the inventory record; rename or remove them before cloning"
+  fi
+  # ...and every CRONJOB record must have exactly its three fields, so a short or long line can
+  # never be silently read as something else.
+  if awk '$1=="CRONJOB" && NF!=4 {found=1} END{exit !found}' "$inv"; then
+    die "malformed CRONJOB record(s) in the clone-source inventory — refusing to classify blind"
+  fi
   # cron jobs: present in the reviewed set AND the live outbound classification
   # must still match the reviewed one (a command edit can change it).
   while read -r name flag; do

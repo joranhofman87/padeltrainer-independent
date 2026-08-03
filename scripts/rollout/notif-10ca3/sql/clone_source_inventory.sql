@@ -27,9 +27,21 @@
 \pset format unaligned
 \pset footer off
 
-SELECT format('CRONJOB %s %s %s', jobname, active,
-              CASE WHEN command ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
-                   THEN 'yes' ELSE 'no' END)
+-- The record is SPACE-DELIMITED and the reader takes fixed fields, so a job NAME containing
+-- whitespace forges the fields after it: pg_cron allows one, and
+--   `notification-email-worker filler yes`
+-- parses as the reviewed job `notification-email-worker` classified `yes`, with the real active
+-- and outbound values never read. That is fail-OPEN in the one place the register trusts as
+-- authoritative. A name outside the safe grammar is therefore not emitted as a CRONJOB record at
+-- all — it is reported under its own key, which the reader treats as fatal, and the name itself is
+-- surfaced only as an md5 so a hostile name cannot inject anything downstream either.
+SELECT CASE
+         WHEN jobname ~ '^[A-Za-z0-9_.:-]+$'
+           THEN format('CRONJOB %s %s %s', jobname, active,
+                       CASE WHEN command ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
+                            THEN 'yes' ELSE 'no' END)
+         ELSE format('CRONJOB_UNSAFE_NAME %s', md5(jobname))
+       END
 FROM cron.job ORDER BY jobid;
 
 -- the exact configuration the seal will pin, computed identically there

@@ -5,10 +5,10 @@
 // `clone-safety/reviewed-cron-jobs.tsv`: "UNREVIEWED cron job present" aborts the clone-source
 // quiesce. That is the right posture — a job added at runtime is exactly what a clone must not
 // inherit — but nothing connected that file to the migrations, so 10c-b F scheduled
-// `notification-digest-worker` and it was never registered. That inventory step is READ-ONLY and
-// refuses before it connects, so the cost would have been an aborted rollout attempt rather than a
-// stuck window — but it would have been found by an operator running the rollout instead of by CI
-// on the day the job was added.
+// `notification-digest-worker` and it was never registered. That inventory step connects and reads,
+// but refuses before it CHANGES anything, so the cost would have been an aborted rollout attempt
+// rather than a stuck window — and it would have been found by an operator running the rollout
+// instead of by CI on the day the job was added.
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // WHY THIS FILE NO LONGER CLASSIFIES COMMANDS, after five review rounds that each found another
@@ -172,7 +172,7 @@ describe('H — the clone-safety cron register covers every scheduled job', () =
     // by a scheduler function — they are live in production and must stay registered. Exempting
     // them on final state left their entries freely deletable.
     const missing = names.filter((n) => !RETIRED.has(n) && !reviewed.has(n));
-    expect(missing, 'run-rollout.sh aborts the clone-source quiesce on an unreviewed cron job — add these to clone-safety/reviewed-cron-jobs.tsv with their outbound classification').toEqual([]);
+    expect(missing, 'run-rollout.sh aborts the rollout on an unreviewed cron job, before it changes anything — add these to clone-safety/reviewed-cron-jobs.tsv with their outbound classification').toEqual([]);
   });
 
   it('the register has no entry for a job nothing schedules', () => {

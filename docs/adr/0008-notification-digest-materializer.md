@@ -902,8 +902,8 @@ they sort first.
 
 The clone-safety register gained a guard of its own. `run-rollout.sh` fails closed on any live cron
 job missing from `clone-safety/reviewed-cron-jobs.tsv`, but nothing tied that file to the
-migrations — so 10c-b F scheduled `notification-digest-worker` and it went unregistered. That is a
-read-only inventory step which refuses before it changes anything, so the cost is an aborted
+migrations — so 10c-b F scheduled `notification-digest-worker` and it went unregistered. That
+inventory step connects and reads but refuses before it CHANGES anything, so the cost is an aborted
 rollout attempt rather than a stuck window; the point is that it would have been discovered by an
 operator running the rollout instead of by CI on the day the job was added.
 `src/test/reviewedCronJobsRegister.test.ts` closes that: every job name any migration schedules
