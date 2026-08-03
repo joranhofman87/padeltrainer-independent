@@ -1183,3 +1183,41 @@ describe('D — instant rows are covered by the complete live send policy', () =
     expect(rows[0].ok).toBe(true);
   });
 });
+
+// ===========================================================================
+describe('D — the v1->v2 mirror can never re-enable mail after an opt-out', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.notification_preferences_v2; DELETE FROM public.notification_preferences;`);
+    await applyC();
+  });
+
+  it('an INSERT that merely picks up the DEFAULT never overwrites an explicit v2 off', async () => {
+    // The settings page upserts a PARTIAL legacy row when the user changes some OTHER control;
+    // open_slots_digest then takes its column default of 'weekly'. That is not a choice about
+    // open slots, and mirroring it would start mailing someone who had opted out.
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
+                   VALUES ($1,'open_slots_player','off')`, [USER]);
+    await c.query(`INSERT INTO public.notification_preferences (user_id) VALUES ($1)`, [USER]);
+    const { rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0].email_frequency).toBe('off');   // NOT 'weekly'
+  });
+
+  it('an INSERT still SEEDS v2 when no preference exists yet', async () => {
+    await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'daily')`, [USER]);
+    const { rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0].email_frequency).toBe('daily');
+  });
+
+  it('a deliberate UPDATE of the column DOES apply — a cached opt-out still works', async () => {
+    await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'weekly')`, [USER]);
+    await c.query(`UPDATE public.notification_preferences SET open_slots_digest='off' WHERE user_id=$1`, [USER]);
+    const { rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0].email_frequency).toBe('off');
+  });
+});

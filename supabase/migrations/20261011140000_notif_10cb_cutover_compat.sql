@@ -28,17 +28,35 @@ BEGIN
   IF NEW.open_slots_digest IS NULL OR NEW.open_slots_digest NOT IN ('off','instant','daily','weekly') THEN
     RETURN NEW;
   END IF;
-  -- Only mirror an actual CHANGE, so an unrelated UPDATE on this row cannot resurrect a stale
-  -- cadence over a newer v2 choice.
-  IF TG_OP = 'UPDATE' AND NEW.open_slots_digest IS NOT DISTINCT FROM OLD.open_slots_digest THEN
-    RETURN NEW;
-  END IF;
   IF NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = NEW.user_id) THEN RETURN NEW; END IF;
 
+  IF TG_OP = 'UPDATE' THEN
+    -- Only an actual CHANGE to this column is a user action. An unrelated UPDATE must not
+    -- resurrect a stale cadence over a newer v2 choice.
+    IF NEW.open_slots_digest IS NOT DISTINCT FROM OLD.open_slots_digest THEN
+      RETURN NEW;
+    END IF;
+    INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+    VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+    ON CONFLICT (user_id, event_type)
+    DO UPDATE SET email_frequency = EXCLUDED.email_frequency, updated_at = now();
+    RETURN NEW;
+  END IF;
+
+  -- INSERT is DIFFERENT, and getting this wrong re-enables mail after an opt-out.
+  --
+  -- The settings page upserts a PARTIAL row when the user changes any OTHER legacy control, and
+  -- open_slots_digest then takes its column DEFAULT of 'weekly' (20260210090026). That is not a
+  -- choice about open slots at all. Mirroring it with DO UPDATE would overwrite an explicit v2
+  -- 'off' with 'weekly' and start mailing someone who had opted out — and this affects the
+  -- CURRENT bundle, not just cached ones.
+  --
+  -- So an INSERT may only SEED a v2 row that does not exist yet. It can never overwrite one.
+  -- A cached page's genuine opt-out on a user who already has a v2 row arrives as an UPDATE
+  -- (the row exists), which is handled above.
   INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
   VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
-  ON CONFLICT (user_id, event_type)
-  DO UPDATE SET email_frequency = EXCLUDED.email_frequency, updated_at = now();
+  ON CONFLICT (user_id, event_type) DO NOTHING;
   RETURN NEW;
 END $$;
 
