@@ -10799,6 +10799,14 @@ export type Database = {
         Args: { p_destination_fingerprint: string; p_frozen: Json }
         Returns: undefined
       }
+      notif_open_slots_escape_html: {
+        Args: { p_text: string }
+        Returns: string
+      }
+      notif_open_slots_instant_payload: {
+        Args: { p_item: Json }
+        Returns: Json
+      }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_orphan_reconcile_permanent_reason: {
         Args: { p_code: string }
