@@ -90,7 +90,7 @@ export type WorkerSummary = {
   orphansExamined: number;   // 10c-b E — orphan provider events looked at this invocation
   orphansLinked: number;     // ...and correlated to their tagged group
   orphansQuarantined: number;// ...and given up on until an operator acts
-  orphanErrors: number;      // an orphan drain that threw — unhealthy, never fatal
+  orphanErrors: number;      // orphan link failures — thrown OR returned in-band — unhealthy, never fatal
 };
 
 /** Thrown by a run-level failure, carrying a PII-free partial summary so the handler's alert keeps the run IDs
@@ -222,6 +222,13 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
         s.orphansExamined = Number(row.examined ?? 0);
         s.orphansLinked = Number(row.linked ?? 0);
         s.orphansQuarantined = Number(row.quarantined ?? 0);
+        // IN-BAND failures count too. The SQL deliberately CATCHES a link failure and returns it
+        // as `errors` rather than aborting the whole drain, so reading only the throw path
+        // reported a run that stranded evidence — and quarantined it — as a healthy 200 with no
+        // alert. `errors` already includes the missing/mismatched tagged groups that cause a
+        // quarantine, so counting it once is enough, and a quarantine is a one-time transition
+        // (the queue excludes quarantined rows) rather than a permanent red.
+        s.orphanErrors += Number(row.errors ?? 0);
         // has_more is not a failure: the next invocation continues the queue. It is logged so a
         // queue that never drains is visible rather than merely slow.
         deps.log({ event: "orphan_reconcile", run: dispRun, metrics: row });

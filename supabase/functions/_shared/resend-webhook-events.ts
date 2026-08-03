@@ -105,8 +105,18 @@ export function parseResendEvent(raw: unknown): ParsedResendEvent | null {
   const data = (evt.data && typeof evt.data === "object" ? evt.data : {}) as Record<string, unknown>;
 
   const eventType = RESEND_EVENT_MAP[typeof evt.type === "string" ? evt.type : ""];
+  // The address arrives under DIFFERENT keys depending on the event family: a delivery event
+  // carries `to` (array or string), while the suppression-list events are about an address rather
+  // than a message and carry `email`. Reading only `to` silently discarded every
+  // suppression.removed — the callback was acknowledged, record_email_event was never called, and
+  // the address stayed provider_suppressed_active for ever. Accepting both is not guesswork: an
+  // event with neither is refused below exactly as before.
   const to = data.to;
-  const recipient = Array.isArray(to) ? to[0] : to;
+  const recipient = Array.isArray(to)
+    ? to[0]
+    : typeof to === "string" && to !== ""
+      ? to
+      : data.email;
   if (!eventType || typeof recipient !== "string" || recipient === "") return null;
 
   let bounceType: string | null = null;

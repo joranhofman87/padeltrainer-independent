@@ -558,12 +558,21 @@ describe('10c-a3 digest worker — fault injection', () => {
 
 // ===========================================================================
 describe('10c-b E — the orphan provider-event lifecycle', () => {
-  it('an EARLY callback is enrolled, then correlated by the worker drain', async () => {
-    // The gap E closes. A Resend callback can arrive before its group binds provider_message_id
-    // — the webhook enrols it rather than dropping it — and until E nothing drained that queue.
-    // The SQL shipped INERT and said so: "Deploy BEFORE any webhook may ack an `orphan` (PR-2)".
-    // Without a drain, the group aged out through the stale sweep as if the send had gone
-    // unanswered, and the callback sat in the queue for ever.
+  it('an UNCORRELATED callback is enrolled, then linked by the worker drain', async () => {
+    // The gap E closes: until now nothing drained the orphan queue. The SQL shipped INERT and said
+    // so — "Deploy BEFORE any webhook may ack an `orphan` (PR-2)" — so an enrolled callback sat
+    // there for ever and its group aged out through the stale sweep as if the send had gone
+    // unanswered.
+    //
+    // HOW THIS FIXTURE RELATES TO PRODUCTION, stated rather than implied. The precondition for an
+    // orphan is "the tagged group has no live send to correlate against" (bind → no_live_send).
+    // That is NOT the HTTP race: production commits begin_notification_digest_attempt before the
+    // request, so a callback racing the response finds a live attempt and binds directly. It is
+    // reached instead when the tagged group holds no live attempt at all — most concretely a
+    // PARENT group that was superseded by an oversize split, whose children carry the real sends.
+    // The fixture builds that state minimally (materialize without dispatching) rather than
+    // re-deriving it through a split, because what is under test here is the DRAIN, and the
+    // webhook's own record-then-apply path is covered by the module suite.
     const c = conn(); await c.connect();
     try {
       await seedDigestGroup(c, 'p:orph', 'orph@example.com', [{ title: 't' }]);
@@ -597,6 +606,33 @@ describe('10c-b E — the orphan provider-event lifecycle', () => {
       expect(linked.digest_group_id, 'correlated to its ORIGINAL tagged group').toBe(gid);
       expect((await c.query(`SELECT count(*)::int n FROM public.notification_orphan_reconcile_state`)).rows[0].n)
         .toBe(0);
+    } finally { await c.end(); }
+  });
+
+  it('an IN-BAND drain error makes the run unhealthy — the SQL catches link failures on purpose', async () => {
+    // reconcile_orphan_provider_events deliberately catches a link failure and RETURNS it as
+    // `errors` rather than aborting the drain, so a worker that only watched the throw path
+    // reported a run that stranded evidence — and quarantined it — as a healthy 200 with no
+    // alert. This drives the real SQL into that shape: an orphan whose tagged group ends up
+    // bound to a DIFFERENT provider message id can never be linked to it.
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'p:orph3', 'orph3@example.com', [{ title: 't' }]);
+      await runDigestWorker(mkDeps(c, { limits: { ...FIXED_LIMITS, maxAttempts: 0 } }));
+      const gid = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='p:orph3'`)).rows[0].id;
+      await c.query(
+        `SELECT public.apply_notification_provider_event(
+           p_run_id => NULL, p_resend_event_id => 'evt_gone', p_provider_message_id => 're_gone',
+           p_digest_group_id => $1, p_status => 'delivered',
+           p_occurred_at => $2::timestamptz, p_now => $2::timestamptz)`, [gid, NOW.toISOString()]);
+
+      // the group then sends under a DIFFERENT provider message id, so the enrolled event can
+      // never be linked to the group its tag names
+      const summary = await runDigestWorker(mkDeps(c, {
+        send: () => ({ kind: 'response', httpStatus: 202, providerMessageId: 're_other', errorName: null, retryAfterSeconds: null }),
+      }));
+      expect(summary.orphanErrors, 'the RPC returned normally, but it returned an error').toBeGreaterThanOrEqual(1);
+      expect(summary.status, 'stranded evidence must never read as a healthy 200').toBe('error');
     } finally { await c.end(); }
   });
 

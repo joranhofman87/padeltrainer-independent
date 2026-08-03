@@ -17,6 +17,9 @@ import {
 const GROUP = "11111111-1111-4111-8111-111111111111";
 const evt = (type: string, data: Record<string, unknown> = {}) =>
   ({ type, created_at: "2026-08-03T10:00:00Z", data: { to: ["p@example.com"], email_id: "re_1", ...data } });
+/** A suppression-list event: about an ADDRESS, so it carries `email` and no `to` at all. */
+const addrEvt = (type: string) =>
+  ({ type, created_at: "2026-08-03T10:00:00Z", data: { email: "p@example.com" } });
 
 // ---------------------------------------------------------------------------
 Deno.test("the suppression axis is MAPPED — it was acknowledged and discarded before", () => {
@@ -35,7 +38,7 @@ Deno.test("all seven ADR §PV callbacks drive a digest transition, and removal d
   // suppression.removed is an ADDRESS-level recovery, not evidence about any one send — §PV has
   // no row for it, and inventing one would resurrect a group the provider never spoke about.
   assertEquals(DIGEST_TRANSITION_EVENTS.has("suppression_removed"), false);
-  assertEquals(parseResendEvent(evt("suppression.removed"))?.drivesDigest, false);
+  assertEquals(parseResendEvent(addrEvt("suppression.removed"))?.drivesDigest, false);
 });
 
 Deno.test("parse: a delivered callback, fully normalised", () => {
@@ -57,6 +60,28 @@ Deno.test("parse: engagement and unmapped types are ignored, not half-handled", 
   // a mapped type with no recipient cannot be recorded against an address
   assertEquals(parseResendEvent({ type: "email.delivered", data: { to: [] } }), null);
   assertEquals(parseResendEvent({ type: "email.delivered", data: {} }), null);
+});
+
+Deno.test("parse: the address is read from `email` too — a suppression event carries no `to`", () => {
+  // Reading only `to` acknowledged every suppression.removed and never called record_email_event,
+  // so the address stayed provider_suppressed_active for ever. Both shapes are accepted because
+  // the two event families genuinely use different keys.
+  for (const t of ["email.suppressed", "suppression.removed"]) {
+    const p = parseResendEvent(addrEvt(t));
+    assertEquals(p?.recipient, "p@example.com", t);
+    assertEquals(p?.eventType, RESEND_EVENT_MAP[t]);
+  }
+  // a plain string `to` is honoured as well as an array
+  assertEquals(parseResendEvent({ type: "email.delivered", data: { to: "s@example.com" } })?.recipient,
+    "s@example.com");
+  // ...and neither key present is still a refusal, exactly as before
+  assertEquals(parseResendEvent({ type: "suppression.removed", data: {} }), null);
+});
+
+Deno.test("MUTANT: reading only `to` throws away every suppression-list event", () => {
+  const mutant = (d: Record<string, unknown>) => d.to;
+  assertEquals(mutant({ email: "p@example.com" }), undefined, "the mutant finds no recipient...");
+  assertEquals(parseResendEvent(addrEvt("suppression.removed"))?.recipient, "p@example.com");
 });
 
 Deno.test("parse: only a clear PERMANENT bounce suppresses", () => {
