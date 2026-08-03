@@ -140,7 +140,7 @@ describe("notify-followers edge function (post-10c-b-D)", () => {
   });
 
   it("reports enqueue outcomes and never claims a send", () => {
-    expect(src).toContain("already_existing");
+    expect(src).toContain("no_row");
     expect(src).toContain("deferred");
     // "sent" was the old, untrue count: this route enqueues, it does not deliver
     expect(src).not.toContain("sentCount");

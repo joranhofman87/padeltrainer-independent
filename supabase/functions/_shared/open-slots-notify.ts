@@ -88,6 +88,15 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
     };
   }
 
+  // DEPLOY-WINDOW COMPATIBILITY. The frontend deploys automatically; edge functions are
+  // deployed manually. If this function goes out first, callers still running the previous
+  // bundle send the legacy display `date_range` and would get a hard 400. Accept that shape for
+  // the transition ONLY when it parses to real ISO dates — the value it carried
+  // ("Aug 10 - Aug 16, 2026") never does, so this is not a way back in for display text. It is
+  // purely so a stale caller fails soft. Remove once the frontend rollout has completed.
+  if (b.date_from === undefined && b.date_to === undefined && typeof b.date_range === "string") {
+    return { ok: false, error: "date_range is no longer accepted; send ISO date_from and date_to" };
+  }
   if (!isIsoDate(b.date_from)) return { ok: false, error: "date_from must be an ISO date (YYYY-MM-DD)" };
   if (!isIsoDate(b.date_to)) return { ok: false, error: "date_to must be an ISO date (YYYY-MM-DD)" };
   if (b.date_to < b.date_from) return { ok: false, error: "date_to must not precede date_from" };
@@ -105,11 +114,18 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
  * BJ-08 is preserved: a reopened slot keys on the cancelled booking id where one is supplied,
  * so re-opening a re-booked slot is a genuinely distinct event and still notifies; it falls
  * back to slot date/time when the caller has no booking id.
+ *
+ * THE TRAINER IS PART OF THE KEY. The resolver's key is event + subject + RECIPIENT — it does
+ * NOT include tenant/trainer. The legacy key was `${trainer_id}:${playerId}:${anchor}`, so
+ * dropping the trainer here would mean a player who follows two trainers publishing the same
+ * date range gets only the first: the second collapses into "already existing" and is lost.
+ * The reopened fallback (no booking id) collides the same way. Hence the required argument.
  */
-export function eventSubject(req: NotifyRequest): string {
+export function eventSubject(req: NotifyRequest, trainerId: string): string {
+  if (!trainerId) throw new Error("eventSubject: trainerId is required to scope the event");
   return req.subtype === "slot_reopened"
-    ? `sr:${req.bookingId ?? `${req.slotDate}:${req.slotTime}`}`
-    : `na:${req.dateFrom}:${req.dateTo}`;
+    ? `sr:${trainerId}:${req.bookingId ?? `${req.slotDate}:${req.slotTime}`}`
+    : `na:${trainerId}:${req.dateFrom}:${req.dateTo}`;
 }
 
 /**
@@ -119,41 +135,56 @@ export function eventSubject(req: NotifyRequest): string {
  * frozen digest item.
  */
 export function digestPayload(req: NotifyRequest, trainerName: string): Record<string, unknown> {
-  const data: Record<string, unknown> = { trainer_name: trainerName, slot_count: req.slotCount };
+  const data: Record<string, unknown> = { trainer_name: trainerName };
   if (req.subtype === "slot_reopened") {
+    // slot_count / date_from / date_to are REJECTED by the renderer for this subtype
+    // (20261010100000: "date_from/date_to/slot_count are not permitted for slot_reopened").
+    // Sending them anyway would make every reopened event raise once the engine is enabled.
     data.slot_date = req.slotDate;
     data.slot_time = req.slotTime;
   } else {
+    data.slot_count = req.slotCount;
     data.date_from = req.dateFrom;
     data.date_to = req.dateTo;
   }
   return { subtype: req.subtype, data };
 }
 
-/** One follower's outcome. There is deliberately no `sent` — this route only enqueues. */
-export type EnqueueOutcome = "enqueued" | "skipped" | "already_existing" | "failed";
+/**
+ * One follower's outcome. There is deliberately no `sent` — this route only enqueues.
+ *
+ * `no_row` rather than `already_existing`: a zero-row RPC result is AMBIGUOUS. It means either
+ * an idempotency-key conflict (the event was already recorded — a retry) OR that the resolver
+ * emitted nothing at all, which for this non-required event happens on preference 'off', a
+ * missing/suppressed contact, or no deliverable channel. Reporting both as "already existing"
+ * would make a whole cohort of never-notified followers look like successful de-duplication.
+ */
+export type EnqueueOutcome = "enqueued" | "skipped" | "no_row" | "failed";
 
 export type NotifyCounts = {
   enqueued: number;
   skipped: number;
-  already_existing: number;
+  no_row: number;
   failed: number;
   deferred: number;
 };
 
 export function newCounts(): NotifyCounts {
-  return { enqueued: 0, skipped: 0, already_existing: 0, failed: 0, deferred: 0 };
+  return { enqueued: 0, skipped: 0, no_row: 0, failed: 0, deferred: 0 };
 }
 
 /**
  * Classify what enqueue_notification actually did for one recipient.
  *
- * The RPC returns a row per outbox row it CREATED; a conflict on the idempotency key returns
- * nothing. So zero rows is not a failure — it is proof the event was already recorded for this
- * recipient, which is exactly what a retry should look like.
+ * The RPC returns a row per outbox row it CREATED. Zero rows is NOT a failure, but neither is
+ * it proof of a retry: for a non-required event the resolver also returns nothing when the
+ * preference is 'off', when there is no deliverable contact, and when the address is
+ * suppressed. Those are "we did not notify this person", not "we already had". The two cannot
+ * be told apart from the RPC's return value, so they share one honest bucket — `no_row` — and
+ * the name does not overstate what is known.
  */
 export function classifyEnqueue(rows: Array<{ status?: string | null }> | null | undefined): EnqueueOutcome {
-  if (!rows || rows.length === 0) return "already_existing";
+  if (!rows || rows.length === 0) return "no_row";
   // A recipient can yield several channel rows; the event counts as enqueued if ANY of them is
   // live work. An all-skipped result (preference off, engine disabled, suppressed, no contact)
   // is a real, auditable outcome and must not be reported as enqueued.

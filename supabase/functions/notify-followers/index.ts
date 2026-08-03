@@ -101,28 +101,40 @@ const handler = async (req: Request): Promise<Response> => {
     // Followers who still want new-availability alerts. This flag is re-checked live before
     // prepare and before every send attempt by the §PS event hook, so unfollowing between
     // enqueue and delivery still stops the notification.
-    const { data: followers } = await supabase
+    const { data: followers, error: followersError } = await supabase
       .from("trainer_followers")
       .select("player_id, notify_new_availability")
       .eq("trainer_id", trainerId)
       .eq("notify_new_availability", true);
+
+    // A failed READ must not read as "nobody to notify". Returning 200/zero here would make a
+    // database outage indistinguishable from a trainer with no followers.
+    if (followersError) {
+      console.error("Follower lookup failed:", followersError.message);
+      return json({ error: "follower_lookup_failed" }, 500);
+    }
 
     if (!followers || followers.length === 0) {
       return json({ message: "No followers to notify", ...newCounts() }, 200);
     }
 
     // enqueue_notification is user_id-keyed; trainer_followers.player_id is profiles.id.
-    const { data: players } = await supabase
+    const { data: players, error: playersError } = await supabase
       .from("profiles")
       .select("id, user_id")
       .in("id", followers.map((f) => f.player_id));
+
+    if (playersError) {
+      console.error("Follower profile lookup failed:", playersError.message);
+      return json({ error: "profile_lookup_failed" }, 500);
+    }
 
     const recipients = (players ?? []).filter((p) => p.user_id);
     if (recipients.length === 0) {
       return json({ message: "No followers with an account", ...newCounts() }, 200);
     }
 
-    const subject = eventSubject(notify);
+    const subject = eventSubject(notify, trainerId);
     const payload = digestPayload(notify, trainerName);
     const counts = newCounts();
     const errors: string[] = [];
@@ -162,17 +174,23 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(
       `open_slots_player ${notify.subtype}: enqueued=${counts.enqueued} skipped=${counts.skipped} ` +
-      `already_existing=${counts.already_existing} failed=${counts.failed} deferred=${counts.deferred}`,
+      `no_row=${counts.no_row} failed=${counts.failed} deferred=${counts.deferred}`,
     );
     if (errors.length > 0) console.error("Enqueue errors:", errors);
 
     // Truthful reporting: these are ENQUEUE outcomes, not deliveries.
+    //
+    // An INCOMPLETE run must not return 200. Nothing re-invokes this function on a schedule and
+    // the sole caller ignores the body, so a deferred or failed recipient is LOST unless the
+    // caller can see the run was incomplete. A non-2xx is the only signal it can act on.
+    const incomplete = counts.failed > 0 || counts.deferred > 0;
     return json({
       message: `Enqueued ${counts.enqueued} follower notification(s)`,
       subtype: notify.subtype,
+      incomplete,
       ...counts,
       errors: errors.length > 0 ? errors : undefined,
-    }, 200);
+    }, incomplete ? 500 : 200);
   } catch (error: unknown) {
     console.error("Error in notify-followers function:", error);
     const message = error instanceof Error ? error.message : "Unknown error";

@@ -200,6 +200,7 @@ afterAll(async () => { if (c) await c.end(); if (epg) await epg.stop(); });
 /** Apply BOTH C migrations. Explicit per test-group so nothing depends on test ordering. */
 async function applyC() {
   await c.query(MIG('20261011100000_notif_10cb_resolver_open_slots_digest.sql'));
+  await c.query(MIG('20261011130000_notif_10cb_open_slots_instant_payload.sql'));
   await c.query(MIG('20261011110000_notif_10cb_enqueue_digest_branch.sql'));
   await c.query(MIG('20261011120000_notif_10cb_instant_claim_excludes_digest.sql'));
 }
@@ -918,7 +919,13 @@ describe('D — notify-followers dedup rests on the resolver idempotency key', (
            p_event_key := 'open_slots_player', p_recipient_user_id := $1,
            p_tenant_trainer_id := $2, p_idempotency_subject := $3, p_payload := $4::jsonb)`,
         [USER, TRAINER, SUBJECT, JSON.stringify(ITEM)],
-      ).catch(() => ({ rows: [] }))));
+      ).then((r) => ({ rows: r.rows, err: null as string | null }))
+       .catch((e) => ({ rows: [] as unknown[], err: String(e.message ?? e) }))));
+
+      // Swallowing errors here would let "1 success + 7 crashes" pass as clean de-duplication.
+      // Every invocation must SUCCEED; exactly one of them may create the row.
+      const failures = results.filter((r) => r.err);
+      expect(failures.map((f) => f.err)).toEqual([]);
       const created = results.reduce((n, r) => n + r.rows.length, 0);
       expect(created).toBe(1);              // exactly one invocation created the row
     } finally {
@@ -947,5 +954,57 @@ describe('D — notify-followers dedup rests on the resolver idempotency key', (
     const { rows: v2 } = await c.query(
       `SELECT count(*)::int AS n FROM public.notification_outbox WHERE event_type='open_slots_player'`);
     expect(v2[0].n).toBe(1);
+  });
+});
+
+// ===========================================================================
+// D correction — an INSTANT open-slots row must be RENDERABLE.
+//
+// The instant email worker reads payload.subject / payload.html and terminal-fails a row that
+// cannot render. Slice C rendered content only on the digest branch, so an `instant` cadence
+// produced a pending row with neither field: reported as enqueued, then silently terminal-failed,
+// with its idempotency key blocking the retry. C's backfill carries a legacy `instant` choice
+// across verbatim, so this cadence is live for real users.
+describe('D — an instant open-slots row carries server-rendered subject/html', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    await applyC();
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
+                   VALUES ($1,'open_slots_player','instant')
+                   ON CONFLICT (user_id,event_type) DO UPDATE SET email_frequency='instant'`, [USER]);
+  });
+
+  it('the payload the instant worker requires is present and server-owned', async () => {
+    await enqueue('na:t1:2026-08-10:2026-08-16', ITEM);
+    const { rows } = await c.query(`SELECT payload, delivery_mode, status FROM public.notification_outbox`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('pending');
+    expect(rows[0].delivery_mode).toBeNull();              // instant, not a digest member
+    expect(typeof rows[0].payload.subject).toBe('string');
+    expect(rows[0].payload.subject.length).toBeGreaterThan(0);
+    expect(typeof rows[0].payload.html).toBe('string');
+    // the copy came from the SAME trusted renderer the digest uses
+    expect(rows[0].payload.subject).toContain('Coach Ana');
+    expect(rows[0].payload.html).toContain('Coach Ana');
+    // and the structured fields the caller sent survive alongside it
+    expect(rows[0].payload.subtype).toBe('new_availability');
+  });
+
+  it('the rendered html is escaped', async () => {
+    const { rows } = await c.query(
+      `SELECT public.notif_open_slots_escape_html($1) AS out`, ['a<b>&"c\'']);
+    expect(rows[0].out).toBe('a&lt;b&gt;&amp;&quot;c&#39;');
+  });
+
+  it('a DIGEST row still carries no subject/html — rendering happens at send time there', async () => {
+    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='weekly'
+                    WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=true WHERE key='open_slots_player'`);
+    await enqueue('na:t1:digest', ITEM);
+    const { rows } = await c.query(`SELECT payload, delivery_mode, digest_item FROM public.notification_outbox`);
+    expect(rows[0].delivery_mode).toBe('digest');
+    expect(rows[0].payload.subject).toBeUndefined();
+    expect(rows[0].digest_item).not.toBeNull();
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=false WHERE key='open_slots_player'`);
   });
 });

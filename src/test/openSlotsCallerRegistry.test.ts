@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { eventSubject, parseNotifyRequest } from '../../supabase/functions/_shared/open-slots-notify';
 
 const ROOT = process.cwd();
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
@@ -111,10 +112,16 @@ describe('the notify-followers caller registry', () => {
     // A guard against quietly "retiring" a supported subtype by attrition: if someone adds a
     // slot_reopened caller, this must be updated deliberately.
     expect(UNINVOKED_SUBTYPES).toEqual(['slot_reopened']);
-    const parser = read('supabase/functions/_shared/open-slots-notify.ts');
-    // ...and the capability is genuinely still SUPPORTED, not just undriven.
-    expect(parser).toContain('slot_reopened');
-    expect(parser).toContain('single_slot');
+    // ...and the capability is genuinely still SUPPORTED — proven by EXECUTING the production
+    // parser, not by grepping for the word, which a comment or a dead type would satisfy.
+    const parsed = parseNotifyRequest({
+      slot_count: 1, single_slot: { date: '2026-08-10', time: '18:30' },
+      booking_id: '11111111-1111-4111-8111-111111111111',
+    });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.req.subtype).toBe('slot_reopened');
+    expect(eventSubject(parsed.req, 'trainer-1')).toContain('sr:trainer-1:');
   });
 
   it('the clone-safety cron inventory does not attribute this function to a cron job', () => {

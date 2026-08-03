@@ -114,6 +114,7 @@ DECLARE
   v_fingerprint      text;
   v_prefixed_key     text;
   v_tmpl_version     int;
+  v_payload_out      jsonb;
 BEGIN
   -- 1. resolve the event type (config drives every downstream decision)
   SELECT * INTO v_evt FROM public.notification_event_types WHERE key = p_event_key;
@@ -279,7 +280,7 @@ BEGIN
     v_is_digest := false; v_status := 'pending'; v_skip := NULL;
     v_delivery_mode := NULL; v_digest_freq := NULL; v_tz := NULL; v_locale := NULL;
     v_boundary := NULL; v_item := NULL; v_fingerprint := NULL; v_prefixed_key := NULL;
-    v_tmpl_version := NULL;
+    v_tmpl_version := NULL; v_payload_out := coalesce(p_payload, '{}'::jsonb);
 
     IF v_channel = 'email' AND v_evt.digest_cutover AND v_freq IN ('daily','weekly') THEN
       IF v_evt.digest_engine_enabled THEN
@@ -307,6 +308,20 @@ BEGIN
         v_status := 'skipped';
         v_skip   := 'digest_engine_disabled';
       END IF;
+    END IF;
+
+    -- A cutover event on an INSTANT cadence still needs SERVER-RENDERED content. The instant
+    -- worker reads payload.subject/payload.html and treats a row that cannot render as TERMINAL,
+    -- so without this an instant open-slots alert would be reported as enqueued and then
+    -- silently terminal-failed — with its idempotency key then blocking every retry. Slice C's
+    -- backfill carries a legacy `instant` choice across verbatim, so this cadence is live.
+    -- The copy comes from the SAME trusted item builder the digest uses, so the two routes say
+    -- the same thing and the edge function still supplies nothing a recipient can read.
+    IF v_channel = 'email' AND v_evt.digest_cutover AND v_freq = 'instant' THEN
+      v_locale      := public.notif_digest_group_locale(v_person_id, v_user_id);
+      v_item        := public.notif_digest_item_for_event(p_event_key, v_locale, coalesce(p_payload, '{}'::jsonb));
+      v_payload_out := v_payload_out || public.notif_open_slots_instant_payload(v_item);
+      v_item        := NULL;   -- instant rows carry no digest snapshot
     END IF;
 
     -- 6e. scheduling. The legacy daily/weekly delayed-instant branch below is UNCHANGED
@@ -347,7 +362,7 @@ BEGIN
       p_tenant_academy_profile_id, p_tenant_trainer_id, v_visibility,
       p_related_booking_ids, p_related_invoice_id, p_related_payment_id,
       v_dest, v_dest_redacted, v_contact_id,
-      v_template, coalesce(p_payload, '{}'::jsonb), v_public_summary,
+      v_template, v_payload_out, v_public_summary,
       v_idem_key, v_collapse_key, v_status, v_skip, v_scheduled,
       v_delivery_mode, v_prefixed_key, v_digest_freq, v_locale, v_tz,
       v_boundary, v_tmpl_version, v_fingerprint, v_item
