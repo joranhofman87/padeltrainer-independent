@@ -8,6 +8,7 @@ import {
   notifyFollowers,
   legacyDateRange,
   runReportedIncomplete,
+  markerGapOf,
   NOTIFY_FOLLOWERS_MAX_ATTEMPTS,
   type FunctionsClientLike,
   type NotifyFollowersBody,
@@ -231,17 +232,20 @@ describe('deploy-overlap compatibility', () => {
     expect((await notifyFollowers(BODY, { client: inv.client })).complete).toBe(false);
   });
 
-  it('a failed rollback marker is retried — the enqueues landed, the guard did not', async () => {
-    // Every recipient was enqueued, so this is not a delivery gap; but the cross-version rollback
-    // guard is missing for them and only another pass can write it. Re-running is free of
-    // duplicates because the resolver de-duplicates the enqueues.
+  it('a failed rollback marker is SURFACED, not retried — a retry provably cannot repair it', async () => {
+    // Those recipients WERE enqueued. On any re-run the resolver answers `no_row` for them, and
+    // `no_row` is deliberately not markable (it cannot be told apart from "policy emitted
+    // nothing"), so no later pass can write the missing key. Treating it as incompleteness would
+    // send the caller into a retry that cannot help; it is reported to the caller instead.
     const inv = invoker([
-      { error: null, data: { incomplete: true, enqueued: 5, deferred: 0, failed: 0, legacy_marker_failed: 5 } },
-      { error: null, data: { incomplete: false, enqueued: 0, deferred: 0, failed: 0, no_row: 5 } },
+      { error: null, data: { incomplete: false, enqueued: 5, deferred: 0, failed: 0, legacy_marker_failed: 5 } },
     ]);
-    expect(await notifyFollowers(BODY, { client: inv.client })).toEqual({ complete: true, attempts: 2 });
-    expect(runReportedIncomplete({ legacy_marker_failed: 1 })).toBe(true);
-    expect(runReportedIncomplete({ legacy_marker_failed: 0 })).toBe(false);
+    const out = await notifyFollowers(BODY, { client: inv.client });
+    expect(out).toEqual({ complete: true, attempts: 1, markerGap: 5 });
+    expect(inv.calls()).toBe(1);
+    expect(runReportedIncomplete({ legacy_marker_failed: 1 })).toBe(false);
+    expect(markerGapOf({ legacy_marker_failed: 5 })).toBe(5);
+    expect(markerGapOf({})).toBe(0);
   });
 
   it('a genuinely complete run of EITHER version is not retried', () => {

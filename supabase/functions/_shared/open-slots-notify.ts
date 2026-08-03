@@ -287,14 +287,23 @@ export type ResumeState = {
   afterPlayerId: string | null;
   depth: number;
   /**
-   * True when the previous hop is REPEATING its own range because its first recipient failed.
-   * It is what bounds the retry to one attempt: a hop that is already a retry and fails the same
-   * way advances past the recipient instead of handing itself the same range again.
+   * Recipients a PREVIOUS hop failed to enqueue, carried forward for exactly one more attempt.
+   *
+   * This is why the continuation cursor never has to crawl. Bounding the cursor at a failure —
+   * so the next hop would re-cover it — conflated two jobs: draining the tail, and retrying a
+   * recipient. Failures then cost one or two hops each, and enough of them exhausted the hop cap
+   * before the undiscovered tail was ever reached. Here the cursor only ever measures progress,
+   * and a retry is an explicit, identity-bound set. A recipient that arrived in this set and
+   * failed again is NOT carried forward, which is what caps it at two attempts and guarantees
+   * the set shrinks to empty.
    */
-  retrying: boolean;
+  retryPlayerIds: string[];
 };
 
 export const MAX_CONTINUATION_DEPTH = 20;
+
+/** How many failed recipients one hop may hand to the next. Excess is reported, never hidden. */
+export const MAX_RETRY_CARRY = 200;
 
 export function parseResumeState(raw: unknown): ResumeState {
   const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -303,7 +312,9 @@ export function parseResumeState(raw: unknown): ResumeState {
   const depth = typeof rawDepth === "number" && Number.isInteger(rawDepth) && rawDepth > 0
     ? Math.min(rawDepth, MAX_CONTINUATION_DEPTH)
     : 0;
-  return { afterPlayerId: after, depth, retrying: b.resume_retry === true };
+  const rawRetry = Array.isArray(b.resume_retry_player_ids) ? b.resume_retry_player_ids : [];
+  const retryPlayerIds = [...new Set(rawRetry.filter(isUuid))].slice(0, MAX_RETRY_CARRY);
+  return { afterPlayerId: after, depth, retryPlayerIds };
 }
 
 /**
@@ -409,105 +420,83 @@ export function tally(counts: NotifyCounts, outcome: EnqueueOutcome): void {
  * Where the next hop must carry on from. The cursor is EXCLUSIVE — discovery resumes at
  * `player_id > cursor` — and `null` legitimately means "from the beginning", not "nowhere".
  *
- *  * completed some but not all discovered recipients → the last one completed;
- *  * completed NONE of them → the cursor this hop was itself handed, which re-covers exactly
- *    the same range. That is the only way to retry a recipient that failed in first position:
- *    because the query is `> cursor`, no cursor exists strictly between it and its predecessor.
- *    (Returning null here instead was a real defect: on a resumed hop the incoming cursor is by
- *    construction absent from `recipientIds`, so a first-position failure produced a null cursor,
- *    the chain declined to continue, and an arbitrarily large tail was abandoned.)
+ *  * processed some but not all discovered recipients → the last one processed;
+ *  * processed NONE of them → the cursor this hop was itself handed, so the next hop re-covers
+ *    exactly the same range. Because the query is `> cursor`, no cursor exists strictly between
+ *    a recipient and its predecessor, so this is the only way to express "start here again".
  *  * completed all of them → the last follower id DISCOVERY read, which can be past the final
  *    recipient because followers without an account are discovered and then dropped.
  */
 export function resumeCursorAfter(
   recipientIds: string[],
-  completed: number,
+  processed: number,
   lastDiscovered: string | null,
   incomingCursor: string | null,
 ): string | null {
-  if (completed >= recipientIds.length) return lastDiscovered;
-  if (completed === 0) return incomingCursor;
-  return recipientIds[completed - 1];
+  if (processed >= recipientIds.length) return lastDiscovered;
+  if (processed === 0) return incomingCursor;
+  return recipientIds[processed - 1];
 }
 
 /**
- * What this run may honestly claim to have COMPLETED, and where the next hop resumes.
+ * What this run owes, and where the next hop picks up.
  *
- * Two rules, and the first one is the fix for a real leak:
+ * TWO SEPARATE JOBS, deliberately kept separate — conflating them is what produced three rounds
+ * of defects. The CURSOR measures progress through discovered followers and nothing else, so it
+ * advances monotonically and the tail always drains. A FAILED recipient is owed a retry, and that
+ * is expressed as an explicit set of ids handed to the next hop.
  *
- *  * **A failure bounds completion.** A chunk is processed as a unit, so a single RPC failure
- *    used to be tallied while `processed` still advanced over the whole chunk. The cursor then
- *    pointed PAST a recipient nobody notified, and the continuation — which only looked at
- *    `deferred` — carried on with the tail and never came back. A caller that ignores the
- *    non-2xx (every pre-cutover bundle does) lost that follower silently. So completion stops at
- *    the first failure, and everything from there on is owed.
+ * Only FRESH failures are carried: a recipient that arrived in this hop's retry set and failed
+ * again is not handed on. That bounds every recipient to two attempts regardless of where in the
+ * run it sat, binds the retry to an identity rather than to a position (so an unfollow between
+ * hops cannot spend someone else's attempt), and guarantees the set shrinks to empty.
  *
- *  * **...but a failure may not stall the chain.** When the FIRST recipient of a hop fails,
- *    nothing was completed and the next hop can only re-cover the identical range. That is the
- *    retry — worth exactly one attempt for a transient RPC error. `retrying` says the hop it is
- *    planning for is ALREADY that retry, in which case the run steps over THAT recipient and
- *    reports it as `failed` rather than handing itself the same range until the hop cap.
- *    (Comparing the computed cursor to the incoming one cannot express this: discovery resumes
- *    at `player_id > cursor`, so the incoming cursor is never among `recipientIds`.)
- *
- *    It steps over exactly one recipient, not everything the hop touched. A retrying hop can get
- *    much further than the one that scheduled it, so a SECOND recipient failing for the first
- *    time is ordinary — and jumping to `processed` would carry the cursor past it, spending a
- *    retry it never had.
- *
- * `beyondDiscovery` is followers discovery never reached. `beyondUnknown` says the count of
- * those could not be READ: the run is then incomplete by construction, because reporting a
- * clean total from a failed count is exactly the fail-open that hides a tail.
- *
- * `retryScheduled` tells the caller the next hop resumes AT a recipient that has already failed
- * once, so it must be marked as that recipient's retry. It covers both shapes: re-covering this
- * hop's own range (a first-position failure) and stopping just short of a later one.
+ * `beyondDiscovery` is followers discovery never reached. `beyondUnknown` says the count of those
+ * could not be READ: the run is then incomplete by construction, because reporting a clean total
+ * from a failed count is exactly the fail-open that hides a tail.
  */
 export function planRunOutcome(args: {
-  recipientIds: string[];
-  processed: number;
-  /** Indices (into recipientIds) of every recipient this hop failed to enqueue, ascending. */
-  failureIndices: number[];
+  /** Discovered (non-retry) recipients, in cursor order. */
+  discoveredIds: string[];
+  /** How many of those this hop got through. */
+  processedDiscovered: number;
+  /** Ids this hop failed to enqueue that were NOT already retries. */
+  freshFailureIds: string[];
+  /** True when any recipient at all failed, retries included. */
+  anyFailure: boolean;
   beyondDiscovery: number;
   beyondUnknown: boolean;
   lastDiscovered: string | null;
   incomingCursor: string | null;
-  retrying: boolean;
-}): { deferred: number; nextCursor: string | null; incomplete: boolean; retryScheduled: boolean } {
-  const total = args.recipientIds.length;
-  const processed = Math.min(Math.max(args.processed, 0), total);
-  const failures = [...args.failureIndices].filter((n) => n >= 0).sort((a, b) => a - b);
+}): {
+  deferred: number;
+  nextCursor: string | null;
+  retryIds: string[];
+  droppedRetries: number;
+  incomplete: boolean;
+} {
+  const total = args.discoveredIds.length;
+  const processed = Math.min(Math.max(args.processedDiscovered, 0), total);
+  const unique = [...new Set(args.freshFailureIds)];
+  const retryIds = unique.slice(0, MAX_RETRY_CARRY);
+  const droppedRetries = unique.length - retryIds.length;
 
-  // A hop that is ALREADY the retry has spent the one attempt owed to the recipient it resumed
-  // at, so that recipient — and ONLY that recipient — is stepped over. Advancing all the way to
-  // `processed` instead would step over recipients that failed for the FIRST time later in the
-  // same hop, and they would never be retried at all: a hop can process much further than the
-  // one that scheduled it, so a second, unrelated failure is entirely normal here.
-  const spent = args.retrying && failures[0] === 0;
-  const remaining = spent ? failures.slice(1) : failures;
-  const bounded = remaining.length > 0 ? Math.min(processed, remaining[0]) : processed;
-  const completed = spent ? Math.max(bounded, Math.min(1, total)) : bounded;
-
-  // Does the NEXT hop resume at a recipient that has already failed once? That is the whole
-  // cross-hop protocol, and keying it on "the cursor did not move" was too narrow: a failure
-  // AFTER some successes moves the cursor to just before it, so the next hop is that recipient's
-  // SECOND attempt while being told it is the first — earning it a third, and burning two hops
-  // per failure. Enough persistent failures then exhaust MAX_CONTINUATION_DEPTH before the
-  // undiscovered tail is ever reached, and a caller that ignores the 500 loses it.
-  const retryScheduled = remaining.length > 0 && completed === remaining[0];
   const nextCursor = resumeCursorAfter(
-    args.recipientIds,
-    completed,
+    args.discoveredIds,
+    processed,
     args.lastDiscovered,
     args.incomingCursor,
   );
+  const deferred = Math.max(total - processed, 0)
+    + Math.max(args.beyondDiscovery, 0)
+    + retryIds.length;
 
-  const deferred = Math.max(total - completed, 0) + Math.max(args.beyondDiscovery, 0);
   return {
     deferred,
     nextCursor,
-    retryScheduled,
-    incomplete: deferred > 0 || args.beyondUnknown || failures.length > 0,
+    retryIds,
+    droppedRetries,
+    incomplete: deferred > 0 || args.beyondUnknown || args.anyFailure || droppedRetries > 0,
   };
 }
 

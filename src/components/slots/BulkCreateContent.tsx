@@ -920,6 +920,15 @@ export function BulkCreateContent({
               variant: "default",
             });
           }
+          if (notifyOutcome.markerGap) {
+            // Everyone was enqueued, so there is nothing to tell the trainer — but some
+            // recipients carry no cross-version rollback marker, and no retry can write one.
+            // Logged so the transition window is observable instead of silently discarded.
+            logger.warn("notify-followers enqueued without the rollback marker", {
+              component: 'AddSlotDialog',
+              recipients: notifyOutcome.markerGap,
+            });
+          }
         } catch {
           logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
         }

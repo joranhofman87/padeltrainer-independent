@@ -138,7 +138,23 @@ const handler = async (req: Request): Promise<Response> => {
     // discovery meant slow paging could consume the whole edge lifetime and leave nothing for
     // the enqueues, so a run could burn its wall clock and enqueue nothing at all.
     const DISCOVERY_BUDGET_MS = 40_000;
-    const recipients: Array<{ id: string; user_id: string }> = [];
+    // Recipients a previous hop failed to enqueue, processed FIRST and flagged, so their second
+    // (and final) attempt happens without holding the cursor back.
+    const retrying: Array<{ id: string; user_id: string; isRetry: true }> = [];
+    if (resumeState.retryPlayerIds.length > 0) {
+      const { data: retryProfiles, error: retryError } = await supabase
+        .from("profiles")
+        .select("id, user_id")
+        .in("id", resumeState.retryPlayerIds);
+      if (retryError) {
+        console.error("Retry profile lookup failed:", retryError.message);
+        return json({ error: "profile_lookup_failed" }, 500);
+      }
+      for (const p of retryProfiles ?? []) {
+        if (p.user_id) retrying.push({ id: p.id, user_id: p.user_id, isRetry: true });
+      }
+    }
+    const discovered: Array<{ id: string; user_id: string }> = [];
 
     // KEYSET paging, not offset. With `.range(from, …)` a follower deleted between pages shifts
     // every later row left, silently skipping one — and the run would still report success.
@@ -147,10 +163,10 @@ const handler = async (req: Request): Promise<Response> => {
     let lastDiscovered: string | null = cursor;
     let discoveryStoppedEarly = false;
     for (;;) {
-      if (recipients.length >= MAX_PER_RUN) { discoveryStoppedEarly = true; break; }
-      // `recipients.length > 0` keeps every hop monotonic: a hop always discovers at least one
-      // page, so the chain cannot stall on a cursor it never advances.
-      if (recipients.length > 0 && Date.now() - start > DISCOVERY_BUDGET_MS) {
+      if (discovered.length >= MAX_PER_RUN) { discoveryStoppedEarly = true; break; }
+      // `discovered.length > 0` keeps every hop monotonic: a hop always reads at least one page,
+      // so the chain cannot stall on a cursor it never advances.
+      if (discovered.length > 0 && Date.now() - start > DISCOVERY_BUDGET_MS) {
         discoveryStoppedEarly = true;
         break;
       }
@@ -186,11 +202,14 @@ const handler = async (req: Request): Promise<Response> => {
       // player_id ordering, which is what makes "everything before index N is done" a sound
       // statement — and therefore what makes the continuation cursor correct.
       for (const p of [...(players ?? [])].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-        if (p.user_id) recipients.push({ id: p.id, user_id: p.user_id });
+        if (p.user_id) discovered.push({ id: p.id, user_id: p.user_id });
       }
       if (followerPage.length < PAGE) break;
     }
 
+    // Retries first: they are already owed, and putting them ahead of newly discovered followers
+    // keeps the cursor arithmetic below about discovery alone.
+    const recipients: Array<{ id: string; user_id: string; isRetry?: true }> = [...retrying, ...discovered];
     if (recipients.length === 0) {
       return json({ message: "No followers with an account", ...newCounts() }, 200);
     }
@@ -205,11 +224,11 @@ const handler = async (req: Request): Promise<Response> => {
     // idempotency key makes an already-enqueued recipient a no-op rather than a duplicate.
     const CHUNK_SIZE = 10;
     let processed = 0;
-    // Every recipient this run failed to enqueue, by index. They bound what the run may claim to
-    // have completed, so the continuation cursor cannot step over someone nobody notified — and
-    // keeping ALL of them (not just the first) is what stops a retry hop from stepping over a
-    // second recipient that failed for the first time.
-    const failureIndices: number[] = [];
+    // Recipients this hop failed to enqueue that were NOT already retries. Only these are handed
+    // to the next hop, which is what caps every recipient at two attempts and makes the retry set
+    // strictly shrink. A retry that fails again is reported as `failed` and goes no further.
+    const freshFailureIds: string[] = [];
+    let anyFailure = false;
     // Recipients whose rollback marker could not be written. Not a delivery failure — the enqueue
     // stands — but an operator needs to know the rollback guarantee is weaker for them.
     let legacyMarkerFailures = 0;
@@ -273,27 +292,37 @@ const handler = async (req: Request): Promise<Response> => {
         const r = results[k];
         tally(counts, r.outcome);
         if (r.err) errors.push(r.err);
-        // A failure bounds what this run may claim to have completed: the continuation cursor
-        // must not advance past a recipient nobody notified.
-        if (r.outcome === "failed") failureIndices.push(i + k);
+        if (r.outcome === "failed") {
+          anyFailure = true;
+          if (!chunk[k].isRetry) freshFailureIds.push(r.id);
+        }
       }
       // Record what v2 has taken ownership of. A `failed` recipient is never recorded — nobody
       // notified it, and claiming the key would suppress the retry meant to reach it.
       const handledKeys = markableLegacyKeys(results, legacyKeys);
       if (handledKeys.length > 0) {
-        const { error: markError } = await supabase
-          .from("notification_sends")
-          .upsert(handledKeys.map((dedup_key) => ({ dedup_key })), {
-            onConflict: "dedup_key",
-            ignoreDuplicates: true,
-          });
-        // Best-effort, and NOT silent. The enqueue already happened and is itself idempotent, so
-        // a failed marker must not turn a successful enqueue into a failure — but it does weaken
-        // the rollback protection for those recipients, so it is counted and reported rather
-        // than only logged. Rollback protection is best-effort by construction anyway: the marker
-        // is a second statement, not part of the enqueue transaction.
+        // REPAIR HERE OR NOT AT ALL. A later attempt cannot fix this: on any re-run the resolver
+        // returns zero rows for an already-enqueued recipient (`no_row`), which is deliberately
+        // NOT markable, so nothing downstream would ever write the missing key. The only place
+        // that still knows a durable v2 row was just created is right here — so a transient
+        // failure is retried in-run, and what survives that is reported, not quietly re-labelled
+        // as something a retry will sort out.
+        let markError: { message: string } | null = null;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const { error } = await supabase
+            .from("notification_sends")
+            .upsert(handledKeys.map((dedup_key) => ({ dedup_key })), {
+              onConflict: "dedup_key",
+              ignoreDuplicates: true,
+            });
+          markError = error;
+          if (!error) break;
+        }
+        // The enqueue already happened and is itself idempotent, so a failed marker must not turn
+        // a successful enqueue into a failure — but it does leave those recipients without
+        // rollback protection, so it is counted and returned rather than only logged.
         if (markError) {
-          console.error("Legacy dedup marker write failed:", markError.message);
+          console.error("Legacy dedup marker write failed after 3 attempts:", markError.message);
           legacyMarkerFailures += handledKeys.length;
         }
       }
@@ -328,15 +357,21 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
     const plan = planRunOutcome({
-      recipientIds: recipients.map((r) => r.id),
-      processed,
-      failureIndices,
+      discoveredIds: discovered.map((r) => r.id),
+      // The retry prefix is not part of the cursor's world; only what came from discovery is.
+      processedDiscovered: Math.max(processed - retrying.length, 0),
+      freshFailureIds,
+      anyFailure,
       beyondDiscovery,
       beyondUnknown,
       lastDiscovered,
       incomingCursor: resumeState.afterPlayerId,
-      retrying: resumeState.retrying,
     });
+    if (plan.droppedRetries > 0) {
+      // No silent caps: say how many failed recipients were NOT carried forward.
+      console.error(`notify-followers dropped ${plan.droppedRetries} failed recipients beyond the retry carry cap`);
+      errors.push(`${plan.droppedRetries} failed recipients exceeded the retry carry cap`);
+    }
     const nextCursor = plan.nextCursor;
     counts.deferred = plan.deferred;
 
@@ -364,10 +399,10 @@ const handler = async (req: Request): Promise<Response> => {
         body: JSON.stringify({
           ...(rawBody as Record<string, unknown>),
           // A null cursor is meaningful — "resume from the beginning" — so it is sent as an
-          // explicit absence rather than a bogus id, and the retry marker rides alongside it.
-          ...(nextCursor ? { resume_after_player_id: nextCursor } : { resume_after_player_id: null }),
+          // explicit absence rather than a bogus id.
+          resume_after_player_id: nextCursor,
           continuation_depth: resumeState.depth + 1,
-          resume_retry: plan.retryScheduled,
+          resume_retry_player_ids: plan.retryIds,
         }),
       })
         .then((r) => { if (!r.ok) console.error("notify-followers self-reinvoke returned", r.status); })
@@ -379,10 +414,12 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log(
-      `open_slots_player ${notify.subtype} (hop ${resumeState.depth}): enqueued=${counts.enqueued} ` +
+      `open_slots_player ${notify.subtype} (hop ${resumeState.depth}, retries=${retrying.length}): ` +
+      `enqueued=${counts.enqueued} ` +
       `skipped=${counts.skipped} no_row=${counts.no_row} failed=${counts.failed} ` +
       `deferred=${counts.deferred}${beyondUnknown ? "+unknown" : ""} ` +
-      `markerFailures=${legacyMarkerFailures} continued=${continued}`,
+      `markerFailures=${legacyMarkerFailures} carriedRetries=${plan.retryIds.length} ` +
+      `continued=${continued}`,
     );
     if (errors.length > 0) console.error("Enqueue errors:", errors);
 
@@ -395,12 +432,12 @@ const handler = async (req: Request): Promise<Response> => {
     //
     // `incomplete` comes from the plan, so an UNREADABLE remaining count keeps the run
     // incomplete instead of reporting a clean zero it cannot substantiate.
-    // A failed marker write also makes the run incomplete. Every recipient WAS enqueued, so this
-    // is not a delivery gap — but the rollback protection for them is missing, and the only way
-    // to restore it is another pass. Re-running is free of duplicates (the resolver's idempotency
-    // key collapses the enqueues), so the honest signal is worth more than a clean 200 that
-    // leaves the gap invisible. Status and body therefore agree, and the caller acts on it.
-    const incomplete = plan.incomplete || counts.failed > 0 || legacyMarkerFailures > 0;
+    // A failed marker is NOT incompleteness. Every one of those recipients was enqueued, and no
+    // further pass can repair the marker — a re-run returns `no_row` for them, which is not
+    // markable. Reporting it as incomplete would send the caller into a retry that provably
+    // cannot help. It is surfaced instead: `legacy_marker_failed` in the body, which the caller
+    // logs, so the weakened rollback window is visible without pretending it is recoverable.
+    const incomplete = plan.incomplete || counts.failed > 0;
     return json({
       message: `Enqueued ${counts.enqueued} follower notification(s)`,
       subtype: notify.subtype,

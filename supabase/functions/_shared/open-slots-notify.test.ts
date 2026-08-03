@@ -16,9 +16,9 @@ import {
   legacyDedupKey,
   markableLegacyKeys,
   MAX_CONTINUATION_DEPTH,
+  MAX_RETRY_CARRY,
   newCounts,
   planRunOutcome,
-  resumeCursorAfter,
   shouldContinue,
   parseLegacyDateRange,
   parseNotifyRequest,
@@ -504,12 +504,12 @@ Deno.test("MUTANT: a bridge key missing the anchor prefix cannot match a legacy 
 // ===========================================================================
 
 Deno.test("resume state: absent, malformed and hostile values all fall back to a fresh run", () => {
-  assertEquals(parseResumeState(null), { afterPlayerId: null, depth: 0, retrying: false });
-  assertEquals(parseResumeState({}), { afterPlayerId: null, depth: 0, retrying: false });
+  assertEquals(parseResumeState(null), { afterPlayerId: null, depth: 0, retryPlayerIds: [] });
+  assertEquals(parseResumeState({}), { afterPlayerId: null, depth: 0, retryPlayerIds: [] });
   assertEquals(parseResumeState({ resume_after_player_id: "not-a-uuid" }),
-    { afterPlayerId: null, depth: 0, retrying: false });
+    { afterPlayerId: null, depth: 0, retryPlayerIds: [] });
   assertEquals(parseResumeState({ resume_after_player_id: 42 }),
-    { afterPlayerId: null, depth: 0, retrying: false });
+    { afterPlayerId: null, depth: 0, retryPlayerIds: [] });
   assertEquals(parseResumeState({ continuation_depth: -5 }).depth, 0);
   assertEquals(parseResumeState({ continuation_depth: 1.5 }).depth, 0);
 });
@@ -517,9 +517,7 @@ Deno.test("resume state: absent, malformed and hostile values all fall back to a
 Deno.test("resume state: a valid cursor is carried and the hop count is CLAMPED", () => {
   const id = "11111111-1111-4111-8111-111111111111";
   assertEquals(parseResumeState({ resume_after_player_id: id, continuation_depth: 3 }),
-    { afterPlayerId: id, depth: 3, retrying: false });
-  assertEquals(parseResumeState({ resume_retry: true }).retrying, true);
-  assertEquals(parseResumeState({ resume_retry: "yes" }).retrying, false, "only a real boolean");
+    { afterPlayerId: id, depth: 3, retryPlayerIds: [] });
   assertEquals(
     parseResumeState({ continuation_depth: 10_000 }).depth,
     MAX_CONTINUATION_DEPTH,
@@ -538,38 +536,10 @@ Deno.test("MUTANT: an unclamped hop count lets a forged body chain without bound
 // Run progress: the exact, resumable ceiling.
 // ===========================================================================
 
-Deno.test("resume cursor: a partly processed run carries on from the LAST recipient handled", () => {
-  assertEquals(resumeCursorAfter(["b", "c", "d", "e"], 2, "e", "a"), "c");
-});
 
-Deno.test("resume cursor: a fully processed run carries on from the last DISCOVERED follower", () => {
-  // Discovery reads followers; recipients drop the ones with no account. Resuming from the last
-  // recipient would re-read those accountless followers on every hop.
-  assertEquals(resumeCursorAfter(["b", "c"], 2, "z", "a"), "z");
-  assertEquals(resumeCursorAfter([], 0, "z", "a"), "z");
-});
 
-Deno.test("resume cursor: nothing completed hands back the cursor this hop was given", () => {
-  // Not null-unless-first-hop: the incoming cursor re-covers exactly this range, which is the
-  // only expressible retry under an exclusive `> cursor` scan.
-  assertEquals(resumeCursorAfter(["b", "c"], 0, "c", "a"), "a");
-  assertEquals(resumeCursorAfter(["b", "c"], 0, "c", null), null, "first hop → from the beginning");
-});
 
-Deno.test("continuation is taken only when it must, and can, make progress", () => {
-  const base = { deferred: 5, processed: 10, depth: 0 };
-  assertEquals(shouldContinue(base), true);
-  assertEquals(shouldContinue({ ...base, deferred: 0 }), false, "nothing owed");
-  assertEquals(shouldContinue({ ...base, processed: 0 }), false, "did nothing → the chain would spin");
-  assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH }), false, "hop bound reached");
-  assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH - 1 }), true);
-});
 
-Deno.test("MUTANT: chaining without a progress check spins on the same cursor for ever", () => {
-  const mutant = (a: { deferred: number }) => a.deferred > 0;
-  assertEquals(mutant({ deferred: 5 }), true, "the mutant chains having done nothing...");
-  assertEquals(shouldContinue({ deferred: 5, processed: 0, depth: 0 }), false);
-});
 
 // ===========================================================================
 // The legacy bridge's two decisions.
@@ -601,82 +571,89 @@ Deno.test("MUTANT: claiming a FAILED recipient silently suppresses its retry", (
 });
 
 // ===========================================================================
-// planRunOutcome — what the run may claim to have completed.
+// Run progress: the cursor measures DISCOVERY, the retry set carries FAILURES.
 // ===========================================================================
 
-// Discovery resumes at `player_id > cursor`, so the incoming cursor is by construction NOT a
-// member of recipientIds. An earlier version of this fixture violated that and made the stall
-// guard look reachable when in production it never fired.
+const UUID = (n: number) => `1111111${n}-1111-4111-8111-111111111111`;
+
 const PLAN = {
-  recipientIds: ["b", "c", "d", "e"],
-  processed: 4,
-  failureIndices: [] as number[],
+  // Discovery resumes at `player_id > cursor`, so the incoming cursor is by construction NOT a
+  // member of discoveredIds. An earlier fixture violated that and hid a defect for a whole round.
+  discoveredIds: ["b", "c", "d", "e"],
+  processedDiscovered: 4,
+  freshFailureIds: [] as string[],
+  anyFailure: false,
   beyondDiscovery: 0,
   beyondUnknown: false,
   lastDiscovered: "e",
   incomingCursor: null as string | null,
-  retrying: false,
 };
 
-Deno.test("plan: a clean, complete run owes nothing and is complete", () => {
-  assertEquals(planRunOutcome(PLAN),
-    { deferred: 0, nextCursor: "e", incomplete: false, retryScheduled: false });
+Deno.test("plan: a clean, complete run owes nothing", () => {
+  assertEquals(planRunOutcome(PLAN), {
+    deferred: 0, nextCursor: "e", retryIds: [], droppedRetries: 0, incomplete: false,
+  });
 });
 
 Deno.test("plan: deferred is EXACT at the ceiling and for a real tail", () => {
   // The bug this replaces: `Math.max(total - collected, 1)` reported "1 deferred" when nothing
   // at all was omitted, and also "1" when tens of thousands were.
-  assertEquals(planRunOutcome({ ...PLAN, beyondDiscovery: 0 }).deferred, 0);
+  assertEquals(planRunOutcome(PLAN).deferred, 0);
   assertEquals(planRunOutcome({ ...PLAN, beyondDiscovery: 10_000 }).deferred, 10_000);
-  assertEquals(planRunOutcome({ ...PLAN, processed: 2 }).deferred, 2);
+  assertEquals(planRunOutcome({ ...PLAN, processedDiscovered: 2 }).deferred, 2);
 });
 
-Deno.test("plan: a FAILURE bounds completion — the cursor never steps over an un-notified follower", () => {
-  // The leak: the chunk is processed as a unit, so `processed` advanced over a failed recipient
-  // and the continuation carried on with the tail, never coming back. A pre-cutover caller
-  // ignores the 500, so that follower was lost in silence.
-  const out = planRunOutcome({ ...PLAN, processed: 4, failureIndices: [1] });
-  assertEquals(out.nextCursor, "b", "resume BEFORE the failed recipient, not after it");
-  assertEquals(out.deferred, 3, "c, d and e are all still owed");
-  assertEquals(out.incomplete, true);
-  assertEquals(out.retryScheduled, true,
-    "the next hop resumes AT the failed recipient, so it IS that recipient's retry");
-});
-
-Deno.test("plan: a first-position failure REPEATS the hop's own range rather than abandoning it", () => {
-  // The cursor is exclusive, so there is no value strictly between the failed recipient and its
-  // predecessor: re-covering the same range is the ONLY way to retry it. Returning null here —
-  // which the previous version did, since the incoming cursor is never among recipientIds — made
-  // shouldContinue decline, and an arbitrarily large tail was abandoned on one failed enqueue.
-  const first = planRunOutcome({ ...PLAN, failureIndices: [0], incomingCursor: "a" });
-  assertEquals(first.nextCursor, "a", "hand back the SAME cursor — that is the retry");
-  assertEquals(first.retryScheduled, true);
-  assertEquals(first.deferred, 4);
-  assertEquals(shouldContinue({ deferred: first.deferred, processed: 4, depth: 1 }), true);
-
-  // ...and on the very first hop, "the same range" is the whole set, expressed as a null cursor.
-  const fromStart = planRunOutcome({ ...PLAN, failureIndices: [0], incomingCursor: null });
-  assertEquals(fromStart.nextCursor, null);
-  assertEquals(fromStart.retryScheduled, true);
-  assertEquals(shouldContinue({ deferred: fromStart.deferred, processed: 4, depth: 0 }), true);
-});
-
-Deno.test("plan: the retry is bounded — a hop that is ALREADY the retry moves past the failure", () => {
-  // Without this the chain would re-cover the identical range until the hop cap on one
-  // persistently failing recipient. `retrying` is set by the hop that scheduled the repeat, so
-  // exactly one retry is spent and the run then reports the recipient as failed and moves on.
-  const retry = planRunOutcome({
-    ...PLAN, processed: 4, failureIndices: [0], incomingCursor: "a", retrying: true,
+Deno.test("plan: the cursor ADVANCES past a failure — draining the tail is not a failure's business", () => {
+  // Bounding the cursor at a failure conflated two jobs. Failures then cost one or two hops each
+  // and enough of them exhausted MAX_CONTINUATION_DEPTH before the undiscovered tail was reached,
+  // which a caller that ignores the 500 never recovers from. The cursor now measures discovery
+  // only, and the failed recipient is owed through an explicit set instead.
+  const out = planRunOutcome({
+    ...PLAN, freshFailureIds: ["c"], anyFailure: true, beyondDiscovery: 5000,
   });
-  assertEquals(retry.nextCursor, "e", "forward progress instead of a third pass");
-  assertEquals(retry.retryScheduled, false);
-  assertEquals(retry.incomplete, true, "...and the run is still reported incomplete");
+  assertEquals(out.nextCursor, "e", "full progress, no crawl");
+  assertEquals(out.retryIds, ["c"]);
+  assertEquals(out.deferred, 5001, "the tail plus the one recipient owed a retry");
+  assertEquals(out.incomplete, true);
 });
 
-Deno.test("plan: `retrying` only matters when NOTHING completed — real progress always advances", () => {
-  const out = planRunOutcome({ ...PLAN, processed: 4, failureIndices: [2], retrying: true });
-  assertEquals(out.nextCursor, "c", "two recipients completed, so the cursor advances normally");
-  assertEquals(out.retryScheduled, true, "and the hop it schedules is that failure's second attempt");
+Deno.test("plan: a recipient that ALREADY was a retry is not carried again — two attempts, hard stop", () => {
+  // The handler only puts NON-retry failures in freshFailureIds, so a second failure ends there.
+  const out = planRunOutcome({ ...PLAN, freshFailureIds: [], anyFailure: true });
+  assertEquals(out.retryIds, []);
+  assertEquals(out.deferred, 0, "nothing further is owed...");
+  assertEquals(out.incomplete, true, "...but the run still reports the failure honestly");
+});
+
+Deno.test("plan: many failures do not slow the cursor down at all", () => {
+  // The scenario that broke the previous design: 21 persistent failures early in the range
+  // consumed the whole hop budget before the ceiling tail was reached.
+  const ids = Array.from({ length: 30 }, (_, i) => `p${i}`);
+  const out = planRunOutcome({
+    ...PLAN,
+    discoveredIds: ids,
+    processedDiscovered: 30,
+    lastDiscovered: "p29",
+    freshFailureIds: ids.slice(0, 21),
+    anyFailure: true,
+    beyondDiscovery: 40_000,
+  });
+  assertEquals(out.nextCursor, "p29", "one hop, full progress");
+  assertEquals(out.retryIds.length, 21);
+  assertEquals(out.deferred, 40_021);
+});
+
+Deno.test("plan: the retry carry is CAPPED, and the excess is reported rather than dropped silently", () => {
+  const ids = Array.from({ length: MAX_RETRY_CARRY + 7 }, (_, i) => `p${i}`);
+  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true });
+  assertEquals(out.retryIds.length, MAX_RETRY_CARRY);
+  assertEquals(out.droppedRetries, 7);
+  assertEquals(out.incomplete, true);
+});
+
+Deno.test("plan: duplicate failure ids are collapsed", () => {
+  const out = planRunOutcome({ ...PLAN, freshFailureIds: ["c", "c", "d"], anyFailure: true });
+  assertEquals(out.retryIds, ["c", "d"]);
 });
 
 Deno.test("plan: an UNREADABLE remaining count keeps the run incomplete", () => {
@@ -685,144 +662,62 @@ Deno.test("plan: an UNREADABLE remaining count keeps the run incomplete", () => 
   const out = planRunOutcome({ ...PLAN, beyondUnknown: true });
   assertEquals(out.deferred, 0, "the size of the tail is genuinely unknown, so it is not invented");
   assertEquals(out.incomplete, true, "but the run must not report itself complete");
+  assertEquals(shouldContinue({ deferred: 0, processed: 4, depth: 0, beyondUnknown: true }), true);
 });
 
-Deno.test("MUTANT: treating an unreadable count as zero reports a clean run over a hidden tail", () => {
-  const mutant = (count: number | null) => ({ incomplete: (count ?? 0) > 0 });
-  assertEquals(mutant(null).incomplete, false, "the mutant returns a clean run...");
-  assertEquals(planRunOutcome({ ...PLAN, beyondUnknown: true }).incomplete, true);
+Deno.test("plan: a partly processed hop resumes from the last recipient it handled", () => {
+  const out = planRunOutcome({ ...PLAN, processedDiscovered: 2 });
+  assertEquals(out.nextCursor, "c");
 });
 
-Deno.test("MUTANT: advancing past a failure loses that follower for good", () => {
-  const mutant = (ids: string[], processed: number) => ids[processed - 1];
-  assertEquals(mutant(PLAN.recipientIds, 4), "e", "the mutant resumes after the whole chunk...");
-  assertEquals(planRunOutcome({ ...PLAN, failureIndices: [1] }).nextCursor, "b");
+Deno.test("plan: a hop that processed no DISCOVERED recipient hands back its own cursor", () => {
+  // e.g. the whole wall-clock budget went on the retry prefix. Re-covering the same range is the
+  // only expressible way to say "start here again" under an exclusive `> cursor` scan.
+  assertEquals(planRunOutcome({ ...PLAN, processedDiscovered: 0, incomingCursor: "a" }).nextCursor, "a");
+  assertEquals(planRunOutcome({ ...PLAN, processedDiscovered: 0, incomingCursor: null }).nextCursor, null);
 });
 
-Deno.test("MUTANT: requiring a non-null cursor to continue abandons the tail on a first-position failure", () => {
-  const plan = planRunOutcome({ ...PLAN, failureIndices: [0], incomingCursor: null });
-  const mutant = (nextCursor: string | null) => !!nextCursor;    // the old precondition
-  assertEquals(mutant(plan.nextCursor), false, "the mutant refuses to chain...");
-  assertEquals(shouldContinue({ deferred: plan.deferred, processed: 4, depth: 0 }), true);
-});
-
-Deno.test("continuation is taken when the tail size is unknown", () => {
-  assertEquals(
-    shouldContinue({ deferred: 0, processed: 10, depth: 0, beyondUnknown: true }),
-    true,
-    "not knowing how big the tail is, is not a reason to abandon it",
-  );
-  assertEquals(shouldContinue({ deferred: 0, processed: 10, depth: 0, beyondUnknown: false }), false);
-});
-
-Deno.test("plan: an unknown tail combined with a failure is still incomplete and still chains", () => {
-  const out = planRunOutcome({ ...PLAN, failureIndices: [0], beyondUnknown: true, incomingCursor: "a" });
-  assertEquals(out.incomplete, true);
-  assertEquals(out.retryScheduled, true);
-  assertEquals(
-    shouldContinue({ deferred: out.deferred, processed: 4, depth: 3, beyondUnknown: true }),
-    true,
-  );
-});
-
-Deno.test("plan: an EMPTY recipient list never claims to be repeating", () => {
+Deno.test("plan: an EMPTY discovery set carries on from the last follower read", () => {
   const out = planRunOutcome({
-    ...PLAN, recipientIds: [], processed: 0, lastDiscovered: "z", incomingCursor: "y",
+    ...PLAN, discoveredIds: [], processedDiscovered: 0, lastDiscovered: "z", incomingCursor: "y",
   });
-  assertEquals(out.retryScheduled, false);
   assertEquals(out.nextCursor, "z");
-  assertEquals(shouldContinue({ deferred: out.deferred, processed: 0, depth: 0 }), false);
+  assertEquals(out.deferred, 0);
 });
 
-Deno.test("plan: a retry hop steps over ONE recipient, never over a fresh failure behind it", () => {
-  // A retrying hop can get much further than the one that scheduled it, so a second recipient
-  // failing for the FIRST time in the same hop is ordinary. Advancing to `processed` would carry
-  // the cursor past that one too, and — since a pre-cutover caller ignores the 500 — it would
-  // never be retried at all.
-  const out = planRunOutcome({
-    ...PLAN, processed: 4, failureIndices: [0, 2], incomingCursor: "a", retrying: true,
-  });
-  assertEquals(out.nextCursor, "c", "past the twice-failed first recipient, and no further");
-  assertEquals(out.retryScheduled, true, "the next hop is the fresh failure's own second attempt");
-  assertEquals(out.deferred, 2, "the freshly failed recipient and everything after it are owed");
+Deno.test("MUTANT: holding the cursor at a failure re-introduces the crawl", () => {
+  const mutant = (ids: string[], firstFailure: number) => ids[firstFailure - 1] ?? null;
+  assertEquals(mutant(PLAN.discoveredIds, 0), null, "the mutant stalls the cursor at index 0...");
+  assertEquals(planRunOutcome({ ...PLAN, freshFailureIds: ["b"], anyFailure: true }).nextCursor, "e");
 });
 
-Deno.test("plan: consecutive failures on a retry hop still advance exactly one place", () => {
-  const out = planRunOutcome({
-    ...PLAN, processed: 4, failureIndices: [0, 1], incomingCursor: "a", retrying: true,
-  });
-  assertEquals(out.nextCursor, "b", "the next hop resumes AT the freshly failed recipient");
-  assertEquals(out.deferred, 3);
+Deno.test("MUTANT: carrying a retry that already failed twice never terminates", () => {
+  // Production only ever carries FRESH failures, so the set strictly shrinks.
+  const out = planRunOutcome({ ...PLAN, freshFailureIds: [], anyFailure: true });
+  assertEquals(out.retryIds.length, 0);
 });
 
-Deno.test("plan: on a retry hop where the resumed recipient SUCCEEDED, bounding is normal", () => {
-  const out = planRunOutcome({
-    ...PLAN, processed: 4, failureIndices: [2], incomingCursor: "a", retrying: true,
-  });
-  assertEquals(out.nextCursor, "c", "bounded at the only failure, with no skip spent");
+Deno.test("continuation is taken only when the hop did something and something is owed", () => {
+  const base = { deferred: 5, processed: 10, depth: 0 };
+  assertEquals(shouldContinue(base), true);
+  assertEquals(shouldContinue({ ...base, deferred: 0 }), false, "nothing owed");
+  assertEquals(shouldContinue({ ...base, processed: 0 }), false, "did nothing → the chain would spin");
+  assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH }), false, "hop bound reached");
+  assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH - 1 }), true);
 });
 
-Deno.test("MUTANT: a retry hop that jumps to `processed` silently drops the second failure", () => {
-  const mutant = (ids: string[], processed: number) => ids[processed - 1];
-  assertEquals(mutant(PLAN.recipientIds, 4), "e", "the mutant advances past everything...");
-  assertEquals(
-    planRunOutcome({ ...PLAN, processed: 4, failureIndices: [0, 2], incomingCursor: "a", retrying: true })
-      .nextCursor,
-    "c",
-  );
+Deno.test("resume state: the retry set is uuid-filtered, de-duplicated and CAPPED", () => {
+  const ids = [UUID(1), UUID(1), UUID(2), "not-a-uuid", 42];
+  assertEquals(parseResumeState({ resume_retry_player_ids: ids }).retryPlayerIds, [UUID(1), UUID(2)]);
+  assertEquals(parseResumeState({ resume_retry_player_ids: "nope" }).retryPlayerIds, []);
+  const many = Array.from({ length: MAX_RETRY_CARRY + 50 }, (_, i) =>
+    `1111111${(i % 10)}-1111-4111-8111-${String(i).padStart(12, "0")}`);
+  assertEquals(parseResumeState({ resume_retry_player_ids: many }).retryPlayerIds.length, MAX_RETRY_CARRY);
 });
 
-Deno.test("plan: EVERY hop that resumes at a failed recipient is marked as its retry", () => {
-  // The cross-hop protocol, stated as one rule. Keying the marker on "the cursor did not move"
-  // only caught a first-position failure: a failure after some successes moved the cursor to just
-  // before it, so the next hop was that recipient's SECOND attempt while being told it was the
-  // first — earning a third and burning two hops per failure. With enough persistent failures the
-  // chain then hit MAX_CONTINUATION_DEPTH before reaching the undiscovered tail.
-  for (const [failures, cursor] of [[[0], "a"], [[1], "b"], [[3], "d"]] as Array<[number[], string]>) {
-    const out = planRunOutcome({ ...PLAN, failureIndices: failures, incomingCursor: "a" });
-    assertEquals(out.nextCursor, cursor, `failure at ${failures[0]}`);
-    assertEquals(out.retryScheduled, true, `failure at ${failures[0]} must mark the next hop`);
-  }
-  // ...and a clean hop never marks one.
-  assertEquals(planRunOutcome({ ...PLAN, incomingCursor: "a" }).retryScheduled, false);
-});
-
-Deno.test("plan: exactly TWO attempts per failing recipient, whatever its position", () => {
-  // Hop 1 fails at index 1 → resume before it, marked. Hop 2 sees it fail in first position
-  // while already retrying → step over it. No third pass.
-  const hop1 = planRunOutcome({ ...PLAN, failureIndices: [1], incomingCursor: "a" });
-  assertEquals([hop1.nextCursor, hop1.retryScheduled], ["b", true]);
-  const hop2 = planRunOutcome({
-    ...PLAN, recipientIds: ["c", "d", "e"], processed: 3, failureIndices: [0],
-    incomingCursor: "b", retrying: true, lastDiscovered: "e",
-  });
-  assertEquals(hop2.nextCursor, "e", "stepped over, not retried a third time");
-  assertEquals(hop2.retryScheduled, false);
-});
-
-Deno.test("MUTANT: marking only a first-position failure buys every later one a third attempt", () => {
-  const mutant = (completed: number) => completed === 0;      // the old `repeating` rule
-  assertEquals(mutant(1), false, "the mutant leaves a later failure unmarked...");
-  assertEquals(planRunOutcome({ ...PLAN, failureIndices: [1], incomingCursor: "a" }).retryScheduled, true);
-});
-
-Deno.test("legacy marker: only an outcome that created a DURABLE v2 row is recorded", () => {
-  // no_row is ambiguous — an idempotency conflict OR the resolver emitting nothing at all
-  // (preference 'off', no contact, suppressed). In the second case there is no v2 row, so a
-  // marker would suppress the old handler on a rollback too: a silent miss, which is the one
-  // failure this design refuses to trade for.
-  assertEquals(
-    markableLegacyKeys([
-      { outcome: "enqueued", id: "p1" },
-      { outcome: "skipped", id: "p2" },
-      { outcome: "no_row", id: "p3" },
-    ], CHUNK_KEYS),
-    ["t:p1:na:R", "t:p2:na:R"],
-  );
-});
-
-Deno.test("MUTANT: recording no_row lets a marker stand in for a row that never existed", () => {
-  const mutant = (o: string) => o !== "failed";
-  assertEquals(mutant("no_row"), true, "the mutant records it...");
-  assertEquals(markableLegacyKeys([{ outcome: "no_row", id: "p1" }], CHUNK_KEYS), []);
+Deno.test("MUTANT: an uncapped retry set lets a forged body drive an unbounded profile lookup", () => {
+  const many = Array.from({ length: 5000 }, (_, i) =>
+    `1111111${(i % 10)}-1111-4111-8111-${String(i).padStart(12, "0")}`);
+  assertEquals(many.length > MAX_RETRY_CARRY, true, "the mutant would fetch all of them...");
+  assertEquals(parseResumeState({ resume_retry_player_ids: many }).retryPlayerIds.length, MAX_RETRY_CARRY);
 });

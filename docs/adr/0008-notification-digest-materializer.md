@@ -787,8 +787,13 @@ sending a request shape the new handler must interpret rather than trust.
    write fails — or a rollback routes a retry into the window between them — the old handler can
    claim and send while the durable v2 row also sends. So the residual runs in BOTH directions,
    and a rollback of the edge function is an operator action that must observe the same quiesce as
-   the roll-forward. Marker failures are counted and returned as `legacy_marker_failed` rather
-   than only logged, so the weakened window is visible.
+   the roll-forward.
+
+   The marker is therefore repaired **in the run that created the row, or not at all**: the write
+   is retried up to three times on the spot, because no later pass can fix it — a re-run answers
+   `no_row` for an already-enqueued recipient, and `no_row` is not markable. What survives that is
+   counted, returned as `legacy_marker_failed`, and logged by the caller. It is deliberately NOT
+   treated as incompleteness: that would send the caller into a retry that provably cannot help.
 
    It deliberately does **not** read that ledger to skip anyone. A legacy row is a claim taken
    BEFORE the pre-cutover send, and the old handler deleted it again when the send failed, so a
@@ -816,7 +821,14 @@ sending a request shape the new handler must interpret rather than trust.
    caller never inspected the response, and the pre-cutover HANDLER answers 200 even when it
    deferred recipients or hit send errors. So the run drains its own tail: on a deferred tail it
    chains a bounded continuation of itself carrying a keyset cursor, forwarding the caller's own
-   Authorization header so the hop re-derives the same trainer and gains no privilege. The
+   Authorization header so the hop re-derives the same trainer and gains no privilege.
+
+   The cursor measures DISCOVERY and nothing else. A recipient whose enqueue failed is owed a
+   retry, and that is carried as an explicit, capped set of ids rather than by holding the cursor
+   back — holding it back conflated the two jobs, cost a hop or two per failure, and let enough
+   failures exhaust the hop cap before the undiscovered tail was ever reached. Only a FRESH
+   failure is carried, so every recipient gets exactly two attempts, the retry is bound to an
+   identity rather than a position, and the set provably shrinks to empty. The
    current caller ALSO judges completeness from the response body (`remaining` / `errors` on the
    old shape, `incomplete` / `failed` / `deferred` on the new one) and retries, so client retry
    and server continuation are independent lines of defence.
