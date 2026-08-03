@@ -246,10 +246,17 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
     // req — finish truthfully: any per-group failure OR any RECONCILIATION failure (materialize or dispatch)
     // makes the run 'failed' → status 'error' → HTTP 500 + one alert. A reconcile outage must NOT read as a
     // healthy 200 (the run is not operationally provable), even though the send work itself committed.
-    // An orphan drain that threw makes the run unhealthy for the same reason a reconcile failure
-    // does: the queue is the only path by which an early callback reaches its group, so a silent
-    // 200 over a broken drain hides groups that will age out as undelivered.
-    const failed = s.groupErrors > 0 || s.reconcileErrors > 0 || s.orphanErrors > 0;
+    // An orphan drain failure makes the run unhealthy for the same reason a reconcile failure
+    // does: the queue is the only path by which an uncorrelated callback reaches its group, so a
+    // silent 200 over a broken drain hides groups that will age out as undelivered.
+    //
+    // A QUARANTINED orphan keeps it red for as long as it sits there, deliberately. Quarantine
+    // means "no retry can fix this, a human must decide", and `quarantined` is a GAUGE of what is
+    // currently parked — so failing only on the invocation that first parked it would leave a
+    // permanent operator-required item behind one best-effort Slack call. The SQL states the same
+    // contract at its own tail: alert while errors > 0 OR quarantined > 0.
+    const failed = s.groupErrors > 0 || s.reconcileErrors > 0
+      || s.orphanErrors > 0 || s.orphansQuarantined > 0;
     await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: failed ? "failed" : "succeeded" });
     s.status = failed ? "error" : "ok";
     deps.log({ event: "digest_worker_done", dispatch_run: dispRun, ...s });

@@ -18,11 +18,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { verifySvix } from "../_shared/svix-verify.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
-import {
-  applyOutcomeNeedsAlert,
-  isPermanentApplyError,
-  parseResendEvent,
-} from "../_shared/resend-webhook-events.ts";
+import { handleResendCallback, parseResendEvent } from "../_shared/resend-webhook-events.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) =>
   console.log(`[RESEND-WEBHOOK] ${step}`, details ? JSON.stringify(details) : "");
@@ -98,82 +94,49 @@ serve(async (req) => {
     }
   }
 
-  const { error } = await supabase.rpc("record_email_event", {
-    p_event_type: eventType,
-    p_recipient_email: recipient,
-    p_resend_email_id: resendEmailId,
-    p_resend_event_id: svixId,
-    p_bounce_type: bounceType,
-    p_reason: reason,
-    p_invoice_id: invoiceId,
-    p_academy_profile_id: academyId,
-    p_trainer_id: trainerId,
-    p_occurred_at: occurredAt,
+  // The ORDER — record first, then apply, and what each failure answers — is production logic
+  // with its own tests in _shared/resend-webhook-events.ts. Keeping it inline here would put the
+  // load-bearing part of this route in the one file the suite can never import.
+  const result = await handleResendCallback(parsed, {
+    recordEvent: async () => {
+      const { error } = await supabase.rpc("record_email_event", {
+        p_event_type: eventType,
+        p_recipient_email: recipient,
+        p_resend_email_id: resendEmailId,
+        p_resend_event_id: svixId,
+        p_bounce_type: bounceType,
+        p_reason: reason,
+        p_invoice_id: invoiceId,
+        p_academy_profile_id: academyId,
+        p_trainer_id: trainerId,
+        p_occurred_at: occurredAt,
+      });
+      if (error) throw new Error(error.message);
+    },
+    applyDigest: async () => {
+      // A missing tag is NOT an error: the SQL falls back to correlating by provider_message_id
+      // and answers `not_digest` for the invoice/reminder mail that is most of this traffic.
+      const { data, error } = await supabase.rpc("apply_notification_provider_event", {
+        p_run_id: null,                     // a webhook is not a worker run
+        p_resend_event_id: svixId,
+        p_provider_message_id: resendEmailId,
+        p_digest_group_id: parsed.digestGroupId,
+        p_status: eventType,
+        p_occurred_at: occurredAt,
+        p_now: null,
+      });
+      if (error) throw new Error(error.message);
+      return typeof data === "string" ? data : null;
+    },
+    // IDs only, never PII. notifySlackEdgeError never throws.
+    alert: (message) => notifySlackEdgeError("resend-webhook", message, { eventType, resendEmailId }),
   });
 
-  if (error) {
-    logStep("record_failed", { error: error.message });
-    // Alert: record_email_event failing means bounce/delivery events stop landing
-    // in the email-health tables (silent deliverability blackout). IDs only, no PII.
-    await notifySlackEdgeError("resend-webhook", `record_email_event failed: ${error.message}`, { eventType, resendEmailId });
-    return new Response("record failed", { status: 500 }); // 5xx → Resend retries
+  logStep(result.step, { eventType, resendEmailId, digestOutcome: result.digestOutcome });
+  if (result.status !== 200) {
+    return new Response("callback not applied", { status: result.status }); // 5xx → Resend retries
   }
-
-  // ── DIGEST TRANSITION (ADR 0008 §PV) ────────────────────────────────────────────────────
-  // Deliberately AFTER record_email_event, and both are idempotent on the svix id. The
-  // deliverability record is the one that must never be lost — it feeds suppression, which gates
-  // future sends — so it lands first, and a permanent digest-side disagreement below can then be
-  // acknowledged without also discarding it.
-  //
-  // A missing tag is NOT an error: the SQL falls back to correlating by provider_message_id and
-  // answers `not_digest` for the invoice/reminder mail that makes up most of this traffic.
-  let digestOutcome: string | null = null;
-  if (parsed.drivesDigest) {
-    const { data: outcome, error: applyError } = await supabase.rpc("apply_notification_provider_event", {
-      p_run_id: null,                       // a webhook is not a worker run
-      p_resend_event_id: svixId,
-      p_provider_message_id: resendEmailId,
-      p_digest_group_id: parsed.digestGroupId,
-      p_status: eventType,
-      p_occurred_at: occurredAt,
-      p_now: null,
-    });
-    if (applyError) {
-      // PERMANENT vs TRANSIENT decides ack vs retry, and the default is retry: an unrecognised
-      // failure is one nobody has reasoned about, and a needless retry is far safer than a silent
-      // acknowledgement of a callback we did not apply.
-      if (isPermanentApplyError(applyError.message)) {
-        logStep("digest_apply_permanent", { error: applyError.message, resendEmailId });
-        await notifySlackEdgeError(
-          "resend-webhook",
-          `digest provider event permanently rejected: ${applyError.message}`,
-          { eventType, resendEmailId },
-        );
-      } else {
-        logStep("digest_apply_failed", { error: applyError.message });
-        await notifySlackEdgeError(
-          "resend-webhook",
-          `apply_notification_provider_event failed: ${applyError.message}`,
-          { eventType, resendEmailId },
-        );
-        return new Response("digest apply failed", { status: 500 }); // 5xx → Resend retries
-      }
-    } else {
-      digestOutcome = typeof outcome === "string" ? outcome : null;
-      // `orphan` is normal — the callback beat its group's provider-message binding and is
-      // enrolled for reconciliation. `mismatch` means something correlated wrongly.
-      if (applyOutcomeNeedsAlert(digestOutcome)) {
-        await notifySlackEdgeError(
-          "resend-webhook",
-          "digest provider event did not match its group's provider message id",
-          { eventType, resendEmailId },
-        );
-      }
-    }
-  }
-
-  logStep("recorded", { eventType, resendEmailId, digestOutcome });
-  return new Response(JSON.stringify({ ok: true, digest: digestOutcome }), {
+  return new Response(JSON.stringify({ ok: true, digest: result.digestOutcome }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

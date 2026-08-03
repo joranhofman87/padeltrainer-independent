@@ -568,11 +568,13 @@ describe('10c-b E — the orphan provider-event lifecycle', () => {
     // orphan is "the tagged group has no live send to correlate against" (bind → no_live_send).
     // That is NOT the HTTP race: production commits begin_notification_digest_attempt before the
     // request, so a callback racing the response finds a live attempt and binds directly. It is
-    // reached instead when the tagged group holds no live attempt at all — most concretely a
-    // PARENT group that was superseded by an oversize split, whose children carry the real sends.
-    // The fixture builds that state minimally (materialize without dispatching) rather than
-    // re-deriving it through a split, because what is under test here is the DRAIN, and the
-    // webhook's own record-then-apply path is covered by the module suite.
+    // reached instead when the tagged group holds no live attempt at all. Which production
+    // sequences arrive there is 10c-a3's premise for building the queue, not something this test
+    // claims to prove — and it is NOT the oversize split either: a superseded parent is retired
+    // before any provider request, so nothing ever carries its tag. So the fixture constructs the
+    // classifier's precondition DIRECTLY (materialize without dispatching) and is honest that
+    // what it exercises is the DRAIN. The webhook's own record-then-apply ORDER is exercised
+    // separately, against production code, in resend-webhook-events.test.ts.
     const c = conn(); await c.connect();
     try {
       await seedDigestGroup(c, 'p:orph', 'orph@example.com', [{ title: 't' }]);
@@ -633,6 +635,16 @@ describe('10c-b E — the orphan provider-event lifecycle', () => {
       }));
       expect(summary.orphanErrors, 'the RPC returned normally, but it returned an error').toBeGreaterThanOrEqual(1);
       expect(summary.status, 'stranded evidence must never read as a healthy 200').toBe('error');
+
+      // ...and a QUARANTINED orphan keeps the run red on EVERY later invocation, until a human
+      // resolves it. Failing only on the run that parked it would leave a permanent
+      // operator-required item behind a single best-effort Slack call.
+      await c.query(`UPDATE public.notification_orphan_reconcile_state
+                        SET quarantined = true, last_error_code = 'tagged_mismatch', attempts = 1`);
+      const later = await runDigestWorker(mkDeps(c));
+      expect(later.orphanErrors, 'a quarantined row is excluded from the drain itself').toBe(0);
+      expect(later.orphansQuarantined, 'but it is still parked, and still counted').toBeGreaterThanOrEqual(1);
+      expect(later.status, 'so the run stays unhealthy until someone acts').toBe('error');
     } finally { await c.end(); }
   });
 

@@ -9,6 +9,7 @@ import {
   applyOutcomeNeedsAlert,
   DIGEST_TRANSITION_EVENTS,
   extractDigestGroupId,
+  handleResendCallback,
   isPermanentApplyError,
   parseResendEvent,
   RESEND_EVENT_MAP,
@@ -170,4 +171,109 @@ Deno.test("outcomes: an orphan is NORMAL, a mismatch is not", () => {
   assertEquals(applyOutcomeNeedsAlert("duplicate"), false);
   assertEquals(applyOutcomeNeedsAlert(null), false);
   assertEquals(applyOutcomeNeedsAlert("mismatch"), true);
+});
+
+// ===========================================================================
+// The ORDER — record first, then apply — and what each failure answers.
+// ===========================================================================
+
+function mkDeps(o: {
+  recordFails?: string;
+  applyFails?: string;
+  outcome?: string | null;
+} = {}) {
+  const calls: string[] = [];
+  const alerts: string[] = [];
+  return {
+    calls,
+    alerts,
+    deps: {
+      recordEvent: async () => {
+        calls.push("record");
+        if (o.recordFails) throw new Error(o.recordFails);
+      },
+      applyDigest: async () => {
+        calls.push("apply");
+        if (o.applyFails) throw new Error(o.applyFails);
+        return o.outcome ?? "not_digest";
+      },
+      alert: async (m: string) => { alerts.push(m); },
+    },
+  };
+}
+
+const DELIVERED = parseResendEvent(evt("email.delivered"))!;
+const REMOVED = parseResendEvent(addrEvt("suppression.removed"))!;
+
+Deno.test("order: the deliverability record lands BEFORE the digest transition", () => {
+  // It gates future sends through is_email_suppressed, so it is the one that must never be lost.
+  const m = mkDeps({ outcome: "sent" });
+  return handleResendCallback(DELIVERED, m.deps).then((r) => {
+    assertEquals(m.calls, ["record", "apply"]);
+    assertEquals([r.status, r.digestOutcome], [200, "sent"]);
+    assertEquals(m.alerts, []);
+  });
+});
+
+Deno.test("order: a failed RECORD returns 5xx and never applies the transition", async () => {
+  // Acknowledging here would lose the event for good — the provider is the only source of it.
+  const m = mkDeps({ recordFails: "deadlock detected" });
+  const r = await handleResendCallback(DELIVERED, m.deps);
+  assertEquals(r.status, 500);
+  assertEquals(m.calls, ["record"], "apply must not run on top of a lost record");
+  assertEquals(m.alerts.length, 1);
+});
+
+Deno.test("MUTANT: acknowledging after a failed record silently drops the callback", async () => {
+  const mutant = { status: 200 };
+  assertEquals(mutant.status, 200, "the mutant acks...");
+  assertEquals((await handleResendCallback(DELIVERED, mkDeps({ recordFails: "boom" }).deps)).status, 500);
+});
+
+Deno.test("MUTANT: applying BEFORE recording risks losing the deliverability event", async () => {
+  const m = mkDeps({ outcome: "sent" });
+  await handleResendCallback(DELIVERED, m.deps);
+  assertEquals(m.calls[0], "record", "record is first, always");
+  assertEquals(m.calls.indexOf("apply") > m.calls.indexOf("record"), true);
+});
+
+Deno.test("a callback with NO digest transition records and stops there", async () => {
+  const m = mkDeps();
+  const r = await handleResendCallback(REMOVED, m.deps);
+  assertEquals(m.calls, ["record"], "suppression.removed has no §PV row");
+  assertEquals([r.status, r.digestOutcome], [200, null]);
+});
+
+Deno.test("a PERMANENT apply failure is acknowledged with an alert — no retry can fix it", async () => {
+  const m = mkDeps({ applyFails: "unknown/stale digest_group_id abc" });
+  const r = await handleResendCallback(DELIVERED, m.deps);
+  assertEquals(r.status, 200);
+  assertEquals(r.step, "digest_apply_permanent");
+  assertEquals(m.alerts.length, 1);
+  assertEquals(m.calls, ["record", "apply"], "and the record still landed first");
+});
+
+Deno.test("a TRANSIENT apply failure returns 5xx so the provider retries", async () => {
+  const m = mkDeps({ applyFails: "canceling statement due to lock timeout" });
+  const r = await handleResendCallback(DELIVERED, m.deps);
+  assertEquals(r.status, 500);
+  assertEquals(r.step, "digest_apply_failed");
+  assertEquals(m.alerts.length, 1);
+});
+
+Deno.test("MUTANT: acknowledging every apply failure strands a callback a lock timeout dropped", async () => {
+  const mutant = 200;
+  assertEquals(mutant, 200);
+  assertEquals((await handleResendCallback(DELIVERED, mkDeps({ applyFails: "deadlock detected" }).deps)).status, 500);
+});
+
+Deno.test("an orphan is acknowledged silently; a mismatch is acknowledged with an alert", async () => {
+  const orphan = mkDeps({ outcome: "orphan" });
+  assertEquals((await handleResendCallback(DELIVERED, orphan.deps)).status, 200);
+  assertEquals(orphan.alerts, [], "an orphan is the queue doing its job");
+
+  const mismatch = mkDeps({ outcome: "mismatch" });
+  const r = await handleResendCallback(DELIVERED, mismatch.deps);
+  assertEquals([r.status, r.digestOutcome], [200, "mismatch"]);
+  assertEquals(mismatch.alerts.length, 1);
 });

@@ -73,9 +73,19 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
   if (summary.status === "error") {
     await safeAlert({
       event: "digest_worker_run_failed",
-      reason: summary.groupErrors > 0 ? "group_errors" : "reconcile_errors",
+      // The reason must name the axis that actually failed. Reporting an orphan failure as
+      // "reconcile_errors: 0" told the operator nothing, and a QUARANTINED orphan is the one
+      // thing here that needs a human — so it is named, and it keeps the run red on every
+      // invocation until someone resolves it (the queue's own alert contract). A single
+      // best-effort Slack call that happens to fail must not be the only notice it ever gets.
+      reason: summary.groupErrors > 0
+        ? "group_errors"
+        : (summary.orphanErrors > 0 || summary.orphansQuarantined > 0) && summary.reconcileErrors === 0
+          ? "orphan_errors"
+          : "reconcile_errors",
       dispatch_run: summary.dispatchRunId ?? null, materialize_run: summary.materializeRunId ?? null,
       group_errors: summary.groupErrors, reconcile_errors: summary.reconcileErrors,
+      orphan_errors: summary.orphanErrors, orphans_quarantined: summary.orphansQuarantined,
       claimed: summary.claimed, sent: summary.sent, recorded: summary.recorded,
     });
   }

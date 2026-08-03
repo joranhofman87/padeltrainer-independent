@@ -181,3 +181,74 @@ export function isPermanentApplyError(message: string | null | undefined): boole
 export function applyOutcomeNeedsAlert(outcome: string | null | undefined): boolean {
   return outcome === "mismatch";
 }
+
+/**
+ * The ORDER in which a callback is applied, and what the webhook answers.
+ *
+ * This is the load-bearing part, so it lives here rather than inline in the handler: a mutation
+ * that returned 200 after recording without applying, or that swapped the two calls, would have
+ * left every other test in this suite green.
+ *
+ * RECORD FIRST, deliberately. The deliverability record gates future sends through
+ * `is_email_suppressed`, so it is the one that must never be lost; it lands before anything can
+ * decide to acknowledge. Both RPCs are idempotent on the same svix id, so a retry after a partial
+ * failure re-runs the pair safely — the recorded event is a no-op the second time and the digest
+ * transition still gets its chance.
+ *
+ * ACKNOWLEDGE only what is settled: a permanent digest-side disagreement cannot be fixed by
+ * asking Resend to send the same thing again, so it alerts and returns 200. Anything else — a
+ * failed record, a transient apply — returns 5xx so the provider retries.
+ */
+export type CallbackDeps = {
+  /** Must REJECT on failure. */
+  recordEvent: () => Promise<void>;
+  /** Must REJECT on failure. Resolves with `apply_notification_provider_event`'s outcome. */
+  applyDigest: () => Promise<string | null>;
+  /** Best-effort operator alert; never throws, never blocks the response. */
+  alert: (message: string) => Promise<void>;
+};
+
+export type CallbackResult = {
+  status: number;
+  digestOutcome: string | null;
+  /** For the log line — which step decided the status. */
+  step: "recorded" | "record_failed" | "digest_apply_failed" | "digest_apply_permanent";
+};
+
+export async function handleResendCallback(
+  parsed: ParsedResendEvent,
+  deps: CallbackDeps,
+): Promise<CallbackResult> {
+  try {
+    await deps.recordEvent();
+  } catch (e) {
+    await deps.alert(`record_email_event failed: ${errText(e)}`);
+    return { status: 500, digestOutcome: null, step: "record_failed" };   // 5xx → Resend retries
+  }
+
+  if (!parsed.drivesDigest) {
+    return { status: 200, digestOutcome: null, step: "recorded" };
+  }
+
+  let digestOutcome: string | null = null;
+  try {
+    digestOutcome = await deps.applyDigest();
+  } catch (e) {
+    const message = errText(e);
+    if (isPermanentApplyError(message)) {
+      await deps.alert(`digest provider event permanently rejected: ${message}`);
+      return { status: 200, digestOutcome: null, step: "digest_apply_permanent" };
+    }
+    await deps.alert(`apply_notification_provider_event failed: ${message}`);
+    return { status: 500, digestOutcome: null, step: "digest_apply_failed" };
+  }
+
+  if (applyOutcomeNeedsAlert(digestOutcome)) {
+    await deps.alert("digest provider event did not match its group's provider message id");
+  }
+  return { status: 200, digestOutcome, step: "recorded" };
+}
+
+function errText(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
