@@ -10799,6 +10799,17 @@ export type Database = {
         Args: { p_destination_fingerprint: string; p_frozen: Json }
         Returns: undefined
       }
+      notif_digest_worker_liveness: {
+        Args: never
+        Returns: {
+          job_active: boolean
+          job_present: boolean
+          last_finished_at: string
+          last_status: string
+          last_success_at: string
+          seconds_since_success: number
+        }[]
+      }
       notif_open_slots_escape_html: {
         Args: { p_text: string }
         Returns: string
