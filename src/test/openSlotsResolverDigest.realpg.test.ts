@@ -814,6 +814,66 @@ describe('C — the INSTANT claim never touches a digest member', () => {
       [got.map((r: { id: string }) => r.id)]);
     expect(kinds).toEqual([{ status: 'pending', n: 5 }, { status: 'processing', n: 10 }]);
   }, 180_000);
+
+  // ── H: the DEFERRED measurement from C ──────────────────────────────────────────────────
+  // C shipped idx_notification_outbox_due_instant and deferred one question: the stale-reclaim
+  // arm of the OR is only PARTIALLY served by it. `locked_at` and `attempts` are not in any
+  // index, so they stay residual filters, and the agreement was not to drop or narrow the old
+  // `idx_notification_outbox_due` until that arm was measured. This is the measurement.
+  //
+  // The pathological shape is realistic and self-inflicted: the instant worker sets
+  // status='processing', locked_at=now() on every row it claims. A slow or backed-up worker
+  // therefore leaves many NON-digest 'processing' rows that ARE in the partial index (they pass
+  // channel + status + delivery_mode) and fail only the residual `locked_at < stale` test. With
+  // ORDER BY scheduled_for and an old scheduled_for, they sort FIRST and are walked and
+  // discarded before the claim can fill its LIMIT.
+  it('MEASURES the stale-reclaim arm: recently-locked rows are residual, and how costly', async () => {
+    await c.query(`TRUNCATE public.notification_outbox CASCADE;`);
+    await c.query(`
+      -- 20k in-flight rows: non-digest, 'processing', OLD scheduled_for (so they sort first),
+      -- but locked SECONDS ago — ineligible for reclaim on the residual filter alone.
+      INSERT INTO public.notification_outbox
+        (channel, event_type, status, scheduled_for, idempotency_key,
+         destination_normalized, recipient_user_id, payload, locked_at, attempts, max_attempts)
+      SELECT 'email', 'open_slots_player', 'processing', now() - interval '6 hours',
+             'inflight:' || g, 'p@example.com', '${USER}', '{}'::jsonb,
+             now() - interval '10 seconds', 1, 5
+        FROM generate_series(1, 20000) g;
+      -- the work that SHOULD be claimed, scheduled AFTER all of the above
+      INSERT INTO public.notification_outbox
+        (channel, event_type, status, scheduled_for, idempotency_key,
+         destination_normalized, recipient_user_id, payload)
+      SELECT 'email', 'open_slots_player', 'pending', now() - interval '1 minute',
+             'want:' || g, 'p@example.com', '${USER}', '{}'::jsonb
+        FROM generate_series(1, 5) g;
+      ANALYZE public.notification_outbox;`);
+
+    const due = await extractDueQuery();
+    const { rows } = await c.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${due}`);
+    const plan = rows[0]['QUERY PLAN'][0].Plan;
+    const removed = worstRowsRemoved(plan);
+
+    // CORRECTNESS FIRST — whatever it costs, it must return the right rows. A slow plan that is
+    // still correct is a capacity decision; a fast plan that is wrong is an outage.
+    const { rows: got } = await c.query(due);
+    expect(got).toHaveLength(5);
+
+    // THE MEASUREMENT, asserted rather than merely printed so it cannot rot. The residual cost
+    // is REAL: the in-flight rows are scanned and discarded. This is the number the deferral
+    // asked for, and it is why idx_notification_outbox_due must NOT be dropped or narrowed as
+    // part of 10c-b — neither index helps this arm (neither carries locked_at/attempts), so
+    // removing one would change nothing here while removing cover from every other consumer.
+    // Serving this arm properly needs its own partial index, which is a separate, measured
+    // change against production statistics, not a drive-by in a digest cutover.
+    //
+    // MEASURED RESULT (this shape, 20005 rows): 20000 rows removed by filter and NO index used
+    // at all — the planner falls back to a SEQUENTIAL SCAN. That is worse than "partially
+    // served": under an in-flight backlog this arm is unindexed, full stop.
+    expect(removed).toBeGreaterThanOrEqual(20000);
+    expect(indexNames(plan), 'the stale-reclaim arm is UNINDEXED in this shape — if this now uses an index, the measurement below is stale and the decision must be revisited').toEqual([]);
+    // eslint-disable-next-line no-console
+    console.log(`[H] stale-reclaim residual: ${removed} rows removed by filter over a 20000-row in-flight backlog; indexes used: ${JSON.stringify(indexNames(plan))}`);
+  }, 180_000);
 });
 
 // ===========================================================================

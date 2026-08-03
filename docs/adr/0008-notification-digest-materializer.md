@@ -865,3 +865,44 @@ exists — and over an existing `instant` or `daily` that leaves MORE mail than 
 not less. It is accepted deliberately: the alternative differs in kind rather than degree, because
 a `DO UPDATE` here would let the incidental default overwrite an explicit `off` and resume mail
 after an opt-out. A wrong cadence is still consented mail; mail after an opt-out is not.
+
+## 10c-b H — the deferred index measurement, and why `idx_notification_outbox_due` stays
+
+C shipped `idx_notification_outbox_due_instant` (partial, `channel, scheduled_for,
+next_attempt_at WHERE status IN ('pending','processing') AND delivery_mode IS DISTINCT FROM
+'digest'`) so that a large DUE digest backlog is not walked and discarded by the instant claim.
+One question was deliberately left open: the claim's SECOND arm — reclaiming rows orphaned by a
+crashed worker — filters on `locked_at` and `attempts`, and neither is in any index, so they stay
+RESIDUAL. The agreement was not to drop or narrow the older `idx_notification_outbox_due` until
+that arm had been measured. It has now been measured.
+
+**Result (real PostgreSQL, `openSlotsResolverDigest.realpg.test.ts`, 20 000 non-digest
+`processing` rows locked seconds ago with an old `scheduled_for`, plus 5 genuinely due rows):
+20 000 rows removed by filter, and NO index used at all — the planner chooses a sequential scan.**
+
+The shape is realistic and self-inflicted: the instant worker sets `status='processing',
+locked_at=now()` on every row it claims, so a slow or backed-up worker leaves exactly this
+population. Those rows pass channel + status + `delivery_mode`, so they are IN the partial index;
+they fail only the residual `locked_at < now() - stale` test, and with `ORDER BY scheduled_for`
+they sort first.
+
+**Decisions:**
+
+1. `idx_notification_outbox_due` is **kept, unchanged**. Dropping or narrowing it would not improve
+   this arm — neither index carries `locked_at` or `attempts`, so neither can serve it — while
+   removing cover from every other consumer of that index. The deferral asked whether removal was
+   safe; the measurement says removal would be all cost and no benefit.
+2. Serving the stale-reclaim arm properly needs its **own** partial index keyed for it. That is a
+   separate change, sized against production statistics (how many rows are genuinely in flight at
+   once, and for how long), not a drive-by inside a digest cutover. It is not required for 10c-b:
+   the arm is correct, and the cost only appears under an in-flight backlog that the instant
+   worker's own throughput bounds.
+3. The measurement is **asserted, not just recorded** — the test fails if the plan starts using an
+   index, which is the signal that this analysis has gone stale and the decision must be retaken.
+
+The clone-safety register gained the same kind of guard. `run-rollout.sh` fails closed on any live
+cron job missing from `clone-safety/reviewed-cron-jobs.tsv`, but nothing tied that file to the
+migrations — so 10c-b F scheduled `notification-digest-worker` and it went unregistered, which
+would have aborted the next clone-source quiesce in front of an operator with production paused.
+`src/test/reviewedCronJobsRegister.test.ts` now requires every job any migration schedules to be
+registered, and its outbound classification to match what its command actually does.
