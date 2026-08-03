@@ -169,7 +169,11 @@ try {
       INSERT INTO public.notification_digest_attempts
         (attempt_id, digest_group_id, worker_run_id, provider_idempotency_key,
          outcome_class, provider_message_id, recorded_at, http_status)
-        VALUES ('${ATTEMPT}', '${GROUP}', '${RUN}', 'idem-1', 'accepted', '${MSG}', now(), 200);`);
+        VALUES ('${ATTEMPT}', '${GROUP}', '${RUN}', 'idem-1', 'accepted', '${MSG}', now(), 200);
+      -- begin_notification_digest_attempt ENSURES this row exists before it sends, so a canary that
+      -- really sent always leaves one. A baseline without it made "the circuit is closed" pass
+      -- vacuously in every scenario.
+      INSERT INTO public.notification_provider_circuit (channel, state) VALUES ('email', 'closed');`);
   };
 
   const preflight = async () => {
@@ -344,22 +348,29 @@ try {
     'no global_config event');
 
   await refuses('an OPEN email circuit (the manual hold) is refused',
-    () => c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, tripped_at, retry_at)
-      VALUES ('email', 'open', 'correlation_mismatch', now(), NULL)`),
-    'email provider circuit is CLOSED');
+    () => c.query(`UPDATE public.notification_provider_circuit
+      SET state = 'open', reason = 'correlation_mismatch', tripped_at = now(), retry_at = NULL
+      WHERE channel = 'email'`),
+    'circuit exists and is CLOSED');
 
   await refuses('a HALF-OPEN email circuit is refused',
-    () => c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, tripped_at)
-      VALUES ('email', 'half_open', 'probing', now())`),
-    'email provider circuit is CLOSED');
+    () => c.query(`UPDATE public.notification_provider_circuit
+      SET state = 'half_open', reason = 'probing', tripped_at = now() WHERE channel = 'email'`),
+    'circuit exists and is CLOSED');
 
-  // A CLOSED row must NOT be refused — otherwise the assertion above is just
-  // "no circuit row has ever existed", which is a different (and weaker) claim.
+  // A MISSING row is not "no problem". A real send ensures it exists, so absence after a canary
+  // means the breaker state was lost or wiped — and counting only non-closed rows passed vacuously
+  // on exactly that state.
+  await refuses('a MISSING email circuit row is refused (absence is not health)',
+    () => c.query(`DELETE FROM public.notification_provider_circuit WHERE channel = 'email'`),
+    'circuit exists and is CLOSED');
+
   await seedBaseline();
-  await c.query(`INSERT INTO public.notification_provider_circuit (channel, state) VALUES ('email', 'closed')`);
+  await c.query(`DELETE FROM public.notification_provider_circuit WHERE channel = 'email'`);
   {
-    const err = await preflight();
-    rec('a CLOSED email circuit row still passes', err === null, err ?? '');
+    const err = await canaryVerify();
+    rec('canary_verify ALSO refuses a missing email circuit row',
+      !!err && err.includes('circuit exists and is CLOSED'), err ?? 'it PASSED');
   }
 
   // ── the pre-existing gates must still hold ───────────────────────────────

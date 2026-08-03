@@ -68,10 +68,16 @@ SELECT pg_temp.assert_eq(
     WHERE worker_run_id = :'run_id'::uuid AND action = 'global_config'), 0,
   'the canary recorded no global_config event (correlation mismatch, auth failure or quota exhaustion)');
 
+-- EXACTLY ONE closed row, not "no non-closed rows". Counting only the bad states passes
+-- VACUOUSLY when the row is absent — and absence is not a neutral state here:
+-- begin_notification_digest_attempt ENSURES the row exists before it sends
+-- (20261004100000, the INSERT ... ON CONFLICT DO NOTHING before the breaker gate), so a canary that
+-- really sent guarantees one. Missing afterwards means the breaker state was lost or wiped, which
+-- is exactly when a gate must fail closed rather than read silence as health.
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_provider_circuit
-    WHERE channel = 'email' AND state <> 'closed'), 0,
-  'the email provider circuit is CLOSED after the canary (a manual hold is state=open with retry_at NULL)');
+    WHERE channel = 'email' AND state = 'closed'), 1,
+  'the email provider circuit exists and is CLOSED after the canary (a manual hold is state=open with retry_at NULL)');
 
 -- ...and no provider event may be left UNRECONCILED against a group this canary sent. A tag/message
 -- mismatch arriving by webhook takes the uncorrelated branch of apply_notification_provider_event

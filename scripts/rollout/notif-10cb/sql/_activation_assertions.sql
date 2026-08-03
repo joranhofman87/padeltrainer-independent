@@ -256,10 +256,16 @@ SELECT pg_temp.assert_eq(
 -- 5c. and the email breaker must be CLOSED. A manual hold is state='open' with retry_at NULL, and
 -- it is exactly what a correlation mismatch or an exhausted monthly quota leaves behind. Arming a
 -- scheduler on top of a held-open circuit buries the hold under five-minute ticks.
+-- EXACTLY ONE closed row, not "no non-closed rows". Counting only the bad states passes
+-- VACUOUSLY when the row is absent — and absence is not a neutral state here:
+-- begin_notification_digest_attempt ENSURES the row exists before it sends
+-- (20261004100000, the INSERT ... ON CONFLICT DO NOTHING before the breaker gate), so a canary that
+-- really sent guarantees one. Missing afterwards means the breaker state was lost or wiped, which
+-- is exactly when a gate must fail closed rather than read silence as health.
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_provider_circuit
-    WHERE channel = 'email' AND state <> 'closed'), 0,
-  'the email provider circuit is CLOSED (open/half_open means a breaker tripped and has not cleared — resolve it before arming)');
+    WHERE channel = 'email' AND state = 'closed'), 1,
+  'the email provider circuit exists and is CLOSED (open/half_open means a breaker tripped and has not cleared — resolve it before arming)');
 
 -- 6. nothing may be left in an uncertain state. A group awaiting evidence or mid-send is exactly
 --    what a scheduler would multiply.

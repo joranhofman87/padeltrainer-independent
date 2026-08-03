@@ -125,8 +125,11 @@ describe('G — the preflight is bound to one named canary run', () => {
     expect(PREFLIGHT).toContain('a.provider_message_id IS DISTINCT FROM g.provider_message_id');
   });
 
-  it('requires the email circuit to be closed', () => {
-    expect(PREFLIGHT).toMatch(/channel = 'email' AND state <> 'closed'/);
+  // EXACTLY ONE CLOSED ROW, not "no non-closed rows" — the latter passes vacuously when the row is
+  // absent, and a real send ensures it exists, so absence means the breaker state was lost.
+  it('requires the email circuit row to EXIST and be closed', () => {
+    expect(PREFLIGHT).toMatch(/channel = 'email' AND state = 'closed'\)/);
+    expect(PREFLIGHT).not.toMatch(/channel = 'email' AND state <> 'closed'/);
   });
 });
 
