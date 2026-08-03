@@ -64,6 +64,13 @@ export async function runDigestWorkerHandler(deps: HandlerDeps): Promise<Handler
       event: "digest_worker_run_failed", reason: "invocation_error",
       dispatch_run: partial?.dispatchRunId ?? null, materialize_run: partial?.materializeRunId ?? null,
       group_errors: partial?.groupErrors ?? null, reconcile_errors: partial?.reconcileErrors ?? null,
+      // The orphan counts travel here too. A run can strand — and QUARANTINE — a provider event
+      // and then throw on reconcile or finish, and this is the only alert that fires: omitting
+      // them hid the operator-required item behind an "invocation_error" that says nothing about
+      // it, and a transient orphan error is backoff-deferred, so the next invocation need not
+      // reproduce the diagnostic.
+      orphan_errors: partial?.orphanErrors ?? null,
+      orphans_quarantined: partial?.orphansQuarantined ?? null,
       claimed: partial?.claimed ?? null, sent: partial?.sent ?? null,
     });
     return { status: "error", http: 500, body: { status: "error" } };

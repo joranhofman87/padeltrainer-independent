@@ -5,6 +5,7 @@ import type { WorkerSummary } from "./digest-worker-core.ts";
 const OK_SUMMARY: WorkerSummary = {
   status: "ok", sweptStale: 0, materialized: 0, claimed: 0, sent: 0, deferred: 0,
   oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0, reconcileErrors: 0,
+  orphansExamined: 0, orphansLinked: 0, orphansQuarantined: 0, orphanErrors: 0,
 };
 const CORS = { "Access-Control-Allow-Origin": "*" };
 const CONFIGURED = { DIGEST_SEND_ENABLED: "true", RESEND_API_KEY: "re_x", SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "k" };
