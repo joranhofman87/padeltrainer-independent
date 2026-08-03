@@ -102,35 +102,51 @@ const handler = async (req: Request): Promise<Response> => {
     // delivery by the §PS event hook — before prepare and before every attempt on the digest
     // path, and immediately before send in the instant email worker — so unfollowing between
     // enqueue and delivery still stops the notification on both routes.
-    const { data: followers, error: followersError } = await supabase
-      .from("trainer_followers")
-      .select("player_id, notify_new_availability")
-      .eq("trainer_id", trainerId)
-      .eq("notify_new_availability", true);
+    // PAGED recipient discovery. Both of these reads are subject to PostgREST's configured row
+    // cap, and the profile lookup additionally used a single `.in(...)` over every follower id —
+    // which above a few thousand followers exceeds practical request limits. Silently returning
+    // the first page was the worst outcome: the omitted followers were never notified AND never
+    // counted as deferred, so the run reported a clean success. Paging with an explicit bound
+    // keeps totals truthful and the tail resumable (a re-invoke is safe — already-enqueued
+    // recipients collapse to no_row via the resolver's idempotency key).
+    const PAGE = 500;
+    const MAX_RECIPIENTS = 20000;   // a hard ceiling so one trainer cannot run unbounded
+    const recipients: Array<{ id: string; user_id: string }> = [];
+    let truncated = false;
 
-    // A failed READ must not read as "nobody to notify". Returning 200/zero here would make a
-    // database outage indistinguishable from a trainer with no followers.
-    if (followersError) {
-      console.error("Follower lookup failed:", followersError.message);
-      return json({ error: "follower_lookup_failed" }, 500);
+    for (let from = 0; ; from += PAGE) {
+      if (recipients.length >= MAX_RECIPIENTS) { truncated = true; break; }
+      const { data: followerPage, error: followersError } = await supabase
+        .from("trainer_followers")
+        .select("player_id")
+        .eq("trainer_id", trainerId)
+        .eq("notify_new_availability", true)
+        .order("player_id", { ascending: true })     // stable order → stable paging
+        .range(from, from + PAGE - 1);
+
+      // A failed READ must not read as "nobody to notify". Returning 200/zero here would make a
+      // database outage indistinguishable from a trainer with no followers.
+      if (followersError) {
+        console.error("Follower lookup failed:", followersError.message);
+        return json({ error: "follower_lookup_failed" }, 500);
+      }
+      if (!followerPage || followerPage.length === 0) break;
+
+      const { data: players, error: playersError } = await supabase
+        .from("profiles")
+        .select("id, user_id")
+        .in("id", followerPage.map((f) => f.player_id));
+
+      if (playersError) {
+        console.error("Follower profile lookup failed:", playersError.message);
+        return json({ error: "profile_lookup_failed" }, 500);
+      }
+      for (const p of players ?? []) {
+        if (p.user_id) recipients.push({ id: p.id, user_id: p.user_id });
+      }
+      if (followerPage.length < PAGE) break;
     }
 
-    if (!followers || followers.length === 0) {
-      return json({ message: "No followers to notify", ...newCounts() }, 200);
-    }
-
-    // enqueue_notification is user_id-keyed; trainer_followers.player_id is profiles.id.
-    const { data: players, error: playersError } = await supabase
-      .from("profiles")
-      .select("id, user_id")
-      .in("id", followers.map((f) => f.player_id));
-
-    if (playersError) {
-      console.error("Follower profile lookup failed:", playersError.message);
-      return json({ error: "profile_lookup_failed" }, 500);
-    }
-
-    const recipients = (players ?? []).filter((p) => p.user_id);
     if (recipients.length === 0) {
       return json({ message: "No followers with an account", ...newCounts() }, 200);
     }
@@ -184,7 +200,9 @@ const handler = async (req: Request): Promise<Response> => {
     // An INCOMPLETE run must not return 200. Nothing re-invokes this function on a schedule and
     // the sole caller ignores the body, so a deferred or failed recipient is LOST unless the
     // caller can see the run was incomplete. A non-2xx is the only signal it can act on.
-    const incomplete = counts.failed > 0 || counts.deferred > 0;
+    // Truncation is a REAL incompleteness: those followers exist and were never processed.
+    if (truncated) counts.deferred += 1;
+    const incomplete = counts.failed > 0 || counts.deferred > 0 || truncated;
     return json({
       message: `Enqueued ${counts.enqueued} follower notification(s)`,
       subtype: notify.subtype,

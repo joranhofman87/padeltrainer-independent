@@ -494,13 +494,24 @@ try {
       let e2 = await tryArtifact(fresh, 'empty_project_check.sql');
       rec('the wiped target passes the empty-project proof again', e2 === null, e2?.message.slice(0, 80));
 
+      // The WIPE is what this step proves, so assert the reset BEFORE the rebuild. This used to
+      // be asserted after the rebuild, back when #615 was an overlay applied on top of a
+      // pre-#615 chain. #615 has since LANDED in main (20261006100000 adds is_suppressed), so
+      // the full chain now creates that column itself and "absent after rebuild" became
+      // permanently false — an assertion that could only be satisfied by the chain being
+      // incomplete. Splitting it keeps the original intent and actually strengthens it: the wipe
+      // must clear the column, and the rebuild must bring it back.
+      rec('…and the wipe removed the migrated column, so the target is genuinely pre-migration',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 0);
+
       await runArtifact(fresh, 'platform_stub.sql');
       const r2 = await applyChain(fresh);
       rec(`the FULL chain REPLAYS after the wipe (${r2.n}/${r2.total}) — no duplicate bucket, no duplicate policy`,
           r2.n === r2.total);
-      rec('…and #615 is gone again, so the rebuilt target is genuinely pre-migration',
+      rec('…and the replay REBUILDS the migrated column — proving a full chain, not a suffix',
           await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
-                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 0);
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1);
       // the generator must run on the REBUILT schema too — a reset that leaves a
       // target the loader cannot fill is not a reset
       let genErr2 = null;

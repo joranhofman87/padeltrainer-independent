@@ -44,6 +44,35 @@ export function isUuid(v: unknown): v is string {
     && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+
+const LEGACY_MONTHS: Record<string, number> = {
+  Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+  Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
+};
+
+/**
+ * Convert the ONE legacy display range this app ever produced into ISO dates.
+ *
+ * Exact expected shape: `MMM d - MMM d, yyyy` (e.g. "Aug 10 - Aug 16, 2026"). The year appears
+ * only on the right-hand side, so it is applied to both ends — which is correct for a bulk-slot
+ * batch, and any resulting inversion is caught by the isIsoDate + ordering checks in the caller.
+ * Returns null for ANY deviation; there is deliberately no fuzzy matching.
+ */
+export function parseLegacyDateRange(value: string): { from: string; to: string } | null {
+  const m = /^([A-Z][a-z]{2}) (\d{1,2}) - ([A-Z][a-z]{2}) (\d{1,2}), (\d{4})$/.exec(value.trim());
+  if (!m) return null;
+  const [, fromMon, fromDay, toMon, toDay, year] = m;
+  const fm = LEGACY_MONTHS[fromMon];
+  const tm = LEGACY_MONTHS[toMon];
+  if (!fm || !tm) return null;
+  const pad = (n: string) => n.padStart(2, "0");
+  const from = `${year}-${String(fm).padStart(2, "0")}-${pad(fromDay)}`;
+  const to = `${year}-${String(tm).padStart(2, "0")}-${pad(toDay)}`;
+  // The converted values go through the SAME validation as a native ISO body.
+  if (!isIsoDate(from) || !isIsoDate(to)) return null;
+  return { from, to };
+}
+
 export type NotifyRequest =
   | { subtype: "new_availability"; slotCount: number; dateFrom: string; dateTo: string }
   | { subtype: "slot_reopened"; slotCount: number; slotDate: string; slotTime: string; bookingId?: string };
@@ -88,14 +117,28 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
     };
   }
 
-  // DEPLOY-WINDOW COMPATIBILITY. The frontend deploys automatically; edge functions are
-  // deployed manually. If this function goes out first, callers still running the previous
-  // bundle send the legacy display `date_range` and would get a hard 400. Accept that shape for
-  // the transition ONLY when it parses to real ISO dates — the value it carried
-  // ("Aug 10 - Aug 16, 2026") never does, so this is not a way back in for display text. It is
-  // purely so a stale caller fails soft. Remove once the frontend rollout has completed.
+  // ── DEPLOY-OVERLAP COMPATIBILITY (transition only; see removal note) ────────────────────
+  // The frontend deploys automatically, edge functions manually, and users hold CACHED bundles
+  // for a while after either. So both orders are real:
+  //   * edge first  -> cached bundles still send the legacy display `date_range`;
+  //   * frontend first -> the OLD handler receives an ISO-only body and keys on `undefined`.
+  // A runbook cannot fix a cached bundle. So this handler ACCEPTS the legacy shape and converts
+  // it, rather than 400ing and dropping the notification.
+  //
+  // This is NOT "inferring dates from arbitrary display text". The string is our OWN
+  // deterministic output — `${format(a,"MMM d")} - ${format(b,"MMM d, yyyy")}` — so it is parsed
+  // by an exact-format matcher, and the RESULT is then subjected to the same isIsoDate()
+  // validation as any other input. Anything that does not match exactly is refused, so a
+  // malformed or hostile value can never reach the renderer.
+  //
+  // REMOVE once no cached bundle sends date_range (one full frontend rollout + cache window).
   if (b.date_from === undefined && b.date_to === undefined && typeof b.date_range === "string") {
-    return { ok: false, error: "date_range is no longer accepted; send ISO date_from and date_to" };
+    const converted = parseLegacyDateRange(b.date_range);
+    if (!converted) {
+      return { ok: false, error: "date_range is no longer accepted; send ISO date_from and date_to" };
+    }
+    b.date_from = converted.from;
+    b.date_to = converted.to;
   }
   if (!isIsoDate(b.date_from)) return { ok: false, error: "date_from must be an ISO date (YYYY-MM-DD)" };
   if (!isIsoDate(b.date_to)) return { ok: false, error: "date_to must be an ISO date (YYYY-MM-DD)" };

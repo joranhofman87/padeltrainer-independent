@@ -23,11 +23,11 @@ const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
  */
 const CALLERS = [
   {
-    file: 'src/components/slots/BulkCreateContent.tsx',
+    file: 'src/lib/notifyFollowers.ts',
     subtype: 'new_availability',
-    reason: 'Trainer self-service bulk slot generation. Gated by shouldInvokeNotifyFollowersOnBulkGenerate '
-      + 'because academy managers have no trainer_profiles row and the function resolves trainer identity '
-      + 'from the authenticated user.',
+    reason: 'THE single typed caller. Every invocation funnels through it so the route string '
+      + 'exists in exactly one place, which is what makes this register enforceable rather than '
+      + 'bypassable by a variable indirection.',
   },
 ] as const;
 
@@ -54,17 +54,27 @@ const REPO_FILES = [...walk(join(ROOT, 'src')), ...walk(join(ROOT, 'supabase'))]
   .filter((rel) => !rel.startsWith('supabase/functions/notify-followers/')
     && !rel.includes('/test/') && !rel.includes('.test.'));
 
-/** Any route that reaches the function, however it is spelled. */
+/**
+ * Any file that reaches the route, however it is spelled.
+ *
+ * A literal-name matcher alone is bypassable — `const FN = "notify-followers"; invoke(FN)` would
+ * sail past it. So this looks for the route STRING anywhere in the file (which a variable
+ * indirection still has to contain) as well as the direct invoke/URL forms, and the ownership
+ * test below then requires all of it to funnel through one typed caller.
+ */
 function discoverCallers(): string[] {
   const found: string[] = [];
   for (const rel of REPO_FILES) {
     const src = read(rel);
-    if (/invoke\(\s*["']notify-followers["']|\/functions\/v1\/notify-followers/.test(src)) {
+    if (/["'`]notify-followers["'`]|\/functions\/v1\/notify-followers/.test(src)) {
       found.push(rel);
     }
   }
   return found.sort();
 }
+
+/** The single typed caller every invocation must go through. */
+const CENTRAL_CALLER = 'src/lib/notifyFollowers.ts';
 
 describe('the notify-followers caller registry', () => {
   it('matches the real invoker set exactly', () => {
@@ -85,23 +95,24 @@ describe('the notify-followers caller registry', () => {
     ).toEqual([]);
   });
 
-  it('every registered caller sends STRUCTURED ISO dates, never display text', () => {
-    for (const c of CALLERS) {
-      const src = read(c.file);
-      // Anchor on the INVOCATION, not the first textual mention — a comment above the call
-      // would otherwise shift the window off the request body and make this vacuous.
-      const at = src.search(/invoke\(\s*["']notify-followers["']|\/functions\/v1\/notify-followers/);
-      expect(at, `${c.file} must actually invoke notify-followers`).toBeGreaterThan(-1);
-      const body = src.slice(at, at + 900);
-      if (c.subtype === 'new_availability') {
-        expect(body, `${c.file} must send date_from`).toContain('date_from');
-        expect(body, `${c.file} must send date_to`).toContain('date_to');
-        expect(body, `${c.file} must use yyyy-MM-dd`).toContain('yyyy-MM-dd');
-      }
-      // the pre-cutover display range must not come back
-      expect(body, `${c.file} must not send a display date_range`).not.toContain('date_range');
-      expect(body, `${c.file} must not format dates for display in the request`).not.toContain('MMM d');
-    }
+  it('the ONLY file naming the route is the central caller', () => {
+    // This is the control finding #6 asked for: ownership, not name-matching. If any other file
+    // mentions the route at all — literal invoke, URL, or a `const FN = "notify-followers"` — it
+    // shows up here and must be routed through src/lib/notifyFollowers.ts instead.
+    expect(discoverCallers()).toEqual([CENTRAL_CALLER]);
+  });
+
+  it('the body builder sends STRUCTURED ISO dates, never display text', () => {
+    // The component builds the request body and hands it to the central caller.
+    const src = read('src/components/slots/BulkCreateContent.tsx');
+    const at = src.indexOf('notifyFollowers(');
+    expect(at, 'BulkCreateContent must build its body through the central caller').toBeGreaterThan(-1);
+    const body = src.slice(at, at + 900);
+    expect(body).toContain('date_from');
+    expect(body).toContain('date_to');
+    expect(body).toContain('yyyy-MM-dd');
+    expect(body, 'the pre-cutover display range must not come back').not.toContain('date_range');
+    expect(body).not.toContain('MMM d');
   });
 
   it('every registered caller carries a real reason', () => {

@@ -976,6 +976,7 @@
     "addPlayersToSlot": "Add players to this cyclus",
     "player": "Player",
     "selectPlayer": "Select player...",
+    "followersNotifiedPartially": "Some followers were not notified yet. Your slots were created.",
     "playersAddedToCyclus": "{{count}} player(s) added to all {{sessions}} sessions",
     "bookingsPartialSuccessTitle": "Slots created, players not added",
     "bookingsPartialSuccessDescription": "Slots were created, but selected players could not be added. Please try adding players again or contact support.",

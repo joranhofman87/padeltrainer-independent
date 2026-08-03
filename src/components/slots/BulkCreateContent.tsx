@@ -40,6 +40,7 @@ import { buildBulkCycleBookings } from "@/lib/bulkCycleBookings";
 import { splitAmongPlayersForInvoiceCreate } from "@/lib/invoiceSplitPricing";
 import { resolveSplitDivisor } from "@/lib/splitDivisor";
 import { getSelectedGuestPlayerIds, groupChargeableBookingsByGuest, normalizePayerId, shouldShowPayerSelector } from "@/lib/cyclePayerSelection";
+import { notifyFollowers } from "@/lib/notifyFollowers";
 import { buildDefaultBulkSlotOwnership, shouldInvokeNotifyFollowersOnBulkGenerate, shouldShowBulkBookingPartialFailureToast, shouldShowBulkPlayersAddedToast } from "@/lib/bulkCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
@@ -890,30 +891,33 @@ export function BulkCreateContent({
           );
 
           const { data: { session } } = await supabase.auth.getSession();
-          // STRUCTURED ISO dates, not display text (10c-b D). The notification copy is rendered
-          // server-side by trusted SQL and frozen into an immutable, hash-covered digest item,
-          // so a locale-formatted range like "Aug 10 - Aug 16, 2026" must never be the source
-          // of truth — it is unparseable downstream and would change the event identity if the
-          // format ever changed.
-          const notifyResult = await supabase.functions.invoke("notify-followers", {
-            body: {
+          // STRUCTURED ISO dates, not display text (10c-b D): the copy is rendered server-side
+          // by trusted SQL and frozen into an immutable hash-covered item, so a locale-formatted
+          // range is unparseable downstream and would change the event identity if the format did.
+          //
+          // Routed through the ONE typed caller, which retries a bounded number of times while
+          // the run reports itself incomplete. That is safe and creates no backlog: the resolver
+          // de-duplicates per recipient, so an already-enqueued follower is a no-op. Slot
+          // creation is never repeated — only this notification call.
+          const notifyOutcome = await notifyFollowers(
+            {
               slot_count: publicSlots.length,
               date_from: format(earliestStart, "yyyy-MM-dd"),
               date_to: format(latestEnd, "yyyy-MM-dd"),
             },
-            headers: {
-              Authorization: `Bearer ${session?.access_token}`,
-            },
-          });
-          // supabase-js turns a non-2xx into a RETURNED { error }, not a thrown exception, so
-          // the catch below never sees it. notify-followers answers 500 when a run was
-          // incomplete (failed or time-budget-deferred recipients) — without reading this the
-          // signal it went to the trouble of sending would be discarded and those followers
-          // would be silently lost.
-          if (notifyResult?.error) {
-            logger.warn("notify-followers reported an incomplete run", {
+            { client: supabase, accessToken: session?.access_token },
+          );
+          if (!notifyOutcome.complete) {
+            // Honest partial state: the slots WERE created, but some followers were not
+            // notified. Saying nothing here is what previously lost them silently.
+            logger.warn("notify-followers did not complete", {
               component: 'AddSlotDialog',
-              error: notifyResult.error.message,
+              attempts: notifyOutcome.attempts,
+              error: notifyOutcome.lastError,
+            });
+            toast({
+              title: t("calendar.followersNotifiedPartially"),
+              variant: "default",
             });
           }
         } catch {

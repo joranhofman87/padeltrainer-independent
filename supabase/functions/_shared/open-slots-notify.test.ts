@@ -52,12 +52,48 @@ Deno.test("parse: a valid new_availability request", () => {
   assertEquals(r.req, { subtype: "new_availability", slotCount: 3, dateFrom: "2026-08-10", dateTo: "2026-08-16" });
 });
 
-Deno.test("parse: REFUSES the pre-cutover display date_range", () => {
-  // The exact body the caller used to send. It must not be silently accepted.
+Deno.test("parse: a CACHED bundle's legacy date_range is converted, not dropped", () => {
+  // Deploy overlap: the frontend deploys automatically and users hold cached bundles, so a
+  // legacy body arrives at the new handler for a while. 400ing it would DROP the notification.
   const r = parseNotifyRequest({ slot_count: 3, date_range: "Aug 10 - Aug 16, 2026" });
-  assertEquals(r.ok, false);
-  if (r.ok) return;
-  assertEquals(r.error.includes("date_from"), true);
+  assertEquals(r.ok, true);
+  if (!r.ok) return;
+  assertEquals(r.req, {
+    subtype: "new_availability", slotCount: 3, dateFrom: "2026-08-10", dateTo: "2026-08-16",
+  });
+});
+
+Deno.test("parse: a legacy range and its ISO equivalent yield the SAME subject", () => {
+  // This is what makes the overlap duplicate-free: whichever bundle a user is running, the
+  // idempotency subject is identical, so the resolver de-duplicates across the cutover.
+  const T = "44444444-4444-4444-4444-444444444444";
+  const legacy = parseNotifyRequest({ slot_count: 3, date_range: "Aug 10 - Aug 16, 2026" });
+  const iso = parseNotifyRequest(BASE);
+  if (!legacy.ok || !iso.ok) throw new Error("fixture");
+  assertEquals(eventSubject(legacy.req, T), eventSubject(iso.req, T));
+});
+
+Deno.test("parse: only the EXACT legacy format is accepted — no fuzzy matching", () => {
+  for (const bad of [
+    "10 Aug - 16 Aug 2026", "Aug 10 to Aug 16, 2026", "Aug 10 - Aug 16",
+    "Foo 10 - Aug 16, 2026", "Aug 32 - Aug 33, 2026", "Aug 10 - Feb 30, 2026",
+    "", "   ", "<script>", "Aug 10 - Aug 16, 20260",
+  ]) {
+    const r = parseNotifyRequest({ slot_count: 3, date_range: bad });
+    assertEquals(r.ok, false, `must refuse: ${bad}`);
+    if (r.ok) return;
+    assertEquals(r.error.includes("no longer accepted"), true);
+  }
+});
+
+Deno.test("parse: an explicit ISO body WINS over any date_range also present", () => {
+  const r = parseNotifyRequest({
+    slot_count: 3, date_from: "2026-09-01", date_to: "2026-09-02",
+    date_range: "Aug 10 - Aug 16, 2026",
+  });
+  assertEquals(r.ok, true);
+  if (!r.ok) return;
+  assertEquals((r.req as { dateFrom: string }).dateFrom, "2026-09-01");
 });
 
 Deno.test("parse: rejects bad slot_count rather than coercing", () => {
@@ -275,13 +311,11 @@ Deno.test("subject: a missing trainer id THROWS rather than minting a colliding 
   assertEquals(threw, true);
 });
 
-Deno.test("parse: the legacy display date_range is refused with a POINTED error", () => {
-  const r = parseNotifyRequest({ slot_count: 3, date_range: "Aug 10 - Aug 16, 2026" });
-  assertEquals(r.ok, false);
-  if (r.ok) return;
-  // A stale caller (frontend deploys automatically, edge functions manually) must get a message
-  // that names the fix, not a generic "date_from must be an ISO date".
-  assertEquals(r.error.includes("no longer accepted"), true);
+Deno.test("MUTANT: a fuzzy legacy parser would admit unvalidated display text", () => {
+  const fuzzy = (v: string) => /(\w{3}) (\d+)/.test(v);   // "close enough" matching
+  assertEquals(fuzzy("Foo 99 - Bar 88, 2026"), true, "the mutant accepts nonsense...");
+  const r = parseNotifyRequest({ slot_count: 3, date_range: "Foo 99 - Bar 88, 2026" });
+  assertEquals(r.ok, false, "...production refuses it");
 });
 
 // MUTANT: an unscoped subject loses the second trainer's notification.
