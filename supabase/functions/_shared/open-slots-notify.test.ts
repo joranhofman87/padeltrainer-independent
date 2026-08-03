@@ -592,8 +592,7 @@ const PLAN = {
 
 Deno.test("plan: a clean, complete run owes nothing", () => {
   assertEquals(planRunOutcome(PLAN), {
-    deferred: 0, nextCursor: "e", retryIds: [], droppedRetries: 0, overflowed: false,
-    incomplete: false,
+    deferred: 0, nextCursor: "e", retryIds: [], droppedRetries: 0, incomplete: false,
   });
 });
 
@@ -645,34 +644,48 @@ Deno.test("plan: many failures do not slow the cursor down at all", () => {
   assertEquals(out.deferred, 40_021);
 });
 
-Deno.test("plan: MORE owed retries than the cap re-covers the range — it never forgets the excess", () => {
-  // Truncating to the cap would advance the cursor past the ids that did not fit and lose them
-  // for good, and a pre-cutover caller (which reads neither the status nor the body) is exactly
-  // the case server-side continuation exists to cover. A failure count that large is an outage,
-  // not a triage problem, so the hop re-covers its own range and re-attempts all of them.
+Deno.test("plan: beyond the carry cap the cursor STILL advances — the tail is never abandoned", () => {
+  // The earlier design re-covered the hop's own range on overflow. That sounds safer and is
+  // worse: a set of recipients that fails DETERMINISTICALLY resets every hop to the same cursor,
+  // so the hop cap is spent re-attempting them and a healthy tail of tens of thousands is never
+  // discovered at all. A large failure count does not prove the failure is systemic.
   const ids = Array.from({ length: MAX_RETRY_CARRY + 7 }, (_, i) => `p${i}`);
-  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true, incomingCursor: "a" });
-  assertEquals(out.overflowed, true);
-  assertEquals(out.retryIds, [], "no triage — nothing is singled out to remember or forget");
-  assertEquals(out.nextCursor, "a", "the whole range is re-covered");
-  assertEquals(out.deferred, PLAN.discoveredIds.length + ids.length);
+  const out = planRunOutcome({
+    ...PLAN,
+    discoveredIds: ids,
+    processedDiscovered: ids.length,
+    lastDiscovered: "pLast",
+    freshFailureIds: ids,
+    anyFailure: true,
+    beyondDiscovery: 30_000,
+    incomingCursor: "a",
+  });
+  assertEquals(out.nextCursor, "pLast", "full progress — the healthy tail is still reachable");
+  assertEquals(out.retryIds.length, MAX_RETRY_CARRY);
+  assertEquals(out.droppedRetries, 7, "reported, not silently forgotten");
+  assertEquals(out.deferred, 30_000 + MAX_RETRY_CARRY, "only work that WILL be attempted again");
   assertEquals(out.incomplete, true);
 });
 
-Deno.test("MUTANT: truncating the retry set silently forgets everyone past the cap", () => {
+Deno.test("MUTANT: holding the cursor on overflow spends the hop cap and loses the tail", () => {
   const ids = Array.from({ length: MAX_RETRY_CARRY + 7 }, (_, i) => `p${i}`);
-  const mutant = ids.slice(0, MAX_RETRY_CARRY);
-  assertEquals(mutant.length, MAX_RETRY_CARRY, "the mutant drops 7 recipients...");
-  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true, incomingCursor: "a" });
-  assertEquals(out.nextCursor, "a", "...production keeps the cursor so none are lost");
+  const mutantCursor = "a";                                  // re-cover the same range, for ever
+  const out = planRunOutcome({
+    ...PLAN, discoveredIds: ids, processedDiscovered: ids.length, lastDiscovered: "pLast",
+    freshFailureIds: ids, anyFailure: true, beyondDiscovery: 30_000, incomingCursor: mutantCursor,
+  });
+  assertEquals(out.nextCursor === mutantCursor, false);
 });
 
-Deno.test("plan: exactly AT the cap is still carried normally", () => {
+Deno.test("plan: exactly AT the cap is carried in full, with nothing dropped", () => {
   const ids = Array.from({ length: MAX_RETRY_CARRY }, (_, i) => `p${i}`);
-  const out = planRunOutcome({ ...PLAN, freshFailureIds: ids, anyFailure: true, incomingCursor: "a" });
-  assertEquals(out.overflowed, false);
+  const out = planRunOutcome({
+    ...PLAN, discoveredIds: ids, processedDiscovered: ids.length, lastDiscovered: "pLast",
+    freshFailureIds: ids, anyFailure: true, incomingCursor: "a",
+  });
   assertEquals(out.retryIds.length, MAX_RETRY_CARRY);
-  assertEquals(out.nextCursor, "e");
+  assertEquals(out.droppedRetries, 0);
+  assertEquals(out.nextCursor, "pLast");
 });
 
 Deno.test("plan: duplicate failure ids are collapsed", () => {
@@ -686,7 +699,7 @@ Deno.test("plan: an UNREADABLE remaining count keeps the run incomplete", () => 
   const out = planRunOutcome({ ...PLAN, beyondUnknown: true });
   assertEquals(out.deferred, 0, "the size of the tail is genuinely unknown, so it is not invented");
   assertEquals(out.incomplete, true, "but the run must not report itself complete");
-  assertEquals(shouldContinue({ deferred: 0, processed: 4, depth: 0, beyondUnknown: true }), true);
+  assertEquals(shouldContinue({ deferred: 0, madeProgress: true, depth: 0, beyondUnknown: true }), true);
 });
 
 Deno.test("plan: a partly processed hop resumes from the last recipient it handled", () => {
@@ -721,13 +734,21 @@ Deno.test("MUTANT: carrying a retry that already failed twice never terminates",
   assertEquals(out.retryIds.length, 0);
 });
 
-Deno.test("continuation is taken only when the hop did something and something is owed", () => {
-  const base = { deferred: 5, processed: 10, depth: 0 };
+Deno.test("continuation is taken only when the hop MOVED and something is owed", () => {
+  const base = { deferred: 5, madeProgress: true, depth: 0 };
   assertEquals(shouldContinue(base), true);
   assertEquals(shouldContinue({ ...base, deferred: 0 }), false, "nothing owed");
-  assertEquals(shouldContinue({ ...base, processed: 0 }), false, "did nothing → the chain would spin");
+  assertEquals(shouldContinue({ ...base, madeProgress: false }), false, "did not move → it would spin");
   assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH }), false, "hop bound reached");
   assertEquals(shouldContinue({ ...base, depth: MAX_CONTINUATION_DEPTH - 1 }), true);
+});
+
+Deno.test("continuation: reading follower rows IS progress, even with nobody deliverable", () => {
+  // A page of followers whose profiles carry no user_id enqueues nobody, but the cursor has moved
+  // past them. Requiring an ENQUEUE stopped the chain there and left the tail undiscovered — and
+  // a pre-cutover caller never comes back for it.
+  assertEquals(shouldContinue({ deferred: 0, madeProgress: true, depth: 0, beyondUnknown: true }), true);
+  assertEquals(shouldContinue({ deferred: 900, madeProgress: true, depth: 0 }), true);
 });
 
 Deno.test("resume state: the retry set is uuid-filtered, de-duplicated and CAPPED", () => {

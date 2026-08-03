@@ -239,7 +239,12 @@ const handler = async (req: Request): Promise<Response> => {
     // Retries first: they are already owed, and putting them ahead of newly discovered followers
     // keeps the cursor arithmetic below about discovery alone.
     const recipients: Array<{ id: string; user_id: string; isRetry?: true }> = [...retrying, ...discovered];
-    if (recipients.length === 0) {
+    // "No followers with an account" is only TRUE when discovery actually finished. Returning it
+    // after an early stop turned a page of unlinked profiles into a clean 200 with the tail
+    // undiscovered — and a pre-cutover caller, which reads neither status nor body, never comes
+    // back for it. When discovery stopped early the run falls through to the planning and
+    // continuation below, which knows how to carry on from the cursor.
+    if (recipients.length === 0 && !discoveryStoppedEarly) {
       return json({ message: "No followers with an account", ...newCounts() }, 200);
     }
 
@@ -398,11 +403,11 @@ const handler = async (req: Request): Promise<Response> => {
       lastDiscovered,
       incomingCursor: resumeState.afterPlayerId,
     });
-    if (plan.overflowed) {
-      // No silent caps: an outage-scale failure count is reported, and the hop re-covers its own
-      // range rather than triaging which of them to forget.
-      console.error("notify-followers: retry set exceeded the carry cap — re-covering this range");
-      errors.push("retry set exceeded the carry cap; the range is being re-covered");
+    if (plan.droppedRetries > 0) {
+      // No silent caps. These recipients got ONE attempt rather than two, and the run says so
+      // rather than quietly promising a retry the chain will not make.
+      console.error(`notify-followers: ${plan.droppedRetries} failed recipients exceeded the retry carry cap`);
+      errors.push(`${plan.droppedRetries} failed recipients could not be carried for a retry`);
     }
     const nextCursor = plan.nextCursor;
     counts.deferred = plan.deferred;
@@ -424,7 +429,13 @@ const handler = async (req: Request): Promise<Response> => {
     // TERMINATION: each hop processes at least one chunk and the cursor is strictly increasing,
     // so `deferred` shrinks monotonically; MAX_CONTINUATION_DEPTH bounds it regardless.
     let continued = false;
-    if (shouldContinue({ deferred: counts.deferred, processed, depth: resumeState.depth, beyondUnknown })) {
+    if (shouldContinue({
+      deferred: counts.deferred,
+      // Reading follower rows advances the cursor even when none of them was deliverable.
+      madeProgress: processed > 0 || followerRowsRead > 0,
+      depth: resumeState.depth,
+      beyondUnknown,
+    })) {
       const chain = fetch(`${supabaseUrl}/functions/v1/notify-followers`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: authHeader },
@@ -451,7 +462,7 @@ const handler = async (req: Request): Promise<Response> => {
       `skipped=${counts.skipped} no_row=${counts.no_row} failed=${counts.failed} ` +
       `deferred=${counts.deferred}${beyondUnknown ? "+unknown" : ""} ` +
       `markerFailures=${legacyMarkerFailures} carriedRetries=${plan.retryIds.length} ` +
-      `continued=${continued}`,
+      `droppedRetries=${plan.droppedRetries} continued=${continued}`,
     );
     if (errors.length > 0) console.error("Enqueue errors:", errors);
 
@@ -478,6 +489,7 @@ const handler = async (req: Request): Promise<Response> => {
       ...counts,
       ...(beyondUnknown ? { deferred_unknown: true } : {}),
       ...(legacyMarkerFailures > 0 ? { legacy_marker_failed: legacyMarkerFailures } : {}),
+      ...(plan.droppedRetries > 0 ? { retries_not_carried: plan.droppedRetries } : {}),
       errors: errors.length > 0 ? errors : undefined,
     }, incomplete ? 500 : 200);
   } catch (error: unknown) {

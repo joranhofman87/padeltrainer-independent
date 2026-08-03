@@ -22,7 +22,22 @@ import {
 
 const BODY: NotifyFollowersBody = { slot_count: 3, date_from: '2026-08-10', date_to: '2026-08-16' };
 
-type InvokeResult = { error: { message: string } | null; data?: unknown };
+type InvokeResult = { error: { message: string } | null; data?: unknown; errorBody?: unknown };
+
+/**
+ * A REAL supabase-js result shape. On a non-2xx the client leaves `data` null and wraps the
+ * Response in the error — so a test that supplies both a `data` body and an error is modelling
+ * something the client never produces, and would pass while production read nothing.
+ */
+function asClientResult(r: InvokeResult) {
+  if (!r.error) return { data: r.data ?? null, error: null };
+  return {
+    data: null,
+    error: r.errorBody === undefined
+      ? { message: r.error.message }
+      : { message: r.error.message, context: { json: async () => r.errorBody } },
+  };
+}
 
 /** Returns the given results in order; records every route+body it was called with. */
 function invoker(results: Array<InvokeResult | Error>) {
@@ -37,7 +52,7 @@ function invoker(results: Array<InvokeResult | Error>) {
         const r = results[Math.min(i, results.length - 1)];
         i++;
         if (r instanceof Error) throw r;
-        return { data: r.data ?? null, error: r.error };
+        return asClientResult(r);
       },
     },
   };
@@ -248,25 +263,40 @@ describe('deploy-overlap compatibility', () => {
     expect(markerGapOf({})).toBe(0);
   });
 
-  it('a marker gap on an INCOMPLETE attempt survives into the final outcome', async () => {
-    // The gap can only ever be reported by the attempt that created those rows: the next attempt
-    // sees `no_row` for them and reports nothing. Keeping it only when the SAME attempt completed
-    // therefore threw the warning away in exactly the case it mattered.
+  it('a marker gap on a 500 is read from the ERROR body and survives into the outcome', async () => {
+    // The case it exists for: an attempt with both an enqueue failure and failed marker writes
+    // answers 500, so supabase-js nulls `data` and puts the body on the error's Response. The
+    // next attempt sees `no_row` for those recipients and reports nothing, so reading only
+    // `data` dropped the warning exactly when there was one.
     const inv = invoker([
-      { error: null, data: { incomplete: true, enqueued: 5, failed: 1, deferred: 0, legacy_marker_failed: 5 } },
+      {
+        error: { message: 'incomplete' },
+        errorBody: { incomplete: true, enqueued: 5, failed: 1, legacy_marker_failed: 5 },
+      },
       { error: null, data: { incomplete: false, enqueued: 0, failed: 0, deferred: 0, no_row: 6 } },
     ]);
     const out = await notifyFollowers(BODY, { client: inv.client });
     expect(out).toEqual({ complete: true, attempts: 2, markerGap: 5 });
   });
 
-  it('a marker gap survives even when the run never completes', async () => {
+  it('gaps from different attempts are SUMMED — they are disjoint sets of recipients', async () => {
+    // A gap reported by attempt 1 cannot reappear on attempt 2, so 5 then 3 is 8 unmarked
+    // recipients, not 5.
     const inv = invoker([
-      { error: { message: 'incomplete' }, data: { legacy_marker_failed: 3 } },
+      { error: { message: 'incomplete' }, errorBody: { incomplete: true, failed: 1, legacy_marker_failed: 5 } },
+      { error: { message: 'incomplete' }, errorBody: { incomplete: true, failed: 1, legacy_marker_failed: 3 } },
+      { error: { message: 'incomplete' }, errorBody: { incomplete: true, failed: 1 } },
     ]);
     const out = await notifyFollowers(BODY, { client: inv.client });
     expect(out.complete).toBe(false);
-    expect(out.markerGap).toBe(3);
+    expect(out.markerGap).toBe(8);
+  });
+
+  it('an unreadable error body is worth zero, never an exception', async () => {
+    const inv = invoker([{ error: { message: 'boom' } }]);
+    const out = await notifyFollowers(BODY, { client: inv.client });
+    expect(out.complete).toBe(false);
+    expect(out.markerGap).toBeUndefined();
   });
 
   it('a genuinely complete run of EITHER version is not retried', () => {

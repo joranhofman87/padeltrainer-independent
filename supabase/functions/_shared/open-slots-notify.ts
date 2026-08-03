@@ -305,14 +305,18 @@ export const MAX_CONTINUATION_DEPTH = 20;
 /**
  * How many failed recipients one hop may hand to the next.
  *
- * Kept small deliberately: the retry set is processed BEFORE discovery, so a large one would eat
- * a hop's wall clock and starve the tail it is supposed to leave room for. At 50 the prefix is
- * five chunks, a small fraction of what a hop gets through.
+ * A prefix this size cannot starve the tail: the retry prefix and discovery share ONE wall-clock
+ * budget and one chunk loop, so a long prefix simply means the hop gets through fewer discovered
+ * followers — the cursor still advances, and anything the prefix did not reach is carried on.
  *
- * Exceeding it is NOT truncation — see planRunOutcome. Truncating would advance the cursor past
- * the ids that did not fit and lose them; the hop re-covers its own range instead.
+ * Beyond it, the excess is reported rather than carried. That degrades those recipients from two
+ * attempts to one; it does not lose the tail. The earlier design re-covered the hop's own range
+ * on overflow, which sounds safer and is worse: a set of recipients that fails DETERMINISTICALLY
+ * makes every hop reset to the same cursor, so the hop cap is spent re-attempting them and a
+ * perfectly healthy tail of tens of thousands is never discovered at all. A large failure count
+ * does not prove the failure is systemic.
  */
-export const MAX_RETRY_CARRY = 50;
+export const MAX_RETRY_CARRY = 500;
 
 export function parseResumeState(raw: unknown): ResumeState {
   const b = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -489,9 +493,8 @@ export function planRunOutcome(args: {
   deferred: number;
   nextCursor: string | null;
   retryIds: string[];
+  /** Owed retries the hop could not carry. They got one attempt; the run reports them. */
   droppedRetries: number;
-  /** True when so many recipients are owed a retry that the hop re-covers its range instead. */
-  overflowed: boolean;
   incomplete: boolean;
 } {
   const total = args.discoveredIds.length;
@@ -499,31 +502,31 @@ export function planRunOutcome(args: {
   // Un-attempted retries come first: they have been owed the longest.
   const unique = [...new Set([...args.unprocessedRetryIds, ...args.freshFailureIds])];
 
-  // MASS FAILURE: more owed retries than one hop may carry is not a triage problem, it is an
-  // outage. Truncating the set here would advance the cursor past the ids that did not fit and
-  // forget them for good — and a pre-cutover caller, which ignores both the status and the body,
-  // is exactly the case server-side continuation exists to cover. So the hop declines to triage:
-  // it re-covers its own range instead, which re-attempts every one of them. Already-enqueued
-  // recipients collapse to `no_row`, so the repeat costs nothing but a pass, and the hop cap
-  // still bounds how long a persistent outage can spin.
-  const overflowed = unique.length > MAX_RETRY_CARRY;
-  const retryIds = overflowed ? [] : unique;
-  const droppedRetries = 0;
+  // OVERFLOW: more owed retries than one hop may carry. The excess is reported, not carried —
+  // those recipients get one attempt instead of two, and the run says so. The cursor still
+  // advances, because holding it back is what abandons the tail (see MAX_RETRY_CARRY).
+  const retryIds = unique.slice(0, MAX_RETRY_CARRY);
+  const droppedRetries = unique.length - retryIds.length;
 
-  const nextCursor = overflowed
-    ? args.incomingCursor
-    : resumeCursorAfter(args.discoveredIds, processed, args.lastDiscovered, args.incomingCursor);
-  const deferred = overflowed
-    ? total + Math.max(args.beyondDiscovery, 0) + unique.length
-    : Math.max(total - processed, 0) + Math.max(args.beyondDiscovery, 0) + retryIds.length;
+  const nextCursor = resumeCursorAfter(
+    args.discoveredIds,
+    processed,
+    args.lastDiscovered,
+    args.incomingCursor,
+  );
+  // Only work that will actually be attempted again is counted as deferred. The dropped ids are
+  // already counted as `failed`; promising them a retry the chain will not make would be a
+  // second lie on top of the first.
+  const deferred = Math.max(total - processed, 0)
+    + Math.max(args.beyondDiscovery, 0)
+    + retryIds.length;
 
   return {
     deferred,
     nextCursor,
     retryIds,
     droppedRetries,
-    overflowed,
-    incomplete: deferred > 0 || args.beyondUnknown || args.anyFailure,
+    incomplete: deferred > 0 || args.beyondUnknown || args.anyFailure || droppedRetries > 0,
   };
 }
 
@@ -532,9 +535,9 @@ export function planRunOutcome(args: {
  *
  * The tail cannot be left to the CALLER. A pre-cutover bundle ignores a non-2xx response
  * entirely, and nothing re-invokes this route on a schedule, so work only the client could
- * resume was simply lost. Chaining is allowed only when the hop actually did something (at least
- * one chunk handled) and only within the hop bound, so a pathological run cannot spawn an
- * unbounded sequence of invocations. An unreadable remaining count also chains: not knowing the
+ * resume was simply lost. Chaining is allowed only when the hop actually MOVED — it enqueued
+ * someone, or at minimum read follower rows and so advanced its cursor — and only within the hop
+ * bound, so a pathological run cannot spawn an unbounded sequence of invocations. An unreadable remaining count also chains: not knowing the
  * size of the tail is not a reason to abandon it.
  *
  * The cursor is deliberately NOT a precondition. `null` means "resume from the beginning", which
@@ -545,13 +548,19 @@ export function planRunOutcome(args: {
 export function shouldContinue(
   args: {
     deferred: number;
-    processed: number;
+    /**
+     * Did this hop move? Reading follower rows counts, even when none of them yielded a
+     * deliverable recipient — the cursor has advanced past them, so the next hop starts
+     * somewhere new. Requiring an ENQUEUE here was wrong: a page of followers whose profiles
+     * carry no user_id enqueues nobody, and the chain stopped with the tail undiscovered.
+     */
+    madeProgress: boolean;
     depth: number;
     beyondUnknown?: boolean;
   },
 ): boolean {
   return (args.deferred > 0 || args.beyondUnknown === true)
-    && args.processed > 0
+    && args.madeProgress
     && args.depth < MAX_CONTINUATION_DEPTH;
 }
 

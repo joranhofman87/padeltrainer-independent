@@ -126,14 +126,47 @@ export function markerGapOf(data: unknown): number {
  * The client surface we need. Narrow on purpose: tests drive the REAL retry logic with a double,
  * and the route name lives here and nowhere else, which is what makes the registry enforceable.
  */
+export type InvokeError = {
+  message: string;
+  /**
+   * supabase-js wraps a non-2xx in a FunctionsHttpError carrying the raw Response, and leaves
+   * `data` null. Anything the handler reported in the BODY of an error response — the marker gap
+   * among it — is reachable only through here.
+   */
+  context?: { json?: () => Promise<unknown> };
+};
+
 export type FunctionsClientLike = {
   functions: {
     invoke: (
       name: string,
       args: { body: unknown; headers?: Record<string, string> },
-    ) => Promise<{ data: unknown; error: { message: string } | null }>;
+    ) => Promise<{ data: unknown; error: InvokeError | null }>;
   };
 };
+
+/**
+ * The marker gap for one attempt, from wherever the client put it.
+ *
+ * On a 2xx it is in `data`. On a non-2xx `data` is null and the body lives on the error's
+ * Response — which is exactly the case that matters, because a run with BOTH an enqueue failure
+ * and a failed marker write answers 500, and the next attempt sees `no_row` for those recipients
+ * and reports nothing at all. Reading only `data` therefore dropped the warning in the one
+ * situation it existed for. A body that cannot be read is worth zero, never an exception.
+ */
+export async function markerGapFromResult(
+  result: { data: unknown; error: InvokeError | null },
+): Promise<number> {
+  const fromData = markerGapOf(result.data);
+  if (fromData > 0) return fromData;
+  const json = result.error?.context?.json;
+  if (typeof json !== "function") return 0;
+  try {
+    return markerGapOf(await json.call(result.error!.context));
+  } catch {
+    return 0;
+  }
+}
 
 /** THE route name. It must not appear anywhere else in the app. */
 const ROUTE = "notify-followers";
@@ -162,10 +195,11 @@ export async function notifyFollowers(
       ...(opts.accessToken ? { headers: { Authorization: `Bearer ${opts.accessToken}` } } : {}),
     });
   let lastError: string | undefined;
-  // Accumulated ACROSS attempts. A marker gap reported by attempt 1 cannot reappear on attempt 2
-  // — those recipients answer `no_row` the second time — so keeping it only when the SAME attempt
-  // completed threw the warning away in exactly the case it mattered: an incomplete first attempt
-  // that also failed its marker writes.
+  // SUMMED across attempts. A gap reported by attempt 1 cannot reappear on attempt 2 — those
+  // recipients answer `no_row` the second time — so the gaps from different attempts are
+  // disjoint sets of recipients, and taking the maximum would undercount them. Keeping it only
+  // when the SAME attempt completed threw the warning away entirely in the case it mattered: an
+  // incomplete first attempt that also failed its marker writes.
   let markerGap = 0;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -184,7 +218,7 @@ export async function notifyFollowers(
     // BOTH signals matter. A non-2xx arrives as `error`; a pre-cutover handler reports its
     // un-notified tail in the BODY of a 200. Ignoring the body is what let a partial legacy run
     // look complete and skip the retry entirely.
-    markerGap = Math.max(markerGap, markerGapOf(result.data));
+    markerGap += await markerGapFromResult(result);
     if (!result.error && !runReportedIncomplete(result.data)) {
       return { complete: true, attempts: attempt, ...(markerGap ? { markerGap } : {}) };
     }
