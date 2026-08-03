@@ -95,7 +95,7 @@ try {
   const foundation = MIG('20261002100000_notification_digest_schema_foundation.sql');
   for (const t of ['notification_worker_runs', 'notification_digest_groups',
                    'notification_digest_attempts', 'notification_digest_group_attempts',
-                   'notification_provider_circuit']) {
+                   'notification_provider_circuit', 'notification_provider_events']) {
     await c.query(tableDdl(foundation, t));
   }
 
@@ -126,11 +126,12 @@ try {
       supports_digest boolean NOT NULL DEFAULT false,
       digest_engine_enabled boolean NOT NULL DEFAULT false,
       digest_cutover boolean NOT NULL DEFAULT false,
-      updated_at timestamptz NOT NULL DEFAULT now());
-    -- the orphan queue's operator-facing state (20261006110000)
-    CREATE TABLE public.notification_orphan_reconcile_state (
-      provider_message_id text PRIMARY KEY,
-      quarantined boolean NOT NULL DEFAULT false);`);
+      updated_at timestamptz NOT NULL DEFAULT now());`);
+  // The orphan queue's operator-facing state, from ITS OWN migration's DDL — the minimal
+  // hand-written stand-in used before had no digest_group_id, which is the column the
+  // canary-scoped orphan assertion turns on.
+  await c.query(tableDdl(MIG('20261006110000_reconcile_orphan_provider_events.sql'),
+                         'notification_orphan_reconcile_state'));
 
   // the REAL liveness function, from the F migration
   const liveness = CRON_MIG.slice(CRON_MIG.indexOf(
@@ -376,9 +377,54 @@ try {
               'Europe/Amsterdam', now(), now(), 'sending')`),
     'no digest group is mid-send');
 
+  // The webhook mismatch shape: apply_notification_provider_event takes the uncorrelated branch and
+  // enrols an orphan with quarantined = FALSE, leaving the group `sent`, the circuit closed and the
+  // run ledger untouched — so every other assertion passes and the first armed tick is what finds it.
+  await refuses('an UNRECONCILED (not quarantined) orphan on this canary\'s group is refused',
+    () => c.query(`
+      INSERT INTO public.notification_provider_events
+        (resend_event_id, provider_message_id, digest_group_id, status, occurred_at)
+        VALUES ('evt-mismatch-1', 'resend-msg-SOMETHING-ELSE', NULL, 'delivered', now());
+      INSERT INTO public.notification_orphan_reconcile_state
+        (resend_event_id, channel, digest_group_id, next_eligible_at)
+        VALUES ('evt-mismatch-1', 'email', '${GROUP}', now())`),
+    'still unreconciled against a group this canary sent');
+
+  // ...but an orphan against some OTHER group is the worker's own backlog to drain, not a reason to
+  // block an activation. Without this the assertion above would just be "no orphans anywhere".
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state)
+      VALUES ('11111111-1111-4111-8111-111111111111', '{"k":9}'::jsonb, 'hash-9', 'email',
+              'open_slots_player', 'rk-9', 'fp-9', 'Europe/Amsterdam', now(), now(), 'no_work');
+    INSERT INTO public.notification_provider_events
+      (resend_event_id, provider_message_id, digest_group_id, status, occurred_at)
+      VALUES ('evt-other-1', 'resend-msg-OTHER', NULL, 'delivered', now());
+    INSERT INTO public.notification_orphan_reconcile_state
+      (resend_event_id, channel, digest_group_id, next_eligible_at)
+      VALUES ('evt-other-1', 'email', '11111111-1111-4111-8111-111111111111', now())`);
+  {
+    const err = await preflight();
+    rec('an orphan against an UNRELATED group does not block activation', err === null, err ?? '');
+  }
+
+  // On an UNRELATED group, so it is the global quarantine rule firing and not the canary-scoped
+  // one above. quarantined = true also requires attempts > 0 and a reason, per the table's CHECKs.
   await refuses('a quarantined orphan is refused',
-    () => c.query(`INSERT INTO public.notification_orphan_reconcile_state
-      (provider_message_id, quarantined) VALUES ('orphan-1', true)`),
+    () => c.query(`
+      INSERT INTO public.notification_digest_groups
+        (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+         destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state)
+        VALUES ('22222222-2222-4222-8222-222222222222', '{"k":8}'::jsonb, 'hash-8', 'email',
+                'open_slots_player', 'rk-8', 'fp-8', 'Europe/Amsterdam', now(), now(), 'no_work');
+      INSERT INTO public.notification_provider_events
+        (resend_event_id, provider_message_id, digest_group_id, status, occurred_at)
+        VALUES ('evt-quar-1', 'resend-msg-QUAR', NULL, 'bounced', now());
+      INSERT INTO public.notification_orphan_reconcile_state
+        (resend_event_id, channel, digest_group_id, attempts, last_error_code, quarantined)
+        VALUES ('evt-quar-1', 'email', '22222222-2222-4222-8222-222222222222', 3, 'tagged_mismatch', true)`),
     'no orphan provider event is quarantined');
 
   // ── activate.sql: verify and arm, atomically ─────────────────────────────
@@ -516,6 +562,13 @@ try {
       SELECT jobid FROM cron.job WHERE jobname = 'attacker-job';`);
   await c.query(`SET search_path = hostile, pg_temp, public`);
   {
+    // Run the DRY RUN under the hostile path first — its DROP TABLE IF EXISTS is the statement
+    // that could have destroyed the planted permanent table, and asserting preservation without
+    // ever invoking it was vacuous: reverting the qualified drop left the scenario green.
+    const pfErr = await preflight();
+    rec('the read-only preflight survives a hostile search_path', pfErr === null, pfErr ?? '');
+    const survived = await c.query(`SELECT to_regclass('hostile._gate_job') IS NOT NULL AS ok`);
+    rec('...and did NOT drop the permanent table of that name', survived.rows[0].ok === true);
     const err = await activate();
     rec('a hostile search_path cannot redirect the gate to another job',
       err === null, err ?? '');

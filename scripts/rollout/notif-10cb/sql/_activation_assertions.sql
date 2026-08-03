@@ -226,12 +226,14 @@ SELECT pg_temp.assert(
 -- at 20261004100000:1038) BEFORE it tests whether the group is already bound to a DIFFERENT
 -- provider message (:1091). On a correlation mismatch it trips the breaker with reason
 -- 'correlation_mismatch' and retry_at NULL — a MANUAL HOLD — and returns 'correlation_mismatch',
--- but the attempt row it already wrote still reads `accepted`, and the worker does not inspect
--- that return value (digest-worker-core.ts:335/338), so the run still finishes `succeeded`.
+-- but the attempt row it already wrote still reads `accepted`.
 --
--- So the canary can be green at every level the previous assertions looked at while the pipeline
--- has permanently correlated the wrong message. Both detectors below are checked, because they
--- are independent: one is the structural invariant, one is the ledger the mismatch branch wrote.
+-- The worker now READS that return value and fails the run (digest-worker-core.ts), so a mismatch
+-- during the canary shows up as a failed run before this gate is reached. These assertions stay as
+-- DEFENCE IN DEPTH and are not redundant: a mismatch that arrives by WEBHOOK after the run has
+-- finished is reported by no return value at all, and they keep holding if a later worker change
+-- loses the check. Both detectors below are checked because they are independent: one is the
+-- structural invariant, one is the ledger the mismatch branch wrote.
 
 -- Structural: on the clean path the accepting attempt's provider_message_id becomes the group's
 -- (:1096-1098), so accepted-but-different IS the mismatch, with no marker to trust.
@@ -271,3 +273,18 @@ SELECT pg_temp.assert_eq(
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_orphan_reconcile_state WHERE quarantined), 0,
   'no orphan provider event is quarantined');
+
+-- 7b. ...and NO orphan at all may be outstanding against a group THIS canary attempted, quarantined
+-- or not. A tag/message mismatch arriving by webhook takes the uncorrelated branch of
+-- apply_notification_provider_event (20261006110000): it enrols an orphan row with
+-- `quarantined = false` and leaves the group `sent`, the circuit closed and the run ledger
+-- untouched. Every other assertion above therefore passes over it, and the FIRST armed tick is what
+-- discovers it — quarantines it, and fails. The canary exists precisely so that discovery does not
+-- happen under a scheduler. Scoped to this canary's groups so an unrelated backlog elsewhere, which
+-- the worker drains on its own, does not block activation.
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_orphan_reconcile_state o
+    WHERE EXISTS (SELECT 1 FROM public.notification_digest_attempts a
+                   WHERE a.digest_group_id = o.digest_group_id
+                     AND a.worker_run_id = :'run_id'::uuid)), 0,
+  'no provider event is still unreconciled against a group this canary sent (a tag/message mismatch enrols an orphan that is NOT quarantined and leaves the group looking sent)');

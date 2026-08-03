@@ -33,10 +33,11 @@ SELECT pg_temp.assert(
 -- ...and `accepted` is NOT sufficient. record_notification_digest_result writes the attempt row as
 -- accepted (20261004100000:1038) BEFORE it checks whether the group is already bound to a
 -- DIFFERENT provider message (:1091); on a mismatch it manual-holds the channel and returns
--- 'correlation_mismatch', which the worker does not inspect (digest-worker-core.ts:335/338). So the
--- run finishes `succeeded` with an `accepted` attempt over a permanently mis-correlated send.
--- This is asserted HERE as well as in the preflight so the operator learns at canary time — the
--- point at which this script claims the canary "delivered".
+-- 'correlation_mismatch'. The worker now reads that return and fails the run, so a mismatch DURING
+-- the canary already surfaces as a failed run — but the attempt row still reads `accepted`, and a
+-- mismatch arriving by WEBHOOK after the run finished is reported by nothing at all. So it is
+-- checked here too, independently of the worker's own accounting, at the point where this script
+-- claims the canary "delivered".
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_digest_attempts a
      JOIN public.notification_digest_groups g ON g.id = a.digest_group_id

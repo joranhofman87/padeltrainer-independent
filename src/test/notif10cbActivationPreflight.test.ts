@@ -152,6 +152,25 @@ describe('G — verifying and arming are one transaction', () => {
     expect(ACTIVATE.indexOf('BEGIN;')).toBeLessThan(ACTIVATE.indexOf('FOR UPDATE'));
   });
 
+  // Every lock wait must be bounded. This transaction holds a table lock on the run ledger while it
+  // waits for group locks, so an unbounded wait behind a slow webhook — or a deadlock against the
+  // orphan reconciler, which holds group locks across its loop — would stall every worker-run write
+  // rather than failing an owner-driven step that is always safe to re-run.
+  it('activate.sql bounds every lock wait before taking any lock', () => {
+    const timeout = ACTIVATE.search(/SET LOCAL lock_timeout\s*=/);
+    expect(timeout, 'activate.sql must set a bounded lock_timeout').toBeGreaterThan(-1);
+    expect(timeout).toBeLessThan(ACTIVATE.indexOf('LOCK TABLE'));
+    expect(timeout).toBeLessThan(ACTIVATE.indexOf('FOR UPDATE'));
+    expect(timeout).toBeLessThan(ACTIVATE.indexOf('FOR SHARE'));
+  });
+
+  // Two transactions taking overlapping group sets in opposite orders is the classic deadlock.
+  it('activate.sql locks the canary groups in a deterministic order', () => {
+    const groupLock = ACTIVATE.match(/SELECT g\.id FROM public\.notification_digest_groups[\s\S]*?FOR SHARE;/)?.[0];
+    expect(groupLock, 'activate.sql must lock the canary groups').toBeTruthy();
+    expect(groupLock!).toMatch(/ORDER BY g\.id\s*\n\s*FOR SHARE;/);
+  });
+
   it('activate.sql arms by jobid and count-checks the arm', () => {
     expect(ACTIVATE).toContain('cron.alter_job(j.jobid, active := true)');
     expect(ACTIVATE).toContain('exactly one job was armed');

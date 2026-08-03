@@ -237,10 +237,27 @@ Deno.test("the thrown path names a group failure too", async () => {
   assertEquals(h.alerts[0].reason, "group_errors");
 });
 
-Deno.test("the thrown path names a quarantined orphan too", async () => {
-  const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, orphanErrors: 1, orphansQuarantined: 1 });
+// EACH OPERAND ON ITS OWN. Setting orphanErrors and orphansQuarantined together left the
+// `orphans > 0 || quarantined > 0` condition unpinned: either half could be deleted and every case
+// would still pass.
+Deno.test("the thrown path names an orphan ERROR with no quarantine", async () => {
+  const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, orphanErrors: 1, orphansQuarantined: 0 });
   await runDigestWorkerHandler(h.deps);
   assertEquals(h.alerts[0].reason, "orphan_errors");
+});
+
+Deno.test("the thrown path names a QUARANTINE with no orphan error", async () => {
+  const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, orphanErrors: 0, orphansQuarantined: 1 });
+  await runDigestWorkerHandler(h.deps);
+  assertEquals(h.alerts[0].reason, "orphan_errors");
+});
+
+// The preserved precedence: a reconcile failure means the run is not provable at all, so it wins
+// over the orphan axis. Nothing covered this, so the `&& reconcile === 0` clause was unpinned.
+Deno.test("a reconcile failure still outranks the orphan axis", async () => {
+  const h = throwingHarness({ dispatchRunId: DISPATCH_RUN, orphanErrors: 1, orphansQuarantined: 1, reconcileErrors: 1 });
+  await runDigestWorkerHandler(h.deps);
+  assertEquals(h.alerts[0].reason, "reconcile_errors");
 });
 
 Deno.test("the thrown path names a reconcile failure too", async () => {
@@ -252,8 +269,10 @@ Deno.test("the thrown path names a reconcile failure too", async () => {
 // One rule, so the two paths cannot drift apart again.
 Deno.test("both paths agree on the reason for the same summary", async () => {
   for (const s of [
-    { correlationMismatches: 1 }, { groupErrors: 1 }, { orphanErrors: 1, orphansQuarantined: 1 },
+    { correlationMismatches: 1 }, { groupErrors: 1 },
+    { orphanErrors: 1, orphansQuarantined: 0 }, { orphanErrors: 0, orphansQuarantined: 1 },
     { reconcileErrors: 1 }, { groupErrors: 1, orphanErrors: 1 },
+    { orphanErrors: 1, orphansQuarantined: 1, reconcileErrors: 1 },
   ]) {
     const thrown = throwingHarness({ dispatchRunId: DISPATCH_RUN, ...s });
     await runDigestWorkerHandler(thrown.deps);

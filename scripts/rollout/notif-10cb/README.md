@@ -57,14 +57,19 @@ cron as ARMED over nothing at all.
   completion alone misses a run that started later and failed fast.
 * **An `accepted` attempt that did not correlate.** `record_notification_digest_result` writes the
   attempt as `accepted` *before* it notices the group is bound to a different provider message; it
-  then manual-holds the channel and returns `correlation_mismatch`, which the worker does not read.
-  So the run finishes `succeeded` over a permanently mis-correlated send. The preflight compares the
-  attempt's provider message id against its group's, checks the run's ledger for a `global_config`
-  event, and requires the email circuit to be **closed**. `canary_verify.sql` checks the same three,
-  so the operator finds out at canary time rather than at activation. The **worker** now reads that
-  return value too: a mismatch increments `correlationMismatches`, is not counted as a send, and
-  makes the run fail — before this it discarded the return, so once the cron was armed it would have
-  gone on reporting a healthy 200 every five minutes while the channel was held open.
+  then manual-holds the channel and returns `correlation_mismatch`. The **worker** reads that return
+  value, counts it, refuses to count it as a send, and fails the run — before that fix it discarded
+  the return, so once the cron was armed it would have reported a healthy 200 every five minutes
+  while the channel was held open.
+
+  The SQL checks remain, as defence in depth and because they cover what a return value cannot: the
+  preflight compares the attempt's provider message id against its group's, checks the run's ledger
+  for a `global_config` event, requires the email circuit to be **closed**, and rejects any orphan
+  provider event still unreconciled against a group this canary sent. That last one matters most —
+  a tag/message mismatch arriving by **webhook** takes the uncorrelated branch and enrols an orphan
+  with `quarantined = false`, leaving the group `sent`, the circuit closed and the run ledger
+  untouched, so nothing else notices until the first armed tick quarantines it and fails.
+  `canary_verify.sql` checks the same properties at canary time.
 
 ## The connection string is not just a url either
 

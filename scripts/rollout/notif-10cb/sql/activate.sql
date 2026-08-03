@@ -17,6 +17,15 @@
 
 BEGIN;
 
+-- EVERY LOCK WAIT IS BOUNDED. This transaction takes a table lock and then several row locks, so a
+-- slow holder — a webhook mid-transaction on a canary group, a reconcile batch holding groups
+-- across its loop — would otherwise make activation wait indefinitely WHILE its own table lock
+-- blocks every worker-run insert and finish. It also removes the deadlock as a hang: activation and
+-- reconcile_orphan_provider_events can acquire overlapping group sets in different orders, and this
+-- turns that into a fast, clean refusal instead. Activation is an owner-driven step that is always
+-- safe to re-run, so failing closed after five seconds is strictly better than holding the line.
+SET LOCAL lock_timeout = '5s';
+
 \i ../../notif-10ca3/sql/_assert.sql
 
 -- FREEZE THE EVIDENCE. Every canary assertion below is a predicate over notification_worker_runs —
@@ -53,9 +62,22 @@ CREATE TEMP TABLE _gate_job AS
 -- transaction commits the cron as active. That assertion is load-bearing — it is the only evidence
 -- that the provider path works — so the groups THIS canary attempted are locked FOR SHARE, which
 -- blocks those rows only and leaves the rest of the live email path alone.
+-- CHEAPEST REFUSAL FIRST: if a dispatch run is already in flight, this activation is going to be
+-- refused by the canary assertions anyway, so refuse BEFORE taking group locks rather than queueing
+-- behind the very run that will invalidate it.
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_worker_runs
+    WHERE phase = 'dispatch' AND channel = 'email' AND ended_at IS NULL
+      AND status IS DISTINCT FROM 'abandoned'), 0,
+  'no dispatch run is in flight (wait for it to finish, then re-run the canary)');
+
+-- ORDERED BY id so activation always acquires these rows in the same sequence. Two transactions
+-- taking overlapping group sets in opposite orders is the classic deadlock, and the orphan
+-- reconciler holds group locks across a multi-row loop.
 SELECT g.id FROM public.notification_digest_groups g
  WHERE EXISTS (SELECT 1 FROM public.notification_digest_attempts a
                 WHERE a.digest_group_id = g.id AND a.worker_run_id = :'run_id'::uuid)
+ ORDER BY g.id
    FOR SHARE;
 
 \i _activation_assertions.sql
