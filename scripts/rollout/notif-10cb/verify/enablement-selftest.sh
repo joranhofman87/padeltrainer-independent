@@ -27,6 +27,10 @@ OTHER_URL="postgresql://postgres.tsrqponmlkjihgfedcba:pw@aws-0-eu-central-1.pool
 cat > "$TMP/psql" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PSQL_LOG"
+# Record the PG* environment psql was ACTUALLY given. Asserting on the parent's
+# environment would prove nothing: the property under test is what reaches the
+# child, and `env -u` is the only thing that decides it.
+if [[ -n "${PSQL_ENV_LOG:-}" ]]; then env | sed -n 's/^\(PG[A-Z0-9_]*\)=.*/\1/p' | sort -u >> "$PSQL_ENV_LOG"; fi
 file=""
 prev=""
 for a in "$@"; do
@@ -51,6 +55,7 @@ export PATH="$TMP:$PATH"
 run() {   # run <name> <expect_rc> -- args...
   local name="$1" expect="$2"; shift 3
   export PSQL_LOG="$TMP/log.$RANDOM"; : > "$PSQL_LOG"
+  export PSQL_ENV_LOG="$TMP/env.$RANDOM"; : > "$PSQL_ENV_LOG"
   set +e
   EXPECTED_REF="$REF" bash "$SCRIPT" "$@" >"$TMP/out" 2>&1
   local rc=$?
@@ -58,7 +63,7 @@ run() {   # run <name> <expect_rc> -- args...
   if [[ "$rc" == "$expect" ]]; then ok "$name (rc=$rc)"; else bad "$name (rc=$rc, expected $expect)"; cat "$TMP/out"; fi
 }
 
-logged() { grep -qF "$1" "$PSQL_LOG"; }
+logged() { grep -qF -- "$1" "$PSQL_LOG"; }
 
 # ── the gates ─────────────────────────────────────────────────────────────────
 run "status is read-only and needs no --yes" 0 -- status "$URL"
@@ -72,12 +77,22 @@ run "rollback REFUSES without --yes" 1 -- rollback --switch-off-confirmed "$URL"
 
 run "canary REFUSES without --yes" 1 -- canary "$URL" "11111111-1111-4111-8111-111111111111"
 
+# Activation is bound to ONE canary run. Without the run id the preflight fell back to "some
+# dispatch run succeeded at some point", which any earlier rollout satisfies permanently.
+run "activate REFUSES without a canary run id" 1 -- activate --yes "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
+run "activate REFUSES a non-uuid run id" 1 -- activate --yes "$URL" "the-last-one-worked"
+run "activate REFUSES a uuid-length string of dashes" 1 -- activate --yes "$URL" "------------------------------------"
+
 # The identity guard: a correct command against the WRONG project must not run.
 run "activate REFUSES a url belonging to another project" 1 -- activate --yes "$OTHER_URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
 
 # ── what the mutating steps actually do ───────────────────────────────────────
-run "activate runs its PREFLIGHT before arming" 0 -- activate --yes "$URL"
+RUN_ID="11111111-1111-4111-8111-111111111111"
+run "activate runs its PREFLIGHT before arming" 0 -- activate --yes "$URL" "$RUN_ID"
+logged "run_id=$RUN_ID" && ok "activate passes the canary run id INTO the preflight" \
+  || { bad "activate passes the canary run id INTO the preflight"; cat "$PSQL_LOG"; }
 if logged 'activation_preflight.sql' && logged 'active := true'; then
   # order matters: preflight must be the FIRST thing, arming the last
   if [[ "$(grep -n 'activation_preflight.sql' "$PSQL_LOG" | cut -d: -f1 | head -1)" -lt \
@@ -107,7 +122,7 @@ else bad "rollback switches the engine off BEFORE the cron"; fi
 # proved the arm command was actually downstream of it rather than merely printed before it.
 export PSQL_LOG="$TMP/log.preflight_fail"; : > "$PSQL_LOG"
 set +e
-STUB_FAIL_ON=activation_preflight EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes "$URL" >"$TMP/out" 2>&1
+STUB_FAIL_ON=activation_preflight EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes "$URL" "$RUN_ID" >"$TMP/out" 2>&1
 pf_rc=$?
 set -e
 [[ "$pf_rc" != "0" ]] && ok "a failing preflight fails the activate subcommand (rc=$pf_rc)" \
@@ -175,6 +190,62 @@ set -e
   || bad "sourcing refuses instead of running a subcommand that would have SUCCEEDED"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and sourcing reached no database at all" || { bad "...and sourcing reached no database at all"; cat "$PSQL_LOG"; }
 grep -qF 'must be EXECUTED, not sourced' "$TMP/out" && ok "...and says why" || bad "...and says why"
+
+# ── the libpq ENVIRONMENT cannot redirect the connection ─────────────────────
+# assert_conn_url_is_ref validates the URL. libpq does not connect from the URL alone: PGHOSTADDR
+# is a SEPARATE parameter that supplies the address directly and applies even when the URI carries
+# a host, and PGSERVICE/PGSYSCONFDIR can inject one from a service file. So an expected-ref url
+# passed every string check and connected somewhere else entirely.
+#
+# The property is about the CHILD process, so that is what is asserted: the stub records the PG*
+# names it was actually given. Checking the parent's environment would pass with `env -u` deleted.
+env_has() { grep -qxF -- "$1" "$PSQL_ENV_LOG"; }
+
+# `VAR=x some_shell_function` leaks the assignment into the caller in bash, so the extra
+# environment is applied with `env` around the script instead of prefixed onto `run`.
+run_env() {   # run_env <name> <expect_rc> <VAR=val> -- args...
+  local name="$1" expect="$2" extra="$3"; shift 4
+  export PSQL_LOG="$TMP/log.$RANDOM"; : > "$PSQL_LOG"
+  export PSQL_ENV_LOG="$TMP/env.$RANDOM"; : > "$PSQL_ENV_LOG"
+  set +e
+  env "EXPECTED_REF=$REF" "PSQL_LOG=$PSQL_LOG" "PSQL_ENV_LOG=$PSQL_ENV_LOG" "$extra" \
+    bash "$SCRIPT" "$@" >"$TMP/out" 2>&1
+  local rc=$?
+  set -e
+  if [[ "$rc" == "$expect" ]]; then ok "$name (rc=$rc)"; else bad "$name (rc=$rc, expected $expect)"; cat "$TMP/out"; fi
+}
+
+run_env "PGHOSTADDR does not stop the run..." 0 "PGHOSTADDR=203.0.113.10" -- status "$URL"
+env_has PGHOSTADDR && bad "...but is STRIPPED from the psql environment" \
+  || ok "...but is STRIPPED from the psql environment"
+grep -qF 'PGHOSTADDR is set and is being REMOVED' "$TMP/out" && ok "...and the operator is told" \
+  || bad "...and the operator is told"
+
+run_env "PGSERVICE is stripped too" 0 "PGSERVICE=elsewhere" -- status "$URL"
+env_has PGSERVICE && bad "...PGSERVICE absent from the psql environment" \
+  || ok "...PGSERVICE absent from the psql environment"
+
+run_env "PGOPTIONS (search_path injection) is stripped" 0 "PGOPTIONS=-c search_path=evil" -- status "$URL"
+env_has PGOPTIONS && bad "...PGOPTIONS absent from the psql environment" \
+  || ok "...PGOPTIONS absent from the psql environment"
+
+# An UNKNOWN PG* variable is refused outright rather than guessed at: it may well be a newer libpq
+# identity parameter, and this bundle cannot know that it is safe to leave in place.
+run_env "an UNRECOGNISED PG* variable stops the run" 1 "PGFUTUREHOSTPARAM=somewhere" -- status "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database at all" || bad "...and reached no database at all"
+
+# ...but the credential variables an operator legitimately needs are left alone.
+run_env "PGPASSWORD is NOT refused (it cannot redirect a connection)" 0 "PGPASSWORD=hunter2" -- status "$URL"
+env_has PGPASSWORD && ok "...and still reaches psql" || bad "...and still reaches psql"
+
+# An empty value is not a set value, to libpq — refusing one would be a false alarm.
+run_env "an EMPTY unrecognised PG* variable is not treated as set" 0 "PGFUTUREHOSTPARAM=" -- status "$URL"
+
+# ~/.psqlrc runs before the artifact and can \set variables the artifact reads.
+run "psql is invoked with --no-psqlrc on the artifact path" 0 -- status "$URL"
+logged '--no-psqlrc' && ok "...--no-psqlrc on the artifact path" || bad "...--no-psqlrc on the artifact path"
+run "and on the -c path too" 0 -- rollback --yes --switch-off-confirmed "$URL"
+logged '--no-psqlrc' && ok "...--no-psqlrc on the -c path" || bad "...--no-psqlrc on the -c path"
 
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
 [[ "$FAIL" == "0" ]]

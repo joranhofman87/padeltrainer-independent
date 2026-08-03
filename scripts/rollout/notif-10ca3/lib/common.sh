@@ -359,6 +359,81 @@ url_add_query() {
 }
 
 # ---------------------------------------------------------------------------
+# libpq ENVIRONMENT identity — the hole underneath every url guard
+# ---------------------------------------------------------------------------
+# assert_conn_url_is_ref validates the URL. libpq does not connect using only the
+# URL. Every psql process inherits the PG* environment, and several of those
+# variables decide WHICH SERVER is reached, independently of anything in the URI:
+#
+#   PGHOSTADDR    a SEPARATE libpq parameter from `host`. When set, it supplies the
+#                 IP directly and the URI's host is used only for SNI/auth — so an
+#                 expected-ref URL passes every string check and connects elsewhere.
+#   PGSERVICE     names a stanza in pg_service.conf; the stanza supplies any
+#                 parameter the URI did not, INCLUDING hostaddr.
+#   PGSYSCONFDIR  chooses which pg_service.conf is read.
+#   PGOPTIONS     goes through as `-c` runtime options — a search_path here silently
+#                 re-points every unqualified `public.` reference in the artifacts.
+#
+# So the rule is structural, not advisory: identity-affecting PG* variables are
+# REMOVED from the psql child's environment (psql_safe below), and any PG*
+# variable we do not recognise at all stops the run — an unknown one may well be
+# a newer identity parameter, and guessing is the failure mode this exists to
+# prevent.
+#
+# Not on the deny list, deliberately: PGPASSWORD/PGPASSFILE are how the operator
+# supplies the password (never on the command line), and they cannot redirect a
+# connection.
+LIBPQ_ENV_DENY=(
+  PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE PGSYSCONFDIR
+  PGOPTIONS PGTARGETSESSIONATTRS PGREQUIREPEER PGCHANNELBINDING PGGSSENCMODE
+  PGGSSLIB PGKRBSRVNAME PGLOADBALANCEHOSTS PGCONNECT_TIMEOUT
+)
+LIBPQ_ENV_ALLOW=(
+  PGPASSWORD PGPASSFILE PGSSLMODE PGSSLROOTCERT PGSSLCERT PGSSLKEY PGSSLCRL
+  PGSSLNEGOTIATION PGAPPNAME PGCLIENTENCODING PGTZ PGDATESTYLE
+)
+
+# Refuse any exported PG* variable that is on neither list. Only NON-EMPTY values
+# are considered set, because libpq treats an empty value as absent.
+#
+# FAIL-CLOSED BY CONSTRUCTION: this reads names out of `env`, and a value
+# containing a newline can only ADD an apparent name (which we would refuse), never
+# hide a real one — every variable's own line begins with its own name.
+assert_no_hostile_libpq_env() {
+  local name bad=() n
+  while IFS= read -r name; do
+    [[ -n "${!name:-}" ]] || continue                 # empty == unset, to libpq
+    for n in "${LIBPQ_ENV_DENY[@]}" "${LIBPQ_ENV_ALLOW[@]}"; do
+      [[ "$name" == "$n" ]] && continue 2
+    done
+    bad+=("$name")
+  done < <(env | sed -n 's/^\(PG[A-Z0-9_]*\)=.*/\1/p' | sort -u)
+  [[ "${#bad[@]}" -eq 0 ]] || die \
+    "unrecognised libpq environment variable(s) set: ${bad[*]} — refusing, because an unknown PG* variable may redirect the connection and the EXPECTED_REF check only validates the URL. Unset them and re-run."
+  # Warn about the ones we strip, so an operator whose environment was going to
+  # redirect the connection finds out rather than wondering why a port changed.
+  for n in "${LIBPQ_ENV_DENY[@]}"; do
+    if [[ -n "${!n:-}" ]]; then
+      warn "$n is set and is being REMOVED from the psql environment (it can override the connection target; put everything the connection needs in the url)"
+    fi
+  done
+  return 0
+}
+
+# THE ONLY WAY THIS BUNDLE SHOULD INVOKE psql. Strips every identity-affecting PG*
+# variable from the child, and disables ~/.psqlrc — a psqlrc runs before the
+# artifact and can \set variables the artifact reads or issue statements of its own.
+#
+# `env -u` and a plain loop, not `mapfile`: bash 3.2 is the operator platform
+# (macOS /bin/bash) and has neither mapfile nor associative arrays.
+psql_safe() {
+  require_cmd psql
+  local unset_args=() n
+  for n in "${LIBPQ_ENV_DENY[@]}"; do unset_args+=(-u "$n"); done
+  env "${unset_args[@]}" psql --no-psqlrc "$@"
+}
+
+# ---------------------------------------------------------------------------
 # psql runner — always ON_ERROR_STOP, always fail-loud
 # ---------------------------------------------------------------------------
 # run_sql <conn_url> <file.sql> [extra psql args...]

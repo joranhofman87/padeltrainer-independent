@@ -29,3 +29,28 @@ SELECT pg_temp.assert(
     WHERE a.worker_run_id = :'run_id'::uuid
       AND a.recorded_at IS NOT NULL AND a.outcome_class = 'accepted'),
   'the canary recorded at least one ACCEPTED send attempt (an empty or failed run is not a canary)');
+
+-- ...and `accepted` is NOT sufficient. record_notification_digest_result writes the attempt row as
+-- accepted (20261004100000:1038) BEFORE it checks whether the group is already bound to a
+-- DIFFERENT provider message (:1091); on a mismatch it manual-holds the channel and returns
+-- 'correlation_mismatch', which the worker does not inspect (digest-worker-core.ts:335/338). So the
+-- run finishes `succeeded` with an `accepted` attempt over a permanently mis-correlated send.
+-- This is asserted HERE as well as in the preflight so the operator learns at canary time — the
+-- point at which this script claims the canary "delivered".
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_digest_attempts a
+     JOIN public.notification_digest_groups g ON g.id = a.digest_group_id
+    WHERE a.worker_run_id = :'run_id'::uuid
+      AND a.outcome_class = 'accepted'
+      AND a.provider_message_id IS DISTINCT FROM g.provider_message_id), 0,
+  'no accepted attempt disagrees with its group about the provider message id (correlation mismatch)');
+
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_digest_group_attempts
+    WHERE worker_run_id = :'run_id'::uuid AND action = 'global_config'), 0,
+  'the canary recorded no global_config event (correlation mismatch, auth failure or quota exhaustion)');
+
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_provider_circuit
+    WHERE channel = 'email' AND state <> 'closed'), 0,
+  'the email provider circuit is CLOSED after the canary (a manual hold is state=open with retry_at NULL)');

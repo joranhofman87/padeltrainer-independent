@@ -51,6 +51,12 @@ JOB_NAME="notification-digest-worker"
 require_env EXPECTED_REF "set EXPECTED_REF to the target project ref (20 chars)"
 assert_ref_format "$EXPECTED_REF"
 
+# THE URL IS NOT THE WHOLE CONNECTION. libpq also reads the PG* environment, and PGHOSTADDR /
+# PGSERVICE / PGSYSCONFDIR / PGOPTIONS can each redirect a connection whose url passed every
+# EXPECTED_REF check. This refuses anything unrecognised and strips the rest inside psql_safe.
+# Run BEFORE any subcommand so a hostile environment stops the script rather than one artifact.
+assert_no_hostile_libpq_env
+
 usage() {
   cat >&2 <<'USAGE'
 usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
@@ -61,7 +67,10 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   invocation. Requires you to have verified DIGEST_SEND_ENABLED
                                   is off — no SQL can see an edge env var
   canary --yes <db_url> <run_id>  reconcile ONE canary's ACTUAL returned run id
-  activate --yes <db_url>         run activation_preflight, then arm the cron
+  activate --yes <db_url> <run_id>
+                                  run activation_preflight FOR THAT CANARY RUN, then arm the cron.
+                                  The run id is the one `canary` just verified — activation is
+                                  never allowed to rest on some older rollout's evidence
   rollback --yes --switch-off-confirmed <db_url>
                                   set DIGEST_SEND_ENABLED=false FIRST (owner action, outside this
                                   script), then this clears the event flag, deactivates the cron,
@@ -107,11 +116,22 @@ db_url() {
   printf '%s' "$url"
 }
 
+# A run id is always the uuid the invocation ITSELF returned — never a before/after snapshot, and
+# never a name. Shared by `canary` and `activate` so the two cannot drift apart.
+require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
+  local id="${1:-}"
+  [[ -n "$id" ]] || die "$2 requires the ACTUAL run id the canary invocation returned"
+  [[ "$id" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]] \
+    || die "run id must be a uuid — never a before/after snapshot"
+  printf '%s' "$id"
+}
+
 # Artifacts are ALWAYS run from the sql directory, because psql resolves `\i` relative to the
 # current working directory — running one from anywhere else silently fails to find its includes.
+# psql_safe, never bare psql: the PG* environment can redirect the connection past the url guard.
 run_sql() {   # $1 = url, $2 = artifact, $@ = extra psql args
   local url="$1" artifact="$2"; shift 2
-  ( cd "$SQL_DIR" && psql "$url" -v ON_ERROR_STOP=1 -f "$artifact" "$@" )
+  ( cd "$SQL_DIR" && psql_safe "$url" -v ON_ERROR_STOP=1 -f "$artifact" "$@" )
 }
 
 case "$SUB" in
@@ -142,13 +162,11 @@ case "$SUB" in
   canary)
     require_confirmed "canary reconciliation"
     url="$(db_url)"
-    run_id="${ARGS[1]:-}"
-    [[ -n "$run_id" ]] || die "pass the ACTUAL run id the canary invocation returned"
-    [[ "$run_id" =~ ^[0-9a-fA-F-]{36}$ ]] || die "run id must be a uuid — never a before/after snapshot"
+    run_id="$(require_run_id "${ARGS[1]:-}" "canary reconciliation")"
     # Reconcile the run the worker ACTUALLY returned. A before/after table snapshot is not
     # evidence on a live system: anything else running in the window is indistinguishable from
     # the canary.
-    psql "$url" -v ON_ERROR_STOP=1 -c \
+    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
       "SELECT * FROM public.reconcile_notification_digest_run('${run_id}'::uuid);"
     # RECONCILING IS NOT PASSING. reconcile_notification_digest_run succeeds for ANY existing run,
     # whatever its phase, status or outcome — so on its own it would wave through an EMPTY
@@ -162,11 +180,17 @@ case "$SUB" in
   activate)
     require_confirmed "arming the digest cron"
     url="$(db_url)"
+    # ACTIVATION IS BOUND TO ONE CANARY RUN — the one just verified, named explicitly.
+    # Without this the preflight accepted ANY historical success: after an earlier rollout had
+    # left a sent group and an accepted attempt behind, a NEW canary could fail outright (or never
+    # be run at all) and `activate` would still arm, reporting a green preflight built entirely
+    # from evidence that predates the thing it claims to have checked.
+    run_id="$(require_run_id "${ARGS[1]:-}" "arming the digest cron")"
     # PREFLIGHT FIRST, and it must pass. It refuses if the engine is off, if the cron is already
-    # armed, if any group is mid-send, if an orphan is quarantined, or if no dispatch run has
-    # ever succeeded.
-    run_sql "$url" activation_preflight.sql
-    psql "$url" -v ON_ERROR_STOP=1 -c \
+    # armed or is not the reviewed job, if any group is mid-send, if an orphan is quarantined, if
+    # the email circuit is not closed, or if THIS run is not a fresh, clean, delivering canary.
+    run_sql "$url" activation_preflight.sql -v run_id="${run_id}"
+    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
       "SELECT cron.alter_job(jobid, active := true) FROM cron.job
         WHERE jobname = '${JOB_NAME}' AND username = current_user;"
     run_sql "$url" status.sql
@@ -185,10 +209,10 @@ case "$SUB" in
     url="$(db_url)"
     # Then BOTH database controls, in this order: the event flag first (stop creating work), then
     # the cron (stop draining). Either alone still sends.
-    psql "$url" -v ON_ERROR_STOP=1 -c \
+    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
       "UPDATE public.notification_event_types SET digest_engine_enabled = false, updated_at = now()
         WHERE key = '${EVENT_KEY}';"
-    psql "$url" -v ON_ERROR_STOP=1 -c \
+    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
       "SELECT cron.alter_job(jobid, active := false) FROM cron.job
         WHERE jobname = '${JOB_NAME}' AND username = current_user;"
     run_sql "$url" rollback_verify.sql
