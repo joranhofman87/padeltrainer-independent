@@ -107,8 +107,11 @@ db_url() {
   printf '%s' "$url"
 }
 
-run_sql() {   # $1 = url, $2 = artifact
-  ( cd "$SQL_DIR" && psql "$1" -v ON_ERROR_STOP=1 -f "$2" )
+# Artifacts are ALWAYS run from the sql directory, because psql resolves `\i` relative to the
+# current working directory — running one from anywhere else silently fails to find its includes.
+run_sql() {   # $1 = url, $2 = artifact, $@ = extra psql args
+  local url="$1" artifact="$2"; shift 2
+  ( cd "$SQL_DIR" && psql "$url" -v ON_ERROR_STOP=1 -f "$artifact" "$@" )
 }
 
 case "$SUB" in
@@ -147,7 +150,13 @@ case "$SUB" in
     # the canary.
     psql "$url" -v ON_ERROR_STOP=1 -c \
       "SELECT * FROM public.reconcile_notification_digest_run('${run_id}'::uuid);"
-    ok "canary run ${run_id} reconciled"
+    # RECONCILING IS NOT PASSING. reconcile_notification_digest_run succeeds for ANY existing run,
+    # whatever its phase, status or outcome — so on its own it would wave through an EMPTY
+    # dispatch run, and the first real provider send would happen later, under cron, to the whole
+    # population. Assert what the canary was for: this run, this phase, this channel, succeeded,
+    # and something actually delivered.
+    run_sql "$url" canary_verify.sql -v run_id="${run_id}"
+    ok "canary run ${run_id} reconciled AND verified to have delivered"
     ;;
 
   activate)

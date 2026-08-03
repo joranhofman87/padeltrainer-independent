@@ -20,10 +20,29 @@ REF="abcdefghijklmnopqrst"
 URL="postgresql://postgres.${REF}:pw@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
 OTHER_URL="postgresql://postgres.tsrqponmlkjihgfedcba:pw@aws-0-eu-central-1.pooler.supabase.com:5432/postgres"
 
-# psql stub: records every invocation, never touches a database.
+# psql stub. It records every invocation AND OPENS the artifact it is handed, because a stub that
+# only records arguments is how a broken `\i` inside an artifact survived review: every SQL gate
+# was vacuous. STUB_FAIL_ON makes a named artifact fail the way a real assertion failure would,
+# which is what lets a test prove a FAILING preflight actually stops the arm command.
 cat > "$TMP/psql" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$PSQL_LOG"
+file=""
+prev=""
+for a in "$@"; do
+  if [[ "$prev" == "-f" ]]; then file="$a"; fi
+  prev="$a"
+done
+if [[ -n "$file" ]]; then
+  [[ -f "$file" ]] || { printf 'psql: %s: No such file or directory\n' "$file" >&2; exit 1; }
+  # resolve every \i include the way psql does — relative to the current directory
+  while read -r inc; do
+    [[ -f "$inc" ]] || { printf 'psql: could not open file "%s"\n' "$inc" >&2; exit 1; }
+  done < <(grep -o '^\\i [^ ]*' "$file" | awk '{print $2}')
+  if [[ -n "${STUB_FAIL_ON:-}" && "$file" == *"$STUB_FAIL_ON"* ]]; then
+    printf 'psql:%s: ERROR:  ASSERT FAILED (simulated)\n' "$file" >&2; exit 3
+  fi
+fi
 exit 0
 STUB
 chmod +x "$TMP/psql"
@@ -83,6 +102,19 @@ if [[ "$(grep -n 'digest_engine_enabled = false' "$PSQL_LOG" | cut -d: -f1 | hea
   ok "rollback switches the engine off BEFORE the cron"
 else bad "rollback switches the engine off BEFORE the cron"; fi
 
+# ── a FAILING preflight must stop the arm ────────────────────────────────────
+# The whole point of the preflight is that it can refuse. Without a stub that can fail, nothing
+# proved the arm command was actually downstream of it rather than merely printed before it.
+export PSQL_LOG="$TMP/log.preflight_fail"; : > "$PSQL_LOG"
+set +e
+STUB_FAIL_ON=activation_preflight EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes "$URL" >"$TMP/out" 2>&1
+pf_rc=$?
+set -e
+[[ "$pf_rc" != "0" ]] && ok "a failing preflight fails the activate subcommand (rc=$pf_rc)" \
+  || bad "a failing preflight fails the activate subcommand"
+grep -qF 'active := true' "$PSQL_LOG" && bad "...and the cron is NEVER armed after it" \
+  || ok "...and the cron is NEVER armed after it"
+
 # ── the thing that must never happen ──────────────────────────────────────────
 if grep -rqF 'cron.unschedule' "$SCRIPT" "$HERE/../sql"; then
   bad "no path unschedules the job to pause it"
@@ -94,6 +126,17 @@ fi
 run "canary REFUSES a non-uuid run id" 1 -- canary --yes "$URL" "before-after-snapshot"
 run "canary reconciles the id it is given" 0 -- canary --yes "$URL" "11111111-1111-4111-8111-111111111111"
 logged 'reconcile_notification_digest_run' && ok "canary reconciles the ACTUAL run" || bad "canary reconciles the ACTUAL run"
+# Reconciling is not passing: reconcile succeeds for ANY existing run, so the canary must also be
+# VERIFIED to have delivered, or an empty dispatch run would satisfy the gate.
+logged 'canary_verify.sql' && ok "canary VERIFIES the run delivered, not merely that it existed" \
+  || bad "canary VERIFIES the run delivered, not merely that it existed"
+export PSQL_LOG="$TMP/log.canary_fail"; : > "$PSQL_LOG"
+set +e
+STUB_FAIL_ON=canary_verify EXPECTED_REF="$REF" bash "$SCRIPT" canary --yes "$URL" \
+  "11111111-1111-4111-8111-111111111111" >/dev/null 2>&1
+cv_rc=$?
+set -e
+[[ "$cv_rc" != "0" ]] && ok "an unverifiable canary fails the subcommand" || bad "an unverifiable canary fails the subcommand"
 
 # ── the identity guard cannot be talked round ────────────────────────────────
 # libpq takes host/hostaddr/user/dbname from the QUERY STRING and lets them override the

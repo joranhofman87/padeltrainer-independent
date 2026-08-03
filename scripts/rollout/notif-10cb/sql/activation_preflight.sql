@@ -41,6 +41,17 @@ SELECT pg_temp.assert(
   (SELECT last_success_at IS NOT NULL FROM public.notif_digest_worker_liveness()),
   'a dispatch run has SUCCEEDED at least once (run the canary first)');
 
+-- ...and it must have DELIVERED. "Some dispatch run succeeded" is satisfied by an empty run that
+-- found nothing to do, which proves the worker starts and finishes — not that the provider path
+-- works. Arming on that would make the first real send the whole population's.
+SELECT pg_temp.assert(
+  (SELECT count(*) >= 1 FROM public.notification_digest_attempts
+    WHERE recorded_at IS NOT NULL AND outcome_class = 'accepted'),
+  'at least one send attempt was ACCEPTED by the provider (a successful but empty run is not a canary)');
+SELECT pg_temp.assert(
+  (SELECT count(*) >= 1 FROM public.notification_digest_groups WHERE state = 'sent'),
+  'at least one digest group reached sent');
+
 -- 6. nothing may be left in an uncertain state. A group awaiting evidence or mid-send is exactly
 --    what a scheduler would multiply.
 SELECT pg_temp.assert_eq(
