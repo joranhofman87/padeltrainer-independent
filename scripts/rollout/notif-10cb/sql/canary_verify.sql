@@ -30,14 +30,31 @@ SELECT pg_temp.assert(
       AND a.recorded_at IS NOT NULL AND a.outcome_class = 'accepted'),
   'the canary recorded at least one ACCEPTED send attempt (an empty or failed run is not a canary)');
 
+-- ...and a group it attempted must STILL be `sent`. An accepted attempt is a fact about the moment
+-- the provider answered; it never changes afterwards. A bounce or suppression arriving right after
+-- the run finished moves the group to `failed_terminal` while leaving the attempt accepted, the ids
+-- correlated, the circuit closed and the orphan queue empty — so every other assertion here passes
+-- and this script would print "verified to have delivered" over a canary that did not. Activation
+-- asserts the same thing (_activation_assertions.sql) and would refuse the same evidence later;
+-- the operator should not be told otherwise now.
+SELECT pg_temp.assert(
+  (SELECT count(*) >= 1 FROM public.notification_digest_groups g
+    WHERE g.state = 'sent'
+      AND EXISTS (SELECT 1 FROM public.notification_digest_attempts a
+                   WHERE a.digest_group_id = g.id AND a.worker_run_id = :'run_id'::uuid)),
+  'at least one group this canary attempted is STILL sent (an accepted attempt does not stay true if the group later failed)');
+
 -- ...and `accepted` is NOT sufficient. record_notification_digest_result writes the attempt row as
 -- accepted (20261004100000:1038) BEFORE it checks whether the group is already bound to a
 -- DIFFERENT provider message (:1091); on a mismatch it manual-holds the channel and returns
 -- 'correlation_mismatch'. The worker now reads that return and fails the run, so a mismatch DURING
--- the canary already surfaces as a failed run — but the attempt row still reads `accepted`, and a
--- mismatch arriving by WEBHOOK after the run finished is reported by nothing at all. So it is
--- checked here too, independently of the worker's own accounting, at the point where this script
--- claims the canary "delivered".
+-- the canary already surfaces as a failed run — but the attempt row still reads `accepted`.
+--
+-- A mismatch arriving by WEBHOOK after the run finished is different: resend-webhook-events.ts does
+-- fire a best-effort alert for it, but it cannot change the status of a run that has already
+-- completed, and a best-effort Slack call is not evidence an operator can rely on at a gate. These
+-- assertions read the durable state instead, independently of the worker's accounting, at the point
+-- where this script claims the canary "delivered".
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_digest_attempts a
      JOIN public.notification_digest_groups g ON g.id = a.digest_group_id

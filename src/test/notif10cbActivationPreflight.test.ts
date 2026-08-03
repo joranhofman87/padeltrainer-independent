@@ -176,10 +176,16 @@ describe('G — verifying and arming are one transaction', () => {
 
   // lock_timeout bounds EACH acquisition; the ordered FOR SHARE can take many group locks, so a
   // succession of blockers that each release in time would still stall activation indefinitely.
-  it('activate.sql also caps the total statement time', () => {
+  it('activate.sql also caps the total statement time, before every lock', () => {
     const m = activeSql.match(/SET LOCAL statement_timeout\s*=\s*'([^']+)'/);
     expect(m, 'activate.sql must cap the whole statement, not just each lock wait').not.toBeNull();
     expect(m![1]).toMatch(/^[1-9][0-9]*(ms|s|min)?$/);
+    // POSITION MATTERS as much as presence. Moved below the group lock it still exists and is still
+    // positive, while the statement that actually needs the total bound runs without it.
+    const at = activeSql.search(/SET LOCAL statement_timeout/);
+    for (const lock of ['LOCK TABLE', 'FOR UPDATE', 'FOR SHARE']) {
+      expect(at, `statement_timeout must precede ${lock}`).toBeLessThan(activeSql.indexOf(lock));
+    }
   });
 
   // Two transactions taking overlapping group sets in opposite orders is the classic deadlock.

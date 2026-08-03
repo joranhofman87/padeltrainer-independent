@@ -326,10 +326,12 @@ try {
     'reached sent');
 
   // ── finding 4: `accepted` is not proof of a clean send ───────────────────
-  // The exact production shape: record_notification_digest_result wrote the
-  // attempt as accepted BEFORE noticing the group was bound to a different
-  // provider message, then manual-held the channel and returned a value the
-  // worker never reads. Every earlier assertion is satisfied.
+  // The exact production shape: record_notification_digest_result writes the
+  // attempt as accepted BEFORE noticing the group is bound to a different
+  // provider message, then manual-holds the channel and RETURNS
+  // 'correlation_mismatch'. The worker reads that return now and fails the run —
+  // but the attempt row still reads `accepted`, so every assertion above is
+  // satisfied and these SQL checks are what see it from the ledger's side.
   await refuses('an ACCEPTED attempt over a CORRELATION MISMATCH is refused',
     () => c.query(`UPDATE public.notification_digest_attempts
       SET provider_message_id = 'resend-msg-DIFFERENT' WHERE attempt_id = '${ATTEMPT}'`),
@@ -614,6 +616,19 @@ try {
     const err = await canaryVerify();
     rec('canary_verify ALSO refuses a correlation mismatch',
       !!err && err.includes('disagrees with its group about the provider message id'), err ?? 'it PASSED');
+  }
+
+  // An accepted attempt is a fact about the moment the provider answered and never changes. A
+  // bounce arriving just after the run finished moves the group to failed_terminal while leaving
+  // the attempt accepted, the ids correlated, the circuit closed and the orphan queue empty — so
+  // every other canary assertion passes over a canary that did not deliver.
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_digest_groups
+    SET state = 'failed_terminal' WHERE id = '${GROUP}'`);
+  {
+    const err = await canaryVerify();
+    rec('canary_verify refuses a group that has since FAILED despite the accepted attempt',
+      !!err && err.includes('is STILL sent'), err ?? 'it PASSED');
   }
 
   // The canary subcommand prints "reconciled AND verified to have delivered". It must not say that

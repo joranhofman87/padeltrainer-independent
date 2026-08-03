@@ -68,8 +68,9 @@ cron as ARMED over nothing at all.
   provider event still unreconciled against a group this canary sent. That last one matters most —
   a tag/message mismatch arriving by **webhook** takes the uncorrelated branch and enrols an orphan
   with `quarantined = false`, leaving the group `sent`, the circuit closed and the run ledger
-  untouched, so nothing else notices until the first armed tick quarantines it and fails.
-  `canary_verify.sql` checks the same properties at canary time.
+  untouched. The webhook handler does fire a best-effort alert, but it cannot change the status of a
+  run that already completed — so nothing *durable* records it until the first armed tick quarantines
+  it and fails. `canary_verify.sql` checks the same properties at canary time.
 
 ## The connection string is not just a url either
 
