@@ -623,12 +623,62 @@ try {
   // the attempt accepted, the ids correlated, the circuit closed and the orphan queue empty — so
   // every other canary assertion passes over a canary that did not deliver.
   await seedBaseline();
-  await c.query(`UPDATE public.notification_digest_groups
-    SET state = 'failed_terminal' WHERE id = '${GROUP}'`);
+  // A HISTORICAL sent group from ANOTHER run is planted first. Without it the scenario proves only
+  // "some group is sent" and would stay green with the `worker_run_id = :run_id` predicate removed
+  // — the whole defect this slice began with, re-created inside its own test.
+  await c.query(`
+    INSERT INTO public.notification_worker_runs
+      (run_id, worker, channel, phase, status, started_at, ended_at)
+      VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', 'succeeded',
+              now() - interval '10 minutes', now() - interval '9 minutes');
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at,
+       state, provider_message_id, provider_status, provider_status_rank)
+      VALUES ('33333333-3333-4333-8333-333333333333', '{"k":7}'::jsonb, 'hash-7', 'email',
+              'open_slots_player', 'rk-7', 'fp-7', 'Europe/Amsterdam', now(), now(),
+              'sent', 'resend-msg-OLD-ROLLOUT', 'sent', 1);
+    INSERT INTO public.notification_digest_attempts
+      (attempt_id, digest_group_id, worker_run_id, provider_idempotency_key,
+       outcome_class, provider_message_id, recorded_at, http_status)
+      VALUES ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', '33333333-3333-4333-8333-333333333333',
+              '${OTHER_RUN}', 'idem-old', 'accepted', 'resend-msg-OLD-ROLLOUT', now(), 200);
+    UPDATE public.notification_digest_groups SET state = 'failed_terminal' WHERE id = '${GROUP}'`);
   {
     const err = await canaryVerify();
     rec('canary_verify refuses a group that has since FAILED despite the accepted attempt',
       !!err && err.includes('is STILL sent'), err ?? 'it PASSED');
+    rec('...and an OLD rollout\'s sent group does not satisfy it',
+      !!err && err.includes('is STILL sent'), err ?? '');
+  }
+
+  // ...and the canary's orphan check must be scoped to THIS run too. An orphan against a group only
+  // another run attempted is not this canary's problem; without the run predicate the assertion
+  // degrades to "no orphans anywhere" and this scenario is what notices.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_worker_runs
+      (run_id, worker, channel, phase, status, started_at, ended_at)
+      VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', 'succeeded',
+              now() - interval '10 minutes', now() - interval '9 minutes');
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state)
+      VALUES ('44444444-4444-4444-8444-444444444444', '{"k":6}'::jsonb, 'hash-6', 'email',
+              'open_slots_player', 'rk-6', 'fp-6', 'Europe/Amsterdam', now(), now(), 'no_work');
+    INSERT INTO public.notification_digest_attempts
+      (attempt_id, digest_group_id, worker_run_id, provider_idempotency_key, outcome_class, recorded_at)
+      VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', '44444444-4444-4444-8444-444444444444',
+              '${OTHER_RUN}', 'idem-6', 'ambiguous', now());
+    INSERT INTO public.notification_provider_events
+      (resend_event_id, provider_message_id, digest_group_id, status, occurred_at)
+      VALUES ('evt-other-run', 'resend-msg-OTHER-RUN', NULL, 'delivered', now());
+    INSERT INTO public.notification_orphan_reconcile_state
+      (resend_event_id, channel, digest_group_id, next_eligible_at)
+      VALUES ('evt-other-run', 'email', '44444444-4444-4444-8444-444444444444', now())`);
+  {
+    const err = await canaryVerify();
+    rec('canary_verify ALLOWS an orphan bound only to another run\'s group', err === null, err ?? '');
   }
 
   // The canary subcommand prints "reconciled AND verified to have delivered". It must not say that
