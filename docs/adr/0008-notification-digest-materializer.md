@@ -777,12 +777,22 @@ consequences follow, and two of them cannot be closed by code alone.
 **edge function**. Pushing the edge function first is the one order that leaves cached pages
 sending a request shape the new handler must interpret rather than trust.
 
-1. **Cross-version dedup (closed in code, both directions).** The new handler CONSULTS
-   `notification_sends` for the pre-cutover key before enqueueing and RECORDS the key for every
-   recipient it handled. So an old-handler send followed by a retry that lands on the new handler
-   does not notify twice, and a rollback to the old handler finds the key already claimed. A
-   `failed` recipient is deliberately never claimed — it still needs notifying. This bridge is
-   transition-only and is removed with the rest of the compatibility branch.
+1. **Cross-version dedup — ONE-WAY, and that asymmetry is the design.** The new handler RECORDS
+   the pre-cutover key in `notification_sends` for every recipient it handled, so a ROLLBACK to
+   the old handler finds the key claimed and does not send a second copy. A `failed` recipient is
+   never recorded — it still needs notifying.
+
+   It deliberately does **not** read that ledger to skip anyone. A legacy row is a claim taken
+   BEFORE the pre-cutover send, and the old handler deleted it again when the send failed, so a
+   surviving claim means "sent" *or* "the invocation died between claiming and sending" — and a
+   deploy is precisely what kills an in-flight invocation. There is no send ledger to corroborate
+   against (`send-email` records nothing durable for these types; only `notification_queue`, for
+   daily/weekly). Honouring an unconfirmed claim would drop a follower AND report the run
+   successful, which is the failure class this slice exists to remove. The residual is therefore
+   one-directional and bounded — an old-handler send followed by a retry of the SAME batch that
+   lands on the new handler notifies twice — and it is closed by the deploy order above. A
+   duplicate is the failure we carry; a silent miss is not. The recording half is transition-only
+   and is removed with the rest of the compatibility branch.
 2. **The legacy display range is ambiguous for multi-year batches (closed operationally).** The
    pre-cutover format printed the year only on the right: `Jan 1 - Jan 2, 2027` is what BOTH
    2027-01-01..2027-01-02 and 2026-01-01..2027-01-02 print, and the bulk-slot form can produce
@@ -806,6 +816,14 @@ sending a request shape the new handler must interpret rather than trust.
 `notification_preferences_v2(open_slots_player)` for as long as the v1 column exists. The trigger
 is created in the SAME migration as the one-time backfill and BEFORE it: `CREATE TRIGGER` holds a
 lock on the table until the migration commits, so there is no instant at which a v1 write is
-recorded by neither. The mirror is one-way, and an INSERT may only SEED a v2 row — never overwrite
-one — because the settings page upserts a partial row in which `open_slots_digest` takes its
-column default of `weekly`, which would otherwise re-enable mail for a user who had opted out.
+recorded by neither. The mirror is one-way (v1 → v2).
+
+An UPDATE applies only when the column actually changed, so an unrelated write cannot resurrect a
+stale cadence. An INSERT is resolved by VALUE, because the two cases it covers pull in opposite
+directions: the settings page upserts a partial row in which `open_slots_digest` takes its column
+default of `weekly`, which must never overwrite an explicit v2 `off`; but a user can also hold a
+v2 row and no v1 row at all, in which case a cached page's genuine opt-out arrives as an INSERT
+and must apply. `weekly` is exactly the column default and therefore ambiguous, so it only ever
+SEEDS; `off` / `instant` / `daily` cannot be produced by the default and therefore apply. The
+residual is deliberately the safe one — a cached page choosing `weekly` over an existing v2 row is
+ignored, which can only fail towards less mail, never towards resuming it after an opt-out.

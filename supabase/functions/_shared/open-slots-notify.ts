@@ -353,7 +353,7 @@ export function digestPayload(req: NotifyRequest, trainerName: string): Record<s
  * missing/suppressed contact, or no deliverable channel. Reporting both as "already existing"
  * would make a whole cohort of never-notified followers look like successful de-duplication.
  */
-export type EnqueueOutcome = "enqueued" | "skipped" | "no_row" | "failed" | "already_sent_legacy";
+export type EnqueueOutcome = "enqueued" | "skipped" | "no_row" | "failed";
 
 export type NotifyCounts = {
   enqueued: number;
@@ -361,12 +361,10 @@ export type NotifyCounts = {
   no_row: number;
   failed: number;
   deferred: number;
-  /** Transition-only: the pre-cutover handler already notified this follower for this event. */
-  already_sent_legacy: number;
 };
 
 export function newCounts(): NotifyCounts {
-  return { enqueued: 0, skipped: 0, no_row: 0, failed: 0, deferred: 0, already_sent_legacy: 0 };
+  return { enqueued: 0, skipped: 0, no_row: 0, failed: 0, deferred: 0 };
 }
 
 /**
@@ -399,39 +397,75 @@ export function tally(counts: NotifyCounts, outcome: EnqueueOutcome): void {
 // ===========================================================================
 
 /**
- * How many followers this run did NOT handle. EXACT — no floor, no token value.
- *
- * The previous form was `Math.max(total - collected, 1)`, which lied in both directions: at
- * exactly the collection ceiling it reported 1 deferred when nothing at all had been omitted,
- * and an operator reading "deferred: 1" for a trainer with 30000 followers had no idea that
- * 10000 of them were skipped. Everything after the last processed recipient is owed, whether it
- * was discovered (`discovered - processed`) or never reached (`beyondDiscovery`).
- */
-export function deferredCount(
-  args: { discovered: number; processed: number; beyondDiscovery: number },
-): number {
-  const unprocessed = Math.max(args.discovered - args.processed, 0);
-  return unprocessed + Math.max(args.beyondDiscovery, 0);
-}
-
-/**
  * Where the next hop must carry on from.
  *
  * When the run stopped partway through the recipients it discovered, the cursor is the LAST
- * recipient it actually handled. When it handled all of them and only undiscovered followers
- * remain, it is the last follower id discovery read — which can be past the final recipient,
- * because followers without an account are discovered and then dropped.
+ * recipient it actually completed. When it completed all of them and only undiscovered
+ * followers remain, it is the last follower id discovery read — which can be past the final
+ * recipient, because followers without an account are discovered and then dropped.
  *
  * Returning null means "nothing to carry on from", and the caller must then not chain: a hop
  * that re-sent the same cursor would spin without progress.
  */
 export function resumeCursorAfter(
   recipientIds: string[],
-  processed: number,
+  completed: number,
   lastDiscovered: string | null,
 ): string | null {
-  if (processed < recipientIds.length) return recipientIds[processed - 1] ?? null;
+  if (completed < recipientIds.length) return recipientIds[completed - 1] ?? null;
   return lastDiscovered;
+}
+
+/**
+ * What this run may honestly claim to have COMPLETED, and where the next hop resumes.
+ *
+ * Two rules, and the first one is the fix for a real leak:
+ *
+ *  * **A failure bounds completion.** A chunk is processed as a unit, so a single RPC failure
+ *    used to be tallied while `processed` still advanced over the whole chunk. The cursor then
+ *    pointed PAST a recipient nobody notified, and the continuation — which only looked at
+ *    `deferred` — carried on with the tail and never came back. A caller that ignores the
+ *    non-2xx (every pre-cutover bundle does) lost that follower silently. So completion stops at
+ *    the first failure, and everything from there on is owed.
+ *
+ *  * **...but a failure may not stall the chain.** If bounding completion produces the SAME
+ *    cursor the hop was handed, the hop made no forward progress and repeating it would spin
+ *    until the hop cap. That is one retry per failing recipient — enough for a transient RPC
+ *    error, and then the run moves past it and reports it as `failed` rather than looping.
+ *
+ * `beyondDiscovery` is followers discovery never reached. `beyondUnknown` says the count of
+ * those could not be READ: the run is then incomplete by construction, because reporting a
+ * clean total from a failed count is exactly the fail-open that hides a tail.
+ */
+export function planRunOutcome(args: {
+  recipientIds: string[];
+  processed: number;
+  firstFailureIndex: number;
+  beyondDiscovery: number;
+  beyondUnknown: boolean;
+  lastDiscovered: string | null;
+  incomingCursor: string | null;
+}): { deferred: number; nextCursor: string | null; incomplete: boolean } {
+  const total = args.recipientIds.length;
+  const processed = Math.min(Math.max(args.processed, 0), total);
+  const bounded = args.firstFailureIndex >= 0
+    ? Math.min(processed, args.firstFailureIndex)
+    : processed;
+
+  let completed = bounded;
+  let nextCursor = resumeCursorAfter(args.recipientIds, completed, args.lastDiscovered);
+  if (nextCursor !== null && nextCursor === args.incomingCursor) {
+    // No forward progress — the failing recipient has already had its retry.
+    completed = processed;
+    nextCursor = resumeCursorAfter(args.recipientIds, completed, args.lastDiscovered);
+  }
+
+  const deferred = Math.max(total - completed, 0) + Math.max(args.beyondDiscovery, 0);
+  return {
+    deferred,
+    nextCursor,
+    incomplete: deferred > 0 || args.beyondUnknown || args.firstFailureIndex >= 0,
+  };
 }
 
 /**
@@ -441,47 +475,38 @@ export function resumeCursorAfter(
  * entirely, and nothing re-invokes this route on a schedule, so work only the client could
  * resume was simply lost. Chaining is allowed only when it is guaranteed to make progress —
  * at least one chunk handled, and a cursor to move past — and only within the hop bound, so a
- * pathological run cannot spawn an unbounded sequence of invocations.
+ * pathological run cannot spawn an unbounded sequence of invocations. An unreadable remaining
+ * count also chains: not knowing the size of the tail is not a reason to abandon it.
  */
 export function shouldContinue(
-  args: { deferred: number; processed: number; nextCursor: string | null; depth: number },
+  args: {
+    deferred: number;
+    processed: number;
+    nextCursor: string | null;
+    depth: number;
+    beyondUnknown?: boolean;
+  },
 ): boolean {
-  return args.deferred > 0
+  return (args.deferred > 0 || args.beyondUnknown === true)
     && args.processed > 0
     && !!args.nextCursor
     && args.depth < MAX_CONTINUATION_DEPTH;
 }
 
 /**
- * Which of this chunk the PRE-CUTOVER handler already notified, and which still need enqueueing.
- *
- * A recipient whose legacy key is already claimed was mailed by the old handler for this exact
- * event; enqueueing them again is the double-notification the deploy overlap creates.
- */
-export function partitionLegacyClaims<T extends { id: string }>(
-  chunk: T[],
-  keys: Map<string, string>,
-  claimed: Set<string>,
-): { toEnqueue: T[]; alreadySent: T[] } {
-  const toEnqueue: T[] = [];
-  const alreadySent: T[] = [];
-  for (const p of chunk) {
-    const k = keys.get(p.id);
-    if (k && claimed.has(k)) alreadySent.push(p);
-    else toEnqueue.push(p);
-  }
-  return { toEnqueue, alreadySent };
-}
-
-/**
  * The legacy keys this run may record as handled.
  *
- * Recording is what makes the bridge symmetric — a ROLLBACK to the old handler then finds the
- * key claimed and does not send a second copy. Two exclusions, and both matter:
- *   * `failed` — nobody notified that recipient, so claiming the key would suppress the retry
- *     that is supposed to reach them. This is the same release-on-failure rule the old handler
- *     had, expressed as "never claim in the first place".
- *   * `already_sent_legacy` — the key is by definition already there.
+ * Recording into `notification_sends` is ONE-WAY on purpose. This run never READS that ledger to
+ * skip anyone: a legacy row is a claim taken BEFORE the pre-cutover send, and the old handler
+ * deleted it again when the send failed — so a surviving claim means "sent" OR "the invocation
+ * died between claiming and sending", and a deploy is precisely what kills an in-flight
+ * invocation. Treating that as "already notified" would drop a follower and still report the run
+ * successful. Writing, by contrast, records something known: v2 has taken this recipient, so a
+ * ROLLBACK to the old handler finds the key claimed and does not send a second copy.
+ *
+ * `failed` is never recorded — nobody notified that recipient, and claiming the key would
+ * suppress the retry meant to reach them. That is the old handler's release-on-failure rule,
+ * expressed as "never claim in the first place".
  */
 export function markableLegacyKeys(
   results: Array<{ outcome: EnqueueOutcome; id: string }>,
@@ -489,7 +514,7 @@ export function markableLegacyKeys(
 ): string[] {
   const out: string[] = [];
   for (const r of results) {
-    if (r.outcome === "failed" || r.outcome === "already_sent_legacy") continue;
+    if (r.outcome === "failed") continue;
     const k = keys.get(r.id);
     if (k) out.push(k);
   }

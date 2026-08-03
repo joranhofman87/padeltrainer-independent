@@ -300,20 +300,36 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- INSERT is DIFFERENT, and getting this wrong re-enables mail after an opt-out.
+  -- INSERT is DIFFERENT, and it can go wrong in BOTH directions.
   --
   -- The settings page upserts a PARTIAL row when the user changes any OTHER legacy control, and
-  -- open_slots_digest then takes its column DEFAULT of 'weekly' (20260210090026). That is not a
-  -- choice about open slots at all. Mirroring it with DO UPDATE would overwrite an explicit v2
-  -- 'off' with 'weekly' and start mailing someone who had opted out — and this affects the
-  -- CURRENT bundle, not just cached ones.
+  -- open_slots_digest then takes its column DEFAULT of 'weekly' (20260210090026:13). That is not
+  -- a choice about open slots at all: mirroring it with DO UPDATE would overwrite an explicit v2
+  -- 'off' with 'weekly' and start mailing someone who had opted out.
   --
-  -- So an INSERT may only SEED a v2 row that does not exist yet. It can never overwrite one.
-  -- A cached page's genuine opt-out on a user who already has a v2 row arrives as an UPDATE
-  -- (the row exists), which is handled above.
-  INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
-  VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
-  ON CONFLICT (user_id, event_type) DO NOTHING;
+  -- But blanket DO NOTHING loses the opposite case. A user can hold a v2 row and NO v1 row at
+  -- all — the v2 settings page creates rows directly, and the one-time backfill only creates a
+  -- v2 row where a v1 row already existed. A cached page's genuine opt-out then arrives as an
+  -- INSERT (no v1 row to update), and DO NOTHING would discard it: the UI reports success while
+  -- delivery keeps mailing. That is the very failure this bridge exists to prevent.
+  --
+  -- The two cases are distinguishable, and only by the VALUE: 'weekly' is exactly the column
+  -- default, so an inserted 'weekly' is ambiguous and is treated as the incidental default;
+  -- 'off' / 'instant' / 'daily' cannot be produced by the default and are therefore a real
+  -- choice about open slots, which applies. The residual is deliberately the SAFE one — a cached
+  -- page selecting 'weekly' over an existing v2 row is ignored, which can only fail towards LESS
+  -- mail, never towards resuming it after an opt-out. (The realpg suite pins the column default,
+  -- so this reasoning cannot silently rot if the default ever changes.)
+  IF NEW.open_slots_digest = 'weekly' THEN
+    INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+    VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+    ON CONFLICT (user_id, event_type) DO NOTHING;
+  ELSE
+    INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+    VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+    ON CONFLICT (user_id, event_type)
+    DO UPDATE SET email_frequency = EXCLUDED.email_frequency, updated_at = now();
+  END IF;
   RETURN NEW;
 END $$;
 

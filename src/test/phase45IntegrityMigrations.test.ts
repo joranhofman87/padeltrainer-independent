@@ -122,20 +122,19 @@ describe("notify-followers edge function (post-10c-b-D)", () => {
     expect(src).not.toContain("functions/v1/send-email");
   });
 
-  it("uses the legacy ledger as a cross-version dedup BRIDGE, never as a send claim", () => {
-    // notification_sends is read and marked again — deliberately, and it is NOT a return to the
-    // old dual-write. The pre-cutover handler CLAIMED a key and then SENT; this handler consults
-    // the ledger to avoid re-notifying someone the old handler already mailed during the deploy
-    // overlap, and records what it handled so a rollback does not send a second copy. The send
-    // itself belongs entirely to the v2 worker.
+  it("touches the legacy ledger ONE WAY only — record, never claim, never release", () => {
+    // notification_sends is written again — deliberately, and it is NOT a return to the old
+    // dual-write. The pre-cutover handler CLAIMED a key and then SENT; this handler records the
+    // key AFTER enqueueing, so a rollback to the old handler does not send a second copy. It
+    // never reads the ledger to skip anyone (a claim is not a send) and never releases, because
+    // it never claims. The send itself belongs entirely to the v2 worker.
     expect(src).toContain('from("notification_sends")');
-    expect(src).toContain(".select(\"dedup_key\")");
     expect(src).toContain('onConflict: "dedup_key"');
     expect(src).toContain("ignoreDuplicates: true");
-    // The old claim/release dance is what must not come back: a release DELETE beside a send is
-    // the shape that made the legacy ledger authoritative over delivery.
-    expect(src).not.toContain('from("notification_sends")\n          .delete()');
-    expect(src).not.toMatch(/notification_sends[\s\S]{0,200}\.delete\(/);
+    expect(src, "a claim read would let a dead pre-cutover invocation suppress a follower")
+      .not.toMatch(/notification_sends"\)\s*\n\s*\.select/);
+    expect(src, "the claim/release dance is what must not come back")
+      .not.toMatch(/notification_sends[\s\S]{0,200}\.delete\(/);
   });
 
   it("keeps dedup deterministic and derived from STRUCTURED fields", () => {

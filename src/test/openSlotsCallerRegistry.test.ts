@@ -137,6 +137,23 @@ describe('the notify-followers caller registry', () => {
     expect(eventSubject(parsed.req, 'trainer-1')).toContain('sr:trainer-1:');
   });
 
+  it('the legacy dedup ledger is WRITE-ONLY — a claim can never suppress a notification', () => {
+    // A `notification_sends` row is a claim taken BEFORE the pre-cutover send, and the old
+    // handler deleted it again when the send failed. So a surviving claim means "sent" OR "the
+    // invocation died between claiming and sending" — and a deploy is exactly what kills an
+    // in-flight invocation. Reading it to skip a recipient would drop that follower AND report
+    // the run successful. Recording into it is safe and is the rollback protection, so the
+    // asymmetry is the design, and it is pinned here rather than left to a comment.
+    const handler = read('supabase/functions/notify-followers/index.ts');
+    expect(handler).toContain('from("notification_sends")');
+    expect(handler, 'the ledger must never be read back to decide whether to notify')
+      .not.toMatch(/notification_sends"\)\s*\n\s*\.select/);
+    const mod = read('supabase/functions/_shared/open-slots-notify.ts');
+    expect(mod).toContain('export function markableLegacyKeys');
+    expect(mod, 'no exported primitive may turn a legacy claim into a skip')
+      .not.toMatch(/export function \w*(?:partition|alreadySent|claimed)\w*/i);
+  });
+
   it('the clone-safety cron inventory does not attribute this function to a cron job', () => {
     // scripts/rollout/notif-10ca3/clone-safety/reviewed-cron-jobs.tsv claimed
     // notify-rebook-member-open "invokes the notify-followers edge function". It does not — it

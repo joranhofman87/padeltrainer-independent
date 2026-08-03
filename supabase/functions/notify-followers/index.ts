@@ -15,6 +15,10 @@
 //     two concurrent invocations collapse to ONE logical row per follower. The old
 //     notification_sends claim/release is GONE — running both would be a dual-write with two
 //     different notions of "already handled", and could produce a legacy send beside a v2 row.
+//     The one remaining touch of that table is ONE-WAY and write-only: after enqueueing we
+//     record the pre-cutover key so a ROLLBACK to the old handler does not send a second copy.
+//     It is never READ to skip anyone — a legacy row is a claim taken before a send, not proof
+//     of one, and honouring it could drop a follower silently. See markableLegacyKeys().
 //   * The old per-follower filter read notification_preferences.email_new_availability — a
 //     column dropped in 20260210090026, whose error was discarded, so that filter had been
 //     silently inert. Preference is now enforced inside enqueue_notification against
@@ -27,7 +31,6 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
   classifyEnqueue,
-  deferredCount,
   digestPayload,
   type EnqueueOutcome,
   eventSubject,
@@ -36,8 +39,7 @@ import {
   newCounts,
   parseNotifyRequest,
   parseResumeState,
-  partitionLegacyClaims,
-  resumeCursorAfter,
+  planRunOutcome,
   shouldContinue,
   tally,
 } from "../_shared/open-slots-notify.ts";
@@ -203,6 +205,10 @@ const handler = async (req: Request): Promise<Response> => {
     // idempotency key makes an already-enqueued recipient a no-op rather than a duplicate.
     const CHUNK_SIZE = 10;
     let processed = 0;
+    // The index of the first recipient this run failed to enqueue, or -1. It bounds what the run
+    // may claim to have completed, so the continuation cursor cannot step over someone nobody
+    // notified.
+    let firstFailureIndex = -1;
 
     for (let i = 0; i < recipients.length; i += CHUNK_SIZE) {
       // The FIRST chunk always runs. A hop that enqueued nobody would hand the same cursor to
@@ -210,39 +216,35 @@ const handler = async (req: Request): Promise<Response> => {
       if (i > 0 && Date.now() - start > TIME_BUDGET_MS) break;
       const chunk = recipients.slice(i, i + CHUNK_SIZE);
 
-      // ── CROSS-VERSION DEDUP (transition only) ───────────────────────────────────────────
-      // The pre-cutover handler claimed `notification_sends` before sending; this one relies on
-      // the resolver's idempotency key in `notification_outbox`. While both versions are
-      // reachable those are two ledgers that do not see each other, so a lost response + client
-      // retry across the deploy flip notifies a follower twice. Consulting the legacy ledger —
-      // and recording into it below — collapses that back to ONE notion of "already handled",
-      // in both deploy directions. See legacyDedupKey() for the exact key shape.
+      // ── CROSS-VERSION DEDUP (transition only), and why it is ONE-WAY ─────────────────────
+      // The pre-cutover handler CLAIMED `notification_sends` before sending and DELETED the
+      // claim when the send failed; this one relies on the resolver's idempotency key in
+      // `notification_outbox`. Two ledgers that cannot see each other.
+      //
+      // Reading the legacy ledger to skip a recipient is UNSOUND, and deliberately not done: a
+      // legacy row records an INTENT to send, not a send. A pre-cutover invocation that claimed
+      // and was then torn down — which is exactly what a deploy does to an in-flight isolate —
+      // leaves a claim with no email behind it. Honouring that claim would silently drop the
+      // follower AND report the run successful, which is the failure class this whole slice
+      // exists to remove. There is no send ledger to corroborate against: send-email records
+      // nothing durable for these types (only notification_queue, for daily/weekly).
+      //
+      // Writing is different, and safe: after enqueueing we KNOW v2 owns this recipient, so
+      // recording the legacy key means a ROLLBACK to the old handler finds it claimed and does
+      // not send a second copy. That direction can only prevent a duplicate, never cause a miss.
+      //
+      // The remaining exposure is therefore one-directional and bounded: an old-handler send
+      // followed by a retry of the SAME batch that lands on the new handler notifies twice. It
+      // is closed operationally by the deploy ordering in ADR 0008 ("10c-b D"), and a duplicate
+      // is the failure we are willing to carry — never a silent miss.
       const legacyKeys = new Map<string, string>();
       for (const p of chunk) {
         const k = legacyDedupKey(notify, trainerId, p.id);
         if (k) legacyKeys.set(p.id, k);
       }
-      let claimedKeys = new Set<string>();
-      if (legacyKeys.size > 0) {
-        const { data: claimed, error: claimError } = await supabase
-          .from("notification_sends")
-          .select("dedup_key")
-          .in("dedup_key", [...legacyKeys.values()]);
-        if (claimError) {
-          // Fail CLOSED for this chunk rather than risk a duplicate send: an unreadable legacy
-          // ledger means we cannot tell whether the old handler already mailed these people.
-          // They are deferred, not dropped, so a later hop or retry picks them up.
-          console.error("Legacy dedup lookup failed:", claimError.message);
-          errors.push(`legacy dedup lookup failed: ${claimError.message}`);
-          break;
-        }
-        claimedKeys = new Set((claimed ?? []).map((r) => r.dedup_key as string));
-      }
-      const { toEnqueue, alreadySent } = partitionLegacyClaims(chunk, legacyKeys, claimedKeys);
 
-      const results: Array<{ outcome: EnqueueOutcome; id: string; err?: string }> = [
-        ...alreadySent.map((p) => ({ outcome: "already_sent_legacy" as const, id: p.id })),
-        ...await Promise.all(toEnqueue.map(async (player) => {
+      const results: Array<{ outcome: EnqueueOutcome; id: string; err?: string }> =
+        await Promise.all(chunk.map(async (player) => {
           const { data, error } = await supabase.rpc("enqueue_notification", {
             p_event_key: "open_slots_player",
             p_recipient_user_id: player.user_id,
@@ -261,16 +263,18 @@ const handler = async (req: Request): Promise<Response> => {
             outcome: classifyEnqueue(data as Array<{ status?: string | null }>),
             id: player.id,
           };
-        })),
-      ];
+        }));
 
-      for (const r of results) {
+      for (let k = 0; k < results.length; k++) {
+        const r = results[k];
         tally(counts, r.outcome);
         if (r.err) errors.push(r.err);
+        // The FIRST failure bounds what this run may claim to have completed: the continuation
+        // cursor must not advance past a recipient nobody notified.
+        if (r.outcome === "failed" && firstFailureIndex < 0) firstFailureIndex = i + k;
       }
-      // Publish "handled" back into the legacy ledger for every recipient this version dealt
-      // with, so a ROLLBACK to the old handler finds the key claimed and does not send a second
-      // copy. A `failed` recipient is deliberately never recorded — it still needs notifying.
+      // Record what v2 has taken ownership of. A `failed` recipient is never recorded — nobody
+      // notified it, and claiming the key would suppress the retry meant to reach it.
       const handledKeys = markableLegacyKeys(results, legacyKeys);
       if (handledKeys.length > 0) {
         const { error: markError } = await supabase
@@ -288,12 +292,12 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // ── EXACT, RESUMABLE INCOMPLETENESS ────────────────────────────────────────────────────
-    // Everything after the last processed recipient is deferred, including followers discovery
-    // never reached. Both parts are counted exactly: no `Math.max(x, 1)` fudge, which used to
-    // report "1 deferred" both when exactly the cap was reached (nothing was actually omitted)
-    // and when tens of thousands were.
-    const nextCursor = resumeCursorAfter(recipients.map((r) => r.id), processed, lastDiscovered);
+    // Everything from the first failure onward is owed, as is everything discovery never
+    // reached. Both parts are counted exactly: no `Math.max(x, 1)` fudge, which used to report
+    // "1 deferred" both when exactly the cap was reached (nothing was actually omitted) and when
+    // tens of thousands were.
     let beyondDiscovery = 0;
+    let beyondUnknown = false;
     if (discoveryStoppedEarly && lastDiscovered) {
       const { count: remainingCount, error: remainingError } = await supabase
         .from("trainer_followers")
@@ -302,16 +306,28 @@ const handler = async (req: Request): Promise<Response> => {
         .eq("notify_new_availability", true)
         .gt("player_id", lastDiscovered);
       if (remainingError) {
+        // FAIL CLOSED. Treating an unreadable count as zero turned a run with an undiscovered
+        // tail into a clean 200: no continuation, and a pre-cutover caller — which never reads
+        // the body — would never retry either. Not knowing how big the tail is does not make it
+        // absent.
         console.error("Remaining-follower count failed:", remainingError.message);
         errors.push(`remaining follower count failed: ${remainingError.message}`);
+        beyondUnknown = true;
+      } else {
+        beyondDiscovery = remainingCount ?? 0;
       }
-      beyondDiscovery = remainingCount ?? 0;
     }
-    counts.deferred = deferredCount({
-      discovered: recipients.length,
+    const plan = planRunOutcome({
+      recipientIds: recipients.map((r) => r.id),
       processed,
+      firstFailureIndex,
       beyondDiscovery,
+      beyondUnknown,
+      lastDiscovered,
+      incomingCursor: resumeState.afterPlayerId,
     });
+    const nextCursor = plan.nextCursor;
+    counts.deferred = plan.deferred;
 
     // ── SERVER-SIDE CONTINUATION ───────────────────────────────────────────────────────────
     // The tail must not depend on the CALLER retrying. A pre-cutover bundle ignores a non-2xx
@@ -330,7 +346,9 @@ const handler = async (req: Request): Promise<Response> => {
     // TERMINATION: each hop processes at least one chunk and the cursor is strictly increasing,
     // so `deferred` shrinks monotonically; MAX_CONTINUATION_DEPTH bounds it regardless.
     let continued = false;
-    if (shouldContinue({ deferred: counts.deferred, processed, nextCursor, depth: resumeState.depth })) {
+    if (shouldContinue({
+      deferred: counts.deferred, processed, nextCursor, depth: resumeState.depth, beyondUnknown,
+    })) {
       const chain = fetch(`${supabaseUrl}/functions/v1/notify-followers`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: authHeader },
@@ -350,8 +368,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(
       `open_slots_player ${notify.subtype} (hop ${resumeState.depth}): enqueued=${counts.enqueued} ` +
-      `skipped=${counts.skipped} no_row=${counts.no_row} legacy=${counts.already_sent_legacy} ` +
-      `failed=${counts.failed} deferred=${counts.deferred} continued=${continued}`,
+      `skipped=${counts.skipped} no_row=${counts.no_row} failed=${counts.failed} ` +
+      `deferred=${counts.deferred}${beyondUnknown ? "+unknown" : ""} continued=${continued}`,
     );
     if (errors.length > 0) console.error("Enqueue errors:", errors);
 
@@ -360,14 +378,18 @@ const handler = async (req: Request): Promise<Response> => {
     // An INCOMPLETE run must not return 200 even when it has chained a continuation. The chain is
     // a best effort — the isolate can be torn down, the hop cap can be hit — so the caller keeps
     // its own bounded retry as the second line of defence. Retrying is free of duplicates: the
-    // resolver's idempotency key and the legacy bridge both collapse a repeat into a no-op.
-    const incomplete = counts.failed > 0 || counts.deferred > 0;
+    // resolver's idempotency key collapses an already-enqueued recipient into a no-op.
+    //
+    // `incomplete` comes from the plan, so an UNREADABLE remaining count keeps the run
+    // incomplete instead of reporting a clean zero it cannot substantiate.
+    const incomplete = plan.incomplete || counts.failed > 0;
     return json({
       message: `Enqueued ${counts.enqueued} follower notification(s)`,
       subtype: notify.subtype,
       incomplete,
       continued,
       ...counts,
+      ...(beyondUnknown ? { deferred_unknown: true } : {}),
       errors: errors.length > 0 ? errors : undefined,
     }, incomplete ? 500 : 200);
   } catch (error: unknown) {

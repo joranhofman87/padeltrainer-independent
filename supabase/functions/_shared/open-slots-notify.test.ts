@@ -13,12 +13,11 @@ import {
   isHhMm,
   isIsoDate,
   isUuid,
-  deferredCount,
   legacyDedupKey,
   markableLegacyKeys,
   MAX_CONTINUATION_DEPTH,
   newCounts,
-  partitionLegacyClaims,
+  planRunOutcome,
   resumeCursorAfter,
   shouldContinue,
   parseLegacyDateRange,
@@ -236,8 +235,7 @@ Deno.test("classify: a pending row is enqueued; an all-skipped result is skipped
 
 Deno.test("counts: there is no `sent` — this route only enqueues", () => {
   const c = newCounts();
-  assertEquals(Object.keys(c).sort(),
-    ["already_sent_legacy", "deferred", "enqueued", "failed", "no_row", "skipped"]);
+  assertEquals(Object.keys(c).sort(), ["deferred", "enqueued", "failed", "no_row", "skipped"]);
   assertEquals("sent" in c, false);
   tally(c, "enqueued"); tally(c, "enqueued"); tally(c, "skipped"); tally(c, "failed");
   assertEquals(c.enqueued, 2);
@@ -531,38 +529,10 @@ Deno.test("MUTANT: an unclamped hop count lets a forged body chain without bound
   assertEquals(parseResumeState({ continuation_depth: 10_000 }).depth <= MAX_CONTINUATION_DEPTH, true);
 });
 
-Deno.test("counts: already_sent_legacy is its own bucket, never folded into enqueued", () => {
-  const c = newCounts();
-  assertEquals(c.already_sent_legacy, 0);
-  tally(c, "already_sent_legacy");
-  tally(c, "enqueued");
-  assertEquals(c.already_sent_legacy, 1);
-  assertEquals(c.enqueued, 1, "a follower the OLD handler already mailed was not enqueued by us");
-  assertEquals("sent" in c, false);
-});
 
 // ===========================================================================
 // Run progress: the exact, resumable ceiling.
 // ===========================================================================
-
-Deno.test("deferred is EXACT — nothing omitted means nothing deferred", () => {
-  // The bug this replaces: `Math.max(total - collected, 1)` reported "1 deferred" when the run
-  // had collected exactly the ceiling and there was in fact nothing left.
-  assertEquals(deferredCount({ discovered: 20000, processed: 20000, beyondDiscovery: 0 }), 0);
-  assertEquals(deferredCount({ discovered: 0, processed: 0, beyondDiscovery: 0 }), 0);
-});
-
-Deno.test("deferred counts the undiscovered tail as the NUMBER it is", () => {
-  // ...and the other half of the same bug: 10000 omitted followers reported as "1".
-  assertEquals(deferredCount({ discovered: 20000, processed: 20000, beyondDiscovery: 10000 }), 10000);
-  assertEquals(deferredCount({ discovered: 500, processed: 120, beyondDiscovery: 40 }), 420);
-});
-
-Deno.test("MUTANT: a floored deferred count misreports both ends of the ceiling", () => {
-  const mutant = (total: number, collected: number) => Math.max(total - collected, 1);
-  assertEquals(mutant(20000, 20000), 1, "the mutant invents work that does not exist...");
-  assertEquals(deferredCount({ discovered: 20000, processed: 20000, beyondDiscovery: 0 }), 0);
-});
 
 Deno.test("resume cursor: a partly processed run carries on from the LAST recipient handled", () => {
   assertEquals(resumeCursorAfter(["a", "b", "c", "d"], 2, "d"), "b");
@@ -599,31 +569,7 @@ Deno.test("MUTANT: chaining without a progress check spins on the same cursor fo
 // The legacy bridge's two decisions.
 // ===========================================================================
 
-const CHUNK = [{ id: "p1" }, { id: "p2" }, { id: "p3" }];
-const KEYS = new Map([["p1", "t:p1:na:R"], ["p2", "t:p2:na:R"], ["p3", "t:p3:na:R"]]);
-
-Deno.test("a follower the OLD handler already mailed is NOT enqueued again", () => {
-  const { toEnqueue, alreadySent } = partitionLegacyClaims(CHUNK, KEYS, new Set(["t:p2:na:R"]));
-  assertEquals(toEnqueue.map((p) => p.id), ["p1", "p3"]);
-  assertEquals(alreadySent.map((p) => p.id), ["p2"]);
-});
-
-Deno.test("with no legacy claims at all, everybody is enqueued", () => {
-  const { toEnqueue, alreadySent } = partitionLegacyClaims(CHUNK, KEYS, new Set());
-  assertEquals(toEnqueue.length, 3);
-  assertEquals(alreadySent.length, 0);
-});
-
-Deno.test("a recipient with no legacy key is enqueued — there is nothing to reconcile", () => {
-  const { toEnqueue } = partitionLegacyClaims(CHUNK, new Map(), new Set(["t:p2:na:R"]));
-  assertEquals(toEnqueue.length, 3, "a stale claim must not suppress a recipient we cannot key");
-});
-
-Deno.test("MUTANT: ignoring the legacy ledger re-notifies everyone the old handler mailed", () => {
-  const mutant = (chunk: typeof CHUNK) => ({ toEnqueue: chunk, alreadySent: [] });
-  assertEquals(mutant(CHUNK).toEnqueue.length, 3, "the mutant enqueues the already-mailed follower...");
-  assertEquals(partitionLegacyClaims(CHUNK, KEYS, new Set(["t:p2:na:R"])).toEnqueue.length, 2);
-});
+const CHUNK_KEYS = new Map([["p1", "t:p1:na:R"], ["p2", "t:p2:na:R"], ["p3", "t:p3:na:R"]]);
 
 Deno.test("a FAILED recipient is never claimed in the legacy ledger", () => {
   // Claiming it would suppress the very retry that is meant to reach them — the same mistake the
@@ -632,23 +578,106 @@ Deno.test("a FAILED recipient is never claimed in the legacy ledger", () => {
     { outcome: "enqueued", id: "p1" },
     { outcome: "failed", id: "p2" },
     { outcome: "skipped", id: "p3" },
-  ], KEYS);
+  ], CHUNK_KEYS);
   assertEquals(keys, ["t:p1:na:R", "t:p3:na:R"]);
 });
 
-Deno.test("an already-claimed recipient is not re-claimed, and a keyless one is skipped", () => {
-  assertEquals(markableLegacyKeys([{ outcome: "already_sent_legacy", id: "p1" }], KEYS), []);
-  assertEquals(markableLegacyKeys([{ outcome: "enqueued", id: "p9" }], KEYS), []);
+Deno.test("a recipient with no legacy key is skipped — there is nothing to record", () => {
+  assertEquals(markableLegacyKeys([{ outcome: "enqueued", id: "p9" }], CHUNK_KEYS), []);
 });
 
 Deno.test("no_row is claimed: the resolver decided not to notify, which IS a decision", () => {
   // 'off', suppressed, no contact — the old handler would have reached the same conclusion, so a
   // rollback must not mail them either.
-  assertEquals(markableLegacyKeys([{ outcome: "no_row", id: "p1" }], KEYS), ["t:p1:na:R"]);
+  assertEquals(markableLegacyKeys([{ outcome: "no_row", id: "p1" }], CHUNK_KEYS), ["t:p1:na:R"]);
 });
 
 Deno.test("MUTANT: claiming a FAILED recipient silently suppresses its retry", () => {
-  const mutant = (rs: Array<{ id: string }>) => rs.map((r) => KEYS.get(r.id)!);
+  const mutant = (rs: Array<{ id: string }>) => rs.map((r) => CHUNK_KEYS.get(r.id)!);
   assertEquals(mutant([{ id: "p2" }]).length, 1, "the mutant claims the failed recipient...");
-  assertEquals(markableLegacyKeys([{ outcome: "failed", id: "p2" }], KEYS), []);
+  assertEquals(markableLegacyKeys([{ outcome: "failed", id: "p2" }], CHUNK_KEYS), []);
+});
+
+// ===========================================================================
+// planRunOutcome — what the run may claim to have completed.
+// ===========================================================================
+
+const PLAN = {
+  recipientIds: ["a", "b", "c", "d"],
+  processed: 4,
+  firstFailureIndex: -1,
+  beyondDiscovery: 0,
+  beyondUnknown: false,
+  lastDiscovered: "d",
+  incomingCursor: null as string | null,
+};
+
+Deno.test("plan: a clean, complete run owes nothing and is complete", () => {
+  assertEquals(planRunOutcome(PLAN), { deferred: 0, nextCursor: "d", incomplete: false });
+});
+
+Deno.test("plan: deferred is EXACT at the ceiling and for a real tail", () => {
+  // The bug this replaces: `Math.max(total - collected, 1)` reported "1 deferred" when nothing
+  // at all was omitted, and also "1" when tens of thousands were.
+  assertEquals(planRunOutcome({ ...PLAN, beyondDiscovery: 0 }).deferred, 0);
+  assertEquals(planRunOutcome({ ...PLAN, beyondDiscovery: 10_000 }).deferred, 10_000);
+  assertEquals(planRunOutcome({ ...PLAN, processed: 2 }).deferred, 2);
+});
+
+Deno.test("plan: a FAILURE bounds completion — the cursor never steps over an un-notified follower", () => {
+  // The leak: the chunk is processed as a unit, so `processed` advanced over a failed recipient
+  // and the continuation carried on with the tail, never coming back. A pre-cutover caller
+  // ignores the 500, so that follower was lost in silence.
+  const out = planRunOutcome({ ...PLAN, processed: 4, firstFailureIndex: 1 });
+  assertEquals(out.nextCursor, "a", "resume BEFORE the failed recipient, not after it");
+  assertEquals(out.deferred, 3, "b, c and d are all still owed");
+  assertEquals(out.incomplete, true);
+});
+
+Deno.test("plan: a failure in the FIRST position yields no cursor rather than a bogus one", () => {
+  const out = planRunOutcome({ ...PLAN, firstFailureIndex: 0 });
+  assertEquals(out.nextCursor, null);
+  assertEquals(out.deferred, 4);
+});
+
+Deno.test("plan: the retry is bounded — a second hop on the same cursor moves PAST the failure", () => {
+  // Without this the chain would hand itself the identical cursor and spin to the hop cap on one
+  // persistently failing recipient. One retry, then the run reports it as failed and moves on.
+  const first = planRunOutcome({ ...PLAN, processed: 4, firstFailureIndex: 1, incomingCursor: null });
+  assertEquals(first.nextCursor, "a");
+  const second = planRunOutcome({ ...PLAN, processed: 4, firstFailureIndex: 1, incomingCursor: "a" });
+  assertEquals(second.nextCursor, "d", "no forward progress → advance past the failure");
+  assertEquals(second.incomplete, true, "...and still report the run as incomplete");
+});
+
+Deno.test("plan: an UNREADABLE remaining count keeps the run incomplete", () => {
+  // Fail closed. `remainingCount ?? 0` turned a failed count into a clean 200 with no
+  // continuation — and a pre-cutover caller never reads the body, so the tail was lost.
+  const out = planRunOutcome({ ...PLAN, beyondUnknown: true });
+  assertEquals(out.deferred, 0, "the size of the tail is genuinely unknown, so it is not invented");
+  assertEquals(out.incomplete, true, "but the run must not report itself complete");
+});
+
+Deno.test("MUTANT: treating an unreadable count as zero reports a clean run over a hidden tail", () => {
+  const mutant = (count: number | null) => ({ incomplete: (count ?? 0) > 0 });
+  assertEquals(mutant(null).incomplete, false, "the mutant returns a clean run...");
+  assertEquals(planRunOutcome({ ...PLAN, beyondUnknown: true }).incomplete, true);
+});
+
+Deno.test("MUTANT: advancing past a failure loses that follower for good", () => {
+  const mutant = (ids: string[], processed: number) => ids[processed - 1];
+  assertEquals(mutant(PLAN.recipientIds, 4), "d", "the mutant resumes after the whole chunk...");
+  assertEquals(planRunOutcome({ ...PLAN, firstFailureIndex: 1 }).nextCursor, "a");
+});
+
+Deno.test("continuation is taken when the tail size is unknown", () => {
+  assertEquals(
+    shouldContinue({ deferred: 0, processed: 10, nextCursor: "p", depth: 0, beyondUnknown: true }),
+    true,
+    "not knowing how big the tail is, is not a reason to abandon it",
+  );
+  assertEquals(
+    shouldContinue({ deferred: 0, processed: 10, nextCursor: "p", depth: 0, beyondUnknown: false }),
+    false,
+  );
 });

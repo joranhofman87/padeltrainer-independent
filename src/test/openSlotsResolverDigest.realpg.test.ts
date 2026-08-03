@@ -438,6 +438,42 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     expect(rows[0].n).toBe(0);
   });
 
+  it('BRIDGE: a cached opt-out INSERT applies even when a v2 row already exists', async () => {
+    // The asymmetry that makes this correct: a user can hold a v2 row and NO v1 row (the v2
+    // page writes v2 directly, and the backfill only creates v2 where v1 existed). A cached
+    // page's opt-out then arrives as an INSERT, and a blanket DO NOTHING would discard it — the
+    // settings UI reporting success while delivery keeps mailing.
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                   VALUES ($1,'open_slots_player','daily')`, [USER]);
+    await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'off')`, [USER]);
+    const { rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0].email_frequency, 'an explicit opt-out must never be discarded').toBe('off');
+  });
+
+  it("BRIDGE: an INSERT of the column DEFAULT still cannot overwrite an opt-out", async () => {
+    // The other direction, and the reason the INSERT branch is value-dependent rather than
+    // simply DO UPDATE. The settings page upserts a PARTIAL row when the user changes any OTHER
+    // legacy control; open_slots_digest then takes its column default. Mirroring that would
+    // resume mail for someone who had opted out.
+    const { rows: def } = await c.query(
+      `SELECT column_default FROM information_schema.columns
+        WHERE table_schema='public' AND table_name='notification_preferences'
+          AND column_name='open_slots_digest'`);
+    expect(def[0].column_default, 'the whole discrimination rests on this default')
+      .toContain("'weekly'");
+
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                   VALUES ($1,'open_slots_player','off')`, [USER]);
+    // no open_slots_digest given → the column default applies
+    await c.query(`INSERT INTO public.notification_preferences (user_id) VALUES ($1)`, [USER]);
+    const { rows } = await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    expect(rows[0].email_frequency, 'the incidental default must not resume mail').toBe('off');
+  });
+
   it('NO WINDOW: the bridge ships in the SAME migration as the backfill, ahead of it', async () => {
     // The defect this closes: with the trigger installed by a LATER migration, every legacy
     // write landing between the backfill and the trigger was recorded by neither, and that
