@@ -5,8 +5,10 @@
 // `clone-safety/reviewed-cron-jobs.tsv`: "UNREVIEWED cron job present" aborts the clone-source
 // quiesce. That is the right posture — a job added at runtime is exactly what a clone must not
 // inherit — but nothing connected that file to the migrations, so 10c-b F scheduled
-// `notification-digest-worker` and it was never registered. The gap would have surfaced only in
-// front of an operator, mid-rollout, with production paused.
+// `notification-digest-worker` and it was never registered. That inventory step is READ-ONLY and
+// refuses before it connects, so the cost would have been an aborted rollout attempt rather than a
+// stuck window — but it would have been found by an operator running the rollout instead of by CI
+// on the day the job was added.
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // WHY THIS FILE NO LONGER CLASSIFIES COMMANDS, after five review rounds that each found another
@@ -22,16 +24,23 @@
 // inside a `$cmd$` command literal. Each fix was correct and the next round found the next
 // construct — which is the signal to change the design, not to add a tenth special case.
 //
-// The classification does not need a static approximation, because an EXACT check already exists
-// and runs at the moment it matters: `clone_source_inventory.sql` computes the outbound flag from
-// the LIVE `cron.job.command`, and run-rollout.sh compares it against this register, failing
-// closed on "CLASSIFICATION DRIFT". Re-deriving that from migration text added no safety and a
-// great deal of surface area.
+// The classification does not need a static approximation. `clone_source_inventory.sql` applies
+// the same lexical test to the LIVE `cron.job.command`, and run-rollout.sh compares that against
+// this register, failing closed on "CLASSIFICATION DRIFT". Both sides are lexical — neither
+// evaluates reachability — but only one of them is reading the command production will actually
+// execute. Duplicating it from migration text added surface area without adding safety.
 //
-// So this file verifies only what a static reader can establish soundly: that every job name any
-// migration schedules is registered. Extracting the NAME is a different problem from extracting
-// the command — it is the first argument and a quoted literal in every form used here, and where
-// it is not, this fails loudly rather than guessing.
+// So this file verifies one thing: that every job name any migration schedules is registered.
+// Extracting the NAME is a much smaller problem than extracting the command — it is the first
+// argument and a quoted literal in every form used here, and where it is not, this fails loudly
+// rather than guessing.
+//
+// IT IS BEST-EFFORT, NOT A PROOF. The same open-ended-construct problem exists here in miniature:
+// a comment between `cron` and `.schedule` is not matched, and an exotic escape inside a job name
+// would be decoded wrongly. Extending the reader to chase those is the loop this file just came
+// out of, so it does not. Its job is to catch the ordinary case — a new migration scheduling a new
+// job — on the day it lands, and the live inventory remains the authority for what is really
+// there.
 //
 // One deliberate imprecision, in the safe direction: a commented-out `cron.schedule('x', …)` still
 // requires an entry for `x`. Over-registering costs a line in a TSV; under-registering aborts a
@@ -196,7 +205,7 @@ describe('H — the name reader cannot be fooled', () => {
     expect(scanMigration('x.sql', sql).names).toEqual(['j']);
   });
 
-  it('sees every scheduling form, including schedule_in_database and quoted identifiers', () => {
+  it('sees the scheduling forms this repo uses, including schedule_in_database', () => {
     for (const call of [
       `SELECT cron.schedule('a', '* * * * *', $c$SELECT 1;$c$);`,
       `SELECT cron.schedule_in_database('b', '* * * * *', $c$SELECT 1;$c$, 'postgres');`,

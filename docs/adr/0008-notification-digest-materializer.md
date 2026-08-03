@@ -900,9 +900,26 @@ they sort first.
 3. The measurement is **asserted, not just recorded** — the test fails if the plan starts using an
    index, which is the signal that this analysis has gone stale and the decision must be retaken.
 
-The clone-safety register gained the same kind of guard. `run-rollout.sh` fails closed on any live
-cron job missing from `clone-safety/reviewed-cron-jobs.tsv`, but nothing tied that file to the
-migrations — so 10c-b F scheduled `notification-digest-worker` and it went unregistered, which
-would have aborted the next clone-source quiesce in front of an operator with production paused.
-`src/test/reviewedCronJobsRegister.test.ts` now requires every job any migration schedules to be
-registered, and its outbound classification to match what its command actually does.
+The clone-safety register gained a guard of its own. `run-rollout.sh` fails closed on any live cron
+job missing from `clone-safety/reviewed-cron-jobs.tsv`, but nothing tied that file to the
+migrations — so 10c-b F scheduled `notification-digest-worker` and it went unregistered. That is a
+read-only inventory step which refuses before it changes anything, so the cost is an aborted
+rollout attempt rather than a stuck window; the point is that it would have been discovered by an
+operator running the rollout instead of by CI on the day the job was added.
+`src/test/reviewedCronJobsRegister.test.ts` closes that: every job name any migration schedules
+must be registered.
+
+**It deliberately does NOT re-derive the outbound classification from migration text.** Five review
+rounds each found another SQL construct that a static reader mis-classified — a command variable
+bound to the wrong assignment, `E''` escapes hiding a marker, `||` splitting one, `replace()`
+removing one, `CASE` manufacturing one, `format(…)::jsonb ->> 'y'` evaluating to something else,
+comments inside `DO $do$` bodies. The classification is compared instead where the text that will
+actually run is available: `clone_source_inventory.sql` applies the same lexical test to the LIVE
+`cron.job.command`, and run-rollout.sh reports CLASSIFICATION DRIFT against the register. Both
+sides are lexical — neither evaluates reachability — but only one of them is reading the command
+production will execute, and duplicating it statically added surface area without adding safety.
+
+The remaining source scan is therefore **best-effort**: it reads the job name from every scheduling
+form used in this repo and fails loudly on ones it cannot read, but it is not a proof that no call
+escapes it (a comment between `cron` and `.schedule`, for example, is not matched). Its job is to
+catch the ordinary case — a new migration scheduling a new job — on the day it lands.
