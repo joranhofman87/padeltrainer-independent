@@ -91,6 +91,29 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 - Walks `storage.objects` via the service-role-only `invoice_gc_list_objects` RPC (the `storage` schema is not PostgREST-exposed). Keyset-paginated both sides with a 110s budget. Any classification doubt (unknown suffix, missing/invalid timestamp, fresh upload) → KEEP.
 - Related: account deletion (`_shared/delete-user-data.ts`) also removes the deleted user's avatar/banner objects from the public `avatars` bucket (R06); org logos under `clubs/…` are a separate follow-up sweep.
 
+### `notif_digest_worker_liveness()` — the ONLY signal that covers "never invoked"
+- **Migration:** `20261012100000_notif_10cb_digest_cron_inert.sql`. `SECURITY DEFINER`, service_role
+  only, PII-free, one cheap row. Returns `job_present`, `job_active`, `last_success_at`,
+  `seconds_since_success`, `last_finished_at`, `last_status`.
+- **Why it exists.** The digest worker's own Slack alert needs the worker to run. An unscheduled
+  job, a disabled job, a missing Vault secret or a paused project produce **silence**, and silence
+  is indistinguishable from health. This is what an EXTERNAL cron/uptime monitor reads instead.
+- `last_success_at` is about a run that **succeeded**, not one that started: a worker invoked on
+  schedule that fails every time is exactly as undelivered as one never invoked.
+- **Wiring the external monitor is an owner action and a precondition for arming the cron.**
+
+### Enabling / rolling back the digest (10c-b Release Units 2 and 3)
+- `scripts/rollout/notif-10cb/` — individually gated operator subcommands (`status`, `preflight`,
+  `smoke-disabled`, `canary`, `activate`, `rollback`). No auto-run, no "do it all" mode; every
+  mutating step needs `--yes` and re-asserts the project ref. See its README for the sequence and
+  for what the activation gate refuses.
+- **Rollback is three switches, and only two are in the database:** `DIGEST_SEND_ENABLED` is an edge
+  env var that no SQL can read or set, so the operator turns it off FIRST and says so
+  (`--switch-off-confirmed`); then the tooling clears the event flag, deactivates the cron, and
+  proves both plus quiescence.
+- **Never `cron.unschedule` to pause — deactivate.** Unscheduling destroys the reviewed Vault-backed
+  command, and re-creating it by hand under time pressure is how a wrong endpoint gets introduced.
+
 ### CI data-integrity gates (PGlite)
 `npm run db:rehearse:all` runs the real money-path libs against real Postgres and asserts invariants (players, coaching, email, trainer-invoices, invoices-delivery, invoice-status, registration-write, list-partition). This is the **pre-merge** counterpart to the runtime reconciliation checks.
 
