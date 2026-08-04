@@ -11,6 +11,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 //  5. a failed save must not leave the UI showing a value the database does not have.
 
 let catalog: unknown[] = [];
+/** When set, the catalog read resolves with THIS instead — used to model a failed read. */
+let catalogResult: { data: unknown[] | null; error: { message: string } | null } | null = null;
 let v2rows: unknown[] = [];
 let v1row: Record<string, string> | null = null;
 let upsertResult: { error: { message: string } | null } = { error: null };
@@ -21,7 +23,14 @@ const rpcMock = vi.fn();
 
 let authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: false, loading: false };
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+// A SHARED navigate spy (so back-button targets are assertable) and a settable pathname (the page
+// derives its back target from which role layout mounted it).
+const navigateMock = vi.fn();
+let locationPath = '/app/player/settings/notifications';
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigateMock,
+  useLocation: () => ({ pathname: locationPath }),
+}));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 // The mock INTERPOLATES {{vars}} like real i18next — otherwise a value passed into a string
 // (the redacted number below) is invisible to assertions and could silently go missing.
@@ -38,7 +47,7 @@ vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     from: (table: string) => {
       if (table === 'notification_event_types') {
-        return { select: () => Promise.resolve({ data: catalog, error: null }) };
+        return { select: () => Promise.resolve(catalogResult ?? { data: catalog, error: null }) };
       }
       if (table === 'notification_preferences_v2') {
         return {
@@ -76,6 +85,9 @@ beforeEach(() => {
   upsertMock.mockReset();
   legacyUpsertMock.mockReset();
   rpcMock.mockReset();
+  navigateMock.mockReset();
+  locationPath = '/app/player/settings/notifications';
+  catalogResult = null;
   consentRows = [{ opted_in: false, destination_redacted: null, consent_at: null }];
   upsertResult = { error: null };
   v2rows = [];
@@ -325,5 +337,47 @@ describe('NotificationSettings v2', () => {
     render(<NotificationSettings />);
     const cell = await screen.findByTestId('wa-cell-invoice_reminder_player');
     expect(cell.querySelector('[role="switch"]')).not.toBeChecked();
+  });
+
+  it('MARKETING renders in its own labelled group, not among service events', async () => {
+    catalog = [
+      evt({ key: 'booking_cancelled_player' }),
+      evt({ key: 'marketing_updates', category: 'marketing', default_email_frequency: 'off' }),
+    ];
+    render(<NotificationSettings />);
+    const marketingCard = await screen.findByTestId('notification-settings-marketing');
+    // the marketing row lives in the marketing card...
+    expect(marketingCard.querySelector('[data-testid="pref-row-marketing_updates"]')).not.toBeNull();
+    // ...and NOT in the service card, where it read as just another service mail
+    const serviceCard = screen.getByTestId('notification-settings-configurable');
+    expect(serviceCard.querySelector('[data-testid="pref-row-marketing_updates"]')).toBeNull();
+    expect(serviceCard.querySelector('[data-testid="pref-row-booking_cancelled_player"]')).not.toBeNull();
+  });
+
+  it('a FAILED catalog read shows an error state, never defaults dressed as choices', async () => {
+    // PostgREST builders RESOLVE with {data:null,error} — they do not throw. Unchecked, the page
+    // rendered every control at its catalog default as if that were the stored preference.
+    catalogResult = { data: null, error: { message: 'permission denied' } };
+    render(<NotificationSettings />);
+    expect(await screen.findByTestId('notification-settings-load-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-settings-configurable')).toBeNull();
+    expect(screen.queryByTestId('notification-settings-legacy')).toBeNull();
+    // ...and retry reloads rather than dead-ending
+    catalogResult = null;
+    fireEvent.click(screen.getByTestId('notification-settings-retry'));
+    expect(await screen.findByTestId('notification-settings-configurable')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/app/player/settings/notifications', '/app/player/settings'],
+    ['/app/trainer/settings/notifications', '/app/trainer/settings'],
+    ['/app/academy/settings/notifications', '/app/academy/settings'],
+  ])('the back button from %s goes to the role settings hub (a deep-linked tab has no history)',
+    async (path, target) => {
+    locationPath = path;
+    render(<NotificationSettings />);
+    await screen.findByTestId('notification-settings-configurable');
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    expect(navigateMock).toHaveBeenCalledWith(target);
   });
 });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, FileText, ListChecks, Loader2, Lock, MessageSquare, Settings, Trash2, UserPlus } from 'lucide-react';
+import { AlertCircle, Bell, FileText, ListChecks, Loader2, Lock, MessageSquare, Settings, Trash2, UserPlus } from 'lucide-react';
 import { Globe, Clock } from 'lucide-react';
 import { COMMON_TIMEZONES } from '@/lib/timezones';
 import { useEditor, EditorContent } from '@tiptap/react';
@@ -40,6 +40,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 export default function AcademySettings() {
   const { t, i18n } = useTranslation('academy');
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
   const { activeAcademy } = useAcademyContext();
@@ -663,6 +664,29 @@ export default function AcademySettings() {
                   <SelectItem value="en">🇬🇧 English</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Notification preferences — the manager's own. The route existed under all three role
+            layouts, but this hub never linked it, so academy managers had no way to reach their
+            notification settings (player + trainer hubs both link theirs). */}
+        <Card
+          className={`${flushOnMobileCardClass()} cursor-pointer transition-colors hover:bg-muted/30`}
+          onClick={() => navigate('/app/academy/settings/notifications')}
+          data-testid="academy-notifications-card"
+        >
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-orange-500/10">
+                <Bell className="h-5 w-5 text-orange-600" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-lg">{t('settings.notifications', 'Notifications')}</CardTitle>
+                <CardDescription>
+                  {t('settings.notificationsDescription', 'Manage your notification preferences')}
+                </CardDescription>
+              </div>
             </div>
           </CardHeader>
         </Card>

@@ -414,7 +414,9 @@
     "minNotice": "Minimum notice for player bookings",
     "minNoticeDescription": "Players cannot book sessions less than this long before the start time. Staff can still add bookings manually.",
     "minNoticeSaved": "Booking cutoff updated",
-    "minNoticeSaveError": "Failed to update the booking cutoff"
+    "minNoticeSaveError": "Failed to update the booking cutoff",
+    "notifications": "Notifications",
+    "notificationsDescription": "Manage your notification preferences"
   },
   "terms": {
     "title": "General Terms",

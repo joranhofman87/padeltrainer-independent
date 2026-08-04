@@ -1,10 +1,13 @@
 {
   "notifications": {
     "title": "Notification Settings",
-    "heading": "Email Notifications",
-    "subtitle": "Choose how and when you receive email notifications from PadelTrainer.ai.",
+    "heading": "Notifications",
+    "subtitle": "Choose how and when PadelTrainer.ai notifies you.",
     "saved": "Notification preferences saved!",
     "saveError": "Error saving preferences",
+    "saveErrorDescription": "Please try again.",
+    "loadError": "We couldn't load your notification settings.",
+    "loadErrorRetry": "Try again",
     "securityNote": "Essential account and security notifications cannot be disabled.",
     "frequency": {
       "instant": "Instant",
@@ -107,6 +110,9 @@
       "booking_cancelled_staff": {
         "label": "Booking cancelled (team)"
       },
+      "open_slots_player": {
+        "label": "Open slots from trainers you follow"
+      },
       "session_reminder_player": {
         "label": "Session reminder"
       },
@@ -157,7 +163,9 @@
       "choose": "Your notifications",
       "other": "Other notifications",
       "alwaysOn": "Always sent",
-      "alwaysOnDesc": "Receipts, confirmations and security emails cannot be turned off."
+      "alwaysOnDesc": "Receipts, confirmations and security emails cannot be turned off.",
+      "marketing": "Marketing",
+      "marketingDesc": "Optional product news. Stays off unless you turn it on."
     },
     "alwaysOn": "Always on",
     "whatsapp": {
