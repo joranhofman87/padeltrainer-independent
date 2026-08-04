@@ -217,11 +217,30 @@ grep -qF 'active := true' "$PSQL_LOG" && bad "...and the cron is NEVER armed aft
 # An inline `psql -c` runs in its own process under the role/database search_path, so no pin inside
 # an artifact can reach it — and `now()`, `=` and `::uuid` are all lookups through that path. The
 # rule is therefore absolute rather than case-by-case: this dispatcher never uses -c.
-if grep -nE '(^|[^-])-c[[:space:]]' "$SCRIPT" | grep -vE '^\s*[0-9]+:\s*#' | grep -q 'psql'; then
-  bad "the dispatcher sends an inline statement instead of a path-pinned artifact"
-  grep -nE '(^|[^-])-c[[:space:]]' "$SCRIPT" | grep 'psql'
+# STRUCTURAL, NOT A TEXT SEARCH FOR `-c`. Scanning the same line for `psql ... -c ` missed a
+# multi-line `psql_safe "$url" \` continued onto a `-c` on the next line, and missed `--command=`
+# entirely. The property is about WHO may reach psql: exactly the two file-based wrappers. So every
+# psql_safe call site is enumerated (comments stripped — this file's prose names psql constantly)
+# and each must be inside run_sql or run_sql_capture.
+strip_comments() { sed -e 's/^[[:space:]]*#.*$//' -e 's/[[:space:]]#.*$//' "$SCRIPT"; }
+mapfile_sites() { strip_comments | grep -nE '(^|[^_a-zA-Z])psql_safe[[:space:]]'; }
+sites="$(mapfile_sites | cut -d: -f1)"
+wrapper_lines="$(strip_comments | grep -nE '^[[:space:]]*\([[:space:]]*cd "\$SQL_DIR" && psql_safe' | cut -d: -f1 | tr '\n' ' ')"
+bad_sites=""
+for l in $sites; do
+  case " $wrapper_lines " in *" $l "*) ;; *) bad_sites="$bad_sites $l";; esac
+done
+if [[ -n "$bad_sites" ]]; then
+  bad "psql is reached outside the file-based wrappers (lines:$bad_sites)"
+  mapfile_sites
 else
-  ok "every statement goes through a path-pinned artifact (no inline psql -c)"
+  ok "psql is reached ONLY through the file-based wrappers (no inline statement can bypass the path pin)"
+fi
+# ...and belt and braces on the two spellings of an inline statement, across line continuations.
+if strip_comments | tr '\n' ' ' | grep -qE 'psql_safe[^;|&]*(-c |--command)'; then
+  bad "the dispatcher sends an inline statement instead of a path-pinned artifact"
+else
+  ok "no inline psql statement in any spelling (-c or --command), continuations included"
 fi
 
 # ── the thing that must never happen ──────────────────────────────────────────
@@ -557,8 +576,8 @@ run_env "an EMPTY unrecognised PG* variable is not treated as set" 0 "PGFUTUREHO
 # ~/.psqlrc runs before the artifact and can \set variables the artifact reads.
 run "psql is invoked with --no-psqlrc on the artifact path" 0 -- status "$URL"
 logged '--no-psqlrc' && ok "...--no-psqlrc on the artifact path" || bad "...--no-psqlrc on the artifact path"
-run "and on the -c path too" 0 -- rollback --yes --switch-off-confirmed "$URL"
-logged '--no-psqlrc' && ok "...--no-psqlrc on the -c path" || bad "...--no-psqlrc on the -c path"
+run "and on the rollback path too" 0 -- rollback --yes --switch-off-confirmed "$URL"
+logged '--no-psqlrc' && ok "...--no-psqlrc on the rollback path" || bad "...--no-psqlrc on the rollback path"
 
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
 [[ "$FAIL" == "0" ]]

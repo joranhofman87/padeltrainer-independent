@@ -996,92 +996,143 @@ try {
 
   // ── does the scheduled command resolve ANY name through search_path? ─────
   //
-  // ASK THE SERVER, DO NOT PARSE THE TEXT. Two review rounds were spent finding names a regex had
-  // missed — `=`, then LIKE / IN / BETWEEN / typed literals / CAST(x AS t) — and a regex over SQL is
-  // just a partial parser, which is the subsystem this slice already removed once. Two tempting
-  // shortcuts do not work either: an empty search_path proves nothing, because pg_catalog is
-  // searched implicitly whatever the path says; and pg_depend is blind here, because objects created
-  // by initdb are pinned and get no dependency rows at all.
+  // ASK THE SERVER, AND ASK IT FOR THE TREE. Three review rounds went into this one question, and
+  // every intermediate answer was wrong in a way worth recording so nobody re-derives them:
   //
-  // What DOES work is PostgreSQL's own deparser. Build a view over the command, then read
-  // pg_get_viewdef: the text that comes back is the parsed AST rendered canonically, and a name
-  // resolved into another schema is PRINTED with that schema. So deparse the same command twice —
-  // once with an empty path, once with a hostile schema first — and require the two to be identical.
-  // Anything redirected shows up as `OPERATOR(hostile.…)` or `hostile.f(…)`, including constructs
-  // nobody thought to look for.
+  //   * A REGEX over the command text is a partial parser. It missed `=`, then LIKE / IN / BETWEEN /
+  //     CAST(x AS t) / typed literals. This slice already deleted one partial parser; it does not
+  //     get to keep another.
+  //   * An EMPTY search_path proves nothing: pg_catalog is searched implicitly whatever the path
+  //     says, so a bare `=` resolves happily and looks safe. Measured.
+  //   * pg_depend is BLIND: objects created by initdb are pinned and get no dependency rows, so a
+  //     dependency scan of this command returns only net.http_post and vault.decrypted_secrets and
+  //     would pass with every pg_catalog qualification removed. Measured.
+  //   * pg_get_viewdef is NOT identity-preserving. PostgreSQL renders some resolved operators as
+  //     syntax — `IS DISTINCT FROM`, `CASE x WHEN y` — so the deparse is byte-identical even when
+  //     the underlying `opno` has been redirected. Measured, and it is why this is not that.
+  //
+  // What IS exact is the stored rewrite tree. `pg_rewrite.ev_action` is the parse tree with OIDs in
+  // it — every `opno`, `funcid` and `casttype` the planner actually bound. Build the view under an
+  // empty path, keep that tree, then rebuild it with a hostile schema first and compare. Identical
+  // trees mean identical resolution, syntax-hidden operators included.
+  //
+  // ...and the CANDIDATES ARE DERIVED FROM THAT TREE, not from a list. Every OID the neutral tree
+  // names is looked up in pg_operator / pg_proc / pg_type and re-created in `redirect` with the SAME
+  // signature, so the hostile build has an exact-match rival for each. Anything that cannot be
+  // shadowed is REPORTED rather than skipped, because a silent gap is how the last two versions of
+  // this check passed while covering less than they claimed.
   {
     const CMD_SELECT = REVIEWED.command.trim().replace(/;\s*$/, '');
-
-    // Candidates for everything the command can resolve. The set is CHECKED for completeness below
-    // rather than assumed: if the command grows a construct with no candidate here, the coverage
-    // assertion names it instead of passing quietly.
-    const PLANTED = ['jsonb_build_object', 'http_post', '=', '||', '~~', '~~*', '<>', '<', '>', '<=', '>=', '@>'];
-    await c.query(`DROP SCHEMA IF EXISTS redirect CASCADE; CREATE SCHEMA redirect;
-      CREATE FUNCTION redirect.jsonb_build_object(text,text,text,text) RETURNS jsonb
-        LANGUAGE sql AS $f$ SELECT '{}'::pg_catalog.jsonb $f$;
-      CREATE FUNCTION redirect.http_post(text, jsonb, jsonb, integer) RETURNS bigint
-        LANGUAGE sql AS $f$ SELECT 0::pg_catalog.int8 $f$;
-      CREATE FUNCTION redirect.b(text,text) RETURNS boolean LANGUAGE sql AS $f$ SELECT true $f$;
-      CREATE FUNCTION redirect.t(text,text) RETURNS text LANGUAGE sql AS $f$ SELECT $1 $f$;
-      CREATE OPERATOR redirect.=   (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.<>  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.<   (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.>   (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.<=  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.>=  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.~~  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.~~* (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.@>  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
-      CREATE OPERATOR redirect.||  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.t);`);
-
-    const deparseUnder = async (cmd, path) => {
+    const buildUnder = async (path) => {
       await c.query(`SET search_path = ${path}`);
       await c.query(`DROP VIEW IF EXISTS public._cmd_ast`);
-      await c.query(`CREATE VIEW public._cmd_ast AS ${cmd}`);
-      await c.query(`SET search_path = ''`);
-      const d = (await c.query(`SELECT pg_get_viewdef('public._cmd_ast'::regclass, true) AS d`)).rows[0].d;
+      await c.query(`CREATE VIEW public._cmd_ast AS ${CMD_SELECT}`);
       await c.query(`SET search_path = "$user", public`);
-      return d.replace(/\s+/g, ' ').trim();
+      const { rows } = await c.query(`
+        SELECT r.ev_action, pg_get_viewdef('public._cmd_ast'::regclass, true) AS def
+          FROM pg_rewrite r WHERE r.ev_class = 'public._cmd_ast'::regclass`);
+      return rows[0];
     };
 
-    let neutral = null, hostile = null, err = null;
-    try {
-      neutral = await deparseUnder(CMD_SELECT, "''");
-      hostile = await deparseUnder(CMD_SELECT, 'redirect, pg_catalog, public');
-    } catch (e) { err = e.message.split('\n')[0]; }
+    await c.query(`DROP SCHEMA IF EXISTS redirect CASCADE; CREATE SCHEMA redirect`);
+    const neutral = await buildUnder("''");
+
+    // Every OID the tree bound. `opno` decides an operator, `funcid` a function, `casttype` a cast.
+    const oids = (kind) => [...new Set(
+      [...neutral.ev_action.matchAll(new RegExp(`:${kind} (\\d+)`, 'g'))].map((m) => Number(m[1])))]
+      .filter((n) => n > 0);
+
+    // NEEDED vs COVERED, per OID. An earlier version asserted only that SOMETHING had been planted,
+    // which stayed green with the whole operator loop disabled — the functions alone satisfied it.
+    // The property is that every pg_catalog name the tree binds has a rival, so that is what is
+    // tracked, and the two lists are compared at the end.
+    const planted = [], unshadowable = [], covered = new Set();
+
+    // NEEDED is derived from the TREE, before and independently of any planting. Computing it inside
+    // the planting loops was a hole: disabling a loop removed the requirement along with the rival,
+    // and the coverage assertion stayed green over a comparison that had gone blind. What the
+    // command binds is a property of the command; what has a rival is a property of the fixture.
+    const needed = new Set();
+    for (const [kind, cat, table, col] of [
+      ['opno', 'opno', 'pg_operator', 'oprnamespace'],
+      ['funcid', 'funcid', 'pg_proc', 'pronamespace'],
+      ['opfuncid', 'funcid', 'pg_proc', 'pronamespace'],
+      ['casttype', 'type', 'pg_type', 'typnamespace'],
+    ]) {
+      for (const oid of oids(kind)) {
+        const { rows } = await c.query(
+          `SELECT n.nspname FROM ${table} o JOIN pg_namespace n ON n.oid = o.${col} WHERE o.oid = $1`, [oid]);
+        if (rows[0]?.nspname === 'pg_catalog') needed.add(`${cat}:${oid}`);
+      }
+    }
+    for (const oid of oids('opno')) {
+      const { rows } = await c.query(`
+        SELECT o.oprname, o.oprleft::regtype::text AS l, o.oprright::regtype::text AS r,
+               o.oprresult::regtype::text AS res, n.nspname
+          FROM pg_operator o JOIN pg_namespace n ON n.oid = o.oprnamespace WHERE o.oid = $1`, [oid]);
+      const o = rows[0];
+      if (!o) { unshadowable.push(`opno ${oid} (not found)`); continue; }
+      if (o.nspname !== 'pg_catalog') continue;   // already unambiguous
+      try {
+        const h = `op_${oid}`;
+        await c.query(`CREATE FUNCTION redirect.${h}(${o.l}, ${o.r}) RETURNS ${o.res}
+            LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'REDIRECTED: ${o.oprname}'; END $$;
+          CREATE OPERATOR redirect.${o.oprname} (LEFTARG = ${o.l}, RIGHTARG = ${o.r}, FUNCTION = redirect.${h})`);
+        planted.push(`${o.oprname}(${o.l},${o.r})`); covered.add(`opno:${oid}`);
+      } catch (e) { unshadowable.push(`operator ${o.oprname}(${o.l},${o.r}): ${e.message.split('\n')[0]}`); }
+    }
+    for (const oid of [...oids('funcid'), ...oids('opfuncid')]) {
+      const { rows } = await c.query(`
+        SELECT p.proname, n.nspname, p.prorettype::regtype::text AS res, p.provariadic,
+               pg_get_function_identity_arguments(p.oid) AS args
+          FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE p.oid = $1`, [oid]);
+      const f = rows[0];
+      if (!f) { unshadowable.push(`funcid ${oid} (not found)`); continue; }
+      if (f.nspname !== 'pg_catalog') continue;
+      if (f.provariadic) {
+        // Covered by the exact-arity rival planted in `shadow`, which is in the hostile path for
+        // this check — a VARIADIC "any" signature cannot be duplicated, and an exact-arity overload
+        // is what a real attack would use anyway.
+        covered.add(`funcid:${oid}`);
+        unshadowable.push(`${f.proname}(${f.args}) — VARIADIC; covered by the exact-arity rival in \`shadow\``);
+        continue;
+      }
+      try {
+        await c.query(`CREATE FUNCTION redirect.${f.proname}(${f.args}) RETURNS ${f.res}
+          LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'REDIRECTED: ${f.proname}'; END $$`);
+        planted.push(`${f.proname}(${f.args})`); covered.add(`funcid:${oid}`);
+      } catch (e) { unshadowable.push(`${f.proname}(${f.args}): ${e.message.split('\n')[0]}`); }
+    }
+    for (const oid of oids('casttype')) {
+      const { rows } = await c.query(
+        `SELECT t.typname, n.nspname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.oid = $1`, [oid]);
+      const t = rows[0];
+      if (!t || t.nspname !== 'pg_catalog') continue;
+      try {
+        await c.query(`CREATE DOMAIN redirect.${t.typname} AS pg_catalog.${t.typname}`);
+        planted.push(`type ${t.typname}`); covered.add(`type:${oid}`);
+      } catch (e) { unshadowable.push(`type ${t.typname}: ${e.message.split('\n')[0]}`); }
+    }
+
+    const uncovered = [...needed].filter((n) => !covered.has(n));
+    rec('every name the scheduled command binds has an exact-signature rival planted',
+      needed.size > 0 && uncovered.length === 0,
+      uncovered.length ? `no rival for ${uncovered.join(' ')} — the comparison below is blind to it`
+        : needed.size ? `planted: ${planted.join(' ')}` : 'the tree bound nothing — the extraction is broken');
+    // NO SILENT CAPS. What could not be shadowed is named, with the reason.
+    rec('...and nothing was silently left uncovered',
+      unshadowable.every((u) => u.includes('VARIADIC')),
+      unshadowable.length ? unshadowable.join(' | ') : '');
+
+    let hostile = null, err = null;
+    try { hostile = await buildUnder('redirect, shadow, pg_catalog, public'); }
+    catch (e) { err = e.message.split('\n')[0]; }
     finally { await c.query(`SET search_path = "$user", public`).catch(() => {}); }
 
-    rec('the scheduled command resolves IDENTICALLY under a hostile search_path',
-      !err && neutral === hostile,
-      err ?? (neutral === hostile ? '' : `neutral: ${neutral}\n      hostile: ${hostile}`));
-
-    // COVERAGE, ASSERTED RATHER THAN ASSUMED. The comparison above only detects a redirection for
-    // which a candidate exists, so every operator and function the command actually uses must have
-    // one. Read from the DEPARSE, not the source: it is canonical, machine-generated text — every
-    // literal typed, every column qualified — so extracting names from it is reading a rendering of
-    // the AST rather than parsing SQL by hand. A new construct fails HERE, naming itself.
-    const KEYWORDS = new Set(['select', 'from', 'where', 'and', 'or', 'not', 'as', 'on', 'in', 'case',
-                              'when', 'then', 'else', 'end', 'exists', 'distinct', 'order', 'by', 'null']);
-    const used = new Set();
-    for (const m of (neutral ?? '').matchAll(/\b([a-z_][a-z0-9_]*)\s*\(/g)) {
-      const n = m[1].toLowerCase();
-      if (!KEYWORDS.has(n)) used.add(n);
-    }
-    // `=>` is how the deparser writes a NAMED ARGUMENT. It is syntax, not an operator lookup — there
-    // is nothing for a schema to shadow — so it is excluded here rather than given a candidate that
-    // could never be reached. (The check found it, which is the point: it reports what it does not
-    // know instead of passing.)
-    for (const m of (neutral ?? '').matchAll(/\s([|=<>+\-*/%~!@#^&?]{1,3})\s/g)) {
-      if (m[1] !== '=>') used.add(m[1]);
-    }
-    // Names reached through an explicit schema cannot be redirected, so they need no candidate.
-    for (const m of (neutral ?? '').matchAll(/\b(?:pg_catalog|net|vault|public|cron)\.([a-z_][a-z0-9_]*)/g)) {
-      used.delete(m[1].toLowerCase());
-    }
-    const uncovered = [...used].filter((n) => !PLANTED.includes(n));
-    rec('...and every name it uses has a redirect candidate, so that comparison is not vacuous',
-      uncovered.length === 0,
-      uncovered.length ? `no candidate planted for: ${uncovered.join(' ')} — add one to PLANTED` : `covered: ${[...used].join(' ')}`);
+    rec('the scheduled command binds IDENTICALLY under a hostile search_path',
+      !err && hostile?.ev_action === neutral.ev_action,
+      err ?? (hostile?.ev_action === neutral.ev_action ? ''
+        : `the parse tree changed — deparse was:\n      neutral: ${neutral.def?.replace(/\s+/g, ' ')}\n      hostile: ${hostile?.def?.replace(/\s+/g, ' ')}`));
 
     await c.query(`DROP VIEW IF EXISTS public._cmd_ast; DROP SCHEMA IF EXISTS redirect CASCADE`);
   }

@@ -340,8 +340,12 @@ describe('I — the scheduled command survives a hostile search_path unaided', (
   // ...and the exhaustive check must actually be wired in, or the pointer above is a comment.
   it('the exhaustive resolution proof is wired into the rollout suite', () => {
     const harness = read('scripts', 'rollout', 'notif-10cb', 'verify', 'preflight-pg.mjs');
-    expect(harness).toContain('resolves IDENTICALLY under a hostile search_path');
-    expect(harness).toContain('every name it uses has a redirect candidate');
+    expect(harness).toContain('binds IDENTICALLY under a hostile search_path');
+    expect(harness).toContain('has an exact-signature rival planted');
+    // ...and it must be the PARSE TREE it compares, not the deparse: pg_get_viewdef renders
+    // IS DISTINCT FROM and CASE x WHEN y as syntax, so it reads identically even when the
+    // underlying operator has been redirected.
+    expect(harness).toContain('ev_action');
     const pkg = JSON.parse(read('package.json'));
     expect(pkg.scripts['verify:rollout']).toContain('notif-10cb/verify/preflight-pg.mjs');
   });
@@ -363,10 +367,27 @@ describe('I — every rollout artifact pins name resolution before it does anyth
   // an indented statement — before the pin would have passed as long as a recognised keyword turned
   // up later. Strip what genuinely executes nothing (comments, blank lines, and the psql
   // meta-commands that only configure the client) and whatever is left FIRST must be the pin.
+  //
+  // ALLOW-LISTED EXACTLY, not by category. Treating every `\set` as inert was wrong three ways:
+  // `\set ON_ERROR_STOP off` changes what a failed assertion does, `\set run_id …` overrides a value
+  // the dispatcher validated, and psql executes BACKQUOTES inside a meta-command argument as a shell
+  // command. So the only thing permitted before the pin is the one preamble line these files
+  // actually use, matched literally.
+  const INERT_PREAMBLE = /^\\set ON_ERROR_STOP on$/;
   const firstExecutable = (text: string) => text
     .split('\n')
     .map((l) => l.replace(/--.*$/, '').trim())
-    .filter((l) => l !== '' && !/^\\(set|pset|timing|echo|qecho|encoding|x|a|t|f|H|C)\b/i.test(l))[0] ?? '';
+    .filter((l) => l !== '' && !INERT_PREAMBLE.test(l))[0] ?? '';
+
+  it.each(artifacts)('%s runs no shell before it pins the path', (file) => {
+    // psql expands `…` in a meta-command argument by running it in a shell.
+    // COMMENTS STRIPPED FIRST: these files explain themselves at length and quote SQL names in
+    // prose, and a backquote in a comment is not a shell expansion.
+    const preamble = readFileSync(join(dir, file), 'utf8')
+      .split('SET search_path = pg_catalog;')[0]
+      .split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+    expect(preamble, `${file} has a backquote before the pin`).not.toMatch(/`/);
+  });
 
   it.each(artifacts)('%s pins search_path first, session-wide', (file) => {
     const text = readFileSync(join(dir, file), 'utf8');
@@ -399,7 +420,7 @@ describe('I — every rollout artifact pins name resolution before it does anyth
     for (const f of sqlFiles) {
       const text = readFileSync(f, 'utf8');
       for (const inc of includes) {
-        if (!new RegExp(`^\\\\i .*${inc.replace('.', '\\.')}\\s*$`, 'm').test(text)) continue;
+        if (!new RegExp(`^\\\\ir? .*${inc.replace('.', '\\.')}\\s*$`, 'm').test(text)) continue;
         sites++;
         // A `_`-file including another `_`-file is fine: it is itself an include, so it inherits the
         // session setting of whatever pulled IT in — and this same scan covers that includer. Every
@@ -416,12 +437,28 @@ describe('I — every rollout artifact pins name resolution before it does anyth
     // ...and an include that nothing pulls in is dead weight whose protection nobody is checking.
     for (const inc of includes) {
       const pulled = sqlFiles.some((f) =>
-        new RegExp(`^\\\\i .*${inc.replace('.', '\\.')}\\s*$`, 'm').test(readFileSync(f, 'utf8')));
+        new RegExp(`^\\\\ir? .*${inc.replace('.', '\\.')}\\s*$`, 'm').test(readFileSync(f, 'utf8')));
       expect(pulled, `${inc} is included by nothing`).toBe(true);
     }
-    // Every shared file that includes another shared file must itself be reached from a pinner —
-    // guaranteed by the offenders check above, which sees that outer site too.
-    for (const c of chained) expect(includes).toContain(c);
+    // ROOTED, not tautological. The previous version asserted that a shared file that includes
+    // another shared file is itself a shared file — which is true by construction and permits an
+    // include CYCLE with no pinned root at all. This walks the graph from the pinning artifacts and
+    // requires every shared include to be reachable from one.
+    const reachable = new Set<string>();
+    const visit = (file: string) => {
+      const text = readFileSync(file, 'utf8');
+      for (const m of text.matchAll(/^\\ir? +(\S+\.sql)\s*$/gm)) {
+        const target = m[1].split('/').pop()!;
+        if (!includes.includes(target) || reachable.has(target)) continue;
+        reachable.add(target);
+        visit(join(dir, target));
+      }
+    };
+    artifacts.forEach((a) => visit(join(dir, a)));
+    for (const inc of includes) {
+      expect(reachable.has(inc), `${inc} is not reachable from any path-pinning artifact`).toBe(true);
+    }
+    expect([...chained].every((c) => reachable.has(c))).toBe(true);
   });
 });
 

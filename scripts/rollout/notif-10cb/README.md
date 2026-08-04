@@ -135,14 +135,38 @@ contains `public`. **Function resolution does not prefer `pg_catalog`:** an exac
 overload beats `pg_catalog`'s `VARIADIC "any"` wherever its schema sits in the path, *including after
 an explicit `pg_catalog`*. So an unqualified `jsonb_build_object` would hand the decrypted
 `service_role` bearer to anyone who could create `public.jsonb_build_object(text,text,text,text)`, on
-the very next tick, while returning plausible headers. A hostile `OPERATOR ||` does the same to the
-concatenation. `verify/preflight-pg.mjs` plants both and asserts the bearer is still not captured —
-executing the migration's own text with no protection in front of it, because a tick has none.
+the very next tick, while returning plausible headers. **Both operators** are qualified for the same
+reason: `||` builds the header value and `=` selects the Vault row, and a hostile `(text,text)`
+equality runs inside a query over `vault.decrypted_secrets` and can change *which* secret comes back.
 
-`canary_invoke.sql` additionally pins `SET LOCAL search_path = pg_catalog` before it asserts or
-executes anything. With the command qualified that is a second lock on the same door, and the artifact
-says so rather than letting it look load-bearing; it is kept because the first lock is in a different
-file, and a future edit to the migration is exactly when nobody re-reads this one.
+**How that is proved, and why it is not a text scan.** `verify/preflight-pg.mjs` builds a view over
+the command, then compares the stored parse tree (`pg_rewrite.ev_action` — the OIDs the planner
+actually bound) between an empty `search_path` and a hostile one. Identical trees mean identical
+resolution. The candidates it plants are *derived from that tree*: every operator, function and cast
+OID it names is looked up and re-created in a hostile schema with the same signature, and anything
+that cannot be shadowed is reported rather than skipped.
+
+Three earlier versions of this check were wrong, and are recorded in the harness so nobody re-derives
+them: a **regex** over the command is a partial parser and missed `=`, then `LIKE`/`IN`/`BETWEEN`/
+`CAST(x AS t)`; an **empty search_path** proves nothing because `pg_catalog` is searched implicitly
+whatever the path says; **`pg_depend`** is blind because initdb objects are pinned and get no
+dependency rows; and **`pg_get_viewdef`** is not identity-preserving, because PostgreSQL renders
+`IS DISTINCT FROM` and `CASE x WHEN y` as syntax and the deparse reads identically even when the
+underlying operator has been redirected.
+
+**Every artifact pins the path too**, session-wide (`SET search_path = pg_catalog`) as its first
+executable line — not `SET LOCAL`, which `COMMIT` reverts while these files are still asserting and
+printing. This is load-bearing, not decorative: `_job_identity_assertions.sql` alone calls `count`,
+`md5`, `btrim`, `regexp_replace`, `regexp_matches` and `current_setting` unqualified, and a hostile
+`md5(text)` makes the whole-command hash match any command at all. A test enumerates the directory,
+so a new artifact cannot forget, and walks the include graph so a shared file is only ever reached
+from a pinner.
+
+**And nothing reaches psql except those artifacts.** The reconcile and the two rollback writes used
+to be inline `psql -c` statements — separate processes under the role/database path, where `::uuid`,
+`now()` and `=` are all lookups no artifact pin could reach. They are now `sql/canary_reconcile.sql`
+and `sql/rollback_disable.sql`, and the self-test enforces the rule structurally: every `psql_safe`
+call site must be inside one of the two file-based wrappers.
 
 ## The connection string is not just a url either
 
