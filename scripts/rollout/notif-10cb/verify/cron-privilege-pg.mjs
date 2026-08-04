@@ -236,13 +236,18 @@ try {
       [fid, FOREIGN_JOB])).rows[0].n;
     rec('the foreign job is visible to the operator connection in the SAME catalog', visible === 1,
       visible === 1 ? '' : 'the two URLs reach different stacks — the refusal below would be vacuous');
-    const e = await errOf(c, `SELECT cron.alter_job($1, active := false)`, [fid]);
-    rec("a FOREIGN-owned job raises ('you don't own it') for the operator role",
-      !!e && /does not exist or you don't own it/.test(e.message), e?.message ?? 'it altered a foreign job');
-    const seen = (await c.query(
-      `SELECT count(*)::int AS n FROM cron.job WHERE jobname = $1 AND username = current_user`,
-      [FOREIGN_JOB])).rows[0].n;
-    rec('...and the owner-scoped resolve never claims it', seen === 0, `resolved=${seen}`);
+    // The check above GATES the alter, it does not merely report: under a two-stack mismatch the
+    // foreign jobid can coincide with an unrelated job in the operator catalog, and the "refusal
+    // probe" would then disarm a real local job.
+    if (visible === 1) {
+      const e = await errOf(c, `SELECT cron.alter_job($1, active := false)`, [fid]);
+      rec("a FOREIGN-owned job raises ('you don't own it') for the operator role",
+        !!e && /does not exist or you don't own it/.test(e.message), e?.message ?? 'it altered a foreign job');
+      const seen = (await c.query(
+        `SELECT count(*)::int AS n FROM cron.job WHERE jobname = $1 AND username = current_user`,
+        [FOREIGN_JOB])).rows[0].n;
+      rec('...and the owner-scoped resolve never claims it', seen === 0, `resolved=${seen}`);
+    }
   } else if (process.env.CRON_PRIVILEGE_ALLOW_ADMIN_SKIP === '1') {
     console.log('  SKIP  foreign-owner arm — supabase_admin not reachable and the skip was EXPLICITLY requested');
   } else {
@@ -259,14 +264,30 @@ try {
   await admin?.query(`ROLLBACK`).catch(() => {});
   await c.query(`SELECT cron.unschedule($1)`, [JOB]).catch(() => {});
   await admin?.query(`SELECT cron.unschedule($1)`, [FOREIGN_JOB]).catch(() => {});
+  // Each job is verified through the CONNECTION THAT OWNS ITS CATALOG: under the two-stack
+  // mismatch the same-catalog gate detects, the operator connection cannot see a foreign job
+  // stranded on the admin stack.
   try {
     const left = (await c.query(
-      `SELECT count(*)::int AS n FROM cron.job WHERE jobname IN ($1, $2)`,
-      [JOB, FOREIGN_JOB])).rows[0].n;
-    rec('no throwaway job outlives the rehearsal', left === 0, left === 0 ? '' : `${left} left behind — remove by name before re-running`);
+      `SELECT array_agg(jobname) AS names FROM cron.job WHERE jobname IN ($1, $2)`,
+      [JOB, FOREIGN_JOB])).rows[0].names ?? [];
+    rec('no throwaway job outlives the rehearsal (operator catalog)', left.length === 0,
+      left.length === 0 ? '' : `left behind: ${left.join(', ')} — remove by name before re-running`);
   } catch (e) {
-    rec('no throwaway job outlives the rehearsal', false,
+    rec('no throwaway job outlives the rehearsal (operator catalog)', false,
       `could not VERIFY cleanup (${e.code ?? e.message}) — check cron.job for '${JOB}' by hand`);
+  }
+  if (admin) {
+    try {
+      const left = (await admin.query(
+        `SELECT array_agg(jobname) AS names FROM cron.job WHERE jobname = $1`,
+        [FOREIGN_JOB])).rows[0].names ?? [];
+      rec('no throwaway job outlives the rehearsal (admin catalog)', left.length === 0,
+        left.length === 0 ? '' : `left behind: ${left.join(', ')} — remove by name before re-running`);
+    } catch (e) {
+      rec('no throwaway job outlives the rehearsal (admin catalog)', false,
+        `could not VERIFY cleanup (${e.code ?? e.message}) — check cron.job for '${FOREIGN_JOB}' by hand`);
+    }
   }
   await admin?.end().catch(() => {});
   await b.end().catch(() => {});
