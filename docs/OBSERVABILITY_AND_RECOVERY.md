@@ -113,9 +113,10 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 - **No step in the sequence is hand-written any more — including both invocations.** Three steps
   used to be: a raw `UPDATE` for the engine (now `enable-engine --yes`), the canary send (now
   `canary-invoke`), and the *disabled smoke* (now `smoke-disabled`). The smoke mattered as much as
-  the send even though it cannot mail anything: its statement carries a Vault-decrypted
-  `service_role` bearer, so a hand-substituted project ref sends that credential to the wrong project
-  and an unqualified `jsonb_build_object` hands it to whoever can create one. All three now run the
+  the send, and not because it is guaranteed harmless — it is not. Its statement carries a
+  Vault-decrypted `service_role` bearer whatever the switch says, so a hand-substituted project ref
+  sends that credential to the wrong project and an unqualified `jsonb_build_object` hands it to
+  whoever can create one. All three now run the
   cron job's *own* stored command, hash-pinned under a row lock, so what is invoked is what was
   reviewed. `canary-invoke` additionally bounds how many recipients it may reach; `smoke-disabled`
   additionally requires the reply to be exactly `{"status":"disabled","reason":"disabled"}` and every

@@ -66,10 +66,12 @@ LOCK TABLE public.notification_event_types IN SHARE ROW EXCLUSIVE MODE;
 -- The job is the reviewed one and is still INACTIVE — the same shared gate, not a weaker local copy.
 \i _job_identity_assertions.sql
 
--- ...AND NOTHING IS ENABLED. This is what makes the smoke provably incapable of sending: with every
--- engine off, the resolver creates no digest work, so a dispatch run has nothing to claim regardless
--- of what the edge switch says. `--switch-off-confirmed` is the operator's word for the env var;
--- this is the database's own proof, and it is the stronger of the two.
+-- ...AND NOTHING IS ENABLED. This is a SEQUENCING prerequisite, not a no-send proof: the smoke
+-- belongs at runbook step 2, before either switch, and an enabled engine means someone has already
+-- moved past it. It does NOT make sending impossible — the worker claims existing groups whatever
+-- the engine flags say, which is the whole reason the two zero-backlog assertions below exist.
+-- Sending is prevented by DIGEST_SEND_ENABLED being off, which is `--switch-off-confirmed`: the
+-- operator's word, and nothing here can check it.
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_event_types WHERE digest_engine_enabled), 0,
   'no event has the digest engine enabled (the smoke belongs BEFORE the switch, at runbook step 2)');
