@@ -151,7 +151,7 @@ describe('G — verifying and arming are one transaction', () => {
   });
 
   it('activate.sql locks the job row BEFORE it asserts anything', () => {
-    const lock = ACTIVATE.indexOf('FOR UPDATE');
+    const lock = ACTIVATE.indexOf('\\i _gate_job_lock.sql');
     const assertions = ACTIVATE.indexOf('\\i _activation_assertions.sql');
     expect(lock).toBeGreaterThan(-1);
     expect(lock).toBeLessThan(assertions);
@@ -160,7 +160,7 @@ describe('G — verifying and arming are one transaction', () => {
   it('activate.sql is a single explicit transaction', () => {
     expect(ACTIVATE).toMatch(/^\s*BEGIN;/m);
     expect(ACTIVATE).toMatch(/^\s*COMMIT;/m);
-    expect(ACTIVATE.indexOf('BEGIN;')).toBeLessThan(ACTIVATE.indexOf('FOR UPDATE'));
+    expect(ACTIVATE.indexOf('BEGIN;')).toBeLessThan(ACTIVATE.indexOf('\\i _gate_job_lock.sql'));
   });
 
   // Every lock wait must be bounded. This transaction holds a table lock on the run ledger while it
@@ -180,7 +180,7 @@ describe('G — verifying and arming are one transaction', () => {
     // library. A zero here removes exactly the bound while every comment still says "bounded".
     expect(m![1]).toMatch(/^[1-9][0-9]*(ms|s|min)?$/);
     const at = activeSql.search(/SET LOCAL lock_timeout/);
-    for (const lock of ['LOCK TABLE', 'FOR UPDATE', 'FOR SHARE']) {
+    for (const lock of ['LOCK TABLE', '\\i _gate_job_lock.sql', 'FOR SHARE']) {
       expect(at, `lock_timeout must precede ${lock}`).toBeLessThan(activeSql.indexOf(lock));
     }
   });
@@ -194,7 +194,7 @@ describe('G — verifying and arming are one transaction', () => {
     // POSITION MATTERS as much as presence. Moved below the group lock it still exists and is still
     // positive, while the statement that actually needs the total bound runs without it.
     const at = activeSql.search(/SET LOCAL statement_timeout/);
-    for (const lock of ['LOCK TABLE', 'FOR UPDATE', 'FOR SHARE']) {
+    for (const lock of ['LOCK TABLE', '\\i _gate_job_lock.sql', 'FOR SHARE']) {
       expect(at, `statement_timeout must precede ${lock}`).toBeLessThan(activeSql.indexOf(lock));
     }
   });
@@ -220,9 +220,84 @@ describe('G — verifying and arming are one transaction', () => {
   });
 
   // The dry run must stay a dry run, or "preflight" silently becomes a second way to arm.
+  // COMMENTS STRIPPED: the file's prose now names the lock construct it deliberately does NOT
+  // take; what may never appear is the executable call. The transitive (include-expanded) version
+  // of this rule lives in the N0 describe below.
   it('the dry run arms nothing', () => {
-    expect(DRY_RUN).not.toContain('alter_job');
-    expect(DRY_RUN).not.toContain('active := true');
+    const sql = DRY_RUN.replace(/--.*$/gm, '');
+    expect(sql).not.toContain('alter_job');
+    expect(sql).not.toContain('active := true');
+  });
+});
+
+// N0 — the job-row lock the hosted role can actually take. cron.job is supabase_admin-owned and
+// the connected production role holds SELECT only, so FOR UPDATE is not executable there — the
+// first production run of smoke-disabled was refused on exactly that, before anything was invoked.
+// The lock is now a shared include built on a guarded no-op cron.alter_job(active := false); these
+// pins keep its shape, its consumer set, and the absence of the privilege-broken construct from
+// drifting. The BEHAVIOURAL authority is verify/preflight-pg.mjs, which runs every artifact as a
+// restricted role that cannot FOR UPDATE cron.job and proves the blocking, refusal, and
+// write-proof semantics against a live server.
+describe('N0 — the job-row lock include is privilege-correct and closed over', () => {
+  const DIR = join(process.cwd(), 'scripts', 'rollout', 'notif-10cb', 'sql');
+  const GATE_LOCK = read('scripts', 'rollout', 'notif-10cb', 'sql', '_gate_job_lock.sql');
+  const files = readdirSync(DIR).filter((f) => f.endsWith('.sql'));
+  const stripped = (t: string) => t.replace(/--.*$/gm, '');
+  /** the artifact text with every include inlined, path-resolved — what actually EXECUTES */
+  const closure = (file: string, depth = 0): string => {
+    if (depth > 6) throw new Error('include nesting too deep');
+    return readFileSync(file, 'utf8').replace(/^\\ir? +(\S+\.sql)\s*$/gm,
+      (_m, f) => closure(resolve(dirname(file), f), depth + 1));
+  };
+  const clo = (name: string) => stripped(closure(join(DIR, name)));
+
+  it('the lock include carries the guarded no-op alter, the write-proof, and the version pin', () => {
+    const body = stripped(GATE_LOCK);
+    expect(body).toContain('cron.alter_job(j.jobid, active := false)');
+    expect(body).toContain('j.active IS FALSE');
+    expect(body).toContain('pg_current_xact_id()::xid');
+    expect(body).toContain('extversion');
+  });
+
+  it('exactly the four transactional artifacts take the lock include', () => {
+    const consumers = files.filter((f) =>
+      /^\\i _gate_job_lock\.sql\s*$/m.test(readFileSync(join(DIR, f), 'utf8'))).sort();
+    expect(consumers).toEqual(['activate.sql', 'canary_invoke.sql', 'enable_engine.sql', 'smoke_invoke.sql']);
+  });
+
+  // The read-only gates must never write: outside a transaction the lock's alter would AUTOCOMMIT,
+  // and a raw-text scan cannot see an alter_job smuggled in through a shared include.
+  it('the read-only gates never reach alter_job, even transitively', () => {
+    for (const f of ['assert_inert.sql', 'activation_preflight.sql']) {
+      expect(clo(f), `${f} reaches alter_job through an include`).not.toContain('alter_job');
+    }
+  });
+
+  // Arming is activate.sql's decision alone: nothing the other artifacts EXECUTE — includes
+  // expanded — may carry an arm, so a future edit cannot smuggle one into a shared file that the
+  // smoke or the canary then runs.
+  it("only activate.sql's closure carries active := true", () => {
+    for (const f of files) {
+      const has = clo(f).includes('active := true');
+      expect(has, `${f} closure ${has ? 'carries' : 'lost'} active := true`).toBe(f === 'activate.sql');
+    }
+  });
+
+  // The privilege-broken construct must not return anywhere in the bundle.
+  it('no artifact locks with FOR UPDATE any more', () => {
+    for (const f of files) {
+      expect(stripped(readFileSync(join(DIR, f), 'utf8')), `${f} re-introduces FOR UPDATE`)
+        .not.toMatch(/\bFOR UPDATE\b/);
+    }
+  });
+
+  // ...and the behavioural authority must keep modelling the split, or every scenario it runs
+  // silently regains superuser and this whole family of refusals goes untested again.
+  it('the harness runs the artifacts as a role that cannot FOR UPDATE cron.job', () => {
+    const harness = read('scripts', 'rollout', 'notif-10cb', 'verify', 'preflight-pg.mjs');
+    expect(harness).toContain('CREATE ROLE hosted_postgres LOGIN NOSUPERUSER');
+    expect(harness).toContain('GRANT SELECT ON cron.job TO hosted_postgres');
+    expect(harness).toContain('the production refusal, reproduced');
   });
 });
 
@@ -292,7 +367,7 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
 
   it('runs the shared job-identity gate — the same one assert-inert and activate use', () => {
     expect(INVOKE).toContain('\\i _job_identity_assertions.sql');
-    const lock = INVOKE.indexOf('FOR UPDATE');
+    const lock = INVOKE.indexOf('\\i _gate_job_lock.sql');
     expect(lock).toBeGreaterThan(-1);
     expect(lock).toBeLessThan(INVOKE.indexOf('\\i _job_identity_assertions.sql'));
   });
@@ -306,15 +381,18 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
       // PostgreSQL reads 0 as DISABLED, so presence is not enough.
       expect(m![1]).toMatch(/^[1-9][0-9]*(ms|s|min)?$/);
       const at = invokeSql.search(new RegExp(`SET LOCAL ${setting}`));
-      for (const lock of ['LOCK TABLE', 'FOR UPDATE']) {
+      for (const lock of ['LOCK TABLE', '\\i _gate_job_lock.sql']) {
         expect(at, `${setting} must precede ${lock}`).toBeLessThan(invokeSql.indexOf(lock));
       }
     }
   });
 
   it('arms nothing — invoking and arming are different owner decisions', () => {
-    expect(INVOKE).not.toContain('alter_job');
-    expect(INVOKE).not.toContain('active := true');
+    // COMMENTS STRIPPED — the file's prose names the lock construct. The executable text reaches
+    // alter_job only through the shared lock include, and the closure rule in the N0 describe
+    // below pins that the EXPANDED text never carries `active := true`.
+    expect(invokeSql).not.toContain('alter_job');
+    expect(invokeSql).not.toContain('active := true');
   });
 
   // THE MOST LOAD-BEARING LINE IN THE FILE, and the one whose absence is silent. `EXECUTE` runs

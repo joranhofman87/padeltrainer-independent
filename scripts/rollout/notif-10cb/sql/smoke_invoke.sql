@@ -56,10 +56,11 @@ SET LOCAL statement_timeout = '30s';
 -- Same lock order as the rest of the bundle: worker_runs → cron.job → event catalog.
 LOCK TABLE public.notification_worker_runs IN SHARE MODE;
 
-CREATE TEMP TABLE _gate_job AS
-  SELECT jobid FROM cron.job
-   WHERE jobname = 'notification-digest-worker' AND username = current_user
-     FOR UPDATE;
+-- Resolve + LOCK the job row via the shared include: the hosted role cannot FOR UPDATE the
+-- supabase_admin-owned cron.job (SELECT only — the refusal the first production smoke hit), so the
+-- row lock is a guarded no-op cron.alter_job. Measured semantics + honest residuals live in the
+-- include.
+\i _gate_job_lock.sql
 
 LOCK TABLE public.notification_event_types IN SHARE ROW EXCLUSIVE MODE;
 

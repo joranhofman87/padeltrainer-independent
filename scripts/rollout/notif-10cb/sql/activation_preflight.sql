@@ -32,8 +32,10 @@ SET search_path = pg_catalog;
 
 -- The shared assertions read the job through `_gate_job`, resolved ONCE. Here that is a plain
 -- read with NO lock and NO table lock, because this is a dry run and must not block the live
--- email path; activate.sql resolves the same row FOR UPDATE, under a SHARE lock on the run ledger.
--- That difference is the whole distinction between the two, and it is why this one is advisory.
+-- email path — and must not WRITE: the real row lock (_gate_job_lock.sql) is a guarded no-op
+-- cron.alter_job, which outside a transaction would autocommit. activate.sql resolves the same row
+-- under that lock, under a SHARE lock on the run ledger. That difference is the whole distinction
+-- between the two, and it is why this one is advisory.
 DROP TABLE IF EXISTS pg_temp._gate_job;
 CREATE TEMP TABLE _gate_job AS
   SELECT jobid FROM cron.job

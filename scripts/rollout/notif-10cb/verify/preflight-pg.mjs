@@ -27,6 +27,7 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import pg from 'pg';
 import { boot } from '../../notif-10ca3/verify/chain.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -114,6 +115,7 @@ function artifactText(name, vars = {}) {
 const { epg, conn } = await boot(PORT);
 const c = conn();
 await c.connect();
+let op;   // the RESTRICTED operator connection — created once the role exists
 
 try {
   // ── schema: the REAL migrations' own DDL ─────────────────────────────────
@@ -141,10 +143,44 @@ try {
       database text NOT NULL DEFAULT current_database(),
       username text NOT NULL DEFAULT current_user,
       active boolean NOT NULL DEFAULT true, jobname text,
-      UNIQUE (jobname, username));
-    -- alter_job by jobid, as real pg_cron does — activate.sql arms the id it locked, never a name.
-    CREATE FUNCTION cron.alter_job(job_id bigint, active boolean DEFAULT NULL)
-      RETURNS void LANGUAGE sql AS $f$ UPDATE cron.job SET active = coalesce($2, active) WHERE jobid = $1 $f$;`);
+      UNIQUE (jobname, username));`);
+  // alter_job with pg_cron 1.6.4's MEASURED semantics, because the artifacts' row lock IS this
+  // function now (the hosted role cannot FOR UPDATE the supabase_admin-owned cron.job):
+  //   * full six-parameter signature, named-notation compatible;
+  //   * an all-default call is refused with 'no updates specified' — there is no pure no-op;
+  //   * ownership is checked against the CALLER. Real pg_cron checks the invoking user; inside a
+  //     SQL SECURITY DEFINER stand-in `current_user` is the DEFINER, so the caller here is
+  //     session_user — faithful for a direct login, which is how production operators, the cron
+  //     tick, and this harness all reach it (plus the superuser bypass real pg_cron grants);
+  //   * a missing or foreign jobid RAISES the real error text;
+  //   * the update writes a new tuple version even when value-identical (the row lock the
+  //     artifacts depend on), exactly as an SQL UPDATE always does.
+  const MOCK_ALTER_JOB = `
+    CREATE OR REPLACE FUNCTION cron.alter_job(job_id bigint, schedule text DEFAULT NULL,
+        command text DEFAULT NULL, database text DEFAULT NULL, username text DEFAULT NULL,
+        active boolean DEFAULT NULL)
+      RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $fn$
+      DECLARE n int;
+      BEGIN
+        IF alter_job.schedule IS NULL AND alter_job.command IS NULL AND alter_job.database IS NULL
+           AND alter_job.username IS NULL AND alter_job.active IS NULL THEN
+          RAISE EXCEPTION 'no updates specified';
+        END IF;
+        UPDATE cron.job j
+           SET schedule = coalesce(alter_job.schedule, j.schedule),
+               command  = coalesce(alter_job.command,  j.command),
+               database = coalesce(alter_job.database, j.database),
+               username = coalesce(alter_job.username, j.username),
+               active   = coalesce(alter_job.active,   j.active)
+         WHERE j.jobid = alter_job.job_id
+           AND (j.username = session_user
+                OR (SELECT usesuper FROM pg_user WHERE usename = session_user));
+        GET DIAGNOSTICS n = ROW_COUNT;
+        IF n = 0 THEN
+          RAISE EXCEPTION 'Job % does not exist or you don''t own it', alter_job.job_id;
+        END IF;
+      END $fn$;`;
+  await c.query(MOCK_ALTER_JOB);
 
   // The catalog columns the preflight reads (20260910100000 + C's 20261011100000).
   await c.query(`
@@ -237,6 +273,53 @@ try {
     CREATE FUNCTION shadow.format(text, bigint) RETURNS text LANGUAGE sql AS $f$
       SELECT 'CANARY_REQUEST_ID=999999'::text $f$;`);
 
+  // ── the PRODUCTION PRIVILEGE SPLIT ────────────────────────────────────────
+  // On hosted Supabase the operator connects as a NON-superuser `postgres` that holds SELECT — and
+  // only SELECT — on the supabase_admin-owned cron.job, while owning the application objects (which
+  // is why notif_digest_worker_liveness, SECURITY DEFINER over `username = current_user`, must be
+  // OWNED by the operator role here: owned by the boot superuser it would look for the wrong
+  // user's job). Every artifact below therefore runs on a restricted connection; running them as
+  // the boot superuser is exactly the blind spot that let a FOR UPDATE the production role cannot
+  // execute ship reviewed and green.
+  await c.query(`
+    CREATE ROLE hosted_postgres LOGIN NOSUPERUSER PASSWORD 'hosted_postgres';
+    GRANT USAGE ON SCHEMA cron TO hosted_postgres;
+    GRANT SELECT ON cron.job TO hosted_postgres;
+    GRANT USAGE ON SCHEMA public, net, vault, shadow TO hosted_postgres;
+    GRANT ALL ON ALL TABLES IN SCHEMA public TO hosted_postgres;
+    GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO hosted_postgres;
+    GRANT SELECT, INSERT ON net.http_request_queue TO hosted_postgres;
+    GRANT SELECT ON net._http_response TO hosted_postgres;
+    GRANT USAGE ON ALL SEQUENCES IN SCHEMA net TO hosted_postgres;
+    GRANT SELECT ON vault.decrypted_secrets TO hosted_postgres;
+    GRANT ALL ON ALL TABLES IN SCHEMA shadow TO hosted_postgres;
+    ALTER FUNCTION public.notif_digest_worker_liveness() OWNER TO hosted_postgres;`);
+  // The artifacts' lock include pins the pg_cron VERSION its measured semantics belong to; the
+  // extension is a mock here, so the catalog row it reads is planted (same device as the realpg
+  // cron-inert suite), with the version the semantics were measured on.
+  await c.query(`
+    INSERT INTO pg_extension (oid, extname, extowner, extnamespace, extrelocatable, extversion)
+      SELECT 999999, 'pg_cron', 10, n.oid, false, '1.6.4' FROM pg_namespace n WHERE n.nspname = 'cron'`);
+  op = new pg.Client({
+    connectionString: `postgresql://hosted_postgres:hosted_postgres@127.0.0.1:${PORT}/postgres` });
+  await op.connect();
+
+  // The split itself is load-bearing, so it is SELF-TESTED: if the restricted role could FOR
+  // UPDATE (or write) cron.job, every scenario below would be running against a privilege model
+  // production does not have — the exact modelling failure this rework exists to close.
+  {
+    let denied = false;
+    try { await op.query(`SELECT jobid FROM cron.job FOR UPDATE`); }
+    catch (e) { denied = e.code === '42501'; }
+    rec('the operator role CANNOT lock cron.job FOR UPDATE (the production refusal, reproduced)',
+      denied, denied ? '' : 'FOR UPDATE succeeded — the harness is not modelling the hosted privilege split');
+    let wdenied = false;
+    try { await op.query(`UPDATE cron.job SET active = active`); }
+    catch (e) { wdenied = e.code === '42501'; }
+    rec('...and cannot write cron.job directly either', wdenied,
+      wdenied ? '' : 'a direct UPDATE succeeded — the harness is not modelling the hosted privilege split');
+  }
+
   // ── the baseline world: a clean, fresh, delivering canary ────────────────
   const seedBaseline = async () => {
     await c.query(`
@@ -252,8 +335,12 @@ try {
       DELETE FROM public.notification_outbox;
       DELETE FROM net.http_request_queue;
       DELETE FROM net._http_response;`);
+    // username EXPLICITLY the operator role: the seeding connection is the boot superuser, so the
+    // column default would stamp ITS name and every owner-scoped lookup below would scope to the
+    // wrong identity.
     await c.query(
-      `INSERT INTO cron.job (jobname, schedule, command, active) VALUES ('notification-digest-worker', $1, $2, false)`,
+      `INSERT INTO cron.job (jobname, schedule, command, active, username)
+         VALUES ('notification-digest-worker', $1, $2, false, 'hosted_postgres')`,
       [REVIEWED.schedule, REVIEWED.command]);
     await c.query(`
       INSERT INTO public.notification_event_types (key, supports_digest, digest_engine_enabled, digest_cutover)
@@ -288,10 +375,14 @@ try {
   // — but this harness runs them all down ONE connection, so without a reset the pin would leak into
   // the next scenario's fixture SQL. The reset is the harness's business, not the artifact's: it
   // restores the world a real operator's next psql process would start from.
+  //
+  // ...and they run on the RESTRICTED connection, never the boot superuser. Superuser bypasses the
+  // very ACLs the production refusal came from, so a superuser-run artifact proves nothing about
+  // what the hosted role can execute.
   const runArtifact = async (name, vars = {}) => {
-    try { return { rows: await c.query(artifactText(name, vars)) }; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return { err: e.message }; }
-    finally { await c.query(`SET search_path = "$user", public`).catch(() => {}); }
+    try { return { rows: await op.query(artifactText(name, vars)) }; }
+    catch (e) { await op.query('ROLLBACK').catch(() => {}); return { err: e.message }; }
+    finally { await op.query(`SET search_path = "$user", public`).catch(() => {}); }
   };
 
   const preflight = async () => (await runArtifact('activation_preflight.sql', { run_id: RUN })).err ?? null;
@@ -572,9 +663,10 @@ try {
   // meant the job could be altered, replaced or deleted in between — and an arm-by-name matching
   // zero rows succeeds silently, so the tooling would report ARMED over a job that was gone.
   const activate = async () => (await runArtifact('activate.sql', { run_id: RUN })).err ?? null;
+  // read on the SUPERUSER connection, so the owner is named rather than current_user'd
   const jobActive = async () =>
     (await c.query(`SELECT active FROM cron.job WHERE jobname='notification-digest-worker'
-                     AND username=current_user`)).rows[0]?.active ?? null;
+                     AND username='hosted_postgres'`)).rows[0]?.active ?? null;
 
   await seedBaseline();
   {
@@ -614,39 +706,139 @@ try {
 
   // ── the locks, proven with a SECOND connection ───────────────────────────
   // Everything above runs on one client, so it can show that a refused activation rolls back but
-  // NOT that the locks exclude anything. The two lock statements are read out of activate.sql
-  // itself rather than retyped, so deleting either one from the artifact fails these outright
-  // instead of quietly testing a lock the gate no longer takes.
+  // NOT that the locks exclude anything. The lock statements are read out of the SHARED include
+  // (_gate_job_lock.sql) and activate.sql rather than retyped, so deleting or reshaping them there
+  // fails these outright instead of quietly testing a lock the gate no longer takes.
   const activateSrc = readFileSync(join(SQL_DIR, 'activate.sql'), 'utf8');
+  const gateLockSrc = readFileSync(join(SQL_DIR, '_gate_job_lock.sql'), 'utf8');
+  const assertHelpers = readFileSync(
+    join(SQL_DIR, '..', '..', 'notif-10ca3', 'sql', '_assert.sql'), 'utf8').replace(/^\\.*$/gm, '');
   const tableLock = activateSrc.match(/^LOCK TABLE [^\n]+;$/m)?.[0];
-  const rowLock = activateSrc.match(/CREATE TEMP TABLE _gate_job AS[\s\S]*?FOR UPDATE;/)?.[0];
+  const resolveStmt = gateLockSrc.match(/CREATE TEMP TABLE _gate_job AS[\s\S]*?;/)?.[0];
+  const lockStmt = gateLockSrc.match(
+    /SELECT pg_temp\.assert_eq\(\s*\(SELECT count\(\*\)::int FROM \(\s*SELECT cron\.alter_job[\s\S]*?'\);/)?.[0];
+  const writeProof = gateLockSrc.match(
+    /SELECT pg_temp\.assert\(\s*\(SELECT j\.xmin = pg_current_xact_id\(\)::xid[\s\S]*?'\);/)?.[0];
 
   await seedBaseline();
-  const other = conn();
+  const other = conn();   // the boot SUPERUSER — the out-of-band writer every race here needs
   await other.connect();
   try {
     rec('activate.sql still takes a table lock on the run ledger', !!tableLock,
       tableLock ? '' : 'no LOCK TABLE statement in activate.sql');
-    rec('activate.sql still locks the job row FOR UPDATE', !!rowLock,
-      rowLock ? '' : 'no FOR UPDATE row capture in activate.sql');
+    rec('the shared include still resolves _gate_job', !!resolveStmt,
+      resolveStmt ? '' : 'no _gate_job resolve in _gate_job_lock.sql');
+    rec('the shared include still locks through a guarded no-op cron.alter_job', !!lockStmt,
+      lockStmt ? '' : 'no guarded alter_job lock statement in _gate_job_lock.sql');
+    rec('the shared include still proves the lock write really happened', !!writeProof,
+      writeProof ? '' : 'no xmin write-proof in _gate_job_lock.sql');
+    for (const a of ['activate.sql', 'canary_invoke.sql', 'smoke_invoke.sql', 'enable_engine.sql']) {
+      rec(`${a} takes the shared job-row lock include`,
+        /^\\i _gate_job_lock\.sql\s*$/m.test(readFileSync(join(SQL_DIR, a), 'utf8')),
+        '');
+    }
 
-    if (tableLock && rowLock) {
-      // The row lock must actually exclude a concurrent modification of THAT job.
-      await c.query('BEGIN');
-      await c.query(rowLock);
+    // Drives the include's OWN statements stepwise on the RESTRICTED connection, so a writer can be
+    // interleaved between them — the race a single-shot artifact run cannot exhibit.
+    const opGate = async () => {
+      await op.query('BEGIN');
+      await op.query(assertHelpers);
+      await op.query(`DROP TABLE IF EXISTS pg_temp._gate_job`);
+      await op.query(resolveStmt);
+    };
+
+    if (tableLock && resolveStmt && lockStmt && writeProof) {
+      // (a) GATE LOCKS FIRST: every cron-API writer queues behind the held tuple lock.
+      await opGate();
+      await op.query(lockStmt);
+      await op.query(writeProof);
       await other.query(`SET lock_timeout = '600ms'`);
       let blocked = false;
       try { await other.query(`UPDATE cron.job SET schedule = '*/9 * * * *'`); }
       catch (e) { blocked = e.code === '55P03'; }          // lock_not_available
-      rec('the job row lock BLOCKS a concurrent change to that job', blocked,
-        blocked ? '' : 'another session altered the job while activation held it');
-      await c.query('ROLLBACK');
+      rec('the alter_job row lock BLOCKS a concurrent direct change to that job', blocked,
+        blocked ? '' : 'another session altered the job while the gate held it');
+      let alterBlocked = false;
+      try {
+        await other.query(`SELECT cron.alter_job(
+          (SELECT jobid FROM cron.job WHERE jobname = 'notification-digest-worker'), active := true)`);
+      } catch (e) { alterBlocked = e.code === '55P03'; }
+      rec('...and BLOCKS a concurrent arm through the cron API itself', alterBlocked,
+        alterBlocked ? '' : 'another session armed the job through alter_job while the gate held it');
+      await op.query('ROLLBACK');
       await other.query(`ROLLBACK`).catch(() => {});
+      // The rolled-back gate wrote nothing durable: the job row is exactly as seeded.
+      const after = await c.query(
+        `SELECT active FROM cron.job WHERE jobname = 'notification-digest-worker'`);
+      rec('...and a rolled-back gate leaves the job untouched', after.rows[0]?.active === false,
+        `active=${after.rows[0]?.active}`);
 
-      // ...and the table lock must exclude a new dispatch run starting mid-activation, which is
-      // what makes "this canary is still the newest run" true at COMMIT and not merely at check time.
-      await c.query('BEGIN');
-      await c.query(tableLock);
+      // (b) WRITER WINS THE RESOLVE→LOCK WINDOW WITH AN ARM: the lock statement's own snapshot sees
+      // the armed row, matches nothing, calls alter_job for nothing, and REFUSES — the arm is left
+      // in place for the operator, never silently overwritten. (The residual the include documents
+      // is strictly narrower: a commit landing INSIDE the lock statement's execution.)
+      await seedBaseline();
+      await opGate();
+      await other.query(`UPDATE cron.job SET active = true WHERE jobname = 'notification-digest-worker'`);
+      let armRefusal = null;
+      try { await op.query(lockStmt); } catch (e) { armRefusal = e.message; }
+      rec('an arm committed between resolve and lock is REFUSED, not overwritten',
+        !!armRefusal && armRefusal.includes('or is ARMED'),
+        armRefusal ?? 'the gate proceeded over a freshly armed job');
+      await op.query('ROLLBACK');
+      const armLeft = await c.query(
+        `SELECT active FROM cron.job WHERE jobname = 'notification-digest-worker'`);
+      rec('...and the out-of-band arm is still visible to the operator', armLeft.rows[0]?.active === true,
+        `active=${armLeft.rows[0]?.active}`);
+
+      // (c) JOB REPLACED in that window — deleted and re-created byte-identical under a NEW jobid.
+      // Identity of content does not transfer the lock: the resolved jobid is gone, and the gate
+      // must refuse rather than adopt the newcomer.
+      await seedBaseline();
+      await opGate();
+      await other.query(`DELETE FROM cron.job WHERE jobname = 'notification-digest-worker'`);
+      await other.query(
+        `INSERT INTO cron.job (jobname, schedule, command, active, username)
+           VALUES ('notification-digest-worker', $1, $2, false, 'hosted_postgres')`,
+        [REVIEWED.schedule, REVIEWED.command]);
+      let replRefusal = null;
+      try { await op.query(lockStmt); } catch (e) { replRefusal = e.message; }
+      rec('a job REPLACED under a new jobid between resolve and lock is REFUSED',
+        !!replRefusal && replRefusal.includes('replaced under a new jobid'),
+        replRefusal ?? 'the gate adopted a row it never resolved');
+      await op.query('ROLLBACK');
+
+      // (d) JOB DELETED in that window, nothing re-created: same refusal, nothing invoked.
+      await seedBaseline();
+      await opGate();
+      await other.query(`DELETE FROM cron.job WHERE jobname = 'notification-digest-worker'`);
+      let goneRefusal = null;
+      try { await op.query(lockStmt); } catch (e) { goneRefusal = e.message; }
+      rec('a job DELETED between resolve and lock is REFUSED',
+        !!goneRefusal && goneRefusal.includes('the job vanished'),
+        goneRefusal ?? 'the gate locked a row that no longer exists');
+      await op.query('ROLLBACK');
+
+      // (e) OWNER CHANGED in that window (superuser-only action): the row still qualifies on the
+      // gate's own predicate, so the refusal comes from pg_cron's ownership check inside alter_job
+      // — the API's error, and still fail-closed.
+      await seedBaseline();
+      await opGate();
+      await other.query(
+        `UPDATE cron.job SET username = 'someone_else' WHERE jobname = 'notification-digest-worker'`);
+      let ownRefusal = null;
+      try { await op.query(lockStmt); } catch (e) { ownRefusal = e.message; }
+      rec('an ownership change between resolve and lock is REFUSED by alter_job itself',
+        !!ownRefusal && ownRefusal.includes("don't own it"),
+        ownRefusal ?? 'the gate locked a job the role no longer owns');
+      await op.query('ROLLBACK');
+
+      // (f) ...and the run-ledger table lock must exclude a new dispatch run starting mid-activation,
+      // which is what makes "this canary is still the newest run" true at COMMIT, not merely at
+      // check time.
+      await seedBaseline();
+      await op.query('BEGIN');
+      await op.query(tableLock);
       await other.query(`SET lock_timeout = '600ms'`);
       let runBlocked = false;
       try {
@@ -655,7 +847,7 @@ try {
       } catch (e) { runBlocked = e.code === '55P03'; }
       rec('the run-ledger lock BLOCKS a new dispatch run starting mid-activation', runBlocked,
         runBlocked ? '' : 'a new worker run was inserted while activation was deciding');
-      await c.query('ROLLBACK');
+      await op.query('ROLLBACK');
       await other.query(`ROLLBACK`).catch(() => {});
     }
 
@@ -666,8 +858,9 @@ try {
     rec('activate.sql still locks the canary\'s groups FOR SHARE', !!groupLock,
       groupLock ? '' : 'no FOR SHARE on the canary groups in activate.sql');
     if (groupLock) {
-      await c.query('BEGIN');
-      await c.query(groupLock.split(":'run_id'").join(`'${RUN}'`));
+      await seedBaseline();
+      await op.query('BEGIN');
+      await op.query(groupLock.split(":'run_id'").join(`'${RUN}'`));
       await other.query(`SET lock_timeout = '600ms'`);
       let groupBlocked = false;
       try {
@@ -676,30 +869,13 @@ try {
       } catch (e) { groupBlocked = e.code === '55P03'; }
       rec('the canary-group lock BLOCKS a webhook re-stating the group mid-activation', groupBlocked,
         groupBlocked ? '' : 'a callback changed the canary group while activation was deciding');
-      await c.query('ROLLBACK');
+      await op.query('ROLLBACK');
       await other.query(`ROLLBACK`).catch(() => {});
     }
-    // enable-engine's OWN race: reading job_active and enabling the event in a later statement let
-    // a concurrent `cron.alter_job(active := true)` commit in between, putting the engine live over
-    // an armed cron. The lock is what closes it, so the lock is what gets proven.
-    await seedBaseline();
-    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
-    const engineSrc = readFileSync(join(SQL_DIR, 'enable_engine.sql'), 'utf8');
-    const engineRowLock = engineSrc.match(/CREATE TEMP TABLE _gate_job AS[\s\S]*?FOR UPDATE;/)?.[0];
-    rec('enable_engine.sql locks the job row', !!engineRowLock, engineRowLock ? '' : 'no FOR UPDATE');
-    if (engineRowLock) {
-      await c.query('BEGIN');
-      await c.query(engineRowLock);
-      await other.query(`SET lock_timeout = '600ms'`);
-      let armBlocked = false;
-      try { await other.query(`UPDATE cron.job SET active = true`); }
-      catch (e) { armBlocked = e.code === '55P03'; }
-      rec('...and that lock BLOCKS a concurrent arm while the engine is being enabled', armBlocked,
-        armBlocked ? '' : 'another session armed the cron mid-transaction');
-      await c.query('ROLLBACK');
-      await other.query('ROLLBACK').catch(() => {});
-      await c.query(`DROP TABLE IF EXISTS pg_temp._gate_job`);
-    }
+    // enable-engine's OWN race — reading job_active and enabling the event in a later statement,
+    // while a concurrent arm commits in between — is closed by the SAME shared lock include now,
+    // whose blocking behaviour is proven in (a) above; that it takes the include at all is pinned
+    // in the four-artifact loop.
 
     // THE EARLY IN-FLIGHT REFUSAL, observed through a FULL activation under contention. The
     // in-flight run is also caught by the shared assertions, so a scenario without contention
@@ -725,6 +901,46 @@ try {
     await other.end().catch(() => {});
   }
 
+  // ── the lock primitive's own failure modes ───────────────────────────────
+  // A pg_cron that quietly SKIPS a value-identical update would leave every later assertion
+  // running with no lock held and every check green. The include's xmin write-proof is what
+  // notices, and this is its mutation pin: alter_job replaced by an invoked-but-writes-nothing
+  // body must be refused.
+  await seedBaseline();
+  await c.query(`
+    CREATE OR REPLACE FUNCTION cron.alter_job(job_id bigint, schedule text DEFAULT NULL,
+        command text DEFAULT NULL, database text DEFAULT NULL, username text DEFAULT NULL,
+        active boolean DEFAULT NULL)
+      RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $fn$
+      BEGIN RETURN; END $fn$;`);
+  {
+    const err = await canaryInvoke();
+    rec('an alter_job that skips the identical write is REFUSED by the write-proof',
+      !!err && err.includes('really wrote'), err ?? 'the invocation proceeded with no lock held');
+  }
+  await c.query(MOCK_ALTER_JOB);   // restore the measured semantics
+
+  // An unreviewed pg_cron line must stop the rollout for re-review BEFORE any lock is attempted —
+  // the lock's semantics are measured properties of 1.6.x, not an API contract.
+  await seedBaseline();
+  await c.query(`UPDATE pg_extension SET extversion = '1.7.0' WHERE extname = 'pg_cron'`);
+  {
+    const err = await canaryInvoke();
+    rec('an unreviewed pg_cron version is REFUSED before any lock is attempted',
+      !!err && err.includes('reviewed 1.6.x'), err ?? 'it proceeded on an unreviewed pg_cron');
+  }
+  await c.query(`UPDATE pg_extension SET extversion = '1.6.4' WHERE extname = 'pg_cron'`);
+
+  // A job owned by ANOTHER role never resolves (the resolve is owner-scoped), so a transactional
+  // artifact refuses at the include's own exists-check.
+  await seedBaseline();
+  await c.query(`UPDATE cron.job SET username = 'someone_else'`);
+  {
+    const err = await enableEngine();
+    rec('enable-engine REFUSES when the job belongs to another role',
+      !!err && err.includes('the digest cron job exists'), err ?? 'it proceeded over a foreign job');
+  }
+
   // ── a hostile search_path must not redirect the gate ─────────────────────
   // search_path can be set per ROLE or per DATABASE, which the client-side PG* stripping cannot
   // touch. With `hostile` ahead of pg_temp, an unqualified `_gate_job` resolves to a permanent
@@ -738,8 +954,12 @@ try {
     INSERT INTO cron.job (jobname, schedule, command, active)
       VALUES ('attacker-job', '* * * * *', 'SELECT 1', false);
     CREATE TABLE hostile._gate_job AS
-      SELECT jobid FROM cron.job WHERE jobname = 'attacker-job';`);
-  await c.query(`SET search_path = hostile, pg_temp, public`);
+      SELECT jobid FROM cron.job WHERE jobname = 'attacker-job';
+    -- the operator must be ABLE to reach the trap, or resolution skips the schema and the
+    -- scenario proves nothing
+    GRANT USAGE ON SCHEMA hostile TO hosted_postgres;
+    GRANT ALL ON ALL TABLES IN SCHEMA hostile TO hosted_postgres;`);
+  await op.query(`SET search_path = hostile, pg_temp, public`);
   {
     // Run the DRY RUN under the hostile path first — its DROP TABLE IF EXISTS is the statement
     // that could have destroyed the planted permanent table, and asserting preservation without
@@ -761,7 +981,7 @@ try {
     const still = await c.query(`SELECT to_regclass('hostile._gate_job') IS NOT NULL AS ok`);
     rec('...and the preflight never dropped the permanent table of that name', still.rows[0].ok === true);
   }
-  await c.query(`SET search_path = "$user", public`);
+  await op.query(`SET search_path = "$user", public`);
   await c.query(`DROP SCHEMA hostile CASCADE`);
 
   // ── assert-inert: the gate that must run BEFORE any switch ───────────────
@@ -818,7 +1038,7 @@ try {
                  UPDATE cron.job SET active = true`);
   {
     const err = await enableEngine();
-    rec('enable-engine REFUSES while the cron is ARMED', !!err && err.includes('still INACTIVE'),
+    rec('enable-engine REFUSES while the cron is ARMED', !!err && err.includes('or is ARMED'),
       err ?? 'it passed');
     const on = (await c.query(`SELECT count(*)::int AS n FROM public.notification_event_types WHERE digest_engine_enabled`)).rows[0].n;
     rec('...and the transaction rolled back, so nothing is enabled', on === 0, `enabled=${on}`);
@@ -984,17 +1204,18 @@ try {
     ]) {
       await seedBaseline();
       await c.query(`DELETE FROM shadow.captured`);
-      await c.query(`SET search_path = ${path}`);
+      // the hostile path is set on the OPERATOR session — the one the artifacts run on
+      await op.query(`SET search_path = ${path}`);
       let err = null;
-      try { err = await run(); } finally { await c.query(`SET search_path = "$user", public`); }
+      try { err = await run(); } finally { await op.query(`SET search_path = "$user", public`); }
       const captured = (await c.query(`SELECT count(*)::int AS n FROM shadow.captured`)).rows[0].n;
       rec(`${what} still PASSES under search_path = ${path}`, err === null, err ?? '');
       rec(`...and nothing shadowed was reached (${what} / ${path})`, captured === 0, `captured=${captured}`);
     }
     // ...and the invoker's request must carry the REAL bearer, not one a shadowed name rewrote.
     await seedBaseline();
-    await c.query(`SET search_path = ${path}`);
-    try { await canaryInvoke(); } finally { await c.query(`SET search_path = "$user", public`); }
+    await op.query(`SET search_path = ${path}`);
+    try { await canaryInvoke(); } finally { await op.query(`SET search_path = "$user", public`); }
     const q = (await c.query(
       `SELECT url, headers ->> 'Authorization' AS a FROM net.http_request_queue`)).rows[0];
     rec(`...and the real Vault bearer still reaches the request (${path})`,
@@ -1297,11 +1518,13 @@ try {
   // the job owner's path with nothing to pin it. This executes the migration's text directly, with
   // no SET LOCAL search_path in front of it — the artifact's protection removed, so only the
   // qualification in the command itself is left standing.
+  // ...run as the OPERATOR role: a production tick executes as the job's username, which is the
+  // hosted non-superuser — the same privileges this harness's operator connection holds.
   await seedBaseline();
   await c.query(`DELETE FROM shadow.captured`);
-  await c.query(`SET search_path = shadow, pg_catalog, public`);
+  await op.query(`SET search_path = shadow, pg_catalog, public`);
   try {
-    await c.query(`DO $do$ DECLARE v bigint; BEGIN EXECUTE $cmd_under_test$${REVIEWED.command}$cmd_under_test$ INTO v; END $do$;`);
+    await op.query(`DO $do$ DECLARE v bigint; BEGIN EXECUTE $cmd_under_test$${REVIEWED.command}$cmd_under_test$ INTO v; END $do$;`);
     const captured = (await c.query(`SELECT count(*)::int AS n FROM shadow.captured`)).rows[0].n;
     const auth = (await c.query(`SELECT headers ->> 'Authorization' AS a FROM net.http_request_queue`)).rows[0]?.a;
     rec('the SCHEDULED command is safe unaided — a tick has no SET LOCAL to protect it', captured === 0,
@@ -1311,15 +1534,16 @@ try {
   } catch (e) {
     rec('the SCHEDULED command is safe unaided — a tick has no SET LOCAL to protect it', false, e.message);
   } finally {
-    await c.query(`SET search_path = "$user", public`);
+    await op.query(`SET search_path = "$user", public`);
   }
 
   // An ARMED cron means the population is already being dispatched to on a schedule, so "one
   // controlled canary" is a fiction. assert-inert proves this at step 1b — four steps and two
-  // switches before the send — which is exactly why it has to be proven again here.
+  // switches before the send — which is exactly why it has to be proven again here. The refusal
+  // now comes from the LOCK's own gate: an armed row matches nothing, so nothing is altered.
   await invokeRefuses('canary-invoke REFUSES while the cron is ARMED',
     () => c.query(`UPDATE cron.job SET active = true`),
-    'still INACTIVE');
+    'or is ARMED');
 
   // The command hash is what makes executing the stored text safe at all. Drift must stop the send.
   await invokeRefuses('canary-invoke REFUSES a job whose command has DRIFTED',
@@ -1539,7 +1763,7 @@ try {
     'no ungrouped pending digest outbox row exists');
 
   await smokeRefuses('smoke_invoke REFUSES while the cron is ARMED',
-    () => c.query(`UPDATE cron.job SET active = true`), 'still INACTIVE');
+    () => c.query(`UPDATE cron.job SET active = true`), 'or is ARMED');
   await smokeRefuses('smoke_invoke REFUSES a job whose command has DRIFTED',
     () => c.query(`UPDATE cron.job SET command = command || $x$ -- appended$x$`),
     'EXACTLY the reviewed command');
@@ -1587,6 +1811,7 @@ try {
       JSON.stringify(markers));
   }
 } finally {
+  await op?.end().catch(() => {});
   await c.end().catch(() => {});
   await epg.stop().catch(() => {});
 }

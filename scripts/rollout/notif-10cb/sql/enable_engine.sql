@@ -34,10 +34,9 @@ SET LOCAL statement_timeout = '30s';
 -- a verify-then-act race: a concurrent `cron.alter_job(active := true)` can commit in between, and
 -- the engine goes live over an armed cron — exactly the pre-canary send window `assert-inert`
 -- exists to close. assert-inert cannot protect a LATER transaction; only this lock can.
-CREATE TEMP TABLE _gate_job AS
-  SELECT jobid FROM cron.job
-   WHERE jobname = 'notification-digest-worker' AND username = current_user
-     FOR UPDATE;
+-- The lock itself is the shared guarded no-op cron.alter_job (the hosted role cannot FOR UPDATE
+-- the supabase_admin-owned cron.job) — measured semantics + honest residuals in the include.
+\i _gate_job_lock.sql
 
 -- ...and the event catalog too, so "nothing else is enabled" is a real transactional postcondition
 -- rather than a snapshot someone can invalidate before this commits.
