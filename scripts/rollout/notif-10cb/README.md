@@ -24,10 +24,10 @@ of the mutating subcommands is an owner decision made from the runbook, not by a
 | 7 | `activate --yes --monitor-confirmed --admin-ops-confirmed <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
 | 8 | `rollback --yes --switch-off-confirmed <url>` | Engine off **and** cron inactive, then proves both. |
 
-**Steps 3b and 4 are owner actions with no subcommand, deliberately.** Enabling the engine and
-invoking the worker are the two moments that can produce a real email, and neither is something this
-script should do on the operator's behalf. `canary` reconciles what step 4 returned; it invokes
-nothing.
+**Step 4 is an owner action with no subcommand, deliberately.** Invoking the worker is the moment a
+real email goes out, and it is not something this script does on the operator's behalf. `canary`
+reconciles what step 4 returned; it invokes nothing. Step 3b *does* have a subcommand
+(`enable-engine --yes`) precisely because a raw UPDATE ran outside every guard here.
 
 **Note what `--admin-ops-confirmed` actually gates.** Step 4 is where the email goes, and it has no
 flag — so the release unit gates reconciliation (step 5) and arming (step 7) mechanically, and the

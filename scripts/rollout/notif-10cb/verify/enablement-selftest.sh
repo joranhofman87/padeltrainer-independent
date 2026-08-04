@@ -72,6 +72,29 @@ grep -qF 'status.sql' "$PSQL_LOG" && ok "status ran the read artifact" || bad "s
 # EVERY OTHER PREREQUISITE IS SUPPLIED, so the refusal can only be the missing --yes. Omitting the
 # run id and the other flags too meant deleting require_confirmed still produced a refusal later,
 # and the test passed for the wrong reason.
+# The two subcommands added in slice I. The realpg suite runs their ARTIFACTS directly, so without
+# these the dispatcher could lose require_confirmed, skip db_url, or route to the wrong artifact and
+# every reported gate would still be green.
+run "assert-inert is read-only and needs no --yes" 0 -- assert-inert "$URL"
+logged 'assert_inert.sql' && ok "assert-inert runs its own artifact" || bad "assert-inert runs its own artifact"
+run "assert-inert REFUSES a url belonging to another project" 1 -- assert-inert "$OTHER_URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
+
+run "enable-engine REFUSES without --yes" 1 -- enable-engine "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
+run "enable-engine REFUSES a url belonging to another project" 1 -- enable-engine --yes "$OTHER_URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it either" || bad "...and ran nothing against it either"
+run "enable-engine runs its own artifact" 0 -- enable-engine --yes "$URL"
+logged 'enable_engine.sql' && ok "enable-engine routes to enable_engine.sql" || bad "enable-engine routes to enable_engine.sql"
+if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+export PSQL_LOG="$TMP/log.engine_fail"; : > "$PSQL_LOG"
+set +e
+STUB_FAIL_ON=enable_engine EXPECTED_REF="$REF" bash "$SCRIPT" enable-engine --yes "$URL" >/dev/null 2>&1
+ee_rc=$?
+set -e
+[[ "$ee_rc" != "0" ]] && ok "a failing enable_engine artifact fails the subcommand (rc=$ee_rc)" \
+  || bad "a failing enable_engine artifact fails the subcommand"
+
 run "activate REFUSES without --yes" 1 -- activate --monitor-confirmed --admin-ops-confirmed "$URL" "11111111-1111-4111-8111-111111111111"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || { bad "...and touched the database not at all"; cat "$PSQL_LOG"; }
 

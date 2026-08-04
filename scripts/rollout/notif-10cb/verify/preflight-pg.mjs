@@ -556,6 +556,28 @@ try {
       await c.query('ROLLBACK');
       await other.query(`ROLLBACK`).catch(() => {});
     }
+    // enable-engine's OWN race: reading job_active and enabling the event in a later statement let
+    // a concurrent `cron.alter_job(active := true)` commit in between, putting the engine live over
+    // an armed cron. The lock is what closes it, so the lock is what gets proven.
+    await seedBaseline();
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+    const engineSrc = readFileSync(join(SQL_DIR, 'enable_engine.sql'), 'utf8');
+    const engineRowLock = engineSrc.match(/CREATE TEMP TABLE _gate_job AS[\s\S]*?FOR UPDATE;/)?.[0];
+    rec('enable_engine.sql locks the job row', !!engineRowLock, engineRowLock ? '' : 'no FOR UPDATE');
+    if (engineRowLock) {
+      await c.query('BEGIN');
+      await c.query(engineRowLock);
+      await other.query(`SET lock_timeout = '600ms'`);
+      let armBlocked = false;
+      try { await other.query(`UPDATE cron.job SET active = true`); }
+      catch (e) { armBlocked = e.code === '55P03'; }
+      rec('...and that lock BLOCKS a concurrent arm while the engine is being enabled', armBlocked,
+        armBlocked ? '' : 'another session armed the cron mid-transaction');
+      await c.query('ROLLBACK');
+      await other.query('ROLLBACK').catch(() => {});
+      await c.query(`DROP TABLE IF EXISTS pg_temp._gate_job`);
+    }
+
     // THE EARLY IN-FLIGHT REFUSAL, observed through a FULL activation under contention. The
     // in-flight run is also caught by the shared assertions, so a scenario without contention
     // cannot tell the early check from the late one. Here another session holds a canary group:

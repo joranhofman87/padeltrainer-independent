@@ -9,13 +9,27 @@
 \i ../../notif-10ca3/sql/_assert.sql
 
 BEGIN;
+-- Bounded, as in activate.sql: this transaction takes a table lock and a row lock, so an unbounded
+-- wait would hold the event catalog against every writer.
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 
--- PRECONDITION: the cron must still be INACTIVE. Enabling the engine while an armed job exists is
--- exactly the window `assert-inert` exists to close, and this is the last moment to catch it.
-SELECT pg_temp.assert(NOT (SELECT job_active FROM public.notif_digest_worker_liveness()),
-  'the digest cron is still INACTIVE (enabling the engine while it is armed would send to the whole population on the next tick)');
+-- LOCK THE JOB ROW FIRST. Reading `job_active` and then enabling the event in a later statement is
+-- a verify-then-act race: a concurrent `cron.alter_job(active := true)` can commit in between, and
+-- the engine goes live over an armed cron — exactly the pre-canary send window `assert-inert`
+-- exists to close. assert-inert cannot protect a LATER transaction; only this lock can.
+CREATE TEMP TABLE _gate_job AS
+  SELECT jobid FROM cron.job
+   WHERE jobname = 'notification-digest-worker' AND username = current_user
+     FOR UPDATE;
+
+-- ...and the event catalog too, so "nothing else is enabled" is a real transactional postcondition
+-- rather than a snapshot someone can invalidate before this commits.
+LOCK TABLE public.notification_event_types IN SHARE ROW EXCLUSIVE MODE;
+
+-- The full identity + inactivity check, against the LOCKED row — the same assertions the activation
+-- gate runs, not a weaker local copy.
+\i _job_identity_assertions.sql
 
 -- ...and only the cutover event may be turned on.
 SELECT pg_temp.assert(
@@ -41,5 +55,7 @@ SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM public.notification_event_types
     WHERE digest_engine_enabled AND key <> 'open_slots_player'), 0,
   'no other event was enabled');
+
+DROP TABLE pg_temp._gate_job;
 
 COMMIT;
