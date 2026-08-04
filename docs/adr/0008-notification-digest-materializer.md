@@ -899,7 +899,7 @@ silently invert the day a default moved) and the reverse INSERT only ever SEEDS 
 Which arm is live matters and the first draft of this got backwards: `open_slots_player` ships
 `supports_whatsapp = false` and the page renders the WhatsApp switch only where supported, so **the
 catalog arm is currently unreachable and the column arm is the live one**. The catalog arm is kept
-because Stage 8 turns WhatsApp on. An UPDATE needs no test at all: a same-channel-only save rewrites
+because Stage 8 turns WhatsApp on. A plain CHANGE to a row already at this (user, event) needs no test: a same-channel-only save rewrites
 `email_frequency` unchanged and the no-change short-circuit drops it, so a *changed* value on UPDATE
 is always an explicit email choice. `off` is excluded from the incidental set **unconditionally** —
 not because it happens not to be a default today, but because suppressing mail is safe whether it

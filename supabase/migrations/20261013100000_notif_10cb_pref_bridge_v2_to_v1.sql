@@ -156,7 +156,7 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION public.notif_pref_open_slots_incidental_values() IS
-  'The open_slots_player email cadences the platform can supply on its own: the catalog default (via the settings page effective() fallback) and the notification_preferences_v2.email_frequency COLUMN default (via a partial insert through the table API) — MINUS ''off'', which is excluded unconditionally so that an opt-out applies whatever the defaults happen to be. The reverse bridge only SEEDS this set on INSERT, so an incidental value can never overwrite an explicit legacy opt-out. Derived, not hard-coded. Retire with the bridge.';
+  'The open_slots_player email cadences the platform can supply on its own: the catalog default (via the settings page effective() fallback) and the notification_preferences_v2.email_frequency COLUMN default (via a partial insert through the table API) — MINUS ''off'', which is excluded unconditionally so that an opt-out applies whatever the defaults happen to be. The reverse bridge only SEEDS this set on ARRIVAL (an INSERT, or an UPDATE that moves a row onto this user+event), so an incidental value can never overwrite an explicit legacy opt-out. A retarget also carries the DEPARTING event''s catalog default into the test, because whether a value was chosen is a fact about where it came from. Derived, not hard-coded. Retire with the bridge.';
 
 -- ===========================================================================
 -- 1c. HARDEN THE LEGACY VALIDATION TRIGGER THAT THE REVERSE BRIDGE NOW INVOKES.
@@ -305,21 +305,23 @@ COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_to_v2() IS
 -- (open_slots_digest), email only. v2's whatsapp_frequency / push_frequency have no v1
 -- counterpart and are not mirrored. This is narrow by construction, not by convention.
 --
--- THE INSERT AMBIGUITY IS MIRROR-IMAGED, NOT ABSENT.
+-- THE ARRIVAL AMBIGUITY IS MIRROR-IMAGED, NOT ABSENT.
 -- The forward direction had to defend against a PARTIAL row: the legacy page upserts one column
 -- and the other thirteen take their column DEFAULTs, so an arriving 'weekly' may be nobody's
--- choice. The v2 side has the same hazard, from two sources rather than one, and only on INSERT:
+-- choice. The v2 side has the same hazard, from more sources, and on ARRIVAL rather than on every
+-- write. An ARRIVAL is an INSERT **or** an UPDATE that moves a row onto this (user, event) — see
+-- the logical-key gate below; a plain CHANGE to an existing row is judged differently:
 --
---   * v2 UPDATE with a CHANGED email_frequency is ALWAYS an explicit email choice. A save that
---     touches only the other channel re-writes email_frequency with the value it already had,
---     which the no-change short-circuit below drops. Apply unconditionally.
---   * v2 INSERT may carry a value the PLATFORM supplied rather than the user — either the catalog
---     default (via saveEvent()'s effective() fallback) or the v2 COLUMN default (via a partial
---     insert through the granted table API). Mirroring either over an existing v1 'off' with
---     DO UPDATE would resume mail for someone who had opted out — the same consent violation the
---     forward rule refuses, arriving the other way round.
+--   * a CHANGED email_frequency on a row already at this (user, event) is ALWAYS an explicit email
+--     choice. A save that touches only the other channel re-writes the column with the value it
+--     already had, which the no-change short-circuit drops. Apply unconditionally.
+--   * an ARRIVAL may carry a value the PLATFORM supplied rather than the user — the catalog default
+--     (via saveEvent()'s effective() fallback), the v2 COLUMN default (via a partial insert through
+--     the granted table API), or, for a retarget, the DEPARTING event's catalog default. Mirroring
+--     any of those over an existing v1 'off' with DO UPDATE would resume mail for someone who had
+--     opted out — the same consent violation the forward rule refuses, arriving the other way round.
 --
--- So INSERT applies the SAME test by value, against BOTH defaults:
+-- So an ARRIVAL applies the SAME test by value, against every default that could have supplied it:
 -- notif_pref_open_slots_incidental_values() (§1b) is the single derived definition of "a value the
 -- platform can produce on its own". A value in that set is ambiguous and only ever SEEDS; any
 -- other value could not have been produced without a user choosing it, and therefore applies.
@@ -341,7 +343,8 @@ RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
 AS $$
 DECLARE
-  v_incidental text[];
+  v_incidental   text[];
+  v_prev_default text;
 BEGIN
   -- RECURSION GUARD, as above.
   IF public.notif_pref_bridge_hop_active() THEN RETURN NEW; END IF;
@@ -357,12 +360,17 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- AN UPDATE THAT RETARGETS A ROW ONTO THIS EVENT IS AN ARRIVAL, NOT A CHANGE.
-  -- `event_type` is updatable by its owner (own-row UPDATE policy + column grant), so a row can
-  -- move onto open_slots_player from another event. OLD.email_frequency then belongs to a
-  -- DIFFERENT event and comparing against it is meaningless: it could suppress a real arriving
-  -- value, or treat an incidental one as an explicit change. Such a row takes the INSERT rules.
-  IF TG_OP = 'UPDATE' AND OLD.event_type IS NOT DISTINCT FROM NEW.event_type THEN
+  -- AN UPDATE THAT MOVES A ROW ONTO THIS (user, event) IS AN ARRIVAL, NOT A CHANGE.
+  -- Both halves of the logical key are updatable: `event_type` by the row's owner (own-row UPDATE
+  -- policy + column grant), and `user_id` by service_role, which RLS does not constrain. If either
+  -- moved, OLD.email_frequency describes a DIFFERENT (user, event) and comparing against it is
+  -- meaningless — it would either suppress a real arriving value or treat an incidental one as an
+  -- explicit change. Comparing only event_type left the service_role case misclassified: moving an
+  -- `off` row from user A to user B changed nothing about email, so the change path returned early
+  -- and B's opt-out never reached the legacy reader.
+  IF TG_OP = 'UPDATE'
+     AND OLD.event_type IS NOT DISTINCT FROM NEW.event_type
+     AND OLD.user_id    IS NOT DISTINCT FROM NEW.user_id THEN
     -- Only an actual CHANGE is a user action about EMAIL. A WhatsApp-only save re-writes this
     -- column unchanged and must not be mirrored (it would also cost a pointless row lock on v1).
     IF NEW.email_frequency IS NOT DISTINCT FROM OLD.email_frequency THEN
@@ -379,9 +387,30 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- ARRIVAL (INSERT, or an UPDATE that retargeted this row onto the event): resolve the ambiguity
+  -- ARRIVAL (INSERT, or an UPDATE that moved this row onto this user+event): resolve the ambiguity
   -- by value against the platform-suppliable defaults (header, §1b).
   v_incidental := public.notif_pref_open_slots_incidental_values();
+
+  -- A RETARGET ARRIVES CARRYING THE OTHER EVENT'S HISTORY, so this event's incidental set is not
+  -- the whole universe of values the platform could have supplied for it.
+  --
+  -- Concretely: a WhatsApp-only first save on some event whose catalog default is 'daily' stores
+  -- email='daily' without the user ever choosing it. Retarget that row onto open_slots_player and
+  -- 'daily' is not in {instant, weekly} — so it would be read as an explicit choice and would
+  -- overwrite a legacy 'off', resuming mail after an opt-out. Whether a value was CHOSEN is a fact
+  -- about where it came from, so the departing event's default has to be carried into the test.
+  --
+  -- 'off' stays applying whatever the other event's default is, for the same reason as §1b.
+  IF TG_OP = 'UPDATE' THEN
+    SELECT t.default_email_frequency INTO v_prev_default
+      FROM public.notification_event_types t
+     WHERE t.key = OLD.event_type;
+    IF v_prev_default IS NOT NULL
+       AND v_prev_default <> 'off'
+       AND NOT (v_prev_default = ANY (v_incidental)) THEN
+      v_incidental := v_incidental OPERATOR(pg_catalog.||) v_prev_default;
+    END IF;
+  END IF;
 
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
   IF NEW.email_frequency = ANY (v_incidental) THEN
@@ -420,22 +449,84 @@ CREATE TRIGGER trg_mirror_open_slots_pref_to_v1
 -- short-circuit makes the unrestricted form cost the same for the write that actually dominates:
 -- the settings page always names both channel columns anyway.
 --
--- NOTE ON DELETE AND ON RETARGETING AWAY: not mirrored, and the reason is NOT that they cannot
--- happen. They can: `authenticated` holds DELETE and UPDATE grants on this table with own-row
--- policies (20260910100000), so a user can remove or repoint their own row through the table API
--- even though the settings page offers no way to.
+-- ===========================================================================================
+-- 3a. DEPARTURES — losing the v2 row, and the OPT-OUT-PRESERVING mirror.
 --
--- They are not mirrored because every available mirror is worse than the divergence. Losing the
--- row makes the EFFECTIVE v2 preference the catalog default, so a faithful mirror would write that
--- default into v1 — and deleting an `off` row would then RESUME mail through the legacy reader.
--- That is the one outcome this file exists to prevent, so the bridge declines to act. v1 instead
--- retains the last cadence the user explicitly chose.
+-- `authenticated` holds DELETE and own-row UPDATE on this table (20260910100000:232,234), so a
+-- user can remove or repoint their own row through the table API even though the settings page
+-- offers no way to; service_role can move one between users. When that happens the EFFECTIVE v2
+-- preference becomes the catalog default while v1 keeps the departed value, and the two disagree.
 --
--- The residual, stated exactly: after such a delete the legacy reader can send at the user's last
--- explicit cadence while v2 resolves to the catalog default — a cadence mismatch, in either
--- direction, between two values the user either chose or inherited by design. It is bounded to a
--- legacy column that 10c-d retires, it is not reachable from any UI, and it never sends to someone
--- whose recorded state is an opt-out.
+-- An earlier draft declined to mirror departures at all, on the grounds that a faithful mirror
+-- would write the catalog default into v1 and so deleting an `off` row would RESUME legacy mail.
+-- The premise is right; the conclusion was too strong, and saying "every available mirror is
+-- worse" was simply wrong. A mirror that REFUSES to touch an opt-out — on either side — keeps that
+-- protection and still restores fidelity everywhere else:
+--
+--   * OLD.email_frequency = 'off'   -> do nothing. The user's opt-out is what is departing; it must
+--                                     not be traded for the catalog default.
+--   * v1 is already 'off'           -> do nothing. Never overwrite a legacy opt-out, whatever the
+--                                     v2 side says. This is the same rule §3 applies on arrival.
+--   * otherwise                     -> set v1 to the catalog default, which is exactly what v2 now
+--                                     resolves to, so the two agree again.
+--
+-- UPDATE, never INSERT. A departure is not a reason to CREATE a legacy row: after full account
+-- deletion (_shared/delete-user-data.ts removes the v1 row, and the v2 rows go with auth.users)
+-- the UPDATE simply matches nothing, where an upsert would resurrect a row for a deleted user.
+--
+-- The residual, stated exactly: deleting an `off` row leaves v1 `off` while v2 resolves to the
+-- catalog default. They disagree, deliberately, and in the direction that sends LESS — the legacy
+-- reader stays silent for someone whose last recorded intent was silence.
+CREATE OR REPLACE FUNCTION public.notif_mirror_open_slots_pref_departure()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_default text;
+BEGIN
+  IF public.notif_pref_bridge_hop_active() THEN RETURN NULL; END IF;
+  IF OLD.user_id IS NULL THEN RETURN NULL; END IF;
+
+  -- The departing value is an opt-out: leave the legacy reader suppressed.
+  IF OLD.email_frequency = 'off' THEN RETURN NULL; END IF;
+
+  SELECT t.default_email_frequency INTO v_default
+    FROM public.notification_event_types t
+   WHERE t.key = 'open_slots_player';
+  IF v_default IS NULL OR v_default NOT IN ('instant','daily','weekly') THEN RETURN NULL; END IF;
+
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
+  UPDATE public.notification_preferences
+     SET open_slots_digest = v_default
+   WHERE user_id = OLD.user_id
+     AND open_slots_digest IS DISTINCT FROM v_default
+     AND open_slots_digest <> 'off';   -- never overwrite a legacy opt-out
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
+  RETURN NULL;
+END $$;
+
+COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_departure() IS
+  'Cutover bridge (v2 -> v1), departure half: when a user loses their open_slots_player v2 row (DELETE, retarget to another event, or reassignment to another user) the effective v2 preference becomes the catalog default, so the legacy column is moved to match. REFUSES when the departing value is off or the legacy column is already off, so a departure can never resume mail after an opt-out. UPDATE-only, so it cannot resurrect a legacy row for a deleted account. Retire with the bridge.';
+
+-- Two triggers, one function: a WHEN clause on a DELETE trigger cannot reference NEW, so the
+-- delete and update-away cases cannot share one.
+DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_departure_del ON public.notification_preferences_v2;
+CREATE TRIGGER trg_mirror_open_slots_pref_departure_del
+  AFTER DELETE ON public.notification_preferences_v2
+  FOR EACH ROW
+  WHEN (OLD.event_type = 'open_slots_player')
+  EXECUTE FUNCTION public.notif_mirror_open_slots_pref_departure();
+
+-- A row leaves this (user, event) either by changing event_type or by being reassigned to another
+-- user. Both leave the ORIGINAL user without an open-slots preference.
+DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_departure_upd ON public.notification_preferences_v2;
+CREATE TRIGGER trg_mirror_open_slots_pref_departure_upd
+  AFTER UPDATE ON public.notification_preferences_v2
+  FOR EACH ROW
+  WHEN (OLD.event_type = 'open_slots_player'
+        AND (NEW.event_type IS DISTINCT FROM 'open_slots_player'
+             OR NEW.user_id IS DISTINCT FROM OLD.user_id))
+  EXECUTE FUNCTION public.notif_mirror_open_slots_pref_departure();
 
 -- ===========================================================================================
 -- 3b. ONE-TIME REVERSE RECONCILE, for v2 rows that predate the trigger.
@@ -536,7 +627,9 @@ $reconcile$;
 --
 -- HOW. In one migration: DROP TRIGGER trg_mirror_open_slots_pref_to_v1 ON
 -- public.notification_preferences_v2; DROP TRIGGER trg_mirror_open_slots_pref_to_v2 ON
--- public.notification_preferences; DROP FUNCTION notif_mirror_open_slots_pref_to_v1(),
+-- public.notification_preferences; DROP TRIGGER trg_mirror_open_slots_pref_departure_del AND
+-- trg_mirror_open_slots_pref_departure_upd ON public.notification_preferences_v2;
+-- DROP FUNCTION notif_mirror_open_slots_pref_departure(), notif_mirror_open_slots_pref_to_v1(),
 -- notif_mirror_open_slots_pref_to_v2(), notif_pref_bridge_hop_active(),
 -- notif_pref_open_slots_incidental_values().
 -- (validate_notification_frequency stays — §1c hardened it; it is not part of the bridge.)

@@ -226,6 +226,25 @@ const v2Of = async (u = USER) =>
 const writes = async (tbl: string) =>
   Number((await c.query(`SELECT count(*)::int n FROM public.bridge_audit WHERE tbl=$1`, [tbl])).rows[0].n);
 
+/**
+ * Clear the v2 row WITHOUT firing the departure mirror.
+ *
+ * Several scenarios need the state "a legacy row exists, no v2 row" — which is a pre-J world, or a
+ * user who never used the v2 page. Deleting the row normally is now a DEPARTURE, and the departure
+ * mirror correctly moves v1 to the catalog default, so a plain DELETE would build a different
+ * world than the one under test. Deletion as a SUBJECT is exercised in its own describe.
+ */
+const clearV2NoMirror = async () => {
+  await c.query(`ALTER TABLE public.notification_preferences_v2
+                   DISABLE TRIGGER trg_mirror_open_slots_pref_departure_del`);
+  try {
+    await c.query(`DELETE FROM public.notification_preferences_v2`);
+  } finally {
+    await c.query(`ALTER TABLE public.notification_preferences_v2
+                     ENABLE TRIGGER trg_mirror_open_slots_pref_departure_del`);
+  }
+};
+
 /** A legacy row as production has it: every other column at its real DDL default. */
 const seedV1 = (freq: string, u = USER) =>
   c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,$2)`, [u, freq]);
@@ -244,7 +263,7 @@ const saveV2 = (email: string, whatsapp = 'off', u = USER, evt = 'open_slots_pla
 describe('J — the reverse bridge closes the deploy-window gap', () => {
   it('a v2 opt-out reaches the legacy reader immediately, over an existing legacy choice', async () => {
     await seedV1('instant');
-    await c.query(`DELETE FROM public.notification_preferences_v2`); // drop the forward mirror's row
+    await clearV2NoMirror(); // drop the forward mirror's row
     await saveV2('off');
     // This is the whole point: send-email reads open_slots_digest and would otherwise still send.
     expect(await v1Of()).toBe('off');
@@ -268,7 +287,7 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     for (const f of chosenOnly()) {
       await c.query(`DELETE FROM public.notification_preferences_v2; DELETE FROM public.notification_preferences;`);
       await seedV1('weekly');
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await saveV2(f);
       expect(await v1Of(), `cadence ${f}`).toBe(f);
     }
@@ -296,7 +315,7 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     // the legacy reader kept sending. Reachable only through the table API, but it is an opt-out
     // that never lands, which is the failure this whole unit is about.
     await seedV1('instant');
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
                    VALUES ($1,$2,'off')`, [USER, OTHER_EVENT]);
     expect(await v1Of(), 'precondition: another event must not touch v1').toBe('instant');
@@ -315,7 +334,7 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     try {
       await applyBridge(narrowed);
       await seedV1('instant');
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
                      VALUES ($1,$2,'off')`, [USER, OTHER_EVENT]);
       await c.query(`UPDATE public.notification_preferences_v2 SET event_type='open_slots_player'
@@ -324,27 +343,86 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     } finally { await applyBridge(); }
   });
 
-  it('DELETE is NOT mirrored, and the residual is exactly what the migration claims', async () => {
-    // A faithful DELETE mirror would write the CATALOG DEFAULT into v1, because that is what the
-    // effective v2 preference becomes — so deleting an 'off' row would RESUME legacy mail. The
-    // bridge declines to act instead: v1 keeps the last cadence the user explicitly chose.
+  it('a RETARGET carrying the DEPARTING event\'s default is incidental, not a choice', async () => {
+    // The hole the retarget fix opened: a WhatsApp-only first save on an event whose catalog
+    // default is 'daily' stores email='daily' without the user choosing it. Retargeted onto
+    // open_slots_player, 'daily' is not in THIS event's incidental set {instant, weekly} — so
+    // without carrying the departing event's default into the test it reads as explicit and
+    // overwrites a legacy 'off', resuming mail after an opt-out.
+    await c.query(`UPDATE public.notification_event_types SET default_email_frequency='daily'
+                    WHERE key=$1`, [OTHER_EVENT]);
+    try {
+      await seedV1('off');
+      await clearV2NoMirror();
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                     VALUES ($1,$2,'daily')`, [USER, OTHER_EVENT]);
+      await c.query(`UPDATE public.notification_preferences_v2 SET event_type='open_slots_player'
+                      WHERE user_id=$1 AND event_type=$2`, [USER, OTHER_EVENT]);
+      expect(await v1Of(), 'an incidental value from the departing event must not overwrite an opt-out')
+        .toBe('off');
+    } finally {
+      await c.query(`UPDATE public.notification_event_types SET default_email_frequency='instant'
+                      WHERE key=$1`, [OTHER_EVENT]);
+    }
+  });
+
+  it('MUTANT: the departing event\'s default not carried — the retarget resumes mail after an opt-out', async () => {
+    const ANCHOR = `  IF TG_OP = 'UPDATE' THEN
+    SELECT t.default_email_frequency INTO v_prev_default`;
+    expect(BRIDGE_SQL).toContain(ANCHOR);
+    const mutated = BRIDGE_SQL.replace(ANCHOR, `  IF false THEN
+    SELECT t.default_email_frequency INTO v_prev_default`);
+    expect(mutated).not.toBe(BRIDGE_SQL);
+    await c.query(`UPDATE public.notification_event_types SET default_email_frequency='daily'
+                    WHERE key=$1`, [OTHER_EVENT]);
+    try {
+      await applyBridge(mutated);
+      await seedV1('off');
+      await clearV2NoMirror();
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                     VALUES ($1,$2,'daily')`, [USER, OTHER_EVENT]);
+      await c.query(`UPDATE public.notification_preferences_v2 SET event_type='open_slots_player'
+                      WHERE user_id=$1 AND event_type=$2`, [USER, OTHER_EVENT]);
+      expect(await v1Of(), 'the forbidden outcome: mail resumes after an opt-out').toBe('daily');
+    } finally {
+      await c.query(`UPDATE public.notification_event_types SET default_email_frequency='instant'
+                      WHERE key=$1`, [OTHER_EVENT]);
+      await applyBridge();
+    }
+  });
+
+  it('reassigning a row to ANOTHER user is an arrival for that user, not a no-op', async () => {
+    // service_role is not constrained by RLS and can move a row between users. Comparing only
+    // event_type left this misclassified: email did not change, so the change path returned early
+    // and the new owner's opt-out never reached the legacy reader.
+    await seedV1('instant', USER2);
+    await clearV2NoMirror();
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                   VALUES ($1,'open_slots_player','off')`, [USER]);
+    await c.query(`UPDATE public.notification_preferences_v2 SET user_id=$1 WHERE user_id=$2`, [USER2, USER]);
+    expect(await v1Of(USER2), "the new owner's opt-out must reach the legacy reader").toBe('off');
+  });
+
+  it('DELETING an opt-out never resumes mail — the legacy column stays off', async () => {
+    // The one case a departure mirror must refuse: the value departing IS the opt-out, so moving
+    // v1 to the catalog default would trade it away and the legacy reader would start sending.
     await saveV2('off');
     expect(await v1Of()).toBe('off');
     await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
     expect(await v2Of()).toBeNull();                       // v2 now resolves to the catalog default
-    expect(await v1Of(), 'never resurrected to the catalog default').toBe('off');
+    expect(await v1Of(), 'an opt-out must not be traded for the catalog default').toBe('off');
   });
 
   it('a different event type never touches the legacy column', async () => {
     await seedV1('instant');
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await saveV2('off', 'off', USER, OTHER_EVENT);
     expect(await v1Of()).toBe('instant');
   });
 
   it('only the acting user is affected', async () => {
     await seedV1('instant', USER2);
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await saveV2('off', 'off', USER);
     expect(await v1Of(USER)).toBe('off');
     expect(await v1Of(USER2)).toBe('instant');
@@ -358,7 +436,7 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
     // default — so a brand-new user flipping only the WhatsApp switch inserts this value without
     // ever expressing an email choice. Applying it over 'off' would resume mail after an opt-out.
     await seedV1('off');
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await saveV2(catalogDefault, 'instant');
     expect(await v1Of()).toBe('off');
   });
@@ -372,7 +450,7 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
   it('an inserted NON-default cadence does apply over an existing legacy choice', async () => {
     const explicit = chosenOnly()[0];
     await seedV1('weekly');
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await saveV2(explicit);
     expect(await v1Of()).toBe(explicit);
   });
@@ -408,7 +486,7 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
       expect((await c.query(`SELECT public.notif_pref_open_slots_incidental_values() v`)).rows[0].v)
         .not.toContain('off');
       await seedV1('instant');
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await saveV2('off');
       expect(await v1Of(), 'an opt-out must apply even when it is also the catalog default').toBe('off');
     } finally {
@@ -427,7 +505,7 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
       await c.query(`UPDATE public.notification_event_types SET default_email_frequency='off'
                       WHERE key='open_slots_player'`);
       await seedV1('instant');
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await saveV2('off');
       expect(await v1Of(), 'the forbidden outcome: mail continues after an opt-out').toBe('instant');
     } finally {
@@ -444,7 +522,7 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
     // an opt-out. (This, not the WhatsApp-only save, is the LIVE incidental source for this event:
     // open_slots_player ships supports_whatsapp = false.)
     await seedV1('off');
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type)
                    VALUES ($1,'open_slots_player')`, [USER]);
     const stored = await v2Of();
@@ -470,10 +548,10 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
                     WHERE key='open_slots_player'`);
     try {
       await seedV1('off');
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await saveV2('daily');                    // now the ambiguous one
       expect(await v1Of()).toBe('off');         // ... so it must NOT apply
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await saveV2('weekly');                   // no longer the default -> explicit
       expect(await v1Of()).toBe('weekly');
     } finally {
@@ -579,6 +657,90 @@ describe('J — recursion: two mirrors, one hop each', () => {
 });
 
 // =================================================================================================
+describe('J — departures: losing the v2 row, without ever trading away an opt-out', () => {
+  it('deleting a NON-off row moves the legacy column to the catalog default, so the two agree', async () => {
+    await saveV2(chosenOnly()[0] === 'off' ? 'daily' : chosenOnly()[0]);
+    await c.query(`UPDATE public.notification_preferences SET open_slots_digest='daily' WHERE user_id=$1`, [USER])
+      .catch(() => undefined);
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+    // v2 now resolves to the catalog default; v1 must too.
+    expect(await v1Of()).toBe(catalogDefault);
+  });
+
+  it('but it refuses when the LEGACY column is already off, whatever v2 said', async () => {
+    await c.query(`ALTER TABLE public.notification_preferences_v2 DISABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                   VALUES ($1,'open_slots_player','daily')`, [USER]);
+    await c.query(`ALTER TABLE public.notification_preferences_v2 ENABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
+    await seedV1('off');
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+    expect(await v1Of(), 'a legacy opt-out is never overwritten by a departure').toBe('off');
+  });
+
+  it('retargeting AWAY is a departure too', async () => {
+    await saveV2('daily');
+    await c.query(`UPDATE public.notification_preferences_v2 SET event_type=$1
+                    WHERE user_id=$2 AND event_type='open_slots_player'`, [OTHER_EVENT, USER]);
+    expect(await v1Of()).toBe(catalogDefault);
+  });
+
+  it('a departure never CREATES a legacy row — account teardown stays a no-op', async () => {
+    await saveV2('daily');
+    await c.query(`DELETE FROM public.notification_preferences WHERE user_id=$1`, [USER]); // v1 gone first
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+    expect(await v1Of(), 'an UPDATE-only mirror cannot resurrect a deleted account row').toBeNull();
+  });
+
+  it('a departure does not bounce back through the forward mirror', async () => {
+    await saveV2('daily');
+    await c.query(`DELETE FROM public.bridge_audit`);
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+    expect(await writes('v1')).toBe(1);
+    expect(await writes('v2'), 'the guard must hold across the departure write').toBe(0);
+  });
+
+  it("MUTANT: the departure's off-guard removed — deleting an opt-out resumes mail", async () => {
+    // BOTH off-guards, because they are deliberately redundant and each masks the other: the
+    // departing value is 'off' AND the legacy column is 'off', so removing either alone leaves the
+    // other still refusing. The positive control below proves that is the reason.
+    const A1 = `  IF OLD.email_frequency = 'off' THEN RETURN NULL; END IF;`;
+    const A2 = `     AND open_slots_digest <> 'off';   -- never overwrite a legacy opt-out`;
+    expect(BRIDGE_SQL).toContain(A1);
+    expect(BRIDGE_SQL).toContain(A2);
+    const mutated = BRIDGE_SQL.replace(A1, `  -- off-guard removed by mutation pin`).replace(A2, `     ;`);
+    expect(mutated).not.toBe(BRIDGE_SQL);
+    try {
+      await applyBridge(mutated);
+      await saveV2('off');
+      await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+      expect(await v1Of(), 'the forbidden outcome: the opt-out traded for the catalog default')
+        .toBe(catalogDefault);
+    } finally { await applyBridge(); }
+  });
+
+  it('POSITIVE CONTROL: removing only the legacy-side off-guard still refuses', async () => {
+    const A2 = `     AND open_slots_digest <> 'off';   -- never overwrite a legacy opt-out`;
+    expect(BRIDGE_SQL).toContain(A2);
+    try {
+      await applyBridge(BRIDGE_SQL.replace(A2, `     ;`));
+      await saveV2('off');
+      await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+      expect(await v1Of(), 'the departing-value guard alone is sufficient here').toBe('off');
+    } finally { await applyBridge(); }
+  });
+
+  it('MUTANT: the departure mirror removed entirely — v1 and v2 stay diverged', async () => {
+    try {
+      await c.query(`DROP TRIGGER trg_mirror_open_slots_pref_departure_del ON public.notification_preferences_v2`);
+      await saveV2('daily');
+      await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+      expect(await v1Of()).toBe('daily');            // v2 resolves to the catalog default: diverged
+      expect(await v1Of()).not.toBe(catalogDefault);
+    } finally { await applyBridge(); }
+  });
+});
+
+// =================================================================================================
 describe('J — the one-time reverse reconcile catches v2 rows that predate the trigger', () => {
   /** A v2 row written before the reverse mirror existed: no trigger, so no legacy counterpart. */
   const seedPreJ = async (freq: string, u = USER) => {
@@ -600,7 +762,7 @@ describe('J — the one-time reverse reconcile catches v2 rows that predate the 
 
   it('a pre-existing v2 opt-out OVERWRITES a disagreeing legacy row', async () => {
     await seedV1('instant');
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await seedPreJ('off');
     await applyBridge();
     expect(await v1Of()).toBe('off');
@@ -608,7 +770,7 @@ describe('J — the one-time reverse reconcile catches v2 rows that predate the 
 
   it('but an incidental value never overwrites an existing legacy choice', async () => {
     await seedV1('off');
-    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await clearV2NoMirror();
     await seedPreJ(incidental[0]);
     await applyBridge();
     expect(await v1Of(), 'the reconcile uses the trigger rules, not a looser second rule').toBe('off');
@@ -741,7 +903,7 @@ describe('J — MUTATION PINS', () => {
     try {
       await c.query(`DROP TRIGGER trg_mirror_open_slots_pref_to_v1 ON public.notification_preferences_v2`);
       await seedV1('instant');
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await saveV2('off');
       expect(await v1Of()).toBe('instant'); // <- the bug this release unit exists to fix
       expect(await v2Of()).toBe('off');
@@ -793,7 +955,7 @@ describe('J — MUTATION PINS', () => {
         `IF false THEN`,
       ]));
       await seedV1('off');
-      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await clearV2NoMirror();
       await saveV2(catalogDefault, 'instant');
       expect(await v1Of()).toBe(catalogDefault); // opt-out overwritten — the forbidden outcome
     } finally { await applyBridge(); }
