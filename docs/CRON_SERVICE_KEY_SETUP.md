@@ -221,19 +221,26 @@ authentication check — its disabled branch returns `200` before claiming/sendi
 > `net.http_post`** — an enabled worker would claim + send real digest emails. Do not infer "off" from the
 > response: by the time you read a non-`disabled` body, the send has already happened.
 
-Then probe the Vault key with the switched-off worker (async — `net.http_post` returns a pg_net **request id**):
+Then probe the Vault key with the switched-off worker. **Use the subcommand, not a hand-written
+statement:**
 
-```sql
--- PRECONDITION (verified out-of-band): notification-digest-worker DIGEST_SEND_ENABLED is unset / != 'true'.
-select net.http_post(
-  url := 'https://<project-ref>.supabase.co/functions/v1/notification-digest-worker',  -- DIGEST_SEND_ENABLED off
-  headers := jsonb_build_object('Content-Type','application/json',
-    'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')),
-  body := '{}'::jsonb
-);
--- then inspect the response (status + body only — see the secret caution below):
-select id, status_code, content, error_msg, created from net._http_response where id = <the returned id>;
+```bash
+EXPECTED_REF=<project-ref> scripts/rollout/notif-10cb/run-enablement.sh \
+  smoke-disabled --switch-off-confirmed "$DB_URL"
 ```
+
+It executes the reviewed cron job's **own stored command** after asserting its whole-command hash
+under a row lock, so the endpoint comes from the reviewed job rather than from a `<project-ref>` you
+retype; it pins `search_path`, so an unqualified name in that statement cannot be redirected; it
+refuses unless the cron is inactive and no engine is enabled; and it checks the reply is exactly
+`200 {"status":"disabled","reason":"disabled"}` with every counter unmoved.
+
+**Why this is not merely tidier.** The statement being run posts a Vault-decrypted `service_role`
+bearer. `DIGEST_SEND_ENABLED=false` stops the *mail*; it does nothing at all for the *credential*. A
+mistyped project ref sends that bearer to another project, and a hostile
+`public.jsonb_build_object(text,text,text,text)` — creatable by anyone with CREATE on `public`, which
+is in the default `search_path` — receives it as an argument and returns plausible headers. Both were
+demonstrated on a real server during review; see `scripts/rollout/notif-10cb/README.md`.
 
 > 🔒 **Never `select *` from — or dump — pg_net's request/queue tables.** The probe above lists specific
 > `net._http_response` columns on purpose: the **request** side (`net.http_request_queue`, and the request

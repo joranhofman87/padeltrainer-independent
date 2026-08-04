@@ -9,10 +9,13 @@
 #
 # THE SEQUENCE, and why it is this way round (ADR 0008 runbook step 5):
 #   1. status              — read the world. Safe, always.
-#   2. smoke-disabled      — invoke through the REAL Vault/pg_net path while the
-#                            switch is OFF. Must answer exactly
+#   2. smoke-disabled --switch-off-confirmed
+#                          — invoke through the REAL Vault/pg_net path while the
+#                            switch is OFF, by executing the reviewed job's own
+#                            stored command. Answers exactly
 #                            200 {"status":"disabled","reason":"disabled"} and
-#                            move NO counter. Proves the wiring without sending.
+#                            moves NO counter — both now CHECKED, not printed at
+#                            the operator. Proves the wiring without sending.
 #   0. (owner) SHIP Admin Notification Operations — mandatory before any canary or activation.
 #   3. (owner) set DIGEST_SEND_ENABLED=true on the worker (an edge env var; nothing here sees it).
 #   3b. enable-engine --yes — turn the digest engine on for the cutover event, and ONLY that event,
@@ -93,9 +96,14 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   nothing armed. Not the gate itself: `activate` re-checks under a
                                   row lock in the same transaction as the arm
   smoke-disabled --switch-off-confirmed <db_url>
-                                  read-only: capture counters either side of the disabled
-                                  invocation. Requires you to have verified DIGEST_SEND_ENABLED
-                                  is off — no SQL can see an edge env var
+                                  INVOKES the worker while the switch is off, by running the cron
+                                  job's OWN reviewed command — the same guarded path as the canary,
+                                  because that statement carries a Vault-decrypted bearer whether or
+                                  not it can send. Refuses unless the cron is inactive and NO engine
+                                  is enabled, then requires the reply to be exactly
+                                  200 {"status":"disabled","reason":"disabled"} and every counter to
+                                  be unmoved. Also needs your word that DIGEST_SEND_ENABLED is off —
+                                  no SQL can see an edge env var
   canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N] <db_url>
                                   SENDS. Invokes the worker ONCE by running the cron job's OWN
                                   stored command, after asserting it hashes to the reviewed value
@@ -288,6 +296,29 @@ run_sql_capture() {   # $1 = outfile, $2 = url, $3 = artifact, $@ = extra psql a
 # The value ERE is PARENTHESISED here rather than at each call site. `|` binds loosest in an ERE, so
 # `NAME=[0-9]+|none` is `(NAME=[0-9]+)` OR `(none)` — which matched the bare word `none` on a
 # neighbouring marker line and returned two values for one marker.
+# pg_net is asynchronous: the reply arrives after the invoking transaction commits, so this polls
+# rather than pretends. BOUNDED — an unanswered request must fail the subcommand, not hang a terminal
+# in front of an operator who has just triggered a credential-bearing request. Shared by the disabled
+# smoke and the canary so the two cannot drift into waiting differently.
+#
+# A permanent failure (net._http_response unreadable, say) simply exhausts the loop, and the last
+# captured output is what explains why.
+poll_for_reply() {   # $1 = url, $2 = request id, $3 = outfile
+  local url="$1" req_id="$2" outfile="$3"
+  local attempts="${CANARY_POLL_ATTEMPTS:-30}" interval="${CANARY_POLL_INTERVAL:-2}" attempt=0
+  [[ "$attempts" =~ ^[1-9][0-9]*$ ]] || die "CANARY_POLL_ATTEMPTS must be a positive integer"
+  [[ "$interval" =~ ^[0-9]+$ ]]      || die "CANARY_POLL_INTERVAL must be a non-negative integer"
+  while :; do
+    attempt=$((attempt + 1))
+    if run_sql_capture "$outfile" "$url" canary_invoke_response.sql -v request_id="$req_id"; then
+      return 0
+    fi
+    [[ "$attempt" -lt "$attempts" ]] \
+      || die "no pg_net reply for request ${req_id} after ${attempts} attempts. The request WAS queued, so treat the outcome as UNKNOWN, not as 'did not happen': read net._http_response for that id before invoking anything again"
+    sleep "$interval"
+  done
+}
+
 marker_values() {   # $1 = file, $2 = marker name, $3 = ERE for the value
   { grep -Eo "$2=($3)" "$1" || true; } | cut -d= -f2- | sort -u
 }
@@ -337,15 +368,56 @@ case "$SUB" in
     # The operator asserts it explicitly instead.
     [[ "$SWITCH_OFF_CONFIRMED" == "1" ]] || die \
       "smoke-disabled requires --switch-off-confirmed: verify DIGEST_SEND_ENABLED is unset/false on the notification-digest-worker function FIRST (this script cannot read an edge env var)"
-    # Read-only on purpose. The INVOCATION itself is the operator's step (through the
-    # Vault/pg_net path, exactly as the cron would); this captures the evidence either side of
-    # it. Comparing the two captures is what makes "zero count deltas" a fact rather than a
-    # claim — and an absolute-zero assertion against a live system would be meaningless.
+    # THE INVOCATION IS NO LONGER THE OPERATOR'S TO HAND-WRITE. It used to be: this subcommand
+    # captured the counters and left the `net.http_post` to a procedure in
+    # docs/CRON_SERVICE_KEY_SETUP.md with a hand-substituted project ref and unqualified names.
+    # DIGEST_SEND_ENABLED=false stops the mail and does nothing at all for the CREDENTIAL — that
+    # statement posts a Vault-decrypted service_role bearer, so a mistyped ref sends it to another
+    # project and a hostile `public.jsonb_build_object(...)` captures it. Same exposure the canary
+    # path was rebuilt to close, one step earlier in the sequence.
     url="$(db_url)"
-    run_sql "$url" status.sql
-    warn "capture this output BEFORE and AFTER the disabled invocation and diff the counter rows;"
-    warn "the invocation must answer exactly: 200 {\"status\":\"disabled\",\"reason\":\"disabled\"}"
-    ok "smoke evidence captured (no mutation)"
+    CANARY_TMP="$(mktemp -d)"
+    # shellcheck disable=SC2064  # expand now: it must be removed even if the variable is reassigned
+    trap "rm -rf '$CANARY_TMP'" EXIT
+
+    before="$CANARY_TMP/counters.before"
+    after="$CANARY_TMP/counters.after"
+    run_sql_capture "$before" "$url" smoke_counters.sql \
+      || die "could not read the counters before the smoke"
+
+    warn "smoke-disabled INVOKES the worker. Nothing can send: the cron is inactive and no engine is enabled."
+    if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql; then
+      die "the disabled smoke was REFUSED — the transaction rolled back, so nothing was queued. Read the failed assertion above"
+    fi
+    req_id="$(marker_values "$CANARY_TMP/invoke.out" CANARY_REQUEST_ID '[0-9]+')"
+    case "$req_id" in
+      ''|*[!0-9]*) die "the smoke did not print exactly one CANARY_REQUEST_ID (got '${req_id//$'\n'/, }')" ;;
+    esac
+
+    poll_for_reply "$url" "$req_id" "$CANARY_TMP/response.out"
+
+    status="$(marker_values "$CANARY_TMP/response.out" CANARY_RESPONSE_STATUS '[0-9]+|none')"
+    [[ "$status" == "200" ]] \
+      || die "the disabled smoke answered HTTP '${status:-<none>}' — it must answer 200; the response is printed above"
+
+    # EXACTLY the documented answer, not merely a 200. A worker that returned 200 with any other body
+    # has not proven the switch is off — and "the invocation must answer exactly …" was previously a
+    # sentence printed at the operator rather than a thing anyone checked.
+    grep -qF 'CANARY_RESPONSE_BODY={"status":"disabled","reason":"disabled"}' "$CANARY_TMP/response.out" \
+      || die "the disabled smoke did not answer exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} — DIGEST_SEND_ENABLED may not be off. Read the body above and do NOT continue"
+
+    run_sql_capture "$after" "$url" smoke_counters.sql \
+      || die "could not read the counters after the smoke"
+
+    # A DELTA, compared mechanically. Every counter must be identical across the invocation.
+    if ! diff <(grep -Eo 'SMOKE_COUNTER [a-z_]+=[0-9]+' "$before" | sort) \
+              <(grep -Eo 'SMOKE_COUNTER [a-z_]+=[0-9]+' "$after"  | sort) >"$CANARY_TMP/delta" 2>&1; then
+      cat "$CANARY_TMP/delta" >&2
+      die "the disabled smoke MOVED a counter — it is not disabled. Stop and account for the difference above"
+    fi
+    [[ -s "$before" ]] || die "the counter capture was empty — the comparison would have been vacuous"
+
+    ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} and moved no counter"
     ;;
 
   canary-invoke)
@@ -367,13 +439,6 @@ case "$SUB" in
     [[ "$MAX_RECIPIENTS" -le 50 ]] \
       || die "--max-recipients=${MAX_RECIPIENTS} is not a canary — a controlled first send reaches one recipient, and this bundle will not pretend otherwise"
 
-    # How long to wait for pg_net's reply. Overridable so the self-test does not sleep, and validated
-    # because both values reach `sleep`.
-    poll_attempts="${CANARY_POLL_ATTEMPTS:-30}"
-    poll_interval="${CANARY_POLL_INTERVAL:-2}"
-    [[ "$poll_attempts" =~ ^[1-9][0-9]*$ ]] || die "CANARY_POLL_ATTEMPTS must be a positive integer"
-    [[ "$poll_interval" =~ ^[0-9]+$ ]]      || die "CANARY_POLL_INTERVAL must be a non-negative integer"
-
     CANARY_TMP="$(mktemp -d)"
     # shellcheck disable=SC2064  # expand CANARY_TMP now: it must be removed even if it is reassigned
     trap "rm -rf '$CANARY_TMP'" EXIT
@@ -393,19 +458,7 @@ case "$SUB" in
     esac
     ok "queued pg_net request ${req_id} — the request leaves on commit, which has now happened"
 
-    # pg_net is asynchronous: the reply arrives after the commit, so this polls rather than pretends.
-    # A permanent failure (say net._http_response is unreadable) simply exhausts the loop and the last
-    # captured output is what explains why.
-    attempt=0
-    while :; do
-      attempt=$((attempt + 1))
-      if run_sql_capture "$resp_out" "$url" canary_invoke_response.sql -v request_id="$req_id"; then
-        break
-      fi
-      [[ "$attempt" -lt "$poll_attempts" ]] \
-        || die "no pg_net reply for request ${req_id} after ${poll_attempts} attempts. The request WAS queued, so treat the send as UNKNOWN, not as 'did not happen': read net._http_response for that id before invoking anything again"
-      sleep "$poll_interval"
-    done
+    poll_for_reply "$url" "$req_id" "$resp_out"
 
     status="$(marker_values "$resp_out" CANARY_RESPONSE_STATUS '[0-9]+|none')"
 
@@ -414,9 +467,16 @@ case "$SUB" in
     # returns a non-200 whose body still carries dispatchRunId. Refusing on the status first meant the
     # one case where mail had gone out AND something was wrong was the one case nothing measured how
     # much. Whenever there is a run id there is a run to account for, whatever the HTTP code said.
-    run_id="$({ grep -Eo '"dispatchRunId"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{36}"' "$resp_out" || true; } \
+    # EXACTLY ONE, or refuse — the same rule as the request id, which this did not follow. Taking
+    # `NR==1` from several distinct uuids means measuring and handing forward a run that may not be
+    # the one this invocation caused.
+    run_ids="$({ grep -Eo '"dispatchRunId"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{36}"' "$resp_out" || true; } \
               | { grep -Eo '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' || true; } \
-              | sort -u | awk 'NR==1')"
+              | sort -u)"
+    case "$run_ids" in
+      *$'\n'*) die "the reply named MORE THAN ONE dispatchRunId (${run_ids//$'\n'/, }) — refusing to guess which run this invocation caused" ;;
+    esac
+    run_id="$run_ids"
 
     # WHAT IT ACTUALLY REACHED, now that the run has finished. The ceiling asserted before the
     # invocation bounded the work VISIBLE THEN; pg_net dispatches after that transaction commits and

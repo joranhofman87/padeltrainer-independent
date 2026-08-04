@@ -50,6 +50,12 @@ if [[ -n "$file" ]]; then
   # their marker protocol or the whole subcommand is untestable here. Defaults are the happy path;
   # each is overridable so a test can drive the unhappy ones.
   case "$file" in
+    *smoke_counters.sql)
+      # The counters are compared as a DELTA, so the stub must be able to move one on demand.
+      printf 'SMOKE_COUNTER digest_groups=%s\n' "${STUB_SMOKE_GROUPS:-7}"
+      printf 'SMOKE_COUNTER worker_runs=3\n' ;;
+    *smoke_invoke.sql)
+      printf 'CANARY_REQUEST_ID=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}" ;;
     *canary_invoke.sql)
       printf 'CANARY_REQUEST_ID=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
       # A SECOND, different id — only when a test asks for one. The dispatcher must refuse rather
@@ -58,7 +64,7 @@ if [[ -n "$file" ]]; then
         printf 'CANARY_REQUEST_ID=%s\n' "$STUB_CANARY_SECOND_REQUEST_ID"
       fi ;;
     *canary_invoke_response.sql)
-      default_body='{"status":"ok","dispatchRunId":"22222222-2222-4222-8222-222222222222"}'
+      default_body="${STUB_DEFAULT_BODY:-{\"status\":\"ok\",\"dispatchRunId\":\"22222222-2222-4222-8222-222222222222\"}}"
       printf 'CANARY_RESPONSE_STATUS=%s\n' "${STUB_CANARY_STATUS:-200}"
       printf 'CANARY_RESPONSE_ERROR=none\n'
       printf 'CANARY_RESPONSE_BODY=%s\n' "${STUB_CANARY_BODY:-$default_body}" ;;
@@ -181,6 +187,74 @@ run "preflight REFUSES without a canary run id" 1 -- preflight "$URL"
 run "rollback REFUSES until the env switch is confirmed off" 1 -- rollback --yes "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and mutated nothing while refusing" || bad "...and mutated nothing while refusing"
 run "smoke-disabled REFUSES until the env switch is confirmed off" 1 -- smoke-disabled "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and invoked nothing while refusing" || bad "...and invoked nothing while refusing"
+
+# ── the disabled smoke INVOKES, and it is no longer hand-written ─────────────
+# It used to capture counters and leave the `net.http_post` to a runbook procedure with a
+# hand-substituted project ref and unqualified names. DIGEST_SEND_ENABLED=false stops the mail and
+# does nothing for the CREDENTIAL that statement carries.
+SMOKE_BODY='{"status":"disabled","reason":"disabled"}'
+export PSQL_LOG="$TMP/log.smoke_ok"; : > "$PSQL_LOG"
+set +e
+env "STUB_CANARY_BODY=$SMOKE_BODY" EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sm_rc=$?
+set -e
+[[ "$sm_rc" == "0" ]] && ok "smoke-disabled completes on the documented answer" \
+  || { bad "smoke-disabled completes on the documented answer (rc=$sm_rc)"; cat "$TMP/out"; }
+grep -qF 'smoke_invoke.sql' "$PSQL_LOG" && ok "...by running the guarded invoke artifact" \
+  || { bad "...by running the guarded invoke artifact"; cat "$PSQL_LOG"; }
+grep -qF 'smoke_counters.sql' "$PSQL_LOG" && ok "...capturing the counters either side" || bad "...capturing the counters either side"
+[[ "$(grep -cF 'smoke_counters.sql' "$PSQL_LOG")" == "2" ]] && ok "...twice, so the comparison is a DELTA" \
+  || bad "...twice, so the comparison is a DELTA"
+grep -qF 'canary_invoke_response.sql' "$PSQL_LOG" && ok "...and reading pg_net's reply" || bad "...and reading pg_net's reply"
+
+# ANY OTHER 200 IS NOT A DISABLED SMOKE. "must answer exactly …" used to be a sentence printed at the
+# operator; a worker that answered 200 with something else proved nothing about the switch.
+export PSQL_LOG="$TMP/log.smoke_body"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"ok","dispatchRunId":"22222222-2222-4222-8222-222222222222"}' \
+  EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sb_rc=$?
+set -e
+[[ "$sb_rc" != "0" ]] && ok "a 200 with any OTHER body fails the disabled smoke" \
+  || { bad "a 200 with any OTHER body fails the disabled smoke"; cat "$TMP/out"; }
+
+# ...and a counter that MOVED is the other half of the evidence.
+export PSQL_LOG="$TMP/log.smoke_delta"; : > "$PSQL_LOG"
+cat > "$TMP/psql_delta" <<'DSTUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PSQL_LOG"
+file=""; prev=""
+for a in "$@"; do [[ "$prev" == "-f" ]] && file="$a"; prev="$a"; done
+case "$file" in
+  *smoke_counters.sql)
+    n=$(( $(cat "$COUNTER_STATE" 2>/dev/null || echo 0) + 1 ))
+    printf '%s' "$n" > "$COUNTER_STATE"
+    printf 'SMOKE_COUNTER digest_groups=%s
+' "$n" ;;
+  *smoke_invoke.sql) printf 'CANARY_REQUEST_ID=4242
+' ;;
+  *canary_invoke_response.sql)
+    printf 'CANARY_RESPONSE_STATUS=200
+'
+    printf 'CANARY_RESPONSE_BODY={"status":"disabled","reason":"disabled"}
+' ;;
+esac
+exit 0
+DSTUB
+chmod +x "$TMP/psql_delta"; cp "$TMP/psql_delta" "$TMP/psql.bak.$$"
+mv "$TMP/psql" "$TMP/psql.orig"; cp "$TMP/psql_delta" "$TMP/psql"
+set +e
+env "COUNTER_STATE=$TMP/counter.state" EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sd_rc=$?
+set -e
+mv "$TMP/psql.orig" "$TMP/psql"
+[[ "$sd_rc" != "0" ]] && ok "a counter that MOVED fails the disabled smoke" \
+  || { bad "a counter that MOVED fails the disabled smoke"; cat "$TMP/out"; }
+grep -qF 'not disabled' "$TMP/out" && ok "...and says so plainly" || bad "...and says so plainly"
 
 run "rollback turns BOTH the engine and the cron off" 0 -- rollback --yes --switch-off-confirmed "$URL"
 logged 'rollback_disable.sql' && ok "rollback runs the disable artifact" || bad "rollback runs the disable artifact"
@@ -390,6 +464,21 @@ set -e
   || { bad "a canary that reached too many recipients fails the subcommand"; cat "$TMP/out"; }
 grep -qF 'already sent' "$TMP/out" && ok "...and says it has ALREADY sent, so roll back" \
   || { bad "...and says it has ALREADY sent, so roll back"; cat "$TMP/out"; }
+
+# TWO dispatchRunIds is not a choice to make either — the same rule as the request id, which this
+# path did not follow: it took the first of the sorted set and scope-checked a run that may not be
+# the one this invocation caused.
+export PSQL_LOG="$TMP/log.two_runs"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"ok","dispatchRunId":"22222222-2222-4222-8222-222222222222","retry":{"dispatchRunId":"33333333-3333-4333-8333-333333333333"}}' \
+  EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+tr_rc=$?
+set -e
+[[ "$tr_rc" != "0" ]] && ok "two dispatchRunIds are refused, not guessed between" \
+  || { bad "two dispatchRunIds are refused, not guessed between"; cat "$TMP/out"; }
+grep -qF 'canary_scope_verify.sql' "$PSQL_LOG" && bad "...and neither run is scope-checked" \
+  || ok "...and neither run is scope-checked"
 
 # TWO request ids is not a choice to make. Picking one would mean reporting the outcome of a request
 # this invocation may not have caused — the same reasoning that makes `canary` take the run id the

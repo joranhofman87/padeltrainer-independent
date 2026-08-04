@@ -110,11 +110,16 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
   `smoke-disabled`, `enable-engine`, `canary-invoke`, `canary`, `activate`, `rollback`). No auto-run,
   no "do it all" mode; every mutating step needs `--yes` and re-asserts the project ref. See its
   README for the sequence and for what the activation gate refuses.
-- **Nothing in the sequence is done by hand any more, including the send.** Both steps that can
-  produce mail have a subcommand: `enable-engine --yes` (which replaced a raw `UPDATE` pasted into a
-  shell) and `canary-invoke` (which replaced "invoke the worker by hand"). `canary-invoke` runs the
-  cron job's *own* stored command after asserting its whole-command hash under a row lock, so what is
-  invoked is what was reviewed, and it bounds how many recipients the invocation may reach.
+- **No step in the sequence is hand-written any more — including both invocations.** Three steps
+  used to be: a raw `UPDATE` for the engine (now `enable-engine --yes`), the canary send (now
+  `canary-invoke`), and the *disabled smoke* (now `smoke-disabled`). The smoke mattered as much as
+  the send even though it cannot mail anything: its statement carries a Vault-decrypted
+  `service_role` bearer, so a hand-substituted project ref sends that credential to the wrong project
+  and an unqualified `jsonb_build_object` hands it to whoever can create one. All three now run the
+  cron job's *own* stored command, hash-pinned under a row lock, so what is invoked is what was
+  reviewed. `canary-invoke` additionally bounds how many recipients it may reach; `smoke-disabled`
+  additionally requires the reply to be exactly `{"status":"disabled","reason":"disabled"}` and every
+  counter to be unmoved, both checked rather than printed at the operator.
 - **Rollback is three switches, and only two are in the database:** `DIGEST_SEND_ENABLED` is an edge
   env var that no SQL can read (Supabase's own secret tooling sets it; this bundle has no view of
   it), so the operator turns it off FIRST and says so (`--switch-off-confirmed`); then the tooling

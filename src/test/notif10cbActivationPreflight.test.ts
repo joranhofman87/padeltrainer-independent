@@ -502,11 +502,18 @@ describe('I — every rollout artifact pins name resolution before it does anyth
     // to the role/database default without ever writing SET. The ROOT ARTIFACTS are scanned too —
     // the previous version checked only the files they include, so an artifact could have undone its
     // own pin two lines later.
+    // BEST-EFFORT, AND SAID SO. This is a text scan, which is a partial parser — `DISCARD ALL`,
+    // a computed `set_config($$search_path$$, …)`, or SQL emitted through `\gexec` are all ways past
+    // it. The AUTHORITY is behavioural: verify/preflight-pg.mjs runs six artifacts under two hostile
+    // paths with eight shadowed names planted, and an artifact that unpinned itself mid-file would
+    // reach one of them. This list catches the plausible edit early, with a message naming the rule.
     const undoes = [
       /^\s*SET\s+(LOCAL\s+)?search_path/mi,
       /^\s*RESET\s+(search_path|ALL)\b/mi,
-      /set_config\s*\(\s*'search_path'/i,
+      /^\s*DISCARD\s+(ALL|PLANS|SEQUENCES|TEMP|TEMPORARY)\b/mi,
+      /set_config\s*\(\s*('search_path'|\$\$search_path\$\$)/i,
       /^\s*\\c(onnect)?\b/mi,
+      /^\s*\\gexec\b/mi,
     ];
     for (const f of [...reachable, ...artifacts.map((a) => join(dir, a))]) {
       const raw = readFileSync(f, 'utf8');

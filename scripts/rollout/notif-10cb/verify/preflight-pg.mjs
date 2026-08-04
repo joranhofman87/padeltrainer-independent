@@ -1131,7 +1131,7 @@ try {
           WHERE o.oid = ANY($1::oid[]) AND n.nspname = 'pg_catalog'`, [vals]);
       for (const r of rows) {
         if (r.implicit) {
-          exempt.push(`${table}:${r.oid} — assigned by the parser, never written in the command`);
+          exempt.push(`${table}:${r.oid} — no rival can be CONSTRUCTED for it (a pseudo-type is not a valid domain base type); coverage for names that ARE written comes from the positive control below`);
           continue;
         }
         needed.add(`${table}:${r.oid}`); byCatalog[table].add(r.oid);
@@ -1217,7 +1217,9 @@ try {
     // NO SILENT CAPS. What could not be shadowed is named, with the reason.
     // NO SILENT CAPS. Everything not directly shadowed is printed with the reason, and only two
     // reasons are acceptable: a VARIADIC signature that cannot be duplicated but HAS an exact-arity
-    // rival, and a name the parser assigned rather than the command writing it.
+    // rival, and a name for which no rival can be CONSTRUCTED (a pseudo-type is not a valid domain
+    // base type). Neither reason is "the parser assigned it" — that was refuted: `NULL::record` and
+    // `COLLATE "default"` name both explicitly. What settles coverage is the positive control.
     rec('...and nothing was silently left uncovered',
       unshadowable.every((u) => u.includes('covered by the exact-arity rival')),
       [...unshadowable, ...exempt].join(' | '));
@@ -1468,6 +1470,52 @@ try {
     rec('canary_scope_verify REFUSES a run that has not finished',
       !!err && err.includes('FINISHED dispatch/email run'), err ?? 'it PASSED');
   }
+
+  // ── smoke_invoke.sql: the same guarded invocation, one step earlier ──────
+  // The disabled smoke carries the same Vault-decrypted bearer as the canary; DIGEST_SEND_ENABLED
+  // stops the mail and does nothing for the credential. Its preconditions are the OPPOSITE of the
+  // canary's — everything must still be inert — so they get their own scenarios.
+  const smokeInvoke = async () => (await runArtifact('smoke_invoke.sql')).err ?? null;
+  const smokeRefuses = async (name, mutate, needle) => {
+    await seedBaseline();
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+    try { await mutate(); }
+    catch (e) { return rec(name, false, `the scenario's own setup failed: ${e.message}`); }
+    const before = await queuedCount();
+    const err = await smokeInvoke();
+    if (!err) return rec(name, false, 'the smoke PASSED — it would have posted the bearer');
+    if (!err.includes(needle)) return rec(name, false, `refused for the wrong reason: ${err}`);
+    const after = await queuedCount();
+    rec(name, after === before, after === before ? '' : `it refused but queued ${after - before} request(s)`);
+  };
+
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+  {
+    const err = await smokeInvoke();
+    rec('smoke_invoke PASSES on a fully inert world', err === null, err ?? '');
+    const q = (await c.query(`SELECT url, headers ->> 'Authorization' AS a FROM net.http_request_queue`)).rows[0];
+    rec('...posting to the REVIEWED endpoint from the job command itself',
+      q?.url === 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker', q?.url ?? 'no request');
+    rec('...with the bearer read from Vault at execution time, not a retyped one',
+      q?.a === 'Bearer stub-key-not-a-real-credential', q?.a ?? 'no Authorization header');
+  }
+
+  // THE PROPERTY THAT MAKES IT A *DISABLED* SMOKE: it cannot send, because nothing is enabled — a
+  // stronger statement than the operator's word about an env var, and one the database can check.
+  await smokeRefuses('smoke_invoke REFUSES once ANY engine is enabled',
+    () => c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true
+                    WHERE key = 'open_slots_player'`),
+    'no event has the digest engine enabled');
+  await smokeRefuses('smoke_invoke REFUSES while the cron is ARMED',
+    () => c.query(`UPDATE cron.job SET active = true`), 'still INACTIVE');
+  await smokeRefuses('smoke_invoke REFUSES a job whose command has DRIFTED',
+    () => c.query(`UPDATE cron.job SET command = command || $x$ -- appended$x$`),
+    'EXACTLY the reviewed command');
+  await smokeRefuses('smoke_invoke REFUSES with a dispatch run in flight',
+    () => c.query(`INSERT INTO public.notification_worker_runs (run_id, worker, channel, phase, started_at)
+                   VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', now())`),
+    'no dispatch run is in flight');
 
   // ── canary_invoke_response.sql: pg_net answers later, or not at all ───────
   const canaryResponse = async (id) => {
