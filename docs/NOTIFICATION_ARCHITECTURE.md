@@ -756,9 +756,13 @@ mirror **each other** for as long as the v1 column has a reader:
 | v2 → v1 | `20261013100000` | the deploy window in which the NEW page writes v2 only while the OLD `send-email` bundle still enforces v1 |
 
 Both are one hop: a transaction-local guard (`notif_pref_bridge_hop_active()`) makes the pair
-non-recursive. Both resolve an ambiguous INSERT by VALUE — forward against the v1 COLUMN default,
-reverse against the CATALOG default — so an incidental default can never overwrite an explicit
-`off`. Neither mirrors WhatsApp or push; there is no v1 counterpart.
+non-recursive. Both resolve an ambiguous INSERT by VALUE, so an incidental default can never
+overwrite an explicit `off` — forward against the v1 COLUMN default; reverse against **both**
+platform-suppliable values (`notif_pref_open_slots_incidental_values()` = the catalog default *and*
+the v2 column default, derived rather than hard-coded). `off` is in neither, so an opt-out always
+applies. Neither mirrors WhatsApp or push; there is no v1 counterpart. The reverse direction also
+ships a bounded, idempotent one-time reconcile, because a trigger cannot see rows that already
+exist.
 
 Retirement is mechanical, not remembered: `legacySendEmailInventory.test.ts` goes red when
 `send-email` stops mapping `new_availability`/`slot_reopened` onto `open_slots_digest`, which is

@@ -10819,6 +10819,10 @@ export type Database = {
         Returns: Json
       }
       notif_pref_bridge_hop_active: { Args: never; Returns: boolean }
+      notif_pref_open_slots_incidental_values: {
+        Args: never
+        Returns: string[]
+      }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_orphan_reconcile_permanent_reason: {
         Args: { p_code: string }

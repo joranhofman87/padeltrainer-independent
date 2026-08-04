@@ -884,16 +884,45 @@ error was discarded, so that filter was silently inert. The live v1 reader in th
 So `20261013100000` adds the reverse mirror. Scope is exactly one event key onto exactly one legacy
 column, email only — `whatsapp_frequency`/`push_frequency` have no v1 counterpart.
 
-**The INSERT ambiguity is mirror-imaged, not absent.** The forward direction defends against a
-partial legacy row whose `open_slots_digest` took its COLUMN default. The reverse direction faces
-the same hazard one level up: `saveEvent()` always writes both channel columns, computing the one
-the user did not touch from `effective()`, which falls back to the CATALOG default. A brand-new
-user flipping only the WhatsApp switch therefore inserts an `email_frequency` that is nobody's
-choice. So the reverse INSERT applies the same test by value — against the catalog default, read
-from `notification_event_types` rather than hard-coded, so the rule cannot silently invert if that
-default is ever changed. An UPDATE needs no such test: a WhatsApp-only save rewrites
-`email_frequency` unchanged, and the no-change short-circuit drops it, so a *changed* value on
-UPDATE is always an explicit email choice.
+**The INSERT ambiguity is mirror-imaged, not absent — and it has TWO sources, not one.** The
+forward direction defends against a partial legacy row whose `open_slots_digest` took its COLUMN
+default. On the v2 side the platform can supply an unchosen `email_frequency` two ways:
+
+1. the **catalog** default — `saveEvent()` always writes both channel columns, computing the one the
+   user did not touch from `effective()`, which falls back to `default_email_frequency`; and
+2. the v2 **column** default — `notification_preferences_v2` is granted INSERT to `authenticated`
+   with an own-rows policy, so a row can be created through the table API without naming
+   `email_frequency` at all.
+
+`notif_pref_open_slots_incidental_values()` derives both (never hard-coded, or the rule would
+silently invert the day a default moved) and the reverse INSERT only ever SEEDS a value in that set.
+Which arm is live matters and the first draft of this got backwards: `open_slots_player` ships
+`supports_whatsapp = false` and the page renders the WhatsApp switch only where supported, so **the
+catalog arm is currently unreachable and the column arm is the live one**. The catalog arm is kept
+because Stage 8 turns WhatsApp on. An UPDATE needs no test at all: a same-channel-only save rewrites
+`email_frequency` unchanged and the no-change short-circuit drops it, so a *changed* value on UPDATE
+is always an explicit email choice. `off` is in neither default, so an opt-out always applies —
+which is the case the contract actually names.
+
+**Existing state is reconciled, not only future writes.** A trigger sees nothing that already
+happened, so the migration ends with one bounded, idempotent reverse reconcile using the trigger's
+own rules. The population is nearly always empty — `open_slots_player` is branch-only, so no
+production user can hold a v2 row for it — but not provably so: one `supabase db push` applies its
+migrations in sequence, the already-deployed settings page reads the catalog dynamically, and C's
+backfill is `ON CONFLICT DO NOTHING`. A user quick enough to save between `20261008100000` and
+`20261013100000` would otherwise have their choice stranded *because* they were quick. It also makes
+the migration correct on any environment that already holds v2 rows.
+
+**The reverse mirror made an existing trigger privileged, so that trigger was hardened.** Writing v1
+from a `SECURITY DEFINER` function means `validate_notification_frequency()` now runs with the
+definer's rights, and its body is `EXECUTE format(...)` under `SET search_path TO 'public'` — an
+unqualified call inside a dynamic EXECUTE, which is the shape slice I showed is capturable. Measured
+rather than assumed: on this project no application role can create the rival, because
+`public`'s ACL grants CREATE only to `pg_database_owner`
+(`has_schema_privilege('authenticated','public','CREATE')` is false). It is closed anyway, since
+this migration is what makes the path privileged. `SECURITY INVOKER` was rejected as the alternative:
+no migration grants `authenticated` DML on `notification_preferences`, so an invoker-rights bridge
+would turn a preference save into a hard error rather than a mirrored write.
 
 **Recursion.** Two mirrors ping-pong, and Postgres does not detect it — it recurses until the stack
 is gone. The guard is a transaction-local GUC (`notif.pref_bridge_hop`) set only around each
@@ -917,14 +946,16 @@ whole, so it cannot leave them disagreeing; a serialised pair leaves both at the
 value. Lost updates are prevented by the upserts themselves — `ON CONFLICT DO UPDATE` re-reads the
 conflicting row under lock.
 
-**Retirement** is in the migration's own footer, and it is pinned rather than remembered:
-`legacySendEmailInventory.test.ts` asserts `send-email`'s `TYPE_TO_PREF_COLUMN` still maps
-`new_availability`/`slot_reopened` onto `open_slots_digest`. That assertion is green today and goes
-red the moment the last legacy reader disappears — the signal that both mirrors and the guard may
-be deleted, together, in 10c-d. Note why the existing caller-side register cannot serve as that
-signal: it measures the REPOSITORY ("does any live path re-enter send-email on a v1-gated type?"),
-and the thing still enforcing v1 is the DEPLOYED bundle. Conflating the two is the mistake the
-bridge exists to survive.
+**Retirement** is in the migration's own footer, and condition 1 of 4 is pinned rather than
+remembered: `legacySendEmailInventory.test.ts` asserts `send-email`'s `TYPE_TO_PREF_COLUMN` still
+maps `new_availability`/`slot_reopened` onto `open_slots_digest`.
+
+**Red does not mean "delete the bridge."** It means the source-side condition is met and the other
+three must now be checked by hand, because no test here can see them: the register measures the
+REPOSITORY, and what still enforces v1 is the DEPLOYED bundle. Migrations are pushed before the edge
+function, so retiring the bridge on a green CI while the old `send-email` is still live re-opens this
+exact gap. The test carries that instruction in its own failure message rather than only here.
+Conflating "merged" with "live" is the mistake the bridge exists to survive.
 
 ## 10c-b H — the deferred index measurement, and why `idx_notification_outbox_due` stays
 

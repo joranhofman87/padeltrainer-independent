@@ -235,11 +235,16 @@ describe('10c-b J — when the preference bridge may be retired', () => {
     const stillReads = ['new_availability', 'slot_reopened']
       .filter((t) => new RegExp(`${t}\\s*:\\s*"open_slots_digest"`).test(map![1]));
 
-    // When this goes red, read the RETIREMENT section at the foot of the bridge migration and
-    // delete both mirrors, the guard, and this block — together, in 10c-d.
+    // RED DOES NOT MEAN "DELETE THE BRIDGE". It means only the SOURCE-side condition is met.
+    // This test can see the repository; it cannot see what is deployed, and edge functions are
+    // pushed BY HAND after migrations. Removing the bridge while an old send-email bundle is still
+    // live re-opens the exact gap it closes.
     expect(
       stillReads,
-      'send-email no longer gates open slots on the v1 column: the J bridge is now removable',
+      'send-email no longer names open_slots_digest. That is condition 1 of 4 only. Before deleting '
+      + '20261013100000, confirm BY HAND that (2) this send-email revision is DEPLOYED, not merely '
+      + 'merged, (3) the pre-cutover settings bundle is out of browser caches, and (4) the v1 column '
+      + 'is dropped in the same release unit. See the RETIREMENT section at the foot of that migration.',
     ).toEqual(['new_availability', 'slot_reopened']);
   });
 

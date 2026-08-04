@@ -48,6 +48,10 @@ const OTHER_EVENT = 'session_reminder_player';
 
 /** The catalog default the INSERT ambiguity rule turns on — read from the DB, never retyped. */
 let catalogDefault: string;
+/** Every cadence the PLATFORM can supply on its own — the derived set the INSERT rule uses. */
+let incidental: string[];
+/** Cadences that can only come from a user choosing them. */
+const chosenOnly = () => ['off', 'instant', 'daily', 'weekly'].filter((f) => !incidental.includes(f));
 
 /**
  * Extract a statement range from a REAL migration, refusing rather than silently returning
@@ -187,6 +191,8 @@ beforeAll(async () => {
     `SELECT default_email_frequency AS f FROM public.notification_event_types WHERE key='open_slots_player'`,
   );
   catalogDefault = d.rows[0].f;
+  incidental = (await c.query(
+    `SELECT public.notif_pref_open_slots_incidental_values() AS v`)).rows[0].v;
   // Guard the whole ambiguity story: if this ever stops being a value the column default cannot
   // also produce, the rules below are testing something other than what they claim.
   expect(['instant', 'daily', 'weekly', 'off']).toContain(catalogDefault);
@@ -258,8 +264,8 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     expect(await v1Of()).toBe('daily');
   });
 
-  it('every explicit non-default cadence carries across exactly', async () => {
-    for (const f of ['off', 'instant', 'daily'].filter((x) => x !== catalogDefault)) {
+  it('every cadence only a user could have chosen carries across exactly', async () => {
+    for (const f of chosenOnly()) {
       await c.query(`DELETE FROM public.notification_preferences_v2; DELETE FROM public.notification_preferences;`);
       await seedV1('weekly');
       await c.query(`DELETE FROM public.notification_preferences_v2`);
@@ -318,19 +324,55 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
   });
 
   it('an inserted NON-default cadence does apply over an existing legacy choice', async () => {
-    const explicit = catalogDefault === 'off' ? 'daily' : 'off';
-    await seedV1('instant');
+    const explicit = chosenOnly()[0];
+    await seedV1('weekly');
     await c.query(`DELETE FROM public.notification_preferences_v2`);
     await saveV2(explicit);
     expect(await v1Of()).toBe(explicit);
   });
 
   it('an UPDATE to the catalog default DOES apply — only INSERT is ambiguous', async () => {
-    const explicit = catalogDefault === 'off' ? 'daily' : 'off';
+    const explicit = chosenOnly()[0];
     await saveV2(explicit);
     expect(await v1Of()).toBe(explicit);
     await saveV2(catalogDefault); // a real, deliberate change on the v2 page
     expect(await v1Of()).toBe(catalogDefault);
+  });
+
+  it('the incidental set is DERIVED: exactly the catalog default and the v2 COLUMN default', async () => {
+    const colDefault = (await c.query(
+      `SELECT pg_get_expr(d.adbin, d.adrelid) AS e
+         FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
+        WHERE d.adrelid='public.notification_preferences_v2'::regclass AND a.attname='email_frequency'`
+    )).rows[0].e;
+    expect(colDefault).toMatch(/^'([a-z]+)'/);
+    const col = /^'([a-z]+)'/.exec(colDefault)![1];
+    expect([...incidental].sort()).toEqual([...new Set([catalogDefault, col])].sort());
+  });
+
+  it('a PARTIAL v2 insert takes the COLUMN default and must not overwrite a legacy opt-out', async () => {
+    // notification_preferences_v2 is granted INSERT to `authenticated` with an own-rows policy, so
+    // a row can be created through the table API without naming email_frequency at all. The column
+    // default then applies — a value nobody chose. Treating it as explicit would resume mail after
+    // an opt-out. (This, not the WhatsApp-only save, is the LIVE incidental source for this event:
+    // open_slots_player ships supports_whatsapp = false.)
+    await seedV1('off');
+    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type)
+                   VALUES ($1,'open_slots_player')`, [USER]);
+    const stored = await v2Of();
+    expect(incidental, 'the column default must be treated as incidental').toContain(stored);
+    expect(await v1Of(), 'an incidental column default must never overwrite an opt-out').toBe('off');
+  });
+
+  it('...but a partial insert still SEEDS a legacy row when the user has none', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type)
+                   VALUES ($1,'open_slots_player')`, [USER]);
+    expect(await v1Of()).toBe(await v2Of());
+  });
+
+  it('an opt-out is in NEITHER default, so it always applies — the case the contract names', async () => {
+    expect(incidental).not.toContain('off');
   });
 
   it('the ambiguity rule follows the CATALOG, not a hard-coded literal', async () => {
@@ -410,14 +452,30 @@ describe('J — recursion: two mirrors, one hop each', () => {
     expect(await v1Of(USER2)).toBe('daily');
   });
 
-  it('the guard is cleared after an aborted statement', async () => {
-    await c.query('BEGIN');
-    await expect(
-      c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'nope')`, [USER]),
-    ).rejects.toThrow();
-    await c.query('ROLLBACK');
-    await saveV2('off');
-    expect(await v1Of()).toBe('off');
+  it('the guard is rolled back when the abort happens INSIDE the guarded write', async () => {
+    // The failure this must exclude is the guard being left 'on' by an error raised BETWEEN
+    // set_config('on') and set_config('off') — after which every later mirror in that transaction
+    // silently does nothing.
+    //
+    // Reaching that window takes work: an invalid cadence is rejected by v1's BEFORE validation
+    // trigger, which runs before the guarded AFTER trigger ever executes, so the obvious version of
+    // this test never arms the guard at all. A CHECK constraint on v1 fires INSIDE the bridge's own
+    // nested INSERT instead, which is the window that matters.
+    await c.query(`ALTER TABLE public.notification_preferences
+                     ADD CONSTRAINT tmp_no_daily CHECK (open_slots_digest <> 'daily')`);
+    try {
+      await c.query('BEGIN');
+      await c.query('SAVEPOINT s');
+      await expect(saveV2('daily'), 'the nested v1 write must be what fails').rejects.toThrow(/tmp_no_daily/);
+      await c.query('ROLLBACK TO SAVEPOINT s');
+      // Same transaction: if the guard survived the abort, this mirror is swallowed.
+      await saveV2('off');
+      await c.query('COMMIT');
+      expect(await v1Of()).toBe('off');
+    } finally {
+      await c.query('ROLLBACK').catch(() => undefined);
+      await c.query(`ALTER TABLE public.notification_preferences DROP CONSTRAINT IF EXISTS tmp_no_daily`);
+    }
   });
 
   it('the two directions agree after a chain of alternating writes', async () => {
@@ -428,6 +486,76 @@ describe('J — recursion: two mirrors, one hop each', () => {
       expect(await v2Of()).toBe(f);
       expect(await v1Of()).toBe(f);
     }
+  });
+});
+
+// =================================================================================================
+describe('J — the one-time reverse reconcile catches v2 rows that predate the trigger', () => {
+  /** A v2 row written before the reverse mirror existed: no trigger, so no legacy counterpart. */
+  const seedPreJ = async (freq: string, u = USER) => {
+    await c.query(`ALTER TABLE public.notification_preferences_v2 DISABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
+    try {
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                     VALUES ($1,'open_slots_player',$2)`, [u, freq]);
+    } finally {
+      await c.query(`ALTER TABLE public.notification_preferences_v2 ENABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
+    }
+  };
+
+  it('a pre-existing v2 opt-out with NO legacy row reaches the legacy reader when J is applied', async () => {
+    await seedPreJ('off');
+    expect(await v1Of(), 'precondition: the trigger did not fire').toBeNull();
+    await applyBridge();                       // re-applying J runs the one-time reconcile
+    expect(await v1Of()).toBe('off');
+  });
+
+  it('a pre-existing v2 opt-out OVERWRITES a disagreeing legacy row', async () => {
+    await seedV1('instant');
+    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await seedPreJ('off');
+    await applyBridge();
+    expect(await v1Of()).toBe('off');
+  });
+
+  it('but an incidental value never overwrites an existing legacy choice', async () => {
+    await seedV1('off');
+    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await seedPreJ(incidental[0]);
+    await applyBridge();
+    expect(await v1Of(), 'the reconcile uses the trigger rules, not a looser second rule').toBe('off');
+  });
+
+  it('re-running is a pure no-op — it does not rewrite rows that already agree', async () => {
+    await saveV2('off');
+    const before = await writes('v1');
+    await applyBridge();
+    await applyBridge();
+    expect(await writes('v1')).toBe(before);
+    expect(await v1Of()).toBe('off');
+  });
+
+  it('the reconcile does not bounce back through the forward mirror', async () => {
+    await seedPreJ('off');
+    await c.query(`DELETE FROM public.bridge_audit`);
+    await applyBridge();
+    expect(await writes('v1')).toBe(1);
+    expect(await writes('v2'), 'the guard must hold across the whole reconcile').toBe(0);
+  });
+
+  it('MUTANT: the reconcile removed — a pre-existing v2 opt-out stays stranded', async () => {
+    const RECONCILE_START = 'DO $reconcile$';
+    const i = BRIDGE_SQL.indexOf(RECONCILE_START);
+    const j = BRIDGE_SQL.indexOf('$reconcile$;', i);
+    expect(i, 'the reconcile block must be findable').toBeGreaterThan(-1);
+    expect(j).toBeGreaterThan(i);
+    const without = BRIDGE_SQL.slice(0, i) + BRIDGE_SQL.slice(j + '$reconcile$;'.length);
+    expect(without).not.toBe(BRIDGE_SQL);
+    try {
+      await seedPreJ('off');
+      await c.query(without);
+      await c.query(FORWARD_TRIGGER);
+      expect(await v1Of()).toBeNull(); // stranded — send-email's absent-row fallback keeps mailing
+    } finally { await applyBridge(); }
   });
 });
 
@@ -572,7 +700,7 @@ describe('J — MUTATION PINS', () => {
   it('MUTANT: the INSERT ambiguity rule inverted — an incidental default resumes mail after opt-out', async () => {
     try {
       await applyBridge(mutate([
-        `IF v_catalog_default IS NOT NULL AND NEW.email_frequency = v_catalog_default THEN`,
+        `IF NEW.email_frequency = ANY (v_incidental) THEN`,
         `IF false THEN`,
       ]));
       await seedV1('off');
