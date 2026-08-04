@@ -265,6 +265,40 @@ describe('N0 — the job-row lock include is privilege-correct and closed over',
     expect(consumers).toEqual(['activate.sql', 'canary_invoke.sql', 'enable_engine.sql', 'smoke_invoke.sql']);
   });
 
+  // BEGIN → bounded timeouts → lock include → the shared gate → COMMIT, in EVERY consumer. Moving
+  // the include before BEGIN would AUTOCOMMIT the disarm and release the tuple lock before anything
+  // was asserted — and the full-artifact harness runs would stay green, because nothing interleaves
+  // a writer during them. activate/canary already had ordering pins; the other two did not.
+  it.each([
+    ['activate.sql', '\\i _activation_assertions.sql'],
+    ['canary_invoke.sql', '\\i _job_identity_assertions.sql'],
+    ['smoke_invoke.sql', '\\i _job_identity_assertions.sql'],
+    ['enable_engine.sql', '\\i _job_identity_assertions.sql'],
+  ])('%s brackets the lock inside its transaction, after bounded timeouts, before the shared gate',
+    (file, gate) => {
+    const sql = stripped(readFileSync(join(DIR, file), 'utf8'));
+    const begin = sql.search(/^\s*BEGIN;/m);
+    const commit = sql.search(/^\s*COMMIT;/m);
+    const lock = sql.indexOf('\\i _gate_job_lock.sql');
+    const gateAt = sql.indexOf(gate);
+    expect(begin, `${file}: no BEGIN`).toBeGreaterThan(-1);
+    expect(lock, `${file}: no lock include`).toBeGreaterThan(-1);
+    expect(gateAt, `${file}: no shared gate include`).toBeGreaterThan(-1);
+    expect(commit, `${file}: no COMMIT`).toBeGreaterThan(-1);
+    for (const setting of ['lock_timeout', 'statement_timeout']) {
+      const m = sql.match(new RegExp(`SET LOCAL ${setting}\\s*=\\s*'([^']+)'`));
+      expect(m, `${file}: no ${setting}`).not.toBeNull();
+      // PostgreSQL reads 0 as DISABLED, so presence is not enough.
+      expect(m![1], `${file}: ${setting} is disabled`).toMatch(/^[1-9][0-9]*(ms|s|min)?$/);
+      const at = sql.search(new RegExp(`SET LOCAL ${setting}`));
+      expect(begin, `${file}: ${setting} sits outside the transaction`).toBeLessThan(at);
+      expect(at, `${file}: ${setting} must precede the lock include`).toBeLessThan(lock);
+    }
+    expect(begin, `${file}: the lock include must sit INSIDE the transaction`).toBeLessThan(lock);
+    expect(lock, `${file}: the lock must precede the shared gate`).toBeLessThan(gateAt);
+    expect(gateAt, `${file}: the shared gate must precede COMMIT`).toBeLessThan(commit);
+  });
+
   // The read-only gates must never write: outside a transaction the lock's alter would AUTOCOMMIT,
   // and a raw-text scan cannot see an alter_job smuggled in through a shared include.
   it('the read-only gates never reach alter_job, even transitively', () => {

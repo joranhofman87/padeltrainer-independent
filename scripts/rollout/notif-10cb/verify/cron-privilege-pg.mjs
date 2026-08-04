@@ -26,13 +26,39 @@ import pg from 'pg';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SQL_DIR = join(HERE, '..', 'sql');
-const URL = process.env.SUPABASE_LOCAL_DB_URL
-  ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
+
+// LOOPBACK ONLY, ASSERTED — not assumed. This script SCHEDULES throwaway cron jobs, and the hosted
+// production database would satisfy every role/ownership check below (that is the point of them),
+// so a stale SUPABASE_LOCAL_DB_URL pointing anywhere real would turn a rehearsal into a production
+// write. The URL must be url-form (libpq's keyword/value form parses "somewhere else entirely" —
+// see the 10c-b README on conninfo), carry no whitespace/control characters, no multi-host list,
+// and resolve to a loopback host. Errors below never echo the URL: it carries a password.
+const loopbackOnly = (raw, name) => {
+  if (!/^postgres(ql)?:\/\//.test(raw) || /[\s\x00-\x1f]/.test(raw)) {
+    console.error(`${name} must be a postgresql:// url with no whitespace or control characters`);
+    process.exit(1);
+  }
+  let u;
+  try { u = new URL(raw); } catch { console.error(`${name} does not parse as a url`); process.exit(1); }
+  const host = u.hostname;
+  if (raw.split('@').pop().includes(',')) {
+    console.error(`${name} carries a multi-host list — one loopback host only`);
+    process.exit(1);
+  }
+  if (!['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)) {
+    console.error(`${name} must point at a loopback host (got ${host}) — this rehearsal schedules real cron jobs and must never see a remote database`);
+    process.exit(1);
+  }
+  return { raw, label: `${host}:${u.port || 5432}` };
+};
+const DB = loopbackOnly(process.env.SUPABASE_LOCAL_DB_URL
+  ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres', 'SUPABASE_LOCAL_DB_URL');
 // supabase_admin exists only to prove the FOREIGN-owner refusal; same local password.
-const ADMIN_URL = process.env.SUPABASE_LOCAL_ADMIN_DB_URL
-  ?? 'postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres';
+const ADMIN = loopbackOnly(process.env.SUPABASE_LOCAL_ADMIN_DB_URL
+  ?? 'postgresql://supabase_admin:postgres@127.0.0.1:54322/postgres', 'SUPABASE_LOCAL_ADMIN_DB_URL');
 
 const JOB = `n0-priv-rehearsal-${process.pid}`;
+const FOREIGN_JOB = `${JOB}-foreign`;
 
 let PASS = 0, FAIL = 0;
 const rec = (n, ok, d = '') => {
@@ -41,16 +67,17 @@ const rec = (n, ok, d = '') => {
   ok ? PASS++ : FAIL++;
 };
 
-const c = new pg.Client({ connectionString: URL });
+const c = new pg.Client({ connectionString: DB.raw });
 try {
   await c.connect();
 } catch (e) {
-  console.error(`cannot reach the Supabase local stack at ${URL}: ${e.message}`);
+  // the URL is never echoed — it carries a password; the host:port is enough to act on
+  console.error(`cannot reach the Supabase local stack at ${DB.label}: ${e.code ?? e.message}`);
   console.error('start it with `supabase start` (CI does this in rollout-tooling.yml) and re-run.');
   process.exit(1);
 }
 
-const b = new pg.Client({ connectionString: URL });   // the concurrent-writer session
+const b = new pg.Client({ connectionString: DB.raw });   // the concurrent-writer session
 await b.connect();
 let admin = null;
 
@@ -172,29 +199,39 @@ try {
   }
 
   // A job owned by supabase_admin: the operator's alter must be refused by ownership, and the
-  // operator-scoped resolve must never see it as its own.
-  admin = new pg.Client({ connectionString: ADMIN_URL });
+  // operator-scoped resolve must never see it as its own. This is the one arm only the REAL
+  // extension can prove, so an unreachable supabase_admin is a FAILURE — reporting it as a pass
+  // would let a CLI-image credential change silently delete the check while CI stays green. A
+  // developer without the admin password can skip EXPLICITLY (the skip neither passes nor fails,
+  // and CI never sets the variable).
+  admin = new pg.Client({ connectionString: ADMIN.raw });
   let adminOk = true;
   try { await admin.connect(); } catch { adminOk = false; admin = null; }
   if (adminOk) {
-    const fjob = `${JOB}-foreign`;
     const fid = (await admin.query(
-      `SELECT cron.schedule($1, '59 23 31 12 *', 'SELECT 1') AS id`, [fjob])).rows[0].id;
+      `SELECT cron.schedule($1, '59 23 31 12 *', 'SELECT 1') AS id`, [FOREIGN_JOB])).rows[0].id;
     const e = await errOf(c, `SELECT cron.alter_job($1, active := false)`, [fid]);
     rec("a FOREIGN-owned job raises ('you don't own it') for the operator role",
       !!e && /does not exist or you don't own it/.test(e.message), e?.message ?? 'it altered a foreign job');
     const seen = (await c.query(
       `SELECT count(*)::int AS n FROM cron.job WHERE jobname = $1 AND username = current_user`,
-      [fjob])).rows[0].n;
+      [FOREIGN_JOB])).rows[0].n;
     rec('...and the owner-scoped resolve never claims it', seen === 0, `resolved=${seen}`);
-    await admin.query(`SELECT cron.unschedule($1)`, [fjob]);
+  } else if (process.env.CRON_PRIVILEGE_ALLOW_ADMIN_SKIP === '1') {
+    console.log('  SKIP  foreign-owner arm — supabase_admin not reachable and the skip was EXPLICITLY requested');
   } else {
-    rec('foreign-owner arm SKIPPED — supabase_admin not reachable over TCP here', true,
-      'covered by the modelled harness; CI stacks accept the same local password');
+    rec('the foreign-owner arm requires supabase_admin over TCP', false,
+      `supabase_admin not reachable at ${ADMIN.label} — set CRON_PRIVILEGE_ALLOW_ADMIN_SKIP=1 to skip locally; CI must never skip`);
   }
 } finally {
-  // the throwaway job must not outlive the rehearsal, whatever failed above
+  // Whatever failed above, no throwaway job may outlive the rehearsal — and a session that died
+  // inside a transaction must be rolled back FIRST, or the cleanup itself aborts (25P02) / is
+  // discarded with the connection.
+  await c.query(`ROLLBACK`).catch(() => {});
+  await b.query(`ROLLBACK`).catch(() => {});
+  await admin?.query(`ROLLBACK`).catch(() => {});
   await c.query(`SELECT cron.unschedule($1)`, [JOB]).catch(() => {});
+  await admin?.query(`SELECT cron.unschedule($1)`, [FOREIGN_JOB]).catch(() => {});
   await admin?.end().catch(() => {});
   await b.end().catch(() => {});
   await c.end().catch(() => {});
