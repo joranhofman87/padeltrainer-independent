@@ -756,17 +756,15 @@ mirror **each other** for as long as the v1 column has a reader:
 | v2 → v1 | `20261013100000` | the deploy window in which the NEW page writes v2 only while the OLD `send-email` bundle still enforces v1 |
 
 Both are one hop: a transaction-local guard (`notif_pref_bridge_hop_active()`) makes the pair
-non-recursive. Both resolve an ambiguous INSERT by VALUE, so an incidental default can never
-overwrite an explicit `off` — forward against the v1 COLUMN default; reverse against **both**
-platform-suppliable values (`notif_pref_open_slots_incidental_values()` = the catalog default *and*
-the v2 column default, derived rather than hard-coded — **minus `off`, excluded unconditionally**).
-So an opt-out always applies, whatever the defaults happen to be. Neither mirrors WhatsApp or push; there is no v1 counterpart. The reverse direction also
-ships a bounded, idempotent one-time reconcile, because a trigger cannot see rows that already
-exist — and a **departure** half, so losing the v2 row (delete, retarget away, reassignment) moves
-the legacy column to the catalog default rather than leaving it stale. Departures never un-suppress:
-they refuse when the departing value is `off` and the target is not, and never overwrite a legacy
-`off`. Where provenance cannot be established — a retarget, or a column default the literal parser
-cannot read — the bridge seeds instead of applying.
+non-recursive. They resolve an ambiguous write differently and deliberately: forward, by VALUE
+against the v1 COLUMN default (fixed by the schema); reverse, by refusing to guess at all — **on
+arrival only an opt-out may overwrite an existing legacy choice, everything else seeds** — because an
+arriving value's provenance is not recoverable. Neither mirrors WhatsApp or push; there is no v1
+counterpart. The reverse direction also ships a bounded, idempotent one-time reconcile (a trigger
+cannot see rows that already exist) and a **departure** half, so losing the v2 row (delete, retarget
+away, reassignment) moves the legacy column to the catalog default rather than leaving it stale.
+Departures never un-suppress: a departure may never make the legacy reader send more than it does
+now.
 
 Retirement: `legacySendEmailInventory.test.ts` goes red when `send-email` stops mapping
 `new_availability`/`slot_reopened` onto `open_slots_digest`. That is **condition 1 of 4, not a

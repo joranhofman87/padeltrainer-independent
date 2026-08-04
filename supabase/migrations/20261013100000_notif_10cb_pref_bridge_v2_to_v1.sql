@@ -90,94 +90,37 @@ COMMENT ON FUNCTION public.notif_pref_bridge_hop_active() IS
   'True while a notification-preference bridge hop is in progress in THIS transaction. Both mirror triggers (v1 -> v2 and v2 -> v1) return immediately when it is true, so the pair cannot recurse. Transaction-local: set with set_config(..., is_local => true) around the nested write only, and reverted by COMMIT, ROLLBACK or any subtransaction abort. Retire with the bridge.';
 
 -- ===========================================================================
--- 1b. THE VALUES THE PLATFORM CAN SUPPLY WITHOUT THE USER CHOOSING THEM.
+-- 1b. WHY THERE IS NO "INCIDENTAL VALUES" HELPER ANY MORE — provenance cannot be established.
 --
--- The reverse INSERT rule turns on this set, so it is defined once rather than restated at each
--- use, and it is DERIVED rather than hard-coded — a literal would silently invert the rule the
--- day either default moved.
+-- Several review rounds were spent trying to decide, from a value alone, whether a user CHOSE it or
+-- the platform supplied it. Every version leaked, and they all leaked the same way:
 --
--- There are exactly two such sources, and getting this list wrong in either direction is a
--- consent bug:
+--   * compare against the CATALOG default — but the settings page computes the untouched channel
+--     from a snapshot it loaded earlier, so a default changed since the page loaded makes an
+--     incidental value look explicit;
+--   * compare against the v2 COLUMN default — same, if that default moves after a partial insert;
+--   * for a RETARGET, compare against the departing event's default — same again, and there is no
+--     provenance column from which to reconstruct what that default WAS at the time;
+--   * parse the column default out of `pg_get_expr` — and a perfectly valid non-literal default
+--     such as `lower('INSTANT'::text)` cannot be read at all.
 --
---   * the CATALOG default (notification_event_types.default_email_frequency). NotificationSettings
---     `saveEvent()` always writes BOTH channel columns, computing the one the user did not touch
---     from `effective()`, which falls back to this value. So a save that touches only the OTHER
---     channel carries an email cadence nobody chose.
+-- Each fix closed one path and left another open, because the premise was wrong: **the database has
+-- no record of where a stored cadence came from.** No amount of comparison recovers it.
 --
---     TODAY THIS ARM IS FORWARD-LOOKING, NOT LIVE, and saying otherwise would be wrong:
---     `open_slots_player` ships `supports_whatsapp = false` (20261008100000), and the page renders
---     the WhatsApp switch only for events that support it (NotificationSettings.tsx), so there is
---     currently no way to save this event without touching email. It is kept because Stage 8 turns
---     WhatsApp on, and the rule must already be right when it does.
+-- So the bridge stops guessing, and the rule collapses to one that needs no provenance:
 --
---   * the v2 COLUMN default ('instant', 20260910100000). notification_preferences_v2 is granted
---     INSERT to `authenticated` with an own-rows RLS policy, so a row can be created through the
---     table API without naming email_frequency at all, and the column default then applies. THIS
---     arm is live today. Without it an incidental 'instant' would be treated as an explicit choice
---     and would overwrite a legacy 'off'.
+--     ON ARRIVAL, ONLY AN OPT-OUT MAY OVERWRITE AN EXISTING LEGACY CHOICE.
+--     Every other cadence SEEDS — it creates the legacy row when there is none, and otherwise
+--     leaves it alone.
 --
--- An empty result is the correct fail-safe: if neither default can be determined then nothing is
--- platform-supplied, and every value is a genuine choice.
-CREATE OR REPLACE FUNCTION public.notif_pref_open_slots_incidental_values()
-RETURNS text[]
-LANGUAGE plpgsql
-STABLE
-SET search_path = pg_catalog
-AS $fn$
-DECLARE
-  v_out  text[] := ARRAY[]::text[];
-  v_cat  text;
-  v_expr text;
-  v_col  text;
-BEGIN
-  SELECT t.default_email_frequency INTO v_cat
-    FROM public.notification_event_types t
-   WHERE t.key = 'open_slots_player';
-  IF v_cat IS NOT NULL THEN
-    v_out := v_out OPERATOR(pg_catalog.||) v_cat;
-  END IF;
-
-  SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid) INTO v_expr
-    FROM pg_catalog.pg_attrdef d
-    JOIN pg_catalog.pg_attribute a
-      ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-   WHERE d.adrelid = 'public.notification_preferences_v2'::pg_catalog.regclass
-     AND a.attname = 'email_frequency';
-
-  IF v_expr IS NOT NULL THEN
-    -- `pg_get_expr` renders a plain literal default as `'instant'::text`, so the pattern is
-    -- anchored at the START only and the cast is allowed to trail.
-    v_col := (pg_catalog.regexp_match(v_expr, $re$^'([a-z]+)'$re$))[1];
-    IF v_col IS NULL THEN
-      -- A DEFAULT EXISTS BUT IS NOT A PLAIN LITERAL — e.g. `lower('INSTANT'::text)`, which is a
-      -- perfectly valid default this parser cannot read. Returning what we have would FAIL OPEN:
-      -- the real incidental value would be missing from the set, so a partial insert carrying it
-      -- would be read as an explicit choice and could overwrite a legacy opt-out.
-      --
-      -- So an unreadable default degrades to the most conservative set instead: every cadence
-      -- except 'off'. Arrivals then only ever SEED, which costs cadence fidelity and never costs
-      -- consent. This is the same posture a retarget takes, and for the same reason — the value's
-      -- provenance cannot be established.
-      RETURN ARRAY['instant','daily','weekly'];
-    END IF;
-    v_out := v_out OPERATOR(pg_catalog.||) v_col;
-  END IF;
-
-  -- 'off' is NEVER incidental, whatever the defaults happen to be.
-  --
-  -- Not because it cannot BE a default — it can: both CHECK constraints permit it, and a catalog
-  -- edit could set default_email_frequency = 'off'. The reason is that the rule is asymmetric.
-  -- Seeding-only exists to stop an unchosen value from RESUMING mail; suppressing mail is safe
-  -- whether the user chose it or inherited it. Leaving 'off' in the set would invert that: the day
-  -- the catalog default became 'off', an explicit opt-out would stop overwriting a legacy
-  -- 'instant' and the legacy reader would keep mailing someone who had just opted out.
-  --
-  -- So "an opt-out always applies" is structural here, not an observation about today's config.
-  RETURN ARRAY(SELECT DISTINCT x FROM unnest(v_out) AS x WHERE x <> 'off');
-END $fn$;
-
-COMMENT ON FUNCTION public.notif_pref_open_slots_incidental_values() IS
-  'The open_slots_player email cadences the platform can supply on its own: the catalog default (via the settings page effective() fallback) and the notification_preferences_v2.email_frequency COLUMN default (via a partial insert through the table API) — MINUS ''off'', which is excluded unconditionally so that an opt-out applies whatever the defaults happen to be. The reverse bridge only SEEDS this set on ARRIVAL (an INSERT, or an UPDATE that moves a row onto this user+event), so an incidental value can never overwrite an explicit legacy opt-out. A retarget also carries the DEPARTING event''s catalog default into the test, because whether a value was chosen is a fact about where it came from. Derived, not hard-coded. Retire with the bridge.';
+-- `off` is safe whatever its origin, because applying it SUPPRESSES mail; that asymmetry is what
+-- the whole file turns on. Everything else is refused the power to overwrite, which costs cadence
+-- fidelity on a path that is nearly empty in practice — anyone holding a legacy row also holds a v2
+-- row from C's backfill, so their next change is a CHANGE, and changes apply unconditionally.
+--
+-- What this buys beyond correctness: no default to read, no expression to parse, no catalog
+-- snapshot to race, no historical value to reconstruct. The consent guarantee stops depending on
+-- when an admin last edited a catalog row.
 
 -- ===========================================================================
 -- 1c. HARDEN THE LEGACY VALIDATION TRIGGER THAT THE REVERSE BRIDGE NOW INVOKES.
@@ -326,45 +269,23 @@ COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_to_v2() IS
 -- (open_slots_digest), email only. v2's whatsapp_frequency / push_frequency have no v1
 -- counterpart and are not mirrored. This is narrow by construction, not by convention.
 --
--- THE ARRIVAL AMBIGUITY IS MIRROR-IMAGED, NOT ABSENT.
--- The forward direction had to defend against a PARTIAL row: the legacy page upserts one column
--- and the other thirteen take their column DEFAULTs, so an arriving 'weekly' may be nobody's
--- choice. The v2 side has the same hazard, from more sources, and on ARRIVAL rather than on every
--- write. An ARRIVAL is an INSERT **or** an UPDATE that moves a row onto this (user, event) — see
--- the logical-key gate below; a plain CHANGE to an existing row is judged differently:
+-- ARRIVAL vs CHANGE — the only distinction the reverse direction needs.
 --
---   * a CHANGED email_frequency on a row already at this (user, event) is ALWAYS an explicit email
---     choice. A save that touches only the other channel re-writes the column with the value it
---     already had, which the no-change short-circuit drops. Apply unconditionally.
---   * an ARRIVAL may carry a value the PLATFORM supplied rather than the user — the catalog default
---     (via saveEvent()'s effective() fallback), the v2 COLUMN default (via a partial insert through
---     the granted table API), or, for a retarget, the DEPARTING event's catalog default. Mirroring
---     any of those over an existing v1 'off' with DO UPDATE would resume mail for someone who had
---     opted out — the same consent violation the forward rule refuses, arriving the other way round.
+--   * a CHANGE (same user+event, email_frequency actually different) is ALWAYS an explicit email
+--     choice: a save that touches only the other channel rewrites the column with the value it
+--     already had, and the no-change short-circuit drops that. Apply unconditionally.
+--   * an ARRIVAL (INSERT, or an UPDATE moving the row onto this user+event) may carry a value the
+--     PLATFORM supplied rather than the user, and §1b explains why that cannot be detected. Only
+--     an opt-out may overwrite an existing legacy choice; everything else seeds.
 --
--- So an ARRIVAL applies the SAME test by value, against every default that could have supplied it:
--- notif_pref_open_slots_incidental_values() (§1b) is the single derived definition of "a value the
--- platform can produce on its own". A value in that set is ambiguous and only ever SEEDS; any
--- other value could not have been produced without a user choosing it, and therefore applies.
+-- The forward direction faces the mirror-image hazard and answers it differently — by VALUE against
+-- the v1 COLUMN default — because there the ambiguous value is fixed by the schema rather than
+-- computed by a page. The two rules are not symmetric, and that is deliberate.
 --
--- Note which of the two arms is live TODAY, because the first draft of this file got it backwards:
--- the catalog-default arm is currently unreachable for this event (`supports_whatsapp = false`, and
--- the page renders the WhatsApp switch only where supported, so every save touches email); the
--- COLUMN-default arm is the live one. The catalog arm is kept for Stage 8, which turns WhatsApp on.
---
--- THE RESIDUAL, stated as plainly as the forward one. A first-time v2 insert carrying either
--- default does not push that cadence onto an EXISTING legacy row — v1 keeps what it had. That is a
--- cadence mismatch confined to the deploy window, never a resurrection of mail after an opt-out,
--- and it is narrow in practice: anyone holding a legacy row also holds a v2 row from C's backfill,
--- so their next change is an UPDATE, which applies unconditionally. And `off` is excluded from the
--- incidental set STRUCTURALLY (§1b), not by luck of today's defaults, so an opt-out ALWAYS applies
--- — which is the case the contract actually names.
 CREATE OR REPLACE FUNCTION public.notif_mirror_open_slots_pref_to_v1()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
 AS $$
-DECLARE
-  v_incidental text[];
 BEGIN
   -- RECURSION GUARD, as above.
   IF public.notif_pref_bridge_hop_active() THEN RETURN NEW; END IF;
@@ -407,34 +328,15 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- ARRIVAL (INSERT, or an UPDATE that moved this row onto this user+event): resolve the ambiguity
-  -- by value against the platform-suppliable defaults (header, §1b).
-  v_incidental := public.notif_pref_open_slots_incidental_values();
-
-  -- A RETARGET CARRIES A VALUE WHOSE PROVENANCE CANNOT BE ESTABLISHED, so it gets the most
-  -- conservative set: everything except 'off'.
+  -- ARRIVAL (INSERT, or an UPDATE that moved this row onto this user+event).
   --
-  -- The first attempt carried the DEPARTING event's catalog default into the test. That is better
-  -- than ignoring it, and still wrong, because it reads the default as it is NOW: a value stored
-  -- when that event's default was 'daily' looks explicit once the default has been changed to
-  -- 'instant'. There is no provenance column to reconstruct the historical default from, and the
-  -- same hole exists if the v2 COLUMN default moves after a partial row is created.
-  --
-  -- So the bridge stops guessing. Retargeting a row is not a statement about THIS event's email
-  -- cadence — the user moved a row — so nothing it carries is treated as a choice. 'off' is the
-  -- one exception, and it needs no provenance: applying it SUPPRESSES mail, which is safe whatever
-  -- its origin. Everything else only ever SEEDS, so it can create a legacy row but never overwrite
-  -- one. The cost is cadence fidelity on a path no UI can reach; the alternative is a consent bug
-  -- that depends on when an admin last edited a catalog row.
-  IF TG_OP = 'UPDATE' THEN
-    v_incidental := ARRAY['instant','daily','weekly'];
-  END IF;
-
+  -- Only an opt-out may overwrite an existing legacy choice; every other cadence seeds. See §1b for
+  -- why this consults no default at all.
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
-  IF NEW.email_frequency = ANY (v_incidental) THEN
-    -- Ambiguous: could be a default rather than a choice. SEED only — this still creates the
-    -- legacy row when the user has none, which is what "a first-time v2 insert must reach the
-    -- legacy reader" requires; it just never overwrites an existing legacy choice.
+  IF NEW.email_frequency <> 'off' THEN
+    -- Provenance unknown: SEED only. This still creates the legacy row when the user has none,
+    -- which is what "a first-time v2 insert must reach the legacy reader" requires; it just never
+    -- overwrites an existing legacy choice.
     INSERT INTO public.notification_preferences (user_id, open_slots_digest)
     VALUES (NEW.user_id, NEW.email_frequency)
     ON CONFLICT (user_id) DO NOTHING;
@@ -581,7 +483,6 @@ CREATE TRIGGER trg_mirror_open_slots_pref_departure_upd
 -- DO UPDATE predicate stops matching once the two agree.
 DO $reconcile$
 DECLARE
-  v_incidental text[] := public.notif_pref_open_slots_incidental_values();
   v_rows int;
 BEGIN
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
@@ -595,7 +496,8 @@ BEGIN
   ON CONFLICT (user_id) DO UPDATE
      SET open_slots_digest = EXCLUDED.open_slots_digest
    WHERE public.notification_preferences.open_slots_digest IS DISTINCT FROM EXCLUDED.open_slots_digest
-     AND NOT (EXCLUDED.open_slots_digest = ANY (v_incidental));
+     -- same rule as an arrival (§1b): only an opt-out may overwrite an existing legacy choice.
+     AND EXCLUDED.open_slots_digest = 'off';
 
   GET DIAGNOSTICS v_rows = ROW_COUNT;
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
@@ -655,8 +557,7 @@ $reconcile$;
 -- public.notification_preferences; DROP TRIGGER trg_mirror_open_slots_pref_departure_del AND
 -- trg_mirror_open_slots_pref_departure_upd ON public.notification_preferences_v2;
 -- DROP FUNCTION notif_mirror_open_slots_pref_departure(), notif_mirror_open_slots_pref_to_v1(),
--- notif_mirror_open_slots_pref_to_v2(), notif_pref_bridge_hop_active(),
--- notif_pref_open_slots_incidental_values().
+-- notif_mirror_open_slots_pref_to_v2(), notif_pref_bridge_hop_active().
 -- (validate_notification_frequency stays — §1c hardened it; it is not part of the bridge.)
 --
 -- ENFORCEMENT, and the trap inside it. Only condition 1 is mechanical, and it is pinned:

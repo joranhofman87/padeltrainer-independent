@@ -894,30 +894,20 @@ default. On the v2 side the platform can supply an unchosen `email_frequency` tw
    with an own-rows policy, so a row can be created through the table API without naming
    `email_frequency` at all.
 
-`notif_pref_open_slots_incidental_values()` derives both (never hard-coded, or the rule would
-silently invert the day a default moved) and a reverse ARRIVAL only ever SEEDS a value in that set.
+Several rounds were then spent trying to decide, from a value alone, whether the user chose it. Every
+version leaked the same way — the catalog default can change after the page loaded, the column
+default can change after a partial insert, a retarget carries another event's default with no
+provenance to reconstruct, and a valid non-literal default such as `lower('INSTANT'::text)` cannot be
+parsed at all. The premise was wrong: **the database has no record of where a stored cadence came
+from.**
 
-Two refinements the review forced, both about **provenance**, and both resolved the same way — when
-you cannot prove a value was chosen, seed rather than apply:
-
-* **A RETARGET carries no reconstructable provenance at all.** Moving a row onto this event brings a
-  value stored under another event's default; reading that default *as it is now* is wrong, because
-  an admin may have changed it since. There is no provenance column to reconstruct it from. So a
-  retarget treats **everything except `off`** as incidental. `off` needs no provenance: applying it
-  suppresses mail, which is safe whatever its origin.
-* **An UNPARSEABLE column default fails SAFE.** `pg_get_expr` renders a literal default as
-  `'instant'::text`, which the extractor reads; a valid non-literal default such as
-  `lower('INSTANT'::text)` it cannot. Returning only what parsed would fail OPEN — the real
-  incidental value would be missing, so a partial insert carrying it would read as explicit. An
-  unreadable default therefore degrades to the same conservative set.
-Which arm is live matters and the first draft of this got backwards: `open_slots_player` ships
-`supports_whatsapp = false` and the page renders the WhatsApp switch only where supported, so **the
-catalog arm is currently unreachable and the column arm is the live one**. The catalog arm is kept
-because Stage 8 turns WhatsApp on. A plain CHANGE to a row already at this (user, event) needs no test: a same-channel-only save rewrites
-`email_frequency` unchanged and the no-change short-circuit drops it, so a *changed* value on UPDATE
-is always an explicit email choice. `off` is excluded from the incidental set **unconditionally** —
-not because it happens not to be a default today, but because suppressing mail is safe whether it
-was chosen or inherited, so an opt-out always applies. That is the case the contract actually names.
+So the rule collapsed to one that needs no provenance: **on ARRIVAL, only an opt-out may overwrite an
+existing legacy choice; every other cadence seeds.** `off` is safe whatever its origin because
+applying it suppresses. The cost is cadence fidelity on a path that is nearly empty — anyone holding
+a legacy row also holds a v2 row from C's backfill, so their next write is a CHANGE, and changes
+apply unconditionally. The forward direction still discriminates by value against the v1 COLUMN
+default, because there the ambiguous value is fixed by the schema rather than computed by a page; the
+two rules are deliberately not symmetric.
 
 **Departures mirror too, but never at the cost of an opt-out.** Losing the v2 row (DELETE, retarget
 away, or reassignment to another user — all reachable through the granted table API, none through
