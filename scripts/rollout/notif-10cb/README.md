@@ -11,22 +11,27 @@ of the mutating subcommands is an owner decision made from the runbook, not by a
 
 | # | Step | What it proves |
 |---|---|---|
+| 0 | *(owner)* ship **Admin Notification Operations** | MANDATORY before any canary or activation. Without it there is no in-product, global view of the pipeline and no safe controls — intervening means a hand-written psql-session against production. Separate release unit; scope and acceptance criteria in [`docs/FOUNDATION_ROADMAP.md`](../../../docs/FOUNDATION_ROADMAP.md). |
 | 1 | `status <url>` | Read-only. Engine flags, cron presence/armed state, dispatch liveness, and the counters a disabled smoke must not move. |
-| 2 | `smoke-disabled <url>` | Read-only. Capture counters either side of a disabled invocation through the real Vault/pg_net path. The invocation must answer **exactly** `200 {"status":"disabled","reason":"disabled"}` and move **no** counter. |
-| 3 | *(owner)* enable the send switch | — |
-| 0 | *(owner)* ship **Admin Notification Operations** | MANDATORY before any canary or activation. Without it there is no in-product, global view of the pipeline and no safe controls — intervening means psql against production. Separate release unit; acceptance criteria in [`docs/FOUNDATION_ROADMAP.md`](../../../docs/FOUNDATION_ROADMAP.md). |
-| 4 | `canary --yes --admin-ops-confirmed <url> <run_id>` | Reconciles the **actual** run id the canary invocation returned. Cron still inactive. |
-| 5 | `preflight <url> <run_id>` | Read-only **dry run** of the whole activation gate. Arms nothing. |
-| 5b | *(owner)* wire the EXTERNAL monitor | Point cron/uptime monitoring at `public.notif_digest_worker_liveness()` and verify it alerts on a stale `last_success_at`. |
-| 6 | `activate --yes --monitor-confirmed --admin-ops-confirmed <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
-| 7 | `rollback --yes --switch-off-confirmed <url>` | Engine off **and** cron inactive, then proves both. |
+| 2 | `smoke-disabled --switch-off-confirmed <url>` | Read-only. Capture counters either side of a disabled invocation through the real Vault/pg_net path. The invocation must answer **exactly** `200 {"status":"disabled","reason":"disabled"}` and move **no** counter. |
+| 3 | *(owner)* set `DIGEST_SEND_ENABLED=true` on `notification-digest-worker` | The edge kill switch. No SQL can see it; this bundle has no view of it. |
+| 3b | *(owner)* enable the engine for the cutover event | `UPDATE notification_event_types SET digest_engine_enabled = true WHERE key = 'open_slots_player';` — the activation gate **requires** this to be true already, and nothing here does it for you. |
+| 3c | *(owner)* wire the EXTERNAL monitor | Point cron/uptime monitoring at `public.notif_digest_worker_liveness()` and verify it alerts on a stale `last_success_at`. Before the canary, so it is watching from the first send. |
+| 4 | *(owner)* invoke the worker **ONCE**, by hand | Through the real Vault/pg_net path, cron still INACTIVE. **Capture the `run_id` it returns** — that uuid is the canary, and every later step is bound to it. This is the step that actually sends an email, and the one step 0 gates procedurally. |
+| 5 | `canary --yes --admin-ops-confirmed <url> <run_id>` | Reconciles **that** run and verifies it delivered. Does not invoke anything. |
+| 6 | `preflight <url> <run_id>` | Read-only **dry run** of the whole activation gate. Arms nothing. |
+| 8 | `rollback --yes --switch-off-confirmed <url>` | Engine off **and** cron inactive, then proves both. |
 
-**Step 0 is not a formality**, and note what the flag actually gates: `canary` RECONCILES a run you
-have already invoked by hand, so `--admin-ops-confirmed` on it is checked *after* that first email
-has gone. It gates reconciliation and activation mechanically; the send itself is gated by this
-runbook putting step 0 first. A failed canary is not invisible — it has an HTTP result,
-`canary_verify.sql` and the worker's Slack alert — but without the admin surfaces there is no
-global view and no safe way to intervene.
+**Steps 3b and 4 are owner actions with no subcommand, deliberately.** Enabling the engine and
+invoking the worker are the two moments that can produce a real email, and neither is something this
+script should do on the operator's behalf. `canary` reconciles what step 4 returned; it invokes
+nothing.
+
+**Note what `--admin-ops-confirmed` actually gates.** Step 4 is where the email goes, and it has no
+flag — so the release unit gates reconciliation (step 5) and arming (step 7) mechanically, and the
+send itself procedurally, by being step 0 of this sequence. A failed canary is not invisible: it has
+an HTTP result, `canary_verify.sql` and the worker's Slack alert. What is missing without the admin
+surfaces is a global view and a safe way to intervene.
 
 **Arming the cron before enabling the switch would schedule a worker that finds nothing to do and
 reports healthy** — a green light over an engine that is still off. The preflight refuses that, and

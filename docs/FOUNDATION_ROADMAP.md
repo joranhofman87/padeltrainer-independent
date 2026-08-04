@@ -190,15 +190,31 @@ and `notification_digest_attempts` (state, `outcome_class`, provider ids),
 parked awaiting a human), `notif_digest_worker_liveness()`, and the email deliverability record.
 PII-minimal; message bodies are never exposed to a non-tenant admin.
 
-**Scope — safe controls (write), each reviewed, tested and confirmable.** Per-event digest engine
-enable/disable; cron activate/deactivate (**never** `cron.unschedule` — that destroys the reviewed
-Vault-backed command); resolve or re-queue a quarantined orphan; close a tripped circuit; cancel or
-retry a stuck group. Admin-only, audited, idempotent, refusing rather than guessing. **No control
-may perform a send.** `DIGEST_SEND_ENABLED` is an edge env var that no SQL and no admin surface can
-read — the UI must say so rather than imply it checked.
+**Scope — safe controls (write). FAIL-CLOSED DIRECTIONS ONLY.** This is the constraint that matters,
+and it is easy to get wrong: an admin "activate the cron" button would satisfy a loosely-worded spec
+while bypassing everything `scripts/rollout/notif-10cb/sql/activate.sql` exists to enforce — the
+reviewed-command hash, the node/schedule/owner identity, canary freshness and binding, the run-ledger
+and group locks, and the monitor confirmation. Combined with an already-enabled edge switch, an admin
+engine toggle plus an admin arm button *is* a send button, however the copy is worded.
+
+So the admin surface may only move things toward **safe**:
+* digest engine **disable** (per event) — never enable;
+* cron **deactivate** — never activate, and **never** `cron.unschedule`, which destroys the reviewed
+  Vault-backed command;
+* resolve or re-queue a quarantined orphan; close a tripped circuit; cancel or retry a stuck group.
+
+**Enabling and arming stay in the owner runbook**, behind the one authoritative gate. If a future
+version wants an in-product activate, it must call that same gate — canary-bound, locked and
+count-checked — and not a raw `cron.alter_job(active := true)`.
+
+Every control is admin-only, audited, idempotent, and refuses rather than guesses. **No control may
+perform a send.** `DIGEST_SEND_ENABLED` is an edge env var that no SQL and no admin surface can read
+— the UI must say so rather than imply it checked.
 
 **Acceptance criteria — what "shipped and verified" means for `--admin-ops-confirmed`:**
 1. ACL/RLS proven for admin vs trainer vs player vs anon — a non-admin gets nothing.
+0. **No control enables the engine or arms the cron.** Asserted, not just reviewed: a test must fail
+   if such a control exists, and arming must remain reachable only through `activate.sql`.
 2. Every control mutation-pinned: removing the guard fails a test.
 3. The read surface tested against real fixture data, not stubs.
 4. Independent review clear, every repo gate green.

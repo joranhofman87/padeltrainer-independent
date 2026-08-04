@@ -13,18 +13,27 @@
 #                            switch is OFF. Must answer exactly
 #                            200 {"status":"disabled","reason":"disabled"} and
 #                            move NO counter. Proves the wiring without sending.
-#   3. (owner) enable the send switch
-#   4. canary --yes --admin-ops-confirmed
-#                          — ONE manual invocation, cron still INACTIVE, then
-#                            reconcile the ACTUAL run ids the worker returned.
-#   4b. (owner) wire the EXTERNAL cron/uptime monitor on notif_digest_worker_liveness() and
-#                            verify it alerts on a stale last_success_at.
-#   5. activate --yes --monitor-confirmed --admin-ops-confirmed
+#   0. (owner) SHIP Admin Notification Operations — mandatory before any canary or activation.
+#   3. (owner) set DIGEST_SEND_ENABLED=true on the worker (an edge env var; nothing here sees it).
+#   3b. (owner) enable the engine for the cutover event:
+#                            UPDATE notification_event_types SET digest_engine_enabled = true
+#                              WHERE key = 'open_slots_player';
+#                            The activation gate REQUIRES this already true; nothing here does it.
+#   3c. (owner) wire the EXTERNAL cron/uptime monitor on notif_digest_worker_liveness() and
+#                            verify it alerts on a stale last_success_at — before the canary.
+#   4. (owner) invoke the worker ONCE by hand, cron still INACTIVE, and CAPTURE THE run_id it
+#                            returns. This is the step that sends a real email. No subcommand does
+#                            it: enabling the engine and invoking the worker are the two moments
+#                            that can produce mail, and neither should happen on this script's say-so.
+#   5. canary --yes --admin-ops-confirmed
+#                          — reconcile THAT run id and verify it delivered. Invokes nothing.
+#   6. preflight           — read-only dry run of the activation gate. Arms nothing.
+#   7. activate --yes --monitor-confirmed --admin-ops-confirmed
 #                          — arm the cron, but only after activation_preflight
 #                            passes. Enabling the cron BEFORE the switch would
 #                            schedule a worker that finds nothing and reports
 #                            healthy — a green light over an engine still off.
-#   6. rollback --yes      — switch OFF and DEACTIVATE the cron, then prove both.
+#   8. rollback --yes      — switch OFF and DEACTIVATE the cron, then prove both.
 #
 # NEVER unschedule the job to pause it. Deactivate. Unscheduling destroys the
 # reviewed Vault-backed command, and re-creating it by hand under time pressure
@@ -116,10 +125,12 @@ require_confirmed() {
 
 # THE THIRD PRECONDITION THIS CANNOT SEE. The Admin Notification Operations release unit — global
 # admin visibility into the pipeline plus safe controls — is a MANDATORY prerequisite for any
-# canary or activation: without it, the only way to see what the pipeline is doing is psql against
-# production, so the first sign of trouble in a real send is a user complaint. It is a separate
-# release unit and nothing in this database can detect whether it has shipped, so the operator
-# asserts it, exactly as they assert the edge kill switch and the external monitor.
+# canary or activation. NOT because a failure would be invisible: a bad canary shows up in its HTTP
+# result, in canary_verify.sql and in the worker's Slack alert. Because there is no in-product,
+# GLOBAL view of the pipeline and no safe controls, so intervening means a hand-written
+# psql-session against production. It is a separate release unit and nothing in this database can
+# detect whether it has shipped, so the operator asserts it, exactly as they assert the edge kill
+# switch and the external monitor.
 #
 # WHAT THIS FLAG CAN AND CANNOT GATE. `canary` RECONCILES a run the operator already invoked by
 # hand, so by the time this check runs the canary email has been sent. It therefore gates
