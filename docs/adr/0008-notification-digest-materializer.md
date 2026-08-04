@@ -914,7 +914,9 @@ away, or reassignment to another user — all reachable through the granted tabl
 the UI) makes the effective v2 preference the catalog default while v1 keeps the departed value. The
 first draft declined to mirror that at all, arguing any mirror could resume mail; the premise was
 right and the conclusion too strong. The rule is now stated as suppression, not as a token: **a
-departure may never make the legacy reader send MORE than it does now.** So it refuses when the
+departure may never UN-SUPPRESS.**  It can still raise frequency, by adopting a catalog default that
+is more frequent than the departing value — correct, because that is what v2 resolves to and neither
+value is an opt-out (recorded as follow-up J-F2 so it is not re-filed as a defect). So it refuses when the
 departing value is `off` and the target is not, and never un-suppresses a legacy `off` — but when the
 catalog default is *itself* `off` it applies, because that suppresses. UPDATE-only, never INSERT, so
 account teardown stays a no-op: `delete-user-data` removes v1 explicitly and v2 cascades from

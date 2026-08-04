@@ -418,7 +418,11 @@ BEGIN
   -- the legacy column to it SUPPRESSES mail, which is always safe and is what v2 now resolves to.
   -- Refusing there left v1 sending while v2 said 'off' — the divergence in the unsafe direction.
   --
-  -- So the rule is: a departure may never make the legacy reader send MORE than it does now.
+  -- So the rule is: a departure may never UN-SUPPRESS. An `off` on either side is protected; what a
+-- departure does otherwise is adopt the catalog default, which is simply what v2 now resolves to.
+-- Note that this can INCREASE frequency — departing `weekly` with a catalog default of `instant`
+-- raises it — and that is correct rather than a leak: both values are inherited defaults, neither is
+-- an opt-out, and the alternative is leaving v1 stale against what v2 says.
   IF OLD.email_frequency = 'off' AND v_default <> 'off' THEN RETURN NULL; END IF;
 
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
@@ -496,7 +500,10 @@ BEGIN
   ON CONFLICT (user_id) DO UPDATE
      SET open_slots_digest = EXCLUDED.open_slots_digest
    WHERE public.notification_preferences.open_slots_digest IS DISTINCT FROM EXCLUDED.open_slots_digest
-     -- same rule as an arrival (§1b): only an opt-out may overwrite an existing legacy choice.
+     -- Same rule as an arrival (§1b): only an OPT-OUT may overwrite an existing legacy choice.
+     -- Not "a value the platform could not have supplied" — that model is gone; `off` overwrites
+     -- precisely because it suppresses, whatever its origin. Rows with no legacy counterpart are
+     -- still seeded by the INSERT above, whatever their cadence.
      AND EXCLUDED.open_slots_digest = 'off';
 
   GET DIAGNOSTICS v_rows = ROW_COUNT;

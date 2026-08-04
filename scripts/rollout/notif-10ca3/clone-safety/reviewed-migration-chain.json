@@ -1,6 +1,6 @@
 {
   "_comment": "Digest of the migration chain reviewed for outbound behaviour. Re-pin only after reviewing the diff.",
-  "sha256": "151705a556c2dec53eba441dc8b36a2dbdff18eca278892038de0666d7f99dea",
+  "sha256": "730acda13aa2b989df817188407a24d3c7fc19a17a67a7ec77d13770d50d0aeb",
   "files": 566,
   "pinned_at": "2026-08-04"
 }

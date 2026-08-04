@@ -19,8 +19,9 @@
 // migration (20260210090026) rather than a hand copy of it.
 //
 // Everything under test is loaded from the REAL migration files. Nothing is retyped: the forward
-// trigger is extracted from 20261011100000, the catalog row (and therefore the catalog default the
-// ambiguity rule turns on) from 20261008100000, and the bridge itself from 20261013100000.
+// trigger is extracted from 20261011100000, the catalog row from 20261008100000, and the bridge
+// itself from 20261013100000. (The catalog default no longer drives the reverse rule — see §1b of
+// the migration — but it is still what the resolver falls back to, so departures adopt it.)
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
@@ -46,7 +47,7 @@ const USER = '11111111-1111-1111-1111-111111111111';
 const USER2 = '22222222-2222-2222-2222-222222222222';
 const OTHER_EVENT = 'session_reminder_player';
 
-/** The catalog default the INSERT ambiguity rule turns on — read from the DB, never retyped. */
+/** The resolver's fallback, and what a DEPARTURE adopts — read from the DB, never retyped. */
 let catalogDefault: string;
 /**
  * The arrival rule, stated once: only an opt-out may OVERWRITE an existing legacy choice, because
@@ -344,12 +345,10 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     } finally { await applyBridge(); }
   });
 
-  it('a RETARGET carrying anything but an opt-out is treated as incidental', async () => {
-    // The hole the retarget fix opened: a WhatsApp-only first save on an event whose catalog
-    // default is 'daily' stores email='daily' without the user choosing it. Retargeted onto
-    // open_slots_player, 'daily' is not in THIS event's incidental set {instant, weekly} — so
-    // without carrying the departing event's default into the test it reads as explicit and
-    // overwrites a legacy 'off', resuming mail after an opt-out.
+  it('a RETARGET carrying anything but an opt-out can only seed', async () => {
+    // A retarget brings a value stored under another event — a channel-only save there can store a
+    // cadence the user never chose. Its provenance is not recoverable (the other event's default
+    // may have changed since), so it gets the same treatment as any arrival: only 'off' overwrites.
     await c.query(`UPDATE public.notification_event_types SET default_email_frequency='daily'
                     WHERE key=$1`, [OTHER_EVENT]);
     try {

@@ -763,8 +763,9 @@ arriving value's provenance is not recoverable. Neither mirrors WhatsApp or push
 counterpart. The reverse direction also ships a bounded, idempotent one-time reconcile (a trigger
 cannot see rows that already exist) and a **departure** half, so losing the v2 row (delete, retarget
 away, reassignment) moves the legacy column to the catalog default rather than leaving it stale.
-Departures never un-suppress: a departure may never make the legacy reader send more than it does
-now.
+Departures never un-suppress — an `off` on either side is protected — but they do adopt the catalog
+default, which can raise frequency when that default is more frequent than the departing value. That
+is what v2 resolves to, and neither value is an opt-out.
 
 Retirement: `legacySendEmailInventory.test.ts` goes red when `send-email` stops mapping
 `new_availability`/`slot_reopened` onto `open_slots_digest`. That is **condition 1 of 4, not a
