@@ -31,25 +31,28 @@ const SQL_DIR = join(HERE, '..', 'sql');
 // production database would satisfy every role/ownership check below (that is the point of them),
 // so a stale SUPABASE_LOCAL_DB_URL pointing anywhere real would turn a rehearsal into a production
 // write. The URL must be url-form (libpq's keyword/value form parses "somewhere else entirely" —
-// see the 10c-b README on conninfo), carry no whitespace/control characters, no multi-host list,
-// and resolve to a loopback host. Errors below never echo the URL: it carries a password.
-const loopbackOnly = (raw, name) => {
-  if (!/^postgres(ql)?:\/\//.test(raw) || /[\s\x00-\x1f]/.test(raw)) {
-    console.error(`${name} must be a postgresql:// url with no whitespace or control characters`);
-    process.exit(1);
-  }
+// see the 10c-b README on conninfo), carry NO QUERY STRING (pg-connection-string lets `?host=…`
+// OVERRIDE the authority's hostname, so a loopback-looking url with a query can connect anywhere —
+// the production dispatcher refuses query strings outright for the same reason), no whitespace or
+// control characters, no multi-host list, and resolve to a loopback host. Errors below never echo
+// the URL: it carries a password.
+const notLoopbackBecause = (raw) => {
+  if (!/^postgres(ql)?:\/\//.test(raw)) return 'must be a postgresql:// url (keyword/value conninfo parses somewhere else entirely)';
+  if (/[\s\x00-\x1f]/.test(raw)) return 'carries whitespace or control characters';
+  if (raw.includes('?')) return 'carries a query string (a ?host= override connects elsewhere while the authority reads loopback)';
   let u;
-  try { u = new URL(raw); } catch { console.error(`${name} does not parse as a url`); process.exit(1); }
-  const host = u.hostname;
-  if (raw.split('@').pop().includes(',')) {
-    console.error(`${name} carries a multi-host list — one loopback host only`);
-    process.exit(1);
+  try { u = new URL(raw); } catch { return 'does not parse as a url'; }
+  if (raw.split('@').pop().includes(',')) return 'carries a multi-host list — one loopback host only';
+  if (!['127.0.0.1', 'localhost', '::1', '[::1]'].includes(u.hostname)) {
+    return `must point at a loopback host (got ${u.hostname}) — this rehearsal schedules real cron jobs and must never see a remote database`;
   }
-  if (!['127.0.0.1', 'localhost', '::1', '[::1]'].includes(host)) {
-    console.error(`${name} must point at a loopback host (got ${host}) — this rehearsal schedules real cron jobs and must never see a remote database`);
-    process.exit(1);
-  }
-  return { raw, label: `${host}:${u.port || 5432}` };
+  return null;
+};
+const loopbackOnly = (raw, name) => {
+  const why = notLoopbackBecause(raw);
+  if (why) { console.error(`${name} ${why}`); process.exit(1); }
+  const u = new URL(raw);
+  return { raw, label: `${u.hostname}:${u.port || 5432}` };
 };
 const DB = loopbackOnly(process.env.SUPABASE_LOCAL_DB_URL
   ?? 'postgresql://postgres:postgres@127.0.0.1:54322/postgres', 'SUPABASE_LOCAL_DB_URL');
@@ -88,6 +91,20 @@ const errOf = async (client, sql, params = []) => {
 console.log('\n10c-b N0 — the job-row lock against REAL pg_cron on the local Supabase stack\n');
 
 try {
+  // ── the loopback guard's own mutation pins ──────────────────────────────
+  // The guard is what stands between a stale env var and a production write, so its refusals are
+  // asserted here rather than trusted: weaken one arm and this goes red.
+  for (const [bad, why] of [
+    ['postgresql://u:p@db.example.supabase.co:5432/db', 'a remote host'],
+    ['postgresql://u:p@127.0.0.1:5432/db?host=db.example.com', 'a ?host= query override'],
+    ['host=db.example.com user=u dbname=db', 'keyword/value conninfo'],
+    ['postgresql://u:p@127.0.0.1,db.example.com:5432/db', 'a multi-host list'],
+    ['postgresql://u:p@127.0.0.1:5432/db\n', 'control characters'],
+  ]) {
+    rec(`the loopback guard refuses ${why}`, notLoopbackBecause(bad) !== null,
+      notLoopbackBecause(bad) === null ? 'the guard let it through' : '');
+  }
+
   // ── the environment must BE the hosted privilege model, or nothing below counts ──
   const su = (await c.query(
     `SELECT usesuper FROM pg_user WHERE usename = current_user`)).rows[0]?.usesuper;
@@ -210,6 +227,15 @@ try {
   if (adminOk) {
     const fid = (await admin.query(
       `SELECT cron.schedule($1, '59 23 31 12 *', 'SELECT 1') AS id`, [FOREIGN_JOB])).rows[0].id;
+    // BOTH connections must be looking at the SAME catalog, or "does not exist or you don't own
+    // it" is ambiguous: two different loopback stacks would produce the same error for a jobid
+    // that simply is not there, and the scenario would pass with no foreign row ever tested.
+    const visible = (await c.query(
+      `SELECT count(*)::int AS n FROM cron.job
+        WHERE jobid = $1 AND jobname = $2 AND username = 'supabase_admin'`,
+      [fid, FOREIGN_JOB])).rows[0].n;
+    rec('the foreign job is visible to the operator connection in the SAME catalog', visible === 1,
+      visible === 1 ? '' : 'the two URLs reach different stacks — the refusal below would be vacuous');
     const e = await errOf(c, `SELECT cron.alter_job($1, active := false)`, [fid]);
     rec("a FOREIGN-owned job raises ('you don't own it') for the operator role",
       !!e && /does not exist or you don't own it/.test(e.message), e?.message ?? 'it altered a foreign job');
@@ -226,12 +252,22 @@ try {
 } finally {
   // Whatever failed above, no throwaway job may outlive the rehearsal — and a session that died
   // inside a transaction must be rolled back FIRST, or the cleanup itself aborts (25P02) / is
-  // discarded with the connection.
+  // discarded with the connection. Cleanup is then VERIFIED, not assumed: a suppressed unschedule
+  // failure would leave a job behind while the rehearsal exits zero.
   await c.query(`ROLLBACK`).catch(() => {});
   await b.query(`ROLLBACK`).catch(() => {});
   await admin?.query(`ROLLBACK`).catch(() => {});
   await c.query(`SELECT cron.unschedule($1)`, [JOB]).catch(() => {});
   await admin?.query(`SELECT cron.unschedule($1)`, [FOREIGN_JOB]).catch(() => {});
+  try {
+    const left = (await c.query(
+      `SELECT count(*)::int AS n FROM cron.job WHERE jobname IN ($1, $2)`,
+      [JOB, FOREIGN_JOB])).rows[0].n;
+    rec('no throwaway job outlives the rehearsal', left === 0, left === 0 ? '' : `${left} left behind — remove by name before re-running`);
+  } catch (e) {
+    rec('no throwaway job outlives the rehearsal', false,
+      `could not VERIFY cleanup (${e.code ?? e.message}) — check cron.job for '${JOB}' by hand`);
+  }
   await admin?.end().catch(() => {});
   await b.end().catch(() => {});
   await c.end().catch(() => {});
