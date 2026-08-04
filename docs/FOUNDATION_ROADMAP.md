@@ -222,6 +222,19 @@ they are specified separately rather than waved through under the same heading:
 version wants an in-product activate, it must call that same gate — canary-bound, locked and
 count-checked — and not a raw `cron.alter_job(active := true)`.
 
+**Carried in from 10c-b slice I — a durable pending-invocation record.** A dispatch run only appears
+in `notification_worker_runs` once the worker *starts*. Between `canary-invoke`'s commit and that
+moment the pipeline has no durable record that an invocation is on its way, so "nothing is in flight"
+reads clean over a canary that is already travelling — which lets a second invocation start, and lets
+`activate` arm the cron on the *previous* canary's evidence while an unverified one is in the air.
+10c-b narrows this by refusing while a request to the worker endpoint is still in
+`net.http_request_queue`, and both artifacts say plainly that this is a narrowing, not a closure:
+pg_net owns that row's lifetime, so a request already dispatched but not yet recorded stays invisible.
+Closing it needs a record written by the invoker and cleared by the worker — pipeline state, owned by
+this release unit, and one of the things its global view should show. Until it exists, treat
+"invocation in flight" as an operator responsibility: one canary at a time, and never `activate` from
+a second terminal while `canary-invoke` is still running.
+
 Every control is admin-only, audited, idempotent, and refuses rather than guesses. **No control may
 perform a send.** `DIGEST_SEND_ENABLED` is an edge env var that no SQL and no admin surface can read
 — the UI must say so rather than imply it checked.

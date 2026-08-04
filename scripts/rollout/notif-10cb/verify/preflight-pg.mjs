@@ -191,6 +191,22 @@ try {
         INSERT INTO net.http_request_queue (url, headers, body) VALUES ($1, $2, $3) RETURNING id;
       $f$;`);
 
+  // ── the search_path attack, planted once and left in place ────────────────
+  // Function resolution does NOT prefer pg_catalog. An exact-arity, exact-type overload beats
+  // pg_catalog's VARIADIC "any" wherever its schema sits in the path — including AFTER an explicit
+  // pg_catalog — so an unqualified jsonb_build_object in the scheduled command would hand the
+  // decrypted service_role bearer to whoever owns that schema. A hostile OPERATOR for `||` does the
+  // same to the concatenation. Both are planted here and both stay planted for every scenario below.
+  await c.query(`
+    CREATE SCHEMA shadow;
+    CREATE TABLE shadow.captured (v text);
+    CREATE FUNCTION shadow.jsonb_build_object(text, text, text, text) RETURNS jsonb LANGUAGE sql AS $f$
+      INSERT INTO shadow.captured VALUES ($4); SELECT '{"shadowed":true}'::jsonb; $f$;
+    CREATE FUNCTION shadow.textcat_capture(text, text) RETURNS text LANGUAGE sql AS $f$
+      INSERT INTO shadow.captured VALUES ($1 operator(pg_catalog.||) $2);
+      SELECT $1 operator(pg_catalog.||) $2; $f$;
+    CREATE OPERATOR shadow.|| (LEFTARG = text, RIGHTARG = text, FUNCTION = shadow.textcat_capture);`);
+
   // ── the baseline world: a clean, fresh, delivering canary ────────────────
   const seedBaseline = async () => {
     await c.query(`
@@ -877,11 +893,14 @@ try {
     await seedBaseline();
     try { await mutate(); }
     catch (e) { return rec(name, false, `the scenario's own setup failed: ${e.message}`); }
+    // Measured against the world the SCENARIO built, not against zero: one scenario plants a queued
+    // request of its own, and comparing to zero would report that plant as a send.
+    const before = await queuedCount();
     const err = await canaryInvoke();
     if (!err) return rec(name, false, 'the invocation PASSED — it would have SENT');
     if (!err.includes(needle)) return rec(name, false, `refused for the wrong reason: ${err}`);
     const after = await queuedCount();
-    rec(name, after === 0, after === 0 ? '' : `it refused but queued ${after} request(s) anyway`);
+    rec(name, after === before, after === before ? '' : `it refused but queued ${after - before} request(s) anyway`);
   };
 
   await seedBaseline();
@@ -897,6 +916,47 @@ try {
       q?.url === 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker', q?.url ?? 'no request');
     rec('...carrying a bearer resolved from Vault at execution time',
       q?.auth === 'Bearer stub-key-not-a-real-credential', q?.auth ?? 'no Authorization header');
+  }
+
+  // ── the bearer must survive a hostile search_path, twice over ────────────
+  // `hostile` is placed BEFORE pg_catalog and pg_catalog is named EXPLICITLY, because the tempting
+  // wrong test omits pg_catalog — PostgreSQL then searches it implicitly first and the scenario
+  // passes without proving anything. Two facts are asserted: the shadow schema captured nothing, and
+  // the request still carries the real Vault bearer. The first alone would pass if the command had
+  // simply failed to run.
+  for (const path of ['shadow, pg_catalog, public', 'shadow, public']) {
+    await seedBaseline();
+    await c.query(`DELETE FROM shadow.captured`);
+    await c.query(`SET search_path = ${path}`);
+    let err = null;
+    try { err = await canaryInvoke(); } finally { await c.query(`SET search_path = "$user", public`); }
+    const captured = (await c.query(`SELECT count(*)::int AS n FROM shadow.captured`)).rows[0].n;
+    const auth = (await c.query(`SELECT headers ->> 'Authorization' AS a FROM net.http_request_queue`)).rows[0]?.a;
+    rec(`the invocation survives search_path = ${path}`, err === null, err ?? '');
+    rec(`...and a shadowed jsonb_build_object/|| captures NOTHING (${path})`, captured === 0, `captured=${captured}`);
+    rec(`...and the real Vault bearer still reaches the request (${path})`,
+      auth === 'Bearer stub-key-not-a-real-credential', auth ?? 'no Authorization header');
+  }
+
+  // ...and the scheduled command must be safe on its OWN merits, because a cron TICK runs it under
+  // the job owner's path with nothing to pin it. This executes the migration's text directly, with
+  // no SET LOCAL search_path in front of it — the artifact's protection removed, so only the
+  // qualification in the command itself is left standing.
+  await seedBaseline();
+  await c.query(`DELETE FROM shadow.captured`);
+  await c.query(`SET search_path = shadow, pg_catalog, public`);
+  try {
+    await c.query(`DO $do$ DECLARE v bigint; BEGIN EXECUTE $cmd_under_test$${REVIEWED.command}$cmd_under_test$ INTO v; END $do$;`);
+    const captured = (await c.query(`SELECT count(*)::int AS n FROM shadow.captured`)).rows[0].n;
+    const auth = (await c.query(`SELECT headers ->> 'Authorization' AS a FROM net.http_request_queue`)).rows[0]?.a;
+    rec('the SCHEDULED command is safe unaided — a tick has no SET LOCAL to protect it', captured === 0,
+      `a shadowed name captured ${captured} value(s) from the command a cron tick runs`);
+    rec('...and it still posts the real bearer', auth === 'Bearer stub-key-not-a-real-credential',
+      auth ?? 'no Authorization header');
+  } catch (e) {
+    rec('the SCHEDULED command is safe unaided — a tick has no SET LOCAL to protect it', false, e.message);
+  } finally {
+    await c.query(`SET search_path = "$user", public`);
   }
 
   // An ARMED cron means the population is already being dispatched to on a schedule, so "one
@@ -988,6 +1048,86 @@ try {
   {
     const err = await canaryInvoke();
     rec('canary-invoke does not count TERMINAL groups towards the ceiling', err === null, err ?? '');
+  }
+
+  // A canary already on its way is invisible in notification_worker_runs — the run row only appears
+  // when the worker STARTS. Without this the second invocation, and activation, both read clean.
+  await invokeRefuses('canary-invoke REFUSES while a request to the worker is already queued',
+    () => c.query(`INSERT INTO net.http_request_queue (url)
+                   VALUES ('https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker')`),
+    'already queued');
+  // ...and it must be THAT endpoint. Every other cron in this project posts through pg_net too, so a
+  // bare "the queue is empty" would refuse every canary on a healthy system.
+  await seedBaseline();
+  await c.query(`INSERT INTO net.http_request_queue (url) VALUES ('https://example.test/functions/v1/some-other-worker')`);
+  {
+    const err = await canaryInvoke();
+    rec('...but another worker\'s queued request does not block it', err === null, err ?? '');
+  }
+
+  // The same blindness lets activation arm over an unverified canary that is in flight.
+  await seedBaseline();
+  await c.query(`INSERT INTO net.http_request_queue (url)
+                 VALUES ('https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker')`);
+  {
+    const err = await preflight();
+    rec('activation REFUSES while a canary invocation is queued but not yet started',
+      !!err && err.includes('is queued'), err ?? 'it PASSED');
+  }
+
+  // ── canary_scope_verify.sql: what the canary ACTUALLY reached ─────────────
+  // The pre-invocation ceiling bounds work visible at invocation time. Work committed between that
+  // snapshot and materialization is sent by the same run and never counted — so the honest check is
+  // after the fact, against the finished run's own durable rows.
+  const scopeVerify = async (max = 1) => {
+    try { await c.query(artifactText('canary_scope_verify.sql', { run_id: RUN, max_recipients: max })); return null; }
+    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
+  };
+  await seedBaseline();
+  {
+    const err = await scopeVerify();
+    rec('canary_scope_verify PASSES for a one-recipient canary', err === null, err ?? '');
+  }
+  // The defect it exists for: a row that arrived after the ceiling was computed, materialized by the
+  // same run, delivered to a second recipient.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state,
+       worker_run_id, terminal_at)
+      VALUES (gen_random_uuid(), '{"late":1}'::jsonb, 'hash-late', 'email', 'open_slots_player',
+              'rk-LATE-ARRIVAL', 'fp-late', 'Europe/Amsterdam', now(), now(), 'sent', '${RUN}', now())`);
+  {
+    const err = await scopeVerify();
+    rec('canary_scope_verify REFUSES a run that reached a SECOND recipient',
+      !!err && err.includes('the canary reached 2 recipient'), err ?? 'it PASSED');
+    rec('...and says it has already sent', !!err && err.includes('ALREADY SENT'), err ?? '');
+  }
+  // A SPLIT is several chunk groups for ONE recipient. Counting groups instead of recipients would
+  // refuse a perfectly good canary, which is a gate that gets switched off rather than heeded.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state,
+       chunk_ordinal, worker_run_id, terminal_at)
+    SELECT gen_random_uuid(), jsonb_build_object('chunk', i), 'hash-chunk-' || i, 'email',
+           'open_slots_player', 'rk-1', 'fp-1', 'Europe/Amsterdam', now(), now(), 'sent',
+           i, '${RUN}', now()
+      FROM generate_series(1, 3) i`);
+  {
+    const err = await scopeVerify();
+    rec('canary_scope_verify counts RECIPIENTS, not chunk groups', err === null, err ?? '');
+  }
+  // An unfinished run has not reached its final scope, so passing it would be a verdict about a
+  // moment rather than about the run.
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_worker_runs SET ended_at = NULL WHERE run_id = '${RUN}'`);
+  {
+    const err = await scopeVerify();
+    rec('canary_scope_verify REFUSES a run that has not finished',
+      !!err && err.includes('FINISHED dispatch/email run'), err ?? 'it PASSED');
   }
 
   // ── canary_invoke_response.sql: pg_net answers later, or not at all ───────

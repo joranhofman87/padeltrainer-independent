@@ -44,6 +44,28 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 
+-- THE PATH IS PINNED BEFORE ANYTHING IS ASSERTED OR EXECUTED, and this is the most load-bearing line
+-- in the file. `EXECUTE v_cmd` below runs catalog text under whatever search_path the session has,
+-- and search_path is settable per role and per database — somewhere the client-side PG* stripping
+-- cannot reach.
+--
+-- Naming pg_catalog first would NOT be enough, which is the part that is easy to get wrong. Function
+-- resolution does not prefer pg_catalog: an exact-arity, exact-type overload beats pg_catalog's
+-- VARIADIC "any" wherever its schema sits in the path. So with `hostile` anywhere in the path,
+-- `hostile.jsonb_build_object(text,text,text,text)` is chosen over the built-in and receives the
+-- already-decrypted service_role bearer as an argument. The same goes for a hostile OPERATOR for
+-- `||` and for a shadowed `jsonb` type name. Only EXCLUDING such a schema works.
+--
+-- The F migration now schema-qualifies every one of those, so the reviewed command is safe under any
+-- path — which makes this line a SECOND lock on the same door, and means no behavioural test can
+-- tell whether it is here. Said plainly rather than left to look load-bearing: it is pinned
+-- structurally by src/test/notif10cbActivationPreflight.test.ts instead, and it is kept because the
+-- first lock lives in a DIFFERENT FILE. A future edit to the migration's command is the exact
+-- circumstance in which nobody re-reads this one.
+-- pg_temp is deliberately absent: PostgreSQL never searches it for functions or operators anyway,
+-- and every temp object here is written as pg_temp.x.
+SET LOCAL search_path = pg_catalog;
+
 -- LOCK ORDER, deliberately the same across this bundle so two artifacts can never deadlock:
 --   notification_worker_runs  →  cron.job  →  notification_event_types
 -- (activate.sql takes the first two then group rows; enable_engine.sql takes the last two.)
@@ -94,19 +116,42 @@ SELECT pg_temp.assert_eq(
       AND status IS DISTINCT FROM 'abandoned'), 0,
   'no dispatch run is in flight (wait for it to finish before invoking a canary)');
 
+-- ...AND NOTHING ALREADY QUEUED FOR THE WORKER. A run row only appears once the worker starts, so
+-- between another invocation's COMMIT and that moment there is nothing in notification_worker_runs to
+-- see, and the check above reads clean over a canary that is already on its way.
+--
+-- STATED PRECISELY, because this narrows the window rather than closing it: pg_net owns the lifetime
+-- of the queue row and removes it on its own schedule, so a request already dispatched but whose
+-- worker has not yet recorded a run stays invisible here. Closing that gap needs a durable
+-- pending-invocation record, which is deferred to the Admin Notification Operations release unit
+-- (docs/FOUNDATION_ROADMAP.md) — that is where "what is the pipeline doing right now" belongs, and
+-- it is a mandatory prerequisite for any canary in the first place.
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM net.http_request_queue
+    WHERE url = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
+  'no request to the digest worker is already queued (another canary invocation is in progress — wait for it to answer)');
+
 -- THE BLAST RADIUS. "Canary: one recipient" was a hope, not a fact: the worker sends to every group
 -- it can claim, plus everything materialization forms during the same run. If the engine has been on
 -- for a while, or a backfill left work behind, this invocation reaches all of it.
 --
--- The bound is a deliberate OVER-estimate, and it is over-estimated in the fail-closed direction:
+-- WHAT THIS BOUNDS, EXACTLY: the live digest work VISIBLE IN THIS TRANSACTION. It is an over-estimate
+-- of that, in the fail-closed direction:
 --   * every NON-TERMINAL email digest group — `terminal_at IS NULL` is exactly "not terminal",
 --     because the schema-owned guard trigger stamps and clears that column itself
 --     (20261002100000, notification_digest_groups_guard). A state-name list copied into this file
---     would drift the first time one is added; this cannot.
+--     would drift the first time one is added; this cannot. Splits are covered too: a chunk group is
+--     a group, so a split recipient is counted more than once, never less.
 --   * every ungrouped pending digest outbox row — the same predicate as idx_outbox_digest_forming.
 --     Many of these collapse into ONE group per recipient, so counting rows overshoots recipients.
--- Overshooting means refusing a canary that would in fact have been small. That is the right way
--- round for a gate whose failure mode is mail to a live population.
+--
+-- WHAT IT DOES NOT BOUND, and the first version of this comment wrongly implied it did: work
+-- committed AFTER this snapshot. pg_net dispatches once this transaction commits and the worker
+-- materializes whatever is pending when it runs, so a row enqueued in between is sent by this same
+-- invocation and was never counted here. That is not closable from inside this transaction — locking
+-- the outbox would stall live enqueues and still release at COMMIT. It is instead caught AFTER the
+-- fact by canary_scope_verify.sql, which counts the recipients the finished run actually reached and
+-- refuses to let the rollout continue on a canary that was not one.
 CREATE TEMP TABLE _canary_radius AS
   SELECT (SELECT count(*)::int FROM public.notification_digest_groups
            WHERE channel = 'email' AND terminal_at IS NULL) AS non_terminal_groups,
@@ -144,7 +189,7 @@ BEGIN
   SELECT command INTO STRICT v_cmd FROM cron.job
    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job);
 
-  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '0c693083584cffe135e52115ec56c2f0' THEN
+  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '9d67b40b05d018e5b55a873e0ce08e54' THEN
     RAISE EXCEPTION 'ASSERT FAILED: refusing to execute a cron command that is not EXACTLY the reviewed one';
   END IF;
 

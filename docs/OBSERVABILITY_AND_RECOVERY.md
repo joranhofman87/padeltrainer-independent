@@ -107,20 +107,27 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 
 ### Enabling / rolling back the digest (10c-b Release Units 2 and 3)
 - `scripts/rollout/notif-10cb/` — individually gated operator subcommands (`status`, `preflight`,
-  `smoke-disabled`, `canary`, `activate`, `rollback`). No auto-run, no "do it all" mode; every
-  mutating step needs `--yes` and re-asserts the project ref. See its README for the sequence and
-  for what the activation gate refuses.
+  `smoke-disabled`, `enable-engine`, `canary-invoke`, `canary`, `activate`, `rollback`). No auto-run,
+  no "do it all" mode; every mutating step needs `--yes` and re-asserts the project ref. See its
+  README for the sequence and for what the activation gate refuses.
+- **Nothing in the sequence is done by hand any more, including the send.** Both steps that can
+  produce mail have a subcommand: `enable-engine --yes` (which replaced a raw `UPDATE` pasted into a
+  shell) and `canary-invoke` (which replaced "invoke the worker by hand"). `canary-invoke` runs the
+  cron job's *own* stored command after asserting its whole-command hash under a row lock, so what is
+  invoked is what was reviewed, and it bounds how many recipients the invocation may reach.
 - **Rollback is three switches, and only two are in the database:** `DIGEST_SEND_ENABLED` is an edge
   env var that no SQL can read (Supabase's own secret tooling sets it; this bundle has no view of
   it), so the operator turns it off FIRST and says so (`--switch-off-confirmed`); then the tooling
   clears the event flag, deactivates the cron, and proves both plus quiescence.
 - **Three preconditions live outside the database and are asserted, not assumed:** the edge kill
-  switch (`--switch-off-confirmed`), the external monitor (`--monitor-confirmed`), and the
-  **Admin Notification Operations** release unit (`--admin-ops-confirmed` on `canary` and
-  `activate`, acceptance criteria in [`FOUNDATION_ROADMAP.md`](FOUNDATION_ROADMAP.md)) — mandatory
-  before any canary or activation, because without it there is no in-product global view of the
-  pipeline and no safe controls. Note it gates RECONCILIATION and arming: `canary` reconciles a run
-  already invoked by hand, so the send itself is gated procedurally by the runbook's step 0.
+  switch (`--switch-off-confirmed`), the external monitor (`--monitor-confirmed`, on `canary-invoke`
+  as well as `activate` — the canary is the first send, so requiring it only at the arm would start
+  the watch one step too late), and the **Admin Notification Operations** release unit
+  (`--admin-ops-confirmed` on `canary-invoke`, `canary` and `activate`, acceptance criteria in
+  [`FOUNDATION_ROADMAP.md`](FOUNDATION_ROADMAP.md)) — mandatory before any canary or activation,
+  because without it there is no in-product global view of the pipeline and no safe controls. Since
+  `canary-invoke` is the subcommand that performs the send, that flag is now a mechanical
+  precondition on mail going out, not only on reconciling and arming afterwards.
 - **Never `cron.unschedule` to pause — deactivate.** Unscheduling destroys the reviewed Vault-backed
   command, and re-creating it by hand under time pressure is how a wrong endpoint gets introduced.
 

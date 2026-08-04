@@ -90,8 +90,18 @@ describe('F — the digest cron is installed INERT', () => {
     // The FULL url, not just the path: pointing the same path at another Supabase project would
     // send this project's Vault service-role bearer to that one the moment it is armed.
     expect(j.command).toContain("url := 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'");
-    expect(j.command).toContain("'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')");
+    expect(j.command).toContain("'Authorization', 'Bearer ' OPERATOR(pg_catalog.||) (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')");
     expect(j.command, 'no key may ever be frozen into the schedule').not.toContain('eyJ.SERVICE_ROLE_TEST');
+    // ...AND EVERY NAME IN IT IS SCHEMA-QUALIFIED. A tick runs under its owner's search_path, and
+    // function resolution does NOT prefer pg_catalog: an exact-arity overload beats pg_catalog's
+    // VARIADIC "any" wherever its schema sits in the path, even after an explicit pg_catalog. So a
+    // bare `jsonb_build_object` hands the decrypted bearer to whoever can create
+    // `public.jsonb_build_object(text,text,text,text)` — and `public` is in the default path. The
+    // operator and the cast resolve through the path in exactly the same way.
+    expect(j.command).toContain('pg_catalog.jsonb_build_object');
+    expect(j.command).toContain('::pg_catalog.jsonb');
+    expect(j.command, 'a bare jsonb_build_object is shadowable').not.toMatch(/[^.]\bjsonb_build_object\s*\(/);
+    expect(j.command, 'a bare || is shadowable by a hostile OPERATOR').not.toMatch(/'\s*\|\|\s*\(SELECT/);
   });
 
   it('a re-run NEVER disarms a job the owner has already activated', async () => {

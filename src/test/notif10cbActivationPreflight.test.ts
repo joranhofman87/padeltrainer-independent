@@ -300,13 +300,74 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
     expect(INVOKE).not.toContain('active := true');
   });
 
-  // The blast-radius bound reads two predicates that live in the schema. `terminal_at IS NULL` is
-  // exactly "not terminal" because the guard trigger owns that column — a copied state-name list
-  // would drift the first time a state is added, and drift in this direction means a canary that
-  // reaches a population.
+  // THE MOST LOAD-BEARING LINE IN THE FILE, and the one whose absence is silent. `EXECUTE` runs
+  // catalog text under the session search_path, and naming pg_catalog first is NOT protection:
+  // function resolution prefers an exact-arity overload over pg_catalog's VARIADIC "any" wherever
+  // that schema sits in the path. Only excluding hostile schemas works.
+  it('pins search_path before it asserts or executes anything', () => {
+    const m = invokeSql.match(/SET LOCAL search_path = ([^;]+);/);
+    expect(m, 'canary_invoke.sql must pin search_path').not.toBeNull();
+    // pg_temp is never searched for functions or operators, and every temp object here is written
+    // as pg_temp.x — so anything beyond pg_catalog is an unnecessary way back in.
+    expect(m![1].trim()).toBe('pg_catalog');
+    const at = invokeSql.search(/SET LOCAL search_path/);
+    expect(at).toBeLessThan(invokeSql.indexOf('EXECUTE v_cmd'));
+    expect(at).toBeLessThan(invokeSql.indexOf('LOCK TABLE'));
+  });
+});
+
+// The command a cron TICK runs has no SET LOCAL in front of it, so it has to be safe on its own.
+describe('I — the scheduled command survives a hostile search_path unaided', () => {
+  it('qualifies every name a search_path could redirect', () => {
+    expect(reviewed.command).toContain('pg_catalog.jsonb_build_object');
+    // The operator and the cast are resolved through the path exactly like the function is.
+    expect(reviewed.command).toContain('OPERATOR(pg_catalog.||)');
+    expect(reviewed.command).toContain('::pg_catalog.jsonb');
+    // ...and nothing bare is left behind.
+    expect(reviewed.command).not.toMatch(/[^.]\bjsonb_build_object\s*\(/);
+    expect(reviewed.command).not.toMatch(/'\s*\|\|\s*\(SELECT/);
+  });
+
+  it('still resolves the bearer from Vault, and posts to this project', () => {
+    expect(reviewed.command).toContain('vault.decrypted_secrets');
+    expect(reviewed.command).toContain('net.http_post');
+  });
+});
+
+describe('I — canary_scope_verify measures what the canary reached', () => {
+  const SCOPE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'canary_scope_verify.sql');
+  const scopeSql = SCOPE.replace(/--.*$/gm, '');
+
+  // RECIPIENTS, not groups: a split produces several chunk groups for one recipient, and counting
+  // groups would refuse a good canary — a gate that gets switched off rather than heeded.
+  it('counts distinct recipients, not groups or attempts', () => {
+    expect(scopeSql).toMatch(/count\(DISTINCT g\.recipient_key\)/);
+  });
+
+  // Both routes into a group: worker_run_id is stamped at lease and can be overwritten by a later
+  // run, and an attempt row survives that.
+  it('finds the run\'s groups by BOTH the lease stamp and its attempts', () => {
+    expect(scopeSql).toMatch(/g\.worker_run_id = :'run_id'/);
+    expect(scopeSql).toMatch(/a\.worker_run_id = :'run_id'/);
+  });
+
+  it('is read-only — it reports on a send that already happened', () => {
+    expect(scopeSql).not.toMatch(/\b(UPDATE|DELETE|INSERT)\s+(?!INTO pg_temp)/);
+    expect(scopeSql).not.toContain('alter_job');
+  });
+});
+
+// The pre-invocation ceiling and the post-invocation measure are two halves of one claim, so the
+// predicates the ceiling reads are pinned to the schema that owns them.
+describe('I — the pre-invocation ceiling reads the schema\'s own predicates', () => {
+  const invokeSql = INVOKE.replace(/--.*$/gm, '');
+  const foundationSql = read('supabase', 'migrations',
+    '20261002100000_notification_digest_schema_foundation.sql');
+
+  // `terminal_at IS NULL` is exactly "not terminal" because the guard trigger owns that column — a
+  // copied state-name list would drift the first time a state is added, and drift in this direction
+  // means a canary that reaches a population.
   it('bounds the blast radius on the schema-owned terminal clock, not a copied state list', () => {
-    const foundationSql = read('supabase', 'migrations',
-      '20261002100000_notification_digest_schema_foundation.sql');
     expect(foundationSql).toContain('NEW.terminal_at := now();');
     expect(foundationSql).toMatch(/ELSE\s*\n\s*NEW\.terminal_at := NULL;/);
     expect(invokeSql).toContain('terminal_at IS NULL');
@@ -317,8 +378,6 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
   // ...and the forming half must stay the same predicate the schema indexes for, or the bound counts
   // rows the worker will not act on — or worse, misses rows it will.
   it('counts forming digest work with the migration\'s own predicate', () => {
-    const foundationSql = read('supabase', 'migrations',
-      '20261002100000_notification_digest_schema_foundation.sql');
     const idx = foundationSql.match(
       /CREATE INDEX IF NOT EXISTS idx_outbox_digest_forming[\s\S]*?WHERE ([^;]+);/)?.[1];
     expect(idx, 'the digest-forming index must still exist to pin against').toBeTruthy();
@@ -326,6 +385,13 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
       expect(invokeSql, `the blast-radius bound no longer matches the forming predicate: ${clause}`)
         .toContain(clause);
     }
+  });
+
+  // The ceiling is a snapshot; the post-invocation measure is what makes the claim true after the
+  // fact. Neither file may quietly stop saying so.
+  it('says what the ceiling does NOT bound, and points at the check that does', () => {
+    expect(INVOKE).toContain('canary_scope_verify.sql');
+    expect(INVOKE).toMatch(/WHAT IT DOES NOT BOUND/);
   });
 });
 

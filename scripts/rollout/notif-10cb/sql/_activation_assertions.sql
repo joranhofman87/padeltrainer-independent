@@ -21,6 +21,22 @@ SELECT pg_temp.assert_eq(
   'no event other than open_slots_player has the digest engine enabled');
 
 -- ===========================================================================
+-- 4b. NO INVOCATION MAY BE ON ITS WAY. Every canary check below reads notification_worker_runs, and
+-- a run row only appears once the worker STARTS. Between `canary-invoke`'s COMMIT and that moment
+-- there is nothing in that table to see — so "this canary is the newest run, nothing started after
+-- it" reads clean over a freshly queued canary, and the cron gets armed on the previous canary's
+-- evidence while an unverified one is still in flight.
+--
+-- SAID PRECISELY: this narrows that window, it does not close it. pg_net owns the queue row and
+-- removes it on its own schedule, so a request already dispatched but whose worker has not yet
+-- recorded a run remains invisible. The complete fix is a durable pending-invocation record, and it
+-- is deferred to the Admin Notification Operations release unit (docs/FOUNDATION_ROADMAP.md), which
+-- must ship before any canary regardless.
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM net.http_request_queue
+    WHERE url = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
+  'no request to the digest worker is queued (a canary invocation is on its way and has not been verified — wait for it)');
+
 -- 5. THE CANARY — this one, not "one at some point".
 --
 -- Everything below is scoped to :run_id, the uuid the canary invocation returned and that

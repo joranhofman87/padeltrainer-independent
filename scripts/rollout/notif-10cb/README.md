@@ -41,10 +41,24 @@ construction what was reviewed and what a tick would run, and no checked-in `.sq
 **It also bounds the blast radius, which nothing did before.** "Canary: one recipient" was a hope:
 the worker sends to every group it can claim, plus everything materialization forms in the same run,
 so a backlog left by an earlier rollout would have gone out on the first invocation.
-`--max-recipients` (default **1**) is asserted against a deliberate **over**-estimate — every
-non-terminal email digest group plus every ungrouped pending digest outbox row, where many of the
-latter collapse into one group per recipient. Over-estimating means occasionally refusing a canary
-that would have been small, which is the right way round for a gate whose failure mode is mail.
+`--max-recipients` (default **1**) is checked **twice**, and the two checks bound different things:
+
+* **before** the request is queued, against a deliberate **over**-estimate of the live digest work
+  visible in that transaction — every non-terminal email digest group (`terminal_at IS NULL`, the
+  schema-owned clock, never a copied state list) plus every ungrouped pending digest outbox row,
+  where many of the latter collapse into one group per recipient. Over-estimating occasionally
+  refuses a canary that would have been small, which is the right way round for a gate whose failure
+  mode is mail.
+* **after** the worker answers, against what the finished run *actually reached* —
+  `canary_scope_verify.sql` counts distinct `recipient_key` across the groups that run touched. The
+  first check is a snapshot and cannot cover work committed between it and materialization, since
+  pg_net dispatches only after the transaction commits; saying otherwise would be a claim the code
+  does not make. The second cannot unsend, but it fails the subcommand, so the rollout does not
+  continue to `canary` and `activate` as though a one-recipient canary had happened when it had not.
+
+**Splits count once.** A group is one recipient's digest for one boundary, and an oversize group is
+split into chunk groups sharing a `recipient_key` — so the post-check counts recipients, not groups.
+Counting groups would refuse a perfectly good canary, and a gate that cries wolf gets switched off.
 
 **Note what `--admin-ops-confirmed` actually gates.** With step 4 now a subcommand, the flag is a
 mechanical precondition on the send itself, not only on reconciling (step 5) and arming (step 7). A
@@ -111,6 +125,24 @@ cron as ARMED over nothing at all.
   fires a best-effort alert, but it cannot change the status of a run that has finished, so the run
   keeps reading `succeeded` and only the first armed tick would quarantine the orphan and fail.
   `canary_verify.sql` checks the same properties at canary time.
+
+## The command a tick runs must be safe on its own
+
+Every name in the scheduled command is schema-qualified — `pg_catalog.jsonb_build_object`,
+`OPERATOR(pg_catalog.||)`, `::pg_catalog.jsonb` — and that is not house style. A cron job runs under
+its owner's `search_path`, which is settable per role and per database and which by default still
+contains `public`. **Function resolution does not prefer `pg_catalog`:** an exact-arity, exact-type
+overload beats `pg_catalog`'s `VARIADIC "any"` wherever its schema sits in the path, *including after
+an explicit `pg_catalog`*. So an unqualified `jsonb_build_object` would hand the decrypted
+`service_role` bearer to anyone who could create `public.jsonb_build_object(text,text,text,text)`, on
+the very next tick, while returning plausible headers. A hostile `OPERATOR ||` does the same to the
+concatenation. `verify/preflight-pg.mjs` plants both and asserts the bearer is still not captured —
+executing the migration's own text with no protection in front of it, because a tick has none.
+
+`canary_invoke.sql` additionally pins `SET LOCAL search_path = pg_catalog` before it asserts or
+executes anything. With the command qualified that is a second lock on the same door, and the artifact
+says so rather than letting it look load-bearing; it is kept because the first lock is in a different
+file, and a future edit to the migration is exactly when nobody re-reads this one.
 
 ## The connection string is not just a url either
 

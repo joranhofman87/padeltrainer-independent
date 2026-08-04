@@ -15,10 +15,11 @@
 #                            move NO counter. Proves the wiring without sending.
 #   0. (owner) SHIP Admin Notification Operations — mandatory before any canary or activation.
 #   3. (owner) set DIGEST_SEND_ENABLED=true on the worker (an edge env var; nothing here sees it).
-#   3b. (owner) enable the engine for the cutover event:
-#                            UPDATE notification_event_types SET digest_engine_enabled = true
-#                              WHERE key = 'open_slots_player';
-#                            The activation gate REQUIRES this already true; nothing here does it.
+#   3b. enable-engine --yes — turn the digest engine on for the cutover event, and ONLY that event,
+#                            in one transaction that refuses while the cron is armed, checks it
+#                            changed exactly one row, and asserts the postcondition. This step used
+#                            to be a raw UPDATE pasted into a shell; the activation gate REQUIRES it
+#                            to be true already.
 #   3c. (owner) wire the EXTERNAL cron/uptime monitor on notif_digest_worker_liveness() and
 #                            verify it alerts on a stale last_success_at — before the canary.
 #   4. canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N]
@@ -155,11 +156,12 @@ require_confirmed() {
 # detect whether it has shipped, so the operator asserts it, exactly as they assert the edge kill
 # switch and the external monitor.
 #
-# WHAT THIS FLAG CAN AND CANNOT GATE. `canary` RECONCILES a run the operator already invoked by
-# hand, so by the time this check runs the canary email has been sent. It therefore gates
-# reconciliation and activation mechanically; the send itself is gated procedurally, by the runbook
-# putting the release unit at step 0. Said plainly here rather than implied, because a flag that
-# looks like it blocks a send and does not is worse than no flag.
+# WHAT THIS FLAG GATES, now that the send has a subcommand. `canary-invoke` is the step that performs
+# the invocation, and it requires this flag before it queues anything — so the release unit is a
+# mechanical precondition on mail going out, not merely on reconciling it (`canary`) and arming the
+# cron afterwards (`activate`). Said plainly rather than implied, because the earlier version of this
+# comment correctly warned that a flag which looks like it blocks a send and does not is worse than
+# no flag; that was true while step 4 was hand-written, and it no longer is.
 require_admin_ops() {
   [[ "$ADMIN_OPS_CONFIRMED" == "1" ]] || die \
     "$1 requires --admin-ops-confirmed: the Admin Notification Operations release unit must be SHIPPED and verified first — see docs/FOUNDATION_ROADMAP.md for its acceptance criteria. Without it there is no in-product view of the pipeline and no safe controls, so intervening in a real send means a hand-written psql-session against production"
@@ -371,6 +373,17 @@ case "$SUB" in
               | sort -u | awk 'NR==1')"
     [[ -n "$run_id" ]] \
       || die "the worker answered 200 but reported no dispatchRunId, so no dispatch run started and nothing was sent (a 'disabled' answer means DIGEST_SEND_ENABLED is off). Read the body above; there is nothing for \`canary\` to reconcile"
+
+    # WHAT IT ACTUALLY REACHED, now that the run has finished. The ceiling asserted before the
+    # invocation bounded the work VISIBLE THEN; pg_net dispatches after that transaction commits and
+    # the worker materializes whatever is pending when it runs, so anything enqueued in between was
+    # sent by this same invocation and was never counted. This is the half that can be checked after
+    # the fact — it cannot unsend, but it stops the rollout continuing as though a one-recipient
+    # canary had happened when it had not.
+    if ! run_sql_capture "$CANARY_TMP/scope.out" "$url" canary_scope_verify.sql \
+           -v run_id="$run_id" -v max_recipients="$MAX_RECIPIENTS"; then
+      die "the canary reached MORE than --max-recipients=${MAX_RECIPIENTS}. It has already sent. Do NOT proceed to canary/activate: roll back (DIGEST_SEND_ENABLED=false, then \`rollback --yes --switch-off-confirmed\`) and account for the extra work first"
+    fi
 
     ok "canary invoked — dispatchRunId ${run_id}"
     warn "next: run-enablement.sh canary --yes --admin-ops-confirmed <db_url> ${run_id}"

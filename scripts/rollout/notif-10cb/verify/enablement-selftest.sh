@@ -265,12 +265,33 @@ logged 'max_recipients=1' && ok "...bounded to ONE recipient by default" || bad 
 logged 'canary_invoke_response.sql' && ok "...and reads pg_net's reply" || bad "...and reads pg_net's reply"
 logged 'request_id=4242' && ok "...for the request id the invocation ACTUALLY returned" \
   || { bad "...for the request id the invocation ACTUALLY returned"; cat "$PSQL_LOG"; }
+# The pre-invocation ceiling bounds what was VISIBLE then; work committed between that snapshot and
+# materialization is sent by the same run and never counted. This is the half that can be checked
+# afterwards, and it must run against the run id the worker actually reported.
+logged 'canary_scope_verify.sql' && ok "...then verifies what the run actually reached" \
+  || bad "...then verifies what the run actually reached"
+logged "run_id=$CANARY_RUN_ID" && ok "...bound to the dispatchRunId from the reply" \
+  || { bad "...bound to the dispatchRunId from the reply"; cat "$PSQL_LOG"; }
 grep -qF "$CANARY_RUN_ID" "$TMP/out" && ok "...and surfaces the dispatchRunId for the next step" \
   || { bad "...and surfaces the dispatchRunId for the next step"; cat "$TMP/out"; }
 if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
 run "canary-invoke honours an explicit ceiling" 0 -- \
   canary-invoke --yes --admin-ops-confirmed --monitor-confirmed --max-recipients=3 "$URL"
 logged 'max_recipients=3' && ok "...passing it into the artifact" || bad "...passing it into the artifact"
+
+# An over-wide canary must FAIL the subcommand. Reporting success and handing over a dispatchRunId
+# would send the operator straight on to `canary` and `activate` as though one recipient had been
+# reached — the whole point of a canary, lost at the last step.
+export PSQL_LOG="$TMP/log.invoke_scope"; : > "$PSQL_LOG"
+set +e
+env STUB_FAIL_ON=canary_scope_verify EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+cscope_rc=$?
+set -e
+[[ "$cscope_rc" != "0" ]] && ok "a canary that reached too many recipients fails the subcommand" \
+  || { bad "a canary that reached too many recipients fails the subcommand"; cat "$TMP/out"; }
+grep -qF 'already sent' "$TMP/out" && ok "...and says it has ALREADY sent, so roll back" \
+  || { bad "...and says it has ALREADY sent, so roll back"; cat "$TMP/out"; }
 
 # TWO request ids is not a choice to make. Picking one would mean reporting the outcome of a request
 # this invocation may not have caused — the same reasoning that makes `canary` take the run id the
@@ -403,11 +424,11 @@ run "still accepts the ordinary postgresql:// url" 0 -- status "$URL"
 # The stub never opens the file it is handed, so a broken `\i` inside an artifact — or a missing
 # artifact altogether — would otherwise pass here and fail only in front of an operator.
 for f in status.sql activation_preflight.sql activate.sql _activation_assertions.sql rollback_verify.sql \
-         canary_invoke.sql canary_invoke_response.sql; do
+         canary_invoke.sql canary_invoke_response.sql canary_scope_verify.sql; do
   [[ -f "$HERE/../sql/$f" ]] && ok "artifact $f exists" || bad "artifact $f exists"
 done
 for f in activation_preflight.sql activate.sql canary_verify.sql rollback_verify.sql \
-         canary_invoke.sql canary_invoke_response.sql; do
+         canary_invoke.sql canary_invoke_response.sql canary_scope_verify.sql; do
   # EVERY \i, not just the first: activate.sql and activation_preflight.sql each pull in the
   # shared assertions as well as the assert helpers, and a broken second include fails only in
   # front of an operator.
