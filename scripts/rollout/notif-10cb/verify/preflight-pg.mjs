@@ -59,12 +59,31 @@ const REVIEWED = (() => {
 })();
 
 /** Slice a real CREATE TABLE block out of a migration — never a hand-written lookalike. */
-function tableDdl(sql, name) {
-  const start = sql.indexOf(`CREATE TABLE IF NOT EXISTS public.${name} (`);
+function tableDdl(sql, name, { ifNotExists = true } = {}) {
+  const head = ifNotExists
+    ? `CREATE TABLE IF NOT EXISTS public.${name} (`
+    : `CREATE TABLE public.${name} (`;
+  const start = sql.indexOf(head);
   if (start < 0) throw new Error(`no DDL for ${name}`);
   const end = sql.indexOf('\n);', start);
   if (end < 0) throw new Error(`unterminated DDL for ${name}`);
   return sql.slice(start, end + 3);
+}
+
+/**
+ * The same real DDL with only its FOREIGN KEYS removed.
+ *
+ * notification_outbox references auth.users, persons, academy_profiles, trainer_profiles, invoices
+ * and notification_contacts — half the schema, none of which this suite needs. Hand-writing a
+ * four-column stand-in instead is the trap that has already cost this slice twice (a fixture with a
+ * column production does not have; a fixture missing the column an assertion turns on), so the
+ * columns, defaults and CHECK constraints all stay exactly as production has them and only the
+ * references are dropped.
+ */
+function withoutForeignKeys(ddl) {
+  return ddl.replace(
+    /\s+REFERENCES\s+[a-z_]+\.[a-z_]+\s*(\([^)]*\))?(\s+ON\s+DELETE\s+(CASCADE|SET\s+NULL|RESTRICT|NO\s+ACTION))?/gi,
+    '');
 }
 
 /** psql artifact -> something node-pg can run: inline \i, drop other meta-commands, bind vars. */
@@ -139,6 +158,39 @@ try {
     'CREATE OR REPLACE FUNCTION public.notif_digest_worker_liveness()'));
   await c.query(liveness);
 
+  // ── what canary-invoke needs on top ───────────────────────────────────────
+  // The outbox, from ITS OWN migration's DDL plus the digest columns the digest foundation adds to
+  // it — canary_invoke.sql bounds the blast radius partly from this table, and a stand-in that
+  // omitted `delivery_mode` or `digest_group_id` would make that bound silently vacuous.
+  const foundationSchema = MIG('20260910100000_notification_foundation_schema.sql');
+  await c.query(withoutForeignKeys(tableDdl(foundationSchema, 'notification_outbox', { ifNotExists: false })));
+  await c.query(withoutForeignKeys(
+    foundation.slice(foundation.indexOf('ALTER TABLE public.notification_outbox\n  ADD COLUMN'),
+                     foundation.indexOf('ALTER TABLE public.notification_outbox DROP CONSTRAINT'))));
+  await c.query(`ALTER TABLE public.notification_outbox ADD COLUMN IF NOT EXISTS digest_group_id uuid`);
+
+  // pg_net and Vault, minimally: the point of these is that the REVIEWED COMMAND ITSELF runs against
+  // them unchanged, named arguments and Vault read included. `net.http_post` records what it was
+  // called with, so a scenario can prove the reviewed endpoint — and only it — was posted to.
+  await c.query(`
+    CREATE SCHEMA net;
+    CREATE SCHEMA vault;
+    CREATE TABLE vault.decrypted_secrets (name text PRIMARY KEY, decrypted_secret text NOT NULL);
+    INSERT INTO vault.decrypted_secrets VALUES ('service_role_key', 'stub-key-not-a-real-credential');
+    CREATE TABLE net.http_request_queue (
+      id bigserial PRIMARY KEY, url text NOT NULL, headers jsonb, body jsonb,
+      created timestamptz NOT NULL DEFAULT now());
+    CREATE TABLE net._http_response (
+      id bigint PRIMARY KEY, status_code int, content text, error_msg text,
+      created timestamptz NOT NULL DEFAULT now());
+    -- The argument NAMES matter: the reviewed command calls this with url := / headers := / body :=,
+    -- so a stub with different parameter names would fail to execute the very text under test.
+    CREATE FUNCTION net.http_post(url text, headers jsonb DEFAULT '{}'::jsonb,
+                                  body jsonb DEFAULT '{}'::jsonb, timeout_milliseconds int DEFAULT 5000)
+      RETURNS bigint LANGUAGE sql AS $f$
+        INSERT INTO net.http_request_queue (url, headers, body) VALUES ($1, $2, $3) RETURNING id;
+      $f$;`);
+
   // ── the baseline world: a clean, fresh, delivering canary ────────────────
   const seedBaseline = async () => {
     await c.query(`
@@ -150,7 +202,10 @@ try {
       DELETE FROM public.notification_digest_groups;
       DELETE FROM public.notification_worker_runs;
       DELETE FROM public.notification_event_types;
-      DELETE FROM public.notification_orphan_reconcile_state;`);
+      DELETE FROM public.notification_orphan_reconcile_state;
+      DELETE FROM public.notification_outbox;
+      DELETE FROM net.http_request_queue;
+      DELETE FROM net._http_response;`);
     await c.query(
       `INSERT INTO cron.job (jobname, schedule, command, active) VALUES ('notification-digest-worker', $1, $2, false)`,
       [REVIEWED.schedule, REVIEWED.command]);
@@ -166,6 +221,13 @@ try {
          state, provider_message_id, provider_status, provider_status_rank, worker_run_id)
         VALUES ('${GROUP}', '{"k":1}'::jsonb, 'hash-1', 'email', 'open_slots_player', 'rk-1',
                 'fp-1', 'Europe/Amsterdam', now(), now(), 'sent', '${MSG}', 'sent', 1, '${RUN}');
+      -- terminal_at is SCHEMA-OWNED in production: notification_digest_groups_guard stamps it on
+      -- entry into a terminal state and clears it otherwise (20261002100000). That trigger is not
+      -- installed here (it would force provider_message_id to NULL and unmake this baseline), so the
+      -- fixture must carry the value the guard would have written. A group in state sent with a NULL
+      -- terminal_at is a state production cannot produce, and canary_invoke.sql counts on exactly
+      -- that column to decide what is still live.
+      UPDATE public.notification_digest_groups SET terminal_at = now() WHERE state = 'sent';
       INSERT INTO public.notification_digest_attempts
         (attempt_id, digest_group_id, worker_run_id, provider_idempotency_key,
          outcome_class, provider_message_id, recorded_at, http_status)
@@ -797,6 +859,175 @@ try {
     const err = await canaryVerify();
     rec('canary_verify refuses an un-quarantined orphan on this canary\'s group',
       !!err && err.includes('still unreconciled against a group this canary sent'), err ?? 'it PASSED');
+  }
+
+  // ── canary-invoke: the step that actually SENDS ──────────────────────────
+  // Every scenario here checks TWO things: that the refusal names the right assertion, and that
+  // NOTHING WAS QUEUED. A gate on a sending step that refuses loudly and posts anyway is worse than
+  // no gate, and only a real server — with the reviewed command really executing against a real
+  // pg_net shape — can tell the two apart.
+  const canaryInvoke = async (max = 1) => {
+    try { await c.query(artifactText('canary_invoke.sql', { max_recipients: max })); return null; }
+    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
+  };
+  const queuedCount = async () =>
+    (await c.query(`SELECT count(*)::int AS n FROM net.http_request_queue`)).rows[0].n;
+
+  const invokeRefuses = async (name, mutate, needle) => {
+    await seedBaseline();
+    try { await mutate(); }
+    catch (e) { return rec(name, false, `the scenario's own setup failed: ${e.message}`); }
+    const err = await canaryInvoke();
+    if (!err) return rec(name, false, 'the invocation PASSED — it would have SENT');
+    if (!err.includes(needle)) return rec(name, false, `refused for the wrong reason: ${err}`);
+    const after = await queuedCount();
+    rec(name, after === 0, after === 0 ? '' : `it refused but queued ${after} request(s) anyway`);
+  };
+
+  await seedBaseline();
+  {
+    const err = await canaryInvoke();
+    rec('canary-invoke PASSES on an inert, engine-on, quiet world', err === null, err ?? '');
+    rec('...and queues EXACTLY one request', await queuedCount() === 1, `queued=${await queuedCount()}`);
+    // THE POINT OF THE WHOLE DESIGN: what ran is the job's own reviewed command, not a transcription.
+    // Both facts below come from the request the command itself made — the endpoint it names, and a
+    // bearer it could only have got by reading Vault at execution time.
+    const q = (await c.query(`SELECT url, headers ->> 'Authorization' AS auth FROM net.http_request_queue`)).rows[0];
+    rec('...to the REVIEWED endpoint, taken from the job command itself',
+      q?.url === 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker', q?.url ?? 'no request');
+    rec('...carrying a bearer resolved from Vault at execution time',
+      q?.auth === 'Bearer stub-key-not-a-real-credential', q?.auth ?? 'no Authorization header');
+  }
+
+  // An ARMED cron means the population is already being dispatched to on a schedule, so "one
+  // controlled canary" is a fiction. assert-inert proves this at step 1b — four steps and two
+  // switches before the send — which is exactly why it has to be proven again here.
+  await invokeRefuses('canary-invoke REFUSES while the cron is ARMED',
+    () => c.query(`UPDATE cron.job SET active = true`),
+    'still INACTIVE');
+
+  // The command hash is what makes executing the stored text safe at all. Drift must stop the send.
+  await invokeRefuses('canary-invoke REFUSES a job whose command has DRIFTED',
+    () => c.query(`UPDATE cron.job SET command = replace(command,
+      'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker',
+      'https://evil.example.com/collect')`),
+    'posts to the reviewed notification-digest-worker endpoint');
+
+  // A drift that passes every NAMED assertion and only the whole-command hash catches: the same
+  // endpoint, the same Vault read, one extra harmless-looking clause. Without this the scenario
+  // above would keep passing with the hash assertion deleted.
+  await invokeRefuses('canary-invoke REFUSES a drift only the whole-command HASH can see',
+    () => c.query(`UPDATE cron.job SET command = command || $x$ -- appended$x$`),
+    'EXACTLY the reviewed command');
+
+  // Engine off → an empty dispatch run: a 200, a `succeeded` status, and nothing sent. That is the
+  // state a canary exists to distinguish from a working one.
+  await invokeRefuses('canary-invoke REFUSES while the engine is OFF',
+    () => c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`),
+    'the digest engine is ENABLED for open_slots_player');
+
+  await invokeRefuses('canary-invoke REFUSES when another event has the engine on',
+    () => c.query(`INSERT INTO public.notification_event_types (key, supports_digest, digest_engine_enabled)
+                   VALUES ('session_reminder_player', true, true)`),
+    'no event other than the cutover event');
+
+  await invokeRefuses('canary-invoke REFUSES with a dispatch run already in flight',
+    () => c.query(`INSERT INTO public.notification_worker_runs (run_id, worker, channel, phase, started_at)
+                   VALUES ('${OTHER_RUN}', 'notification-digest-worker', 'email', 'dispatch', now())`),
+    'no dispatch run is in flight');
+
+  // THE BLAST RADIUS. "Canary: one recipient" was a hope until this: the worker sends to every group
+  // it can claim, so a backlog left by an earlier rollout would go out on the first invocation.
+  await invokeRefuses('canary-invoke REFUSES when live groups exceed the ceiling',
+    () => c.query(`
+      INSERT INTO public.notification_digest_groups
+        (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+         destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state)
+      SELECT gen_random_uuid(), jsonb_build_object('live', i), 'hash-live-' || i, 'email',
+             'open_slots_player', 'rk-live-' || i, 'fp-live-' || i, 'Europe/Amsterdam', now(), now(), 'pending'
+        FROM generate_series(1, 2) i`),
+    'the canary can reach at most');
+
+  // ...and the work that does not exist as a group YET. Materialization runs INSIDE the invocation,
+  // so counting only existing groups would miss everything the same run is about to form.
+  await invokeRefuses('canary-invoke REFUSES when ungrouped pending digest work exceeds the ceiling',
+    () => c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode)
+      SELECT 'open_slots_player', 'email', gen_random_uuid(), 'idem-forming-' || i, 'pending', 'digest'
+        FROM generate_series(1, 2) i`),
+    'the canary can reach at most');
+
+  // SCOPE PINNED IN BOTH DIRECTIONS. Without this the ceiling could be a constant refusal and every
+  // scenario above would still be green.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state)
+    SELECT gen_random_uuid(), jsonb_build_object('live', i), 'hash-live-' || i, 'email',
+           'open_slots_player', 'rk-live-' || i, 'fp-live-' || i, 'Europe/Amsterdam', now(), now(), 'pending'
+      FROM generate_series(1, 2) i`);
+  {
+    const err = await canaryInvoke(2);
+    rec('canary-invoke ALLOWS the same world under an explicitly raised ceiling', err === null, err ?? '');
+    rec('...and did queue the request', await queuedCount() === 1, `queued=${await queuedCount()}`);
+  }
+
+  // A TERMINAL group is not live work. Counting it would make the ceiling tighten permanently after
+  // the first successful send, and every later canary would be refused for a backlog that is gone.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state, terminal_at)
+    SELECT gen_random_uuid(), jsonb_build_object('done', i), 'hash-done-' || i, 'email',
+           'open_slots_player', 'rk-done-' || i, 'fp-done-' || i, 'Europe/Amsterdam', now(), now(),
+           'sent', now()
+      FROM generate_series(1, 20) i`);
+  {
+    const err = await canaryInvoke();
+    rec('canary-invoke does not count TERMINAL groups towards the ceiling', err === null, err ?? '');
+  }
+
+  // ── canary_invoke_response.sql: pg_net answers later, or not at all ───────
+  const canaryResponse = async (id) => {
+    try {
+      const res = await c.query(artifactText('canary_invoke_response.sql', { request_id: id }));
+      const all = Array.isArray(res) ? res : [res];
+      return { rows: all[all.length - 1]?.rows ?? [] };
+    } catch (e) { await c.query('ROLLBACK').catch(() => {}); return { err: e.message }; }
+  };
+  await seedBaseline();
+  await c.query(`INSERT INTO net.http_request_queue (id, url) VALUES (9001, 'https://x.test')`);
+  {
+    const r = await canaryResponse(9001);
+    rec('the response reader RAISES while the reply is still outstanding',
+      !!r.err && r.err.includes('has arrived'), r.err ?? 'it returned a result for a reply that had not arrived');
+  }
+  await c.query(`INSERT INTO net._http_response (id, status_code, content)
+                 VALUES (9001, 200, '{"status":"ok","dispatchRunId":"${RUN}"}')`);
+  {
+    const r = await canaryResponse(9001);
+    const markers = (r.rows ?? []).map((x) => x.canary_marker ?? '');
+    rec('...and returns the status and body once it has', !r.err, r.err ?? '');
+    rec('...as markers the dispatcher can read',
+      markers.some((m) => m === 'CANARY_RESPONSE_STATUS=200')
+        && markers.some((m) => m.includes('dispatchRunId')),
+      JSON.stringify(markers));
+  }
+  // A transport failure records a row with NO status code. Rendering that as a bare empty marker
+  // would let the caller's "is it 200?" test read a blank as something it recognises.
+  await c.query(`INSERT INTO net.http_request_queue (id, url) VALUES (9002, 'https://x.test');
+                 INSERT INTO net._http_response (id, status_code, content, error_msg)
+                   VALUES (9002, NULL, NULL, E'connection\\nrefused')`);
+  {
+    const r = await canaryResponse(9002);
+    const markers = (r.rows ?? []).map((x) => x.canary_marker ?? '');
+    rec('a transport failure reads back as an explicit "none", on ONE line',
+      markers.includes('CANARY_RESPONSE_STATUS=none')
+        && markers.includes('CANARY_RESPONSE_ERROR=connection refused'),
+      JSON.stringify(markers));
   }
 } finally {
   await c.end().catch(() => {});

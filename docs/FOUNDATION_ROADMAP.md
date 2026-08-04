@@ -174,7 +174,10 @@ No correctness/scale risk today; these lower the cost of every future change and
 part of PR #629**, which stays scoped to A–I. Entry: #629 merged and deployed inert. Exit: this unit
 is reviewed, CI-green, deployed, and the owner has confirmed the surfaces work. Only then may a
 canary run or the cron be armed — `scripts/rollout/notif-10cb/run-enablement.sh` requires
-`--admin-ops-confirmed` on `canary` and `activate`, and **this section is that flag's referent**.
+`--admin-ops-confirmed` on `canary-invoke`, `canary` and `activate`, and **this section is that
+flag's referent**. `canary-invoke` is the one that gates the send itself: it is the subcommand that
+invokes the worker, so from that step onward the flag is a mechanical precondition on mail going out
+rather than only on reconciling and arming afterwards.
 
 **Why it blocks.** Not because failures are otherwise undetectable — a failed canary shows up in its
 HTTP result, in `canary_verify.sql`, and in the worker's Slack alert. Because there is no

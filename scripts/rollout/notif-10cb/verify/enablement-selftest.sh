@@ -46,6 +46,23 @@ if [[ -n "$file" ]]; then
   if [[ -n "${STUB_FAIL_ON:-}" && "$file" == *"$STUB_FAIL_ON"* ]]; then
     printf 'psql:%s: ERROR:  ASSERT FAILED (simulated)\n' "$file" >&2; exit 3
   fi
+  # The two canary-invoke artifacts hand a value BACK to the dispatcher, so the stub has to speak
+  # their marker protocol or the whole subcommand is untestable here. Defaults are the happy path;
+  # each is overridable so a test can drive the unhappy ones.
+  case "$file" in
+    *canary_invoke.sql)
+      printf 'CANARY_REQUEST_ID=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
+      # A SECOND, different id — only when a test asks for one. The dispatcher must refuse rather
+      # than pick, because reading the wrong request means reporting on a send it did not make.
+      if [[ -n "${STUB_CANARY_SECOND_REQUEST_ID:-}" ]]; then
+        printf 'CANARY_REQUEST_ID=%s\n' "$STUB_CANARY_SECOND_REQUEST_ID"
+      fi ;;
+    *canary_invoke_response.sql)
+      default_body='{"status":"ok","dispatchRunId":"22222222-2222-4222-8222-222222222222"}'
+      printf 'CANARY_RESPONSE_STATUS=%s\n' "${STUB_CANARY_STATUS:-200}"
+      printf 'CANARY_RESPONSE_ERROR=none\n'
+      printf 'CANARY_RESPONSE_BODY=%s\n' "${STUB_CANARY_BODY:-$default_body}" ;;
+  esac
 fi
 exit 0
 STUB
@@ -211,6 +228,133 @@ cv_rc=$?
 set -e
 [[ "$cv_rc" != "0" ]] && ok "an unverifiable canary fails the subcommand" || bad "an unverifiable canary fails the subcommand"
 
+# ── canary-invoke: the one step that SENDS ───────────────────────────────────
+# It used to be a hand-written statement in the runbook, run outside every guard in this bundle.
+# Each gate below is the discriminator for one of the guards it now goes through: every OTHER
+# prerequisite is supplied, so a refusal can only be the one under test.
+CANARY_RUN_ID="22222222-2222-4222-8222-222222222222"
+
+run "canary-invoke REFUSES without --yes" 1 -- canary-invoke --admin-ops-confirmed --monitor-confirmed "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and queued nothing" || bad "...and queued nothing"
+run "canary-invoke REFUSES without --admin-ops-confirmed" 1 -- canary-invoke --yes --monitor-confirmed "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and queued nothing either" || bad "...and queued nothing either"
+# The monitor must be watching BEFORE the first send, not before the arm — the canary IS the first
+# send, so requiring it only at `activate` would start the watch one step too late.
+run "canary-invoke REFUSES until the external monitor is confirmed" 1 -- canary-invoke --yes --admin-ops-confirmed "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
+grep -qF 'monitor-confirmed' "$TMP/out" && ok "...and says how to satisfy it" || bad "...and says how to satisfy it"
+run "canary-invoke REFUSES a url belonging to another project" 1 -- \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$OTHER_URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and sent nothing to it" || bad "...and sent nothing to it"
+
+# The ceiling is INTERPOLATED INTO SQL, so a non-numeric value is an injection vector rather than a
+# typo. It must be refused before psql is reached at all.
+run "canary-invoke REFUSES a non-numeric --max-recipients" 1 -- \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "--max-recipients=1; DROP TABLE cron.job" "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and ran no SQL with it" || { bad "...and ran no SQL with it"; cat "$PSQL_LOG"; }
+run "canary-invoke REFUSES --max-recipients=0" 1 -- \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed --max-recipients=0 "$URL"
+run "canary-invoke REFUSES a ceiling that is not a canary" 1 -- \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed --max-recipients=51 "$URL"
+
+run "canary-invoke invokes, then reads the reply" 0 -- \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL"
+logged 'canary_invoke.sql' && ok "canary-invoke runs the transactional invoke artifact" \
+  || bad "canary-invoke runs the transactional invoke artifact"
+logged 'max_recipients=1' && ok "...bounded to ONE recipient by default" || bad "...bounded to ONE recipient by default"
+logged 'canary_invoke_response.sql' && ok "...and reads pg_net's reply" || bad "...and reads pg_net's reply"
+logged 'request_id=4242' && ok "...for the request id the invocation ACTUALLY returned" \
+  || { bad "...for the request id the invocation ACTUALLY returned"; cat "$PSQL_LOG"; }
+grep -qF "$CANARY_RUN_ID" "$TMP/out" && ok "...and surfaces the dispatchRunId for the next step" \
+  || { bad "...and surfaces the dispatchRunId for the next step"; cat "$TMP/out"; }
+if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+run "canary-invoke honours an explicit ceiling" 0 -- \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed --max-recipients=3 "$URL"
+logged 'max_recipients=3' && ok "...passing it into the artifact" || bad "...passing it into the artifact"
+
+# TWO request ids is not a choice to make. Picking one would mean reporting the outcome of a request
+# this invocation may not have caused — the same reasoning that makes `canary` take the run id the
+# worker returned rather than a before/after snapshot.
+export PSQL_LOG="$TMP/log.invoke_two_ids"; : > "$PSQL_LOG"
+set +e
+env STUB_CANARY_SECOND_REQUEST_ID=4243 EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+c2_rc=$?
+set -e
+[[ "$c2_rc" != "0" ]] && ok "two request-id markers are refused, not guessed between" \
+  || { bad "two request-id markers are refused, not guessed between"; cat "$TMP/out"; }
+grep -qF 'canary_invoke_response.sql' "$PSQL_LOG" && bad "...and no reply is read for either" \
+  || ok "...and no reply is read for either"
+
+# A REFUSED invocation must not go on to read a reply: there is no request, and polling for one
+# would print a stale response from an earlier rollout as if it were this one's.
+export PSQL_LOG="$TMP/log.invoke_fail"; : > "$PSQL_LOG"
+set +e
+STUB_FAIL_ON=canary_invoke.sql EXPECTED_REF="$REF" bash "$SCRIPT" \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+ci_rc=$?
+set -e
+[[ "$ci_rc" != "0" ]] && ok "a refused invocation fails the subcommand (rc=$ci_rc)" \
+  || bad "a refused invocation fails the subcommand"
+grep -qF 'canary_invoke_response.sql' "$PSQL_LOG" && bad "...and never polls for a reply it did not cause" \
+  || ok "...and never polls for a reply it did not cause"
+
+# A non-200 is not a canary. Reporting success over it would send the operator straight to `canary`,
+# which would then fail against a run that never existed.
+export PSQL_LOG="$TMP/log.invoke_500"; : > "$PSQL_LOG"
+set +e
+env STUB_CANARY_STATUS=500 EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+c500_rc=$?
+set -e
+[[ "$c500_rc" != "0" ]] && ok "a non-200 worker reply fails the subcommand" || bad "a non-200 worker reply fails the subcommand"
+
+# 200 WITHOUT a dispatchRunId is what a disabled worker answers. Nothing was sent and there is
+# nothing to reconcile, so calling that a successful canary would be simply false.
+export PSQL_LOG="$TMP/log.invoke_disabled"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" \
+  bash "$SCRIPT" canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+cdis_rc=$?
+set -e
+[[ "$cdis_rc" != "0" ]] && ok "a 200 with no dispatchRunId is NOT reported as a canary" \
+  || { bad "a 200 with no dispatchRunId is NOT reported as a canary"; cat "$TMP/out"; }
+grep -qF 'DIGEST_SEND_ENABLED' "$TMP/out" && ok "...and names the likeliest cause" || bad "...and names the likeliest cause"
+
+# The poll is BOUNDED. An unbounded wait on a reply that never arrives is a hung terminal in front
+# of an operator who has just sent mail and needs to know what happened.
+export PSQL_LOG="$TMP/log.invoke_poll"; : > "$PSQL_LOG"
+set +e
+env STUB_FAIL_ON=canary_invoke_response CANARY_POLL_ATTEMPTS=3 CANARY_POLL_INTERVAL=0 \
+  EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+cpoll_rc=$?
+set -e
+[[ "$cpoll_rc" != "0" ]] && ok "an unanswered request fails the subcommand rather than hanging" \
+  || bad "an unanswered request fails the subcommand rather than hanging"
+polls="$(grep -cF 'canary_invoke_response.sql' "$PSQL_LOG" || true)"
+[[ "$polls" == "3" ]] && ok "...after exactly CANARY_POLL_ATTEMPTS attempts" \
+  || bad "...after exactly CANARY_POLL_ATTEMPTS attempts (got $polls)"
+grep -qF 'UNKNOWN' "$TMP/out" && ok "...and says the send is UNKNOWN, not 'did not happen'" \
+  || bad "...and says the send is UNKNOWN, not 'did not happen'"
+
+# THE PROPERTY THAT MAKES THIS SAFE AT ALL: the artifact never transcribes the command. It executes
+# the job's own stored text after hashing it, so what is invoked is what was reviewed — and this
+# repo's legacy-key scan stays meaningful because no checked-in .sql grows a key-sending statement.
+# COMMENTS STRIPPED FIRST. That artifact explains at length why it does NOT write the request out,
+# and naming http_post in prose is not transcribing it — the same vacuous-match trap this slice has
+# paid for repeatedly, in a new place.
+if sed 's/--.*$//' "$HERE/../sql/canary_invoke.sql" | grep -qE 'http_post|Authorization'; then
+  bad "canary_invoke.sql transcribes the request instead of executing the reviewed command"
+else
+  ok "canary_invoke.sql never transcribes the request (it executes the hash-pinned stored command)"
+fi
+grep -qF 'FOR UPDATE' "$HERE/../sql/canary_invoke.sql" && ok "canary_invoke.sql locks the job row before asserting" \
+  || bad "canary_invoke.sql locks the job row before asserting"
+grep -qF '\i _job_identity_assertions.sql' "$HERE/../sql/canary_invoke.sql" \
+  && ok "canary_invoke.sql re-runs the shared job-identity gate at send time" \
+  || bad "canary_invoke.sql re-runs the shared job-identity gate at send time"
+
 # ── the identity guard cannot be talked round ────────────────────────────────
 # libpq takes host/hostaddr/user/dbname from the QUERY STRING and lets them override the
 # authority, so a url that looks like EXPECTED_REF can still connect elsewhere.
@@ -258,10 +402,12 @@ run "still accepts the ordinary postgresql:// url" 0 -- status "$URL"
 # ── the artifacts it runs must actually exist ────────────────────────────────
 # The stub never opens the file it is handed, so a broken `\i` inside an artifact — or a missing
 # artifact altogether — would otherwise pass here and fail only in front of an operator.
-for f in status.sql activation_preflight.sql activate.sql _activation_assertions.sql rollback_verify.sql; do
+for f in status.sql activation_preflight.sql activate.sql _activation_assertions.sql rollback_verify.sql \
+         canary_invoke.sql canary_invoke_response.sql; do
   [[ -f "$HERE/../sql/$f" ]] && ok "artifact $f exists" || bad "artifact $f exists"
 done
-for f in activation_preflight.sql activate.sql canary_verify.sql rollback_verify.sql; do
+for f in activation_preflight.sql activate.sql canary_verify.sql rollback_verify.sql \
+         canary_invoke.sql canary_invoke_response.sql; do
   # EVERY \i, not just the first: activate.sql and activation_preflight.sql each pull in the
   # shared assertions as well as the assert helpers, and a broken second include fails only in
   # front of an operator.

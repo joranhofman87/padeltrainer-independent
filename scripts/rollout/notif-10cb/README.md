@@ -18,22 +18,44 @@ of the mutating subcommands is an owner decision made from the runbook, not by a
 | 3 | *(owner)* set `DIGEST_SEND_ENABLED=true` on `notification-digest-worker` | The edge kill switch. No SQL can see it; this bundle has no view of it. |
 | 3b | `enable-engine --yes <url>` | Turns the engine on for the cutover event **only**, in one transaction: the cron must still be inactive, exactly one row changes, and the postcondition proves this event on and nothing else. The activation gate requires this to be true already. |
 | 3c | *(owner)* wire the EXTERNAL monitor | Point cron/uptime monitoring at `public.notif_digest_worker_liveness()` and verify it alerts on a stale `last_success_at`. Before the canary, so it is watching from the first send. |
-| 4 | *(owner)* invoke the worker **ONCE**, by hand | Through the real Vault/pg_net path, cron still INACTIVE. **Capture `dispatchRunId` from the response** — that uuid is what every later step passes as `<run_id>`. This is the step that actually sends an email, and the one step 0 gates procedurally. |
+| 4 | `canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N] <url>` | **SENDS.** Invokes the worker once, cron still INACTIVE, through the real Vault/pg_net path — by executing the cron job's *own* stored command after asserting it hashes to the reviewed value under a row lock. It prints the reply so you can read **`dispatchRunId`**; that uuid is what every later step passes as `<run_id>`. |
 | 5 | `canary --yes --admin-ops-confirmed <url> <run_id>` | Reconciles **that** run and verifies it delivered. Does not invoke anything. |
 | 6 | `preflight <url> <run_id>` | Read-only **dry run** of the whole activation gate. Arms nothing. |
 | 7 | `activate --yes --monitor-confirmed --admin-ops-confirmed <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
 | 8 | `rollback --yes --switch-off-confirmed <url>` | Engine off **and** cron inactive, then proves both. |
 
-**Step 4 is an owner action with no subcommand, deliberately.** Invoking the worker is the moment a
-real email goes out, and it is not something this script does on the operator's behalf. `canary`
-reconciles what step 4 returned; it invokes nothing. Step 3b *does* have a subcommand
-(`enable-engine --yes`) precisely because a raw UPDATE ran outside every guard here.
+**Step 4 has a subcommand, and it did not always.** It used to read "*(owner)* invoke the worker by
+hand", on the reasoning that the moment mail goes out should not happen on a script's say-so. That
+reasoning was right about the decision and wrong about the mechanics: it left the single sending step
+as the only one performed with no tooling at all — outside `EXPECTED_REF`, outside the `PG*`
+stripping, with nothing re-checking that the job was still the reviewed one and still inactive.
+`assert-inert` proves that at step 1b, four steps and two switches earlier. `--yes` is where the
+owner's intent goes; it was never a reason to run that one statement unguarded.
 
-**Note what `--admin-ops-confirmed` actually gates.** Step 4 is where the email goes, and it has no
-flag — so the release unit gates reconciliation (step 5) and arming (step 7) mechanically, and the
-send itself procedurally, by being step 0 of this sequence. A failed canary is not invisible: it has
-an HTTP result, `canary_verify.sql` and the worker's Slack alert. What is missing without the admin
-surfaces is a global view and a safe way to intervene.
+`canary-invoke` therefore executes **the job's own stored command**, not a transcription of it: it
+locks the job row, asserts the whole-command hash, and runs that exact text. So what is invoked is by
+construction what was reviewed and what a tick would run, and no checked-in `.sql` grows a
+`net.http_post` + `Authorization` + Vault-read triple — the signature
+`scripts/check-legacy-service-role-consumers.mjs` exists to find.
+
+**It also bounds the blast radius, which nothing did before.** "Canary: one recipient" was a hope:
+the worker sends to every group it can claim, plus everything materialization forms in the same run,
+so a backlog left by an earlier rollout would have gone out on the first invocation.
+`--max-recipients` (default **1**) is asserted against a deliberate **over**-estimate — every
+non-terminal email digest group plus every ungrouped pending digest outbox row, where many of the
+latter collapse into one group per recipient. Over-estimating means occasionally refusing a canary
+that would have been small, which is the right way round for a gate whose failure mode is mail.
+
+**Note what `--admin-ops-confirmed` actually gates.** With step 4 now a subcommand, the flag is a
+mechanical precondition on the send itself, not only on reconciling (step 5) and arming (step 7). A
+failed canary was never invisible — it has an HTTP result, `canary_verify.sql` and the worker's Slack
+alert. What is missing without the admin surfaces is a global view and a safe way to intervene.
+
+**`canary-invoke` cannot send by accident.** If `DIGEST_SEND_ENABLED` is off the worker answers
+`200 {"status":"disabled","reason":"disabled"}` and nothing goes out — which is why there is no
+`--switch-on-confirmed` flag: the failure direction is safe, and the surfaced response says so
+plainly. A 200 with **no** `dispatchRunId` is treated as a failure, because there is then no run for
+`canary` to reconcile and nothing was sent.
 
 **Arming the cron before enabling the switch would schedule a worker that finds nothing to do and
 reports healthy** — a green light over an engine that is still off. The preflight refuses that, and
@@ -112,14 +134,14 @@ verified something it never looked at.
 * **Admin Notification Operations** — the release unit that provides global admin visibility into
   the pipeline and safe controls (acceptance criteria in `docs/FOUNDATION_ROADMAP.md`). MANDATORY
   before any canary or activation, a separate release unit, and nothing here can detect whether it
-  has shipped. `--admin-ops-confirmed` on `canary` and `activate` — which gates RECONCILIATION and
-  arming, not the hand-invoked canary send itself; step 0 of the sequence is what gates that.
+  has shipped. `--admin-ops-confirmed` on `canary-invoke`, `canary` and `activate` — so it now gates
+  the send as well as reconciliation and arming.
 * **The external cron/uptime monitor** on `notif_digest_worker_liveness()` is the only detector for
   a worker that is never invoked — an unscheduled or disabled job, a missing Vault secret, a paused
   project all produce silence, and the in-worker Slack alert needs the worker to run in order to
-  fire. `--monitor-confirmed` on `activate`. Wire it and verify it alerts on a stale
-  `last_success_at` BEFORE arming, not after: the whole point is that it is watching the first
-  ticks.
+  fire. `--monitor-confirmed` on `canary-invoke` **and** `activate`. Wire it and verify it alerts on
+  a stale `last_success_at` before the FIRST send, not before the arm: the canary *is* the first
+  send, so requiring it only at activation would start the watch one step too late.
 
 ## Two rules that are asserted, not merely written down
 
@@ -157,7 +179,12 @@ Both are wired into `npm run verify:rollout`.
   ordering on rollback, the uuid-only run-id arguments, the no-unschedule rule, and the `PG*`
   environment handling. The stub records the environment it was actually given, because the property
   is about the child process — checking the parent's environment would pass with the stripping gone.
-* `verify/preflight-pg.mjs` executes `activation_preflight.sql` and `canary_verify.sql` on a **real**
-  PostgreSQL against production-shaped rows. A stub can only show that an artifact ran; this shows
-  that it would have **refused**. Each scenario mutates one fact away from a passing baseline and
-  pins which assertion did the refusing, so a scenario cannot pass by failing for the wrong reason.
+* `verify/preflight-pg.mjs` executes `activation_preflight.sql`, `canary_verify.sql`,
+  `assert_inert.sql`, `enable_engine.sql` and `canary_invoke.sql` on a **real** PostgreSQL against
+  production-shaped rows. A stub can only show that an artifact ran; this shows that it would have
+  **refused**. Each scenario mutates one fact away from a passing baseline and pins which assertion
+  did the refusing, so a scenario cannot pass by failing for the wrong reason. The `canary-invoke`
+  scenarios additionally assert that a refusal **queued nothing** — a gate on a sending step that
+  refuses loudly and posts anyway is worse than no gate — and the passing one reads back the request
+  the reviewed command actually made: the reviewed endpoint, and a bearer it could only have got by
+  reading Vault at execution time.

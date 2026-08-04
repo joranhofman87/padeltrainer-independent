@@ -21,10 +21,14 @@
 #                            The activation gate REQUIRES this already true; nothing here does it.
 #   3c. (owner) wire the EXTERNAL cron/uptime monitor on notif_digest_worker_liveness() and
 #                            verify it alerts on a stale last_success_at — before the canary.
-#   4. (owner) invoke the worker ONCE by hand, cron still INACTIVE, and CAPTURE THE run_id it
-#                            returns. This is the step that sends a real email. No subcommand does
-#                            it: enabling the engine and invoking the worker are the two moments
-#                            that can produce mail, and neither should happen on this script's say-so.
+#   4. canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N]
+#                          — invoke the worker ONCE, cron still INACTIVE, and surface the response so
+#                            the operator reads dispatchRunId from it. This is the step that sends a
+#                            real email, which is exactly why it is no longer hand-written: it runs
+#                            the job's OWN reviewed command under the same EXPECTED_REF, PG* and
+#                            job-identity guards as every other step, and bounds how many recipients
+#                            it can reach. --yes is the owner's intent; it is not a reason to run the
+#                            one sending statement outside every guard this bundle exists to provide.
 #   5. canary --yes --admin-ops-confirmed
 #                          — reconcile THAT run id and verify it delivered. Invokes nothing.
 #   6. preflight           — read-only dry run of the activation gate. Arms nothing.
@@ -89,6 +93,14 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   read-only: capture counters either side of the disabled
                                   invocation. Requires you to have verified DIGEST_SEND_ENABLED
                                   is off — no SQL can see an edge env var
+  canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N] <db_url>
+                                  SENDS. Invokes the worker ONCE by running the cron job's OWN
+                                  stored command, after asserting it hashes to the reviewed value
+                                  under a row lock — so what is invoked is what was reviewed, not a
+                                  hand-typed lookalike naming some other endpoint. Refuses an armed
+                                  cron, a disabled engine, an in-flight run, and a reachable
+                                  population above --max-recipients (default 1). Prints the reply so
+                                  you can read dispatchRunId; that uuid is what `canary` verifies
   canary --yes --admin-ops-confirmed <db_url> <run_id>
                                   reconcile ONE canary's ACTUAL returned run id
   activate --yes --monitor-confirmed --admin-ops-confirmed <db_url> <run_id>
@@ -114,6 +126,9 @@ CONFIRMED=0
 SWITCH_OFF_CONFIRMED=0
 MONITOR_CONFIRMED=0
 ADMIN_OPS_CONFIRMED=0
+# The canary's ceiling on reachable recipients. ONE by default: a canary that can reach more than one
+# recipient is not a canary, and the whole sequence describes it as "one recipient".
+MAX_RECIPIENTS=1
 ARGS=()
 SUB="${1:-}"; shift || usage
 for a in "$@"; do
@@ -122,6 +137,7 @@ for a in "$@"; do
     --switch-off-confirmed)  SWITCH_OFF_CONFIRMED=1 ;;
     --monitor-confirmed)     MONITOR_CONFIRMED=1 ;;
     --admin-ops-confirmed)   ADMIN_OPS_CONFIRMED=1 ;;
+    --max-recipients=*)      MAX_RECIPIENTS="${a#*=}" ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
@@ -147,6 +163,19 @@ require_confirmed() {
 require_admin_ops() {
   [[ "$ADMIN_OPS_CONFIRMED" == "1" ]] || die \
     "$1 requires --admin-ops-confirmed: the Admin Notification Operations release unit must be SHIPPED and verified first — see docs/FOUNDATION_ROADMAP.md for its acceptance criteria. Without it there is no in-product view of the pipeline and no safe controls, so intervening in a real send means a hand-written psql-session against production"
+}
+
+# THE SECOND PRECONDITION THIS CANNOT SEE. The external cron/uptime monitor on
+# notif_digest_worker_liveness() is the ONLY detector for a worker that is never invoked — an
+# unscheduled or disabled job, a missing Vault secret, a paused project all produce silence, and the
+# in-worker Slack alert needs the worker to run in order to fire. It lives outside this database
+# entirely, so nothing here can verify it; the docs called it a precondition while the runbook walked
+# straight past it. Shared by `canary-invoke` and `activate` so the two cannot drift: the runbook
+# puts it at step 3c precisely so it is already watching when the FIRST send happens, which is the
+# canary — requiring it only at activation would have it start watching one step too late.
+require_monitor() {
+  [[ "$MONITOR_CONFIRMED" == "1" ]] || die \
+    "$1 requires --monitor-confirmed: wire the EXTERNAL cron/uptime monitor on public.notif_digest_worker_liveness() FIRST and verify it alerts on a stale last_success_at (this script cannot see anything outside the database, and it is the only detector for a worker that is never invoked)"
 }
 
 db_url() {
@@ -183,6 +212,36 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 run_sql() {   # $1 = url, $2 = artifact, $@ = extra psql args
   local url="$1" artifact="$2"; shift 2
   ( cd "$SQL_DIR" && psql_safe "$url" -v ON_ERROR_STOP=1 -f "$artifact" "$@" )
+}
+
+# Same runner, but the output is CAPTURED as well as shown, because `canary-invoke` has to read a
+# request id back out of it. It is echoed to stderr first and read second, so a failure the operator
+# needs to see is never swallowed by the parsing.
+#
+# NEVER `run_sql ... | tee`: under `set -Eeuo pipefail` the status of a pipeline is not psql's alone,
+# and this repo has already lost a whole session to a red gate hidden behind a pipe. Capture, print,
+# then test the recorded status.
+run_sql_capture() {   # $1 = outfile, $2 = url, $3 = artifact, $@ = extra psql args
+  local outfile="$1"; shift
+  local url="$1" artifact="$2"; shift 2
+  local rc=0
+  set +e
+  ( cd "$SQL_DIR" && psql_safe "$url" -v ON_ERROR_STOP=1 -f "$artifact" "$@" ) >"$outfile" 2>&1
+  rc=$?
+  set -e
+  cat "$outfile" >&2
+  return "$rc"
+}
+
+# Pull every occurrence of a strict marker out of captured psql output. Deliberately strict about the
+# VALUE shape, and the caller checks the COUNT: slice H's inventory-parse defect was a record read by
+# position from a loosely-delimited line, which made a forged field indistinguishable from a real one.
+#
+# The value ERE is PARENTHESISED here rather than at each call site. `|` binds loosest in an ERE, so
+# `NAME=[0-9]+|none` is `(NAME=[0-9]+)` OR `(none)` — which matched the bare word `none` on a
+# neighbouring marker line and returned two values for one marker.
+marker_values() {   # $1 = file, $2 = marker name, $3 = ERE for the value
+  { grep -Eo "$2=($3)" "$1" || true; } | cut -d= -f2- | sort -u
 }
 
 case "$SUB" in
@@ -241,6 +300,82 @@ case "$SUB" in
     ok "smoke evidence captured (no mutation)"
     ;;
 
+  canary-invoke)
+    # THE ONE STEP THAT SENDS. It used to be "(owner) invoke the worker by hand" — the only step in
+    # the sequence performed with no tooling at all, outside EXPECTED_REF, outside the PG* stripping,
+    # with nothing re-checking that the job is still the reviewed one and still inactive. The
+    # `assert-inert` gate runs at step 1b, four steps and two switches earlier, so by the time the
+    # operator typed that statement its result was stale.
+    require_confirmed "invoking the canary (this SENDS a real email)"
+    require_admin_ops "invoking the canary"
+    require_monitor "canary-invoke"
+    url="$(db_url)"
+
+    # VALIDATED BEFORE IT REACHES SQL. The ceiling is interpolated into the artifact, so a
+    # non-numeric value is an injection vector, not a typo. (The artifact casts it through a quoted
+    # literal as well, so both layers would have to fail.)
+    [[ "$MAX_RECIPIENTS" =~ ^[1-9][0-9]*$ ]] \
+      || die "--max-recipients must be a positive integer, got '${MAX_RECIPIENTS}'"
+    [[ "$MAX_RECIPIENTS" -le 50 ]] \
+      || die "--max-recipients=${MAX_RECIPIENTS} is not a canary — a controlled first send reaches one recipient, and this bundle will not pretend otherwise"
+
+    # How long to wait for pg_net's reply. Overridable so the self-test does not sleep, and validated
+    # because both values reach `sleep`.
+    poll_attempts="${CANARY_POLL_ATTEMPTS:-30}"
+    poll_interval="${CANARY_POLL_INTERVAL:-2}"
+    [[ "$poll_attempts" =~ ^[1-9][0-9]*$ ]] || die "CANARY_POLL_ATTEMPTS must be a positive integer"
+    [[ "$poll_interval" =~ ^[0-9]+$ ]]      || die "CANARY_POLL_INTERVAL must be a non-negative integer"
+
+    CANARY_TMP="$(mktemp -d)"
+    # shellcheck disable=SC2064  # expand CANARY_TMP now: it must be removed even if it is reassigned
+    trap "rm -rf '$CANARY_TMP'" EXIT
+    inv_out="$CANARY_TMP/invoke.out"
+    resp_out="$CANARY_TMP/response.out"
+
+    warn "canary-invoke SENDS. It runs the reviewed cron command once, with the cron still inactive."
+    if ! run_sql_capture "$inv_out" "$url" canary_invoke.sql -v max_recipients="$MAX_RECIPIENTS"; then
+      die "the canary invocation was REFUSED — the transaction rolled back, so NOTHING was queued and nothing was sent. Read the failed assertion above"
+    fi
+
+    # EXACTLY ONE request id, or refuse. Guessing which of two to read would mean reporting on a
+    # request this invocation may not have made.
+    req_id="$(marker_values "$inv_out" CANARY_REQUEST_ID '[0-9]+')"
+    case "$req_id" in
+      ''|*[!0-9]*) die "the invocation did not print exactly one CANARY_REQUEST_ID (got '${req_id//$'\n'/, }') — refusing to guess which pg_net request to read" ;;
+    esac
+    ok "queued pg_net request ${req_id} — the request leaves on commit, which has now happened"
+
+    # pg_net is asynchronous: the reply arrives after the commit, so this polls rather than pretends.
+    # A permanent failure (say net._http_response is unreadable) simply exhausts the loop and the last
+    # captured output is what explains why.
+    attempt=0
+    while :; do
+      attempt=$((attempt + 1))
+      if run_sql_capture "$resp_out" "$url" canary_invoke_response.sql -v request_id="$req_id"; then
+        break
+      fi
+      [[ "$attempt" -lt "$poll_attempts" ]] \
+        || die "no pg_net reply for request ${req_id} after ${poll_attempts} attempts. The request WAS queued, so treat the send as UNKNOWN, not as 'did not happen': read net._http_response for that id before invoking anything again"
+      sleep "$poll_interval"
+    done
+
+    status="$(marker_values "$resp_out" CANARY_RESPONSE_STATUS '[0-9]+|none')"
+    [[ "$status" == "200" ]] \
+      || die "the worker answered HTTP '${status:-<none>}' — the response is printed above. Do NOT proceed to canary/activate; fix the cause and invoke again"
+
+    # dispatchRunId is the whole point: `canary`, `preflight` and `activate` are all bound to it. A
+    # 200 WITHOUT one means no dispatch run started — the kill switch is off, or the worker exited
+    # early — so there is nothing to reconcile and nothing was sent.
+    run_id="$({ grep -Eo '"dispatchRunId"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{36}"' "$resp_out" || true; } \
+              | { grep -Eo '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' || true; } \
+              | sort -u | awk 'NR==1')"
+    [[ -n "$run_id" ]] \
+      || die "the worker answered 200 but reported no dispatchRunId, so no dispatch run started and nothing was sent (a 'disabled' answer means DIGEST_SEND_ENABLED is off). Read the body above; there is nothing for \`canary\` to reconcile"
+
+    ok "canary invoked — dispatchRunId ${run_id}"
+    warn "next: run-enablement.sh canary --yes --admin-ops-confirmed <db_url> ${run_id}"
+    ;;
+
   canary)
     require_confirmed "canary reconciliation"
     require_admin_ops "a canary send"
@@ -269,15 +404,9 @@ case "$SUB" in
     # left a sent group and an accepted attempt behind, a NEW canary could fail outright (or never
     # be run at all) and `activate` would still arm, reporting a green preflight built entirely
     # from evidence that predates the thing it claims to have checked.
-    # THE PRECONDITION THIS ALSO CANNOT SEE. The external cron/uptime monitor on
-    # notif_digest_worker_liveness() is the ONLY thing that detects a worker which is never
-    # invoked — an unscheduled or disabled job, a missing Vault secret, a paused project all
-    # produce silence, and the in-worker Slack alert needs the worker to run. It lives outside
-    # this database entirely, so nothing here can verify it; the docs called it a precondition
-    # while the runbook walked straight past it. The operator asserts it, exactly as they assert
-    # the edge kill switch.
-    [[ "$MONITOR_CONFIRMED" == "1" ]] || die \
-      "activate requires --monitor-confirmed: wire the EXTERNAL cron/uptime monitor on public.notif_digest_worker_liveness() FIRST and verify it alerts on a stale last_success_at (this script cannot see anything outside the database, and it is the only detector for a worker that is never invoked)"
+    # ...and the external monitor, which by this point should already have been asserted at
+    # canary-invoke — see require_monitor.
+    require_monitor "activate"
     run_id="$(require_run_id "${ARGS[1]:-}" "arming the digest cron")"
     # ONE ARTIFACT, ONE TRANSACTION. activate.sql locks the job row, runs every assertion against
     # the LOCKED row, arms that exact jobid, and asserts the postcondition — all before it commits.

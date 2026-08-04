@@ -28,6 +28,7 @@ const PREFLIGHT =
   read('scripts', 'rollout', 'notif-10cb', 'sql', '_activation_assertions.sql');
 const ACTIVATE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activate.sql');
 const DRY_RUN = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activation_preflight.sql');
+const INVOKE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'canary_invoke.sql');
 
 /** The same normalisation the preflight applies in SQL: btrim + collapse whitespace runs. */
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -219,6 +220,112 @@ describe('G — verifying and arming are one transaction', () => {
   it('the dry run arms nothing', () => {
     expect(DRY_RUN).not.toContain('alter_job');
     expect(DRY_RUN).not.toContain('active := true');
+  });
+});
+
+// The step that actually sends used to be a hand-written statement in the runbook. It now runs the
+// cron job's OWN stored command — which is only safe because the command is hash-pinned to the
+// reviewed one. These are the properties no behavioural test can pin: a redundant-but-load-bearing
+// guard, and the absence of a transcribed request.
+describe('I — canary_invoke executes the reviewed command rather than transcribing it', () => {
+  const invokeSql = INVOKE.replace(/--.*$/gm, '');
+
+  // If this file ever spells the request out, two things break at once: what is invoked stops being
+  // provably what was reviewed, and a checked-in .sql grows a key-sending statement in a repo whose
+  // legacy-key posture depends on that scan staying meaningful.
+  it('never writes the request out — it executes what the job stores', () => {
+    expect(invokeSql).not.toMatch(/\bhttp_post\s*\(/i);
+    expect(invokeSql).not.toMatch(/authorization/i);
+    expect(invokeSql).toMatch(/EXECUTE v_cmd/);
+  });
+
+  it('does not itself look like a key-sending statement', () => {
+    const sends = /\bhttp_post\s*\(/i.test(invokeSql)
+      && /authorization|api[-_]?key|bearer/i.test(invokeSql)
+      && /vault\.decrypted_secrets|decrypted_secret|current_setting/.test(invokeSql);
+    expect(sends, 'canary_invoke.sql now matches the key-sender signature').toBe(false);
+  });
+
+  // EVERY hash literal in this directory, not just this file's — the reviewed command's md5 now
+  // appears in three artifacts, and a legitimate change to the F migration must fail here rather
+  // than leave one of them silently pinned to a command nobody reviewed.
+  it('pins every reviewed-command hash in the bundle to the migration', () => {
+    const files = { INVOKE, ACTIVATE, PREFLIGHT };
+    const wanted = md5(normalize(reviewed.command));
+    let found = 0;
+    for (const [name, text] of Object.entries(files)) {
+      for (const literal of text.replace(/--.*$/gm, '').match(/'[0-9a-f]{32}'/g) ?? []) {
+        expect(literal.slice(1, -1), `${name} pins a hash that is not the reviewed command's`).toBe(wanted);
+        found++;
+      }
+    }
+    expect(found, 'no reviewed-command hash is pinned anywhere').toBeGreaterThanOrEqual(3);
+  });
+
+  // SUBSUMED, AND SAID SO. Under the row lock the command cannot change between the shared
+  // assertions and the EXECUTE, so deleting this re-check leaves every behavioural test green. It is
+  // kept because losing the include would otherwise turn EXECUTE into "run whatever is in cron.job",
+  // and it is pinned here because that is the only place it can be.
+  it('re-checks the hash in the same statement that reads the text it executes', () => {
+    const block = invokeSql.match(/DO \$do\$[\s\S]*?\$do\$;/)?.[0];
+    expect(block, 'canary_invoke.sql must execute inside a DO block').toBeTruthy();
+    expect(block!).toMatch(/md5\(btrim\(regexp_replace\(v_cmd/);
+    expect(block!.indexOf('md5(')).toBeLessThan(block!.indexOf('EXECUTE v_cmd'));
+  });
+
+  it('runs the shared job-identity gate — the same one assert-inert and activate use', () => {
+    expect(INVOKE).toContain('\\i _job_identity_assertions.sql');
+    const lock = INVOKE.indexOf('FOR UPDATE');
+    expect(lock).toBeGreaterThan(-1);
+    expect(lock).toBeLessThan(INVOKE.indexOf('\\i _job_identity_assertions.sql'));
+  });
+
+  it('is one explicit transaction with every lock wait bounded before any lock', () => {
+    expect(invokeSql).toMatch(/^\s*BEGIN;/m);
+    expect(invokeSql).toMatch(/^\s*COMMIT;/m);
+    for (const setting of ['lock_timeout', 'statement_timeout']) {
+      const m = invokeSql.match(new RegExp(`SET LOCAL ${setting}\\s*=\\s*'([^']+)'`));
+      expect(m, `canary_invoke.sql must set a ${setting}`).not.toBeNull();
+      // PostgreSQL reads 0 as DISABLED, so presence is not enough.
+      expect(m![1]).toMatch(/^[1-9][0-9]*(ms|s|min)?$/);
+      const at = invokeSql.search(new RegExp(`SET LOCAL ${setting}`));
+      for (const lock of ['LOCK TABLE', 'FOR UPDATE']) {
+        expect(at, `${setting} must precede ${lock}`).toBeLessThan(invokeSql.indexOf(lock));
+      }
+    }
+  });
+
+  it('arms nothing — invoking and arming are different owner decisions', () => {
+    expect(INVOKE).not.toContain('alter_job');
+    expect(INVOKE).not.toContain('active := true');
+  });
+
+  // The blast-radius bound reads two predicates that live in the schema. `terminal_at IS NULL` is
+  // exactly "not terminal" because the guard trigger owns that column — a copied state-name list
+  // would drift the first time a state is added, and drift in this direction means a canary that
+  // reaches a population.
+  it('bounds the blast radius on the schema-owned terminal clock, not a copied state list', () => {
+    const foundationSql = read('supabase', 'migrations',
+      '20261002100000_notification_digest_schema_foundation.sql');
+    expect(foundationSql).toContain('NEW.terminal_at := now();');
+    expect(foundationSql).toMatch(/ELSE\s*\n\s*NEW\.terminal_at := NULL;/);
+    expect(invokeSql).toContain('terminal_at IS NULL');
+    expect(invokeSql, 'a copied terminal-state list would drift from the schema')
+      .not.toContain("'failed_terminal'");
+  });
+
+  // ...and the forming half must stay the same predicate the schema indexes for, or the bound counts
+  // rows the worker will not act on — or worse, misses rows it will.
+  it('counts forming digest work with the migration\'s own predicate', () => {
+    const foundationSql = read('supabase', 'migrations',
+      '20261002100000_notification_digest_schema_foundation.sql');
+    const idx = foundationSql.match(
+      /CREATE INDEX IF NOT EXISTS idx_outbox_digest_forming[\s\S]*?WHERE ([^;]+);/)?.[1];
+    expect(idx, 'the digest-forming index must still exist to pin against').toBeTruthy();
+    for (const clause of idx!.split(' AND ').map((s) => s.trim())) {
+      expect(invokeSql, `the blast-radius bound no longer matches the forming predicate: ${clause}`)
+        .toContain(clause);
+    }
   });
 });
 
