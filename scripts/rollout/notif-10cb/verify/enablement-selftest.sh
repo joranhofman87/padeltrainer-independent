@@ -263,6 +263,44 @@ set -e
 [[ "$sb_rc" != "0" ]] && ok "a 200 with any OTHER body fails the disabled smoke" \
   || { bad "a 200 with any OTHER body fails the disabled smoke"; cat "$TMP/out"; }
 
+# THE CASE THAT MATTERS MOST: an unexpected body AND a moved counter — "the worker sent, and then
+# something went wrong". Both verdicts must come after the comparison, so the operator is told WHAT
+# moved rather than only that the body was wrong.
+export PSQL_LOG="$TMP/log.smoke_both"; : > "$PSQL_LOG"
+cat > "$TMP/psql_both" <<'BSTUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PSQL_LOG"
+file=""; prev=""
+for a in "$@"; do [[ "$prev" == "-f" ]] && file="$a"; prev="$a"; done
+case "$file" in
+  *smoke_counters.sql)
+    n=$(( $(cat "$COUNTER_STATE" 2>/dev/null || echo 0) + 1 ))
+    printf '%s' "$n" > "$COUNTER_STATE"
+    for cname in circuit_state digest_attempts group_attempts group_states orphan_state outbox_pending provider_events worker_runs; do
+      printf 'SMOKE_COUNTER %s=0\n' "$cname"
+    done
+    printf 'SMOKE_COUNTER digest_groups=%s\n' "$n" ;;
+  *smoke_invoke.sql) printf 'CANARY_REQUEST_PROVISIONAL=4242\nCANARY_REQUEST_ID=4242\n' ;;
+  *canary_invoke_response.sql)
+    printf 'CANARY_RESPONSE_STATUS=200\n'
+    printf 'CANARY_RESPONSE_BODY={"status":"ok","sent":1}\n'
+    printf 'CANARY_RESPONSE_IS_DISABLED=f\n' ;;
+esac
+exit 0
+BSTUB
+chmod +x "$TMP/psql_both"; mv "$TMP/psql" "$TMP/psql.keep4"; cp "$TMP/psql_both" "$TMP/psql"
+set +e
+env "COUNTER_STATE=$TMP/counter.both" EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sb2_rc=$?
+set -e
+mv "$TMP/psql.keep4" "$TMP/psql"
+[[ "$sb2_rc" != "0" ]] && ok "an unexpected body WITH a moved counter fails the smoke" \
+  || bad "an unexpected body WITH a moved counter fails the smoke"
+grep -qF 'MOVED a counter' "$TMP/out" \
+  && ok "...and reports WHAT moved, not only that the body was wrong" \
+  || { bad "...and reports WHAT moved, not only that the body was wrong"; cat "$TMP/out"; }
+
 # ...and a counter that MOVED is the other half of the evidence.
 export PSQL_LOG="$TMP/log.smoke_delta"; : > "$PSQL_LOG"
 cat > "$TMP/psql_delta" <<'DSTUB'

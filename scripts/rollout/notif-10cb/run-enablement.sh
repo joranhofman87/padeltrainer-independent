@@ -412,7 +412,10 @@ case "$SUB" in
     run_sql_capture "$before" "$url" smoke_counters.sql \
       || die "could not read the counters before the smoke"
 
-    warn "smoke-disabled INVOKES the worker. Nothing can send: the cron is inactive and no engine is enabled."
+    warn "smoke-disabled INVOKES the worker through the real Vault/pg_net path. What keeps it from"
+    warn "sending is DIGEST_SEND_ENABLED being off — your assertion, which no SQL here can check: the"
+    warn "worker claims existing groups regardless of the engine flags. The backlog assertions are a"
+    warn "SNAPSHOT that removes the work a wrong assertion would have sent."
     if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql; then
       report_failed_invoke "$CANARY_TMP/invoke.out" "the disabled smoke"
     fi
@@ -429,13 +432,6 @@ case "$SUB" in
     # away. Both verdicts are deferred until the measurement exists and has been shown to be complete.
     run_sql_capture "$after" "$url" smoke_counters.sql \
       || die "could not read the counters after the smoke"
-
-    # EXACTLY the documented answer, not merely a 200 — and compared in SQL, not as a substring here.
-    # `grep -qF` on the body marker passed for `{...}garbage`, and the artifact prints the raw body a
-    # second time, so a matching substring had two places to hide.
-    disabled="$(marker_values "$CANARY_TMP/response.out" CANARY_RESPONSE_IS_DISABLED '[a-z]+')"
-    [[ "$disabled" == "t" || "$disabled" == "true" ]] \
-      || die "the disabled smoke did not answer exactly the disabled body — DIGEST_SEND_ENABLED may not be off. The counters either side were captured above; read them and the body, and do NOT continue"
 
     # A DELTA, compared mechanically — and the comparison must not be able to pass VACUOUSLY. Two
     # empty marker streams diff clean, and a capture containing only psql's headings is still a
@@ -455,9 +451,20 @@ case "$SUB" in
       die "the disabled smoke MOVED a counter — it is not disabled. Stop and account for the difference above"
     fi
 
+    # BOTH VERDICTS COME LAST, after the counters have been captured, shown complete, AND compared.
+    # An unexpected body is the "the worker sent and then something went wrong" case: dying on it
+    # before the comparison printed the raw counters and never mechanically said what moved, which is
+    # the one thing the operator needs at that moment.
     status="$(marker_values "$CANARY_TMP/response.out" CANARY_RESPONSE_STATUS '[0-9]+|none')"
     [[ "$status" == "200" ]] \
-      || die "the disabled smoke answered HTTP '${status:-<none>}' — it must answer 200. The counters either side are above and were compared first, so you can see whether anything moved"
+      || die "the disabled smoke answered HTTP '${status:-<none>}' — it must answer 200. The counters either side were compared first and are above, so you can see whether anything moved"
+
+    # EXACTLY the documented answer, not merely a 200 — and compared in SQL, not as a substring here.
+    # `grep -qF` on the body marker passed for `{...}garbage`, and the artifact prints the raw body a
+    # second time, so a matching substring had two places to hide.
+    disabled="$(marker_values "$CANARY_TMP/response.out" CANARY_RESPONSE_IS_DISABLED '[a-z]+')"
+    [[ "$disabled" == "t" || "$disabled" == "true" ]] \
+      || die "the disabled smoke did not answer exactly the disabled body — DIGEST_SEND_ENABLED may not be off. The counters either side were compared first and are above; read them and the body, and do NOT continue"
 
     ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} and moved no counter"
     ;;

@@ -13,7 +13,10 @@
 -- `canary_invoke.sql` does. Same reasoning, same protections, and the endpoint comes from the
 -- reviewed job rather than from a runbook the operator retypes.
 --
--- WHAT MAKES THIS THE *DISABLED* SMOKE, stated correctly. An earlier version claimed that "no event
+-- WHAT MAKES THIS SAFE, stated correctly: DIGEST_SEND_ENABLED being off. That is the operator's
+-- assertion and no SQL here can see it. What the assertions below add is a SNAPSHOT bound on the
+-- damage a WRONG assertion could do — they remove the work that would otherwise be sent.
+-- An earlier version claimed that "no event
 -- has the digest engine enabled" made the invocation incapable of sending. THAT WAS FALSE, and the
 -- code says why: `digest_engine_enabled` gates ENQUEUE ROUTING only. The worker never reads it —
 -- materialize_notification_digest_groups selects any pending, ungrouped digest outbox row without

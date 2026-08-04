@@ -119,7 +119,10 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
   cron job's *own* stored command, hash-pinned under a row lock, so what is invoked is what was
   reviewed. `canary-invoke` additionally bounds how many recipients it may reach; `smoke-disabled`
   additionally requires the reply to be exactly `{"status":"disabled","reason":"disabled"}` and every
-  counter to be unmoved, both checked rather than printed at the operator.
+  counter to be unmoved, both checked rather than printed at the operator. What makes the smoke safe
+  is `DIGEST_SEND_ENABLED` being off — the worker claims existing groups regardless of the engine
+  flags, so its zero-backlog assertions are a snapshot bound on the damage a wrong switch assertion
+  could do, not a proof that sending is impossible.
 - **Rollback is three switches, and only two are in the database:** `DIGEST_SEND_ENABLED` is an edge
   env var that no SQL can read (Supabase's own secret tooling sets it; this bundle has no view of
   it), so the operator turns it off FIRST and says so (`--switch-off-confirmed`); then the tooling

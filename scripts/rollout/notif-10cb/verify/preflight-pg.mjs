@@ -1511,8 +1511,9 @@ try {
       q?.a === 'Bearer stub-key-not-a-real-credential', q?.a ?? 'no Authorization header');
   }
 
-  // THE PROPERTY THAT MAKES IT A *DISABLED* SMOKE: it cannot send, because nothing is enabled — a
-  // stronger statement than the operator's word about an env var, and one the database can check.
+  // THE ASSERTIONS THAT BOUND THE DAMAGE if the operator's switch assertion is wrong. They do NOT
+  // make sending impossible — the worker claims existing groups regardless of the engine flags, which
+  // is why the engine-off check alone was not enough — they make the backlog empty at that instant.
   await smokeRefuses('smoke_invoke REFUSES once ANY engine is enabled',
     () => c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true
                     WHERE key = 'open_slots_player'`),
