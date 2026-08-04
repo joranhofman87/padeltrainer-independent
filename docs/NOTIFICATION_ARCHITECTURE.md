@@ -764,10 +764,13 @@ applies. Neither mirrors WhatsApp or push; there is no v1 counterpart. The rever
 ships a bounded, idempotent one-time reconcile, because a trigger cannot see rows that already
 exist.
 
-Retirement is mechanical, not remembered: `legacySendEmailInventory.test.ts` goes red when
-`send-email` stops mapping `new_availability`/`slot_reopened` onto `open_slots_digest`, which is
-the signal that both mirrors and the guard come out together in 10c-d. Full rationale, including
-the rejected `pg_trigger_depth()` and advisory-lock designs, in ADR 0008 §"10c-b J".
+Retirement: `legacySendEmailInventory.test.ts` goes red when `send-email` stops mapping
+`new_availability`/`slot_reopened` onto `open_slots_digest`. That is **condition 1 of 4, not a
+green light** — the other three are deployment facts no test in this repo can see (that revision
+DEPLOYED rather than merged, the pre-cutover bundle out of browser caches, and the v1 column dropped
+in the same release unit). Removing the bridge on a green CI, while migrations still land before the
+hand-deployed edge function, re-opens the exact gap it closes. Full rationale, including the rejected
+`pg_trigger_depth()` and advisory-lock designs, in ADR 0008 §"10c-b J".
 
 Guest deliverability (10b): a guest with no account is made reachable by an in-scope
 `notification_contacts` row (`ensure_guest_email_contact`). When a guest's authoritative email

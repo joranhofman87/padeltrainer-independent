@@ -49,13 +49,19 @@
 -- With two mirrors installed, every write to either table fires a write to the other, which
 -- fires a write back. Postgres does NOT detect this: it recurses until it exhausts the stack.
 --
--- It is tempting to rely on VALUE CONVERGENCE instead — each direction writes only when the
--- target actually differs, so the bounce dies out after one hop. Both directions here DO also
--- write distinct-only (belt and braces, below), but convergence must not be the ONLY protection:
+-- It is tempting to rely on VALUE CONVERGENCE instead — write only when the target actually
+-- differs, so the bounce dies out after one hop. Note carefully WHICH direction does that: the
+-- REVERSE (v2 -> v1) upserts are distinct-only; the FORWARD (v1 -> v2) ones update
+-- UNCONDITIONALLY, because that body is carried over from the reviewed 20261011100000 unchanged
+-- and its `DO UPDATE` also stamps `updated_at`. So the redundancy is one-sided, and the guard is
+-- the only thing standing between the forward mirror and a real second write — which is precisely
+-- what the "recursion guard removed" mutation pin observes.
+--
+-- Convergence must not be the ONLY protection in any case:
 --   * it costs a full extra round trip and an extra row lock on every single save;
 --   * it is silent — nothing fails if a future edit makes the two directions disagree about what
 --     the converged value should be, and the two directions ALREADY disagree by design about the
---     ambiguous `weekly` case (see §3), so the argument that they always converge is not one that
+--     ambiguous-INSERT cases (see §3), so the argument that they always converge is not one that
 --     stays true by construction.
 --
 -- pg_trigger_depth() was considered and REJECTED: it suppresses the bridge whenever the write
@@ -132,7 +138,21 @@ AS $fn$
                WHERE d.adrelid = 'public.notification_preferences_v2'::pg_catalog.regclass
                  AND a.attname = 'email_frequency')
     ) s
-    WHERE v IS NOT NULL)
+    WHERE v IS NOT NULL
+      -- 'off' is NEVER incidental, whatever the defaults happen to be.
+      --
+      -- Not because it cannot currently BE a default — it can: both CHECK constraints permit it,
+      -- and a future catalog edit could set default_email_frequency = 'off'. The reason is that the
+      -- rule's whole purpose is asymmetric. Seeding-only exists to stop an unchosen value from
+      -- RESUMING mail; suppressing mail is safe whether the user chose it or inherited it. Leaving
+      -- 'off' in the set would invert that: the day the catalog default became 'off', an explicit
+      -- opt-out would stop overwriting a legacy 'instant' and the legacy reader would keep mailing
+      -- someone who had just opted out — the exact failure this file was written to prevent,
+      -- reintroduced by a one-word change somewhere else.
+      --
+      -- So the guarantee "an opt-out ALWAYS applies" is made structural here rather than left as an
+      -- observation about today's configuration.
+      AND v <> 'off')
 $fn$;
 
 COMMENT ON FUNCTION public.notif_pref_open_slots_incidental_values() IS
@@ -313,8 +333,9 @@ COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_to_v2() IS
 -- default does not push that cadence onto an EXISTING legacy row — v1 keeps what it had. That is a
 -- cadence mismatch confined to the deploy window, never a resurrection of mail after an opt-out,
 -- and it is narrow in practice: anyone holding a legacy row also holds a v2 row from C's backfill,
--- so their next change is an UPDATE, which applies unconditionally. `off` is in neither default, so
--- an opt-out ALWAYS applies — which is the case the contract actually names.
+-- so their next change is an UPDATE, which applies unconditionally. And `off` is excluded from the
+-- incidental set STRUCTURALLY (§1b), not by luck of today's defaults, so an opt-out ALWAYS applies
+-- — which is the case the contract actually names.
 CREATE OR REPLACE FUNCTION public.notif_mirror_open_slots_pref_to_v1()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
@@ -461,9 +482,18 @@ $reconcile$;
 -- few milliseconds, and whose consequence is already benign.
 --
 -- The INVARIANT that actually matters is preserved either way, and it is the one the tests
--- assert: AFTER ANY COMMITTED WRITE, v1 AND v2 AGREE. A deadlock aborts one transaction whole,
--- so it cannot leave the two tables disagreeing; a serialised pair leaves both at the later
--- writer's value. There is no interleaving that commits a v1 'instant' next to a v2 'off'.
+-- assert: AFTER ANY COMMITTED **APPLYING** WRITE, v1 AND v2 AGREE. A deadlock aborts one
+-- transaction whole, so it cannot leave the two tables disagreeing; a serialised pair leaves both
+-- at the later writer's value. There is no interleaving that commits a v1 'instant' next to a
+-- v2 'off'.
+--
+-- STATE THE EXCEPTION, because an unqualified "they always agree" is false and a future reader
+-- would be right to call it a bug: a SEED-ONLY write leaves them DIFFERENT ON PURPOSE. A partial
+-- v2 insert over a legacy 'off' commits v1='off' alongside v2='instant', and that divergence IS
+-- the protection — the alternative is resuming mail after an opt-out. The concurrency argument
+-- above is about applying writes; the ambiguous ones are governed by §3's rule instead, and the
+-- direction of their divergence is always "the legacy reader sends no more than the user asked
+-- for", never less consent than they gave.
 --
 -- Lost updates are prevented by the upserts themselves: ON CONFLICT DO UPDATE re-reads the
 -- conflicting row under lock, so the second writer sees the first writer's committed value rather
@@ -488,7 +518,9 @@ $reconcile$;
 -- HOW. In one migration: DROP TRIGGER trg_mirror_open_slots_pref_to_v1 ON
 -- public.notification_preferences_v2; DROP TRIGGER trg_mirror_open_slots_pref_to_v2 ON
 -- public.notification_preferences; DROP FUNCTION notif_mirror_open_slots_pref_to_v1(),
--- notif_mirror_open_slots_pref_to_v2(), notif_pref_bridge_hop_active().
+-- notif_mirror_open_slots_pref_to_v2(), notif_pref_bridge_hop_active(),
+-- notif_pref_open_slots_incidental_values().
+-- (validate_notification_frequency stays — §1c hardened it; it is not part of the bridge.)
 --
 -- ENFORCEMENT, and the trap inside it. Only condition 1 is mechanical, and it is pinned:
 -- legacySendEmailInventory.test.ts asserts send-email's TYPE_TO_PREF_COLUMN still maps

@@ -347,7 +347,48 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
     )).rows[0].e;
     expect(colDefault).toMatch(/^'([a-z]+)'/);
     const col = /^'([a-z]+)'/.exec(colDefault)![1];
-    expect([...incidental].sort()).toEqual([...new Set([catalogDefault, col])].sort());
+    expect([...incidental].sort())
+      .toEqual([...new Set([catalogDefault, col])].filter((v) => v !== 'off').sort());
+  });
+
+  it("an opt-out applies EVEN IF 'off' becomes a default — the guarantee is structural", async () => {
+    // Without the explicit exclusion in notif_pref_open_slots_incidental_values(), a one-word
+    // change to the catalog would make 'off' "incidental", the seed-only path would leave a legacy
+    // 'instant' in place, and the legacy reader would keep mailing someone who had just opted out.
+    // That is the exact failure this file exists to prevent, reintroduced from somewhere else.
+    await c.query(`UPDATE public.notification_event_types SET default_email_frequency='off'
+                    WHERE key='open_slots_player'`);
+    try {
+      expect((await c.query(`SELECT public.notif_pref_open_slots_incidental_values() v`)).rows[0].v)
+        .not.toContain('off');
+      await seedV1('instant');
+      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await saveV2('off');
+      expect(await v1Of(), 'an opt-out must apply even when it is also the catalog default').toBe('off');
+    } finally {
+      await c.query(`UPDATE public.notification_event_types SET default_email_frequency=$1
+                      WHERE key='open_slots_player'`, [catalogDefault]);
+    }
+  });
+
+  it("MUTANT: the 'off' exclusion removed — an opt-out stops applying once it is the default", async () => {
+    const ANCHOR = `      AND v <> 'off')`;
+    expect(BRIDGE_SQL).toContain(ANCHOR);
+    const mutated = BRIDGE_SQL.replace(ANCHOR, `      )`);
+    expect(mutated).not.toBe(BRIDGE_SQL);
+    try {
+      await applyBridge(mutated);
+      await c.query(`UPDATE public.notification_event_types SET default_email_frequency='off'
+                      WHERE key='open_slots_player'`);
+      await seedV1('instant');
+      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await saveV2('off');
+      expect(await v1Of(), 'the forbidden outcome: mail continues after an opt-out').toBe('instant');
+    } finally {
+      await c.query(`UPDATE public.notification_event_types SET default_email_frequency=$1
+                      WHERE key='open_slots_player'`, [catalogDefault]);
+      await applyBridge();
+    }
   });
 
   it('a PARTIAL v2 insert takes the COLUMN default and must not overwrite a legacy opt-out', async () => {

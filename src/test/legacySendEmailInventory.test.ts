@@ -222,8 +222,12 @@ describe('the legacy send-email register', () => {
  * still names open_slots_digest, some deployed bundle can still gate open-slot mail on the legacy
  * column, so both mirror directions must stay.
  *
- * These assertions are GREEN today and go RED the moment that stops being true — which is the
- * signal, and the only mechanical one, that 20261013100000 may be deleted.
+ * These assertions are GREEN today and go RED the moment that stops being true. RED IS NOT
+ * AUTHORISATION TO DELETE 20261013100000 — it is condition 1 of 4, and the only one any test here
+ * can see. The other three (that revision DEPLOYED, the pre-cutover bundle out of browser caches,
+ * the v1 column dropped in the same release unit) are deployment facts, and acting on a green CI
+ * alone would re-open the gap during the migrations-before-edge-function window. The failure
+ * message says so too, so the caveat travels with the failure.
  */
 describe('10c-b J — when the preference bridge may be retired', () => {
   const BRIDGE_MIGRATION = 'supabase/migrations/20261013100000_notif_10cb_pref_bridge_v2_to_v1.sql';
