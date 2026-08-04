@@ -201,7 +201,19 @@ So the admin surface may only move things toward **safe**:
 * digest engine **disable** (per event) — never enable;
 * cron **deactivate** — never activate, and **never** `cron.unschedule`, which destroys the reviewed
   Vault-backed command;
-* resolve or re-queue a quarantined orphan; close a tripped circuit; cancel or retry a stuck group.
+* resolve or re-queue a quarantined orphan; **cancel** a stuck group.
+
+Three recovery actions are NOT fail-closed, because the next tick can send off the back of them, and
+they are specified separately rather than waved through under the same heading:
+* **closing a tripped circuit** re-opens the whole channel. It must state the trip reason, refuse
+  outright while the reason is `correlation_mismatch` (a permanently mis-correlated message needs
+  resolving, not un-holding), and require an explicit typed confirmation.
+* **retrying a group** re-enters the send path. It must respect the group's remaining delivery
+  budget and attempt cap, require positive provider evidence that the previous attempt did not land
+  (never a `delivery_unknown` guess), and re-check consent/stop policy at retry time rather than
+  trusting the enqueue-time decision.
+* neither may call the provider directly — they may only move state that the existing worker and
+  state machine then act on, so every send continues to go through the reviewed path.
 
 **Enabling and arming stay in the owner runbook**, behind the one authoritative gate. If a future
 version wants an in-product activate, it must call that same gate — canary-bound, locked and

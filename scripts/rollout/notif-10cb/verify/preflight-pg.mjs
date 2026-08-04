@@ -619,6 +619,74 @@ try {
   await c.query(`SET search_path = "$user", public`);
   await c.query(`DROP SCHEMA hostile CASCADE`);
 
+  // ── assert-inert: the gate that must run BEFORE any switch ───────────────
+  const assertInert = async () => {
+    try { await c.query(artifactText('assert_inert.sql')); return null; }
+    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
+  };
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+  {
+    const err = await assertInert();
+    rec('assert-inert PASSES on a fresh, inactive, nothing-enabled world', err === null, err ?? '');
+  }
+  // THE WINDOW IT CLOSES: a job left ARMED by an earlier rollout would tick the moment the engine
+  // was enabled — before the controlled canary, before the monitor was watching.
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false;
+                 UPDATE cron.job SET active = true`);
+  {
+    const err = await assertInert();
+    rec('assert-inert REFUSES an already-ARMED job before any switch is touched',
+      !!err && err.includes('still INACTIVE'), err ?? 'it PASSED');
+  }
+  await seedBaseline();
+  await c.query(`UPDATE cron.job SET schedule = '*/1 * * * *';
+                 UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+  {
+    const err = await assertInert();
+    rec('assert-inert REFUSES a job that is not the reviewed one',
+      !!err && err.includes('the cron schedule is the reviewed one'), err ?? 'it PASSED');
+  }
+  await seedBaseline();
+  {
+    const err = await assertInert();
+    rec('assert-inert REFUSES once an engine is already enabled',
+      !!err && err.includes('no event has the digest engine enabled yet'), err ?? 'it PASSED');
+  }
+
+  // ── enable-engine: guarded, single-row, and refuses over an armed cron ───
+  const enableEngine = async () => {
+    try { await c.query(artifactText('enable_engine.sql')); return null; }
+    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
+  };
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+  {
+    const err = await enableEngine();
+    rec('enable-engine turns the cutover event ON', err === null, err ?? '');
+    const on = (await c.query(`SELECT key FROM public.notification_event_types WHERE digest_engine_enabled`)).rows;
+    rec('...and ONLY that event', on.length === 1 && on[0].key === 'open_slots_player', JSON.stringify(on));
+  }
+  // Re-running is not a silent no-op: zero rows changed means the world was not what the operator
+  // thought, and that is worth stopping for.
+  {
+    const err = await enableEngine();
+    rec('enable-engine REFUSES a second time rather than silently doing nothing',
+      !!err && err.includes('exactly one event row was enabled'), err ?? 'it passed');
+  }
+  // THE ORDERING INVARIANT: never enable the engine while the cron is armed.
+  await seedBaseline();
+  await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false;
+                 UPDATE cron.job SET active = true`);
+  {
+    const err = await enableEngine();
+    rec('enable-engine REFUSES while the cron is ARMED', !!err && err.includes('still INACTIVE'),
+      err ?? 'it passed');
+    const on = (await c.query(`SELECT count(*)::int AS n FROM public.notification_event_types WHERE digest_engine_enabled`)).rows[0].n;
+    rec('...and the transaction rolled back, so nothing is enabled', on === 0, `enabled=${on}`);
+  }
+
   // ── canary_verify carries the same guards ────────────────────────────────
   await seedBaseline();
   await c.query(`UPDATE public.notification_digest_attempts

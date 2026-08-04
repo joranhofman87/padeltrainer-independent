@@ -21,7 +21,11 @@ const MIGRATION = read('supabase', 'migrations', '20261012100000_notif_10cb_dige
 // The assertions live in a shared include, pulled in by BOTH the read-only dry run
 // (activation_preflight.sql) and the transactional gate (activate.sql), so the two can never
 // diverge into checking different things.
-const PREFLIGHT = read('scripts', 'rollout', 'notif-10cb', 'sql', '_activation_assertions.sql');
+// BOTH shared assertion files: the job-identity block was split out so `assert-inert` can run it
+// BEFORE any switch is enabled, and together they are what the gate actually evaluates.
+const PREFLIGHT =
+  read('scripts', 'rollout', 'notif-10cb', 'sql', '_job_identity_assertions.sql') + '\n' +
+  read('scripts', 'rollout', 'notif-10cb', 'sql', '_activation_assertions.sql');
 const ACTIVATE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activate.sql');
 const DRY_RUN = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activation_preflight.sql');
 

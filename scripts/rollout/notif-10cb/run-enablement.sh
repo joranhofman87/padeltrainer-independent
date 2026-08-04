@@ -75,6 +75,13 @@ usage() {
 usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
 
   status <db_url>                 read-only: engine flags, cron state, liveness, counters
+  assert-inert <db_url>           read-only GATE, run BEFORE any switch: the cron job present is
+                                  EXACTLY the reviewed one AND inactive, and no engine is enabled.
+                                  `status` prints those facts; this one fails on them
+  enable-engine --yes <db_url>    turn the digest engine ON for the cutover event only, row-count
+                                  checked and with a postcondition. Handing the operator a raw
+                                  UPDATE meant the single most consequential statement in the
+                                  runbook ran with no EXPECTED_REF, no PG* stripping and no proof
   preflight <db_url> <run_id>     read-only DRY RUN of the activation gate — every assertion,
                                   nothing armed. Not the gate itself: `activate` re-checks under a
                                   row lock in the same transaction as the arm
@@ -183,6 +190,26 @@ case "$SUB" in
     url="$(db_url)"
     run_sql "$url" status.sql
     ok "status read (no mutation)"
+    ;;
+
+  assert-inert)
+    # BEFORE the engine goes on, not after. The F migration preserves an existing job's active
+    # state on purpose, and the activation preflight only runs at step 6 — so a job left ARMED by an
+    # earlier rollout would tick the moment the engine was enabled, reaching the whole population
+    # before the controlled canary and before the monitor was watching.
+    url="$(db_url)"
+    run_sql "$url" assert_inert.sql
+    ok "inert confirmed — the reviewed job is present, INACTIVE, and no engine is enabled"
+    ;;
+
+  enable-engine)
+    # THE MOST CONSEQUENTIAL STATEMENT IN THE RUNBOOK, and it was a raw UPDATE pasted into a shell.
+    # Explicit owner intent is the point of --yes; it is not a reason to run the statement outside
+    # every guard this bundle exists to provide.
+    require_confirmed "enabling the digest engine"
+    url="$(db_url)"
+    run_sql "$url" enable_engine.sql
+    ok "digest engine ENABLED for ${EVENT_KEY} — nothing sends until the worker is invoked"
     ;;
 
   preflight)

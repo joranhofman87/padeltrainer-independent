@@ -13,13 +13,15 @@ of the mutating subcommands is an owner decision made from the runbook, not by a
 |---|---|---|
 | 0 | *(owner)* ship **Admin Notification Operations** | MANDATORY before any canary or activation. Without it there is no in-product, global view of the pipeline and no safe controls — intervening means a hand-written psql-session against production. Separate release unit; scope and acceptance criteria in [`docs/FOUNDATION_ROADMAP.md`](../../../docs/FOUNDATION_ROADMAP.md). |
 | 1 | `status <url>` | Read-only. Engine flags, cron presence/armed state, dispatch liveness, and the counters a disabled smoke must not move. |
+| 1b | `assert-inert <url>` | Read-only **gate**. The cron job present is EXACTLY the reviewed one **and inactive**, and no engine is enabled. Must pass BEFORE either switch — the migration preserves an existing job's active state, so a job left armed by an earlier rollout would tick the moment the engine went live. `status` prints these facts; this one fails on them. |
 | 2 | `smoke-disabled --switch-off-confirmed <url>` | Read-only. Capture counters either side of a disabled invocation through the real Vault/pg_net path. The invocation must answer **exactly** `200 {"status":"disabled","reason":"disabled"}` and move **no** counter. |
 | 3 | *(owner)* set `DIGEST_SEND_ENABLED=true` on `notification-digest-worker` | The edge kill switch. No SQL can see it; this bundle has no view of it. |
-| 3b | *(owner)* enable the engine for the cutover event | `UPDATE notification_event_types SET digest_engine_enabled = true WHERE key = 'open_slots_player';` — the activation gate **requires** this to be true already, and nothing here does it for you. |
+| 3b | `enable-engine --yes <url>` | Turns the engine on for the cutover event **only**, in one transaction: the cron must still be inactive, exactly one row changes, and the postcondition proves this event on and nothing else. The activation gate requires this to be true already. |
 | 3c | *(owner)* wire the EXTERNAL monitor | Point cron/uptime monitoring at `public.notif_digest_worker_liveness()` and verify it alerts on a stale `last_success_at`. Before the canary, so it is watching from the first send. |
-| 4 | *(owner)* invoke the worker **ONCE**, by hand | Through the real Vault/pg_net path, cron still INACTIVE. **Capture the `run_id` it returns** — that uuid is the canary, and every later step is bound to it. This is the step that actually sends an email, and the one step 0 gates procedurally. |
+| 4 | *(owner)* invoke the worker **ONCE**, by hand | Through the real Vault/pg_net path, cron still INACTIVE. **Capture `dispatchRunId` from the response** — that uuid is what every later step passes as `<run_id>`. This is the step that actually sends an email, and the one step 0 gates procedurally. |
 | 5 | `canary --yes --admin-ops-confirmed <url> <run_id>` | Reconciles **that** run and verifies it delivered. Does not invoke anything. |
 | 6 | `preflight <url> <run_id>` | Read-only **dry run** of the whole activation gate. Arms nothing. |
+| 7 | `activate --yes --monitor-confirmed --admin-ops-confirmed <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
 | 8 | `rollback --yes --switch-off-confirmed <url>` | Engine off **and** cron inactive, then proves both. |
 
 **Steps 3b and 4 are owner actions with no subcommand, deliberately.** Enabling the engine and
