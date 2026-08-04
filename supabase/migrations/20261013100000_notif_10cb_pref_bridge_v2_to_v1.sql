@@ -156,7 +156,7 @@ AS $fn$
 $fn$;
 
 COMMENT ON FUNCTION public.notif_pref_open_slots_incidental_values() IS
-  'The open_slots_player email cadences the platform can supply on its own: the catalog default (via the settings page effective() fallback) and the notification_preferences_v2.email_frequency COLUMN default (via a partial insert through the table API). The reverse bridge only SEEDS these on INSERT, so an incidental value can never overwrite an explicit legacy opt-out. Derived, not hard-coded. Retire with the bridge.';
+  'The open_slots_player email cadences the platform can supply on its own: the catalog default (via the settings page effective() fallback) and the notification_preferences_v2.email_frequency COLUMN default (via a partial insert through the table API) — MINUS ''off'', which is excluded unconditionally so that an opt-out applies whatever the defaults happen to be. The reverse bridge only SEEDS this set on INSERT, so an incidental value can never overwrite an explicit legacy opt-out. Derived, not hard-coded. Retire with the bridge.';
 
 -- ===========================================================================
 -- 1c. HARDEN THE LEGACY VALIDATION TRIGGER THAT THE REVERSE BRIDGE NOW INVOKES.
@@ -357,7 +357,12 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  IF TG_OP = 'UPDATE' THEN
+  -- AN UPDATE THAT RETARGETS A ROW ONTO THIS EVENT IS AN ARRIVAL, NOT A CHANGE.
+  -- `event_type` is updatable by its owner (own-row UPDATE policy + column grant), so a row can
+  -- move onto open_slots_player from another event. OLD.email_frequency then belongs to a
+  -- DIFFERENT event and comparing against it is meaningless: it could suppress a real arriving
+  -- value, or treat an incidental one as an explicit change. Such a row takes the INSERT rules.
+  IF TG_OP = 'UPDATE' AND OLD.event_type IS NOT DISTINCT FROM NEW.event_type THEN
     -- Only an actual CHANGE is a user action about EMAIL. A WhatsApp-only save re-writes this
     -- column unchanged and must not be mirrored (it would also cost a pointless row lock on v1).
     IF NEW.email_frequency IS NOT DISTINCT FROM OLD.email_frequency THEN
@@ -374,7 +379,8 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- INSERT: resolve the ambiguity by value against BOTH platform-suppliable defaults (header, §1b).
+  -- ARRIVAL (INSERT, or an UPDATE that retargeted this row onto the event): resolve the ambiguity
+  -- by value against the platform-suppliable defaults (header, §1b).
   v_incidental := public.notif_pref_open_slots_incidental_values();
 
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
@@ -401,22 +407,35 @@ COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_to_v1() IS
 
 DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_to_v1 ON public.notification_preferences_v2;
 CREATE TRIGGER trg_mirror_open_slots_pref_to_v1
-  AFTER INSERT OR UPDATE OF email_frequency ON public.notification_preferences_v2
+  AFTER INSERT OR UPDATE ON public.notification_preferences_v2
   FOR EACH ROW
   WHEN (NEW.event_type = 'open_slots_player')
   EXECUTE FUNCTION public.notif_mirror_open_slots_pref_to_v1();
 
--- NOTE ON `UPDATE OF email_frequency`: this fires when the column is NAMED in the SET list, not
--- only when its value changes, so the in-function no-change short-circuit above is load-bearing —
--- the settings page always writes both channel columns. A WhatsApp-only UPDATE issued in raw SQL
--- (not naming email_frequency) does not fire the trigger at all, which is the same outcome by a
--- cheaper route.
+-- NO `UPDATE OF email_frequency` COLUMN LIST, deliberately. It reads as the tighter, cheaper
+-- trigger and it is the wrong one: `UPDATE OF col` fires only when that column is NAMED in the SET
+-- list, so retargeting a row onto this event (`SET event_type = 'open_slots_player'`) would not
+-- fire at all. The effective v2 preference would become that row's cadence — including `off` —
+-- while the legacy reader kept the old one and went on sending. The in-function no-change
+-- short-circuit makes the unrestricted form cost the same for the write that actually dominates:
+-- the settings page always names both channel columns anyway.
 --
--- NOTE ON DELETE: deliberately not mirrored. Deleting a v2 row reverts the effective preference to
--- the catalog default while v1 would keep the mirrored value, so a DELETE mirror looks tempting.
--- But nothing deletes a single v2 row: the settings page has no delete, and the only deleter is
--- full account deletion (_shared/delete-user-data.ts), which removes the v1 row too. Adding a
--- DELETE mirror would therefore only add a way to clobber v1 during account teardown.
+-- NOTE ON DELETE AND ON RETARGETING AWAY: not mirrored, and the reason is NOT that they cannot
+-- happen. They can: `authenticated` holds DELETE and UPDATE grants on this table with own-row
+-- policies (20260910100000), so a user can remove or repoint their own row through the table API
+-- even though the settings page offers no way to.
+--
+-- They are not mirrored because every available mirror is worse than the divergence. Losing the
+-- row makes the EFFECTIVE v2 preference the catalog default, so a faithful mirror would write that
+-- default into v1 — and deleting an `off` row would then RESUME mail through the legacy reader.
+-- That is the one outcome this file exists to prevent, so the bridge declines to act. v1 instead
+-- retains the last cadence the user explicitly chose.
+--
+-- The residual, stated exactly: after such a delete the legacy reader can send at the user's last
+-- explicit cadence while v2 resolves to the catalog default — a cadence mismatch, in either
+-- direction, between two values the user either chose or inherited by design. It is bounded to a
+-- legacy column that 10c-d retires, it is not reachable from any UI, and it never sends to someone
+-- whose recorded state is an opt-out.
 
 -- ===========================================================================================
 -- 3b. ONE-TIME REVERSE RECONCILE, for v2 rows that predate the trigger.

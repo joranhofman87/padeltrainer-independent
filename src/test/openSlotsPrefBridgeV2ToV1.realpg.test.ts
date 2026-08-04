@@ -289,6 +289,52 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     expect(await writes('v1')).toBe(v1WritesBefore);
   });
 
+  it('RETARGETING a row onto this event reaches the legacy reader', async () => {
+    // event_type is updatable by its owner (own-row UPDATE policy + column grant), so a row can
+    // move onto open_slots_player from another event. With a `UPDATE OF email_frequency` column
+    // list the trigger would not fire at all: the effective v2 preference would become 'off' while
+    // the legacy reader kept sending. Reachable only through the table API, but it is an opt-out
+    // that never lands, which is the failure this whole unit is about.
+    await seedV1('instant');
+    await c.query(`DELETE FROM public.notification_preferences_v2`);
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                   VALUES ($1,$2,'off')`, [USER, OTHER_EVENT]);
+    expect(await v1Of(), 'precondition: another event must not touch v1').toBe('instant');
+
+    await c.query(`UPDATE public.notification_preferences_v2 SET event_type='open_slots_player'
+                    WHERE user_id=$1 AND event_type=$2`, [USER, OTHER_EVENT]);
+    expect(await v1Of()).toBe('off');
+  });
+
+  it('MUTANT: the trigger narrowed back to UPDATE OF email_frequency — the retarget is invisible', async () => {
+    const ANCHOR = '  AFTER INSERT OR UPDATE ON public.notification_preferences_v2';
+    expect(BRIDGE_SQL).toContain(ANCHOR);
+    const narrowed = BRIDGE_SQL.replace(
+      ANCHOR, '  AFTER INSERT OR UPDATE OF email_frequency ON public.notification_preferences_v2');
+    expect(narrowed).not.toBe(BRIDGE_SQL);
+    try {
+      await applyBridge(narrowed);
+      await seedV1('instant');
+      await c.query(`DELETE FROM public.notification_preferences_v2`);
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                     VALUES ($1,$2,'off')`, [USER, OTHER_EVENT]);
+      await c.query(`UPDATE public.notification_preferences_v2 SET event_type='open_slots_player'
+                      WHERE user_id=$1 AND event_type=$2`, [USER, OTHER_EVENT]);
+      expect(await v1Of(), 'the forbidden outcome: an opt-out the legacy reader never sees').toBe('instant');
+    } finally { await applyBridge(); }
+  });
+
+  it('DELETE is NOT mirrored, and the residual is exactly what the migration claims', async () => {
+    // A faithful DELETE mirror would write the CATALOG DEFAULT into v1, because that is what the
+    // effective v2 preference becomes — so deleting an 'off' row would RESUME legacy mail. The
+    // bridge declines to act instead: v1 keeps the last cadence the user explicitly chose.
+    await saveV2('off');
+    expect(await v1Of()).toBe('off');
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+    expect(await v2Of()).toBeNull();                       // v2 now resolves to the catalog default
+    expect(await v1Of(), 'never resurrected to the catalog default').toBe('off');
+  });
+
   it('a different event type never touches the legacy column', async () => {
     await seedV1('instant');
     await c.query(`DELETE FROM public.notification_preferences_v2`);
@@ -339,7 +385,7 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
     expect(await v1Of()).toBe(catalogDefault);
   });
 
-  it('the incidental set is DERIVED: exactly the catalog default and the v2 COLUMN default', async () => {
+  it("the incidental set is DERIVED: both defaults, minus 'off'", async () => {
     const colDefault = (await c.query(
       `SELECT pg_get_expr(d.adbin, d.adrelid) AS e
          FROM pg_attrdef d JOIN pg_attribute a ON a.attrelid=d.adrelid AND a.attnum=d.adnum
@@ -412,7 +458,9 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
     expect(await v1Of()).toBe(await v2Of());
   });
 
-  it('an opt-out is in NEITHER default, so it always applies — the case the contract names', async () => {
+  it("'off' is never incidental, so an opt-out always applies — the case the contract names", async () => {
+    // Not "off happens not to be a default today" — it is excluded unconditionally, which is what
+    // the sibling test below proves by making it one.
     expect(incidental).not.toContain('off');
   });
 

@@ -759,8 +759,8 @@ Both are one hop: a transaction-local guard (`notif_pref_bridge_hop_active()`) m
 non-recursive. Both resolve an ambiguous INSERT by VALUE, so an incidental default can never
 overwrite an explicit `off` — forward against the v1 COLUMN default; reverse against **both**
 platform-suppliable values (`notif_pref_open_slots_incidental_values()` = the catalog default *and*
-the v2 column default, derived rather than hard-coded). `off` is in neither, so an opt-out always
-applies. Neither mirrors WhatsApp or push; there is no v1 counterpart. The reverse direction also
+the v2 column default, derived rather than hard-coded — **minus `off`, excluded unconditionally**).
+So an opt-out always applies, whatever the defaults happen to be. Neither mirrors WhatsApp or push; there is no v1 counterpart. The reverse direction also
 ships a bounded, idempotent one-time reconcile, because a trigger cannot see rows that already
 exist.
 

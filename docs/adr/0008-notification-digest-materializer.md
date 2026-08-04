@@ -901,8 +901,9 @@ Which arm is live matters and the first draft of this got backwards: `open_slots
 catalog arm is currently unreachable and the column arm is the live one**. The catalog arm is kept
 because Stage 8 turns WhatsApp on. An UPDATE needs no test at all: a same-channel-only save rewrites
 `email_frequency` unchanged and the no-change short-circuit drops it, so a *changed* value on UPDATE
-is always an explicit email choice. `off` is in neither default, so an opt-out always applies —
-which is the case the contract actually names.
+is always an explicit email choice. `off` is excluded from the incidental set **unconditionally** —
+not because it happens not to be a default today, but because suppressing mail is safe whether it
+was chosen or inherited, so an opt-out always applies. That is the case the contract actually names.
 
 **Existing state is reconciled, not only future writes.** A trigger sees nothing that already
 happened, so the migration ends with one bounded, idempotent reverse reconcile using the trigger's
@@ -941,7 +942,9 @@ Postgres breaks with `deadlock detected`. A cross-table advisory lock in a `BEFO
 on both tables would remove it, and was rejected: it takes one advisory lock **per row** on every
 preference write forever, to prevent an event that needs one user saving on two differently
 versioned bundles within milliseconds. The invariant that matters survives either way and is what
-the tests assert: **after any committed write, v1 and v2 agree.** A deadlock aborts one transaction
+the tests assert: **after any committed APPLYING write, v1 and v2 agree.** (A seed-only write leaves
+them different on purpose — a partial v2 insert over a legacy `off` commits v1=`off` beside
+v2=`instant`, and that divergence IS the protection.) A deadlock aborts one transaction
 whole, so it cannot leave them disagreeing; a serialised pair leaves both at the later writer's
 value. Lost updates are prevented by the upserts themselves — `ON CONFLICT DO UPDATE` re-reads the
 conflicting row under lock.
