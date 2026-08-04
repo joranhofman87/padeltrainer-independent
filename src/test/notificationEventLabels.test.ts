@@ -16,25 +16,26 @@ import { join } from 'node:path';
 const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations');
 
 /**
- * Every event key seeded into notification_event_types, extracted from the real migrations.
- *
  * FAIL-CLOSED extraction: a broad, case-insensitive detector finds every statement that inserts
- * into the table (qualified or not), and any detected statement whose VALUES tuples yield no key
- * is an ERROR rather than a silent skip — otherwise a future seed written in a shape this parser
- * does not read (lowercase keywords, INSERT … SELECT) would leave every assertion green while its
- * raw key reaches users, which is the exact failure this test exists to close.
+ * into the table — unqualified, `public.`-qualified, or with QUOTED schema/table identifiers,
+ * any spacing around the dot — and any detected statement whose VALUES tuples yield no key is an
+ * ERROR rather than a silent skip. Otherwise a future seed written in a shape this parser does
+ * not read (lowercase keywords, INSERT … SELECT, `"public"."notification_event_types"`) would
+ * leave every assertion green while its raw key reaches users — the exact failure this test
+ * exists to close. The detector itself is self-tested below against those variants, so its own
+ * blind spots cannot silently return either.
  */
-const seededKeys = (): string[] => {
+const DETECT =
+  /insert\s+into\s+(?:"?public"?\s*\.\s*)?"?notification_event_types"?\b([\s\S]*?)(?:on\s+conflict|;)/gi;
+
+const extractFrom = (files: Array<{ name: string; sql: string }>): string[] => {
   const keys = new Set<string>();
   const unparsed: string[] = [];
-  for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))) {
-    const sql = readFileSync(join(MIGRATIONS, f), 'utf8');
-    for (const insert of sql.matchAll(
-      /insert\s+into\s+(?:public\.)?(?:"?notification_event_types"?)\b([\s\S]*?)(?:on\s+conflict|;)/gi,
-    )) {
+  for (const { name, sql } of files) {
+    for (const insert of sql.matchAll(DETECT)) {
       const tuples = [...insert[1].matchAll(/\(\s*'([a-z0-9_]+)'\s*,/g)].map((m) => m[1]);
       if (tuples.length === 0) {
-        unparsed.push(`${f}: ${insert[0].slice(0, 120).replace(/\s+/g, ' ')}…`);
+        unparsed.push(`${name}: ${insert[0].slice(0, 120).replace(/\s+/g, ' ')}…`);
         continue;
       }
       for (const k of tuples) keys.add(k);
@@ -47,6 +48,14 @@ const seededKeys = (): string[] => {
   }
   return [...keys].sort();
 };
+
+/** Every event key seeded into notification_event_types, extracted from the real migrations. */
+const seededKeys = (): string[] =>
+  extractFrom(
+    readdirSync(MIGRATIONS)
+      .filter((f) => f.endsWith('.sql'))
+      .map((f) => ({ name: f, sql: readFileSync(join(MIGRATIONS, f), 'utf8') })),
+  );
 
 const labels = (lang: string): Record<string, { label?: string }> =>
   JSON.parse(readFileSync(join(process.cwd(), 'src', 'i18n', 'locales', lang, 'notifications.json'), 'utf8'))
@@ -77,5 +86,32 @@ describe('notification catalog ↔ i18n label parity', () => {
 
   it('en and nl define the same event-label key set', () => {
     expect(Object.keys(labels('en')).sort()).toEqual(Object.keys(labels('nl')).sort());
+  });
+
+  // The detector's own blind spots are the escape hatch this test must not have: every valid
+  // SQL shape a future seed could take must either be READ or REFUSED — never skipped.
+  it('the extractor reads every insert shape a seed could legitimately take', () => {
+    const shapes = [
+      ["INSERT INTO public.notification_event_types (key) VALUES ('a_one', true);", ['a_one']],
+      ["insert into notification_event_types (key) values ('b_two', 1);", ['b_two']],
+      [`INSERT INTO "public"."notification_event_types" (key) VALUES ('c_three', x);`, ['c_three']],
+      [`INSERT INTO "notification_event_types" (key) VALUES ('d_four', x) ON CONFLICT (key) DO NOTHING;`, ['d_four']],
+      ["INSERT INTO public . notification_event_types (key) VALUES ('e_five', x);", ['e_five']],
+    ] as const;
+    for (const [sql, expected] of shapes) {
+      expect(extractFrom([{ name: 'fixture.sql', sql }]), sql).toEqual([...expected]);
+    }
+  });
+
+  it('the extractor REFUSES a detected insert it cannot read, rather than skipping it', () => {
+    expect(() => extractFrom([{
+      name: 'fixture.sql',
+      sql: 'INSERT INTO public.notification_event_types (key) SELECT key FROM somewhere;',
+    }])).toThrow(/cannot read/);
+  });
+
+  it('the extractor is not vacuous on unrelated tables', () => {
+    expect(extractFrom([{ name: 'fixture.sql', sql: "INSERT INTO public.other_table VALUES ('x_key', 1);" }]))
+      .toEqual([]);
   });
 });
