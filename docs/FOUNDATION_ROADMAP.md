@@ -222,7 +222,7 @@ they are specified separately rather than waved through under the same heading:
 version wants an in-product activate, it must call that same gate — canary-bound, locked and
 count-checked — and not a raw `cron.alter_job(active := true)`.
 
-**Carried in from 10c-b slice I — a durable pending-invocation record.** A dispatch run only appears
+**Acceptance criterion 6 — a durable pending-invocation record.** A dispatch run only appears
 in `notification_worker_runs` once the worker *starts*. Between `canary-invoke`'s commit and that
 moment the pipeline has no durable record that an invocation is on its way, so "nothing is in flight"
 reads clean over a canary that is already travelling — which lets a second invocation start, and lets
@@ -247,6 +247,11 @@ perform a send.** `DIGEST_SEND_ENABLED` is an edge env var that no SQL and no ad
 3. The read surface tested against real fixture data, not stubs.
 4. Independent review clear, every repo gate green.
 5. Deployed, and the owner has exercised each surface once.
+6. **A durable pending-invocation record exists** — written by whatever invokes the digest worker and
+   cleared when that invocation's run appears or is abandoned — and both `canary-invoke` and the
+   activation gate read it. See "Acceptance criterion 6" above for why the 10c-b narrowing is not a
+   closure. Until this ships, "one invocation at a time" is an operator responsibility, not an
+   enforced invariant.
 
 ## Owner deploy backlog (already-merged, not yet live)
 

@@ -362,17 +362,15 @@ case "$SUB" in
     done
 
     status="$(marker_values "$resp_out" CANARY_RESPONSE_STATUS '[0-9]+|none')"
-    [[ "$status" == "200" ]] \
-      || die "the worker answered HTTP '${status:-<none>}' — the response is printed above. Do NOT proceed to canary/activate; fix the cause and invoke again"
 
-    # dispatchRunId is the whole point: `canary`, `preflight` and `activate` are all bound to it. A
-    # 200 WITHOUT one means no dispatch run started — the kill switch is off, or the worker exited
-    # early — so there is nothing to reconcile and nothing was sent.
+    # THE RUN ID IS EXTRACTED BEFORE THE STATUS IS JUDGED, and that ordering is the point. A worker
+    # that sends several groups and then fails — on a later group, on reconciliation, on finishing —
+    # returns a non-200 whose body still carries dispatchRunId. Refusing on the status first meant the
+    # one case where mail had gone out AND something was wrong was the one case nothing measured how
+    # much. Whenever there is a run id there is a run to account for, whatever the HTTP code said.
     run_id="$({ grep -Eo '"dispatchRunId"[[:space:]]*:[[:space:]]*"[0-9a-fA-F-]{36}"' "$resp_out" || true; } \
               | { grep -Eo '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}' || true; } \
               | sort -u | awk 'NR==1')"
-    [[ -n "$run_id" ]] \
-      || die "the worker answered 200 but reported no dispatchRunId, so no dispatch run started and nothing was sent (a 'disabled' answer means DIGEST_SEND_ENABLED is off). Read the body above; there is nothing for \`canary\` to reconcile"
 
     # WHAT IT ACTUALLY REACHED, now that the run has finished. The ceiling asserted before the
     # invocation bounded the work VISIBLE THEN; pg_net dispatches after that transaction commits and
@@ -380,10 +378,26 @@ case "$SUB" in
     # sent by this same invocation and was never counted. This is the half that can be checked after
     # the fact — it cannot unsend, but it stops the rollout continuing as though a one-recipient
     # canary had happened when it had not.
-    if ! run_sql_capture "$CANARY_TMP/scope.out" "$url" canary_scope_verify.sql \
-           -v run_id="$run_id" -v max_recipients="$MAX_RECIPIENTS"; then
-      die "the canary reached MORE than --max-recipients=${MAX_RECIPIENTS}. It has already sent. Do NOT proceed to canary/activate: roll back (DIGEST_SEND_ENABLED=false, then \`rollback --yes --switch-off-confirmed\`) and account for the extra work first"
+    if [[ -n "$run_id" ]]; then
+      if ! run_sql_capture "$CANARY_TMP/scope.out" "$url" canary_scope_verify.sql \
+             -v run_id="$run_id" -v max_recipients="$MAX_RECIPIENTS"; then
+        die "the canary reached MORE than --max-recipients=${MAX_RECIPIENTS}. It has already sent. Do NOT proceed to canary/activate: roll back (DIGEST_SEND_ENABLED=false, then \`rollback --yes --switch-off-confirmed\`) and account for the extra work first"
+      fi
     fi
+
+    if [[ "$status" != "200" ]]; then
+      # Two very different situations, and telling the operator to "fix it and invoke again" is only
+      # right for one of them.
+      if [[ -n "$run_id" ]]; then
+        die "the worker answered HTTP '${status:-<none>}' AFTER starting dispatch run ${run_id}. Mail may already have gone out — the scope check above says how much. Roll back (DIGEST_SEND_ENABLED=false, then \`rollback --yes --switch-off-confirmed\`) and account for that run before invoking anything again"
+      fi
+      die "the worker answered HTTP '${status:-<none>}' and reported no dispatchRunId, so whether anything was sent is UNKNOWN — not 'nothing happened'. Turn DIGEST_SEND_ENABLED off and investigate the worker's logs and notification_worker_runs before invoking again"
+    fi
+
+    # A 200 WITHOUT a run id means no dispatch run started — the kill switch is off, or the worker
+    # exited early — so there is nothing to reconcile and nothing was sent.
+    [[ -n "$run_id" ]] \
+      || die "the worker answered 200 but reported no dispatchRunId, so no dispatch run started and nothing was sent (a 'disabled' answer means DIGEST_SEND_ENABLED is off). Read the body above; there is nothing for \`canary\` to reconcile"
 
     ok "canary invoked — dispatchRunId ${run_id}"
     warn "next: run-enablement.sh canary --yes --admin-ops-confirmed <db_url> ${run_id}"

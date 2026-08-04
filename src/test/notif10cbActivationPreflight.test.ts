@@ -11,7 +11,7 @@
 // So the two literals are pinned to each other HERE, in the test suite CI always runs, rather than
 // left to a comment asking the next person to remember.
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
@@ -305,32 +305,87 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
   // function resolution prefers an exact-arity overload over pg_catalog's VARIADIC "any" wherever
   // that schema sits in the path. Only excluding hostile schemas works.
   it('pins search_path before it asserts or executes anything', () => {
-    const m = invokeSql.match(/SET LOCAL search_path = ([^;]+);/);
-    expect(m, 'canary_invoke.sql must pin search_path').not.toBeNull();
-    // pg_temp is never searched for functions or operators, and every temp object here is written
-    // as pg_temp.x — so anything beyond pg_catalog is an unnecessary way back in.
-    expect(m![1].trim()).toBe('pg_catalog');
-    const at = invokeSql.search(/SET LOCAL search_path/);
+    const at = invokeSql.search(/SET search_path = pg_catalog;/);
+    expect(at, 'canary_invoke.sql must pin search_path').toBeGreaterThan(-1);
     expect(at).toBeLessThan(invokeSql.indexOf('EXECUTE v_cmd'));
     expect(at).toBeLessThan(invokeSql.indexOf('LOCK TABLE'));
   });
 });
 
-// The command a cron TICK runs has no SET LOCAL in front of it, so it has to be safe on its own.
+// The command a cron TICK runs has nothing that can be placed in front of it, so it has to be safe
+// on its own under any search_path.
 describe('I — the scheduled command survives a hostile search_path unaided', () => {
-  it('qualifies every name a search_path could redirect', () => {
-    expect(reviewed.command).toContain('pg_catalog.jsonb_build_object');
-    // The operator and the cast are resolved through the path exactly like the function is.
-    expect(reviewed.command).toContain('OPERATOR(pg_catalog.||)');
-    expect(reviewed.command).toContain('::pg_catalog.jsonb');
-    // ...and nothing bare is left behind.
-    expect(reviewed.command).not.toMatch(/[^.]\bjsonb_build_object\s*\(/);
-    expect(reviewed.command).not.toMatch(/'\s*\|\|\s*\(SELECT/);
+  // DERIVED FROM THE TEXT, NOT FROM A LIST. Naming the constructs by hand is how `=` survived a
+  // round: the previous version asserted jsonb_build_object and `||` were qualified, claimed "every
+  // name", and was blind to the equality operator selecting the Vault row. This strips the
+  // constructs that CANNOT be redirected — string literals, then every schema-qualified form — and
+  // fails on whatever is left, so a name nobody thought of fails the same way.
+  const residue = (() => {
+    let t = reviewed.command;
+    t = t.replace(/'(?:[^']|'')*'/g, "''");                       // string literals
+    t = t.replace(/OPERATOR\(pg_catalog\.[^)]+\)/g, ' OPQUAL ');   // qualified operators
+    t = t.replace(/::pg_catalog\.[a-z_]+/g, ' CASTQUAL ');         // qualified casts
+    t = t.replace(/\b(pg_catalog|net|vault|public|cron)\.[a-z_]+/g, ' NAMEQUAL '); // qualified names
+    return t;
+  })();
+
+  it('leaves no unqualified operator for a hostile schema to shadow', () => {
+    // Assignment-style `:=` is pg_cron/plpgsql syntax, not an operator lookup; `,` and parens are
+    // syntax too. Anything else is a real operator token.
+    const stripped = residue.replace(/:=/g, ' ');
+    const operators = stripped.match(/[|=<>+\-*/%~!@#^&?]+/g) ?? [];
+    expect(operators, `unqualified operator(s) in the scheduled command: ${operators.join(' ')}`).toEqual([]);
+  });
+
+  it('leaves no unqualified function call for a hostile schema to shadow', () => {
+    const calls = (residue.match(/\b([a-z_][a-z0-9_]*)\s*\(/gi) ?? [])
+      .map((s) => s.replace(/\s*\($/, ''))
+      .filter((n) => !['NAMEQUAL', 'OPQUAL', 'CASTQUAL', 'SELECT'].includes(n));
+    expect(calls, `unqualified function call(s) in the scheduled command: ${calls.join(' ')}`).toEqual([]);
+  });
+
+  it('leaves no unqualified cast', () => {
+    expect(residue, 'an unqualified ::type is resolved through search_path too').not.toMatch(/::\s*[a-z]/i);
   });
 
   it('still resolves the bearer from Vault, and posts to this project', () => {
     expect(reviewed.command).toContain('vault.decrypted_secrets');
     expect(reviewed.command).toContain('net.http_post');
+  });
+});
+
+// The artifacts have the same exposure and no qualification of their own: `_job_identity_assertions`
+// alone calls count, md5, btrim, regexp_replace, regexp_matches and current_setting unqualified, and
+// a hostile `md5(text)` would match any command at all. One mechanism, applied to every file.
+describe('I — every rollout artifact pins name resolution before it does anything', () => {
+  const dir = join(process.cwd(), 'scripts', 'rollout', 'notif-10cb', 'sql');
+  const artifacts = readdirSync(dir).filter((f) => f.endsWith('.sql') && !f.startsWith('_'));
+
+  it('finds the artifacts to check', () => {
+    expect(artifacts.length).toBeGreaterThanOrEqual(10);
+  });
+
+  it.each(artifacts)('%s pins search_path before its first statement', (file) => {
+    const text = readFileSync(join(dir, file), 'utf8');
+    const pin = text.indexOf('SET search_path = pg_catalog;');
+    expect(pin, `${file} does not pin search_path`).toBeGreaterThan(-1);
+    // SESSION-WIDE, not SET LOCAL: COMMIT reverts a local setting, and these files keep asserting
+    // and printing afterwards.
+    expect(text, `${file} pins the path only for a transaction`).not.toMatch(/SET LOCAL search_path/);
+    // ...and before EVERYTHING, includes first of all — the shared assertion files are where most of
+    // the unqualified calls actually live.
+    const firstStatement = text.search(/^(\\i|BEGIN;|SELECT|CREATE|DROP|UPDATE|WITH|LOCK)/m);
+    expect(firstStatement, `${file} has no statements`).toBeGreaterThan(-1);
+    expect(pin, `${file} pins the path after it has already run something`).toBeLessThan(firstStatement);
+  });
+
+  // The `_`-prefixed files are includes, so they inherit the includer's session setting. That only
+  // holds while nothing else includes them.
+  it('the shared includes are only pulled in by artifacts that pin the path', () => {
+    for (const inc of readdirSync(dir).filter((f) => f.startsWith('_'))) {
+      const includers = artifacts.filter((a) => readFileSync(join(dir, a), 'utf8').includes(`\\i ${inc}`));
+      expect(includers.length, `${inc} is included by nothing`).toBeGreaterThan(0);
+    }
   });
 });
 

@@ -77,23 +77,31 @@ BEGIN
   -- Take the jobid from cron.schedule's OWN return value. Re-looking it up by name afterwards
   -- could select a different role's job created in between, disable THAT one, and leave the job
   -- this migration just created armed — the exact opposite of what this migration is for.
-  -- EVERY NAME IN THIS COMMAND IS SCHEMA-QUALIFIED, the operator and the type cast included, and that
-  -- is not stylistic. A cron job runs under its owner's search_path, which is settable per role and
-  -- per database and which by default still contains `public`. Function resolution does NOT prefer
-  -- pg_catalog: an exact-arity, exact-type overload beats pg_catalog's VARIADIC "any" wherever it
-  -- sits in the path, so `public.jsonb_build_object(text,text,text,text)` — creatable by anyone with
-  -- CREATE on public — receives the already-decrypted service_role bearer as an argument on the very
-  -- next tick, exfiltrates it, and returns plausible headers. Naming pg_catalog FIRST does not help;
-  -- only qualifying does. The same is true of `||` (a hostile OPERATOR for (text,text)) and of the
-  -- `::jsonb` cast (a type name is resolved through the path too).
-  -- Verified by scripts/rollout/notif-10cb/verify/preflight-pg.mjs, which plants both a hostile
-  -- overload and a hostile operator and asserts the bearer is still not captured.
+  -- EVERY RESOLVABLE NAME IN THIS COMMAND IS SCHEMA-QUALIFIED — functions, BOTH operators and the
+  -- type cast — and that is not stylistic. A cron job runs under its owner's search_path, which is
+  -- settable per role and per database and which by default still contains `public`; a tick has
+  -- nothing that can be placed in front of it. Function resolution does NOT prefer pg_catalog: an
+  -- exact-arity, exact-type overload beats pg_catalog's VARIADIC "any" wherever its schema sits in
+  -- the path, INCLUDING after an explicit pg_catalog. So `public.jsonb_build_object(text,text,text,
+  -- text)` — creatable by anyone with CREATE on public — would receive the already-decrypted
+  -- service_role bearer as an argument on the very next tick, exfiltrate it, and return plausible
+  -- headers. Ordering the path does not help; only qualifying does.
+  --
+  -- Operators resolve the same way, and there are TWO of them: `||` builds the header value, and `=`
+  -- selects the Vault row — a hostile (text,text) equality runs with the cron owner's privileges
+  -- inside a query over vault.decrypted_secrets, and can also change WHICH secret the subquery
+  -- returns. A `::jsonb` cast is a type name, resolved through the path as well.
+  --
+  -- src/test/notifDigestCronInert.realpg.test.ts derives the check from the command text rather than
+  -- from a list someone has to remember to extend: it strips the qualified forms and fails if any
+  -- resolvable name is left. preflight-pg.mjs then plants hostile candidates and proves the bearer
+  -- is still not captured.
   v_jobid := cron.schedule('notification-digest-worker', '*/5 * * * *', $cmd$
     SELECT net.http_post(
       url := 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker',
       headers := pg_catalog.jsonb_build_object(
         'Content-Type', 'application/json',
-        'Authorization', 'Bearer ' OPERATOR(pg_catalog.||) (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')
+        'Authorization', 'Bearer ' OPERATOR(pg_catalog.||) (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name OPERATOR(pg_catalog.=) 'service_role_key')
       ),
       body := '{}'::pg_catalog.jsonb
     ) AS request_id;

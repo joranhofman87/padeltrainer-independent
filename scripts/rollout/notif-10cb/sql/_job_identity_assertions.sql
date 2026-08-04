@@ -137,6 +137,6 @@ SELECT pg_temp.assert(
 SELECT pg_temp.assert_eq(
   (SELECT md5(btrim(regexp_replace(command, '\s+', ' ', 'g')))::text FROM cron.job
     WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
-  '9d67b40b05d018e5b55a873e0ce08e54'::text,
+  '657295911df940d4aecc69a87169574c'::text,
   'the cron command is EXACTLY the reviewed command (any drift must be re-reviewed, not armed)');
 

@@ -322,6 +322,11 @@ grep -qF 'canary_invoke_response.sql' "$PSQL_LOG" && bad "...and never polls for
 
 # A non-200 is not a canary. Reporting success over it would send the operator straight to `canary`,
 # which would then fail against a run that never existed.
+#
+# ...AND A NON-200 THAT STILL CARRIES A dispatchRunId MUST STILL BE MEASURED. The worker can send
+# several groups and then fail — on a later group, on reconciliation, on finishing — and its error
+# body still reports the run. Refusing on the status first meant the one case where mail HAD gone out
+# and something was wrong was the one case nothing counted how much.
 export PSQL_LOG="$TMP/log.invoke_500"; : > "$PSQL_LOG"
 set +e
 env STUB_CANARY_STATUS=500 EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
@@ -329,6 +334,27 @@ env STUB_CANARY_STATUS=500 EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIP
 c500_rc=$?
 set -e
 [[ "$c500_rc" != "0" ]] && ok "a non-200 worker reply fails the subcommand" || bad "a non-200 worker reply fails the subcommand"
+grep -qF 'canary_scope_verify.sql' "$PSQL_LOG" \
+  && ok "...but the run it DID start is still scope-checked" \
+  || { bad "...but the run it DID start is still scope-checked"; cat "$PSQL_LOG"; }
+grep -qF 'Mail may already have gone out' "$TMP/out" \
+  && ok "...and the operator is told mail may already have gone" \
+  || { bad "...and the operator is told mail may already have gone"; cat "$TMP/out"; }
+
+# A non-200 with NO run id is a different situation, and "fix it and invoke again" is the wrong
+# advice: nothing here knows whether the worker sent before it failed.
+export PSQL_LOG="$TMP/log.invoke_500_norun"; : > "$PSQL_LOG"
+set +e
+env STUB_CANARY_STATUS=502 'STUB_CANARY_BODY={"error":"upstream"}' EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" \
+  bash "$SCRIPT" canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+c502_rc=$?
+set -e
+[[ "$c502_rc" != "0" ]] && ok "a non-200 with no run id fails the subcommand too" \
+  || bad "a non-200 with no run id fails the subcommand too"
+grep -qF 'UNKNOWN' "$TMP/out" && ok "...and calls the send UNKNOWN, not 'nothing happened'" \
+  || { bad "...and calls the send UNKNOWN, not 'nothing happened'"; cat "$TMP/out"; }
+grep -qF 'canary_scope_verify.sql' "$PSQL_LOG" && bad "...and scope-checks nothing, having no run to check" \
+  || ok "...and scope-checks nothing, having no run to check"
 
 # 200 WITHOUT a dispatchRunId is what a disabled worker answers. Nothing was sent and there is
 # nothing to reconcile, so calling that a successful canary would be simply false.

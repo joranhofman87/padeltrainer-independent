@@ -90,18 +90,32 @@ describe('F — the digest cron is installed INERT', () => {
     // The FULL url, not just the path: pointing the same path at another Supabase project would
     // send this project's Vault service-role bearer to that one the moment it is armed.
     expect(j.command).toContain("url := 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'");
-    expect(j.command).toContain("'Authorization', 'Bearer ' OPERATOR(pg_catalog.||) (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'service_role_key')");
     expect(j.command, 'no key may ever be frozen into the schedule').not.toContain('eyJ.SERVICE_ROLE_TEST');
+    // THE WHOLE COMMAND, COMPARED TO THE MIGRATION'S OWN TEXT rather than to a literal retyped here.
+    // This assertion has now been broken twice by legitimate edits to the command — each time the
+    // retyped copy stopped matching and had to be re-typed again, which is a test that tracks the
+    // code rather than checking it. Extracting the source of truth makes the comparison total: any
+    // drift between what the migration schedules and what the job stores fails here.
+    const scheduled = MIG.match(
+      /cron\.schedule\(\s*'notification-digest-worker'\s*,\s*'[^']+'\s*,\s*\$cmd\$([\s\S]*?)\$cmd\$\s*\)/)?.[1];
+    expect(scheduled, 'the migration must still schedule the job in the expected form').toBeTruthy();
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+    expect(norm(j.command)).toBe(norm(scheduled!));
     // ...AND EVERY NAME IN IT IS SCHEMA-QUALIFIED. A tick runs under its owner's search_path, and
     // function resolution does NOT prefer pg_catalog: an exact-arity overload beats pg_catalog's
     // VARIADIC "any" wherever its schema sits in the path, even after an explicit pg_catalog. So a
     // bare `jsonb_build_object` hands the decrypted bearer to whoever can create
-    // `public.jsonb_build_object(text,text,text,text)` — and `public` is in the default path. The
-    // operator and the cast resolve through the path in exactly the same way.
+    // `public.jsonb_build_object(text,text,text,text)` — and `public` is in the default path. Both
+    // operators (`||` builds the header, `=` selects the Vault row) and the cast resolve the same
+    // way. src/test/notif10cbActivationPreflight.test.ts derives the exhaustive check from the text;
+    // this one states the specific names so a failure here says which protection was lost.
     expect(j.command).toContain('pg_catalog.jsonb_build_object');
+    expect(j.command).toContain('OPERATOR(pg_catalog.||)');
+    expect(j.command).toContain('OPERATOR(pg_catalog.=)');
     expect(j.command).toContain('::pg_catalog.jsonb');
     expect(j.command, 'a bare jsonb_build_object is shadowable').not.toMatch(/[^.]\bjsonb_build_object\s*\(/);
     expect(j.command, 'a bare || is shadowable by a hostile OPERATOR').not.toMatch(/'\s*\|\|\s*\(SELECT/);
+    expect(j.command, 'a bare = is shadowable by a hostile OPERATOR').not.toMatch(/WHERE name\s*=/);
   });
 
   it('a re-run NEVER disarms a job the owner has already activated', async () => {

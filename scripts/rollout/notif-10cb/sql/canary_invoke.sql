@@ -27,6 +27,22 @@
 --
 -- Takes :max_recipients — the operator's ceiling on how many recipients this invocation may reach.
 \set ON_ERROR_STOP on
+-- NAME RESOLUTION IS PINNED FOR THE WHOLE SESSION, before any include and before any statement.
+--
+-- Every unqualified function, operator, aggregate, cast and relation in this file — and in the
+-- shared includes it pulls in — is resolved through search_path, which is settable per role and per
+-- database and which the client-side PG* stripping cannot reach. Ordering the path is NOT a defence:
+-- function resolution prefers an exact-arity, exact-type candidate over pg_catalog's VARIADIC "any"
+-- wherever that schema sits, even after an explicit pg_catalog. A hostile `count(text)` reports zero;
+-- a hostile `md5(text)` matches any command; a hostile `=` ignores a queued canary. Only EXCLUDING
+-- such a schema works, so every artifact in this directory pins the path and
+-- src/test/notif10cbActivationPreflight.test.ts fails if one stops.
+--
+-- SESSION-WIDE, not SET LOCAL: a transaction-scoped setting is reverted by COMMIT, and these files
+-- keep asserting and reporting afterwards. pg_temp is deliberately absent — it is never searched for
+-- functions or operators, and every temp object here is written as pg_temp.x.
+SET search_path = pg_catalog;
+
 \i ../../notif-10ca3/sql/_assert.sql
 
 -- Temp tables are SESSION-scoped, not transaction-scoped. A previous run that died between COMMIT
@@ -44,28 +60,11 @@ BEGIN;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 
--- THE PATH IS PINNED BEFORE ANYTHING IS ASSERTED OR EXECUTED, and this is the most load-bearing line
--- in the file. `EXECUTE v_cmd` below runs catalog text under whatever search_path the session has,
--- and search_path is settable per role and per database — somewhere the client-side PG* stripping
--- cannot reach.
+-- (search_path is pinned at the TOP of this file, session-wide. It was briefly a SET LOCAL here, and
+-- that was wrong twice over: a transaction-scoped setting is reverted by COMMIT, so the marker this
+-- file prints afterwards — the request id the whole subcommand turns on — was computed with an
+-- unqualified `format` under whatever path the session had. One mechanism, applied once, at the top.)
 --
--- Naming pg_catalog first would NOT be enough, which is the part that is easy to get wrong. Function
--- resolution does not prefer pg_catalog: an exact-arity, exact-type overload beats pg_catalog's
--- VARIADIC "any" wherever its schema sits in the path. So with `hostile` anywhere in the path,
--- `hostile.jsonb_build_object(text,text,text,text)` is chosen over the built-in and receives the
--- already-decrypted service_role bearer as an argument. The same goes for a hostile OPERATOR for
--- `||` and for a shadowed `jsonb` type name. Only EXCLUDING such a schema works.
---
--- The F migration now schema-qualifies every one of those, so the reviewed command is safe under any
--- path — which makes this line a SECOND lock on the same door, and means no behavioural test can
--- tell whether it is here. Said plainly rather than left to look load-bearing: it is pinned
--- structurally by src/test/notif10cbActivationPreflight.test.ts instead, and it is kept because the
--- first lock lives in a DIFFERENT FILE. A future edit to the migration's command is the exact
--- circumstance in which nobody re-reads this one.
--- pg_temp is deliberately absent: PostgreSQL never searches it for functions or operators anyway,
--- and every temp object here is written as pg_temp.x.
-SET LOCAL search_path = pg_catalog;
-
 -- LOCK ORDER, deliberately the same across this bundle so two artifacts can never deadlock:
 --   notification_worker_runs  →  cron.job  →  notification_event_types
 -- (activate.sql takes the first two then group rows; enable_engine.sql takes the last two.)
@@ -189,7 +188,7 @@ BEGIN
   SELECT command INTO STRICT v_cmd FROM cron.job
    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job);
 
-  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '9d67b40b05d018e5b55a873e0ce08e54' THEN
+  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '657295911df940d4aecc69a87169574c' THEN
     RAISE EXCEPTION 'ASSERT FAILED: refusing to execute a cron command that is not EXACTLY the reviewed one';
   END IF;
 

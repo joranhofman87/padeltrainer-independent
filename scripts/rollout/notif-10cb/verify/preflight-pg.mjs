@@ -197,6 +197,12 @@ try {
   // pg_catalog — so an unqualified jsonb_build_object in the scheduled command would hand the
   // decrypted service_role bearer to whoever owns that schema. A hostile OPERATOR for `||` does the
   // same to the concatenation. Both are planted here and both stay planted for every scenario below.
+  //
+  // BROADENED after a review round pointed out the obvious: a fixture that plants two names proves
+  // two names. These are the ones the bundle's own assertions actually call unqualified, and each
+  // one is a way to make a gate lie — a `count(text)` that answers 0 empties the scope check, an
+  // `md5(text)` that answers the reviewed hash matches any command at all, an `=` that answers false
+  // ignores a queued canary. They are planted once and left in place for every scenario.
   await c.query(`
     CREATE SCHEMA shadow;
     CREATE TABLE shadow.captured (v text);
@@ -205,7 +211,24 @@ try {
     CREATE FUNCTION shadow.textcat_capture(text, text) RETURNS text LANGUAGE sql AS $f$
       INSERT INTO shadow.captured VALUES ($1 operator(pg_catalog.||) $2);
       SELECT $1 operator(pg_catalog.||) $2; $f$;
-    CREATE OPERATOR shadow.|| (LEFTARG = text, RIGHTARG = text, FUNCTION = shadow.textcat_capture);`);
+    CREATE OPERATOR shadow.|| (LEFTARG = text, RIGHTARG = text, FUNCTION = shadow.textcat_capture);
+    -- the Vault predicate's equality, and every other (text,text) comparison in the bundle
+    CREATE FUNCTION shadow.texteq_lie(text, text) RETURNS boolean LANGUAGE sql AS $f$
+      INSERT INTO shadow.captured VALUES ($1 operator(pg_catalog.||) '=' operator(pg_catalog.||) $2);
+      SELECT false; $f$;
+    CREATE OPERATOR shadow.= (LEFTARG = text, RIGHTARG = text, FUNCTION = shadow.texteq_lie);
+    -- "how many recipients did the canary reach" and "how many rows are queued"
+    CREATE FUNCTION shadow.count_zero_state(bigint, text) RETURNS bigint LANGUAGE sql AS $f$ SELECT 0::bigint $f$;
+    CREATE AGGREGATE shadow.count(text) (SFUNC = shadow.count_zero_state, STYPE = bigint, INITCOND = '0');
+    -- "the command is EXACTLY the reviewed one"
+    CREATE FUNCTION shadow.md5(text) RETURNS text LANGUAGE sql AS $f$
+      SELECT '00000000000000000000000000000000'::text $f$;
+    CREATE FUNCTION shadow.btrim(text) RETURNS text LANGUAGE sql AS $f$ SELECT ''::text $f$;
+    CREATE FUNCTION shadow.regexp_replace(text, text, text, text) RETURNS text LANGUAGE sql AS $f$
+      SELECT ''::text $f$;
+    -- the marker the dispatcher parses the request id out of
+    CREATE FUNCTION shadow.format(text, bigint) RETURNS text LANGUAGE sql AS $f$
+      SELECT 'CANARY_REQUEST_ID=999999'::text $f$;`);
 
   // ── the baseline world: a clean, fresh, delivering canary ────────────────
   const seedBaseline = async () => {
@@ -254,14 +277,23 @@ try {
       INSERT INTO public.notification_provider_circuit (channel, state) VALUES ('email', 'closed');`);
   };
 
-  const preflight = async () => {
-    try { await c.query(artifactText('activation_preflight.sql', { run_id: RUN })); return null; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
+  // Every artifact now pins `SET search_path = pg_catalog` for its whole SESSION, which is the point
+  // — but this harness runs them all down ONE connection, so without a reset the pin would leak into
+  // the next scenario's fixture SQL. The reset is the harness's business, not the artifact's: it
+  // restores the world a real operator's next psql process would start from.
+  const runArtifact = async (name, vars = {}) => {
+    try { return { rows: await c.query(artifactText(name, vars)) }; }
+    catch (e) { await c.query('ROLLBACK').catch(() => {}); return { err: e.message }; }
+    finally { await c.query(`SET search_path = "$user", public`).catch(() => {}); }
   };
-  const canaryVerify = async () => {
-    try { await c.query(artifactText('canary_verify.sql', { run_id: RUN })); return null; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
-  };
+
+  const preflight = async () => (await runArtifact('activation_preflight.sql', { run_id: RUN })).err ?? null;
+  const canaryVerify = async () => (await runArtifact('canary_verify.sql', { run_id: RUN })).err ?? null;
+  const assertInert = async () => (await runArtifact('assert_inert.sql')).err ?? null;
+  const enableEngine = async () => (await runArtifact('enable_engine.sql')).err ?? null;
+  const canaryInvoke = async (max = 1) => (await runArtifact('canary_invoke.sql', { max_recipients: max })).err ?? null;
+  const scopeVerify = async (max = 1) =>
+    (await runArtifact('canary_scope_verify.sql', { run_id: RUN, max_recipients: max })).err ?? null;
 
   // A scenario mutates ONE fact and must be REFUSED. `needle` pins which
   // assertion did the refusing, so a scenario cannot pass by failing elsewhere —
@@ -329,11 +361,19 @@ try {
   // — the plausible shape, and the one that isolates this detector. Replacing the
   // Vault read outright would trip the tick-time-Vault assertion first, and the
   // scenario would look green while proving nothing about inline credentials.
+  //
+  // The subquery is EXTRACTED FROM THE REVIEWED COMMAND rather than retyped. A hand-copied literal
+  // stopped matching the moment the command's `=` was qualified, so `replace()` changed nothing and
+  // the scenario reported that the gate "does not cover this" — a scenario silently testing an
+  // unmutated world is the exact trap this suite exists to avoid.
+  const VAULT_READ = (() => {
+    const m = REVIEWED.command.match(/\(SELECT decrypted_secret FROM vault\.decrypted_secrets WHERE [^)]*\)/);
+    if (!m) throw new Error('the reviewed command no longer reads the Vault secret in the expected form');
+    return m[0];
+  })();
   await refuses('a command carrying an INLINE CREDENTIAL beside the Vault read is refused',
-    () => c.query(`UPDATE cron.job SET command = replace(command,
-      '(SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = ''service_role_key'')',
-      'coalesce((SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = ''service_role_key''),
-                ''eyJhbGciOiJIUzI1NiJ9.injected.signature'')')`),
+    () => c.query(`UPDATE cron.job SET command = replace(command, $find$${VAULT_READ}$find$,
+      $repl$coalesce(${VAULT_READ}, 'eyJhbGciOiJIUzI1NiJ9.injected.signature')$repl$)`),
     'contains NO inline credential');
 
   await refuses('any other command drift is refused by the whole-text check',
@@ -523,10 +563,7 @@ try {
   // The preflight proves what the world looked like at CHECK time. Arming in a separate statement
   // meant the job could be altered, replaced or deleted in between — and an arm-by-name matching
   // zero rows succeeds silently, so the tooling would report ARMED over a job that was gone.
-  const activate = async () => {
-    try { await c.query(artifactText('activate.sql', { run_id: RUN })); return null; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
-  };
+  const activate = async () => (await runArtifact('activate.sql', { run_id: RUN })).err ?? null;
   const jobActive = async () =>
     (await c.query(`SELECT active FROM cron.job WHERE jobname='notification-digest-worker'
                      AND username=current_user`)).rows[0]?.active ?? null;
@@ -720,10 +757,6 @@ try {
   await c.query(`DROP SCHEMA hostile CASCADE`);
 
   // ── assert-inert: the gate that must run BEFORE any switch ───────────────
-  const assertInert = async () => {
-    try { await c.query(artifactText('assert_inert.sql')); return null; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
-  };
   await seedBaseline();
   await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
   {
@@ -756,10 +789,6 @@ try {
   }
 
   // ── enable-engine: guarded, single-row, and refuses over an armed cron ───
-  const enableEngine = async () => {
-    try { await c.query(artifactText('enable_engine.sql')); return null; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
-  };
   await seedBaseline();
   await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
   {
@@ -882,10 +911,6 @@ try {
   // NOTHING WAS QUEUED. A gate on a sending step that refuses loudly and posts anyway is worse than
   // no gate, and only a real server — with the reviewed command really executing against a real
   // pg_net shape — can tell the two apart.
-  const canaryInvoke = async (max = 1) => {
-    try { await c.query(artifactText('canary_invoke.sql', { max_recipients: max })); return null; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
-  };
   const queuedCount = async () =>
     (await c.query(`SELECT count(*)::int AS n FROM net.http_request_queue`)).rows[0].n;
 
@@ -924,18 +949,42 @@ try {
   // passes without proving anything. Two facts are asserted: the shadow schema captured nothing, and
   // the request still carries the real Vault bearer. The first alone would pass if the command had
   // simply failed to run.
+  // EVERY artifact, not just the invoker: `_job_identity_assertions.sql` alone calls count, md5,
+  // btrim, regexp_replace, regexp_matches and current_setting unqualified, and a lying md5 makes the
+  // whole-command hash match anything. The gates must behave identically under a hostile path or
+  // they are not gates.
   for (const path of ['shadow, pg_catalog, public', 'shadow, public']) {
+    for (const [what, run] of [
+      ['canary-invoke', canaryInvoke],
+      ['assert-inert', async () => { await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`); return assertInert(); }],
+      ['the activation preflight', preflight],
+      ['canary_verify', canaryVerify],
+      ['canary_scope_verify', scopeVerify],
+      // ...and the one that ARMS. A hostile md5 makes the whole-command hash match any command, so
+      // without this the gate that decides "this is the reviewed job" is the one gate never checked
+      // under a hostile path.
+      ['activate', activate],
+    ]) {
+      await seedBaseline();
+      await c.query(`DELETE FROM shadow.captured`);
+      await c.query(`SET search_path = ${path}`);
+      let err = null;
+      try { err = await run(); } finally { await c.query(`SET search_path = "$user", public`); }
+      const captured = (await c.query(`SELECT count(*)::int AS n FROM shadow.captured`)).rows[0].n;
+      rec(`${what} still PASSES under search_path = ${path}`, err === null, err ?? '');
+      rec(`...and nothing shadowed was reached (${what} / ${path})`, captured === 0, `captured=${captured}`);
+    }
+    // ...and the invoker's request must carry the REAL bearer, not one a shadowed name rewrote.
     await seedBaseline();
-    await c.query(`DELETE FROM shadow.captured`);
     await c.query(`SET search_path = ${path}`);
-    let err = null;
-    try { err = await canaryInvoke(); } finally { await c.query(`SET search_path = "$user", public`); }
-    const captured = (await c.query(`SELECT count(*)::int AS n FROM shadow.captured`)).rows[0].n;
-    const auth = (await c.query(`SELECT headers ->> 'Authorization' AS a FROM net.http_request_queue`)).rows[0]?.a;
-    rec(`the invocation survives search_path = ${path}`, err === null, err ?? '');
-    rec(`...and a shadowed jsonb_build_object/|| captures NOTHING (${path})`, captured === 0, `captured=${captured}`);
+    try { await canaryInvoke(); } finally { await c.query(`SET search_path = "$user", public`); }
+    const q = (await c.query(
+      `SELECT url, headers ->> 'Authorization' AS a FROM net.http_request_queue`)).rows[0];
     rec(`...and the real Vault bearer still reaches the request (${path})`,
-      auth === 'Bearer stub-key-not-a-real-credential', auth ?? 'no Authorization header');
+      q?.a === 'Bearer stub-key-not-a-real-credential', q?.a ?? 'no Authorization header');
+    rec(`...at the reviewed endpoint (${path})`,
+      q?.url === 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker',
+      q?.url ?? 'no request');
   }
 
   // ...and the scheduled command must be safe on its OWN merits, because a cron TICK runs it under
@@ -1079,10 +1128,6 @@ try {
   // The pre-invocation ceiling bounds work visible at invocation time. Work committed between that
   // snapshot and materialization is sent by the same run and never counted — so the honest check is
   // after the fact, against the finished run's own durable rows.
-  const scopeVerify = async (max = 1) => {
-    try { await c.query(artifactText('canary_scope_verify.sql', { run_id: RUN, max_recipients: max })); return null; }
-    catch (e) { await c.query('ROLLBACK').catch(() => {}); return e.message; }
-  };
   await seedBaseline();
   {
     const err = await scopeVerify();
@@ -1132,11 +1177,10 @@ try {
 
   // ── canary_invoke_response.sql: pg_net answers later, or not at all ───────
   const canaryResponse = async (id) => {
-    try {
-      const res = await c.query(artifactText('canary_invoke_response.sql', { request_id: id }));
-      const all = Array.isArray(res) ? res : [res];
-      return { rows: all[all.length - 1]?.rows ?? [] };
-    } catch (e) { await c.query('ROLLBACK').catch(() => {}); return { err: e.message }; }
+    const r = await runArtifact('canary_invoke_response.sql', { request_id: id });
+    if (r.err) return { err: r.err };
+    const all = Array.isArray(r.rows) ? r.rows : [r.rows];
+    return { rows: all[all.length - 1]?.rows ?? [] };
   };
   await seedBaseline();
   await c.query(`INSERT INTO net.http_request_queue (id, url) VALUES (9001, 'https://x.test')`);
