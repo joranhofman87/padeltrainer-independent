@@ -632,13 +632,25 @@ try {
     CREATE DOMAIN public."a  b" AS text;
     CREATE DOMAIN public."a, b" AS text;
     CREATE DOMAIN public."a,b" AS text;
-    CREATE OR REPLACE FUNCTION public.outfn_spacey(p public."a b") RETURNS void LANGUAGE plpgsql AS
+    -- A type name containing a literal % — without escaping % first, this encodes to the SAME
+    -- text as the space-bearing name above, so the encoding would not be injective.
+    CREATE DOMAIN public."a%20b" AS text;
+    -- OVERLOADS SHARING ONE NAME, so the records differ ONLY in the signature. Two distinctly
+    -- named functions would have made the comparison below trivially true whatever the encoder did.
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a b") RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;
-    CREATE OR REPLACE FUNCTION public.outfn_spacey2(p public."a  b") RETURNS void LANGUAGE plpgsql AS
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a  b") RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;
-    CREATE OR REPLACE FUNCTION public.outfn_commay(p public."a, b") RETURNS void LANGUAGE plpgsql AS
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a, b") RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;
-    CREATE OR REPLACE FUNCTION public.outfn_commay2(p public."a,b") RETURNS void LANGUAGE plpgsql AS
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a,b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a%20b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    -- ARGUMENT ORDER is part of the identity: these are two different functions.
+    CREATE OR REPLACE FUNCTION public.outfn_pair(a text, b integer) RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_pair(a integer, b text) RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;
     CREATE OR REPLACE FUNCTION public.outfn_varchar(p character varying) RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;`);
@@ -651,25 +663,30 @@ try {
   rec('...and distinguishes an OVERLOAD by its signature',
       outfn.includes('OUTFN public.outfn_probe_ok()') && outfn.includes('OUTFN public.outfn_probe_ok(text)'),
       outfn.join(' | '));
-  // Every global rewrite tried here was lossy in the same way. These are the two collisions.
-  const sig = (n) => outfn.find((r) => r.startsWith(`OUTFN public.${n}(`)) ?? '';
-  rec('two type names differing only in SPACES do not collapse to one signature',
-      sig('outfn_spacey') !== '' && sig('outfn_spacey') !== sig('outfn_spacey2'),
-      `${sig('outfn_spacey')} vs ${sig('outfn_spacey2')}`);
-  rec('two type names differing only in a COMMA do not collapse to one signature',
-      sig('outfn_commay') !== '' && sig('outfn_commay') !== sig('outfn_commay2'),
-      `${sig('outfn_commay')} vs ${sig('outfn_commay2')}`);
+  // Every global rewrite tried here was lossy in the same way. `outfn_pair` has FOUR overloads
+  // whose type names differ only by a space or a comma, so the four records differ only in the
+  // parenthesised signature — and a collapse makes two of them identical.
+  const pairSigs = outfn.filter((r) => r.startsWith('OUTFN public.outfn_pair('))
+    .map((r) => r.slice('OUTFN public.outfn_pair'.length));
+  rec('seven overloads keep SEVEN distinct signatures (space, comma, literal %, and arg ORDER)',
+      pairSigs.length === 7 && new Set(pairSigs).size === 7, pairSigs.join(' vs '));
+  // ...and a type name that legitimately contains a space must still come through, or the
+  // encoder would have "fixed" the collisions by refusing every varchar signature.
+  const varcharSig = outfn.find((r) => r.startsWith('OUTFN public.outfn_varchar(')) ?? '';
   rec('...and an ordinary space-bearing builtin type still serialises readably',
-      sig('outfn_varchar') === 'OUTFN public.outfn_varchar(character%20varying)', sig('outfn_varchar'));
+      varcharSig === 'OUTFN public.outfn_varchar(character%20varying)', varcharSig);
   await c.query(`DROP FUNCTION public.outfn_probe_ok(); DROP FUNCTION public.outfn_probe_ok(text);
                  DROP FUNCTION public."outfn probe hostile"();
-                 DROP FUNCTION public.outfn_spacey(public."a b");
-                 DROP FUNCTION public.outfn_spacey2(public."a  b");
-                 DROP FUNCTION public.outfn_commay(public."a, b");
-                 DROP FUNCTION public.outfn_commay2(public."a,b");
+                 DROP FUNCTION public.outfn_pair(public."a b");
+                 DROP FUNCTION public.outfn_pair(public."a  b");
+                 DROP FUNCTION public.outfn_pair(public."a, b");
+                 DROP FUNCTION public.outfn_pair(public."a,b");
+                 DROP FUNCTION public.outfn_pair(public."a%20b");
+                 DROP FUNCTION public.outfn_pair(text, integer);
+                 DROP FUNCTION public.outfn_pair(integer, text);
                  DROP FUNCTION public.outfn_varchar(character varying);
                  DROP DOMAIN public."a b"; DROP DOMAIN public."a  b";
-                 DROP DOMAIN public."a, b"; DROP DOMAIN public."a,b";`);
+                 DROP DOMAIN public."a, b"; DROP DOMAIN public."a,b"; DROP DOMAIN public."a%20b";`);
 } finally {
   await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }
