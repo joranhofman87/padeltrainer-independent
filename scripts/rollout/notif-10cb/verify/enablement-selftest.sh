@@ -236,6 +236,40 @@ if [[ -n "$bad_sites" ]]; then
 else
   ok "psql is reached ONLY through the file-based wrappers (no inline statement can bypass the path pin)"
 fi
+# ...AND THE WRAPPERS MUST CONSTRAIN WHAT THEY FORWARD. "psql is only reached through the wrappers"
+# was true and not sufficient: both forwarded "$@" straight through, so a caller could append
+# --command= to a perfectly ordinary artifact run and get an inline statement executed after the
+# pinned file, under the role/database search_path. Driven through the real dispatcher rather than
+# read out of the source, using a subcommand that otherwise succeeds so the refusal is the
+# discriminator.
+cat > "$TMP/inject.sh" <<'INJ'
+set -Eeuo pipefail
+source "$1"
+INJ
+export PSQL_LOG="$TMP/log.wrapper_args"; : > "$PSQL_LOG"
+set +e
+EXPECTED_REF="$REF" bash -c '
+  script="$1"; url="$2"
+  # load the dispatcher'"'"'s functions without running a subcommand, then call the wrapper directly
+  eval "$(sed -n "/^assert_artifact_args()/,/^}/p;/^run_sql()/,/^}/p" "$script")"
+  SQL_DIR="$(dirname "$script")/sql"
+  die() { printf "FAIL %s
+" "$*" >&2; exit 1; }
+  psql_safe() { printf "%s
+" "$*" >> "$PSQL_LOG"; }
+  run_sql "$url" status.sql --command="SELECT 1"
+' _ "$SCRIPT" "$URL" >"$TMP/out" 2>&1
+wa_rc=$?
+set -e
+[[ "$wa_rc" != "0" ]] && ok "a wrapper REFUSES an inline statement appended to an artifact run" \
+  || { bad "a wrapper REFUSES an inline statement appended to an artifact run"; cat "$TMP/out"; }
+[[ ! -s "$PSQL_LOG" ]] && ok "...and reached psql not at all" || { bad "...and reached psql not at all"; cat "$PSQL_LOG"; }
+
+# ...but a legitimate variable binding still goes through, or the guard would just break the tooling.
+run "an artifact run with -v still works" 0 -- preflight "$URL" "11111111-1111-4111-8111-111111111111"
+logged 'run_id=11111111-1111-4111-8111-111111111111' && ok "...and the binding reaches psql" \
+  || bad "...and the binding reaches psql"
+
 # ...and belt and braces on the two spellings of an inline statement, across line continuations.
 if strip_comments | tr '\n' ' ' | grep -qE 'psql_safe[^;|&]*(-c |--command)'; then
   bad "the dispatcher sends an inline statement instead of a path-pinned artifact"

@@ -213,8 +213,37 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 # Artifacts are ALWAYS run from the sql directory, because psql resolves `\i` relative to the
 # current working directory — running one from anywhere else silently fails to find its includes.
 # psql_safe, never bare psql: the PG* environment can redirect the connection past the url guard.
+# WHAT MAY FOLLOW THE ARTIFACT, and nothing else. Both wrappers forwarded "$@" straight to psql, so
+# `run_sql "$url" status.sql --command='…'` would have run the pinned file AND then an inline
+# statement — under the role/database search_path, which is the whole thing these artifacts pin
+# against. "psql is only reached through the wrappers" was therefore true and not sufficient: the
+# wrappers themselves have to constrain what they pass on.
+#
+# The only legitimate extra is a psql variable binding, and the artifact is the only thing that
+# decides what those mean. Everything else — another -f, a -c, a --command, a bare word — is refused.
+assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
+  local artifact="$1"; shift
+  local expect_value=0 a
+  for a in "$@"; do
+    if [[ "$expect_value" == "1" ]]; then
+      [[ "$a" =~ ^[a-zA-Z_][a-zA-Z0-9_]*=.*$ ]] \
+        || die "refusing to run ${artifact}: '-v' must be followed by name=value, got '${a}'"
+      expect_value=0
+      continue
+    fi
+    case "$a" in
+      -v)   expect_value=1 ;;
+      -v*)  [[ "${a#-v}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*=.*$ ]] \
+              || die "refusing to run ${artifact}: '${a}' is not a name=value variable binding" ;;
+      *)    die "refusing to run ${artifact}: only '-v name=value' may follow an artifact, got '${a}' — an inline statement would run outside the artifact's pinned search_path" ;;
+    esac
+  done
+  [[ "$expect_value" == "0" ]] || die "refusing to run ${artifact}: a trailing '-v' with no binding"
+}
+
 run_sql() {   # $1 = url, $2 = artifact, $@ = extra psql args
   local url="$1" artifact="$2"; shift 2
+  assert_artifact_args "$artifact" "$@"
   ( cd "$SQL_DIR" && psql_safe "$url" -v ON_ERROR_STOP=1 -f "$artifact" "$@" )
 }
 
@@ -230,6 +259,7 @@ run_sql_capture() {   # $1 = outfile, $2 = url, $3 = artifact, $@ = extra psql a
   local url="$1" artifact="$2"; shift 2
   local rc=0
   set +e
+  assert_artifact_args "$artifact" "$@"
   ( cd "$SQL_DIR" && psql_safe "$url" -v ON_ERROR_STOP=1 -f "$artifact" "$@" ) >"$outfile" 2>&1
   rc=$?
   set -e

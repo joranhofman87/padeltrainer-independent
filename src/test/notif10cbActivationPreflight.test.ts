@@ -11,9 +11,9 @@
 // So the two literals are pinned to each other HERE, in the test suite CI always runs, rather than
 // left to a comment asking the next person to remember.
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 
@@ -342,6 +342,15 @@ describe('I — the scheduled command survives a hostile search_path unaided', (
     const harness = read('scripts', 'rollout', 'notif-10cb', 'verify', 'preflight-pg.mjs');
     expect(harness).toContain('binds IDENTICALLY under a hostile search_path');
     expect(harness).toContain('has an exact-signature rival planted');
+    // Every FIELD in the tree must be classified, so a node type carrying a new OID fails by name
+    // rather than going uncovered.
+    expect(harness).toContain('is classified as OID-bearing or inert');
+    // A VARIADIC signature cannot be duplicated, so coverage for one depends on an exact-arity rival
+    // really existing. That check is unpinnable behaviourally — this command's only variadic HAS a
+    // rival, so removing it changes nothing today — and it only matters for a command not yet
+    // written. Pinned here instead of left looking tested.
+    expect(harness, 'variadic coverage must be conditional on a rival actually existing')
+      .toMatch(/nspname = 'shadow'[\s\S]{0,200}?if \(rival\.length\)/);
     // ...and it must be the PARSE TREE it compares, not the deparse: pg_get_viewdef renders
     // IS DISTINCT FROM and CASE x WHEN y as syntax, so it reads identically even when the
     // underlying operator has been redirected.
@@ -374,19 +383,30 @@ describe('I — every rollout artifact pins name resolution before it does anyth
   // command. So the only thing permitted before the pin is the one preamble line these files
   // actually use, matched literally.
   const INERT_PREAMBLE = /^\\set ON_ERROR_STOP on$/;
-  const firstExecutable = (text: string) => text
+  //
+  // A `\`-LINE IS JUDGED RAW, and that distinction is the whole finding. Inside a psql meta-command
+  // `--` is an ordinary argument, not an SQL comment — so `\set ON_ERROR_STOP on -- ` + a backquoted
+  // shell command looked like the exact permitted preamble once comments were stripped, while psql
+  // ran the shell command before the path was ever pinned. Only whole SQL lines get their comments
+  // stripped; a meta-command has to match in full.
+  const executableLines = (text: string) => text
     .split('\n')
-    .map((l) => l.replace(/--.*$/, '').trim())
-    .filter((l) => l !== '' && !INERT_PREAMBLE.test(l))[0] ?? '';
+    .map((l) => l.trim())
+    .map((l) => (l.startsWith('\\') ? l : l.replace(/--.*$/, '').trim()))
+    .filter((l) => l !== '' && !l.startsWith('--'));
+  const firstExecutable = (text: string) =>
+    executableLines(text).filter((l) => !INERT_PREAMBLE.test(l))[0] ?? '';
 
   it.each(artifacts)('%s runs no shell before it pins the path', (file) => {
-    // psql expands `…` in a meta-command argument by running it in a shell.
-    // COMMENTS STRIPPED FIRST: these files explain themselves at length and quote SQL names in
-    // prose, and a backquote in a comment is not a shell expansion.
-    const preamble = readFileSync(join(dir, file), 'utf8')
-      .split('SET search_path = pg_catalog;')[0]
-      .split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
-    expect(preamble, `${file} has a backquote before the pin`).not.toMatch(/`/);
+    // psql expands backquotes in a meta-command ARGUMENT by running a shell. Judged on the raw
+    // meta-command lines for the reason above; SQL lines have their comments stripped first, because
+    // these files quote SQL names in prose constantly and that is not an expansion.
+    const before = executableLines(readFileSync(join(dir, file), 'utf8'));
+    const pin = before.indexOf('SET search_path = pg_catalog;');
+    expect(pin, `${file} does not pin search_path`).toBeGreaterThan(-1);
+    for (const line of before.slice(0, pin)) {
+      expect(line, `${file} runs a shell command before the pin: ${line}`).not.toMatch(/`/);
+    }
   });
 
   it.each(artifacts)('%s pins search_path first, session-wide', (file) => {
@@ -448,17 +468,28 @@ describe('I — every rollout artifact pins name resolution before it does anyth
     const visit = (file: string) => {
       const text = readFileSync(file, 'utf8');
       for (const m of text.matchAll(/^\\ir? +(\S+\.sql)\s*$/gm)) {
-        const target = m[1].split('/').pop()!;
-        if (!includes.includes(target) || reachable.has(target)) continue;
+        // RESOLVED AS A PATH, not reduced to a basename in this directory. The 10c-a3 assertion
+        // helper is included as `../../notif-10ca3/sql/_assert.sql` from every artifact here, and
+        // limiting the graph to local `_` files left it — and anything IT includes, or any path
+        // reset it might add — outside a check that claimed to be rooted.
+        const target = resolve(dirname(file), m[1]);
+        if (reachable.has(target) || !existsSync(target)) continue;
         reachable.add(target);
-        visit(join(dir, target));
+        visit(target);
       }
     };
     artifacts.forEach((a) => visit(join(dir, a)));
     for (const inc of includes) {
-      expect(reachable.has(inc), `${inc} is not reachable from any path-pinning artifact`).toBe(true);
+      expect(reachable.has(join(dir, inc)), `${inc} is not reachable from any path-pinning artifact`).toBe(true);
     }
-    expect([...chained].every((c) => reachable.has(c))).toBe(true);
+    expect([...chained].every((c) => reachable.has(join(dir, c)))).toBe(true);
+    // ...and nothing reached from a pinned artifact may UNDO the pin. The 10c-a3 helper sits inside
+    // that graph, so a `SET search_path` added there would silently unpin every artifact here.
+    for (const f of reachable) {
+      const body = readFileSync(f, 'utf8').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
+      expect(body, `${f} changes search_path — it would unpin every artifact that includes it`)
+        .not.toMatch(/^\s*SET\s+(LOCAL\s+)?search_path/mi);
+    }
   });
 });
 

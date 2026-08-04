@@ -1023,10 +1023,17 @@ try {
   // this check passed while covering less than they claimed.
   {
     const CMD_SELECT = REVIEWED.command.trim().replace(/;\s*$/, '');
+    // CREATE OR REPLACE, never DROP + CREATE. A review round asked whether the view's own OID could
+    // make this comparison flaky. It cannot, and that was measured rather than assumed: the _RETURN
+    // rule references OLD/NEW by rangetable INDEX, the tree never contains the view's own OID, and
+    // two builds with OID advancement forced in between are byte-identical. Replacing rather than
+    // recreating keeps the OID fixed anyway — a property that holds structurally beats one that only
+    // holds when measured.
+    let viewExists = false;
     const buildUnder = async (path) => {
       await c.query(`SET search_path = ${path}`);
-      await c.query(`DROP VIEW IF EXISTS public._cmd_ast`);
-      await c.query(`CREATE VIEW public._cmd_ast AS ${CMD_SELECT}`);
+      await c.query(`CREATE ${viewExists ? 'OR REPLACE ' : ''}VIEW public._cmd_ast AS ${CMD_SELECT}`);
+      viewExists = true;
       await c.query(`SET search_path = "$user", public`);
       const { rows } = await c.query(`
         SELECT r.ev_action, pg_get_viewdef('public._cmd_ast'::regclass, true) AS def
@@ -1036,36 +1043,98 @@ try {
 
     await c.query(`DROP SCHEMA IF EXISTS redirect CASCADE; CREATE SCHEMA redirect`);
     const neutral = await buildUnder("''");
+    // WHICH NUMBERS ARE OIDS: classify the FIELDS, and fail on one nobody has classified.
+    //
+    // Naming four fields (opno, funcid, opfuncid, casttype) was a partial parser of pg_node_tree, and
+    // a review round listed what it missed — consttype, resulttype, aggfnoid, winfnoid, relid,
+    // collOid, eqop, sortop. Treating EVERY integer as a candidate instead does not work either: it
+    // was measured, and small non-OID values (rangetable indexes, varattno, flags) collide with real
+    // pg_catalog entries whose signatures cannot be shadowed at all — cstring and internal arguments,
+    // non-base types — so the check went red over coincidences.
+    //
+    // So neither guess. Every field name PRESENT IN THE TREE is enumerated and must be classified as
+    // OID-bearing or inert; an unclassified one FAILS BY NAME. The lists below are then a statement
+    // about this tree that the test keeps honest, rather than a guess about PostgreSQL that quietly
+    // rots. A new node type introducing a new OID field says so instead of passing.
+    const OID_FIELDS = {
+      opno: ['pg_operator', 'oprnamespace'], opfuncid: ['pg_proc', 'pronamespace'],
+      funcid: ['pg_proc', 'pronamespace'], aggfnoid: ['pg_proc', 'pronamespace'],
+      winfnoid: ['pg_proc', 'pronamespace'], eqop: ['pg_operator', 'oprnamespace'],
+      sortop: ['pg_operator', 'oprnamespace'],
+      consttype: ['pg_type', 'typnamespace'], vartype: ['pg_type', 'typnamespace'],
+      funcresulttype: ['pg_type', 'typnamespace'], opresulttype: ['pg_type', 'typnamespace'],
+      resulttype: ['pg_type', 'typnamespace'], casttype: ['pg_type', 'typnamespace'],
+      elemtype: ['pg_type', 'typnamespace'], typeId: ['pg_type', 'typnamespace'],
+      relid: ['pg_class', 'relnamespace'], mergeTargetRelation: ['pg_class', 'relnamespace'],
+      constcollid: ['pg_collation', 'collnamespace'], varcollid: ['pg_collation', 'collnamespace'],
+      funccollid: ['pg_collation', 'collnamespace'], opcollid: ['pg_collation', 'collnamespace'],
+      inputcollid: ['pg_collation', 'collnamespace'], collOid: ['pg_collation', 'collnamespace'],
+    };
+    // Everything else this tree contains, classified as carrying no resolvable name: structure,
+    // indexes into other lists, flags, positions, bitmapsets, identifiers and literal payloads.
+    const INERT_FIELDS = new Set([
+      'alias', 'aliasname', 'arg', 'argnumber', 'args', 'canSetTag', 'checkAsUser', 'colnames',
+      'commandType', 'constbyval', 'constisnull', 'constlen', 'constraintDeps', 'consttypmod',
+      'constvalue', 'cteList', 'distinctClause', 'eref', 'expr', 'fromlist', 'funcformat',
+      'funcretset', 'funcvariadic', 'groupClause', 'groupDistinct', 'groupingSets', 'hasAggs',
+      'hasDistinctOn', 'hasForUpdate', 'hasGroupRTE', 'hasModifyingCTE', 'hasRecursive',
+      'hasRowSecurity', 'hasSubLinks', 'hasTargetSRFs', 'hasWindowFuncs', 'havingQual', 'inFromCl',
+      'inh', 'insertedCols', 'isReturn', 'jointree', 'lateral', 'limitCount', 'limitOffset',
+      'limitOption', 'location', 'mergeActionList', 'mergeJoinCondition', 'name', 'onConflict',
+      'operName', 'opretset', 'override', 'perminfoindex', 'quals', 'querySource', 'relkind',
+      'rellockmode', 'requiredPerms', 'resjunk', 'resname', 'resno', 'resorigcol', 'resorigtbl',
+      'ressortgroupref', 'resultRelation', 'returningList', 'returningNewAlias', 'returningOldAlias',
+      'rowMarks', 'rtable', 'rtekind', 'rteperminfos', 'rtindex', 'securityQuals', 'selectedCols',
+      'setOperations', 'sortClause', 'stmt_len', 'stmt_location', 'subLinkId', 'subLinkType',
+      'subselect', 'tablesample', 'targetList', 'testexpr', 'updatedCols', 'utilityStmt', 'varattno',
+      'varattnosyn', 'varlevelsup', 'varno', 'varnosyn', 'varnullingrels', 'varreturningtype',
+      'vartypmod', 'windowClause', 'withCheckOptions',
+    ]);
 
-    // Every OID the tree bound. `opno` decides an operator, `funcid` a function, `casttype` a cast.
-    const oids = (kind) => [...new Set(
-      [...neutral.ev_action.matchAll(new RegExp(`:${kind} (\\d+)`, 'g'))].map((m) => Number(m[1])))]
-      .filter((n) => n > 0);
+    const fieldsPresent = [...new Set([...neutral.ev_action.matchAll(/:([a-zA-Z_]+) /g)].map((m) => m[1]))];
+    const unclassified = fieldsPresent.filter((f) => !(f in OID_FIELDS) && !INERT_FIELDS.has(f));
+    rec('every field in the parse tree is classified as OID-bearing or inert',
+      unclassified.length === 0,
+      unclassified.length ? `unclassified field(s): ${unclassified.join(' ')} — decide whether each carries a resolvable name`
+        : `${fieldsPresent.length} fields, ${fieldsPresent.filter((f) => f in OID_FIELDS).length} OID-bearing`);
 
-    // NEEDED vs COVERED, per OID. An earlier version asserted only that SOMETHING had been planted,
-    // which stayed green with the whole operator loop disabled — the functions alone satisfied it.
-    // The property is that every pg_catalog name the tree binds has a rival, so that is what is
-    // tracked, and the two lists are compared at the end.
     const planted = [], unshadowable = [], covered = new Set();
 
     // NEEDED is derived from the TREE, before and independently of any planting. Computing it inside
     // the planting loops was a hole: disabling a loop removed the requirement along with the rival,
     // and the coverage assertion stayed green over a comparison that had gone blind. What the
     // command binds is a property of the command; what has a rival is a property of the fixture.
-    const needed = new Set();
-    for (const [kind, cat, table, col] of [
-      ['opno', 'opno', 'pg_operator', 'oprnamespace'],
-      ['funcid', 'funcid', 'pg_proc', 'pronamespace'],
-      ['opfuncid', 'funcid', 'pg_proc', 'pronamespace'],
-      ['casttype', 'type', 'pg_type', 'typnamespace'],
-    ]) {
-      for (const oid of oids(kind)) {
-        const { rows } = await c.query(
-          `SELECT n.nspname FROM ${table} o JOIN pg_namespace n ON n.oid = o.${col} WHERE o.oid = $1`, [oid]);
-        if (rows[0]?.nspname === 'pg_catalog') needed.add(`${cat}:${oid}`);
+    const needed = new Set(), exempt = [];
+    const byCatalog = { pg_operator: new Set(), pg_proc: new Set(), pg_type: new Set(),
+                        pg_class: new Set(), pg_collation: new Set() };
+    for (const [field, [table, col]] of Object.entries(OID_FIELDS)) {
+      const vals = [...new Set([...neutral.ev_action.matchAll(new RegExp(`:${field} (\\d+)`, 'g'))]
+        .map((m) => Number(m[1])))].filter((n) => n > 0);
+      if (!vals.length) continue;
+      // NOT EVERY OID IN THE TREE IS A NAME THE COMMAND WROTE. `unknown` is the parser's type for a
+      // bare literal and the default collation is assigned implicitly; neither appears in the SQL, so
+      // neither is resolved through search_path and neither can be redirected. They are exempted by
+      // PROPERTY — pseudo-types (typtype = 'p'), and the default collation — not by OID, and each
+      // exemption is printed rather than dropped.
+      // The `implicit` predicate is chosen per catalog rather than written as one polymorphic CASE:
+      // PostgreSQL parses every branch, so referencing o.typtype while scanning pg_proc is an
+      // undefined-column error, not a skipped branch.
+      const implicitExpr = { pg_type: "(o.typtype = 'p')", pg_collation: "(o.collname = 'default')" }[table] ?? 'false';
+      const { rows } = await c.query(
+        `SELECT o.oid::int AS oid, ${implicitExpr} AS implicit
+           FROM ${table} o JOIN pg_namespace n ON n.oid = o.${col}
+          WHERE o.oid = ANY($1::oid[]) AND n.nspname = 'pg_catalog'`, [vals]);
+      for (const r of rows) {
+        if (r.implicit) {
+          exempt.push(`${table}:${r.oid} — assigned by the parser, never written in the command`);
+          continue;
+        }
+        needed.add(`${table}:${r.oid}`); byCatalog[table].add(r.oid);
       }
     }
-    for (const oid of oids('opno')) {
+    const opOids = [...byCatalog.pg_operator], funcOids = [...byCatalog.pg_proc],
+          typeOids = [...byCatalog.pg_type];
+    for (const oid of opOids) {
       const { rows } = await c.query(`
         SELECT o.oprname, o.oprleft::regtype::text AS l, o.oprright::regtype::text AS r,
                o.oprresult::regtype::text AS res, n.nspname
@@ -1078,10 +1147,10 @@ try {
         await c.query(`CREATE FUNCTION redirect.${h}(${o.l}, ${o.r}) RETURNS ${o.res}
             LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'REDIRECTED: ${o.oprname}'; END $$;
           CREATE OPERATOR redirect.${o.oprname} (LEFTARG = ${o.l}, RIGHTARG = ${o.r}, FUNCTION = redirect.${h})`);
-        planted.push(`${o.oprname}(${o.l},${o.r})`); covered.add(`opno:${oid}`);
+        planted.push(`${o.oprname}(${o.l},${o.r})`); covered.add(`pg_operator:${oid}`);
       } catch (e) { unshadowable.push(`operator ${o.oprname}(${o.l},${o.r}): ${e.message.split('\n')[0]}`); }
     }
-    for (const oid of [...oids('funcid'), ...oids('opfuncid')]) {
+    for (const oid of funcOids) {
       const { rows } = await c.query(`
         SELECT p.proname, n.nspname, p.prorettype::regtype::text AS res, p.provariadic,
                pg_get_function_identity_arguments(p.oid) AS args
@@ -1090,27 +1159,42 @@ try {
       if (!f) { unshadowable.push(`funcid ${oid} (not found)`); continue; }
       if (f.nspname !== 'pg_catalog') continue;
       if (f.provariadic) {
-        // Covered by the exact-arity rival planted in `shadow`, which is in the hostile path for
-        // this check — a VARIADIC "any" signature cannot be duplicated, and an exact-arity overload
-        // is what a real attack would use anyway.
-        covered.add(`funcid:${oid}`);
-        unshadowable.push(`${f.proname}(${f.args}) — VARIADIC; covered by the exact-arity rival in \`shadow\``);
+        // A VARIADIC "any" signature cannot be duplicated, and an exact-arity overload is what a real
+        // attack uses anyway — so this counts as covered ONLY IF such a rival really exists in
+        // `shadow`, which is in the hostile path for this check. Marking every variadic covered
+        // regardless was false coverage: a future unqualified `concat` would have been declared safe
+        // with nothing planted for it at all.
+        //
+        // UNPINNABLE BY CONSTRUCTION, and said so rather than left looking tested: this command
+        // reaches exactly one variadic function and that one HAS a rival, so removing the check
+        // changes no result today. It only differs for a command that does not exist yet, which is
+        // precisely when it matters. src/test/notif10cbActivationPreflight.test.ts pins it
+        // structurally instead.
+        const { rows: rival } = await c.query(
+          `SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'shadow' AND p.proname = $1 AND p.provariadic = 0`, [f.proname]);
+        if (rival.length) {
+          covered.add(`pg_proc:${oid}`);
+          unshadowable.push(`${f.proname}(${f.args}) — VARIADIC; covered by the exact-arity rival in \`shadow\``);
+        } else {
+          unshadowable.push(`${f.proname}(${f.args}) — VARIADIC and NO exact-arity rival exists; plant one in \`shadow\``);
+        }
         continue;
       }
       try {
         await c.query(`CREATE FUNCTION redirect.${f.proname}(${f.args}) RETURNS ${f.res}
           LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'REDIRECTED: ${f.proname}'; END $$`);
-        planted.push(`${f.proname}(${f.args})`); covered.add(`funcid:${oid}`);
+        planted.push(`${f.proname}(${f.args})`); covered.add(`pg_proc:${oid}`);
       } catch (e) { unshadowable.push(`${f.proname}(${f.args}): ${e.message.split('\n')[0]}`); }
     }
-    for (const oid of oids('casttype')) {
+    for (const oid of typeOids) {
       const { rows } = await c.query(
         `SELECT t.typname, n.nspname FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE t.oid = $1`, [oid]);
       const t = rows[0];
       if (!t || t.nspname !== 'pg_catalog') continue;
       try {
         await c.query(`CREATE DOMAIN redirect.${t.typname} AS pg_catalog.${t.typname}`);
-        planted.push(`type ${t.typname}`); covered.add(`type:${oid}`);
+        planted.push(`type ${t.typname}`); covered.add(`pg_type:${oid}`);
       } catch (e) { unshadowable.push(`type ${t.typname}: ${e.message.split('\n')[0]}`); }
     }
 
@@ -1120,9 +1204,12 @@ try {
       uncovered.length ? `no rival for ${uncovered.join(' ')} — the comparison below is blind to it`
         : needed.size ? `planted: ${planted.join(' ')}` : 'the tree bound nothing — the extraction is broken');
     // NO SILENT CAPS. What could not be shadowed is named, with the reason.
+    // NO SILENT CAPS. Everything not directly shadowed is printed with the reason, and only two
+    // reasons are acceptable: a VARIADIC signature that cannot be duplicated but HAS an exact-arity
+    // rival, and a name the parser assigned rather than the command writing it.
     rec('...and nothing was silently left uncovered',
-      unshadowable.every((u) => u.includes('VARIADIC')),
-      unshadowable.length ? unshadowable.join(' | ') : '');
+      unshadowable.every((u) => u.includes('covered by the exact-arity rival')),
+      [...unshadowable, ...exempt].join(' | '));
 
     let hostile = null, err = null;
     try { hostile = await buildUnder('redirect, shadow, pg_catalog, public'); }
