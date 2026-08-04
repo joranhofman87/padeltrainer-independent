@@ -183,14 +183,22 @@ run "rollback REFUSES until the env switch is confirmed off" 1 -- rollback --yes
 run "smoke-disabled REFUSES until the env switch is confirmed off" 1 -- smoke-disabled "$URL"
 
 run "rollback turns BOTH the engine and the cron off" 0 -- rollback --yes --switch-off-confirmed "$URL"
-logged 'digest_engine_enabled = false' && ok "rollback disables the engine" || bad "rollback disables the engine"
-logged 'active := false' && ok "rollback deactivates the cron" || bad "rollback deactivates the cron"
+logged 'rollback_disable.sql' && ok "rollback runs the disable artifact" || bad "rollback runs the disable artifact"
 logged 'rollback_verify.sql' && ok "rollback proves itself afterwards" || bad "rollback proves itself afterwards"
+# The two statements moved INTO the artifact, so the order is a property of that file now — an
+# inline `-c` runs under the role/database search_path and no pin in this bundle could reach it.
+RBD="$HERE/../sql/rollback_disable.sql"
+grep -qF 'digest_engine_enabled = false' "$RBD" && ok "rollback disables the engine" || bad "rollback disables the engine"
+grep -qF 'active := false' "$RBD" && ok "rollback deactivates the cron" || bad "rollback deactivates the cron"
 # order: the switch first (stop creating work), then the cron (stop draining)
-if [[ "$(grep -n 'digest_engine_enabled = false' "$PSQL_LOG" | cut -d: -f1 | head -1)" -lt \
-      "$(grep -n 'active := false' "$PSQL_LOG" | cut -d: -f1 | head -1)" ]]; then
+if [[ "$(grep -n 'digest_engine_enabled = false' "$RBD" | cut -d: -f1 | head -1)" -lt \
+      "$(grep -n 'active := false' "$RBD" | cut -d: -f1 | head -1)" ]]; then
   ok "rollback switches the engine off BEFORE the cron"
 else bad "rollback switches the engine off BEFORE the cron"; fi
+# ...and it must NOT be one transaction: if the engine goes off and the cron deactivation fails, a
+# partial rollback still stops work being created. A transaction would undo the half that worked.
+if grep -qE '^\s*BEGIN;' "$RBD"; then bad "rollback_disable.sql must not wrap both halves in a transaction"
+else ok "rollback_disable.sql keeps the two halves independent (a partial rollback beats none)"; fi
 
 # ── a FAILING preflight must stop the arm ────────────────────────────────────
 # The whole point of the preflight is that it can refuse. Without a stub that can fail, nothing
@@ -205,6 +213,17 @@ set -e
 grep -qF 'active := true' "$PSQL_LOG" && bad "...and the cron is NEVER armed after it" \
   || ok "...and the cron is NEVER armed after it"
 
+# ── EVERY statement this bundle sends is an enumerated, path-pinned artifact ──
+# An inline `psql -c` runs in its own process under the role/database search_path, so no pin inside
+# an artifact can reach it — and `now()`, `=` and `::uuid` are all lookups through that path. The
+# rule is therefore absolute rather than case-by-case: this dispatcher never uses -c.
+if grep -nE '(^|[^-])-c[[:space:]]' "$SCRIPT" | grep -vE '^\s*[0-9]+:\s*#' | grep -q 'psql'; then
+  bad "the dispatcher sends an inline statement instead of a path-pinned artifact"
+  grep -nE '(^|[^-])-c[[:space:]]' "$SCRIPT" | grep 'psql'
+else
+  ok "every statement goes through a path-pinned artifact (no inline psql -c)"
+fi
+
 # ── the thing that must never happen ──────────────────────────────────────────
 if grep -rqF 'cron.unschedule' "$SCRIPT" "$HERE/../sql"; then
   bad "no path unschedules the job to pause it"
@@ -215,7 +234,11 @@ fi
 # ── the canary takes a REAL run id, never a snapshot ──────────────────────────
 run "canary REFUSES a non-uuid run id" 1 -- canary --yes --admin-ops-confirmed "$URL" "before-after-snapshot"
 run "canary reconciles the id it is given" 0 -- canary --yes --admin-ops-confirmed "$URL" "11111111-1111-4111-8111-111111111111"
-logged 'reconcile_notification_digest_run' && ok "canary reconciles the ACTUAL run" || bad "canary reconciles the ACTUAL run"
+logged 'canary_reconcile.sql' && ok "canary reconciles the ACTUAL run" || bad "canary reconciles the ACTUAL run"
+logged 'run_id=11111111-1111-4111-8111-111111111111' && ok "...bound to the run id it was given" \
+  || { bad "...bound to the run id it was given"; cat "$PSQL_LOG"; }
+grep -qF 'reconcile_notification_digest_run' "$HERE/../sql/canary_reconcile.sql" \
+  && ok "...through the reconcile function" || bad "...through the reconcile function"
 # Reconciling is not passing: reconcile succeeds for ANY existing run, so the canary must also be
 # VERIFIED to have delivered, or an empty dispatch run would satisfy the gate.
 logged 'canary_verify.sql' && ok "canary VERIFIES the run delivered, not merely that it existed" \

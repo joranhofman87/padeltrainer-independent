@@ -315,42 +315,35 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
 // The command a cron TICK runs has nothing that can be placed in front of it, so it has to be safe
 // on its own under any search_path.
 describe('I — the scheduled command survives a hostile search_path unaided', () => {
-  // DERIVED FROM THE TEXT, NOT FROM A LIST. Naming the constructs by hand is how `=` survived a
-  // round: the previous version asserted jsonb_build_object and `||` were qualified, claimed "every
-  // name", and was blind to the equality operator selecting the Vault row. This strips the
-  // constructs that CANNOT be redirected — string literals, then every schema-qualified form — and
-  // fails on whatever is left, so a name nobody thought of fails the same way.
-  const residue = (() => {
-    let t = reviewed.command;
-    t = t.replace(/'(?:[^']|'')*'/g, "''");                       // string literals
-    t = t.replace(/OPERATOR\(pg_catalog\.[^)]+\)/g, ' OPQUAL ');   // qualified operators
-    t = t.replace(/::pg_catalog\.[a-z_]+/g, ' CASTQUAL ');         // qualified casts
-    t = t.replace(/\b(pg_catalog|net|vault|public|cron)\.[a-z_]+/g, ' NAMEQUAL '); // qualified names
-    return t;
-  })();
-
-  it('leaves no unqualified operator for a hostile schema to shadow', () => {
-    // Assignment-style `:=` is pg_cron/plpgsql syntax, not an operator lookup; `,` and parens are
-    // syntax too. Anything else is a real operator token.
-    const stripped = residue.replace(/:=/g, ' ');
-    const operators = stripped.match(/[|=<>+\-*/%~!@#^&?]+/g) ?? [];
-    expect(operators, `unqualified operator(s) in the scheduled command: ${operators.join(' ')}`).toEqual([]);
-  });
-
-  it('leaves no unqualified function call for a hostile schema to shadow', () => {
-    const calls = (residue.match(/\b([a-z_][a-z0-9_]*)\s*\(/gi) ?? [])
-      .map((s) => s.replace(/\s*\($/, ''))
-      .filter((n) => !['NAMEQUAL', 'OPQUAL', 'CASTQUAL', 'SELECT'].includes(n));
-    expect(calls, `unqualified function call(s) in the scheduled command: ${calls.join(' ')}`).toEqual([]);
-  });
-
-  it('leaves no unqualified cast', () => {
-    expect(residue, 'an unqualified ::type is resolved through search_path too').not.toMatch(/::\s*[a-z]/i);
+  // WHERE THE REAL PROOF LIVES: verify/preflight-pg.mjs deparses this command under an empty path
+  // and again under a hostile one and requires the two renderings to be identical — PostgreSQL's own
+  // AST, so a name resolved into another schema is printed with that schema.
+  //
+  // THIS FILE DELIBERATELY NO LONGER TRIES TO DECIDE THE QUESTION BY REGEX. It did, for two rounds,
+  // and each round found another construct it had missed: first the `=` selecting the Vault row,
+  // then LIKE (`~~`), IN, BETWEEN, CAST(x AS t) and typed literals. A regex over SQL is a partial
+  // parser, and this slice has already paid once for keeping one. What is left here is the cheap
+  // statement of intent — a specific failure message when a specific protection is dropped — and it
+  // is labelled best-effort rather than left looking exhaustive.
+  it('names the qualified forms it is meant to have (best-effort; the proof is in preflight-pg.mjs)', () => {
+    expect(reviewed.command).toContain('pg_catalog.jsonb_build_object');
+    expect(reviewed.command).toContain('OPERATOR(pg_catalog.||)');
+    expect(reviewed.command).toContain('OPERATOR(pg_catalog.=)');
+    expect(reviewed.command).toContain('::pg_catalog.jsonb');
   });
 
   it('still resolves the bearer from Vault, and posts to this project', () => {
     expect(reviewed.command).toContain('vault.decrypted_secrets');
     expect(reviewed.command).toContain('net.http_post');
+  });
+
+  // ...and the exhaustive check must actually be wired in, or the pointer above is a comment.
+  it('the exhaustive resolution proof is wired into the rollout suite', () => {
+    const harness = read('scripts', 'rollout', 'notif-10cb', 'verify', 'preflight-pg.mjs');
+    expect(harness).toContain('resolves IDENTICALLY under a hostile search_path');
+    expect(harness).toContain('every name it uses has a redirect candidate');
+    const pkg = JSON.parse(read('package.json'));
+    expect(pkg.scripts['verify:rollout']).toContain('notif-10cb/verify/preflight-pg.mjs');
   });
 });
 
@@ -365,27 +358,70 @@ describe('I — every rollout artifact pins name resolution before it does anyth
     expect(artifacts.length).toBeGreaterThanOrEqual(10);
   });
 
-  it.each(artifacts)('%s pins search_path before its first statement', (file) => {
+  // THE FIRST EXECUTABLE THING, established exactly rather than by a list of statement keywords.
+  // The previous version recognised seven starters, so a DO / CALL / INSERT / ALTER / SET ROLE — or
+  // an indented statement — before the pin would have passed as long as a recognised keyword turned
+  // up later. Strip what genuinely executes nothing (comments, blank lines, and the psql
+  // meta-commands that only configure the client) and whatever is left FIRST must be the pin.
+  const firstExecutable = (text: string) => text
+    .split('\n')
+    .map((l) => l.replace(/--.*$/, '').trim())
+    .filter((l) => l !== '' && !/^\\(set|pset|timing|echo|qecho|encoding|x|a|t|f|H|C)\b/i.test(l))[0] ?? '';
+
+  it.each(artifacts)('%s pins search_path first, session-wide', (file) => {
     const text = readFileSync(join(dir, file), 'utf8');
-    const pin = text.indexOf('SET search_path = pg_catalog;');
-    expect(pin, `${file} does not pin search_path`).toBeGreaterThan(-1);
+    expect(firstExecutable(text), `${file} runs something before it pins search_path`)
+      .toBe('SET search_path = pg_catalog;');
     // SESSION-WIDE, not SET LOCAL: COMMIT reverts a local setting, and these files keep asserting
-    // and printing afterwards.
+    // and printing afterwards — canary_invoke.sql builds its request-id marker after COMMIT.
     expect(text, `${file} pins the path only for a transaction`).not.toMatch(/SET LOCAL search_path/);
-    // ...and before EVERYTHING, includes first of all — the shared assertion files are where most of
-    // the unqualified calls actually live.
-    const firstStatement = text.search(/^(\\i|BEGIN;|SELECT|CREATE|DROP|UPDATE|WITH|LOCK)/m);
-    expect(firstStatement, `${file} has no statements`).toBeGreaterThan(-1);
-    expect(pin, `${file} pins the path after it has already run something`).toBeLessThan(firstStatement);
   });
 
-  // The `_`-prefixed files are includes, so they inherit the includer's session setting. That only
-  // holds while nothing else includes them.
-  it('the shared includes are only pulled in by artifacts that pin the path', () => {
-    for (const inc of readdirSync(dir).filter((f) => f.startsWith('_'))) {
-      const includers = artifacts.filter((a) => readFileSync(join(dir, a), 'utf8').includes(`\\i ${inc}`));
-      expect(includers.length, `${inc} is included by nothing`).toBeGreaterThan(0);
+  // The `_`-prefixed files are includes and inherit the includer's session setting. Proving that
+  // each has AT LEAST ONE pinned includer is not enough — an unpinned one elsewhere is exactly the
+  // hole. So this scans every .sql under scripts/rollout for include sites and checks them all.
+  it('every include site in the repo pins the path first', () => {
+    const roots = [join(process.cwd(), 'scripts', 'rollout')];
+    const sqlFiles: string[] = [];
+    const walk = (d: string) => {
+      for (const e of readdirSync(d, { withFileTypes: true })) {
+        const full = join(d, e.name);
+        if (e.isDirectory()) walk(full);
+        else if (e.name.endsWith('.sql')) sqlFiles.push(full);
+      }
+    };
+    roots.forEach(walk);
+
+    const includes = readdirSync(dir).filter((f) => f.startsWith('_'));
+    const offenders: string[] = [];
+    const chained = new Set<string>();
+    let sites = 0;
+    for (const f of sqlFiles) {
+      const text = readFileSync(f, 'utf8');
+      for (const inc of includes) {
+        if (!new RegExp(`^\\\\i .*${inc.replace('.', '\\.')}\\s*$`, 'm').test(text)) continue;
+        sites++;
+        // A `_`-file including another `_`-file is fine: it is itself an include, so it inherits the
+        // session setting of whatever pulled IT in — and this same scan covers that includer. Every
+        // other include site has to pin, wherever in the tree it lives.
+        const isShared = f.startsWith(dir) && f.slice(dir.length + 1).startsWith('_');
+        if (!isShared && firstExecutable(text) !== 'SET search_path = pg_catalog;') {
+          offenders.push(`${f} includes ${inc}`);
+        }
+        if (isShared) chained.add(f.slice(dir.length + 1));
+      }
     }
+    expect(sites, 'no include sites found — this check would be vacuous').toBeGreaterThan(0);
+    expect(offenders, 'a shared include is reached from a file that does not pin the path').toEqual([]);
+    // ...and an include that nothing pulls in is dead weight whose protection nobody is checking.
+    for (const inc of includes) {
+      const pulled = sqlFiles.some((f) =>
+        new RegExp(`^\\\\i .*${inc.replace('.', '\\.')}\\s*$`, 'm').test(readFileSync(f, 'utf8')));
+      expect(pulled, `${inc} is included by nothing`).toBe(true);
+    }
+    // Every shared file that includes another shared file must itself be reached from a pinner —
+    // guaranteed by the offenders check above, which sees that outer site too.
+    for (const c of chained) expect(includes).toContain(c);
   });
 });
 

@@ -58,6 +58,13 @@ const REVIEWED = (() => {
   return { schedule: m[1], command: m[2] };
 })();
 
+/** A stable, filename-safe suffix so two generated shadows cannot collide on their helper name. */
+function hashName(s) {
+  let h = 0;
+  for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return h;
+}
+
 /** Slice a real CREATE TABLE block out of a migration — never a hand-written lookalike. */
 function tableDdl(sql, name, { ifNotExists = true } = {}) {
   const head = ifNotExists
@@ -985,6 +992,98 @@ try {
     rec(`...at the reviewed endpoint (${path})`,
       q?.url === 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker',
       q?.url ?? 'no request');
+  }
+
+  // ── does the scheduled command resolve ANY name through search_path? ─────
+  //
+  // ASK THE SERVER, DO NOT PARSE THE TEXT. Two review rounds were spent finding names a regex had
+  // missed — `=`, then LIKE / IN / BETWEEN / typed literals / CAST(x AS t) — and a regex over SQL is
+  // just a partial parser, which is the subsystem this slice already removed once. Two tempting
+  // shortcuts do not work either: an empty search_path proves nothing, because pg_catalog is
+  // searched implicitly whatever the path says; and pg_depend is blind here, because objects created
+  // by initdb are pinned and get no dependency rows at all.
+  //
+  // What DOES work is PostgreSQL's own deparser. Build a view over the command, then read
+  // pg_get_viewdef: the text that comes back is the parsed AST rendered canonically, and a name
+  // resolved into another schema is PRINTED with that schema. So deparse the same command twice —
+  // once with an empty path, once with a hostile schema first — and require the two to be identical.
+  // Anything redirected shows up as `OPERATOR(hostile.…)` or `hostile.f(…)`, including constructs
+  // nobody thought to look for.
+  {
+    const CMD_SELECT = REVIEWED.command.trim().replace(/;\s*$/, '');
+
+    // Candidates for everything the command can resolve. The set is CHECKED for completeness below
+    // rather than assumed: if the command grows a construct with no candidate here, the coverage
+    // assertion names it instead of passing quietly.
+    const PLANTED = ['jsonb_build_object', 'http_post', '=', '||', '~~', '~~*', '<>', '<', '>', '<=', '>=', '@>'];
+    await c.query(`DROP SCHEMA IF EXISTS redirect CASCADE; CREATE SCHEMA redirect;
+      CREATE FUNCTION redirect.jsonb_build_object(text,text,text,text) RETURNS jsonb
+        LANGUAGE sql AS $f$ SELECT '{}'::pg_catalog.jsonb $f$;
+      CREATE FUNCTION redirect.http_post(text, jsonb, jsonb, integer) RETURNS bigint
+        LANGUAGE sql AS $f$ SELECT 0::pg_catalog.int8 $f$;
+      CREATE FUNCTION redirect.b(text,text) RETURNS boolean LANGUAGE sql AS $f$ SELECT true $f$;
+      CREATE FUNCTION redirect.t(text,text) RETURNS text LANGUAGE sql AS $f$ SELECT $1 $f$;
+      CREATE OPERATOR redirect.=   (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.<>  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.<   (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.>   (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.<=  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.>=  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.~~  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.~~* (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.@>  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.b);
+      CREATE OPERATOR redirect.||  (LEFTARG=text, RIGHTARG=text, FUNCTION=redirect.t);`);
+
+    const deparseUnder = async (cmd, path) => {
+      await c.query(`SET search_path = ${path}`);
+      await c.query(`DROP VIEW IF EXISTS public._cmd_ast`);
+      await c.query(`CREATE VIEW public._cmd_ast AS ${cmd}`);
+      await c.query(`SET search_path = ''`);
+      const d = (await c.query(`SELECT pg_get_viewdef('public._cmd_ast'::regclass, true) AS d`)).rows[0].d;
+      await c.query(`SET search_path = "$user", public`);
+      return d.replace(/\s+/g, ' ').trim();
+    };
+
+    let neutral = null, hostile = null, err = null;
+    try {
+      neutral = await deparseUnder(CMD_SELECT, "''");
+      hostile = await deparseUnder(CMD_SELECT, 'redirect, pg_catalog, public');
+    } catch (e) { err = e.message.split('\n')[0]; }
+    finally { await c.query(`SET search_path = "$user", public`).catch(() => {}); }
+
+    rec('the scheduled command resolves IDENTICALLY under a hostile search_path',
+      !err && neutral === hostile,
+      err ?? (neutral === hostile ? '' : `neutral: ${neutral}\n      hostile: ${hostile}`));
+
+    // COVERAGE, ASSERTED RATHER THAN ASSUMED. The comparison above only detects a redirection for
+    // which a candidate exists, so every operator and function the command actually uses must have
+    // one. Read from the DEPARSE, not the source: it is canonical, machine-generated text — every
+    // literal typed, every column qualified — so extracting names from it is reading a rendering of
+    // the AST rather than parsing SQL by hand. A new construct fails HERE, naming itself.
+    const KEYWORDS = new Set(['select', 'from', 'where', 'and', 'or', 'not', 'as', 'on', 'in', 'case',
+                              'when', 'then', 'else', 'end', 'exists', 'distinct', 'order', 'by', 'null']);
+    const used = new Set();
+    for (const m of (neutral ?? '').matchAll(/\b([a-z_][a-z0-9_]*)\s*\(/g)) {
+      const n = m[1].toLowerCase();
+      if (!KEYWORDS.has(n)) used.add(n);
+    }
+    // `=>` is how the deparser writes a NAMED ARGUMENT. It is syntax, not an operator lookup — there
+    // is nothing for a schema to shadow — so it is excluded here rather than given a candidate that
+    // could never be reached. (The check found it, which is the point: it reports what it does not
+    // know instead of passing.)
+    for (const m of (neutral ?? '').matchAll(/\s([|=<>+\-*/%~!@#^&?]{1,3})\s/g)) {
+      if (m[1] !== '=>') used.add(m[1]);
+    }
+    // Names reached through an explicit schema cannot be redirected, so they need no candidate.
+    for (const m of (neutral ?? '').matchAll(/\b(?:pg_catalog|net|vault|public|cron)\.([a-z_][a-z0-9_]*)/g)) {
+      used.delete(m[1].toLowerCase());
+    }
+    const uncovered = [...used].filter((n) => !PLANTED.includes(n));
+    rec('...and every name it uses has a redirect candidate, so that comparison is not vacuous',
+      uncovered.length === 0,
+      uncovered.length ? `no candidate planted for: ${uncovered.join(' ')} — add one to PLANTED` : `covered: ${[...used].join(' ')}`);
+
+    await c.query(`DROP VIEW IF EXISTS public._cmd_ast; DROP SCHEMA IF EXISTS redirect CASCADE`);
   }
 
   // ...and the scheduled command must be safe on its OWN merits, because a cron TICK runs it under

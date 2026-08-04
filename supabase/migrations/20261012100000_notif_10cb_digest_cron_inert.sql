@@ -92,10 +92,15 @@ BEGIN
   -- inside a query over vault.decrypted_secrets, and can also change WHICH secret the subquery
   -- returns. A `::jsonb` cast is a type name, resolved through the path as well.
   --
-  -- src/test/notifDigestCronInert.realpg.test.ts derives the check from the command text rather than
-  -- from a list someone has to remember to extend: it strips the qualified forms and fails if any
-  -- resolvable name is left. preflight-pg.mjs then plants hostile candidates and proves the bearer
-  -- is still not captured.
+  -- THE EXHAUSTIVE CHECK IS scripts/rollout/notif-10cb/verify/preflight-pg.mjs, and it does not read
+  -- this text at all: it builds a view over the command, deparses it with pg_get_viewdef under an
+  -- empty search_path and again under a hostile one, and requires the two renderings to be
+  -- identical. That is PostgreSQL's own AST, so a name resolved into another schema is printed with
+  -- that schema — which catches constructs a text scan does not know to look for (LIKE, IN, BETWEEN,
+  -- CAST(x AS t), typed literals). It also asserts that every name the command uses has a redirect
+  -- candidate planted, so the comparison cannot pass vacuously.
+  -- src/test/notifDigestCronInert.realpg.test.ts and notif10cbActivationPreflight.test.ts additionally
+  -- name the specific qualified forms, so a dropped protection fails with a message that says which.
   v_jobid := cron.schedule('notification-digest-worker', '*/5 * * * *', $cmd$
     SELECT net.http_post(
       url := 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker',

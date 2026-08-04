@@ -64,7 +64,9 @@ SQL_DIR="$HERE/sql"
 source "$HERE/../notif-10ca3/lib/common.sh"
 
 EVENT_KEY="open_slots_player"
-JOB_NAME="notification-digest-worker"
+# The job name used to be interpolated into an inline rollback statement. It now lives in
+# sql/rollback_disable.sql with the rest of that statement, because an inline `-c` runs under the
+# role/database search_path and nothing in this bundle could pin it there.
 
 require_env EXPECTED_REF "set EXPECTED_REF to the target project ref (20 chars)"
 assert_ref_format "$EXPECTED_REF"
@@ -411,8 +413,12 @@ case "$SUB" in
     # Reconcile the run the worker ACTUALLY returned. A before/after table snapshot is not
     # evidence on a live system: anything else running in the window is indistinguishable from
     # the canary.
-    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
-      "SELECT * FROM public.reconcile_notification_digest_run('${run_id}'::uuid);"
+    #
+    # AN ARTIFACT, NOT A `-c`. An inline statement is a psql process running under the role/database
+    # search_path, which is exactly what every artifact in this bundle pins against — the `::uuid`
+    # here is a type lookup like any other. One rule: everything this bundle sends to production is
+    # an enumerated, path-pinned file.
+    run_sql "$url" canary_reconcile.sql -v run_id="${run_id}"
     # RECONCILING IS NOT PASSING. reconcile_notification_digest_run succeeds for ANY existing run,
     # whatever its phase, status or outcome — so on its own it would wave through an EMPTY
     # dispatch run, and the first real provider send would happen later, under cron, to the whole
@@ -456,13 +462,10 @@ case "$SUB" in
       "rollback requires --switch-off-confirmed: set DIGEST_SEND_ENABLED=false on notification-digest-worker FIRST (that is the worker's real kill switch; this script cannot set it)"
     url="$(db_url)"
     # Then BOTH database controls, in this order: the event flag first (stop creating work), then
-    # the cron (stop draining). Either alone still sends.
-    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
-      "UPDATE public.notification_event_types SET digest_engine_enabled = false, updated_at = now()
-        WHERE key = '${EVENT_KEY}';"
-    psql_safe "$url" -v ON_ERROR_STOP=1 -c \
-      "SELECT cron.alter_job(jobid, active := false) FROM cron.job
-        WHERE jobname = '${JOB_NAME}' AND username = current_user;"
+    # the cron (stop draining). Either alone still sends. Both live in ONE artifact so the order is
+    # in the file rather than in the caller — and so they run under a pinned search_path, which two
+    # inline `-c` statements did not.
+    run_sql "$url" rollback_disable.sql
     run_sql "$url" rollback_verify.sql
     ok "rolled back: engine OFF, cron INACTIVE, job still present"
     ;;
