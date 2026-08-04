@@ -265,6 +265,28 @@ set -e
   || { bad "a wrapper REFUSES an inline statement appended to an artifact run"; cat "$TMP/out"; }
 [[ ! -s "$PSQL_LOG" ]] && ok "...and reached psql not at all" || { bad "...and reached psql not at all"; cat "$PSQL_LOG"; }
 
+# ...AND A PSQL CONTROL VARIABLE IS REFUSED, not merely a syntactically odd one. `-v AUTOCOMMIT=off`
+# is a perfectly well-formed name=value binding, and applied to rollback_disable.sql it turns two
+# deliberately independent statements into an uncommitted transaction discarded at disconnect — the
+# emergency rollback would do nothing while every gate before it passed.
+for bad_var in "AUTOCOMMIT=off" "ON_ERROR_STOP=0" "QUIET=1"; do
+  export PSQL_LOG="$TMP/log.var.$RANDOM"; : > "$PSQL_LOG"
+  set +e
+  EXPECTED_REF="$REF" bash -c '
+    script="$1"; url="$2"; binding="$3"
+    eval "$(sed -n "/^ARTIFACT_VARS=/p;/^assert_artifact_args()/,/^}/p;/^run_sql()/,/^}/p" "$script")"
+    SQL_DIR="$(dirname "$script")/sql"
+    die() { printf "FAIL %s\n" "$*" >&2; exit 1; }
+    psql_safe() { printf "%s\n" "$*" >> "$PSQL_LOG"; }
+    run_sql "$url" status.sql -v "$binding"
+  ' _ "$SCRIPT" "$URL" "$bad_var" >"$TMP/out" 2>&1
+  bv_rc=$?
+  set -e
+  [[ "$bv_rc" != "0" ]] && ok "a wrapper REFUSES the psql control variable $bad_var" \
+    || { bad "a wrapper REFUSES the psql control variable $bad_var"; cat "$TMP/out"; }
+  [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing with it" || bad "...and ran nothing with it"
+done
+
 # ...but a legitimate variable binding still goes through, or the guard would just break the tooling.
 run "an artifact run with -v still works" 0 -- preflight "$URL" "11111111-1111-4111-8111-111111111111"
 logged 'run_id=11111111-1111-4111-8111-111111111111' && ok "...and the binding reaches psql" \

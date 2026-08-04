@@ -93,12 +93,14 @@ BEGIN
   -- returns. A `::jsonb` cast is a type name, resolved through the path as well.
   --
   -- THE EXHAUSTIVE CHECK IS scripts/rollout/notif-10cb/verify/preflight-pg.mjs, and it does not read
-  -- this text at all: it builds a view over the command, deparses it with pg_get_viewdef under an
-  -- empty search_path and again under a hostile one, and requires the two renderings to be
-  -- identical. That is PostgreSQL's own AST, so a name resolved into another schema is printed with
-  -- that schema — which catches constructs a text scan does not know to look for (LIKE, IN, BETWEEN,
-  -- CAST(x AS t), typed literals). It also asserts that every name the command uses has a redirect
-  -- candidate planted, so the comparison cannot pass vacuously.
+  -- this text at all: it builds a view over the command and compares the STORED PARSE TREE
+  -- (pg_rewrite.ev_action — the OIDs the planner actually bound) under an empty search_path against
+  -- the same tree built with a hostile schema first. Identical trees mean identical resolution,
+  -- including for constructs a text scan cannot see (LIKE, IN, BETWEEN, CAST(x AS t), typed
+  -- literals) and for operators PostgreSQL renders as SYNTAX — pg_get_viewdef was tried and rejected
+  -- for exactly that reason: IS DISTINCT FROM deparses identically even when its operator has been
+  -- redirected. It then proves the detector is not asleep by removing each qualification below, one
+  -- at a time, and requiring the tree to move.
   -- src/test/notifDigestCronInert.realpg.test.ts and notif10cbActivationPreflight.test.ts additionally
   -- name the specific qualified forms, so a dropped protection fails with a message that says which.
   v_jobid := cron.schedule('notification-digest-worker', '*/5 * * * *', $cmd$

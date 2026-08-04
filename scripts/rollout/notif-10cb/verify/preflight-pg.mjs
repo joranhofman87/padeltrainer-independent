@@ -1065,7 +1065,7 @@ try {
       funcresulttype: ['pg_type', 'typnamespace'], opresulttype: ['pg_type', 'typnamespace'],
       resulttype: ['pg_type', 'typnamespace'], casttype: ['pg_type', 'typnamespace'],
       elemtype: ['pg_type', 'typnamespace'], typeId: ['pg_type', 'typnamespace'],
-      relid: ['pg_class', 'relnamespace'], mergeTargetRelation: ['pg_class', 'relnamespace'],
+      relid: ['pg_class', 'relnamespace'],
       constcollid: ['pg_collation', 'collnamespace'], varcollid: ['pg_collation', 'collnamespace'],
       funccollid: ['pg_collation', 'collnamespace'], opcollid: ['pg_collation', 'collnamespace'],
       inputcollid: ['pg_collation', 'collnamespace'], collOid: ['pg_collation', 'collnamespace'],
@@ -1080,7 +1080,9 @@ try {
       'hasDistinctOn', 'hasForUpdate', 'hasGroupRTE', 'hasModifyingCTE', 'hasRecursive',
       'hasRowSecurity', 'hasSubLinks', 'hasTargetSRFs', 'hasWindowFuncs', 'havingQual', 'inFromCl',
       'inh', 'insertedCols', 'isReturn', 'jointree', 'lateral', 'limitCount', 'limitOffset',
-      'limitOption', 'location', 'mergeActionList', 'mergeJoinCondition', 'name', 'onConflict',
+      'limitOption', 'location', 'mergeActionList', 'mergeJoinCondition',
+      // an INDEX into the rangetable, exactly like resultRelation — the target's OID lives on the RTE
+      'mergeTargetRelation', 'name', 'onConflict',
       'operName', 'opretset', 'override', 'perminfoindex', 'quals', 'querySource', 'relkind',
       'rellockmode', 'requiredPerms', 'resjunk', 'resname', 'resno', 'resorigcol', 'resorigtbl',
       'ressortgroupref', 'resultRelation', 'returningList', 'returningNewAlias', 'returningOldAlias',
@@ -1111,11 +1113,14 @@ try {
       const vals = [...new Set([...neutral.ev_action.matchAll(new RegExp(`:${field} (\\d+)`, 'g'))]
         .map((m) => Number(m[1])))].filter((n) => n > 0);
       if (!vals.length) continue;
-      // NOT EVERY OID IN THE TREE IS A NAME THE COMMAND WROTE. `unknown` is the parser's type for a
-      // bare literal and the default collation is assigned implicitly; neither appears in the SQL, so
-      // neither is resolved through search_path and neither can be redirected. They are exempted by
-      // PROPERTY — pseudo-types (typtype = 'p'), and the default collation — not by OID, and each
-      // exemption is printed rather than dropped.
+      // WHY THESE ARE EXEMPT, stated correctly. An earlier version said they are "assigned by the
+      // parser, never written in the command" — which is not something the analyzed tree records, and
+      // is false in general: `NULL::record` names a pseudo-type explicitly and `COLLATE "default"`
+      // names a collation explicitly. The true reason is narrower and checkable: no rival can be
+      // CONSTRUCTED for them here — a pseudo-type is not a valid domain base type. So they are
+      // exempted from the RIVAL accounting, printed rather than dropped, and the thing that actually
+      // establishes coverage is the positive control below, which does not depend on this reasoning
+      // at all: it removes each qualification the command carries and proves the detector fires.
       // The `implicit` predicate is chosen per catalog rather than written as one polymorphic CASE:
       // PostgreSQL parses every branch, so referencing o.typtype while scanning pg_proc is an
       // undefined-column error, not a skipped branch.
@@ -1170,6 +1175,12 @@ try {
         // changes no result today. It only differs for a command that does not exist yet, which is
         // precisely when it matters. src/test/notif10cbActivationPreflight.test.ts pins it
         // structurally instead.
+        // NAME ONLY, and that is a stated limitation rather than an oversight: this does not compare
+        // the rival's arity or argument types against the CALL, so a same-named rival that could not
+        // actually compete would still count here. Deriving the call's signature means walking the
+        // FuncExpr's argument list — parsing the node tree, which is the habit this check exists to
+        // break. The positive control below is what proves detection for this name, by un-qualifying
+        // it and requiring the tree to move; this accounting is the secondary, cheaper signal.
         const { rows: rival } = await c.query(
           `SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
             WHERE n.nspname = 'shadow' AND p.proname = $1 AND p.provariadic = 0`, [f.proname]);
@@ -1220,6 +1231,52 @@ try {
       !err && hostile?.ev_action === neutral.ev_action,
       err ?? (hostile?.ev_action === neutral.ev_action ? ''
         : `the parse tree changed — deparse was:\n      neutral: ${neutral.def?.replace(/\s+/g, ' ')}\n      hostile: ${hostile?.def?.replace(/\s+/g, ' ')}`));
+
+
+    // ── THE POSITIVE CONTROL, which is what actually settles coverage ────────
+    //
+    // Everything above answers "did anything move?". This answers the question that matters: "would
+    // this detector NOTICE if a protection were dropped?" — and it answers it per protection, derived
+    // from the command rather than from a list.
+    //
+    // It also replaces an argument that could not be won. Whether a given pg_catalog name has a
+    // usable rival is genuinely hard to establish: `jsonb_build_object(VARIADIC "any")` cannot be
+    // duplicated at all, so no rival proves anything about it by existing. But un-qualifying it and
+    // watching the tree move proves exactly what the coverage accounting was trying to approximate.
+    //
+    // The three forms below are THIS BUNDLE'S OWN qualification syntax, not arbitrary SQL, so
+    // matching them is reading our own convention rather than parsing PostgreSQL.
+    {
+      const forms = [
+        [/pg_catalog\.([a-z_]+)\(/g, (m) => `${m[1]}(`, 'function'],
+        [/OPERATOR\(pg_catalog\.([^)]+)\)/g, (m) => ` ${m[1]} `, 'operator'],
+        [/::pg_catalog\.([a-z_0-9]+)/g, (m) => `::${m[1]}`, 'cast'],
+      ];
+      let controls = 0, missed = [];
+      for (const [re, repl, kind] of forms) {
+        for (const m of [...CMD_SELECT.matchAll(re)]) {
+          const weakened = CMD_SELECT.slice(0, m.index) + repl(m) + CMD_SELECT.slice(m.index + m[0].length);
+          controls++;
+          try {
+            await c.query(`SET search_path = ''`);
+            await c.query(`CREATE OR REPLACE VIEW public._cmd_probe AS ${weakened}`);
+            const a = (await c.query(`SELECT ev_action FROM pg_rewrite WHERE ev_class='public._cmd_probe'::regclass`)).rows[0].ev_action;
+            await c.query(`SET search_path = redirect, shadow, pg_catalog, public`);
+            await c.query(`CREATE OR REPLACE VIEW public._cmd_probe AS ${weakened}`);
+            const b = (await c.query(`SELECT ev_action FROM pg_rewrite WHERE ev_class='public._cmd_probe'::regclass`)).rows[0].ev_action;
+            if (a === b) missed.push(`${kind} ${m[1]}`);
+          } catch (e) {
+            // A weakened variant that will not even build is not evidence either way — say so.
+            missed.push(`${kind} ${m[1]} (probe failed: ${e.message.split('\n')[0]})`);
+          } finally { await c.query(`SET search_path = "$user", public`).catch(() => {}); }
+        }
+      }
+      await c.query(`DROP VIEW IF EXISTS public._cmd_probe`);
+      rec('the detector FIRES on every qualification the command carries, one at a time',
+        controls > 0 && missed.length === 0,
+        missed.length ? `un-qualifying these changed nothing, so the detector is blind to them: ${missed.join(', ')}`
+          : `${controls} qualifications, each independently detected when removed`);
+    }
 
     await c.query(`DROP VIEW IF EXISTS public._cmd_ast; DROP SCHEMA IF EXISTS redirect CASCADE`);
   }

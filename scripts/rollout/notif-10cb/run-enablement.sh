@@ -221,20 +221,34 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 #
 # The only legitimate extra is a psql variable binding, and the artifact is the only thing that
 # decides what those mean. Everything else — another -f, a -c, a --command, a bare word — is refused.
+#
+# AND THE NAME IS ALLOW-LISTED, not merely required to look like an identifier. psql's own CONTROL
+# variables share that namespace, and several change how the artifact behaves rather than what it
+# reads: `-v AUTOCOMMIT=off` turns rollback_disable.sql's deliberately independent statements into an
+# uncommitted transaction that is discarded at disconnect, so the emergency rollback would do nothing
+# at all while every gate before it passed. `-v ON_ERROR_STOP=0` is the same shape. Three names are
+# actually used, so three names are permitted.
+ARTIFACT_VARS="run_id max_recipients request_id"
 assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
   local artifact="$1"; shift
   local expect_value=0 a
+  _check_binding() {
+    local b="$1"
+    [[ "$b" =~ ^[a-zA-Z_][a-zA-Z0-9_]*=.*$ ]] \
+      || die "refusing to run ${artifact}: '${b}' is not a name=value variable binding"
+    case " $ARTIFACT_VARS " in
+      *" ${b%%=*} "*) : ;;
+      # The wording avoids "psql" followed by a space on purpose: the `never invokes bare psql` guard
+      # is a plain text scan and is kept strict by rewording messages rather than by teaching it about
+      # string literals. Same trap, same answer, third time in this slice.
+      *) die "refusing to run ${artifact}: '${b%%=*}' is not one of the artifact variables (${ARTIFACT_VARS}) — psql's own control variables, such as AUTOCOMMIT or ON_ERROR_STOP, change how the artifact behaves rather than what it reads" ;;
+    esac
+  }
   for a in "$@"; do
-    if [[ "$expect_value" == "1" ]]; then
-      [[ "$a" =~ ^[a-zA-Z_][a-zA-Z0-9_]*=.*$ ]] \
-        || die "refusing to run ${artifact}: '-v' must be followed by name=value, got '${a}'"
-      expect_value=0
-      continue
-    fi
+    if [[ "$expect_value" == "1" ]]; then _check_binding "$a"; expect_value=0; continue; fi
     case "$a" in
       -v)   expect_value=1 ;;
-      -v*)  [[ "${a#-v}" =~ ^[a-zA-Z_][a-zA-Z0-9_]*=.*$ ]] \
-              || die "refusing to run ${artifact}: '${a}' is not a name=value variable binding" ;;
+      -v*)  _check_binding "${a#-v}" ;;
       *)    die "refusing to run ${artifact}: only '-v name=value' may follow an artifact, got '${a}' — an inline statement would run outside the artifact's pinned search_path" ;;
     esac
   done

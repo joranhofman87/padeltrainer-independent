@@ -315,9 +315,12 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
 // The command a cron TICK runs has nothing that can be placed in front of it, so it has to be safe
 // on its own under any search_path.
 describe('I — the scheduled command survives a hostile search_path unaided', () => {
-  // WHERE THE REAL PROOF LIVES: verify/preflight-pg.mjs deparses this command under an empty path
-  // and again under a hostile one and requires the two renderings to be identical — PostgreSQL's own
-  // AST, so a name resolved into another schema is printed with that schema.
+  // WHERE THE REAL PROOF LIVES: verify/preflight-pg.mjs compares this command's STORED PARSE TREE
+  // (pg_rewrite.ev_action, which carries the OIDs the planner bound) under an empty search_path
+  // against the same tree built with a hostile schema first, and separately proves the detector
+  // fires by removing each qualification one at a time. The deparse was tried first and rejected:
+  // PostgreSQL renders IS DISTINCT FROM and CASE x WHEN y as syntax, so pg_get_viewdef reads
+  // identically even when the underlying operator has been redirected.
   //
   // THIS FILE DELIBERATELY NO LONGER TRIES TO DECIDE THE QUESTION BY REGEX. It did, for two rounds,
   // and each round found another construct it had missed: first the `=` selecting the Vault row,
@@ -351,6 +354,15 @@ describe('I — the scheduled command survives a hostile search_path unaided', (
     // written. Pinned here instead of left looking tested.
     expect(harness, 'variadic coverage must be conditional on a rival actually existing')
       .toMatch(/nspname = 'shadow'[\s\S]{0,200}?if \(rival\.length\)/);
+    // The per-qualification positive control is what actually settles coverage: it removes each
+    // qualification the command carries and requires the tree to move.
+    expect(harness).toContain('the detector FIRES on every qualification the command carries');
+    // `mergeTargetRelation` is a rangetable INDEX, like resultRelation — the target's OID lives on
+    // the RTE. It is zero in this SELECT-only command, so no behavioural test can see the
+    // misclassification; pinned here instead of left to be re-introduced.
+    expect(harness, 'mergeTargetRelation is an index, not a relation OID')
+      .not.toMatch(/mergeTargetRelation: \['pg_class'/);
+    expect(harness).toMatch(/'mergeTargetRelation', 'name'/);
     // ...and it must be the PARSE TREE it compares, not the deparse: pg_get_viewdef renders
     // IS DISTINCT FROM and CASE x WHEN y as syntax, so it reads identically even when the
     // underlying operator has been redirected.
@@ -485,10 +497,33 @@ describe('I — every rollout artifact pins name resolution before it does anyth
     expect([...chained].every((c) => reachable.has(join(dir, c)))).toBe(true);
     // ...and nothing reached from a pinned artifact may UNDO the pin. The 10c-a3 helper sits inside
     // that graph, so a `SET search_path` added there would silently unpin every artifact here.
-    for (const f of reachable) {
-      const body = readFileSync(f, 'utf8').split('\n').map((l) => l.replace(/--.*$/, '')).join('\n');
-      expect(body, `${f} changes search_path — it would unpin every artifact that includes it`)
-        .not.toMatch(/^\s*SET\s+(LOCAL\s+)?search_path/mi);
+    // NOTHING REACHABLE MAY UNDO THE PIN, and "no second SET" is not the same rule. `RESET
+    // search_path`, `RESET ALL`, `set_config('search_path', …)` and `\connect` all put the path back
+    // to the role/database default without ever writing SET. The ROOT ARTIFACTS are scanned too —
+    // the previous version checked only the files they include, so an artifact could have undone its
+    // own pin two lines later.
+    const undoes = [
+      /^\s*SET\s+(LOCAL\s+)?search_path/mi,
+      /^\s*RESET\s+(search_path|ALL)\b/mi,
+      /set_config\s*\(\s*'search_path'/i,
+      /^\s*\\c(onnect)?\b/mi,
+    ];
+    for (const f of [...reachable, ...artifacts.map((a) => join(dir, a))]) {
+      const raw = readFileSync(f, 'utf8');
+      const body = raw.split('\n')
+        .map((l) => (l.trim().startsWith('\\') ? l : l.replace(/--.*$/, ''))).join('\n');
+      const afterPin = body.split('SET search_path = pg_catalog;').slice(1).join('\n');
+      for (const re of undoes) {
+        expect(afterPin, `${f} undoes the path pin (${re}) — every artifact that includes it is unpinned`)
+          .not.toMatch(re);
+      }
+      // ...and an INCLUDED file may not pin or reset it at all: it inherits, and touching the setting
+      // would change it for the artifact that pulled it in.
+      if (!artifacts.some((a) => join(dir, a) === f)) {
+        for (const re of undoes) {
+          expect(body, `${f} is an include and must not touch search_path (${re})`).not.toMatch(re);
+        }
+      }
     }
   });
 });
