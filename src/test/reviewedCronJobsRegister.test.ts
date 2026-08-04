@@ -3,7 +3,7 @@
 //
 // `scripts/rollout/notif-10ca3/run-rollout.sh` FAILS CLOSED on any live cron job that is not in
 // `clone-safety/reviewed-cron-jobs.tsv`: "UNREVIEWED cron job present" aborts the clone-source
-// quiesce. That is the right posture — a job added at runtime is exactly what a clone must not
+// INVENTORY command, which is the step that performs this check. That is the right posture — a job added at runtime is exactly what a clone must not
 // inherit — but nothing connected that file to the migrations, so 10c-b F scheduled
 // `notification-digest-worker` and it was never registered. That inventory step connects and reads,
 // but refuses before it CHANGES anything, so the cost would have been an aborted rollout attempt

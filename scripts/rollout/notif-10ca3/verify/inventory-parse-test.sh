@@ -77,5 +77,17 @@ check "CLASSIFICATION DRIFT is still refused" 1 \
   "$(printf 'CRONJOB release-expired-rebook-holds true yes\n')"
 check "an inventory with no CRONJOB records at all is refused" 1 "$(printf '')"
 
+# OUTFN and EXT carry the SAME forgeable shape — a function actually named
+# `public."schedule_enrichment_job filler"` emitted `OUTFN public.schedule_enrichment_job filler`
+# and was accepted as the reviewed `public.schedule_enrichment_job`.
+check "an OUTFN name containing whitespace cannot forge a reviewed record" 1 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN public.schedule_enrichment_job filler\n')"
+check "OUTFN_UNSAFE_NAME is fatal" 1 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN_UNSAFE_NAME 5d41402abc4b2a76b9719d911017c592\n')"
+check "an EXT name containing whitespace cannot forge a reviewed record" 1 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nEXT pg_net filler\n')"
+check "EXT_UNSAFE_NAME is fatal" 1 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nEXT_UNSAFE_NAME 5d41402abc4b2a76b9719d911017c592\n')"
+
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
 [[ "$FAIL" == "0" ]]

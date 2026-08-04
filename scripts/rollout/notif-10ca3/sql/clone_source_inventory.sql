@@ -88,12 +88,26 @@ WITH RECURSIVE outbound(oid) AS (
    WHERE c.oid <> o.oid
      AND c.prosrc ~* ('\m' || (SELECT proname FROM pg_proc WHERE oid = o.oid) || '\M')
 )
-SELECT format('OUTFN %s.%s', n.nspname, p.proname)
+-- SAME SAFE GRAMMAR AS CRONJOB ABOVE, and for the same reason: these records are space-delimited
+-- and the reader takes a fixed field, so an identifier containing whitespace forges the fields
+-- after it. A function actually named `public."schedule_enrichment_job filler"` emitted
+-- `OUTFN public.schedule_enrichment_job filler` and was accepted as the REVIEWED
+-- `public.schedule_enrichment_job`. An identifier outside the grammar is reported under its own
+-- fatal key instead, as an md5, so a hostile name cannot inject anything downstream either.
+SELECT CASE
+         WHEN n.nspname ~ '^[A-Za-z0-9_.:-]+$' AND p.proname ~ '^[A-Za-z0-9_.:-]+$'
+           THEN format('OUTFN %s.%s', n.nspname, p.proname)
+         ELSE format('OUTFN_UNSAFE_NAME %s', md5(n.nspname || '.' || p.proname))
+       END
 FROM outbound ob JOIN pg_proc p ON p.oid = ob.oid JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname NOT IN ('pg_catalog','information_schema','net','cron','extensions','vault','pgsodium','supabase_functions','graphql','graphql_public','realtime','storage','auth')
 ORDER BY 1;
 
-SELECT format('EXT %s', extname) FROM pg_extension
+SELECT CASE
+         WHEN extname ~ '^[A-Za-z0-9_.:-]+$' THEN format('EXT %s', extname)
+         ELSE format('EXT_UNSAFE_NAME %s', md5(extname))
+       END
+FROM pg_extension
 WHERE extname IN ('pg_net','http','pg_cron','wrappers','dblink','postgres_fdw') ORDER BY 1;
 
 -- count only; contents are never read

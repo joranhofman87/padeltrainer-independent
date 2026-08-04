@@ -569,14 +569,22 @@ assert_inventory_is_reviewed() {   # $1 = inventory file
   # A job name outside the safe grammar is never classified — it is reported under its own key,
   # because a name containing whitespace would forge the fields after it in this space-delimited
   # record and read as a DIFFERENT, reviewed job.
-  if grep -q '^CRONJOB_UNSAFE_NAME ' "$inv"; then
-    n="$(grep -c '^CRONJOB_UNSAFE_NAME ' "$inv")"
-    die "${n} cron job(s) have a name outside the safe grammar ([A-Za-z0-9_.:-]) — they cannot be reconciled against the reviewed set and a whitespace name would forge the inventory record; rename or remove them before cloning"
-  fi
-  # ...and every CRONJOB record must have exactly its three fields, so a short or long line can
-  # never be silently read as something else.
-  if awk '$1=="CRONJOB" && NF!=4 {found=1} END{exit !found}' "$inv"; then
-    die "malformed CRONJOB record(s) in the clone-source inventory — refusing to classify blind"
+  # AN IDENTIFIER OUTSIDE THE SAFE GRAMMAR IS NEVER RECONCILED. These records are space-delimited
+  # and read by fixed field, so a name containing whitespace forges the fields after it and reads
+  # as a DIFFERENT, reviewed entry. The SQL reports such a name under its own key instead; every
+  # one of those keys is fatal here.
+  local k
+  for k in CRONJOB OUTFN EXT; do
+    if grep -q "^${k}_UNSAFE_NAME " "$inv"; then
+      n="$(grep -c "^${k}_UNSAFE_NAME " "$inv")"
+      die "${n} ${k} entr(y/ies) have a name outside the safe grammar ([A-Za-z0-9_.:-]) — they cannot be reconciled against the reviewed set, and a name containing whitespace would forge the inventory record; rename or remove them before cloning"
+    fi
+  done
+  # ...and every identity record must have exactly its expected fields, so a short or long line can
+  # never be silently read as something else. CRONJOB carries name+active+outbound; OUTFN and EXT
+  # carry a name only.
+  if awk '($1=="CRONJOB" && NF!=4) || ($1=="OUTFN" && NF!=2) || ($1=="EXT" && NF!=2) {found=1} END{exit !found}' "$inv"; then
+    die "malformed identity record(s) in the clone-source inventory — refusing to classify blind"
   fi
   # cron jobs: present in the reviewed set AND the live outbound classification
   # must still match the reviewed one (a command edit can change it).

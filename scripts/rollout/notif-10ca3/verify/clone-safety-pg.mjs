@@ -589,6 +589,31 @@ try {
                          WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1,
         `${ms1.toFixed(0)} ms over 2k rows`);
   } finally { await holder.end().catch(() => {}); await runner.end().catch(() => {}); }
+
+  // ── the inventory PRODUCER refuses to emit a forgeable identity record ──────────────────
+  // The reader-side guard is unit-tested in verify/inventory-parse-test.sh, but that suite feeds
+  // it fabricated records — so removing the CASE from the SQL left every one of its checks green.
+  // This runs the REAL artifact against a REAL server with hostile names planted, which is the
+  // only way the producer's half is actually exercised. A NEWLINE-bearing name matters most: it
+  // can otherwise form a perfectly well-formed four-field first line that the field-count check
+  // cannot see.
+  await c.query(`DELETE FROM cron.job;
+    INSERT INTO cron.job (schedule, command, jobname) VALUES
+      ('* * * * *', 'SELECT 1;', 'notification-email-worker filler yes'),
+      ('* * * * *', 'SELECT 1;', E'ok-name\nCRONJOB notification-email-worker true yes'),
+      ('* * * * *', 'SELECT 1;', 'perfectly-fine-name');`);
+  const invOut = await allRows(c, artifactText('clone_source_inventory.sql'));
+  const cronRecords = invOut.filter((r) => typeof r === 'string' && r.startsWith('CRONJOB'));
+  rec('the inventory emits CRONJOB_UNSAFE_NAME for a whitespace job name',
+      cronRecords.filter((r) => r.startsWith('CRONJOB_UNSAFE_NAME ')).length === 2,
+      cronRecords.join(' | '));
+  rec('...and never emits the forged reviewed record',
+      !cronRecords.some((r) => /^CRONJOB notification-email-worker /.test(r)),
+      cronRecords.join(' | '));
+  rec('...while a safe name still produces its ordinary record',
+      cronRecords.some((r) => r.startsWith('CRONJOB perfectly-fine-name ')),
+      cronRecords.join(' | '));
+  await c.query(`DELETE FROM cron.job`);
 } finally {
   await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }
