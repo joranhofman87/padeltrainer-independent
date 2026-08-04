@@ -70,11 +70,14 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   invocation. Requires you to have verified DIGEST_SEND_ENABLED
                                   is off — no SQL can see an edge env var
   canary --yes <db_url> <run_id>  reconcile ONE canary's ACTUAL returned run id
-  activate --yes <db_url> <run_id>
+  activate --yes --monitor-confirmed <db_url> <run_id>
                                   verify FOR THAT CANARY RUN and arm the cron, in ONE transaction
                                   against the LOCKED job row. The run id is the one `canary` just
                                   verified — activation is never allowed to rest on some older
-                                  rollout's evidence, nor on a job that changed after the check
+                                  rollout's evidence, nor on a job that changed after the check.
+                                  --monitor-confirmed asserts the EXTERNAL cron/uptime monitor on
+                                  notif_digest_worker_liveness() is live: no SQL can see it, and it
+                                  is the only detector for "the worker was never invoked"
   rollback --yes --switch-off-confirmed <db_url>
                                   set DIGEST_SEND_ENABLED=false FIRST (owner action, outside this
                                   script), then this clears the event flag, deactivates the cron,
@@ -88,12 +91,14 @@ USAGE
 # --yes may appear anywhere after the subcommand; strip it and remember it.
 CONFIRMED=0
 SWITCH_OFF_CONFIRMED=0
+MONITOR_CONFIRMED=0
 ARGS=()
 SUB="${1:-}"; shift || usage
 for a in "$@"; do
   case "$a" in
     --yes)                   CONFIRMED=1 ;;
     --switch-off-confirmed)  SWITCH_OFF_CONFIRMED=1 ;;
+    --monitor-confirmed)     MONITOR_CONFIRMED=1 ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
@@ -200,6 +205,15 @@ case "$SUB" in
     # left a sent group and an accepted attempt behind, a NEW canary could fail outright (or never
     # be run at all) and `activate` would still arm, reporting a green preflight built entirely
     # from evidence that predates the thing it claims to have checked.
+    # THE PRECONDITION THIS ALSO CANNOT SEE. The external cron/uptime monitor on
+    # notif_digest_worker_liveness() is the ONLY thing that detects a worker which is never
+    # invoked — an unscheduled or disabled job, a missing Vault secret, a paused project all
+    # produce silence, and the in-worker Slack alert needs the worker to run. It lives outside
+    # this database entirely, so nothing here can verify it; the docs called it a precondition
+    # while the runbook walked straight past it. The operator asserts it, exactly as they assert
+    # the edge kill switch.
+    [[ "$MONITOR_CONFIRMED" == "1" ]] || die \
+      "activate requires --monitor-confirmed: wire the EXTERNAL cron/uptime monitor on public.notif_digest_worker_liveness() FIRST and verify it alerts on a stale last_success_at (this script cannot see anything outside the database, and it is the only detector for a worker that is never invoked)"
     run_id="$(require_run_id "${ARGS[1]:-}" "arming the digest cron")"
     # ONE ARTIFACT, ONE TRANSACTION. activate.sql locks the job row, runs every assertion against
     # the LOCKED row, arms that exact jobid, and asserts the postcondition — all before it commits.

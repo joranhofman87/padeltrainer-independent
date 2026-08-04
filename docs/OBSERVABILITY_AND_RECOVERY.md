@@ -100,7 +100,10 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
   is indistinguishable from health. This is what an EXTERNAL cron/uptime monitor reads instead.
 - `last_success_at` is about a run that **succeeded**, not one that started: a worker invoked on
   schedule that fails every time is exactly as undelivered as one never invoked.
-- **Wiring the external monitor is an owner action and a precondition for arming the cron.**
+- **Wiring the external monitor is an owner action and a precondition for arming the cron — and it
+  is ENFORCED, not merely written down.** `activate` refuses without `--monitor-confirmed`, exactly
+  as `rollback` refuses without `--switch-off-confirmed`. Neither can be checked from SQL, so the
+  operator asserts each explicitly rather than the script pretending it verified one.
 
 ### Enabling / rolling back the digest (10c-b Release Units 2 and 3)
 - `scripts/rollout/notif-10cb/` — individually gated operator subcommands (`status`, `preflight`,

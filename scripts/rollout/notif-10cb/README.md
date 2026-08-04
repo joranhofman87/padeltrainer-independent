@@ -16,8 +16,9 @@ of the mutating subcommands is an owner decision made from the runbook, not by a
 | 3 | *(owner)* enable the send switch | — |
 | 4 | `canary --yes <url> <run_id>` | Reconciles the **actual** run id the canary invocation returned. Cron still inactive. |
 | 5 | `preflight <url> <run_id>` | Read-only **dry run** of the whole activation gate. Arms nothing. |
-| 5 | `activate --yes <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
-| 6 | `rollback --yes <url>` | Engine off **and** cron inactive, then proves both. |
+| 5b | *(owner)* wire the EXTERNAL monitor | Point cron/uptime monitoring at `public.notif_digest_worker_liveness()` and verify it alerts on a stale `last_success_at`. |
+| 6 | `activate --yes --monitor-confirmed <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
+| 7 | `rollback --yes <url>` | Engine off **and** cron inactive, then proves both. |
 
 **Arming the cron before enabling the switch would schedule a worker that finds nothing to do and
 reports healthy** — a green light over an engine that is still off. The preflight refuses that, and
@@ -82,6 +83,21 @@ wrong thing entirely. A value like `dbname=postgresql://postgres.<expected>@<exp
 host=<other> dbname=postgres` splits at the first `://` into an authority naming the expected
 project, passes every check, and is then handed to psql, which connects to `<other>`. So the string
 must start with `postgresql://` or `postgres://` and contain no whitespace or control characters.
+
+## Two preconditions this tooling CANNOT see, and therefore refuses to assume
+
+Both live outside the database, so no SQL here can check either. The operator asserts each with an
+explicit flag, and `activate`/`rollback` refuse without it — the alternative is a script that says
+it verified something it never looked at.
+
+* **`DIGEST_SEND_ENABLED`** is an env var on the edge function, and it is the worker's real kill
+  switch. `--switch-off-confirmed` on `smoke-disabled` and `rollback`.
+* **The external cron/uptime monitor** on `notif_digest_worker_liveness()` is the only detector for
+  a worker that is never invoked — an unscheduled or disabled job, a missing Vault secret, a paused
+  project all produce silence, and the in-worker Slack alert needs the worker to run in order to
+  fire. `--monitor-confirmed` on `activate`. Wire it and verify it alerts on a stale
+  `last_success_at` BEFORE arming, not after: the whole point is that it is watching the first
+  ticks.
 
 ## Two rules that are asserted, not merely written down
 

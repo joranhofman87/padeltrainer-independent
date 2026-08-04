@@ -79,18 +79,26 @@ run "canary REFUSES without --yes" 1 -- canary "$URL" "11111111-1111-4111-8111-1
 
 # Activation is bound to ONE canary run. Without the run id the preflight fell back to "some
 # dispatch run succeeded at some point", which any earlier rollout satisfies permanently.
-run "activate REFUSES without a canary run id" 1 -- activate --yes "$URL"
+run "activate REFUSES without a canary run id" 1 -- activate --yes --monitor-confirmed "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
-run "activate REFUSES a non-uuid run id" 1 -- activate --yes "$URL" "the-last-one-worked"
-run "activate REFUSES a uuid-length string of dashes" 1 -- activate --yes "$URL" "------------------------------------"
+run "activate REFUSES a non-uuid run id" 1 -- activate --yes --monitor-confirmed "$URL" "the-last-one-worked"
+run "activate REFUSES a uuid-length string of dashes" 1 -- activate --yes --monitor-confirmed "$URL" "------------------------------------"
 
 # The identity guard: a correct command against the WRONG project must not run.
-run "activate REFUSES a url belonging to another project" 1 -- activate --yes "$OTHER_URL"
+run "activate REFUSES a url belonging to another project" 1 -- activate --yes --monitor-confirmed "$OTHER_URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
 
 # ── what the mutating steps actually do ───────────────────────────────────────
 RUN_ID="11111111-1111-4111-8111-111111111111"
-run "activate verifies and arms in ONE artifact" 0 -- activate --yes "$URL" "$RUN_ID"
+
+# The EXTERNAL monitor is the only detector for a worker that is never invoked, and it lives
+# outside this database — so, like the edge kill switch, the operator asserts it. The docs called
+# it a precondition while the runbook walked straight past it.
+run "activate REFUSES until the external monitor is confirmed" 1 -- activate --yes "$URL" "$RUN_ID"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
+grep -qF 'monitor-confirmed' "$TMP/out" && ok "...and says how to satisfy it" || bad "...and says how to satisfy it"
+
+run "activate verifies and arms in ONE artifact" 0 -- activate --yes --monitor-confirmed "$URL" "$RUN_ID"
 logged "run_id=$RUN_ID" && ok "activate passes the canary run id INTO the gate" \
   || { bad "activate passes the canary run id INTO the gate"; cat "$PSQL_LOG"; }
 logged 'activate.sql' && ok "activate runs the transactional activate.sql" || bad "activate runs the transactional activate.sql"
@@ -138,7 +146,7 @@ else bad "rollback switches the engine off BEFORE the cron"; fi
 # proved the arm command was actually downstream of it rather than merely printed before it.
 export PSQL_LOG="$TMP/log.preflight_fail"; : > "$PSQL_LOG"
 set +e
-STUB_FAIL_ON=activate.sql EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes "$URL" "$RUN_ID" >"$TMP/out" 2>&1
+STUB_FAIL_ON=activate.sql EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes --monitor-confirmed "$URL" "$RUN_ID" >"$TMP/out" 2>&1
 pf_rc=$?
 set -e
 [[ "$pf_rc" != "0" ]] && ok "a failing preflight fails the activate subcommand (rc=$pf_rc)" \
