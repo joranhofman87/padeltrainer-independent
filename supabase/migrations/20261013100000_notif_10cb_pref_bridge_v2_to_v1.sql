@@ -120,40 +120,61 @@ COMMENT ON FUNCTION public.notif_pref_bridge_hop_active() IS
 -- platform-supplied, and every value is a genuine choice.
 CREATE OR REPLACE FUNCTION public.notif_pref_open_slots_incidental_values()
 RETURNS text[]
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SET search_path = pg_catalog
 AS $fn$
-  SELECT ARRAY(
-    SELECT v FROM (
-      SELECT (SELECT t.default_email_frequency
-                FROM public.notification_event_types t
-               WHERE t.key = 'open_slots_player') AS v
-      UNION
-      SELECT (SELECT (pg_catalog.regexp_match(
-                        pg_catalog.pg_get_expr(d.adbin, d.adrelid), $re$^'([a-z]+)'$re$))[1]
-                FROM pg_catalog.pg_attrdef d
-                JOIN pg_catalog.pg_attribute a
-                  ON a.attrelid = d.adrelid AND a.attnum = d.adnum
-               WHERE d.adrelid = 'public.notification_preferences_v2'::pg_catalog.regclass
-                 AND a.attname = 'email_frequency')
-    ) s
-    WHERE v IS NOT NULL
-      -- 'off' is NEVER incidental, whatever the defaults happen to be.
+DECLARE
+  v_out  text[] := ARRAY[]::text[];
+  v_cat  text;
+  v_expr text;
+  v_col  text;
+BEGIN
+  SELECT t.default_email_frequency INTO v_cat
+    FROM public.notification_event_types t
+   WHERE t.key = 'open_slots_player';
+  IF v_cat IS NOT NULL THEN
+    v_out := v_out OPERATOR(pg_catalog.||) v_cat;
+  END IF;
+
+  SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid) INTO v_expr
+    FROM pg_catalog.pg_attrdef d
+    JOIN pg_catalog.pg_attribute a
+      ON a.attrelid = d.adrelid AND a.attnum = d.adnum
+   WHERE d.adrelid = 'public.notification_preferences_v2'::pg_catalog.regclass
+     AND a.attname = 'email_frequency';
+
+  IF v_expr IS NOT NULL THEN
+    -- `pg_get_expr` renders a plain literal default as `'instant'::text`, so the pattern is
+    -- anchored at the START only and the cast is allowed to trail.
+    v_col := (pg_catalog.regexp_match(v_expr, $re$^'([a-z]+)'$re$))[1];
+    IF v_col IS NULL THEN
+      -- A DEFAULT EXISTS BUT IS NOT A PLAIN LITERAL — e.g. `lower('INSTANT'::text)`, which is a
+      -- perfectly valid default this parser cannot read. Returning what we have would FAIL OPEN:
+      -- the real incidental value would be missing from the set, so a partial insert carrying it
+      -- would be read as an explicit choice and could overwrite a legacy opt-out.
       --
-      -- Not because it cannot currently BE a default — it can: both CHECK constraints permit it,
-      -- and a future catalog edit could set default_email_frequency = 'off'. The reason is that the
-      -- rule's whole purpose is asymmetric. Seeding-only exists to stop an unchosen value from
-      -- RESUMING mail; suppressing mail is safe whether the user chose it or inherited it. Leaving
-      -- 'off' in the set would invert that: the day the catalog default became 'off', an explicit
-      -- opt-out would stop overwriting a legacy 'instant' and the legacy reader would keep mailing
-      -- someone who had just opted out — the exact failure this file was written to prevent,
-      -- reintroduced by a one-word change somewhere else.
-      --
-      -- So the guarantee "an opt-out ALWAYS applies" is made structural here rather than left as an
-      -- observation about today's configuration.
-      AND v <> 'off')
-$fn$;
+      -- So an unreadable default degrades to the most conservative set instead: every cadence
+      -- except 'off'. Arrivals then only ever SEED, which costs cadence fidelity and never costs
+      -- consent. This is the same posture a retarget takes, and for the same reason — the value's
+      -- provenance cannot be established.
+      RETURN ARRAY['instant','daily','weekly'];
+    END IF;
+    v_out := v_out OPERATOR(pg_catalog.||) v_col;
+  END IF;
+
+  -- 'off' is NEVER incidental, whatever the defaults happen to be.
+  --
+  -- Not because it cannot BE a default — it can: both CHECK constraints permit it, and a catalog
+  -- edit could set default_email_frequency = 'off'. The reason is that the rule is asymmetric.
+  -- Seeding-only exists to stop an unchosen value from RESUMING mail; suppressing mail is safe
+  -- whether the user chose it or inherited it. Leaving 'off' in the set would invert that: the day
+  -- the catalog default became 'off', an explicit opt-out would stop overwriting a legacy
+  -- 'instant' and the legacy reader would keep mailing someone who had just opted out.
+  --
+  -- So "an opt-out always applies" is structural here, not an observation about today's config.
+  RETURN ARRAY(SELECT DISTINCT x FROM unnest(v_out) AS x WHERE x <> 'off');
+END $fn$;
 
 COMMENT ON FUNCTION public.notif_pref_open_slots_incidental_values() IS
   'The open_slots_player email cadences the platform can supply on its own: the catalog default (via the settings page effective() fallback) and the notification_preferences_v2.email_frequency COLUMN default (via a partial insert through the table API) — MINUS ''off'', which is excluded unconditionally so that an opt-out applies whatever the defaults happen to be. The reverse bridge only SEEDS this set on ARRIVAL (an INSERT, or an UPDATE that moves a row onto this user+event), so an incidental value can never overwrite an explicit legacy opt-out. A retarget also carries the DEPARTING event''s catalog default into the test, because whether a value was chosen is a fact about where it came from. Derived, not hard-coded. Retire with the bridge.';
@@ -343,8 +364,7 @@ RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
 AS $$
 DECLARE
-  v_incidental   text[];
-  v_prev_default text;
+  v_incidental text[];
 BEGIN
   -- RECURSION GUARD, as above.
   IF public.notif_pref_bridge_hop_active() THEN RETURN NEW; END IF;
@@ -391,25 +411,23 @@ BEGIN
   -- by value against the platform-suppliable defaults (header, §1b).
   v_incidental := public.notif_pref_open_slots_incidental_values();
 
-  -- A RETARGET ARRIVES CARRYING THE OTHER EVENT'S HISTORY, so this event's incidental set is not
-  -- the whole universe of values the platform could have supplied for it.
+  -- A RETARGET CARRIES A VALUE WHOSE PROVENANCE CANNOT BE ESTABLISHED, so it gets the most
+  -- conservative set: everything except 'off'.
   --
-  -- Concretely: a WhatsApp-only first save on some event whose catalog default is 'daily' stores
-  -- email='daily' without the user ever choosing it. Retarget that row onto open_slots_player and
-  -- 'daily' is not in {instant, weekly} — so it would be read as an explicit choice and would
-  -- overwrite a legacy 'off', resuming mail after an opt-out. Whether a value was CHOSEN is a fact
-  -- about where it came from, so the departing event's default has to be carried into the test.
+  -- The first attempt carried the DEPARTING event's catalog default into the test. That is better
+  -- than ignoring it, and still wrong, because it reads the default as it is NOW: a value stored
+  -- when that event's default was 'daily' looks explicit once the default has been changed to
+  -- 'instant'. There is no provenance column to reconstruct the historical default from, and the
+  -- same hole exists if the v2 COLUMN default moves after a partial row is created.
   --
-  -- 'off' stays applying whatever the other event's default is, for the same reason as §1b.
+  -- So the bridge stops guessing. Retargeting a row is not a statement about THIS event's email
+  -- cadence — the user moved a row — so nothing it carries is treated as a choice. 'off' is the
+  -- one exception, and it needs no provenance: applying it SUPPRESSES mail, which is safe whatever
+  -- its origin. Everything else only ever SEEDS, so it can create a legacy row but never overwrite
+  -- one. The cost is cadence fidelity on a path no UI can reach; the alternative is a consent bug
+  -- that depends on when an admin last edited a catalog row.
   IF TG_OP = 'UPDATE' THEN
-    SELECT t.default_email_frequency INTO v_prev_default
-      FROM public.notification_event_types t
-     WHERE t.key = OLD.event_type;
-    IF v_prev_default IS NOT NULL
-       AND v_prev_default <> 'off'
-       AND NOT (v_prev_default = ANY (v_incidental)) THEN
-      v_incidental := v_incidental OPERATOR(pg_catalog.||) v_prev_default;
-    END IF;
+    v_incidental := ARRAY['instant','daily','weekly'];
   END IF;
 
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
@@ -487,20 +505,27 @@ BEGIN
   IF public.notif_pref_bridge_hop_active() THEN RETURN NULL; END IF;
   IF OLD.user_id IS NULL THEN RETURN NULL; END IF;
 
-  -- The departing value is an opt-out: leave the legacy reader suppressed.
-  IF OLD.email_frequency = 'off' THEN RETURN NULL; END IF;
-
   SELECT t.default_email_frequency INTO v_default
     FROM public.notification_event_types t
    WHERE t.key = 'open_slots_player';
-  IF v_default IS NULL OR v_default NOT IN ('instant','daily','weekly') THEN RETURN NULL; END IF;
+  IF v_default IS NULL OR v_default NOT IN ('off','instant','daily','weekly') THEN RETURN NULL; END IF;
+
+  -- THE REFUSALS ARE ABOUT SUPPRESSION, NOT ABOUT 'off' AS A TOKEN. An earlier version refused
+  -- whenever the departing value was 'off', and separately refused to write anything but
+  -- instant/daily/weekly. Both were too blunt: if the CATALOG DEFAULT is itself 'off', then moving
+  -- the legacy column to it SUPPRESSES mail, which is always safe and is what v2 now resolves to.
+  -- Refusing there left v1 sending while v2 said 'off' — the divergence in the unsafe direction.
+  --
+  -- So the rule is: a departure may never make the legacy reader send MORE than it does now.
+  IF OLD.email_frequency = 'off' AND v_default <> 'off' THEN RETURN NULL; END IF;
 
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
   UPDATE public.notification_preferences
      SET open_slots_digest = v_default
    WHERE user_id = OLD.user_id
      AND open_slots_digest IS DISTINCT FROM v_default
-     AND open_slots_digest <> 'off';   -- never overwrite a legacy opt-out
+     -- never UN-suppress a legacy opt-out; moving one 'off' to another is a no-op anyway
+     AND (v_default = 'off' OR open_slots_digest <> 'off');
   PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
   RETURN NULL;
 END $$;

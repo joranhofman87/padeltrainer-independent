@@ -895,7 +895,21 @@ default. On the v2 side the platform can supply an unchosen `email_frequency` tw
    `email_frequency` at all.
 
 `notif_pref_open_slots_incidental_values()` derives both (never hard-coded, or the rule would
-silently invert the day a default moved) and the reverse INSERT only ever SEEDS a value in that set.
+silently invert the day a default moved) and a reverse ARRIVAL only ever SEEDS a value in that set.
+
+Two refinements the review forced, both about **provenance**, and both resolved the same way — when
+you cannot prove a value was chosen, seed rather than apply:
+
+* **A RETARGET carries no reconstructable provenance at all.** Moving a row onto this event brings a
+  value stored under another event's default; reading that default *as it is now* is wrong, because
+  an admin may have changed it since. There is no provenance column to reconstruct it from. So a
+  retarget treats **everything except `off`** as incidental. `off` needs no provenance: applying it
+  suppresses mail, which is safe whatever its origin.
+* **An UNPARSEABLE column default fails SAFE.** `pg_get_expr` renders a literal default as
+  `'instant'::text`, which the extractor reads; a valid non-literal default such as
+  `lower('INSTANT'::text)` it cannot. Returning only what parsed would fail OPEN — the real
+  incidental value would be missing, so a partial insert carrying it would read as explicit. An
+  unreadable default therefore degrades to the same conservative set.
 Which arm is live matters and the first draft of this got backwards: `open_slots_player` ships
 `supports_whatsapp = false` and the page renders the WhatsApp switch only where supported, so **the
 catalog arm is currently unreachable and the column arm is the live one**. The catalog arm is kept
@@ -904,6 +918,17 @@ because Stage 8 turns WhatsApp on. A plain CHANGE to a row already at this (user
 is always an explicit email choice. `off` is excluded from the incidental set **unconditionally** —
 not because it happens not to be a default today, but because suppressing mail is safe whether it
 was chosen or inherited, so an opt-out always applies. That is the case the contract actually names.
+
+**Departures mirror too, but never at the cost of an opt-out.** Losing the v2 row (DELETE, retarget
+away, or reassignment to another user — all reachable through the granted table API, none through
+the UI) makes the effective v2 preference the catalog default while v1 keeps the departed value. The
+first draft declined to mirror that at all, arguing any mirror could resume mail; the premise was
+right and the conclusion too strong. The rule is now stated as suppression, not as a token: **a
+departure may never make the legacy reader send MORE than it does now.** So it refuses when the
+departing value is `off` and the target is not, and never un-suppresses a legacy `off` — but when the
+catalog default is *itself* `off` it applies, because that suppresses. UPDATE-only, never INSERT, so
+account teardown stays a no-op: `delete-user-data` removes v1 explicitly and v2 cascades from
+`auth.users`, after which the mirror matches nothing.
 
 **Existing state is reconciled, not only future writes.** A trigger sees nothing that already
 happened, so the migration ends with one bounded, idempotent reverse reconcile using the trigger's

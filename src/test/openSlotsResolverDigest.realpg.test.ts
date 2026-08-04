@@ -224,14 +224,19 @@ async function applyC() {
  * reverse mirror run here would materialise the legacy row first, and the FORWARD rule under test
  * (which turns on whether a legacy row exists) would never be reached.
  */
-async function seedV2PreJ(freq: string, u = USER) {
+async function withoutReverseMirror<T>(fn: () => Promise<T>): Promise<T> {
   await c.query(`ALTER TABLE public.notification_preferences_v2 DISABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
   try {
-    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
-                   VALUES ($1,'open_slots_player',$2)`, [u, freq]);
+    return await fn();
   } finally {
     await c.query(`ALTER TABLE public.notification_preferences_v2 ENABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
   }
+}
+
+async function seedV2PreJ(freq: string, u = USER) {
+  await withoutReverseMirror(() =>
+    c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+             VALUES ($1,'open_slots_player',$2)`, [u, freq]));
 }
 
 async function enqueue(subject: string, payload: object = {}) {
@@ -410,9 +415,19 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     await c.query(`ALTER TABLE public.notification_preferences DISABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
     await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'off')`, [USER]);
     await c.query(`ALTER TABLE public.notification_preferences ENABLE TRIGGER trg_mirror_open_slots_pref_to_v2`);
-    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
-                   VALUES ($1,'open_slots_player','daily')
-                   ON CONFLICT (user_id, event_type) DO UPDATE SET email_frequency='daily'`, [USER]);
+    // ...and the v2 choice is made with the REVERSE mirror disabled too. Otherwise it writes
+    // straight back into v1, replacing the legacy 'off' this test exists to conflict with — the
+    // backfill would then face no conflict at all and mutating its ON CONFLICT DO NOTHING into an
+    // overwrite would leave this assertion green.
+    await withoutReverseMirror(() =>
+      c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+               VALUES ($1,'open_slots_player','daily')
+               ON CONFLICT (user_id, event_type) DO UPDATE SET email_frequency='daily'`, [USER]));
+    expect(
+      (await c.query(`SELECT open_slots_digest FROM public.notification_preferences WHERE user_id=$1`, [USER]))
+        .rows[0].open_slots_digest,
+      'precondition: the legacy row must still disagree when the backfill runs',
+    ).toBe('off');
     await applyC();
     const { rows } = await c.query(
       `SELECT email_frequency FROM public.notification_preferences_v2 WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
@@ -428,8 +443,16 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     expect((await c.query(
       `SELECT email_frequency FROM public.notification_preferences_v2 WHERE user_id=$1 AND event_type='open_slots_player'`,
       [USER])).rows[0].email_frequency, 'the backfill, not the bridge, put this row here').toBe('weekly');
-    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='off'
-                    WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);
+    // Reverse mirror off: otherwise this write also moves v1 to 'off', and the rerun then has
+    // nothing to drift FROM — an overwriting backfill would still leave 'off' behind.
+    await withoutReverseMirror(() =>
+      c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='off'
+                WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]));
+    expect(
+      (await c.query(`SELECT open_slots_digest FROM public.notification_preferences WHERE user_id=$1`, [USER]))
+        .rows[0].open_slots_digest,
+      'precondition: the legacy row must still say weekly, so a drifting rerun would show',
+    ).toBe('weekly');
     await applyC();   // rerun
     const { rows } = await c.query(
       `SELECT email_frequency FROM public.notification_preferences_v2 WHERE user_id=$1 AND event_type='open_slots_player'`, [USER]);

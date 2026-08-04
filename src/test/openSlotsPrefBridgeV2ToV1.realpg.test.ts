@@ -343,7 +343,7 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     } finally { await applyBridge(); }
   });
 
-  it('a RETARGET carrying the DEPARTING event\'s default is incidental, not a choice', async () => {
+  it('a RETARGET carrying anything but an opt-out is treated as incidental', async () => {
     // The hole the retarget fix opened: a WhatsApp-only first save on an event whose catalog
     // default is 'daily' stores email='daily' without the user choosing it. Retargeted onto
     // open_slots_player, 'daily' is not in THIS event's incidental set {instant, weekly} — so
@@ -366,12 +366,12 @@ describe('J — the reverse bridge closes the deploy-window gap', () => {
     }
   });
 
-  it('MUTANT: the departing event\'s default not carried — the retarget resumes mail after an opt-out', async () => {
+  it('MUTANT: the retarget provenance rule removed — the retarget resumes mail after an opt-out', async () => {
     const ANCHOR = `  IF TG_OP = 'UPDATE' THEN
-    SELECT t.default_email_frequency INTO v_prev_default`;
+    v_incidental := ARRAY['instant','daily','weekly'];
+  END IF;`;
     expect(BRIDGE_SQL).toContain(ANCHOR);
-    const mutated = BRIDGE_SQL.replace(ANCHOR, `  IF false THEN
-    SELECT t.default_email_frequency INTO v_prev_default`);
+    const mutated = BRIDGE_SQL.replace(ANCHOR, `  -- retarget provenance rule removed by mutation pin`);
     expect(mutated).not.toBe(BRIDGE_SQL);
     await c.query(`UPDATE public.notification_event_types SET default_email_frequency='daily'
                     WHERE key=$1`, [OTHER_EVENT]);
@@ -475,6 +475,29 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
       .toEqual([...new Set([catalogDefault, col])].filter((v) => v !== 'off').sort());
   });
 
+  it('an UNPARSEABLE column default fails SAFE: everything but the opt-out becomes incidental', async () => {
+    // `lower('INSTANT'::text)` is a perfectly valid column default that the literal parser cannot
+    // read. Returning only the catalog default there would FAIL OPEN — the real incidental value
+    // would be missing from the set, so a partial insert carrying it would read as an explicit
+    // choice and could overwrite a legacy opt-out.
+    await c.query(`ALTER TABLE public.notification_preferences_v2
+                     ALTER COLUMN email_frequency SET DEFAULT lower('INSTANT'::text)`);
+    try {
+      const set = (await c.query(`SELECT public.notif_pref_open_slots_incidental_values() v`)).rows[0].v;
+      expect([...set].sort()).toEqual(['daily', 'instant', 'weekly']);
+
+      await seedV1('off');
+      await clearV2NoMirror();
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type)
+                     VALUES ($1,'open_slots_player')`, [USER]);
+      expect(await v1Of(), 'an unreadable default must not let an incidental value overwrite an opt-out')
+        .toBe('off');
+    } finally {
+      await c.query(`ALTER TABLE public.notification_preferences_v2
+                       ALTER COLUMN email_frequency SET DEFAULT 'instant'`);
+    }
+  });
+
   it("an opt-out applies EVEN IF 'off' becomes a default — the guarantee is structural", async () => {
     // Without the explicit exclusion in notif_pref_open_slots_incidental_values(), a one-word
     // change to the catalog would make 'off' "incidental", the seed-only path would leave a legacy
@@ -496,9 +519,9 @@ describe('J — the INSERT ambiguity rule, and why it is not symmetric with the 
   });
 
   it("MUTANT: the 'off' exclusion removed — an opt-out stops applying once it is the default", async () => {
-    const ANCHOR = `      AND v <> 'off')`;
+    const ANCHOR = `WHERE x <> 'off'`;
     expect(BRIDGE_SQL).toContain(ANCHOR);
-    const mutated = BRIDGE_SQL.replace(ANCHOR, `      )`);
+    const mutated = BRIDGE_SQL.replace(ANCHOR, ``);
     expect(mutated).not.toBe(BRIDGE_SQL);
     try {
       await applyBridge(mutated);
@@ -684,6 +707,50 @@ describe('J — departures: losing the v2 row, without ever trading away an opt-
     expect(await v1Of()).toBe(catalogDefault);
   });
 
+  it("a departure DOES apply when the catalog default is itself 'off' — it suppresses", async () => {
+    // The refusals are about SUPPRESSION, not about the token 'off'. An earlier version refused to
+    // write anything but instant/daily/weekly, so with a catalog default of 'off' the legacy reader
+    // kept sending while v2 resolved to 'off' — divergence in the unsafe direction.
+    await c.query(`UPDATE public.notification_event_types SET default_email_frequency='off'
+                    WHERE key='open_slots_player'`);
+    try {
+      await saveV2('daily');
+      expect(await v1Of()).toBe('daily');
+      await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id=$1`, [USER]);
+      expect(await v1Of(), 'v2 now resolves to off, so the legacy reader must too').toBe('off');
+    } finally {
+      await c.query(`UPDATE public.notification_event_types SET default_email_frequency=$1
+                      WHERE key='open_slots_player'`, [catalogDefault]);
+    }
+  });
+
+  it('reassigning a row AWAY is a departure for the ORIGINAL user', async () => {
+    // The other half of the user_id arm. The arrival test uses 'off', for which a departure
+    // deliberately does nothing — so without this, removing `OR NEW.user_id IS DISTINCT FROM
+    // OLD.user_id` from the departure trigger would leave every test green.
+    await saveV2('daily', 'off', USER);
+    expect(await v1Of(USER)).toBe('daily');
+    await c.query(`DELETE FROM public.notification_preferences WHERE user_id=$1`, [USER2]);
+    await c.query(`UPDATE public.notification_preferences_v2 SET user_id=$1 WHERE user_id=$2`, [USER2, USER]);
+    expect(await v1Of(USER), 'the original user lost their preference: v1 follows the catalog default')
+      .toBe(catalogDefault);
+  });
+
+  it('MUTANT: the user_id arm removed from the departure trigger — the original user is stranded', async () => {
+    const ANCHOR = `             OR NEW.user_id IS DISTINCT FROM OLD.user_id))`;
+    expect(BRIDGE_SQL).toContain(ANCHOR);
+    const mutated = BRIDGE_SQL.replace(ANCHOR, `             ))`);
+    expect(mutated).not.toBe(BRIDGE_SQL);
+    try {
+      await applyBridge(mutated);
+      await saveV2('daily', 'off', USER);
+      await c.query(`DELETE FROM public.notification_preferences WHERE user_id=$1`, [USER2]);
+      await c.query(`UPDATE public.notification_preferences_v2 SET user_id=$1 WHERE user_id=$2`, [USER2, USER]);
+      expect(await v1Of(USER), 'the forbidden outcome: v1 keeps sending for a user with no preference')
+        .toBe('daily');
+    } finally { await applyBridge(); }
+  });
+
   it('a departure never CREATES a legacy row — account teardown stays a no-op', async () => {
     await saveV2('daily');
     await c.query(`DELETE FROM public.notification_preferences WHERE user_id=$1`, [USER]); // v1 gone first
@@ -703,8 +770,8 @@ describe('J — departures: losing the v2 row, without ever trading away an opt-
     // BOTH off-guards, because they are deliberately redundant and each masks the other: the
     // departing value is 'off' AND the legacy column is 'off', so removing either alone leaves the
     // other still refusing. The positive control below proves that is the reason.
-    const A1 = `  IF OLD.email_frequency = 'off' THEN RETURN NULL; END IF;`;
-    const A2 = `     AND open_slots_digest <> 'off';   -- never overwrite a legacy opt-out`;
+    const A1 = `  IF OLD.email_frequency = 'off' AND v_default <> 'off' THEN RETURN NULL; END IF;`;
+    const A2 = `     AND (v_default = 'off' OR open_slots_digest <> 'off');`;
     expect(BRIDGE_SQL).toContain(A1);
     expect(BRIDGE_SQL).toContain(A2);
     const mutated = BRIDGE_SQL.replace(A1, `  -- off-guard removed by mutation pin`).replace(A2, `     ;`);
@@ -719,7 +786,7 @@ describe('J — departures: losing the v2 row, without ever trading away an opt-
   });
 
   it('POSITIVE CONTROL: removing only the legacy-side off-guard still refuses', async () => {
-    const A2 = `     AND open_slots_digest <> 'off';   -- never overwrite a legacy opt-out`;
+    const A2 = `     AND (v_default = 'off' OR open_slots_digest <> 'off');`;
     expect(BRIDGE_SQL).toContain(A2);
     try {
       await applyBridge(BRIDGE_SQL.replace(A2, `     ;`));

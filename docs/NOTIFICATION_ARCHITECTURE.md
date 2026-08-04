@@ -762,7 +762,11 @@ platform-suppliable values (`notif_pref_open_slots_incidental_values()` = the ca
 the v2 column default, derived rather than hard-coded — **minus `off`, excluded unconditionally**).
 So an opt-out always applies, whatever the defaults happen to be. Neither mirrors WhatsApp or push; there is no v1 counterpart. The reverse direction also
 ships a bounded, idempotent one-time reconcile, because a trigger cannot see rows that already
-exist.
+exist — and a **departure** half, so losing the v2 row (delete, retarget away, reassignment) moves
+the legacy column to the catalog default rather than leaving it stale. Departures never un-suppress:
+they refuse when the departing value is `off` and the target is not, and never overwrite a legacy
+`off`. Where provenance cannot be established — a retarget, or a column default the literal parser
+cannot read — the bridge seeds instead of applying.
 
 Retirement: `legacySendEmailInventory.test.ts` goes red when `send-email` stops mapping
 `new_availability`/`slot_reopened` onto `open_slots_digest`. That is **condition 1 of 4, not a
