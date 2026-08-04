@@ -47,4 +47,12 @@ SELECT format('CANARY_RESPONSE_ERROR=%s',
 UNION ALL
 SELECT format('CANARY_RESPONSE_BODY=%s',
               coalesce(nullif(regexp_replace(content, '[\r\n]+', ' ', 'g'), ''), 'none'))
+  FROM net._http_response WHERE id = :'request_id'::bigint
+UNION ALL
+-- THE DISABLED ANSWER, COMPARED HERE RATHER THAN IN THE SHELL. The caller used to `grep -qF` the
+-- body marker, so `{"status":"disabled","reason":"disabled"}garbage` passed — and the raw row above
+-- prints the body a second time, giving a matching substring two places to hide. An exact `=` in SQL
+-- has neither problem, and the caller only has to find exactly one `true`.
+SELECT format('CANARY_RESPONSE_IS_DISABLED=%s',
+              (content = '{"status":"disabled","reason":"disabled"}'))
   FROM net._http_response WHERE id = :'request_id'::bigint;

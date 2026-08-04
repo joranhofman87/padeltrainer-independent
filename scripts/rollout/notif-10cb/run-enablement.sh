@@ -9,7 +9,7 @@
 #
 # THE SEQUENCE, and why it is this way round (ADR 0008 runbook step 5):
 #   1. status              — read the world. Safe, always.
-#   2. smoke-disabled --switch-off-confirmed
+#   2. smoke-disabled --yes --switch-off-confirmed
 #                          — invoke through the REAL Vault/pg_net path while the
 #                            switch is OFF, by executing the reviewed job's own
 #                            stored command. Answers exactly
@@ -95,7 +95,7 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
   preflight <db_url> <run_id>     read-only DRY RUN of the activation gate — every assertion,
                                   nothing armed. Not the gate itself: `activate` re-checks under a
                                   row lock in the same transaction as the arm
-  smoke-disabled --switch-off-confirmed <db_url>
+  smoke-disabled --yes --switch-off-confirmed <db_url>
                                   INVOKES the worker while the switch is off, by running the cron
                                   job's OWN reviewed command — the same guarded path as the canary,
                                   because that statement carries a Vault-decrypted bearer whether or
@@ -296,6 +296,21 @@ run_sql_capture() {   # $1 = outfile, $2 = url, $3 = artifact, $@ = extra psql a
 # The value ERE is PARENTHESISED here rather than at each call site. `|` binds loosest in an ERE, so
 # `NAME=[0-9]+|none` is `(NAME=[0-9]+)` OR `(none)` — which matched the bare word `none` on a
 # neighbouring marker line and returned two values for one marker.
+# A FAILED INVOKE IS NOT AUTOMATICALLY A ROLLED-BACK ONE, and reporting it as one invites a retry
+# that sends twice. Both invoke artifacts print a PROVISIONAL request id inside the transaction and
+# the real marker after COMMIT. So there are three cases, and only the first is safe to retry:
+#   * no provisional marker  → the transaction never reached its end; nothing was queued.
+#   * provisional but no final marker → the request may be committed and on its way. UNKNOWN.
+#   * both → the caller never gets here.
+report_failed_invoke() {   # $1 = captured output, $2 = what failed, for the message
+  local out="$1" what="$2" prov
+  prov="$(marker_values "$out" CANARY_REQUEST_PROVISIONAL '[0-9]+')"
+  case "$prov" in
+    ''|*[!0-9]*) die "$what was REFUSED before it queued anything — the transaction rolled back, so nothing was sent. Read the failed assertion above" ;;
+  esac
+  die "$what FAILED AFTER queueing pg_net request ${prov}. Whether that request was committed and dispatched is UNKNOWN — do NOT simply retry, which would send twice. Read net._http_response for id ${prov} and notification_worker_runs first"
+}
+
 # pg_net is asynchronous: the reply arrives after the invoking transaction commits, so this polls
 # rather than pretends. BOUNDED — an unanswered request must fail the subcommand, not hang a terminal
 # in front of an operator who has just triggered a credential-bearing request. Shared by the disabled
@@ -375,6 +390,12 @@ case "$SUB" in
     # statement posts a Vault-decrypted service_role bearer, so a mistyped ref sends it to another
     # project and a hostile `public.jsonb_build_object(...)` captures it. Same exposure the canary
     # path was rebuilt to close, one step earlier in the sequence.
+    # --yes AS WELL. This subcommand used to be read-only, and the flag rule ("every step that changes
+    # anything requires --yes") did not obviously apply. It invokes now: it posts a Vault-decrypted
+    # bearer through pg_net, which is a production action whether or not mail can result.
+    # --switch-off-confirmed asserts an ENVIRONMENT FACT; it is not the owner's intent, and rollback
+    # deliberately requires both for the same reason.
+    require_confirmed "the disabled smoke (it invokes the worker through the real Vault/pg_net path)"
     url="$(db_url)"
     CANARY_TMP="$(mktemp -d)"
     # shellcheck disable=SC2064  # expand now: it must be removed even if the variable is reassigned
@@ -387,7 +408,7 @@ case "$SUB" in
 
     warn "smoke-disabled INVOKES the worker. Nothing can send: the cron is inactive and no engine is enabled."
     if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql; then
-      die "the disabled smoke was REFUSED — the transaction rolled back, so nothing was queued. Read the failed assertion above"
+      report_failed_invoke "$CANARY_TMP/invoke.out" "the disabled smoke"
     fi
     req_id="$(marker_values "$CANARY_TMP/invoke.out" CANARY_REQUEST_ID '[0-9]+')"
     case "$req_id" in
@@ -400,22 +421,36 @@ case "$SUB" in
     [[ "$status" == "200" ]] \
       || die "the disabled smoke answered HTTP '${status:-<none>}' — it must answer 200; the response is printed above"
 
-    # EXACTLY the documented answer, not merely a 200. A worker that returned 200 with any other body
-    # has not proven the switch is off — and "the invocation must answer exactly …" was previously a
-    # sentence printed at the operator rather than a thing anyone checked.
-    grep -qF 'CANARY_RESPONSE_BODY={"status":"disabled","reason":"disabled"}' "$CANARY_TMP/response.out" \
-      || die "the disabled smoke did not answer exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} — DIGEST_SEND_ENABLED may not be off. Read the body above and do NOT continue"
-
+    # THE AFTER-CAPTURE COMES FIRST, before any verdict on the body. If the smoke DID send, that is
+    # exactly when the counter evidence matters most — and dying on the body check first threw it
+    # away, leaving the operator with a failure and no measurement of what happened.
     run_sql_capture "$after" "$url" smoke_counters.sql \
       || die "could not read the counters after the smoke"
 
-    # A DELTA, compared mechanically. Every counter must be identical across the invocation.
-    if ! diff <(grep -Eo 'SMOKE_COUNTER [a-z_]+=[0-9]+' "$before" | sort) \
-              <(grep -Eo 'SMOKE_COUNTER [a-z_]+=[0-9]+' "$after"  | sort) >"$CANARY_TMP/delta" 2>&1; then
+    # EXACTLY the documented answer, not merely a 200 — and compared in SQL, not as a substring here.
+    # `grep -qF` on the body marker passed for `{...}garbage`, and the artifact prints the raw body a
+    # second time, so a matching substring had two places to hide.
+    disabled="$(marker_values "$CANARY_TMP/response.out" CANARY_RESPONSE_IS_DISABLED '[a-z]+')"
+    [[ "$disabled" == "t" || "$disabled" == "true" ]] \
+      || die "the disabled smoke did not answer exactly the disabled body — DIGEST_SEND_ENABLED may not be off. The counters either side were captured above; read them and the body, and do NOT continue"
+
+    # A DELTA, compared mechanically — and the comparison must not be able to pass VACUOUSLY. Two
+    # empty marker streams diff clean, and a capture containing only psql's headings is still a
+    # non-empty file, so "is the capture non-empty" was not the check it looked like. Every expected
+    # marker must be present exactly once in BOTH captures before the delta means anything.
+    SMOKE_COUNTER_NAMES="circuit_state digest_attempts digest_groups group_attempts group_states orphan_state outbox_pending provider_events worker_runs"
+    for capture in "$before" "$after"; do
+      for name in $SMOKE_COUNTER_NAMES; do
+        n="$({ grep -Eco "SMOKE_COUNTER ${name}=" "$capture" || true; })"
+        [[ "$n" == "1" ]] \
+          || die "the counter capture $(basename "$capture") has ${n} lines for '${name}', expected exactly 1 — the comparison would not have meant anything"
+      done
+    done
+    if ! diff <(grep -Eo 'SMOKE_COUNTER [a-z_]+=.*' "$before" | sort) \
+              <(grep -Eo 'SMOKE_COUNTER [a-z_]+=.*' "$after"  | sort) >"$CANARY_TMP/delta" 2>&1; then
       cat "$CANARY_TMP/delta" >&2
       die "the disabled smoke MOVED a counter — it is not disabled. Stop and account for the difference above"
     fi
-    [[ -s "$before" ]] || die "the counter capture was empty — the comparison would have been vacuous"
 
     ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} and moved no counter"
     ;;
@@ -447,7 +482,7 @@ case "$SUB" in
 
     warn "canary-invoke SENDS. It runs the reviewed cron command once, with the cron still inactive."
     if ! run_sql_capture "$inv_out" "$url" canary_invoke.sql -v max_recipients="$MAX_RECIPIENTS"; then
-      die "the canary invocation was REFUSED — the transaction rolled back, so NOTHING was queued and nothing was sent. Read the failed assertion above"
+      report_failed_invoke "$inv_out" "the canary invocation"
     fi
 
     # EXACTLY ONE request id, or refuse. Guessing which of two to read would mean reporting on a

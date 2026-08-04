@@ -21,4 +21,17 @@ SELECT format('SMOKE_COUNTER %s=%s', name, value) AS smoke_marker FROM (
   SELECT 'provider_events',  count(*)::text FROM public.notification_provider_events
   UNION ALL
   SELECT 'outbox_pending',   count(*)::text FROM public.notification_outbox WHERE status = 'pending'
+  UNION ALL
+  SELECT 'group_attempts',   count(*)::text FROM public.notification_digest_group_attempts
+  UNION ALL
+  SELECT 'orphan_state',     count(*)::text FROM public.notification_orphan_reconcile_state
+  -- STATE, not just a row count: the breaker is a fixed set of rows whose STATE moves, so counting
+  -- them would never notice a trip. Same for the groups — a send changes state without changing the
+  -- count, and `worker_runs` is the sentinel that catches the invocation itself either way.
+  UNION ALL
+  SELECT 'circuit_state',    string_agg(channel || '=' || state, ',' ORDER BY channel)
+    FROM public.notification_provider_circuit
+  UNION ALL
+  SELECT 'group_states',     coalesce(string_agg(s.state || ':' || s.n::text, ',' ORDER BY s.state), '')
+    FROM (SELECT state, count(*) AS n FROM public.notification_digest_groups GROUP BY state) s
 ) c ORDER BY name;

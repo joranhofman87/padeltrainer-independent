@@ -301,6 +301,7 @@ try {
   const canaryInvoke = async (max = 1) => (await runArtifact('canary_invoke.sql', { max_recipients: max })).err ?? null;
   const scopeVerify = async (max = 1) =>
     (await runArtifact('canary_scope_verify.sql', { run_id: RUN, max_recipients: max })).err ?? null;
+  const smokeInvoke = async () => (await runArtifact('smoke_invoke.sql')).err ?? null;
 
   // A scenario mutates ONE fact and must be REFUSED. `needle` pins which
   // assertion did the refusing, so a scenario cannot pass by failing elsewhere —
@@ -967,6 +968,12 @@ try {
       ['the activation preflight', preflight],
       ['canary_verify', canaryVerify],
       ['canary_scope_verify', scopeVerify],
+      // the disabled smoke runs the same stored command and was missed by this sweep when it landed
+      ['smoke_invoke', async () => {
+        await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+        await c.query(`DELETE FROM public.notification_digest_groups WHERE terminal_at IS NULL`);
+        return smokeInvoke();
+      }],
       // ...and the one that ARMS. A hostile md5 makes the whole-command hash match any command, so
       // without this the gate that decides "this is the reviewed job" is the one gate never checked
       // under a hostile path.
@@ -1475,10 +1482,10 @@ try {
   // The disabled smoke carries the same Vault-decrypted bearer as the canary; DIGEST_SEND_ENABLED
   // stops the mail and does nothing for the credential. Its preconditions are the OPPOSITE of the
   // canary's — everything must still be inert — so they get their own scenarios.
-  const smokeInvoke = async () => (await runArtifact('smoke_invoke.sql')).err ?? null;
   const smokeRefuses = async (name, mutate, needle) => {
     await seedBaseline();
-    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false;
+                   DELETE FROM public.notification_digest_groups WHERE terminal_at IS NULL;`);
     try { await mutate(); }
     catch (e) { return rec(name, false, `the scenario's own setup failed: ${e.message}`); }
     const before = await queuedCount();
@@ -1507,6 +1514,26 @@ try {
     () => c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true
                     WHERE key = 'open_slots_player'`),
     'no event has the digest engine enabled');
+  // THE ASSERTION THAT ACTUALLY BOUNDS THE SEND. `digest_engine_enabled` gates enqueue ROUTING only —
+  // the worker never reads it, so a group left behind by an earlier attempt is claimed and sent.
+  await smokeRefuses('smoke_invoke REFUSES when a live digest group exists',
+    () => c.query(`
+      INSERT INTO public.notification_digest_groups
+        (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+         destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state)
+        VALUES (gen_random_uuid(), '{"left":1}'::jsonb, 'hash-left', 'email', 'open_slots_player',
+                'rk-left', 'fp-left', 'Europe/Amsterdam', now(), now(), 'request_ready')`),
+    'no live email digest group exists');
+
+  // ...and the work that is not a group yet: materialization forms these without ever consulting the
+  // event catalog, so an engine-off world is no protection at all.
+  await smokeRefuses('smoke_invoke REFUSES when ungrouped pending digest work exists',
+    () => c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode)
+      VALUES ('open_slots_player', 'email', gen_random_uuid(), 'idem-left', 'pending', 'digest')`),
+    'no ungrouped pending digest outbox row exists');
+
   await smokeRefuses('smoke_invoke REFUSES while the cron is ARMED',
     () => c.query(`UPDATE cron.job SET active = true`), 'still INACTIVE');
   await smokeRefuses('smoke_invoke REFUSES a job whose command has DRIFTED',

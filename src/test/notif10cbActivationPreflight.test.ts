@@ -29,6 +29,9 @@ const PREFLIGHT =
 const ACTIVATE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activate.sql');
 const DRY_RUN = read('scripts', 'rollout', 'notif-10cb', 'sql', 'activation_preflight.sql');
 const INVOKE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'canary_invoke.sql');
+// The disabled smoke runs the SAME stored command through the SAME guards, so it carries the same
+// hash pin and belongs in every scan that covers the canary's. It was added later and was missed.
+const SMOKE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'smoke_invoke.sql');
 
 /** The same normalisation the preflight applies in SQL: btrim + collapse whitespace runs. */
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -250,7 +253,7 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
   // appears in three artifacts, and a legitimate change to the F migration must fail here rather
   // than leave one of them silently pinned to a command nobody reviewed.
   it('pins every reviewed-command hash in the bundle to the migration', () => {
-    const files = { INVOKE, ACTIVATE, PREFLIGHT };
+    const files = { INVOKE, SMOKE, ACTIVATE, PREFLIGHT };
     const wanted = md5(normalize(reviewed.command));
     let found = 0;
     for (const [name, text] of Object.entries(files)) {
@@ -259,18 +262,32 @@ describe('I — canary_invoke executes the reviewed command rather than transcri
         found++;
       }
     }
-    expect(found, 'no reviewed-command hash is pinned anywhere').toBeGreaterThanOrEqual(3);
+    expect(found, 'no reviewed-command hash is pinned anywhere').toBeGreaterThanOrEqual(4);
   });
 
   // SUBSUMED, AND SAID SO. Under the row lock the command cannot change between the shared
   // assertions and the EXECUTE, so deleting this re-check leaves every behavioural test green. It is
   // kept because losing the include would otherwise turn EXECUTE into "run whatever is in cron.job",
   // and it is pinned here because that is the only place it can be.
-  it('re-checks the hash in the same statement that reads the text it executes', () => {
-    const block = invokeSql.match(/DO \$do\$[\s\S]*?\$do\$;/)?.[0];
-    expect(block, 'canary_invoke.sql must execute inside a DO block').toBeTruthy();
+  // BOTH invokers, not just the canary's. The smoke's copy said it was "pinned structurally" while
+  // nothing scanned it — deleting it was behaviourally subsumed AND structurally undetected.
+  it.each([['canary_invoke.sql', INVOKE], ['smoke_invoke.sql', SMOKE]])(
+    '%s re-checks the hash in the same statement that reads the text it executes', (_name, text) => {
+    const block = text.replace(/--.*$/gm, '').match(/DO \$do\$[\s\S]*?\$do\$;/)?.[0];
+    expect(block, 'the artifact must execute inside a DO block').toBeTruthy();
     expect(block!).toMatch(/md5\(btrim\(regexp_replace\(v_cmd/);
     expect(block!.indexOf('md5(')).toBeLessThan(block!.indexOf('EXECUTE v_cmd'));
+  });
+
+  // A failed invoke must be distinguishable from a rolled-back one, or a retry sends twice.
+  it.each([['canary_invoke.sql', INVOKE], ['smoke_invoke.sql', SMOKE]])(
+    '%s prints a provisional request id INSIDE the transaction', (_name, text) => {
+    const sql = text.replace(/--.*$/gm, '');
+    const prov = sql.indexOf('CANARY_REQUEST_PROVISIONAL');
+    const commit = sql.search(/^\s*COMMIT;/m);
+    expect(prov, 'no provisional marker').toBeGreaterThan(-1);
+    expect(prov, 'the provisional marker must be emitted before COMMIT').toBeLessThan(commit);
+    expect(sql.indexOf('CANARY_REQUEST_ID='), 'the final marker must come after COMMIT').toBeGreaterThan(commit);
   });
 
   it('runs the shared job-identity gate — the same one assert-inert and activate use', () => {

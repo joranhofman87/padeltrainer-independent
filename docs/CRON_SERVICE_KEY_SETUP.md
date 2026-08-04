@@ -226,7 +226,7 @@ statement:**
 
 ```bash
 EXPECTED_REF=<project-ref> scripts/rollout/notif-10cb/run-enablement.sh \
-  smoke-disabled --switch-off-confirmed "$DB_URL"
+  smoke-disabled --yes --switch-off-confirmed "$DB_URL"
 ```
 
 It executes the reviewed cron job's **own stored command** after asserting its whole-command hash

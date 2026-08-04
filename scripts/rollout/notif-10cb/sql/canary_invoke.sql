@@ -206,6 +206,14 @@ END $do$;
 SELECT pg_temp.assert_eq((SELECT count(*)::int FROM pg_temp._canary_request), 1,
   'exactly one pg_net request was queued');
 
+-- PRINTED BEFORE THE COMMIT, ON PURPOSE. If the connection drops after COMMIT but before the marker
+-- below is emitted, psql exits non-zero over a request that IS committed and will be dispatched — and
+-- the caller would otherwise report "rolled back, nothing was queued" and invite a retry that sends
+-- twice. This provisional line means the caller can tell "nothing happened" from "something may
+-- have"; it is deliberately a DIFFERENT marker, because at this point the transaction can still roll
+-- back and the request would then never exist.
+SELECT format('CANARY_REQUEST_PROVISIONAL=%s', request_id) AS canary_marker FROM pg_temp._canary_request;
+
 DROP TABLE pg_temp._gate_job;
 DROP TABLE pg_temp._canary_radius;
 
