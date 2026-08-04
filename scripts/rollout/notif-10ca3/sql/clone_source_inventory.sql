@@ -94,9 +94,20 @@ WITH RECURSIVE outbound(oid) AS (
 -- `OUTFN public.schedule_enrichment_job filler` and was accepted as the REVIEWED
 -- `public.schedule_enrichment_job`. An identifier outside the grammar is reported under its own
 -- fatal key instead, as an md5, so a hostile name cannot inject anything downstream either.
+-- IDENTITY INCLUDES THE SIGNATURE. PostgreSQL identifies a function by schema, name AND argument
+-- types, so `schema.proname` alone collapses overloads: adding `public.schedule_enrichment_job(text)`
+-- produced the same key as the reviewed zero-argument function and was accepted as it. The argument
+-- list is emitted with its spaces removed so the record stays single-token, and the grammar below
+-- admits the punctuation a signature needs — but still no whitespace, which is what forges fields.
 SELECT CASE
-         WHEN n.nspname ~ '^[A-Za-z0-9_.:-]+$' AND p.proname ~ '^[A-Za-z0-9_.:-]+$'
-           THEN format('OUTFN %s.%s', n.nspname, p.proname)
+         WHEN n.nspname ~ '^[A-Za-z0-9_.:-]+$'
+          AND p.proname ~ '^[A-Za-z0-9_.:-]+$'
+          AND replace(pg_catalog.oidvectortypes(p.proargtypes), ' ', '') ~ '^[A-Za-z0-9_.,:\[\]"-]*$'
+           -- TYPES ONLY (oidvectortypes over proargtypes), not
+           -- pg_get_function_identity_arguments, which includes PARAMETER NAMES: `p text` became
+           -- `ptext` once spaces were stripped, conflating a name with a type.
+           THEN format('OUTFN %s.%s(%s)', n.nspname, p.proname,
+                       replace(pg_catalog.oidvectortypes(p.proargtypes), ' ', ''))
          ELSE format('OUTFN_UNSAFE_NAME %s', md5(n.nspname || '.' || p.proname))
        END
 FROM outbound ob JOIN pg_proc p ON p.oid = ob.oid JOIN pg_namespace n ON n.oid = p.pronamespace

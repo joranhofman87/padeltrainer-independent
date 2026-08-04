@@ -82,6 +82,16 @@ check "an inventory with no CRONJOB records at all is refused" 1 "$(printf '')"
 # and was accepted as the reviewed `public.schedule_enrichment_job`.
 check "an OUTFN name containing whitespace cannot forge a reviewed record" 1 \
   "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN public.schedule_enrichment_job filler\n')"
+# The reviewed key now carries the SIGNATURE, so an overload is a different entry rather than the
+# same one — a bare `schema.name` collapsed them and was accepted as the reviewed function.
+check "a reviewed function WITH its signature passes" 0 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN public.schedule_enrichment_job()\n')"
+check "an OVERLOAD of a reviewed function is NOT the reviewed function" 1 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN public.schedule_enrichment_job(text)\n')"
+check "a bare schema.name no longer matches the reviewed entry" 1 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN public.schedule_enrichment_job\n')"
+check "a DUPLICATE identity record is refused" 1 \
+  "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN public.schedule_enrichment_job()\nOUTFN public.schedule_enrichment_job()\n')"
 check "OUTFN_UNSAFE_NAME is fatal" 1 \
   "$(printf 'CRONJOB notification-email-worker true yes\nOUTFN_UNSAFE_NAME 5d41402abc4b2a76b9719d911017c592\n')"
 check "an EXT name containing whitespace cannot forge a reviewed record" 1 \

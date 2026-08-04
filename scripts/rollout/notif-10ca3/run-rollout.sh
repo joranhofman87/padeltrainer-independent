@@ -586,6 +586,15 @@ assert_inventory_is_reviewed() {   # $1 = inventory file
   if awk '($1=="CRONJOB" && NF!=4) || ($1=="OUTFN" && NF!=2) || ($1=="EXT" && NF!=2) {found=1} END{exit !found}' "$inv"; then
     die "malformed identity record(s) in the clone-source inventory — refusing to classify blind"
   fi
+  # ...and no identity may appear TWICE. Two records with the same key mean the key does not
+  # identify the thing (an OUTFN emitted without its signature collapsed overloads exactly so), and
+  # a reader that reconciles per-line would clear both against one reviewed entry.
+  local dupes
+  # NO `| head` here: under `set -Eeuo pipefail` head closes early and can SIGPIPE the producer,
+  # which is exactly what exit-status-test.sh guards against. awk bounds the output instead.
+  dupes="$(awk '$1=="CRONJOB"||$1=="OUTFN"||$1=="EXT"{print $1, $2}' "$inv" | sort | uniq -d | awk 'NR<=3')"
+  [[ -z "$dupes" ]] \
+    || die "duplicate identity record(s) in the clone-source inventory ($(echo "$dupes" | tr '\n' ' ')) — the key does not identify the entry; refusing to classify blind"
   # cron jobs: present in the reviewed set AND the live outbound classification
   # must still match the reviewed one (a command edit can change it).
   while read -r name flag; do

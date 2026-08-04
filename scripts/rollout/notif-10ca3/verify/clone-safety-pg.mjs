@@ -614,6 +614,28 @@ try {
       cronRecords.some((r) => r.startsWith('CRONJOB perfectly-fine-name ')),
       cronRecords.join(' | '));
   await c.query(`DELETE FROM cron.job`);
+
+  // ...and the same for OUTFN, which had the identical defect. A newline-bearing FUNCTION name is
+  // the analogous field-count bypass, and the signature is what stops an overload reading as the
+  // reviewed zero-argument function.
+  await c.query(`
+    CREATE OR REPLACE FUNCTION public.outfn_probe_ok() RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_probe_ok(p text) RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public."outfn probe hostile" () RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;`);
+  const invOut2 = await allRows(c, artifactText('clone_source_inventory.sql'));
+  const outfn = invOut2.filter((r) => typeof r === 'string' && r.startsWith('OUTFN'));
+  rec('the inventory emits OUTFN_UNSAFE_NAME for a whitespace function name',
+      outfn.some((r) => r.startsWith('OUTFN_UNSAFE_NAME ')), outfn.join(' | '));
+  rec('...and never emits a bare, forgeable OUTFN record',
+      !outfn.some((r) => /^OUTFN [^(]+$/.test(r)), outfn.join(' | '));
+  rec('...and distinguishes an OVERLOAD by its signature',
+      outfn.includes('OUTFN public.outfn_probe_ok()') && outfn.includes('OUTFN public.outfn_probe_ok(text)'),
+      outfn.join(' | '));
+  await c.query(`DROP FUNCTION public.outfn_probe_ok(); DROP FUNCTION public.outfn_probe_ok(text);
+                 DROP FUNCTION public."outfn probe hostile"();`);
 } finally {
   await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }
