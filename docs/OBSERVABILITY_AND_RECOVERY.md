@@ -111,9 +111,14 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
   mutating step needs `--yes` and re-asserts the project ref. See its README for the sequence and
   for what the activation gate refuses.
 - **Rollback is three switches, and only two are in the database:** `DIGEST_SEND_ENABLED` is an edge
-  env var that no SQL can read or set, so the operator turns it off FIRST and says so
-  (`--switch-off-confirmed`); then the tooling clears the event flag, deactivates the cron, and
-  proves both plus quiescence.
+  env var that no SQL can read (Supabase's own secret tooling sets it; this bundle has no view of
+  it), so the operator turns it off FIRST and says so (`--switch-off-confirmed`); then the tooling
+  clears the event flag, deactivates the cron, and proves both plus quiescence.
+- **Three preconditions live outside the database and are asserted, not assumed:** the edge kill
+  switch (`--switch-off-confirmed`), the external monitor (`--monitor-confirmed`), and the
+  **Admin Notification Operations** release unit (`--admin-ops-confirmed` on `canary` and
+  `activate`) — mandatory before any canary or activation, because without in-product visibility
+  the first sign of trouble in a real send is a user complaint.
 - **Never `cron.unschedule` to pause — deactivate.** Unscheduling destroys the reviewed Vault-backed
   command, and re-creating it by hand under time pressure is how a wrong endpoint gets introduced.
 

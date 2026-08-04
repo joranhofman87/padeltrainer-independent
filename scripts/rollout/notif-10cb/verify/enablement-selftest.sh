@@ -69,23 +69,26 @@ logged() { grep -qF -- "$1" "$PSQL_LOG"; }
 run "status is read-only and needs no --yes" 0 -- status "$URL"
 grep -qF 'status.sql' "$PSQL_LOG" && ok "status ran the read artifact" || bad "status ran the read artifact"
 
-run "activate REFUSES without --yes" 1 -- activate "$URL"
+# EVERY OTHER PREREQUISITE IS SUPPLIED, so the refusal can only be the missing --yes. Omitting the
+# run id and the other flags too meant deleting require_confirmed still produced a refusal later,
+# and the test passed for the wrong reason.
+run "activate REFUSES without --yes" 1 -- activate --monitor-confirmed --admin-ops-confirmed "$URL" "11111111-1111-4111-8111-111111111111"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || { bad "...and touched the database not at all"; cat "$PSQL_LOG"; }
 
 run "rollback REFUSES without --yes" 1 -- rollback --switch-off-confirmed "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "rollback touched nothing without --yes" || bad "rollback touched nothing without --yes"
 
-run "canary REFUSES without --yes" 1 -- canary "$URL" "11111111-1111-4111-8111-111111111111"
+run "canary REFUSES without --yes" 1 -- canary --admin-ops-confirmed "$URL" "11111111-1111-4111-8111-111111111111"
 
 # Activation is bound to ONE canary run. Without the run id the preflight fell back to "some
 # dispatch run succeeded at some point", which any earlier rollout satisfies permanently.
-run "activate REFUSES without a canary run id" 1 -- activate --yes --monitor-confirmed "$URL"
+run "activate REFUSES without a canary run id" 1 -- activate --yes --monitor-confirmed --admin-ops-confirmed "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
-run "activate REFUSES a non-uuid run id" 1 -- activate --yes --monitor-confirmed "$URL" "the-last-one-worked"
-run "activate REFUSES a uuid-length string of dashes" 1 -- activate --yes --monitor-confirmed "$URL" "------------------------------------"
+run "activate REFUSES a non-uuid run id" 1 -- activate --yes --monitor-confirmed --admin-ops-confirmed "$URL" "the-last-one-worked"
+run "activate REFUSES a uuid-length string of dashes" 1 -- activate --yes --monitor-confirmed --admin-ops-confirmed "$URL" "------------------------------------"
 
 # The identity guard: a correct command against the WRONG project must not run.
-run "activate REFUSES a url belonging to another project" 1 -- activate --yes --monitor-confirmed "$OTHER_URL"
+run "activate REFUSES a url belonging to another project" 1 -- activate --yes --monitor-confirmed --admin-ops-confirmed "$OTHER_URL" "11111111-1111-4111-8111-111111111111"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
 
 # ── what the mutating steps actually do ───────────────────────────────────────
@@ -94,11 +97,19 @@ RUN_ID="11111111-1111-4111-8111-111111111111"
 # The EXTERNAL monitor is the only detector for a worker that is never invoked, and it lives
 # outside this database — so, like the edge kill switch, the operator asserts it. The docs called
 # it a precondition while the runbook walked straight past it.
-run "activate REFUSES until the external monitor is confirmed" 1 -- activate --yes "$URL" "$RUN_ID"
+run "activate REFUSES until the external monitor is confirmed" 1 -- activate --yes --admin-ops-confirmed "$URL" "$RUN_ID"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
 grep -qF 'monitor-confirmed' "$TMP/out" && ok "...and says how to satisfy it" || bad "...and says how to satisfy it"
 
-run "activate verifies and arms in ONE artifact" 0 -- activate --yes --monitor-confirmed "$URL" "$RUN_ID"
+# The Admin Notification Operations release unit is a MANDATORY prerequisite for any canary or
+# activation and cannot be detected from here, so the operator asserts it — same posture as the
+# edge kill switch and the external monitor.
+run "canary REFUSES until admin notification operations is confirmed shipped" 1 -- canary --yes "$URL" "$RUN_ID"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
+run "activate REFUSES until admin notification operations is confirmed shipped" 1 -- activate --yes --monitor-confirmed "$URL" "$RUN_ID"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database either" || bad "...and reached no database either"
+
+run "activate verifies and arms in ONE artifact" 0 -- activate --yes --monitor-confirmed --admin-ops-confirmed "$URL" "$RUN_ID"
 logged "run_id=$RUN_ID" && ok "activate passes the canary run id INTO the gate" \
   || { bad "activate passes the canary run id INTO the gate"; cat "$PSQL_LOG"; }
 logged 'activate.sql' && ok "activate runs the transactional activate.sql" || bad "activate runs the transactional activate.sql"
@@ -146,7 +157,7 @@ else bad "rollback switches the engine off BEFORE the cron"; fi
 # proved the arm command was actually downstream of it rather than merely printed before it.
 export PSQL_LOG="$TMP/log.preflight_fail"; : > "$PSQL_LOG"
 set +e
-STUB_FAIL_ON=activate.sql EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes --monitor-confirmed "$URL" "$RUN_ID" >"$TMP/out" 2>&1
+STUB_FAIL_ON=activate.sql EXPECTED_REF="$REF" bash "$SCRIPT" activate --yes --monitor-confirmed --admin-ops-confirmed "$URL" "$RUN_ID" >"$TMP/out" 2>&1
 pf_rc=$?
 set -e
 [[ "$pf_rc" != "0" ]] && ok "a failing preflight fails the activate subcommand (rc=$pf_rc)" \
@@ -162,8 +173,8 @@ else
 fi
 
 # ── the canary takes a REAL run id, never a snapshot ──────────────────────────
-run "canary REFUSES a non-uuid run id" 1 -- canary --yes "$URL" "before-after-snapshot"
-run "canary reconciles the id it is given" 0 -- canary --yes "$URL" "11111111-1111-4111-8111-111111111111"
+run "canary REFUSES a non-uuid run id" 1 -- canary --yes --admin-ops-confirmed "$URL" "before-after-snapshot"
+run "canary reconciles the id it is given" 0 -- canary --yes --admin-ops-confirmed "$URL" "11111111-1111-4111-8111-111111111111"
 logged 'reconcile_notification_digest_run' && ok "canary reconciles the ACTUAL run" || bad "canary reconciles the ACTUAL run"
 # Reconciling is not passing: reconcile succeeds for ANY existing run, so the canary must also be
 # VERIFIED to have delivered, or an empty dispatch run would satisfy the gate.
@@ -171,7 +182,7 @@ logged 'canary_verify.sql' && ok "canary VERIFIES the run delivered, not merely 
   || bad "canary VERIFIES the run delivered, not merely that it existed"
 export PSQL_LOG="$TMP/log.canary_fail"; : > "$PSQL_LOG"
 set +e
-STUB_FAIL_ON=canary_verify EXPECTED_REF="$REF" bash "$SCRIPT" canary --yes "$URL" \
+STUB_FAIL_ON=canary_verify EXPECTED_REF="$REF" bash "$SCRIPT" canary --yes --admin-ops-confirmed "$URL" \
   "11111111-1111-4111-8111-111111111111" >/dev/null 2>&1
 cv_rc=$?
 set -e

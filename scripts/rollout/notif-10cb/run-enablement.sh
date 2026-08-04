@@ -14,9 +14,13 @@
 #                            200 {"status":"disabled","reason":"disabled"} and
 #                            move NO counter. Proves the wiring without sending.
 #   3. (owner) enable the send switch
-#   4. canary --yes        — ONE manual invocation, cron still INACTIVE, then
+#   4. canary --yes --admin-ops-confirmed
+#                          — ONE manual invocation, cron still INACTIVE, then
 #                            reconcile the ACTUAL run ids the worker returned.
-#   5. activate --yes      — arm the cron, but only after activation_preflight
+#   4b. (owner) wire the EXTERNAL cron/uptime monitor on notif_digest_worker_liveness() and
+#                            verify it alerts on a stale last_success_at.
+#   5. activate --yes --monitor-confirmed --admin-ops-confirmed
+#                          — arm the cron, but only after activation_preflight
 #                            passes. Enabling the cron BEFORE the switch would
 #                            schedule a worker that finds nothing and reports
 #                            healthy — a green light over an engine still off.
@@ -69,8 +73,9 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   read-only: capture counters either side of the disabled
                                   invocation. Requires you to have verified DIGEST_SEND_ENABLED
                                   is off — no SQL can see an edge env var
-  canary --yes <db_url> <run_id>  reconcile ONE canary's ACTUAL returned run id
-  activate --yes --monitor-confirmed <db_url> <run_id>
+  canary --yes --admin-ops-confirmed <db_url> <run_id>
+                                  reconcile ONE canary's ACTUAL returned run id
+  activate --yes --monitor-confirmed --admin-ops-confirmed <db_url> <run_id>
                                   verify FOR THAT CANARY RUN and arm the cron, in ONE transaction
                                   against the LOCKED job row. The run id is the one `canary` just
                                   verified — activation is never allowed to rest on some older
@@ -92,6 +97,7 @@ USAGE
 CONFIRMED=0
 SWITCH_OFF_CONFIRMED=0
 MONITOR_CONFIRMED=0
+ADMIN_OPS_CONFIRMED=0
 ARGS=()
 SUB="${1:-}"; shift || usage
 for a in "$@"; do
@@ -99,12 +105,24 @@ for a in "$@"; do
     --yes)                   CONFIRMED=1 ;;
     --switch-off-confirmed)  SWITCH_OFF_CONFIRMED=1 ;;
     --monitor-confirmed)     MONITOR_CONFIRMED=1 ;;
+    --admin-ops-confirmed)   ADMIN_OPS_CONFIRMED=1 ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
 
 require_confirmed() {
   [[ "$CONFIRMED" == "1" ]] || die "$1 changes production — re-run with --yes"
+}
+
+# THE THIRD PRECONDITION THIS CANNOT SEE. The Admin Notification Operations release unit — global
+# admin visibility into the pipeline plus safe controls — is a MANDATORY prerequisite for any
+# canary or activation: without it, the only way to see what the pipeline is doing is psql against
+# production, so the first sign of trouble in a real send is a user complaint. It is a separate
+# release unit and nothing in this database can detect whether it has shipped, so the operator
+# asserts it, exactly as they assert the edge kill switch and the external monitor.
+require_admin_ops() {
+  [[ "$ADMIN_OPS_CONFIRMED" == "1" ]] || die \
+    "$1 requires --admin-ops-confirmed: the Admin Notification Operations release unit must be SHIPPED and verified first (global admin visibility + safe controls). It is a separate release unit — this script cannot detect it, and running a canary or arming the cron without it means the first sign of trouble is a user complaint"
 }
 
 db_url() {
@@ -181,6 +199,7 @@ case "$SUB" in
 
   canary)
     require_confirmed "canary reconciliation"
+    require_admin_ops "a canary send"
     url="$(db_url)"
     run_id="$(require_run_id "${ARGS[1]:-}" "canary reconciliation")"
     # Reconcile the run the worker ACTUALLY returned. A before/after table snapshot is not
@@ -199,6 +218,7 @@ case "$SUB" in
 
   activate)
     require_confirmed "arming the digest cron"
+    require_admin_ops "arming the digest cron"
     url="$(db_url)"
     # ACTIVATION IS BOUND TO ONE CANARY RUN — the one just verified, named explicitly.
     # Without this the preflight accepted ANY historical success: after an earlier rollout had
