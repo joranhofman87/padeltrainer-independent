@@ -305,8 +305,14 @@ run_sql_capture() {   # $1 = outfile, $2 = url, $3 = artifact, $@ = extra psql a
 report_failed_invoke() {   # $1 = captured output, $2 = what failed, for the message
   local out="$1" what="$2" prov
   prov="$(marker_values "$out" CANARY_REQUEST_PROVISIONAL '[0-9]+')"
+  # THREE CASES, not two. Lumping "malformed or several" in with "none" reported an ambiguous
+  # capture as safely rolled back and invited the retry this exists to prevent. Only an EMPTY
+  # capture is evidence that nothing was queued; anything else is UNKNOWN.
+  if [[ -z "$prov" ]]; then
+    die "$what was REFUSED before it queued anything — the transaction rolled back, so nothing was sent. Read the failed assertion above"
+  fi
   case "$prov" in
-    ''|*[!0-9]*) die "$what was REFUSED before it queued anything — the transaction rolled back, so nothing was sent. Read the failed assertion above" ;;
+    *[!0-9]*) die "$what FAILED and its output names an AMBIGUOUS set of pg_net requests (${prov//$'\n'/, }). Treat the outcome as UNKNOWN — do NOT retry, which could send twice. Read net._http_response for each of those ids and notification_worker_runs first" ;;
   esac
   die "$what FAILED AFTER queueing pg_net request ${prov}. Whether that request was committed and dispatched is UNKNOWN — do NOT simply retry, which would send twice. Read net._http_response for id ${prov} and notification_worker_runs first"
 }
@@ -417,13 +423,10 @@ case "$SUB" in
 
     poll_for_reply "$url" "$req_id" "$CANARY_TMP/response.out"
 
-    status="$(marker_values "$CANARY_TMP/response.out" CANARY_RESPONSE_STATUS '[0-9]+|none')"
-    [[ "$status" == "200" ]] \
-      || die "the disabled smoke answered HTTP '${status:-<none>}' — it must answer 200; the response is printed above"
-
-    # THE AFTER-CAPTURE COMES FIRST, before any verdict on the body. If the smoke DID send, that is
-    # exactly when the counter evidence matters most — and dying on the body check first threw it
-    # away, leaving the operator with a failure and no measurement of what happened.
+    # THE AFTER-CAPTURE COMES FIRST — before the STATUS verdict as well as the body one. An
+    # accidentally-enabled worker can send, then fail on reconciliation or on finishing, and answer
+    # 500: that is precisely when the counter evidence matters, and judging the status first threw it
+    # away. Both verdicts are deferred until the measurement exists and has been shown to be complete.
     run_sql_capture "$after" "$url" smoke_counters.sql \
       || die "could not read the counters after the smoke"
 
@@ -451,6 +454,10 @@ case "$SUB" in
       cat "$CANARY_TMP/delta" >&2
       die "the disabled smoke MOVED a counter — it is not disabled. Stop and account for the difference above"
     fi
+
+    status="$(marker_values "$CANARY_TMP/response.out" CANARY_RESPONSE_STATUS '[0-9]+|none')"
+    [[ "$status" == "200" ]] \
+      || die "the disabled smoke answered HTTP '${status:-<none>}' — it must answer 200. The counters either side are above and were compared first, so you can see whether anything moved"
 
     ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} and moved no counter"
     ;;

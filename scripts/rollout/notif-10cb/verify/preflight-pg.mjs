@@ -969,6 +969,9 @@ try {
       ['canary_verify', canaryVerify],
       ['canary_scope_verify', scopeVerify],
       // the disabled smoke runs the same stored command and was missed by this sweep when it landed
+      // the counter capture belongs here too: it has unqualified operators of its own, and a path
+      // reset that slipped past the acknowledged partial text scan would corrupt its markers silently
+      ['smoke_counters', async () => (await runArtifact('smoke_counters.sql')).err ?? null],
       ['smoke_invoke', async () => {
         await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
         await c.query(`DELETE FROM public.notification_digest_groups WHERE terminal_at IS NULL`);

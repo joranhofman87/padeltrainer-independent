@@ -538,6 +538,51 @@ grep -qF 'UNKNOWN' "$TMP/out" && ok "...and is reported as UNKNOWN, not as rolle
 grep -qF '4242' "$TMP/out" && ok "...naming the request to go and read" || bad "...naming the request to go and read"
 if grep -qiF 'nothing was sent' "$TMP/out"; then bad "...and never says nothing was sent"; else ok "...and never says nothing was sent"; fi
 
+# ...AND AN AMBIGUOUS PROVISIONAL CAPTURE IS UNKNOWN, NOT "rolled back". Lumping "malformed or
+# several" in with "none" reported an ambiguous failure as safe and invited the retry this exists to
+# prevent.
+export PSQL_LOG="$TMP/log.prov_ambig"; : > "$PSQL_LOG"
+cat > "$TMP/psql_ambig" <<'ASTUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$PSQL_LOG"
+file=""; prev=""
+for a in "$@"; do [[ "$prev" == "-f" ]] && file="$a"; prev="$a"; done
+case "$file" in
+  *canary_invoke.sql)
+    printf 'CANARY_REQUEST_PROVISIONAL=4242
+CANARY_REQUEST_PROVISIONAL=4243
+'
+    printf 'psql: server closed the connection unexpectedly
+' >&2; exit 2 ;;
+esac
+exit 0
+ASTUB
+chmod +x "$TMP/psql_ambig"; mv "$TMP/psql" "$TMP/psql.keep3"; cp "$TMP/psql_ambig" "$TMP/psql"
+set +e
+EXPECTED_REF="$REF" bash "$SCRIPT" canary-invoke --yes --admin-ops-confirmed --monitor-confirmed "$URL" >"$TMP/out" 2>&1
+pa_rc=$?
+set -e
+mv "$TMP/psql.keep3" "$TMP/psql"
+[[ "$pa_rc" != "0" ]] && ok "an AMBIGUOUS provisional capture fails the subcommand" \
+  || bad "an AMBIGUOUS provisional capture fails the subcommand"
+grep -qF 'AMBIGUOUS' "$TMP/out" && ok "...and is UNKNOWN, naming every id to read" \
+  || { bad "...and is UNKNOWN, naming every id to read"; cat "$TMP/out"; }
+if grep -qiF 'nothing was sent' "$TMP/out"; then bad "...and never says nothing was sent"; else ok "...and never says nothing was sent"; fi
+
+# A NON-200 must still have its counters measured — an accidentally-enabled worker can send and THEN
+# fail, which is exactly when the evidence matters.
+export PSQL_LOG="$TMP/log.smoke_500"; : > "$PSQL_LOG"
+set +e
+env STUB_CANARY_STATUS=500 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' \
+  EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+s5_rc=$?
+set -e
+[[ "$s5_rc" != "0" ]] && ok "a non-200 fails the disabled smoke" || bad "a non-200 fails the disabled smoke"
+[[ "$(grep -cF 'smoke_counters.sql' "$PSQL_LOG")" == "2" ]] \
+  && ok "...but the counters either side were captured FIRST" \
+  || { bad "...but the counters either side were captured FIRST"; cat "$PSQL_LOG"; }
+
 # TWO dispatchRunIds is not a choice to make either — the same rule as the request id, which this
 # path did not follow: it took the first of the sorted set and scope-checked a run that may not be
 # the one this invocation caused.

@@ -22,9 +22,11 @@
 -- left behind by an earlier attempt would therefore be SENT if the operator's switch assertion were
 -- wrong.
 --
--- So this asserts the thing that actually matters: there is NO WORK. The same over-estimate the
--- canary bounds itself with — every non-terminal email digest group plus every ungrouped pending
--- digest outbox row — must be exactly zero.
+-- So this asserts the thing that actually matters: at this instant there is NO WORK. The same
+-- over-estimate the canary bounds itself with — every non-terminal email digest group plus every
+-- ungrouped pending digest outbox row — must be exactly zero. That is a snapshot, not a guarantee:
+-- what keeps this invocation from sending is DIGEST_SEND_ENABLED being off, which is the operator's
+-- assertion. These checks remove the backlog that would make a wrong assertion catastrophic.
 --
 -- AND THE RESIDUAL, said plainly: that is a SNAPSHOT inside this transaction. pg_net dispatches after
 -- COMMIT, so work enqueued in between is still reachable, and `DIGEST_SEND_ENABLED` remains the
