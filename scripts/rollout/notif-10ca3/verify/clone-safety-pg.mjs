@@ -630,9 +630,17 @@ try {
     -- (No backticks in this comment: it lives inside a JS template literal.)
     CREATE DOMAIN public."a b" AS text;
     CREATE DOMAIN public."a  b" AS text;
+    CREATE DOMAIN public."a, b" AS text;
+    CREATE DOMAIN public."a,b" AS text;
     CREATE OR REPLACE FUNCTION public.outfn_spacey(p public."a b") RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;
     CREATE OR REPLACE FUNCTION public.outfn_spacey2(p public."a  b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_commay(p public."a, b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_commay2(p public."a,b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_varchar(p character varying) RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;`);
   const invOut2 = await allRows(c, artifactText('clone_source_inventory.sql'));
   const outfn = invOut2.filter((r) => typeof r === 'string' && r.startsWith('OUTFN'));
@@ -643,15 +651,25 @@ try {
   rec('...and distinguishes an OVERLOAD by its signature',
       outfn.includes('OUTFN public.outfn_probe_ok()') && outfn.includes('OUTFN public.outfn_probe_ok(text)'),
       outfn.join(' | '));
-  rec('a signature containing a QUOTED TYPE WITH SPACES is refused, not silently collapsed',
-      outfn.filter((r) => /^OUTFN public\.outfn_spacey/.test(r)).length === 0
-        && outfn.filter((r) => r.startsWith('OUTFN_UNSAFE_NAME ')).length === 3,
-      outfn.join(' | '));
+  // Every global rewrite tried here was lossy in the same way. These are the two collisions.
+  const sig = (n) => outfn.find((r) => r.startsWith(`OUTFN public.${n}(`)) ?? '';
+  rec('two type names differing only in SPACES do not collapse to one signature',
+      sig('outfn_spacey') !== '' && sig('outfn_spacey') !== sig('outfn_spacey2'),
+      `${sig('outfn_spacey')} vs ${sig('outfn_spacey2')}`);
+  rec('two type names differing only in a COMMA do not collapse to one signature',
+      sig('outfn_commay') !== '' && sig('outfn_commay') !== sig('outfn_commay2'),
+      `${sig('outfn_commay')} vs ${sig('outfn_commay2')}`);
+  rec('...and an ordinary space-bearing builtin type still serialises readably',
+      sig('outfn_varchar') === 'OUTFN public.outfn_varchar(character%20varying)', sig('outfn_varchar'));
   await c.query(`DROP FUNCTION public.outfn_probe_ok(); DROP FUNCTION public.outfn_probe_ok(text);
                  DROP FUNCTION public."outfn probe hostile"();
                  DROP FUNCTION public.outfn_spacey(public."a b");
                  DROP FUNCTION public.outfn_spacey2(public."a  b");
-                 DROP DOMAIN public."a b"; DROP DOMAIN public."a  b";`);
+                 DROP FUNCTION public.outfn_commay(public."a, b");
+                 DROP FUNCTION public.outfn_commay2(public."a,b");
+                 DROP FUNCTION public.outfn_varchar(character varying);
+                 DROP DOMAIN public."a b"; DROP DOMAIN public."a  b";
+                 DROP DOMAIN public."a, b"; DROP DOMAIN public."a,b";`);
 } finally {
   await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }

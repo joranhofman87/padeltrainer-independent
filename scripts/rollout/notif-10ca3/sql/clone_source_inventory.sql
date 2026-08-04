@@ -80,6 +80,21 @@ SELECT format('FDWSRV %s', count(*)) FROM pg_foreign_server;
 -- OUTFN: the TRANSITIVE closure of outbound-capable functions. A helper that
 -- only indirectly reaches net.http_* is still an outbound mechanism, so a direct
 -- prosrc scan alone would under-report. Depth is bounded by the recursion.
+-- The function-identity signature, built ONE ARGUMENT AT A TIME and percent-encoded.
+--
+-- Nothing is rewritten across the whole string, because every global rewrite tried here was lossy:
+-- deleting spaces merged `"a b"` with `"a  b"`, and turning ', ' into ',' merged `"a, b"` with
+-- `"a,b"`. Encoding %, space and comma inside each argument makes the join unambiguous while
+-- leaving ordinary signatures readable (`character%20varying`), and a type name may legitimately
+-- contain a space, so refusing them outright was never available.
+CREATE OR REPLACE FUNCTION pg_temp.outfn_sig(p_args oidvector) RETURNS text
+LANGUAGE sql STABLE AS $sig$
+  SELECT coalesce(string_agg(
+           replace(replace(replace(pg_catalog.format_type(t, NULL), '%', '%25'), ' ', '%20'), ',', '%2C'),
+           ',' ORDER BY ord), '')
+    FROM unnest(p_args) WITH ORDINALITY AS a(t, ord)
+$sig$;
+
 WITH RECURSIVE outbound(oid) AS (
   SELECT p.oid FROM pg_proc p
    WHERE p.prosrc ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
@@ -102,16 +117,17 @@ WITH RECURSIVE outbound(oid) AS (
 SELECT CASE
          WHEN n.nspname ~ '^[A-Za-z0-9_.:-]+$'
           AND p.proname ~ '^[A-Za-z0-9_.:-]+$'
-          -- ONLY the argument SEPARATOR is normalised (', ' -> ','); every other space is then
-          -- rejected by the grammar. Deleting all spaces was LOSSY: PostgreSQL allows them inside
-          -- quoted type and schema names, so `public."a b"` and `public."a  b"` both serialised to
-          -- `public."ab"` and one reviewed identity could stand in for the other.
-          AND replace(pg_catalog.oidvectortypes(p.proargtypes), ', ', ',') ~ '^[A-Za-z0-9_.,:\[\]"-]*$'
-           -- TYPES ONLY (oidvectortypes over proargtypes), not
+          -- The signature is built PER ARGUMENT and percent-encoded, so nothing has to be
+          -- rewritten globally. Both earlier attempts were lossy in the same way: deleting every
+          -- space collapsed `public."a b"` and `public."a  b"` into `public."ab"`, and replacing
+          -- ', ' with ',' collapsed `public."a, b"` into `public."a,b"`. A type name may
+          -- legitimately contain a space (`character varying`), so refusing spaces outright is not
+          -- an option either — encoding is.
+          AND pg_temp.outfn_sig(p.proargtypes) ~ '^[A-Za-z0-9_.,:%\[\]"-]*$'
+           -- TYPES ONLY (format_type over proargtypes), not
            -- pg_get_function_identity_arguments, which includes PARAMETER NAMES: `p text` became
            -- `ptext` once the separator was normalised, conflating a name with a type.
-           THEN format('OUTFN %s.%s(%s)', n.nspname, p.proname,
-                       replace(pg_catalog.oidvectortypes(p.proargtypes), ', ', ','))
+           THEN format('OUTFN %s.%s(%s)', n.nspname, p.proname, pg_temp.outfn_sig(p.proargtypes))
          ELSE format('OUTFN_UNSAFE_NAME %s', md5(n.nspname || '.' || p.proname))
        END
 FROM outbound ob JOIN pg_proc p ON p.oid = ob.oid JOIN pg_namespace n ON n.oid = p.pronamespace
