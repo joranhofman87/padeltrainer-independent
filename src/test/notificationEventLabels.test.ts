@@ -15,19 +15,35 @@ import { join } from 'node:path';
 
 const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations');
 
-/** Every event key seeded into notification_event_types, extracted from the real migrations. */
+/**
+ * Every event key seeded into notification_event_types, extracted from the real migrations.
+ *
+ * FAIL-CLOSED extraction: a broad, case-insensitive detector finds every statement that inserts
+ * into the table (qualified or not), and any detected statement whose VALUES tuples yield no key
+ * is an ERROR rather than a silent skip — otherwise a future seed written in a shape this parser
+ * does not read (lowercase keywords, INSERT … SELECT) would leave every assertion green while its
+ * raw key reaches users, which is the exact failure this test exists to close.
+ */
 const seededKeys = (): string[] => {
   const keys = new Set<string>();
+  const unparsed: string[] = [];
   for (const f of readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql'))) {
     const sql = readFileSync(join(MIGRATIONS, f), 'utf8');
     for (const insert of sql.matchAll(
-      /INSERT INTO public\.notification_event_types[\s\S]*?VALUES([\s\S]*?)(?:ON CONFLICT|;)/g,
+      /insert\s+into\s+(?:public\.)?(?:"?notification_event_types"?)\b([\s\S]*?)(?:on\s+conflict|;)/gi,
     )) {
-      // Each VALUES tuple opens with the event key as its first string literal.
-      for (const tuple of insert[1].matchAll(/\(\s*'([a-z0-9_]+)'\s*,/g)) {
-        keys.add(tuple[1]);
+      const tuples = [...insert[1].matchAll(/\(\s*'([a-z0-9_]+)'\s*,/g)].map((m) => m[1]);
+      if (tuples.length === 0) {
+        unparsed.push(`${f}: ${insert[0].slice(0, 120).replace(/\s+/g, ' ')}…`);
+        continue;
       }
+      for (const k of tuples) keys.add(k);
     }
+  }
+  if (unparsed.length) {
+    throw new Error(
+      `a notification_event_types insert exists that this extractor cannot read — teach it the shape rather than letting the seed escape the label check:\n${unparsed.join('\n')}`,
+    );
   }
   return [...keys].sort();
 };

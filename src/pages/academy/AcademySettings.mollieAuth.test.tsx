@@ -48,6 +48,9 @@ vi.mock('react-router-dom', async () => {
   return {
     ...actual,
     useSearchParams: () => [new URLSearchParams()],
+    // the page renders without a <Router> here; the N1 notifications card made useNavigate a
+    // real dependency of this component
+    useNavigate: () => vi.fn(),
   };
 });
 

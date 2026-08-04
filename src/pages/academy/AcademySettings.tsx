@@ -672,8 +672,16 @@ export default function AcademySettings() {
             layouts, but this hub never linked it, so academy managers had no way to reach their
             notification settings (player + trainer hubs both link theirs). */}
         <Card
-          className={`${flushOnMobileCardClass()} cursor-pointer transition-colors hover:bg-muted/30`}
+          className={`${flushOnMobileCardClass()} cursor-pointer transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
           onClick={() => navigate('/app/academy/settings/notifications')}
+          role="link"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              navigate('/app/academy/settings/notifications');
+            }
+          }}
           data-testid="academy-notifications-card"
         >
           <CardHeader>
