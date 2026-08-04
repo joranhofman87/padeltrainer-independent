@@ -540,3 +540,57 @@ the ACL lockdown — APPLIED (a partial-SET state, not "nothing applied"). That 
 5. Re-run the ACL matrix query + the `idx_spc_guest_player_id` check, then reactivate the crons (step 6).
 On an edge-deploy failure specifically: keep crons inactive, re-run/complete the failed function
 deploy(s), re-verify (step 4), then reactivate.
+
+---
+
+## 10c-b J — documented follow-ups (NON-BLOCKING, owner-classified 2026-08-04)
+
+The owner closed slice J's scope: P1/P2 and correctness/security/privacy/consent P3 block; unrelated
+hardening, stylistic points and old-cached-client compatibility become follow-ups. The app has very
+few active users, and temporary disruption, forced refreshes and imperfect old-client compatibility
+are acceptable. Security, tenant isolation, explicit opt-outs, financial correctness, data integrity
+and WhatsApp consent are NOT relaxed. These are the items that fall on the follow-up side.
+
+### J-F1 · A catalog-default change after a departure is not itself mirrored
+Deleting a `daily` v2 row while `default_email_frequency` is `weekly` correctly moves the legacy
+column to `weekly`. If an admin later changes that default to, say, `off`, v2 resolves to `off` but
+no v2 row exists to fire a trigger, so `notification_preferences.open_slots_digest` stays `weekly`
+and the legacy reader keeps sending at that cadence.
+
+Why it is a follow-up, not a blocker: the diverging value is an INHERITED default on both sides, not
+an explicit opt-out — no user's recorded choice is overridden. It affects only the legacy v1 reader,
+which 10c-d retires. Closing it properly needs a trigger on `notification_event_types` that re-mirrors
+every affected user, which is a materially larger change than the bridge itself and would run a
+bulk write on a catalog edit.
+
+**Owner:** 10c-d (legacy retirement) — or it disappears entirely when the v1 column is dropped.
+**Do not** close it by making the departure mirror read the catalog on every write.
+
+### J-F2 · Departure fidelity when the catalog default INCREASES sending
+A departure moves the legacy column to the catalog default. If that default is more frequent than
+what the departing row held (e.g. `weekly` → `instant`), the legacy reader sends more often than
+before. This is correct — it is what v2 now resolves to — but it is the one case where "a departure
+never increases sending" is not literally true, and it is recorded here so a future reader does not
+file it as a defect. It cannot resurrect an opt-out: an `off` on either side always refuses.
+
+**Owner:** none. Documented behaviour.
+
+### J-F3 · `update_updated_at_column` is not search_path-hardened
+Slice J hardened `validate_notification_frequency` because the reverse bridge newly invokes it from a
+`SECURITY DEFINER` context. The other trigger on that table, `update_updated_at_column`, has the same
+shape (`SET search_path TO 'public'`, unqualified `now()`) but no dynamic `EXECUTE`, so the worst a
+captured `public.now()` could do is write a wrong timestamp. It is shared by dozens of tables, so
+replacing it is a repo-wide change, not a drive-by inside a notification cutover. Measured and worth
+recording: NO application role can create the rival — `public`'s ACL grants CREATE only to
+`pg_database_owner`, so `has_schema_privilege('authenticated','public','CREATE')` is false.
+
+**Owner:** a general search_path-hardening sweep, if one is ever scheduled.
+
+### J-F4 · Two timing-sensitive tests fail only under full-suite pressure
+`notificationDigestStateMachine.realpg.test.ts` asserts a 60 ms budget on a 100k-row scale scenario
+and measures 70–137 ms when the rest of the suite (or the other gates) compete for CPU;
+`invoiceSyncPaging.pglite.test.ts` and `emailDeliverySuppression.pglite.test.ts` hit the 15 s default
+timeout the same way. All pass in isolation. They belong to 10c-a2 and the invoice work, not to J.
+
+**Owner:** whoever next touches those suites — either raise the per-test timeout/budget or mark them
+serial. Do not "fix" them by relaxing what they assert.

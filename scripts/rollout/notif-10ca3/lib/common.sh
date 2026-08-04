@@ -78,8 +78,67 @@ assert_host_user_is_ref() {
 # Usage: assert_conn_url_is_ref "$EXPECTED_REF" "$CONN_URL"
 assert_conn_url_is_ref() {
   local ref="$1" url="$2"
-  # strip scheme
+  # IT MUST ACTUALLY BE A URI. libpq accepts TWO connection-string forms, and the other one is
+  # keyword/value conninfo — `host=... user=... dbname=...`, last occurrence winning. Everything
+  # below parses a URI, and on a keyword string it parses the wrong thing entirely: a value like
+  #
+  #   dbname=postgresql://postgres.<expected>@<expected-pooler>/postgres host=<other> dbname=postgres
+  #
+  # splits at the first '://' into an authority that names the EXPECTED project, passes every check
+  # here, and is then handed to psql — which reads it as keyword conninfo and connects to <other>.
+  # Whitespace is what makes that possible (it separates the keywords), and no legitimate connection
+  # URI for this bundle contains any, so both are refused: the scheme must lead, and the string must
+  # be a single unbroken token.
+  case "$url" in
+    postgresql://*|postgres://*) : ;;
+    *) die "connection string must be a postgresql:// or postgres:// URI — libpq also accepts keyword/value conninfo (host=... user=...), which would defeat the EXPECTED_REF check entirely" ;;
+  esac
+  [[ "$url" != *[[:space:]]* ]] \
+    || die "connection url contains whitespace — refusing: whitespace is what turns a url into libpq keyword/value conninfo, where a later host= overrides the authority"
+  [[ "$url" != *[[:cntrl:]]* ]] \
+    || die "connection url contains a control character — refusing"
+  case "$url" in *\#*) die "refusing a connection url with a fragment" ;; esac
+
+  # THE QUERY STRING IS AN ALLOW-LIST OF ONE. libpq reads `host`, `hostaddr`, `port`, `user`,
+  # `dbname`, `service` and `options` out of the URI query string, and they OVERRIDE the authority:
+  #
+  #   postgresql://postgres@db.<expected>.supabase.co:5432/postgres?host=db.<other>.supabase.co
+  #
+  # names the expected project in its authority, passes an authority-only validator, and connects to
+  # <other>. `options=-csearch_path=…` re-points every unqualified reference besides. Only `sslmode`
+  # is permitted, and only at strengths that do not downgrade TLS; a percent-encoded key is refused
+  # outright rather than decoded and compared, because `%68ost` and `host` must not be able to
+  # differ here.
+  local query="" q pair k v seen_sslmode=0
+  case "$url" in *\?*) query="${url#*\?}" ;; esac
+  if [[ -n "$query" ]]; then
+    local IFS_SAVE="$IFS"; IFS='&'
+    for pair in $query; do
+      IFS="$IFS_SAVE"
+      k="${pair%%=*}"; v="${pair#*=}"
+      # DELIBERATELY REDUNDANT, and recorded as such rather than pretended otherwise: the exact
+      # `== sslmode` comparison below already rejects every encoded spelling, so no test can
+      # isolate this line and a mutation that deletes it survives. It is kept because it gives the
+      # precise diagnosis, and because it becomes load-bearing the moment the allow-list grows or
+      # anyone decodes keys before comparing them.
+      [[ "$k" =~ ^[A-Za-z]+$ ]] \
+        || die "connection url query parameter '$k' is not a plain name — refusing (a percent-encoded key could name an identity parameter such as host or options)"
+      [[ "$k" == "sslmode" ]] \
+        || die "connection url query parameter '$k' is not permitted — only sslmode is, because libpq lets host/hostaddr/port/user/dbname/service/options override the authority this check validates"
+      case "$v" in
+        require|verify-ca|verify-full) : ;;
+        *) die "sslmode='$v' would weaken or disable TLS for a production connection — use require, verify-ca or verify-full" ;;
+      esac
+      [[ "$seen_sslmode" -eq 0 ]] || die "connection url repeats sslmode — libpq takes the LAST occurrence, so a duplicate is a way to hide the effective value"
+      seen_sslmode=1
+      IFS='&'
+    done
+    IFS="$IFS_SAVE"
+  fi
+
+  # strip scheme, then the query — everything below parses the authority + path only
   local rest="${url#*://}"
+  rest="${rest%%\?*}"
   # userinfo@authority/...   -> split at first '/'
   local authority="${rest%%/*}"
   local userinfo="" hostport=""
@@ -90,7 +149,33 @@ assert_conn_url_is_ref() {
     hostport="$authority"
   fi
   local user="${userinfo%%:*}"          # drop :password if present — never stored/echoed
+  # ONE HOST. libpq URIs accept a COMMA-SEPARATED host list and fail over down it, so
+  #
+  #   postgresql://postgres@db.<expected>.supabase.co:1,attacker.example:5432/postgres
+  #
+  # names the expected project first — on a port nothing listens to — and then fails over to the
+  # second host, which is where the credentials and the rollout SQL actually go. Taking the host
+  # before the first ':' and the port after the last ':' reads that as one valid host with a valid
+  # port, so it passed every check.
+  [[ "$hostport" != *,* ]] \
+    || die "connection url names MULTIPLE HOSTS — refusing: libpq fails over along a comma-separated host list, so a first host that satisfies this check does not decide where psql connects"
   local host="${hostport%%:*}"
+  # ...and the authority must be exactly host[:port]; a second colon is not a port spec we parse.
+  [[ "$hostport" != *:*:* ]] \
+    || die "connection url authority '$hostport' is not a single host[:port]"
+  # THE PATH IS THE DATABASE NAME, and it was never looked at. With the query string banned it is
+  # the only place a dbname can come from, so it must be the one this rollout targets — an empty
+  # path silently means "the database named after the user", which is a different connection.
+  local path="/${rest#*/}"
+  [[ "$rest" == */* ]] || path=""
+  [[ "$path" == "/postgres" ]] \
+    || die "connection url must name the 'postgres' database (got path '${path:-<none>}') — an empty or different path is a different connection than the one being validated"
+  # An explicit port must be a plain number: anything else is not a port, and would mean the
+  # authority did not parse the way this validator assumed.
+  if [[ "$hostport" == *:* ]]; then
+    local port="${hostport##*:}"
+    [[ "$port" =~ ^[0-9]+$ ]] || die "connection url port '$port' is not numeric"
+  fi
   # percent-decoded user (pooler user 'postgres.<ref>' contains a dot, no encoding needed,
   # but a URL may encode it) — decode the single common case of %2E -> '.'
   user="${user//%2E/.}"; user="${user//%2e/.}"
@@ -359,6 +444,81 @@ url_add_query() {
 }
 
 # ---------------------------------------------------------------------------
+# libpq ENVIRONMENT identity — the hole underneath every url guard
+# ---------------------------------------------------------------------------
+# assert_conn_url_is_ref validates the URL. libpq does not connect using only the
+# URL. Every psql process inherits the PG* environment, and several of those
+# variables decide WHICH SERVER is reached, independently of anything in the URI:
+#
+#   PGHOSTADDR    a SEPARATE libpq parameter from `host`. When set, it supplies the
+#                 IP directly and the URI's host is used only for SNI/auth — so an
+#                 expected-ref URL passes every string check and connects elsewhere.
+#   PGSERVICE     names a stanza in pg_service.conf; the stanza supplies any
+#                 parameter the URI did not, INCLUDING hostaddr.
+#   PGSYSCONFDIR  chooses which pg_service.conf is read.
+#   PGOPTIONS     goes through as `-c` runtime options — a search_path here silently
+#                 re-points every unqualified `public.` reference in the artifacts.
+#
+# So the rule is structural, not advisory: identity-affecting PG* variables are
+# REMOVED from the psql child's environment (psql_safe below), and any PG*
+# variable we do not recognise at all stops the run — an unknown one may well be
+# a newer identity parameter, and guessing is the failure mode this exists to
+# prevent.
+#
+# Not on the deny list, deliberately: PGPASSWORD/PGPASSFILE are how the operator
+# supplies the password (never on the command line), and they cannot redirect a
+# connection.
+LIBPQ_ENV_DENY=(
+  PGHOST PGHOSTADDR PGPORT PGDATABASE PGUSER PGSERVICE PGSERVICEFILE PGSYSCONFDIR
+  PGOPTIONS PGTARGETSESSIONATTRS PGREQUIREPEER PGCHANNELBINDING PGGSSENCMODE
+  PGGSSLIB PGKRBSRVNAME PGLOADBALANCEHOSTS PGCONNECT_TIMEOUT
+)
+LIBPQ_ENV_ALLOW=(
+  PGPASSWORD PGPASSFILE PGSSLMODE PGSSLROOTCERT PGSSLCERT PGSSLKEY PGSSLCRL
+  PGSSLNEGOTIATION PGAPPNAME PGCLIENTENCODING PGTZ PGDATESTYLE
+)
+
+# Refuse any exported PG* variable that is on neither list. Only NON-EMPTY values
+# are considered set, because libpq treats an empty value as absent.
+#
+# FAIL-CLOSED BY CONSTRUCTION: this reads names out of `env`, and a value
+# containing a newline can only ADD an apparent name (which we would refuse), never
+# hide a real one — every variable's own line begins with its own name.
+assert_no_hostile_libpq_env() {
+  local name bad=() n
+  while IFS= read -r name; do
+    [[ -n "${!name:-}" ]] || continue                 # empty == unset, to libpq
+    for n in "${LIBPQ_ENV_DENY[@]}" "${LIBPQ_ENV_ALLOW[@]}"; do
+      [[ "$name" == "$n" ]] && continue 2
+    done
+    bad+=("$name")
+  done < <(env | sed -n 's/^\(PG[A-Z0-9_]*\)=.*/\1/p' | sort -u)
+  [[ "${#bad[@]}" -eq 0 ]] || die \
+    "unrecognised libpq environment variable(s) set: ${bad[*]} — refusing, because an unknown PG* variable may redirect the connection and the EXPECTED_REF check only validates the URL. Unset them and re-run."
+  # Warn about the ones we strip, so an operator whose environment was going to
+  # redirect the connection finds out rather than wondering why a port changed.
+  for n in "${LIBPQ_ENV_DENY[@]}"; do
+    if [[ -n "${!n:-}" ]]; then
+      warn "$n is set and is being REMOVED from the psql environment (it can override the connection target; put everything the connection needs in the url)"
+    fi
+  done
+  return 0
+}
+
+# THE ONLY WAY THIS BUNDLE SHOULD INVOKE psql. Strips every identity-affecting PG*
+# variable from the child, and disables ~/.psqlrc — a psqlrc runs before the
+# artifact and can \set variables the artifact reads or issue statements of its own.
+#
+# `env -u` and a plain loop, not `mapfile`: bash 3.2 is the operator platform
+# (macOS /bin/bash) and has neither mapfile nor associative arrays.
+psql_safe() {
+  require_cmd psql
+  local unset_args=() n
+  for n in "${LIBPQ_ENV_DENY[@]}"; do unset_args+=(-u "$n"); done
+  env "${unset_args[@]}" psql --no-psqlrc "$@"
+}
+
+# ---------------------------------------------------------------------------
 # psql runner — always ON_ERROR_STOP, always fail-loud
 # ---------------------------------------------------------------------------
 # run_sql <conn_url> <file.sql> [extra psql args...]
@@ -368,7 +528,7 @@ run_sql() {
   require_cmd psql
   [[ -f "$file" ]] || die "sql file not found: $file"
   log "psql -f $(basename "$file")"
-  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$file" "$@" \
+  psql_safe "$url" -v ON_ERROR_STOP=1 -q -f "$file" "$@" \
     || die "SQL artifact failed (non-zero psql exit): $file"
   ok "$(basename "$file") passed"
 }
@@ -407,7 +567,7 @@ run_sql_soft() {
   require_cmd psql
   [[ -f "$file" ]] || { warn "sql file not found: $file"; return 1; }
   local rc=0
-  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$file" "$@" || rc=$?
+  psql_safe "$url" -v ON_ERROR_STOP=1 -q -f "$file" "$@" || rc=$?
   return "$rc"
 }
 

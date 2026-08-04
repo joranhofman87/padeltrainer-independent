@@ -91,26 +91,33 @@ interface WhatsAppConsent {
  * The rule here is NOT "columns with no v2 event key" — that was too narrow and stranded live
  * settings. It is "every column send-email can still consult". send-email's TYPE_TO_PREF_COLUMN
  * maps its types onto booking_confirmation / booking_reminder / booking_cancelled / new_review /
- * payment_receipt / payment_received / new_booking / open_slots_digest, and those paths are still
- * live (send-digest-emails sends booking_confirmation|booking_reminder|booking_cancelled;
+ * payment_receipt / payment_received / new_booking, and those paths are still live
+ * (send-digest-emails sends booking_confirmation|booking_reminder|booking_cancelled;
  * BookLesson sends booking_request → new_booking; BookForPlayerDialog sends
- * manual_booking_confirmation → booking_confirmation; notify-followers sends
- * new_availability|slot_reopened → open_slots_digest). The remaining columns have no v2 key at
+ * manual_booking_confirmation → booking_confirmation). The remaining columns have no v2 key at
  * all. Union = the complete v1 set, so nothing a user could previously control becomes
  * unreachable just because the v2 page shipped.
+ *
+ * REMOVED in 10c-b D: `open_slots_digest`. notify-followers was the ONLY live send-email path
+ * that consulted it, and it now calls enqueue_notification('open_slots_player'), whose cadence
+ * lives in notification_preferences_v2 — and which slice C backfilled from this very column,
+ * preserving off/instant/daily/weekly exactly. Showing the legacy control now would be worse
+ * than useless: it would edit a column nothing reads, silently diverging from the v2 preference
+ * that actually governs delivery. The authority for this removal is
+ * legacySendEmailInventory.test.ts, which asserts the blocking set is empty.
  */
 const LEGACY_PLAYER = [
-  'booking_confirmation', 'booking_reminder', 'open_slots_digest',
+  'booking_confirmation', 'booking_reminder',
   'upcoming_sessions_digest', 'payment_receipt', 'waitlist_update',
 ] as const;
 const LEGACY_STAFF = [
   'new_booking', 'booking_cancelled', 'new_follower', 'new_player',
   'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received',
 ] as const;
-const LEGACY_DIGEST = new Set<string>(['open_slots_digest', 'upcoming_sessions_digest', 'upcoming_schedule_digest']);
+const LEGACY_DIGEST = new Set<string>(['upcoming_sessions_digest', 'upcoming_schedule_digest']);
 /** Mirrors the COLUMN DEFAULTs in migration 20260210090026 exactly — do not guess these. */
 const LEGACY_DEFAULTS: Record<string, Frequency> = {
-  booking_confirmation: 'instant', booking_reminder: 'instant', open_slots_digest: 'weekly',
+  booking_confirmation: 'instant', booking_reminder: 'instant',
   upcoming_sessions_digest: 'daily', payment_receipt: 'instant', waitlist_update: 'instant',
   new_booking: 'instant', booking_cancelled: 'instant', new_follower: 'daily', new_player: 'daily',
   new_registration: 'instant', new_review: 'instant', upcoming_schedule_digest: 'daily',

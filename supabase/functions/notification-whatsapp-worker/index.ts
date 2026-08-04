@@ -100,7 +100,6 @@ const handler = async (req: Request): Promise<Response> => {
     return data === "exhausted" ? "exhausted" : "deferred";
   };
 
-  let cronLockHeld = false;
   try {
     const guard = requireServiceRole(req);
     if (guard) return guard;
@@ -127,9 +126,12 @@ const handler = async (req: Request): Promise<Response> => {
     const statusCallback = Deno.env.get("TWILIO_STATUS_CALLBACK_URL") || undefined;
     const allowFreeform = Deno.env.get("WHATSAPP_ALLOW_FREEFORM") === "true";
 
-    const { data: cronLocked } = await supabase.rpc("try_lock_cron_job", { p_job_name: JOB });
-    if (cronLocked === false) return json({ processed: 0, skipped: "locked" });
-    cronLockHeld = cronLocked === true;
+    // NO cron single-flight lock (10c-b/CRON-SF-WEDGE). The session-scoped
+    // try_lock_cron_job pair was removed: its unlock could land on a different
+    // pooled backend than the lock and wedge this job indefinitely. The atomic
+    // claim below IS the boundary — claim_notification_outbox_batch takes rows
+    // FOR UPDATE SKIP LOCKED under this run's worker token, so concurrent
+    // invocations claim disjoint rows and cannot duplicate a WhatsApp send.
 
     const { data: claimed, error: claimErr } = await supabase.rpc("claim_notification_outbox_batch", {
       p_channel: "whatsapp",
@@ -268,14 +270,6 @@ const handler = async (req: Request): Promise<Response> => {
       // alerting is best-effort — never mask the original error
     }
     return json({ error: msg }, 500);
-  } finally {
-    if (cronLockHeld) {
-      try {
-        await supabase.rpc("unlock_cron_job", { p_job_name: JOB });
-      } catch {
-        // best-effort: the lock is session-scoped and auto-releases when the connection recycles
-      }
-    }
   }
 };
 

@@ -2,7 +2,13 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireAdmin, requireServiceRole } from "../_shared/auth.ts";
-import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import {
+  claimMissingTemplateFailure,
+  emitOnboardingRunAlert,
+  newOnboardingRunTally,
+  recordMissingTemplateOutcome,
+  type MissingTemplateClient,
+} from "../_shared/onboarding-missing-template.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,7 +61,6 @@ const handler = async (req: Request): Promise<Response> => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  let cronLockHeld = false;
 
   try {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
@@ -133,22 +138,14 @@ const handler = async (req: Request): Promise<Response> => {
     const guard = requireServiceRole(req);
     if (guard) return guard;
 
-    // CRON-SF-01: single-flight. Bail if another run already holds the job lock
-    // (a slow run spilling past the next tick, a Vercel retry, or a manual call
-    // mid-cron) so we don't redo the whole queue flush. The per-row atomic claim
-    // already prevents double-SEND; this removes the duplicated work + DB load.
-    const { data: cronLocked } = await supabase.rpc("try_lock_cron_job", { p_job_name: "process-onboarding-emails" });
-    if (cronLocked === false) {
-      // Another run holds the lock → skip this duplicate firing.
-      return new Response(
-        JSON.stringify({ processed: 0, skipped: "locked" }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-    // Fail-open: only release if we actually acquired it. An RPC error (or the
-    // RPC not yet deployed) leaves cronLockHeld false → proceed without the guard
-    // (the per-row atomic claim still prevents double-send), never halt the job.
-    cronLockHeld = cronLocked === true;
+    // NO cron single-flight lock (10c-b/CRON-SF-WEDGE). The session-scoped
+    // try_lock_cron_job pair was removed: it spanned many pooled PostgREST
+    // round-trips with no session affinity, so its unlock could land on a
+    // different backend and wedge this job until that connection recycled.
+    // Correctness never depended on it — every queue item is taken through
+    // claim_onboarding_email_queue_item, a per-row atomic CAS, so an item another
+    // concurrent run already claimed is skipped here rather than sent twice.
+    // Two overlapping runs therefore duplicate some read work, never a send.
 
     // fetch pending emails that are due
     const { data: pendingEmails, error: fetchError } = await supabase
@@ -182,23 +179,38 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log(`Processing ${pendingEmails.length} pending emails`);
 
-    let successCount = 0;
-    let failCount = 0;
+    // The tally and its single end-of-run alert are production primitives in
+    // _shared/onboarding-missing-template.ts, so the Deno suite exercises this exact
+    // wiring (this module is unimportable — `serve(handler)` runs at import time).
+    const tally = newOnboardingRunTally(pendingEmails.length);
 
     for (const rawItem of pendingEmails) {
       // Handle the template which comes as an array from the join
       const rawTemplate = Array.isArray(rawItem.template) ? rawItem.template[0] : rawItem.template;
       const queueItem = { ...rawItem, template: rawTemplate } as QueuedEmail;
       if (!queueItem.template) {
-        console.error(`Template not found for queue item ${queueItem.id}`);
-        await supabase
-          .from("onboarding_email_queue")
-          .update({
-            status: "failed",
-            error_message: "Template not found",
-          })
-          .eq("id", queueItem.id);
-        failCount++;
+        // Ownership lives in ONE production-owned primitive (_shared/
+        // onboarding-missing-template.ts) so the concurrency guard is exercised by
+        // tests directly rather than re-implemented by them. See that file for why
+        // this path needs a CAS at all: it runs before the claim, so two
+        // overlapping invocations would otherwise both count the failure and both
+        // fire the end-of-run Slack alert for a single broken row.
+        // The primitive declares only the narrow builder surface it needs, so the
+        // tests can supply a faithful stand-in; the real client is structurally
+        // wider. Cast at this adapter boundary rather than loosening the contract
+        // the tests rely on.
+        const outcome = await claimMissingTemplateFailure(
+          supabase as unknown as MissingTemplateClient,
+          queueItem.id,
+        );
+        if (outcome.kind === "error") {
+          console.error(`Could not mark queue item ${queueItem.id} failed:`, outcome.message);
+        } else if (outcome.kind === "already_handled") {
+          console.log(`Queue item ${queueItem.id} missing-template already handled by another run, skipping`);
+        } else {
+          console.error(`Template not found for queue item ${queueItem.id}`);
+        }
+        recordMissingTemplateOutcome(tally, outcome);
         continue;
       }
 
@@ -253,7 +265,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       if (claimError) {
         console.error(`Claim failed for ${queueItem.id}:`, claimError);
-        failCount++;
+        tally.failCount++;
         continue;
       }
 
@@ -286,7 +298,7 @@ const handler = async (req: Request): Promise<Response> => {
           status: "sent",
         });
 
-        successCount++;
+        tally.successCount++;
       } catch (emailError: unknown) {
         console.error(`Failed to send email for queue item ${queueItem.id}:`, emailError);
 
@@ -312,27 +324,17 @@ const handler = async (req: Request): Promise<Response> => {
           status: "failed",
         });
 
-        failCount++;
+        tally.failCount++;
       }
     }
 
-    // Per-item failures return HTTP 200, so the daily-emails cron wrapper's
-    // alertCronFailure (non-2xx only) never sees them. Each failed item is
-    // already marked 'failed' in the queue (won't retry), so a silent failure
-    // means an onboarding email that never goes out — alert.
-    if (failCount > 0) {
-      await notifySlackEdgeError(
-        "process-onboarding-emails",
-        `${failCount} onboarding email(s) failed to send`,
-        { failCount, successCount, processed: pendingEmails.length },
-      );
-    }
+    await emitOnboardingRunAlert(tally);
 
     return new Response(
       JSON.stringify({
-        processed: pendingEmails.length,
-        success: successCount,
-        failed: failCount,
+        processed: tally.processed,
+        success: tally.successCount,
+        failed: tally.failCount,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
@@ -343,13 +345,6 @@ const handler = async (req: Request): Promise<Response> => {
       JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
-  } finally {
-    // Release the single-flight lock on every exit path. The session advisory
-    // lock also auto-releases when the pooled connection recycles, so a missed
-    // unlock can at worst skip one cron tick — never wedge the job.
-    if (cronLockHeld) {
-      try { await supabase.rpc("unlock_cron_job", { p_job_name: "process-onboarding-emails" }); } catch { /* best-effort */ }
-    }
   }
 };
 

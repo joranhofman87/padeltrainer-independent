@@ -2561,6 +2561,33 @@ export type Database = {
           },
         ]
       }
+      cron_job_leases: {
+        Row: {
+          acquired_at: string
+          job_name: string
+          locked_until: string
+          owner_token: string
+          release_count: number
+          renewed_at: string | null
+        }
+        Insert: {
+          acquired_at?: string
+          job_name: string
+          locked_until: string
+          owner_token: string
+          release_count?: number
+          renewed_at?: string | null
+        }
+        Update: {
+          acquired_at?: string
+          job_name?: string
+          locked_until?: string
+          owner_token?: string
+          release_count?: number
+          renewed_at?: string | null
+        }
+        Relationships: []
+      }
       cycles: {
         Row: {
           category_id: string | null
@@ -4610,6 +4637,7 @@ export type Database = {
           default_email_frequency: string
           default_push_frequency: string
           default_whatsapp_frequency: string
+          digest_cutover: boolean
           digest_engine_enabled: boolean
           key: string
           max_per_user_per_day: number | null
@@ -4622,6 +4650,7 @@ export type Database = {
           supports_push: boolean
           supports_whatsapp: boolean
           template_email: string | null
+          template_version: number
           template_whatsapp: string | null
           updated_at: string
           visibility_scope: string
@@ -4635,6 +4664,7 @@ export type Database = {
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
+          digest_cutover?: boolean
           digest_engine_enabled?: boolean
           key: string
           max_per_user_per_day?: number | null
@@ -4647,6 +4677,7 @@ export type Database = {
           supports_push?: boolean
           supports_whatsapp?: boolean
           template_email?: string | null
+          template_version?: number
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -4660,6 +4691,7 @@ export type Database = {
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
+          digest_cutover?: boolean
           digest_engine_enabled?: boolean
           key?: string
           max_per_user_per_day?: number | null
@@ -4672,6 +4704,7 @@ export type Database = {
           supports_push?: boolean
           supports_whatsapp?: boolean
           template_email?: string | null
+          template_version?: number
           template_whatsapp?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -9335,6 +9368,10 @@ export type Database = {
         Returns: boolean
       }
       accept_rebook_rules: { Args: { _token: string }; Returns: undefined }
+      acquire_cron_lease: {
+        Args: { p_job_name: string; p_ttl_seconds?: number }
+        Returns: string
+      }
       admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
         Args: { p_invoice_id: string; p_reason: string }
@@ -10569,6 +10606,14 @@ export type Database = {
         }
         Returns: string
       }
+      notif_digest_assert_hhmm: {
+        Args: { p_label: string; p_value: string }
+        Returns: string
+      }
+      notif_digest_assert_iso_date: {
+        Args: { p_label: string; p_value: string }
+        Returns: string
+      }
       notif_digest_assert_run: {
         Args: { p_channel: string; p_phase: string; p_run_id: string }
         Returns: undefined
@@ -10579,6 +10624,10 @@ export type Database = {
           p_now: string
           p_provider_message_id: string
         }
+        Returns: string
+      }
+      notif_digest_boundary_at: {
+        Args: { p_frequency: string; p_now: string; p_timezone: string }
         Returns: string
       }
       notif_digest_bucket_apply: {
@@ -10644,6 +10693,10 @@ export type Database = {
         Args: { p_destination: string }
         Returns: string
       }
+      notif_digest_event_stop_reason: {
+        Args: { p_member_id: string }
+        Returns: string
+      }
       notif_digest_finalize_group: {
         Args: {
           p_group_id: string
@@ -10652,6 +10705,26 @@ export type Database = {
           p_terminal_state: string
         }
         Returns: undefined
+      }
+      notif_digest_group_locale: {
+        Args: { p_person_id: string; p_user_id: string }
+        Returns: string
+      }
+      notif_digest_item_for_event: {
+        Args: { p_event_key: string; p_locale: string; p_payload: Json }
+        Returns: Json
+      }
+      notif_digest_item_open_slots_v1: {
+        Args: { p_data: Json; p_locale: string; p_subtype: string }
+        Returns: Json
+      }
+      notif_digest_item_reject_unsafe: {
+        Args: { p_text: string }
+        Returns: undefined
+      }
+      notif_digest_json_text: {
+        Args: { p_data: Json; p_field: string }
+        Returns: string
       }
       notif_digest_ledger: {
         Args: {
@@ -10673,6 +10746,13 @@ export type Database = {
       }
       notif_digest_quiet_hours_bump: {
         Args: { p_now: string; p_tz: string }
+        Returns: string
+      }
+      notif_digest_recipient_timezone: {
+        Args: {
+          p_tenant_academy_profile_id: string
+          p_tenant_trainer_id: string
+        }
         Returns: string
       }
       notif_digest_release_reservations: {
@@ -10719,6 +10799,26 @@ export type Database = {
         Args: { p_destination_fingerprint: string; p_frozen: Json }
         Returns: undefined
       }
+      notif_digest_worker_liveness: {
+        Args: never
+        Returns: {
+          job_active: boolean
+          job_present: boolean
+          last_finished_at: string
+          last_status: string
+          last_success_at: string
+          seconds_since_success: number
+        }[]
+      }
+      notif_open_slots_escape_html: {
+        Args: { p_text: string }
+        Returns: string
+      }
+      notif_open_slots_instant_payload: {
+        Args: { p_item: Json }
+        Returns: Json
+      }
+      notif_pref_bridge_hop_active: { Args: never; Returns: boolean }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_orphan_reconcile_permanent_reason: {
         Args: { p_code: string }
@@ -10948,9 +11048,21 @@ export type Database = {
           outcome: string
         }[]
       }
+      release_cron_lease: {
+        Args: { p_job_name: string; p_owner_token: string }
+        Returns: boolean
+      }
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
+      renew_cron_lease: {
+        Args: {
+          p_job_name: string
+          p_owner_token: string
+          p_ttl_seconds?: number
+        }
+        Returns: boolean
+      }
       reset_email_suppression: { Args: { p_email: string }; Returns: undefined }
       resolve_guest_member_contacts: {
         Args: { _guest_ids: string[] }
@@ -11074,12 +11186,10 @@ export type Database = {
         }
         Returns: undefined
       }
-      try_lock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
       unclaim_rebook_member_open_notice: {
         Args: { _cycle_id: string }
         Returns: undefined
       }
-      unlock_cron_job: { Args: { p_job_name: string }; Returns: boolean }
       unschedule_all_background_pg_cron_jobs: {
         Args: never
         Returns: undefined

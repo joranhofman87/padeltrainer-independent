@@ -67,7 +67,7 @@ exists) reschedules them cleanly. On a DB with no `pg_cron` or no Vault secret i
 |---|---|---|---|
 | `notification-email-worker` | `*/2 * * * *` | **Yes** | v2 email outbox drainer. Self-auth via `requireServiceRole`. |
 | `notification-whatsapp-worker` | `*/2 * * * *` | **Yes** | v2 WhatsApp outbox drainer. Self-auth via `requireServiceRole`. |
-| `notification-digest-worker` | *(not scheduled)* | **Yes** (when scheduled) | 10c-a3 digest worker — deployed but INERT; its cron is a gated 10c-b step. Same Vault-key path when enabled. |
+| `notification-digest-worker` | `*/5 * * * *` **INACTIVE** | **Yes** (at tick time, once armed) | 10c-b F installs the job DISABLED in the same transaction that creates it (`20261012100000`), so it exists but never ticks. Arming it is an owner gate: `cron.alter_job(jobid, active := true)`, after the send switch is on and one canary is reconciled. The migration is non-destructive — a re-run never re-arms or disarms an existing job — and installs even when the Vault secret is absent, because the stored command reads Vault at tick time. Verify with `SELECT * FROM public.notif_digest_worker_liveness()`. |
 | `notify-rebook-member-open` | `*/15 * * * *` | **Yes** | Rebook "sessions opened" email. No fallback. |
 | `auto-rebook-reminder` | `0 6-19 * * *` | **Yes** | Rebook deadline reminder (daytime-only). No fallback. |
 | `invoice-health-check-daily` | `0 6 * * *` | **Yes** (legacy) | Redundant duplicate of the Vercel maintenance job; posts to `invoice-health-check` with a `Bearer` from the old `sr_key` path. Pause/unschedule in an emergency. |
@@ -221,19 +221,26 @@ authentication check — its disabled branch returns `200` before claiming/sendi
 > `net.http_post`** — an enabled worker would claim + send real digest emails. Do not infer "off" from the
 > response: by the time you read a non-`disabled` body, the send has already happened.
 
-Then probe the Vault key with the switched-off worker (async — `net.http_post` returns a pg_net **request id**):
+Then probe the Vault key with the switched-off worker. **Use the subcommand, not a hand-written
+statement:**
 
-```sql
--- PRECONDITION (verified out-of-band): notification-digest-worker DIGEST_SEND_ENABLED is unset / != 'true'.
-select net.http_post(
-  url := 'https://<project-ref>.supabase.co/functions/v1/notification-digest-worker',  -- DIGEST_SEND_ENABLED off
-  headers := jsonb_build_object('Content-Type','application/json',
-    'Authorization','Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')),
-  body := '{}'::jsonb
-);
--- then inspect the response (status + body only — see the secret caution below):
-select id, status_code, content, error_msg, created from net._http_response where id = <the returned id>;
+```bash
+EXPECTED_REF=<project-ref> scripts/rollout/notif-10cb/run-enablement.sh \
+  smoke-disabled --yes --switch-off-confirmed "$DB_URL"
 ```
+
+It executes the reviewed cron job's **own stored command** after asserting its whole-command hash
+under a row lock, so the endpoint comes from the reviewed job rather than from a `<project-ref>` you
+retype; it pins `search_path`, so an unqualified name in that statement cannot be redirected; it
+refuses unless the cron is inactive and no engine is enabled; and it checks the reply is exactly
+`200 {"status":"disabled","reason":"disabled"}` with every counter unmoved.
+
+**Why this is not merely tidier.** The statement being run posts a Vault-decrypted `service_role`
+bearer. `DIGEST_SEND_ENABLED=false` stops the *mail*; it does nothing at all for the *credential*. A
+mistyped project ref sends that bearer to another project, and a hostile
+`public.jsonb_build_object(text,text,text,text)` — creatable by anyone with CREATE on `public`, which
+is in the default `search_path` — receives it as an argument and returns plausible headers. Both were
+demonstrated on a real server during review; see `scripts/rollout/notif-10cb/README.md`.
 
 > 🔒 **Never `select *` from — or dump — pg_net's request/queue tables.** The probe above lists specific
 > `net._http_response` columns on purpose: the **request** side (`net.http_request_queue`, and the request

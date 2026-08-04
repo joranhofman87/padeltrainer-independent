@@ -220,10 +220,13 @@ Data model (5 tables) is specified in Codex's plan; the deltas we apply are in
    one row per recipient per channel" and "webhook-vs-verify race → no
    duplicates" guarantees (a duplicate delivery re-derives the same per-recipient
    keys and no-ops on the unique index), while still fanning out to N recipients.
-8. **Worker concurrency = atomic claims, NOT the session cron lock.** The v2 digest worker (10c-a3) uses the SQL
-   state machine's `claim` (`FOR UPDATE SKIP LOCKED` + ownership stamp) as its single concurrency boundary and
-   does **not** take `try_lock_cron_job` — that session-scoped advisory lock has a cross-pooled-session wedge
-   hazard (see `docs/OBSERVABILITY_AND_RECOVERY.md` → CRON-SF-WEDGE) and must not be inherited by new workers.
+8. **Worker concurrency = atomic claims; the session cron lock no longer exists.** The v2 digest worker
+   (10c-a3) uses the SQL state machine's `claim` (`FOR UPDATE SKIP LOCKED` + ownership stamp) as its single
+   concurrency boundary. The session-scoped `try_lock_cron_job` / `unlock_cron_job` pair was **retired in
+   10c-b** (`20261007100000_cron_durable_lease.sql` drops both) because of its cross-pooled-session wedge
+   hazard — see `docs/OBSERVABILITY_AND_RECOVERY.md` → CRON-SF-WEDGE (CLOSED). A new worker gets its exclusion
+   from its own atomic claim; only a job with **no** claim (today just `invoice-health-check`) may take the
+   durable `acquire_cron_lease` / `release_cron_lease` owner-token lease, which self-heals via TTL.
    Recovery is via the state machine's stale-lock reclaim + exponential backoff + max attempts.
 
 ---
@@ -347,7 +350,7 @@ Prerequisites:
      **lease → confirm** pair (lease bumps `ops_alert_attempts`; only a confirmed Slack
      send sets `ops_alerted_at`), so a Slack failure re-tries (at-least-once, bounded).
    - **Edge fn** `notification-email-worker`: `requireServiceRole` guard →
-     `try_lock_cron_job` single-flight (fail-open) → claim under a fresh `crypto.randomUUID()`
+     claim under a fresh `crypto.randomUUID()`
      token → per row: validate payload, re-check `is_email_suppressed` (**fail CLOSED** —
      on check error, retry rather than risk sending to a bad address), `sendResendEmail`
      with a stable **`Idempotency-Key`** (`notification-outbox-<id>`, so a retry after
@@ -741,6 +744,36 @@ NOT in scope for 10b (deliberately retained, tracked in PR 10c): `notify-followe
 open-slots availability, the `notification_queue` + `send-digest-emails` digest path, and the
 PR 8 "Other notifications" settings bridge. **The legacy migration is NOT complete after 10b** —
 `send-email` remains live and the bridge stays until 10c ships the open-slots + v2 digest work.
+
+### The v1 ↔ v2 preference bridge is TWO-way (10c-b C + J)
+
+`notification_preferences.open_slots_digest` and `notification_preferences_v2('open_slots_player')`
+mirror **each other** for as long as the v1 column has a reader:
+
+| direction | migration | closes |
+|---|---|---|
+| v1 → v2 | `20261011100000` §5b | a CACHED pre-cutover settings bundle still writing v1 after the control left the page |
+| v2 → v1 | `20261013100000` | the deploy window in which the NEW page writes v2 only while the OLD `send-email` bundle still enforces v1 |
+
+Both are one hop: a transaction-local guard (`notif_pref_bridge_hop_active()`) makes the pair
+non-recursive. They resolve an ambiguous write differently and deliberately: forward, by VALUE
+against the v1 COLUMN default (fixed by the schema); reverse, by refusing to guess at all — **on
+arrival only an opt-out may overwrite an existing legacy choice, everything else seeds** — because an
+arriving value's provenance is not recoverable. Neither mirrors WhatsApp or push; there is no v1
+counterpart. The reverse direction also ships a bounded, idempotent one-time reconcile (a trigger
+cannot see rows that already exist) and a **departure** half, so losing the v2 row (delete, retarget
+away, reassignment) moves the legacy column to the catalog default rather than leaving it stale.
+Departures never un-suppress — an `off` on either side is protected — but they do adopt the catalog
+default, which can raise frequency when that default is more frequent than the departing value. That
+is what v2 resolves to, and neither value is an opt-out.
+
+Retirement: `legacySendEmailInventory.test.ts` goes red when `send-email` stops mapping
+`new_availability`/`slot_reopened` onto `open_slots_digest`. That is **condition 1 of 4, not a
+green light** — the other three are deployment facts no test in this repo can see (that revision
+DEPLOYED rather than merged, the pre-cutover bundle out of browser caches, and the v1 column dropped
+in the same release unit). Removing the bridge on a green CI, while migrations still land before the
+hand-deployed edge function, re-opens the exact gap it closes. Full rationale, including the rejected
+`pg_trigger_depth()` and advisory-lock designs, in ADR 0008 §"10c-b J".
 
 Guest deliverability (10b): a guest with no account is made reachable by an in-scope
 `notification_contacts` row (`ensure_guest_email_contact`). When a guest's authoritative email

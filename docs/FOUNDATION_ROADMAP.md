@@ -168,6 +168,91 @@ No correctness/scale risk today; these lower the cost of every future change and
 
 ---
 
+## Blocking release unit — Admin Notification Operations (10c-b Stage 3.5)
+
+**Owner-requested. It BLOCKS the notification digest canary and activation, and is deliberately NOT
+part of PR #629**, which stays scoped to A–I. Entry: #629 merged and deployed inert. Exit: this unit
+is reviewed, CI-green, deployed, and the owner has confirmed the surfaces work. Only then may a
+canary run or the cron be armed — `scripts/rollout/notif-10cb/run-enablement.sh` requires
+`--admin-ops-confirmed` on `canary-invoke`, `canary` and `activate`, and **this section is that
+flag's referent**. `canary-invoke` is the one that gates the send itself: it is the subcommand that
+invokes the worker, so from that step onward the flag is a mechanical precondition on mail going out
+rather than only on reconciling and arming afterwards.
+
+**Why it blocks.** Not because failures are otherwise undetectable — a failed canary shows up in its
+HTTP result, in `canary_verify.sql`, and in the worker's Slack alert. Because there is no
+**in-product, global** view of the pipeline and no safe recovery controls: today the only way to
+see what it is doing, or to intervene, is psql against production plus the rollout scripts. That is
+one person at a keyboard, not operations.
+
+**Scope — global admin visibility (read).** A cross-tenant admin surface over the real tables, not a
+mock: `notification_outbox` (pending/claimed/failed per event + channel), `notification_digest_groups`
+and `notification_digest_attempts` (state, `outcome_class`, provider ids),
+`notification_worker_runs` (phase/channel/status/`ended_at`), `notification_provider_circuit`
+(per-channel breaker state, reason, `retry_at`), `notification_orphan_reconcile_state` (what is
+parked awaiting a human), `notif_digest_worker_liveness()`, and the email deliverability record.
+PII-minimal; message bodies are never exposed to a non-tenant admin.
+
+**Scope — safe controls (write). FAIL-CLOSED DIRECTIONS ONLY.** This is the constraint that matters,
+and it is easy to get wrong: an admin "activate the cron" button would satisfy a loosely-worded spec
+while bypassing everything `scripts/rollout/notif-10cb/sql/activate.sql` exists to enforce — the
+reviewed-command hash, the node/schedule/owner identity, canary freshness and binding, the run-ledger
+and group locks, and the monitor confirmation. Combined with an already-enabled edge switch, an admin
+engine toggle plus an admin arm button *is* a send button, however the copy is worded.
+
+So the admin surface may only move things toward **safe**:
+* digest engine **disable** (per event) — never enable;
+* cron **deactivate** — never activate, and **never** `cron.unschedule`, which destroys the reviewed
+  Vault-backed command;
+* resolve or re-queue a quarantined orphan; **cancel** a stuck group.
+
+Three recovery actions are NOT fail-closed, because the next tick can send off the back of them, and
+they are specified separately rather than waved through under the same heading:
+* **closing a tripped circuit** re-opens the whole channel. It must state the trip reason, refuse
+  outright while the reason is `correlation_mismatch` (a permanently mis-correlated message needs
+  resolving, not un-holding), and require an explicit typed confirmation.
+* **retrying a group** re-enters the send path. It must respect the group's remaining delivery
+  budget and attempt cap, require positive provider evidence that the previous attempt did not land
+  (never a `delivery_unknown` guess), and re-check consent/stop policy at retry time rather than
+  trusting the enqueue-time decision.
+* neither may call the provider directly — they may only move state that the existing worker and
+  state machine then act on, so every send continues to go through the reviewed path.
+
+**Enabling and arming stay in the owner runbook**, behind the one authoritative gate. If a future
+version wants an in-product activate, it must call that same gate — canary-bound, locked and
+count-checked — and not a raw `cron.alter_job(active := true)`.
+
+**Acceptance criterion 6 — a durable pending-invocation record.** A dispatch run only appears
+in `notification_worker_runs` once the worker *starts*. Between `canary-invoke`'s commit and that
+moment the pipeline has no durable record that an invocation is on its way, so "nothing is in flight"
+reads clean over a canary that is already travelling — which lets a second invocation start, and lets
+`activate` arm the cron on the *previous* canary's evidence while an unverified one is in the air.
+10c-b narrows this by refusing while a request to the worker endpoint is still in
+`net.http_request_queue`, and both artifacts say plainly that this is a narrowing, not a closure:
+pg_net owns that row's lifetime, so a request already dispatched but not yet recorded stays invisible.
+Closing it needs a record written by the invoker and cleared by the worker — pipeline state, owned by
+this release unit, and one of the things its global view should show. Until it exists, treat
+"invocation in flight" as an operator responsibility: one canary at a time, and never `activate` from
+a second terminal while `canary-invoke` is still running.
+
+Every control is admin-only, audited, idempotent, and refuses rather than guesses. **No control may
+perform a send.** `DIGEST_SEND_ENABLED` is an edge env var that no SQL and no admin surface can read
+— the UI must say so rather than imply it checked.
+
+**Acceptance criteria — what "shipped and verified" means for `--admin-ops-confirmed`:**
+1. ACL/RLS proven for admin vs trainer vs player vs anon — a non-admin gets nothing.
+0. **No control enables the engine or arms the cron.** Asserted, not just reviewed: a test must fail
+   if such a control exists, and arming must remain reachable only through `activate.sql`.
+2. Every control mutation-pinned: removing the guard fails a test.
+3. The read surface tested against real fixture data, not stubs.
+4. Independent review clear, every repo gate green.
+5. Deployed, and the owner has exercised each surface once.
+6. **A durable pending-invocation record exists** — written by whatever invokes the digest worker and
+   cleared when that invocation's run appears or is abandoned — and both `canary-invoke` and the
+   activation gate read it. See "Acceptance criterion 6" above for why the 10c-b narrowing is not a
+   closure. Until this ships, "one invocation at a time" is an operator responsibility, not an
+   enforced invariant.
+
 ## Owner deploy backlog (already-merged, not yet live)
 
 Independent of the above: these are **merged in code but await the owner's manual prod apply** — track separately so they don't read as "done." The `reconcile_payments` RPC + `mollie-webhook` audit writes need migration `20260705140000` applied + the `mollie-webhook` redeployed (see [`OBSERVABILITY_AND_RECOVERY.md`](OBSERVABILITY_AND_RECOVERY.md)). Confirm against the deploy checklist before assuming any edge-fn/migration fix is active in prod.

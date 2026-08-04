@@ -37,6 +37,10 @@ source "$HERE/PINS.env"     # PR615_SHA, PR616_SHA (reviewed + CI-tested pins)
 
 require_env EXPECTED_REF "set EXPECTED_REF to the target project ref (20 chars)"
 assert_ref_format "$EXPECTED_REF"
+# The url guard below validates the url; libpq also reads the PG* environment, where PGHOSTADDR /
+# PGSERVICE / PGSYSCONFDIR / PGOPTIONS can each redirect a connection whose url passed every check.
+# This bundle mutates production, so the environment is settled once, up front.
+assert_no_hostile_libpq_env
 [[ "${PR615_SHA:-}" =~ ^[0-9a-f]{40}$ && "${PR616_SHA:-}" =~ ^[0-9a-f]{40}$ ]] || die "PINS.env missing valid PR615_SHA/PR616_SHA"
 MIN_DRAIN_SECONDS="${MIN_DRAIN_SECONDS:-$ROLLOUT_DRAIN_FLOOR}"
 
@@ -356,7 +360,7 @@ capture_manifest() {
   local url="$1" tag="$2"; local out="$EVID/manifest-${tag}.txt"; require_cmd psql
   require_env ROLLOUT_SALT "internal: manifest salt not set"
   # salt via env (\getenv in manifest.sql) so it never appears in process args; 0600 output
-  ( umask 077; ROLLOUT_SALT="$ROLLOUT_SALT" psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/manifest.sql" | sed '/^$/d' > "$out" ) \
+  ( umask 077; ROLLOUT_SALT="$ROLLOUT_SALT" psql_safe "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/manifest.sql" | sed '/^$/d' > "$out" ) \
     || die "manifest capture ($tag) failed"
   chmod 600 "$out" 2>/dev/null || true
   validate_manifest "$out" "$tag"; ok "manifest captured + validated: $out"
@@ -383,7 +387,7 @@ resolve_recovery_sha() {
 # --- migration ledger (fail-loud, valid prefixes only) ---------------------
 ledger_status() { # $1 url ; echoes none|prefix1|prefix2|all|invalid
   local url="$1" csv; require_cmd psql
-  csv="$(psql "$url" -v ON_ERROR_STOP=1 -Atqc \
+  csv="$(psql_safe "$url" -v ON_ERROR_STOP=1 -Atqc \
     "SELECT CASE WHEN to_regclass('supabase_migrations.schema_migrations') IS NULL THEN ''
        ELSE coalesce((SELECT string_agg(version, ',' ORDER BY version)
                       FROM supabase_migrations.schema_migrations
@@ -562,6 +566,35 @@ assert_inventory_is_reviewed() {   # $1 = inventory file
   for f in "$REVIEWED_JOBS" "$REVIEWED_FNS" "$REVIEWED_EXTS"; do
     [[ -f "$f" ]] || die "missing reviewed list: $f"
   done
+  # A job name outside the safe grammar is never classified — it is reported under its own key,
+  # because a name containing whitespace would forge the fields after it in this space-delimited
+  # record and read as a DIFFERENT, reviewed job.
+  # AN IDENTIFIER OUTSIDE THE SAFE GRAMMAR IS NEVER RECONCILED. These records are space-delimited
+  # and read by fixed field, so a name containing whitespace forges the fields after it and reads
+  # as a DIFFERENT, reviewed entry. The SQL reports such a name under its own key instead; every
+  # one of those keys is fatal here.
+  local k
+  for k in CRONJOB OUTFN EXT; do
+    if grep -q "^${k}_UNSAFE_NAME " "$inv"; then
+      n="$(grep -c "^${k}_UNSAFE_NAME " "$inv")"
+      die "${n} ${k} entr(y/ies) have a name outside the safe grammar ([A-Za-z0-9_.:-]) — they cannot be reconciled against the reviewed set, and a name containing whitespace would forge the inventory record; rename or remove them before cloning"
+    fi
+  done
+  # ...and every identity record must have exactly its expected fields, so a short or long line can
+  # never be silently read as something else. CRONJOB carries name+active+outbound; OUTFN and EXT
+  # carry a name only.
+  if awk '($1=="CRONJOB" && NF!=4) || ($1=="OUTFN" && NF!=2) || ($1=="EXT" && NF!=2) {found=1} END{exit !found}' "$inv"; then
+    die "malformed identity record(s) in the clone-source inventory — refusing to classify blind"
+  fi
+  # ...and no identity may appear TWICE. Two records with the same key mean the key does not
+  # identify the thing (an OUTFN emitted without its signature collapsed overloads exactly so), and
+  # a reader that reconciles per-line would clear both against one reviewed entry.
+  local dupes
+  # NO `| head` here: under `set -Eeuo pipefail` head closes early and can SIGPIPE the producer,
+  # which is exactly what exit-status-test.sh guards against. awk bounds the output instead.
+  dupes="$(awk '$1=="CRONJOB"||$1=="OUTFN"||$1=="EXT"{print $1, $2}' "$inv" | sort | uniq -d | awk 'NR<=3')"
+  [[ -z "$dupes" ]] \
+    || die "duplicate identity record(s) in the clone-source inventory ($(echo "$dupes" | tr '\n' ' ')) — the key does not identify the entry; refusing to classify blind"
   # cron jobs: present in the reviewed set AND the live outbound classification
   # must still match the reviewed one (a command edit can change it).
   while read -r name flag; do
@@ -716,7 +749,7 @@ cmd_clone_source_quiesce() {
 
 # The captured relation is the authority; this is its human-readable shadow.
 export_source_manifest() {   # $1 url
-  psql "$1" -v ON_ERROR_STOP=1 -Atqc \
+  psql_safe "$1" -v ON_ERROR_STOP=1 -Atqc \
     "SELECT format('JOB\t%s\t%s\t%s', jobid, jobname, prior_active) FROM rollout_clone.snapshot_job_state ORDER BY jobid" \
     > "$SRC_MANIFEST" || die_rc "$?" "could not export the captured prior-state manifest"
   chmod 600 "$SRC_MANIFEST" 2>/dev/null || true
@@ -747,7 +780,7 @@ quiesce_drain() {   # $1 url
   for (( i = 1; i <= tries; i++ )); do
     rc=0
     out="$(set -o pipefail
-           psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/cron_quiet_sample.sql" 2>/dev/null | sed -n 's/^SAMPLE //p' | tail -1)" || rc=$?
+           psql_safe "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/cron_quiet_sample.sql" 2>/dev/null | sed -n 's/^SAMPLE //p' | tail -1)" || rc=$?
     # a failing subprocess keeps ITS status all the way out to the caller
     [[ "$rc" -eq 0 ]] || { warn "could not sample cron quiescence (psql exit ${rc})"; return "$rc"; }
     # exit 0 with no output has no subprocess status to preserve; 1 is the
@@ -937,7 +970,7 @@ cmd_clone_build_baseline() {
     # error above. Matching human-readable fragments meant a message change
     # could silently withdraw a valid recovery — or offer a destructive one.
     local marker rc2=0
-    marker="$(psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -Atqc \
+    marker="$(psql_safe "$url" -v ON_ERROR_STOP=1 --no-psqlrc -Atqc \
       "SELECT count(*) FROM net.rehearsal_target_marker" 2>/dev/null)" || rc2=$?
     if [[ "$rc2" -eq 0 && "$marker" =~ ^[0-9]+$ && "$marker" -ge 1 ]]; then
       rm -f "$probe"
@@ -1000,7 +1033,7 @@ clone_build_schema_and_data() {   # $1 url
 clone_capture_baseline() {   # $1 url
   local tmp rc=0
   tmp="$(mktemp "${TMPDIR:-/tmp}/rollout-baseline-XXXXXX")" || die "could not create a baseline capture"
-  psql "$1" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline_fingerprint.sql" > "$tmp" 2>&1 || rc=$?
+  psql_safe "$1" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline_fingerprint.sql" > "$tmp" 2>&1 || rc=$?
   if [[ "$rc" -ne 0 ]]; then rm -f "$tmp"; die "could not fingerprint the baseline (psql exit ${rc})"; fi
   grep -q '^SYNTHETIC ok$' "$tmp" || { rm -f "$tmp"; die "baseline contains a NON-SYNTHETIC address — refusing to record it"; }
   mv "$tmp" "$BASELINE_FP"; chmod 600 "$BASELINE_FP" 2>/dev/null || true
@@ -1016,7 +1049,7 @@ cmd_clone_baseline_verify() {
   [[ -s "$BASELINE_FP" ]] || die "no recorded baseline — run clone-build-baseline first"
   local tmp rc=0
   tmp="$(mktemp "${TMPDIR:-/tmp}/rollout-baseline-XXXXXX")" || die "could not create a comparison capture"
-  psql "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline_fingerprint.sql" > "$tmp" 2>&1 || rc=$?
+  psql_safe "$url" -v ON_ERROR_STOP=1 --no-psqlrc -q -f "$SQL_DIR/baseline_fingerprint.sql" > "$tmp" 2>&1 || rc=$?
   if [[ "$rc" -ne 0 ]]; then rm -f "$tmp"; die "could not fingerprint the target (psql exit ${rc})"; fi
   if ! diff -q "$BASELINE_FP" "$tmp" >/dev/null 2>&1; then
     warn "the target does NOT match the recorded pristine baseline:"

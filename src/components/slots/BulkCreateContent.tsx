@@ -40,6 +40,7 @@ import { buildBulkCycleBookings } from "@/lib/bulkCycleBookings";
 import { splitAmongPlayersForInvoiceCreate } from "@/lib/invoiceSplitPricing";
 import { resolveSplitDivisor } from "@/lib/splitDivisor";
 import { getSelectedGuestPlayerIds, groupChargeableBookingsByGuest, normalizePayerId, shouldShowPayerSelector } from "@/lib/cyclePayerSelection";
+import { notifyFollowers } from "@/lib/notifyFollowers";
 import { buildDefaultBulkSlotOwnership, shouldInvokeNotifyFollowersOnBulkGenerate, shouldShowBulkBookingPartialFailureToast, shouldShowBulkPlayersAddedToast } from "@/lib/bulkCreateSlot";
 import { useTrainerRatingSystem } from "@/hooks/useTrainerRatingSystem";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
@@ -890,15 +891,44 @@ export function BulkCreateContent({
           );
 
           const { data: { session } } = await supabase.auth.getSession();
-          await supabase.functions.invoke("notify-followers", {
-            body: {
+          // STRUCTURED ISO dates, not display text (10c-b D): the copy is rendered server-side
+          // by trusted SQL and frozen into an immutable hash-covered item, so a locale-formatted
+          // range is unparseable downstream and would change the event identity if the format did.
+          //
+          // Routed through the ONE typed caller, which retries a bounded number of times while
+          // the run reports itself incomplete. That is safe and creates no backlog: the resolver
+          // de-duplicates per recipient, so an already-enqueued follower is a no-op. Slot
+          // creation is never repeated — only this notification call.
+          const notifyOutcome = await notifyFollowers(
+            {
               slot_count: publicSlots.length,
-              date_range: `${format(earliestStart, "MMM d")} - ${format(latestEnd, "MMM d, yyyy")}`,
+              date_from: format(earliestStart, "yyyy-MM-dd"),
+              date_to: format(latestEnd, "yyyy-MM-dd"),
             },
-            headers: {
-              Authorization: `Bearer ${session?.access_token}`,
-            },
-          });
+            { client: supabase, accessToken: session?.access_token },
+          );
+          if (!notifyOutcome.complete) {
+            // Honest partial state: the slots WERE created, but some followers were not
+            // notified. Saying nothing here is what previously lost them silently.
+            logger.warn("notify-followers did not complete", {
+              component: 'AddSlotDialog',
+              attempts: notifyOutcome.attempts,
+              error: notifyOutcome.lastError,
+            });
+            toast({
+              title: t("calendar.followersNotifiedPartially"),
+              variant: "default",
+            });
+          }
+          if (notifyOutcome.markerGap) {
+            // Everyone was enqueued, so there is nothing to tell the trainer — but some
+            // recipients carry no cross-version rollback marker, and no retry can write one.
+            // Logged so the transition window is observable instead of silently discarded.
+            logger.warn("notify-followers enqueued without the rollback marker", {
+              component: 'AddSlotDialog',
+              recipients: notifyOutcome.markerGap,
+            });
+          }
         } catch {
           logger.warn("Failed to notify followers", { component: 'AddSlotDialog' });
         }

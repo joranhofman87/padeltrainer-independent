@@ -28,6 +28,10 @@ const LIMITS: WorkerLimits = {
   maxMaterializeMembers: 5000,
   maxAttempts: 100,
   sweepLimit: 500,
+  // 10c-b E — orphan provider events drained per invocation. Bounded well under the sweep so a
+  // large backlog costs a few extra ticks rather than the whole wall clock; `has_more` is logged
+  // so a queue that never drains is visible.
+  orphanReconcileLimit: 200,
   wallClockMs: 25_000,
 };
 

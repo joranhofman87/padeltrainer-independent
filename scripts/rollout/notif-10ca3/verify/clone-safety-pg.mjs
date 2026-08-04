@@ -494,13 +494,24 @@ try {
       let e2 = await tryArtifact(fresh, 'empty_project_check.sql');
       rec('the wiped target passes the empty-project proof again', e2 === null, e2?.message.slice(0, 80));
 
+      // The WIPE is what this step proves, so assert the reset BEFORE the rebuild. This used to
+      // be asserted after the rebuild, back when #615 was an overlay applied on top of a
+      // pre-#615 chain. #615 has since LANDED in main (20261006100000 adds is_suppressed), so
+      // the full chain now creates that column itself and "absent after rebuild" became
+      // permanently false — an assertion that could only be satisfied by the chain being
+      // incomplete. Splitting it keeps the original intent and actually strengthens it: the wipe
+      // must clear the column, and the rebuild must bring it back.
+      rec('…and the wipe removed the migrated column, so the target is genuinely pre-migration',
+          await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 0);
+
       await runArtifact(fresh, 'platform_stub.sql');
       const r2 = await applyChain(fresh);
       rec(`the FULL chain REPLAYS after the wipe (${r2.n}/${r2.total}) — no duplicate bucket, no duplicate policy`,
           r2.n === r2.total);
-      rec('…and #615 is gone again, so the rebuilt target is genuinely pre-migration',
+      rec('…and the replay REBUILDS the migrated column — proving a full chain, not a suffix',
           await scalar(fresh, `SELECT count(*)::int AS v FROM information_schema.columns
-                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 0);
+                               WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1);
       // the generator must run on the REBUILT schema too — a reset that leaves a
       // target the loader cannot fill is not a reset
       let genErr2 = null;
@@ -578,6 +589,104 @@ try {
                          WHERE table_name='email_address_state' AND column_name='is_suppressed'`) === 1,
         `${ms1.toFixed(0)} ms over 2k rows`);
   } finally { await holder.end().catch(() => {}); await runner.end().catch(() => {}); }
+
+  // ── the inventory PRODUCER refuses to emit a forgeable identity record ──────────────────
+  // The reader-side guard is unit-tested in verify/inventory-parse-test.sh, but that suite feeds
+  // it fabricated records — so removing the CASE from the SQL left every one of its checks green.
+  // This runs the REAL artifact against a REAL server with hostile names planted, which is the
+  // only way the producer's half is actually exercised. A NEWLINE-bearing name matters most: it
+  // can otherwise form a perfectly well-formed four-field first line that the field-count check
+  // cannot see.
+  await c.query(`DELETE FROM cron.job;
+    INSERT INTO cron.job (schedule, command, jobname) VALUES
+      ('* * * * *', 'SELECT 1;', 'notification-email-worker filler yes'),
+      ('* * * * *', 'SELECT 1;', E'ok-name\nCRONJOB notification-email-worker true yes'),
+      ('* * * * *', 'SELECT 1;', 'perfectly-fine-name');`);
+  const invOut = await allRows(c, artifactText('clone_source_inventory.sql'));
+  const cronRecords = invOut.filter((r) => typeof r === 'string' && r.startsWith('CRONJOB'));
+  rec('the inventory emits CRONJOB_UNSAFE_NAME for a whitespace job name',
+      cronRecords.filter((r) => r.startsWith('CRONJOB_UNSAFE_NAME ')).length === 2,
+      cronRecords.join(' | '));
+  rec('...and never emits the forged reviewed record',
+      !cronRecords.some((r) => /^CRONJOB notification-email-worker /.test(r)),
+      cronRecords.join(' | '));
+  rec('...while a safe name still produces its ordinary record',
+      cronRecords.some((r) => r.startsWith('CRONJOB perfectly-fine-name ')),
+      cronRecords.join(' | '));
+  await c.query(`DELETE FROM cron.job`);
+
+  // ...and the same for OUTFN, which had the identical defect. A newline-bearing FUNCTION name is
+  // the analogous field-count bypass, and the signature is what stops an overload reading as the
+  // reviewed zero-argument function.
+  await c.query(`
+    CREATE OR REPLACE FUNCTION public.outfn_probe_ok() RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_probe_ok(p text) RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public."outfn probe hostile" () RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    -- A TYPE whose name contains spaces. Deleting every space from the signature made the two
+    -- domains below serialise identically, so one reviewed identity could stand in for the other.
+    -- (No backticks in this comment: it lives inside a JS template literal.)
+    CREATE DOMAIN public."a b" AS text;
+    CREATE DOMAIN public."a  b" AS text;
+    CREATE DOMAIN public."a, b" AS text;
+    CREATE DOMAIN public."a,b" AS text;
+    -- A type name containing a literal % — without escaping % first, this encodes to the SAME
+    -- text as the space-bearing name above, so the encoding would not be injective.
+    CREATE DOMAIN public."a%20b" AS text;
+    -- OVERLOADS SHARING ONE NAME, so the records differ ONLY in the signature. Two distinctly
+    -- named functions would have made the comparison below trivially true whatever the encoder did.
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a  b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a, b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a,b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_pair(p public."a%20b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    -- ARGUMENT ORDER is part of the identity: these are two different functions.
+    CREATE OR REPLACE FUNCTION public.outfn_pair(a text, b integer) RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_pair(a integer, b text) RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_varchar(p character varying) RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;`);
+  const invOut2 = await allRows(c, artifactText('clone_source_inventory.sql'));
+  const outfn = invOut2.filter((r) => typeof r === 'string' && r.startsWith('OUTFN'));
+  rec('the inventory emits OUTFN_UNSAFE_NAME for a whitespace function name',
+      outfn.some((r) => r.startsWith('OUTFN_UNSAFE_NAME ')), outfn.join(' | '));
+  rec('...and never emits a bare, forgeable OUTFN record',
+      !outfn.some((r) => /^OUTFN [^(]+$/.test(r)), outfn.join(' | '));
+  rec('...and distinguishes an OVERLOAD by its signature',
+      outfn.includes('OUTFN public.outfn_probe_ok()') && outfn.includes('OUTFN public.outfn_probe_ok(text)'),
+      outfn.join(' | '));
+  // Every global rewrite tried here was lossy in the same way. `outfn_pair` has FOUR overloads
+  // whose type names differ only by a space or a comma, so the four records differ only in the
+  // parenthesised signature — and a collapse makes two of them identical.
+  const pairSigs = outfn.filter((r) => r.startsWith('OUTFN public.outfn_pair('))
+    .map((r) => r.slice('OUTFN public.outfn_pair'.length));
+  rec('seven overloads keep SEVEN distinct signatures (space, comma, literal %, and arg ORDER)',
+      pairSigs.length === 7 && new Set(pairSigs).size === 7, pairSigs.join(' vs '));
+  // ...and a type name that legitimately contains a space must still come through, or the
+  // encoder would have "fixed" the collisions by refusing every varchar signature.
+  const varcharSig = outfn.find((r) => r.startsWith('OUTFN public.outfn_varchar(')) ?? '';
+  rec('...and an ordinary space-bearing builtin type still serialises readably',
+      varcharSig === 'OUTFN public.outfn_varchar(character%20varying)', varcharSig);
+  await c.query(`DROP FUNCTION public.outfn_probe_ok(); DROP FUNCTION public.outfn_probe_ok(text);
+                 DROP FUNCTION public."outfn probe hostile"();
+                 DROP FUNCTION public.outfn_pair(public."a b");
+                 DROP FUNCTION public.outfn_pair(public."a  b");
+                 DROP FUNCTION public.outfn_pair(public."a, b");
+                 DROP FUNCTION public.outfn_pair(public."a,b");
+                 DROP FUNCTION public.outfn_pair(public."a%20b");
+                 DROP FUNCTION public.outfn_pair(text, integer);
+                 DROP FUNCTION public.outfn_pair(integer, text);
+                 DROP FUNCTION public.outfn_varchar(character varying);
+                 DROP DOMAIN public."a b"; DROP DOMAIN public."a  b";
+                 DROP DOMAIN public."a, b"; DROP DOMAIN public."a,b"; DROP DOMAIN public."a%20b";`);
 } finally {
   await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }

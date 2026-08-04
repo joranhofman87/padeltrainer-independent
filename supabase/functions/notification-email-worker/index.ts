@@ -9,6 +9,7 @@
 // suppression (FAIL CLOSED), send via Resend (provider-idempotent), record the outcome
 // under our token → lease + confirm the ops Slack alert on skipped-required rows.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { evaluateInstantSendGate } from "../_shared/instant-send-gate.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
@@ -73,7 +74,6 @@ const handler = async (req: Request): Promise<Response> => {
       p_terminal: opts.terminal ?? false,
     });
 
-  let cronLockHeld = false;
   try {
     const guard = requireServiceRole(req);
     if (guard) return guard;
@@ -81,11 +81,15 @@ const handler = async (req: Request): Promise<Response> => {
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
     if (!resendApiKey) return json({ error: "RESEND_API_KEY not configured" }, 500);
 
-    // single-flight: skip this tick if another run holds the lock. Fail-open — an RPC
-    // error leaves cronLockHeld=false and we proceed (the atomic claim is the real guard).
-    const { data: cronLocked } = await supabase.rpc("try_lock_cron_job", { p_job_name: JOB });
-    if (cronLocked === false) return json({ processed: 0, skipped: "locked" });
-    cronLockHeld = cronLocked === true;
+    // NO cron single-flight lock (10c-b/CRON-SF-WEDGE). The session-scoped
+    // try_lock_cron_job pair was removed: it spanned many pooled PostgREST requests
+    // with no session affinity, so its unlock could land on a different backend and
+    // wedge this job until that connection recycled. Nothing is lost — the atomic
+    // claim below IS the concurrency boundary: claim_notification_outbox_batch takes
+    // rows FOR UPDATE SKIP LOCKED and stamps this run's worker token on each, so two
+    // concurrent invocations claim DISJOINT rows and cannot duplicate a send, and
+    // record_notification_send_result is token-guarded so a superseded run's late
+    // write no-ops. (The old comment here already conceded the claim was the real guard.)
 
     // 1. atomically claim due (or stale-orphaned) email rows under our lock token
     const { data: claimed, error: claimErr } = await supabase.rpc("claim_notification_outbox_batch", {
@@ -101,43 +105,29 @@ const handler = async (req: Request): Promise<Response> => {
     let suppressed = 0;
 
     for (const row of rows) {
-      const dest = (row.destination_normalized ?? "").trim();
+      // THE SEND GATE lives in _shared/instant-send-gate.ts so it can be tested directly:
+      // renderability -> suppression -> the COMPLETE live policy, all fail-closed. The handler
+      // only executes the verdict, so the check order and terminal-ness cannot regress unseen.
       const payload = row.payload ?? {};
-      const subject = payload.subject;
-      const html = payload.html;
-
-      // a row that can never render is terminal — never burn retries on it
-      if (!dest || !subject || !html) {
+      const verdict = await evaluateInstantSendGate(row, {
+        isEmailSuppressed: async (email) => {
+          const r = await supabase.rpc("is_email_suppressed", { p_email: email });
+          return { data: r.data as boolean | null, error: r.error };
+        },
+        memberStopReason: async (outboxId) => {
+          const r = await supabase.rpc("notif_digest_member_stop_reason", { p_member_id: outboxId });
+          return { data: r.data as string | null, error: r.error };
+        },
+      });
+      if (verdict.action === "stop") {
         await recordResult(row.outbox_id, "failed", {
-          error: !dest ? "missing_destination" : "missing_subject_or_html",
-          terminal: true,
+          error: verdict.error,
+          terminal: verdict.terminal,
         });
-        failed++;
+        if (verdict.countAs === "suppressed") suppressed++; else failed++;
         continue;
       }
-
-      // suppression may have flipped since enqueue (a bounce/complaint webhook fired).
-      // FAIL CLOSED: if the check errors we do NOT send — record a retryable failure and
-      // try again next tick, rather than risk emailing a hard-bounced/complained address.
-      let blocked: boolean | null = null;
-      let supErr: unknown = null;
-      try {
-        const res = await supabase.rpc("is_email_suppressed", { p_email: dest });
-        blocked = res.data as boolean | null;
-        supErr = res.error;
-      } catch (e) {
-        supErr = e;
-      }
-      if (supErr) {
-        await recordResult(row.outbox_id, "failed", { error: "suppression_check_failed", terminal: false });
-        failed++;
-        continue;
-      }
-      if (blocked === true) {
-        await recordResult(row.outbox_id, "failed", { error: "email_suppressed", terminal: true });
-        suppressed++;
-        continue;
-      }
+      const { dest, subject, html } = verdict;
 
       // provider-idempotent: keyed on the stable outbox id → a retry after Resend already
       // accepted the send (our timeout, a stale takeover) is a no-op in Resend's 24h window.
@@ -201,14 +191,6 @@ const handler = async (req: Request): Promise<Response> => {
       // alerting is best-effort — never mask the original error
     }
     return json({ error: msg }, 500);
-  } finally {
-    if (cronLockHeld) {
-      try {
-        await supabase.rpc("unlock_cron_job", { p_job_name: JOB });
-      } catch {
-        // best-effort: the lock is session-scoped and auto-releases when the connection recycles
-      }
-    }
   }
 };
 

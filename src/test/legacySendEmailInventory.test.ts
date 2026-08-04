@@ -26,7 +26,7 @@
 //                                              hardcoded, so a NEW wrapper is covered the
 //                                              moment it exists
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
@@ -68,11 +68,9 @@ const REGISTER: Entry[] = [
   // ── v1-PREFERENCE-GATED: these BLOCK removal of the PR 8 "Other notifications" bridge ──
   // send-email maps each of these to a notification_preferences column, so the v1 settings
   // remain load-bearing until every one has moved.
-  // Declared under the DYNAMIC key the scanner can actually see. The variable resolves to
-  // 'slot_reopened' or 'new_availability' at runtime; naming the resolved types here instead
-  // would make the register look precise while the guard matched on something else.
-  { file: 'supabase/functions/notify-followers/index.ts', type: '(dynamic:emailType)',
-    status: 'pending', reason: 'Resolves to new_availability | slot_reopened. Maps to notification_preferences.open_slots_digest. No v2 catalog event exists for open-slot alerts yet. Its v1 filter is ALSO inert today: it selects the nonexistent column email_new_availability and discards the error.' },
+  //
+  // EMPTY as of 10c-b D: notify-followers — the last one — moved to
+  // enqueue_notification('open_slots_player'). See MIGRATED_AWAY below.
 ];
 
 /** Wrappers that MUST no longer exist — dead code removed, kept as tombstones. */
@@ -84,6 +82,7 @@ const MIGRATED_AWAY = [
   { file: 'src/pages/BookLesson.tsx', to: 'enqueue_booking_notification(request_staff | confirmation_player)' },
   { file: 'src/components/booking/BookForPlayerDialog.tsx', to: 'enqueue_booking_notification(confirmation_player), one call per recipient' },
   { file: 'src/components/slots/DeleteSlotDialog.tsx', to: 'enqueue_booking_notification(cancelled_player), complete cancelled set' },
+  { file: 'supabase/functions/notify-followers/index.ts', to: "enqueue_notification('open_slots_player'), both subtypes; notification_sends dedup replaced by the resolver's idempotency key" },
 ];
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -183,9 +182,12 @@ describe('the legacy send-email register', () => {
     // columns. This asserts the blocking set is explicit, so "can we drop the bridge yet?"
     // is answered by the register instead of by memory.
     const blocking = REGISTER.filter((e) => e.status === 'pending').map((e) => e.file).sort();
-    // Four booking routes migrated to enqueue_booking_notification; notify-followers is the
-    // last one standing, and it needs a v2 catalog event that does not exist yet.
-    expect(blocking).toEqual(['supabase/functions/notify-followers/index.ts']);
+    // NOTHING blocks it any more. Four booking routes moved to enqueue_booking_notification,
+    // and 10c-b D moved the last one — notify-followers — to
+    // enqueue_notification('open_slots_player'). This is the assertion that AUTHORIZES removing
+    // the open_slots_digest key from the NotificationSettings.tsx bridge: the register, not
+    // memory, is what answers "is any live send-email path still reading a v1 column?".
+    expect(blocking).toEqual([]);
   });
 
   it('removed wrappers stay removed', () => {
@@ -203,5 +205,59 @@ describe('the legacy send-email register', () => {
         || wrappers.some((fn) => new RegExp(`\\b${fn}\\s*\\(`).test(src));
       expect(reaches, `${file} was migrated to ${to} — it must not reach send-email again`).toBe(false);
     }
+  });
+});
+
+/**
+ * THE RETIREMENT TRIPWIRE for the 10c-b J preference bridge.
+ *
+ * The register above answers a CALLER-side question — "does any live path in this repo still
+ * re-enter send-email on a v1-gated type?" — and its answer is no, which is what authorised
+ * removing the open_slots_digest control from NotificationSettings.tsx.
+ *
+ * That is not the same question as "may the compatibility bridge be deleted?", and conflating the
+ * two is what the bridge exists to survive. The register measures the REPOSITORY; the thing that
+ * still enforces v1 is the DEPLOYED send-email bundle, and in this repo edge functions are pushed
+ * by hand after the frontend has already auto-deployed. While send-email's own TYPE_TO_PREF_COLUMN
+ * still names open_slots_digest, some deployed bundle can still gate open-slot mail on the legacy
+ * column, so both mirror directions must stay.
+ *
+ * These assertions are GREEN today and go RED the moment that stops being true. RED IS NOT
+ * AUTHORISATION TO DELETE 20261013100000 — it is condition 1 of 4, and the only one any test here
+ * can see. The other three (that revision DEPLOYED, the pre-cutover bundle out of browser caches,
+ * the v1 column dropped in the same release unit) are deployment facts, and acting on a green CI
+ * alone would re-open the gap during the migrations-before-edge-function window. The failure
+ * message says so too, so the caveat travels with the failure.
+ */
+describe('10c-b J — when the preference bridge may be retired', () => {
+  const BRIDGE_MIGRATION = 'supabase/migrations/20261013100000_notif_10cb_pref_bridge_v2_to_v1.sql';
+
+  it('send-email still reads the v1 open_slots_digest column, so the bridge must stay', () => {
+    const src = read('supabase/functions/send-email/index.ts');
+    const map = /TYPE_TO_PREF_COLUMN[^=]*=\s*\{([\s\S]*?)\}/.exec(src);
+    expect(map, 'send-email must still declare TYPE_TO_PREF_COLUMN').not.toBeNull();
+    const stillReads = ['new_availability', 'slot_reopened']
+      .filter((t) => new RegExp(`${t}\\s*:\\s*"open_slots_digest"`).test(map![1]));
+
+    // RED DOES NOT MEAN "DELETE THE BRIDGE". It means only the SOURCE-side condition is met.
+    // This test can see the repository; it cannot see what is deployed, and edge functions are
+    // pushed BY HAND after migrations. Removing the bridge while an old send-email bundle is still
+    // live re-opens the exact gap it closes.
+    expect(
+      stillReads,
+      'send-email no longer names open_slots_digest. That is condition 1 of 4 only. Before deleting '
+      + '20261013100000, confirm BY HAND that (2) this send-email revision is DEPLOYED, not merely '
+      + 'merged, (3) the pre-cutover settings bundle is out of browser caches, and (4) the v1 column '
+      + 'is dropped in the same release unit. See the RETIREMENT section at the foot of that migration.',
+    ).toEqual(['new_availability', 'slot_reopened']);
+  });
+
+  it('the bridge migration is present while a legacy reader remains', () => {
+    expect(existsSync(join(ROOT, BRIDGE_MIGRATION)), `${BRIDGE_MIGRATION} is load-bearing`).toBe(true);
+    const sql = read(BRIDGE_MIGRATION);
+    // Both directions, or the gap reopens in whichever direction was dropped.
+    expect(sql).toContain('CREATE TRIGGER trg_mirror_open_slots_pref_to_v1');
+    expect(sql).toContain('notif_mirror_open_slots_pref_to_v2');
+    expect(sql).toContain('notif_pref_bridge_hop_active');
   });
 });

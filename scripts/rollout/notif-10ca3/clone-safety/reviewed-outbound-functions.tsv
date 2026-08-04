@@ -1,6 +1,6 @@
 # Reviewed outbound-capable functions (transitive closure), captured read-only
 # from production 2026-08-01. Any function outside this list stops the procedure.
-# schema.name	rationale
-public.schedule_enrichment_job	schedules enrich-locations-background at runtime
-public.schedule_logo_fetch_job	schedules fetch-location-logos-background at runtime
-public.schedule_invoice_health_check_job	schedules invoice-health-check-daily at runtime
+# schema.name(argtypes)  — the full identity: a bare schema.name collapses overloads	rationale
+public.schedule_enrichment_job()	schedules enrich-locations-background at runtime
+public.schedule_logo_fetch_job()	schedules fetch-location-logos-background at runtime
+public.schedule_invoice_health_check_job()	schedules invoice-health-check-daily at runtime

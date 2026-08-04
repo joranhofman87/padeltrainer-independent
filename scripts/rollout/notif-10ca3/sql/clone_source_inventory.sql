@@ -27,9 +27,21 @@
 \pset format unaligned
 \pset footer off
 
-SELECT format('CRONJOB %s %s %s', jobname, active,
-              CASE WHEN command ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
-                   THEN 'yes' ELSE 'no' END)
+-- The record is SPACE-DELIMITED and the reader takes fixed fields, so a job NAME containing
+-- whitespace forges the fields after it: pg_cron allows one, and
+--   `notification-email-worker filler yes`
+-- parses as the reviewed job `notification-email-worker` classified `yes`, with the real active
+-- and outbound values never read. That is fail-OPEN in the one place the register trusts as
+-- authoritative. A name outside the safe grammar is therefore not emitted as a CRONJOB record at
+-- all — it is reported under its own key, which the reader treats as fatal, and the name itself is
+-- surfaced only as an md5 so a hostile name cannot inject anything downstream either.
+SELECT CASE
+         WHEN jobname ~ '^[A-Za-z0-9_.:-]+$'
+           THEN format('CRONJOB %s %s %s', jobname, active,
+                       CASE WHEN command ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
+                            THEN 'yes' ELSE 'no' END)
+         ELSE format('CRONJOB_UNSAFE_NAME %s', md5(jobname))
+       END
 FROM cron.job ORDER BY jobid;
 
 -- the exact configuration the seal will pin, computed identically there
@@ -68,6 +80,21 @@ SELECT format('FDWSRV %s', count(*)) FROM pg_foreign_server;
 -- OUTFN: the TRANSITIVE closure of outbound-capable functions. A helper that
 -- only indirectly reaches net.http_* is still an outbound mechanism, so a direct
 -- prosrc scan alone would under-report. Depth is bounded by the recursion.
+-- The function-identity signature, built ONE ARGUMENT AT A TIME and percent-encoded.
+--
+-- Nothing is rewritten across the whole string, because every global rewrite tried here was lossy:
+-- deleting spaces merged `"a b"` with `"a  b"`, and turning ', ' into ',' merged `"a, b"` with
+-- `"a,b"`. Encoding %, space and comma inside each argument makes the join unambiguous while
+-- leaving ordinary signatures readable (`character%20varying`), and a type name may legitimately
+-- contain a space, so refusing them outright was never available.
+CREATE OR REPLACE FUNCTION pg_temp.outfn_sig(p_args oidvector) RETURNS text
+LANGUAGE sql STABLE AS $sig$
+  SELECT coalesce(string_agg(
+           replace(replace(replace(pg_catalog.format_type(t, NULL), '%', '%25'), ' ', '%20'), ',', '%2C'),
+           ',' ORDER BY ord), '')
+    FROM unnest(p_args) WITH ORDINALITY AS a(t, ord)
+$sig$;
+
 WITH RECURSIVE outbound(oid) AS (
   SELECT p.oid FROM pg_proc p
    WHERE p.prosrc ~* '(net\.http_(post|get|delete)|http_post|http_get|dblink)'
@@ -76,12 +103,42 @@ WITH RECURSIVE outbound(oid) AS (
    WHERE c.oid <> o.oid
      AND c.prosrc ~* ('\m' || (SELECT proname FROM pg_proc WHERE oid = o.oid) || '\M')
 )
-SELECT format('OUTFN %s.%s', n.nspname, p.proname)
+-- SAME SAFE GRAMMAR AS CRONJOB ABOVE, and for the same reason: these records are space-delimited
+-- and the reader takes a fixed field, so an identifier containing whitespace forges the fields
+-- after it. A function actually named `public."schedule_enrichment_job filler"` emitted
+-- `OUTFN public.schedule_enrichment_job filler` and was accepted as the REVIEWED
+-- `public.schedule_enrichment_job`. An identifier outside the grammar is reported under its own
+-- fatal key instead, as an md5, so a hostile name cannot inject anything downstream either.
+-- IDENTITY INCLUDES THE SIGNATURE. PostgreSQL identifies a function by schema, name AND argument
+-- types, so `schema.proname` alone collapses overloads: adding `public.schedule_enrichment_job(text)`
+-- produced the same key as the reviewed zero-argument function and was accepted as it. The argument
+-- list is emitted with its spaces removed so the record stays single-token, and the grammar below
+-- admits the punctuation a signature needs — but still no whitespace, which is what forges fields.
+SELECT CASE
+         WHEN n.nspname ~ '^[A-Za-z0-9_.:-]+$'
+          AND p.proname ~ '^[A-Za-z0-9_.:-]+$'
+          -- The signature is built PER ARGUMENT and percent-encoded, so nothing has to be
+          -- rewritten globally. Both earlier attempts were lossy in the same way: deleting every
+          -- space collapsed `public."a b"` and `public."a  b"` into `public."ab"`, and replacing
+          -- ', ' with ',' collapsed `public."a, b"` into `public."a,b"`. A type name may
+          -- legitimately contain a space (`character varying`), so refusing spaces outright is not
+          -- an option either — encoding is.
+          AND pg_temp.outfn_sig(p.proargtypes) ~ '^[A-Za-z0-9_.,:%\[\]"-]*$'
+           -- TYPES ONLY (format_type over proargtypes), not
+           -- pg_get_function_identity_arguments, which includes PARAMETER NAMES: `p text` became
+           -- `ptext` once the separator was normalised, conflating a name with a type.
+           THEN format('OUTFN %s.%s(%s)', n.nspname, p.proname, pg_temp.outfn_sig(p.proargtypes))
+         ELSE format('OUTFN_UNSAFE_NAME %s', md5(n.nspname || '.' || p.proname))
+       END
 FROM outbound ob JOIN pg_proc p ON p.oid = ob.oid JOIN pg_namespace n ON n.oid = p.pronamespace
 WHERE n.nspname NOT IN ('pg_catalog','information_schema','net','cron','extensions','vault','pgsodium','supabase_functions','graphql','graphql_public','realtime','storage','auth')
 ORDER BY 1;
 
-SELECT format('EXT %s', extname) FROM pg_extension
+SELECT CASE
+         WHEN extname ~ '^[A-Za-z0-9_.:-]+$' THEN format('EXT %s', extname)
+         ELSE format('EXT_UNSAFE_NAME %s', md5(extname))
+       END
+FROM pg_extension
 WHERE extname IN ('pg_net','http','pg_cron','wrappers','dblink','postgres_fdw') ORDER BY 1;
 
 -- count only; contents are never read

@@ -764,3 +764,273 @@ runbook (to be written when the cron lands) must instead:
    `cron.alter_job(jobid, active := true)` **only after the canary succeeds**. On any failure: set the switch
    **off** and leave the cron **inactive**.
 Never assert absolute-zero tables against a live system, and never delete the Vault-backed job to "pause" it.
+
+## 10c-b D — the notify-followers cutover: deploy ORDER is part of the design
+
+`notify-followers` moved from "POST send-email per follower, dedup in `notification_sends`" to
+"`enqueue_notification('open_slots_player')` per follower, dedup on the resolver's
+`<event>:<subject>:<recipient>` key". The two versions therefore keep their bookkeeping in two
+different ledgers, and the frontend and the edge function do not deploy at the same instant. Three
+consequences follow, and two of them cannot be closed by code alone.
+
+**Deploy order (required).** Migrations → **frontend** → wait out the bundle-cache window →
+**edge function**. Pushing the edge function first is the one order that leaves cached pages
+sending a request shape the new handler must interpret rather than trust.
+
+1. **Cross-version dedup — ONE-WAY, and that asymmetry is the design.** The new handler RECORDS
+   the pre-cutover key in `notification_sends` for every recipient it handled, so a ROLLBACK to
+   the old handler usually finds the key claimed and does not send a second copy. A `failed`
+   recipient is never recorded — it still needs notifying.
+
+   That rollback protection is **best-effort, not a guarantee**, and the ordering says why: the
+   marker is a second statement, not part of the enqueue. If the enqueue succeeds and the marker
+   write fails — or a rollback routes a retry into the window between them — the old handler can
+   claim and send while the durable v2 row also sends. So the residual runs in BOTH directions,
+   and a rollback of the edge function is an operator action that must observe the same quiesce as
+   the roll-forward.
+
+   The marker is therefore repaired **in the run that created the row, or not at all**: the write
+   is retried up to three times on the spot, because no later pass can fix it — a re-run answers
+   `no_row` for an already-enqueued recipient, and `no_row` is not markable. What survives that is
+   counted, returned as `legacy_marker_failed`, and logged by the caller. It is deliberately NOT
+   treated as incompleteness: that would send the caller into a retry that provably cannot help.
+
+   It deliberately does **not** read that ledger to skip anyone. A legacy row is a claim taken
+   BEFORE the pre-cutover send, and the old handler deleted it again when the send failed, so a
+   surviving claim means "sent" *or* "the invocation died between claiming and sending" — and a
+   deploy is precisely what kills an in-flight invocation. There is no send ledger to corroborate
+   against (`send-email` records nothing durable for these types; only `notification_queue`, for
+   daily/weekly). Honouring an unconfirmed claim would drop a follower AND report the run
+   successful, which is the failure class this slice exists to remove. The residual is therefore a
+   DUPLICATE in either direction — an old-handler send followed by a retry of the same batch that
+   lands on the new handler, or (when the marker write did not land) a v2 enqueue followed by a
+   rollback — bounded in both cases by the deploy order above. A duplicate is the failure we
+   carry; a silent miss is not. The recording half is transition-only and is removed with the rest
+   of the compatibility branch.
+2. **The legacy display range is ambiguous for multi-year batches (closed operationally).** The
+   pre-cutover format printed the year only on the right: `Jan 1 - Jan 2, 2027` is what BOTH
+   2027-01-01..2027-01-02 and 2026-01-01..2027-01-02 print, and the bulk-slot form can produce
+   either (several entries, each recurring up to 52 weeks, with unrelated start dates). Current
+   bundles now print **both** years whenever they differ, so nothing this app emits is ambiguous.
+   A CACHED pre-cutover bundle can still emit the old shape; it is parsed to the shortest
+   non-negative span, which is exact for every sub-year range (including a same-month 52-week
+   series such as `Jan 10 - Jan 2, 2027`, which the previous month-only rollover test rejected
+   outright) and short for a multi-year one. Waiting out the cache window before deploying the
+   edge function is what removes that last case.
+3. **A cached bundle ignores an incomplete run (closed in code, server-side).** The pre-cutover
+   caller never inspected the response, and the pre-cutover HANDLER answers 200 even when it
+   deferred recipients or hit send errors. So the run drains its own tail: on a deferred tail it
+   chains a bounded continuation of itself carrying a keyset cursor, forwarding the caller's own
+   Authorization header so the hop re-derives the same trainer and gains no privilege.
+
+   The cursor measures DISCOVERY and nothing else. A recipient whose enqueue failed is owed a
+   retry, and that is carried as an explicit, capped set of ids rather than by holding the cursor
+   back — holding it back conflated the two jobs, cost a hop or two per failure, and let enough
+   failures exhaust the hop cap before the undiscovered tail was ever reached. Only a FRESH
+   failure is carried, and the retry is bound to an identity rather than a position, so a
+   recipient cannot have someone else's attempt spent for it. Retries are processed LAST, after
+   discovery, so the one chunk a hop is guaranteed to run always advances the cursor.
+
+   TERMINATION is the cursor's, not the retry set's. A hop whose discovery work fills the budget
+   carries the same retry set on unchanged — what it cannot do is stand still. Once discovery is
+   exhausted the hops are all retries and the set drains; if the hop cap arrives first, the
+   survivors are reported as `deferred`. The tail and the retry set are bounded by the same cap,
+   so neither starves the other.
+
+   A recipient therefore gets **at most** two attempts, and the exceptions are named rather than
+   implied: more simultaneous failures than the carry cap (`retries_not_carried` in the response),
+   and a chain that reaches the hop cap with retries still owed (`deferred` in the response). Both
+   are reported; neither is silent. Retry ids are also authorised on every hop against the
+   trainer's currently enabled follower rows, so the set can carry no authority of its own. The
+   current caller ALSO judges completeness from the response body (`remaining` / `errors` on the
+   old shape, `incomplete` / `failed` / `deferred` on the new one) and retries, so client retry
+   and server continuation are independent lines of defence.
+
+**Preference bridge.** `notification_preferences.open_slots_digest` mirrors forward into
+`notification_preferences_v2(open_slots_player)` for as long as the v1 column exists. The trigger
+is created in the SAME migration as the one-time backfill and BEFORE it: `CREATE TRIGGER` holds a
+lock on the table until the migration commits, so there is no instant at which a v1 write is
+recorded by neither. The mirror is one-way (v1 → v2).
+
+An UPDATE applies only when the column actually changed, so an unrelated write cannot resurrect a
+stale cadence. An INSERT is resolved by VALUE, because the two cases it covers pull in opposite
+directions: the settings page upserts a partial row in which `open_slots_digest` takes its column
+default of `weekly`, which must never overwrite an explicit v2 `off`; but a user can also hold a
+v2 row and no v1 row at all, in which case a cached page's genuine opt-out arrives as an INSERT
+and must apply. `weekly` is exactly the column default and therefore ambiguous, so it only ever
+SEEDS; `off` / `instant` / `daily` cannot be produced by the default and therefore apply.
+
+The residual is a genuine `weekly` choice made on a cached page being lost when a v2 row already
+exists — and over an existing `instant` or `daily` that leaves MORE mail than the user asked for,
+not less. It is accepted deliberately: the alternative differs in kind rather than degree, because
+a `DO UPDATE` here would let the incidental default overwrite an explicit `off` and resume mail
+after an opt-out. A wrong cadence is still consented mail; mail after an opt-out is not.
+
+## 10c-b J — the bridge is TWO-way, because the deploy order opens the other direction too
+
+One-way was not enough, and the gap is manufactured by the deploy order documented immediately
+above. `Migrations → frontend → wait out the bundle cache → edge function` puts the NEW settings
+page live first and then waits on purpose. That page no longer carries an `open_slots_digest`
+control at all, so a player changing their open-slots cadence in that window writes **only**
+`notification_preferences_v2` — while the still-deployed OLD `notify-followers` keeps POSTing
+`send-email`, which maps `new_availability`/`slot_reopened` onto the v1 column and enforces it
+(`off` suppresses, `daily`/`weekly` queue). The player sees "Saved" and keeps receiving mail.
+
+(`notify-followers` never read `open_slots_digest` itself. Its own filter read
+`notification_preferences.email_new_availability`, a column dropped in `20260210090026` whose
+error was discarded, so that filter was silently inert. The live v1 reader in the window is
+`send-email`, reached *through* the old `notify-followers`.)
+
+So `20261013100000` adds the reverse mirror. Scope is exactly one event key onto exactly one legacy
+column, email only — `whatsapp_frequency`/`push_frequency` have no v1 counterpart.
+
+**The INSERT ambiguity is mirror-imaged, not absent — and it has TWO sources, not one.** The
+forward direction defends against a partial legacy row whose `open_slots_digest` took its COLUMN
+default. On the v2 side the platform can supply an unchosen `email_frequency` two ways:
+
+1. the **catalog** default — `saveEvent()` always writes both channel columns, computing the one the
+   user did not touch from `effective()`, which falls back to `default_email_frequency`; and
+2. the v2 **column** default — `notification_preferences_v2` is granted INSERT to `authenticated`
+   with an own-rows policy, so a row can be created through the table API without naming
+   `email_frequency` at all.
+
+Several rounds were then spent trying to decide, from a value alone, whether the user chose it. Every
+version leaked the same way — the catalog default can change after the page loaded, the column
+default can change after a partial insert, a retarget carries another event's default with no
+provenance to reconstruct, and a valid non-literal default such as `lower('INSTANT'::text)` cannot be
+parsed at all. The premise was wrong: **the database has no record of where a stored cadence came
+from.**
+
+So the rule collapsed to one that needs no provenance: **on ARRIVAL, only an opt-out may overwrite an
+existing legacy choice; every other cadence seeds.** `off` is safe whatever its origin because
+applying it suppresses. The cost is cadence fidelity on a path that is nearly empty — anyone holding
+a legacy row also holds a v2 row from C's backfill, so their next write is a CHANGE, and changes
+apply unconditionally. The forward direction still discriminates by value against the v1 COLUMN
+default, because there the ambiguous value is fixed by the schema rather than computed by a page; the
+two rules are deliberately not symmetric.
+
+**Departures mirror too, but never at the cost of an opt-out.** Losing the v2 row (DELETE, retarget
+away, or reassignment to another user — all reachable through the granted table API, none through
+the UI) makes the effective v2 preference the catalog default while v1 keeps the departed value. The
+first draft declined to mirror that at all, arguing any mirror could resume mail; the premise was
+right and the conclusion too strong. The rule is now stated as suppression, not as a token: **a
+departure may never UN-SUPPRESS.**  It can still raise frequency, by adopting a catalog default that
+is more frequent than the departing value — correct, because that is what v2 resolves to and neither
+value is an opt-out (recorded as follow-up J-F2 so it is not re-filed as a defect). So it refuses when the
+departing value is `off` and the target is not, and never un-suppresses a legacy `off` — but when the
+catalog default is *itself* `off` it applies, because that suppresses. UPDATE-only, never INSERT, so
+account teardown stays a no-op: `delete-user-data` removes v1 explicitly and v2 cascades from
+`auth.users`, after which the mirror matches nothing.
+
+**Existing state is reconciled, not only future writes.** A trigger sees nothing that already
+happened, so the migration ends with one bounded, idempotent reverse reconcile using the trigger's
+own rules. The population is nearly always empty — `open_slots_player` is branch-only, so no
+production user can hold a v2 row for it — but not provably so: one `supabase db push` applies its
+migrations in sequence, the already-deployed settings page reads the catalog dynamically, and C's
+backfill is `ON CONFLICT DO NOTHING`. A user quick enough to save between `20261008100000` and
+`20261013100000` would otherwise have their choice stranded *because* they were quick. It also makes
+the migration correct on any environment that already holds v2 rows.
+
+**The reverse mirror made an existing trigger privileged, so that trigger was hardened.** Writing v1
+from a `SECURITY DEFINER` function means `validate_notification_frequency()` now runs with the
+definer's rights, and its body is `EXECUTE format(...)` under `SET search_path TO 'public'` — an
+unqualified call inside a dynamic EXECUTE, which is the shape slice I showed is capturable. Measured
+rather than assumed: on this project no application role can create the rival, because
+`public`'s ACL grants CREATE only to `pg_database_owner`
+(`has_schema_privilege('authenticated','public','CREATE')` is false). It is closed anyway, since
+this migration is what makes the path privileged. `SECURITY INVOKER` was rejected as the alternative:
+no migration grants `authenticated` DML on `notification_preferences`, so an invoker-rights bridge
+would turn a preference save into a hard error rather than a mirrored write.
+
+**Recursion.** Two mirrors ping-pong, and Postgres does not detect it — it recurses until the stack
+is gone. The guard is a transaction-local GUC (`notif.pref_bridge_hop`) set only around each
+bridge's own nested write, checked by both directions. `pg_trigger_depth()` was rejected: it
+suppresses the bridge whenever the write arrives from *any* trigger, including a future unrelated
+one, and it fails OPEN — the mirror stops and a preference silently stops propagating.
+
+The reverse direction ALSO writes distinct-only (`WHERE ... IS DISTINCT FROM EXCLUDED`). That is
+deliberate redundancy, and it is worth knowing that the two protections **mask each other**:
+neither is observable in the final state while the other stands. The mutation pins therefore remove
+them in the combinations that actually bite, and one POSITIVE CONTROL proves the pin that removes
+only the predicate fails for the reason claimed rather than because the scenario cannot bounce.
+
+**Concurrency.** A v2 save locks v2 then v1; a legacy save locks v1 then v2 — a lock cycle, which
+Postgres breaks with `deadlock detected`. A cross-table advisory lock in a `BEFORE INSERT` trigger
+on both tables would remove it, and was rejected: it takes one advisory lock **per row** on every
+preference write forever, to prevent an event that needs one user saving on two differently
+versioned bundles within milliseconds. The invariant that matters survives either way and is what
+the tests assert: **after any committed APPLYING write, v1 and v2 agree.** (A seed-only write leaves
+them different on purpose — a partial v2 insert over a legacy `off` commits v1=`off` beside
+v2=`instant`, and that divergence IS the protection.) A deadlock aborts one transaction
+whole, so it cannot leave them disagreeing; a serialised pair leaves both at the later writer's
+value. Lost updates are prevented by the upserts themselves — `ON CONFLICT DO UPDATE` re-reads the
+conflicting row under lock.
+
+**Retirement** is in the migration's own footer, and condition 1 of 4 is pinned rather than
+remembered: `legacySendEmailInventory.test.ts` asserts `send-email`'s `TYPE_TO_PREF_COLUMN` still
+maps `new_availability`/`slot_reopened` onto `open_slots_digest`.
+
+**Red does not mean "delete the bridge."** It means the source-side condition is met and the other
+three must now be checked by hand, because no test here can see them: the register measures the
+REPOSITORY, and what still enforces v1 is the DEPLOYED bundle. Migrations are pushed before the edge
+function, so retiring the bridge on a green CI while the old `send-email` is still live re-opens this
+exact gap. The test carries that instruction in its own failure message rather than only here.
+Conflating "merged" with "live" is the mistake the bridge exists to survive.
+
+## 10c-b H — the deferred index measurement, and why `idx_notification_outbox_due` stays
+
+C shipped `idx_notification_outbox_due_instant` (partial, `channel, scheduled_for,
+next_attempt_at WHERE status IN ('pending','processing') AND delivery_mode IS DISTINCT FROM
+'digest'`) so that a large DUE digest backlog is not walked and discarded by the instant claim.
+One question was deliberately left open: the claim's SECOND arm — reclaiming rows orphaned by a
+crashed worker — filters on `locked_at` and `attempts`, and neither is in any index, so they stay
+RESIDUAL. The agreement was not to drop or narrow the older `idx_notification_outbox_due` until
+that arm had been measured. It has now been measured.
+
+**Result (real PostgreSQL, `openSlotsResolverDigest.realpg.test.ts`, 20 000 non-digest
+`processing` rows locked seconds ago with an old `scheduled_for`, plus 5 genuinely due rows):
+20 000 rows removed by filter, and NO index used at all — the planner chooses a sequential scan.**
+
+The shape is realistic and self-inflicted: the instant worker sets `status='processing',
+locked_at=now()` on every row it claims, so a slow or backed-up worker leaves exactly this
+population. Those rows pass channel + status + `delivery_mode`, so they are IN the partial index;
+they fail only the residual `locked_at < now() - stale` test, and with `ORDER BY scheduled_for`
+they sort first.
+
+**Decisions:**
+
+1. `idx_notification_outbox_due` is **kept, unchanged**. Dropping or narrowing it would not improve
+   this arm — neither index carries `locked_at` or `attempts`, so neither can serve it — while
+   removing cover from every other consumer of that index. The deferral asked whether removal was
+   safe; the measurement says removal would be all cost and no benefit.
+2. Serving the stale-reclaim arm properly needs its **own** partial index keyed for it. That is a
+   separate change, sized against production statistics (how many rows are genuinely in flight at
+   once, and for how long), not a drive-by inside a digest cutover. It is not required for 10c-b:
+   the arm is correct, and the cost only appears under an in-flight backlog that the instant
+   worker's own throughput bounds.
+3. The measurement is **asserted, not just recorded** — the test fails if the plan starts using an
+   index, which is the signal that this analysis has gone stale and the decision must be retaken.
+
+The clone-safety register gained a guard of its own. `run-rollout.sh` fails closed on any live cron
+job missing from `clone-safety/reviewed-cron-jobs.tsv`, but nothing tied that file to the
+migrations — so 10c-b F scheduled `notification-digest-worker` and it went unregistered. That
+inventory step connects and reads but refuses before it CHANGES anything, so the cost is an aborted
+rollout attempt rather than a stuck window; the point is that it would have been discovered by an
+operator running the rollout instead of by CI on the day the job was added.
+`src/test/reviewedCronJobsRegister.test.ts` closes that: every job name any migration schedules
+must be registered.
+
+**It deliberately does NOT re-derive the outbound classification from migration text.** Five review
+rounds each found another SQL construct that a static reader mis-classified — a command variable
+bound to the wrong assignment, `E''` escapes hiding a marker, `||` splitting one, `replace()`
+removing one, `CASE` manufacturing one, `format(…)::jsonb ->> 'y'` evaluating to something else,
+comments inside `DO $do$` bodies. The classification is compared instead where the text that will
+actually run is available: `clone_source_inventory.sql` applies the same lexical test to the LIVE
+`cron.job.command`, and run-rollout.sh reports CLASSIFICATION DRIFT against the register. Both
+sides are lexical — neither evaluates reachability — but only one of them is reading the command
+production will execute, and duplicating it statically added surface area without adding safety.
+
+The remaining source scan is therefore **best-effort**: it reads the job name from every scheduling
+form used in this repo and fails loudly on ones it cannot read, but it is not a proof that no call
+escapes it (a comment between `cron` and `.schedule`, for example, is not matched). Its job is to
+catch the ordinary case — a new migration scheduling a new job — on the day it lands.

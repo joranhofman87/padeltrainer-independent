@@ -5,6 +5,7 @@ import { DigestWorkerError, type WorkerSummary } from "./digest-worker-core.ts";
 const OK_SUMMARY: WorkerSummary = {
   status: "ok", sweptStale: 0, materialized: 0, claimed: 0, sent: 0, deferred: 0,
   oversizeSplit: 0, oversizeFailed: 0, recorded: 0, groupErrors: 0, reconcileErrors: 0,
+  orphansExamined: 0, orphansLinked: 0, orphansQuarantined: 0, orphanErrors: 0, correlationMismatches: 0,
 };
 
 function harness(env: Record<string, string | undefined>, run: HandlerDeps["run"]) {
@@ -152,4 +153,45 @@ Deno.test("logs are PII-free: no email/html/token markers in any logged value", 
   assert(!serialized.includes("@"), "no email-like value may be logged");
   assert(!serialized.includes("<"), "no html-like value may be logged");
   assert(!serialized.includes("re_x") && !serialized.includes("SERVICE_ROLE_TEST_PLACEHOLDER"), "no secret may be logged");
+});
+
+Deno.test("an ORPHAN-unhealthy run alerts on its own axis, with both counts", async () => {
+  // Reporting an orphan failure as "reconcile_errors: 0" told the operator nothing about the
+  // thing that actually needs them. The reason names the failing axis and the payload carries
+  // both counts — including the quarantine, which is the item a human has to resolve.
+  const h = harness(CONFIGURED, () => Promise.resolve({
+    ...OK_SUMMARY, status: "error", orphanErrors: 2, orphansQuarantined: 1,
+  }));
+  const r = await runDigestWorkerHandler(h.deps);
+  assertEquals(r.http, 500);
+  assertEquals(h.alerts.length, 1);
+  assertEquals(h.alerts[0].reason, "orphan_errors");
+  assertEquals(h.alerts[0].orphan_errors, 2);
+  assertEquals(h.alerts[0].orphans_quarantined, 1);
+});
+
+Deno.test("a group failure still outranks the orphan axis in the reason", async () => {
+  const h = harness(CONFIGURED, () => Promise.resolve({
+    ...OK_SUMMARY, status: "error", groupErrors: 1, orphanErrors: 1,
+  }));
+  await runDigestWorkerHandler(h.deps);
+  assertEquals(h.alerts[0].reason, "group_errors");
+  assertEquals(h.alerts[0].orphan_errors, 1, "...and the orphan count still travels");
+});
+
+Deno.test("a THROWN run keeps the orphan diagnostics — it is the only alert that fires", async () => {
+  // A run can strand and quarantine a provider event and THEN throw on reconcile or finish.
+  // Dropping the counts here hid the operator-required item behind a bare "invocation_error",
+  // and a transient orphan error is backoff-deferred so the next invocation need not repeat it.
+  const h = harness(CONFIGURED, () => Promise.reject(new DigestWorkerError("boom", {
+    ...OK_SUMMARY, status: "error", orphanErrors: 1, orphansQuarantined: 1,
+  })));
+  const r = await runDigestWorkerHandler(h.deps);
+  assertEquals(r.http, 500);
+  // ...and it NAMES the axis. This asserted "invocation_error" while its own comment complained
+  // that the quarantine was hidden behind a bare "invocation_error" — the counts travelled but the
+  // classification did not. Both paths now share one reason-selection rule.
+  assertEquals(h.alerts[0].reason, "orphan_errors");
+  assertEquals(h.alerts[0].orphan_errors, 1);
+  assertEquals(h.alerts[0].orphans_quarantined, 1);
 });

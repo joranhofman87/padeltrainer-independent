@@ -1,8 +1,16 @@
-// Resend delivery-event webhook. Receives email.{sent,delivered,bounced,
-// complained,delivery_delayed,failed}, verifies the Svix signature, and records
-// the event via record_email_event (idempotent on the svix-id). This is how a
-// bounce that happens AFTER Resend accepts a message becomes visible — without it
-// the academy never learns reminders aren't landing.
+// Resend delivery-event webhook. Verifies the Svix signature and does TWO things with every
+// callback it recognises: records it for deliverability (record_email_event, idempotent on the
+// svix id) and, for the seven callbacks ADR 0008 §PV gives a transition, drives the digest state
+// machine (apply_notification_provider_event, idempotent on the same id).
+//
+// 10c-b E added the second half. Before it, a digest send's callbacks reached nothing: the group
+// sat in `sending`/`awaiting_evidence` until the stale sweep aged it out, and the orphan queue
+// that exists to correlate an early callback had no producer at all. `email.suppressed` and
+// `suppression.removed` were also unmapped, so a Resend suppression was acknowledged and thrown
+// away even though the database has understood both since 20261006100000.
+//
+// Every rule lives in _shared/resend-webhook-events.ts — this module ends in `serve(...)` and can
+// never be imported, so a test here would only ever be a copy.
 //
 // verify_jwt = false (config.toml): Resend can't send a Supabase JWT; auth is the
 // Svix signature instead. Returns 5xx on transient failure so Resend retries.
@@ -10,22 +18,10 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { verifySvix } from "../_shared/svix-verify.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { handleResendCallback, parseResendEvent } from "../_shared/resend-webhook-events.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) =>
   console.log(`[RESEND-WEBHOOK] ${step}`, details ? JSON.stringify(details) : "");
-
-const EVENT_MAP: Record<string, string> = {
-  "email.sent": "sent",
-  "email.delivered": "delivered",
-  "email.bounced": "bounced",
-  "email.complained": "complained",
-  "email.delivery_delayed": "delivery_delayed",
-  "email.failed": "failed",
-};
-
-interface ResendBounce { type?: string; message?: string; subType?: string }
-interface ResendEventData { to?: string | string[]; email_id?: string; created_at?: string; bounce?: ResendBounce }
-interface ResendWebhookEvent { type?: string; created_at?: string; data?: ResendEventData }
 
 serve(async (req) => {
   if (req.method !== "POST") {
@@ -56,7 +52,7 @@ serve(async (req) => {
     return new Response("invalid signature", { status: 401 });
   }
 
-  let evt: ResendWebhookEvent;
+  let evt: unknown;
   try {
     evt = JSON.parse(body);
   } catch (err) {
@@ -66,30 +62,15 @@ serve(async (req) => {
     return new Response("bad json", { status: 400 });
   }
 
-  const data: ResendEventData = evt?.data ?? {};
-  const eventType = EVENT_MAP[evt?.type ?? ""];
-  const recipient = Array.isArray(data.to) ? data.to[0] : data.to;
-
+  const parsed = parseResendEvent(evt);
   // engagement events (opened/clicked) or unmapped types: acknowledge + ignore
-  if (!eventType || !recipient) {
-    return new Response(JSON.stringify({ ignored: evt?.type ?? null }), {
+  if (!parsed) {
+    return new Response(JSON.stringify({ ignored: (evt as { type?: string } | null)?.type ?? null }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
   }
-
-  let bounceType: string | null = null;
-  let reason: string | null = null;
-  if (eventType === "bounced") {
-    const b: ResendBounce = data.bounce ?? {};
-    bounceType = b.type === "Permanent" ? "hard" : "soft"; // conservative: only clear-permanent suppresses
-    reason = b.message ?? b.subType ?? b.type ?? null;
-  } else if (eventType === "complained") {
-    reason = "spam complaint";
-  }
-
-  const resendEmailId = data.email_id ?? null;
-  const occurredAt = evt?.created_at ?? data?.created_at ?? null;
+  const { eventType, recipient, resendEmailId, occurredAt, bounceType, reason } = parsed;
   const supabase = createClient(supabaseUrl, serviceKey);
 
   // Best-effort: map the event back to its invoice via the original 'sent' row so
@@ -113,29 +94,49 @@ serve(async (req) => {
     }
   }
 
-  const { error } = await supabase.rpc("record_email_event", {
-    p_event_type: eventType,
-    p_recipient_email: recipient,
-    p_resend_email_id: resendEmailId,
-    p_resend_event_id: svixId,
-    p_bounce_type: bounceType,
-    p_reason: reason,
-    p_invoice_id: invoiceId,
-    p_academy_profile_id: academyId,
-    p_trainer_id: trainerId,
-    p_occurred_at: occurredAt,
+  // The ORDER — record first, then apply, and what each failure answers — is production logic
+  // with its own tests in _shared/resend-webhook-events.ts. Keeping it inline here would put the
+  // load-bearing part of this route in the one file the suite can never import.
+  const result = await handleResendCallback(parsed, {
+    recordEvent: async () => {
+      const { error } = await supabase.rpc("record_email_event", {
+        p_event_type: eventType,
+        p_recipient_email: recipient,
+        p_resend_email_id: resendEmailId,
+        p_resend_event_id: svixId,
+        p_bounce_type: bounceType,
+        p_reason: reason,
+        p_invoice_id: invoiceId,
+        p_academy_profile_id: academyId,
+        p_trainer_id: trainerId,
+        p_occurred_at: occurredAt,
+      });
+      if (error) throw new Error(error.message);
+    },
+    applyDigest: async () => {
+      // A missing tag is NOT an error: the SQL falls back to correlating by provider_message_id
+      // and answers `not_digest` for the invoice/reminder mail that is most of this traffic.
+      const { data, error } = await supabase.rpc("apply_notification_provider_event", {
+        p_run_id: null,                     // a webhook is not a worker run
+        p_resend_event_id: svixId,
+        p_provider_message_id: resendEmailId,
+        p_digest_group_id: parsed.digestGroupId,
+        p_status: eventType,
+        p_occurred_at: occurredAt,
+        p_now: null,
+      });
+      if (error) throw new Error(error.message);
+      return typeof data === "string" ? data : null;
+    },
+    // IDs only, never PII. notifySlackEdgeError never throws.
+    alert: (message) => notifySlackEdgeError("resend-webhook", message, { eventType, resendEmailId }),
   });
 
-  if (error) {
-    logStep("record_failed", { error: error.message });
-    // Alert: record_email_event failing means bounce/delivery events stop landing
-    // in the email-health tables (silent deliverability blackout). IDs only, no PII.
-    await notifySlackEdgeError("resend-webhook", `record_email_event failed: ${error.message}`, { eventType, resendEmailId });
-    return new Response("record failed", { status: 500 }); // 5xx → Resend retries
+  logStep(result.step, { eventType, resendEmailId, digestOutcome: result.digestOutcome });
+  if (result.status !== 200) {
+    return new Response("callback not applied", { status: result.status }); // 5xx → Resend retries
   }
-
-  logStep("recorded", { eventType, resendEmailId });
-  return new Response(JSON.stringify({ ok: true }), {
+  return new Response(JSON.stringify({ ok: true, digest: result.digestOutcome }), {
     status: 200,
     headers: { "Content-Type": "application/json" },
   });

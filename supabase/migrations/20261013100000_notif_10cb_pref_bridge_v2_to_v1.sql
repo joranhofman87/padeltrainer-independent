@@ -1,0 +1,582 @@
+-- 10c-b J — THE REVERSE PREFERENCE BRIDGE (v2 -> v1), and the recursion guard that makes a
+-- two-way bridge safe.
+--
+-- ===========================================================================================
+-- WHY THIS EXISTS — the mixed-version gap the one-way bridge cannot close
+--
+-- 20261011100000 §5b installed a ONE-WAY mirror: a legacy write to
+-- notification_preferences.open_slots_digest is carried FORWARD into
+-- notification_preferences_v2('open_slots_player'). That closes the direction in which a CACHED
+-- pre-cutover settings bundle keeps writing v1 after the control has gone from the page.
+--
+-- It does not close the other direction, and that direction is not hypothetical — the 10c-b
+-- runbook MANUFACTURES it on purpose. ADR 0008 ("10c-b D — the notify-followers cutover: deploy
+-- ORDER is part of the design") requires: migrations -> FRONTEND -> wait out the browser
+-- bundle-cache window -> edge function. The frontend deploys itself on merge; edge functions are
+-- deployed by hand afterwards. So there is a deliberately-observed window in which:
+--
+--   * the NEW settings page is live, and it no longer carries an `open_slots_digest` control at
+--     all (removed from LEGACY_PLAYER in NotificationSettings.tsx) — a player changing their
+--     open-slots cadence therefore writes ONLY notification_preferences_v2;
+--   * the OLD notify-followers bundle is STILL live, and it still POSTs send-email with
+--     new_availability / slot_reopened;
+--   * send-email — untouched by this PR — maps both onto the v1 column open_slots_digest and
+--     ENFORCES it (`off` suppresses, `daily`/`weekly` queue into notification_queue).
+--
+-- Net effect without this migration: a player opens the new page, sets open slots to OFF, sees
+-- "Saved", and keeps receiving open-slot mail until the owner deploys the edge function. That is
+-- a consent violation with a UI that reports success — precisely the failure the forward bridge
+-- was built to prevent, running in the other direction.
+--
+-- (Precision, because it is easy to get wrong when reading the cutover: notify-followers itself
+-- never read open_slots_digest. Its own filter read notification_preferences.email_new_availability,
+-- a column DROPPED in 20260210090026 whose error was discarded, so that filter was silently inert.
+-- The live v1 reader inside the window is send-email, reached THROUGH the old notify-followers.)
+--
+-- ===========================================================================================
+-- WHAT THIS MIGRATION DOES
+--
+--   1. adds a re-entrancy guard shared by both directions, so a two-way bridge cannot ping-pong;
+--   2. re-creates the forward (v1 -> v2) trigger function to honour that guard — its behaviour is
+--      otherwise UNCHANGED, and every rule 20261011100000 §5b established still holds;
+--   3. adds the reverse (v2 -> v1) trigger.
+--
+-- This is a COMPATIBILITY SHIM with a defined end. See "RETIREMENT" at the foot of this file.
+
+-- ===========================================================================================
+-- 1. THE RE-ENTRANCY GUARD.
+--
+-- With two mirrors installed, every write to either table fires a write to the other, which
+-- fires a write back. Postgres does NOT detect this: it recurses until it exhausts the stack.
+--
+-- It is tempting to rely on VALUE CONVERGENCE instead — write only when the target actually
+-- differs, so the bounce dies out after one hop. Note carefully WHICH direction does that: the
+-- REVERSE (v2 -> v1) upserts are distinct-only; the FORWARD (v1 -> v2) ones update
+-- UNCONDITIONALLY, because that body is carried over from the reviewed 20261011100000 unchanged
+-- and its `DO UPDATE` also stamps `updated_at`. So the redundancy is one-sided, and the guard is
+-- the only thing standing between the forward mirror and a real second write — which is precisely
+-- what the "recursion guard removed" mutation pin observes.
+--
+-- Convergence must not be the ONLY protection in any case:
+--   * it costs a full extra round trip and an extra row lock on every single save;
+--   * it is silent — nothing fails if a future edit makes the two directions disagree about what
+--     the converged value should be, and the two directions ALREADY disagree by design about the
+--     ambiguous-INSERT cases (see §3), so the argument that they always converge is not one that
+--     stays true by construction.
+--
+-- pg_trigger_depth() was considered and REJECTED: it suppresses the bridge whenever the write
+-- arrives from ANY trigger, including some future unrelated one, and it fails OPEN — the mirror
+-- silently stops and a preference stops propagating with nothing to notice it. The guard has to
+-- name THIS bridge, not "any nesting".
+--
+-- So: a transaction-local GUC, set only around a bridge's own nested write. VOLATILE, never
+-- STABLE — a STABLE function may be folded within a statement, and the whole point is that this
+-- value changes underneath one.
+CREATE OR REPLACE FUNCTION public.notif_pref_bridge_hop_active()
+RETURNS boolean
+LANGUAGE sql
+VOLATILE
+SET search_path = pg_catalog
+AS $$
+  -- COALESCE is a parser construct, not a function: it takes no schema qualification and cannot
+  -- be shadowed. current_setting IS a function, so it carries one — and this function's own
+  -- search_path is pg_catalog, which is what keeps the `=` resolution honest too.
+  SELECT COALESCE(
+           pg_catalog.current_setting('notif.pref_bridge_hop', true) OPERATOR(pg_catalog.=) 'on',
+           false)
+$$;
+
+COMMENT ON FUNCTION public.notif_pref_bridge_hop_active() IS
+  'True while a notification-preference bridge hop is in progress in THIS transaction. Both mirror triggers (v1 -> v2 and v2 -> v1) return immediately when it is true, so the pair cannot recurse. Transaction-local: set with set_config(..., is_local => true) around the nested write only, and reverted by COMMIT, ROLLBACK or any subtransaction abort. Retire with the bridge.';
+
+-- ===========================================================================
+-- 1b. WHY THERE IS NO "INCIDENTAL VALUES" HELPER ANY MORE — provenance cannot be established.
+--
+-- Several review rounds were spent trying to decide, from a value alone, whether a user CHOSE it or
+-- the platform supplied it. Every version leaked, and they all leaked the same way:
+--
+--   * compare against the CATALOG default — but the settings page computes the untouched channel
+--     from a snapshot it loaded earlier, so a default changed since the page loaded makes an
+--     incidental value look explicit;
+--   * compare against the v2 COLUMN default — same, if that default moves after a partial insert;
+--   * for a RETARGET, compare against the departing event's default — same again, and there is no
+--     provenance column from which to reconstruct what that default WAS at the time;
+--   * parse the column default out of `pg_get_expr` — and a perfectly valid non-literal default
+--     such as `lower('INSTANT'::text)` cannot be read at all.
+--
+-- Each fix closed one path and left another open, because the premise was wrong: **the database has
+-- no record of where a stored cadence came from.** No amount of comparison recovers it.
+--
+-- So the bridge stops guessing, and the rule collapses to one that needs no provenance:
+--
+--     ON ARRIVAL, ONLY AN OPT-OUT MAY OVERWRITE AN EXISTING LEGACY CHOICE.
+--     Every other cadence SEEDS — it creates the legacy row when there is none, and otherwise
+--     leaves it alone.
+--
+-- `off` is safe whatever its origin, because applying it SUPPRESSES mail; that asymmetry is what
+-- the whole file turns on. Everything else is refused the power to overwrite, which costs cadence
+-- fidelity on a path that is nearly empty in practice — anyone holding a legacy row also holds a v2
+-- row from C's backfill, so their next change is a CHANGE, and changes apply unconditionally.
+--
+-- What this buys beyond correctness: no default to read, no expression to parse, no catalog
+-- snapshot to race, no historical value to reconstruct. The consent guarantee stops depending on
+-- when an admin last edited a catalog row.
+
+-- ===========================================================================
+-- 1c. HARDEN THE LEGACY VALIDATION TRIGGER THAT THE REVERSE BRIDGE NOW INVOKES.
+--
+-- Writing v1 from a SECURITY DEFINER function means validate_notification_frequency() — a trigger
+-- this migration does not own — now runs with the definer's privileges. Its body is
+-- `EXECUTE format('SELECT ($1).%I', col)` under `SET search_path TO 'public'`, i.e. an unqualified
+-- call to a function whose schema is first on the path, inside a dynamic EXECUTE. Slice I measured
+-- on a real server that an exact-arity overload beats pg_catalog's own, so a `public.format(text,
+-- text)` would capture that call.
+--
+-- MEASURED, because the earlier draft of this file asserted the opposite and was wrong: on this
+-- project NO application role can create it. `pg_namespace.nspacl` for `public` grants USAGE to
+-- anon/authenticated/service_role and CREATE only to pg_database_owner, so
+-- has_schema_privilege('authenticated','public','CREATE') is FALSE. The path is therefore not
+-- reachable by an authenticated user today; it is closed here because this migration is what makes
+-- it privileged at all, and because "not currently grantable" is a weaker guarantee than "cannot be
+-- captured".
+--
+-- The body is otherwise unchanged from 20260210090026 — same column list, same message, same
+-- semantics. SECURITY INVOKER is deliberately NOT used for the bridge instead: `authenticated` is
+-- not granted DML on notification_preferences by any migration in this repo, so an invoker-rights
+-- bridge would turn a preference save into a hard error rather than a mirrored write.
+CREATE OR REPLACE FUNCTION public.validate_notification_frequency()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = pg_catalog
+AS $$
+DECLARE
+  col text;
+  val text;
+  freq_columns text[] := ARRAY[
+    'booking_confirmation', 'booking_reminder', 'open_slots_digest',
+    'upcoming_sessions_digest', 'payment_receipt', 'waitlist_update',
+    'new_booking', 'booking_cancelled', 'new_follower', 'new_player',
+    'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received'
+  ];
+BEGIN
+  FOREACH col IN ARRAY freq_columns LOOP
+    EXECUTE pg_catalog.format('SELECT ($1).%I', col) INTO val USING NEW;
+    IF val IS NOT NULL AND val NOT IN ('instant', 'daily', 'weekly', 'off') THEN
+      RAISE EXCEPTION 'Invalid frequency value "%" for column "%". Must be instant, daily, weekly, or off.', val, col;
+    END IF;
+  END LOOP;
+  RETURN NEW;
+END;
+$$;
+
+-- ===========================================================================================
+-- 2. FORWARD DIRECTION (v1 -> v2), re-created to honour the guard.
+--
+-- Every rule below is carried over from 20261011100000 §5b UNCHANGED and is still pinned by
+-- openSlotsResolverDigest.realpg.test.ts. Only three things differ:
+--   * it returns immediately when a bridge hop is already in progress;
+--   * it sets/clears the guard around its own nested write;
+--   * search_path is pg_catalog rather than public, and now() is qualified. This function is
+--     SECURITY DEFINER, and 10c-b I established on a real server that an exact-arity overload in
+--     a schema on the path beats pg_catalog's own — with `search_path = public` and CREATE not
+--     revoked on public, a rival public.now() would be resolved here. Every other name in this
+--     body was already schema-qualified; now() was the one that was not.
+CREATE OR REPLACE FUNCTION public.notif_mirror_open_slots_pref_to_v2()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
+AS $$
+BEGIN
+  -- RECURSION GUARD. A v2 -> v1 hop is already carrying this user's choice; re-mirroring it
+  -- forward would bounce it straight back.
+  IF public.notif_pref_bridge_hop_active() THEN RETURN NEW; END IF;
+
+  IF NEW.user_id IS NULL THEN RETURN NEW; END IF;
+  -- Only the four cadences v2 understands; anything else is ignored rather than coerced into a
+  -- sending cadence (same rule as the backfill).
+  IF NEW.open_slots_digest IS NULL OR NEW.open_slots_digest NOT IN ('off','instant','daily','weekly') THEN
+    RETURN NEW;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.id = NEW.user_id) THEN RETURN NEW; END IF;
+
+  IF TG_OP = 'UPDATE' THEN
+    -- Only an actual CHANGE to this column is a user action. An unrelated UPDATE must not
+    -- resurrect a stale cadence over a newer v2 choice.
+    IF NEW.open_slots_digest IS NOT DISTINCT FROM OLD.open_slots_digest THEN
+      RETURN NEW;
+    END IF;
+    PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
+    INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+    VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+    ON CONFLICT (user_id, event_type)
+    DO UPDATE SET email_frequency = EXCLUDED.email_frequency, updated_at = pg_catalog.now();
+    PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
+    RETURN NEW;
+  END IF;
+
+  -- INSERT is DIFFERENT, and it can go wrong in BOTH directions.
+  --
+  -- The settings page upserts a PARTIAL row when the user changes any OTHER legacy control, and
+  -- open_slots_digest then takes its column DEFAULT of 'weekly' (20260210090026:13). That is not
+  -- a choice about open slots at all: mirroring it with DO UPDATE would overwrite an explicit v2
+  -- 'off' with 'weekly' and start mailing someone who had opted out.
+  --
+  -- But blanket DO NOTHING loses the opposite case. A user can hold a v2 row and NO v1 row at
+  -- all — the v2 settings page creates rows directly, and the one-time backfill only creates a
+  -- v2 row where a v1 row already existed. A cached page's genuine opt-out then arrives as an
+  -- INSERT (no v1 row to update), and DO NOTHING would discard it: the UI reports success while
+  -- delivery keeps mailing. That is the very failure this bridge exists to prevent.
+  --
+  -- The two cases are distinguishable, and only by the VALUE: 'weekly' is exactly the column
+  -- default, so an inserted 'weekly' is ambiguous and is treated as the incidental default;
+  -- 'off' / 'instant' / 'daily' cannot be produced by the default and are therefore a real
+  -- choice about open slots, which applies.
+  --
+  -- THE RESIDUAL, stated accurately. A genuine 'weekly' choice made on a cached page IS lost
+  -- when a v2 row already exists, and that is not always "less mail": over an existing 'instant'
+  -- or 'daily' it leaves MORE mail than the user asked for. It is kept anyway, because the
+  -- alternative is strictly worse in kind rather than in degree — a DO UPDATE here would let the
+  -- incidental default overwrite an explicit 'off' and resume mail for someone who had opted
+  -- out. A cadence that is wrong is still consented mail; mail after an opt-out is not. So the
+  -- rule trades a cadence mismatch for a consent violation, deliberately, and only for the
+  -- lifetime of the cached bundle. (The realpg suite pins the column default AND both conflict
+  -- outcomes, so neither this reasoning nor its behaviour can silently rot.)
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
+  IF NEW.open_slots_digest = 'weekly' THEN
+    INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+    VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+    ON CONFLICT (user_id, event_type) DO NOTHING;
+  ELSE
+    INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+    VALUES (NEW.user_id, 'open_slots_player', NEW.open_slots_digest)
+    ON CONFLICT (user_id, event_type)
+    DO UPDATE SET email_frequency = EXCLUDED.email_frequency, updated_at = pg_catalog.now();
+  END IF;
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
+  RETURN NEW;
+END $$;
+
+COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_to_v2() IS
+  'Cutover bridge (v1 -> v2): mirrors a legacy notification_preferences.open_slots_digest write forward into notification_preferences_v2(open_slots_player), so a CACHED settings bundle cannot silently disagree with delivery. Installed before the one-time backfill so no write falls between the two. Honours notif_pref_bridge_hop_active() so it cannot ping-pong with the reverse bridge. Retire with the v1 column in 10c-d.';
+
+-- The trigger itself is unchanged (AFTER INSERT OR UPDATE OF open_slots_digest); CREATE OR
+-- REPLACE FUNCTION above re-points it. It is deliberately NOT dropped and recreated: doing so
+-- would take a stronger lock for no behavioural gain.
+
+-- ===========================================================================================
+-- 3. REVERSE DIRECTION (v2 -> v1). The new half.
+--
+-- SCOPE. Exactly one event key (open_slots_player) onto exactly one legacy column
+-- (open_slots_digest), email only. v2's whatsapp_frequency / push_frequency have no v1
+-- counterpart and are not mirrored. This is narrow by construction, not by convention.
+--
+-- ARRIVAL vs CHANGE — the only distinction the reverse direction needs.
+--
+--   * a CHANGE (same user+event, email_frequency actually different) is ALWAYS an explicit email
+--     choice: a save that touches only the other channel rewrites the column with the value it
+--     already had, and the no-change short-circuit drops that. Apply unconditionally.
+--   * an ARRIVAL (INSERT, or an UPDATE moving the row onto this user+event) may carry a value the
+--     PLATFORM supplied rather than the user, and §1b explains why that cannot be detected. Only
+--     an opt-out may overwrite an existing legacy choice; everything else seeds.
+--
+-- The forward direction faces the mirror-image hazard and answers it differently — by VALUE against
+-- the v1 COLUMN default — because there the ambiguous value is fixed by the schema rather than
+-- computed by a page. The two rules are not symmetric, and that is deliberate.
+--
+CREATE OR REPLACE FUNCTION public.notif_mirror_open_slots_pref_to_v1()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
+AS $$
+BEGIN
+  -- RECURSION GUARD, as above.
+  IF public.notif_pref_bridge_hop_active() THEN RETURN NEW; END IF;
+
+  IF NEW.user_id IS NULL THEN RETURN NEW; END IF;
+
+  -- Defence in depth. notification_preferences_v2.email_frequency already carries a CHECK for
+  -- exactly this set, so this is unreachable while that CHECK stands. It matters anyway: the v1
+  -- table has NO check constraint, only the validate_notification_prefs_frequency trigger, which
+  -- RAISES on an unknown cadence. Without this filter, relaxing the v2 CHECK would turn a
+  -- preference save into a hard error at the UI instead of a no-op.
+  IF NEW.email_frequency IS NULL OR NEW.email_frequency NOT IN ('off','instant','daily','weekly') THEN
+    RETURN NEW;
+  END IF;
+
+  -- AN UPDATE THAT MOVES A ROW ONTO THIS (user, event) IS AN ARRIVAL, NOT A CHANGE.
+  -- Both halves of the logical key are updatable: `event_type` by the row's owner (own-row UPDATE
+  -- policy + column grant), and `user_id` by service_role, which RLS does not constrain. If either
+  -- moved, OLD.email_frequency describes a DIFFERENT (user, event) and comparing against it is
+  -- meaningless — it would either suppress a real arriving value or treat an incidental one as an
+  -- explicit change. Comparing only event_type left the service_role case misclassified: moving an
+  -- `off` row from user A to user B changed nothing about email, so the change path returned early
+  -- and B's opt-out never reached the legacy reader.
+  IF TG_OP = 'UPDATE'
+     AND OLD.event_type IS NOT DISTINCT FROM NEW.event_type
+     AND OLD.user_id    IS NOT DISTINCT FROM NEW.user_id THEN
+    -- Only an actual CHANGE is a user action about EMAIL. A WhatsApp-only save re-writes this
+    -- column unchanged and must not be mirrored (it would also cost a pointless row lock on v1).
+    IF NEW.email_frequency IS NOT DISTINCT FROM OLD.email_frequency THEN
+      RETURN NEW;
+    END IF;
+
+    PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
+    INSERT INTO public.notification_preferences (user_id, open_slots_digest)
+    VALUES (NEW.user_id, NEW.email_frequency)
+    ON CONFLICT (user_id)
+    DO UPDATE SET open_slots_digest = EXCLUDED.open_slots_digest
+    WHERE public.notification_preferences.open_slots_digest IS DISTINCT FROM EXCLUDED.open_slots_digest;
+    PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
+    RETURN NEW;
+  END IF;
+
+  -- ARRIVAL (INSERT, or an UPDATE that moved this row onto this user+event).
+  --
+  -- Only an opt-out may overwrite an existing legacy choice; every other cadence seeds. See §1b for
+  -- why this consults no default at all.
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
+  IF NEW.email_frequency <> 'off' THEN
+    -- Provenance unknown: SEED only. This still creates the legacy row when the user has none,
+    -- which is what "a first-time v2 insert must reach the legacy reader" requires; it just never
+    -- overwrites an existing legacy choice.
+    INSERT INTO public.notification_preferences (user_id, open_slots_digest)
+    VALUES (NEW.user_id, NEW.email_frequency)
+    ON CONFLICT (user_id) DO NOTHING;
+  ELSE
+    INSERT INTO public.notification_preferences (user_id, open_slots_digest)
+    VALUES (NEW.user_id, NEW.email_frequency)
+    ON CONFLICT (user_id)
+    DO UPDATE SET open_slots_digest = EXCLUDED.open_slots_digest
+    WHERE public.notification_preferences.open_slots_digest IS DISTINCT FROM EXCLUDED.open_slots_digest;
+  END IF;
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
+  RETURN NEW;
+END $$;
+
+COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_to_v1() IS
+  'Cutover bridge (v2 -> v1): mirrors notification_preferences_v2(open_slots_player).email_frequency BACK into the legacy notification_preferences.open_slots_digest column, so an opt-out saved on the NEW settings page reaches the still-live legacy send-email reader during the deploy window the 10c-b runbook deliberately opens (migrations -> frontend -> wait out bundle cache -> edge function). Email only; WhatsApp/push have no v1 counterpart. Honours notif_pref_bridge_hop_active() so it cannot ping-pong with the forward bridge. Retire together with the forward bridge and the v1 column in 10c-d.';
+
+DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_to_v1 ON public.notification_preferences_v2;
+CREATE TRIGGER trg_mirror_open_slots_pref_to_v1
+  AFTER INSERT OR UPDATE ON public.notification_preferences_v2
+  FOR EACH ROW
+  WHEN (NEW.event_type = 'open_slots_player')
+  EXECUTE FUNCTION public.notif_mirror_open_slots_pref_to_v1();
+
+-- NO `UPDATE OF email_frequency` COLUMN LIST, deliberately. It reads as the tighter, cheaper
+-- trigger and it is the wrong one: `UPDATE OF col` fires only when that column is NAMED in the SET
+-- list, so retargeting a row onto this event (`SET event_type = 'open_slots_player'`) would not
+-- fire at all. The effective v2 preference would become that row's cadence — including `off` —
+-- while the legacy reader kept the old one and went on sending. The in-function no-change
+-- short-circuit makes the unrestricted form cost the same for the write that actually dominates:
+-- the settings page always names both channel columns anyway.
+--
+-- ===========================================================================================
+-- 3a. DEPARTURES — losing the v2 row, and the OPT-OUT-PRESERVING mirror.
+--
+-- `authenticated` holds DELETE and own-row UPDATE on this table (20260910100000:232,234), so a
+-- user can remove or repoint their own row through the table API even though the settings page
+-- offers no way to; service_role can move one between users. When that happens the EFFECTIVE v2
+-- preference becomes the catalog default while v1 keeps the departed value, and the two disagree.
+--
+-- An earlier draft declined to mirror departures at all, on the grounds that a faithful mirror
+-- would write the catalog default into v1 and so deleting an `off` row would RESUME legacy mail.
+-- The premise is right; the conclusion was too strong, and saying "every available mirror is
+-- worse" was simply wrong. A mirror that REFUSES to touch an opt-out — on either side — keeps that
+-- protection and still restores fidelity everywhere else:
+--
+--   * OLD.email_frequency = 'off'   -> do nothing. The user's opt-out is what is departing; it must
+--                                     not be traded for the catalog default.
+--   * v1 is already 'off'           -> do nothing. Never overwrite a legacy opt-out, whatever the
+--                                     v2 side says. This is the same rule §3 applies on arrival.
+--   * otherwise                     -> set v1 to the catalog default, which is exactly what v2 now
+--                                     resolves to, so the two agree again.
+--
+-- UPDATE, never INSERT. A departure is not a reason to CREATE a legacy row: after full account
+-- deletion (_shared/delete-user-data.ts removes the v1 row, and the v2 rows go with auth.users)
+-- the UPDATE simply matches nothing, where an upsert would resurrect a row for a deleted user.
+--
+-- The residual, stated exactly: deleting an `off` row leaves v1 `off` while v2 resolves to the
+-- catalog default. They disagree, deliberately, and in the direction that sends LESS — the legacy
+-- reader stays silent for someone whose last recorded intent was silence.
+CREATE OR REPLACE FUNCTION public.notif_mirror_open_slots_pref_departure()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog
+AS $$
+DECLARE
+  v_default text;
+BEGIN
+  IF public.notif_pref_bridge_hop_active() THEN RETURN NULL; END IF;
+  IF OLD.user_id IS NULL THEN RETURN NULL; END IF;
+
+  SELECT t.default_email_frequency INTO v_default
+    FROM public.notification_event_types t
+   WHERE t.key = 'open_slots_player';
+  IF v_default IS NULL OR v_default NOT IN ('off','instant','daily','weekly') THEN RETURN NULL; END IF;
+
+  -- THE REFUSALS ARE ABOUT SUPPRESSION, NOT ABOUT 'off' AS A TOKEN. An earlier version refused
+  -- whenever the departing value was 'off', and separately refused to write anything but
+  -- instant/daily/weekly. Both were too blunt: if the CATALOG DEFAULT is itself 'off', then moving
+  -- the legacy column to it SUPPRESSES mail, which is always safe and is what v2 now resolves to.
+  -- Refusing there left v1 sending while v2 said 'off' — the divergence in the unsafe direction.
+  --
+  -- So the rule is: a departure may never UN-SUPPRESS. An `off` on either side is protected; what a
+-- departure does otherwise is adopt the catalog default, which is simply what v2 now resolves to.
+-- Note that this can INCREASE frequency — departing `weekly` with a catalog default of `instant`
+-- raises it — and that is correct rather than a leak: both values are inherited defaults, neither is
+-- an opt-out, and the alternative is leaving v1 stale against what v2 says.
+  IF OLD.email_frequency = 'off' AND v_default <> 'off' THEN RETURN NULL; END IF;
+
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
+  UPDATE public.notification_preferences
+     SET open_slots_digest = v_default
+   WHERE user_id = OLD.user_id
+     AND open_slots_digest IS DISTINCT FROM v_default
+     -- never UN-suppress a legacy opt-out; moving one 'off' to another is a no-op anyway
+     AND (v_default = 'off' OR open_slots_digest <> 'off');
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
+  RETURN NULL;
+END $$;
+
+COMMENT ON FUNCTION public.notif_mirror_open_slots_pref_departure() IS
+  'Cutover bridge (v2 -> v1), departure half: when a user loses their open_slots_player v2 row (DELETE, retarget to another event, or reassignment to another user) the effective v2 preference becomes the catalog default, so the legacy column is moved to match. REFUSES when the departing value is off or the legacy column is already off, so a departure can never resume mail after an opt-out. UPDATE-only, so it cannot resurrect a legacy row for a deleted account. Retire with the bridge.';
+
+-- Two triggers, one function: a WHEN clause on a DELETE trigger cannot reference NEW, so the
+-- delete and update-away cases cannot share one.
+DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_departure_del ON public.notification_preferences_v2;
+CREATE TRIGGER trg_mirror_open_slots_pref_departure_del
+  AFTER DELETE ON public.notification_preferences_v2
+  FOR EACH ROW
+  WHEN (OLD.event_type = 'open_slots_player')
+  EXECUTE FUNCTION public.notif_mirror_open_slots_pref_departure();
+
+-- A row leaves this (user, event) either by changing event_type or by being reassigned to another
+-- user. Both leave the ORIGINAL user without an open-slots preference.
+DROP TRIGGER IF EXISTS trg_mirror_open_slots_pref_departure_upd ON public.notification_preferences_v2;
+CREATE TRIGGER trg_mirror_open_slots_pref_departure_upd
+  AFTER UPDATE ON public.notification_preferences_v2
+  FOR EACH ROW
+  WHEN (OLD.event_type = 'open_slots_player'
+        AND (NEW.event_type IS DISTINCT FROM 'open_slots_player'
+             OR NEW.user_id IS DISTINCT FROM OLD.user_id))
+  EXECUTE FUNCTION public.notif_mirror_open_slots_pref_departure();
+
+-- ===========================================================================================
+-- 3b. ONE-TIME REVERSE RECONCILE, for v2 rows that predate the trigger.
+--
+-- A trigger only sees FUTURE writes. Any v2 row already carrying an open-slots choice when this
+-- migration lands would never reach the legacy reader — which is exactly the gap this file exists
+-- to close — so existing state is closed too, not only new writes.
+--
+-- HOW BIG IS THAT POPULATION? Nearly always zero, but not provably zero, and this is a consent
+-- path:
+--   * `open_slots_player` does not exist in the production catalog at all — 20261008100000 is on
+--     this branch — so no user can hold a v2 row for it before this deploy;
+--   * BUT one `supabase db push` applies its migrations in sequence, and the ALREADY-deployed
+--     settings page reads the event catalog dynamically. From the moment 20261008100000 commits,
+--     that page renders the new event and a save writes a v2 row — before this file runs;
+--   * and C's backfill (20261011100000 §6) is ON CONFLICT DO NOTHING, so such a row WINS and its
+--     legacy counterpart is never written. Without this statement that user's choice is stranded
+--     precisely BECAUSE they were quick.
+-- It also makes the migration correct on any environment that already holds v2 rows — a re-run, a
+-- clone, a rehearsal target — rather than only on production's exact ordering.
+--
+-- SEMANTICS ARE THE TRIGGER'S, not a second rule: seed where no legacy row exists, and overwrite an
+-- existing one only with a value the platform could not have supplied. The guard is held for the
+-- duration so the forward mirror does not bounce every row straight back.
+--
+-- Bounded (one statement over one event's v2 rows), forward-only, and a pure no-op on re-run: the
+-- DO UPDATE predicate stops matching once the two agree.
+DO $reconcile$
+DECLARE
+  v_rows int;
+BEGIN
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'on', true);
+
+  INSERT INTO public.notification_preferences (user_id, open_slots_digest)
+  SELECT p.user_id, p.email_frequency
+    FROM public.notification_preferences_v2 p
+   WHERE p.event_type = 'open_slots_player'
+     AND p.user_id IS NOT NULL
+     AND p.email_frequency IN ('off','instant','daily','weekly')
+  ON CONFLICT (user_id) DO UPDATE
+     SET open_slots_digest = EXCLUDED.open_slots_digest
+   WHERE public.notification_preferences.open_slots_digest IS DISTINCT FROM EXCLUDED.open_slots_digest
+     -- Same rule as an arrival (§1b): only an OPT-OUT may overwrite an existing legacy choice.
+     -- Not "a value the platform could not have supplied" — that model is gone; `off` overwrites
+     -- precisely because it suppresses, whatever its origin. Rows with no legacy counterpart are
+     -- still seeded by the INSERT above, whatever their cadence.
+     AND EXCLUDED.open_slots_digest = 'off';
+
+  GET DIAGNOSTICS v_rows = ROW_COUNT;
+  PERFORM pg_catalog.set_config('notif.pref_bridge_hop', 'off', true);
+  RAISE NOTICE 'notif 10c-b J: reverse preference reconcile touched % legacy row(s)', v_rows;
+END
+$reconcile$;
+
+-- ===========================================================================================
+-- 4. CONCURRENCY — what is guaranteed, and what is not.
+--
+-- Two writers for the SAME user, one on each table, lock the two tables in opposite orders
+-- (a v2 save locks v2 then v1; a legacy save locks v1 then v2). That is a lock cycle, and
+-- Postgres resolves it by aborting one transaction with `deadlock detected`.
+--
+-- A cross-table advisory lock taken in a BEFORE INSERT trigger on both tables was considered and
+-- REJECTED: it would take one advisory lock PER ROW on every preference write forever — held to
+-- end of transaction, and so a bulk write of N rows would occupy N lock-table slots — to prevent
+-- an event that requires one user to save on two differently-versioned bundles within the same
+-- few milliseconds, and whose consequence is already benign.
+--
+-- The INVARIANT that actually matters is preserved either way, and it is the one the tests
+-- assert: AFTER ANY COMMITTED **APPLYING** WRITE, v1 AND v2 AGREE. A deadlock aborts one
+-- transaction whole, so it cannot leave the two tables disagreeing; a serialised pair leaves both
+-- at the later writer's value. There is no interleaving that commits a v1 'instant' next to a
+-- v2 'off'.
+--
+-- STATE THE EXCEPTION, because an unqualified "they always agree" is false and a future reader
+-- would be right to call it a bug: a SEED-ONLY write leaves them DIFFERENT ON PURPOSE. A partial
+-- v2 insert over a legacy 'off' commits v1='off' alongside v2='instant', and that divergence IS
+-- the protection — the alternative is resuming mail after an opt-out. The concurrency argument
+-- above is about applying writes; the ambiguous ones are governed by §3's rule instead, and the
+-- direction of their divergence is always "the legacy reader sends no more than the user asked
+-- for", never less consent than they gave.
+--
+-- Lost updates are prevented by the upserts themselves: ON CONFLICT DO UPDATE re-reads the
+-- conflicting row under lock, so the second writer sees the first writer's committed value rather
+-- than the snapshot it started from. The `WHERE ... IS DISTINCT FROM` predicates are evaluated
+-- against that same locked, current row.
+
+-- ===========================================================================================
+-- RETIREMENT — when and how this comes out.
+--
+-- CONDITION. Both directions and the guard are removed together, in 10c-d (legacy retirement),
+-- once ALL of the following hold:
+--   1. send-email no longer maps any type onto open_slots_digest — i.e. new_availability and
+--      slot_reopened are gone from TYPE_TO_PREF_COLUMN (send-email/index.ts). This is the real
+--      trigger: while that map still names the column, a deployed old bundle can still enforce it.
+--   2. That send-email revision is DEPLOYED, not merely merged. "Merged" is not "live" in this
+--      repo: edge functions are pushed by hand after the frontend auto-deploys.
+--   3. The browser bundle-cache window for the pre-cutover settings page has elapsed, so no
+--      cached client is still writing v1 (this is what the FORWARD direction protects).
+--   4. The v1 column itself is dropped in the same release unit, or the two mirrors are removed
+--      first and the column left inert — never the reverse, which would strand writes.
+--
+-- HOW. In one migration: DROP TRIGGER trg_mirror_open_slots_pref_to_v1 ON
+-- public.notification_preferences_v2; DROP TRIGGER trg_mirror_open_slots_pref_to_v2 ON
+-- public.notification_preferences; DROP TRIGGER trg_mirror_open_slots_pref_departure_del AND
+-- trg_mirror_open_slots_pref_departure_upd ON public.notification_preferences_v2;
+-- DROP FUNCTION notif_mirror_open_slots_pref_departure(), notif_mirror_open_slots_pref_to_v1(),
+-- notif_mirror_open_slots_pref_to_v2(), notif_pref_bridge_hop_active().
+-- (validate_notification_frequency stays — §1c hardened it; it is not part of the bridge.)
+--
+-- ENFORCEMENT, and the trap inside it. Only condition 1 is mechanical, and it is pinned:
+-- legacySendEmailInventory.test.ts asserts send-email's TYPE_TO_PREF_COLUMN still maps
+-- new_availability and slot_reopened onto open_slots_digest. That assertion is green today and
+-- goes RED the moment the SOURCE stops naming the column.
+--
+-- RED DOES NOT MEAN "DELETE THIS FILE". It means condition 1 is met and conditions 2-4 must now be
+-- checked BY HAND, because no test in this repository can see them: the register measures the
+-- REPOSITORY, and what still enforces v1 is the DEPLOYED bundle. Removing the bridge on a green
+-- CI while the old send-email is still live would re-open this exact gap — migrations are pushed
+-- before the edge function, so there would again be a window in which v2 writes are invisible to a
+-- live v1 reader. Conflating "merged" with "live" is the mistake this whole file exists to survive.
+-- The test says so in its own failure message, so the instruction arrives with the failure rather
+-- than only here.

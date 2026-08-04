@@ -50,7 +50,11 @@ Deno.test("normalize: rejects an oversized cart with cart_too_large (never trunc
   assertEquals(normalizeCartSlotIds(ids), { error: "cart_too_large" });
   // exactly at the cap is fine
   const ok = normalizeCartSlotIds(ids.slice(0, CART_MAX_ITEMS));
-  assertEquals("slotIds" in ok && ok.slotIds.length, CART_MAX_ITEMS);
+  // `?.` rather than a bare access: `slotIds` is OPTIONAL on CartRefusal, so `"slotIds" in ok`
+  // cannot exclude that arm of the union and `ok.slotIds` is `string[] | undefined`. Older
+  // TypeScript narrowed it anyway; current TypeScript does not, and CI floats on
+  // `deno-version: v2.x`, so the un-guarded form fails type-checking as the toolchain moves.
+  assertEquals("slotIds" in ok ? ok.slotIds?.length : null, CART_MAX_ITEMS);
 });
 
 Deno.test("normalize: rejects junk input", () => {
