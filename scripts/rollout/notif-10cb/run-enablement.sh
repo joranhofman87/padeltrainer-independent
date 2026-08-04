@@ -128,7 +128,7 @@ require_confirmed() {
 # looks like it blocks a send and does not is worse than no flag.
 require_admin_ops() {
   [[ "$ADMIN_OPS_CONFIRMED" == "1" ]] || die \
-    "$1 requires --admin-ops-confirmed: the Admin Notification Operations release unit must be SHIPPED and verified first — see docs/FOUNDATION_ROADMAP.md for its acceptance criteria. Without it there is no in-product view of the pipeline and no safe controls, so intervening in a real send means psql against production"
+    "$1 requires --admin-ops-confirmed: the Admin Notification Operations release unit must be SHIPPED and verified first — see docs/FOUNDATION_ROADMAP.md for its acceptance criteria. Without it there is no in-product view of the pipeline and no safe controls, so intervening in a real send means a hand-written psql-session against production"
 }
 
 db_url() {
