@@ -168,6 +168,42 @@ No correctness/scale risk today; these lower the cost of every future change and
 
 ---
 
+## Blocking release unit — Admin Notification Operations (10c-b Stage 3.5)
+
+**Owner-requested. It BLOCKS the notification digest canary and activation, and is deliberately NOT
+part of PR #629**, which stays scoped to A–I. Entry: #629 merged and deployed inert. Exit: this unit
+is reviewed, CI-green, deployed, and the owner has confirmed the surfaces work. Only then may a
+canary run or the cron be armed — `scripts/rollout/notif-10cb/run-enablement.sh` requires
+`--admin-ops-confirmed` on `canary` and `activate`, and **this section is that flag's referent**.
+
+**Why it blocks.** Not because failures are otherwise undetectable — a failed canary shows up in its
+HTTP result, in `canary_verify.sql`, and in the worker's Slack alert. Because there is no
+**in-product, global** view of the pipeline and no safe recovery controls: today the only way to
+see what it is doing, or to intervene, is psql against production plus the rollout scripts. That is
+one person at a keyboard, not operations.
+
+**Scope — global admin visibility (read).** A cross-tenant admin surface over the real tables, not a
+mock: `notification_outbox` (pending/claimed/failed per event + channel), `notification_digest_groups`
+and `notification_digest_attempts` (state, `outcome_class`, provider ids),
+`notification_worker_runs` (phase/channel/status/`ended_at`), `notification_provider_circuit`
+(per-channel breaker state, reason, `retry_at`), `notification_orphan_reconcile_state` (what is
+parked awaiting a human), `notif_digest_worker_liveness()`, and the email deliverability record.
+PII-minimal; message bodies are never exposed to a non-tenant admin.
+
+**Scope — safe controls (write), each reviewed, tested and confirmable.** Per-event digest engine
+enable/disable; cron activate/deactivate (**never** `cron.unschedule` — that destroys the reviewed
+Vault-backed command); resolve or re-queue a quarantined orphan; close a tripped circuit; cancel or
+retry a stuck group. Admin-only, audited, idempotent, refusing rather than guessing. **No control
+may perform a send.** `DIGEST_SEND_ENABLED` is an edge env var that no SQL and no admin surface can
+read — the UI must say so rather than imply it checked.
+
+**Acceptance criteria — what "shipped and verified" means for `--admin-ops-confirmed`:**
+1. ACL/RLS proven for admin vs trainer vs player vs anon — a non-admin gets nothing.
+2. Every control mutation-pinned: removing the guard fails a test.
+3. The read surface tested against real fixture data, not stubs.
+4. Independent review clear, every repo gate green.
+5. Deployed, and the owner has exercised each surface once.
+
 ## Owner deploy backlog (already-merged, not yet live)
 
 Independent of the above: these are **merged in code but await the owner's manual prod apply** — track separately so they don't read as "done." The `reconcile_payments` RPC + `mollie-webhook` audit writes need migration `20260705140000` applied + the `mollie-webhook` redeployed (see [`OBSERVABILITY_AND_RECOVERY.md`](OBSERVABILITY_AND_RECOVERY.md)). Confirm against the deploy checklist before assuming any edge-fn/migration fix is active in prod.

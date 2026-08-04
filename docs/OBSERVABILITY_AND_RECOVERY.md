@@ -117,8 +117,10 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 - **Three preconditions live outside the database and are asserted, not assumed:** the edge kill
   switch (`--switch-off-confirmed`), the external monitor (`--monitor-confirmed`), and the
   **Admin Notification Operations** release unit (`--admin-ops-confirmed` on `canary` and
-  `activate`) — mandatory before any canary or activation, because without in-product visibility
-  the first sign of trouble in a real send is a user complaint.
+  `activate`, acceptance criteria in [`FOUNDATION_ROADMAP.md`](FOUNDATION_ROADMAP.md)) — mandatory
+  before any canary or activation, because without it there is no in-product global view of the
+  pipeline and no safe controls. Note it gates RECONCILIATION and arming: `canary` reconciles a run
+  already invoked by hand, so the send itself is gated procedurally by the runbook's step 0.
 - **Never `cron.unschedule` to pause — deactivate.** Unscheduling destroys the reviewed Vault-backed
   command, and re-creating it by hand under time pressure is how a wrong endpoint gets introduced.
 

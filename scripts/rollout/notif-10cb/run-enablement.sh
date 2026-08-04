@@ -120,9 +120,15 @@ require_confirmed() {
 # production, so the first sign of trouble in a real send is a user complaint. It is a separate
 # release unit and nothing in this database can detect whether it has shipped, so the operator
 # asserts it, exactly as they assert the edge kill switch and the external monitor.
+#
+# WHAT THIS FLAG CAN AND CANNOT GATE. `canary` RECONCILES a run the operator already invoked by
+# hand, so by the time this check runs the canary email has been sent. It therefore gates
+# reconciliation and activation mechanically; the send itself is gated procedurally, by the runbook
+# putting the release unit at step 0. Said plainly here rather than implied, because a flag that
+# looks like it blocks a send and does not is worse than no flag.
 require_admin_ops() {
   [[ "$ADMIN_OPS_CONFIRMED" == "1" ]] || die \
-    "$1 requires --admin-ops-confirmed: the Admin Notification Operations release unit must be SHIPPED and verified first (global admin visibility + safe controls). It is a separate release unit — this script cannot detect it, and running a canary or arming the cron without it means the first sign of trouble is a user complaint"
+    "$1 requires --admin-ops-confirmed: the Admin Notification Operations release unit must be SHIPPED and verified first — see docs/FOUNDATION_ROADMAP.md for its acceptance criteria. Without it there is no in-product view of the pipeline and no safe controls, so intervening in a real send means psql against production"
 }
 
 db_url() {
