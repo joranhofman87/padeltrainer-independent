@@ -866,6 +866,66 @@ not less. It is accepted deliberately: the alternative differs in kind rather th
 a `DO UPDATE` here would let the incidental default overwrite an explicit `off` and resume mail
 after an opt-out. A wrong cadence is still consented mail; mail after an opt-out is not.
 
+## 10c-b J — the bridge is TWO-way, because the deploy order opens the other direction too
+
+One-way was not enough, and the gap is manufactured by the deploy order documented immediately
+above. `Migrations → frontend → wait out the bundle cache → edge function` puts the NEW settings
+page live first and then waits on purpose. That page no longer carries an `open_slots_digest`
+control at all, so a player changing their open-slots cadence in that window writes **only**
+`notification_preferences_v2` — while the still-deployed OLD `notify-followers` keeps POSTing
+`send-email`, which maps `new_availability`/`slot_reopened` onto the v1 column and enforces it
+(`off` suppresses, `daily`/`weekly` queue). The player sees "Saved" and keeps receiving mail.
+
+(`notify-followers` never read `open_slots_digest` itself. Its own filter read
+`notification_preferences.email_new_availability`, a column dropped in `20260210090026` whose
+error was discarded, so that filter was silently inert. The live v1 reader in the window is
+`send-email`, reached *through* the old `notify-followers`.)
+
+So `20261013100000` adds the reverse mirror. Scope is exactly one event key onto exactly one legacy
+column, email only — `whatsapp_frequency`/`push_frequency` have no v1 counterpart.
+
+**The INSERT ambiguity is mirror-imaged, not absent.** The forward direction defends against a
+partial legacy row whose `open_slots_digest` took its COLUMN default. The reverse direction faces
+the same hazard one level up: `saveEvent()` always writes both channel columns, computing the one
+the user did not touch from `effective()`, which falls back to the CATALOG default. A brand-new
+user flipping only the WhatsApp switch therefore inserts an `email_frequency` that is nobody's
+choice. So the reverse INSERT applies the same test by value — against the catalog default, read
+from `notification_event_types` rather than hard-coded, so the rule cannot silently invert if that
+default is ever changed. An UPDATE needs no such test: a WhatsApp-only save rewrites
+`email_frequency` unchanged, and the no-change short-circuit drops it, so a *changed* value on
+UPDATE is always an explicit email choice.
+
+**Recursion.** Two mirrors ping-pong, and Postgres does not detect it — it recurses until the stack
+is gone. The guard is a transaction-local GUC (`notif.pref_bridge_hop`) set only around each
+bridge's own nested write, checked by both directions. `pg_trigger_depth()` was rejected: it
+suppresses the bridge whenever the write arrives from *any* trigger, including a future unrelated
+one, and it fails OPEN — the mirror stops and a preference silently stops propagating.
+
+The reverse direction ALSO writes distinct-only (`WHERE ... IS DISTINCT FROM EXCLUDED`). That is
+deliberate redundancy, and it is worth knowing that the two protections **mask each other**:
+neither is observable in the final state while the other stands. The mutation pins therefore remove
+them in the combinations that actually bite, and one POSITIVE CONTROL proves the pin that removes
+only the predicate fails for the reason claimed rather than because the scenario cannot bounce.
+
+**Concurrency.** A v2 save locks v2 then v1; a legacy save locks v1 then v2 — a lock cycle, which
+Postgres breaks with `deadlock detected`. A cross-table advisory lock in a `BEFORE INSERT` trigger
+on both tables would remove it, and was rejected: it takes one advisory lock **per row** on every
+preference write forever, to prevent an event that needs one user saving on two differently
+versioned bundles within milliseconds. The invariant that matters survives either way and is what
+the tests assert: **after any committed write, v1 and v2 agree.** A deadlock aborts one transaction
+whole, so it cannot leave them disagreeing; a serialised pair leaves both at the later writer's
+value. Lost updates are prevented by the upserts themselves — `ON CONFLICT DO UPDATE` re-reads the
+conflicting row under lock.
+
+**Retirement** is in the migration's own footer, and it is pinned rather than remembered:
+`legacySendEmailInventory.test.ts` asserts `send-email`'s `TYPE_TO_PREF_COLUMN` still maps
+`new_availability`/`slot_reopened` onto `open_slots_digest`. That assertion is green today and goes
+red the moment the last legacy reader disappears — the signal that both mirrors and the guard may
+be deleted, together, in 10c-d. Note why the existing caller-side register cannot serve as that
+signal: it measures the REPOSITORY ("does any live path re-enter send-email on a v1-gated type?"),
+and the thing still enforcing v1 is the DEPLOYED bundle. Conflating the two is the mistake the
+bridge exists to survive.
+
 ## 10c-b H — the deferred index measurement, and why `idx_notification_outbox_due` stays
 
 C shipped `idx_notification_outbox_due_instant` (partial, `channel, scheduled_for,

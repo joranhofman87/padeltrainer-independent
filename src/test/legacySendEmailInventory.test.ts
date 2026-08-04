@@ -26,7 +26,7 @@
 //                                              hardcoded, so a NEW wrapper is covered the
 //                                              moment it exists
 import { describe, it, expect } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
@@ -205,5 +205,50 @@ describe('the legacy send-email register', () => {
         || wrappers.some((fn) => new RegExp(`\\b${fn}\\s*\\(`).test(src));
       expect(reaches, `${file} was migrated to ${to} — it must not reach send-email again`).toBe(false);
     }
+  });
+});
+
+/**
+ * THE RETIREMENT TRIPWIRE for the 10c-b J preference bridge.
+ *
+ * The register above answers a CALLER-side question — "does any live path in this repo still
+ * re-enter send-email on a v1-gated type?" — and its answer is no, which is what authorised
+ * removing the open_slots_digest control from NotificationSettings.tsx.
+ *
+ * That is not the same question as "may the compatibility bridge be deleted?", and conflating the
+ * two is what the bridge exists to survive. The register measures the REPOSITORY; the thing that
+ * still enforces v1 is the DEPLOYED send-email bundle, and in this repo edge functions are pushed
+ * by hand after the frontend has already auto-deployed. While send-email's own TYPE_TO_PREF_COLUMN
+ * still names open_slots_digest, some deployed bundle can still gate open-slot mail on the legacy
+ * column, so both mirror directions must stay.
+ *
+ * These assertions are GREEN today and go RED the moment that stops being true — which is the
+ * signal, and the only mechanical one, that 20261013100000 may be deleted.
+ */
+describe('10c-b J — when the preference bridge may be retired', () => {
+  const BRIDGE_MIGRATION = 'supabase/migrations/20261013100000_notif_10cb_pref_bridge_v2_to_v1.sql';
+
+  it('send-email still reads the v1 open_slots_digest column, so the bridge must stay', () => {
+    const src = read('supabase/functions/send-email/index.ts');
+    const map = /TYPE_TO_PREF_COLUMN[^=]*=\s*\{([\s\S]*?)\}/.exec(src);
+    expect(map, 'send-email must still declare TYPE_TO_PREF_COLUMN').not.toBeNull();
+    const stillReads = ['new_availability', 'slot_reopened']
+      .filter((t) => new RegExp(`${t}\\s*:\\s*"open_slots_digest"`).test(map![1]));
+
+    // When this goes red, read the RETIREMENT section at the foot of the bridge migration and
+    // delete both mirrors, the guard, and this block — together, in 10c-d.
+    expect(
+      stillReads,
+      'send-email no longer gates open slots on the v1 column: the J bridge is now removable',
+    ).toEqual(['new_availability', 'slot_reopened']);
+  });
+
+  it('the bridge migration is present while a legacy reader remains', () => {
+    expect(existsSync(join(ROOT, BRIDGE_MIGRATION)), `${BRIDGE_MIGRATION} is load-bearing`).toBe(true);
+    const sql = read(BRIDGE_MIGRATION);
+    // Both directions, or the gap reopens in whichever direction was dropped.
+    expect(sql).toContain('CREATE TRIGGER trg_mirror_open_slots_pref_to_v1');
+    expect(sql).toContain('notif_mirror_open_slots_pref_to_v2');
+    expect(sql).toContain('notif_pref_bridge_hop_active');
   });
 });

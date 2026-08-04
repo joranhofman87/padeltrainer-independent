@@ -745,6 +745,26 @@ open-slots availability, the `notification_queue` + `send-digest-emails` digest 
 PR 8 "Other notifications" settings bridge. **The legacy migration is NOT complete after 10b** —
 `send-email` remains live and the bridge stays until 10c ships the open-slots + v2 digest work.
 
+### The v1 ↔ v2 preference bridge is TWO-way (10c-b C + J)
+
+`notification_preferences.open_slots_digest` and `notification_preferences_v2('open_slots_player')`
+mirror **each other** for as long as the v1 column has a reader:
+
+| direction | migration | closes |
+|---|---|---|
+| v1 → v2 | `20261011100000` §5b | a CACHED pre-cutover settings bundle still writing v1 after the control left the page |
+| v2 → v1 | `20261013100000` | the deploy window in which the NEW page writes v2 only while the OLD `send-email` bundle still enforces v1 |
+
+Both are one hop: a transaction-local guard (`notif_pref_bridge_hop_active()`) makes the pair
+non-recursive. Both resolve an ambiguous INSERT by VALUE — forward against the v1 COLUMN default,
+reverse against the CATALOG default — so an incidental default can never overwrite an explicit
+`off`. Neither mirrors WhatsApp or push; there is no v1 counterpart.
+
+Retirement is mechanical, not remembered: `legacySendEmailInventory.test.ts` goes red when
+`send-email` stops mapping `new_availability`/`slot_reopened` onto `open_slots_digest`, which is
+the signal that both mirrors and the guard come out together in 10c-d. Full rationale, including
+the rejected `pg_trigger_depth()` and advisory-lock designs, in ADR 0008 §"10c-b J".
+
 Guest deliverability (10b): a guest with no account is made reachable by an in-scope
 `notification_contacts` row (`ensure_guest_email_contact`). When a guest's authoritative email
 is later REMOVED, that contact is REVOKED rather than left usable — a required confirmation then

@@ -209,6 +209,29 @@ async function applyC() {
   await c.query(MIG('20261011110000_notif_10cb_enqueue_digest_branch.sql'));
   await c.query(MIG('20261011120000_notif_10cb_instant_claim_excludes_digest.sql'));
   await c.query(MIG('20261011140000_notif_10cb_cutover_compat.sql'));
+  // J REPLACES notif_mirror_open_slots_pref_to_v2 (adding the re-entrancy guard) and adds the
+  // reverse mirror. Without it in the chain, every forward-mirror pin below would exercise a
+  // function body production no longer runs — green against code that is not deployed.
+  await c.query(MIG('20261013100000_notif_10cb_pref_bridge_v2_to_v1.sql'));
+}
+
+/**
+ * Seed a v2 row WITHOUT firing the reverse (v2 -> v1) mirror.
+ *
+ * These scenarios need a user who holds a v2 row and NO legacy row. That is precisely the state a
+ * v2 save produced BEFORE J shipped the reverse mirror, and it persists for everyone who used the
+ * v2 settings page during that window — so it is a real world, not a contrived one. Letting the
+ * reverse mirror run here would materialise the legacy row first, and the FORWARD rule under test
+ * (which turns on whether a legacy row exists) would never be reached.
+ */
+async function seedV2PreJ(freq: string, u = USER) {
+  await c.query(`ALTER TABLE public.notification_preferences_v2 DISABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
+  try {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+                   VALUES ($1,'open_slots_player',$2)`, [u, freq]);
+  } finally {
+    await c.query(`ALTER TABLE public.notification_preferences_v2 ENABLE TRIGGER trg_mirror_open_slots_pref_to_v1`);
+  }
 }
 
 async function enqueue(subject: string, payload: object = {}) {
@@ -443,8 +466,7 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     // page writes v2 directly, and the backfill only creates v2 where v1 existed). A cached
     // page's opt-out then arrives as an INSERT, and a blanket DO NOTHING would discard it — the
     // settings UI reporting success while delivery keeps mailing.
-    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
-                   VALUES ($1,'open_slots_player','daily')`, [USER]);
+    await seedV2PreJ('daily');
     await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest) VALUES ($1,'off')`, [USER]);
     const { rows } = await c.query(
       `SELECT email_frequency FROM public.notification_preferences_v2
@@ -476,8 +498,7 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
           AND column_name='open_slots_digest'`);
     expect(def[0].column_default).toContain(`'${declared![1]}'`);
 
-    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
-                   VALUES ($1,'open_slots_player','off')`, [USER]);
+    await seedV2PreJ('off');
     // no open_slots_digest given → the column default applies
     await c.query(`INSERT INTO public.notification_preferences (user_id) VALUES ($1)`, [USER]);
     const { rows } = await c.query(
@@ -494,8 +515,7 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
     // 'off', and a wrong cadence is still consented mail whereas mail after an opt-out is not.
     for (const existing of ['instant', 'daily']) {
       await c.query(`DELETE FROM public.notification_preferences_v2; DELETE FROM public.notification_preferences;`);
-      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
-                     VALUES ($1,'open_slots_player',$2)`, [USER, existing]);
+      await seedV2PreJ(existing);
       await c.query(`INSERT INTO public.notification_preferences (user_id, open_slots_digest)
                      VALUES ($1,'weekly')`, [USER]);
       const { rows } = await c.query(
@@ -548,7 +568,11 @@ describe('C — the mandatory v1 → v2 preference backfill', () => {
 // ===========================================================================
 describe('C — engine-off produces an inert, auditable outcome (no backlog)', () => {
   beforeEach(async () => {
-    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    // v1 is cleared with v2: they are mirrors now, and applyC() re-runs the one-time
+    // backfill, so a surviving legacy row would be copied back into v2 as a preference
+    // this test never set.
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;
+                   DELETE FROM public.notification_preferences;`);
     await applyC();
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=false WHERE key='open_slots_player'`);
   });
@@ -611,7 +635,11 @@ describe('C — engine-off produces an inert, auditable outcome (no backlog)', (
 // ===========================================================================
 describe('C — engine ON mints one complete digest member', () => {
   beforeEach(async () => {
-    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    // v1 is cleared with v2: they are mirrors now, and applyC() re-runs the one-time
+    // backfill, so a surviving legacy row would be copied back into v2 as a preference
+    // this test never set.
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;
+                   DELETE FROM public.notification_preferences;`);
     await applyC();
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=true WHERE key='open_slots_player'`);
   });
@@ -696,7 +724,11 @@ describe('C — engine ON mints one complete digest member', () => {
 // (no subject/html) or sending it individually. Found in review of this slice.
 describe('C — the INSTANT claim never touches a digest member', () => {
   beforeEach(async () => {
-    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    // v1 is cleared with v2: they are mirrors now, and applyC() re-runs the one-time
+    // backfill, so a surviving legacy row would be copied back into v2 as a preference
+    // this test never set.
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;
+                   DELETE FROM public.notification_preferences;`);
     await applyC();
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled=true WHERE key='open_slots_player'`);
   });
@@ -1037,6 +1069,7 @@ describe('C — §PS event stop policy for open slots', () => {
   beforeEach(async () => {
     await c.query(`DELETE FROM public.notification_outbox;
                    DELETE FROM public.notification_preferences_v2;
+                   DELETE FROM public.notification_preferences;
                    UPDATE public.trainer_followers SET notify_new_availability=true
                      WHERE player_id='${PROFILE}' AND trainer_id='${TRAINER}';`);
     await applyC();
@@ -1099,7 +1132,11 @@ describe('C — §PS event stop policy for open slots', () => {
 // cutover traded a working dedup for a re-spam.
 describe('D — notify-followers dedup rests on the resolver idempotency key', () => {
   beforeEach(async () => {
-    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    // v1 is cleared with v2: they are mirrors now, and applyC() re-runs the one-time
+    // backfill, so a surviving legacy row would be copied back into v2 as a preference
+    // this test never set.
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;
+                   DELETE FROM public.notification_preferences;`);
     await applyC();
     await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
                    VALUES ($1,'open_slots_player','instant')
@@ -1179,7 +1216,11 @@ describe('D — notify-followers dedup rests on the resolver idempotency key', (
 // across verbatim, so this cadence is live for real users.
 describe('D — an instant open-slots row carries server-rendered subject/html', () => {
   beforeEach(async () => {
-    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    // v1 is cleared with v2: they are mirrors now, and applyC() re-runs the one-time
+    // backfill, so a surviving legacy row would be copied back into v2 as a preference
+    // this test never set.
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;
+                   DELETE FROM public.notification_preferences;`);
     await applyC();
     await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
                    VALUES ($1,'open_slots_player','instant')
@@ -1276,7 +1317,11 @@ describe('D — ACL: the instant worker can call the stop policy, other helpers 
 describe('D — instant rows are covered by the complete live send policy', () => {
   let memberId: string;
   beforeEach(async () => {
-    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;`);
+    // v1 is cleared with v2: they are mirrors now, and applyC() re-runs the one-time
+    // backfill, so a surviving legacy row would be copied back into v2 as a preference
+    // this test never set.
+    await c.query(`DELETE FROM public.notification_outbox; DELETE FROM public.notification_preferences_v2;
+                   DELETE FROM public.notification_preferences;`);
     await c.query(`UPDATE public.notification_contacts SET destination_normalized='p@example.com',
                      revoked_at=NULL, consent_status='opted_in' WHERE user_id=$1 AND channel='email'`, [USER]);
     await c.query(`DELETE FROM public.email_suppression_stub`);
@@ -1371,8 +1416,7 @@ describe('D — the v1->v2 mirror can never re-enable mail after an opt-out', ()
     // The settings page upserts a PARTIAL legacy row when the user changes some OTHER control;
     // open_slots_digest then takes its column default of 'weekly'. That is not a choice about
     // open slots, and mirroring it would start mailing someone who had opted out.
-    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id,event_type,email_frequency)
-                   VALUES ($1,'open_slots_player','off')`, [USER]);
+    await seedV2PreJ('off');
     await c.query(`INSERT INTO public.notification_preferences (user_id) VALUES ($1)`, [USER]);
     const { rows } = await c.query(
       `SELECT email_frequency FROM public.notification_preferences_v2

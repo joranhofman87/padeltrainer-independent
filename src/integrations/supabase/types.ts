@@ -10818,6 +10818,7 @@ export type Database = {
         Args: { p_item: Json }
         Returns: Json
       }
+      notif_pref_bridge_hop_active: { Args: never; Returns: boolean }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_orphan_reconcile_permanent_reason: {
         Args: { p_code: string }
