@@ -102,12 +102,16 @@ WITH RECURSIVE outbound(oid) AS (
 SELECT CASE
          WHEN n.nspname ~ '^[A-Za-z0-9_.:-]+$'
           AND p.proname ~ '^[A-Za-z0-9_.:-]+$'
-          AND replace(pg_catalog.oidvectortypes(p.proargtypes), ' ', '') ~ '^[A-Za-z0-9_.,:\[\]"-]*$'
+          -- ONLY the argument SEPARATOR is normalised (', ' -> ','); every other space is then
+          -- rejected by the grammar. Deleting all spaces was LOSSY: PostgreSQL allows them inside
+          -- quoted type and schema names, so `public."a b"` and `public."a  b"` both serialised to
+          -- `public."ab"` and one reviewed identity could stand in for the other.
+          AND replace(pg_catalog.oidvectortypes(p.proargtypes), ', ', ',') ~ '^[A-Za-z0-9_.,:\[\]"-]*$'
            -- TYPES ONLY (oidvectortypes over proargtypes), not
            -- pg_get_function_identity_arguments, which includes PARAMETER NAMES: `p text` became
-           -- `ptext` once spaces were stripped, conflating a name with a type.
+           -- `ptext` once the separator was normalised, conflating a name with a type.
            THEN format('OUTFN %s.%s(%s)', n.nspname, p.proname,
-                       replace(pg_catalog.oidvectortypes(p.proargtypes), ' ', ''))
+                       replace(pg_catalog.oidvectortypes(p.proargtypes), ', ', ','))
          ELSE format('OUTFN_UNSAFE_NAME %s', md5(n.nspname || '.' || p.proname))
        END
 FROM outbound ob JOIN pg_proc p ON p.oid = ob.oid JOIN pg_namespace n ON n.oid = p.pronamespace

@@ -624,6 +624,15 @@ try {
     CREATE OR REPLACE FUNCTION public.outfn_probe_ok(p text) RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;
     CREATE OR REPLACE FUNCTION public."outfn probe hostile" () RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    -- A TYPE whose name contains spaces. Deleting every space from the signature made the two
+    -- domains below serialise identically, so one reviewed identity could stand in for the other.
+    -- (No backticks in this comment: it lives inside a JS template literal.)
+    CREATE DOMAIN public."a b" AS text;
+    CREATE DOMAIN public."a  b" AS text;
+    CREATE OR REPLACE FUNCTION public.outfn_spacey(p public."a b") RETURNS void LANGUAGE plpgsql AS
+      $f$ BEGIN PERFORM net.http_post('u'); END $f$;
+    CREATE OR REPLACE FUNCTION public.outfn_spacey2(p public."a  b") RETURNS void LANGUAGE plpgsql AS
       $f$ BEGIN PERFORM net.http_post('u'); END $f$;`);
   const invOut2 = await allRows(c, artifactText('clone_source_inventory.sql'));
   const outfn = invOut2.filter((r) => typeof r === 'string' && r.startsWith('OUTFN'));
@@ -634,8 +643,15 @@ try {
   rec('...and distinguishes an OVERLOAD by its signature',
       outfn.includes('OUTFN public.outfn_probe_ok()') && outfn.includes('OUTFN public.outfn_probe_ok(text)'),
       outfn.join(' | '));
+  rec('a signature containing a QUOTED TYPE WITH SPACES is refused, not silently collapsed',
+      outfn.filter((r) => /^OUTFN public\.outfn_spacey/.test(r)).length === 0
+        && outfn.filter((r) => r.startsWith('OUTFN_UNSAFE_NAME ')).length === 3,
+      outfn.join(' | '));
   await c.query(`DROP FUNCTION public.outfn_probe_ok(); DROP FUNCTION public.outfn_probe_ok(text);
-                 DROP FUNCTION public."outfn probe hostile"();`);
+                 DROP FUNCTION public."outfn probe hostile"();
+                 DROP FUNCTION public.outfn_spacey(public."a b");
+                 DROP FUNCTION public.outfn_spacey2(public."a  b");
+                 DROP DOMAIN public."a b"; DROP DOMAIN public."a  b";`);
 } finally {
   await c.end().catch(() => {}); await epg.stop().catch(() => {});
 }
