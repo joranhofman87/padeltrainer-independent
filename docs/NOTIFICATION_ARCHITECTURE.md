@@ -1,6 +1,13 @@
 # Notification architecture (Foundation v2)
 
-Status: canonical (source of truth) | last updated 2026-07-19 | program IN PROGRESS
+Status: **historical design record** | last updated 2026-07-19 (superseded 2026-08-05 by N6)
+
+> **Read [`NOTIFICATION_FOUNDATION.md`](NOTIFICATION_FOUNDATION.md) first.** That is the as-built
+> reference — what the pipeline is, how it decides, and what its invariants are — and
+> [`NOTIFICATION_OPERATIONS.md`](NOTIFICATION_OPERATIONS.md) is how to run it. **This** file is the
+> design record: the 2026-07 current-state audit, the reconciliation decisions (what we reused vs
+> replaced), the taxonomy and the PR sequence. It is kept because the *reasoning* is still worth
+> having; where it disagrees with the as-built reference, the as-built reference is right.
 
 > **Rev 2 (2026-07-19, Codex review of PR #590):** per-recipient idempotency key
 > (was collision-prone); tenant-visibility columns + RLS + denial tests moved

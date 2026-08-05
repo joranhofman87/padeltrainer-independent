@@ -57,23 +57,46 @@ describe('attribution matrix pins', () => {
   it('the producer inventory is CLOSED: exactly these files call enqueue_notification', () => {
     // A new producer must join the matrix and these pins in the same change. This walks the two
     // trees that can hold callers and asserts the known set — a sixth caller fails here first.
-    const out = execSync(
+    // CALL SITES, not mentions: N4/N5 migrations describe the resolver in comments and function
+    // COMMENTs (the preview mirrors it, the boundary explains what it writes), and a pin that
+    // counted prose would fail for a docstring while missing a caller hidden in a one-liner.
+    const mentions = execSync(
       `grep -rl "enqueue_notification\\|enqueue_booking_notification" supabase/functions supabase/migrations`,
       { cwd: ROOT, encoding: 'utf8' },
-    )
-      .trim()
-      .split('\n')
-      // resolver-definition migrations and N3's own files DEFINE or replay the function; tests aside
-      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000|\.test\./.test(f))
+    ).trim().split('\n');
+    const isCall = (line: string) => {
+      const code = line.replace(/^\s+/, '');
+      if (code.startsWith('--') || code.startsWith('//') || code.startsWith('*')) return false;
+      // a CALL passes arguments; a definition names the function after CREATE
+      if (/CREATE (OR REPLACE )?FUNCTION public\.(enqueue_notification|enqueue_booking_notification)\(/.test(code)) return false;
+      return /\b(enqueue_notification|enqueue_booking_notification)\s*\(/.test(code)
+          || /rpc\(\s*['"](enqueue_notification|enqueue_booking_notification)['"]/.test(code);
+    };
+    const out = mentions
+      .filter((f) => !/\.test\./.test(f))
+      .filter((f) => read(f).split('\n').some(isCall))
+      // the resolver-definition migrations CALL it only to redefine/replay it
+      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000/.test(f))
       .sort();
     expect(out).toEqual([
       'supabase/functions/_shared/booking-confirmation-email.ts',
       'supabase/functions/_shared/mollie-booking-paid-side-effects.ts',
-      'supabase/functions/_shared/open-slots-notify.ts',
       'supabase/functions/notify-followers/index.ts',
       'supabase/migrations/20260913100000_notification_pilot_review_received.sql',
       'supabase/migrations/20260926100000_booking_notification_enqueue_rpc.sql',
     ]);
+  });
+
+  // open-slots-notify.ts COMPOSES the open_slots_player send but does not call the resolver
+  // itself — notify-followers does, and the matrix attributes the row there. Pinned separately so
+  // the split is a fact rather than an accident of which file the grep happened to match.
+  it('open-slots-notify composes the open_slots_player payload; notify-followers is the caller', () => {
+    const composer = read('supabase/functions/_shared/open-slots-notify.ts');
+    expect(composer).toContain('open_slots_player');
+    expect(composer).not.toMatch(/rpc\(\s*["']enqueue_notification["']/);
+    const caller = read('supabase/functions/notify-followers/index.ts');
+    expect(caller).toMatch(/rpc\(\s*["']enqueue_notification["']/);
+    expect(caller).toContain('p_tenant_trainer_id: trainerId');
   });
 
   it('the matrix document exists and states the rule', () => {
