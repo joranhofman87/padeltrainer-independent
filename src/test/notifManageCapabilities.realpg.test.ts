@@ -43,6 +43,8 @@ const ACADEMY = '22222222-2222-4222-8222-222222222222';
 const TRAINER = '33333333-3333-4333-8333-333333333333';
 const SEND_A = '44444444-4444-4444-8444-444444444444';
 const SEND_B = '55555555-5555-4555-8555-555555555555';
+/** a stand-in capability id for suppression fixtures written outside apply() */
+const CAP_FIXTURE = '99999999-9999-4999-8999-999999999999';
 
 const mintOn = async (client: InstanceType<typeof Client>, over: Record<string, unknown> = {}) => {
   const a = {
@@ -168,11 +170,11 @@ describe('email_marketing_suppression', () => {
 
   it('record_marketing_suppression normalizes, is idempotent, and reports first-vs-repeat', async () => {
     const first = (await c.query(
-      `SELECT public.record_marketing_suppression('  Person@Example.COM ', 'academy', $1, 'one_click') AS r`,
-      [ACADEMY])).rows[0].r;
+      `SELECT public.record_marketing_suppression('  Person@Example.COM ', 'academy', $1, 'one_click', $2) AS r`,
+      [ACADEMY, CAP_FIXTURE])).rows[0].r;
     const again = (await c.query(
-      `SELECT public.record_marketing_suppression('person@example.com', 'academy', $1, 'manage_page') AS r`,
-      [ACADEMY])).rows[0].r;
+      `SELECT public.record_marketing_suppression('person@example.com', 'academy', $1, 'manage_page', $2) AS r`,
+      [ACADEMY, CAP_FIXTURE])).rows[0].r;
     expect(first).toBe(true);
     expect(again).toBe(false);
     const rows = await c.query(`SELECT address_normalized, source FROM public.email_marketing_suppression`);
@@ -180,15 +182,15 @@ describe('email_marketing_suppression', () => {
   });
 
   it('platform-scope uniqueness really is unique (plain UNIQUE dedupes nothing over NULL)', async () => {
-    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual')`);
-    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual')`);
+    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`);
+    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`);
     const n = await c.query(
       `SELECT count(*)::int AS n FROM public.email_marketing_suppression WHERE scope_id IS NULL`);
     expect(n.rows[0].n).toBe(1);
   });
 
   it('scope semantics: platform covers every scope; a tenant row covers only its tenant', async () => {
-    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'academy', $1, 'manual')`, [ACADEMY]);
+    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'academy', $1, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`, [ACADEMY]);
     const q = async (scopeKind: string, scopeId: string | null) =>
       (await c.query(`SELECT public.is_marketing_suppressed('T@x.nl', $1, $2) AS s`,
         [scopeKind, scopeId])).rows[0].s;
@@ -197,7 +199,7 @@ describe('email_marketing_suppression', () => {
     expect(await q('trainer', TRAINER)).toBe(false);
     expect(await q('platform', null)).toBe(false);
 
-    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'platform', NULL, 'manual')`);
+    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'platform', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`);
     expect(await q('trainer', TRAINER)).toBe(true);    // platform arm covers every scope
     expect(await q('platform', null)).toBe(true);
   });
@@ -214,10 +216,10 @@ describe('email_marketing_suppression', () => {
 
   it('scope coherence is validated by the writer too, not trusted', async () => {
     await expect(c.query(
-      `SELECT public.record_marketing_suppression('a@b.nl', 'academy', NULL, 'manual')`))
+      `SELECT public.record_marketing_suppression('a@b.nl', 'academy', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`))
       .rejects.toThrow(/disagree/);
     await expect(c.query(
-      `SELECT public.record_marketing_suppression('a@b.nl', 'platform', $1, 'manual')`, [ACADEMY]))
+      `SELECT public.record_marketing_suppression('a@b.nl', 'platform', $1, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`, [ACADEMY]))
       .rejects.toThrow(/disagree/);
   });
 });
@@ -285,11 +287,10 @@ describe('mint_notification_manage_capability', () => {
       `SELECT * FROM public.get_notification_manage_context($1)`, [old.capability_id])).rows[0];
     expect(ctx.status).toBe('retired_key');
     expect(ctx.destination_redacted).toBeNull();
-    // ...and a RETRY of that same send returns the SAME row (still v1) rather than silently
-    // re-signing it under the new key — the retry fails honestly at the edge instead.
-    const retry = await mint();
-    expect(retry.capability_id).toBe(old.capability_id);
-    expect(retry.key_version).toBe(1);
+    // ...and a RETRY of that same send is REFUSED outright rather than handing back a row whose
+    // links are dead (re-signing it would change the body under a fixed idempotency key). The
+    // send fails loudly; see the dedicated retry test above.
+    await expect(mint()).rejects.toThrow(/RETIRED generation/);
   });
 
   it('capabilities are PER SEND: the same source reuses, a new send mints fresh', async () => {
@@ -358,6 +359,58 @@ describe('apply_notification_manage_action', () => {
 });
 
 describe('key state is the retirement authority, and it fails closed', () => {
+  it('MINT BLOCKS behind an in-flight rotation — the lock, proven by two sessions', async () => {
+    // THE RACE THIS CLOSES: mint used to read current_version with a plain SELECT. Under READ
+    // COMMITTED it could read generation 1, an owner could commit a rotation retiring generation
+    // 1, and mint would then stamp a capability with a generation that was ALREADY DEAD — a link
+    // printed into an email that can never work, with no signal anywhere.
+    //
+    // DISCRIMINATING BY CONSTRUCTION: session B holds an UNCOMMITTED rotation (so it holds the
+    // row's FOR UPDATE lock). With `FOR SHARE` in mint, session A must BLOCK and time out. Delete
+    // that clause and A sails through and mints under the doomed generation — this test fails.
+    let code: string | null = null;
+    let minted = -1;
+    // The blocking session is released in FINALLY, not after the assertions: a failing expect
+    // would otherwise leave c2 holding the row lock and wedge every later test in this file —
+    // turning one honest failure into a hung suite that says nothing about why.
+    await c2.query('BEGIN');
+    try {
+      await c2.query(`UPDATE public.notification_manage_key_state
+                        SET current_version = 2, min_mintable_version = 2`);
+      try {
+        await c.query(`SET lock_timeout = '700ms'`);
+        await mint({ source_id: SEND_B });
+      } catch (e) { code = (e as { code?: string }).code ?? 'error'; }
+      finally { await c.query(`RESET lock_timeout`); }
+      minted = (await c.query(
+        `SELECT count(*)::int AS n FROM public.notification_manage_capabilities WHERE source_id = $1`,
+        [SEND_B])).rows[0].n;
+    } finally {
+      await c2.query('ROLLBACK').catch(() => {});
+    }
+    expect(code).toBe('55P03');                       // lock_not_available — it waited, as it must
+    expect(minted).toBe(0);                           // and nothing was stamped under the old key
+  });
+
+  it('...and once the rotation COMMITS, the next mint uses the NEW generation', async () => {
+    await c2.query(`UPDATE public.notification_manage_key_state
+                      SET current_version = 2, min_mintable_version = 2`);
+    const fresh = await mint({ source_id: SEND_B });
+    expect(fresh.key_version).toBe(2);
+  });
+
+  it('a RETRY of a send signed by a retired generation FAILS LOUDLY, never silently', async () => {
+    // The one case the lock cannot cover: the row already exists, minted legitimately under
+    // generation 1, and the operator retires generation 1 while that send is still retryable.
+    // Handing the row back would attach a dead link; re-signing it would change the body under a
+    // fixed provider idempotency key. Both are worse than a failed send that alerts and retries.
+    const first = await mint();
+    expect(first.key_version).toBe(1);
+    await c.query(`UPDATE public.notification_manage_key_state
+                     SET current_version = 2, min_mintable_version = 2`);
+    await expect(mint()).rejects.toThrow(/RETIRED generation 1 \(floor is 2\)/);
+  });
+
   it('the floor is MONOTONIC and the row is permanent — even for a privileged caller', async () => {
     await c.query(`UPDATE public.notification_manage_key_state
                      SET current_version = 3, min_mintable_version = 2`);
@@ -399,6 +452,69 @@ describe('key state is the retirement authority, and it fails closed', () => {
 });
 
 
+describe('suppression provenance is coherent, not merely conventional', () => {
+  // An audit column that can disagree with itself answers nothing. A token-authorized suppression
+  // must name the capability and no human; an operator's must name the operator and no capability.
+  const rec = async (source: string, capId: string | null, actor: string | null) => {
+    try {
+      await c.query(
+        `SELECT public.record_marketing_suppression('prov@example.com', 'platform', NULL, $1, $2, $3)`,
+        [source, capId, actor]);
+      return null;
+    } catch (e) { return (e as { message: string }).message; }
+  };
+  const CAP_ID = '66666666-6666-4666-8666-666666666666';
+  const ACTOR = '77777777-7777-4777-8777-777777777777';
+
+  it('accepts exactly the coherent combinations', async () => {
+    expect(await rec('one_click', CAP_ID, null)).toBeNull();
+    await c.query(`DELETE FROM public.email_marketing_suppression`);
+    expect(await rec('manage_page', CAP_ID, null)).toBeNull();
+    await c.query(`DELETE FROM public.email_marketing_suppression`);
+    expect(await rec('manual', null, ACTOR)).toBeNull();
+  });
+
+  it('refuses every incoherent one, by name', async () => {
+    // token sources: capability required, human forbidden
+    expect(await rec('one_click', null, null)).toMatch(/authorized by a capability/);
+    expect(await rec('one_click', null, ACTOR)).toMatch(/authorized by a capability/);
+    expect(await rec('one_click', CAP_ID, ACTOR)).toMatch(/no human actor/);
+    expect(await rec('manage_page', null, ACTOR)).toMatch(/authorized by a capability/);
+    // manual: human required, capability forbidden
+    expect(await rec('manual', null, null)).toMatch(/names the operator/);
+    expect(await rec('manual', CAP_ID, null)).toMatch(/names the operator/);
+    expect(await rec('manual', CAP_ID, ACTOR)).toMatch(/carries no capability/);
+    // and an unknown source never reaches the table
+    expect(await rec('somehow', CAP_ID, null)).toMatch(/unknown source/);
+    const n = (await c.query(`SELECT count(*)::int AS n FROM public.email_marketing_suppression`)).rows[0].n;
+    expect(n).toBe(0);
+  });
+
+  it('the TABLE refuses them too — the rule survives a caller that bypasses the RPC', async () => {
+    const direct = async (source: string, capId: string | null, actor: string | null) => {
+      try {
+        await c.query(
+          `INSERT INTO public.email_marketing_suppression
+             (address_normalized, scope_kind, scope_id, source, capability_id, created_by)
+           VALUES ('direct@example.com', 'platform', NULL, $1, $2, $3)`, [source, capId, actor]);
+        return null;
+      } catch (e) { return (e as { message: string }).message; }
+    };
+    expect(await direct('one_click', null, null)).toMatch(/provenance_coherent/);
+    expect(await direct('manual', CAP_ID, ACTOR)).toMatch(/provenance_coherent/);
+    expect(await direct('manage_page', CAP_ID, ACTOR)).toMatch(/provenance_coherent/);
+    expect(await direct('one_click', CAP_ID, null)).toBeNull();   // the coherent one still lands
+  });
+
+  it('a real one-click through apply() lands a coherent audit row', async () => {
+    const cap = await mint();
+    expect(await apply(cap.capability_id, 'marketing_unsubscribe', 'one_click')).toBe('applied');
+    const row = (await c.query(
+      `SELECT source, capability_id, created_by FROM public.email_marketing_suppression`)).rows[0];
+    expect(row).toEqual({ source: 'one_click', capability_id: cap.capability_id, created_by: null });
+  });
+});
+
 describe('immutability + ACLs', () => {
   it('claims are immutable — even a privileged direct UPDATE is refused by the guard trigger', async () => {
     const cap = await mint();
@@ -431,7 +547,7 @@ describe('immutability + ACLs', () => {
       `SELECT * FROM public.notification_manage_key_state`)).toBe('42501');
     // service_role: the RPCs work, direct writes to the capability table do not
     expect(await as('service_role',
-      `SELECT public.record_marketing_suppression('svc@b.nl','platform',NULL,'manual')`)).toBeNull();
+      `SELECT public.record_marketing_suppression('svc@b.nl','platform',NULL,'manual',NULL,'88888888-8888-4888-8888-888888888888')`)).toBeNull();
     expect(await as('service_role',
       `UPDATE public.notification_manage_capabilities SET revoked_at = now()`)).toBe('42501');
     expect(await as('service_role',

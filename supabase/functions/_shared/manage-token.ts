@@ -102,6 +102,27 @@ async function sign(version: number, capabilityId: string, secretHex: string): P
 }
 
 /**
+ * The authoritative signing-key state, read from `notification_manage_key_state`.
+ *
+ * Both bounds are needed and both are validated: an unvalidated floor (NaN from a bad parse, or a
+ * mistakenly defaulted 0) makes the retirement comparison fail OPEN, and without the ceiling a
+ * never-issued version reads as an operational fault. A MISSING state row must reach this as
+ * `null`, which is operational — the S1 contract is that absence retires everything rather than
+ * defaulting to generation 1.
+ */
+export interface ManageKeyState {
+  currentVersion: number;
+  minMintableVersion: number;
+}
+
+function validState(s: ManageKeyState | null): s is ManageKeyState {
+  return !!s
+    && Number.isInteger(s.currentVersion) && Number.isInteger(s.minMintableVersion)
+    && s.minMintableVersion >= 1 && s.currentVersion >= s.minMintableVersion
+    && s.currentVersion <= MAX_KEY_VERSION;
+}
+
+/**
  * Build the token for a capability the database just minted.
  *
  * DETERMINISTIC BY CONSTRUCTION: the same version, id and key produce the same bytes, which is
@@ -109,13 +130,20 @@ async function sign(version: number, capabilityId: string, secretHex: string): P
  * idempotency key. Callers must pass the capability the MINT RPC returned for that send — never a
  * freshly minted one — and the RPC guarantees that by keying on the send.
  *
- * Throws when the named key is absent or malformed: a footer that silently loses its link, or one
- * signed with a guessable secret, is worse than a send that fails loudly and retries once the
- * environment is fixed.
+ * THE LIVE WINDOW IS CHECKED AT ATTACHMENT, not only at mint. The database refuses to mint or to
+ * hand back a capability outside [min_mintable, current], but attachment can happen later in the
+ * same worker pass, and this is the last moment before the link is printed into an email. A
+ * generation retired in between must stop the send rather than ship an unsubscribe that is dead on
+ * arrival — the recipient cannot tell a broken link from an ignored request.
+ *
+ * Throws on every refusal — a missing or weak key, a stale generation, a bad id. A footer that
+ * silently loses its link, or carries one that cannot work, is worse than a send that fails loudly
+ * and retries once the environment is fixed.
  */
 export async function buildManageToken(
   capabilityId: string,
   keyVersion: number,
+  state: ManageKeyState | null,
   lookup: KeyLookup = envKeyLookup,
 ): Promise<string> {
   if (!UUID_RE.test(capabilityId)) {
@@ -123,6 +151,19 @@ export async function buildManageToken(
   }
   if (!Number.isInteger(keyVersion) || keyVersion < 1 || keyVersion > MAX_KEY_VERSION) {
     throw new Error("manage-token: key version must be a positive int (1..2147483647)");
+  }
+  if (!validState(state)) {
+    throw new Error("manage-token: signing-key state is missing or incoherent");
+  }
+  if (keyVersion < state.minMintableVersion) {
+    throw new Error(
+      `manage-token: generation ${keyVersion} is RETIRED (floor ${state.minMintableVersion}) — refusing to print a link that cannot work`,
+    );
+  }
+  if (keyVersion > state.currentVersion) {
+    throw new Error(
+      `manage-token: generation ${keyVersion} is above the current generation ${state.currentVersion}`,
+    );
   }
   const secret = lookup(keyVersion);
   if (!secret) {
@@ -152,26 +193,6 @@ export type ManageTokenResult =
   | { ok: true; capabilityId: string; keyVersion: number }
   | { ok: false; reason: "invalid" | "inactive" | "key_unavailable" };
 
-/**
- * The authoritative signing-key state, read from `notification_manage_key_state`.
- *
- * Both bounds are needed and both are validated: an unvalidated floor (NaN from a bad parse, or a
- * mistakenly defaulted 0) makes the retirement comparison fail OPEN, and without the ceiling a
- * never-issued version reads as an operational fault. A MISSING state row must reach this as
- * `null`, which is operational — the S1 contract is that absence retires everything rather than
- * defaulting to generation 1.
- */
-export interface ManageKeyState {
-  currentVersion: number;
-  minMintableVersion: number;
-}
-
-function validState(s: ManageKeyState | null): s is ManageKeyState {
-  return !!s
-    && Number.isInteger(s.currentVersion) && Number.isInteger(s.minMintableVersion)
-    && s.minMintableVersion >= 1 && s.currentVersion >= s.minMintableVersion
-    && s.currentVersion <= MAX_KEY_VERSION;
-}
 
 /**
  * Verify a token's GRAMMAR, its retirement status and its SIGNATURE — with no database access.

@@ -37,12 +37,28 @@ CREATE TABLE public.email_marketing_suppression (
   CONSTRAINT email_marketing_suppression_scope_coherent
     CHECK ((scope_kind = 'platform') = (scope_id IS NULL)),
   source text NOT NULL CHECK (source IN ('one_click', 'manage_page', 'manual')),
-  -- provenance for audits: which capability performed it (one_click / manage_page), or which
-  -- operator recorded it (manual). Soft references — a purged capability must not undo the
-  -- suppression it created.
+  -- PROVENANCE, and it is CONSTRAINED rather than merely conventional. Every row must be able to
+  -- answer "who did this, and on what authority" — that is the whole point of an audit column —
+  -- and three columns free to disagree cannot. A `one_click` row with no capability names no
+  -- authority; a `manual` row with no actor names no human; a `manual` row carrying a capability
+  -- id claims an authority it did not use, which is worse than saying nothing. So the coherent
+  -- combinations are the only representable ones:
+  --
+  --   one_click | manage_page  →  capability_id NOT NULL, created_by NULL
+  --                               (the token IS the authority; no human was involved)
+  --   manual                   →  capability_id NULL,     created_by NOT NULL
+  --                               (an operator acted; there was no token)
+  --
+  -- Soft references on purpose: a purged capability or a deleted account must not erase or
+  -- invalidate the suppression it produced, so these are ids rather than foreign keys.
   capability_id uuid,
   created_by uuid,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT email_marketing_suppression_provenance_coherent CHECK (
+    (source IN ('one_click', 'manage_page') AND capability_id IS NOT NULL AND created_by IS NULL)
+    OR (source = 'manual' AND capability_id IS NULL AND created_by IS NOT NULL)
+  )
 );
 
 CREATE UNIQUE INDEX uniq_marketing_suppression_scoped
@@ -136,6 +152,18 @@ BEGIN
   END IF;
   IF (p_scope_kind = 'platform') <> (p_scope_id IS NULL) THEN
     RAISE EXCEPTION 'record_marketing_suppression: scope_kind % and scope_id disagree', p_scope_kind;
+  END IF;
+  IF p_source NOT IN ('one_click', 'manage_page', 'manual') THEN
+    RAISE EXCEPTION 'record_marketing_suppression: unknown source %', p_source;
+  END IF;
+  -- The same provenance rule the table constrains, enforced HERE too so the caller gets a named
+  -- refusal rather than a bare constraint violation — and so the rule survives even if this
+  -- function is ever pointed at another table.
+  IF p_source IN ('one_click', 'manage_page') AND (p_capability_id IS NULL OR p_created_by IS NOT NULL) THEN
+    RAISE EXCEPTION 'record_marketing_suppression: a % suppression is authorized by a capability and has no human actor', p_source;
+  END IF;
+  IF p_source = 'manual' AND (p_created_by IS NULL OR p_capability_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'record_marketing_suppression: a manual suppression names the operator who made it and carries no capability';
   END IF;
 
   INSERT INTO public.email_marketing_suppression

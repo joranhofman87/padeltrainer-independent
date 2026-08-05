@@ -231,6 +231,7 @@ AS $$
 DECLARE
   v_address text := lower(btrim(p_address));
   v_version int;
+  v_min int;
   v_row public.notification_manage_capabilities%ROWTYPE;
 BEGIN
   -- EVERY input is validated BEFORE anything is looked up or written.
@@ -258,9 +259,29 @@ BEGIN
     RAISE EXCEPTION 'mint_notification_manage_capability: ttl out of bounds (marketing management links stay valid 13-26 months)';
   END IF;
 
-  SELECT current_version INTO v_version FROM public.notification_manage_key_state WHERE id;
+  -- LOCK THE KEY STATE FOR THE REST OF THIS TRANSACTION.
+  --
+  -- A plain read here was a race: under READ COMMITTED mint could read current_version = 1, an
+  -- owner could commit a rotation raising min_mintable_version to 2, and mint would then insert a
+  -- capability stamped with a generation that was ALREADY RETIRED. Nothing fails at that moment —
+  -- the row is written, the send attaches a link, and the recipient's unsubscribe is dead on
+  -- arrival, with no signal anywhere. Fail-closed at click time is not good enough for a link we
+  -- chose to print.
+  --
+  -- FOR SHARE conflicts with the FOR UPDATE an owner's `UPDATE … SET min_mintable_version` takes,
+  -- so the two serialize in both directions: a mint in flight delays the rotation, and a rotation
+  -- in flight delays the mint (which then reads the NEW window). It does not conflict with other
+  -- mints, so concurrent sends still proceed in parallel — the lock is on the one tiny
+  -- recipient-independent row, held for the microseconds this function runs.
+  SELECT current_version, min_mintable_version INTO v_version, v_min
+    FROM public.notification_manage_key_state WHERE id FOR SHARE;
   IF v_version IS NULL THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: signing-key state is missing';
+  END IF;
+  -- The table's own CHECK already forbids current < min; asserting it here too means a mint can
+  -- never stamp a version outside the live window even if that constraint were ever relaxed.
+  IF v_version < v_min THEN
+    RAISE EXCEPTION 'mint_notification_manage_capability: signing-key state is incoherent (current % below floor %)', v_version, v_min;
   END IF;
 
   -- INSERT FIRST, then read back. A plain SELECT-then-INSERT loses the race for one of two
@@ -293,6 +314,20 @@ BEGIN
      OR v_row.scope_id IS DISTINCT FROM p_scope_id
      OR v_row.address_normalized IS DISTINCT FROM v_address THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: % % already has a capability with different claims — a source id must identify ONE send', p_source_kind, p_source_id;
+  END IF;
+
+  -- THE RETRY PATH NEEDS THE SAME WINDOW CHECK, and this is the case the lock above cannot cover.
+  -- A row minted under generation 1, retried after the owner retires generation 1, is still
+  -- perfectly valid as an IDENTITY — but every link it can produce is already dead. Returning it
+  -- would let the send attach an unsubscribe that cannot work; re-signing it under the live key is
+  -- worse still, because that changes the body under a fixed provider idempotency key, which is
+  -- the one thing this whole model exists to prevent.
+  --
+  -- So the send FAILS LOUDLY instead. That is the honest outcome: the operator retired a key while
+  -- mail signed by it was still in flight, and the retry cannot honour both the frozen request and
+  -- the retirement. A failed send retries and alerts; a delivered dead unsubscribe link does not.
+  IF v_row.key_version < v_min THEN
+    RAISE EXCEPTION 'mint_notification_manage_capability: % % has a capability signed by RETIRED generation % (floor is %) — its links cannot work, and re-signing would change an already-frozen request', p_source_kind, p_source_id, v_row.key_version, v_min;
   END IF;
 
   RETURN QUERY SELECT v_row.id, v_row.key_version;
