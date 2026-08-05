@@ -235,10 +235,14 @@ ALTER TABLE public.notification_contacts
 CREATE OR REPLACE FUNCTION public.notif_contact_effective_user()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  -- serialize against the person-side sync: an INSERT reading persons while a persons.user_id
-  -- update is mid-flight (whose AFTER trigger cannot see this uncommitted row) left a
-  -- permanently stale projection — one per-person lock closes both orderings
-  IF NEW.person_id IS NOT NULL THEN
+  -- serialize against the person-side sync on INSERT ONLY: an uncommitted insert is invisible
+  -- to the sync's contact-row UPDATE, so the advisory lock closes that window. On UPDATE the
+  -- lock must NOT be taken — the row lock is already held, and (contact row → person advisory)
+  -- against the sync's (person advisory → contact rows) is a deadlock inversion. The UPDATE
+  -- path is serialized by ROW locks alone: whichever side commits second recomputes over the
+  -- committed truth (the sync's no-op touch routes through this trigger), so the final
+  -- projection is fresh in either commit order.
+  IF TG_OP = 'INSERT' AND NEW.person_id IS NOT NULL THEN
     PERFORM pg_advisory_xact_lock(hashtextextended('notif-person-link:' || NEW.person_id::text, 0));
   END IF;
   NEW.effective_user_id := coalesce(NEW.user_id,
@@ -303,6 +307,24 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+-- FAIL-CLOSED at migration time: the cap guards new writes, but pre-existing data must be
+-- PROVEN under it too — otherwise the preview's "unreachable" invariant arm is reachable the
+-- moment this deploys over an over-cap group
+DO $$
+DECLARE r record;
+BEGIN
+  SELECT nc.channel, nc.effective_user_id, count(*) AS n
+    INTO r
+    FROM public.notification_contacts nc
+   WHERE nc.effective_user_id IS NOT NULL AND nc.revoked_at IS NULL
+   GROUP BY nc.channel, nc.effective_user_id
+  HAVING count(*) > 500
+   LIMIT 1;
+  IF FOUND THEN
+    RAISE EXCEPTION 'migration blocked: (channel %, user %) has % active contacts — the ≤500 cap must hold BEFORE the bounded preview ships; deduplicate or revoke first', r.channel, r.effective_user_id, r.n;
+  END IF;
+END $$;
+
 DROP TRIGGER IF EXISTS trg_zz_notif_contact_cap ON public.notification_contacts;
 -- 'zz' is load-bearing: same-event triggers fire in NAME order, and this one must see the
 -- effective_user_id that trg_notif_contact_effective_user just computed

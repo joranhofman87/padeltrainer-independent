@@ -1480,3 +1480,50 @@ describe('N4 M6 round-6b — truncation on a PARTIAL page', () => {
     await asUser(null);
   });
 });
+
+describe('N4 M6 round-7 — migration-time cap validation and the UPDATE-path lock order', () => {
+  it('the migration REFUSES to deploy over an over-cap group — the extracted assertion, proven on 501 rows', async () => {
+    const over = 'e5000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [over]);
+    await c.query(`ALTER TABLE public.notification_contacts DISABLE TRIGGER trg_zz_notif_contact_cap;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT $1, 'email', 'over' || g || '@example.com', 'o***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 501) g`, [over]);
+    await c.query(`ALTER TABLE public.notification_contacts ENABLE TRIGGER trg_zz_notif_contact_cap;`);
+    const mig = MIG('20261021100000_notif_n4_readiness_preview_search.sql');
+    const assertion = mig.match(/DO \$\$\nDECLARE r record;\nBEGIN\n  SELECT nc\.channel[\s\S]*?END \$\$;/)?.[0];
+    if (!assertion) throw new Error('cap assertion not found in the migration');
+    await expect(c.query(assertion)).rejects.toThrow(/migration blocked.*501 active contacts/);
+    // cleanup so later tests see a legal world
+    await c.query(`DELETE FROM public.notification_contacts WHERE user_id = $1`, [over]);
+  });
+
+  it('a contact UPDATE racing a persons.user_id update: row-lock order, NO deadlock, fresh final projection', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      const uid = 'e6000000-0000-4000-8000-000000000001';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+      const pid = (await c.query(`INSERT INTO public.persons (email) VALUES ('updrace@example.com') RETURNING id`)).rows[0].id;
+      await c.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'updrace@example.com', 'u***@example.com', 'opted_in', 'global')`, [pid]);
+      // session A holds an ordinary contact UPDATE open (row lock held, NO advisory taken)
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.notification_contacts SET is_primary = true WHERE destination_normalized = 'updrace@example.com'`);
+      // session B: the persons.user_id update — its sync touch must WAIT on the row, not deadlock
+      let settled = false;
+      const upd = c2.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uid, pid])
+        .finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(settled).toBe(false);            // serialized on the ROW lock — deterministic, no inversion
+      await c.query('COMMIT');
+      await upd;                               // completes cleanly — no deadlock abort
+      expect((await c.query(`SELECT effective_user_id, is_primary FROM public.notification_contacts WHERE destination_normalized='updrace@example.com'`)).rows[0])
+        .toMatchObject({ effective_user_id: uid, is_primary: true });   // BOTH writes land, projection fresh
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+});
