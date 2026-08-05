@@ -304,6 +304,35 @@ describe('academy restrictions + audit (N3 M2)', () => {
     }
   });
 
+  it('two-session EXACT replay of one request id: one performs, one replays, ONE audit row', async () => {
+    // DETERMINISTIC interleaving, not a Promise.all coin-flip: session 1 holds its transaction
+    // OPEN (audit row uncommitted, request lock held); session 2 fires the exact same request
+    // while it is open. With the request-scoped lock, session 2 blocks BEFORE the replay lookup
+    // and, once session 1 commits, sees the audit row → 'replayed'. Without it, session 2 passes
+    // the lookup (the row is invisible), blocks on the TRIPLE lock instead, and after commit
+    // ERRORS on the unique index where the contract promises 'replayed'.
+    const c4 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+    await c4.connect();
+    try {
+      const req = crypto.randomUUID();
+      const args = [A, 'session_reminder_player', 'email', 'off', 'exact retry', req];
+      const call = (client: InstanceType<typeof Client>) => client.query(
+        `SELECT public.set_academy_notification_restriction($1,$2,$3,$4,$5,$6) AS r`, args);
+      await c.query('BEGIN');
+      const r1 = await call(c);
+      expect(r1.rows[0].r).toBe('set');
+      const race = call(c4);                          // fires while session 1 is still open
+      await new Promise((res) => setTimeout(res, 150)); // let it reach (and block on) the lock
+      await c.query('COMMIT');
+      const r2 = await race;
+      expect(r2.rows[0].r).toBe('replayed');
+      const n = await c.query(`SELECT count(*)::int AS n FROM public.academy_notification_restriction_audit`);
+      expect(n.rows[0].n).toBe(1);
+    } finally {
+      await c4.end();
+    }
+  });
+
   it('a request-id replay with a CHANGED reason is a different decision — refused, not replayed', async () => {
     const req = crypto.randomUUID();
     expect(await setCap({ cap: 'off', reason: 'temporary reduction', req })).toBe('set');

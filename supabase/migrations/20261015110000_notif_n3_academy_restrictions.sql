@@ -155,6 +155,14 @@ BEGIN
   -- REQUEST-ID IDEMPOTENCY (finding 9), before any state change. A replay of the SAME decision
   -- returns the recorded outcome without a second audit row; the same id carrying a DIFFERENT
   -- decision is a caller bug and is refused — a request id names one decision.
+  --
+  -- The REQUEST lock comes FIRST, before the replay lookup: without it, two SIMULTANEOUS exact
+  -- retries both find no audit row, both proceed, and the loser hits the unique index with an
+  -- ERROR where the contract promises 'replayed'. Namespaced, so neither this nor the triple
+  -- lock below can collide with another advisory-lock user by format alone.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('notif-academy-restriction-req:' || v_actor::text || ':'
+                     || p_academy_profile_id::text || ':' || p_request_id::text, 0));
   SELECT * INTO v_prior FROM public.academy_notification_restriction_audit
    WHERE actor_user_id = v_actor AND academy_profile_id = p_academy_profile_id
      AND request_id = p_request_id;
@@ -174,7 +182,8 @@ BEGIN
   -- both read NULL and one audit would lie about the transition), so the lock is a
   -- transaction-scoped ADVISORY lock derived from the triple, taken before the read.
   PERFORM pg_advisory_xact_lock(
-    hashtextextended(p_academy_profile_id::text || ':' || p_event_type || ':' || p_channel, 0));
+    hashtextextended('notif-academy-restriction-triple:' || p_academy_profile_id::text || ':'
+                     || p_event_type || ':' || p_channel, 0));
   SELECT max_frequency INTO v_old FROM public.academy_notification_restrictions
    WHERE academy_profile_id = p_academy_profile_id AND event_type = p_event_type
      AND channel = p_channel
