@@ -30,17 +30,29 @@
 // (`assertRowKeyVersion` below). Accepting whatever the token claims, without that comparison,
 // would let a token signed under one generation act on a row minted under another.
 //
-// FAILURES ARE TAGGED, AND THE DISTINCTION MATTERS. A caller must answer a forged token and a
-// database outage differently: the first is uniform and final (never narrate WHY, that is the
-// oracle), the second is RETRYABLE. A one-click unsubscribe answered 200 during an outage is an
-// opt-out the sender believes was recorded and will never retry — the action is simply lost. So
-// `invalid` and `inactive` map to the uniform public answer, while `db_unavailable` and
-// `key_unavailable` must surface as a retryable failure (503 + Retry-After) and an ops alert.
+// FAILURES ARE TAGGED, AND THE DISTINCTION MATTERS. A caller must answer a forged token and an
+// operational fault differently: the first is uniform and final (never narrate WHY, that is the
+// oracle), the second is RETRYABLE. A one-click unsubscribe answered 200 during a key rollout is
+// an opt-out the sender believes was recorded and will never retry — the action is simply lost.
+// So `invalid` and `inactive` map to the uniform public answer, while `key_unavailable` must
+// surface as a retryable failure (503 + Retry-After) plus an ops alert. The caller's OWN database
+// failures are its own to classify the same way; this module never touches the database.
+//
+// ...WHICH IS WHY VERIFICATION TAKES THE WHOLE KEY STATE, not just the floor. A version ABOVE the
+// current generation was never issued by this deployment, so it is a forgery — but if the only
+// question asked were "is the key loaded?", `v9999.<uuid>.<43 valid chars>` would answer
+// `key_unavailable`, and an unauthenticated stranger could mint 503s and ops alerts at will. The
+// bounded window [min, current] is what separates "we should have this key and do not" (real, and
+// worth waking someone) from "no such generation ever existed" (a probe).
 
 const ENC = new TextEncoder();
 
 /** Domain separation + format version. Bumping `v1` is a deliberate wire break. */
 const SIGN_PREFIX = "notif-manage:v1";
+/** One ceiling, shared by mint, the grammar and the state validation. PostgreSQL `int` is the
+ *  column type behind key_version, so its max is the only honest bound — a helper-only ceiling
+ *  would make a legal database value unmintable or unverifiable. */
+const MAX_KEY_VERSION = 2147483647;
 /** base64url of a 32-byte HMAC, unpadded. */
 const SIG_LEN = 43;
 const SIG_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -107,8 +119,8 @@ export async function buildManageToken(
   if (!UUID_RE.test(capabilityId)) {
     throw new Error("manage-token: capability id is not a uuid");
   }
-  if (!Number.isInteger(keyVersion) || keyVersion < 1) {
-    throw new Error("manage-token: key version must be a positive integer");
+  if (!Number.isInteger(keyVersion) || keyVersion < 1 || keyVersion > MAX_KEY_VERSION) {
+    throw new Error("manage-token: key version must be a positive int (1..2147483647)");
   }
   const secret = lookup(keyVersion);
   if (!secret) {
@@ -125,15 +137,39 @@ export async function buildManageToken(
 /**
  * What verification concluded.
  *
- * `invalid`  — malformed, forged, or a version whose key is not this deployment's business.
- * `inactive` — well-formed and correctly signed, but the key generation is retired.
- * `key_unavailable` / `db_unavailable` — OPERATIONAL. The token may be perfectly good; we cannot
- *              tell. Callers must answer these as retryable (503) rather than acknowledging an
- *              action they did not perform.
+ * `invalid`  — malformed, forged, a generation never issued, or a signature that does not verify.
+ * `inactive` — a RETIRED generation. Decided from the version alone, before the signature: a
+ *              burned key is refused whatever the token carries.
+ * `key_unavailable` — OPERATIONAL, and the only retryable one: the key state is missing or
+ *              incoherent, or a key inside the live window [min, current] is not configured. The
+ *              token may be perfectly good and we cannot tell. Callers must answer 503 +
+ *              Retry-After and alert, never acknowledge an action they did not perform. (A
+ *              caller's own database failure belongs in this class too, decided by the caller.)
  */
 export type ManageTokenResult =
   | { ok: true; capabilityId: string; keyVersion: number }
   | { ok: false; reason: "invalid" | "inactive" | "key_unavailable" };
+
+/**
+ * The authoritative signing-key state, read from `notification_manage_key_state`.
+ *
+ * Both bounds are needed and both are validated: an unvalidated floor (NaN from a bad parse, or a
+ * mistakenly defaulted 0) makes the retirement comparison fail OPEN, and without the ceiling a
+ * never-issued version reads as an operational fault. A MISSING state row must reach this as
+ * `null`, which is operational — the S1 contract is that absence retires everything rather than
+ * defaulting to generation 1.
+ */
+export interface ManageKeyState {
+  currentVersion: number;
+  minMintableVersion: number;
+}
+
+function validState(s: ManageKeyState | null): s is ManageKeyState {
+  return !!s
+    && Number.isInteger(s.currentVersion) && Number.isInteger(s.minMintableVersion)
+    && s.minMintableVersion >= 1 && s.currentVersion >= s.minMintableVersion
+    && s.currentVersion <= MAX_KEY_VERSION;
+}
 
 /**
  * Verify a token's GRAMMAR, its retirement status and its SIGNATURE — with no database access.
@@ -143,9 +179,12 @@ export type ManageTokenResult =
  */
 export async function verifyManageToken(
   token: string | null | undefined,
-  minMintableVersion: number,
+  state: ManageKeyState | null,
   lookup: KeyLookup = envKeyLookup,
 ): Promise<ManageTokenResult> {
+  // A missing or incoherent state is OPERATIONAL: we cannot tell a live token from a retired one,
+  // and answering "invalid" would quietly discard real opt-outs.
+  if (!validState(state)) return { ok: false, reason: "key_unavailable" };
   if (!token) return { ok: false, reason: "invalid" };
 
   // STRICT GRAMMAR, before anything expensive: exactly three parts, a version, a uuid, and a
@@ -154,19 +193,21 @@ export async function verifyManageToken(
   const parts = token.split(".");
   if (parts.length !== 3) return { ok: false, reason: "invalid" };
   const [vPart, capabilityId, signature] = parts;
-  if (!/^v[1-9][0-9]{0,3}$/.test(vPart)) return { ok: false, reason: "invalid" };
+  if (!/^v[1-9][0-9]{0,9}$/.test(vPart)) return { ok: false, reason: "invalid" };
   if (!UUID_RE.test(capabilityId)) return { ok: false, reason: "invalid" };
   if (signature.length !== SIG_LEN || !SIG_RE.test(signature)) return { ok: false, reason: "invalid" };
 
   const version = Number(vPart.slice(1));
-  // The retirement floor is checked BEFORE the signature: a burned generation is refused whatever
-  // it carries, and the check costs nothing.
-  if (version < minMintableVersion) return { ok: false, reason: "inactive" };
+  // ABOVE the current generation = never issued by this deployment = a forgery, and cheap to
+  // refuse. Without this arm an attacker-chosen version would fall through to "the key is not
+  // loaded" and manufacture 503s and ops alerts from unauthenticated traffic.
+  if (version > state.currentVersion) return { ok: false, reason: "invalid" };
+  // BELOW the floor = a burned generation, refused whatever it carries, before any key load.
+  if (version < state.minMintableVersion) return { ok: false, reason: "inactive" };
 
+  // Inside [min, current] the key SHOULD be configured. Its absence is therefore a real
+  // operational fault — the one case where the caller must retry rather than acknowledge.
   const secret = lookup(version);
-  // A version this deployment never had is a forgery attempt; a version it SHOULD have but whose
-  // env var is missing is an operational fault. They are indistinguishable from here, so the
-  // conservative reading is operational — the caller retries rather than losing a real opt-out.
   if (!secret) return { ok: false, reason: "key_unavailable" };
   if (!KEY_RE.test(secret)) return { ok: false, reason: "key_unavailable" };
 
@@ -176,15 +217,22 @@ export async function verifyManageToken(
 }
 
 /**
- * Bind the SIGNED generation to the STORED one.
+ * Bind the SIGNED generation to the STORED one, returning a TAGGED result rather than a boolean.
  *
- * Without this, a token signed under a live key would act on a row minted under a different
- * generation — the per-row binding the key-state table exists for would be decorative. Call it
- * with whatever the capability row says (or null when the row is absent).
+ * Without this step a token signed under a live key could act on a row minted under a different
+ * generation — the per-row binding the key-state table exists for would be decorative. It returns
+ * a result rather than a boolean on purpose: an earlier draft was named `assertRowKeyVersion` and
+ * returned one, which a caller can invoke and ignore while believing a security condition was
+ * enforced. This shape has to be destructured to get the capability id at all.
  */
-export function assertRowKeyVersion(
+export function bindManageTokenToRow(
   result: ManageTokenResult,
   storedKeyVersion: number | null,
-): boolean {
-  return result.ok && storedKeyVersion !== null && storedKeyVersion === result.keyVersion;
+): ManageTokenResult {
+  if (!result.ok) return result;
+  // The row is absent (or unreadable) — the caller decides which; from here it is simply not a
+  // usable capability, and the public answer must stay uniform.
+  if (storedKeyVersion === null) return { ok: false, reason: "invalid" };
+  if (storedKeyVersion !== result.keyVersion) return { ok: false, reason: "invalid" };
+  return result;
 }
