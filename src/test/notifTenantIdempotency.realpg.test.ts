@@ -141,6 +141,7 @@ beforeAll(async () => {
     '20261021100000_notif_n4_readiness_preview_search.sql',
     '20261022100000_notif_n4_seam_corrections.sql',
     '20261023100000_notif_n4_seam_corrections_round2.sql',
+    '20261024100000_notif_n4_seam_corrections_round3.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -1749,21 +1750,61 @@ describe('N4 SEAM corrections ROUND 2 — the defects the first correction left 
   // harness fakes auth.uid() with a shared TABLE row, so two sessions cannot hold two different
   // identities — the kill suite's per-session set_config() can.
 
-  it('SEAM 11: the round-1 evidence backfill ASSERTS rather than swallowing a contradicting binding', async () => {
-    const assertion = MIG('20261023100000_notif_n4_seam_corrections_round2.sql')
-      .match(/DO \$\$\nDECLARE v_missing text;[\s\S]*?END \$\$;/)?.[0];
-    if (!assertion) throw new Error('the seam-11 assertion was not found in the migration');
+  it('SEAM 11/14: the evidence assertion demands the APPLIED DECISION, not merely a row with the right ids', async () => {
+    const assertion = MIG('20261024100000_notif_n4_seam_corrections_round3.sql')
+      .match(/DO \$\$\nDECLARE v_bad text;[\s\S]*?END \$\$;/)?.[0];
+    if (!assertion) throw new Error('the seam-14 assertion was not found in the round-3 migration');
+    const clearKills = async () => {
+      await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+      await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+      await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+    };
+    await clearKills();
     await c.query(assertion);                            // the clean world passes
-    // a kill whose (actor, request_id) carries NO channel_kill audit row: the exact shape
-    // ON CONFLICT DO NOTHING accepted in silence
     const actor = 'af000000-0000-4000-8000-000000000001';
     await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [actor]);
+
+    // (a) a kill with NO audit row at all — the shape ON CONFLICT DO NOTHING accepted in silence
+    const req = crypto.randomUUID();
     await c.query(
       `INSERT INTO public.notification_channel_kill_switches (channel, activated_by, reason, request_id)
-       VALUES ('whatsapp', $1, 'legacy kill', gen_random_uuid())`, [actor]);
-    await expect(c.query(assertion)).rejects.toThrow(/no matching audit evidence/);
-    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
-    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
-    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+       VALUES ('whatsapp', $1, 'legacy kill', $2)`, [actor, req]);
+    await expect(c.query(assertion)).rejects.toThrow(/no APPLIED audit decision/);
+
+    // (b) the case round 2 ACCEPTED: an M2-era kill whose id was replayed after M3, leaving an
+    // 'already_killed' audit row. Same actor, same request id, same action, same target — and
+    // still no evidence that this kill was ever applied.
+    await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_audit WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, $2, 'channel_kill', 'whatsapp', 'killed', 'killed', 'already_killed', 'legacy kill')`,
+      [actor, req]);
+    await expect(c.query(assertion)).rejects.toThrow(/no APPLIED audit decision/);
+
+    // (c) the real evidence — applied + the registry verdict under the canonical fingerprint
+    await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_audit WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, $2, 'channel_kill', 'whatsapp', 'live', 'killed', 'applied', 'legacy kill')`,
+      [actor, req]);
+    // …the audit alone is still not enough: the registry must carry the 'killed' verdict
+    await expect(c.query(assertion)).rejects.toThrow(/no matching registry verdict/);
+    await c.query(
+      `INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict)
+       VALUES ($1, $2, 'channel_kill',
+               public.notif_admin_fingerprint(jsonb_build_object('action','channel_kill','channel','whatsapp','reason','legacy kill')),
+               'killed')`, [actor, req]);
+    await c.query(assertion);                            // now it passes
+    await clearKills();
+    await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_audit WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`ALTER TABLE public.notification_admin_requests DISABLE TRIGGER trg_notif_admin_requests_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_requests WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_requests ENABLE TRIGGER trg_notif_admin_requests_guard;`);
   });
 });

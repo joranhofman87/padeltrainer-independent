@@ -192,6 +192,7 @@ beforeAll(async () => {
   await c.query(MIG('20261021100000_notif_n4_readiness_preview_search.sql'));
   await c.query(MIG('20261022100000_notif_n4_seam_corrections.sql'));
   await c.query(MIG('20261023100000_notif_n4_seam_corrections_round2.sql'));
+  await c.query(MIG('20261024100000_notif_n4_seam_corrections_round3.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -798,13 +799,17 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     expect(email.digest_conclusion).toBe('unknown');
     expect(wa.catalog_supported).toBe(false);
     expect(wa.instant_conclusion).toBe('stopped');           // unsupported is a definitive stop
-    expect(wa.digest_conclusion).toBe('stopped');
+    // …but WHATSAPP HAS NO DIGEST PATH AT ALL (the resolver routes only email into digests and
+    // the worker is email-only), so any digest verdict there — 'stopped' or 'unknown' — implies
+    // digest work that cannot exist
+    expect(wa.digest_conclusion).toBe('not_applicable');
     // …and a SUPPORTED whatsapp event still cannot read sendable: WHATSAPP_SEND_ENABLED gates
     // the INSTANT path and no SQL can read it (the seam the per-milestone reviews could not see)
     await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = true WHERE key = 'ev_test'`);
     const waOn = (await asAdmin(`SELECT * FROM public.admin_notification_event_states()`))
       .find((r) => r.event_type === 'ev_test' && r.channel === 'whatsapp');
     expect(waOn.instant_conclusion).toBe('unknown');
+    expect(waOn.digest_conclusion).toBe('not_applicable');   // supported or not: no digest path
     await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = false WHERE key = 'ev_test'`);
     // kill flips the authority AND both conclusions
     await killDirect('email');

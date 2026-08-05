@@ -101,6 +101,12 @@ beforeAll(async () => {
   await c.query(hasRole);
   await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));
   await c.query(MIG('20261016110000_notif_n4_invocation_claim.sql'));
+  // round 3: bind gains the CAUSALITY check (a run cannot own an invocation it predates)
+  // and the claim stops turning that refusal into a failed cron tick
+  {
+    const r3 = MIG('20261024100000_notif_n4_seam_corrections_round3.sql');
+    await c.query(r3.slice(0, r3.indexOf('-- \u2500\u2500 SEAM 13')));
+  }
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -358,6 +364,34 @@ describe('claim_pending_worker_invocation (part 3): the worker-side handshake', 
     const impostor = await newRun(false, 'materialize');
     await expect(c.query(`SELECT public.claim_pending_worker_invocation($1)`, [impostor]))
       .rejects.toThrow(/refused this run/);
+  });
+
+  // ── round 3: CAUSALITY. A run cannot own an invocation that did not exist when it started ──
+  it('a run ALREADY RUNNING when the invocation was opened cannot bind it — and the real run still can', async () => {
+    // the exact production shape: a cron tick is in flight, an operator opens a manual
+    // invocation microseconds later, and the tick's claim reaches it first
+    const inFlight = await newRun(false);
+    await new Promise((r) => setTimeout(r, 10));
+    const inv = await open(c, crypto.randomUUID(), 'manual', 'operator:adhoc');
+    expect(await bind(inv, inFlight)).toBe('run_predates_invocation');   // NOT 'bound'
+    expect((await c.query(
+      `SELECT status, worker_run_id FROM public.notification_worker_invocations WHERE id = $1`, [inv])).rows[0])
+      .toMatchObject({ status: 'pending', worker_run_id: null });
+    // …and the run the dispatch actually starts still owns it (it was previously locked out
+    // with conflict_other_run, which is how the stolen binding became visible)
+    const real = await newRun(false);
+    expect(await bind(inv, real)).toBe('bound');
+  });
+
+  it('…and that refusal is a STEADY-STATE tick for the claim, not a failed run', async () => {
+    // The claim RAISES for every other refusal on purpose. Raising here would fail an innocent
+    // cron tick AND strand the invocation: single-flight would then block every later open.
+    const inFlight = await newRun(false);
+    await new Promise((r) => setTimeout(r, 10));
+    const inv = await open(c, crypto.randomUUID(), 'manual', 'operator:adhoc');
+    expect(await claim(inFlight)).toBe(null);
+    const real = await newRun(false);
+    expect(await claim(real)).toBe(inv);            // the causing run claims it normally
   });
 });
 

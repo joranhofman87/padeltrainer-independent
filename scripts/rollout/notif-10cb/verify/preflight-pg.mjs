@@ -193,6 +193,9 @@ try {
     const claim = MIG('20261016110000_notif_n4_invocation_claim.sql');
     await c.query(claim.slice(0, claim.indexOf(
       'CREATE OR REPLACE FUNCTION public.admin_list_worker_invocations(')));
+    // round 3: bind's CAUSALITY check + the claim's steady-state arm for it
+    const r3 = MIG('20261024100000_notif_n4_seam_corrections_round3.sql');
+    await c.query(r3.slice(0, r3.indexOf('-- \u2500\u2500 SEAM 13')));
   }
   // M2's kill table: activation assertion 9 refuses to arm the cron while a channel is killed.
   // Table only — the RPC that writes it is admin-facing and no artifact calls it.
@@ -287,12 +290,25 @@ try {
       [REVIEWED.schedule, REVIEWED.command]);
     await c.query(`
       INSERT INTO public.notification_event_types (key, supports_digest, digest_engine_enabled, digest_cutover)
-        VALUES ('open_slots_player', true, true, true);
-      -- born UNFINISHED (status NULL is production's in-flight shape — the CHECK admits only the
-      -- three terminals), so the invocation can BIND it the way the worker does at startup
-      INSERT INTO public.notification_worker_runs (run_id, worker, channel, phase, started_at)
-        VALUES ('${RUN}', 'notification-digest-worker:${WORKER_TOKEN}', 'email', 'dispatch',
-                now() - interval '3 minutes');
+        VALUES ('open_slots_player', true, true, true);`);
+    // N4 M1: activation demands that the run it is asked to trust was produced by a COMPLETED
+    // canary-provenance invocation, and the record is earned IN PRODUCTION'S ORDER — the
+    // invocation exists first, the dispatch it queues starts the run, the worker binds at
+    // startup, the run ends, the reconcile resolves. A run seeded BEFORE its own invocation (as
+    // this harness first did) is a chronology production cannot produce, and round 3's causality
+    // check refuses it — correctly.
+    const inv = (await c.query(
+      `SELECT public.open_notification_worker_invocation('canary', 'canary_invoke.sql', gen_random_uuid()) AS id`)).rows[0].id;
+    await c.query(`SELECT public.record_invocation_net_request($1, 990001)`, [inv]);
+    // born UNFINISHED (status NULL is production's in-flight shape — the CHECK admits only the
+    // three terminals), started AFTER the invocation, under production's real worker token
+    await c.query(
+      `INSERT INTO public.notification_worker_runs (run_id, worker, channel, phase)
+       VALUES ($1, 'notification-digest-worker:${WORKER_TOKEN}', 'email', 'dispatch')`, [RUN]);
+    const verdict = (await c.query(
+      `SELECT public.bind_notification_worker_invocation($1, $2) AS v`, [inv, RUN])).rows[0].v;
+    if (verdict !== 'bound') throw new Error(`baseline bind expected 'bound', got '${verdict}'`);
+    await c.query(`
       INSERT INTO public.notification_digest_groups
         (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
          destination_fingerprint, recipient_timezone, digest_boundary_at, available_at,
@@ -314,19 +330,25 @@ try {
       -- really sent always leaves one. A baseline without it made "the circuit is closed" pass
       -- vacuously in every scenario.
       INSERT INTO public.notification_provider_circuit (channel, state) VALUES ('email', 'closed');`);
-    // N4 M1: activation now demands that the run it is asked to trust was produced by a
-    // COMPLETED canary-provenance invocation. The baseline earns that record the way production
-    // does — open → record the pg_net request → bind at startup → end the run → resolve — rather
-    // than inserting a finished row past the guard, which would prove nothing about the RPCs the
-    // artifacts actually call.
-    const inv = (await c.query(
-      `SELECT public.open_notification_worker_invocation('canary', 'canary_invoke.sql', gen_random_uuid()) AS id`)).rows[0].id;
-    await c.query(`SELECT public.record_invocation_net_request($1, 990001)`, [inv]);
-    await c.query(`SELECT public.bind_notification_worker_invocation($1, $2)`, [inv, RUN]);
     await c.query(
-      `UPDATE public.notification_worker_runs SET status = 'succeeded', ended_at = now() - interval '2 minutes' WHERE run_id = $1`,
+      `UPDATE public.notification_worker_runs SET status = 'succeeded', ended_at = now() WHERE run_id = $1`,
       [RUN]);
     await c.query(`SELECT public.resolve_invocation_for_canary_run($1)`, [RUN]);
+    // The canary is a few MINUTES old in every scenario below (freshness windows, and the
+    // ordering scenarios that inject a run between its start and its end). The record above was
+    // earned through the real RPCs at real `now()`; shifting the whole timeline back afterwards
+    // is the only way to have both — and it preserves the causal order exactly
+    // (requested_at < started_at < ended_at = resolved_at). Same device as terminal_at above:
+    // the guard owns these columns in production, so the harness borrows its pen, briefly.
+    await c.query(`
+      ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;
+      UPDATE public.notification_worker_invocations
+         SET requested_at = now() - interval '3 minutes 1 second',
+             resolved_at  = now() - interval '2 minutes';
+      ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;
+      UPDATE public.notification_worker_runs
+         SET started_at = now() - interval '3 minutes', ended_at = now() - interval '2 minutes'
+       WHERE run_id = '${RUN}';`);
   };
 
   // Every artifact now pins `SET search_path = pg_catalog` for its whole SESSION, which is the point
@@ -651,6 +673,19 @@ try {
     rec('activate REFUSES a drifted job', !!err && err.includes('the cron schedule is the reviewed one'),
       err ?? 'it armed the job');
     rec('...and the cron is STILL INACTIVE (the transaction rolled back)', (await jobActive()) === false);
+  }
+
+  // The kill scenario above proves the PREFLIGHT refuses. Arming is the act that matters, so it
+  // is proven at the arming artifact too — including that the cron is still inactive afterwards.
+  await seedBaseline();
+  await c.query(
+    `INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id)
+     VALUES ('email', 'incident in progress', gen_random_uuid())`);
+  {
+    const err = await activate();
+    rec('activate REFUSES while a CHANNEL KILL is active',
+      !!err && err.includes('no notification channel is killed'), err ?? 'it armed the job');
+    rec('...and the cron is STILL INACTIVE after the kill refusal', (await jobActive()) === false);
   }
 
   // N4 M1: the STRICT invocation gate lives in activate.sql, not in the preflight — arming must
