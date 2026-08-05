@@ -145,16 +145,36 @@ and re-asserts the project ref; the send steps additionally need `--admin-ops-co
 | 6 | `canary-invoke` | **the first real send**, bounded by `--max-recipients` (default 1) | **owner** + `--admin-ops-confirmed` + `--monitor-confirmed` |
 | 7 | `canary` | reconciles that canary's **actual returned run id** | **owner** + `--admin-ops-confirmed` |
 | 8 | `activate` | verifies for that run and **arms the cron**, in one transaction against the locked job row | **owner** + both confirmations; refuses under a kill, an unresolved invocation, a drifted job, in-flight work or a quarantined orphan |
-| 9 | `rollback` | clears the event flag and **deactivates** the cron (never unschedules) | **owner** (`--yes --switch-off-confirmed`); the owner sets `DIGEST_SEND_ENABLED=false` first, outside this script |
+| 9 | `postflight` | nothing — the after-activation proof, re-run as often as you like | — |
+| 10 | `stage-event --event=<key>` | one MORE event onto the running path | **owner** + `--admin-ops-confirmed`; refuses unless the path is open, the job is armed, and the pipeline is healthy right now |
+| — | `rollback` | clears the event flag and **deactivates** the cron (never unschedules) | **owner** (`--yes --switch-off-confirmed`); the owner sets `DIGEST_SEND_ENABLED=false` first, outside this script |
+| — | `clear-kill` | removes exactly the kill you name | **owner**; two steps, see above |
+| — | `whatsapp-readiness` | nothing | the **separate** WhatsApp gate; exits `BLOCKED_OWNER_WHATSAPP` until the owner confirms the provider, the templates and the opt-in policy |
+
+**Staging is the point of steps 9–10.** After activation, watch with `postflight
+--window-minutes=<your watch window>` before adding the next event. A bad event then costs one
+event's worth of mail instead of the whole catalogue's — which is why `stage-event` refuses when
+the pipeline is not healthy at that moment rather than merely when it was healthy yesterday.
+
+**Postflight is an alarm, not a report.** Every check raises rather than prints, so it can be
+scheduled: it re-proves the no-backlog invariant **from the ledger** (no pre-boundary row was ever
+sent, no digest holding one was ever dispatched), that the armed job is still the reviewed one,
+that the worker has succeeded inside the window, and that no run, group or orphan is stuck.
+
+**WhatsApp is a separate decision and stays blocked.** `whatsapp-readiness` reports what the
+database can prove — that the path is still inert, the channel is not killed, consent exists and
+every tenant-scoped consent names its tenant, which events support the channel, and how much
+queued mail a boundary would exclude — and then refuses on the three facts no SQL can see: the
+provider account, the Meta-approved templates, and that those opt-ins were collected the way the
+policy says. Until an owner confirms all three, `BLOCKED_OWNER_WHATSAPP` is the correct answer.
 
 Both invoking steps print their **invocation request id first**: after an ambiguous failure
 (connection lost mid-commit) re-running with `--invocation-request-id=<id>` resumes the *same*
 invocation instead of colliding with the single-flight gate. `enable-engine` does the same with
 `--boundary-request-id`.
 
-WhatsApp is a **separate owner decision** and cannot proceed without provider readiness, approved
-templates, a webhook and proven consent. Until then `whatsapp:instant` stays inert and its worker
-returns on its env switch: rows accumulate and are refused, which is the intended state, not a bug.
+`whatsapp:instant` stays inert and its worker returns on its env switch: rows accumulate and are
+refused, which is the intended state, not a bug.
 
 ## 7. Rollback
 

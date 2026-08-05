@@ -1728,3 +1728,94 @@ describe('N6 — clearing a kill: the one reviewed way back', () => {
     } finally { await c3.end(); }
   });
 });
+
+describe('N7 (prepared) — the WhatsApp readiness gate says NO by default', () => {
+  // executes the REAL artifact against the REAL contacts/catalogue DDL this suite carries, with
+  // the psql substitutions applied the way psql would
+  const ART = readFileSync(
+    resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', 'whatsapp_readiness.sql'), 'utf8');
+  const ASSERT = readFileSync(
+    resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10ca3', 'sql', '_assert.sql'), 'utf8')
+    .replace(/^\\set .*$/m, '');
+  const readiness = async (over: Partial<Record<'provider' | 'templates' | 'consent', string>> = {}) => {
+    await c.query(ASSERT);
+    const sql = ART
+      .replace(/^\\set .*$/gm, '').replace(/^\\i .*$/gm, '')
+      .replace(/:'provider_confirmed'/g, `'${over.provider ?? ''}'`)
+      .replace(/:'templates_confirmed'/g, `'${over.templates ?? ''}'`)
+      .replace(/:'consent_confirmed'/g, `'${over.consent ?? ''}'`);
+    try { await c.query(sql); return null; }
+    catch (e) { return (e as Error).message; }
+  };
+  const CONFIRMED = { provider: 'true', templates: 'true', consent: 'true' };
+
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.notification_contacts WHERE channel = 'whatsapp'`);
+    await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = true WHERE key = 'ev_test'`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`DELETE FROM public.notification_activation_boundaries;`);
+    await c.query(`
+      INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason)
+      VALUES ('email:instant', 'active', '-infinity'::timestamptz, 'suite baseline');
+      INSERT INTO public.notification_activation_boundaries (path, state)
+      VALUES ('email:digest', 'inert'), ('whatsapp:instant', 'inert');`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+  });
+  const optIn = (dest: string, scope = 'global', academy: string | null = null) =>
+    c.query(`INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted,
+               consent_status, consent_scope, consent_academy_profile_id)
+             VALUES ($1, 'whatsapp', $2, '+316*****', 'opted_in', $3, $4)`,
+      [PLAYER, dest, scope, academy]);
+
+  it('BLOCKED by default: the three facts no SQL can see must be confirmed by the owner', async () => {
+    await optIn('+31600000000');
+    expect(await readiness()).toContain('BLOCKED_OWNER_WHATSAPP');
+    expect(await readiness({ provider: 'true' })).toContain('BLOCKED_OWNER_WHATSAPP');
+    expect(await readiness({ provider: 'true', templates: 'true' })).toContain('BLOCKED_OWNER_WHATSAPP');
+    expect(await readiness(CONFIRMED)).toBeNull();          // …and passes only when all three are
+  });
+
+  it('REFUSES when nobody has opted in — activating a channel nobody consented to', async () => {
+    expect(await readiness(CONFIRMED)).toContain('at least one recipient has actually opted in');
+  });
+
+  it('REFUSES a tenant consent that names no tenant — it would be usable in the WRONG tenant', async () => {
+    await optIn('+31600000001');
+    await c.query(`ALTER TABLE public.notification_contacts DROP CONSTRAINT IF EXISTS chk_notification_contacts_consent_scope`);
+    await c.query(`INSERT INTO public.notification_contacts (user_id, channel, destination_normalized,
+                     destination_redacted, consent_status, consent_scope)
+                   VALUES ($1, 'whatsapp', '+31600000002', '+316*****', 'opted_in', 'tenant')`, [PLAYER]);
+    expect(await readiness(CONFIRMED)).toContain('names its tenant');
+  });
+
+  it('REFUSES once the path is already open, or the channel is killed — this gate runs BEFORE both', async () => {
+    await optIn('+31600000003');
+    await c.query(`SELECT public.record_notification_activation_boundary('whatsapp:instant','opened out of band', gen_random_uuid())`);
+    expect(await readiness(CONFIRMED)).toContain('still INERT');
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`UPDATE public.notification_activation_boundaries SET state='inert', boundary_at=NULL, request_id=NULL, reason=NULL WHERE path='whatsapp:instant'`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await killDirect('whatsapp');
+    expect(await readiness(CONFIRMED)).toContain('not killed');
+  });
+
+  it('REFUSES when no event supports the channel — opening it would prove nothing', async () => {
+    await optIn('+31600000004');
+    await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = false`);
+    expect(await readiness(CONFIRMED)).toContain('at least one event supports whatsapp');
+  });
+
+  it('changes NOTHING: it is a read-only gate', async () => {
+    await optIn('+31600000005');
+    const before = (await c.query(`SELECT
+        (SELECT count(*) FROM public.notification_activation_boundaries WHERE state='active') a,
+        (SELECT count(*) FROM public.notification_contacts) b,
+        (SELECT count(*) FROM public.notification_outbox) o`)).rows[0];
+    await readiness(CONFIRMED);
+    const after = (await c.query(`SELECT
+        (SELECT count(*) FROM public.notification_activation_boundaries WHERE state='active') a,
+        (SELECT count(*) FROM public.notification_contacts) b,
+        (SELECT count(*) FROM public.notification_outbox) o`)).rows[0];
+    expect(after).toEqual(before);
+  });
+});

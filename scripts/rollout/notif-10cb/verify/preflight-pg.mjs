@@ -427,6 +427,16 @@ try {
     rec(name, err.includes(needle), err.includes(needle) ? '' : `refused for the wrong reason: ${err}`);
   };
 
+  // postflight's own refusal helper: same shape as `refuses`, different artifact
+  const refusesPostflight = async (name, mutate, needle) => {
+    await seedBaseline();
+    try { await mutate(); }
+    catch (e) { return rec(name, false, `the scenario's own setup failed: ${e.message}`); }
+    const err = (await runArtifact('postflight.sql', { window_minutes: 60 })).err ?? null;
+    if (!err) return rec(name, false, 'postflight PASSED — it does not cover this');
+    rec(name, err.includes(needle), err.includes(needle) ? '' : `refused for the wrong reason: ${err}`);
+  };
+
   console.log('\n10c-b G — activation_preflight.sql against a real PostgreSQL\n');
 
   // ── the baseline must PASS, or every refusal below is meaningless ────────
@@ -923,6 +933,121 @@ try {
   }
   await c.query(`SET search_path = "$user", public`);
   await c.query(`DROP SCHEMA hostile CASCADE`);
+
+  // ── postflight: the after-activation proof, executed ─────────────────────
+  const postflight = async (win = 60) => (await runArtifact('postflight.sql', { window_minutes: win })).err ?? null;
+  {
+    // the baseline world is a healthy, freshly-canaried system — but the cron is still INACTIVE,
+    // and postflight runs AFTER activation, so it must say so rather than pass
+    await seedBaseline();
+    const err = await postflight();
+    rec('postflight REFUSES while the job is not armed (it runs after activation, not before)',
+      !!err && err.includes('the digest cron is ARMED'), err ?? 'it passed');
+  }
+  {
+    await seedBaseline();
+    await c.query(`UPDATE cron.job SET active = true`);
+    const err = await postflight();
+    rec('postflight PASSES on an armed, healthy, freshly-succeeded system', err === null, err ?? '');
+  }
+  // THE INVARIANT, read from the ledger rather than from the code: a pre-boundary row that was
+  // SENT is exactly what the whole programme exists to make impossible, so postflight must be the
+  // thing that would have caught it.
+  await refusesPostflight('postflight CATCHES a pre-boundary row that was sent',
+    async () => {
+      await c.query(`UPDATE cron.job SET active = true`);
+      // the shipped email:instant boundary is UNBOUNDED, so nothing predates it — this scenario
+      // is about a path with a REAL boundary, which is what an activated digest path has
+      await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;
+                     UPDATE public.notification_activation_boundaries
+                        SET boundary_at = now() - interval '1 hour' WHERE path = 'email:instant';
+                     ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+      await c.query(
+        `INSERT INTO public.notification_outbox (channel, event_type, template_key, status,
+           destination_normalized, scheduled_for, payload, idempotency_key, recipient_user_id, created_at)
+         VALUES ('email','ev_test','tpl','sent','x@example.com', now(), '{}'::jsonb, gen_random_uuid()::text,
+                 '22222222-2222-4222-8222-222222222222', now() - interval '9 hours')`);
+    }, 'NO-BACKLOG HELD');
+  await refusesPostflight('postflight CATCHES a stale worker (nothing has succeeded in the window)',
+    async () => {
+      await c.query(`UPDATE cron.job SET active = true`);
+      await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() - interval '3 hours',
+                        started_at = now() - interval '3 hours' - interval '1 minute'`);
+    }, 'inside the watch window');
+  await refusesPostflight('postflight CATCHES a killed channel',
+    async () => {
+      await c.query(`UPDATE cron.job SET active = true`);
+      await c.query(`INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id)
+                     VALUES ('email','incident', gen_random_uuid())`);
+    }, 'no channel is killed');
+  await refusesPostflight('postflight CATCHES a drifted job command',
+    async () => {
+      await c.query(`UPDATE cron.job SET active = true, command = command || ' -- drifted'`);
+    }, 'EXACTLY the reviewed command');
+
+  // ── stage-event: every digest stage after the first ──────────────────────
+  // a stage runs on an OPEN path; opening it is enable-engine's job, and the baseline (a migrated
+  // database) has it inert, so each scenario opens it through the real RPC first
+  const openDigestPath = async () => {
+    const st = (await c.query(
+      `SELECT state FROM public.notification_activation_boundaries WHERE path='email:digest'`)).rows[0];
+    if (st?.state !== 'active') {
+      await c.query(
+        `SELECT public.record_notification_activation_boundary('email:digest','harness: staged activation', gen_random_uuid())`);
+    }
+  };
+  const stageEvent = async (key = 'ev_stage') => (await runArtifact('enable_event.sql', { event_key: key })).err ?? null;
+  {
+    await seedBaseline();
+    await c.query(`INSERT INTO public.notification_event_types (key, supports_digest, digest_engine_enabled, digest_cutover)
+                   VALUES ('ev_stage', true, false, true) ON CONFLICT (key) DO UPDATE
+                     SET digest_engine_enabled = false, digest_cutover = true`);
+    await openDigestPath();
+    // the baseline cron is INACTIVE: a stage is not an activation, and it must say so
+    const notArmed = await stageEvent();
+    rec('stage-event REFUSES while the cron is not armed (a stage adds to a RUNNING path)',
+      !!notArmed && notArmed.includes('the digest cron is ARMED'), notArmed ?? 'it passed');
+    await c.query(`UPDATE cron.job SET active = true`);
+    const err = await stageEvent();
+    rec('stage-event enables one more event on an open, armed, healthy path', err === null, err ?? '');
+    const on = (await c.query(`SELECT key FROM public.notification_event_types WHERE digest_engine_enabled ORDER BY key`)).rows;
+    rec('...and the earlier stage stays enabled beside it',
+      on.map((r) => r.key).join(',') === 'ev_stage,open_slots_player', JSON.stringify(on));
+    const twice = await stageEvent();
+    rec('...while a second run of the SAME stage refuses rather than silently doing nothing',
+      !!twice && twice.includes('not already enabled'), twice ?? 'it passed');
+  }
+  const refusesStage = async (name, mutate, needle) => {
+    await seedBaseline();
+    await c.query(`INSERT INTO public.notification_event_types (key, supports_digest, digest_engine_enabled, digest_cutover)
+                   VALUES ('ev_stage', true, false, true) ON CONFLICT (key) DO UPDATE
+                     SET digest_engine_enabled = false, digest_cutover = true`);
+    await openDigestPath();
+    await c.query(`UPDATE cron.job SET active = true`);
+    try { await mutate(); }
+    catch (e) { return rec(name, false, `the scenario's own setup failed: ${e.message}`); }
+    const err = await stageEvent();
+    if (!err) return rec(name, false, 'the stage PASSED — it does not cover this');
+    rec(name, err.includes(needle), err.includes(needle) ? '' : `refused for the wrong reason: ${err}`);
+  };
+  await refusesStage('stage-event REFUSES while a channel is killed',
+    () => c.query(`INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id)
+                   VALUES ('email','incident', gen_random_uuid())`), 'no channel is killed');
+  await refusesStage('stage-event REFUSES while a circuit is open',
+    () => c.query(`UPDATE public.notification_provider_circuit SET state = 'open', reason='provider_5xx', tripped_at = now()`),
+    'circuit is CLOSED');
+  await refusesStage('stage-event REFUSES while the worker has not succeeded recently',
+    () => c.query(`UPDATE public.notification_worker_runs SET ended_at = now() - interval '5 hours'`),
+    'SUCCEEDED within the last hour');
+  await refusesStage('stage-event REFUSES an event that never opted into digesting',
+    () => c.query(`UPDATE public.notification_event_types SET digest_cutover = false WHERE key = 'ev_stage'`),
+    'digest_cutover event');
+  await refusesStage('stage-event REFUSES while the delivery path is still inert',
+    () => c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;
+                   UPDATE public.notification_activation_boundaries
+                      SET state='inert', boundary_at=NULL, request_id=NULL, reason=NULL WHERE path='email:digest';
+                   ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`),
+    'already OPEN');
 
   // ── assert-inert: the gate that must run BEFORE any switch ───────────────
   await seedBaseline();

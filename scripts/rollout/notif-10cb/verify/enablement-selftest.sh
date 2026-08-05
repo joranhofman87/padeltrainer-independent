@@ -115,6 +115,42 @@ logged 'assert_inert.sql' && ok "assert-inert runs its own artifact" || bad "ass
 run "assert-inert REFUSES a url belonging to another project" 1 -- assert-inert "$OTHER_URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
 
+# ── stage-event: every digest stage after the first ───────────────────────────────────────────
+run "stage-event REFUSES without --yes" 1 -- stage-event --admin-ops-confirmed --event=session_reminder_player "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
+run "stage-event REFUSES without --admin-ops-confirmed" 1 -- stage-event --yes --event=session_reminder_player "$URL"
+run "stage-event REFUSES without an event" 1 -- stage-event --yes --admin-ops-confirmed "$URL"
+run "stage-event REFUSES a non-catalogue-key event" 1 -- stage-event --yes --admin-ops-confirmed --event="DROP TABLE" "$URL"
+run "stage-event runs its own artifact" 0 -- stage-event --yes --admin-ops-confirmed --event=session_reminder_player "$URL"
+logged 'enable_event.sql' && ok "stage-event routes to enable_event.sql" || bad "stage-event routes to enable_event.sql"
+grep -qF -- '-v event_key=session_reminder_player' "$PSQL_LOG" && ok "...passing the event it was given" || bad "...passing the event it was given"
+if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+
+# ── whatsapp-readiness: the gate that says NO by default ──────────────────────────────────────
+run "whatsapp-readiness runs read-only, with no confirmations" 0 -- whatsapp-readiness "$URL"
+logged 'whatsapp_readiness.sql' && ok "...and routes to its own artifact" || bad "...and routes to its own artifact"
+grep -qF -- '-v provider_confirmed=' "$PSQL_LOG" && ok "...passing the three owner confirmations through" || bad "...passing the three owner confirmations through"
+grep -qE -- '-v provider_confirmed=true' "$PSQL_LOG" && bad "...UNSET by default" || ok "...UNSET by default (the artifact refuses on an empty value)"
+run "whatsapp-readiness forwards the confirmations when given" 0 -- whatsapp-readiness --provider-confirmed --templates-confirmed --consent-confirmed "$URL"
+grep -qF -- '-v provider_confirmed=true' "$PSQL_LOG" && ok "...as true" || bad "...as true"
+if grep -qE 'active := true|digest_engine_enabled = true' "$PSQL_LOG"; then bad "...and changes nothing"; else ok "...and changes nothing"; fi
+export PSQL_LOG="$TMP/log.wa_fail"; : > "$PSQL_LOG"
+set +e
+STUB_FAIL_ON=whatsapp_readiness EXPECTED_REF="$REF" bash "$SCRIPT" whatsapp-readiness "$URL" >"$TMP/wa.out" 2>&1
+wa_rc=$?
+set -e
+[[ "$wa_rc" != "0" ]] && ok "a failing readiness artifact fails the subcommand (rc=$wa_rc)" || bad "a failing readiness artifact fails the subcommand"
+grep -qF 'BLOCKED_OWNER_WHATSAPP' "$TMP/wa.out" && ok "...naming the owner gate" || bad "...naming the owner gate"
+
+# ── postflight: read-only, runs after activation, needs no confirmations ──────────────────────
+run "postflight needs no --yes (it changes nothing)" 0 -- postflight "$URL"
+logged 'postflight.sql' && ok "...and routes to postflight.sql" || bad "...and routes to postflight.sql"
+grep -qF -- '-v window_minutes=60' "$PSQL_LOG" && ok "...with the default watch window" || bad "...with the default watch window"
+run "postflight takes a window" 0 -- postflight --window-minutes=15 "$URL"
+grep -qF -- '-v window_minutes=15' "$PSQL_LOG" && ok "...and passes it through" || bad "...and passes it through"
+run "postflight REFUSES a non-numeric window" 1 -- postflight --window-minutes=lots "$URL"
+if grep -qE 'active := true|SET active' "$PSQL_LOG"; then bad "...and changes nothing"; else ok "...and changes nothing"; fi
+
 # ── clear-kill: the way back, its preview, and every confirmation it demands ──────────────────
 KREQ="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 run "clear-kill --preview needs no --yes and changes nothing" 0 -- clear-kill --preview --channel=email "$URL"

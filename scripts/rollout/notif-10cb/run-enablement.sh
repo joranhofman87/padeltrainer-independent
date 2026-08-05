@@ -143,6 +143,27 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   clear request id FIRST; after an ambiguous failure re-run with
                                   --clear-request-id=<that id>. Clearing decides that mail
                                   RESUMES, which is why it is here and not on the admin page
+  stage-event --yes --admin-ops-confirmed --event=<catalogue key> <db_url>
+                                  EVERY DIGEST STAGE AFTER THE FIRST: adds one more event to the
+                                  already-open path and already-armed cron. Prints the event's
+                                  recent volume first, then refuses unless the path is open, the
+                                  reviewed job is armed, and the pipeline is healthy right now (no
+                                  kill, closed circuits, no quarantined orphans, a success inside
+                                  the last hour, nothing uncertain)
+  whatsapp-readiness [--provider-confirmed] [--templates-confirmed] [--consent-confirmed] <db_url>
+                                  READ-ONLY gate for the SEPARATE WhatsApp decision: reports the
+                                  consent the database recorded (and refuses an unscoped tenant
+                                  consent), the events that support the channel, and the queue that
+                                  a boundary would exclude — then refuses unless the owner has
+                                  confirmed the provider, the approved templates and the opt-in
+                                  policy, none of which any SQL can see. Exits BLOCKED_OWNER_WHATSAPP
+                                  by default, which is the correct answer until all three are true
+  postflight [--window-minutes=N] <db_url>
+                                  READ-ONLY, run after activation and thereafter: re-proves the
+                                  no-backlog invariant FROM THE LEDGER, that the armed job is
+                                  still the reviewed one, that the worker has succeeded inside the
+                                  window, and that no group, orphan or run is stuck. Every check
+                                  raises rather than reports, so it can be scheduled as an alarm
   rollback --yes --switch-off-confirmed <db_url>
                                   set DIGEST_SEND_ENABLED=false FIRST (owner action, outside this
                                   script), then this clears the event flag, deactivates the cron,
@@ -182,6 +203,11 @@ for a in "$@"; do
     --expected-pending=*)      EXPECTED_PENDING="${a#*=}" ;;
     --clear-request-id=*)      CLEAR_REQUEST_ID="${a#*=}" ;;
     --preview)                 PREVIEW_ONLY=1 ;;
+    --window-minutes=*)        WINDOW_MINUTES="${a#*=}" ;;
+    --event=*)                 STAGE_EVENT="${a#*=}" ;;
+    --provider-confirmed)      WA_PROVIDER=1 ;;
+    --templates-confirmed)     WA_TEMPLATES=1 ;;
+    --consent-confirmed)       WA_CONSENT=1 ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
@@ -269,7 +295,7 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 # uncommitted transaction that is discarded at disconnect, so the emergency rollback would do nothing
 # at all while every gate before it passed. `-v ON_ERROR_STOP=0` is the same shape. Three names are
 # actually used, so three names are permitted.
-ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id channel kill_request_id reason expected_pending"
+ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id channel kill_request_id reason expected_pending window_minutes event_key provider_confirmed templates_confirmed consent_confirmed"
 assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
   local artifact="$1"; shift
   local expect_value=0 a
@@ -728,6 +754,48 @@ case "$SUB" in
     run_sql "$url" clear_kill.sql -v channel="$KILL_CHANNEL" -v kill_request_id="$KILL_REQUEST_ID" \
       -v expected_pending="$EXPECTED_PENDING" -v reason="$CLEAR_REASON" -v request_id="$CLEAR_REQ_ID"
     ok "${KILL_CHANNEL} kill CLEARED — the channel is live again and whatever queued while it was dead will now send"
+    ;;
+
+  stage-event)
+    # EVERY DIGEST STAGE AFTER THE FIRST. The first one (enable-engine) opens the delivery path
+    # while the cron is inactive; this one adds an event to a path that is already open and a cron
+    # that is already armed — so its preconditions are the opposite ones, and it refuses unless the
+    # pipeline is healthy at this moment. Staging exists so a bad event costs one event's worth of
+    # mail instead of the catalogue's; the health checks are the reason to stage at all.
+    require_confirmed "staging another event onto the running digest path"
+    require_admin_ops "stage-event"
+    [[ -n "${STAGE_EVENT:-}" ]] || die "stage-event requires --event=<catalogue key>"
+    [[ "$STAGE_EVENT" =~ ^[a-z][a-z0-9_]*$ ]] || die "--event must be a catalogue key, got '${STAGE_EVENT}'"
+    url="$(db_url)"
+    run_sql "$url" enable_event.sql -v event_key="$STAGE_EVENT"
+    ok "digest engine ENABLED for ${STAGE_EVENT} — watch it with 'postflight --window-minutes=<your watch window>' before staging the next one"
+    ;;
+
+  whatsapp-readiness)
+    # WhatsApp is a SEPARATE owner decision. This step reads only: it reports what the database can
+    # prove (consent recorded and scoped, the catalogue, the queue that would be excluded) and
+    # REFUSES on the three facts no SQL can see — the provider account, the approved templates, and
+    # that the opt-ins were collected the way the policy says. Without all three confirmations it
+    # exits non-zero with BLOCKED_OWNER_WHATSAPP, which is the intended answer today.
+    url="$(db_url)"
+    run_sql "$url" whatsapp_readiness.sql \
+      -v provider_confirmed="${WA_PROVIDER:+true}" -v templates_confirmed="${WA_TEMPLATES:+true}" \
+      -v consent_confirmed="${WA_CONSENT:+true}" \
+      || die "BLOCKED_OWNER_WHATSAPP — see the assertion above. Nothing was changed."
+    ok "whatsapp readiness: every check the database can make PASSED, and the owner has confirmed the three it cannot"
+    ;;
+
+  postflight)
+    # AFTER activation, and as often as you like: read-only, changes nothing, and every check
+    # either passes or raises — so a scheduled run of this is an alarm rather than a report nobody
+    # reads. It re-proves the NO-BACKLOG invariant from the ledger (not from the code), checks the
+    # armed job is still the reviewed one, that the worker has succeeded inside the watch window,
+    # and that nothing is stuck or holding the channel.
+    url="$(db_url)"
+    win="${WINDOW_MINUTES:-60}"
+    [[ "$win" =~ ^[0-9]+$ ]] || die "--window-minutes must be a number, got '${win}'"
+    run_sql "$url" postflight.sql -v window_minutes="$win"
+    ok "postflight PASSED over the last ${win} minutes — the no-backlog invariant held, the reviewed job is armed and healthy, nothing is stuck"
     ;;
 
   rollback)

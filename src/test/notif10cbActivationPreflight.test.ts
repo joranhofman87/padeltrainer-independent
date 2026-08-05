@@ -662,6 +662,66 @@ describe('G — the dispatcher can only reach psql through the sanitising wrappe
 });
 
 
+describe('N7 (prepared) — the postflight, staging and WhatsApp artifacts', () => {
+  const SQLDIR = (f: string) => readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
+
+  it('the ARMED job-identity assertions differ from the pre-activation ones in exactly the state check', () => {
+    // the identity question does not change when the state question does: a hardening added to one
+    // file must never quietly miss the other
+    const pre = SQLDIR('_job_identity_assertions.sql');
+    const armed = SQLDIR('_job_identity_assertions_armed.sql');
+    const strip = (t: string) => t
+      .replace(/^--.*$/gm, '')
+      .replace(/SELECT pg_temp\.assert\(\s*(NOT )?\(SELECT active FROM cron\.job[\s\S]*?\);/g, '<ACTIVE-CHECK>')
+      .replace(/DROP TABLE IF EXISTS pg_temp\._gate_job;[\s\S]*?username = current_user;/, '')
+      .replace(/\s+/g, ' ').trim();
+    expect(strip(armed)).toBe(strip(pre));
+    // …and they DO differ on the state itself
+    expect(pre).toContain('the digest cron is still INACTIVE');
+    expect(armed).toContain('the digest cron is ARMED');
+  });
+
+  it('postflight is READ-ONLY and re-proves the invariant from the ledger', () => {
+    const sql = SQLDIR('postflight.sql');
+    for (const write of [/\bINSERT\s+INTO\b/i, /\bUPDATE\s+public\./i, /\bDELETE\s+FROM\b/i,
+                         /\bTRUNCATE\b/i, /cron\.(schedule|alter_job|unschedule)/i]) {
+      expect(sql, `postflight must not write: ${write}`).not.toMatch(write);
+    }
+    expect(sql).toContain('NO-BACKLOG HELD');
+    expect(sql).toContain('NO-BACKLOG HELD at the group hop');
+    expect(sql).toContain('_job_identity_assertions_armed.sql');
+  });
+
+  it('the WhatsApp gate is read-only and refuses on all three facts SQL cannot see', () => {
+    const sql = SQLDIR('whatsapp_readiness.sql');
+    for (const write of [/\bINSERT\s+INTO\b/i, /\bUPDATE\s+public\./i, /\bDELETE\s+FROM\b/i, /\bTRUNCATE\b/i]) {
+      expect(sql, `the readiness gate must not write: ${write}`).not.toMatch(write);
+    }
+    for (const v of ['provider_confirmed', 'templates_confirmed', 'consent_confirmed']) {
+      expect(sql).toContain(`:'${v}' OPERATOR(pg_catalog.=) 'true'`);
+    }
+    expect((sql.match(/BLOCKED_OWNER_WHATSAPP/g) ?? []).length).toBe(3);
+  });
+
+  it('a stage runs on an OPEN path and an ARMED job — the opposite preconditions to the first one', () => {
+    const stage = SQLDIR('enable_event.sql');
+    expect(stage).toContain('_job_identity_assertions_armed.sql');
+    expect(stage).toContain('the email:digest path is already OPEN');
+    expect(stage).not.toContain('record_notification_activation_boundary');   // a stage never opens a path
+    const first = SQLDIR('enable_engine.sql');
+    expect(first).toContain('_job_identity_assertions.sql');                  // …and the first one is the reverse
+    expect(first).toContain('record_notification_activation_boundary');
+  });
+
+  it('every artifact in the bundle pins its search_path, including the new ones', () => {
+    for (const f of ['postflight.sql', 'whatsapp_readiness.sql', 'enable_event.sql', 'clear_kill.sql',
+                     'preview_kill_clear.sql']) {
+      expect(SQLDIR(f), `${f} must pin search_path`).toContain('SET search_path = pg_catalog;');
+      expect(SQLDIR(f), `${f} must stop on error`).toContain('\\set ON_ERROR_STOP on');
+    }
+  });
+});
+
 describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact', () => {
   const SQL = (f: string) =>
     readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
