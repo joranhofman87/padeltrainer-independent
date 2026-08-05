@@ -31,8 +31,11 @@ const open = async (client: InstanceType<typeof Client>, req: string, purpose = 
   (await client.query(`SELECT public.open_notification_worker_invocation($1,$2,$3) AS id`, [purpose, source, req])).rows[0].id as string;
 const bind = async (inv: string, run: string) =>
   (await c.query(`SELECT public.bind_notification_worker_invocation($1,$2) AS r`, [inv, run])).rows[0].r as string;
-const newRun = async (ended = false) =>
-  (await c.query(`INSERT INTO public.notification_worker_runs (worker, ended_at) VALUES ('w', ${ended ? 'now()' : 'NULL'}) RETURNING id`)).rows[0].id as string;
+const newRun = async (ended = false, phase = 'dispatch', channel = 'email') =>
+  (await c.query(
+    `INSERT INTO public.notification_worker_runs (worker, channel, phase, ended_at)
+     VALUES ('notification-digest-worker:test', $1, $2, ${ended ? 'now()' : 'NULL'}) RETURNING run_id`,
+    [channel, phase])).rows[0].run_id as string;
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'n4inv-rp-'));
@@ -47,17 +50,25 @@ beforeAll(async () => {
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
-    CREATE TABLE public.notification_worker_runs (
-      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), worker text, channel text, phase text,
-      started_at timestamptz DEFAULT now(), ended_at timestamptz);
   `);
+  // The REAL worker-runs DDL, extracted from the foundation migration rather than retyped — a
+  // hand-built stand-in is exactly what hid the r.id-vs-run_id defect from the first battery.
+  const foundation = MIG('20261002100000_notification_digest_schema_foundation.sql');
+  const runsDdl = foundation.match(
+    /CREATE TABLE IF NOT EXISTS public\.notification_worker_runs[\s\S]*?\);/)?.[0];
+  if (!runsDdl) throw new Error('notification_worker_runs DDL not found in the foundation migration');
+  await c.query(runsDdl);
   await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
 
 beforeEach(async () => {
-  await c.query(`DELETE FROM public.notification_worker_invocations; DELETE FROM public.notification_worker_runs;`);
+  // the guard forbids DELETE by design — the harness resets state the sanctioned way
+  await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
+  await c.query(`DELETE FROM public.notification_worker_invocations;`);
+  await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+  await c.query(`DELETE FROM public.notification_worker_runs;`);
 });
 
 describe('open: request-id idempotency', () => {
@@ -73,8 +84,9 @@ describe('open: request-id idempotency', () => {
   it('replay still recovers AFTER the invocation resolved — the id is durable identity, not state', async () => {
     const req = crypto.randomUUID();
     const inv = await open(c, req);
-    const run = await newRun(true);
+    const run = await newRun(false); // bound while LIVE (an ended run is rightly refused now)
     expect(await bind(inv, run)).toBe('bound');
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r).toBe('completed');
     expect(await open(c, req)).toBe(inv);
   });
@@ -129,9 +141,25 @@ describe('bind: typed verdicts — only bound|replayed proceed', () => {
     expect(await bind(inv, runB)).toBe('conflict_other_run'); // a second worker must STOP
     expect(await bind(crypto.randomUUID(), runB)).toBe('missing');
     // resolve, then bind again → resolved
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE id = $1`, [runA]);
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [runA]);
     await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed')`, [inv]);
     expect(await bind(inv, runA)).toBe('resolved');
+  });
+
+  it('the run is EVIDENCE and must be one: nonexistent, wrong-kind and already-ended runs refuse the bind', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    expect(await bind(inv, crypto.randomUUID())).toBe('run_missing');
+    expect(await bind(inv, await newRun(false, 'materialize'))).toBe('run_wrong_kind');
+    expect(await bind(inv, await newRun(false, 'dispatch', 'whatsapp'))).toBe('run_wrong_kind');
+    expect(await bind(inv, await newRun(true))).toBe('run_already_ended'); // historical evidence
+    // none of the refusals consumed the invocation
+    const row = await c.query(`SELECT status, worker_run_id FROM public.notification_worker_invocations WHERE id = $1`, [inv]);
+    expect(row.rows[0]).toEqual({ status: 'pending', worker_run_id: null });
+    // a replay stays valid after the OWNED run ends — the exact-run arm, not the fresh-bind arm
+    const run = await newRun();
+    expect(await bind(inv, run)).toBe('bound');
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
+    expect(await bind(inv, run)).toBe('replayed');
   });
 
   it('a conflicting bind never overwrites the owner', async () => {
@@ -154,22 +182,51 @@ describe('resolution', () => {
     await bind(inv, run);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r)
       .toBe('rejected_run_not_ended');
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE id = $1`, [run]);
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r)
       .toBe('completed');
   });
 
-  it('abandon is reason-mandatory and age-gated — a young invocation might still land', async () => {
+  it('abandon: pending is age-gated; STARTED additionally demands its run has ended', async () => {
     const inv = await open(c, crypto.randomUUID());
     await expect(c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned')`, [inv]))
       .rejects.toThrow(/requires a reason/);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator gave up') AS r`, [inv])).rows[0].r)
       .toBe('rejected_too_young');
+    // the guard makes requested_at immutable — model age the sanctioned way
+    await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
     await c.query(`UPDATE public.notification_worker_invocations SET requested_at = now() - interval '11 minutes' WHERE id = $1`, [inv]);
+    await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    // bind it: a STARTED invocation over a live run cannot be abandoned at ANY age — an
+    // unfinished run is the durable evidence the system has not closed it
+    const run = await newRun(false);
+    expect(await bind(inv, run)).toBe('bound');
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator gave up') AS r`, [inv])).rows[0].r)
+      .toBe('rejected_run_still_running');
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator gave up') AS r`, [inv])).rows[0].r)
       .toBe('abandoned');
     // and abandoning FREES the single-flight slot
     await open(c, crypto.randomUUID());
+  });
+
+  it('the owner-effective guard: no birth-as-started, no owner change, no reopening, no delete', async () => {
+    await expect(c.query(`INSERT INTO public.notification_worker_invocations (request_id, purpose, source, status, worker_run_id)
+      VALUES (gen_random_uuid(),'smoke','direct-guard', 'started', gen_random_uuid())`))
+      .rejects.toThrow(/born clean pending/);
+    const inv = await open(c, crypto.randomUUID());
+    const run = await newRun();
+    await bind(inv, run);
+    await expect(c.query(`UPDATE public.notification_worker_invocations SET worker_run_id = gen_random_uuid() WHERE id = $1`, [inv]))
+      .rejects.toThrow(/immutable/);
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
+    await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed')`, [inv]);
+    await expect(c.query(`UPDATE public.notification_worker_invocations SET status = 'pending', resolved_at = NULL WHERE id = $1`, [inv]))
+      .rejects.toThrow(/not a legal transition|never reopen/);
+    await expect(c.query(`DELETE FROM public.notification_worker_invocations WHERE id = $1`, [inv]))
+      .rejects.toThrow(/append-only/);
+    await expect(c.query(`TRUNCATE public.notification_worker_invocations`))
+      .rejects.toThrow(/append-only/);
   });
 });
 

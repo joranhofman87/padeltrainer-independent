@@ -46,9 +46,13 @@ CREATE TABLE public.notification_worker_invocations (
     (status IN ('pending', 'started') AND resolved_at IS NULL AND abandon_reason IS NULL)
     OR (status = 'completed' AND resolved_at IS NOT NULL AND abandon_reason IS NULL)
     OR (status = 'abandoned' AND resolved_at IS NOT NULL
-        AND length(btrim(coalesce(abandon_reason, ''))) >= 3)
+        AND length(btrim(coalesce(abandon_reason, ''))) BETWEEN 3 AND 500)
   ),
-  CONSTRAINT invocation_started_has_run CHECK (status <> 'started' OR worker_run_id IS NOT NULL)
+  CONSTRAINT invocation_started_has_run CHECK (status <> 'started' OR worker_run_id IS NOT NULL),
+  -- a pending row has NO run (binding IS the transition), a completed row MUST have one (its
+  -- completion evidence is that run's end) — schema-level, not merely RPC discipline
+  CONSTRAINT invocation_pending_is_clean CHECK (status <> 'pending' OR worker_run_id IS NULL),
+  CONSTRAINT invocation_completed_has_run CHECK (status <> 'completed' OR worker_run_id IS NOT NULL)
 );
 
 -- SINGLE-FLIGHT: one unresolved deliberate invocation at a time, full stop. Not per-purpose:
@@ -56,6 +60,57 @@ CREATE TABLE public.notification_worker_invocations (
 CREATE UNIQUE INDEX uq_notification_worker_invocation_unresolved
   ON public.notification_worker_invocations ((true))
   WHERE status IN ('pending', 'started');
+
+-- OWNER-EFFECTIVE STATE MACHINE (contract finding: ACLs stop API roles, but definer functions
+-- and future migrations run as the owner — the guard must bind THEM too, exactly like the
+-- digest ledger's). Inserts arrive only as clean pending; transitions are monotonic
+-- (pending→started, started→completed|abandoned, pending→abandoned); identity fields and a
+-- bound run id are immutable; nothing reopens; nothing is deleted outside a future reviewed
+-- retention policy.
+CREATE OR REPLACE FUNCTION public.notif_worker_invocation_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' OR TG_OP = 'TRUNCATE' THEN
+    RAISE EXCEPTION 'notification_worker_invocations is append-only evidence — no % (retention is a future reviewed policy)', TG_OP;
+  END IF;
+  IF TG_OP = 'INSERT' THEN
+    IF NEW.status <> 'pending' OR NEW.worker_run_id IS NOT NULL
+       OR NEW.resolved_at IS NOT NULL OR NEW.abandon_reason IS NOT NULL THEN
+      RAISE EXCEPTION 'notification_worker_invocations: rows are born clean pending — binding and resolution are TRANSITIONS, never birth states';
+    END IF;
+    RETURN NEW;
+  END IF;
+  -- UPDATE: identity is immutable
+  IF NEW.id <> OLD.id OR NEW.request_id <> OLD.request_id
+     OR NEW.purpose <> OLD.purpose OR NEW.source <> OLD.source
+     OR NEW.requested_at <> OLD.requested_at THEN
+    RAISE EXCEPTION 'notification_worker_invocations: identity fields are immutable';
+  END IF;
+  IF OLD.worker_run_id IS NOT NULL AND NEW.worker_run_id IS DISTINCT FROM OLD.worker_run_id THEN
+    RAISE EXCEPTION 'notification_worker_invocations: a bound run id is immutable — evidence does not change owners';
+  END IF;
+  IF NOT (
+       (OLD.status = 'pending' AND NEW.status IN ('started', 'abandoned'))
+    OR (OLD.status = 'started' AND NEW.status IN ('completed', 'abandoned'))
+    OR (OLD.status = NEW.status)
+  ) THEN
+    RAISE EXCEPTION 'notification_worker_invocations: % -> % is not a legal transition', OLD.status, NEW.status;
+  END IF;
+  IF OLD.status IN ('completed', 'abandoned') AND NEW.status <> OLD.status THEN
+    RAISE EXCEPTION 'notification_worker_invocations: resolved rows never reopen';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_notif_worker_invocation_guard
+  BEFORE INSERT OR UPDATE OR DELETE ON public.notification_worker_invocations
+  FOR EACH ROW EXECUTE FUNCTION public.notif_worker_invocation_guard();
+CREATE TRIGGER trg_notif_worker_invocation_no_truncate
+  BEFORE TRUNCATE ON public.notification_worker_invocations
+  FOR EACH STATEMENT EXECUTE FUNCTION public.notif_worker_invocation_guard();
 
 COMMENT ON TABLE public.notification_worker_invocations IS
   'Stage-3.5 AC-6: the durable record that a DELIBERATE worker invocation (smoke/canary/manual) is in flight, written in the invoker''s own transaction BEFORE the pg_net enqueue — closing the dispatched-but-not-yet-running blind spot. Single unresolved row allowed (partial unique). canary_invoke/activate refuse while one exists. Cron steady-state runs do not write here.';
@@ -133,6 +188,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE v public.notification_worker_invocations%ROWTYPE;
+        v_run public.notification_worker_runs%ROWTYPE;
 BEGIN
   IF p_invocation_id IS NULL OR p_worker_run_id IS NULL THEN
     RAISE EXCEPTION 'bind_notification_worker_invocation: both ids are required';
@@ -141,6 +197,21 @@ BEGIN
    WHERE id = p_invocation_id FOR UPDATE;
   IF NOT FOUND THEN RETURN 'missing'; END IF;                    -- STOP: nothing to own
   IF v.status = 'pending' THEN
+    -- THE RUN IS EVIDENCE, so it must actually be one (contract finding: any uuid used to
+    -- bind — a nonexistent run, a materializer's, an already-ended historical one — and
+    -- completion could then accept unrelated evidence). Validated under the invocation lock:
+    -- it exists, it is THIS pipeline's dispatch work on the email channel, and it is
+    -- UNFINISHED at binding time. (A replay stays valid after the owned run ends — but only
+    -- via the 'replayed' arm below, which demands the exact bound run id.)
+    SELECT * INTO v_run FROM public.notification_worker_runs r
+     WHERE r.run_id = p_worker_run_id;
+    IF NOT FOUND THEN RETURN 'run_missing'; END IF;              -- STOP
+    IF v_run.phase <> 'dispatch' OR v_run.channel <> 'email' THEN
+      RETURN 'run_wrong_kind';                                   -- STOP
+    END IF;
+    IF v_run.ended_at IS NOT NULL THEN
+      RETURN 'run_already_ended';                                -- STOP: stale evidence
+    END IF;
     UPDATE public.notification_worker_invocations
        SET status = 'started', worker_run_id = p_worker_run_id
      WHERE id = v.id;
@@ -184,7 +255,7 @@ BEGIN
     -- invocation cannot be waved through as complete — that would reopen the blind spot.
     IF v.worker_run_id IS NULL OR NOT EXISTS (
          SELECT 1 FROM public.notification_worker_runs r
-          WHERE r.id = v.worker_run_id AND r.ended_at IS NOT NULL) THEN
+          WHERE r.run_id = v.worker_run_id AND r.ended_at IS NOT NULL) THEN
       RETURN 'rejected_run_not_ended';
     END IF;
     UPDATE public.notification_worker_invocations
@@ -192,13 +263,23 @@ BEGIN
     RETURN 'completed';
   END IF;
 
-  -- ABANDON is the operator's escape hatch and is deliberately hard: reason-mandatory and
-  -- age-gated — an invocation younger than the worker's own wall-clock ceiling might still
-  -- land, and abandoning it would let a second invocation overlap the first.
-  IF p_reason IS NULL OR length(btrim(p_reason)) < 3 THEN
-    RAISE EXCEPTION 'resolve_notification_worker_invocation: abandoning requires a reason';
+  -- ABANDON is the operator's escape hatch and is deliberately hard, with DIFFERENT rules per
+  -- state (contract finding: age alone does not prove a started worker is dead):
+  --   pending  → age-gated. The 10-minute constant = the maximum pg_net delivery window plus
+  --              the edge runtime ceiling (~150s) plus generous margin; younger might still
+  --              land, and abandoning it would let a second invocation overlap the first.
+  --   started  → the bound run must have ENDED. An unfinished run is the durable evidence the
+  --              system has NOT closed it; abandoning over it would race a live worker. Stale
+  --              stuck runs are first terminalized through the run ledger's own recovery.
+  IF p_reason IS NULL OR length(btrim(p_reason)) NOT BETWEEN 3 AND 500 THEN
+    RAISE EXCEPTION 'resolve_notification_worker_invocation: abandoning requires a reason (3-500 chars)';
   END IF;
-  IF v.requested_at > now() - interval '10 minutes' THEN
+  IF v.status = 'started' AND NOT EXISTS (
+       SELECT 1 FROM public.notification_worker_runs r
+        WHERE r.run_id = v.worker_run_id AND r.ended_at IS NOT NULL) THEN
+    RETURN 'rejected_run_still_running';
+  END IF;
+  IF v.status = 'pending' AND v.requested_at > now() - interval '10 minutes' THEN
     RETURN 'rejected_too_young';
   END IF;
   UPDATE public.notification_worker_invocations
