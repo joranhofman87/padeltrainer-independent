@@ -173,6 +173,13 @@ describe('N6 doc pins — the operations reference', () => {
     // the provider's dedup window, which nothing in this repository bounds
     expect(OPERATIONS).toContain('After prolonged downtime');
     expect(OPERATIONS).toContain('not-before condition');
+    // …and the mitigation it prescribes must EXIST. A documented recovery nobody can execute reads
+    // as safety while leaving the operator to improvise SQL against production.
+    for (const fn of ['admin_stale_outbox_preview', 'admin_dispose_stale_outbox']) {
+      expect(OPERATIONS, `the doc must name ${fn}`).toContain(fn);
+      expect(() => newestDefining(`CREATE OR REPLACE FUNCTION public.${fn}(`),
+        `${fn} is prescribed by the doc but does not exist`).not.toThrow();
+    }
   });
 
   it('the rollout steps the doc tables are the subcommands the runner actually has', () => {

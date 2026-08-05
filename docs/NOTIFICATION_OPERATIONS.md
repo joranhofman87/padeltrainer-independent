@@ -137,11 +137,21 @@ un-attempted for longer than the provider's deduplication window (Resend: 24h) *
 that may have been accepted, resuming can duplicate those specific deliveries. The digest path
 cannot do this — it never re-sends an ambiguous attempt.
 
-So after an outage longer than a day: look at `notification_outbox` rows in `pending` or
-`processing` whose `updated_at` predates the window, decide whether they are still worth sending at
-all, and dispose of the ones that are not before the worker resumes. The admin outbox list is the
-surface for that judgement; there is deliberately no automatic sweep, because "this message is
-still worth sending a day later" is not a decision code should make.
+So after an outage longer than a day, before the worker resumes:
+
+```sql
+-- 1. look. Read-only, and it never counts a lease a worker still holds.
+select * from admin_stale_outbox_preview('email', 1440);
+
+-- 2. dispose of what is no longer worth sending. Bounded, audited, idempotent;
+--    its only write is pending / abandoned-processing → skipped.
+select * from admin_dispose_stale_outbox('email', 1440, '<why>', gen_random_uuid(), 500);
+```
+
+Both refuse a threshold under 60 minutes — this is an outage tool, not a way to cancel a live
+queue — and neither touches a digest member (those belong to the state machine) or a row whose
+lease is still current (a worker may be mid-provider-call). There is deliberately no automatic
+sweep: "is this message still worth sending a day later" is not a decision code should make.
 
 Every one of them: platform-admin only, a reason of 3–500 characters, one request id per decision
 (a retry **replays** rather than deciding twice), inputs frozen on submit, and an immutable audit

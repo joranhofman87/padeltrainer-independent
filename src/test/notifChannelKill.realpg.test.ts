@@ -201,6 +201,7 @@ beforeAll(async () => {
   await c.query(MIG('20261029100000_notif_n5_readiness_and_backlog_disposal.sql'));
   await c.query(MIG('20261030100000_notif_n5_round2_dispatch_boundary.sql'));
   await c.query(MIG('20261031100000_notif_n6_kill_clear.sql'));
+  await c.query(MIG('20261103100000_notif_audit_stale_outbox_disposal.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -1092,6 +1093,7 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
       'admin_activate_channel_kill',
       'admin_cancel_digest_group',
       'admin_dispose_pre_boundary_backlog',
+      'admin_dispose_stale_outbox',
       'admin_list_digest_groups',
       'admin_list_notification_audit',
       'admin_list_notification_orphans',
@@ -1111,6 +1113,7 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
       'admin_reset_notification_circuit',
       'admin_resolve_notification_orphan',
       'admin_search_notification_destination',
+      'admin_stale_outbox_preview',
     ]);
     for (const f of fns) expect(f).not.toMatch(/retry|resend|redeliver/);
   });
@@ -1817,5 +1820,78 @@ describe('N7 (prepared) — the WhatsApp readiness gate says NO by default', () 
         (SELECT count(*) FROM public.notification_contacts) b,
         (SELECT count(*) FROM public.notification_outbox) o`)).rows[0];
     expect(after).toEqual(before);
+  });
+});
+
+describe('FINAL AUDIT — the long-outage recovery the operations doc prescribes', () => {
+  const asAdmin = async (sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const preview = async (ch = 'email', mins = 1440) =>
+    (await asAdmin(`SELECT * FROM public.admin_stale_outbox_preview('${ch}', ${mins})`))[0];
+  const dispose = async (ch = 'email', mins = 1440, req = crypto.randomUUID(), reason = 'resumed after a two-day outage', limit = 500) =>
+    (await asAdmin(`SELECT * FROM public.admin_dispose_stale_outbox('${ch}', ${mins}, '${reason}', '${req}'::uuid, ${limit})`))[0];
+  const age = (id: string, hours: number) =>
+    c.query(`UPDATE public.notification_outbox SET updated_at = now() - make_interval(hours => $2) WHERE id = $1`, [id, hours]);
+
+  it('the doc says "look, then dispose" — and both halves exist and agree', async () => {
+    const stale = await seedRow();          await age(stale, 50);
+    const fresh = await seedRow();
+    const p = await preview();
+    expect(p.pending).toBe(1);              // only the one an outage left behind
+    expect(p.abandoned_processing).toBe(0);
+    expect(p.oldest).toBeTruthy();
+    const r = await dispose();
+    expect(r.verdict).toBe('disposed');
+    expect(r.disposed).toBe(1);
+    expect((await rowOf(stale)).status).toBe('skipped');
+    expect((await rowOf(stale)).skip_reason).toBe('stale_after_outage');
+    expect((await rowOf(fresh)).status).toBe('pending');           // live work untouched
+    expect((await preview()).pending).toBe(0);
+    const audit = (await c.query(`SELECT * FROM public.notification_admin_audit WHERE action='stale_dispose'`)).rows;
+    expect(audit[0]).toMatchObject({ target: 'email', old_value: '1', new_value: 'stale_after_outage', outcome: 'applied' });
+  });
+
+  it('an ABANDONED lease is disposable; a LIVE one is never touched mid-flight', async () => {
+    const abandoned = await seedRow({ status: 'processing', locked_at: new Date(Date.now() - 50 * 3600_000).toISOString(), locked_by: 'w:dead' });
+    await age(abandoned, 50);
+    const live = await seedRow({ status: 'processing', locked_at: new Date().toISOString(), locked_by: 'w:alive' });
+    await age(live, 50);                    // old row, but its lease is CURRENT
+    expect((await preview()).abandoned_processing).toBe(1);
+    expect((await dispose()).disposed).toBe(1);
+    expect((await rowOf(abandoned)).status).toBe('skipped');
+    expect((await rowOf(live)).status).toBe('processing');         // a worker may be mid-provider-call
+    expect((await rowOf(live)).locked_by).toBe('w:alive');
+  });
+
+  it('it is an OUTAGE tool, not a queue-cancel button: the 60-minute floor is enforced on both halves', async () => {
+    const recent = await seedRow(); await age(recent, 2);
+    await expect(c2.query(`SELECT * FROM public.admin_stale_outbox_preview('email', 5)`)).rejects.toThrow();
+    expect((await dispose('email', 5)).verdict).toBe('rejected_threshold_too_low');
+    expect((await rowOf(recent)).status).toBe('pending');
+    expect((await c.query(
+      `SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE action='stale_dispose'`)).rows[0].n).toBe(1);
+  });
+
+  it('digest members are never touched — they belong to the state machine', async () => {
+    const member = await seedRow({ delivery_mode: 'digest' }); await age(member, 50);
+    expect((await preview()).pending).toBe(0);
+    expect((await dispose()).verdict).toBe('nothing_to_dispose');
+    expect((await rowOf(member)).status).toBe('pending');
+  });
+
+  it('admin fail-closed, and request-id idempotent with the threshold in the decision', async () => {
+    const stale = await seedRow(); await age(stale, 50);
+    await expect(c2.query(
+      `SELECT * FROM public.admin_dispose_stale_outbox('email', 1440, 'why', gen_random_uuid(), 10)`))
+      .rejects.toThrow(/platform admin only/);
+    const req = crypto.randomUUID();
+    expect((await dispose('email', 1440, req)).disposed).toBe(1);
+    expect((await dispose('email', 1440, req)).verdict).toBe('disposed');       // replayed
+    expect((await dispose('email', 1440, req)).disposed).toBe(0);               // …and moves nothing
+    // a retry that WIDENS the threshold is a different decision, not a replay
+    expect((await dispose('email', 120, req)).verdict).toBe('rejected_request_reuse');
   });
 });

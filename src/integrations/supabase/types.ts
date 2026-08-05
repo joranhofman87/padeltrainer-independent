@@ -9505,6 +9505,19 @@ export type Database = {
           verdict: string
         }[]
       }
+      admin_dispose_stale_outbox: {
+        Args: {
+          p_channel: string
+          p_limit?: number
+          p_older_than_minutes: number
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          disposed: number
+          verdict: string
+        }[]
+      }
       admin_list_digest_groups: {
         Args: {
           p_before_created_at?: string
@@ -9797,6 +9810,16 @@ export type Database = {
           events_capped: boolean
           outbox_capped: boolean
           outbox_rows: number
+        }[]
+      }
+      admin_stale_outbox_preview: {
+        Args: { p_channel: string; p_older_than_minutes: number }
+        Returns: {
+          abandoned_processing: number
+          channel: string
+          older_than_minutes: number
+          oldest: string
+          pending: number
         }[]
       }
       admin_stats_summary: { Args: never; Returns: Json }
