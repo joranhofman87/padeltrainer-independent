@@ -135,6 +135,13 @@ raised by review against the shipped schema and must be satisfied where named.
    **Accepted race, same family as 7b:** the gate reads preferences seconds before the send; an
    opt-out landing inside that window rides along. The window was previously hours-to-days.
 
+6h. **DEFERRED to 10c-d: `send-digest-emails`' profile/role reads are unchunked.** The S2b review
+   flagged the new suppression read's `.in()` URL size; that one is now chunked (100/query). The
+   pre-existing `profiles` and `user_roles` reads still pass up to 1000 UUIDs through one `.in()`
+   (≈37KB URL) — uniform-length keys, so the practical limit is higher, and Codex classified it
+   deferrable rather than blocking. Chunk or RPC them when 10c-d touches this function; do not let
+   the legacy sender grow another batch read without chunking it.
+
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
    `expires_at` more than 30 days past — and never a row that is merely revoked.
 7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising
