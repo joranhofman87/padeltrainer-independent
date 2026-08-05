@@ -205,11 +205,12 @@ CREATE TRIGGER trg_notif_manage_cap_guard_immutable
 -- ---------------------------------------------------------------------------
 -- MINT (service-role only via EXECUTE; called by the footer-attach layers at send time).
 --
--- Idempotent on (kind, source_kind, source_id) — a retry of the same send returns the SAME row,
--- so the edge layer derives the same token bytes and the rebuilt email is byte-identical under
--- the same provider idempotency key. Every claim is RE-VERIFIED on that path: a second mint for
--- the same send with different claims is a source-id collision, and it RAISES rather than
--- handing back a link that no longer describes the mail it is printed in.
+-- Idempotent on the identity (source_kind, source_id) WHEN ALL CLAIMS MATCH — a retry of the same
+-- send returns the SAME row, so the edge layer derives the same token bytes and the rebuilt email
+-- is byte-identical under the same provider idempotency key. Every claim is RE-VERIFIED on that
+-- path: a second mint for the same send with different kind, scope or address is a source-id
+-- collision, and it RAISES rather than handing back a link that no longer describes the mail it
+-- is printed in.
 CREATE OR REPLACE FUNCTION public.mint_notification_manage_capability(
   p_kind text,
   p_scope_kind text,
