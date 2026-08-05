@@ -340,6 +340,8 @@ CREATE OR REPLACE FUNCTION public.admin_notification_event_states() RETURNS TABL
   academy_off_caps int,
   cron_state text,          -- 'active' | 'inactive' | 'absent' | 'unavailable' (no pg_cron / no read)
   circuit_state text,       -- circuit row state, or 'none'
+  circuit_reason text,      -- the trip reason label (internal enum-ish; needed for the M5 typed confirmation)
+  circuit_tripped_at timestamptz,   -- the trip VERSION the reset confirmation must name
   kill_state text,          -- 'killed' | 'live' — authoritative DB state (the pinned exposure)
   send_env text,            -- ALWAYS 'unverifiable': DIGEST_SEND_ENABLED is an edge env var no SQL can read
   instant_conclusion text,  -- the instant path: no cron/env authority applies to it
@@ -371,6 +373,8 @@ BEGIN
            WHERE r.event_type = et.key AND r.channel = ch.channel AND r.max_frequency = 'off'),
          v_cron,
          coalesce((SELECT cb.state FROM public.notification_provider_circuit cb WHERE cb.channel = ch.channel), 'none'),
+         (SELECT cb.reason FROM public.notification_provider_circuit cb WHERE cb.channel = ch.channel),
+         (SELECT cb.tripped_at FROM public.notification_provider_circuit cb WHERE cb.channel = ch.channel),
          CASE WHEN EXISTS (SELECT 1 FROM public.notification_channel_kill_switches k WHERE k.channel = ch.channel)
               THEN 'killed' ELSE 'live' END,
          'unverifiable'::text,

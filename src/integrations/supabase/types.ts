@@ -9647,7 +9647,9 @@ export type Database = {
           catalog_default: string
           catalog_supported: boolean
           channel: string
+          circuit_reason: string
           circuit_state: string
+          circuit_tripped_at: string
           cron_state: string
           digest_conclusion: string
           digest_engine_enabled: boolean

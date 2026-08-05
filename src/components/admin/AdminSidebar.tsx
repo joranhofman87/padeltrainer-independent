@@ -102,6 +102,7 @@ export function AdminSidebar() {
     { title: t("sidebar.pricingPlans"), url: "/app/admin/pricing", icon: CreditCard },
     { title: t("sidebar.onboardingEmails"), url: "/app/admin/onboarding-emails", icon: Mail },
     { title: t("sidebar.backups"), url: "/app/admin/backups", icon: Database },
+    { title: t("sidebar.notifications", "Notifications"), url: "/app/admin/notifications", icon: Database },
   ];
 
   const [locationsOpen, setLocationsOpen] = useState(
