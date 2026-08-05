@@ -52,9 +52,24 @@ raised by review against the shipped schema and must be satisfied where named.
    known-answer vector in `_shared/manage-token.test.ts`. The version rides in the token, so the
    live key window [min_mintable, current] and the signature are checked before any capability
    lookup; `bindManageTokenToRow` then requires the row's `key_version` to equal the signed one.
-6. **The neutral settings route must exist before S2 emits it (S4).** `/app/settings/notifications`
-   is not mounted yet (only the three role-specific routes are); S4 ships the role-forwarder and the
-   redirect-preserving logged-out behaviour.
+6. ~~**The neutral settings route must exist before S2 emits it (S4).**~~ **CLOSED in S4**:
+   `/app/settings/notifications` is mounted in `DomainRouter` **outside every role layout** — under
+   one, that layout's guard would bounce the roles the route exists to serve, which is the original
+   bug. `notificationSettingsPathFor` (in `src/lib/notificationSettingsRoute.ts`, so email/footer
+   code can cite the path without importing a page) resolves academy → trainer → player; a
+   club-only account is told plainly rather than forwarded into a bouncing guard. Logged out, the
+   destination rides in `?redirect=`. Two things a later slice must not undo: a still-resolving auth
+   state decides NOTHING (a premature forward strands a multi-role recipient), and empty roles after
+   a FAILED fetch offers a retry — never "this account has no notification settings", which would be
+   a lie at the end of an email link. A depth-aware router-source test fails if the route is ever
+   nested under a layout.
+6b. **`?redirect=` was navigated unsanitised on the primary login path (fixed in S4).** `Auth.tsx`
+   stored the query param verbatim and called `navigate(redirectUrl)` on it after login; only the
+   no-roles branch used `sanitizeAppRedirect`. Since S2b hands this parameter out in email footers,
+   a crafted copy was a plausible off-origin jump (`//host` resolves protocol-relative). Now
+   sanitised at BOTH ends — sessionStorage survives reloads, so a value written by an older build
+   would otherwise still be trusted — and a value that fails is purged rather than left to be
+   re-evaluated at every future login.
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
    `expires_at` more than 30 days past — and never a row that is merely revoked.
 7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising

@@ -99,6 +99,7 @@ const PlayerSettings = lazy(() => import('@/pages/PlayerSettings'));
 const EditProfile = lazy(() => import('@/pages/EditProfile'));
 const FollowingList = lazy(() => import('@/pages/FollowingList'));
 const NotificationSettings = lazy(() => import('@/pages/NotificationSettings'));
+const NotificationSettingsEntry = lazy(() => import('@/pages/NotificationSettingsEntry'));
 
 // Trainer pages
 const TrainerDashboard = lazy(() => import('@/pages/TrainerDashboard'));
@@ -248,6 +249,11 @@ export function DomainRouter() {
         <Route path="/app/onboarding/:role" element={<Onboarding />} />
         <Route path="/app/academy/onboarding" element={<AcademyOnboarding />} />
         
+        {/* Role-agnostic notification-settings entry. Mounted OUTSIDE the role layouts so no
+            layout guard can bounce a recipient arriving from an email footer; it resolves the
+            account's real settings surface (or says plainly that it has none). */}
+        <Route path="/app/settings/notifications" element={<NotificationSettingsEntry />} />
+
         {/* Player routes */}
         <Route path="/app/player" element={<PlayerLayout />}>
           <Route index element={<PlayerDashboard />} />

@@ -6,6 +6,8 @@
     "saved": "Notificatievoorkeuren opgeslagen!",
     "saveError": "Fout bij opslaan voorkeuren",
     "securityNote": "Essentiële account- en beveiligingsmeldingen kunnen niet worden uitgeschakeld.",
+    "unavailableTitle": "Geen meldingsinstellingen voor dit account",
+    "unavailableBody": "Dit accounttype ontvangt geen meldingen die je hier kunt beheren. Verwacht je hier wel instellingen? Neem contact op met support.",
     "frequency": {
       "instant": "Direct",
       "daily": "Dagelijks",

@@ -179,7 +179,8 @@ presentation and reachability only.
 |---|---|---|
 | **N0** — privilege-correct `cron.job` row lock for the enablement tooling | [#630](https://github.com/joranhofman87/padeltrainer-independent/pull/630) | clear at `6be077cf`, CI green |
 | **N1** — player notification-settings gap closure | [#631](https://github.com/joranhofman87/padeltrainer-independent/pull/631) | clear at `6cb96359`, CI green (full suite, 4697 tests) |
-| **N2 S1+S2a** — marketing suppression, signed manage capabilities, declared footer policy, token helper | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `470e1083`, CI green at `7109150e` |
+| **N2 S1+S2a** — marketing suppression, signed manage capabilities, declared footer policy, token helper | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `4595a03f`, CI green |
+| **N2 S4** — the neutral `/app/settings/notifications` route + Auth redirect sanitisation | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | in review |
 
 **N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
 `supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement
@@ -191,14 +192,21 @@ in production** with the exact disabled response and zero counter deltas — an 
 operation, still outstanding. It unblocks the SMOKE, not the send: Admin Notification Operations
 (below) still blocks every canary and activation.
 
+**S4 landed first, out of numeric order, because S2b emits the route it mounts.**
+`/app/settings/notifications` is mounted OUTSIDE every role layout — under one, that layout's guard
+would bounce the very roles the route exists to serve — and resolves academy → trainer → player,
+telling a club-only account plainly instead of forwarding it into a bouncing guard. Logged out, the
+destination rides in `?redirect=`. Implementing it exposed a live open-redirect: `Auth.tsx` stored
+that parameter verbatim and navigated to it after login, sanitising only in the no-roles branch.
+Now sanitised on the way in and out, with a failing value purged. The guest manage page and
+analytics redaction stay with S3/S5.
+
 **N2's remaining slices** continue on `feat/notif-n2-email-prefs`: S2b (worker + digest-render
 footer attach, the role-agnostic `send-email` link, and a send-time gate for the legacy
 `send-digest-emails`, which today sends claimed queue rows with no preference or suppression
-re-check); S3 (campaign/onboarding suppression, footers, RFC 8058 headers); S4 (the neutral
-`/app/settings/notifications` route — which must exist **before** S2b emits it — plus the guest
-manage page, Auth redirect sanitisation and analytics redaction); S5 (the one-click endpoint, the
-capability sweep, docs). Eight constraints S1 imposes on those slices, each naming the slice that
-must satisfy it, are in [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) §N2.
+re-check); S3 (campaign/onboarding suppression, footers, RFC 8058 headers); S5 (the one-click
+endpoint, the capability sweep, docs). The constraints S1 imposes on those slices, each naming the
+slice that must satisfy it, are in [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) §N2.
 
 **N3 (academy controls) and N4 (Admin Notification Operations) are not started.**
 

@@ -6,6 +6,8 @@
     "saved": "Notification preferences saved!",
     "saveError": "Error saving preferences",
     "securityNote": "Essential account and security notifications cannot be disabled.",
+    "unavailableTitle": "No notification settings for this account",
+    "unavailableBody": "This account type does not receive notifications you can manage here. If you expected settings on this page, contact support.",
     "frequency": {
       "instant": "Instant",
       "daily": "Daily",

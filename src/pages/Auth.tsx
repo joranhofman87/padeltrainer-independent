@@ -69,9 +69,12 @@ export default function Auth() {
     }
   }, [toast, t]);
 
-  // Capture redirect query param and store for post-login navigation
+  // Capture redirect query param and store for post-login navigation.
+  // Sanitised HERE as well as on the way out: `?redirect=` is attacker-controlled (it is handed
+  // out in email footers, so a crafted copy is trivial to send), and an unchecked value reaches
+  // navigate() as `//host` — a protocol-relative jump off-origin.
   useEffect(() => {
-    const redirect = searchParams.get('redirect');
+    const redirect = sanitizeAppRedirect(searchParams.get('redirect'));
     if (redirect) {
       sessionStorage.setItem('redirectAfterLogin', redirect);
     }
@@ -101,7 +104,13 @@ export default function Auth() {
 
   useEffect(() => {
     if (!loading && user && !isProcessingMagicLink && profileReady) {
-      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+      // Sanitised at BOTH ends. Storing a checked value is not enough on its own: sessionStorage
+      // survives across reloads, so a value written by an older build — or by a tab opened before
+      // this fix — would otherwise be navigated to verbatim. Purge anything that fails, so a
+      // poisoned entry cannot sit in the tab being re-evaluated at every future login.
+      const storedRedirect = sessionStorage.getItem('redirectAfterLogin');
+      const redirectUrl = sanitizeAppRedirect(storedRedirect);
+      if (storedRedirect && !redirectUrl) sessionStorage.removeItem('redirectAfterLogin');
 
       // If profile fetch failed, do NOT assume new user — show error and let user retry
       if (profileFetchFailed && !role) {
