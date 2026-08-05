@@ -235,19 +235,27 @@ const handler = async (req: Request): Promise<Response> => {
       prefsMap[String(row.user_id)] = row;
     }
 
-    const normalizedEmails = Object.values(profileMap)
-      .map((p) => (p.email ? normalizeEmailForSuppression(p.email) : null))
-      .filter((e): e is string => !!e);
+    // Deduplicated + CHUNKED: `.in()` rides in the request URL, and up to 1000 raw email strings
+    // can exceed proxy/PostgREST URI limits — which would trip the pre-claim abort below on EVERY
+    // run over the same leading batch, starving the whole queue. 100 addresses per query keeps
+    // each URL bounded regardless of address length.
+    const normalizedEmails = [...new Set(
+      Object.values(profileMap)
+        .map((p) => (p.email ? normalizeEmailForSuppression(p.email) : null))
+        .filter((e): e is string => !!e),
+    )];
+    const SUPPRESSION_CHUNK = 100;
     const suppressedSet = new Set<string>();
-    if (normalizedEmails.length > 0) {
+    for (let i = 0; i < normalizedEmails.length; i += SUPPRESSION_CHUNK) {
       // email_address_state stores addresses normalized (lower/btrim) — the same normalization
       // normalizeEmailForSuppression applies — and is_suppressed is the canonical generated
       // predicate is_email_suppressed() reads. A read failure aborts: we cannot prove any
-      // address is safe to send to.
+      // address is safe to send to, and nothing is claimed yet.
+      const chunk = normalizedEmails.slice(i, i + SUPPRESSION_CHUNK);
       const { data: suppressedRows, error: suppErr } = await supabaseAdmin
         .from("email_address_state")
         .select("email")
-        .in("email", normalizedEmails)
+        .in("email", chunk)
         .eq("is_suppressed", true);
       if (suppErr) {
         console.error("Error fetching suppression state (aborting before claim):", suppErr);

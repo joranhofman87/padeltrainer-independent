@@ -60,6 +60,15 @@ describe('send-email per-recipient footer (N2 constraint 1)', () => {
     expect(src).toMatch(/\$\{footerCopy\.from\}\$\{manageLine\}/);
   });
 
+  it('a FAILED lookup refuses retryably — it is not a guest, and not a licence to send blind', () => {
+    // Treating a lookup error as "no account" both drops the manage link an account holder is
+    // owed and skips the preference check — mail would send against a stored 'off'.
+    expect(src).toContain('if (profileErr) {');
+    const branch = src.slice(src.indexOf('if (profileErr) {'), src.indexOf('recipientUserId = profile?.user_id ?? null;'));
+    expect(branch).toContain('status: 503');
+    expect(branch).toContain('retryable: true');
+  });
+
   it('resolves the account BEFORE the preference branch, so no-pref-column types still know it', () => {
     const lookupIdx = src.indexOf('if (!recipientUserId && !isSystemEmail) {');
     const prefBranchIdx = src.indexOf('if (prefColumn && !isSystemEmail) {');
@@ -98,6 +107,11 @@ describe('send-digest-emails send-time gate wiring', () => {
   it('drops a suppressed address by CONSUMING the claim, and matches the canonical normalization', () => {
     expect(src).toContain('suppressedSet.has(normalizeEmailForSuppression(profile.email))');
     expect(src).toContain('.eq("is_suppressed", true)');
+    // Chunked + deduplicated: 1000 raw addresses in one `.in()` URL can exceed URI limits, and
+    // the resulting pre-claim abort would starve the same leading batch on every run.
+    expect(src).toContain('const SUPPRESSION_CHUNK = 100;');
+    expect(src).toMatch(/new Set\(\s*\n?\s*Object\.values\(profileMap\)/);
+    expect(src).toContain('normalizedEmails.slice(i, i + SUPPRESSION_CHUNK)');
     // The suppressed branch must not release: a suppressed address retried forever is the bug.
     const branch = src.slice(
       src.indexOf('suppressedSet.has(normalizeEmailForSuppression(profile.email))'),

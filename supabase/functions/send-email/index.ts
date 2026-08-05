@@ -1364,11 +1364,22 @@ const handler = async (req: Request): Promise<Response> => {
     // manage link they cannot use — that is a dead control at the end of every mail.
     let recipientUserId = (data as any).userId || null;
     if (!recipientUserId && !isSystemEmail) {
-      const { data: profile } = await supabaseAdmin
+      const { data: profile, error: profileErr } = await supabaseAdmin
         .from("profiles")
         .select("user_id")
         .eq("email", to)
         .maybeSingle();
+      if (profileErr) {
+        // FAIL CLOSED: a lookup FAILURE is not a guest. Treating it as one both drops the manage
+        // link an account holder is owed AND skips the preference check below — mail would send
+        // even against a stored 'off'. Refuse retryably instead; every caller already treats
+        // email dispatch as non-fatal, and a delayed send beats a preference violation.
+        console.error("Recipient account lookup failed (refusing to send blind):", profileErr);
+        return new Response(
+          JSON.stringify({ error: "recipient_lookup_failed", retryable: true }),
+          { status: 503, headers: { "Content-Type": "application/json", ...corsHeaders } },
+        );
+      }
       recipientUserId = profile?.user_id ?? null;
     }
 
