@@ -76,9 +76,40 @@ INSERT INTO public.notification_manage_key_state (id) VALUES (true);
 COMMENT ON TABLE public.notification_manage_key_state IS
   'Single-row signing-key state for manage-link tokens. Raising min_mintable_version BEFORE rolling the workers is how a burned key is retired: no new capability may be minted below it, and the edge verifier refuses tokens whose stored key_version is below it. Existing rows are never re-signed — a retry under a burned key fails closed rather than silently changing an already-printed link.';
 
+-- service_role is REVOKED explicitly: this project's ALTER DEFAULT PRIVILEGES grants it ALL on
+-- new tables, so a bare "REVOKE FROM PUBLIC, anon, authenticated" would leave every edge function
+-- holding the service key able to LOWER the retirement floor or DELETE the state row — i.e. to
+-- un-retire a burned key. Read-only, and only through this grant.
 ALTER TABLE public.notification_manage_key_state ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.notification_manage_key_state FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON public.notification_manage_key_state FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.notification_manage_key_state TO service_role;
+
+-- ...and the floor is MONOTONIC even for the owner: retirement is a one-way decision, and the row
+-- may never be removed (a missing row is treated as unavailable by every reader below, but
+-- deleting it should not be reachable in the first place).
+CREATE OR REPLACE FUNCTION public.notif_manage_key_state_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'notification_manage_key_state is a single permanent row — it may be raised, never removed';
+  END IF;
+  IF NEW.min_mintable_version < OLD.min_mintable_version THEN
+    RAISE EXCEPTION 'min_mintable_version is monotonic: % may not be lowered to %', OLD.min_mintable_version, NEW.min_mintable_version;
+  END IF;
+  IF NEW.current_version < OLD.current_version THEN
+    RAISE EXCEPTION 'current_version is monotonic: % may not be lowered to %', OLD.current_version, NEW.current_version;
+  END IF;
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_notif_manage_key_state_guard
+  BEFORE UPDATE OR DELETE ON public.notification_manage_key_state
+  FOR EACH ROW
+  EXECUTE FUNCTION public.notif_manage_key_state_guard();
 
 -- ---------------------------------------------------------------------------
 CREATE TABLE public.notification_manage_capabilities (
@@ -248,29 +279,35 @@ BEGIN
     RAISE EXCEPTION 'mint_notification_manage_capability: % carries no event_type', p_kind;
   END IF;
 
+  -- THE CONTACT MUST BELONG TO THE PREFERENCE OWNER, and must be the email contact this address
+  -- was delivered to. Without this, a capability could pair (user B, contact/address A) and the
+  -- person who received mail at A could switch off B's event: the destination re-check at apply
+  -- would pass, because it only ever compared A against A. Ownership is either the direct
+  -- user_id or the person behind that account (the resolver's own identity path).
+  IF p_contact_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.notification_contacts nc
+       WHERE nc.id = p_contact_id
+         AND nc.channel = 'email'
+         AND lower(btrim(nc.destination_normalized)) = v_address
+         AND (p_user_id IS NULL
+              OR nc.user_id = p_user_id
+              OR nc.person_id = (SELECT pe.id FROM public.persons pe WHERE pe.user_id = p_user_id))
+    ) THEN
+      RAISE EXCEPTION 'mint_notification_manage_capability: the contact is not this recipient''s email contact for this address';
+    END IF;
+  END IF;
+
   SELECT current_version INTO v_version FROM public.notification_manage_key_state WHERE id;
   IF v_version IS NULL THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: signing-key state is missing';
   END IF;
 
-  -- The send may already have a capability (a retry). Return it, but only after proving it still
-  -- describes THIS mail.
-  SELECT * INTO v_row FROM public.notification_manage_capabilities c
-   WHERE c.kind = p_kind AND c.source_kind = p_source_kind AND c.source_id = p_source_id;
-  IF FOUND THEN
-    IF v_row.scope_kind IS DISTINCT FROM p_scope_kind
-       OR v_row.scope_id IS DISTINCT FROM p_scope_id
-       OR v_row.address_normalized IS DISTINCT FROM v_address
-       OR v_row.user_id IS DISTINCT FROM p_user_id
-       OR v_row.contact_id IS DISTINCT FROM p_contact_id
-       OR v_row.event_type IS DISTINCT FROM p_event_type THEN
-      RAISE EXCEPTION 'mint_notification_manage_capability: % % already has a % capability with different claims — a source id must identify ONE send', p_source_kind, p_source_id, p_kind;
-    END IF;
-    RETURN QUERY SELECT v_row.id, v_row.key_version;
-    RETURN;
-  END IF;
-
-  RETURN QUERY
+  -- INSERT FIRST, then read back. A plain SELECT-then-INSERT loses the race for one of two
+  -- simultaneous retries of the same send: the unique index would stop the duplicate row, but the
+  -- loser would get a 23505 instead of the capability it is entitled to — and "a retry returns
+  -- the same row" is the contract this whole model rests on. ON CONFLICT DO NOTHING makes both
+  -- callers fall through to the same read.
   INSERT INTO public.notification_manage_capabilities
     (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
      user_id, contact_id, event_type, source_kind, source_id, key_version, expires_at)
@@ -278,7 +315,28 @@ BEGIN
     (p_kind, p_scope_kind, p_scope_id, v_address, md5(v_address),
      p_user_id, p_contact_id, p_event_type, p_source_kind, p_source_id,
      v_version, now() + p_ttl)
-  RETURNING id, notification_manage_capabilities.key_version;
+  ON CONFLICT (kind, source_kind, source_id) DO NOTHING;
+
+  SELECT * INTO v_row FROM public.notification_manage_capabilities c
+   WHERE c.kind = p_kind AND c.source_kind = p_source_kind AND c.source_id = p_source_id;
+  IF NOT FOUND THEN
+    -- Only reachable if the row vanished between the insert and this read (a concurrent purge).
+    RAISE EXCEPTION 'mint_notification_manage_capability: the capability for % % disappeared mid-mint', p_source_kind, p_source_id;
+  END IF;
+
+  -- The row may pre-date this call (a retry). It is this send's capability only if it still
+  -- describes THIS mail — otherwise the source id is being reused for a different message, and
+  -- handing back a link printed for another recipient would be far worse than refusing.
+  IF v_row.scope_kind IS DISTINCT FROM p_scope_kind
+     OR v_row.scope_id IS DISTINCT FROM p_scope_id
+     OR v_row.address_normalized IS DISTINCT FROM v_address
+     OR v_row.user_id IS DISTINCT FROM p_user_id
+     OR v_row.contact_id IS DISTINCT FROM p_contact_id
+     OR v_row.event_type IS DISTINCT FROM p_event_type THEN
+    RAISE EXCEPTION 'mint_notification_manage_capability: % % already has a % capability with different claims — a source id must identify ONE send', p_source_kind, p_source_id, p_kind;
+  END IF;
+
+  RETURN QUERY SELECT v_row.id, v_row.key_version;
 END;
 $$;
 
@@ -319,13 +377,15 @@ BEGIN
     RETURN;
   END IF;
 
+  -- A MISSING key state is unavailable, never "version 1": treating absence as the lowest floor
+  -- would reactivate every retired capability the moment the authoritative row was lost.
   SELECT min_mintable_version INTO v_min FROM public.notification_manage_key_state WHERE id;
   v_status := CASE
     WHEN v.revoked_at IS NOT NULL THEN 'revoked'
     WHEN v.expires_at <= now() THEN 'expired'
     -- A burned signing key retires every link it signed. Reported (and refused) here as well as
     -- at the edge, so the database is not merely trusting the verifier to have been redeployed.
-    WHEN v.key_version < coalesce(v_min, 1) THEN 'retired_key'
+    WHEN v_min IS NULL OR v.key_version < v_min THEN 'retired_key'
     ELSE 'live'
   END;
   IF v_status <> 'live' THEN
@@ -400,8 +460,9 @@ BEGIN
   IF NOT FOUND THEN RETURN 'rejected_missing'; END IF;
   IF v.revoked_at IS NOT NULL THEN RETURN 'rejected_revoked'; END IF;
   IF v.expires_at <= now() THEN RETURN 'rejected_expired'; END IF;
+  -- Missing key state = unavailable, never a floor of 1 (see the context RPC).
   SELECT min_mintable_version INTO v_min FROM public.notification_manage_key_state WHERE id;
-  IF v.key_version < coalesce(v_min, 1) THEN RETURN 'rejected_retired_key'; END IF;
+  IF v_min IS NULL OR v.key_version < v_min THEN RETURN 'rejected_retired_key'; END IF;
 
   -- DESTINATION BINDING, against the authority that actually delivered this mail. A
   -- contact-bound capability re-checks the contact's CURRENT address (the trigger below also
@@ -409,6 +470,18 @@ BEGIN
   -- delivered via the account's canonical persons.email, so that is what it re-checks. A missing
   -- authority reads as changed: unknown fails closed.
   IF v.contact_id IS NOT NULL THEN
+    -- OWNERSHIP IS RE-CHECKED, not only the address: a contact that has since been repointed at
+    -- another account must stop carrying this capability's authority over that account's
+    -- preferences. (Mint proves the relationship; this proves it still holds.)
+    IF v.user_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM public.notification_contacts nc
+       WHERE nc.id = v.contact_id
+         AND nc.channel = 'email'
+         AND (nc.user_id = v.user_id
+              OR nc.person_id = (SELECT pe.id FROM public.persons pe WHERE pe.user_id = v.user_id))
+    ) THEN
+      RETURN 'rejected_destination_changed';
+    END IF;
     SELECT md5(lower(btrim(nc.destination_normalized))) INTO v_bound
       FROM public.notification_contacts nc WHERE nc.id = v.contact_id;
   ELSIF v.user_id IS NOT NULL THEN
@@ -486,7 +559,13 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF NEW.destination_normalized IS DISTINCT FROM OLD.destination_normalized THEN
+  -- ADDRESS **OR** IDENTITY: repointing a contact at another person/user/guest, or changing its
+  -- channel, changes who the printed link speaks for just as much as changing the address does.
+  IF NEW.destination_normalized IS DISTINCT FROM OLD.destination_normalized
+     OR NEW.channel IS DISTINCT FROM OLD.channel
+     OR NEW.user_id IS DISTINCT FROM OLD.user_id
+     OR NEW.person_id IS DISTINCT FROM OLD.person_id
+     OR NEW.guest_player_id IS DISTINCT FROM OLD.guest_player_id THEN
     UPDATE public.notification_manage_capabilities
        SET revoked_at = now()
      WHERE contact_id = NEW.id AND revoked_at IS NULL;
@@ -497,30 +576,42 @@ $$;
 
 DROP TRIGGER IF EXISTS trg_notif_manage_cap_revoke_on_contact_change ON public.notification_contacts;
 CREATE TRIGGER trg_notif_manage_cap_revoke_on_contact_change
-  AFTER UPDATE OF destination_normalized ON public.notification_contacts
+  AFTER UPDATE OF destination_normalized, channel, user_id, person_id, guest_player_id
+    ON public.notification_contacts
   FOR EACH ROW
   EXECUTE FUNCTION public.notif_manage_cap_revoke_on_contact_change();
 
 -- ...and the same for the account-fallback authority: a person's canonical email changing
 -- retires the account-bound links printed against the old inbox.
-CREATE OR REPLACE FUNCTION public.notif_manage_cap_revoke_on_person_email_change()
+CREATE OR REPLACE FUNCTION public.notif_manage_cap_revoke_on_person_change()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE v_user uuid;
 BEGIN
-  IF NEW.email IS DISTINCT FROM OLD.email AND NEW.user_id IS NOT NULL THEN
+  -- The account fallback's authority is (user_id -> persons.email). It is lost when the address
+  -- changes, when the account is UNLINKED from the person, and when the person row disappears —
+  -- each of which can otherwise be undone, reactivating a link printed against the old inbox.
+  IF TG_OP = 'DELETE' THEN
+    v_user := OLD.user_id;
+  ELSIF NEW.email IS DISTINCT FROM OLD.email OR NEW.user_id IS DISTINCT FROM OLD.user_id THEN
+    v_user := coalesce(OLD.user_id, NEW.user_id);
+  END IF;
+
+  IF v_user IS NOT NULL THEN
     UPDATE public.notification_manage_capabilities
        SET revoked_at = now()
-     WHERE user_id = NEW.user_id AND contact_id IS NULL AND revoked_at IS NULL;
+     WHERE user_id = v_user AND contact_id IS NULL AND revoked_at IS NULL;
   END IF;
-  RETURN NEW;
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
 END;
 $$;
 
 DROP TRIGGER IF EXISTS trg_notif_manage_cap_revoke_on_person_email_change ON public.persons;
-CREATE TRIGGER trg_notif_manage_cap_revoke_on_person_email_change
-  AFTER UPDATE OF email ON public.persons
+DROP TRIGGER IF EXISTS trg_notif_manage_cap_revoke_on_person_change ON public.persons;
+CREATE TRIGGER trg_notif_manage_cap_revoke_on_person_change
+  AFTER UPDATE OR DELETE ON public.persons
   FOR EACH ROW
-  EXECUTE FUNCTION public.notif_manage_cap_revoke_on_person_email_change();
+  EXECUTE FUNCTION public.notif_manage_cap_revoke_on_person_change();

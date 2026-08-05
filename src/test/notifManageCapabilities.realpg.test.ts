@@ -96,6 +96,8 @@ beforeAll(async () => {
 
     CREATE TABLE public.notification_contacts (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      person_id uuid, user_id uuid, guest_player_id uuid,
+      channel text NOT NULL DEFAULT 'email',
       destination_normalized text NOT NULL);
 
     CREATE TABLE public.persons (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, email text);
@@ -146,7 +148,15 @@ beforeEach(async () => {
     DELETE FROM public.notification_preferences_v2;
     DELETE FROM public.notification_contacts;
     UPDATE public.persons SET email = 'person@example.com' WHERE user_id = '${U1}';
-    UPDATE public.notification_manage_key_state SET current_version = 1, min_mintable_version = 1;
+  `);
+  // The key state is MONOTONIC by trigger (a floor may be raised, never lowered — and the row may
+  // never be deleted), so resetting it between scenarios means recreating it with the guard
+  // disabled. That the harness has to do this IS the guard working.
+  await c.query(`
+    ALTER TABLE public.notification_manage_key_state DISABLE TRIGGER trg_notif_manage_key_state_guard;
+    DELETE FROM public.notification_manage_key_state;
+    INSERT INTO public.notification_manage_key_state (id) VALUES (true);
+    ALTER TABLE public.notification_manage_key_state ENABLE TRIGGER trg_notif_manage_key_state_guard;
   `);
 });
 
@@ -224,19 +234,17 @@ describe('mint_notification_manage_capability', () => {
     // Without the advisory lock this is a SELECT-then-INSERT race: both see no live grant, both
     // insert, and two different token byte strings exist for one frozen provider request.
     const addr = 'race@example.com';
-    const results = await Promise.allSettled([
+    // BOTH racers must receive the capability — "a retry returns the same row" is the contract,
+    // so a loser getting 23505 instead of its link would be a real defect, not a tolerable one.
+    const [a, b] = await Promise.all([
       mintOn(c, { address: addr }),
       mintOn(c2, { address: addr }),
     ]);
-    // The unique index is the arbiter: either both mints return the one row, or the loser hits
-    // 23505 — never two rows, i.e. never two token byte strings for one send.
+    expect(a.capability_id).toBe(b.capability_id);
     const n = (await c.query(
       `SELECT count(*)::int AS n FROM public.notification_manage_capabilities WHERE address_normalized = $1`,
       [addr])).rows[0].n;
     expect(n).toBe(1);
-    const ids = new Set(results.filter((r) => r.status === 'fulfilled')
-      .map((r) => (r as PromiseFulfilledResult<{ capability_id: string }>).value.capability_id));
-    expect(ids.size).toBe(1);
   });
 
   it('a REVOKED capability stays the send\'s capability — a retry is not re-signed around it', async () => {
@@ -344,8 +352,8 @@ describe('mint_notification_manage_capability', () => {
     // The resolver prefers an eligible contact over the persons.email fallback, so a capability
     // must be able to bind whichever one actually delivered this mail.
     const contact = (await c.query(
-      `INSERT INTO public.notification_contacts (destination_normalized)
-       VALUES ('contact-inbox@example.com') RETURNING id`)).rows[0].id;
+      `INSERT INTO public.notification_contacts (destination_normalized, user_id)
+       VALUES ('contact-inbox@example.com', $1) RETURNING id`, [U1])).rows[0].id;
     const cap = await mint({
       kind: 'account_event_optout', user_id: U1, contact_id: contact,
       address: 'contact-inbox@example.com',
@@ -502,8 +510,8 @@ describe('apply_notification_manage_action', () => {
 
   it('a contact whose address changes revokes its live capabilities transactionally', async () => {
     const contact = (await c.query(
-      `INSERT INTO public.notification_contacts (destination_normalized)
-       VALUES ('guest@example.com') RETURNING id`)).rows[0].id;
+      `INSERT INTO public.notification_contacts (destination_normalized, guest_player_id)
+       VALUES ('guest@example.com', gen_random_uuid()) RETURNING id`)).rows[0].id;
     const cap = await mint({
       kind: 'manage_context', contact_id: contact, address: 'guest@example.com',
       source_kind: 'outbox',
@@ -516,6 +524,101 @@ describe('apply_notification_manage_action', () => {
       [cap.capability_id])).rows[0].r;
     expect(revoked).toBe(true);
     expect(await apply(cap.capability_id, 'marketing_unsubscribe', 'manage_page')).toBe('rejected_revoked');
+  });
+});
+
+describe('key state is the retirement authority, and it fails closed', () => {
+  it('the floor is MONOTONIC and the row is permanent — even for a privileged caller', async () => {
+    await c.query(`UPDATE public.notification_manage_key_state
+                     SET current_version = 3, min_mintable_version = 2`);
+    await expect(c.query(
+      `UPDATE public.notification_manage_key_state SET min_mintable_version = 1`))
+      .rejects.toThrow(/monotonic/);
+    await expect(c.query(
+      `UPDATE public.notification_manage_key_state SET current_version = 1`))
+      .rejects.toThrow(/monotonic/);
+    await expect(c.query(`DELETE FROM public.notification_manage_key_state`))
+      .rejects.toThrow(/never removed/);
+  });
+
+  it('a MISSING key state retires everything — absence is never read as version 1', async () => {
+    const cap = await mint();
+    await c.query(`
+      ALTER TABLE public.notification_manage_key_state DISABLE TRIGGER trg_notif_manage_key_state_guard;
+      DELETE FROM public.notification_manage_key_state;
+      ALTER TABLE public.notification_manage_key_state ENABLE TRIGGER trg_notif_manage_key_state_guard;`);
+    expect(await apply(cap.capability_id, 'marketing_unsubscribe')).toBe('rejected_retired_key');
+    const ctx = (await c.query(
+      `SELECT status FROM public.get_notification_manage_context($1)`, [cap.capability_id])).rows[0];
+    expect(ctx.status).toBe('retired_key');
+    await expect(mint({ source_id: SEND_B })).rejects.toThrow(/signing-key state is missing/);
+  });
+
+  it('service_role cannot lower or remove the retirement floor', async () => {
+    const as = async (sql: string) => {
+      await c2.query(`SET ROLE service_role`);
+      try { await c2.query(sql); return null; }
+      catch (e) { return (e as { code?: string }).code ?? 'error'; }
+      finally { await c2.query(`RESET ROLE`); }
+    };
+    expect(await as(`UPDATE public.notification_manage_key_state SET min_mintable_version = 1`)).toBe('42501');
+    expect(await as(`DELETE FROM public.notification_manage_key_state`)).toBe('42501');
+    expect(await as(`TRUNCATE public.notification_manage_key_state`)).toBe('42501');
+    expect(await as(`SELECT * FROM public.notification_manage_key_state`)).toBeNull();
+  });
+});
+
+describe('a capability cannot borrow another account\'s authority', () => {
+  it('mint REFUSES a contact that is not this recipient\'s email contact for this address', async () => {
+    // The hole this closes: pairing (user B, contact/address A) let whoever received mail at A
+    // switch off B's event — the apply-time destination check compared A against A and passed.
+    const foreign = (await c.query(
+      `INSERT INTO public.notification_contacts (destination_normalized, user_id)
+       VALUES ('stranger@example.com', gen_random_uuid()) RETURNING id`)).rows[0].id;
+    await expect(mint({
+      kind: 'account_event_optout', user_id: U1, contact_id: foreign,
+      address: 'stranger@example.com', event_type: 'open_slots_player',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
+    })).rejects.toThrow(/not this recipient's email contact/);
+    // ...also refused when the contact belongs to the user but carries a DIFFERENT address
+    const own = (await c.query(
+      `INSERT INTO public.notification_contacts (destination_normalized, user_id)
+       VALUES ('other-inbox@example.com', $1) RETURNING id`, [U1])).rows[0].id;
+    await expect(mint({
+      kind: 'account_event_optout', user_id: U1, contact_id: own,
+      address: 'person@example.com', event_type: 'open_slots_player',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
+    })).rejects.toThrow(/not this recipient's email contact/);
+  });
+
+  it('apply RE-CHECKS ownership: a contact repointed at another account loses its authority', async () => {
+    const contact = (await c.query(
+      `INSERT INTO public.notification_contacts (destination_normalized, user_id)
+       VALUES ('shared-inbox@example.com', $1) RETURNING id`, [U1])).rows[0].id;
+    const cap = await mint({
+      kind: 'account_event_optout', user_id: U1, contact_id: contact,
+      address: 'shared-inbox@example.com', event_type: 'open_slots_player',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
+    });
+    // the contact is repointed at somebody else, address unchanged
+    await c.query(`UPDATE public.notification_contacts SET user_id = gen_random_uuid() WHERE id = $1`,
+      [contact]);
+    // the identity trigger revokes; even without it, the ownership re-check refuses
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_revoked');
+    const n = (await c.query(`SELECT count(*)::int AS n FROM public.notification_preferences_v2`)).rows[0].n;
+    expect(n).toBe(0);
+  });
+
+  it('an account-fallback capability dies with the person row, permanently', async () => {
+    const cap = await mint({
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
+    });
+    await c.query(`DELETE FROM public.persons WHERE user_id = $1`, [U1]);
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_revoked');
+    // recreating the person does not restore the old link's authority
+    await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1, 'person@example.com')`, [U1]);
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_revoked');
   });
 });
 
@@ -644,6 +747,19 @@ describe('email_footer_policy (seeded on a POPULATED catalog, the production ord
     await c.query(
       `UPDATE public.notification_event_types SET required_delivery = true, email_footer_policy = 'none'
         WHERE key = 'booking_confirmed_player'`);
+  });
+
+  it('MARKETING IS NEVER REQUIRED — the previously legal atomic transition is refused', async () => {
+    // All three earlier arms were satisfied by category='marketing' + required + 'none':
+    // mandatory marketing with no unsubscribe. One statement, so no arm can be blamed on ordering.
+    await expect(c.query(
+      `UPDATE public.notification_event_types
+          SET category = 'marketing', required_delivery = true, email_footer_policy = 'none'
+        WHERE key = 'open_slots_player'`)).rejects.toThrow(/never_required/i);
+    await expect(c.query(
+      `INSERT INTO public.notification_event_types
+         (key, category, required_delivery, email_footer_policy)
+       VALUES ('mandatory_marketing', 'marketing', true, 'none')`)).rejects.toThrow(/never_required/i);
   });
 
   it('onboarding templates default to the SUPPRESSIBLE class; optional_service does not exist yet', async () => {
