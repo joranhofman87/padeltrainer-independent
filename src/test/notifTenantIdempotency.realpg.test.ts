@@ -122,6 +122,9 @@ beforeAll(async () => {
     '20261011120000_notif_10cb_instant_claim_excludes_digest.sql',
     '20261011140000_notif_10cb_cutover_compat.sql',
     '20261013100000_notif_10cb_pref_bridge_v2_to_v1.sql',
+    // N2's marketing half — the resolver now honours the one-click unsubscribe it records, so the
+    // suppression table, its reader and the footer-policy column are part of this suite's chain
+    '20261014100000_notif_n2_marketing_suppression.sql',
     // ── under test ──
     '20261015100000_notif_n3_tenant_aware_idempotency.sql',
     '20261015110000_notif_n3_academy_restrictions.sql',
@@ -144,8 +147,17 @@ beforeAll(async () => {
     '20261024100000_notif_n4_seam_corrections_round3.sql',
     '20261025100000_notif_n4_invocation_ownership_contract.sql',
     '20261028100000_notif_n5_activation_boundary.sql',
+    '20261101100000_notif_audit_marketing_unsubscribe_seam.sql',
   ]) {
     await c.query(MIG(f));
+  }
+  {
+    // the footer-policy COLUMN half of 20261014120000 (its other half alters an onboarding-template
+    // table this suite does not carry). The resolver's marketing arm reads this column, so it is
+    // part of the chain under test.
+    const footer = MIG('20261014120000_notif_n2_footer_policy.sql');
+    const upToOnboarding = footer.slice(0, footer.indexOf('ALTER TABLE public.onboarding_email_templates'));
+    await c.query(upToOnboarding);
   }
 
   await c.query(`
@@ -1808,5 +1820,63 @@ describe('N4 SEAM corrections ROUND 2 — the defects the first correction left 
     await c.query(`ALTER TABLE public.notification_admin_requests DISABLE TRIGGER trg_notif_admin_requests_guard;`);
     await c.query(`DELETE FROM public.notification_admin_requests WHERE request_id = $1`, [req]);
     await c.query(`ALTER TABLE public.notification_admin_requests ENABLE TRIGGER trg_notif_admin_requests_guard;`);
+  });
+});
+
+describe('FINAL AUDIT — the resolver honours the one-click unsubscribe its own footer promises', () => {
+  const MARKETING = 'marketing_updates';
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.email_marketing_suppression`);
+    // a marketing event this suite can actually enqueue: email-capable, instant, footer-promising
+    await c.query(
+      `INSERT INTO public.notification_event_types
+         (key, category, audience, priority, required_delivery, supports_email, supports_whatsapp,
+          supports_digest, default_email_frequency, visibility_scope, email_footer_policy)
+       VALUES ($1, 'marketing', 'player', 'marketing', false, true, false, false, 'instant',
+               'private_user_only', 'marketing_unsubscribe')
+       ON CONFLICT (key) DO UPDATE SET default_email_frequency = 'instant',
+         email_footer_policy = 'marketing_unsubscribe', supports_email = true`, [MARKETING]);
+  });
+  const send = async (subject: string, tenant: { academy?: string; trainer?: string } = {}) =>
+    (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => $1, p_recipient_person_id => $2, p_idempotency_subject => $3,
+         p_tenant_academy_profile_id => $4, p_tenant_trainer_id => $5)`,
+      [MARKETING, P1, subject, tenant.academy ?? null, tenant.trainer ?? null])).rows
+      .filter((r: { channel: string }) => r.channel === 'email');
+
+  it('a PLATFORM unsubscribe silences marketing everywhere — the promise the footer makes', async () => {
+    expect((await send('m1'))[0].status).toBe('pending');            // before: it sends
+    // recorded as a MANUAL suppression (an actor, no capability): the capability table lives in
+    // another N2 migration, and the resolver's question is only "is this address suppressed"
+    await c.query(
+      `SELECT public.record_marketing_suppression('p1@example.com', 'platform', NULL, 'manual', NULL, $1)`,
+      [MGR]);
+    // …after: NOTHING is emitted on the email channel. (An optional event's refusal writes no
+    // row, exactly as preference_off does — the terminal skipped row is reserved for required
+    // delivery and for the tenant-cap arm, which is where an operator needs to see WHO silenced
+    // it. What matters here is that nothing sends.)
+    expect(await send('m2')).toEqual([]);
+    // …in every tenant context, because "stop all marketing from this product" means all of it
+    expect(await send('m3', { academy: A })).toEqual([]);
+    expect(await send('m4', { trainer: T })).toEqual([]);
+  });
+
+  it('an ACADEMY unsubscribe silences THAT academy only — a tenant decision stays that tenant\'s', async () => {
+    await c.query(`SELECT public.record_marketing_suppression('p1@example.com', 'academy', $1, 'manual', NULL, $2)`, [A, MGR]);
+    expect(await send('a1', { academy: A })).toEqual([]);                   // that academy: silenced
+    expect((await send('a2', { academy: B }))[0].status).toBe('pending');   // another academy still may
+    expect((await send('a3'))[0].status).toBe('pending');                   // and platform mail still may
+  });
+
+  it('a suppression does NOT touch service mail — an unsubscribe is not an account shutdown', async () => {
+    await c.query(`SELECT public.record_marketing_suppression('p1@example.com', 'platform', NULL, 'manual', NULL, $1)`, [MGR]);
+    // booking_confirmed_player carries no marketing footer: it is service mail and must still send
+    const rows = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player', p_recipient_person_id => $1,
+         p_idempotency_subject => 'svc-1', p_tenant_academy_profile_id => $2)`, [P1, A])).rows
+      .filter((r: { channel: string }) => r.channel === 'email');
+    expect(rows[0].status).toBe('pending');
   });
 });

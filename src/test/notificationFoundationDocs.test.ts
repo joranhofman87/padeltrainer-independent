@@ -65,7 +65,8 @@ describe('N6 doc pins — the foundation reference', () => {
 
   it('the outbox skip reasons the doc enumerates are the ones the code writes', () => {
     const resolver = newestDefining('CREATE OR REPLACE FUNCTION public.enqueue_notification(');
-    for (const reason of ['preference_off', 'tenant_restricted', 'no_email_contact', 'email_suppressed', 'no_deliverable_channel']) {
+    for (const reason of ['preference_off', 'tenant_restricted', 'no_email_contact', 'email_suppressed',
+                          'marketing_unsubscribed', 'no_deliverable_channel']) {
       expect(resolver, `the resolver must write ${reason}`).toContain(`'${reason}'`);
       expect(FOUNDATION, `the doc must list ${reason}`).toContain(reason);
     }
@@ -82,6 +83,16 @@ describe('N6 doc pins — the foundation reference', () => {
     const states = [...block!.matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
     expect(states.length).toBeGreaterThan(5);
     for (const s of states) expect(FOUNDATION, `the doc must name the ${s} state`).toContain(s);
+  });
+
+  it('the marketing unsubscribe the footer promises is READ by the resolver (the N2<->N3 seam)', () => {
+    const resolver = newestDefining('CREATE OR REPLACE FUNCTION public.enqueue_notification(');
+    expect(resolver).toContain('is_marketing_suppressed');
+    expect(resolver).toContain("email_footer_policy = 'marketing_unsubscribe'");
+    // scope-aware: platform silences everything, a tenant one only that tenant
+    expect(resolver).toContain("is_marketing_suppressed(v_dest, 'platform', NULL)");
+    expect(resolver).toContain("'academy', p_tenant_academy_profile_id");
+    expect(FOUNDATION).toContain('marketing_unsubscribed');
   });
 
   it('required delivery is applied LAST for email, as the precedence table claims', () => {

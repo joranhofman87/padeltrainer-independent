@@ -819,3 +819,41 @@ timeout the same way. All pass in isolation. They belong to 10c-a2 and the invoi
 
 **Owner:** whoever next touches those suites — either raise the per-test timeout/budget or mark them
 serial. Do not "fix" them by relaxing what they assert.
+
+---
+
+## Final Integration Audit (2026-08-06) — recorded, not fixed
+
+The audit that gates N7. These are findings it surfaced **outside** the notification foundation's
+boundary; the in-scope ones were fixed in the same pass (see the roadmap's N-unit rows).
+
+### FA-1 · Suppression is not enforced on every legacy email sender (P2, out of scope here)
+
+`is_email_suppressed` (hard bounce / complaint) is enforced on the v2 paths — the instant worker,
+the digest state machine — and on `send-digest-emails` and `send-invoice-email`. It is **not**
+checked by these direct senders:
+
+`send-email` (the generic one, which does check *preferences*), `notify-rebook-member-open`,
+`process-onboarding-emails`, `send-campaign-emails`, `trigger-welcome-emails`,
+`send-priority-claim-invitation`, `send-rebook-group-confirmation`, `signup-user`, `update-user`,
+`send-auth-email`.
+
+Some of those are legitimately exempt (`send-auth-email` carries password resets: a suppressed
+address should arguably still receive a security mail, and that is a product decision, not an
+oversight). Most are not: mailing an address that hard-bounced or filed a complaint costs domain
+reputation and, for the marketing ones, is a compliance problem.
+
+**Why it is recorded rather than fixed:** every one of them is outside the notification
+foundation. The foundation's claims stay true — this is a system-wide email question, which is
+what the postponed A-audits are for. The fix per sender is one RPC call before dispatch
+(`is_email_suppressed`), plus a decision about the security-mail exemption.
+
+**Owner:** whoever runs A1–A7. **Do not** treat this as closed by the notification programme.
+
+### FA-2 · Two parallel senders own their own idempotency (P3)
+
+`notify-rebook-member-open` and `send-digest-emails` send without a `notification_outbox` row, so
+their sends do not appear in the v2 ledger, the admin surface or the delivery history. Both are
+individually safe (deterministic idempotency keys, checkpointing), but "every send is attributable"
+is only true *within* the foundation. Recorded so nobody reads the admin surface as a complete
+picture of outbound mail.

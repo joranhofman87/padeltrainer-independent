@@ -91,6 +91,11 @@ setting themselves; the guard binds code paths and mistakes, not the person who 
 A worker that is never invoked is invisible from inside the database. The liveness read is the only
 detector, and it must be wired **before** the first canary, not after.
 
+**The admin surface shows the v2 pipeline, not every email this product sends.** Two legacy paths
+(`notify-rebook-member-open`, `send-digest-emails`) still send outside it and leave no outbox row —
+see [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) FA-2. If a recipient says they got
+something the outbox does not show, that is where to look next.
+
 ## 4. Diagnosing one notification without exposing anyone
 
 1. **Outbox** → filter by event/status. You get status, skip reason, masked destination, tenant,

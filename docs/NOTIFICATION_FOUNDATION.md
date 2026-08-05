@@ -82,7 +82,12 @@ re-renders.
    supply an academy at all.
 6. **Required delivery** runs **last** for email: a `required_delivery` event is forced to
    `instant`, so no stale cap and no preference can weaken a service notification.
-7. **Contact + consent scope**, then **suppression**.
+7. **Contact + consent scope**, then **suppression** — both kinds: the deliverability one (hard
+   bounce / complaint, `is_email_suppressed`) and, for events whose footer promises an unsubscribe
+   (`email_footer_policy = 'marketing_unsubscribe'`), the **marketing** one recorded by N2's
+   one-click endpoint. A platform unsubscribe silences every scope; an academy or trainer one
+   silences only that tenant's sends. Service mail is untouched — an unsubscribe is not an account
+   shutdown.
 
 ## 5. Identity, idempotency and provider acceptance
 
@@ -127,7 +132,10 @@ Rows the boundary permanently excludes are terminally skipped through
 
 **Outbox row** — `pending → processing → sent | delivered | failed | skipped | cancelled |
 delivery_unknown`. `skipped` always carries a reason (`preference_off`, `tenant_restricted`,
-`no_email_contact`, `email_suppressed`, `no_deliverable_channel`, `pre_activation_boundary`).
+`no_email_contact`, `email_suppressed`, `marketing_unsubscribed`, `no_deliverable_channel`,
+`pre_activation_boundary`). An optional event's refusal writes no row at all — the terminal skipped
+row is reserved for required delivery and for the tenant-cap arm, where an operator needs to see
+*who* silenced it.
 
 **Digest group** — `pending → leased → prepared → request_ready → sending → sent`, with the
 terminal set `failed_terminal`, `oversize_failed`, `delivery_unknown`, `retry_stopped`, `no_work`,
