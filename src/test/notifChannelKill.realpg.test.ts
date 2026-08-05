@@ -100,7 +100,17 @@ beforeAll(async () => {
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
     CREATE TABLE public.invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
-    CREATE TABLE public.notification_contacts (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+  `);
+  // the REAL contacts DDL (M6's indexes and the search read its real columns)
+  {
+    const f0 = MIG('20260910100000_notification_foundation_schema.sql');
+    const contactsDdl = f0.match(/CREATE TABLE public\.notification_contacts \([\s\S]*?\n\);/)?.[0];
+    if (!contactsDdl) throw new Error('contacts DDL not found');
+    await c.query(contactsDdl);
+  }
+  await c.query(`SELECT 1`);
+  await c.query(`
+    SELECT 1;
   `);
   const foundation = MIG('20260910100000_notification_foundation_schema.sql');
   const outboxDdl = foundation.match(/CREATE TABLE public\.notification_outbox \([\s\S]*?\);/)?.[0];
@@ -165,10 +175,20 @@ beforeAll(async () => {
     if (!def) throw new Error(`${fn} not found in the state machine`);
     await c.query(def);
   }
+  // M6's preview index targets the v2 preferences table — real DDL, extracted
+  const prefsDdl = foundation.match(/CREATE TABLE public\.notification_preferences_v2 \([\s\S]*?\n\);/)?.[0];
+  if (!prefsDdl) throw new Error('preferences_v2 DDL not found');
+  await c.query(prefsDdl);
   await c.query(MIG('20261006110000_reconcile_orphan_provider_events.sql'));
   await c.query(MIG('20261020100000_notif_n4_send_enabling_recovery.sql'));
-  // M6 applies here too so the surface pin stays COMPLETE (its resolver-dependent fns are
-  // exercised in the N3 equivalence suite; creation is body-unresolved and safe here)
+  // M6 applies here too so the surface pin stays COMPLETE. Its expression INDEXES resolve
+  // their function at CREATE time — the REAL fingerprint fn (newest definition), extracted.
+  {
+    const hashFix = MIG('20261005110000_notification_digest_request_hash_bytea_fix.sql');
+    const fpFn = hashFix.match(/CREATE OR REPLACE FUNCTION public\.notif_digest_destination_fingerprint[\s\S]*?\$\$;/)?.[0];
+    if (!fpFn) throw new Error('fingerprint fn not found');
+    await c.query(fpFn);
+  }
   await c.query(MIG('20261021100000_notif_n4_readiness_preview_search.sql'));
 }, 180_000);
 
