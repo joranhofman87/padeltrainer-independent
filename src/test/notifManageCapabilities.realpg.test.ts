@@ -5,16 +5,18 @@
 // opt-out the campaign/onboarding senders will consult at send time, the capability rows behind
 // the signed footer links, and the declared footer policy the attach layers read. The properties
 // pinned here are the ones a later edit is most likely to break silently:
-//   * one capability PER SEND: a retry of the same send returns the same row (so the rebuilt
-//     email is byte-identical under a fixed provider idempotency key), a NEW send always gets a
-//     fresh unconsumed row, a same-source mint with different claims RAISES, and two connections
-//     racing one send converge on exactly one row via the unique index;
+//   * one capability PER SEND, identity (source_kind, source_id): a retry of the same send
+//     returns the same row (so the rebuilt email is byte-identical under a fixed provider
+//     idempotency key), a NEW send gets its own row, a same-source mint with different claims
+//     RAISES, and two connections racing one send both receive the one row;
 //   * key rotation is database-owned state: the version comes from the key-state row, an
 //     already-printed capability is NEVER re-signed or revoked by a rotation, and a retired key
 //     fails CLOSED (rejected_retired_key / status retired_key);
 //   * capabilities authorize ONE monotonic action (marketing suppression for an address in a
-//     scope), so a forwarded or replayed link can never contradict a later choice — the reason
-//     tokens exist only where login is impossible, and account holders get the settings page;
+//     scope), so a forwarded or replayed link can never contradict a later choice. That is why
+//     EVERY marketing recipient gets one — registered or not, since suppression is about the
+//     address — while optional SERVICE mail links to the authenticated settings page instead,
+//     because a per-account preference is exactly what a forwardable link must not touch;
 //   * the suppression reader RAISES on malformed scope — a sender wiring error defers, it never
 //     clears;
 //   * claims are immutable and no client role can touch the tables directly;

@@ -247,8 +247,8 @@ BEGIN
     RAISE EXCEPTION 'mint_notification_manage_capability: a capability belongs to ONE send — source_id is required';
   END IF;
   -- TTL bounds: a zero/negative TTL mints dead links; an unbounded one is a forever credential.
-  -- Both kinds manage MARKETING, and an unsubscribe link must outlive mailbox archaeology
-  -- (>= 13 months per deliverability guidance), so one band covers both.
+  -- A capability is a marketing unsubscribe, and an unsubscribe link must outlive mailbox
+  -- archaeology (>= 13 months per deliverability guidance) without becoming perpetual.
   IF p_ttl IS NULL OR p_ttl < interval '395 days' OR p_ttl > interval '800 days' THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: ttl out of bounds (marketing management links stay valid 13-26 months)';
   END IF;
@@ -278,9 +278,11 @@ BEGIN
     RAISE EXCEPTION 'mint_notification_manage_capability: the capability for % % disappeared mid-mint', p_source_kind, p_source_id;
   END IF;
 
-  -- The row may pre-date this call (a retry). It is this send's capability only if it still
-  -- describes THIS mail — otherwise the source id is being reused for a different message, and
-  -- handing back a link printed for another recipient would be far worse than refusing.
+  -- The row may pre-date this call (a retry). Identity is (source_kind, source_id) alone, so the
+  -- remaining claims — kind, scope and address — are verified rather than assumed: it is this
+  -- send's capability only if it still describes THIS mail. Otherwise the source id is being
+  -- reused for a different message, and handing back a link printed for another recipient would
+  -- be far worse than refusing.
   IF v_row.kind IS DISTINCT FROM p_kind
      OR v_row.scope_kind IS DISTINCT FROM p_scope_kind
      OR v_row.scope_id IS DISTINCT FROM p_scope_id
@@ -427,8 +429,9 @@ GRANT EXECUTE ON FUNCTION public.apply_notification_manage_action(uuid, text, te
 -- a different token for a message that may still be retried. Rows may therefore only be purged
 -- once their source can no longer retry: the sweep (S5) deletes rows whose expires_at is more
 -- than 30 days past, which is far beyond any worker retry/backoff window, and never deletes a
--- row that is merely revoked or consumed. Nothing here deletes; this comment is the contract the
--- sweep must satisfy, and `idx_notif_manage_cap_expiry` is what it will read.
+-- row that is merely revoked. Nothing here deletes; this comment is the contract the
+-- sweep must satisfy, and `idx_notif_manage_cap_expiry` is what it will read. A REVOKED row is
+-- never purged early either: it is still the record of that send's identity.
 --
 -- Unbounded growth is bounded in practice by scope: capabilities exist only for MARKETING sends
 -- (campaigns, drip), not for the transactional/service pipeline.

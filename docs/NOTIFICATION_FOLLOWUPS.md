@@ -34,7 +34,7 @@ raised by review against the shipped schema and must be satisfied where named.
    is not mounted yet (only the three role-specific routes are); S4 ships the role-forwarder and the
    redirect-preserving logged-out behaviour.
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
-   `expires_at` more than 30 days past — and never a row that is merely revoked or consumed.
+   `expires_at` more than 30 days past — and never a row that is merely revoked.
 8. **Owner precondition before S3 deploys.** Every existing `onboarding_email_templates` row lands
    on `delivery_class='marketing'` (the suppressible direction). The owner must reclassify the live
    templates (`required_service` where the mail is genuinely obligatory) before S3's suppression
