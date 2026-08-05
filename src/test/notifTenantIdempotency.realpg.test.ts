@@ -1492,7 +1492,7 @@ describe('N4 M6 round-7 — migration-time cap validation and the UPDATE-path lo
       FROM generate_series(1, 501) g`, [over]);
     await c.query(`ALTER TABLE public.notification_contacts ENABLE TRIGGER trg_zz_notif_contact_cap;`);
     const mig = MIG('20261021100000_notif_n4_readiness_preview_search.sql');
-    const assertion = mig.match(/DO \$\$\nDECLARE r record;\nBEGIN\n  SELECT nc\.channel[\s\S]*?END \$\$;/)?.[0];
+    const assertion = mig.match(/DO \$\$\nDECLARE r record;\nBEGIN\n {2}SELECT nc\.channel[\s\S]*?END \$\$;/)?.[0];
     if (!assertion) throw new Error('cap assertion not found in the migration');
     await expect(c.query(assertion)).rejects.toThrow(/migration blocked.*501 active contacts/);
     // cleanup so later tests see a legal world
