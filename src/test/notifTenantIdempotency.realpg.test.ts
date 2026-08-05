@@ -36,6 +36,7 @@ const P1 = '22222222-2222-4222-8222-222222222222';
 const A = '33333333-3333-4333-8333-333333333333'; // academy A
 const B = '44444444-4444-4444-8444-444444444444'; // academy B
 const T = '55555555-5555-4555-8555-555555555555'; // trainer
+const MGR = '66666666-6666-4666-8666-666666666666'; // manager of academy A only
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'n3idem-rp-'));
@@ -51,7 +52,6 @@ beforeAll(async () => {
   await c.query(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
     CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY);
-    CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$ SELECT NULL::uuid $fn$;
     CREATE TABLE public.persons (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, email text, preferred_language text);
     CREATE TABLE public.profiles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, preferred_language text);
     CREATE TABLE public.person_links (guest_player_id uuid, person_id uuid);
@@ -71,6 +71,16 @@ beforeAll(async () => {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       event_type text NOT NULL, recipient_email text NOT NULL,
       occurred_at timestamptz NOT NULL DEFAULT now());
+    -- manager grants + the REAL is_academy_manager body (20260128121147, verbatim semantics)
+    CREATE TABLE public.academy_managers (user_id uuid NOT NULL, academy_profile_id uuid NOT NULL);
+    CREATE FUNCTION public.is_academy_manager(_user_id uuid, _academy_profile_id uuid)
+      RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path TO 'public' AS $fn$
+      SELECT EXISTS (SELECT 1 FROM public.academy_managers
+                     WHERE user_id = _user_id AND academy_profile_id = _academy_profile_id) $fn$;
+    -- a settable auth.uid, so RPCs can be exercised as specific actors
+    CREATE TABLE public.test_auth_ctx (uid uuid);
+    INSERT INTO public.test_auth_ctx VALUES (NULL);
+    CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$ SELECT uid FROM public.test_auth_ctx LIMIT 1 $fn$;
     CREATE TABLE public.email_suppression_stub (email text PRIMARY KEY);
     CREATE FUNCTION public.is_email_suppressed(p_email text) RETURNS boolean LANGUAGE sql STABLE AS
       $fn$ SELECT EXISTS (SELECT 1 FROM public.email_suppression_stub WHERE email = lower(p_email)) $fn$;
@@ -96,15 +106,17 @@ beforeAll(async () => {
     '20261013100000_notif_10cb_pref_bridge_v2_to_v1.sql',
     // ── under test ──
     '20261015100000_notif_n3_tenant_aware_idempotency.sql',
+    '20261015110000_notif_n3_academy_restrictions.sql',
   ]) {
     await c.query(MIG(f));
   }
 
   await c.query(`
-    INSERT INTO auth.users (id) VALUES ('${U1}');
+    INSERT INTO auth.users (id) VALUES ('${U1}'), ('${MGR}');
     INSERT INTO public.persons (id, user_id, email) VALUES ('${P1}','${U1}','p1@example.com');
     INSERT INTO public.academy_profiles (id) VALUES ('${A}'), ('${B}');
     INSERT INTO public.trainer_profiles (id) VALUES ('${T}');
+    INSERT INTO public.academy_managers (user_id, academy_profile_id) VALUES ('${MGR}','${A}');
   `);
 }, 300_000);
 
@@ -190,5 +202,92 @@ describe('tenant-aware idempotency (N3 M1)', () => {
       `SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'uq_notification_outbox_idem'`);
     expect(def.rows).toHaveLength(1);
     expect(def.rows[0].d).toBe('UNIQUE (channel, idempotency_key, tenant_scope_key)');
+  });
+});
+
+
+const asUser = (uid: string | null) =>
+  c.query(`UPDATE public.test_auth_ctx SET uid = ${uid ? `'${uid}'` : 'NULL'}`);
+
+const setCap = async (over: Partial<{ academy: string; event: string; channel: string; cap: string | null; reason: string; req: string }> = {}) => {
+  const a = { academy: A, event: 'open_slots_player', channel: 'email', cap: 'off',
+    reason: 'too many complaints', req: crypto.randomUUID(), ...over };
+  return (await c.query(
+    `SELECT public.set_academy_notification_restriction($1,$2,$3,$4,$5,$6) AS r`,
+    [a.academy, a.event, a.channel, a.cap, a.reason, a.req])).rows[0].r as string;
+};
+
+describe('academy restrictions + audit (N3 M2)', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit DISABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await c.query(`DELETE FROM public.academy_notification_restriction_audit;`);
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit ENABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await asUser(MGR);
+  });
+
+  it('set / change / clear, each audited with old→new and the mandatory reason', async () => {
+    expect(await setCap({ cap: 'daily' })).toBe('set');
+    expect(await setCap({ cap: 'off' })).toBe('changed');
+    expect(await setCap({ cap: null })).toBe('cleared');
+    const audit = await c.query(
+      `SELECT old_max_frequency, new_max_frequency FROM public.academy_notification_restriction_audit ORDER BY created_at, id`);
+    expect(audit.rows).toEqual([
+      { old_max_frequency: null, new_max_frequency: 'daily' },
+      { old_max_frequency: 'daily', new_max_frequency: 'off' },
+      { old_max_frequency: 'off', new_max_frequency: null },
+    ]);
+  });
+
+  it('request_id replay returns the recorded outcome with NO second audit row; a reused id with a different decision is refused', async () => {
+    const req = crypto.randomUUID();
+    expect(await setCap({ cap: 'off', req })).toBe('set');
+    expect(await setCap({ cap: 'off', req })).toBe('replayed');
+    const n = await c.query(`SELECT count(*)::int AS n FROM public.academy_notification_restriction_audit`);
+    expect(n.rows[0].n).toBe(1);
+    await expect(setCap({ cap: 'daily', req })).rejects.toThrow(/already used for a different change/);
+  });
+
+  it('a required_delivery event cannot be capped — the table trigger refuses every writer', async () => {
+    await expect(setCap({ event: 'booking_confirmed_player' })).rejects.toThrow(/required_delivery/);
+    // even a direct superuser INSERT hits the same wall (validation lives on the TABLE)
+    await expect(c.query(
+      `INSERT INTO public.academy_notification_restrictions VALUES ('${A}','booking_confirmed_player','email','off')`))
+      .rejects.toThrow(/required_delivery/);
+  });
+
+  it('a channel the event does not support is refused', async () => {
+    await expect(setCap({ channel: 'push' })).rejects.toThrow(/does not support channel/);
+  });
+
+  it('non-managers, foreign managers and anonymous callers are refused; reasons are mandatory', async () => {
+    await asUser(U1);
+    await expect(setCap()).rejects.toThrow(/not a manager/);
+    await asUser(MGR);
+    await expect(setCap({ academy: B })).rejects.toThrow(/not a manager/);
+    await asUser(null);
+    await expect(setCap()).rejects.toThrow(/anonymous/);
+    await asUser(MGR);
+    await expect(setCap({ reason: '  ' })).rejects.toThrow(/reason/);
+  });
+
+  it('the audit is append-only for EVERYONE — even the owner cannot rewrite history', async () => {
+    await setCap({ cap: 'off' });
+    await expect(c.query(`UPDATE public.academy_notification_restriction_audit SET reason = 'edited'`))
+      .rejects.toThrow(/append-only/);
+    await expect(c.query(`DELETE FROM public.academy_notification_restriction_audit`))
+      .rejects.toThrow(/append-only/);
+  });
+
+  it('manager reads are scoped: own academy yes, foreign academy refused', async () => {
+    await setCap({ cap: 'weekly' });
+    const rows = (await c.query(`SELECT * FROM public.get_academy_notification_restrictions('${A}')`)).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].max_frequency).toBe('weekly');
+    await expect(c.query(`SELECT * FROM public.get_academy_notification_restrictions('${B}')`))
+      .rejects.toThrow(/not a manager/);
+    const hist = (await c.query(`SELECT * FROM public.get_academy_notification_restriction_audit('${A}')`)).rows;
+    expect(hist).toHaveLength(1);
+    expect(hist[0].reason).toBe('too many complaints');
   });
 });
