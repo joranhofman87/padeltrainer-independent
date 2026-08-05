@@ -28,10 +28,18 @@ CREATE TABLE public.notification_admin_audit (
   reason      text NOT NULL CHECK (length(btrim(reason)) BETWEEN 3 AND 500),
   created_at  timestamptz NOT NULL DEFAULT now(),
   -- GLOBAL: one request id = one decision, across every action and target this table will
-  -- ever carry. (A rejected REUSE of an id therefore cannot write a second row — the original
-  -- decision row IS the durable record of what that id means; the reuse surfaces as a typed
-  -- refusal to the caller.)
-  CONSTRAINT uq_notification_admin_audit_request UNIQUE (actor, request_id)
+  -- ever carry. (A rejected REUSE of an id cannot write a second DECISION row — it is recorded
+  -- in notification_admin_rejected_attempts below and surfaces as a typed refusal verdict.)
+  CONSTRAINT uq_notification_admin_audit_request UNIQUE (actor, request_id),
+  -- SCHEMA-typed coherence per action — length checks alone would let owner-direct writes
+  -- record incoherent evidence (target=arbitrary, old=foo, new=bar) forever, append-only.
+  CONSTRAINT chk_notification_admin_audit_coherent CHECK (
+    action <> 'channel_kill'
+    OR (target IN ('email', 'whatsapp')
+        AND new_value = 'killed'
+        AND ((outcome = 'applied' AND old_value = 'live')
+          OR (outcome = 'already_killed' AND old_value = 'killed')))
+  )
 );
 
 -- N3-hardening + BEFORE TRUNCATE (finding 14): rows are born complete and never change.
@@ -59,6 +67,42 @@ REVOKE ALL ON public.notification_admin_audit FROM PUBLIC, anon, authenticated, 
 
 CREATE INDEX idx_notification_admin_audit_keyset
   ON public.notification_admin_audit (created_at DESC, id DESC);
+
+
+-- ── the REJECTED-ATTEMPT record (finding 14: audit rejected attempts) ───────────────────────
+-- A conflicting reuse of a request id is itself evidence — who tried, what they tried, when.
+-- It CANNOT live in the decision table (the global uniqueness owns that id), and it cannot be
+-- written on a RAISE path (the insert would roll back with it) — so the RPC returns a TYPED
+-- refusal verdict ('rejected_request_reuse') for this one arm, letting the record commit.
+-- Boundary, stated explicitly: only AUTHENTICATED-ADMIN attempts that passed validation and
+-- then conflicted at replay are recorded here; non-admin and malformed-request probing raises
+-- pre-decision and stays in the security/edge logging domain — an unauthenticated writer into
+-- a database audit table would be a DoS surface.
+CREATE TABLE public.notification_admin_rejected_attempts (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  actor         uuid NOT NULL,
+  request_id    uuid NOT NULL,               -- deliberately NOT unique: every attempt is recorded
+  action        text NOT NULL CHECK (action IN ('channel_kill')),
+  target        text NOT NULL CHECK (length(btrim(target)) BETWEEN 1 AND 100),
+  reason        text NOT NULL CHECK (length(btrim(reason)) BETWEEN 3 AND 500),
+  conflict_with text NOT NULL CHECK (length(conflict_with) BETWEEN 3 AND 500),  -- what the id already meant
+  created_at    timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TRIGGER trg_notif_admin_rejected_guard
+  BEFORE UPDATE OR DELETE ON public.notification_admin_rejected_attempts
+  FOR EACH ROW EXECUTE FUNCTION public.notif_admin_audit_guard();
+CREATE TRIGGER trg_notif_admin_rejected_no_truncate
+  BEFORE TRUNCATE ON public.notification_admin_rejected_attempts
+  FOR EACH STATEMENT EXECUTE FUNCTION public.notif_admin_audit_guard();
+
+COMMENT ON TABLE public.notification_admin_rejected_attempts IS
+  'N4 M3: append-only record of authenticated-admin attempts REFUSED at replay (a request id reused for a different decision). Written on the typed-verdict path — never a RAISE path, which would roll the record back. Pre-validation refusals (non-admin, malformed) are deliberately NOT here: they raise before any decision exists.';
+
+REVOKE ALL ON public.notification_admin_rejected_attempts FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE INDEX idx_notification_admin_rejected_keyset
+  ON public.notification_admin_rejected_attempts (created_at DESC, id DESC);
 
 
 -- ── admin_activate_channel_kill, rewired through the audit (M2 semantics preserved) ─────────
@@ -106,8 +150,12 @@ BEGIN
       -- exact replay: the ORIGINAL result, and no second entry
       RETURN CASE a.outcome WHEN 'applied' THEN 'killed' ELSE a.outcome END;
     END IF;
-    RAISE EXCEPTION 'admin_activate_channel_kill: request % was already used for a different decision (action %, target %, reason %)',
-      p_request_id, a.action, a.target, a.reason;
+    -- the REFUSAL is itself recorded — on the RETURN path, never a RAISE (which would roll
+    -- the record back). The original decision row is untouched; this attempt gets its own.
+    INSERT INTO public.notification_admin_rejected_attempts (actor, request_id, action, target, reason, conflict_with)
+    VALUES (auth.uid(), p_request_id, 'channel_kill', p_channel, btrim(p_reason),
+            format('action %s, target %s, reason %s', a.action, a.target, a.reason));
+    RETURN 'rejected_request_reuse';
   END IF;
 
   -- 3. the per-channel kill lock (the one every claim path shares) — strictly AFTER the
@@ -161,12 +209,17 @@ BEGIN
   IF auth.uid() IS NULL OR NOT public.has_role(auth.uid(), 'admin') THEN
     RAISE EXCEPTION 'admin_list_notification_audit: platform admin only';
   END IF;
+  -- the cursor is BOTH fields or NEITHER: a half-cursor silently drops or repeats rows
+  -- (timestamp-only loses same-timestamp siblings; id-only restarts from page one)
+  IF (p_before_created_at IS NULL) <> (p_before_id IS NULL) THEN
+    RAISE EXCEPTION 'admin_list_notification_audit: a keyset cursor needs BOTH created_at and id (or neither)';
+  END IF;
   RETURN QUERY
   SELECT t.id, t.actor, t.request_id, t.action, t.target, t.old_value, t.new_value,
          t.outcome, t.reason, t.created_at
     FROM public.notification_admin_audit t
    WHERE p_before_created_at IS NULL
-      OR (t.created_at, t.id) < (p_before_created_at, coalesce(p_before_id, '00000000-0000-0000-0000-000000000000'::uuid))
+      OR (t.created_at, t.id) < (p_before_created_at, p_before_id)
    ORDER BY t.created_at DESC, t.id DESC
    LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200);
 END;

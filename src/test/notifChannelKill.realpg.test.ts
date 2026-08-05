@@ -136,6 +136,9 @@ beforeEach(async () => {
   await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
   await c.query(`DELETE FROM public.notification_admin_audit;`);
   await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
+  await c.query(`ALTER TABLE public.notification_admin_rejected_attempts DISABLE TRIGGER trg_notif_admin_rejected_guard;`);
+  await c.query(`DELETE FROM public.notification_admin_rejected_attempts;`);
+  await c.query(`ALTER TABLE public.notification_admin_rejected_attempts ENABLE TRIGGER trg_notif_admin_rejected_guard;`);
   await c.query(`DELETE FROM public.notification_outbox;`);
   await c.query(`DELETE FROM public.academy_notification_restrictions;`);
 });
@@ -154,9 +157,9 @@ describe('admin_activate_channel_kill — the only write, admin-checked, request
     const req = crypto.randomUUID();
     expect(await adminKill(c2, ADMIN, 'email', req)).toBe('killed');
     expect(await adminKill(c2, ADMIN, 'email', req)).toBe('killed');   // network-retry replay
-    // a reused id carrying a DIFFERENT decision (other reason) is refused — an id names ONE decision
-    await expect(adminKill(c2, ADMIN, 'email', req, 'some other reason')).rejects.toThrow(/different decision/);
-    await expect(adminKill(c2, ADMIN, 'whatsapp', req)).rejects.toThrow(/already used for a different decision/);
+    // a reused id carrying a DIFFERENT decision (other reason) is refused TYPED — and recorded
+    expect(await adminKill(c2, ADMIN, 'email', req, 'some other reason')).toBe('rejected_request_reuse');
+    expect(await adminKill(c2, ADMIN, 'whatsapp', req)).toBe('rejected_request_reuse');
     expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(1);
   });
 
@@ -415,12 +418,37 @@ describe('N4 M3 — the ops audit: every decision recorded, exactly once, immuta
     expect((await audits(req2)).length).toBe(1);
   });
 
-  it('a reused id carrying a DIFFERENT decision refuses typed and writes nothing new', async () => {
+  it('a reused id carrying a DIFFERENT decision: typed refusal verdict, the ATTEMPT recorded, the decision untouched', async () => {
     const req = crypto.randomUUID();
     await adminKill(c2, ADMIN, 'email', req, 'first');
-    await expect(adminKill(c2, ADMIN, 'whatsapp', req, 'first')).rejects.toThrow(/different decision/);
-    await expect(adminKill(c2, ADMIN, 'email', req, 'other words')).rejects.toThrow(/different decision/);
-    expect((await audits(req)).length).toBe(1);
+    expect(await adminKill(c2, ADMIN, 'whatsapp', req, 'first')).toBe('rejected_request_reuse');
+    expect(await adminKill(c2, ADMIN, 'email', req, 'other words')).toBe('rejected_request_reuse');
+    expect((await audits(req)).length).toBe(1);   // the DECISION table still holds exactly the original
+    // …and the rejected-attempt record preserves who tried WHAT, against which original decision
+    const rej = (await c.query(`SELECT * FROM public.notification_admin_rejected_attempts WHERE request_id=$1 ORDER BY created_at`, [req])).rows;
+    expect(rej.length).toBe(2);
+    expect(rej[0]).toMatchObject({ actor: ADMIN, action: 'channel_kill', target: 'whatsapp', reason: 'first' });
+    expect(rej[0].conflict_with).toContain('target email');
+    expect(rej[1]).toMatchObject({ target: 'email', reason: 'other words' });
+    // the rejected record is append-only like everything else on this surface
+    await expect(c.query(`DELETE FROM public.notification_admin_rejected_attempts`)).rejects.toThrow(/append-only/);
+  });
+
+  it('the schema refuses INCOHERENT audit evidence even from the owner — typed fields, not just lengths', async () => {
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, gen_random_uuid(), 'channel_kill', 'arbitrary', 'foo', 'bar', 'applied', 'smuggled row')`, [ADMIN]))
+      .rejects.toThrow(/chk_notification_admin_audit_coherent/);
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, gen_random_uuid(), 'channel_kill', 'email', 'killed', 'killed', 'applied', 'wrong old for applied')`, [ADMIN]))
+      .rejects.toThrow(/chk_notification_admin_audit_coherent/);
+  });
+
+  it('a HALF-cursor is refused — both fields or neither, never a silent drop or restart', async () => {
+    await adminKill(c2, ADMIN, 'email', crypto.randomUUID(), 'one');
+    await expect(listAs(c2, ADMIN, `now()::timestamptz, NULL, 2`)).rejects.toThrow(/BOTH created_at and id/);
+    await expect(listAs(c2, ADMIN, `NULL, gen_random_uuid(), 2`)).rejects.toThrow(/BOTH created_at and id/);
   });
 
   it('append-only, owner-effectively: UPDATE, DELETE and TRUNCATE are refused; the global uniqueness holds at the schema', async () => {
