@@ -52,7 +52,11 @@ beforeAll(async () => {
     // runtime contract. In this suite no invocation is ever opened, so every claim is the
     // steady-state NULL — which is itself part of what these tests now prove.
     '20261016100000_notif_n4_worker_invocations.sql',
-    '20261016110000_notif_n4_invocation_claim.sql']) {
+    '20261016110000_notif_n4_invocation_claim.sql',
+    // N4 M2: per-channel kill switches gate the digest claim/materialize/begin in SQL. With no
+    // kill row every prior test must behave IDENTICALLY — that unchanged-behavior guarantee is
+    // part of what this chain now proves; the kill describe at the bottom proves the gates.
+    '20261017100000_notif_n4_channel_kill_switches.sql']) {
     await c.query(readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'));
   }
   await c.end();
@@ -71,6 +75,11 @@ beforeEach(async () => {
       -- (an immutable-row trigger refuses TRUNCATE), which is the point of an operator audit.
       public.notification_outbox, public.email_suppression_stub, public.notification_preferences_v2, public.notification_contacts,
       public.persons RESTART IDENTITY CASCADE`);
+    // N4 M2: kill switches are SET-only by design (no SQL path clears one) — the harness resets
+    // them the sanctioned way, exactly as the owner's runbook would.
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
   } finally { await c.end(); }
 });
 
@@ -673,6 +682,66 @@ describe('10c-b E — the orphan provider-event lifecycle', () => {
       // ...and the send itself still happened: a drain failure must not stop delivery.
       expect((await c.query(`SELECT state FROM public.notification_digest_groups WHERE recipient_key='p:orph2'`))
         .rows[0].state).toBe('sent');
+    } finally { await c.end(); }
+  });
+});
+
+describe('N4 M2 — the channel kill switch over the digest engine', () => {
+  const kill = (c: pg.Client, channel = 'email') =>
+    c.query(`INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id)
+             VALUES ($1, 'test kill', gen_random_uuid())`, [channel]);
+
+  it('killed BEFORE the pass: claim + materialize idle — no group forms, nothing sends, the members stay pending', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'k:1', 'a@example.com', [{ title: 'x' }]);
+      await kill(c);
+      const sendCalls: DepOverrides['sendCalls'] = [];
+      const s = await runDigestWorker(mkDeps(c, { sendCalls }));
+      expect(s.status).toBe('ok');            // a kill is an ORDERLY idle, not a run failure
+      expect(s.materialized).toBe(0);
+      expect(s.claimed).toBe(0);
+      expect(s.sent).toBe(0);
+      expect(sendCalls.length).toBe(0);
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_groups`)).rows[0].n).toBe(0);
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_outbox WHERE status <> 'pending'`)).rows[0].n).toBe(0);
+    } finally { await c.end(); }
+  });
+
+  it('killed BETWEEN claim and begin: begin PARKS via NULL — no attempt row, no budget burn, the group stays request_ready', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const rpc = mkRpc(c);
+      const nowIso = NOW.toISOString();
+      await seedDigestGroup(c, 'k:2', 'a@example.com', [{ title: 'x' }]);
+      const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: nowIso, p_max_groups: 100, p_max_members_per_call: 100 });
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='k:2'`)).rows[0].id;
+      const drun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'dispatch' });
+      expect(await rpc('claim_notification_digest_group', { p_run_id: drun, p_channel: 'email', p_now: nowIso, p_worker: 'W' })).toBe(g);
+      await rpc('prepare_notification_digest_group', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_now: nowIso });
+      await rpc('store_notification_digest_request', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_frozen_request: { from: 'S <s@x.com>', to: 'a@example.com', subject: 's', html: '<p>x</p>' }, p_now: nowIso });
+      expect((await gstate(c, g)).state).toBe('request_ready');
+      await kill(c);   // lands with the group one step from the provider
+      // begin — the step that mints the attempt — answers NULL, the breaker's own park shape
+      expect(await rpc('begin_notification_digest_attempt', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_now: nowIso })).toBeNull();
+      expect((await gstate(c, g)).state).toBe('request_ready');   // untouched, resumable after un-kill
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_attempts`)).rows[0].n).toBe(0);
+      // …and the NEXT pass cannot re-claim it either while killed
+      const drun2 = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'dispatch' });
+      expect(await rpc('claim_notification_digest_group', { p_run_id: drun2, p_channel: 'email', p_now: new Date(NOW.getTime() + 3600_000).toISOString(), p_worker: 'W' })).toBeNull();
+    } finally { await c.end(); }
+  });
+
+  it('a WHATSAPP kill leaves the email digest fully live — channels are independent', async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'k:3', 'a@example.com', [{ title: 'x' }]);
+      await kill(c, 'whatsapp');
+      const sendCalls: DepOverrides['sendCalls'] = [];
+      const s = await runDigestWorker(mkDeps(c, { sendCalls }));
+      expect(s.sent).toBe(1);
+      expect(sendCalls.length).toBe(1);
     } finally { await c.end(); }
   });
 });

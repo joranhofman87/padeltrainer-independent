@@ -26,6 +26,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sendWhatsAppMessage, whatsappFailureAction } from "../_shared/whatsapp-send.ts";
+import { checkChannelKillOrRelease } from "../_shared/channel-kill-check.ts";
 import { buildContentVariables, templateForEvent } from "../_shared/whatsapp-templates.ts";
 
 const corsHeaders = {
@@ -147,6 +148,20 @@ const handler = async (req: Request): Promise<Response> => {
     let deferred = 0;   // parked on a GLOBAL config gap, with the attempt given back
 
     for (const row of rows) {
+      // N4 M2 — the pre-provider KILL re-check, top of EVERY iteration and fail-closed (a read
+      // error counts as killed): rows claimed before the kill landed must not reach Twilio.
+      // On kill: release what this run still holds (attempts given back) and end the loop.
+      const kill = await checkChannelKillOrRelease(
+        async (name, args) => await supabase.rpc(name, args),
+        "whatsapp",
+        workerToken,
+      );
+      if (kill.killed) {
+        deferred += kill.released;
+        console.log(JSON.stringify({ event: "channel_killed", channel: "whatsapp", reason: kill.reason, released: kill.released }));
+        break;
+      }
+
       const dest = (row.destination_normalized ?? "").trim();
       const payload = row.payload ?? {};
 

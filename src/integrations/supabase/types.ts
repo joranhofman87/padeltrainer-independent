@@ -9480,6 +9480,10 @@ export type Database = {
         Args: { p_job_name: string; p_ttl_seconds?: number }
         Returns: string
       }
+      admin_activate_channel_kill: {
+        Args: { p_channel: string; p_reason: string; p_request_id: string }
+        Returns: string
+      }
       admin_list_worker_invocations: {
         Args: { p_limit?: number }
         Returns: {
@@ -10746,6 +10750,10 @@ export type Database = {
         Args: { p_address: string; p_scope_id: string; p_scope_kind: string }
         Returns: boolean
       }
+      is_notification_channel_killed: {
+        Args: { p_channel: string }
+        Returns: boolean
+      }
       is_notification_consent_in_scope: {
         Args: {
           _consent_academy: string
@@ -11081,6 +11089,10 @@ export type Database = {
         Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
         Returns: boolean
       }
+      notif_channel_kill_gate: {
+        Args: { p_channel: string }
+        Returns: boolean
+      }
       notif_frequency_rank: {
         Args: { p_freq: string }
         Returns: number
@@ -11330,6 +11342,10 @@ export type Database = {
       }
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
+      release_notification_claims_on_kill: {
+        Args: { p_channel: string; p_worker: string }
+        Returns: number
+      }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
       renew_cron_lease: {
         Args: {
