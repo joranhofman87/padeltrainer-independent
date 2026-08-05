@@ -28,25 +28,26 @@
 -- same-source mint with different claims RAISES rather than re-pointing a printed link), a new
 -- send gets a new row.
 --
--- (2) TOKENS EXIST ONLY WHERE LOGIN IS IMPOSSIBLE. Two further rounds kept finding defects in a
--- third kind, `account_event_optout`, which let a signed link switch off ONE optional service
--- event for ONE logged-in account: it needed an ownership graph (user ↔ contact ↔ person ↔
--- guest), a consumption epoch (an older unused link could undo a later authenticated choice),
+-- (2) A CAPABILITY IS A MARKETING UNSUBSCRIBE, AND NOTHING ELSE. Two further rounds kept finding
+-- defects in a second kind, `account_event_optout`, which let a signed link switch off ONE
+-- optional SERVICE event for ONE account: it needed an ownership graph (user ↔ contact ↔ person
+-- ↔ guest), a consumption epoch (an older unused link could undo a later authenticated choice),
 -- fallback-authority checks, and revocation cascades on every identity change. All of that
--- machinery existed to hand a person who HAS an account a weaker version of a page they can
--- simply open — and N1 made `/app/settings/notifications` reachable and role-correct for exactly
--- that. So it is GONE. Signed links now exist for the case that genuinely cannot log in:
--- MARKETING mail to guests and hand-typed campaign addresses.
+-- machinery existed to give a signed link the power to CONTRADICT a choice — and every defect
+-- was a way that power leaked. It is GONE.
 --
--- What that removes is not just code but whole problem classes: no ownership graph (an
--- unsubscribe is about the ADDRESS receiving the mail), no consumption epochs (marketing
--- suppression is MONOTONIC — a replayed or forwarded link merely re-asserts a fact, so it can
--- never fight a later choice), no authority-change cascades, no cross-link interference. The
--- remaining kinds carry an address and a scope, and nothing else.
+-- What remains authorizes exactly one MONOTONIC act: "stop marketing to this address in this
+-- scope". That removes whole problem classes rather than instances — no ownership graph (an
+-- unsubscribe is about the ADDRESS receiving the mail, which is also why a hand-typed campaign
+-- recipient with no account works the same as a registered one), no consumption epochs (a
+-- replayed or forwarded link merely re-asserts a fact), no authority-change cascades.
 --
--- Optional SERVICE mail to an account holder therefore carries a plain, unauthenticated link to
--- the settings page — which is the correct answer for a recipient who can log in, and is what
--- the N2 brief means by "a signed, scoped management link WHERE APPROPRIATE".
+-- WHO GETS A TOKEN: every recipient of MARKETING mail — registered players on a campaign list,
+-- onboarding-drip recipients who all have accounts, guests, and hand-typed addresses alike.
+-- Address-scoped suppression and RFC 8058 are about the address, not about whether its owner
+-- could have logged in. Optional SERVICE mail is the other case: its footer links to the
+-- authenticated settings page, because the action there IS per-account preference, which is
+-- precisely the thing a forwardable link must not be able to do.
 --
 -- ROTATION is database-owned state, not a mint-time revocation sweep
 -- (notification_manage_key_state). Mint refuses below `min_mintable_version`; existing rows are
@@ -55,16 +56,17 @@
 -- key instead fails CLOSED at the edge: the verifier refuses a token whose stored version is
 -- below the minimum, and the link (or the retry) terminal-fails honestly.
 --
--- CAPABILITY KINDS — both address-scoped, both applying only MONOTONIC actions:
---   * marketing_unsubscribe : one-click. Suppress marketing to THIS address within THIS sending
---                             scope (RFC 8058 POST).
---   * manage_context        : open the manage page for THIS address. In N2 the only action it may
---                             apply is marketing_unsubscribe — a guest "stop optional service
---                             mail" is deliberately NOT built, because the only lever that exists
---                             today (notification_contacts.consent_status) also silences REQUIRED
---                             mail: the resolver excludes an opted-out contact even for
---                             required_delivery events. A per-event contact-scoped preference
---                             model is future work, recorded in docs/NOTIFICATION_FOLLOWUPS.md.
+-- ONE KIND, `marketing_unsubscribe`, and one token per send serving BOTH surfaces: the footer
+-- URL (which opens the manage page) and the RFC 8058 one-click POST header. An earlier draft had
+-- a second `manage_context` kind for the page, which contradicted one-capability-per-send — the
+-- unique index would refuse the second mint — while `apply` treated the two identically anyway.
+--
+-- A guest "stop optional SERVICE mail" lever is deliberately NOT built here: the only mechanism
+-- that exists today (notification_contacts.consent_status) also silences REQUIRED mail, because
+-- the resolver excludes an opted-out contact even for required_delivery events. A per-event,
+-- contact-scoped guest preference model is future work — see docs/NOTIFICATION_FOLLOWUPS.md
+-- §N2, which also records that S2 must render an optional-service footer per RECIPIENT (a
+-- settings link for account holders; an explanatory line, never a dead link, for guests).
 --
 -- BINDING IS THE ADDRESS, captured at mint and immutable on the row. There is no ownership graph
 -- to keep in step and nothing to revoke on an identity change: the grant says "this address may
@@ -126,7 +128,7 @@ CREATE TRIGGER trg_notif_manage_key_state_guard
 -- ---------------------------------------------------------------------------
 CREATE TABLE public.notification_manage_capabilities (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  kind text NOT NULL CHECK (kind IN ('marketing_unsubscribe', 'manage_context')),
+  kind text NOT NULL CHECK (kind = 'marketing_unsubscribe'),
 
   scope_kind text NOT NULL CHECK (scope_kind IN ('platform', 'academy', 'trainer')),
   scope_id uuid,
@@ -166,7 +168,7 @@ CREATE INDEX idx_notif_manage_cap_expiry
   ON public.notification_manage_capabilities (expires_at) WHERE revoked_at IS NULL;
 
 COMMENT ON TABLE public.notification_manage_capabilities IS
-  'One row per (kind, send). The token an email carries is <id>.<HMAC(id, edge-held key)> — this table never stores the HMAC or the key, so reading it cannot forge a live link. Claims are IMMUTABLE (no client DML; definer RPCs are the only writers; the guard trigger refuses updates outside revoked_at/last_used_at). Per-send identity is what makes retries deterministic and consumption safe.';
+  'One row per SEND, granting exactly one monotonic act: stop marketing to this address in this scope. The token an email carries is <id>.<HMAC(id, edge-held key)> — this table never stores the HMAC or the key, so reading it cannot forge a live link. Claims are IMMUTABLE (no client DML; definer RPCs are the only writers; the guard trigger refuses updates outside revoked_at/last_used_at). Per-send identity is what makes a retry rebuild the same bytes.';
 
 -- No direct DML for ANY client role — the definer RPCs are the only path. (The HMAC signs only
 -- the id, so an UPDATE to a row's claims would silently retarget an already-signed link.)
@@ -230,7 +232,7 @@ BEGIN
   IF v_address IS NULL OR position('@' IN v_address) <= 1 THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: not an email address';
   END IF;
-  IF p_kind NOT IN ('marketing_unsubscribe', 'manage_context') THEN
+  IF p_kind IS DISTINCT FROM 'marketing_unsubscribe' THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: unknown kind %', p_kind;
   END IF;
   IF p_scope_kind IS NULL OR p_scope_kind NOT IN ('platform', 'academy', 'trainer')
@@ -368,15 +370,9 @@ GRANT EXECUTE ON FUNCTION public.get_notification_manage_context(uuid) TO servic
 -- ---------------------------------------------------------------------------
 -- APPLY (service-role only; the edge function verifies the HMAC before calling).
 --
--- Kind → action is a CLOSED mapping, enforced here rather than trusted from the edge:
---   marketing_unsubscribe → marketing suppression for the capability's scope + address;
---   manage_context        → marketing suppression ONLY (N2: guests get no service-mail lever);
---   account_event_optout  → prefs_v2 email 'off' for exactly (user, event) — CONSUMPTIVE on
---                           first use, so a forwarded/replayed link cannot undo a later
---                           authenticated re-enable. (Per-send rows mean the NEXT email still
---                           carries a working link.)
--- Marketing actions stay idempotent and replayable (a re-clicked unsubscribe re-asserts a
--- monotonic fact); the account opt-out is the one action whose replay could FIGHT the user.
+-- ONE action, enforced here rather than trusted from the edge: marketing suppression for the
+-- capability's own scope + address. Both surfaces (the manage page and the RFC 8058 one-click
+-- POST) call this with the same token and the same action.
 CREATE OR REPLACE FUNCTION public.apply_notification_manage_action(
   p_capability_id uuid,
   p_action text,

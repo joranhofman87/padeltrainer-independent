@@ -14,7 +14,7 @@ ALTER TABLE public.notification_event_types
     CHECK (email_footer_policy IN ('none', 'manage_prefs', 'marketing_unsubscribe'));
 
 COMMENT ON COLUMN public.notification_event_types.email_footer_policy IS
-  'What the email footer-attach layers append for this event: none (required/transactional mail carries no mutating link), manage_prefs (optional service mail: a link to the settings surface, one-click scoped to THIS event for account holders), marketing_unsubscribe (marketing mail: broad-in-scope unsubscribe + RFC 8058 one-click headers). Declared, never inferred from category/priority.';
+  'What the email footer-attach layers append for this event: none (required/transactional mail carries no mutating link), manage_prefs (optional service mail: a link to the authenticated settings surface — rendered per RECIPIENT, since a guest cannot use it; see NOTIFICATION_FOLLOWUPS.md §N2), marketing_unsubscribe (marketing mail: a signed one-token-per-send unsubscribe serving both the manage page and the RFC 8058 one-click header). Declared, never inferred from category/priority.';
 
 -- Seeds BEFORE the constraint: the live catalog already carries required events, which sit on
 -- the column default until this UPDATE moves them — adding the constraint first would fail the
@@ -51,6 +51,13 @@ ALTER TABLE public.notification_event_types
   ADD CONSTRAINT notif_event_optional_email_has_footer
     CHECK (required_delivery OR NOT supports_email
            OR email_footer_policy IN ('manage_prefs', 'marketing_unsubscribe'));
+
+-- ...and the RECIPROCAL arm: only a marketing event may declare marketing_unsubscribe. Without
+-- it, an optional SERVICE event could be moved onto the marketing policy and would then offer a
+-- footer action that suppresses unrelated marketing while doing nothing about the mail in hand.
+ALTER TABLE public.notification_event_types
+  ADD CONSTRAINT notif_event_unsub_policy_implies_marketing
+    CHECK (email_footer_policy <> 'marketing_unsubscribe' OR category = 'marketing');
 
 -- MARKETING IS NEVER REQUIRED. Without this, category='marketing' + required_delivery satisfies
 -- every arm above with policy 'none' — i.e. mandatory marketing with no unsubscribe, which is

@@ -3,6 +3,43 @@
 Durable record of out-of-scope findings surfaced during the notification migration, so they
 are not lost between PRs. Each has a spawned-task id where one exists.
 
+## N2 — constraints S1's schema imposes on S2–S5 (from the S1 design + 6 review rounds, 2026-08-05)
+
+These are not defects in S1; they are the bill S1's model presents to the later slices. Each was
+raised by review against the shipped schema and must be satisfied where named.
+
+1. **Optional-service footers must render per RECIPIENT (S2).** `email_footer_policy='manage_prefs'`
+   says the EVENT is optional; it cannot say what a given recipient can do. An account holder gets
+   the authenticated settings link; a GUEST cannot use that link and must get an explanatory line,
+   never a dead one. (Guests reach optional service mail today — e.g. `booking_cancelled_player`
+   via `enqueue_booking_notification`.) Omitting the footer instead would contradict the catalog.
+2. **A guest "stop optional service mail" lever needs a per-event, contact-scoped preference model
+   (future unit).** The only existing mechanism, `notification_contacts.consent_status`, also
+   silences REQUIRED mail — the resolver excludes an opted-out contact even for `required_delivery`
+   — so N2 deliberately ships marketing-only guest management.
+3. **Retry epoch (S3/S5).** A capability is the send's identity, so a source that can be retried
+   forever (campaigns expose a manual retry with only an attempt cap) can outlive its capability's
+   expiry, its signing key, or the S5 sweep. S3 must either bound retries by age or give a
+   post-window resend a NEW durable send-attempt id; a non-live capability must block the SEND, not
+   only the click.
+4. **Deployment cutover (S2/S3).** Rows already attempted under a stable provider idempotency key
+   pre-date capability attachment; attaching a footer to their retry changes the body under the same
+   key. Attach on first attempt only, or drain, or mark the cutover. Digest is safe if attachment
+   happens before request freezing.
+5. **Token format + key selection (S2).** The URL carries `id.signature` only. The edge must either
+   sign a version into the token or trial the bounded active-key set and then REQUIRE the matched
+   version to equal the row's `key_version` — accepting any still-loaded key without that comparison
+   defeats the per-row version binding the key-state table exists for.
+6. **The neutral settings route must exist before S2 emits it (S4).** `/app/settings/notifications`
+   is not mounted yet (only the three role-specific routes are); S4 ships the role-forwarder and the
+   redirect-preserving logged-out behaviour.
+7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
+   `expires_at` more than 30 days past — and never a row that is merely revoked or consumed.
+8. **Owner precondition before S3 deploys.** Every existing `onboarding_email_templates` row lands
+   on `delivery_class='marketing'` (the suppressible direction). The owner must reclassify the live
+   templates (`required_service` where the mail is genuinely obligatory) before S3's suppression
+   starts consulting the column.
+
 ## Recipient-discovery fail-open sweep (found by PR 10b adversarial verification, 2026-07-22)
 
 The pattern: an edge function resolves a RECIPIENT ADDRESS or the send AUDIENCE from a

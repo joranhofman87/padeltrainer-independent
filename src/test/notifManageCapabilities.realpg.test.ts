@@ -317,6 +317,7 @@ describe('mint_notification_manage_capability', () => {
     await expect(mint({ scope_kind: 'academy', scope_id: null })).rejects.toThrow(/disagree/);
     await expect(mint({ source_kind: 'nowhere' })).rejects.toThrow(/unknown source_kind/);
     await expect(mint({ kind: 'account_event_optout' })).rejects.toThrow(/unknown kind/);
+    await expect(mint({ kind: 'manage_context' })).rejects.toThrow(/unknown kind/);
   });
 
 });
@@ -496,6 +497,14 @@ describe('email_footer_policy (seeded on a POPULATED catalog, the production ord
     await expect(c.query(
       `UPDATE public.notification_event_types SET email_footer_policy = 'manage_prefs'
         WHERE key = 'booking_confirmed_player'`)).rejects.toThrow(/coherent/i);
+  });
+
+  it('only a MARKETING event may declare marketing_unsubscribe (the reciprocal arm)', async () => {
+    // Otherwise a service email would offer an action that suppresses unrelated marketing while
+    // doing nothing about the mail the recipient is actually holding.
+    await expect(c.query(
+      `UPDATE public.notification_event_types SET email_footer_policy = 'marketing_unsubscribe'
+        WHERE key = 'open_slots_player'`)).rejects.toThrow(/implies_marketing/i);
   });
 
   it('an optional MARKETING event cannot carry a weaker policy than marketing_unsubscribe', async () => {
