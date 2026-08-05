@@ -198,6 +198,7 @@ presentation and reachability only.
 | **N3 M1–M3** — tenant-aware idempotency + academy caps/audit + cap at every send authority | (stacked draft PR) | **clear at `813f7f4e`** (design contract findings 1, 3, 7-11 closed; 3 review rounds; M4-M6 + seam review remain) |
 | **N3 M4–M6** — membership reader + player history, attribution matrix, both surfaces | [#633](https://github.com/joranhofman87/padeltrainer-independent/pull/633) | **clear at `626d03ce`** (4 rounds total; whole-unit seam review next) |
 | **N3 WHOLE-UNIT SWEEP** — fresh thread over the full unit, aimed at the seams | [#633](https://github.com/joranhofman87/padeltrainer-independent/pull/633) | **CLEAR at `bd09d652`** — N3 COMPLETE (6 seam-round fixes: fail-closed player reads, composite-keyset history, switch-race guard, completeness pin) |
+| **N4 design review** — admin ops, 16-finding contract (4 CRITICAL) | (branch `feat/notif-n4-admin-ops`) | REQUEST-CHANGES consumed as the implementation contract (memory/notif-n4-design.md); M1 invocation record first |
 
 **N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
 `supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement
