@@ -175,6 +175,7 @@
       "email": "E-mail",
       "whatsapp": "WhatsApp",
       "push": "Push"
-    }
+    },
+    "capHistoryMore": "Oudere wijzigingen tonen"
   }
 }

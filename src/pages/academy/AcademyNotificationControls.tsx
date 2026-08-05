@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { CAPPABLE_EVENTS } from '@/lib/academyNotificationCappable';
@@ -49,6 +49,11 @@ export default function AcademyNotificationControls() {
 
   const load = useCallback(async () => {
     if (!academyId) return;
+    // RACE GUARD (seam review): four async reads keyed by academyId — if the manager switches
+    // A→B while A is loading, A's slower responses must never overwrite B's state (the manager
+    // would then WRITE to B based on A's displayed caps). Commit only if we are still the
+    // academy the reads were started for.
+    const requestedFor = academyId;
     setLoading(true);
     setLoadFailed(false);
     try {
@@ -58,6 +63,7 @@ export default function AcademyNotificationControls() {
         supabase.rpc('get_academy_restriction_impact', { p_academy_profile_id: academyId, p_days: 30 }),
         supabase.rpc('get_academy_notification_outcomes', { p_academy_profile_id: academyId, p_limit: 20 }),
       ]);
+      if (requestedFor !== academyIdRef.current) return; // a newer academy owns the surface now
       const err = capsRes.error ?? histRes.error ?? impactRes.error ?? outcomesRes.error;
       if (err) throw err;
       const map: Record<string, string> = {};
@@ -69,13 +75,20 @@ export default function AcademyNotificationControls() {
       setImpact((impactRes.data ?? []) as Array<Record<string, unknown>>);
       setOutcomes((outcomesRes.data ?? []) as Array<Record<string, unknown>>);
     } catch (error) {
+      if (requestedFor !== academyIdRef.current) return;
       // A failed read must never render defaults-as-state: a manager acting on a stale
       // "inherit" could double-apply or believe a cap vanished. Fail closed, offer retry.
       logger.error('Failed to load academy notification controls', undefined, { error });
       setLoadFailed(true);
     } finally {
-      setLoading(false);
+      if (requestedFor === academyIdRef.current) setLoading(false);
     }
+  }, [academyId]);
+
+  // the CURRENT academy, readable inside stale closures
+  const academyIdRef = useRef(academyId);
+  useEffect(() => {
+    academyIdRef.current = academyId;
   }, [academyId]);
 
   useEffect(() => {
@@ -136,7 +149,7 @@ export default function AcademyNotificationControls() {
               const key = `${event}:${channel}`;
               const current = (caps[key] as CapValue | undefined) ?? 'inherit';
               return (
-                <div key={key} className="flex items-center justify-between gap-3" data-testid={`cap-row-${key}`}>
+                <div key={key} className="flex items-center justify-between gap-3" data-testid={`cap-row-${key}`} data-cap={current}>
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium">{eventLabel(event)}</p>
                     <p className="text-xs text-muted-foreground">

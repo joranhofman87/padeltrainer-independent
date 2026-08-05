@@ -10308,7 +10308,7 @@ export type Database = {
       }
       get_my_linked_guest_bookings: { Args: never; Returns: Json }
       get_my_notification_restriction_history: {
-        Args: { p_limit?: number }
+        Args: { p_before?: string; p_limit?: number }
         Returns: {
           academy_name: string
           academy_profile_id: string

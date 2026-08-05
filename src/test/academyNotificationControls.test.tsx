@@ -35,24 +35,27 @@ vi.mock('react-i18next', () => ({
     },
   }),
 }));
+/** The default routing; per-test overrides go through rpcMock.mockImplementation and are
+ *  ACTUALLY honoured because the factory DELEGATES (the first version recorded calls on rpcMock
+ *  but returned its own routing — overrides silently did nothing, and a race test passed with
+ *  its guard removed). */
+const defaultRpcImpl = (fn: string, _args?: Record<string, unknown>) => {
+  if (rpcFails) return Promise.resolve({ data: null, error: { message: 'boom' } });
+  if (fn === 'get_academy_notification_restrictions') {
+    return Promise.resolve({ data: [{ event_type: 'booking_confirmed_staff', channel: 'email', max_frequency: 'off' }], error: null });
+  }
+  if (fn === 'get_academy_restriction_impact') {
+    return Promise.resolve({ data: [{ event_type: 'booking_confirmed_staff', channel: 'email', day: '2026-08-04', restricted_count: 3 }], error: null });
+  }
+  if (fn === 'get_academy_notification_outcomes') {
+    return Promise.resolve({ data: [{ event_type: 'booking_request_staff', channel: 'email', status: 'sent', skip_reason: null, destination_redacted: 'm***@a.nl', public_summary: {}, created_at: new Date().toISOString() }], error: null });
+  }
+  if (fn === 'set_academy_notification_restriction') return Promise.resolve({ data: 'set', error: null });
+  return Promise.resolve({ data: [], error: null });
+};
+
 vi.mock('@/lib/supabaseClient', () => ({
-  supabase: {
-    rpc: (fn: string, args?: Record<string, unknown>) => {
-      rpcMock(fn, args);
-      if (rpcFails) return Promise.resolve({ data: null, error: { message: 'boom' } });
-      if (fn === 'get_academy_notification_restrictions') {
-        return Promise.resolve({ data: [{ event_type: 'booking_confirmed_staff', channel: 'email', max_frequency: 'off' }], error: null });
-      }
-      if (fn === 'get_academy_restriction_impact') {
-        return Promise.resolve({ data: [{ event_type: 'booking_confirmed_staff', channel: 'email', day: '2026-08-04', restricted_count: 3 }], error: null });
-      }
-      if (fn === 'get_academy_notification_outcomes') {
-        return Promise.resolve({ data: [{ event_type: 'booking_request_staff', channel: 'email', status: 'sent', skip_reason: null, destination_redacted: 'm***@a.nl', public_summary: {}, created_at: new Date().toISOString() }], error: null });
-      }
-      if (fn === 'set_academy_notification_restriction') return Promise.resolve({ data: 'set', error: null });
-      return Promise.resolve({ data: [], error: null });
-    },
-  },
+  supabase: { rpc: (fn: string, args?: Record<string, unknown>) => rpcMock(fn, args) },
 }));
 
 import AcademyNotificationControls from '@/pages/academy/AcademyNotificationControls';
@@ -61,6 +64,7 @@ import { CAPPABLE_EVENTS } from '@/lib/academyNotificationCappable';
 beforeEach(() => {
   vi.clearAllMocks();
   rpcFails = false;
+  rpcMock.mockImplementation(defaultRpcImpl);
 });
 
 describe('AcademyNotificationControls', () => {
@@ -149,6 +153,43 @@ describe('AcademyNotificationControls', () => {
     expect(src).toContain('<CapChangeDialog');
     // the page itself must have NO direct write path
     expect(src).not.toContain("supabase.rpc('set_academy_notification_restriction'");
+  });
+
+  it("an academy SWITCH mid-load: A's slow responses never overwrite B's state", async () => {
+    // The failure mode: manager switches A→B while A loads; A's slower caps land after B's,
+    // and the manager writes to B based on A's displayed value.
+    let currentAcademy = 'acad-A';
+    vi.doMock('@/components/academy/AcademyLayout', () => ({
+      useAcademyContext: () => ({ activeAcademy: { id: currentAcademy, name: currentAcademy } }),
+    }));
+    vi.resetModules();
+    let releaseA: (() => void) | null = null;
+    rpcMock.mockImplementation((fn: string, args?: Record<string, unknown>) => {
+      const academy = String(args?.p_academy_profile_id ?? '');
+      if (fn === 'get_academy_notification_restrictions') {
+        if (academy === 'acad-A') {
+          return new Promise((res) => { releaseA = () => res({ data: [{ event_type: 'booking_request_staff', channel: 'email', max_frequency: 'off' }], error: null }); });
+        }
+        return Promise.resolve({ data: [], error: null }); // B: no caps
+      }
+      return Promise.resolve({ data: [], error: null });
+    });
+    const { default: Page } = await import('@/pages/academy/AcademyNotificationControls');
+    const { rerender } = render(<Page />);
+    // switch to B while A's caps read is still pending
+    currentAcademy = 'acad-B';
+    rerender(<Page />);
+    await screen.findByTestId('academy-notification-controls');
+    // now A's stale response arrives — it must be DISCARDED
+    releaseA?.();
+    await new Promise((r) => setTimeout(r, 50));
+    const row = screen.getByTestId('cap-row-booking_request_staff:email');
+    // data-cap mirrors the caps STATE (Radix renders no value text in jsdom, so the first
+    // version of this assertion was vacuous — it passed with the guard removed).
+    expect(row.getAttribute('data-cap')).toBe('inherit');
+    vi.doUnmock('@/components/academy/AcademyLayout');
+    vi.resetModules();
+    rpcMock.mockImplementation(defaultRpcImpl); // restore default routing for later tests
   });
 
   it('a failed load renders RETRY — a manager acting on stale "inherit" is the failure mode', async () => {

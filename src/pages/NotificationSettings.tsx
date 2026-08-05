@@ -146,11 +146,12 @@ export default function NotificationSettings() {
   // it — silently replacing a stored `whatsapp: off` with the default the moment the recipient
   // touches the email control. Refuse to render controls at all until the load succeeds.
   const [loadFailed, setLoadFailed] = useState(false);
-  // N3: caps my academies placed on my events — powers the "capped by {academy}" markers.
-  // A FAILED read renders no markers rather than blocking the page: the marker is advisory
-  // (the resolver enforces the cap regardless of whether the badge rendered).
+  // N3: caps my academies placed on my events — the "limited by {academy}" markers. These
+  // BIND the player, so a failed read joins the page's fail-closed boundary: rendering plain
+  // controls while a cap exists would misrepresent the selected cadence as effective.
   const [academyCaps, setAcademyCaps] = useState<Array<{ academy_name: string; event_type: string; channel: string; max_frequency: string }>>([]);
   const [capHistory, setCapHistory] = useState<Array<Record<string, unknown>>>([]);
+  const [capHistoryHasMore, setCapHistoryHasMore] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -179,15 +180,19 @@ export default function NotificationSettings() {
         supabase.rpc('get_my_whatsapp_consent'),
       ]);
 
-      // Advisory reads (N3): failures here degrade to "no markers", never to a blocked page.
+      // N3 caps + history are NOT advisory decoration (review round: a cap BINDS the player,
+      // so silently rendering plain controls while it exists misleads) — they join the page's
+      // fail-closed boundary like every other read.
       const [capsRes, capHistRes] = await Promise.all([
         supabase.rpc('get_my_notification_restrictions'),
-        supabase.rpc('get_my_notification_restriction_history', { p_limit: 10 }),
+        supabase.rpc('get_my_notification_restriction_history', { p_limit: 50 }),
       ]);
       setAcademyCaps((capsRes.data ?? []) as typeof academyCaps);
-      setCapHistory((capHistRes.data ?? []) as Array<Record<string, unknown>>);
+      const histPage = (capHistRes.data ?? []) as Array<Record<string, unknown>>;
+      setCapHistory(histPage);
+      setCapHistoryHasMore(histPage.length === 50); // a full page ⇒ older entries may exist
 
-      const readError = types.error ?? rows.error ?? v1.error ?? wa.error;
+      const readError = types.error ?? rows.error ?? v1.error ?? wa.error ?? capsRes.error ?? capHistRes.error;
       if (readError) throw readError;
       setLoadFailed(false);
 
@@ -223,6 +228,19 @@ export default function NotificationSettings() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  /** Keyset pagination: every change stays REACHABLE (the surface promises it). */
+  const loadMoreCapHistory = async () => {
+    const oldest = capHistory[capHistory.length - 1]?.created_at;
+    if (!oldest) return;
+    const { data, error } = await supabase.rpc('get_my_notification_restriction_history', {
+      p_limit: 50, p_before: String(oldest),
+    });
+    if (error) { failToast(error); return; }
+    const page = (data ?? []) as Array<Record<string, unknown>>;
+    setCapHistory((prev) => [...prev, ...page]);
+    setCapHistoryHasMore(page.length === 50);
+  };
 
   const failToast = (error: unknown) =>
     toast({
@@ -555,7 +573,7 @@ export default function NotificationSettings() {
               {t('notifications.capHistoryDesc', 'Your academy can reduce optional notifications for its players. Your own choices always win when they are stricter.')}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <ul className="space-y-2">
               {capHistory.map((h, i) => (
                 <li key={i} className="text-sm" data-testid="cap-history-entry">
@@ -566,6 +584,11 @@ export default function NotificationSettings() {
                 </li>
               ))}
             </ul>
+            {capHistoryHasMore && (
+              <Button variant="outline" size="sm" data-testid="cap-history-more" onClick={() => void loadMoreCapHistory()}>
+                {t('notifications.capHistoryMore', 'Show older changes')}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

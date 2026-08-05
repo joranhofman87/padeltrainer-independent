@@ -23,6 +23,7 @@ const legacyUpsertMock = vi.fn();
 const rpcMock = vi.fn();
 let myCaps: unknown[] = [];
 let myCapHistory: unknown[] = [];
+let myCapsError: { message: string } | null = null;
 
 let authState = {
   user: { id: 'U1' },
@@ -81,7 +82,7 @@ vi.mock('@/lib/supabaseClient', () => ({
     rpc: (fn: string, ...rest: unknown[]) => {
       rpcMock(fn, ...rest);
       if (fn === 'get_my_whatsapp_consent') return Promise.resolve({ data: consentRows, error: null });
-      if (fn === 'get_my_notification_restrictions') return Promise.resolve({ data: myCaps, error: null });
+      if (fn === 'get_my_notification_restrictions') return Promise.resolve(myCapsError ? { data: null, error: myCapsError } : { data: myCaps, error: null });
       if (fn === 'get_my_notification_restriction_history') return Promise.resolve({ data: myCapHistory, error: null });
       if (fn === 'revoke_my_whatsapp_consent') return Promise.resolve({ data: 1, error: null });
       return Promise.resolve({ data: null, error: null });
@@ -109,6 +110,7 @@ beforeEach(() => {
   v2ReadError = null;
   myCaps = [];
   myCapHistory = [];
+  myCapsError = null;
   navigateMock.mockClear();
   // A fresh tab from an email link: React Router's history index is 0, i.e. nothing of ours
   // behind us. Individual tests raise it to model in-app navigation.
@@ -270,6 +272,13 @@ describe('NotificationSettings v2', () => {
     // channel-specific: a WHATSAPP cap must be visible AND name its channel (round-4 finding 4)
     expect(marker).toHaveTextContent(/whatsapp/i);
     expect(screen.queryByTestId('cap-marker-booking_confirmation')).toBeNull();
+  });
+
+  it('a FAILED caps read joins the fail-closed boundary — plain controls under a binding cap mislead', async () => {
+    myCapsError = { message: 'unavailable' };
+    render(<NotificationSettings />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByTestId('pref-row-booking_confirmation')).toBeNull();
   });
 
   it("the academies' change history renders when present — finding 5's player visibility", async () => {

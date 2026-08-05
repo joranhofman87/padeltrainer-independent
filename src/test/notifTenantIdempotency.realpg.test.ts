@@ -123,6 +123,7 @@ beforeAll(async () => {
     '20261015120000_notif_n3_resolver_cap_integration.sql',
     '20261015130000_notif_n3_player_visibility.sql',
     '20261015140000_notif_n3_academy_outcome_reads.sql',
+    '20261015150000_notif_n3_history_pagination.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -777,6 +778,52 @@ describe('academy outcome reads (N3 M6): visibility never widens, impact never i
 
 
 describe('the CAPPABLE list against the POST-catalog truth (N3 round-4)', () => {
+  it('the list is COMPLETE: every optional+supported arm of the matrix events is offered — not merely sound', async () => {
+    // Soundness alone (each listed arm supported) stays green when a future template commit
+    // restores an arm the UI forgot — completeness fails until the UI adds it.
+    const { CAPPABLE_EVENTS } = await import('@/lib/academyNotificationCappable');
+    const MATRIX_ACADEMY_EVENTS = ['booking_request_staff', 'booking_confirmed_staff', 'booking_cancelled_player'];
+    const expected: string[] = [];
+    for (const ev of MATRIX_ACADEMY_EVENTS) {
+      const row = (await c.query(
+        `SELECT required_delivery, supports_email, supports_whatsapp FROM public.notification_event_types WHERE key=$1`,
+        [ev])).rows[0];
+      if (row.required_delivery) continue;
+      if (row.supports_email) expected.push(`${ev}:email`);
+      if (row.supports_whatsapp) expected.push(`${ev}:whatsapp`);
+    }
+    const offered = CAPPABLE_EVENTS.flatMap((e) => e.channels.map((ch) => `${e.event}:${ch}`));
+    expect(offered.sort()).toEqual(expected.sort());
+  });
+
+  it('history pagination: every change stays REACHABLE by walking p_before pages', async () => {
+    const PROF3 = 'cccccccc-dddd-4eee-8fff-000000000001';
+    const T4 = 'dddddddd-eeee-4fff-8000-000000000002';
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit DISABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await c.query(`DELETE FROM public.academy_notification_restriction_audit;`);
+    // three changes at distinct timestamps, oldest first
+    for (let i = 3; i >= 1; i--) {
+      await c.query(`INSERT INTO public.academy_notification_restriction_audit
+        (academy_profile_id, actor_user_id, event_type, channel, old_max_frequency, new_max_frequency, reason, request_id, created_at)
+        VALUES ('${A}','${MGR}','session_reminder_player','email',NULL,'off','change ${i}', gen_random_uuid(), now() - interval '${i} hours')`);
+    }
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit ENABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await c.query(`DELETE FROM public.bookings; DELETE FROM public.availability_slots; DELETE FROM public.academy_trainers; DELETE FROM public.guest_players;`);
+    await c.query(`INSERT INTO public.profiles (id, user_id) VALUES ('${PROF3}','${U1}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.trainer_profiles (id) VALUES ('${T4}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.academy_trainers (trainer_profile_id, academy_profile_id, status) VALUES ('${T4}','${A}','active')`);
+    const slot = await c.query(`INSERT INTO public.availability_slots (trainer_id) VALUES ('${T4}') RETURNING id`);
+    await c.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1,'${PROF3}','confirmed')`, [slot.rows[0].id]);
+    await asUser(U1);
+    const page1 = (await c.query(`SELECT * FROM public.get_my_notification_restriction_history(2, NULL)`)).rows;
+    expect(page1.map((r) => r.reason)).toEqual(['change 1', 'change 2']);
+    const page2 = (await c.query(`SELECT * FROM public.get_my_notification_restriction_history(2, $1)`,
+      [page1[page1.length - 1].created_at])).rows;
+    expect(page2.map((r) => r.reason)).toEqual(['change 3']); // the oldest is REACHABLE
+    // the unpaginated 1-arg form is gone
+    await expect(c.query(`SELECT * FROM public.get_my_notification_restriction_history(2)`)).resolves.toBeTruthy();
+  });
+
   it('every UI-cappable (event, channel) is optional AND supported by the live catalog', async () => {
     // The dead-control bug this pins: booking_cancelled_player whatsapp was offered while
     // 20260923 had set supports_whatsapp=false — M2's trigger would refuse the write.
