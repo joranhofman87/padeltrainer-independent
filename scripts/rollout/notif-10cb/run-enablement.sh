@@ -103,7 +103,9 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   is enabled, then requires the reply to be exactly
                                   200 {"status":"disabled","reason":"disabled"} and every counter to
                                   be unmoved. Also needs your word that DIGEST_SEND_ENABLED is off —
-                                  no SQL can see an edge env var
+                                  no SQL can see an edge env var. Prints its invocation request id
+                                  FIRST; after an ambiguous failure, re-run with
+                                  --invocation-request-id=<that id> to resume the SAME invocation
   canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N] <db_url>
                                   SENDS. Invokes the worker ONCE by running the cron job's OWN
                                   stored command, after asserting it hashes to the reviewed value
@@ -111,7 +113,9 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   hand-typed lookalike naming some other endpoint. Refuses an armed
                                   cron, a disabled engine, an in-flight run, and a reachable
                                   population above --max-recipients (default 1). Prints the reply so
-                                  you can read dispatchRunId; that uuid is what `canary` verifies
+                                  you can read dispatchRunId; that uuid is what `canary` verifies.
+                                  Prints its invocation request id FIRST; after an ambiguous
+                                  failure, re-run with --invocation-request-id=<that id>
   canary --yes --admin-ops-confirmed <db_url> <run_id>
                                   reconcile ONE canary's ACTUAL returned run id
   activate --yes --monitor-confirmed --admin-ops-confirmed <db_url> <run_id>
@@ -149,6 +153,11 @@ for a in "$@"; do
     --monitor-confirmed)     MONITOR_CONFIRMED=1 ;;
     --admin-ops-confirmed)   ADMIN_OPS_CONFIRMED=1 ;;
     --max-recipients=*)      MAX_RECIPIENTS="${a#*=}" ;;
+    # RECOVERY, not routine: after an AMBIGUOUS invoke (connection died — the open may have
+    # committed), re-running with the id the step printed makes open() REPLAY the same
+    # invocation instead of colliding with the single-flight gate. A fresh uuid per execution
+    # could never recover that case.
+    --invocation-request-id=*) INVOCATION_REQUEST_ID="${a#*=}" ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
@@ -236,7 +245,7 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 # uncommitted transaction that is discarded at disconnect, so the emergency rollback would do nothing
 # at all while every gate before it passed. `-v ON_ERROR_STOP=0` is the same shape. Three names are
 # actually used, so three names are permitted.
-ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id"
+ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id"
 assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
   local artifact="$1"; shift
   local expect_value=0 a
@@ -344,6 +353,24 @@ marker_values() {   # $1 = file, $2 = marker name, $3 = ERE for the value
   { grep -Eo "$2=($3)" "$1" || true; } | cut -d= -f2- | sort -u
 }
 
+# The invocation request id, PRINTED BEFORE the invoke runs — that ordering is the recovery
+# mechanism. If the invoke dies AMBIGUOUSLY (connection lost mid-commit) the open() may have
+# committed; a fresh uuid on the retry would then collide with the single-flight gate and no
+# execution could ever recover the committed id. Printing first means the operator always holds
+# the id; --invocation-request-id feeds it back and open() REPLAYS the same invocation.
+prepare_invocation_request_id() {   # $1 = what this invocation is, for the messages
+  local what="$1"
+  if [[ -n "${INVOCATION_REQUEST_ID:-}" ]]; then
+    [[ "$INVOCATION_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+      || die "--invocation-request-id must be a lowercase uuid, got '${INVOCATION_REQUEST_ID}'"
+    INV_REQ_ID="$INVOCATION_REQUEST_ID"
+    warn "REUSING invocation request id ${INV_REQ_ID} for ${what} — an exact replay returns the SAME invocation (recovery path)"
+  else
+    INV_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+  fi
+  ok "invocation request id: ${INV_REQ_ID} — if ${what} dies after this line, re-run this step with --invocation-request-id=${INV_REQ_ID} (an exact replay resumes the SAME invocation instead of colliding with the single-flight gate)"
+}
+
 case "$SUB" in
   status)
     url="$(db_url)"
@@ -416,8 +443,9 @@ case "$SUB" in
     warn "sending is DIGEST_SEND_ENABLED being off — your assertion, which no SQL here can check: the"
     warn "worker claims existing groups regardless of the engine flags. The backlog assertions are a"
     warn "SNAPSHOT that removes the work a wrong assertion would have sent."
-    INV_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    prepare_invocation_request_id "the disabled smoke"
     if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql -v invocation_request_id="$INV_REQ_ID"; then
+      warn "invocation request id was ${INV_REQ_ID} — if the failure below is AMBIGUOUS (connection lost, not a rolled-back assertion), re-run with --invocation-request-id=${INV_REQ_ID}"
       report_failed_invoke "$CANARY_TMP/invoke.out" "the disabled smoke"
     fi
     req_id="$(marker_values "$CANARY_TMP/invoke.out" CANARY_REQUEST_ID '[0-9]+')"
@@ -467,7 +495,21 @@ case "$SUB" in
     [[ "$disabled" == "t" || "$disabled" == "true" ]] \
       || die "the disabled smoke did not answer exactly the disabled body — DIGEST_SEND_ENABLED may not be off. The counters either side were compared first and are above; read them and the body, and do NOT continue"
 
-    ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} and moved no counter"
+    # N4 AC-6: CLOSE the invocation record, with the evidence attached. The disabled worker
+    # never starts a run, so the generic run-evidence resolve refuses this invocation forever —
+    # left open it blocks every later smoke/canary/activate at the gate. This dedicated arm
+    # re-verifies the SAME facts in SQL (clean 200, exact disabled body, response postdates the
+    # open) rather than taking this shell's verdict on trust, and it refuses anything that is
+    # not a pending smoke. Runs only AFTER every verdict above passed.
+    if ! run_sql_capture "$CANARY_TMP/resolve.out" "$url" smoke_resolve_disabled.sql \
+           -v invocation_request_id="$INV_REQ_ID" -v net_request_id="$req_id"; then
+      die "the disabled smoke PASSED but its invocation could not be resolved — the record for request_id=${INV_REQ_ID} is still open and will (correctly) block later steps. Read the error above, then resolve it via smoke_resolve_disabled.sql or the invocation RPCs"
+    fi
+    resolved="$(marker_values "$CANARY_TMP/resolve.out" SMOKE_INVOCATION_RESOLVED '[a-z_]+')"
+    [[ "$resolved" == "completed_disabled" || "$resolved" == "already_resolved" ]] \
+      || die "smoke_resolve_disabled.sql printed verdict '${resolved:-<none>}' — expected completed_disabled or already_resolved"
+
+    ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"}, moved no counter, and its invocation record is closed (${resolved})"
     ;;
 
   canary-invoke)
@@ -496,8 +538,9 @@ case "$SUB" in
     resp_out="$CANARY_TMP/response.out"
 
     warn "canary-invoke SENDS. It runs the reviewed cron command once, with the cron still inactive."
-    INV_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    prepare_invocation_request_id "the canary invocation"
     if ! run_sql_capture "$inv_out" "$url" canary_invoke.sql -v max_recipients="$MAX_RECIPIENTS" -v invocation_request_id="$INV_REQ_ID"; then
+      warn "invocation request id was ${INV_REQ_ID} — if the failure below is AMBIGUOUS (connection lost, not a rolled-back assertion), re-run with --invocation-request-id=${INV_REQ_ID}"
       report_failed_invoke "$inv_out" "the canary invocation"
     fi
 

@@ -1,17 +1,16 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
--- N4 M1 part 3 — the worker's CLAIM of the pending invocation.
+-- N4 M1 part 3 — the worker's CLAIM of the pending invocation, the disabled-smoke completion
+-- arm, the strict canary reconciliation, and the admin health reader.
 --
 -- WHY CLAIM-FROM-DB rather than an id in the request body: the canary executes the REVIEWED
 -- cron command VERBATIM (canary_invoke.sql refuses a command that is not exactly the reviewed
 -- one), so the request body cannot carry a per-invocation id without breaking the command-hash
 -- gate. Instead the invoker's open() row is the handshake: the worker, having begun its own
--- dispatch run, claims THE single unresolved pending invocation (single-flight guarantees at
--- most one). A run that claims nothing is a steady-state cron tick — the explicit
--- no-invocation branch, not a failure.
+-- dispatch run, claims THE single unresolved invocation (single-flight guarantees at most one).
 --
--- All validation lives in bind_notification_worker_invocation (M1, Codex-clear): worker
+-- All run-evidence validation lives in bind_notification_worker_invocation (M1): worker
 -- identity, phase, channel, unfinished-at-binding, lock order invocation → run. This wrapper
--- only supplies "which invocation": the oldest pending one, locked.
+-- supplies "which invocation" and the REFUSAL semantics around it.
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 
 CREATE OR REPLACE FUNCTION public.claim_pending_worker_invocation(
@@ -23,30 +22,227 @@ SET search_path = public
 AS $$
 DECLARE
   v_inv uuid;
+  v_status text;
   v_verdict text;
 BEGIN
-  SELECT id INTO v_inv FROM public.notification_worker_invocations
-   WHERE status = 'pending'
-   ORDER BY requested_at
+  -- SERIALIZE THE CLASSIFICATION — the same advisory lock open() takes, so a claim never reads
+  -- a half-committed picture, two concurrent claims order deterministically, and a claim never
+  -- interleaves with an open. Held to transaction end.
+  PERFORM pg_advisory_xact_lock(hashtextextended('notif-worker-invocation-open', 0));
+
+  -- ANY unresolved invocation — NOT just pending. The bug this closes: a duplicate HTTP request
+  -- (pg_net retry, double dispatch) whose sibling had already bound the invocation saw "no
+  -- pending row", returned NULL, and proceeded as a full steady-state pass — claiming groups
+  -- and materializing in a second, unverified run while the operator believed exactly one
+  -- verified run was executing. A run may proceed past this point ONLY as the invocation's
+  -- owner (new binding or provably-identical same-run replay) or when NO deliberate invocation
+  -- exists at all. FOR UPDATE holds the row so a concurrent resolve orders after us; the
+  -- single-flight partial unique index means at most one row can match.
+  SELECT id, status INTO v_inv, v_status
+    FROM public.notification_worker_invocations
+   WHERE status IN ('pending', 'started')
    LIMIT 1
    FOR UPDATE;
   IF NOT FOUND THEN
-    RETURN NULL;   -- steady-state tick: no deliberate invocation to own
+    RETURN NULL;   -- steady-state tick: ZERO unresolved invocations is the ONLY silent arm
   END IF;
+
   v_verdict := public.bind_notification_worker_invocation(v_inv, p_worker_run_id);
   IF v_verdict IN ('bound', 'replayed') THEN
     RETURN v_inv;
   END IF;
-  -- A pending invocation exists but THIS run cannot own it (wrong kind, missing, ended…).
-  -- That is a worker-side bug or stale evidence — LOUD, never a silent steady-state downgrade:
-  -- the operator is waiting on this invocation's evidence.
-  RAISE EXCEPTION 'claim_pending_worker_invocation: invocation % refused this run (%) — verdict %',
-    v_inv, p_worker_run_id, v_verdict;
+  -- An unresolved invocation exists and THIS run cannot own it: another run holds it
+  -- ('conflict_other_run' — the duplicate-execution case), or the evidence refused the run.
+  -- LOUD, never a silent steady-state downgrade — the operator is waiting on this invocation's
+  -- evidence, and a second run working the same queue would corrupt it.
+  RAISE EXCEPTION 'claim_pending_worker_invocation: invocation % (status %) refused this run (%) — verdict %',
+    v_inv, v_status, p_worker_run_id, v_verdict;
 END;
 $$;
 
 COMMENT ON FUNCTION public.claim_pending_worker_invocation(uuid) IS
-  'N4: the dispatch worker''s startup claim of THE pending deliberate invocation (single-flight guarantees at most one). NULL = steady-state cron tick, the explicit no-invocation branch. A pending invocation this run cannot own RAISES — the operator is waiting on its evidence, so a silent downgrade would strand them. All evidence validation is bind''s.';
+  'N4: the dispatch worker''s startup claim of THE unresolved deliberate invocation (single-flight guarantees at most one). NULL ONLY when zero unresolved invocations exist — the steady-state cron tick. A pending invocation binds; a started one is accepted only as this run''s own replay; anything else RAISES, so a duplicate HTTP request can never proceed as a second unverified pass. Classification is serialized under the open() advisory lock.';
 
 REVOKE ALL ON FUNCTION public.claim_pending_worker_invocation(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_pending_worker_invocation(uuid) TO service_role;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+-- The DISABLED-SMOKE completion arm. When DIGEST_SEND_ENABLED is off the worker answers the
+-- exact disabled 200 BEFORE any DB work: no run starts, so the smoke's invocation stays pending
+-- and the generic resolve — which demands a bound, ended run — correctly refuses it forever.
+-- This arm closes that gap WITHOUT weakening the generic path: it demands the pg_net response
+-- evidence instead of a run. The response row cannot name the invocation (open() commits before
+-- net.http_post returns an id), so the tie is: single-flight (this was THE invocation in
+-- flight), the response postdating the open, a clean 200, and the exact disabled body.
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.resolve_smoke_invocation_disabled(
+  p_invocation_id uuid,
+  p_net_request_id bigint
+) RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v public.notification_worker_invocations%ROWTYPE;
+  r record;
+BEGIN
+  SELECT * INTO v FROM public.notification_worker_invocations
+   WHERE id = p_invocation_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: invocation % does not exist', p_invocation_id;
+  END IF;
+  IF v.status = 'completed_disabled' THEN RETURN 'already_resolved'; END IF;
+  IF v.purpose <> 'smoke' THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: invocation % is a %, not a smoke — a % that found the engine disabled is an operational failure, not a success',
+      p_invocation_id, v.purpose, v.purpose;
+  END IF;
+  IF v.status <> 'pending' THEN
+    -- started = the worker RAN (engine was NOT disabled): the run-based resolve owns it.
+    -- completed/abandoned = a different terminal already holds the truth.
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: invocation % is %, not pending — the disabled arm applies only when the worker never started a run',
+      p_invocation_id, v.status;
+  END IF;
+
+  SELECT status_code, content, timed_out, error_msg, created INTO r
+    FROM net._http_response WHERE id = p_net_request_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: pg_net response % does not exist — the smoke''s evidence is not readable', p_net_request_id;
+  END IF;
+  IF r.created < v.requested_at THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: pg_net response % (created %) PREDATES invocation % (requested %) — that is another request''s evidence',
+      p_net_request_id, r.created, p_invocation_id, v.requested_at;
+  END IF;
+  IF r.timed_out IS TRUE OR r.error_msg IS NOT NULL THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: pg_net response % carries a transport failure (timed_out=%, error=%) — not disabled-smoke evidence',
+      p_net_request_id, coalesce(r.timed_out, false), coalesce(r.error_msg, '<none>');
+  END IF;
+  IF r.status_code IS DISTINCT FROM 200
+     OR (r.content::jsonb ->> 'status') IS DISTINCT FROM 'disabled' THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: response % answered HTTP % with status ''%'' — only the exact disabled 200 completes this arm',
+      p_net_request_id, r.status_code, coalesce(r.content::jsonb ->> 'status', '<absent>');
+  END IF;
+
+  UPDATE public.notification_worker_invocations
+     SET status = 'completed_disabled', resolved_at = now()
+   WHERE id = v.id;
+  RETURN 'completed_disabled';
+END;
+$$;
+
+COMMENT ON FUNCTION public.resolve_smoke_invocation_disabled(uuid, bigint) IS
+  'N4: completes a SMOKE invocation whose worker answered the exact disabled 200 before any DB work (no run exists to bind, so the generic evidence-demanding resolve correctly refuses it). Evidence: the pg_net response postdates the open, is a clean 200, and carries the exact disabled body. Smoke-only and pending-only — every other shape raises.';
+
+REVOKE ALL ON FUNCTION public.resolve_smoke_invocation_disabled(uuid, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_smoke_invocation_disabled(uuid, bigint) TO service_role;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+-- STRICT canary reconciliation. The artifact used to resolve "the invocation WHERE
+-- worker_run_id = run AND status = 'started'" — zero matches produced zero rows and the shell
+-- sailed on to verification with the invocation still pending. Resolution by exact run id,
+-- no status filter, exactly one row or an exception naming what actually happened.
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.resolve_invocation_for_canary_run(
+  p_worker_run_id uuid
+) RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_count int;
+  v_id uuid;
+  v_status text;
+  v_pending int;
+BEGIN
+  SELECT count(*), min(id::text)::uuid INTO v_count, v_id
+    FROM public.notification_worker_invocations
+   WHERE worker_run_id = p_worker_run_id;
+  IF v_count = 0 THEN
+    SELECT count(*) INTO v_pending
+      FROM public.notification_worker_invocations WHERE status = 'pending';
+    RAISE EXCEPTION 'resolve_invocation_for_canary_run: NO invocation is bound to run % — the canary opened one before dispatch, so either the worker never claimed it (% still pending: the run you reconciled is NOT the invocation''s run) or the run id is wrong',
+      p_worker_run_id, v_pending;
+  END IF;
+  IF v_count > 1 THEN
+    RAISE EXCEPTION 'resolve_invocation_for_canary_run: % invocations claim run % — evidence is ambiguous, stop and inspect', v_count, p_worker_run_id;
+  END IF;
+
+  SELECT status INTO v_status FROM public.notification_worker_invocations WHERE id = v_id;
+  IF v_status = 'abandoned' THEN
+    RAISE EXCEPTION 'resolve_invocation_for_canary_run: invocation % for run % was ABANDONED — reconciling over it would overwrite that verdict', v_id, p_worker_run_id;
+  END IF;
+  -- 'completed' → already_resolved (idempotent re-run); 'started' → the evidence-demanding
+  -- resolve completes it. Its TYPED REFUSALS (rejected_run_not_ended, …) must FAIL the artifact
+  -- rather than print as a quiet marker — only the two success verdicts pass.
+  v_status := public.resolve_notification_worker_invocation(v_id, 'completed');
+  IF v_status NOT IN ('completed', 'already_resolved') THEN
+    RAISE EXCEPTION 'resolve_invocation_for_canary_run: invocation % for run % refused completion — verdict % (the run has not provably ended; reconcile it first)',
+      v_id, p_worker_run_id, v_status;
+  END IF;
+  RETURN v_status;
+END;
+$$;
+
+COMMENT ON FUNCTION public.resolve_invocation_for_canary_run(uuid) IS
+  'N4: canary_reconcile''s closing step. Finds THE invocation bound to the given run — zero or many RAISE (zero means the worker never claimed the operator''s invocation, so the reconciled run is not the one the canary caused) — and completes it through the evidence-demanding generic resolve. Idempotent: already-completed returns already_resolved.';
+
+REVOKE ALL ON FUNCTION public.resolve_invocation_for_canary_run(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_invocation_for_canary_run(uuid) TO service_role;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+-- HEALTH EXPOSURE — pending/stale invocations must be VISIBLE, not just enforced (AC-6).
+-- Fixed columns only (N4 doctrine: no payloads, no free-form projections beyond the
+-- operator-supplied source label); admin-checked fail-closed; bounded.
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.admin_list_worker_invocations(
+  p_limit int DEFAULT 50
+) RETURNS TABLE (
+  id uuid,
+  purpose text,
+  source text,
+  status text,
+  requested_at timestamptz,
+  age_seconds bigint,
+  worker_run_id uuid,
+  run_status text,
+  run_phase text,
+  stale boolean,
+  resolved_at timestamptz,
+  abandon_reason text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.has_role(auth.uid(), 'admin') THEN
+    RAISE EXCEPTION 'admin_list_worker_invocations: platform admin only';
+  END IF;
+  RETURN QUERY
+  SELECT i.id, i.purpose, i.source, i.status, i.requested_at,
+         GREATEST(0, extract(epoch FROM (now() - i.requested_at)))::bigint AS age_seconds,
+         i.worker_run_id, r.status AS run_status, r.phase AS run_phase,
+         -- stale = unresolved past the abandon age-gate: the operator can act on it NOW
+         (i.status IN ('pending', 'started')
+          AND i.requested_at < now() - interval '10 minutes') AS stale,
+         i.resolved_at, i.abandon_reason
+    FROM public.notification_worker_invocations i
+    LEFT JOIN public.notification_worker_runs r ON r.run_id = i.worker_run_id
+   ORDER BY (i.status IN ('pending', 'started')) DESC, i.requested_at DESC
+   LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200);
+END;
+$$;
+
+COMMENT ON FUNCTION public.admin_list_worker_invocations(int) IS
+  'N4 AC-6 health: unresolved-first bounded list of deliberate worker invocations with their bound run''s status and a stale flag (unresolved past the 10-minute abandon age-gate). Fixed columns only; platform-admin fail-closed; limit clamped 1..200.';
+
+REVOKE ALL ON FUNCTION public.admin_list_worker_invocations(int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_list_worker_invocations(int) TO authenticated, service_role;

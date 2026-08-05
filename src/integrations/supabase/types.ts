@@ -9480,6 +9480,23 @@ export type Database = {
         Args: { p_job_name: string; p_ttl_seconds?: number }
         Returns: string
       }
+      admin_list_worker_invocations: {
+        Args: { p_limit?: number }
+        Returns: {
+          abandon_reason: string
+          age_seconds: number
+          id: string
+          purpose: string
+          requested_at: string
+          resolved_at: string
+          run_phase: string
+          run_status: string
+          source: string
+          stale: boolean
+          status: string
+          worker_run_id: string
+        }[]
+      }
       admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
         Args: { p_invoice_id: string; p_reason: string }
@@ -11316,8 +11333,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      resolve_invocation_for_canary_run: {
+        Args: { p_worker_run_id: string }
+        Returns: string
+      }
       resolve_notification_worker_invocation: {
         Args: { p_invocation_id: string; p_outcome: string; p_reason?: string }
+        Returns: string
+      }
+      resolve_smoke_invocation_disabled: {
+        Args: { p_invocation_id: string; p_net_request_id: number }
         Returns: string
       }
       reset_email_suppression: { Args: { p_email: string }; Returns: undefined }

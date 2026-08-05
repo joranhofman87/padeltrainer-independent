@@ -19,10 +19,13 @@ SET search_path = pg_catalog;
 
 SELECT * FROM public.reconcile_notification_digest_run(:'run_id'::pg_catalog.uuid);
 
--- N4 M1 (AC-6): close the deliberate-invocation record this run claimed. 'completed' demands
--- the evidence (the bound run has ended) — resolve() refuses anything less, so this line can
--- never wave an unverified invocation through. 'already_resolved' on a re-run is fine.
-SELECT public.resolve_notification_worker_invocation(i.id, 'completed') AS invocation_resolution
-  FROM public.notification_worker_invocations i
- WHERE i.worker_run_id = :'run_id'::pg_catalog.uuid
-   AND i.status = 'started';
+-- N4 M1 (AC-6): close the deliberate-invocation record this run claimed — STRICTLY. The first
+-- version resolved a status-filtered lookup ('started' only, keyed on the run): ZERO matches
+-- produced zero rows, psql printed an empty result, and the canary sailed on to verification
+-- with the invocation still pending — precisely the case where the reconciled run is NOT the
+-- run the operator's invocation caused. resolve_invocation_for_canary_run finds THE invocation bound to
+-- this exact run id with no status filter, RAISES on zero or many (naming whether one is still
+-- pending), refuses to overwrite an abandoned verdict, and completes through the same
+-- evidence-demanding generic resolve ('already_resolved' on a re-run is the one quiet verdict).
+SELECT pg_catalog.format('CANARY_INVOCATION_RESOLVED=%s',
+  public.resolve_invocation_for_canary_run(:'run_id'::pg_catalog.uuid)) AS invocation_marker;

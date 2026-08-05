@@ -641,10 +641,13 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
   const SQL = (f: string) =>
     readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
 
-  it('the gate include exists and refuses on ANY unresolved invocation', () => {
+  it('the gate include exists, refuses on ANY unresolved invocation, and NAMES the recovery id', () => {
     const gate = SQL('_invocation_gate.sql');
     expect(gate).toContain("status IN ('pending', 'started')");
-    expect(gate).toContain('assert_eq');
+    // the refusal must carry the row's identity — the request_id is the operator's recovery
+    // handle (--invocation-request-id), so a bare count assertion would strand them
+    expect(gate).toContain('RAISE EXCEPTION');
+    expect(gate).toContain('--invocation-request-id=%s');
   });
 
   it.each(['smoke_invoke.sql', 'canary_invoke.sql'])('%s gates, then OPENS, before its dispatch', (f) => {
@@ -666,15 +669,32 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
     expect(src).not.toContain('open_notification_worker_invocation(');
   });
 
-  it('canary_reconcile resolves the claimed invocation with EVIDENCE-gated completion', () => {
+  it('canary_reconcile resolves STRICTLY: exact run id, one row or raise, quiet only when already resolved', () => {
     const src = SQL('canary_reconcile.sql');
-    expect(src).toContain("resolve_notification_worker_invocation(i.id, 'completed')");
-    expect(src).toContain("i.worker_run_id = :'run_id'");
+    // the strict RPC — never the bare status-filtered UPDATE whose zero-match sailed through
+    expect(src).toContain("resolve_invocation_for_canary_run(:'run_id'");
+    expect(src).toContain('CANARY_INVOCATION_RESOLVED=');
+    expect(src).not.toMatch(/status = 'started'/);
   });
 
-  it('the shell allowlists and supplies the per-command request id', () => {
+  it('smoke_resolve_disabled closes the disabled smoke by request id, with the pg_net evidence', () => {
+    const src = SQL('smoke_resolve_disabled.sql');
+    expect(src).toContain('resolve_smoke_invocation_disabled(');
+    expect(src).toContain(":'invocation_request_id'");
+    expect(src).toContain(":'net_request_id'");
+    expect(src).toContain('SMOKE_INVOCATION_RESOLVED=');
+    expect(src).toContain('SET search_path = pg_catalog;');
+  });
+
+  it('the shell allowlists the ids, prints the request id BEFORE the invoke, and accepts recovery', () => {
     const sh = readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'run-enablement.sh'), 'utf8');
-    expect(sh).toContain('ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id"');
-    expect(sh.match(/INV_REQ_ID="\$\(uuidgen/g)?.length).toBe(2);
+    expect(sh).toContain('ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id"');
+    // ONE uuid mint, inside the shared prepare helper — a per-execution uuid at each call site is
+    // exactly what could not recover an ambiguously-committed open
+    expect(sh.match(/uuidgen/g)?.length).toBe(1);
+    expect(sh).toContain('--invocation-request-id=*)');
+    expect(sh.match(/prepare_invocation_request_id "/g)?.length).toBe(2);
+    // the smoke CLOSES its invocation after the verdicts
+    expect(sh).toContain('smoke_resolve_disabled.sql');
   });
 });

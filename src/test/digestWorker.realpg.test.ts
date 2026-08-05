@@ -46,7 +46,13 @@ beforeAll(async () => {
     // 10c-b E gave this its FIRST caller: the worker now drains the orphan reconcile queue, so
     // the fixture must carry the migration that defines it. Without it the drain would throw on
     // every run — which is exactly what the suite should catch if the migration is ever dropped.
-    '20261006110000_reconcile_orphan_provider_events.sql']) {
+    '20261006110000_reconcile_orphan_provider_events.sql',
+    // N4 M1 did the same again: every dispatch run now opens by CLAIMING the pending deliberate
+    // invocation (Stage-3.5 AC-6), so the invocation record + claim RPC are part of the worker's
+    // runtime contract. In this suite no invocation is ever opened, so every claim is the
+    // steady-state NULL — which is itself part of what these tests now prove.
+    '20261016100000_notif_n4_worker_invocations.sql',
+    '20261016110000_notif_n4_invocation_claim.sql']) {
     await c.query(readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'));
   }
   await c.end();

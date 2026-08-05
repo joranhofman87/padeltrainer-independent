@@ -36,8 +36,13 @@ CREATE TABLE public.notification_worker_invocations (
   request_id     uuid NOT NULL UNIQUE,
   purpose        text NOT NULL CHECK (purpose IN ('smoke', 'canary', 'manual')),
   source         text NOT NULL CHECK (length(btrim(source)) BETWEEN 3 AND 200),
+  -- 'completed_disabled' is the SMOKE-ONLY terminal for the disabled arm: the worker answered
+  -- the exact disabled 200 BEFORE any DB work, so no run exists to bind — 'completed' (which
+  -- demands a run) cannot represent it and 'abandoned' would misfile a successful smoke as a
+  -- failure. Reached only via resolve_smoke_invocation_disabled, which verifies the pg_net
+  -- response evidence.
   status         text NOT NULL DEFAULT 'pending'
-                   CHECK (status IN ('pending', 'started', 'completed', 'abandoned')),
+                   CHECK (status IN ('pending', 'started', 'completed', 'completed_disabled', 'abandoned')),
   requested_at   timestamptz NOT NULL DEFAULT now(),
   worker_run_id  uuid,                       -- bound at worker startup; NO FK (runs are swept)
   resolved_at    timestamptz,
@@ -45,6 +50,7 @@ CREATE TABLE public.notification_worker_invocations (
   CONSTRAINT invocation_resolution_coherent CHECK (
     (status IN ('pending', 'started') AND resolved_at IS NULL AND abandon_reason IS NULL)
     OR (status = 'completed' AND resolved_at IS NOT NULL AND abandon_reason IS NULL)
+    OR (status = 'completed_disabled' AND resolved_at IS NOT NULL AND abandon_reason IS NULL)
     OR (status = 'abandoned' AND resolved_at IS NOT NULL
         AND length(btrim(coalesce(abandon_reason, ''))) BETWEEN 3 AND 500)
   ),
@@ -52,7 +58,11 @@ CREATE TABLE public.notification_worker_invocations (
   -- a pending row has NO run (binding IS the transition), a completed row MUST have one (its
   -- completion evidence is that run's end) — schema-level, not merely RPC discipline
   CONSTRAINT invocation_pending_is_clean CHECK (status <> 'pending' OR worker_run_id IS NULL),
-  CONSTRAINT invocation_completed_has_run CHECK (status <> 'completed' OR worker_run_id IS NOT NULL)
+  CONSTRAINT invocation_completed_has_run CHECK (status <> 'completed' OR worker_run_id IS NOT NULL),
+  -- the disabled arm exists ONLY for smokes and ONLY runless: a canary/manual invocation that
+  -- found the engine disabled is an operational failure, never a quiet success
+  CONSTRAINT invocation_disabled_is_runless_smoke CHECK (
+    status <> 'completed_disabled' OR (purpose = 'smoke' AND worker_run_id IS NULL))
 );
 
 -- SINGLE-FLIGHT: one unresolved deliberate invocation at a time, full stop. Not per-purpose:
@@ -92,13 +102,13 @@ BEGIN
     RAISE EXCEPTION 'notification_worker_invocations: a bound run id is immutable — evidence does not change owners';
   END IF;
   IF NOT (
-       (OLD.status = 'pending' AND NEW.status IN ('started', 'abandoned'))
+       (OLD.status = 'pending' AND NEW.status IN ('started', 'completed_disabled', 'abandoned'))
     OR (OLD.status = 'started' AND NEW.status IN ('completed', 'abandoned'))
     OR (OLD.status = NEW.status)
   ) THEN
     RAISE EXCEPTION 'notification_worker_invocations: % -> % is not a legal transition', OLD.status, NEW.status;
   END IF;
-  IF OLD.status IN ('completed', 'abandoned') AND NEW.status <> OLD.status THEN
+  IF OLD.status IN ('completed', 'completed_disabled', 'abandoned') AND NEW.status <> OLD.status THEN
     RAISE EXCEPTION 'notification_worker_invocations: resolved rows never reopen';
   END IF;
   RETURN NEW;
@@ -257,7 +267,7 @@ BEGIN
   SELECT * INTO v FROM public.notification_worker_invocations
    WHERE id = p_invocation_id FOR UPDATE;
   IF NOT FOUND THEN RETURN 'missing'; END IF;
-  IF v.status IN ('completed', 'abandoned') THEN RETURN 'already_resolved'; END IF;
+  IF v.status IN ('completed', 'completed_disabled', 'abandoned') THEN RETURN 'already_resolved'; END IF;
 
   IF p_outcome = 'completed' THEN
     -- Completion requires the EVIDENCE: a bound run that has ended. An unbound or still-running

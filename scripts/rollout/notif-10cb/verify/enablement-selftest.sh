@@ -60,6 +60,8 @@ if [[ -n "$file" ]]; then
     *smoke_invoke.sql)
       printf 'CANARY_REQUEST_PROVISIONAL=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
       printf 'CANARY_REQUEST_ID=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}" ;;
+    *smoke_resolve_disabled.sql)
+      printf 'SMOKE_INVOCATION_RESOLVED=%s\n' "${STUB_SMOKE_RESOLVE:-completed_disabled}" ;;
     *canary_invoke.sql)
       [[ -n "${STUB_NO_PROVISIONAL:-}" ]] || printf 'CANARY_REQUEST_PROVISIONAL=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
       printf 'CANARY_REQUEST_ID=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
@@ -218,6 +220,8 @@ set -e
 grep -qF 'smoke_invoke.sql' "$PSQL_LOG" && ok "...by running the guarded invoke artifact" \
   || { bad "...by running the guarded invoke artifact"; cat "$PSQL_LOG"; }
 grep -qF 'smoke_counters.sql' "$PSQL_LOG" && ok "...capturing the counters either side" || bad "...capturing the counters either side"
+grep -qF 'smoke_resolve_disabled.sql' "$PSQL_LOG" && ok "...and CLOSES the invocation record afterwards (AC-6)" \
+  || bad "...and CLOSES the invocation record afterwards (AC-6)"
 [[ "$(grep -cF 'smoke_counters.sql' "$PSQL_LOG")" == "2" ]] && ok "...twice, so the comparison is a DELTA" \
   || bad "...twice, so the comparison is a DELTA"
 grep -qF 'canary_invoke_response.sql' "$PSQL_LOG" && ok "...and reading pg_net's reply" || bad "...and reading pg_net's reply"
@@ -262,6 +266,52 @@ sb_rc=$?
 set -e
 [[ "$sb_rc" != "0" ]] && ok "a 200 with any OTHER body fails the disabled smoke" \
   || { bad "a 200 with any OTHER body fails the disabled smoke"; cat "$TMP/out"; }
+
+# RECOVERY IDENTITY (AC-6, finding 4): the invocation request id must be PRINTED before the
+# invoke runs, and --invocation-request-id must feed the SAME id to the artifact — that is what
+# lets an operator whose invoke died ambiguously resume the committed invocation instead of
+# colliding with the single-flight gate on a fresh uuid.
+FIXED_INV_ID="99999999-9999-4999-8999-999999999999"
+export PSQL_LOG="$TMP/log.smoke_invreq"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' \
+  EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed --invocation-request-id="$FIXED_INV_ID" "$URL" >"$TMP/out" 2>&1
+ir_rc=$?
+set -e
+[[ "$ir_rc" == "0" ]] && ok "smoke-disabled accepts --invocation-request-id (rc=$ir_rc)" \
+  || { bad "smoke-disabled accepts --invocation-request-id (rc=$ir_rc)"; cat "$TMP/out"; }
+grep -qF "invocation_request_id=$FIXED_INV_ID" "$PSQL_LOG" \
+  && ok "...and the artifact received exactly that id" || bad "...and the artifact received exactly that id"
+grep -qF "invocation request id: $FIXED_INV_ID" "$TMP/out" \
+  && ok "...and the id is printed BEFORE the invoke (the recovery line)" \
+  || { bad "...and the id is printed BEFORE the invoke"; cat "$TMP/out"; }
+run "a malformed --invocation-request-id is refused before any SQL" 1 -- \
+  smoke-disabled --yes --switch-off-confirmed --invocation-request-id=not-a-uuid "$URL"
+
+# THE INVOCATION MUST ACTUALLY CLOSE — a smoke whose resolve step failed (or answered with any
+# verdict but completed_disabled/already_resolved) must FAIL the subcommand, not report success
+# over a record that will (correctly) block every later step at the gate.
+export PSQL_LOG="$TMP/log.smoke_resolve_fail"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' \
+  STUB_FAIL_ON=smoke_resolve_disabled EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sr_rc=$?
+set -e
+[[ "$sr_rc" != "0" ]] && ok "a FAILING resolve step fails the smoke (record left open is named)" \
+  || { bad "a FAILING resolve step fails the smoke"; cat "$TMP/out"; }
+grep -qF 'still open' "$TMP/out" && ok "...telling the operator the record is still open" \
+  || { bad "...telling the operator the record is still open"; cat "$TMP/out"; }
+export PSQL_LOG="$TMP/log.smoke_resolve_verdict"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' \
+  STUB_SMOKE_RESOLVE=missing EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sv_rc=$?
+set -e
+[[ "$sv_rc" != "0" ]] && ok "an unexpected resolve verdict fails the smoke" \
+  || { bad "an unexpected resolve verdict fails the smoke"; cat "$TMP/out"; }
 
 # THE CASE THAT MATTERS MOST: an unexpected body AND a moved counter — "the worker sent, and then
 # something went wrong". Both verdicts must come after the comparison, so the operator is told WHAT

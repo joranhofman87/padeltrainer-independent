@@ -182,6 +182,15 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
     dispRun = await deps.rpc("start_notification_worker_run", { p_worker: worker, p_channel: deps.channel, p_phase: "dispatch" }) as string;
     s.dispatchRunId = dispRun;
 
+    // (0) INVOCATION CLAIM — N4 AC-6, before ANY pipeline mutation. A deliberate invocation (smoke/canary/
+    // manual) opened a durable pending record before pg_net dispatch; this run claims-and-binds it, closing
+    // the dispatched-but-not-yet-running blind spot. NULL = steady-state cron tick (no unresolved invocation).
+    // The RPC RAISES when an invocation exists but refuses this run (already started elsewhere, evidence
+    // mismatch) — the throw lands in the run-level catch below, which finishes this run 'failed' with no
+    // sweep/materialize/claim/provider work having happened.
+    s.invocationId = ((await deps.rpc("claim_pending_worker_invocation", { p_worker_run_id: dispRun })) as string | null) ?? undefined;
+    if (s.invocationId) deps.log({ event: "digest_worker_invocation_claimed", dispatch_run: dispRun, invocation: s.invocationId });
+
     // (1) STALE RECONCILIATION / SWEEP — ages out due uncertain groups first, independent of the breaker.
     s.sweptStale = await deps.rpc("reconcile_notification_digest_stale", {
       p_run_id: dispRun, p_channel: deps.channel, p_now: nowIso(), p_probe_lease_minutes: 10, p_limit: deps.limits.sweepLimit,
