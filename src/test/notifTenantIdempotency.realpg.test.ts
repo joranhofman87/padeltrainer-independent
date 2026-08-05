@@ -142,6 +142,7 @@ beforeAll(async () => {
     '20261022100000_notif_n4_seam_corrections.sql',
     '20261023100000_notif_n4_seam_corrections_round2.sql',
     '20261024100000_notif_n4_seam_corrections_round3.sql',
+    '20261025100000_notif_n4_invocation_ownership_contract.sql',
   ]) {
     await c.query(MIG(f));
   }

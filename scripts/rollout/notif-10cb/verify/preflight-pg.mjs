@@ -196,6 +196,8 @@ try {
     // round 3: bind's CAUSALITY check + the claim's steady-state arm for it
     const r3 = MIG('20261024100000_notif_n4_seam_corrections_round3.sql');
     await c.query(r3.slice(0, r3.indexOf('-- \u2500\u2500 SEAM 13')));
+    // round 4 (convergence): the ownership contract — smoke|canary only, no timestamp inference
+    await c.query(MIG('20261025100000_notif_n4_invocation_ownership_contract.sql'));
   }
   // M2's kill table: activation assertion 9 refuses to arm the cron while a channel is killed.
   // Table only — the RPC that writes it is admin-facing and no artifact calls it.
@@ -675,6 +677,22 @@ try {
     rec('...and the cron is STILL INACTIVE (the transaction rolled back)', (await jobActive()) === false);
   }
 
+  // ── round 4: E1 of the ownership contract, executed ──────────────────────
+  // Ownership of the run a deliberate invocation causes is proven by EXCLUSION, and its first
+  // term is "no tick can be dispatched during this window": both invoke artifacts lock the
+  // reviewed cron.job row and refuse an ACTIVE job BEFORE they open anything. If that ever
+  // regressed, the invocation record would go on claiming a causality it no longer has — and no
+  // DB-side check can recover it, which is exactly why 'manual' was removed instead of patched.
+  for (const [what, run] of [['canary_invoke', canaryInvoke], ['smoke_invoke', smokeInvoke]]) {
+    await seedBaseline();
+    await c.query(`UPDATE cron.job SET active = true`);
+    const err = await run();
+    rec(`${what} REFUSES to open an invocation while the cron job is ACTIVE`,
+      !!err && err.includes('INACTIVE'), err ?? 'it opened an invocation anyway');
+    rec(`...and no invocation row was left behind by ${what}`,
+      (await c.query(`SELECT count(*)::int n FROM public.notification_worker_invocations WHERE status IN ('pending','started')`)).rows[0].n === 0);
+  }
+
   // The kill scenario above proves the PREFLIGHT refuses. Arming is the act that matters, so it
   // is proven at the arming artifact too — including that the cron is still inactive afterwards.
   await seedBaseline();
@@ -689,10 +707,10 @@ try {
   }
 
   // N4 M1: the STRICT invocation gate lives in activate.sql, not in the preflight — arming must
-  // never ride over an evidence window someone else opened (a manual invocation does not
-  // serialize on the cron row the way smoke/canary happen to).
+  // never ride over an evidence window at all, including a smoke opened after the canary was
+  // reconciled (the sequence's own next step, and the one an operator is most likely to overlap).
   await seedBaseline();
-  await c.query(`SELECT public.open_notification_worker_invocation('manual', 'operator:adhoc', gen_random_uuid())`);
+  await c.query(`SELECT public.open_notification_worker_invocation('smoke', 'smoke_invoke.sql', gen_random_uuid())`);
   {
     const err = await activate();
     rec('activate REFUSES while a deliberate invocation is UNRESOLVED',

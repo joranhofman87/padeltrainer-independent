@@ -193,6 +193,7 @@ beforeAll(async () => {
   await c.query(MIG('20261022100000_notif_n4_seam_corrections.sql'));
   await c.query(MIG('20261023100000_notif_n4_seam_corrections_round2.sql'));
   await c.query(MIG('20261024100000_notif_n4_seam_corrections_round3.sql'));
+  await c.query(MIG('20261025100000_notif_n4_invocation_ownership_contract.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });

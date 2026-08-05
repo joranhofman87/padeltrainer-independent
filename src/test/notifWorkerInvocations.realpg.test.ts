@@ -107,6 +107,9 @@ beforeAll(async () => {
     const r3 = MIG('20261024100000_notif_n4_seam_corrections_round3.sql');
     await c.query(r3.slice(0, r3.indexOf('-- \u2500\u2500 SEAM 13')));
   }
+  // round 4 (convergence): the ownership CONTRACT — 'manual' is gone, and with it round 3's
+  // timestamp comparison and the claim arm that comparison needed
+  await c.query(MIG('20261025100000_notif_n4_invocation_ownership_contract.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -122,6 +125,25 @@ beforeEach(async () => {
 });
 
 describe('open: request-id idempotency', () => {
+  it('I4: a purpose no ARTIFACT provides is refused, naming what the artifacts supply that it cannot', async () => {
+    // the round-4 convergence: ownership of the run an invocation causes is proven by exclusion
+    // (cron inactive under the job row lock, no run in flight, single-flight) — properties only
+    // an artifact establishes. An ad-hoc invocation had none of them.
+    await expect(c.query(
+      `SELECT public.open_notification_worker_invocation('manual','operator:adhoc',gen_random_uuid())`))
+      .rejects.toThrow(/purpose manual is not available/);
+    await expect(c.query(
+      `SELECT public.open_notification_worker_invocation('backfill','ops',gen_random_uuid())`))
+      .rejects.toThrow(/is not available/);
+    // …and the SCHEMA refuses it too, with the RPC out of the way
+    await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    await expect(c.query(
+      `INSERT INTO public.notification_worker_invocations (request_id, purpose, source)
+       VALUES (gen_random_uuid(), 'manual', 'operator:adhoc')`))
+      .rejects.toThrow(/purpose_check/);
+    await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+  });
+
   it('an exact replay RECOVERS the same invocation — the ambiguous-commit path', async () => {
     const req = crypto.randomUUID();
     const first = await open(c, req);
@@ -366,32 +388,18 @@ describe('claim_pending_worker_invocation (part 3): the worker-side handshake', 
       .rejects.toThrow(/refused this run/);
   });
 
-  // ── round 3: CAUSALITY. A run cannot own an invocation that did not exist when it started ──
-  it('a run ALREADY RUNNING when the invocation was opened cannot bind it — and the real run still can', async () => {
-    // the exact production shape: a cron tick is in flight, an operator opens a manual
-    // invocation microseconds later, and the tick's claim reaches it first
-    const inFlight = await newRun(false);
-    await new Promise((r) => setTimeout(r, 10));
-    const inv = await open(c, crypto.randomUUID(), 'manual', 'operator:adhoc');
-    expect(await bind(inv, inFlight)).toBe('run_predates_invocation');   // NOT 'bound'
-    expect((await c.query(
-      `SELECT status, worker_run_id FROM public.notification_worker_invocations WHERE id = $1`, [inv])).rows[0])
-      .toMatchObject({ status: 'pending', worker_run_id: null });
-    // …and the run the dispatch actually starts still owns it (it was previously locked out
-    // with conflict_other_run, which is how the stolen binding became visible)
-    const real = await newRun(false);
-    expect(await bind(inv, real)).toBe('bound');
-  });
-
-  it('…and that refusal is a STEADY-STATE tick for the claim, not a failed run', async () => {
-    // The claim RAISES for every other refusal on purpose. Raising here would fail an innocent
-    // cron tick AND strand the invocation: single-flight would then block every later open.
-    const inFlight = await newRun(false);
-    await new Promise((r) => setTimeout(r, 10));
-    const inv = await open(c, crypto.randomUUID(), 'manual', 'operator:adhoc');
-    expect(await claim(inFlight)).toBe(null);
-    const real = await newRun(false);
-    expect(await claim(real)).toBe(inv);            // the causing run claims it normally
+  // ── round 4 (convergence): ownership is proven by EXCLUSION, so the claim keeps exactly two
+  //    arms — own it, or nothing is unresolved. The third arm round 3 needed for 'manual'
+  //    returned NULL, which is the worker's signal to run a FULL steady-state pass: it
+  //    authorised the overlapping unverified execution the loud arm exists to prevent.
+  it('an unresolved invocation this run cannot own ALWAYS raises — NULL means zero unresolved, and nothing else', async () => {
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    const owner = await newRun(false);
+    expect(await claim(owner)).toBe(inv);
+    // every other run, whatever its timing relative to the invocation, is refused LOUDLY
+    const later = await newRun(false);
+    await expect(c.query(`SELECT public.claim_pending_worker_invocation($1)`, [later]))
+      .rejects.toThrow(/conflict_other_run/);
   });
 });
 
