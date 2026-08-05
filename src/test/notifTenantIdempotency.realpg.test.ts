@@ -54,9 +54,9 @@ beforeAll(async () => {
     CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY);
     CREATE TABLE public.persons (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, email text, preferred_language text);
     CREATE TABLE public.profiles (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid, preferred_language text);
-    CREATE TABLE public.person_links (guest_player_id uuid, person_id uuid);
+    CREATE TABLE public.person_links (guest_player_id uuid, person_id uuid, profile_id uuid);
     CREATE TABLE public.invoices (id uuid PRIMARY KEY);
-    CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, timezone text NOT NULL DEFAULT 'Europe/Amsterdam');
+    CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, name text NOT NULL DEFAULT 'Academy', timezone text NOT NULL DEFAULT 'Europe/Amsterdam');
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, timezone text NOT NULL DEFAULT 'Europe/Amsterdam');
     CREATE TABLE public.trainer_followers (
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(), player_id uuid NOT NULL, trainer_id uuid NOT NULL,
@@ -71,6 +71,18 @@ beforeAll(async () => {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       event_type text NOT NULL, recipient_email text NOT NULL,
       occurred_at timestamptz NOT NULL DEFAULT now());
+    -- membership-arm stubs for M4's reader: bookings at academy trainers + guest linkage.
+    CREATE TABLE public.availability_slots (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), trainer_id uuid NOT NULL);
+    CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid NOT NULL, player_id uuid NOT NULL, status text);
+    CREATE TABLE public.academy_trainers (trainer_profile_id uuid NOT NULL, academy_profile_id uuid NOT NULL, status text NOT NULL DEFAULT 'active');
+    CREATE TABLE public.guest_players (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      academy_profile_id uuid, trainer_id uuid, twin_of_profile_id uuid, linked_profile_id uuid,
+      split_frozen boolean NOT NULL DEFAULT false);
+    -- faithful stand-in for the phase-3.2 helper: frozen = identity uncertain = grants nothing
+    CREATE FUNCTION public.is_guest_split_frozen(_guest_player_id uuid) RETURNS boolean
+      LANGUAGE sql STABLE AS $fn$
+      SELECT coalesce((SELECT split_frozen FROM public.guest_players WHERE id = _guest_player_id), true) $fn$;
+
     -- manager grants + the REAL is_academy_manager body (20260128121147, verbatim semantics)
     CREATE TABLE public.academy_managers (user_id uuid NOT NULL, academy_profile_id uuid NOT NULL);
     CREATE FUNCTION public.is_academy_manager(_user_id uuid, _academy_profile_id uuid)
@@ -108,6 +120,7 @@ beforeAll(async () => {
     '20261015100000_notif_n3_tenant_aware_idempotency.sql',
     '20261015110000_notif_n3_academy_restrictions.sql',
     '20261015120000_notif_n3_resolver_cap_integration.sql',
+    '20261015130000_notif_n3_player_visibility.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -615,5 +628,83 @@ describe('live enforcement at the send authorities (N3 M3)', () => {
       VALUES ('${U1}','open_slots_player','off')`);
     expect((await c.query(`SELECT public.notif_digest_member_stop_reason($1) AS r`, [member])).rows[0].r)
       .toBe('preference_off');
+  });
+});
+
+
+describe('player visibility of academy caps (N3 M4)', () => {
+  const PROF = '88888888-8888-4888-8888-888888888888';
+  const T2 = '99999999-9999-4999-8999-999999999999';
+
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit DISABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await c.query(`DELETE FROM public.academy_notification_restriction_audit;`);
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit ENABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await c.query(`DELETE FROM public.bookings; DELETE FROM public.availability_slots;
+      DELETE FROM public.academy_trainers; DELETE FROM public.guest_players;
+      DELETE FROM public.person_links WHERE profile_id IS NOT NULL;`);
+    await c.query(`INSERT INTO public.profiles (id, user_id) VALUES ('${PROF}','${U1}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.trainer_profiles (id) VALUES ('${T2}') ON CONFLICT DO NOTHING;`);
+    // a cap in academy A and one in academy B, both audited (manager writes them)
+    await asUser(MGR);
+    await setCap({ academy: A, event: 'session_reminder_player', cap: 'off', reason: 'A capped this' });
+    await c.query(`INSERT INTO public.academy_managers (user_id, academy_profile_id) VALUES ('${MGR}','${B}')
+      ON CONFLICT DO NOTHING`);
+    await setCap({ academy: B, event: 'session_reminder_player', cap: 'daily', reason: 'B capped this' });
+    await asUser(U1); // everything below runs as the PLAYER
+  });
+
+  const bookAt = async (academy: string, trainer: string, status = 'confirmed', trainerStatus = 'active') => {
+    await c.query(`INSERT INTO public.academy_trainers (trainer_profile_id, academy_profile_id, status)
+      VALUES ('${trainer}','${academy}','${trainerStatus}')`);
+    const slot = await c.query(`INSERT INTO public.availability_slots (trainer_id) VALUES ('${trainer}') RETURNING id`);
+    await c.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1,'${PROF}','${status}')`,
+      [slot.rows[0].id]);
+  };
+
+  it('the booking arm: a non-cancelled seat at an ACTIVE academy trainer makes the caps visible', async () => {
+    await bookAt(A, T2);
+    const caps = (await c.query(`SELECT * FROM public.get_my_notification_restrictions()`)).rows;
+    expect(caps).toHaveLength(1);
+    expect(caps[0].academy_profile_id).toBe(A);
+    expect(caps[0].max_frequency).toBe('off');
+    // and NEVER academy B's — no relationship there
+    expect(caps.some((r) => r.academy_profile_id === B)).toBe(false);
+  });
+
+  it('a cancelled booking or an inactive trainer ends the relationship — and the visibility', async () => {
+    await bookAt(A, T2, 'cancelled');
+    expect((await c.query(`SELECT * FROM public.get_my_notification_restrictions()`)).rows).toHaveLength(0);
+    await c.query(`DELETE FROM public.bookings; DELETE FROM public.availability_slots; DELETE FROM public.academy_trainers;`);
+    await bookAt(A, T2, 'confirmed', 'inactive');
+    expect((await c.query(`SELECT * FROM public.get_my_notification_restrictions()`)).rows).toHaveLength(0);
+  });
+
+  it('the guest arm: a person-linked guest grants visibility; a SPLIT-FROZEN one grants nothing', async () => {
+    const g = await c.query(`INSERT INTO public.guest_players (academy_profile_id) VALUES ('${A}') RETURNING id`);
+    await c.query(`INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${P1}', $1)`, [g.rows[0].id]);
+    await c.query(`INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P1}', '${PROF}')`);
+    expect((await c.query(`SELECT * FROM public.get_my_notification_restrictions()`)).rows).toHaveLength(1);
+    await c.query(`UPDATE public.guest_players SET split_frozen = true WHERE id = $1`, [g.rows[0].id]);
+    expect((await c.query(`SELECT * FROM public.get_my_notification_restrictions()`)).rows).toHaveLength(0);
+  });
+
+  it('history shows old→new + the reason, and NO actor column exists in the result shape', async () => {
+    await bookAt(A, T2);
+    const hist = (await c.query(`SELECT * FROM public.get_my_notification_restriction_history(50)`)).rows;
+    expect(hist).toHaveLength(1);
+    expect(hist[0].reason).toBe('A capped this');
+    expect(hist[0].new_max_frequency).toBe('off');
+    expect(Object.keys(hist[0])).not.toContain('actor_user_id');
+  });
+
+  it('anonymous callers are refused; a relationship-less player sees empty, not an error', async () => {
+    await asUser(null);
+    await expect(c.query(`SELECT * FROM public.get_my_notification_restrictions()`))
+      .rejects.toThrow(/authentication required/);
+    await asUser(U1); // U1 has no bookings/guests in this test
+    expect((await c.query(`SELECT * FROM public.get_my_notification_restrictions()`)).rows).toHaveLength(0);
+    expect((await c.query(`SELECT * FROM public.get_my_notification_restriction_history(50)`)).rows).toHaveLength(0);
   });
 });
