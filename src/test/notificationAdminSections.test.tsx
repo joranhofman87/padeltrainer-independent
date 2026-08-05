@@ -1,0 +1,153 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+
+/**
+ * N4 M7 — the extracted admin section components, tested directly for the states the page-level
+ * suite cannot reach cheaply: LOADING, EMPTY, POPULATED, PAGINATION, LONG TEXT (truncation +
+ * hover title), and the MOBILE/desktop rendering contract of the DataTable engine.
+ */
+
+const rpcMock = vi.fn();
+vi.mock('@/lib/supabaseClient', () => ({
+  supabase: { rpc: (fn: string, args?: Record<string, unknown>) => rpcMock(fn, args) },
+}));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, def?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
+      const vars = (typeof def === 'string' ? opts : def) ?? {};
+      const template = typeof def === 'string'
+        ? def
+        : String((def as Record<string, unknown> | undefined)?.defaultValue ?? key);
+      return template.replace(/\{\{(\w+)\}\}/g, (_m, name) => String((vars as Record<string, unknown>)[name] ?? ''));
+    },
+  }),
+}));
+
+import { WorkerRunsSection } from '@/components/notifications/admin/WorkerRunsSection';
+import { OrphanQueueSection } from '@/components/notifications/admin/OrphanQueueSection';
+import { ReadinessPanel } from '@/components/notifications/admin/ReadinessPanel';
+import { InvocationsSection } from '@/components/notifications/admin/InvocationsSection';
+
+const TS = '2026-08-05T15:15:01.899123+00:00';
+const LONG = 'a-very-long-event-key-that-must-truncate-'.repeat(4);
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  rpcMock.mockImplementation(() => Promise.resolve({ data: [], error: null }));
+});
+
+describe('OpsSection states (via WorkerRunsSection)', () => {
+  it('starts UNLOADED with a Load button — an admin page must not fire six cross-tenant reads on mount', () => {
+    render(<WorkerRunsSection />);
+    expect(screen.getByTestId('runs-load')).toBeInTheDocument();
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('EMPTY: a loaded-but-empty list renders the canonical EmptyState, not a bare table', async () => {
+    render(<WorkerRunsSection />);
+    fireEvent.click(screen.getByTestId('runs-load'));
+    await screen.findByTestId('runs-empty');
+    expect(screen.getByText('No worker runs in this window')).toBeInTheDocument();
+    expect(screen.queryByTestId('runs-more')).toBeNull();   // nothing to page through
+  });
+
+  it('ERROR: renders an alert with a retry that re-issues the read', async () => {
+    rpcMock.mockImplementation(() => Promise.resolve({ data: null, error: { message: 'boom' } }));
+    render(<WorkerRunsSection />);
+    fireEvent.click(screen.getByTestId('runs-load'));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    rpcMock.mockImplementation(() => Promise.resolve({ data: [], error: null }));
+    fireEvent.click(screen.getByTestId('runs-retry'));
+    await screen.findByTestId('runs-empty');
+  });
+
+  it('POPULATED + PAGINATION: a full page offers more; a short page is exhausted', async () => {
+    const full = Array.from({ length: 25 }, (_, i) => ({
+      run_id: `r${i}`, worker: 'w', channel: 'email', phase: 'dispatch', status: 'succeeded',
+      started_at: TS, ended_at: TS,
+    }));
+    rpcMock.mockImplementationOnce(() => Promise.resolve({ data: full, error: null }));
+    render(<WorkerRunsSection />);
+    fireEvent.click(screen.getByTestId('runs-load'));
+    await screen.findByTestId('runs-list');
+    expect(screen.getByTestId('runs-more')).toBeInTheDocument();
+    rpcMock.mockImplementationOnce(() => Promise.resolve({ data: [full[0]], error: null }));
+    fireEvent.click(screen.getByTestId('runs-more'));
+    await waitFor(() => expect(screen.queryByTestId('runs-more')).toBeNull());   // exhausted
+    // the cursor is the LAST row's raw strings, verbatim
+    const second = rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_worker_runs')[1];
+    expect(second[1].p_before_started_at).toBe(TS);
+    expect(second[1].p_before_run_id).toBe('r24');
+  });
+});
+
+describe('DataTable adoption: density, truncation and the mobile contract', () => {
+  it('LONG TEXT truncates with a hover title, and the table renders on MOBILE (not desktop-only)', async () => {
+    rpcMock.mockImplementationOnce(() => Promise.resolve({
+      data: [{
+        resend_event_id: LONG, channel: 'email', digest_group_id: 'g1', attempts: 3,
+        last_error_code: 'tagged_mismatch', quarantined: true, next_eligible_at: TS, updated_at: TS,
+      }],
+      error: null,
+    }));
+    render(<OrphanQueueSection onAct={() => {}} />);
+    fireEvent.click(screen.getByTestId('orphans-load'));
+    await screen.findByTestId('orphans-list');
+    const cell = screen.getByText(LONG);
+    expect(cell.className).toContain('truncate');                     // the text element itself
+    expect(cell.closest('td')?.getAttribute('title')).toBe(LONG);     // hover shows the full value
+    // the engine's card frame must NOT be desktop-only for these compact operational tables
+    const card = document.querySelector('[data-testid="orphans-list"] .hidden.md\\:block');
+    expect(card).toBeNull();
+  });
+
+  it('actions render only where the server would accept them (quarantined rows)', async () => {
+    rpcMock.mockImplementationOnce(() => Promise.resolve({
+      data: [
+        { resend_event_id: 'q1', channel: 'email', digest_group_id: 'g', attempts: 1, last_error_code: 'x', quarantined: true, next_eligible_at: TS, updated_at: TS },
+        { resend_event_id: 'live', channel: 'email', digest_group_id: 'g', attempts: 1, last_error_code: 'x', quarantined: false, next_eligible_at: TS, updated_at: TS },
+      ],
+      error: null,
+    }));
+    render(<OrphanQueueSection onAct={() => {}} />);
+    fireEvent.click(screen.getByTestId('orphans-load'));
+    await screen.findByTestId('orphans-list');
+    expect(screen.getByTestId('orphan-resolve-q1')).toBeInTheDocument();
+    expect(screen.queryByTestId('orphan-resolve-live')).toBeNull();
+  });
+});
+
+describe('Panels: loading and honest checks', () => {
+  it('ReadinessPanel LOADING renders the skeleton, not defaults', () => {
+    const { container } = render(
+      <ReadinessPanel envelope={undefined} isLoading isError={false} onRetry={() => {}} />,
+    );
+    expect(screen.queryByTestId('readiness-envelope')).toBeNull();
+    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+  });
+
+  it('ReadinessPanel renders every check verbatim, including not_provable', () => {
+    render(
+      <ReadinessPanel
+        envelope={{
+          schema_version: 1, as_of: TS, readiness: 'not_provable',
+          checks: [{ id: 'durable_activation_boundary', status: 'not_provable', detail: 'N5 not shipped' }],
+        }}
+        isLoading={false} isError={false} onRetry={() => {}}
+      />,
+    );
+    expect(screen.getByTestId('check-durable_activation_boundary').textContent).toContain('N5 not shipped');
+    // both the overall verdict and the check carry the badge — the panel never invents a pass
+    expect(screen.getAllByTestId('status-not_provable').length).toBe(2);
+  });
+
+  it('InvocationsSection LOADING shows a skeleton; empty shows the engine empty text', () => {
+    const { rerender, container } = render(
+      <InvocationsSection rows={undefined} isLoading isError={false} onRetry={() => {}} />,
+    );
+    expect(container.querySelector('.animate-pulse')).toBeTruthy();
+    rerender(<InvocationsSection rows={[]} isLoading={false} isError={false} onRetry={() => {}} />);
+    expect(screen.getByText('No deliberate invocations recorded')).toBeInTheDocument();
+  });
+});

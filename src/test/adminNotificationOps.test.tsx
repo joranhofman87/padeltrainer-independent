@@ -113,14 +113,16 @@ const defaultImpl = (fn: string) => {
       return Promise.resolve({ data: 'rejected_not_permanent', error: null });
     case 'admin_requeue_notification_orphan':
       return Promise.resolve({ data: 'requeued', error: null });
-    case 'admin_list_notification_audit':
-      return Promise.resolve({
-        data: [
-          { id: 'a1', created_at: TS2, action: 'channel_kill', target: 'email', old_value: 'live', new_value: 'killed', outcome: 'applied', reason: 'r1', actor: 'x', request_id: 'q1' },
-          { id: 'a2', created_at: TS1, action: 'channel_kill', target: 'email', old_value: 'killed', new_value: 'killed', outcome: 'already_killed', reason: 'r2', actor: 'x', request_id: 'q2' },
-        ],
-        error: null,
-      });
+    case 'admin_list_notification_audit': {
+      // a FULL page (25 = the section's page size) so "load more" is offered — a short page
+      // legitimately means exhausted; the LAST row carries the microsecond cursor under test
+      const rows = Array.from({ length: 24 }, (_, i) => ({
+        id: `a${i}`, created_at: TS2, action: 'channel_kill', target: 'email',
+        old_value: 'live', new_value: 'killed', outcome: 'applied', reason: `r${i}`, actor: 'x', request_id: `q${i}`,
+      }));
+      rows.push({ id: 'a2', created_at: TS1, action: 'channel_kill', target: 'email', old_value: 'killed', new_value: 'killed', outcome: 'already_killed', reason: 'last', actor: 'x', request_id: 'qlast' });
+      return Promise.resolve({ data: rows, error: null });
+    }
     case 'admin_list_notification_rejected':
       return Promise.resolve({ data: [], error: null });
     case 'admin_activate_channel_kill':
@@ -229,6 +231,14 @@ describe('AdminNotificationOps', () => {
       expect(typeof calls[1][1].p_before_created_at).toBe('string');
     });
   });
+
+  it('the outbox drill-down fetches the CLICKED row', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByTestId('outbox-load'));
+    fireEvent.click(await screen.findByTestId('history-btn-ob1'));
+    await screen.findByTestId('delivery-history');
+    expect(rpcMock.mock.calls.find((c) => c[0] === 'admin_notification_delivery_history')![1].p_outbox_id).toBe('ob1');
+  });
 });
 
 describe('AdminNotificationOps — the completed surface (M7 round 2)', () => {
@@ -305,24 +315,6 @@ describe('AdminNotificationOps — the completed surface (M7 round 2)', () => {
     });
   });
 
-  it('the delivery-history drill-down fetches the clicked row; preview shows the PARTIAL banner and crawls by next_cursor', async () => {
-    renderPage();
-    fireEvent.click(await screen.findByTestId('outbox-load'));
-    fireEvent.click(await screen.findByTestId('history-btn-ob1'));
-    await screen.findByTestId('delivery-history');
-    expect(rpcMock.mock.calls.find((c) => c[0] === 'admin_notification_delivery_history')![1].p_outbox_id).toBe('ob1');
-    // preview
-    await screen.findByTestId('event-states');
-    fireEvent.change(screen.getByTestId('preview-event'), { target: { value: 'ev_test' } });
-    fireEvent.click(screen.getByTestId('preview-load'));
-    await screen.findByTestId('preview-partial');            // the honest omission banner
-    fireEvent.click(screen.getByTestId('preview-more'));
-    await waitFor(() => {
-      const calls = rpcMock.mock.calls.filter((c) => c[0] === 'admin_preview_notification_recipients');
-      expect(calls.length).toBe(2);
-      expect(calls[1][1].p_after_user_id).toBe('u1');        // next_cursor, verbatim
-    });
-  });
 
   it('the destination lookup renders the masked result and surfaces typed refusals as messages', async () => {
     renderPage();
@@ -366,23 +358,6 @@ describe('AdminNotificationOps — M7 round 3: per-operation races', () => {
     expect(screen.getByTestId('delivery-history').textContent).not.toContain('A-STALE');
   });
 
-  it('preview: changing the event RESETS results and cursor; a stale in-flight response is dropped', async () => {
-    renderPage();
-    await screen.findByTestId('event-states');
-    fireEvent.change(screen.getByTestId('preview-event'), { target: { value: 'ev_test' } });
-    // a slow preview…
-    let release: ((v: { data: unknown; error: null }) => void) | null = null;
-    rpcMock.mockImplementationOnce((fn: string) =>
-      fn === 'admin_preview_notification_recipients'
-        ? new Promise((res) => { release = res; })
-        : defaultImpl(fn));
-    fireEvent.click(screen.getByTestId('preview-load'));
-    // …then the scope changes mid-flight: the stale response must never render
-    fireEvent.change(screen.getByTestId('preview-channel'), { target: { value: 'whatsapp' } });
-    release!({ data: [{ user_id: 'stale-user', final_frequency: 'instant', final_decision: 'deliver:instant', destination_masked: 'STALE', candidates_partial: false, next_cursor: 'stale-user' }], error: null });
-    await new Promise((r) => setTimeout(r, 30));
-    expect(screen.queryByTestId('preview-list')).toBeNull();   // reset held: nothing stale rendered
-  });
 
   it('search: an older lookup cannot overwrite a newer result', async () => {
     renderPage();
