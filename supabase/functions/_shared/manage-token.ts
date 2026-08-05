@@ -15,10 +15,12 @@
 // (a backup, a support query, a leaked dump) cannot reconstruct a live link.
 //
 // WHY THE VERSION IS IN THE TOKEN. It is not secret, and carrying it is what lets the retirement
-// floor and the signature be checked BEFORE the capability is looked up — so a burned key or a
-// forged token costs no database work, and the "no read for a bad token" property is real rather
-// than aspirational. An earlier draft omitted it and asked the caller for the row's version
-// first, which inverted that order and made every unauthenticated probe a database query.
+// floor and the signature be checked BEFORE THE CAPABILITY ROW IS LOOKED UP — so a burned key or
+// a forged token never costs a capability read. (Stated precisely: the caller does read the
+// authoritative key-state row first; that is one cheap, cacheable, recipient-independent read.
+// What an unauthenticated probe cannot cause is a per-token capability lookup.) An earlier draft
+// omitted the version and asked the caller for the row's version first, which inverted that order
+// and made every probe a capability query.
 //
 // THE SIGNED STRING IS DOMAIN-SEPARATED AND BINDS THE VERSION (`notif-manage:v1:v<N>:<id>`), so a
 // signature cannot be lifted between key generations, and this HMAC can never be confused with
@@ -27,7 +29,7 @@
 //
 // VERIFICATION IS STILL ROW-BOUND. The signed version says which key must have signed it; the
 // caller must then require the capability row's stored `key_version` to EQUAL that version
-// (`assertRowKeyVersion` below). Accepting whatever the token claims, without that comparison,
+// (`bindManageTokenToRow` below). Accepting whatever the token claims, without that comparison,
 // would let a token signed under one generation act on a row minted under another.
 //
 // FAILURES ARE TAGGED, AND THE DISTINCTION MATTERS. A caller must answer a forged token and an
@@ -217,22 +219,34 @@ export async function verifyManageToken(
 }
 
 /**
- * Bind the SIGNED generation to the STORED one, returning a TAGGED result rather than a boolean.
+ * What the caller's capability-row lookup found. TAGGED, not `number | null`, because those two
+ * outcomes must never be conflated: a Supabase read that fails commonly yields `data: null`, and
+ * treating that as "no such row" would answer a legitimate one-click unsubscribe with the uniform
+ * public rejection — which S5 maps to 200 — losing the opt-out exactly as before.
+ */
+export type ManageRowLookup =
+  | { found: true; keyVersion: number }
+  | { found: false }
+  | { unavailable: true };
+
+/**
+ * Bind the SIGNED generation to the STORED one.
  *
  * Without this step a token signed under a live key could act on a row minted under a different
- * generation — the per-row binding the key-state table exists for would be decorative. It returns
- * a result rather than a boolean on purpose: an earlier draft was named `assertRowKeyVersion` and
- * returned one, which a caller can invoke and ignore while believing a security condition was
- * enforced. This shape has to be destructured to get the capability id at all.
+ * generation — the per-row binding the key-state table exists for would be decorative.
+ *
+ * It returns a RESULT rather than a boolean because a boolean can be called and ignored while the
+ * caller believes a security condition was enforced. That is necessary but not sufficient: the
+ * pre-binding result still carries a `capabilityId`, so S5's adapter must be the ONLY path that
+ * reaches context/apply, and it must pass THIS return value on — never the input.
  */
 export function bindManageTokenToRow(
   result: ManageTokenResult,
-  storedKeyVersion: number | null,
+  row: ManageRowLookup,
 ): ManageTokenResult {
   if (!result.ok) return result;
-  // The row is absent (or unreadable) — the caller decides which; from here it is simply not a
-  // usable capability, and the public answer must stay uniform.
-  if (storedKeyVersion === null) return { ok: false, reason: "invalid" };
-  if (storedKeyVersion !== result.keyVersion) return { ok: false, reason: "invalid" };
+  if ("unavailable" in row) return { ok: false, reason: "key_unavailable" };  // retryable
+  if (!row.found) return { ok: false, reason: "invalid" };
+  if (row.keyVersion !== result.keyVersion) return { ok: false, reason: "invalid" };
   return result;
 }

@@ -26,10 +26,11 @@ raised by review against the shipped schema and must be satisfied where named.
    pre-date capability attachment; attaching a footer to their retry changes the body under the same
    key. Attach on first attempt only, or drain, or mark the cutover. Digest is safe if attachment
    happens before request freezing.
-5. **Token format + key selection (S2).** The URL carries `id.signature` only. The edge must either
-   sign a version into the token or trial the bounded active-key set and then REQUIRE the matched
-   version to equal the row's `key_version` — accepting any still-loaded key without that comparison
-   defeats the per-row version binding the key-state table exists for.
+5. ~~**Token format + key selection (S2).**~~ **CLOSED in S2a**: the token is
+   `v<N>.<id>.<base64url HMAC-SHA256("notif-manage:v1:v<N>:<id>", key vN)>`, frozen by a
+   known-answer vector in `_shared/manage-token.test.ts`. The version rides in the token, so the
+   live key window [min_mintable, current] and the signature are checked before any capability
+   lookup; `bindManageTokenToRow` then requires the row's `key_version` to equal the signed one.
 6. **The neutral settings route must exist before S2 emits it (S4).** `/app/settings/notifications`
    is not mounted yet (only the three role-specific routes are); S4 ships the role-forwarder and the
    redirect-preserving logged-out behaviour.

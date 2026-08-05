@@ -10,8 +10,9 @@ import {
 // N2 — the manage-link token. What these pin, worst-consequence first:
 //   * an OPERATIONAL failure (missing key) is tagged separately from a forged token, because a
 //     one-click unsubscribe answered 200 during an outage is an opt-out that is simply lost;
-//   * the retirement floor and the signature are checked with NO database access at all, so a
-//     probe costs nothing and the endpoints are not an existence/expiry/scope oracle;
+//   * the retirement floor and the signature are checked before any CAPABILITY-ROW lookup (the
+//     caller does read the cheap, recipient-independent key-state row first), so a probe cannot
+//     cause per-token database work and the endpoints are not an existence/expiry/scope oracle;
 //   * the signed generation must equal the row's stored generation, or per-row key binding is
 //     decorative;
 //   * the wire format is frozen by an externally computed KNOWN-ANSWER vector — round-tripping
@@ -119,11 +120,16 @@ Deno.test("a tampered signature of the right shape is refused", async () => {
 
 Deno.test("the signed generation must EQUAL the row's stored generation", async () => {
   const ok = await verifyManageToken(await buildManageToken(CAP, 1, lookup), LIVE, lookup);
-  assertEquals(bindManageTokenToRow(ok, 1), { ok: true, capabilityId: CAP, keyVersion: 1 });
-  assertEquals(bindManageTokenToRow(ok, 2), { ok: false, reason: "invalid" });   // other generation
-  assertEquals(bindManageTokenToRow(ok, null), { ok: false, reason: "invalid" }); // row absent
+  assertEquals(bindManageTokenToRow(ok, { found: true, keyVersion: 1 }),
+    { ok: true, capabilityId: CAP, keyVersion: 1 });
+  assertEquals(bindManageTokenToRow(ok, { found: true, keyVersion: 2 }),
+    { ok: false, reason: "invalid" });                                   // other generation
+  assertEquals(bindManageTokenToRow(ok, { found: false }), { ok: false, reason: "invalid" });
+  // ...and an UNREADABLE row is RETRYABLE, never the uniform rejection: a Supabase failure yields
+  // data:null, and treating that as "no such row" would answer 200 and lose a real opt-out.
+  assertEquals(bindManageTokenToRow(ok, { unavailable: true }), { ok: false, reason: "key_unavailable" });
   // an already-failed result passes through unchanged rather than being "upgraded"
-  assertEquals(bindManageTokenToRow({ ok: false, reason: "key_unavailable" }, 1),
+  assertEquals(bindManageTokenToRow({ ok: false, reason: "key_unavailable" }, { found: true, keyVersion: 1 }),
     { ok: false, reason: "key_unavailable" });
 });
 

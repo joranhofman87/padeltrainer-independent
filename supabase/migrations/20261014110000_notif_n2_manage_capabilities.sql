@@ -4,7 +4,10 @@
 -- who cannot log in (guests, hand-typed campaign addresses) without exposing enumeration, replay
 -- against a rotated address, cross-recipient action, or PII in the URL. The design:
 --
---     token = <capability_id> '.' base64url( HMAC-SHA256(capability_id, edge secret key vN) )
+--     token = v<N> '.' <capability_id> '.' base64url( HMAC-SHA256("notif-manage:v1:v<N>:<id>", key vN) )
+--
+-- (The version rides in the token so the edge can check the retirement floor and the signature
+-- BEFORE looking the capability up; the frozen format lives in _shared/manage-token.ts.)
 --
 -- This table stores ONLY the capability row — never the HMAC, never the secret. The signing key
 -- lives exclusively in edge-function env (NOTIF_MANAGE_TOKEN_KEY_V<n>), so a database read cannot
