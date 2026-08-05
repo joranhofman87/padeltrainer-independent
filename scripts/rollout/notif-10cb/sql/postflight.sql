@@ -13,6 +13,11 @@
 -- its schema sits, so only EXCLUDING one works — the doctrine every artifact here follows).
 SET search_path = pg_catalog;
 
+-- BOUNDED: every count here is exact and some scan the outbox over a window, so on a large
+-- database this is real work. Read-only work, but a runbook step that hangs is a runbook step
+-- nobody runs — a timeout turns that into a visible failure.
+SET statement_timeout = '120s';
+
 \i ../../notif-10ca3/sql/_assert.sql
 
 -- ── 1. THE INVARIANT. Everything else here is health; this is the promise. ───────────────────

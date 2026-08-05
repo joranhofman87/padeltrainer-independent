@@ -7,8 +7,18 @@
 \set ON_ERROR_STOP on
 SET search_path = pg_catalog;
 
-SELECT * FROM public.preview_notification_channel_kill_clear(:'channel');
+-- BOUNDED: the pending count is exact (a bound the operator confirms cannot be "at least"), so on
+-- a large outbox it is a real scan. A timeout makes that fail visibly instead of hanging a runbook
+-- step, and the clear recounts under its own lock anyway.
+SET statement_timeout = '30s';
 
-SELECT pg_catalog.format('KILL_PREVIEW=%s PENDING=%s',
-         :'channel',
-         (SELECT pending_now FROM public.preview_notification_channel_kill_clear(:'channel'))) AS preview_marker;
+-- materialised ONCE: two calls could report two different numbers in the same transcript, and the
+-- number is the thing the operator is about to confirm
+CREATE TEMP TABLE _preview AS SELECT * FROM public.preview_notification_channel_kill_clear(:'channel');
+
+SELECT * FROM pg_temp._preview;
+
+SELECT pg_catalog.format('KILL_PREVIEW=%s PENDING=%s', :'channel',
+         (SELECT pending_now FROM pg_temp._preview)) AS preview_marker;
+
+DROP TABLE pg_temp._preview;
