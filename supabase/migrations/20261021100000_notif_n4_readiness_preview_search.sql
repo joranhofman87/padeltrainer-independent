@@ -290,7 +290,8 @@ CREATE OR REPLACE FUNCTION public.admin_preview_notification_recipients(
   final_decision text,
   destination_masked text,
   candidates_partial boolean,   -- the raw budget was hit: users beyond the horizon are OMITTED
-  next_cursor uuid              -- the scan horizon — ALWAYS advances, even on a zero-row page
+  next_cursor uuid              -- CONTINUATION: the last emitted user (nonempty page) or the
+                                -- last COMPLETE user examined (zero-eligible progress row)
 )
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 -- VOLATILE (not STABLE): the bounded raw scan stages through a temp table
@@ -298,42 +299,58 @@ DECLARE
   RAW_BUDGET constant int := 500;
   u record;
   v_partial boolean := false;
-  v_horizon uuid := NULL;
+  v_boundary uuid;
+  v_progress uuid;
+  v_single boolean := false;
   v_raw int := 0;
+  v_emitted int := 0;
+  v_last uuid := NULL;
 BEGIN
   PERFORM public.notif_admin_gate();
-  -- THE HARD WORK BOUND (the round-4 lesson, complete this time): the raw scan examines at
-  -- most RAW_BUDGET index-ordered projection rows AFTER the cursor — every predicate in the
-  -- raw scan is carried by idx_contacts_effective_user, so the bound is on ROWS EXAMINED, not
-  -- on rows qualifying. Eligibility (consent status, tenant scope) filters AFTERWARD, inside
-  -- the bounded set; when the budget is hit, candidates_partial says so and next_cursor is
-  -- the horizon, so a caller crawls an arbitrarily long ineligible prefix HONESTLY instead of
-  -- the server scanning it invisibly.
+  -- THE HARD WORK BOUND: at most RAW_BUDGET rows examined, in the STABLE composite order
+  -- (effective_user_id, id) — deterministic among one user's several contacts. Eligibility
+  -- filters inside the staged set only.
   CREATE TEMP TABLE IF NOT EXISTS _preview_raw (
-    uid uuid, consent_status text, consent_scope text,
+    uid uuid, cid uuid, consent_status text, consent_scope text,
     consent_academy_profile_id uuid, consent_trainer_id uuid
   ) ON COMMIT DROP;
   DELETE FROM _preview_raw;
   INSERT INTO _preview_raw
-  SELECT nc.effective_user_id, nc.consent_status, nc.consent_scope,
+  SELECT nc.effective_user_id, nc.id, nc.consent_status, nc.consent_scope,
          nc.consent_academy_profile_id, nc.consent_trainer_id
     FROM public.notification_contacts nc
    WHERE nc.channel = p_channel AND nc.revoked_at IS NULL
      AND nc.effective_user_id IS NOT NULL
      AND (p_after_user_id IS NULL OR nc.effective_user_id > p_after_user_id)
-   ORDER BY nc.effective_user_id
+   ORDER BY nc.effective_user_id, nc.id
    LIMIT RAW_BUDGET;
   GET DIAGNOSTICS v_raw = ROW_COUNT;
   v_partial := (v_raw >= RAW_BUDGET);
-  SELECT r.uid INTO v_horizon FROM _preview_raw r ORDER BY r.uid DESC LIMIT 1;
+
+  IF v_partial THEN
+    -- BOUNDARY-USER SEMANTICS: the budget may have SPLIT the last user's contact set — an
+    -- eligible contact past the cut would be lost if we judged them on the fragment, and the
+    -- horizon would skip them forever. So the boundary user is DEFERRED whole to the next
+    -- page (progress = the last COMPLETE user), unless the entire budget is one user's
+    -- contacts — then they are judged on the staged 500 (the documented per-user cap) so the
+    -- crawl cannot livelock.
+    SELECT r.uid INTO v_boundary FROM _preview_raw r ORDER BY r.uid DESC, r.cid DESC LIMIT 1;
+    SELECT count(DISTINCT r.uid) = 1 INTO v_single FROM _preview_raw r;
+    IF NOT v_single THEN
+      DELETE FROM _preview_raw WHERE uid = v_boundary;
+      SELECT r.uid INTO v_progress FROM _preview_raw r ORDER BY r.uid DESC LIMIT 1;
+    ELSE
+      v_progress := v_boundary;
+    END IF;
+  END IF;
 
   FOR u IN
     SELECT cand.uid FROM (
       (SELECT v2.user_id AS uid FROM public.notification_preferences_v2 v2
         WHERE v2.event_type = p_event_key
           AND (p_after_user_id IS NULL OR v2.user_id > p_after_user_id)
-          -- prefs candidates stay inside the SAME horizon so partial pages remain coherent
-          AND (NOT v_partial OR v2.user_id <= v_horizon)
+          -- prefs candidates stay inside the COMPLETE-user zone on partial pages
+          AND (NOT v_partial OR v2.user_id <= v_progress)
         ORDER BY v2.user_id LIMIT 50)
       UNION
       (SELECT DISTINCT r.uid FROM _preview_raw r
@@ -348,20 +365,25 @@ BEGIN
     ORDER BY cand.uid
     LIMIT LEAST(GREATEST(coalesce(p_limit, 25), 1), 50)
   LOOP
+    v_emitted := v_emitted + 1;
+    v_last := u.uid;
     RETURN QUERY
-    SELECT u.uid, d.final_frequency, d.final_decision, d.destination_masked, v_partial, v_horizon
+    -- the continuation cursor is the LAST EMITTED user: p_limit truncation must never skip
+    -- the candidates between the cut and the scan horizon
+    SELECT u.uid, d.final_frequency, d.final_decision, d.destination_masked, v_partial, u.uid
       FROM public.admin_preview_notification_decision(u.uid, p_event_key, p_channel, p_tenant_academy_profile_id) d;
   END LOOP;
-  -- a ZERO-eligible partial page still hands the caller a moving cursor
-  IF NOT FOUND AND v_partial THEN
+  -- a ZERO-eligible partial page still hands the caller a moving cursor (the last COMPLETE
+  -- user examined — re-scanning from there picks the deferred boundary user up whole)
+  IF v_emitted = 0 AND v_partial THEN
     user_id := NULL; final_frequency := NULL; final_decision := NULL; destination_masked := NULL;
-    candidates_partial := true; next_cursor := v_horizon;
+    candidates_partial := true; next_cursor := v_progress;
     RETURN NEXT;
   END IF;
 END;
 $$;
 COMMENT ON FUNCTION public.admin_preview_notification_recipients(text, text, uuid, uuid, int) IS
-  'N4 M6 (finding 10): bounded recipient preview — the raw scan examines AT MOST 500 index-ordered projection rows after the cursor (a bound on rows EXAMINED, carried entirely by idx_contacts_effective_user); eligibility filters inside that set; candidates_partial + next_cursor make omissions and progress HONEST (a zero-eligible partial page still returns one cursor row). Clamp 1..50, no export-all. Previews resolver state, not a producer''s audience.';
+  'N4 M6 (finding 10): bounded recipient preview — at most 500 rows EXAMINED per call in stable (effective_user_id, id) order; eligibility filters inside the staged set; a budget-SPLIT boundary user is deferred whole to the next page (never judged on a fragment, never skipped; a single >500-contact user is judged on the staged 500 — the documented cap); candidates_partial is honest; next_cursor is the LAST EMITTED user on nonempty pages (p_limit truncation skips nothing) and the last complete user on the zero-eligible progress row. Clamp 1..50. Previews resolver state, not a producer''s audience.';
 REVOKE ALL ON FUNCTION public.admin_preview_notification_recipients(text, text, uuid, uuid, int) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_preview_notification_recipients(text, text, uuid, uuid, int) TO authenticated, service_role;
 

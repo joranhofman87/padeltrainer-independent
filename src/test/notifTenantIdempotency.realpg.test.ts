@@ -1366,3 +1366,98 @@ describe('N4 M6 round-5 — the hard raw budget, the derived projection, the lin
     }
   });
 });
+
+describe('N4 M6 round-6 — truncation-safe cursors and the boundary-split user', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('p_limit truncation skips NOTHING: the cursor is the last emitted user, the crawl collects everyone', async () => {
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('e1000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 5) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('e1000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'trunc' || g || '@example.com', 't***@example.com', 'opted_in', 'global'
+      FROM generate_series(1, 5) g;`);
+    await asUser(ADMIN_UID);
+    const collected: string[] = [];
+    let cursor = `'e1000000-0000-4000-8000-000000000000'`;
+    for (let page = 0; page < 4 && collected.length < 5; page++) {
+      const rows = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,${cursor},2)`)).rows;
+      for (const r of rows) if (r.user_id) collected.push(r.user_id);
+      if (rows.length === 0) break;
+      // the round-5 defect: this cursor was the scan HORIZON, silently skipping users 3..5
+      cursor = `'${rows[rows.length - 1].next_cursor}'`;
+    }
+    expect(collected.filter((x) => x.startsWith('e1000000')).length).toBe(5);   // no skips
+    expect(new Set(collected).size).toBe(collected.length);                      // no dupes
+    await asUser(null);
+  });
+
+  it('a budget-SPLIT user is deferred WHOLE — their post-split eligible contact is reached, never lost', async () => {
+    // 499 noise users (opted_out) then user X with 3 contacts: rows 500-502 — the budget cuts
+    // X's set after one row, and X's ELIGIBLE contact is beyond the cut
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('e2000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 500) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('e2000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'split' || g || '@example.com', 's***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 499) g;`);
+    const X = 'e2000000-0000-4000-8000-000000000500';
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      VALUES ($1, 'email', 'xa@example.com', 'x***@example.com', 'opted_out', 'global'),
+             ($1, 'email', 'xb@example.com', 'x***@example.com', 'opted_out', 'global'),
+             ($1, 'email', 'xc@example.com', 'x***@example.com', 'opted_in', 'global')`, [X]);
+    await asUser(ADMIN_UID);
+    const page1 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'e2000000-0000-4000-8000-000000000000',50)`)).rows;
+    // page 1: partial; X must NOT be judged on the fragment
+    expect(page1.every((r) => r.candidates_partial === true)).toBe(true);
+    expect(page1.map((r) => r.user_id)).not.toContain(X);
+    const cursor = page1[page1.length - 1].next_cursor;
+    const page2 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'${cursor}',50)`)).rows;
+    expect(page2.map((r) => r.user_id)).toContain(X);   // the WHOLE contact set judged → eligible
+    await asUser(null);
+  });
+});
+
+describe('N4 M6 round-6b — truncation on a PARTIAL page', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('a truncated PARTIAL page cursors from the last EMITTED user — the eligible users below the horizon are all reached', async () => {
+    // 500+ raw rows (mostly opted-out noise) with 25 ELIGIBLE users interleaved below the
+    // boundary; p_limit=2 truncates far below the eligible count on every page
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('e3000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 530) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('e3000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'pt' || g || '@example.com', 'p***@example.com',
+             CASE WHEN g % 20 = 0 THEN 'opted_in' ELSE 'opted_out' END, 'global'
+      FROM generate_series(1, 530) g;`);
+    await asUser(ADMIN_UID);
+    const collected: string[] = [];
+    let cursor = `'e3000000-0000-4000-8000-000000000000'`;
+    for (let page = 0; page < 40; page++) {
+      const rows = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,${cursor},2)`)).rows;
+      const emitted = rows.filter((r) => r.user_id);
+      for (const r of emitted) collected.push(r.user_id);
+      if (rows.length === 0) break;
+      cursor = `'${rows[rows.length - 1].next_cursor}'`;
+    }
+    const mine = collected.filter((x) => x.startsWith('e3000000'));
+    // 530/20 = 26 eligible users (g = 20,40,...,520); ALL must be collected, none skipped
+    expect(new Set(mine).size).toBe(26);
+    await asUser(null);
+  });
+});
