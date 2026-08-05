@@ -1112,6 +1112,21 @@ describe('N4 M5 round-3 — canonical fingerprints, registry coherence, consumed
       `INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict)
        VALUES ($1, gen_random_uuid(), 'circuit_reset', repeat('a', 64), 'killed')`, [ADMIN]))
       .rejects.toThrow(/chk_notification_admin_requests_verdict/);
+    // 'rejected_request_reuse' can NEVER be a first verdict — reuse presupposes an existing row
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict)
+       VALUES ($1, gen_random_uuid(), 'channel_kill', repeat('b', 64), 'rejected_request_reuse')`, [ADMIN]))
+      .rejects.toThrow(/chk_notification_admin_requests_verdict/);
+    // the AUDIT binds each orphan action to ITS transition — crossed or non-quarantined
+    // evidence dies at the schema
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, gen_random_uuid(), 'orphan_resolve', 'ev_x', 'quarantined', 'requeued', 'applied', 'crossed')`, [ADMIN]))
+      .rejects.toThrow(/chk_notification_admin_audit_coherent/);
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, gen_random_uuid(), 'orphan_requeue', 'ev_x', 'reconciling', 'requeued', 'applied', 'not quarantined')`, [ADMIN]))
+      .rejects.toThrow(/chk_notification_admin_audit_coherent/);
     await expect(c.query(
       `INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict)
        VALUES ($1, gen_random_uuid(), 'channel_kill', 'not-a-digest', 'killed')`, [ADMIN]))

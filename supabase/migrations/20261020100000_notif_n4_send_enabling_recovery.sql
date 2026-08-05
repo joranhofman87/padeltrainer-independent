@@ -33,10 +33,10 @@ ALTER TABLE public.notification_admin_audit ADD CONSTRAINT chk_notification_admi
     OR (action = 'group_cancel'
       AND outcome = 'applied' AND new_value = 'retry_stopped'
       AND old_value IN ('pending', 'leased', 'prepared', 'request_ready'))
-    OR (action IN ('orphan_resolve', 'orphan_requeue')
-      AND outcome = 'applied'
-      AND old_value IN ('quarantined', 'reconciling')
-      AND new_value IN ('resolved', 'requeued'))
+    OR (action = 'orphan_resolve'
+      AND outcome = 'applied' AND old_value = 'quarantined' AND new_value = 'resolved')
+    OR (action = 'orphan_requeue'
+      AND outcome = 'applied' AND old_value = 'quarantined' AND new_value = 'requeued')
   );
 ALTER TABLE public.notification_admin_rejected_attempts DROP CONSTRAINT notification_admin_rejected_attempts_action_check;
 ALTER TABLE public.notification_admin_rejected_attempts ADD CONSTRAINT notification_admin_rejected_attempts_action_check
@@ -66,7 +66,7 @@ CREATE TABLE public.notification_admin_requests (
   -- schema-level verdict coherence: an owner-direct row cannot bind an impossible first
   -- verdict (say, circuit_reset → 'killed') that an exact replay would then return forever
   CONSTRAINT chk_notification_admin_requests_verdict CHECK (
-    (action = 'channel_kill'   AND verdict IN ('killed', 'already_killed', 'rejected_request_reuse'))
+    (action = 'channel_kill'   AND verdict IN ('killed', 'already_killed'))
     OR (action = 'circuit_reset' AND verdict IN ('reset', 'already_closed', 'rejected_channel_killed', 'rejected_invocation_open', 'rejected_correlation_mismatch', 'rejected_stale_state'))
     OR (action = 'group_cancel'  AND verdict IN ('cancelled', 'rejected_not_found', 'rejected_not_pre_dispatch', 'rejected_stale_state'))
     OR (action = 'orphan_resolve' AND verdict IN ('resolved', 'rejected_not_found', 'rejected_not_quarantined', 'rejected_not_permanent', 'rejected_not_resolvable'))
