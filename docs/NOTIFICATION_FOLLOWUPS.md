@@ -57,6 +57,24 @@ raised by review against the shipped schema and must be satisfied where named.
    redirect-preserving logged-out behaviour.
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
    `expires_at` more than 30 days past — and never a row that is merely revoked.
+7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising
+   `min_mintable_version` serializes against MINT (the mint holds `FOR SHARE` on the key-state
+   row), but it cannot serialize against a provider send: between the mint's commit and the moment
+   Resend accepts the message there is an external call the database has no part in. A retirement
+   committed inside that window ships with mail already sent, and those links are dead on arrival —
+   they fail closed at click, so the recipient sees an unsubscribe that does nothing. **This is
+   accepted, not overlooked.** Retirement is an emergency act, and the alternative — a
+   drain/lease/grace protocol spanning the worker's provider call — is a subsystem whose failure
+   modes would be less understood than the one it removes. The invariant the code does hold, per
+   layer: mint never inserts or returns a generation retired in the snapshot it holds the row lock
+   on; attachment never signs a generation retired in the authoritative state it was given (a
+   snapshot check, not a barrier). If an emergency retirement ever happens with mail in flight, the
+   remedy is operational: re-send to the affected window after the new key is live.
+7c. **`NMRET` is a terminal contract (S2b/S3).** A retry whose capability was signed by a retired
+   generation raises SQLSTATE `NMRET`. Workers MUST classify it as terminal for that send plus an
+   ops alert — never as a transient RPC failure, which would poison-retry a send that can never
+   succeed, since nothing about it can change. The send identity is preserved; no capability is
+   ever rewritten.
 8. **Owner precondition before S3 deploys.** Every existing `onboarding_email_templates` row lands
    on `delivery_class='marketing'` (the suppressible direction). The owner must reclassify the live
    templates (`required_service` where the mail is genuinely obligatory) before S3's suppression

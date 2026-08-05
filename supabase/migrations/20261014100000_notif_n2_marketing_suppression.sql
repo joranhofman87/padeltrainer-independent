@@ -153,6 +153,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_address text := lower(btrim(p_address));
+  v_min int;
   v_inserted int;
 BEGIN
   IF v_address IS NULL OR position('@' IN v_address) <= 1 THEN
@@ -189,6 +190,16 @@ BEGIN
   -- not erase the suppression they produced. Validating at WRITE time and not enforcing at read
   -- time is exactly the combination that gives a durable, honest audit trail.
   IF p_capability_id IS NOT NULL THEN
+    -- LIFECYCLE, not just existence. `apply_notification_manage_action` refuses a revoked, expired
+    -- or retired-generation capability — but this recorder is reachable on its own, so without the
+    -- same checks a caller could cite a DEAD capability and mint token-attributed provenance that
+    -- the token itself could never have produced. The floor is read under the same FOR SHARE the
+    -- mint uses, so a rotation cannot commit between this check and the insert.
+    SELECT min_mintable_version INTO v_min
+      FROM public.notification_manage_key_state WHERE id FOR SHARE;
+    IF v_min IS NULL THEN
+      RAISE EXCEPTION 'record_marketing_suppression: signing-key state is missing';
+    END IF;
     IF NOT EXISTS (
       SELECT 1 FROM public.notification_manage_capabilities c
        WHERE c.id = p_capability_id
@@ -197,6 +208,15 @@ BEGIN
          AND c.scope_id IS NOT DISTINCT FROM p_scope_id
     ) THEN
       RAISE EXCEPTION 'record_marketing_suppression: capability % does not exist, or is not for this address and scope', p_capability_id;
+    END IF;
+    IF NOT EXISTS (
+      SELECT 1 FROM public.notification_manage_capabilities c
+       WHERE c.id = p_capability_id
+         AND c.revoked_at IS NULL
+         AND c.expires_at > now()
+         AND c.key_version >= v_min
+    ) THEN
+      RAISE EXCEPTION 'record_marketing_suppression: capability % is not live (revoked, expired, or signed by a retired generation)', p_capability_id;
     END IF;
   END IF;
   IF p_created_by IS NOT NULL AND NOT EXISTS (

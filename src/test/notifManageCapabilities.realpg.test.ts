@@ -48,6 +48,7 @@ const SEND_B = '55555555-5555-4555-8555-555555555555';
 const SEND_FIXTURE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const SEND_PROV = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const SEND_PROV2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const SEND_PROV3 = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 /** Fixtures that write a token-sourced suppression must cite a REAL capability now — a
  *  stand-in uuid is exactly what the authority validation refuses. Minted per test in beforeEach. */
 let CAP_FIXTURE = '';
@@ -85,6 +86,13 @@ beforeAll(async () => {
   // stubs for the PRE-EXISTING tables, real migration files for the code under test).
   await c.query(`
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
+    -- THE LOAD-BEARING FIXTURE. This project grants service_role ALL on every new table by
+    -- default, which is precisely why each migration must revoke it EXPLICITLY. Without seeding
+    -- that default here, the ACL assertions below would pass even with service_role dropped from
+    -- the REVOKE — the test would be agreeing with a hole rather than proving it closed.
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
     CREATE SCHEMA auth; CREATE TABLE auth.users (id uuid PRIMARY KEY);
 
     CREATE TABLE public.notification_event_types (
@@ -374,9 +382,10 @@ describe('key state is the retirement authority, and it fails closed', () => {
     // 1, and mint would then stamp a capability with a generation that was ALREADY DEAD — a link
     // printed into an email that can never work, with no signal anywhere.
     //
-    // DISCRIMINATING BY CONSTRUCTION: session B holds an UNCOMMITTED rotation (so it holds the
-    // row's FOR UPDATE lock). With `FOR SHARE` in mint, session A must BLOCK and time out. Delete
-    // that clause and A sails through and mints under the doomed generation — this test fails.
+    // DISCRIMINATING BY CONSTRUCTION: session B holds an UNCOMMITTED rotation, so it holds the
+    // row's FOR NO KEY UPDATE lock (the rotation touches no key column). `FOR SHARE` conflicts
+    // with that, so session A must BLOCK and time out. Delete that clause and A sails through and
+    // mints under the doomed generation — this test fails.
     let code: string | null = null;
     let minted = -1;
     // The blocking session is released in FINALLY, not after the assertions: a failing expect
@@ -417,7 +426,13 @@ describe('key state is the retirement authority, and it fails closed', () => {
     expect(first.key_version).toBe(1);
     await c.query(`UPDATE public.notification_manage_key_state
                      SET current_version = 2, min_mintable_version = 2`);
-    await expect(mint()).rejects.toThrow(/RETIRED generation 1 \(floor is 2\)/);
+    // The CODE is the contract, not the prose: a worker classifies on SQLSTATE, and without
+    // 'NMRET' it reads this as a transient RPC failure and poison-retries a send that can never
+    // succeed. Asserting only the message would leave `USING ERRCODE` free to be deleted.
+    let err: { code?: string; message?: string } | null = null;
+    try { await mint(); } catch (e) { err = e as { code?: string; message?: string }; }
+    expect(err?.code).toBe('NMRET');
+    expect(err?.message).toMatch(/RETIRED generation 1 \(floor is 2\)/);
   });
 
   it('the floor is MONOTONIC and the row is permanent — even for a privileged caller', async () => {
@@ -532,9 +547,38 @@ describe('suppression provenance is coherent, not merely conventional', () => {
     const other = (await mint({ address: 'elsewhere@example.com', scope_kind: 'platform',
       scope_id: null, source_id: SEND_PROV2 })).capability_id;
     expect(await rec('one_click', other, null)).toMatch(/not for this address and scope/);
+    // ...a real capability for the SAME address but a different SCOPE is refused too — that pins
+    // the scope predicates, which an address-only check would leave dead
+    const otherScope = (await mint({ address: 'prov@example.com', scope_kind: 'academy',
+      scope_id: ACADEMY, source_id: SEND_PROV3 })).capability_id;
+    expect(await rec('one_click', otherScope, null)).toMatch(/not for this address and scope/);
     // ...and a manual actor must be an actual account
     expect(await rec('manual', null, '66666666-6666-4666-8666-666666666666'))
       .toMatch(/is not an account/);
+  });
+
+  it('a DEAD capability cannot be cited — the recorder enforces the same lifecycle apply() does', async () => {
+    // The recorder is reachable on its own, so without these checks a caller could attribute a
+    // suppression to a capability the token itself could never have used.
+    await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
+      [CAP_ID]);
+    expect(await rec('one_click', CAP_ID, null)).toMatch(/is not live/);
+
+    const expired = (await c.query(
+      `INSERT INTO public.notification_manage_capabilities
+         (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
+          source_kind, source_id, key_version, expires_at)
+       VALUES ('marketing_unsubscribe','platform',NULL,'prov@example.com',md5('prov@example.com'),
+               'campaign_recipient', gen_random_uuid(), 1, now() - interval '1 hour')
+       RETURNING id`)).rows[0].id;
+    expect(await rec('one_click', expired, null)).toMatch(/is not live/);
+
+    // ...and a capability whose GENERATION was retired after it was minted
+    const live = (await mint({ address: 'prov@example.com', scope_kind: 'platform',
+      scope_id: null, source_id: SEND_PROV2 })).capability_id;
+    await c.query(`UPDATE public.notification_manage_key_state
+                     SET current_version = 2, min_mintable_version = 2`);
+    expect(await rec('one_click', live, null)).toMatch(/is not live/);
   });
 
   it('a real one-click through apply() lands a coherent audit row', async () => {

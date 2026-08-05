@@ -68,10 +68,16 @@
 --
 -- That is ACCEPTED, not overlooked. Raising the floor is an emergency act (a burned key), and the
 -- alternative — a drain/lease/grace protocol spanning the worker's provider call — is a whole
--- subsystem whose failure modes would be less understood than the one it removes. The narrow,
--- true invariant is: **no capability is ever minted, returned, or signed under a generation that
--- was already retired at the time of that operation.** Mail in flight across an emergency
--- retirement is out of scope and is recorded in docs/NOTIFICATION_FOLLOWUPS.md §N2.
+-- subsystem whose failure modes would be less understood than the one it removes.
+--
+-- The narrow, true invariant, stated in terms of what each layer can actually observe:
+--   * MINT never inserts or returns a capability whose generation is retired IN THE SNAPSHOT IT
+--     HOLDS THE ROW LOCK ON — that one is a genuine serialization guarantee;
+--   * ATTACHMENT never signs a generation retired in the AUTHORITATIVE STATE IT WAS GIVEN. The
+--     caller reads that state; a retirement committing after that read is not visible to it, and
+--     `buildManageToken` cannot know. It is a snapshot check, not a barrier.
+-- Mail in flight across an emergency retirement is therefore out of scope, and is recorded in
+-- docs/NOTIFICATION_FOLLOWUPS.md §N2.
 --
 -- ONE KIND, `marketing_unsubscribe`, and one token per send serving BOTH surfaces: the footer
 -- URL (which opens the manage page) and the RFC 8058 one-click POST header. An earlier draft had
@@ -346,9 +352,10 @@ BEGIN
     -- SQLSTATE 'NMRET' is a CONTRACT, not decoration. Without a distinguishable code a worker
     -- reads this as an ordinary RPC failure and retries the same durable send forever — a poison
     -- retry that never resolves, because nothing about it can change. Callers must classify
-    -- 'NMRET' as TERMINAL-for-this-send plus an ops alert: the operator retired a key while mail
-    -- signed by it was still retryable, and only they can decide what happens to it. The send
-    -- IDENTITY is preserved either way — no capability is rewritten.
+    -- 'NMRET' as TERMINAL for this send plus an ops alert — NOT as something to retry: the
+    -- operator retired a key while mail signed by it was still retryable, nothing about the send
+    -- can change that, and only they can decide what happens to it. The send IDENTITY is preserved
+    -- either way — no capability is rewritten.
     RAISE EXCEPTION 'mint_notification_manage_capability: % % has a capability signed by RETIRED generation % (floor is %) — its links cannot work, and re-signing would change an already-frozen request', p_source_kind, p_source_id, v_row.key_version, v_min
       USING ERRCODE = 'NMRET';
   END IF;
