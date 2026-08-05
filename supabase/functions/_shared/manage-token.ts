@@ -177,7 +177,7 @@ function validState(s: ManageKeyState | null): s is ManageKeyState {
  * Verify a token's GRAMMAR, its retirement status and its SIGNATURE — with no database access.
  *
  * The capability row is not consulted here at all; the caller looks it up afterwards and must
- * then call `assertRowKeyVersion` to bind the signed generation to the stored one.
+ * then call `bindManageTokenToRow` to bind the signed generation to the stored one.
  */
 export async function verifyManageToken(
   token: string | null | undefined,

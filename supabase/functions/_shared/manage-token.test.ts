@@ -12,7 +12,8 @@ import {
 //     one-click unsubscribe answered 200 during an outage is an opt-out that is simply lost;
 //   * the retirement floor and the signature are checked before any CAPABILITY-ROW lookup (the
 //     caller does read the cheap, recipient-independent key-state row first), so a probe cannot
-//     cause per-token database work and the endpoints are not an existence/expiry/scope oracle;
+//     cause a capability-specific lookup and the endpoints are not an existence/expiry/scope
+//     oracle;
 //   * the signed generation must equal the row's stored generation, or per-row key binding is
 //     decorative;
 //   * the wire format is frozen by an externally computed KNOWN-ANSWER vector — round-tripping
