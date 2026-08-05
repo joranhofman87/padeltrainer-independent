@@ -98,6 +98,10 @@ SELECT pg_temp.assert_eq(
     WHERE url = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
   'no request to the digest worker is already queued (another invocation is in progress — wait for it)');
 
+-- N4 M1 (AC-6): durable in-flight record — see canary_invoke.sql for the full rationale.
+\i _invocation_gate.sql
+SELECT public.open_notification_worker_invocation('smoke', 'smoke_invoke.sql', :'invocation_request_id'::pg_catalog.uuid) AS invocation_id;
+
 -- ===========================================================================
 -- Execute the reviewed command. The hash is re-asserted in the same statement that reads the text,
 -- for the reason canary_invoke.sql sets out: losing the include above would otherwise turn this into

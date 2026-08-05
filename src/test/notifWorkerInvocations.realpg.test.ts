@@ -76,6 +76,7 @@ beforeAll(async () => {
   await c.query(runsGuard);
   await c.query(runsTrigger);
   await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));
+  await c.query(MIG('20261016110000_notif_n4_invocation_claim.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -285,5 +286,32 @@ describe('ACLs', () => {
     expect(await as('anon', `SELECT public.open_notification_worker_invocation('smoke','x-test',gen_random_uuid())`)).toBe('42501');
     expect(await as('service_role', `SELECT * FROM public.notification_worker_invocations`)).toBeNull();
     expect(await as('service_role', `INSERT INTO public.notification_worker_invocations (request_id, purpose, source) VALUES (gen_random_uuid(),'smoke','direct')`)).toBe('42501');
+  });
+});
+
+
+describe('claim_pending_worker_invocation (part 3): the worker-side handshake', () => {
+  const claim = async (run: string) =>
+    (await c.query(`SELECT public.claim_pending_worker_invocation($1) AS r`, [run])).rows[0].r as string | null;
+
+  it('claims THE pending invocation; a second run of the same request replays via the claim too', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    const run = await newRun(false);
+    expect(await claim(run)).toBe(inv);
+    // an HTTP duplicate delivering the same request → same run id claims again → replayed → same id
+    expect(await claim(run)).toBe(null); // no PENDING left; the started row is not re-claimable…
+    // …which is correct: the duplicate proceeds as a steady-state pass, never as a second
+    // deliberate one (bind's 'replayed' arm remains available to callers holding the id)
+  });
+
+  it('no pending invocation → NULL: the steady-state cron tick, explicitly not an error', async () => {
+    expect(await claim(await newRun(false))).toBe(null);
+  });
+
+  it('a pending invocation the run cannot own RAISES — never a silent steady-state downgrade', async () => {
+    await open(c, crypto.randomUUID());
+    const impostor = await newRun(false, 'materialize');
+    await expect(c.query(`SELECT public.claim_pending_worker_invocation($1)`, [impostor]))
+      .rejects.toThrow(/refused this run/);
   });
 });

@@ -105,6 +105,8 @@ SELECT g.id FROM public.notification_digest_groups g
    FOR SHARE;
 
 \i _activation_assertions.sql
+-- N4 M1 (AC-6): arming must never ride over an unverified deliberate invocation.
+\i _invocation_gate.sql
 
 -- ARM — by the jobid of the row we just locked and verified, never by a fresh name lookup, and
 -- count-checked: `UPDATE ... WHERE` matching nothing is a successful no-op, and "arming" nothing

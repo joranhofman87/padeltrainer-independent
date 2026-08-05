@@ -9658,6 +9658,10 @@ export type Database = {
         Args: { _cycle_id: string }
         Returns: boolean
       }
+      claim_pending_worker_invocation: {
+        Args: { p_worker_run_id: string }
+        Returns: string
+      }
       claim_skipped_required_alerts: {
         Args: {
           p_limit?: number

@@ -74,6 +74,8 @@ export type WorkerSummary = {
   status: "disabled" | "misconfigured" | "ok" | "error";
   reason?: string;
   dispatchRunId?: string;
+  /** the deliberate invocation this dispatch run claimed, when one was pending (N4 M1) */
+  invocationId?: string;
   materializeRunId?: string;
   reconcile?: ReconcileMetric[];            // dispatch-run metrics
   reconcileMaterialize?: ReconcileMetric[]; // materialize-run metrics (every started run is reconciled)
@@ -113,6 +115,7 @@ export class DigestWorkerError extends Error {
 function safeSummary(s: WorkerSummary): Partial<WorkerSummary> {
   return {
     status: s.status, dispatchRunId: s.dispatchRunId, materializeRunId: s.materializeRunId,
+    invocationId: s.invocationId,
     sweptStale: s.sweptStale, materialized: s.materialized, claimed: s.claimed, sent: s.sent,
     deferred: s.deferred, oversizeSplit: s.oversizeSplit, oversizeFailed: s.oversizeFailed,
     recorded: s.recorded, groupErrors: s.groupErrors, reconcileErrors: s.reconcileErrors,

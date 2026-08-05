@@ -236,7 +236,7 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 # uncommitted transaction that is discarded at disconnect, so the emergency rollback would do nothing
 # at all while every gate before it passed. `-v ON_ERROR_STOP=0` is the same shape. Three names are
 # actually used, so three names are permitted.
-ARTIFACT_VARS="run_id max_recipients request_id"
+ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id"
 assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
   local artifact="$1"; shift
   local expect_value=0 a
@@ -416,7 +416,8 @@ case "$SUB" in
     warn "sending is DIGEST_SEND_ENABLED being off — your assertion, which no SQL here can check: the"
     warn "worker claims existing groups regardless of the engine flags. The backlog assertions are a"
     warn "SNAPSHOT that removes the work a wrong assertion would have sent."
-    if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql; then
+    INV_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql -v invocation_request_id="$INV_REQ_ID"; then
       report_failed_invoke "$CANARY_TMP/invoke.out" "the disabled smoke"
     fi
     req_id="$(marker_values "$CANARY_TMP/invoke.out" CANARY_REQUEST_ID '[0-9]+')"
@@ -495,7 +496,8 @@ case "$SUB" in
     resp_out="$CANARY_TMP/response.out"
 
     warn "canary-invoke SENDS. It runs the reviewed cron command once, with the cron still inactive."
-    if ! run_sql_capture "$inv_out" "$url" canary_invoke.sql -v max_recipients="$MAX_RECIPIENTS"; then
+    INV_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    if ! run_sql_capture "$inv_out" "$url" canary_invoke.sql -v max_recipients="$MAX_RECIPIENTS" -v invocation_request_id="$INV_REQ_ID"; then
       report_failed_invoke "$inv_out" "the canary invocation"
     fi
 

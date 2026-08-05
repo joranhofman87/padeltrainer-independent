@@ -635,3 +635,46 @@ describe('G — the dispatcher can only reach psql through the sanitising wrappe
     expect(guard).toBeLessThan(dispatch);
   });
 });
+
+
+describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact', () => {
+  const SQL = (f: string) =>
+    readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
+
+  it('the gate include exists and refuses on ANY unresolved invocation', () => {
+    const gate = SQL('_invocation_gate.sql');
+    expect(gate).toContain("status IN ('pending', 'started')");
+    expect(gate).toContain('assert_eq');
+  });
+
+  it.each(['smoke_invoke.sql', 'canary_invoke.sql'])('%s gates, then OPENS, before its dispatch', (f) => {
+    const src = SQL(f);
+    const gateIdx = src.indexOf('\\i _invocation_gate.sql');
+    const openIdx = src.indexOf('open_notification_worker_invocation(');
+    expect(gateIdx).toBeGreaterThan(0);
+    expect(openIdx).toBeGreaterThan(gateIdx);
+    // the open rides INSIDE the artifact transaction (before its COMMIT), so the record exists
+    // from the instant the request can
+    const commitIdx = src.lastIndexOf('COMMIT');
+    expect(openIdx).toBeLessThan(commitIdx);
+    expect(src).toContain(":'invocation_request_id'");
+  });
+
+  it('activate gates WITHOUT opening — arming never rides over an unverified invocation', () => {
+    const src = SQL('activate.sql');
+    expect(src).toContain('\\i _invocation_gate.sql');
+    expect(src).not.toContain('open_notification_worker_invocation(');
+  });
+
+  it('canary_reconcile resolves the claimed invocation with EVIDENCE-gated completion', () => {
+    const src = SQL('canary_reconcile.sql');
+    expect(src).toContain("resolve_notification_worker_invocation(i.id, 'completed')");
+    expect(src).toContain("i.worker_run_id = :'run_id'");
+  });
+
+  it('the shell allowlists and supplies the per-command request id', () => {
+    const sh = readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'run-enablement.sh'), 'utf8');
+    expect(sh).toContain('ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id"');
+    expect(sh.match(/INV_REQ_ID="\$\(uuidgen/g)?.length).toBe(2);
+  });
+});

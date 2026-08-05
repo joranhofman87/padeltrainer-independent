@@ -119,16 +119,22 @@ SELECT pg_temp.assert_eq(
 -- between another invocation's COMMIT and that moment there is nothing in notification_worker_runs to
 -- see, and the check above reads clean over a canary that is already on its way.
 --
--- STATED PRECISELY, because this narrows the window rather than closing it: pg_net owns the lifetime
--- of the queue row and removes it on its own schedule, so a request already dispatched but whose
--- worker has not yet recorded a run stays invisible here. Closing that gap needs a durable
--- pending-invocation record, which is deferred to the Admin Notification Operations release unit
--- (docs/FOUNDATION_ROADMAP.md) — that is where "what is the pipeline doing right now" belongs, and
--- it is a mandatory prerequisite for any canary in the first place.
+-- STATED PRECISELY: this queue check NARROWS the window (pg_net owns the queue row's lifetime,
+-- so a dispatched-but-not-yet-running request is invisible here); the DURABLE closure is the
+-- invocation record gated + opened just below (N4 M1, Stage-3.5 AC-6) — the record exists from
+-- this transaction's commit until the reconcile resolves it, so nothing can read "idle" over a
+-- travelling canary again.
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM net.http_request_queue
     WHERE url = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
   'no request to the digest worker is already queued (another canary invocation is in progress — wait for it to answer)');
+
+-- N4 M1 (AC-6): the DURABLE half of the same guarantee, then OPEN this invocation's record in
+-- THIS transaction — it exists from the instant the request can. :invocation_request_id is
+-- generated once per operator command by run-enablement.sh, so an ambiguous-commit retry
+-- recovers the SAME invocation instead of stacking a second.
+\i _invocation_gate.sql
+SELECT public.open_notification_worker_invocation('canary', 'canary_invoke.sql', :'invocation_request_id'::pg_catalog.uuid) AS invocation_id;
 
 -- THE BLAST RADIUS. "Canary: one recipient" was a hope, not a fact: the worker sends to every group
 -- it can claim, plus everything materialization forms during the same run. If the engine has been on
