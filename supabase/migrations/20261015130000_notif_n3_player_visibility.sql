@@ -40,12 +40,22 @@ AS $$
      AND at.status = 'active'
   UNION
   -- (2) guest arm: a guest identity linked to MY profile — twin-precedence bridge OR person
-  --     arm — never split-frozen, scoped to the academy directly or via an active trainer.
-  SELECT DISTINCT coalesce(gp.academy_profile_id, at2.academy_profile_id)
+  --     arm — never split-frozen. BOTH relationship legs, unioned, exactly as the canonical
+  --     manager-side helper ORs them: the guest's DIRECT academy AND every academy where the
+  --     guest's trainer is active. A coalesce here (first draft) suppressed the trainer leg
+  --     whenever a direct academy existed — hiding a B-attributed cap from a player whose
+  --     guest row named A. Review caught it.
+  SELECT ga.academy_id
     FROM public.guest_players gp
     JOIN public.profiles pr ON pr.user_id = auth.uid()
-    LEFT JOIN public.academy_trainers at2
-      ON at2.trainer_profile_id = gp.trainer_id AND at2.status = 'active'
+    CROSS JOIN LATERAL (
+      SELECT gp.academy_profile_id AS academy_id
+       WHERE gp.academy_profile_id IS NOT NULL
+      UNION
+      SELECT at2.academy_profile_id
+        FROM public.academy_trainers at2
+       WHERE at2.trainer_profile_id = gp.trainer_id AND at2.status = 'active'
+    ) ga
    WHERE (
        gp.twin_of_profile_id = pr.id
        OR (gp.twin_of_profile_id IS NULL AND gp.linked_profile_id = pr.id)
@@ -55,7 +65,6 @@ AS $$
           WHERE plg.guest_player_id = gp.id AND plp.profile_id = pr.id)
      )
      AND NOT public.is_guest_split_frozen(gp.id)
-     AND coalesce(gp.academy_profile_id, at2.academy_profile_id) IS NOT NULL
 $$;
 
 COMMENT ON FUNCTION public.notif_my_academy_ids() IS

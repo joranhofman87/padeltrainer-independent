@@ -120,6 +120,29 @@ describe('AcademyNotificationControls', () => {
     });
   });
 
+  it('a failed submit RETAINS the request id — the retry replays server-side instead of double-auditing', async () => {
+    const { CapChangeDialog } = await import('@/components/academy/CapChangeDialog');
+    rpcFails = true;
+    render(
+      <CapChangeDialog
+        pending={{ event: 'booking_request_staff', channel: 'email', next: 'off' }}
+        academyId="acad-1"
+        eventLabel={(k) => k}
+        onClose={() => {}}
+        onSaved={() => {}}
+      />,
+    );
+    fireEvent.change(await screen.findByTestId('cap-reason-input'), { target: { value: 'retry case' } });
+    fireEvent.click(screen.getByTestId('cap-confirm'));
+    await waitFor(() => expect(rpcMock.mock.calls.filter((c) => c[0] === 'set_academy_notification_restriction')).toHaveLength(1));
+    rpcFails = false;
+    fireEvent.click(screen.getByTestId('cap-confirm'));
+    await waitFor(() => expect(rpcMock.mock.calls.filter((c) => c[0] === 'set_academy_notification_restriction')).toHaveLength(2));
+    const [first, second] = rpcMock.mock.calls.filter((c) => c[0] === 'set_academy_notification_restriction');
+    expect(first[1].p_request_id).toBe(second[1].p_request_id);
+    expect(String(first[1].p_request_id)).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
   it('the page wires every select change INTO the dialog — nothing saves without it', () => {
     const src = readFileSync(resolve(__dirname, '..', 'pages', 'academy', 'AcademyNotificationControls.tsx'), 'utf8');
     expect(src).toContain("onValueChange={(v) => setPending({ event, channel, next: v as CapValue })}");

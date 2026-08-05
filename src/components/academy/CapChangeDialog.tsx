@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -35,6 +35,13 @@ export function CapChangeDialog({
   const { toast } = useToast();
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  // ONE request id per DECISION, held across retries: if the RPC commits but the response is
+  // lost, pressing Apply again must REPLAY server-side (same id) — a fresh uuid per submit
+  // would record a second audit decision and bypass the idempotency the server implements.
+  const requestIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (pending) requestIdRef.current = crypto.randomUUID();
+  }, [pending]);
 
   const close = () => {
     setReason('');
@@ -51,8 +58,8 @@ export function CapChangeDialog({
         p_channel: pending.channel,
         p_max_frequency: pending.next === 'inherit' ? null : pending.next,
         p_reason: reason.trim(),
-        // client-generated so an exact network retry replays instead of double-auditing
-        p_request_id: crypto.randomUUID(),
+        // per-decision id (see the ref above) so an exact retry replays instead of double-auditing
+        p_request_id: requestIdRef.current,
       });
       if (error) throw error;
       toast({ title: t('academyNotifControls.saved', 'Notification cap updated'), description: String(data) });

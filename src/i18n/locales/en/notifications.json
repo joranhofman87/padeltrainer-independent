@@ -168,8 +168,13 @@
       "revoked": "WhatsApp messages stopped",
       "toggleFor": "WhatsApp for {{event}}"
     },
-    "cappedBy": "Limited to {{cap}} by {{academy}}",
     "capHistoryTitle": "Changes by your academies",
-    "capHistoryDesc": "Your academy can reduce optional notifications for its players. Your own choices always win when they are stricter."
+    "capHistoryDesc": "Your academy can reduce optional notifications for its players. Your own choices always win when they are stricter.",
+    "cappedByChannel": "{{channel}} limited to {{cap}} by {{academy}}",
+    "channelName": {
+      "email": "Email",
+      "whatsapp": "WhatsApp",
+      "push": "Push"
+    }
   }
 }

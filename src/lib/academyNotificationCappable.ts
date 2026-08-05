@@ -10,5 +10,7 @@ export const CAPPABLE_EVENTS: ReadonlyArray<{
 }> = [
   { event: 'booking_request_staff', channels: ['email'] },
   { event: 'booking_confirmed_staff', channels: ['email'] },
-  { event: 'booking_cancelled_player', channels: ['email', 'whatsapp'] },
+  // whatsapp deliberately absent: 20260923100000 set supports_whatsapp=false for this
+  // event (no committed template) — a cap row for it would be refused by M2's trigger.
+  { event: 'booking_cancelled_player', channels: ['email'] },
 ];

@@ -194,6 +194,7 @@ export default function AcademyNotificationControls() {
                 <li key={i} className="text-sm" data-testid="cap-history-row">
                   <span className="font-medium">{eventLabel(String(h.event_type))}</span>{' '}
                   <span className="text-muted-foreground">
+                    {t(`academyNotifControls.channel.${String(h.channel)}`, String(h.channel))}:{' '}
                     {String(h.old_max_frequency ?? t('academyNotifControls.cap.inherit', 'inherit'))} →{' '}
                     {String(h.new_max_frequency ?? t('academyNotifControls.cap.inherit', 'inherit'))} · {String(h.reason)}
                   </span>

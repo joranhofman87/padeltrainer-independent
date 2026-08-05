@@ -103,6 +103,7 @@ beforeAll(async () => {
     '20260911100000_notification_resolver.sql',
     '20260912100000_notification_email_worker.sql',
     '20260922100000_notification_whatsapp_booking_optin_cadence.sql',
+    '20260923100000_notification_whatsapp_capability_matches_templates.sql',
     '20261002100000_notification_digest_schema_foundation.sql',
     '20261003100000_notification_digest_acl_lockdown.sql',
     '20261004100000_notification_digest_state_machine.sql',
@@ -472,6 +473,9 @@ describe('resolver cap integration (N3 M3)', () => {
     // The email arm is doubly protected (the required override runs last); whatsapp has no such
     // override, so ONLY the NOT required_delivery guard stands between a smuggled cap and a
     // required event's whatsapp leg. This is the test that makes that guard load-bearing.
+    // 20260923 turned booking_confirmed_player's whatsapp OFF (no committed template); this
+    // models the future template commit that turns it back on, in the isolated harness.
+    await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = true WHERE key='booking_confirmed_player'`);
     await c.query(`
       INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
         destination_redacted, consent_status, consent_scope, is_primary)
@@ -487,6 +491,7 @@ describe('resolver cap integration (N3 M3)', () => {
     const wa = rows.find((r) => r.channel === 'whatsapp');
     expect(wa).toBeTruthy();
     expect(wa!.status).toBe('pending');
+    await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = false WHERE key='booking_confirmed_player'`);
   });
 
   it('a trainer-only send has no academy to answer to — the cap does not apply', async () => {
@@ -767,5 +772,49 @@ describe('academy outcome reads (N3 M6): visibility never widens, impact never i
     // and impact never crosses tenants: A's manager sees nothing of B's restrictions
     const rows = (await c.query(`SELECT * FROM public.get_academy_restriction_impact('${A}', 30)`)).rows;
     expect(Array.isArray(rows)).toBe(true); // shape check only; cross-tenant covered by scoping predicate
+  });
+});
+
+
+describe('the CAPPABLE list against the POST-catalog truth (N3 round-4)', () => {
+  it('every UI-cappable (event, channel) is optional AND supported by the live catalog', async () => {
+    // The dead-control bug this pins: booking_cancelled_player whatsapp was offered while
+    // 20260923 had set supports_whatsapp=false — M2's trigger would refuse the write.
+    const { CAPPABLE_EVENTS } = await import('@/lib/academyNotificationCappable');
+    for (const { event, channels } of CAPPABLE_EVENTS) {
+      const row = (await c.query(
+        `SELECT required_delivery, supports_email, supports_whatsapp FROM public.notification_event_types WHERE key = $1`,
+        [event])).rows[0];
+      expect(row, `${event} missing from catalog`).toBeTruthy();
+      expect(row.required_delivery, `${event} is required`).toBe(false);
+      for (const ch of channels) {
+        const supported = ch === 'email' ? row.supports_email : row.supports_whatsapp;
+        expect(supported, `${event}:${ch} unsupported — a dead control`).toBe(true);
+      }
+    }
+  });
+});
+
+describe('guest arm returns BOTH relationship legs (N3 round-4)', () => {
+  it("a guest with a DIRECT academy AND a trainer active elsewhere surfaces BOTH academies' caps", async () => {
+    const PROF2 = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const T3 = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await c.query(`DELETE FROM public.guest_players; DELETE FROM public.person_links WHERE profile_id IS NOT NULL;`);
+    await c.query(`INSERT INTO public.profiles (id, user_id) VALUES ('${PROF2}','${U1}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.trainer_profiles (id) VALUES ('${T3}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.academy_trainers (trainer_profile_id, academy_profile_id, status) VALUES ('${T3}','${B}','active')`);
+    // the guest names academy A directly AND rides trainer T3 who is active at B
+    await c.query(`INSERT INTO public.guest_players (academy_profile_id, trainer_id, linked_profile_id)
+      VALUES ('${A}','${T3}','${PROF2}')`);
+    await asUser(MGR);
+    await setCap({ academy: A, event: 'session_reminder_player', cap: 'off', reason: 'A reason here' });
+    await c.query(`INSERT INTO public.academy_managers (user_id, academy_profile_id) VALUES ('${MGR}','${B}') ON CONFLICT DO NOTHING`);
+    await setCap({ academy: B, event: 'session_reminder_player', cap: 'daily', reason: 'B reason here' });
+    await asUser(U1);
+    const caps = (await c.query(`SELECT academy_profile_id FROM public.get_my_notification_restrictions()`)).rows
+      .map((r) => r.academy_profile_id).sort();
+    // the first draft's coalesce returned only A here — hiding B's cap from a player it binds
+    expect(caps).toEqual([A, B].sort());
   });
 });

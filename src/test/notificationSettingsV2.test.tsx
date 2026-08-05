@@ -263,9 +263,12 @@ describe('NotificationSettings v2', () => {
   });
 
   it('an academy cap renders an ADVISORY marker on the affected row, and only there', async () => {
-    myCaps = [{ academy_name: 'Padel Zuid', event_type: 'open_slots_player', channel: 'email', max_frequency: 'daily' }];
+    myCaps = [{ academy_name: 'Padel Zuid', event_type: 'open_slots_player', channel: 'whatsapp', max_frequency: 'daily' }];
     render(<NotificationSettings />);
-    expect(await screen.findByTestId('cap-marker-open_slots_player')).toHaveTextContent('Padel Zuid');
+    const marker = await screen.findByTestId('cap-marker-open_slots_player');
+    expect(marker).toHaveTextContent('Padel Zuid');
+    // channel-specific: a WHATSAPP cap must be visible AND name its channel (round-4 finding 4)
+    expect(marker).toHaveTextContent(/whatsapp/i);
     expect(screen.queryByTestId('cap-marker-booking_confirmation')).toBeNull();
   });
 

@@ -384,10 +384,6 @@ export default function NotificationSettings() {
     navigate(roleHomePath({ isAcademyManager, isClubManager, role }));
   };
 
-  /** The academies capping this event+channel, if any — rendered as an advisory badge. */
-  const capsFor = (eventKey: string, channel: string) =>
-    academyCaps.filter((r) => r.event_type === eventKey && r.channel === channel);
-
   const eventLabel = (key: string) => t(`notifications.events.${key}.label`, key.replace(/_/g, ' '));
   const freqLabel = (f: Frequency) => t(`notifications.frequency.${f}`);
 
@@ -447,10 +443,11 @@ export default function NotificationSettings() {
                   <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
                   {/* N3: an academy cap on this event — ADVISORY (the resolver enforces it
                       either way), so the player is never surprised by quieter mail. */}
-                  {capsFor(e.key, 'email').map((cap) => (
-                    <p key={cap.academy_name} className="text-xs text-muted-foreground" data-testid={`cap-marker-${e.key}`}>
-                      {t('notifications.cappedBy', {
-                        defaultValue: 'Limited to {{cap}} by {{academy}}',
+                  {academyCaps.filter((r) => r.event_type === e.key).map((cap) => (
+                    <p key={`${cap.academy_name}:${cap.channel}`} className="text-xs text-muted-foreground" data-testid={`cap-marker-${e.key}`}>
+                      {t('notifications.cappedByChannel', {
+                        defaultValue: '{{channel}} limited to {{cap}} by {{academy}}',
+                        channel: t(`notifications.channelName.${cap.channel}`, cap.channel),
                         cap: t(`notifications.frequency.${cap.max_frequency}`, cap.max_frequency),
                         academy: cap.academy_name,
                       })}
@@ -564,7 +561,7 @@ export default function NotificationSettings() {
                 <li key={i} className="text-sm" data-testid="cap-history-entry">
                   <span className="font-medium">{String(h.academy_name)}</span>{' '}
                   <span className="text-muted-foreground">
-                    {eventLabel(String(h.event_type))}: {String(h.old_max_frequency ?? '—')} → {String(h.new_max_frequency ?? '—')} · {String(h.reason)}
+                    {eventLabel(String(h.event_type))} ({t(`notifications.channelName.${String(h.channel)}`, String(h.channel))}): {String(h.old_max_frequency ?? '—')} → {String(h.new_max_frequency ?? '—')} · {String(h.reason)}
                   </span>
                 </li>
               ))}
