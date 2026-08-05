@@ -27,6 +27,7 @@ type AuthState = {
   loading: boolean;
   profileReady: boolean;
   profileFetchFailed: boolean;
+  roleDataFailed: boolean;
 };
 
 const refreshAuth = vi.fn();
@@ -67,7 +68,12 @@ function renderEntry() {
   );
 }
 
-const RESOLVED = { loading: false, profileReady: true, profileFetchFailed: false };
+const RESOLVED = {
+  loading: false,
+  profileReady: true,
+  profileFetchFailed: false,
+  roleDataFailed: false,
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -123,17 +129,31 @@ describe('NotificationSettingsEntry', () => {
     ['empty roles', [] as string[], false],
     ['roles present but the academy lookup failed', ['trainer'], false],
     ["another account's roles left over from a switch", ['player'], true],
-  ])('offers a retry when the profile fetch FAILED — %s', async (_label, roles, isMgr) => {
+  ])('offers a retry when the ROLE data failed — %s', async (_label, roles, isMgr) => {
     // `useAuth` publishes PARTIAL results on its last attempt and does not clear roles on an
     // account switch, so a failure with NON-EMPTY roles is real and is the dangerous case: the
     // page would render a confidently wrong event list.
-    authState = { ...authState, roles, isAcademyManager: isMgr, profileFetchFailed: true };
+    authState = {
+      ...authState,
+      roles,
+      isAcademyManager: isMgr,
+      profileFetchFailed: true,
+      roleDataFailed: true,
+    };
     renderEntry();
     const retry = await screen.findByRole('button');
     expect(screen.queryByTestId('settings-content')).toBeNull();
     expect(screen.queryByTestId('where')).toBeNull();
     retry.click();
     await waitFor(() => expect(refreshAuth).toHaveBeenCalled());
+  });
+
+  it('still renders when only an UNRELATED read failed (profile or club-manager)', async () => {
+    // Refusing on the four-read aggregate would take the route every email footer points at
+    // offline for a failure that cannot affect which events this account may manage.
+    authState = { ...authState, profileFetchFailed: true, roleDataFailed: false };
+    renderEntry();
+    expect(await screen.findByTestId('settings-content')).toBeInTheDocument();
   });
 });
 
@@ -259,12 +279,16 @@ describe('router placement', () => {
 
   it('covers every layout the router actually declares', () => {
     // A new layout must force this list to be updated rather than quietly going unchecked.
-    const declared = [...router.matchAll(/element=\{<([A-Za-z]+)Layout \/>\}>/g)].map((m) => m[1]);
+    // Deliberately loose about props and spacing: `element={<NewLayout mode="x"/>}>` must be
+    // discovered too, or a future layout could host the neutral route without failing anything.
+    const declared = [...router.matchAll(/element=\{<([A-Za-z0-9_]+)Layout\b[^{}]*\/>\}\s*>/g)].map(
+      (m) => m[1],
+    );
     expect(new Set(declared)).toEqual(new Set(layouts));
   });
 
   it.each(layouts)('mounts the entry OUTSIDE %sLayout', (layout) => {
-    const [start, end] = routeBlockRange(router, `element={<${layout}Layout />}>`);
+    const [start, end] = routeBlockRange(router, `<${layout}Layout`);
     expect(router.slice(start, end)).not.toContain(NOTIFICATION_SETTINGS_ENTRY_PATH);
   });
 });

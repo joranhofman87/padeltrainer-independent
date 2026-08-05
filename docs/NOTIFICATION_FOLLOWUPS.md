@@ -83,18 +83,34 @@ raised by review against the shipped schema and must be satisfied where named.
 6c. **`isStaff` read the PRIMARY role, so a trainer who is also an admin saw the player-only list
    (fixed in S4).** `useAuth` ranks admin above trainer, so `role === 'trainer'` is false for an
    account holding both, and `NotificationSettings` hid every staff catalog event and the legacy
-   staff settings from a real trainer. Now tested against the whole `roles` set. Pre-existing on
-   all three role routes, not introduced by S4 — but S4 renders this page directly, so it was
-   fixed rather than inherited. **Note for the N1 branch (PR #631):** it refactors this same file
-   and derives the back target from `location.pathname`; when both land, the neutral path needs a
-   back target there (the page's `navigate(-1)` is a no-op in the fresh tab an email link opens).
-6d. **OPEN — `useAuth` keeps the previous account's roles across a switch when the fetch fails.**
-   On a switch it clears `profileReady`/`profileFetchFailed` and the subscription, but not `roles`,
-   `role`, `profile` or `isAcademyManager` (`src/hooks/useAuth.tsx`); if every retry then throws it
-   sets `profileFetchFailed`/`profileReady` and leaves the previous account's values in place. S4's
-   entry refuses to render on any `profileFetchFailed`, so this route is safe, but every layout and
-   page that reads `roles` without checking that flag is not. **Owner:** a `useAuth` hardening pass
-   — clear routing state on identity change — not a notification slice. Found by review during S4.
+   staff settings from a real trainer. Now tested against the whole `roles` set, with a behavioural
+   test (`roles: ['admin','trainer']` renders staff rows). Pre-existing on all three role routes,
+   not introduced by S4 — but S4 renders this page directly, so it was fixed rather than inherited.
+   **Note for the N1 branch (PR #631):** it refactors this same file, so expect a conflict here.
+6d. **A failed preference READ used to overwrite the other channel (fixed in S4).** PostgREST
+   resolves with `{data: null, error}` rather than rejecting, so `NotificationSettings.load()`
+   consumed four unchecked results: a failed `notification_preferences_v2` read left `prefs` empty,
+   `effective()` then answered with CATALOG DEFAULTS, and `saveEvent` writes BOTH channel columns
+   from `effective()`. Touching the email control therefore replaced a stored `whatsapp: 'off'`
+   with the catalog default — a silent reversal of an opt-out, in the page whose entire job is
+   honouring them. The page now checks every read, renders a retry state on failure, and renders no
+   control that could write. Pre-existing; S4 made this page the destination of every email footer,
+   which is why it is fixed here rather than deferred.
+6e. **`profileFetchFailed` was too coarse to gate on; `roleDataFailed` was added (S4).** The old
+   flag aggregates four reads (roles, profile, club-manager, academy-manager), so refusing on it
+   would take the footer route offline for a profile failure that cannot affect authority — while
+   NOT refusing means rendering on partial role data. `useAuth` now also publishes
+   `roleDataFailed`, true when specifically the roles or academy-manager read failed, or when the
+   fetch threw and nothing was published at all. Pinned by `src/test/useAuthRoleDataFailed.test.tsx`
+   against the REAL provider: every consumer mocks `useAuth`, so without it the wiring could be
+   deleted with every other test still green.
+6f. **OPEN — `useAuth` keeps the previous account's roles across a switch when the fetch fails.**
+   On a switch it clears `profileReady`/`profileFetchFailed`/`roleDataFailed` and the subscription,
+   but not `roles`, `role`, `profile` or `isAcademyManager`; if every retry then throws, it marks
+   the profile ready with the previous account's values still in state. `roleDataFailed` makes that
+   state *detectable* — and S4's entry refuses on it — but every layout and page that reads `roles`
+   without checking a failure flag still trusts it. **Owner:** a `useAuth` hardening pass that
+   clears routing state on identity change, not a notification slice. Found by review during S4.
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
    `expires_at` more than 30 days past — and never a row that is merely revoked.
 7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising

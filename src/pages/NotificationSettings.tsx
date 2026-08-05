@@ -9,6 +9,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { FullPageLoader } from '@/components/ui/page-spinner';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -138,6 +139,12 @@ export default function NotificationSettings() {
   const [consent, setConsent] = useState<WhatsAppConsent>({ optedIn: false, redacted: null });
   const [revoking, setRevoking] = useState(false);
   const [legacy, setLegacy] = useState<Record<string, Frequency>>({});
+  // A READ FAILURE MUST NOT LOOK LIKE "no preferences stored". PostgREST resolves with
+  // `{data: null, error}` instead of rejecting, so an unchecked read leaves `prefs` empty,
+  // `effective()` then answers with catalog DEFAULTS, and `saveEvent` writes BOTH columns from
+  // it — silently replacing a stored `whatsapp: off` with the default the moment the recipient
+  // touches the email control. Refuse to render controls at all until the load succeeds.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -166,6 +173,10 @@ export default function NotificationSettings() {
         supabase.rpc('get_my_whatsapp_consent'),
       ]);
 
+      const readError = types.error ?? rows.error ?? v1.error ?? wa.error;
+      if (readError) throw readError;
+      setLoadFailed(false);
+
       setCatalog(
         ((types.data ?? []) as unknown as EventType[]).filter((e) => e.supports_email || e.supports_whatsapp),
       );
@@ -189,6 +200,7 @@ export default function NotificationSettings() {
       setLegacy(legacyMap);
     } catch (error) {
       logger.error('Failed to load notification settings', undefined, { error });
+      setLoadFailed(true);
     } finally {
       setDataLoading(false);
     }
@@ -318,6 +330,20 @@ export default function NotificationSettings() {
 
   if (loading || dataLoading) return <FullPageLoader />;
 
+  if (loadFailed) {
+    return (
+      <main className="container mx-auto flex max-w-3xl items-center justify-center px-4 py-6">
+        <QueryErrorState
+          className="w-full max-w-md"
+          onRetry={() => {
+            setDataLoading(true);
+            void load();
+          }}
+        />
+      </main>
+    );
+  }
+
   const visible = catalog.filter((e) => (STAFF_AUDIENCES.has(e.audience) ? isStaff : true));
   const alwaysOn = visible.filter((e) => e.required_delivery);
   const configurable = visible.filter((e) => !e.required_delivery);
@@ -325,13 +351,28 @@ export default function NotificationSettings() {
   // Only show the WhatsApp card at all if some visible event could use the channel.
   const anyWhatsApp = visible.some((e) => e.supports_whatsapp);
 
+  /**
+   * `navigate(-1)` alone is a dead control at `/app/settings/notifications`: an email footer opens
+   * a FRESH tab, so there is no in-app entry to go back to, and in a reused tab it can walk out of
+   * the app entirely. React Router stamps a history index, so fall back to this account's home
+   * when there is nothing of ours behind us.
+   */
+  const goBack = () => {
+    const historyIndex = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof historyIndex === 'number' && historyIndex > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate(isAcademyManager ? '/app/academy' : roles.includes('trainer') ? '/app/trainer' : '/app/player');
+  };
+
   const eventLabel = (key: string) => t(`notifications.events.${key}.label`, key.replace(/_/g, ' '));
   const freqLabel = (f: Frequency) => t(`notifications.frequency.${f}`);
 
   return (
     <main className="container mx-auto max-w-3xl px-4 py-6 space-y-6">
       <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} aria-label={t('back')}>
+        <Button variant="ghost" size="icon" onClick={goBack} aria-label={t('back')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div>

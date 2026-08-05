@@ -27,7 +27,7 @@ import { FullPageLoader } from '@/components/ui/page-spinner';
  * those same guards would apply and re-create the bug.
  */
 export default function NotificationSettingsEntry() {
-  const { user, loading, profileReady, profileFetchFailed, refreshAuth } = useAuth();
+  const { user, loading, profileReady, roleDataFailed, refreshAuth } = useAuth();
   const navigate = useNavigate();
 
   // Same predicate as the role layouts: wait for the profile, not merely the session.
@@ -46,13 +46,15 @@ export default function NotificationSettingsEntry() {
 
   if (authResolving || !user) return <FullPageLoader />;
 
-  // ANY aggregate fetch failure disqualifies this page, not only one that left `roles` empty.
-  // `useAuth` publishes PARTIAL results on its final attempt: a failed academy-manager lookup
-  // beside a successful roles lookup yields `isAcademyManager === false` with real roles, and a
-  // failed fetch after an account switch keeps the PREVIOUS account's roles (neither is cleared on
-  // switch). Both feed the settings page's staff test, so rendering would quietly show a trainer
-  // or manager the player-only list — a wrong answer that looks like a complete one.
-  if (profileFetchFailed) {
+  // Refuse whenever the ROLE-BEARING reads failed — not merely when they left `roles` empty, and
+  // not on the four-read aggregate either. `useAuth` publishes PARTIAL results on its final
+  // attempt (a failed academy-manager lookup beside a successful roles lookup yields
+  // `isAcademyManager === false` with real roles), and after an account switch a failed fetch
+  // keeps the PREVIOUS account's roles. Both feed the settings page's staff test, so rendering
+  // would show a trainer or manager the player-only list: a wrong answer that looks complete.
+  // Refusing on the aggregate instead would take this route down for an unrelated profile or
+  // club-manager failure, and this is the route every email footer points at.
+  if (roleDataFailed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50/80 p-4">
         <QueryErrorState

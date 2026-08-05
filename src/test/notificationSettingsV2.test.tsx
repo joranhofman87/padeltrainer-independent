@@ -15,11 +15,23 @@ let v2rows: unknown[] = [];
 let v1row: Record<string, string> | null = null;
 let upsertResult: { error: { message: string } | null } = { error: null };
 let consentRows: unknown[] = [];
+// PostgREST resolves with {data: null, error} instead of rejecting. Hardcoding error:null
+// everywhere is what let an unchecked read look like "no preferences stored" for so long.
+let v2ReadError: { message: string } | null = null;
 const upsertMock = vi.fn();
 const legacyUpsertMock = vi.fn();
 const rpcMock = vi.fn();
 
-let authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: false, loading: false };
+let authState = {
+  user: { id: 'U1' },
+  role: 'player',
+  // The page tests the whole ROLES set, not the primary role: `useAuth` ranks admin above
+  // trainer, so a primary-role test would hide every staff event from a trainer who is also an
+  // admin. The fixture must carry both fields or the page reads `undefined.includes`.
+  roles: ['player'] as string[],
+  isAcademyManager: false,
+  loading: false,
+};
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
 vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -42,7 +54,12 @@ vi.mock('@/lib/supabaseClient', () => ({
       }
       if (table === 'notification_preferences_v2') {
         return {
-          select: () => ({ eq: () => Promise.resolve({ data: v2rows, error: null }) }),
+          select: () => ({
+            eq: () =>
+              Promise.resolve(
+                v2ReadError ? { data: null, error: v2ReadError } : { data: v2rows, error: null },
+              ),
+          }),
           upsert: (...args: unknown[]) => { upsertMock(...args); return Promise.resolve(upsertResult); },
         };
       }
@@ -80,7 +97,8 @@ beforeEach(() => {
   upsertResult = { error: null };
   v2rows = [];
   v1row = null;
-  authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: false, loading: false };
+  v2ReadError = null;
+  authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isAcademyManager: false, loading: false };
   catalog = [
     evt({ key: 'booking_confirmed_player', required_delivery: true }),
     evt({ key: 'booking_cancelled_player' }),
@@ -206,7 +224,7 @@ describe('NotificationSettings v2', () => {
   });
 
   it('keeps EVERY v1 staff preference reachable for staff', async () => {
-    authState = { user: { id: 'U1' }, role: 'trainer', isAcademyManager: false, loading: false };
+    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isAcademyManager: false, loading: false };
     render(<NotificationSettings />);
     for (const k of ['new_booking', 'booking_cancelled', 'new_follower', 'new_player',
                      'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received']) {
@@ -229,8 +247,35 @@ describe('NotificationSettings v2', () => {
     expect(freq('pref-row-booking_confirmation')).toBe('instant');
   });
 
+  it('STAFF filtering reads the ROLES set — admin+trainer is staff, though role is admin', async () => {
+    // `useAuth` ranks admin above trainer, so this account's PRIMARY role is 'admin'. Testing the
+    // primary role hid every staff event and legacy staff setting from a real trainer.
+    authState = {
+      user: { id: 'U1' },
+      role: 'admin',
+      roles: ['admin', 'trainer'],
+      isAcademyManager: false,
+      loading: false,
+    };
+    render(<NotificationSettings />);
+    expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
+    expect(await screen.findByTestId('pref-row-new_booking')).toBeInTheDocument();
+  });
+
+  it('a FAILED preference read shows a retry, and renders NO control that could overwrite it', async () => {
+    // The destructive shape this prevents: an unchecked read leaves `prefs` empty, `effective()`
+    // then answers with catalog DEFAULTS, and saveEvent writes BOTH columns — so touching the
+    // email control would replace a stored `whatsapp: off` with the default.
+    v2ReadError = { message: 'connection reset' };
+    render(<NotificationSettings />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('pref-row-booking_confirmation')).toBeNull();
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
   it('STAFF filtering includes trainers — a trainer-only account sees staff events', async () => {
-    authState = { user: { id: 'U1' }, role: 'trainer', isAcademyManager: false, loading: false };
+    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isAcademyManager: false, loading: false };
     render(<NotificationSettings />);
     // catalogued audience is 'academy_manager', but PR 6b's fan-out also mails trainers
     expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
@@ -245,7 +290,7 @@ describe('NotificationSettings v2', () => {
   });
 
   it('an academy manager also lands in the staff bucket', async () => {
-    authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: true, loading: false };
+    authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isAcademyManager: true, loading: false };
     render(<NotificationSettings />);
     expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
   });
