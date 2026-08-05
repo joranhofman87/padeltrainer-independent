@@ -10227,6 +10227,15 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
+      get_manage_capability_for_source: {
+        Args: { p_source_id: string; p_source_kind: string }
+        Returns: {
+          capability_id: string
+          expired: boolean
+          key_version: number
+          revoked: boolean
+        }[]
+      }
       get_my_invoices: {
         Args: never
         Returns: {

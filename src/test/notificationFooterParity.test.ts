@@ -125,3 +125,85 @@ describe('send-digest-emails send-time gate wiring', () => {
     expect(src).not.toContain('.in("id", items.map((i) => i.id))');
   });
 });
+
+describe('S3: campaign sender marketing layer wiring', () => {
+  // The decision table lives in _shared/marketing-email.ts under Deno tests; these pin that the
+  // sender consults it with the right inputs and honours every refusal.
+  const src = read('supabase/functions/send-campaign-emails/index.ts');
+
+  it('checks the CANONICAL suppression reader per recipient, before dispatch', () => {
+    expect(src).toContain('await isSuppressed(recipient.recipient_email)');
+    expect(src).toContain('"is_marketing_suppressed"');
+    // The check must precede the provider call inside sendOne.
+    const sendOneIdx = src.indexOf('const sendOne = async');
+    const suppIdx = src.indexOf('await isSuppressed(recipient.recipient_email)', sendOneIdx);
+    const fetchIdx = src.indexOf('await fetch("https://api.resend.com/emails"', sendOneIdx);
+    expect(suppIdx).toBeGreaterThan(sendOneIdx);
+    expect(suppIdx).toBeLessThan(fetchIdx);
+  });
+
+  it("suppressed → status 'suppressed', which retryFailed can never resurrect", () => {
+    expect(src).toContain('.update({ status: "suppressed"');
+    // retryFailed re-queues ONLY 'failed' — the terminality of 'suppressed' hangs on this.
+    expect(src).toMatch(/\.eq\("status", "failed"\)\s*\n?\s*\.lt\("attempt_count"/);
+  });
+
+  it('a suppression-check ERROR marks the row failed — an error is never clearance', () => {
+    const branch = src.slice(
+      src.indexOf('} catch (suppErr) {'),
+      src.indexOf('// ── MANAGE CAPABILITY'),
+    );
+    expect(branch).toContain('status: "failed"');
+  });
+
+  it('the cutover discriminator is attempt_count, and a refused attachment BLOCKS the send', () => {
+    expect(src).toContain('attempted: (recipient.attempt_count ?? 0) > 0');
+    expect(src).toContain('unsubscribe unavailable:');
+    // The terminal branch must return before the provider call — measured inside sendOne,
+    // because the file's FIRST Resend fetch is the earlier testMode block.
+    const sendOneIdx = src.indexOf('const sendOne = async');
+    const termIdx = src.indexOf('unsubscribe unavailable:', sendOneIdx);
+    const fetchIdx = src.indexOf('await fetch("https://api.resend.com/emails"', sendOneIdx);
+    expect(termIdx).toBeGreaterThan(sendOneIdx);
+    expect(termIdx).toBeLessThan(fetchIdx);
+  });
+
+  it('footer and RFC 8058 headers ride ONLY on an attach decision', () => {
+    expect(src).toContain('attachment.kind === "attach" ? marketingFooterHtml(attachment.token) : ""');
+    expect(src).toMatch(/attachment\.kind === "attach"\s*\n?\s*\? \{ headers: rfc8058Headers\(SUPABASE_URL!, attachment\.token\) \}/);
+  });
+
+  it('scope is the campaign OWNER (academy → trainer → platform), never a constant', () => {
+    expect(src).toContain('? { kind: "academy", id: campaign.academy_profile_id }');
+    expect(src).toContain('? { kind: "trainer", id: campaign.trainer_profile_id }');
+    expect(src).toContain(': { kind: "platform", id: null }');
+  });
+});
+
+describe('S3: onboarding drip marketing layer wiring', () => {
+  const src = read('supabase/functions/process-onboarding-emails/index.ts');
+
+  it('an UNCLASSIFIED template is treated as marketing — the safe error direction', () => {
+    // The wrong default here is the whole bug class: marketing without an unsubscribe.
+    expect(src).toContain('queueItem.template.delivery_class !== "required_service"');
+    expect(src).toContain('delivery_class'); // selected in the join
+    expect(src).toMatch(/onboarding_email_templates\(id, subject, body_html, delivery_class\)/);
+  });
+
+  it("suppressed → 'suppressed', and a FAILED status write is loud, counted, and skips the send", () => {
+    expect(src).toContain('.update({ status: "suppressed", error_message: null, sent_at: null })');
+    expect(src).toContain("stays recorded 'sent'");
+  });
+
+  it('a refused attachment blocks the send and records why', () => {
+    expect(src).toContain('unsubscribe unavailable:');
+    const termIdx = src.indexOf('unsubscribe unavailable:');
+    const sendIdx = src.indexOf('await sendResendEmail(resendApiKey', termIdx);
+    expect(sendIdx).toBeGreaterThan(termIdx);
+  });
+
+  it('headers and footer ride into the actual send call', () => {
+    expect(src).toContain('html: finalHtml');
+    expect(src).toContain('...(extraHeaders ? { headers: extraHeaders } : {})');
+  });
+});

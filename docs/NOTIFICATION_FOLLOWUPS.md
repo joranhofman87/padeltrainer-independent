@@ -41,15 +41,24 @@ raised by review against the shipped schema and must be satisfied where named.
    (future unit).** The only existing mechanism, `notification_contacts.consent_status`, also
    silences REQUIRED mail — the resolver excludes an opted-out contact even for `required_delivery`
    — so N2 deliberately ships marketing-only guest management.
-3. **Retry epoch (S3/S5).** A capability is the send's identity, so a source that can be retried
-   forever (campaigns expose a manual retry with only an attempt cap) can outlive its capability's
-   expiry, its signing key, or the S5 sweep. S3 must either bound retries by age or give a
-   post-window resend a NEW durable send-attempt id; a non-live capability must block the SEND, not
-   only the click.
-4. **Deployment cutover (S2/S3).** Rows already attempted under a stable provider idempotency key
-   pre-date capability attachment; attaching a footer to their retry changes the body under the same
-   key. Attach on first attempt only, or drain, or mark the cutover. Digest is safe if attachment
-   happens before request freezing.
+3. ~~**Retry epoch (S3/S5).**~~ **CLOSED in S3** for both marketing senders: a non-live
+   capability blocks the SEND, not only the click. `resolveMarketingAttachment` returns
+   `terminal` for a revoked or expired capability, a retired key generation, or missing key
+   state, and BOTH senders mark the row failed with `unsubscribe unavailable: <reason>` before
+   any provider call — never a footer-less send. A mint NMRET propagates as a throw and lands in
+   the same failed-terminal path. S5's sweep must still respect item 7's retention floor so it
+   cannot delete a capability whose source is retryable.
+4. ~~**Deployment cutover (S2/S3).**~~ **CLOSED in S3**: capability EXISTENCE is the cutover
+   marker. `get_manage_capability_for_source` (20261014130000, read-only, service_role-only,
+   raises on malformed input so an error can never read as "legacy row") distinguishes the three
+   cases: capability exists → attach the same deterministic token; none + never attempted →
+   mint + attach; none + attempted → the provider-accepted body is footer-less, retry it
+   byte-identical (`legacy_no_footer`). Digest was already safe (footer renders before request
+   freezing; production has zero digest groups). The onboarding drip has no provider idempotency
+   key, so it attaches on every attempt with no cutover concern. Residual: a row mid-flight at
+   deploy whose runner dies between Resend accepting and the status write retries footer-less —
+   byte-identical, correct. The deploy runbook should still avoid deploying the campaign sender
+   while any campaign is status='sending'.
 5. ~~**Token format + key selection (S2).**~~ **CLOSED in S2a**: the token is
    `v<N>.<id>.<base64url HMAC-SHA256("notif-manage:v1:v<N>:<id>", key vN)>`, frozen by a
    known-answer vector in `_shared/manage-token.test.ts`. The version rides in the token, so the
@@ -141,6 +150,25 @@ raised by review against the shipped schema and must be satisfied where named.
    (≈37KB URL) — uniform-length keys, so the practical limit is higher, and Codex classified it
    deferrable rather than blocking. Chunk or RPC them when 10c-d touches this function; do not let
    the legacy sender grow another batch read without chunking it.
+
+6i. **S3 SHIPPED (2026-08-05): the marketing attach layer.** `_shared/marketing-email.ts` is the
+   decision core (Deno-tested, 12 cases): per-send capability (the SEND identity — campaigns key
+   on the recipient ROW, onboarding on the QUEUE row), deterministic unsubscribe footer to
+   `https://padeltrainer.ai/manage-email?token=…`, RFC 8058 `List-Unsubscribe` +
+   `List-Unsubscribe-Post: List-Unsubscribe=One-Click` pointing at
+   `functions/v1/notif-unsubscribe-one-click`. BOTH URL shapes are frozen here and S5 must ship
+   the page and the endpoint AT those addresses (parity-pinned). Send-time suppression uses the
+   canonical `is_marketing_suppressed` per recipient (an ERROR marks the row failed — never
+   clearance); a suppressed row goes to status `'suppressed'`, terminal by construction because
+   campaign retryFailed re-queues only `'failed'`, and the onboarding CHECK gained the
+   `'suppressed'` arm (20261014130000 — the claim RPC optimistically marks rows 'sent', so a
+   failed suppressed-write is CRITICAL-logged rather than left as a recorded delivery).
+   Campaign scope = the campaign's OWNER (academy → trainer → platform). An UNCLASSIFIED
+   onboarding template is treated as MARKETING deliberately: the safe error is an unnecessary
+   unsubscribe on service mail, never marketing without one. TTL 480 days (mint bounds 395–800).
+   testMode sends carry no footer (no durable send identity to bind); acceptable for
+   owner-preview mail. Owner precondition (item 8) still stands before DEPLOY: classify the
+   existing templates; the marketing default merely makes misclassification fail safe.
 
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
    `expires_at` more than 30 days past — and never a row that is merely revoked.

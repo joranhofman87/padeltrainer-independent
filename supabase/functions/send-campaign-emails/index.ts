@@ -2,6 +2,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
 import { isServiceRoleRequest } from "../_shared/service-role-auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import {
+  marketingFooterHtml,
+  resolveMarketingAttachment,
+  rfc8058Headers,
+  type MarketingAttachDeps,
+} from "../_shared/marketing-email.ts";
+import type { ManageKeyState } from "../_shared/manage-token.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
@@ -216,6 +223,78 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── N2 S3: the marketing attach layer ─────────────────────────────────────────────────
+    // A campaign IS marketing mail: every recipient row gets a per-send manage capability whose
+    // token rides in the footer and the RFC 8058 headers, and every send is gated on the
+    // CANONICAL suppression reader at send time. The scope is the campaign's OWNER — an academy
+    // suppression must not silence a different academy, and a platform-wide one silences all.
+    const marketingScope: { kind: "platform" | "academy" | "trainer"; id: string | null } =
+      campaign.academy_profile_id
+        ? { kind: "academy", id: campaign.academy_profile_id }
+        : campaign.trainer_profile_id
+          ? { kind: "trainer", id: campaign.trainer_profile_id }
+          : { kind: "platform", id: null };
+
+    // Authoritative key state, read ONCE per run. A read failure yields null, and null makes
+    // every attachment terminal (absence retires everything — the S1 contract): the run then
+    // fails loudly instead of mailing dead links.
+    const { data: keyStateRow, error: keyStateErr } = await supabase
+      .from("notification_manage_key_state")
+      .select("current_version, min_mintable_version")
+      .maybeSingle();
+    if (keyStateErr) console.error("manage key state read failed:", keyStateErr);
+    const manageKeyState: ManageKeyState | null = keyStateRow
+      ? { currentVersion: keyStateRow.current_version, minMintableVersion: keyStateRow.min_mintable_version }
+      : null;
+
+    const attachDeps: MarketingAttachDeps = {
+      mintCapability: async (args) => {
+        const { data, error } = await supabase.rpc("mint_notification_manage_capability", {
+          p_kind: "marketing_unsubscribe",
+          p_scope_kind: args.scopeKind,
+          p_scope_id: args.scopeId,
+          p_address: args.address,
+          p_source_kind: args.sourceKind,
+          p_source_id: args.sourceId,
+          // 16 months: comfortably inside the mint's 13-26 month bounds; an unsubscribe link
+          // must outlive mailbox archaeology without becoming a forever credential.
+          p_ttl: "480 days",
+        });
+        if (error) throw new Error(`mint failed: ${error.message}`);
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) throw new Error("mint returned no capability");
+        return { capabilityId: row.capability_id, keyVersion: row.key_version };
+      },
+      readCapabilityForSource: async (sourceKind, sourceId) => {
+        const { data, error } = await supabase.rpc("get_manage_capability_for_source", {
+          p_source_kind: sourceKind,
+          p_source_id: sourceId,
+        });
+        if (error) throw new Error(`capability lookup failed: ${error.message}`);
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) return null;
+        return {
+          capabilityId: row.capability_id,
+          keyVersion: row.key_version,
+          revoked: row.revoked,
+          expired: row.expired,
+        };
+      },
+      keyState: manageKeyState,
+    };
+
+    /** Canonical send-time suppression check. RAISE/error → THROW: an error is "defer and
+     *  alert", never clearance — the caller marks the row failed (retryable), not sent. */
+    const isSuppressed = async (address: string): Promise<boolean> => {
+      const { data, error } = await supabase.rpc("is_marketing_suppressed", {
+        p_address: address,
+        p_scope_kind: marketingScope.kind,
+        p_scope_id: marketingScope.id,
+      });
+      if (error) throw new Error(`suppression check failed: ${error.message}`);
+      return data === true;
+    };
+
     // RETRY FAILED: re-queue this campaign's failed recipients that still have attempt budget
     // back to 'pending' so the gate + claim + send below picks them up. Rows at the cap (e.g. a
     // hard bounce / invalid address) stay 'failed'. The per-recipient Idempotency-Key keeps a row
@@ -322,6 +401,7 @@ Deno.serve(async (req) => {
 
     let sentCount = 0;
     let failedCount = 0;
+    let suppressedCount = 0;
     let budgetHit = false;
     const processed = new Set<string>();
 
@@ -342,9 +422,68 @@ Deno.serve(async (req) => {
       // This invocation is one (cross-invocation) attempt; record it so a later "retry failed"
       // only re-queues rows still under the cap and a hard bounce can't be retried forever.
       const nextAttemptCount = (recipient.attempt_count ?? 0) + 1;
+
+      // ── SEND-TIME SUPPRESSION (N2 S3) ── the canonical reader, per recipient, immediately
+      // before dispatch. Suppressed → 'suppressed', a TERMINAL status "retry failed" never
+      // re-queues (it re-queues only 'failed') — an opt-out is a decision, not a failure. A
+      // check ERROR → 'failed' (retryable): an error is never clearance.
+      try {
+        if (await isSuppressed(recipient.recipient_email)) {
+          suppressedCount++;
+          processed.add(recipient.id);
+          const { error: wErr } = await supabase.from("email_campaign_recipients")
+            .update({ status: "suppressed", error_message: null, attempt_count: nextAttemptCount }).eq("id", recipient.id);
+          if (wErr) console.error("recipient status write failed (suppressed)", recipient.id, wErr.message);
+          return;
+        }
+      } catch (suppErr) {
+        failedCount++;
+        processed.add(recipient.id);
+        const msg = suppErr instanceof Error ? suppErr.message : "suppression check failed";
+        const { error: wErr } = await supabase.from("email_campaign_recipients")
+          .update({ status: "failed", error_message: msg.slice(0, 500), attempt_count: nextAttemptCount }).eq("id", recipient.id);
+        if (wErr) console.error("recipient status write failed (supp-check)", recipient.id, wErr.message);
+        return;
+      }
+
+      // ── MANAGE CAPABILITY + FOOTER + RFC 8058 (N2 S3) ── the capability is this SEND's
+      // identity, so a retry re-derives byte-identical bytes under the unchanged provider
+      // idempotency key. Rows first attempted before this deploy get 'legacy_no_footer' and keep
+      // their frozen footer-less body. A refused attachment (retired key, revoked/expired
+      // capability, mint NMRET) BLOCKS the send: mailing a dead unsubscribe would read as
+      // delivered while the opt-out silently stopped working.
+      let attachment;
+      try {
+        attachment = await resolveMarketingAttachment(attachDeps, {
+          scopeKind: marketingScope.kind,
+          scopeId: marketingScope.id,
+          address: recipient.recipient_email,
+          sourceKind: "campaign_recipient",
+          sourceId: recipient.id,
+          attempted: (recipient.attempt_count ?? 0) > 0,
+        });
+      } catch (mintErr) {
+        failedCount++;
+        processed.add(recipient.id);
+        const msg = mintErr instanceof Error ? mintErr.message : "capability mint failed";
+        const { error: wErr } = await supabase.from("email_campaign_recipients")
+          .update({ status: "failed", error_message: msg.slice(0, 500), attempt_count: nextAttemptCount }).eq("id", recipient.id);
+        if (wErr) console.error("recipient status write failed (mint)", recipient.id, wErr.message);
+        return;
+      }
+      if (attachment.kind === "terminal") {
+        failedCount++;
+        processed.add(recipient.id);
+        const { error: wErr } = await supabase.from("email_campaign_recipients")
+          .update({ status: "failed", error_message: `unsubscribe unavailable: ${attachment.reason}`.slice(0, 500), attempt_count: nextAttemptCount }).eq("id", recipient.id);
+        if (wErr) console.error("recipient status write failed (terminal)", recipient.id, wErr.message);
+        return;
+      }
+
       const personalizedHtml = campaign.body_html
         .replace(/\{\{first_name\}\}/gi, firstName)
-        .replace(/\{\{name\}\}/gi, fullName);
+        .replace(/\{\{name\}\}/gi, fullName)
+        + (attachment.kind === "attach" ? marketingFooterHtml(attachment.token) : "");
       const personalizedSubject = campaign.subject
         .replace(/\{\{first_name\}\}/gi, firstName)
         .replace(/\{\{name\}\}/gi, fullName);
@@ -366,6 +505,9 @@ Deno.serve(async (req) => {
               to: [recipient.recipient_email],
               subject: personalizedSubject,
               html: personalizedHtml,
+              ...(attachment.kind === "attach"
+                ? { headers: rfc8058Headers(SUPABASE_URL!, attachment.token) }
+                : {}),
             }),
           });
           if (res.ok) {
@@ -469,7 +611,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, sent: sentCount, failed: failedCount, remaining, complete: remaining === 0, continued }),
+      JSON.stringify({ success: true, sent: sentCount, failed: failedCount, suppressed: suppressedCount, remaining, complete: remaining === 0, continued }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {

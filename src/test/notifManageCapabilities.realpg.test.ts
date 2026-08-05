@@ -120,6 +120,14 @@ beforeAll(async () => {
     CREATE TABLE public.profiles (user_id uuid PRIMARY KEY, full_name text);
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, business_name text, user_id uuid);
     CREATE TABLE public.onboarding_email_templates (id uuid PRIMARY KEY DEFAULT gen_random_uuid());
+    -- The onboarding queue with its PRODUCTION status CHECK (20260201120743), so the S3
+    -- migration's constraint swap is exercised against the real prior shape.
+    CREATE TABLE public.onboarding_email_queue (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      status text NOT NULL DEFAULT 'pending'
+        CONSTRAINT onboarding_email_queue_status_check
+        CHECK (status IN ('pending', 'sent', 'failed', 'cancelled', 'awaiting_confirmation'))
+    );
   `);
   // The REAL redaction helper, extracted from the resolver migration rather than retyped — the
   // context RPC's "never the raw address" property is asserted against production's own code.
@@ -148,6 +156,7 @@ beforeAll(async () => {
       ('marketing_updates', 'marketing', false, 'off');
   `);
   await c.query(MIG('20261014120000_notif_n2_footer_policy.sql'));
+  await c.query(MIG('20261014130000_notif_n2_s3_capability_source_reader.sql'));
 }, 180_000);
 
 afterAll(async () => {
@@ -617,6 +626,87 @@ describe('suppression provenance is coherent, not merely conventional', () => {
     const row = (await c.query(
       `SELECT source, capability_id, created_by FROM public.email_marketing_suppression`)).rows[0];
     expect(row).toEqual({ source: 'one_click', capability_id: cap.capability_id, created_by: null });
+  });
+});
+
+describe('get_manage_capability_for_source (S3 cutover reader)', () => {
+  const read = async (kind: string, id: string) =>
+    (await c.query(`SELECT * FROM public.get_manage_capability_for_source($1,$2)`, [kind, id])).rows;
+
+  it('mint then read returns the SAME capability and version — the cutover marker', async () => {
+    const minted = await mint({ source_id: SEND_A });
+    const rows = await read('campaign_recipient', SEND_A);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].capability_id).toBe(minted.capability_id);
+    expect(rows[0].key_version).toBe(minted.key_version);
+    expect(rows[0].revoked).toBe(false);
+    expect(rows[0].expired).toBe(false);
+  });
+
+  it('matches on BOTH kind and id — the same uuid under another kind reads as absent', async () => {
+    // A reader matching only source_id would pass every other case here (uuids never collide),
+    // while claiming a different sender's send carries a footer it does not.
+    await mint({ source_id: SEND_A });
+    expect(await read('onboarding_queue', SEND_A)).toHaveLength(0);
+    expect(await read('campaign_recipient', SEND_A)).toHaveLength(1);
+  });
+
+  it('absent source → zero rows, and NOTHING is created — reading must not become minting', async () => {
+    expect(await read('campaign_recipient', SEND_B)).toHaveLength(0);
+    const after = await c.query(
+      `SELECT count(*)::int AS n FROM public.notification_manage_capabilities WHERE source_id = $1`,
+      [SEND_B]);
+    expect(after.rows[0].n).toBe(0);
+  });
+
+  it('a revoked capability reads revoked=true — the sender must then BLOCK, not strip the footer', async () => {
+    const minted = await mint({ source_id: SEND_A });
+    await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
+      [minted.capability_id]);
+    const rows = await read('campaign_recipient', SEND_A);
+    expect(rows[0].revoked).toBe(true);
+  });
+
+  it('an expired capability reads expired=true', async () => {
+    const minted = await mint({ source_id: SEND_A });
+    // Expiry cannot be minted in the past (TTL floor is 395 days) and the guard trigger freezes
+    // claims — manufacture the fixture the same way the key-state reset does: guard off, edit,
+    // guard on. That the harness must do this IS the immutability working.
+    await c.query(`ALTER TABLE public.notification_manage_capabilities DISABLE TRIGGER trg_notif_manage_cap_guard_immutable`);
+    await c.query(`UPDATE public.notification_manage_capabilities SET expires_at = now() - interval '1 day' WHERE id = $1`,
+      [minted.capability_id]);
+    await c.query(`ALTER TABLE public.notification_manage_capabilities ENABLE TRIGGER trg_notif_manage_cap_guard_immutable`);
+    const rows = await read('campaign_recipient', SEND_A);
+    expect(rows[0].expired).toBe(true);
+  });
+
+  it('malformed input RAISES — never an empty result that reads as "legacy row, send footer-less"', async () => {
+    await expect(c.query(`SELECT * FROM public.get_manage_capability_for_source(NULL, $1)`, [SEND_A]))
+      .rejects.toThrow(/source_kind is required/);
+    await expect(c.query(`SELECT * FROM public.get_manage_capability_for_source('campaign_recipient', NULL)`))
+      .rejects.toThrow(/source_id is required/);
+  });
+
+  it('service_role may call it; authenticated and anon may not', async () => {
+    const as = async (role: string, sql: string) => {
+      await c2.query(`SET ROLE ${role}`);
+      try { await c2.query(sql); return null; }
+      catch (e) { return (e as { code?: string }).code ?? 'error'; }
+      finally { await c2.query(`RESET ROLE`); }
+    };
+    const call = `SELECT * FROM public.get_manage_capability_for_source('campaign_recipient','${SEND_FIXTURE}')`;
+    expect(await as('authenticated', call)).toBe('42501');
+    expect(await as('anon', call)).toBe('42501');
+    expect(await as('service_role', call)).toBeNull();
+  });
+});
+
+describe("onboarding queue 'suppressed' status (S3)", () => {
+  it("accepts 'suppressed' after the migration, and still refuses junk", async () => {
+    await c.query(`INSERT INTO public.onboarding_email_queue (status) VALUES ('suppressed')`);
+    await expect(c.query(`INSERT INTO public.onboarding_email_queue (status) VALUES ('vanished')`))
+      .rejects.toThrow(/onboarding_email_queue_status_check/);
+    await c.query(`DELETE FROM public.onboarding_email_queue`);
   });
 });
 

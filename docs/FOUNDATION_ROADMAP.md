@@ -190,7 +190,8 @@ presentation and reachability only.
 | **N1** — player notification-settings gap closure | [#631](https://github.com/joranhofman87/padeltrainer-independent/pull/631) | clear at `6cb96359`, CI green (full suite, 4697 tests) |
 | **N2 S1+S2a** — marketing suppression, signed manage capabilities, declared footer policy, token helper | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `4595a03f`, CI green |
 | **N2 S4** — the neutral `/app/settings/notifications` route + Auth redirect sanitisation | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `a1d9ba8c` |
-| **N2 S2b** — neutral-route footers (send-email + digest render) + legacy flush send-time gate | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `ed2465cd` |
+| **N2 S2b** — neutral-route footers (send-email + digest render) + legacy flush send-time gate | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `ed2465cd`, CI green at `2980ccb3` |
+| **N2 S3** — campaign/onboarding suppression + per-send capabilities + RFC 8058 | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | in review |
 
 **N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
 `supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement

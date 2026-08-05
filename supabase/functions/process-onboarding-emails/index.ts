@@ -9,6 +9,13 @@ import {
   recordMissingTemplateOutcome,
   type MissingTemplateClient,
 } from "../_shared/onboarding-missing-template.ts";
+import {
+  marketingFooterHtml,
+  resolveMarketingAttachment,
+  rfc8058Headers,
+  type MarketingAttachDeps,
+} from "../_shared/marketing-email.ts";
+import type { ManageKeyState } from "../_shared/manage-token.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,6 +35,7 @@ interface QueuedEmail {
     id: string;
     subject: string;
     body_html: string;
+    delivery_class: string | null;
   } | null;
 }
 
@@ -158,7 +166,7 @@ const handler = async (req: Request): Promise<Response> => {
         user_name,
         user_type,
         scheduled_for,
-        template:onboarding_email_templates(id, subject, body_html)
+        template:onboarding_email_templates(id, subject, body_html, delivery_class)
       `)
       .eq("status", "pending")
       .lte("scheduled_for", new Date().toISOString())
@@ -178,6 +186,50 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log(`Processing ${pendingEmails.length} pending emails`);
+
+    // ── N2 S3: the marketing attach layer for MARKETING-classed templates ────────────────────
+    // The onboarding drip is platform mail; its scope is 'platform'. delivery_class is DECLARED
+    // on the template (S1's column): 'marketing' rows get the send-time suppression gate, a
+    // per-send capability (the QUEUE ROW is the durable send identity), the unsubscribe footer
+    // and the RFC 8058 headers. 'required_service' rows are untouched. An UNCLASSIFIED template
+    // is treated as MARKETING: the drip's default content is promotional, and the safe error is
+    // an unnecessary unsubscribe link on a service mail — never a marketing mail without one.
+    const { data: keyStateRow, error: keyStateErr } = await supabase
+      .from("notification_manage_key_state")
+      .select("current_version, min_mintable_version")
+      .maybeSingle();
+    if (keyStateErr) console.error("manage key state read failed:", keyStateErr);
+    const manageKeyState: ManageKeyState | null = keyStateRow
+      ? { currentVersion: keyStateRow.current_version, minMintableVersion: keyStateRow.min_mintable_version }
+      : null;
+    const attachDeps: MarketingAttachDeps = {
+      mintCapability: async (args) => {
+        const { data, error } = await supabase.rpc("mint_notification_manage_capability", {
+          p_kind: "marketing_unsubscribe",
+          p_scope_kind: args.scopeKind,
+          p_scope_id: args.scopeId,
+          p_address: args.address,
+          p_source_kind: args.sourceKind,
+          p_source_id: args.sourceId,
+          p_ttl: "480 days",
+        });
+        if (error) throw new Error(`mint failed: ${error.message}`);
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) throw new Error("mint returned no capability");
+        return { capabilityId: row.capability_id, keyVersion: row.key_version };
+      },
+      readCapabilityForSource: async (sourceKind, sourceId) => {
+        const { data, error } = await supabase.rpc("get_manage_capability_for_source", {
+          p_source_kind: sourceKind,
+          p_source_id: sourceId,
+        });
+        if (error) throw new Error(`capability lookup failed: ${error.message}`);
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row) return null;
+        return { capabilityId: row.capability_id, keyVersion: row.key_version, revoked: row.revoked, expired: row.expired };
+      },
+      keyState: manageKeyState,
+    };
 
     // The tally and its single end-of-run alert are production primitives in
     // _shared/onboarding-missing-template.ts, so the Deno suite exercises this exact
@@ -274,12 +326,91 @@ const handler = async (req: Request): Promise<Response> => {
         continue;
       }
 
+      // Marketing-classed (or unclassified — see above) templates carry the unsubscribe layer.
+      const isMarketing = queueItem.template.delivery_class !== "required_service";
+      let finalHtml = body;
+      let extraHeaders: Record<string, string> | undefined;
+      if (isMarketing) {
+        // SEND-TIME suppression, canonical reader. Suppressed → the queue row goes terminal
+        // 'suppressed' (never 'failed': an opt-out is a decision, not an error to retry). A
+        // check ERROR → 'failed' via the ordinary catch below (an error is never clearance).
+        const { data: suppressed, error: suppErr } = await supabase.rpc("is_marketing_suppressed", {
+          p_address: queueItem.email,
+          p_scope_kind: "platform",
+          p_scope_id: null,
+        });
+        if (suppErr) {
+          console.error(`Suppression check failed for queue item ${queueItem.id}:`, suppErr);
+          await supabase
+            .from("onboarding_email_queue")
+            .update({ status: "failed", error_message: `suppression check failed: ${suppErr.message}`.slice(0, 500), sent_at: null })
+            .eq("id", queueItem.id);
+          tally.failCount++;
+          continue;
+        }
+        if (suppressed === true) {
+          // The claim above optimistically marked this row 'sent'; this write is what makes the
+          // record truthful. If IT fails, say so loudly — a suppression recorded as a delivery
+          // is exactly the lie this status exists to prevent.
+          const { error: suppWriteErr } = await supabase
+            .from("onboarding_email_queue")
+            .update({ status: "suppressed", error_message: null, sent_at: null })
+            .eq("id", queueItem.id);
+          if (suppWriteErr) {
+            console.error(`CRITICAL: queue item ${queueItem.id} is suppressed but stays recorded 'sent':`, suppWriteErr);
+            tally.failCount++;
+            continue;
+          }
+          tally.suppressedCount++;
+          console.log(`Queue item ${queueItem.id} suppressed (marketing opt-out) — not sent`);
+          continue;
+        }
+
+        // The QUEUE ROW is the durable send identity. The drip has no provider idempotency key
+        // (pre-existing), so there is no frozen-bytes cutover concern here: attach on every
+        // attempt, including rows that failed before this deploy — `attempted: false` keeps the
+        // mint-or-return path, which is idempotent per row.
+        try {
+          const attachment = await resolveMarketingAttachment(attachDeps, {
+            scopeKind: "platform",
+            scopeId: null,
+            address: queueItem.email,
+            sourceKind: "onboarding_queue",
+            sourceId: queueItem.id,
+            attempted: false,
+          });
+          if (attachment.kind !== "attach") {
+            // terminal (retired key / revoked / missing state): the send is BLOCKED — a
+            // marketing mail may not leave without a working unsubscribe.
+            const reason = attachment.kind === "terminal" ? attachment.reason : attachment.kind;
+            await supabase
+              .from("onboarding_email_queue")
+              .update({ status: "failed", error_message: `unsubscribe unavailable: ${reason}`.slice(0, 500), sent_at: null })
+              .eq("id", queueItem.id);
+            tally.failCount++;
+            continue;
+          }
+          finalHtml = body + marketingFooterHtml(attachment.token);
+          extraHeaders = rfc8058Headers(supabaseUrl, attachment.token);
+        } catch (capErr) {
+          const msg = capErr instanceof Error ? capErr.message : "capability mint failed";
+          console.error(`Capability mint failed for queue item ${queueItem.id}:`, msg);
+          await supabase
+            .from("onboarding_email_queue")
+            .update({ status: "failed", error_message: msg.slice(0, 500), sent_at: null })
+            .eq("id", queueItem.id);
+          tally.failCount++;
+          continue;
+        }
+      }
+
       try {
         const emailResult = await sendResendEmail(resendApiKey, {
           from: "PadelTrainer.ai <noreply@app.padeltrainer.ai>",
           to: [queueItem.email],
           subject,
-          html: body,
+          html: finalHtml,
+          ...(extraHeaders ? { headers: extraHeaders } : {}),
         });
 
         if (!emailResult.ok) {
@@ -335,6 +466,7 @@ const handler = async (req: Request): Promise<Response> => {
         processed: tally.processed,
         success: tally.successCount,
         failed: tally.failCount,
+        suppressed: tally.suppressedCount,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
