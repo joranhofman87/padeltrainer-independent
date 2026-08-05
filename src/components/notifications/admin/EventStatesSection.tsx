@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ListPageState } from '@/components/ui/list-page-shell';
+import { ListChecks } from 'lucide-react';
 import type { EventStateRow } from './types';
 
 type Row = EventStateRow & { id: string };
@@ -60,6 +62,8 @@ export function EventStatesSection({
             </Button>
           </span>
         ) : undefined}
+        isEmpty={(rows?.length ?? 0) === 0 && !isLoading && !isError}
+        empty={<EmptyState icon={ListChecks} title={t('notifOps.noEvents', 'No events in the catalog')} description={t('notifOps.noEventsDesc', 'The notification event catalog is empty.')} />}
       >
         {rows ? (
           <div data-testid="event-states">

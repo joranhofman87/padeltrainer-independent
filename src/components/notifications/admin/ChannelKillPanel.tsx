@@ -28,12 +28,22 @@ export function ChannelKillPanel({
         {gauges ? (
           <div className="flex flex-wrap gap-4" data-testid="kill-switches">
             {CHANNELS.map((ch) => {
-              const killed = Number(gauges.find((g) => g.metric === 'channel_killed' && g.channel === ch)?.value ?? 0) > 0;
+              // FAIL-CLOSED: a MISSING gauge row is not 'live' — it is UNKNOWN. Treating an
+              // absent/incomplete response as live would show a kill button (and imply the
+              // channel is sending) on a state nobody actually read.
+              const row = gauges.find((g) => g.metric === 'channel_killed' && g.channel === ch);
+              const known = row !== undefined;
+              const killed = known && Number(row.value) > 0;
               return (
-                <div key={ch} className="rounded-md border p-3" data-testid={`kill-${ch}`} data-killed={killed}>
+                <div key={ch} className="rounded-md border p-3" data-testid={`kill-${ch}`}
+                  data-killed={known ? killed : 'unknown'}>
                   <p className="font-medium">{ch}</p>
-                  <p className="text-sm">{killed ? t('notifOps.stateKilled', 'KILLED') : t('notifOps.stateLive', 'live')}</p>
-                  {!killed && (
+                  <p className="text-sm">
+                    {!known
+                      ? t('notifOps.stateUnknown', 'UNKNOWN — this channel’s state was not returned')
+                      : killed ? t('notifOps.stateKilled', 'KILLED') : t('notifOps.stateLive', 'live')}
+                  </p>
+                  {known && !killed && (
                     <Button size="sm" variant="destructive" onClick={() => onKill(ch)} data-testid={`kill-btn-${ch}`}>
                       {t('notifOps.killNow', 'Kill channel')}
                     </Button>

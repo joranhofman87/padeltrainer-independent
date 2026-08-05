@@ -287,9 +287,13 @@ describe('AdminNotificationOps — the completed surface (M7 round 2)', () => {
       fn === 'admin_list_notification_audit'
         ? new Promise((res) => { release = res; })
         : defaultImpl(fn));
-    fireEvent.click(await screen.findByTestId('audit-load'));
-    fireEvent.click(screen.getByTestId('audit-load'));   // mid-flight: must NO-OP
+    const loadBtn = await screen.findByTestId('audit-load');
+    fireEvent.click(loadBtn);
+    // mid-flight the button is REPLACED by the loading state (the strongest guard: it cannot be
+    // clicked at all); clicking the detached node must still no-op through the ref lock
+    fireEvent.click(loadBtn);
     await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId('audit-load')).toBeNull();
     expect(rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_notification_audit')).toHaveLength(1);
     release!({ data: [{ id: 'a9', created_at: TS1, action: 'channel_kill', target: 'email', old_value: 'live', new_value: 'killed', outcome: 'applied', reason: 'r', actor: 'x', request_id: 'q' }], error: null });
     await screen.findByTestId('audit-list');

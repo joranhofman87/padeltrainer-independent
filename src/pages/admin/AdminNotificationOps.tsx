@@ -149,6 +149,7 @@ export default function AdminNotificationOps() {
       if (error) throw error;
       toast({ title: t('notifOps.cancelVerdict', { defaultValue: 'Cancel verdict: {{verdict}}', verdict: String(data) }) });
       cancelGroup.close();
+      reloadGroups.current?.();
     } catch (error) {
       logger.error('group cancel failed', undefined, { error });
       toast({ title: t('notifOps.cancelFailed', 'The cancel did not go through — retry replays the SAME decision'), variant: 'destructive' });
@@ -168,11 +169,17 @@ export default function AdminNotificationOps() {
       if (error) throw error;
       toast({ title: t('notifOps.orphanVerdict', { defaultValue: 'Orphan verdict: {{verdict}}', verdict: String(data) }) });
       orphanOp.close();
+      reloadOrphans.current?.();
     } catch (error) {
       logger.error('orphan operation failed', undefined, { error });
       toast({ title: t('notifOps.orphanFailed', 'The operation did not go through — retry replays the SAME decision'), variant: 'destructive' });
     }
   });
+
+  // reload handles the sections publish — a successful decision MUST refresh the list it acted
+  // on (the extraction would otherwise leave a cancelled group on screen, inviting a re-decision)
+  const reloadGroups = useRef<(() => void) | null>(null);
+  const reloadOrphans = useRef<(() => void) | null>(null);
 
   const eventKeys = Array.from(new Set((eventStates.data ?? []).map((r) => r.event_type)));
 
@@ -209,9 +216,9 @@ export default function AdminNotificationOps() {
           onOpenHistory={(id) => void openHistory(id)}
           historyFor={historyFor} historyRows={historyRows} historyError={historyError}
         />
-        <DigestGroupsSection onCancel={(g) => cancelGroup.open(g)} />
+        <DigestGroupsSection onCancel={(g) => cancelGroup.open(g)} onReady={(r) => { reloadGroups.current = r; }} />
         <WorkerRunsSection />
-        <OrphanQueueSection onAct={(row, action) => orphanOp.open({ row, action })} />
+        <OrphanQueueSection onAct={(row, action) => orphanOp.open({ row, action })} onReady={(r) => { reloadOrphans.current = r; }} />
         <RecipientPreviewSection eventKeys={eventKeys} />
         <DestinationSearchSection />
         <DecisionAuditSection />

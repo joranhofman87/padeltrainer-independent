@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Button } from '@/components/ui/button';
+import { EmptyState } from '@/components/ui/empty-state';
 import { ListPageState } from '@/components/ui/list-page-shell';
+import { PlayCircle } from 'lucide-react';
 import type { InvocationRow } from './types';
 
 /** Deliberate worker invocations (Stage-3.5 AC-6 health): stale = age, actionable = a verb exists. */
@@ -33,6 +35,8 @@ export function InvocationsSection({
             </Button>
           </span>
         ) : undefined}
+        isEmpty={(rows?.length ?? 0) === 0 && !isLoading && !isError}
+        empty={<EmptyState icon={PlayCircle} title={t('notifOps.noInvocations', 'No deliberate invocations recorded')} description={t('notifOps.noInvocationsDesc', 'Smoke, canary and manual invocations appear here with their evidence.')} />}
       >
         {rows ? (
           <div data-testid="invocations">

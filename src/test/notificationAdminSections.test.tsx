@@ -151,3 +151,70 @@ describe('Panels: loading and honest checks', () => {
     expect(screen.getByText('No deliberate invocations recorded')).toBeInTheDocument();
   });
 });
+
+/**
+ * The FILTERED sections and the refresh seam. Radix Select internals cannot be operated under
+ * jsdom (no layout APIs — the documented repo lesson), so the Select primitive is replaced with
+ * a NATIVE test adapter: real option elements, real change events, and the section's own
+ * onValueChange wiring under test. That covers filter → reset → RPC-argument behaviour without
+ * pretending a Radix listbox opened.
+ */
+vi.mock('@/components/ui/select', () => ({
+  Select: ({ value, onValueChange, children }: { value: string; onValueChange: (v: string) => void; children: React.ReactNode }) => (
+    <select value={value} onChange={(e) => onValueChange(e.target.value)} data-testid="native-select">{children}</select>
+  ),
+  SelectTrigger: ({ children, ...rest }: Record<string, unknown> & { children?: React.ReactNode }) => <optgroup {...rest} label="trigger">{children}</optgroup>,
+  SelectValue: () => null,
+  SelectContent: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+  SelectItem: ({ value, children }: { value: string; children?: React.ReactNode }) => <option value={value}>{children}</option>,
+}));
+
+describe('filtered sections: filter → reset → RPC arguments, and the refresh seam', () => {
+  it('changing a filter RESETS the list and re-issues the read with the new argument', async () => {
+    const { DigestGroupsSection } = await import('@/components/notifications/admin/DigestGroupsSection');
+    rpcMock.mockImplementation(() => Promise.resolve({
+      data: [{
+        id: 'g1', created_at: TS, event_type: 'ev', channel: 'email', state: 'request_ready',
+        terminal_reason: null, item_count: 1, provider_attempts_started: 0, provider_message_id: null,
+        first_send_at: null, uncertain_since: null, provider_status: null, delivery_budget_used: 0,
+        digest_boundary_at: TS, available_at: TS, locked_by: null, worker_run_id: null, updated_at: TS,
+      }],
+      error: null,
+    }));
+    render(<DigestGroupsSection onCancel={() => {}} />);
+    fireEvent.click(screen.getByTestId('groups-load'));
+    await screen.findByTestId('groups-list');
+    // the filter is a NATIVE select here: changing it must clear the list AND scope the next read
+    fireEvent.change(screen.getAllByTestId('native-select')[0], { target: { value: 'sent' } });
+    await waitFor(() => expect(screen.getByTestId('groups-load')).toBeInTheDocument());   // reset to unloaded
+    fireEvent.click(screen.getByTestId('groups-load'));
+    await waitFor(() => {
+      const last = rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_digest_groups').at(-1)!;
+      expect(last[1].p_state).toBe('sent');
+      expect(last[1].p_before_created_at).toBeUndefined();   // the cursor reset with the scope
+    });
+  });
+
+  it('the section publishes a RELOAD handle so a successful decision refreshes the list', async () => {
+    const { OrphanQueueSection } = await import('@/components/notifications/admin/OrphanQueueSection');
+    rpcMock.mockImplementation(() => Promise.resolve({ data: [], error: null }));
+    let reload: (() => void) | null = null;
+    render(<OrphanQueueSection onAct={() => {}} onReady={(r) => { reload = r; }} />);
+    fireEvent.click(screen.getByTestId('orphans-load'));
+    await screen.findByTestId('orphans-empty');
+    const before = rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_notification_orphans').length;
+    expect(reload).toBeTruthy();
+    reload!();
+    await waitFor(() => {
+      expect(rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_notification_orphans').length).toBe(before + 1);
+    });
+  });
+
+  it('a MISSING gauge row reads UNKNOWN and offers no kill button — fail-closed, never "live"', async () => {
+    const { ChannelKillPanel } = await import('@/components/notifications/admin/ChannelKillPanel');
+    render(<ChannelKillPanel gauges={[]} isLoading={false} isError={false} onRetry={() => {}} onKill={() => {}} />);
+    expect(screen.getByTestId('kill-email').getAttribute('data-killed')).toBe('unknown');
+    expect(screen.queryByTestId('kill-btn-email')).toBeNull();
+    expect(screen.getByTestId('kill-email').textContent).toContain('UNKNOWN');
+  });
+});

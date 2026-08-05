@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { Badge } from '@/components/ui/badge';
@@ -7,13 +8,19 @@ import { useCursorList } from './useCursorList';
 import type { OrphanRow } from './types';
 
 /** The orphan reconcile queue + the resolve/requeue controls (quarantined rows only). */
-export function OrphanQueueSection({ onAct }: { onAct: (row: OrphanRow, action: 'resolve' | 'requeue') => void }) {
+export function OrphanQueueSection({ onAct, onReady }: {
+  onAct: (row: OrphanRow, action: 'resolve' | 'requeue') => void;
+  /** Reload handle for the page: a successful resolve/requeue must refresh this list. */
+  onReady?: (reload: () => void) => void;
+}) {
   const { t } = useTranslation('admin');
   const list = useCursorList<OrphanRow>(
     'admin_list_notification_orphans',
     ['updated_at', 'resend_event_id'],
     ['p_before_updated_at', 'p_before_event_id'],
   );
+
+  useEffect(() => { onReady?.(() => void list.load(false)); });
 
   const columns: ColumnDef<OrphanRow & { id: string }>[] = [
     {

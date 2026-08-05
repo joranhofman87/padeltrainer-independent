@@ -25,6 +25,7 @@ export function RecipientPreviewSection({ eventKeys }: { eventKeys: string[] }) 
   const [partial, setPartial] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [busy, setBusy] = useState(false);
   const epoch = useRef(0);
   const lock = useRef(false);
 
@@ -34,11 +35,13 @@ export function RecipientPreviewSection({ eventKeys }: { eventKeys: string[] }) 
     setRows(null);
     setPartial(false);
     setCursor(null);
+    setError(false);          // a previous scope's failure must not linger over a new one
   };
   const load = async (more = false) => {
     if (lock.current) return;
     lock.current = true;
     const myEpoch = ++epoch.current;
+    setBusy(true);
     setError(false);
     const { data, error: err } = await supabase.rpc('admin_preview_notification_recipients', {
       p_event_key: eventKey,
@@ -48,6 +51,7 @@ export function RecipientPreviewSection({ eventKeys }: { eventKeys: string[] }) 
     });
     if (myEpoch !== epoch.current) return;
     lock.current = false;
+    setBusy(false);
     if (err) { setError(true); return; }
     const list = (data ?? []) as PreviewRow[];
     const real = list.filter((r) => r.user_id);
@@ -91,8 +95,9 @@ export function RecipientPreviewSection({ eventKeys }: { eventKeys: string[] }) 
           {t('notifOps.preview', 'Preview')}
         </Button>
       </TableToolbar>
-      {rows === null && !error ? null : (
+      {rows === null && !error && !busy ? null : (
         <ListPageState
+          isLoading={busy && rows === null}
           error={error ? (
             <span>
               {t('notifOps.loadFailed', { defaultValue: 'Could not load {{label}} — the real state is unknown.', label: 'recipient preview' })}

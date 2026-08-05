@@ -35,7 +35,9 @@ export function OpsSection<T extends Record<string, unknown>>({
       <h2 className="font-medium">{title}</h2>
       {description}
       {toolbar}
-      {list.rows === null && !list.error ? (
+      {list.rows === null && list.busy ? (
+        <ListPageState isLoading>{null}</ListPageState>
+      ) : list.rows === null && !list.error ? (
         <Button size="sm" variant="outline" onClick={() => void list.load(false)} disabled={list.busy} data-testid={`${testId}-load`}>
           {labels.load}
         </Button>

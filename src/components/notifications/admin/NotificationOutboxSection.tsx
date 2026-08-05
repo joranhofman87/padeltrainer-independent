@@ -4,6 +4,9 @@ import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { TableToolbar } from '@/components/ui/table-toolbar';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { EmptyState } from '@/components/ui/empty-state';
+import { ListPageState } from '@/components/ui/list-page-shell';
+import { History } from 'lucide-react';
 import { OpsSection } from './OpsSection';
 import { useCursorList } from './useCursorList';
 import type { HistoryRow, OutboxRow } from './types';
@@ -110,22 +113,28 @@ export function NotificationOutboxSection({
           <p className="text-sm font-medium">
             {t('notifOps.historyFor', { defaultValue: 'Delivery history — {{id}}', id: historyFor })}
           </p>
-          {historyError ? (
-            <div role="alert" className="text-sm">
-              {t('notifOps.loadFailed', { defaultValue: 'Could not load {{label}} — the real state is unknown.', label: 'delivery history' })}
-              <Button size="sm" variant="outline" className="ml-2" onClick={() => onOpenHistory(historyFor)}>
-                {t('notifOps.retry', 'Retry')}
-              </Button>
-            </div>
-          ) : historyRows ? (
+          <ListPageState
+            isLoading={!historyRows && !historyError}
+            error={historyError ? (
+              <span>
+                {t('notifOps.loadFailed', { defaultValue: 'Could not load {{label}} — the real state is unknown.', label: 'delivery history' })}
+                <Button size="sm" variant="outline" className="ml-2" onClick={() => onOpenHistory(historyFor)}>
+                  {t('notifOps.retry', 'Retry')}
+                </Button>
+              </span>
+            ) : undefined}
+            isEmpty={(historyRows?.length ?? 0) === 0 && !historyError}
+            empty={<EmptyState icon={History} title={t('notifOps.historyEmpty', 'No delivery events for this row')}
+              description={t('notifOps.historyEmptyDesc', 'Nothing has happened to this notification beyond its creation.')} />}
+          >
             <ul className="space-y-1 text-sm">
-              {historyRows.map((h) => (
+              {(historyRows ?? []).map((h) => (
                 <li key={h.ref} className="truncate" title={`${h.at} ${h.kind} ${h.a ?? ''} ${h.b ?? ''} ${h.c ?? ''}`}>
                   {h.at} · <strong>{h.kind}</strong> · {h.a ?? ''} {h.b ?? ''} {h.c ?? ''}
                 </li>
               ))}
             </ul>
-          ) : null}
+          </ListPageState>
         </div>
       )}
     </>

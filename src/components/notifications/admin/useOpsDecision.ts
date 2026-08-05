@@ -36,9 +36,12 @@ export function useOpsDecision<T>(): OpsDecision<T> {
     requestId.current = crypto.randomUUID();
     setReason('');
     setFrozen(false);
+    setBusy(false);            // a previous decision's in-flight state must never leak in
     setTarget(next);
   };
-  const close = () => setTarget(null);
+  // a decision in flight cannot be dismissed: its handler would otherwise settle later and
+  // close whatever dialog the operator had opened next
+  const close = () => { if (!busy) setTarget(null); };
   const submit = async (run: () => Promise<void>) => {
     setBusy(true);
     setFrozen(true);

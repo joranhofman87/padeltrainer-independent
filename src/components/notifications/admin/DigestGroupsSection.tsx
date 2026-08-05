@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DataTable, type ColumnDef } from '@/components/ui/data-table-generic';
 import { TableToolbar } from '@/components/ui/table-toolbar';
@@ -11,7 +11,12 @@ import { isCancellableGroup, type DigestGroupRow } from './types';
 const STATES = ['pending', 'leased', 'prepared', 'request_ready', 'sending', 'awaiting_evidence', 'sent', 'retry_stopped', 'delivery_unknown'] as const;
 
 /** Digest-group state + the pre-dispatch CANCEL control (offered only where the server can accept it). */
-export function DigestGroupsSection({ onCancel }: { onCancel: (group: DigestGroupRow) => void }) {
+export function DigestGroupsSection({ onCancel, onReady }: {
+  onCancel: (group: DigestGroupRow) => void;
+  /** Hands the page a RELOAD handle: a successful cancel must refresh this list, and the
+   *  cursor state lives here (extraction must not lose the post-decision refresh). */
+  onReady?: (reload: () => void) => void;
+}) {
   const { t } = useTranslation('admin');
   const [state, setState] = useState('all');
   const list = useCursorList<DigestGroupRow>(
@@ -20,6 +25,8 @@ export function DigestGroupsSection({ onCancel }: { onCancel: (group: DigestGrou
     ['p_before_created_at', 'p_before_id'],
     () => ({ p_state: state === 'all' ? undefined : state, p_days: 7 }),
   );
+
+  useEffect(() => { onReady?.(() => void list.load(false)); });
 
   const columns: ColumnDef<DigestGroupRow>[] = [
     {
