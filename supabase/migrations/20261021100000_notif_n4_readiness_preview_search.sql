@@ -225,9 +225,48 @@ GRANT EXECUTE ON FUNCTION public.admin_preview_notification_decision(uuid, text,
 
 CREATE INDEX IF NOT EXISTS idx_prefs_v2_event_user
   ON public.notification_preferences_v2 (event_type, user_id);
-CREATE INDEX IF NOT EXISTS idx_contacts_channel_user
-  ON public.notification_contacts (channel, user_id)
-  WHERE revoked_at IS NULL AND user_id IS NOT NULL;
+
+-- ── the PERSISTED effective-user projection — the candidate scan must be an ordered index
+-- stream, not a join+dedup over every eligible contact (bounded output was hiding unbounded
+-- work). Maintained by triggers on BOTH sides of the link, backfilled once. ─────────────────
+ALTER TABLE public.notification_contacts
+  ADD COLUMN IF NOT EXISTS effective_user_id uuid;
+
+CREATE OR REPLACE FUNCTION public.notif_contact_effective_user()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.effective_user_id := coalesce(NEW.user_id,
+    (SELECT p.user_id FROM public.persons p WHERE p.id = NEW.person_id));
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_notif_contact_effective_user ON public.notification_contacts;
+CREATE TRIGGER trg_notif_contact_effective_user
+  BEFORE INSERT OR UPDATE OF user_id, person_id ON public.notification_contacts
+  FOR EACH ROW EXECUTE FUNCTION public.notif_contact_effective_user();
+
+-- a person gaining (or changing) its login must flow into the projection
+CREATE OR REPLACE FUNCTION public.notif_person_sync_effective_user()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE public.notification_contacts nc
+     SET effective_user_id = coalesce(nc.user_id, NEW.user_id)
+   WHERE nc.person_id = NEW.id;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_notif_person_sync_effective_user ON public.persons;
+CREATE TRIGGER trg_notif_person_sync_effective_user
+  AFTER UPDATE OF user_id ON public.persons
+  FOR EACH ROW EXECUTE FUNCTION public.notif_person_sync_effective_user();
+
+UPDATE public.notification_contacts nc
+   SET effective_user_id = coalesce(nc.user_id, (SELECT p.user_id FROM public.persons p WHERE p.id = nc.person_id))
+ WHERE nc.effective_user_id IS DISTINCT FROM coalesce(nc.user_id, (SELECT p.user_id FROM public.persons p WHERE p.id = nc.person_id));
+
+CREATE INDEX IF NOT EXISTS idx_contacts_effective_user
+  ON public.notification_contacts (channel, effective_user_id)
+  WHERE effective_user_id IS NOT NULL AND revoked_at IS NULL;
 
 -- the bounded per-event recipient preview: users with a preference row or an eligible contact
 CREATE OR REPLACE FUNCTION public.admin_preview_notification_recipients(
@@ -257,20 +296,21 @@ BEGIN
           AND (p_after_user_id IS NULL OR v2.user_id > p_after_user_id)
         ORDER BY v2.user_id LIMIT 50)
       UNION
-      -- DISTINCT effective users FIRST (a multi-contact user must not eat the budget), the
-      -- resolver's own eligibility predicates, and person-linked contacts count via
-      -- persons.user_id even when the contact's own user_id is NULL
-      (SELECT DISTINCT coalesce(nc.user_id, pe.user_id) AS uid
+      -- DISTINCT effective users over the PERSISTED projection: an ordered index stream on
+      -- (channel, effective_user_id) that dedupes as it streams and STOPS at 50 — no join, no
+      -- computed expression, no global dedup. Person-linked contacts are in the projection
+      -- (trigger-maintained on both sides of the link); eligibility predicates filter the
+      -- stream exactly as the resolver's do.
+      (SELECT DISTINCT nc.effective_user_id AS uid
          FROM public.notification_contacts nc
-         LEFT JOIN public.persons pe ON pe.id = nc.person_id
         WHERE nc.channel = p_channel AND nc.revoked_at IS NULL
+          AND nc.effective_user_id IS NOT NULL
           AND (CASE p_channel WHEN 'email' THEN nc.consent_status <> 'opted_out'
                               ELSE nc.consent_status = 'opted_in' END)
           AND public.is_notification_consent_in_scope(
                 nc.consent_scope, nc.consent_academy_profile_id, nc.consent_trainer_id,
                 p_tenant_academy_profile_id, NULL)
-          AND coalesce(nc.user_id, pe.user_id) IS NOT NULL
-          AND (p_after_user_id IS NULL OR coalesce(nc.user_id, pe.user_id) > p_after_user_id)
+          AND (p_after_user_id IS NULL OR nc.effective_user_id > p_after_user_id)
         ORDER BY 1 LIMIT 50)
     ) cand
     WHERE cand.uid IS NOT NULL

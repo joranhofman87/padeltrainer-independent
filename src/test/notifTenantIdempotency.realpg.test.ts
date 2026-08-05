@@ -1240,3 +1240,41 @@ describe('N4 M6 round-3 — candidate eligibility shapes and index integrity', (
     await asUser(null);
   });
 });
+
+describe('N4 M6 round-4 — the persisted candidate projection is maintained and index-served', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('a person GAINING a login later flows into the projection — the sync trigger', async () => {
+    const late = 'c0000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [late]);
+    const pid = (await c.query(`INSERT INTO public.persons (email) VALUES ('late@example.com') RETURNING id`)).rows[0].id;
+    await c.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'late@example.com', 'l***@example.com', 'opted_in', 'global')`, [pid]);
+    expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='late@example.com'`)).rows[0].effective_user_id).toBeNull();
+    await c.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [late, pid]);
+    expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='late@example.com'`)).rows[0].effective_user_id).toBe(late);
+    await asUser(ADMIN_UID);
+    const rows = (await c.query(
+      `SELECT user_id FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'c0000000-0000-4000-8000-000000000000',50)`)).rows;
+    expect(rows.map((r) => r.user_id)).toContain(late);
+    await asUser(null);
+  });
+
+  it('the candidate scan is BOUNDED BEFORE dedup: an ordered index stream, no join, no sort', async () => {
+    // structural plan pin: the projection query must be served by idx_contacts_effective_user
+    // in index order (Unique over a sorted stream that STOPS at the limit) — never a
+    // join-then-hash-dedup over every eligible contact
+    const plan = (await c.query(`
+      EXPLAIN (FORMAT JSON)
+      SELECT DISTINCT nc.effective_user_id FROM public.notification_contacts nc
+       WHERE nc.channel = 'email' AND nc.revoked_at IS NULL AND nc.effective_user_id IS NOT NULL
+         AND nc.consent_status <> 'opted_out'
+       ORDER BY 1 LIMIT 50
+    `)).rows[0]['QUERY PLAN'];
+    const txt = JSON.stringify(plan);
+    expect(txt).toContain('idx_contacts_effective_user');
+    expect(txt).not.toContain('"Node Type": "Hash Join"');
+    expect(txt).not.toContain('"Node Type": "Sort"');   // index order feeds the dedup directly
+  });
+});
