@@ -196,3 +196,23 @@ SELECT pg_temp.assert_eq(
       AND source = 'canary_invoke.sql'
       AND net_request_id IS NOT NULL), 1,
   'the run is bound to exactly one COMPLETED canary-provenance invocation (purpose=canary, source=canary_invoke.sql, recorded pg_net request) — an accidental smoke/manual send cannot activate, and an unreconciled canary must pass canary-reconcile first');
+
+
+-- 9. NO CHANNEL IS KILLED (N4 seam correction). Arming behind an active kill looks safe — the
+-- gated claim parks every tick — but it moves the send decision to whoever later deletes the
+-- kill row: a runbook DELETE would release an ALREADY-ARMED cron with no fresh canary and no
+-- activation decision. M5 refuses a circuit reset under a kill for exactly this reason
+-- ("queue send authority behind a single runbook DELETE"); arming is the larger version of the
+-- same act. The shared per-channel lock is taken so an in-flight kill cannot be missed.
+DO $kill$
+DECLARE ch text;
+BEGIN
+  -- take the shared per-channel lock FIRST (an in-flight kill must not be invisible), then read
+  FOREACH ch IN ARRAY ARRAY['email', 'whatsapp'] LOOP
+    PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended('notif-channel-kill:' || ch, 0));
+  END LOOP;
+END
+$kill$;
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_channel_kill_switches), 0,
+  'no notification channel is killed (arming while a kill is active hands the send decision to whoever deletes the kill row, with no canary and no activation gate)');

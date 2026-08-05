@@ -190,6 +190,7 @@ beforeAll(async () => {
     await c.query(fpFn);
   }
   await c.query(MIG('20261021100000_notif_n4_readiness_preview_search.sql'));
+  await c.query(MIG('20261022100000_notif_n4_seam_corrections.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -781,16 +782,29 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     const email = rows.find((r) => r.event_type === 'ev_test' && r.channel === 'email');
     const wa = rows.find((r) => r.event_type === 'ev_test' && r.channel === 'whatsapp');
     expect(email.catalog_supported).toBe(true);
-    expect(email.send_env).toBe('unverifiable');             // EVERY row carries the honest line
-    expect(wa.send_env).toBe('unverifiable');
+    // the env line names the switch that ACTUALLY governs each channel/path
+    expect(email.send_env).toContain('DIGEST_SEND_ENABLED');
+    expect(email.send_env).toContain('unverifiable');
+    expect(wa.send_env).toContain('WHATSAPP_SEND_ENABLED');   // the instant whatsapp switch
+    expect(wa.send_env).toContain('unverifiable');
     expect(email.cron_state).toBe('unavailable');            // no pg_cron here — the honest arm
     expect(email.kill_state).toBe('live');
     // the paths CONCLUDE SEPARATELY: instant has no cron/env authority; digest has both
     expect(email.instant_conclusion).toBe('sendable');
-    expect(email.digest_conclusion).toBe('stopped');         // engine off = the digest path is stopped
+    // engine-off is NOT a digest stop (it gates ENQUEUE only; existing groups drain) — the cron
+    // being inactive/absent is, and this harness has no pg_cron ('unavailable') so the verdict
+    // rests on the unverifiable env
+    expect(email.digest_conclusion).toBe('unknown');
     expect(wa.catalog_supported).toBe(false);
     expect(wa.instant_conclusion).toBe('stopped');           // unsupported is a definitive stop
     expect(wa.digest_conclusion).toBe('stopped');
+    // …and a SUPPORTED whatsapp event still cannot read sendable: WHATSAPP_SEND_ENABLED gates
+    // the INSTANT path and no SQL can read it (the seam the per-milestone reviews could not see)
+    await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = true WHERE key = 'ev_test'`);
+    const waOn = (await asAdmin(`SELECT * FROM public.admin_notification_event_states()`))
+      .find((r) => r.event_type === 'ev_test' && r.channel === 'whatsapp');
+    expect(waOn.instant_conclusion).toBe('unknown');
+    await c.query(`UPDATE public.notification_event_types SET supports_whatsapp = false WHERE key = 'ev_test'`);
     // kill flips the authority AND both conclusions
     await killDirect('email');
     const after = await asAdmin(`SELECT * FROM public.admin_notification_event_states()`);
@@ -798,6 +812,17 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     expect(emailKilled.kill_state).toBe('killed');
     expect(emailKilled.instant_conclusion).toBe('stopped');
     expect(emailKilled.digest_conclusion).toBe('stopped');
+    // an OPEN CIRCUIT stops the DIGEST path but NOT the instant one — the instant claim never
+    // reads the breaker, and reporting otherwise let instant email send under a "stopped" badge
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, tripped_at) VALUES ('email','open','provider_5xx', now())`);
+    const withCircuit = (await asAdmin(`SELECT * FROM public.admin_notification_event_states()`))
+      .find((r) => r.event_type === 'ev_test' && r.channel === 'email');
+    expect(withCircuit.instant_conclusion).toBe('sendable');   // truthful: the claim ignores it
+    expect(withCircuit.digest_conclusion).toBe('stopped');
+    await c.query(`DELETE FROM public.notification_provider_circuit`);
     // engine ON + cron unavailable: the digest path can never conclude past unknown (the env
     // has the last word and SQL cannot read it) — while the INSTANT path stays sendable
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true WHERE key = 'ev_test'`);

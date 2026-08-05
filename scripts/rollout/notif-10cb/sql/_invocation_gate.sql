@@ -8,9 +8,17 @@
 -- operator re-runs with (--invocation-request-id=<id> replays the same invocation instead of
 -- colliding here), and its id/status/age are what the resolve/abandon RPCs need. A bare
 -- "count was 1, expected 0" stranded exactly the operator this gate exists to protect.
+--
+-- IT TAKES M1'S OWN OPEN LOCK. A snapshot SELECT had the exact race the invocation record
+-- exists to close: a manual invoker holding 'notif-worker-invocation-open' with an
+-- UNCOMMITTED pending row is invisible here, so activation saw zero rows and armed the cron —
+-- and the invocation then committed and dispatched into an armed system. (Smoke and canary
+-- happen to serialize on the cron row lock; a manual invocation does not, and M1 exposes it.)
+-- The lock is held to COMMIT, so the arming transaction and any opener strictly order.
 DO $gate$
 DECLARE r record;
 BEGIN
+  PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended('notif-worker-invocation-open', 0));
   SELECT id, request_id, purpose, source, status,
          (pg_catalog.now() - requested_at) AS age
     INTO r

@@ -139,6 +139,7 @@ beforeAll(async () => {
     '20261019100000_notif_n4_admin_reads.sql',
     '20261020100000_notif_n4_send_enabling_recovery.sql',
     '20261021100000_notif_n4_readiness_preview_search.sql',
+    '20261022100000_notif_n4_seam_corrections.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -1558,5 +1559,101 @@ describe('N4 M6 round-8 — the A→B relink race', () => {
       await c.query('ROLLBACK').catch(() => {});
       await c2.end();
     }
+  });
+});
+
+describe('N4 SEAM corrections — the whole-unit findings', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('SEAM 6: the preview mirrors the resolver’s ACCOUNT-EMAIL fallback and its unsupported-channel skip', async () => {
+    // a logged-in user with NO eligible contact — production still mails persons.email
+    const uid = 'aa000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1, 'fallback@example.com')`, [uid]);
+    await asUser(ADMIN_UID);
+    const d = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1, 'session_reminder_player', 'email', NULL)`, [uid])).rows[0];
+    expect(d.contact_found).toBe(true);
+    expect(d.contact_source).toBe('account_email');           // NOT skip:no_contact
+    expect(d.destination_masked).toBe('f***@example.com');
+    expect(d.final_decision).not.toContain('no_contact');
+    // …and the candidate LIST includes them (they were omitted entirely before)
+    const rows = (await c.query(
+      `SELECT user_id FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'aa000000-0000-4000-8000-000000000000',50)`)).rows;
+    expect(rows.map((r) => r.user_id)).toContain(uid);
+    // an UNSUPPORTED channel is skipped BEFORE resolution, exactly as the resolver does —
+    // read the catalog rather than assuming which pair is unsupported
+    const unsupported = (await c.query(
+      `SELECT key FROM public.notification_event_types WHERE NOT supports_whatsapp ORDER BY key LIMIT 1`)).rows[0];
+    expect(unsupported).toBeTruthy();
+    const wa = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1, $2, 'whatsapp', NULL)`, [uid, unsupported.key])).rows[0];
+    expect(wa.catalog_supported).toBe(false);
+    expect(wa.final_decision).toBe('skip:channel_unsupported');
+    await asUser(null);
+  });
+
+  it('SEAM 5: the internal evidence helpers are not reachable by any API role', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      for (const role of ['anon', 'authenticated', 'service_role']) {
+        await c2.query(`SET ROLE ${role}`);
+        for (const fn of [
+          `public.notif_admin_replay_gate(gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'email', 'x', 'y')`,
+          `public.notif_admin_record_verdict(gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'f', 'killed')`,
+          `public.notif_admin_record_refusal(gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'email', 'x', 'y')`,
+        ]) {
+          await expect(c2.query(`SELECT ${fn}`), `${role} must not reach ${fn}`).rejects.toThrow();
+        }
+        await c2.query(`RESET ROLE`);
+      }
+    } finally { await c2.end(); }
+  });
+
+  it('SEAM 4: a person-sync concurrent with a direct contact update does not DEADLOCK', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      const uid = 'ab000000-0000-4000-8000-000000000001';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+      const pid = (await c.query(`INSERT INTO public.persons (email) VALUES ('multi@example.com') RETURNING id`)).rows[0].id;
+      // TWO contacts for one person — the shape the single-contact tests could not exercise
+      for (const d of ['m1@example.com', 'm2@example.com']) {
+        await c.query(
+          `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+           VALUES ($1, 'email', $2, 'm***@example.com', 'opted_in', 'global')`, [pid, d]);
+      }
+      // session A holds contact 2's row; session B runs the person sync (advisory then rows)
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.notification_contacts SET is_primary = true WHERE destination_normalized = 'm2@example.com'`);
+      const sync = c2.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uid, pid]);
+      await new Promise((r) => setTimeout(r, 150));
+      await c.query('COMMIT');
+      await sync;                                   // completes — NO deadlock abort
+      const rows = (await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE person_id = $1`, [pid])).rows;
+      expect(rows.every((r) => r.effective_user_id === uid)).toBe(true);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+
+  it('SEAM 7: a cross-actor request-id collision is a TYPED verdict, not a raw unique violation', async () => {
+    const OTHER = 'ac000000-0000-4000-8000-000000000002';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [OTHER]);
+    await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ($1,'admin') ON CONFLICT DO NOTHING`, [OTHER]);
+    const shared = crypto.randomUUID();
+    await asUser(ADMIN_UID);
+    expect((await c.query(`SELECT public.admin_activate_channel_kill('email','first admin',$1) AS r`, [shared])).rows[0].r).toBe('killed');
+    await asUser(OTHER);
+    // the SAME uuid, a different actor, a different channel: both pass their actor-scoped gate,
+    // and the kill table's GLOBAL uniqueness would have raised and rolled the evidence back
+    expect((await c.query(`SELECT public.admin_activate_channel_kill('whatsapp','second admin',$1) AS r`, [shared])).rows[0].r)
+      .toBe('rejected_id_collision');
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE actor=$1`, [OTHER])).rows[0].n).toBe(1);
+    expect((await c.query(`SELECT verdict FROM public.notification_admin_requests WHERE actor=$1`, [OTHER])).rows[0].verdict).toBe('rejected_id_collision');
+    await asUser(null);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
   });
 });

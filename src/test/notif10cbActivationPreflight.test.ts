@@ -641,6 +641,18 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
   const SQL = (f: string) =>
     readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
 
+  it('the N4 SEAM corrections: both gates take M1s open lock, and activation refuses under a kill', () => {
+    // a snapshot SELECT could not see a manual invoker holding the open lock with an
+    // UNCOMMITTED pending row — activation armed the cron and the invocation then dispatched
+    for (const f of ['_invocation_gate.sql', '_invocation_gate_replay.sql']) {
+      expect(SQL(f)).toContain("hashtextextended('notif-worker-invocation-open', 0)");
+    }
+    // arming behind an active kill hands the send decision to whoever deletes the kill row
+    const asserts = SQL('_activation_assertions.sql');
+    expect(asserts).toContain('notification_channel_kill_switches');
+    expect(asserts).toContain("'notif-channel-kill:'");
+  });
+
   it('BOTH gates exist: strict refuses any unresolved row; replay-aware passes only the exact own request', () => {
     const strict = SQL('_invocation_gate.sql');
     expect(strict).toContain("status IN ('pending', 'started')");

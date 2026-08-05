@@ -631,7 +631,9 @@ describe("the activation gate's INDEPENDENT canary-provenance assertion (part 3)
   // extracted verbatim and substituted the way psql would, over the real assert_eq helper.
   const assertsFile = readFileSync(
     resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', '_activation_assertions.sql'), 'utf8');
-  const section = assertsFile.match(/-- 8\. THE CANARY'S PROVENANCE[\s\S]*$/)?.[0];
+  // section 8 ONLY — section 9 (the N4 seam kill check) reads a table this invocation-focused
+  // harness does not carry; it is pinned in the preflight suite and exercised in the kill suite
+  const section = assertsFile.match(/-- 8\. THE CANARY'S PROVENANCE[\s\S]*?(?=\n-- 9\.|$)/)?.[0];
   const assertHelper = readFileSync(
     resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10ca3', 'sql', '_assert.sql'), 'utf8')
     .replace(/^\\set .*$/m, '');

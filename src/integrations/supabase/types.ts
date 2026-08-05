@@ -9714,6 +9714,7 @@ export type Database = {
           channel: string
           circuit_state: string
           contact_found: boolean
+          contact_source: string
           destination_masked: string
           event_type: string
           explicit_preference: string

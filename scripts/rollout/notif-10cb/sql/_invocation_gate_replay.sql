@@ -20,6 +20,9 @@ DECLARE
   r record;
   v_req text := pg_catalog.current_setting('notif.gate_request_id', true);
 BEGIN
+  -- the same open lock as the strict gate (and as open() itself, which this falls through to):
+  -- a concurrent opener must not be invisible to the check that decides whether to proceed
+  PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended('notif-worker-invocation-open', 0));
   SELECT id, request_id, purpose, source, status,
          (pg_catalog.now() - requested_at) AS age
     INTO r
