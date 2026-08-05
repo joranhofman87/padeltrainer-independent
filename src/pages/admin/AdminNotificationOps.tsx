@@ -56,8 +56,10 @@ function usePagedRpc(rpcName: string, cursorFields: [string, string], cursorPara
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const epoch = useRef(0);
+  const lock = useRef(false);               // SYNCHRONOUS: render state is not an atomic guard
   const load = async (more = false) => {
-    if (busy) return;                       // the in-flight guard: concurrent clicks no-op
+    if (lock.current) return;               // the in-flight guard: concurrent clicks no-op
+    lock.current = true;
     setBusy(true);
     setError(false);
     const myEpoch = ++epoch.current;
@@ -69,11 +71,12 @@ function usePagedRpc(rpcName: string, cursorFields: [string, string], cursorPara
     }
     const { data, error: err } = await supabase.rpc(rpcName, args);
     if (myEpoch !== epoch.current) return;  // a newer request superseded this one: drop it
+    lock.current = false;                   // only the epoch OWNER releases the lock
     if (err) { setError(true); setBusy(false); return; }
     setRows((prev) => (more && prev ? [...prev, ...((data ?? []) as Row[])] : ((data ?? []) as Row[])));
     setBusy(false);
   };
-  const reset = () => { setRows(null); setError(false); epoch.current++; setBusy(false); };
+  const reset = () => { setRows(null); setError(false); epoch.current++; lock.current = false; setBusy(false); };
   return { rows, error, busy, load, reset };
 }
 
@@ -154,11 +157,14 @@ export default function AdminNotificationOps() {
   const [historyFor, setHistoryFor] = useState<string | null>(null);
   const [historyRows, setHistoryRows] = useState<Row[] | null>(null);
   const [historyError, setHistoryError] = useState(false);
+  const historyEpoch = useRef(0);
   const openHistory = async (outboxId: string) => {
+    const myEpoch = ++historyEpoch.current;   // a late response for an EARLIER row is dropped
     setHistoryFor(outboxId);
     setHistoryRows(null);
     setHistoryError(false);
     const { data, error } = await supabase.rpc('admin_notification_delivery_history', { p_outbox_id: outboxId, p_limit: 50 });
+    if (myEpoch !== historyEpoch.current) return;
     if (error) { setHistoryError(true); return; }
     setHistoryRows((data ?? []) as Row[]);
   };
@@ -170,7 +176,19 @@ export default function AdminNotificationOps() {
   const [previewPartial, setPreviewPartial] = useState(false);
   const [previewCursor, setPreviewCursor] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState(false);
+  const previewEpoch = useRef(0);
+  const previewLock = useRef(false);
+  const resetPreview = () => {              // a changed event/channel invalidates results AND cursor
+    previewEpoch.current++;
+    previewLock.current = false;
+    setPreviewRows(null);
+    setPreviewPartial(false);
+    setPreviewCursor(null);
+  };
   const loadPreview = async (more = false) => {
+    if (previewLock.current) return;
+    previewLock.current = true;
+    const myEpoch = ++previewEpoch.current;
     setPreviewError(false);
     const { data, error } = await supabase.rpc('admin_preview_notification_recipients', {
       p_event_key: previewEvent,
@@ -178,6 +196,8 @@ export default function AdminNotificationOps() {
       p_after_user_id: more ? previewCursor ?? undefined : undefined,
       p_limit: 25,
     });
+    if (myEpoch !== previewEpoch.current) return;   // superseded (scope changed / newer call)
+    previewLock.current = false;
     if (error) { setPreviewError(true); return; }
     const list = (data ?? []) as Row[];
     const real = list.filter((r) => r.user_id);
@@ -191,10 +211,13 @@ export default function AdminNotificationOps() {
   const [searchInput, setSearchInput] = useState('');
   const [searchResult, setSearchResult] = useState<Row | null>(null);
   const [searchMessage, setSearchMessage] = useState<string | null>(null);
+  const searchEpoch = useRef(0);
   const runSearch = async () => {
+    const myEpoch = ++searchEpoch.current;   // an older lookup must never overwrite a newer one
     setSearchResult(null);
     setSearchMessage(null);
     const { data, error } = await supabase.rpc('admin_search_notification_destination', { p_destination: searchInput });
+    if (myEpoch !== searchEpoch.current) return;
     if (error) { setSearchMessage(error.message); return; }
     setSearchResult(((data ?? []) as Row[])[0] ?? null);
   };
@@ -668,12 +691,12 @@ export default function AdminNotificationOps() {
           {t('notifOps.previewScope', 'Previews resolver state (preferences, caps, consent, suppression) for known users — not a producer’s audience.')}
         </p>
         <div className="flex gap-2 py-1">
-          <select value={previewEvent} onChange={(e) => setPreviewEvent(e.target.value)}
+          <select value={previewEvent} onChange={(e) => { setPreviewEvent(e.target.value); resetPreview(); }}
             data-testid="preview-event" className="rounded border p-1 text-sm">
             <option value="">{t('notifOps.chooseEvent', 'choose event…')}</option>
             {eventKeys.map((k) => <option key={k} value={k}>{k}</option>)}
           </select>
-          <select value={previewChannel} onChange={(e) => setPreviewChannel(e.target.value)}
+          <select value={previewChannel} onChange={(e) => { setPreviewChannel(e.target.value); resetPreview(); }}
             data-testid="preview-channel" className="rounded border p-1 text-sm">
             <option value="email">email</option>
             <option value="whatsapp">whatsapp</option>

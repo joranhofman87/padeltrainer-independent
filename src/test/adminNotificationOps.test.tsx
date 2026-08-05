@@ -339,3 +339,65 @@ describe('AdminNotificationOps — the completed surface (M7 round 2)', () => {
     expect(screen.getByTestId('search-message').textContent).toContain('rate limit');
   });
 });
+
+describe('AdminNotificationOps — M7 round 3: per-operation races', () => {
+  it('history: a LATE response for row A never renders under row B (reversed order)', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByTestId('outbox-load'));
+    // A's history is slow…
+    let releaseA: ((v: { data: unknown; error: null }) => void) | null = null;
+    rpcMock.mockImplementationOnce((fn: string, args?: Record<string, unknown>) =>
+      fn === 'admin_notification_delivery_history' && args?.p_outbox_id === 'ob1'
+        ? new Promise((res) => { releaseA = res; })
+        : defaultImpl(fn));
+    fireEvent.click(await screen.findByTestId('history-btn-ob1'));
+    // …while a second click for the SAME visible row list targets a different id via a
+    // synthetic second row: simulate by calling openHistory for ob2 through a new fixture row.
+    rpcMock.mockImplementationOnce((fn: string, args?: Record<string, unknown>) =>
+      fn === 'admin_notification_delivery_history'
+        ? Promise.resolve({ data: [{ at: TS2, kind: 'outbox_created', a: 'B-ROW', b: 'email', c: 'x', ref: `ob-created:${String(args?.p_outbox_id)}` }], error: null })
+        : defaultImpl(fn));
+    fireEvent.click(screen.getByTestId('history-btn-ob1'));   // the NEWER request (same button, new epoch)
+    await waitFor(() => expect(screen.getByTestId('delivery-history').textContent).toContain('B-ROW'));
+    // now A's stale response lands — it must be DROPPED, not overwrite B's content
+    releaseA!({ data: [{ at: TS1, kind: 'outbox_created', a: 'A-STALE', b: 'email', c: 'y', ref: 'ob-created:stale' }], error: null });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId('delivery-history').textContent).toContain('B-ROW');
+    expect(screen.getByTestId('delivery-history').textContent).not.toContain('A-STALE');
+  });
+
+  it('preview: changing the event RESETS results and cursor; a stale in-flight response is dropped', async () => {
+    renderPage();
+    await screen.findByTestId('event-states');
+    fireEvent.change(screen.getByTestId('preview-event'), { target: { value: 'ev_test' } });
+    // a slow preview…
+    let release: ((v: { data: unknown; error: null }) => void) | null = null;
+    rpcMock.mockImplementationOnce((fn: string) =>
+      fn === 'admin_preview_notification_recipients'
+        ? new Promise((res) => { release = res; })
+        : defaultImpl(fn));
+    fireEvent.click(screen.getByTestId('preview-load'));
+    // …then the scope changes mid-flight: the stale response must never render
+    fireEvent.change(screen.getByTestId('preview-channel'), { target: { value: 'whatsapp' } });
+    release!({ data: [{ user_id: 'stale-user', final_frequency: 'instant', final_decision: 'deliver:instant', destination_masked: 'STALE', candidates_partial: false, next_cursor: 'stale-user' }], error: null });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.queryByTestId('preview-list')).toBeNull();   // reset held: nothing stale rendered
+  });
+
+  it('search: an older lookup cannot overwrite a newer result', async () => {
+    renderPage();
+    let releaseOld: ((v: { data: unknown; error: null }) => void) | null = null;
+    rpcMock.mockImplementationOnce((fn: string) =>
+      fn === 'admin_search_notification_destination'
+        ? new Promise((res) => { releaseOld = res; })
+        : defaultImpl(fn));
+    fireEvent.change(await screen.findByTestId('search-input'), { target: { value: 'old@example.com' } });
+    fireEvent.click(screen.getByTestId('search-btn'));
+    fireEvent.change(screen.getByTestId('search-input'), { target: { value: 'new@example.com' } });
+    fireEvent.click(screen.getByTestId('search-btn'));        // the newer lookup resolves instantly
+    await screen.findByTestId('search-result');
+    releaseOld!({ data: [{ destination_masked: 'OLD-STALE', contacts: 9, contacts_capped: false, outbox_rows: 9, outbox_capped: false, delivery_events: 9, events_capped: false }], error: null });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(screen.getByTestId('search-result').textContent).not.toContain('OLD-STALE');
+  });
+});

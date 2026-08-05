@@ -452,7 +452,10 @@ BEGIN
     FROM public.notification_orphan_reconcile_state s
    WHERE p_before_updated_at IS NULL
       OR (s.updated_at, s.resend_event_id) < (p_before_updated_at, p_before_event_id)
-   ORDER BY s.quarantined DESC, s.updated_at DESC, s.resend_event_id DESC
+   -- the ORDER matches the CURSOR exactly — a quarantined-first leading dimension the cursor
+   -- did not carry let newer non-quarantined rows be skipped when a page ended mid-quarantine;
+   -- the quarantined flag is a COLUMN for the UI to badge, not an ordering dimension
+   ORDER BY s.updated_at DESC, s.resend_event_id DESC
    LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200);
 END;
 $$;
