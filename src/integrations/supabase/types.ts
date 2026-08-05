@@ -11296,10 +11296,21 @@ export type Database = {
         }
         Returns: undefined
       }
+      notif_admin_record_verdict: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_fingerprint: string
+          p_request_id: string
+          p_verdict: string
+        }
+        Returns: string
+      }
       notif_admin_replay_gate: {
         Args: {
           p_action: string
           p_actor: string
+          p_fingerprint: string
           p_reason: string
           p_request_id: string
           p_target: string

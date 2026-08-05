@@ -183,6 +183,9 @@ beforeEach(async () => {
   await c.query(`ALTER TABLE public.notification_admin_rejected_attempts DISABLE TRIGGER trg_notif_admin_rejected_guard;`);
   await c.query(`DELETE FROM public.notification_admin_rejected_attempts;`);
   await c.query(`ALTER TABLE public.notification_admin_rejected_attempts ENABLE TRIGGER trg_notif_admin_rejected_guard;`);
+  await c.query(`ALTER TABLE public.notification_admin_requests DISABLE TRIGGER trg_notif_admin_requests_guard;`);
+  await c.query(`DELETE FROM public.notification_admin_requests;`);
+  await c.query(`ALTER TABLE public.notification_admin_requests ENABLE TRIGGER trg_notif_admin_requests_guard;`);
   await c.query(`DELETE FROM public.notification_outbox;`);
   await c.query(`DELETE FROM public.notification_provider_events;`);
   await c.query(`DELETE FROM public.notification_provider_circuit;`);
@@ -483,7 +486,7 @@ describe('N4 M3 — the ops audit: every decision recorded, exactly once, immuta
     const rej = (await c.query(`SELECT * FROM public.notification_admin_rejected_attempts WHERE request_id=$1 ORDER BY created_at`, [req])).rows;
     expect(rej.length).toBe(2);
     expect(rej[0]).toMatchObject({ actor: ADMIN, action: 'channel_kill', target: 'whatsapp', reason: 'first' });
-    expect(rej[0].conflict_with).toContain('target email');
+    expect(rej[0].conflict_with).toContain('channel_kill|email');   // the original decision, named
     expect(rej[1]).toMatchObject({ target: 'email', reason: 'other words' });
     // the rejected record is append-only like everything else on this surface
     await expect(c.query(`DELETE FROM public.notification_admin_rejected_attempts`)).rejects.toThrow(/append-only/);
@@ -982,5 +985,95 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
       'admin_resolve_notification_orphan',
     ]);
     for (const f of fns) expect(f).not.toMatch(/retry|resend|redeliver/);
+  });
+});
+
+describe('N4 M5 round-2 — the request registry and the invocation-window lock', () => {
+  const call = async (uid: string | null, sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const TRIP = '2026-08-05T10:00:00.000Z';
+  const seedCircuit = () =>
+    c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, tripped_at) VALUES ('email', 'open', 'provider_5xx', $1::timestamptz)`, [TRIP]);
+  const resetSql = (req: string, over: Partial<{ state: string; reason: string; trip: string; why: string }> = {}) =>
+    `SELECT public.admin_reset_notification_circuit('email', '${over.state ?? 'open'}', '${over.reason ?? 'provider_5xx'}', '${over.trip ?? TRIP}'::timestamptz, '${over.why ?? 'provider recovered'}', '${req}') AS r`;
+
+  it('a REFUSAL consumes the id: the corrected retry is conflicting reuse, only a FRESH id can proceed', async () => {
+    await seedCircuit();
+    const req = crypto.randomUUID();
+    // stale confirmation → refused, id CONSUMED
+    expect((await call(ADMIN, resetSql(req, { trip: '2026-08-05T09:00:00.000Z' })))[0].r).toBe('rejected_stale_state');
+    // the 'corrected' retry under the SAME id — the round-2 P1: this used to RESET
+    expect((await call(ADMIN, resetSql(req)))[0].r).toBe('rejected_request_reuse');
+    expect((await c.query(`SELECT state FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0].state).toBe('open');
+    // the EXACT stale retry replays its original refusal — no new records
+    const before = (await c.query(`SELECT count(*)::int n FROM public.notification_admin_rejected_attempts`)).rows[0].n;
+    expect((await call(ADMIN, resetSql(req, { trip: '2026-08-05T09:00:00.000Z' })))[0].r).toBe('rejected_stale_state');
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_admin_rejected_attempts`)).rows[0].n).toBe(before);
+    // a fresh id with the CORRECT confirmation proceeds
+    expect((await call(ADMIN, resetSql(crypto.randomUUID())))[0].r).toBe('reset');
+  });
+
+  it('the fingerprint is COMPLETE: changing only the expected version (or only the group expected state) is reuse', async () => {
+    await seedCircuit();
+    const req = crypto.randomUUID();
+    expect((await call(ADMIN, resetSql(req, { trip: '2026-08-05T09:00:00.000Z' })))[0].r).toBe('rejected_stale_state');
+    // ONLY expected_tripped_at differs → a different decision, never a replay
+    expect((await call(ADMIN, resetSql(req, { trip: '2026-08-05T08:00:00.000Z' })))[0].r).toBe('rejected_request_reuse');
+    // group cancel: only expected_state differs
+    const g = (await c.query(
+      `INSERT INTO public.notification_digest_groups
+         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+          recipient_timezone, digest_boundary_at, available_at, state)
+       VALUES (jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, 'email', 'ev_test', 'p:fp', 'fp:' || gen_random_uuid()::text,
+               'Europe/Amsterdam', now(), now(), 'pending') RETURNING id`)).rows[0].id;
+    const req2 = crypto.randomUUID();
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${g}', 'leased', 'why not', '${req2}') AS r`))[0].r).toBe('rejected_stale_state');
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${g}', 'pending', 'why not', '${req2}') AS r`))[0].r).toBe('rejected_request_reuse');
+    expect((await c.query(`SELECT state FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0].state).toBe('pending');
+  });
+
+  it('concurrent IDENTICAL refused calls converge on ONE first verdict — deterministic', async () => {
+    await seedCircuit();
+    const req = crypto.randomUUID();
+    await c.query('BEGIN');
+    await c.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [ADMIN]);
+    expect((await c.query(resetSql(req, { trip: '2026-08-05T09:00:00.000Z' }))).rows[0].r).toBe('rejected_stale_state');
+    let settled = false;
+    const loser = call(ADMIN, resetSql(req, { trip: '2026-08-05T09:00:00.000Z' })).finally(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(settled).toBe(false);   // serialized on the global request lock
+    await c.query('COMMIT');
+    expect((await loser)[0].r).toBe('rejected_stale_state');   // the ONE first verdict, replayed
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_admin_requests WHERE request_id=$1`, [req])).rows[0].n).toBe(1);
+  });
+
+  it('the reset WAITS OUT an in-flight invocation open — and then refuses; the reverse order also serializes', async () => {
+    await seedCircuit();
+    // direction 1: an invoker holds the open lock with its pending row uncommitted
+    await c.query('BEGIN');
+    await c.query(`SELECT public.open_notification_worker_invocation('canary', 'race-test', $1)`, [crypto.randomUUID()]);
+    let settled = false;
+    const resetP = call(ADMIN, resetSql(crypto.randomUUID())).finally(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(settled).toBe(false);   // the reset provably waits on the invocation-open lock
+    await c.query('COMMIT');
+    expect((await resetP)[0].r).toBe('rejected_invocation_open');   // …and then SEES the window
+    // clean up the invocation; direction 2: a reset transaction blocks a new open
+    await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    await c.query(`DELETE FROM public.notification_worker_invocations;`);
+    await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    await c.query('BEGIN');
+    await c.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [ADMIN]);
+    expect((await c.query(resetSql(crypto.randomUUID()))).rows[0].r).toBe('reset');   // holds the open lock
+    let settled2 = false;
+    const openP = c2.query(`SELECT public.open_notification_worker_invocation('canary', 'race-test-2', $1) AS id`, [crypto.randomUUID()])
+      .finally(() => { settled2 = true; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(settled2).toBe(false);  // the open provably waits behind the reset
+    await c.query('COMMIT');
+    expect((await openP).rows[0].id).toBeTruthy();   // strictly-after: the open lands cleanly
   });
 });
