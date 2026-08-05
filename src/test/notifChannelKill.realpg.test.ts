@@ -141,6 +141,11 @@ beforeAll(async () => {
   const edevDdl = edev.match(/CREATE TABLE (?:IF NOT EXISTS )?public\.email_delivery_events \([\s\S]*?\n\);/)?.[0];
   if (!edevDdl) throw new Error('email_delivery_events DDL not found');
   await c.query(edevDdl);
+  // ...and the foundation migration's GENERALIZED-delivery-log ALTER: outbox_id is the causal
+  // join the history reader uses (missing it here once hid the real column from review)
+  const edevAlter = foundation.match(/ALTER TABLE public\.email_delivery_events\n {2}ADD COLUMN IF NOT EXISTS channel[\s\S]*?;/)?.[0];
+  if (!edevAlter) throw new Error('email_delivery_events generalization ALTER not found');
+  await c.query(edevAlter);
   await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));   // gauges expose invocations
   await c.query(MIG('20261017100000_notif_n4_channel_kill_switches.sql'));
   // M3: the ops audit — redefines admin_activate_channel_kill THROUGH the audit (global
@@ -624,6 +629,27 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     expect(Number(byEvent.value)).toBe(1);
   });
 
+  it('SATURATION is honest: a 10k+ event caps at 10000 with capped=true, and the OTHER event still gets its exact count', async () => {
+    // set-based fixture: 10001 pending rows for ev_bulk, 1 for ev_test — a channel-wide sample
+    // would have omitted ev_test entirely; per-pair counting must report BOTH truthfully
+    await c.query(`INSERT INTO public.notification_event_types (key, category, audience, priority) VALUES ('ev_bulk', 'booking', 'player', 'transactional') ON CONFLICT (key) DO NOTHING`);
+    await c.query(
+      `INSERT INTO public.notification_outbox (channel, event_type, template_key, status, destination_normalized, scheduled_for, payload, idempotency_key, recipient_user_id)
+       SELECT 'email', 'ev_bulk', 'tpl', 'pending', 'a@example.com', now(), '{}'::jsonb, 'sat-' || g, '${PLAYER}'
+         FROM generate_series(1, 10001) g`);
+    await seedRow();   // one ev_test pending row
+    const rows = await asAdmin(`SELECT * FROM public.admin_notification_gauges()`);
+    const bulk = rows.find((r) => r.metric === 'outbox_by_event_pending' && r.event_type === 'ev_bulk');
+    expect(Number(bulk.value)).toBe(10000);
+    expect(bulk.capped).toBe(true);
+    const small = rows.find((r) => r.metric === 'outbox_by_event_pending' && r.event_type === 'ev_test');
+    expect(Number(small.value)).toBe(1);      // NOT omitted, NOT capped — proven zero-vs-omitted distinction
+    expect(small.capped).toBe(false);
+    const total = rows.find((r) => r.metric === 'outbox_pending' && r.channel === 'email');
+    expect(Number(total.value)).toBe(10000);  // the channel gauge saturates too
+    expect(total.capped).toBe(true);
+  }, 60_000);
+
   it('the outbox feed: EXACT fixed columns (no payload, redacted destination), filters, bounds, half-cursor', async () => {
     const id = await seedRow();
     const rows = await asAdmin(`SELECT * FROM public.admin_list_notification_outbox('email', NULL, 'pending', 7, NULL, NULL, 10)`);
@@ -667,8 +693,13 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     // a raw provider error echoing a destination — it must NEVER cross this boundary
     await c.query(`UPDATE public.notification_outbox SET provider_message_id = 're_inst_1', last_error = 'SMTP 550: NEVER-b <victim@example.com> rejected' WHERE id = $1`, [ob]);
     await c.query(
-      `INSERT INTO public.email_delivery_events (resend_event_id, resend_email_id, event_type, bounce_type, reason, recipient_email, occurred_at)
-       VALUES ('edev_1', 're_inst_1', 'bounced', 'hard', 'reason with NEVER-c marker', 'victim@example.com', now())`);
+      `INSERT INTO public.email_delivery_events (resend_event_id, resend_email_id, outbox_id, event_type, bounce_type, reason, recipient_email, occurred_at)
+       VALUES ('edev_1', 're_inst_1', $1, 'bounced', 'hard', 'reason with NEVER-c marker', 'victim@example.com', now())`, [ob]);
+    // a send_failed event deliberately has NO provider id — the causal outbox_id join is what
+    // keeps it visible (a provider-id join would lose every pre-acceptance failure)
+    await c.query(
+      `INSERT INTO public.email_delivery_events (resend_event_id, resend_email_id, outbox_id, event_type, reason, recipient_email, occurred_at)
+       VALUES ('edev_2', NULL, $1, 'send_failed', 'provider 500 with NEVER-d', 'victim@example.com', now())`, [ob]);
     const rows = await asAdmin(`SELECT * FROM public.admin_notification_delivery_history('${ob}'::uuid)`);
     const kinds = rows.map((r) => r.kind);
     expect(kinds).toContain('outbox_created');
@@ -680,9 +711,16 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     expect(dump).not.toContain('NEVER');                     // payload, raw error AND event reason are all tight
     expect(dump).not.toContain('victim@example.com');        // no raw recipient from any arm
     expect(rows.find((r) => r.kind === 'outbox_state').b).toBe('provider_error');  // classified, not echoed
-    const de = rows.find((r) => r.kind === 'delivery_event');
-    expect(de.a).toBe('bounced');
+    // label-SHAPED hostile values are still PII — the classifier is an ALLOWLIST, not a shape rule
+    const cls = async (e: string) => (await c.query(`SELECT public.notif_error_class($1) AS r`, [e])).rows[0].r;
+    expect(await cls('31612345678')).toBe('provider_error');       // a bare phone number
+    expect(await cls('john_smith')).toBe('provider_error');        // a username
+    expect(await cls('sk_live_abc123')).toBe('provider_error');    // token-ish (dot/dash-free)
+    expect(await cls('stuck_in_processing')).toBe('stuck_in_processing');  // ours pass
+    expect(await cls('invalid_phone')).toBe('invalid_phone');
+    const de = rows.find((r) => r.kind === 'delivery_event' && r.a === 'bounced');
     expect(de.b).toBe('hard');
+    expect(rows.some((r) => r.kind === 'delivery_event' && r.a === 'send_failed')).toBe(true);   // NULL provider id still visible
     expect(rows.find((r) => r.kind === 'outbox_created').c).toBe('a***@example.com');
     // bounded: clamp + real composite cursor + half-cursor refusal
     // the cursor needs FULL microsecond precision — select at::text alongside (node-pg's Date

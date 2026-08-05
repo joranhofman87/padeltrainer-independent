@@ -34,9 +34,18 @@ GRANT EXECUTE ON FUNCTION public.notif_admin_gate() TO authenticated, service_ro
 -- codes pass through; everything else collapses to 'provider_error'.
 CREATE OR REPLACE FUNCTION public.notif_error_class(p_error text) RETURNS text
 LANGUAGE sql IMMUTABLE AS $$
+  -- an explicit ALLOWLIST, not a shape rule: last_error is provider-controlled free text, and
+  -- label-SHAPED values can still be PII (a bare phone number, a username, a lowercase token).
+  -- Only codes OUR workers write pass; everything else — including unknown future internal
+  -- codes, deliberately, fail-closed — reads as provider_error.
   SELECT CASE
     WHEN p_error IS NULL THEN NULL
-    WHEN p_error ~ '^[a-z0-9_]{1,40}$' THEN p_error
+    WHEN p_error IN (
+      'stuck_in_processing',
+      'email_suppressed', 'suppression_check_failed', 'consent_check_failed',
+      'stop_policy_check_failed', 'missing_subject_or_html', 'missing_destination',
+      'invalid_phone', 'no_whatsapp_template', 'whatsapp_not_consented', 'missing_content_sid'
+    ) THEN p_error
     ELSE 'provider_error'
   END;
 $$;
@@ -52,6 +61,7 @@ DECLARE
   CAP constant int := 10000;
   ch text;
   st text;
+  ev text;
   v bigint;
 BEGIN
   PERFORM public.notif_admin_gate();
@@ -64,18 +74,22 @@ BEGIN
       value := least(v, CAP); capped := v > CAP;
       RETURN NEXT;
     END LOOP;
-    -- the EVENT dimension (which event is failing / backing up) — computed over a CAPPED scan,
-    -- so per-event counts under saturation are partial AND SAY SO
-    FOR event_type, metric, v, capped IN
-      SELECT b.event_type, 'outbox_by_event_' || b.status, count(*),
-             (SELECT count(*) FROM (SELECT 1 FROM public.notification_outbox o2
-                                     WHERE o2.channel = ch LIMIT CAP + 1) t) > CAP
-        FROM (SELECT o.event_type, o.status FROM public.notification_outbox o
-               WHERE o.channel = ch LIMIT CAP + 1) b
-       GROUP BY b.event_type, b.status
-    LOOP
-      channel := ch; value := v;
-      RETURN NEXT;
+    -- the EVENT dimension (which event is failing / backing up): every catalog event x status
+    -- pair gets its OWN saturating count — a channel-wide sample could silently omit whole
+    -- events under saturation, making "zero" and "not sampled" indistinguishable. The catalog
+    -- is bounded, so this loop is too; zero pairs are skipped (their absence is PROVEN zero,
+    -- because every pair was counted).
+    FOR ev IN SELECT et.key FROM public.notification_event_types et ORDER BY et.key LOOP
+      FOREACH st IN ARRAY ARRAY['pending', 'processing', 'failed', 'skipped'] LOOP
+        SELECT count(*) INTO v FROM (
+          SELECT 1 FROM public.notification_outbox o
+           WHERE o.channel = ch AND o.event_type = ev AND o.status = st LIMIT CAP + 1) b;
+        IF v > 0 THEN
+          metric := 'outbox_by_event_' || st; channel := ch; event_type := ev;
+          value := least(v, CAP); capped := v > CAP;
+          RETURN NEXT;
+        END IF;
+      END LOOP;
     END LOOP;
     event_type := NULL;
     -- oldest-pending, split by phase (finding 15): a single "oldest" hides whether the backlog
@@ -252,7 +266,7 @@ CREATE OR REPLACE FUNCTION public.admin_notification_delivery_history(
   at timestamptz, kind text, a text, b text, c text, ref text
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_group uuid; v_pmid text;
+DECLARE v_group uuid;
 BEGIN
   PERFORM public.notif_admin_gate();
   IF NOT EXISTS (SELECT 1 FROM public.notification_outbox o WHERE o.id = p_outbox_id) THEN
@@ -261,7 +275,7 @@ BEGIN
   IF (p_before_at IS NULL) <> (p_before_ref IS NULL) THEN
     RAISE EXCEPTION 'admin_notification_delivery_history: a keyset cursor needs BOTH at and ref (or neither)';
   END IF;
-  SELECT o.digest_group_id, o.provider_message_id INTO v_group, v_pmid
+  SELECT o.digest_group_id INTO v_group
     FROM public.notification_outbox o WHERE o.id = p_outbox_id;
   RETURN QUERY
   SELECT * FROM (
@@ -280,10 +294,13 @@ BEGIN
     -- INSTANT delivery outcomes: the email delivery-event ledger, joined on the provider
     -- message id this row was accepted under. Typed columns only — reason and the raw
     -- recipient are deliberately omitted (finding 4).
+    -- joined on outbox_id (the foundation migration generalized this ledger and both instant
+    -- workers populate it): send_failed rows deliberately carry NO provider id, and an earlier
+    -- attempt's outcome must not vanish when the row's current provider id changes
     SELECT de.occurred_at, 'delivery_event', de.event_type, de.bounce_type, de.resend_email_id,
            'de:' || de.id::text
       FROM public.email_delivery_events de
-     WHERE v_pmid IS NOT NULL AND de.resend_email_id = v_pmid
+     WHERE de.outbox_id = p_outbox_id
     UNION ALL
     -- digest attempts (when the row is a digest member): outcome_class + http + provider id
     SELECT a2.started_at, 'digest_attempt', a2.outcome_class,
@@ -383,3 +400,23 @@ COMMENT ON FUNCTION public.admin_notification_event_states() IS
   'N4 M4 (finding 16): per event x channel, EVERY authority reported separately — catalog, engine flag, academy off-caps, cron (plain allowlisted SELECT, no command, absence/no-read honest), circuit, kill (authoritative DB state), and send_env ALWAYS ''unverifiable'' (DIGEST_SEND_ENABLED is an edge env var no SQL can read — the UI must show this line, not a tooltip). Conclusion is the honest tri-state: stopped on any definitive SQL-visible stop; unknown when the path depends on the unverifiable env; sendable only when every SQL-visible authority allows and none is unverifiable.';
 REVOKE ALL ON FUNCTION public.admin_notification_event_states() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_notification_event_states() TO authenticated, service_role;
+
+-- ── read-work bounds (M4 round-2 finding 4): the readers' scans need leading indexes — an
+-- outer LIMIT bounds the OUTPUT, not the union/sort work underneath it ─────────────────────
+CREATE INDEX IF NOT EXISTS idx_ede_outbox_timeline
+  ON public.email_delivery_events (outbox_id, occurred_at DESC, id DESC)
+  WHERE outbox_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_digest_attempts_timeline
+  ON public.notification_digest_attempts (digest_group_id, started_at DESC, attempt_id DESC);
+CREATE INDEX IF NOT EXISTS idx_provider_events_timeline
+  ON public.notification_provider_events (digest_group_id, received_at DESC, resend_event_id DESC);
+CREATE INDEX IF NOT EXISTS idx_orphan_state_timeline
+  ON public.notification_orphan_reconcile_state (digest_group_id, updated_at DESC, resend_event_id DESC);
+-- the oldest-age gauges: partial, channel-leading
+CREATE INDEX IF NOT EXISTS idx_outbox_oldest_pending
+  ON public.notification_outbox (channel, scheduled_for) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_outbox_oldest_processing
+  ON public.notification_outbox (channel, locked_at) WHERE status = 'processing';
+CREATE INDEX IF NOT EXISTS idx_digest_groups_oldest_uncertain
+  ON public.notification_digest_groups (channel, uncertain_since)
+  WHERE uncertain_since IS NOT NULL AND terminal_at IS NULL;
