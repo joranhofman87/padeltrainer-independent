@@ -3069,6 +3069,39 @@ export type Database = {
           },
         ]
       }
+      email_marketing_suppression: {
+        Row: {
+          address_normalized: string
+          capability_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          scope_id: string | null
+          scope_kind: string
+          source: string
+        }
+        Insert: {
+          address_normalized: string
+          capability_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          scope_id?: string | null
+          scope_kind: string
+          source: string
+        }
+        Update: {
+          address_normalized?: string
+          capability_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          scope_id?: string | null
+          scope_kind?: string
+          source?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           academy_profile_id: string | null
@@ -4639,6 +4672,7 @@ export type Database = {
           default_whatsapp_frequency: string
           digest_cutover: boolean
           digest_engine_enabled: boolean
+          email_footer_policy: string
           key: string
           max_per_user_per_day: number | null
           max_per_user_per_hour: number | null
@@ -4666,6 +4700,7 @@ export type Database = {
           default_whatsapp_frequency?: string
           digest_cutover?: boolean
           digest_engine_enabled?: boolean
+          email_footer_policy?: string
           key: string
           max_per_user_per_day?: number | null
           max_per_user_per_hour?: number | null
@@ -4693,6 +4728,7 @@ export type Database = {
           default_whatsapp_frequency?: string
           digest_cutover?: boolean
           digest_engine_enabled?: boolean
+          email_footer_policy?: string
           key?: string
           max_per_user_per_day?: number | null
           max_per_user_per_hour?: number | null
@@ -4709,6 +4745,75 @@ export type Database = {
           updated_at?: string
           visibility_scope?: string
           whatsapp_optin_via_booking?: boolean
+        }
+        Relationships: []
+      }
+      notification_manage_capabilities: {
+        Row: {
+          address_normalized: string
+          created_at: string
+          destination_fingerprint: string
+          expires_at: string
+          id: string
+          key_version: number
+          kind: string
+          last_used_at: string | null
+          revoked_at: string | null
+          scope_id: string | null
+          scope_kind: string
+          source_id: string
+          source_kind: string
+        }
+        Insert: {
+          address_normalized: string
+          created_at?: string
+          destination_fingerprint: string
+          expires_at: string
+          id?: string
+          key_version: number
+          kind: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          scope_id?: string | null
+          scope_kind: string
+          source_id: string
+          source_kind: string
+        }
+        Update: {
+          address_normalized?: string
+          created_at?: string
+          destination_fingerprint?: string
+          expires_at?: string
+          id?: string
+          key_version?: number
+          kind?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          scope_id?: string | null
+          scope_kind?: string
+          source_id?: string
+          source_kind?: string
+        }
+        Relationships: []
+      }
+      notification_manage_key_state: {
+        Row: {
+          current_version: number
+          id: boolean
+          min_mintable_version: number
+          updated_at: string
+        }
+        Insert: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
+        }
+        Update: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -5504,6 +5609,7 @@ export type Database = {
           body_html: string
           created_at: string
           delay_days: number
+          delivery_class: string
           id: string
           is_active: boolean
           name: string
@@ -5516,6 +5622,7 @@ export type Database = {
           body_html: string
           created_at?: string
           delay_days?: number
+          delivery_class?: string
           id?: string
           is_active?: boolean
           name: string
@@ -5528,6 +5635,7 @@ export type Database = {
           body_html?: string
           created_at?: string
           delay_days?: number
+          delivery_class?: string
           id?: string
           is_active?: boolean
           name?: string
@@ -9382,6 +9490,10 @@ export type Database = {
         Args: { _cycle_id: string; _keys: string[] }
         Returns: undefined
       }
+      apply_notification_manage_action: {
+        Args: { p_action: string; p_capability_id: string; p_source: string }
+        Returns: string
+      }
       apply_notification_provider_event: {
         Args: {
           p_digest_group_id: string
@@ -10169,6 +10281,17 @@ export type Database = {
           opted_in: boolean
         }[]
       }
+      get_notification_manage_context: {
+        Args: { p_capability_id: string }
+        Returns: {
+          destination_redacted: string
+          key_version: number
+          kind: string
+          scope_display_name: string
+          scope_kind: string
+          status: string
+        }[]
+      }
       get_or_create_short_link: {
         Args: {
           _permanent?: boolean
@@ -10512,6 +10635,10 @@ export type Database = {
         Args: { _guest_player_id: string }
         Returns: boolean
       }
+      is_marketing_suppressed: {
+        Args: { p_address: string; p_scope_id: string; p_scope_kind: string }
+        Returns: boolean
+      }
       is_notification_consent_in_scope: {
         Args: {
           _consent_academy: string
@@ -10580,6 +10707,21 @@ export type Database = {
           p_target_guest_id: string
         }
         Returns: Json
+      }
+      mint_notification_manage_capability: {
+        Args: {
+          p_address: string
+          p_kind: string
+          p_scope_id: string
+          p_scope_kind: string
+          p_source_id: string
+          p_source_kind: string
+          p_ttl: string
+        }
+        Returns: {
+          capability_id: string
+          key_version: number
+        }[]
       }
       next_invoice_sequence: {
         Args: { p_min?: number; p_profile_id: string; p_profile_type: string }
@@ -10985,6 +11127,17 @@ export type Database = {
           p_trainer_id?: string
         }
         Returns: undefined
+      }
+      record_marketing_suppression: {
+        Args: {
+          p_address: string
+          p_capability_id?: string
+          p_created_by?: string
+          p_scope_id: string
+          p_scope_kind: string
+          p_source: string
+        }
+        Returns: boolean
       }
       record_notification_digest_result: {
         Args: {
