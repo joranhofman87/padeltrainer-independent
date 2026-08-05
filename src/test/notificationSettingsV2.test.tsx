@@ -33,7 +33,8 @@ let authState = {
   loading: false,
 };
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+const navigateMock = vi.fn();
+vi.mock('react-router-dom', () => ({ useNavigate: () => navigateMock }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 // The mock INTERPOLATES {{vars}} like real i18next — otherwise a value passed into a string
 // (the redacted number below) is invisible to assertions and could silently go missing.
@@ -98,6 +99,10 @@ beforeEach(() => {
   v2rows = [];
   v1row = null;
   v2ReadError = null;
+  navigateMock.mockClear();
+  // A fresh tab from an email link: React Router's history index is 0, i.e. nothing of ours
+  // behind us. Individual tests raise it to model in-app navigation.
+  window.history.replaceState({ idx: 0 }, '');
   authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isAcademyManager: false, loading: false };
   catalog = [
     evt({ key: 'booking_confirmed_player', required_delivery: true }),
@@ -245,6 +250,37 @@ describe('NotificationSettings v2', () => {
     // row falls back to the catalog's weekly default for open_slots_player.
     expect(freq('pref-row-upcoming_sessions_digest')).toBe('daily');
     expect(freq('pref-row-booking_confirmation')).toBe('instant');
+  });
+
+  describe('the Back control at the neutral email-entry route', () => {
+    // An email footer opens a FRESH tab, so navigate(-1) has nothing to go back to. The fallback
+    // must be a surface the account can actually ENTER: the first version guessed, and sent a
+    // club-only account to /app/player, whose layout guard redirects it to the login form.
+    const homes: Array<[string, Partial<typeof authState>, string]> = [
+      ['academy manager', { isAcademyManager: true }, '/app/academy'],
+      ['admin', { role: 'admin', roles: ['admin'] }, '/app/admin'],
+      ['trainer', { role: 'trainer', roles: ['trainer'] }, '/app/trainer'],
+      ['club', { role: 'club', roles: ['club'] }, '/app/club'],
+      ['club manager without the role', { isClubManager: true }, '/app/club'],
+      ['academy staff who is not a manager', { role: 'academy', roles: ['academy'] }, '/app/academy/onboarding'],
+      ['player', { role: 'player', roles: ['player'] }, '/app/player'],
+    ];
+
+    it.each(homes)('with no in-app history, %s goes to its own home', async (_l, patch, expected) => {
+      authState = { ...authState, ...patch };
+      render(<NotificationSettings />);
+      const back = await screen.findByLabelText('back');
+      back.click();
+      expect(navigateMock).toHaveBeenCalledWith(expected);
+    });
+
+    it('prefers real in-app history when there is any', async () => {
+      window.history.replaceState({ idx: 3 }, '');
+      render(<NotificationSettings />);
+      const back = await screen.findByLabelText('back');
+      back.click();
+      expect(navigateMock).toHaveBeenCalledWith(-1);
+    });
   });
 
   it('STAFF filtering reads the ROLES set — admin+trainer is staff, though role is admin', async () => {

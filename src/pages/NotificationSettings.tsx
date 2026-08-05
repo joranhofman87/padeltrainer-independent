@@ -13,6 +13,7 @@ import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
+import { roleHomePath } from '@/lib/roleHome';
 import { ArrowLeft, Bell, Lock, MessageCircle } from 'lucide-react';
 import { logger } from '@/lib/logger';
 
@@ -129,7 +130,7 @@ type LegacyKey = (typeof LEGACY_PLAYER)[number] | (typeof LEGACY_STAFF)[number];
 const STAFF_AUDIENCES = new Set(['academy_manager', 'trainer']);
 
 export default function NotificationSettings() {
-  const { user, roles, isAcademyManager, loading } = useAuth();
+  const { user, role, roles, isClubManager, isAcademyManager, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation('common');
@@ -356,6 +357,10 @@ export default function NotificationSettings() {
    * a FRESH tab, so there is no in-app entry to go back to, and in a reused tab it can walk out of
    * the app entirely. React Router stamps a history index, so fall back to this account's home
    * when there is nothing of ours behind us.
+   *
+   * The home comes from `roleHomePath`, which mirrors Auth's own post-login table. Guessing it
+   * here instead sent a CLUB-only account to `/app/player`, where the layout guard rejects it and
+   * redirects to the login form — a Back button that logs you out.
    */
   const goBack = () => {
     const historyIndex = (window.history.state as { idx?: number } | null)?.idx;
@@ -363,7 +368,7 @@ export default function NotificationSettings() {
       navigate(-1);
       return;
     }
-    navigate(isAcademyManager ? '/app/academy' : roles.includes('trainer') ? '/app/trainer' : '/app/player');
+    navigate(roleHomePath({ isAcademyManager, isClubManager, role }));
   };
 
   const eventLabel = (key: string) => t(`notifications.events.${key}.label`, key.replace(/_/g, ' '));
