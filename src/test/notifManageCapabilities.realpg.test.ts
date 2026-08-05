@@ -43,8 +43,14 @@ const ACADEMY = '22222222-2222-4222-8222-222222222222';
 const TRAINER = '33333333-3333-4333-8333-333333333333';
 const SEND_A = '44444444-4444-4444-8444-444444444444';
 const SEND_B = '55555555-5555-4555-8555-555555555555';
-/** a stand-in capability id for suppression fixtures written outside apply() */
-const CAP_FIXTURE = '99999999-9999-4999-8999-999999999999';
+/** dedicated send ids for FIXTURE capabilities, so a fixture mint never collides with a test's
+ *  own send — identity is (source_kind, source_id), and a reused id is a claim collision. */
+const SEND_FIXTURE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const SEND_PROV = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const SEND_PROV2 = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+/** Fixtures that write a token-sourced suppression must cite a REAL capability now — a
+ *  stand-in uuid is exactly what the authority validation refuses. Minted per test in beforeEach. */
+let CAP_FIXTURE = '';
 
 const mintOn = async (client: InstanceType<typeof Client>, over: Record<string, unknown> = {}) => {
   const a = {
@@ -159,6 +165,9 @@ beforeEach(async () => {
     INSERT INTO public.notification_manage_key_state (id) VALUES (true);
     ALTER TABLE public.notification_manage_key_state ENABLE TRIGGER trg_notif_manage_key_state_guard;
   `);
+  // A real academy-scoped capability for 'person@example.com', so suppression fixtures can cite an
+  // authority that actually exists.
+  CAP_FIXTURE = (await mint({ source_id: SEND_FIXTURE })).capability_id;
 });
 
 describe('email_marketing_suppression', () => {
@@ -182,15 +191,15 @@ describe('email_marketing_suppression', () => {
   });
 
   it('platform-scope uniqueness really is unique (plain UNIQUE dedupes nothing over NULL)', async () => {
-    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`);
-    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`);
+    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual', NULL, '${U1}')`);
+    await c.query(`SELECT public.record_marketing_suppression('a@b.nl', 'platform', NULL, 'manual', NULL, '${U1}')`);
     const n = await c.query(
       `SELECT count(*)::int AS n FROM public.email_marketing_suppression WHERE scope_id IS NULL`);
     expect(n.rows[0].n).toBe(1);
   });
 
   it('scope semantics: platform covers every scope; a tenant row covers only its tenant', async () => {
-    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'academy', $1, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`, [ACADEMY]);
+    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'academy', $1, 'manual', NULL, '${U1}')`, [ACADEMY]);
     const q = async (scopeKind: string, scopeId: string | null) =>
       (await c.query(`SELECT public.is_marketing_suppressed('T@x.nl', $1, $2) AS s`,
         [scopeKind, scopeId])).rows[0].s;
@@ -199,7 +208,7 @@ describe('email_marketing_suppression', () => {
     expect(await q('trainer', TRAINER)).toBe(false);
     expect(await q('platform', null)).toBe(false);
 
-    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'platform', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`);
+    await c.query(`SELECT public.record_marketing_suppression('t@x.nl', 'platform', NULL, 'manual', NULL, '${U1}')`);
     expect(await q('trainer', TRAINER)).toBe(true);    // platform arm covers every scope
     expect(await q('platform', null)).toBe(true);
   });
@@ -216,10 +225,10 @@ describe('email_marketing_suppression', () => {
 
   it('scope coherence is validated by the writer too, not trusted', async () => {
     await expect(c.query(
-      `SELECT public.record_marketing_suppression('a@b.nl', 'academy', NULL, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`))
+      `SELECT public.record_marketing_suppression('a@b.nl', 'academy', NULL, 'manual', NULL, '${U1}')`))
       .rejects.toThrow(/disagree/);
     await expect(c.query(
-      `SELECT public.record_marketing_suppression('a@b.nl', 'platform', $1, 'manual', NULL, '88888888-8888-4888-8888-888888888888')`, [ACADEMY]))
+      `SELECT public.record_marketing_suppression('a@b.nl', 'platform', $1, 'manual', NULL, '${U1}')`, [ACADEMY]))
       .rejects.toThrow(/disagree/);
   });
 });
@@ -455,6 +464,15 @@ describe('key state is the retirement authority, and it fails closed', () => {
 describe('suppression provenance is coherent, not merely conventional', () => {
   // An audit column that can disagree with itself answers nothing. A token-authorized suppression
   // must name the capability and no human; an operator's must name the operator and no capability.
+  // Every valid row must cite an authority that EXISTS and matches this address + scope, so the
+  // fixture mints one rather than inventing a uuid.
+  let CAP_ID = '';
+  const ACTOR = U1;                                  // a real account, per the new validation
+  beforeEach(async () => {
+    CAP_ID = (await mint({
+      address: 'prov@example.com', scope_kind: 'platform', scope_id: null, source_id: SEND_PROV,
+    })).capability_id;
+  });
   const rec = async (source: string, capId: string | null, actor: string | null) => {
     try {
       await c.query(
@@ -463,8 +481,6 @@ describe('suppression provenance is coherent, not merely conventional', () => {
       return null;
     } catch (e) { return (e as { message: string }).message; }
   };
-  const CAP_ID = '66666666-6666-4666-8666-666666666666';
-  const ACTOR = '77777777-7777-4777-8777-777777777777';
 
   it('accepts exactly the coherent combinations', async () => {
     expect(await rec('one_click', CAP_ID, null)).toBeNull();
@@ -484,8 +500,10 @@ describe('suppression provenance is coherent, not merely conventional', () => {
     expect(await rec('manual', null, null)).toMatch(/names the operator/);
     expect(await rec('manual', CAP_ID, null)).toMatch(/names the operator/);
     expect(await rec('manual', CAP_ID, ACTOR)).toMatch(/carries no capability/);
-    // and an unknown source never reaches the table
+    // and an unknown or NULL source never reaches the table (SQL NOT IN yields NULL for NULL,
+    // so the null arm is explicit — otherwise it died on the column constraint instead)
     expect(await rec('somehow', CAP_ID, null)).toMatch(/unknown source/);
+    expect(await rec(null as unknown as string, CAP_ID, null)).toMatch(/unknown source/);
     const n = (await c.query(`SELECT count(*)::int AS n FROM public.email_marketing_suppression`)).rows[0].n;
     expect(n).toBe(0);
   });
@@ -504,6 +522,19 @@ describe('suppression provenance is coherent, not merely conventional', () => {
     expect(await direct('manual', CAP_ID, ACTOR)).toMatch(/provenance_coherent/);
     expect(await direct('manage_page', CAP_ID, ACTOR)).toMatch(/provenance_coherent/);
     expect(await direct('one_click', CAP_ID, null)).toBeNull();   // the coherent one still lands
+  });
+
+  it('the named AUTHORITY must be real, and must match this address and scope', async () => {
+    // Shape coherence only says which KIND of authority acted; it does not say one did.
+    const ghost = '66666666-6666-4666-8666-666666666666';
+    expect(await rec('one_click', ghost, null)).toMatch(/does not exist, or is not for this address and scope/);
+    // a REAL capability, but minted for a different address
+    const other = (await mint({ address: 'elsewhere@example.com', scope_kind: 'platform',
+      scope_id: null, source_id: SEND_PROV2 })).capability_id;
+    expect(await rec('one_click', other, null)).toMatch(/not for this address and scope/);
+    // ...and a manual actor must be an actual account
+    expect(await rec('manual', null, '66666666-6666-4666-8666-666666666666'))
+      .toMatch(/is not an account/);
   });
 
   it('a real one-click through apply() lands a coherent audit row', async () => {
@@ -547,7 +578,17 @@ describe('immutability + ACLs', () => {
       `SELECT * FROM public.notification_manage_key_state`)).toBe('42501');
     // service_role: the RPCs work, direct writes to the capability table do not
     expect(await as('service_role',
-      `SELECT public.record_marketing_suppression('svc@b.nl','platform',NULL,'manual',NULL,'88888888-8888-4888-8888-888888888888')`)).toBeNull();
+      `SELECT public.record_marketing_suppression('svc@b.nl','platform',NULL,'manual',NULL,'${U1}')`)).toBeNull();
+    // ...but suppression is MONOTONIC, so the service key must not be able to erase or rewrite it
+    expect(await as('service_role', `DELETE FROM public.email_marketing_suppression`)).toBe('42501');
+    expect(await as('service_role',
+      `UPDATE public.email_marketing_suppression SET source = 'manual'`)).toBe('42501');
+    expect(await as('service_role', `TRUNCATE public.email_marketing_suppression`)).toBe('42501');
+    expect(await as('service_role',
+      `INSERT INTO public.email_marketing_suppression
+         (address_normalized, scope_kind, source, created_by)
+       VALUES ('x@y.nl','platform','manual','${U1}')`)).toBe('42501');
+    expect(await as('service_role', `SELECT * FROM public.email_marketing_suppression`)).toBeNull();
     expect(await as('service_role',
       `UPDATE public.notification_manage_capabilities SET revoked_at = now()`)).toBe('42501');
     expect(await as('service_role',

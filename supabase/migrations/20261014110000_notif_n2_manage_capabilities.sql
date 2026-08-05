@@ -59,6 +59,20 @@
 -- key instead fails CLOSED at the edge: the verifier refuses a token whose stored version is
 -- below the minimum, and the link (or the retry) terminal-fails honestly.
 --
+-- WHAT ROTATION DOES **NOT** GUARANTEE, stated plainly because the opposite is easy to assume.
+-- The row lock below serializes rotation against MINT. It cannot serialize rotation against a
+-- provider send: between the mint's commit and the moment Resend accepts the message there is an
+-- external call this database has no part in, so a retirement committed inside that window ships
+-- with mail already in flight. Those links are dead on arrival — they fail closed at click, and
+-- the recipient sees an unsubscribe that does nothing.
+--
+-- That is ACCEPTED, not overlooked. Raising the floor is an emergency act (a burned key), and the
+-- alternative — a drain/lease/grace protocol spanning the worker's provider call — is a whole
+-- subsystem whose failure modes would be less understood than the one it removes. The narrow,
+-- true invariant is: **no capability is ever minted, returned, or signed under a generation that
+-- was already retired at the time of that operation.** Mail in flight across an emergency
+-- retirement is out of scope and is recorded in docs/NOTIFICATION_FOLLOWUPS.md §N2.
+--
 -- ONE KIND, `marketing_unsubscribe`, and one token per send serving BOTH surfaces: the footer
 -- URL (which opens the manage page) and the RFC 8058 one-click POST header. An earlier draft had
 -- a second `manage_context` kind for the page, which contradicted one-capability-per-send — the
@@ -268,11 +282,13 @@ BEGIN
   -- arrival, with no signal anywhere. Fail-closed at click time is not good enough for a link we
   -- chose to print.
   --
-  -- FOR SHARE conflicts with the FOR UPDATE an owner's `UPDATE … SET min_mintable_version` takes,
-  -- so the two serialize in both directions: a mint in flight delays the rotation, and a rotation
-  -- in flight delays the mint (which then reads the NEW window). It does not conflict with other
-  -- mints, so concurrent sends still proceed in parallel — the lock is on the one tiny
-  -- recipient-independent row, held for the microseconds this function runs.
+  -- FOR SHARE is the right strength. An owner's `UPDATE … SET min_mintable_version` touches no key
+  -- column, so it takes FOR NO KEY UPDATE — and FOR SHARE conflicts with that (and with FOR
+  -- UPDATE), so the two serialize in both directions: a mint in flight delays the rotation, and a
+  -- rotation in flight delays the mint, which then reads the NEW window. FOR KEY SHARE would be
+  -- too weak (it permits FOR NO KEY UPDATE to proceed). FOR SHARE does not conflict with itself,
+  -- so concurrent sends still mint in parallel — the lock is on one tiny recipient-independent
+  -- row, held for the microseconds this function runs.
   SELECT current_version, min_mintable_version INTO v_version, v_min
     FROM public.notification_manage_key_state WHERE id FOR SHARE;
   IF v_version IS NULL THEN
@@ -327,7 +343,14 @@ BEGIN
   -- mail signed by it was still in flight, and the retry cannot honour both the frozen request and
   -- the retirement. A failed send retries and alerts; a delivered dead unsubscribe link does not.
   IF v_row.key_version < v_min THEN
-    RAISE EXCEPTION 'mint_notification_manage_capability: % % has a capability signed by RETIRED generation % (floor is %) — its links cannot work, and re-signing would change an already-frozen request', p_source_kind, p_source_id, v_row.key_version, v_min;
+    -- SQLSTATE 'NMRET' is a CONTRACT, not decoration. Without a distinguishable code a worker
+    -- reads this as an ordinary RPC failure and retries the same durable send forever — a poison
+    -- retry that never resolves, because nothing about it can change. Callers must classify
+    -- 'NMRET' as TERMINAL-for-this-send plus an ops alert: the operator retired a key while mail
+    -- signed by it was still retryable, and only they can decide what happens to it. The send
+    -- IDENTITY is preserved either way — no capability is rewritten.
+    RAISE EXCEPTION 'mint_notification_manage_capability: % % has a capability signed by RETIRED generation % (floor is %) — its links cannot work, and re-signing would change an already-frozen request', p_source_kind, p_source_id, v_row.key_version, v_min
+      USING ERRCODE = 'NMRET';
   END IF;
 
   RETURN QUERY SELECT v_row.id, v_row.key_version;

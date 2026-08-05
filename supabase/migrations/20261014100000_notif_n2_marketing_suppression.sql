@@ -71,11 +71,22 @@ CREATE UNIQUE INDEX uniq_marketing_suppression_platform
 COMMENT ON TABLE public.email_marketing_suppression IS
   'Address-keyed marketing opt-outs per sending scope (platform | academy | trainer). Read at send time by campaign/onboarding senders; NEVER read by service notifications. Monotonic: rows are only ever added here — removing one is an explicit, audited operator decision, deliberately not implemented by any token endpoint.';
 
--- Service-role only, RLS enabled with ZERO policies BY DESIGN (the persons-tables doctrine):
--- suppression rows carry raw addresses, and the write paths are token endpoints + workers.
+-- RLS enabled with ZERO policies BY DESIGN (the persons-tables doctrine): suppression rows carry
+-- raw addresses, and every write goes through the definer RPC below.
+--
+-- service_role is REVOKED EXPLICITLY, and that is not belt-and-braces. This project's
+-- ALTER DEFAULT PRIVILEGES grants service_role ALL on new tables, and service_role carries
+-- BYPASSRLS — so a bare "REVOKE FROM PUBLIC, anon, authenticated" would leave every edge function
+-- holding the service key able to DELETE an opt-out, TRUNCATE the table, or rewrite a row's
+-- provenance. Suppression is supposed to be MONOTONIC; a role that can erase it makes that a
+-- convention rather than a property.
+--
+-- Not even INSERT is granted: `record_marketing_suppression` is SECURITY DEFINER and writes as the
+-- owner, so a direct insert would only be a way to bypass the validation it performs. SELECT stays,
+-- because operator/admin surfaces legitimately read this.
 ALTER TABLE public.email_marketing_suppression ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.email_marketing_suppression FROM PUBLIC, anon, authenticated;
-GRANT SELECT, INSERT ON public.email_marketing_suppression TO service_role;
+REVOKE ALL ON public.email_marketing_suppression FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON public.email_marketing_suppression TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- Send-time read. Fails CLOSED in BOTH directions: true means suppressed, and a MALFORMED call
@@ -153,8 +164,11 @@ BEGIN
   IF (p_scope_kind = 'platform') <> (p_scope_id IS NULL) THEN
     RAISE EXCEPTION 'record_marketing_suppression: scope_kind % and scope_id disagree', p_scope_kind;
   END IF;
-  IF p_source NOT IN ('one_click', 'manage_page', 'manual') THEN
-    RAISE EXCEPTION 'record_marketing_suppression: unknown source %', p_source;
+  -- The NULL arm is explicit because SQL `NOT IN` yields NULL for a NULL left side, so a NULL
+  -- source would slip past this check and die later on the column's NOT NULL — producing exactly
+  -- the bare constraint error these named refusals exist to replace.
+  IF p_source IS NULL OR p_source NOT IN ('one_click', 'manage_page', 'manual') THEN
+    RAISE EXCEPTION 'record_marketing_suppression: unknown source %', coalesce(p_source, '<null>');
   END IF;
   -- The same provenance rule the table constrains, enforced HERE too so the caller gets a named
   -- refusal rather than a bare constraint violation — and so the rule survives even if this
@@ -164,6 +178,30 @@ BEGIN
   END IF;
   IF p_source = 'manual' AND (p_created_by IS NULL OR p_capability_id IS NOT NULL) THEN
     RAISE EXCEPTION 'record_marketing_suppression: a manual suppression names the operator who made it and carries no capability';
+  END IF;
+
+  -- ...AND THE NAMED AUTHORITY MUST BE REAL. Shape coherence only proves the columns agree about
+  -- which KIND of authority acted; it does not prove one did. A row citing a capability that never
+  -- existed, or one belonging to a different address or scope, still cannot answer "on what
+  -- authority?" — which is the only question this column exists for.
+  --
+  -- The reference stays SOFT (no FK) on purpose: a purged capability or a deleted operator must
+  -- not erase the suppression they produced. Validating at WRITE time and not enforcing at read
+  -- time is exactly the combination that gives a durable, honest audit trail.
+  IF p_capability_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.notification_manage_capabilities c
+       WHERE c.id = p_capability_id
+         AND c.address_normalized = v_address
+         AND c.scope_kind = p_scope_kind
+         AND c.scope_id IS NOT DISTINCT FROM p_scope_id
+    ) THEN
+      RAISE EXCEPTION 'record_marketing_suppression: capability % does not exist, or is not for this address and scope', p_capability_id;
+    END IF;
+  END IF;
+  IF p_created_by IS NOT NULL AND NOT EXISTS (
+       SELECT 1 FROM auth.users u WHERE u.id = p_created_by) THEN
+    RAISE EXCEPTION 'record_marketing_suppression: created_by % is not an account', p_created_by;
   END IF;
 
   INSERT INTO public.email_marketing_suppression
