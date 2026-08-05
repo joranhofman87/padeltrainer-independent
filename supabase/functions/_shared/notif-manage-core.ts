@@ -58,11 +58,19 @@ export interface ManageEndpointDeps {
   keyLookup?: KeyLookup;
 }
 
-export type EndpointResult = { status: number; body: Record<string, unknown> };
+export type EndpointResult = {
+  status: number;
+  body: Record<string, unknown>;
+  /** Extra response headers. OPERATIONAL results carry Retry-After — the shared token contract
+   *  promises "503 + Retry-After", and a promise a wrapper must remember to keep is a promise
+   *  broken; putting it on the result makes the wrappers' passthrough the only moving part. */
+  headers?: Record<string, string>;
+};
 
 const OPERATIONAL: EndpointResult = {
   status: 503,
   body: { error: "temporarily_unavailable", retryable: true },
+  headers: { "Retry-After": "300" },
 };
 
 /** Map an apply-RPC verdict to transport. Exported for the wrappers' tests. */
@@ -89,13 +97,36 @@ function applyVerdictToResult(verdict: string): EndpointResult {
 }
 
 /**
- * The RFC 8058 one-click POST. Verify → apply('one_click') → map. No context read: the apply RPC
- * re-validates liveness row-side under FOR UPDATE, which is the authoritative check.
+ * True iff the POST body is the RFC 8058 one-click action: form-encoded
+ * `List-Unsubscribe=One-Click`. REQUIRED before anything applies — mailbox scanners and generic
+ * probes POST to List-Unsubscribe URLs too, and the body marker is exactly how the RFC
+ * distinguishes the deliberate action from a probe. Exported for the wrapper's parity pin.
+ */
+export function isOneClickBody(contentType: string | null, rawBody: string): boolean {
+  if (!contentType || !contentType.toLowerCase().includes("application/x-www-form-urlencoded")) {
+    return false;
+  }
+  try {
+    return new URLSearchParams(rawBody).get("List-Unsubscribe") === "One-Click";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The RFC 8058 one-click POST. Body-marker check → verify → apply('one_click') → map. No context
+ * read: the apply RPC re-validates liveness row-side under FOR UPDATE, the authoritative check.
  */
 export async function handleOneClickPost(
   deps: ManageEndpointDeps,
   token: string | null,
+  bodyMarker: { contentType: string | null; rawBody: string },
 ): Promise<EndpointResult> {
+  if (!isOneClickBody(bodyMarker.contentType, bodyMarker.rawBody)) {
+    // Not the RFC 8058 action — a probe, a scanner, or a mis-wired client. Refusing here is
+    // what keeps a security scanner's blind POST from unsubscribing a real person.
+    return { status: 400, body: { error: "not_one_click" } };
+  }
   const state = await deps.loadKeyState();
   const verified = await verifyManageToken(token, state, deps.keyLookup);
   if (!verified.ok) {

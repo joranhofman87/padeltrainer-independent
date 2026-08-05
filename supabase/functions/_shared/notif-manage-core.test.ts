@@ -3,10 +3,14 @@ import {
   handleManageApply,
   handleManageContext,
   handleOneClickPost,
+  isOneClickBody,
   oneClickGetRedirect,
   type ManageContextRow,
   type ManageEndpointDeps,
 } from "./notif-manage-core.ts";
+
+/** The RFC 8058 action body every legitimate one-click POST carries. */
+const ONE_CLICK = { contentType: "application/x-www-form-urlencoded", rawBody: "List-Unsubscribe=One-Click" };
 import { buildManageToken } from "./manage-token.ts";
 import { MANAGE_EMAIL_PAGE_URL } from "./marketing-email.ts";
 
@@ -57,7 +61,7 @@ Deno.test("one-click: a valid token applies with its SIGNED generation and answe
       return Promise.resolve("applied");
     },
   });
-  const r = await handleOneClickPost(d, await goodToken());
+  const r = await handleOneClickPost(d, await goodToken(), ONE_CLICK);
   assertEquals(r.status, 200);
   assertEquals(r.body.result, "applied");
   // The version handed to the RPC is the one the HMAC VERIFIED under — the in-database binding
@@ -66,29 +70,29 @@ Deno.test("one-click: a valid token applies with its SIGNED generation and answe
 });
 
 Deno.test("one-click: already_applied is ALSO 200 — replay is harmless by design", async () => {
-  const r = await handleOneClickPost(deps({ applyAction: () => Promise.resolve("already_applied") }), await goodToken());
+  const r = await handleOneClickPost(deps({ applyAction: () => Promise.resolve("already_applied") }), await goodToken(), ONE_CLICK);
   assertEquals(r.status, 200);
 });
 
 Deno.test("one-click: an apply RPC failure is 503, NEVER a success — a 200 here loses the opt-out", async () => {
-  const r = await handleOneClickPost(deps({ applyAction: () => Promise.reject(new Error("db down")) }), await goodToken());
+  const r = await handleOneClickPost(deps({ applyAction: () => Promise.reject(new Error("db down")) }), await goodToken(), ONE_CLICK);
   assertEquals(r.status, 503);
   assertEquals(r.body.retryable, true);
 });
 
 Deno.test("one-click: unreadable key state is 503 (operational), not 400 (which discards the opt-out)", async () => {
-  const r = await handleOneClickPost(deps({ loadKeyState: () => Promise.resolve(null) }), await goodToken());
+  const r = await handleOneClickPost(deps({ loadKeyState: () => Promise.resolve(null) }), await goodToken(), ONE_CLICK);
   assertEquals(r.status, 503);
 });
 
 Deno.test("one-click: missing key material inside the live window is 503", async () => {
-  const r = await handleOneClickPost(deps({ keyLookup: () => undefined }), await goodToken());
+  const r = await handleOneClickPost(deps({ keyLookup: () => undefined }), await goodToken(), ONE_CLICK);
   assertEquals(r.status, 503);
 });
 
 Deno.test("one-click: garbage / bad signature is 400 — retrying a probe manufactures load", async () => {
   for (const bad of [null, "", "not-a-token", `v1.${CAP_ID}.${"A".repeat(43)}`]) {
-    const r = await handleOneClickPost(deps(), bad);
+    const r = await handleOneClickPost(deps(), bad, ONE_CLICK);
     assertEquals(r.status, 400, `token=${String(bad)}`);
   }
 });
@@ -98,6 +102,7 @@ Deno.test("one-click: a burned generation is 410 — permanent for this link, tr
   const r = await handleOneClickPost(
     deps({ loadKeyState: () => Promise.resolve({ currentVersion: 2, minMintableVersion: 2 }) }),
     token,
+    ONE_CLICK,
   );
   assertEquals(r.status, 410);
 });
@@ -111,7 +116,7 @@ Deno.test("one-click: row-side rejections map 410 (revoked/expired/missing/retir
     ["rejected_unknown_action", 500],
     ["rejected_generation_mismatch", 400],
   ] as const) {
-    const r = await handleOneClickPost(deps({ applyAction: () => Promise.resolve(verdict) }), await goodToken());
+    const r = await handleOneClickPost(deps({ applyAction: () => Promise.resolve(verdict) }), await goodToken(), ONE_CLICK);
     assertEquals(r.status, want, verdict);
   }
 });
@@ -185,4 +190,31 @@ Deno.test("apply: the human path uses source 'manage_page' and mirrors the one-c
   assertEquals(op.status, 503);
   const bad = await handleManageApply(deps(), "junk");
   assertEquals(bad.status, 400);
+});
+
+
+Deno.test("one-click: a POST WITHOUT the RFC 8058 body marker applies NOTHING — scanners probe with blind POSTs", async () => {
+  let applied = 0;
+  const d = deps({ applyAction: () => { applied++; return Promise.resolve("applied"); } });
+  for (const [ct, body] of [
+    [null, ""],
+    ["application/json", '{"List-Unsubscribe":"One-Click"}'],
+    ["application/x-www-form-urlencoded", ""],
+    ["application/x-www-form-urlencoded", "List-Unsubscribe=one-click"],
+  ] as const) {
+    const r = await handleOneClickPost(d, await goodToken(), { contentType: ct, rawBody: body });
+    assertEquals(r.status, 400, `ct=${ct} body=${body}`);
+  }
+  assertEquals(applied, 0, "a probe must never reach the apply RPC");
+  // and the marker itself is case-exact per the RFC, charset params tolerated on the content type
+  assert(isOneClickBody("application/x-www-form-urlencoded; charset=utf-8", "List-Unsubscribe=One-Click"));
+});
+
+Deno.test("operational 503s carry Retry-After — the contract promises it, the result enforces it", async () => {
+  const r = await handleOneClickPost(deps({ loadKeyState: () => Promise.resolve(null) }), await goodToken(), ONE_CLICK);
+  assertEquals(r.status, 503);
+  assertEquals(r.headers?.["Retry-After"], "300");
+  const r2 = await handleManageApply(deps({ applyAction: () => Promise.reject(new Error("db")) }), await goodToken());
+  assertEquals(r2.status, 503);
+  assertEquals(r2.headers?.["Retry-After"], "300");
 });

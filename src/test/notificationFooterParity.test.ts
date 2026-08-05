@@ -69,6 +69,15 @@ describe('send-email per-recipient footer (N2 constraint 1)', () => {
     expect(branch).toContain('retryable: true');
   });
 
+  it('a FAILED preference read also refuses — defaulting to instant sends against a stored off', () => {
+    // Found by the whole-unit sweep: the pref read discarded its error, prefs became null, and
+    // the frequency defaulted to "instant" — mail whenever the read failed, opt-out or not.
+    expect(src).toContain('if (prefsErr) {');
+    const branch = src.slice(src.indexOf('if (prefsErr) {'), src.indexOf('const frequency ='));
+    expect(branch).toContain('preference_read_failed');
+    expect(branch).toContain('status: 503');
+  });
+
   it('resolves the account BEFORE the preference branch, so no-pref-column types still know it', () => {
     const lookupIdx = src.indexOf('if (!recipientUserId && !isSystemEmail) {');
     const prefBranchIdx = src.indexOf('if (prefColumn && !isSystemEmail) {');

@@ -1386,11 +1386,21 @@ const handler = async (req: Request): Promise<Response> => {
     // Check notification preferences if applicable
     if (prefColumn && !isSystemEmail) {
       if (recipientUserId) {
-        const { data: prefs } = await supabaseAdmin
+        const { data: prefs, error: prefsErr } = await supabaseAdmin
           .from("notification_preferences")
           .select(prefColumn)
           .eq("user_id", recipientUserId)
           .maybeSingle();
+        if (prefsErr) {
+          // FAIL CLOSED (N2 sweep): a failed preference read used to default to "instant" and
+          // send — a recipient whose stored preference is 'off' would get mail whenever this
+          // read failed. Refuse retryably instead, same shape as the account lookup above.
+          console.error("Preference read failed (refusing to send blind):", prefsErr);
+          return new Response(
+            JSON.stringify({ error: "preference_read_failed", retryable: true }),
+            { status: 503, headers: { "Content-Type": "application/json", ...corsHeaders } },
+          );
+        }
 
         const frequency = (prefs as Record<string, string> | null)?.[prefColumn] || "instant";
 

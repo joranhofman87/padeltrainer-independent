@@ -25,6 +25,14 @@
 -- gives the owner the exact cron to install. Shipping this migration alone changes nothing.
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 
+-- The sweep's index. The S1 expiry index is PARTIAL (WHERE revoked_at IS NULL) because the
+-- send-path reads exclude revoked rows — but the sweep deliberately INCLUDES them (revocation is
+-- not an early exit from retention), so that index cannot serve this query and every "bounded"
+-- batch would scan and sort the whole table as it grows. A plain btree on expires_at keeps the
+-- batch's work proportional to the batch.
+CREATE INDEX IF NOT EXISTS idx_notif_manage_cap_sweep
+  ON public.notification_manage_capabilities (expires_at);
+
 CREATE OR REPLACE FUNCTION public.sweep_notification_manage_capabilities(
   p_limit int DEFAULT 1000
 ) RETURNS int

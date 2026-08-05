@@ -70,9 +70,12 @@ Deno.serve(async (req) => {
     });
   }
 
-  const result = await handleOneClickPost(buildDeps(), token);
+  const result = await handleOneClickPost(buildDeps(), token, {
+    contentType: req.headers.get("content-type"),
+    rawBody: await req.text(),
+  });
   return new Response(JSON.stringify(result.body), {
     status: result.status,
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(result.headers ?? {}) },
   });
 });

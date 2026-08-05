@@ -800,6 +800,15 @@ describe('sweep_notification_manage_capabilities (S5 retention)', () => {
     await expect(c.query(`SELECT public.sweep_notification_manage_capabilities(NULL)`)).rejects.toThrow(/limit/);
   });
 
+  it('has a FULL expiry index — the partial one excludes revoked rows, which the sweep includes', async () => {
+    // Without it every "bounded" batch scans and sorts the whole table as it grows.
+    const idx = await c.query(
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_notif_manage_cap_sweep'`);
+    expect(idx.rows).toHaveLength(1);
+    expect(idx.rows[0].indexdef).toContain('(expires_at)');
+    expect(idx.rows[0].indexdef).not.toContain('WHERE');
+  });
+
   it('service_role only', async () => {
     const as = async (role: string) => {
       await c2.query(`SET ROLE ${role}`);
