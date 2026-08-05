@@ -14,9 +14,10 @@ import {
  * N2 S3 — the marketing attach layer.
  *
  * The decision table under test IS the cutover rule (N2 §4) plus the send-blocking rule (N2 §3):
- *   fresh row                      → mint + attach
- *   attempted + capability exists  → attach the SAME token (byte-identical retry)
- *   attempted + none               → legacy footer-less body (its provider key froze those bytes)
+ *   capability exists (any path)   → liveness-checked, then attach the SAME token (byte-identity)
+ *   absent + attempted             → TERMINAL: a pre-cutover row needs a NEW send — 'attempted'
+ *                                    does not prove the provider froze footer-less bytes
+ *   absent + fresh                 → mint + attach
  *   non-live capability            → the SEND is blocked, never quietly sent without unsubscribe
  */
 
@@ -93,7 +94,10 @@ Deno.test("retry attaches the IDENTICAL token a fresh send built — the byte-id
   }
 });
 
-Deno.test("attempted + NO capability → legacy footer-less body (the cutover rule)", async () => {
+Deno.test("attempted + NO capability → TERMINAL, never a footer-less send (the cutover rule)", async () => {
+  // attempt_count counts provider REJECTIONS too, so 'attempted' does not prove the provider
+  // froze footer-less bytes — a cleanly-rejected pre-cutover row sent footer-less would be
+  // marketing without an unsubscribe. The refusal directs a NEW send instead.
   let minted = 0;
   const d = deps({
     mintCapability: () => {
@@ -102,9 +106,33 @@ Deno.test("attempted + NO capability → legacy footer-less body (the cutover ru
     },
   });
   const out = await resolveMarketingAttachment(d, { ...INPUT, attempted: true });
-  assertEquals(out.kind, "legacy_no_footer");
+  assertEquals(out.kind, "terminal");
+  if (out.kind === "terminal") assertEquals(out.reason, "pre_cutover_row_requires_new_send");
   // Minting here would CREATE the marker that claims the body has a footer — it must not.
   assertEquals(minted, 0);
+});
+
+Deno.test("the FRESH path also refuses a revoked/expired existing capability (read-first)", async () => {
+  // The mint RPC returns an existing row regardless of revocation/expiry — only reading catches
+  // it. A crash-before-attempt row whose capability was later revoked must not mail a dead link.
+  for (const [revoked, expired, reason] of [
+    [true, false, "capability_revoked"],
+    [false, true, "capability_expired"],
+  ] as const) {
+    let minted = 0;
+    const d = deps({
+      mintCapability: () => {
+        minted++;
+        return Promise.resolve({ capabilityId: CAP_ID, keyVersion: 1 });
+      },
+      readCapabilityForSource: () =>
+        Promise.resolve({ capabilityId: CAP_ID, keyVersion: 1, revoked, expired }),
+    });
+    const out = await resolveMarketingAttachment(d, { ...INPUT, attempted: false });
+    assertEquals(out.kind, "terminal");
+    if (out.kind === "terminal") assertEquals(out.reason, reason);
+    assertEquals(minted, 0);
+  }
 });
 
 Deno.test("revoked / expired capability → the SEND is blocked (never sent link-less)", async () => {

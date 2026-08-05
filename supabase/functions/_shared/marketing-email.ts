@@ -99,17 +99,33 @@ export interface MarketingAttachDeps {
 }
 
 export type MarketingAttachment =
-  /** Fresh or already-footered send: attach this token's footer + headers. */
+  /** Attach this token's footer + headers. The ONLY way marketing mail leaves. */
   | { kind: "attach"; token: string }
-  /** Pre-cutover row: its provider-accepted body has no footer; a retry must stay byte-identical. */
-  | { kind: "legacy_no_footer" }
-  /** The send must NOT go out (retired/revoked capability, unavailable keys). Terminal for this
-   *  attempt path — never silently downgraded to "send without unsubscribe". */
+  /** The send must NOT go out. Never silently downgraded to "send without unsubscribe" — that
+   *  would defeat the entire layer. `reason` says why, for the row's error record. */
   | { kind: "terminal"; reason: string };
 
 /**
- * Decide what this send carries. `attempted` is whether the row has EVER been attempted
- * (campaigns: attempt_count > 0) — the cutover discriminator.
+ * Decide what this send carries. READ-FIRST, always:
+ *
+ *   capability EXISTS   → liveness-check it, then attach its deterministic token. Covers every
+ *                         post-cutover row including crash-recovery retries (the mint lands
+ *                         BEFORE the provider call, so a mid-flight death leaves the marker).
+ *   absent + attempted  → a PRE-CUTOVER row. Terminal, with a reason directing re-issue. Not
+ *                         footer-less: `attempt_count` counts provider REJECTIONS too, so
+ *                         "attempted" does not mean "the provider froze footer-less bytes" — a
+ *                         cleanly-rejected 4xx row would sail out as marketing with no
+ *                         unsubscribe. And not attach either: a timeout-after-accept row inside
+ *                         the provider's dedupe window would conflict under its unchanged key.
+ *                         The two are indistinguishable from here, so the send is refused and
+ *                         the honest remedy is a NEW send (new row → new key → footer attached),
+ *                         which is also what N2 §3 prescribes for post-window resends.
+ *   absent + fresh      → mint, then attach. The row was created milliseconds ago inside this
+ *                         run; a revocation racing that window fails closed at CLICK time
+ *                         (verify checks liveness), accepted as the same family as the in-flight
+ *                         race in N2 §7b.
+ *
+ * `attempted` is whether the row has EVER been attempted (campaigns: attempt_count > 0).
  */
 export async function resolveMarketingAttachment(
   deps: MarketingAttachDeps,
@@ -123,19 +139,18 @@ export async function resolveMarketingAttachment(
   },
 ): Promise<MarketingAttachment> {
   let cap: MintedCapability;
-  if (input.attempted) {
-    const existing = await deps.readCapabilityForSource(input.sourceKind, input.sourceId);
-    if (!existing) {
-      // First attempted before the footer deploy: the provider-accepted body is footer-less and
-      // the idempotency key is unchanged, so the retry must reproduce those exact bytes.
-      return { kind: "legacy_no_footer" };
-    }
+  const existing = await deps.readCapabilityForSource(input.sourceKind, input.sourceId);
+  if (existing) {
     if (existing.revoked || existing.expired) {
-      // N2 §3: a non-live capability blocks the SEND. Mailing a dead unsubscribe would read as
-      // delivered while the opt-out silently stopped working.
+      // N2 §3: a non-live capability blocks the SEND — on EVERY path, including the fresh one
+      // (the mint RPC returns an existing row regardless of revocation/expiry; only reading
+      // catches it). Mailing a dead unsubscribe would read as delivered while the opt-out
+      // silently stopped working.
       return { kind: "terminal", reason: existing.revoked ? "capability_revoked" : "capability_expired" };
     }
     cap = existing;
+  } else if (input.attempted) {
+    return { kind: "terminal", reason: "pre_cutover_row_requires_new_send" };
   } else {
     cap = await deps.mintCapability({
       scopeKind: input.scopeKind,

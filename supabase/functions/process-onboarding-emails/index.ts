@@ -380,9 +380,9 @@ const handler = async (req: Request): Promise<Response> => {
             attempted: false,
           });
           if (attachment.kind !== "attach") {
-            // terminal (retired key / revoked / missing state): the send is BLOCKED — a
-            // marketing mail may not leave without a working unsubscribe.
-            const reason = attachment.kind === "terminal" ? attachment.reason : attachment.kind;
+            // terminal (retired key / revoked / missing state / pre-cutover): the send is
+            // BLOCKED — a marketing mail may not leave without a working unsubscribe.
+            const reason = attachment.reason;
             await supabase
               .from("onboarding_email_queue")
               .update({ status: "failed", error_message: `unsubscribe unavailable: ${reason}`.slice(0, 500), sent_at: null })
