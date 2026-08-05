@@ -109,6 +109,14 @@ describe('ManageEmail', () => {
     await screen.findByTestId('manage-email-live');
   });
 
+  it('a JSON 500 (the endpoint\'s own bug) is ALSO retry, not a dead link', async () => {
+    // Nothing was recorded on a 500 — "link broken" would send the person away with the opt-out
+    // silently dropped. Every 5xx keeps the retry path.
+    fetchMock.mockImplementationOnce(() => jsonResponse(500, { error: 'internal' }));
+    render(<ManageEmail />);
+    await screen.findByTestId('manage-email-operational');
+  });
+
   it('a network failure on APPLY lands on retry too, not on done and not on dead', async () => {
     fetchMock.mockImplementationOnce(() =>
       jsonResponse(200, { status: 'live', scopeName: 'X', destinationRedacted: 'y' }),

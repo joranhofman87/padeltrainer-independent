@@ -32,7 +32,7 @@ const LIVE_CTX: ManageContextRow = {
   status: "live",
   kind: "marketing_unsubscribe",
   scope_kind: "academy",
-  scope_name: "Padel Academy Zuid",
+  scope_display_name: "Padel Academy Zuid",
   destination_redacted: "p•••@e•••.com",
   key_version: 1,
 };
@@ -49,18 +49,20 @@ function deps(overrides: Partial<ManageEndpointDeps> = {}): ManageEndpointDeps {
 
 // ── one-click POST ──────────────────────────────────────────────────────────────────────────────
 
-Deno.test("one-click: a valid token applies and answers 200", async () => {
+Deno.test("one-click: a valid token applies with its SIGNED generation and answers 200", async () => {
   const calls: string[] = [];
   const d = deps({
-    applyAction: (id, source) => {
-      calls.push(`${id}:${source}`);
+    applyAction: (id, source, signedVersion) => {
+      calls.push(`${id}:${source}:v${signedVersion}`);
       return Promise.resolve("applied");
     },
   });
   const r = await handleOneClickPost(d, await goodToken());
   assertEquals(r.status, 200);
   assertEquals(r.body.result, "applied");
-  assertEquals(calls, [`${CAP_ID}:one_click`]);
+  // The version handed to the RPC is the one the HMAC VERIFIED under — the in-database binding
+  // is only as good as this argument.
+  assertEquals(calls, [`${CAP_ID}:one_click:v1`]);
 });
 
 Deno.test("one-click: already_applied is ALSO 200 — replay is harmless by design", async () => {
@@ -107,6 +109,7 @@ Deno.test("one-click: row-side rejections map 410 (revoked/expired/missing/retir
     ["rejected_missing", 410],
     ["rejected_retired_key", 410],
     ["rejected_unknown_action", 500],
+    ["rejected_generation_mismatch", 400],
   ] as const) {
     const r = await handleOneClickPost(deps({ applyAction: () => Promise.resolve(verdict) }), await goodToken());
     assertEquals(r.status, want, verdict);
@@ -170,14 +173,14 @@ Deno.test("context: a live row whose stored generation mismatches the signed one
 Deno.test("apply: the human path uses source 'manage_page' and mirrors the one-click table", async () => {
   const calls: string[] = [];
   const d = deps({
-    applyAction: (_id, source) => {
-      calls.push(source);
+    applyAction: (_id, source, signedVersion) => {
+      calls.push(`${source}:v${signedVersion}`);
       return Promise.resolve("applied");
     },
   });
   const ok = await handleManageApply(d, await goodToken());
   assertEquals(ok.status, 200);
-  assertEquals(calls, ["manage_page"]);
+  assertEquals(calls, ["manage_page:v1"]);
   const op = await handleManageApply(deps({ applyAction: () => Promise.reject(new Error("db")) }), await goodToken());
   assertEquals(op.status, 503);
   const bad = await handleManageApply(deps(), "junk");

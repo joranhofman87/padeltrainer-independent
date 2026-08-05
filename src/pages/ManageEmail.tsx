@@ -61,7 +61,9 @@ export default function ManageEmail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ op: 'context', token: tokenRef.current }),
       });
-      if (res.status === 503) {
+      if (res.status >= 500) {
+        // EVERY 5xx is operational — the endpoint's own bug included. Nothing was recorded, so
+        // "link broken" would be a lie that sends the person away while retry could still work.
         setState({ phase: 'operational' });
         return;
       }
@@ -93,7 +95,7 @@ export default function ManageEmail() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ op: 'apply', token: tokenRef.current }),
       });
-      if (res.status === 503) {
+      if (res.status >= 500) {
         // The opt-out is deferred, not lost — bring the button back so they can retry.
         setState({ phase: 'operational' });
         return;

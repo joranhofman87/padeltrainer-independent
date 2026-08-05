@@ -67,9 +67,16 @@ const mintOn = async (client: InstanceType<typeof Client>, over: Record<string, 
 };
 const mint = (over: Record<string, unknown> = {}) => mintOn(c, over);
 
-const apply = async (id: string, action: string, source = 'one_click') =>
-  (await c.query(`SELECT public.apply_notification_manage_action($1,$2,$3) AS r`, [id, action, source]))
+/** 4-arg since 20261014150000: the SIGNED generation is bound in-database. Tests that are not
+ *  about the binding pass the row's own version (looked up), which is what a legitimate token
+ *  always carries. */
+const apply = async (id: string, action: string, source = 'one_click', signedVersion?: number) => {
+  const v = signedVersion ??
+    (await c.query(`SELECT key_version FROM public.notification_manage_capabilities WHERE id = $1`, [id]))
+      .rows[0]?.key_version ?? 1;
+  return (await c.query(`SELECT public.apply_notification_manage_action($1,$2,$3,$4) AS r`, [id, action, source, v]))
     .rows[0].r as string;
+};
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'n2caps-rp-'));
@@ -158,6 +165,7 @@ beforeAll(async () => {
   await c.query(MIG('20261014120000_notif_n2_footer_policy.sql'));
   await c.query(MIG('20261014130000_notif_n2_s3_capability_source_reader.sql'));
   await c.query(MIG('20261014140000_notif_n2_s5_capability_sweep.sql'));
+  await c.query(MIG('20261014150000_notif_n2_s5_apply_binds_generation.sql'));
 }, 180_000);
 
 afterAll(async () => {
@@ -353,6 +361,31 @@ describe('mint_notification_manage_capability', () => {
 });
 
 describe('apply_notification_manage_action', () => {
+  it('refuses a SIGNED generation that is not the row\'s own — the binding is in-database', async () => {
+    const cap = await mint({ source_id: SEND_A });
+    expect(await apply(cap.capability_id, 'marketing_unsubscribe', 'one_click', cap.key_version + 7))
+      .toBe('rejected_generation_mismatch');
+    // and NOTHING was suppressed by the refused call
+    const n = await c.query(`SELECT count(*)::int AS n FROM public.email_marketing_suppression`);
+    expect(n.rows[0].n).toBe(0);
+  });
+
+  it('the unbound 3-arg form is GONE — a stale caller fails 42883, it cannot apply unbound', async () => {
+    const cap = await mint({ source_id: SEND_A });
+    await expect(c.query(
+      `SELECT public.apply_notification_manage_action($1,'marketing_unsubscribe','one_click')`,
+      [cap.capability_id])).rejects.toMatchObject({ code: '42883' });
+  });
+
+  it('a NULL signed generation is a caller bug, refused before the row is even read', async () => {
+    // Direct call — the test helper's ?? would silently substitute the row's real version.
+    const cap = await mint({ source_id: SEND_A });
+    const r = await c.query(
+      `SELECT public.apply_notification_manage_action($1,'marketing_unsubscribe','one_click',NULL::int) AS r`,
+      [cap.capability_id]);
+    expect(r.rows[0].r).toBe('rejected_unbound_caller');
+  });
+
   it('marketing capability applies suppression for ITS scope + address; replay is already_applied', async () => {
     const cap = await mint();
     expect(await apply(cap.capability_id, 'marketing_unsubscribe')).toBe('applied');

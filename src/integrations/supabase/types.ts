@@ -9491,7 +9491,12 @@ export type Database = {
         Returns: undefined
       }
       apply_notification_manage_action: {
-        Args: { p_action: string; p_capability_id: string; p_source: string }
+        Args: {
+          p_action: string
+          p_capability_id: string
+          p_signed_key_version: number
+          p_source: string
+        }
         Returns: string
       }
       apply_notification_provider_event: {

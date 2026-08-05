@@ -42,11 +42,12 @@ function buildDeps(): ManageEndpointDeps {
       const row = Array.isArray(data) ? data[0] : data;
       return (row as ManageContextRow | undefined) ?? null;
     },
-    applyAction: async (capabilityId, source) => {
+    applyAction: async (capabilityId, source, signedKeyVersion) => {
       const { data, error } = await supabase.rpc("apply_notification_manage_action", {
         p_capability_id: capabilityId,
         p_action: "marketing_unsubscribe",
         p_source: source,
+        p_signed_key_version: signedKeyVersion,
       });
       if (error) throw new Error(error.message);
       return data as string;

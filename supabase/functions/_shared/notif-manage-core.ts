@@ -35,7 +35,9 @@ export interface ManageContextRow {
   status: string; // live | revoked | expired | retired_key | missing
   kind: string | null;
   scope_kind: string | null;
-  scope_name: string | null;
+  /** The RPC's column is scope_display_name — declared VERBATIM so the unchecked cast at the
+   *  adapter cannot silently turn a real name into undefined. */
+  scope_display_name: string | null;
   destination_redacted: string | null;
   key_version: number | null;
 }
@@ -45,8 +47,14 @@ export interface ManageEndpointDeps {
   loadKeyState(): Promise<ManageKeyState | null>;
   /** get_notification_manage_context. Throws on RPC error (operational). */
   getContext(capabilityId: string): Promise<ManageContextRow | null>;
-  /** apply_notification_manage_action. Returns the RPC verdict; throws on RPC error. */
-  applyAction(capabilityId: string, source: "one_click" | "manage_page"): Promise<string>;
+  /** apply_notification_manage_action. `signedKeyVersion` is the generation the token's HMAC
+   *  verified under — the RPC refuses a row minted under any other generation, IN the database,
+   *  under its own FOR UPDATE. Returns the RPC verdict; throws on RPC error. */
+  applyAction(
+    capabilityId: string,
+    source: "one_click" | "manage_page",
+    signedKeyVersion: number,
+  ): Promise<string>;
   keyLookup?: KeyLookup;
 }
 
@@ -69,6 +77,10 @@ function applyVerdictToResult(verdict: string): EndpointResult {
     case "rejected_retired_key":
       // Permanent for THIS link. 410 tells the provider to stop retrying, truthfully.
       return { status: 410, body: { result: verdict } };
+    case "rejected_generation_mismatch":
+      // A verifying-but-mismatched pairing only exists if a key leaked — treat it exactly like
+      // any other forgery: 400, no retry, nothing revealed.
+      return { status: 400, body: { error: "invalid_token" } };
     default:
       // rejected_unknown_action / rejected_unknown_source can only be OUR bug — the core passes
       // literals. 500, and loudly.
@@ -92,7 +104,9 @@ export async function handleOneClickPost(
     return { status: 400, body: { error: "invalid_token" } };
   }
   try {
-    return applyVerdictToResult(await deps.applyAction(verified.capabilityId, "one_click"));
+    return applyVerdictToResult(
+      await deps.applyAction(verified.capabilityId, "one_click", verified.keyVersion),
+    );
   } catch {
     // An RPC/database failure must NEVER read as handled — a 2xx here loses the opt-out, since
     // RFC 8058 senders do not retry success.
@@ -145,7 +159,7 @@ export async function handleManageContext(
       status: "live",
       kind: ctx.kind,
       scopeKind: ctx.scope_kind,
-      scopeName: ctx.scope_name,
+      scopeName: ctx.scope_display_name,
       destinationRedacted: ctx.destination_redacted,
     },
   };
@@ -164,7 +178,9 @@ export async function handleManageApply(
     return { status: 400, body: { error: "invalid_token" } };
   }
   try {
-    return applyVerdictToResult(await deps.applyAction(verified.capabilityId, "manage_page"));
+    return applyVerdictToResult(
+      await deps.applyAction(verified.capabilityId, "manage_page", verified.keyVersion),
+    );
   } catch {
     return OPERATIONAL;
   }
