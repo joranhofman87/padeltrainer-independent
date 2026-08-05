@@ -21,17 +21,26 @@
 DO $$
 DECLARE v_bad text;
 BEGIN
-  SELECT string_agg(format('group %s (%s, %s members pre-boundary)', g.id, g.state, x.n), '; ')
+  SELECT string_agg(format('group %s (%s, path %s: %s)', g.id, g.state, b.path, x.why), '; ')
     INTO v_bad
     FROM public.notification_digest_groups g
     JOIN public.notification_activation_boundaries b
-      ON b.path = g.channel || ':digest' AND b.state = 'active'
+      ON b.path = g.channel || ':digest'
     CROSS JOIN LATERAL (
-      SELECT count(*) AS n FROM public.notification_outbox o
-       WHERE o.digest_group_id = g.id AND o.created_at < b.boundary_at) x
-   WHERE g.terminal_at IS NULL AND x.n > 0;
+      SELECT CASE
+        -- an ACTIVE path: only the members that predate the recorded boundary matter
+        WHEN b.state = 'active' THEN
+          nullif((SELECT count(*) FROM public.notification_outbox o
+                   WHERE o.digest_group_id = g.id AND o.created_at < b.boundary_at), 0)::text
+          || ' member(s) predate the boundary'
+        -- an INERT path: its boundary will be set LATER, so EVERY member of an existing group
+        -- predates it by definition. A group here is a group that must never be dispatched, and
+        -- the scan predicate alone would not catch one already carrying worker ownership.
+        ELSE 'the path is inert, so every member predates the boundary it has yet to be given'
+      END AS why) x
+   WHERE g.terminal_at IS NULL AND x.why IS NOT NULL;
   IF v_bad IS NOT NULL THEN
-    RAISE EXCEPTION 'notif N5: a non-terminal digest group holds members that predate its path''s activation boundary — those events can never be sent, and a group is delivered whole. Reconcile before deploying: %', v_bad;
+    RAISE EXCEPTION 'notif N5: a non-terminal digest group can never be sent under its path''s activation boundary (a digest is delivered whole). Reconcile before deploying: %', v_bad;
   END IF;
 END $$;
 
@@ -77,9 +86,15 @@ BEGIN
       IF v_n = 1 THEN v_promote := true; ELSE RETURN NULL; END IF;   -- someone else moved it → back off
     ELSIF v_cb.probe_group_id IS NOT NULL THEN
       -- only the bound probe is claimable; everything else waits (untouched — no deferral writes).
-      SELECT * INTO g FROM public.notification_digest_groups
-       WHERE id = v_cb.probe_group_id AND channel = p_channel
-         AND state = 'request_ready' AND locked_by IS NULL AND available_at <= p_now
+      SELECT * INTO g FROM public.notification_digest_groups dg
+       WHERE dg.id = v_cb.probe_group_id AND dg.channel = p_channel
+         AND dg.state = 'request_ready' AND dg.locked_by IS NULL AND dg.available_at <= p_now
+         -- N5 (round 3): the probe is the ONE claim that does not come from the scan below, so it
+         -- needs the boundary check of its own. A pre-boundary group promoted to probe before this
+         -- contract existed would otherwise be handed ownership and sent — as the breaker's own
+         -- half-open probe, i.e. the single most privileged send in the system.
+         AND NOT EXISTS (SELECT 1 FROM public.notification_outbox o
+                          WHERE o.digest_group_id = dg.id AND o.created_at < v_boundary)
        FOR UPDATE SKIP LOCKED;
       IF NOT FOUND THEN RETURN NULL; END IF;
       UPDATE public.notification_digest_groups

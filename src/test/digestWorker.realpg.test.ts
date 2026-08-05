@@ -914,3 +914,63 @@ describe('N5 round 2 — a group that predates the boundary never reaches the pr
     } finally { await c.end(); }
   });
 });
+
+describe('N5 round 3 — the breaker probe and the install proof', () => {
+  it('a pre-boundary group bound as the HALF-OPEN PROBE is not claimable either', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const rpc = mkRpc(c);
+      const nowIso = NOW.toISOString();
+      // drive a group to request_ready, then backdate its member and make it the breaker's probe:
+      // the one claim that never passes through the scan, and the most privileged send there is.
+      await seedDigestGroup(c, 'n5p:1', 'n5p@example.com', [{ title: 'x' }]);
+      const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: nowIso, p_max_groups: 100, p_max_members_per_call: 100 });
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='n5p:1'`)).rows[0].id;
+      const drun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'dispatch' });
+      await rpc('claim_notification_digest_group', { p_run_id: drun, p_channel: 'email', p_now: nowIso, p_worker: 'W' });
+      await rpc('prepare_notification_digest_group', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_now: nowIso });
+      await rpc('store_notification_digest_request', { p_run_id: drun, p_group_id: g, p_worker: 'W',
+        p_frozen_request: { from: 'S <s@x.com>', to: 'n5p@example.com', subject: 's', html: '<p>x</p>' }, p_now: nowIso });
+      await c.query(`UPDATE public.notification_digest_groups SET locked_by = NULL, locked_at = NULL WHERE id = $1`, [g]);
+      await c.query(`UPDATE public.notification_outbox SET created_at = now() - interval '9 hours' WHERE digest_group_id = $1`, [g]);
+      await c.query(
+        `INSERT INTO public.notification_provider_circuit (channel, state, probe_group_id, probe_locked_at, retry_at)
+         VALUES ('email', 'half_open', $1, NULL, now())
+         ON CONFLICT (channel) DO UPDATE SET state='half_open', probe_group_id=EXCLUDED.probe_group_id,
+              probe_locked_at=NULL, retry_at=EXCLUDED.retry_at`, [g]);
+
+      const drun2 = await rpc('start_notification_worker_run', { p_worker: 'W2', p_channel: 'email', p_phase: 'dispatch' });
+      expect(await rpc('claim_notification_digest_group', { p_run_id: drun2, p_channel: 'email', p_now: nowIso, p_worker: 'W2' }))
+        .toBeNull();                       // the probe is refused: no ownership, no provider call
+      expect((await c.query(`SELECT locked_by FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0].locked_by).toBeNull();
+      await c.query(`DELETE FROM public.notification_provider_circuit WHERE channel='email'`);
+    } finally { await c.end(); }
+  });
+
+  it('the install assertion refuses ANY non-terminal group on an INERT path — its boundary does not exist yet', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const assertion = readFileSync(join(process.cwd(), 'supabase', 'migrations',
+        '20261030100000_notif_n5_round2_dispatch_boundary.sql'), 'utf8')
+        .match(/DO \$\$\nDECLARE v_bad text;[\s\S]*?END \$\$;/)?.[0];
+      if (!assertion) throw new Error('the install assertion was not found');
+      await c.query(assertion);                        // the suite's world (path open, no old groups) passes
+      await seedDigestGroup(c, 'n5i:1', 'n5i@example.com', [{ title: 'x' }]);
+      const rpc = mkRpc(c);
+      const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: NOW.toISOString(), p_max_groups: 100, p_max_members_per_call: 100 });
+      await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard`);
+      await c.query(`UPDATE public.notification_activation_boundaries
+                        SET state='inert', boundary_at=NULL, request_id=NULL, reason=NULL WHERE path='email:digest'`);
+      await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard`);
+      try {
+        // a group exists and the path is INERT: every member predates the boundary it has yet to
+        // be given, so installing the contract over this state must fail rather than proceed
+        await expect(c.query(assertion)).rejects.toThrow(/can never be sent under its path's activation boundary/);
+      } finally {
+        await c.query(`SELECT public.record_notification_activation_boundary('email:digest','re-opened after the install-proof case', gen_random_uuid())`);
+      }
+    } finally { await c.end(); }
+  });
+});
