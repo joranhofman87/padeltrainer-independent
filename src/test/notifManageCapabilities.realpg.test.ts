@@ -421,7 +421,8 @@ describe('key state is the retirement authority, and it fails closed', () => {
     // The one case the lock cannot cover: the row already exists, minted legitimately under
     // generation 1, and the operator retires generation 1 while that send is still retryable.
     // Handing the row back would attach a dead link; re-signing it would change the body under a
-    // fixed provider idempotency key. Both are worse than a failed send that alerts and retries.
+    // fixed provider idempotency key. Both are worse than a send that fails TERMINALLY with an
+    // alert, which puts the decision in front of the human who retired the key.
     const first = await mint();
     expect(first.key_version).toBe(1);
     await c.query(`UPDATE public.notification_manage_key_state
@@ -579,6 +580,35 @@ describe('suppression provenance is coherent, not merely conventional', () => {
     await c.query(`UPDATE public.notification_manage_key_state
                      SET current_version = 2, min_mintable_version = 2`);
     expect(await rec('one_click', live, null)).toMatch(/is not live/);
+  });
+
+  it('a concurrent REVOCATION blocks the recorder — the liveness check holds until INSERT', async () => {
+    // The lifecycle check was previously an unlocked read: under READ COMMITTED a revoke could
+    // commit between it and the insert, attributing a suppression to a capability that was already
+    // revoked when it landed. FOR SHARE on the capability conflicts with the FOR NO KEY UPDATE a
+    // revoke takes, so the recorder must WAIT — and then refuse.
+    let code: string | null = null;
+    let inserted = -1;
+    await c2.query('BEGIN');
+    try {
+      await c2.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
+        [CAP_ID]);
+      try {
+        await c.query(`SET lock_timeout = '700ms'`);
+        await c.query(
+          `SELECT public.record_marketing_suppression('prov@example.com','platform',NULL,'one_click',$1)`,
+          [CAP_ID]);
+      } catch (e) { code = (e as { code?: string }).code ?? 'error'; }
+      finally { await c.query(`RESET lock_timeout`); }
+      inserted = (await c.query(
+        `SELECT count(*)::int AS n FROM public.email_marketing_suppression`)).rows[0].n;
+    } finally {
+      // released in FINALLY: a failing expect must not leave c2 holding the row lock and wedge
+      // every later test in this file.
+      await c2.query('ROLLBACK').catch(() => {});
+    }
+    expect(code).toBe('55P03');          // it waited on the revoke rather than reading past it
+    expect(inserted).toBe(0);            // and nothing was attributed to the doomed capability
   });
 
   it('a real one-click through apply() lands a coherent audit row', async () => {

@@ -190,16 +190,29 @@ BEGIN
   -- not erase the suppression they produced. Validating at WRITE time and not enforcing at read
   -- time is exactly the combination that gives a durable, honest audit trail.
   IF p_capability_id IS NOT NULL THEN
-    -- LIFECYCLE, not just existence. `apply_notification_manage_action` refuses a revoked, expired
-    -- or retired-generation capability — but this recorder is reachable on its own, so without the
-    -- same checks a caller could cite a DEAD capability and mint token-attributed provenance that
-    -- the token itself could never have produced. The floor is read under the same FOR SHARE the
-    -- mint uses, so a rotation cannot commit between this check and the insert.
+    -- LOCK THE CAPABILITY, THEN THE KEY STATE — in that order, always.
+    --
+    -- Reading the capability unlocked was a race of the same shape as the one the key state had:
+    -- under READ COMMITTED a concurrent `revoked_at` update can commit between the liveness check
+    -- and the INSERT below, so a suppression could be attributed to a capability that was revoked
+    -- before it landed. FOR SHARE conflicts with the FOR NO KEY UPDATE a revoke takes, so the two
+    -- serialize; it does not conflict with other readers.
+    --
+    -- LOCK ORDER IS THE CAPABILITY FIRST because `apply_notification_manage_action` already holds
+    -- FOR UPDATE on the capability when it calls this function. Taking the key state first here
+    -- would give the two paths opposite orders and make a deadlock reachable. (Mint is not in this
+    -- cycle: the capability it locks against does not exist yet, so it takes the key state alone.)
+    PERFORM 1 FROM public.notification_manage_capabilities c
+      WHERE c.id = p_capability_id FOR SHARE;
+
     SELECT min_mintable_version INTO v_min
       FROM public.notification_manage_key_state WHERE id FOR SHARE;
     IF v_min IS NULL THEN
       RAISE EXCEPTION 'record_marketing_suppression: signing-key state is missing';
     END IF;
+
+    -- Shape: the capability must exist AND be for THIS address and scope. Nullness coherence only
+    -- says which KIND of authority acted; this says one actually did, and that it was this one.
     IF NOT EXISTS (
       SELECT 1 FROM public.notification_manage_capabilities c
        WHERE c.id = p_capability_id
@@ -209,6 +222,10 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'record_marketing_suppression: capability % does not exist, or is not for this address and scope', p_capability_id;
     END IF;
+
+    -- Lifecycle: the same gate apply() applies. Without it, a caller reaching this recorder
+    -- directly could attribute a suppression to a capability the token itself could never have
+    -- used. Evaluated under the locks taken above, so it still holds at INSERT.
     IF NOT EXISTS (
       SELECT 1 FROM public.notification_manage_capabilities c
        WHERE c.id = p_capability_id

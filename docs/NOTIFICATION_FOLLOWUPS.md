@@ -69,7 +69,9 @@ raised by review against the shipped schema and must be satisfied where named.
    layer: mint never inserts or returns a generation retired in the snapshot it holds the row lock
    on; attachment never signs a generation retired in the authoritative state it was given (a
    snapshot check, not a barrier). If an emergency retirement ever happens with mail in flight, the
-   remedy is operational: re-send to the affected window after the new key is live.
+   remedy is operational: re-send to the affected window after the new key is live — as a NEW
+   durable send with a new `source_id`, never by retrying the terminal identity, which would only
+   raise `NMRET` again.
 7c. **`NMRET` is a terminal contract (S2b/S3).** A retry whose capability was signed by a retired
    generation raises SQLSTATE `NMRET`. Workers MUST classify it as terminal for that send plus an
    ops alert — never as a transient RPC failure, which would poison-retry a send that can never

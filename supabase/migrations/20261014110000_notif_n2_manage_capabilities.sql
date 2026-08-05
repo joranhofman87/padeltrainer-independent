@@ -345,9 +345,11 @@ BEGIN
   -- worse still, because that changes the body under a fixed provider idempotency key, which is
   -- the one thing this whole model exists to prevent.
   --
-  -- So the send FAILS LOUDLY instead. That is the honest outcome: the operator retired a key while
-  -- mail signed by it was still in flight, and the retry cannot honour both the frozen request and
-  -- the retirement. A failed send retries and alerts; a delivered dead unsubscribe link does not.
+  -- So the send FAILS LOUDLY instead, and TERMINALLY for this send (SQLSTATE 'NMRET' below) —
+  -- not as something to retry, since nothing about the send can change. That is the honest
+  -- outcome: the operator retired a key while mail signed by it was still retryable, and the
+  -- retry cannot honour both the frozen request and the retirement. A terminal failure with an
+  -- alert puts the decision in front of a human; a delivered dead unsubscribe link does not.
   IF v_row.key_version < v_min THEN
     -- SQLSTATE 'NMRET' is a CONTRACT, not decoration. Without a distinguishable code a worker
     -- reads this as an ordinary RPC failure and retries the same durable send forever — a poison
