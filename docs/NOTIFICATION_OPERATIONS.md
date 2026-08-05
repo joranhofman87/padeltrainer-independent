@@ -137,21 +137,25 @@ un-attempted for longer than the provider's deduplication window (Resend: 24h) *
 that may have been accepted, resuming can duplicate those specific deliveries. The digest path
 cannot do this — it never re-sends an ambiguous attempt.
 
-So after an outage longer than a day, before the worker resumes:
+So after an outage longer than a day, before the worker resumes: open
+**`/admin/notifications` → After a long outage**, and
 
-```sql
--- 1. look. Read-only, and it never counts a lease a worker still holds.
-select * from admin_stale_outbox_preview('email', 1440);
+1. **Look.** Choose the channel and the threshold (24h by default — the case this exists for) and
+   press *Look*. It reports the pending rows and the **abandoned** leases older than that, and the
+   oldest of them. A lease a worker still holds is never counted, because a worker may be
+   mid-provider-call.
+2. **Dispose of what is no longer worth sending**, with a reason. Bounded to 500 per press,
+   audited with the count, and idempotent — the threshold is part of the decision, so a retry that
+   widens it is a new decision rather than a replay.
 
--- 2. dispose of what is no longer worth sending. Bounded, audited, idempotent;
---    its only write is pending / abandoned-processing → skipped.
-select * from admin_dispose_stale_outbox('email', 1440, '<why>', gen_random_uuid(), 500);
-```
+Both halves refuse a threshold under 60 minutes: this is an outage tool, not a way to cancel a live
+queue. Neither touches a digest member — those belong to the state machine, and a group that must
+not go out is *cancel group* instead. There is deliberately no automatic sweep: "is this message
+still worth sending a day later" is not a decision code should make.
 
-Both refuse a threshold under 60 minutes — this is an outage tool, not a way to cancel a live
-queue — and neither touches a digest member (those belong to the state machine) or a row whose
-lease is still current (a worker may be mid-provider-call). There is deliberately no automatic
-sweep: "is this message still worth sending a day later" is not a decision code should make.
+(The underlying RPCs are `admin_stale_outbox_preview` and `admin_dispose_stale_outbox`. They are
+admin-gated on `auth.uid()`, so the page is the only place they can be run — a psql session carries
+no JWT and both will refuse it.)
 
 Every one of them: platform-admin only, a reason of 3–500 characters, one request id per decision
 (a retry **replays** rather than deciding twice), inputs frozen on submit, and an immutable audit

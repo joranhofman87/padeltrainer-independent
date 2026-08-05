@@ -24,6 +24,7 @@ export type DecisionRow = Fn['admin_preview_notification_decision']['Returns'][n
 export type PreviewRow = Fn['admin_preview_notification_recipients']['Returns'][number];
 export type SearchRow = Fn['admin_search_notification_destination']['Returns'][number];
 export type BoundaryRow = Fn['admin_notification_activation_boundaries']['Returns'][number];
+export type StaleOutboxRow = Fn['admin_stale_outbox_preview']['Returns'][number];
 
 export const CHANNELS = ['email', 'whatsapp'] as const;
 export type Channel = (typeof CHANNELS)[number];

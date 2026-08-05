@@ -456,3 +456,61 @@ describe('N5: the delivery-paths section', () => {
     expect(screen.getByText(/gating on nothing/)).toBeTruthy();
   });
 });
+
+describe('FINAL AUDIT — the long-outage recovery on the surface that can run it', () => {
+  const ROW = { channel: 'email', older_than_minutes: 1440, pending: 3, abandoned_processing: 1,
+                oldest: '2026-08-04T09:00:00+00:00' };
+  const load = async () => {
+    const { StaleOutboxSection } = await import('@/components/notifications/admin/StaleOutboxSection');
+    const onDispose = vi.fn();
+    render(<StaleOutboxSection onDispose={onDispose} />);
+    return onDispose;
+  };
+
+  it('LOOKS first, then offers the disposal bounded to what it showed', async () => {
+    rpcMock.mockImplementation((fn: string) => (fn === 'admin_stale_outbox_preview'
+      ? Promise.resolve({ data: [ROW], error: null })
+      : Promise.resolve({ data: [], error: null })));
+    const onDispose = await load();
+    expect(screen.queryByTestId('stale-dispose')).toBeNull();          // nothing offered before looking
+    fireEvent.click(screen.getByTestId('stale-preview'));
+    await screen.findByTestId('stale-result');
+    expect(screen.getByTestId('stale-pending').textContent).toBe('3');
+    expect(screen.getByTestId('stale-abandoned').textContent).toBe('1');
+    expect(screen.getByTestId('stale-total').textContent).toBe('4');
+    expect(rpcMock.mock.calls.find((c) => c[0] === 'admin_stale_outbox_preview')![1])
+      .toMatchObject({ p_channel: 'email', p_older_than_minutes: 1440 });
+    fireEvent.click(screen.getByTestId('stale-dispose'));
+    expect(onDispose).toHaveBeenCalledWith(expect.objectContaining({ channel: 'email', olderThanMinutes: 1440 }));
+  });
+
+  it('nothing waiting is the GOOD answer, and the control disappears with it', async () => {
+    rpcMock.mockImplementation(() => Promise.resolve({
+      data: [{ ...ROW, pending: 0, abandoned_processing: 0, oldest: null }], error: null }));
+    await load();
+    fireEvent.click(screen.getByTestId('stale-preview'));
+    await screen.findByTestId('stale-none');
+    expect(screen.queryByTestId('stale-dispose')).toBeNull();
+  });
+
+  it('the floor refusal is shown VERBATIM — it is the answer, not a failure', async () => {
+    rpcMock.mockImplementation(() => Promise.resolve({
+      data: null, error: { message: 'admin_stale_outbox_preview: the threshold floor is 60 minutes' } }));
+    await load();
+    fireEvent.change(screen.getByTestId('stale-minutes'), { target: { value: '5' } });
+    fireEvent.click(screen.getByTestId('stale-preview'));
+    await screen.findByTestId('stale-error');
+    expect(screen.getByTestId('stale-error').textContent).toContain('floor is 60 minutes');
+    expect(screen.queryByTestId('stale-dispose')).toBeNull();
+  });
+
+  it('changing the scope clears the previous answer — a stale number must not be acted on', async () => {
+    rpcMock.mockImplementation(() => Promise.resolve({ data: [ROW], error: null }));
+    await load();
+    fireEvent.click(screen.getByTestId('stale-preview'));
+    await screen.findByTestId('stale-result');
+    fireEvent.change(screen.getByTestId('stale-minutes'), { target: { value: '2880' } });
+    expect(screen.queryByTestId('stale-result')).toBeNull();
+    expect(screen.queryByTestId('stale-dispose')).toBeNull();
+  });
+});

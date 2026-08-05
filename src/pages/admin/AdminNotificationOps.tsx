@@ -15,11 +15,13 @@ import { RecipientPreviewSection } from '@/components/notifications/admin/Recipi
 import { DestinationSearchSection } from '@/components/notifications/admin/DestinationSearchSection';
 import { DecisionAuditSection } from '@/components/notifications/admin/DecisionAuditSection';
 import { ActivationBoundariesSection } from '@/components/notifications/admin/ActivationBoundariesSection';
+import { StaleOutboxSection } from '@/components/notifications/admin/StaleOutboxSection';
 import { OpsDecisionDialog } from '@/components/notifications/admin/OpsDecisionDialog';
 import { useOpsAction } from '@/components/notifications/admin/useOpsDecision';
 import { useOpsRead } from '@/components/notifications/admin/useOpsRead';
 import type {
-  BoundaryRow, Channel, DigestGroupRow, EventStateRow, GaugeRow, HistoryRow, InvocationRow, OrphanRow, ReadinessEnvelope,
+  BoundaryRow, Channel, DigestGroupRow, EventStateRow, GaugeRow, HistoryRow, InvocationRow, OrphanRow,
+  ReadinessEnvelope, StaleOutboxRow,
 } from '@/components/notifications/admin/types';
 
 /**
@@ -161,6 +163,26 @@ export default function AdminNotificationOps() {
     onApplied: refreshAll,
   });
 
+  // the long-outage recovery: admin-gated RPCs the runbook cannot call (psql carries no JWT), so
+  // this page is where they live — with the same decision contract as every other control.
+  const staleDispose = useOpsAction<{ channel: Channel; olderThanMinutes: number; row: StaleOutboxRow }>({
+    run: async (target, reason, requestId) => {
+      const { data, error } = await supabase.rpc('admin_dispose_stale_outbox', {
+        p_channel: target.channel, p_older_than_minutes: target.olderThanMinutes,
+        p_reason: reason, p_request_id: requestId, p_limit: 500,
+      });
+      if (error) throw error;
+      const first = (data as { verdict: string; disposed: number }[] | null)?.[0];
+      lastDisposed.current = first?.disposed ?? 0;
+      return String(first?.verdict ?? 'unknown');
+    },
+    describe: (verdict) => t('notifOps.staleVerdict', {
+      defaultValue: 'Stale disposal: {{verdict}} ({{n}} row(s))', verdict, n: lastDisposed.current,
+    }),
+    failureTitle: t('notifOps.staleFailed', 'The disposal did not go through — retry replays the SAME decision'),
+    onApplied: refreshAll,
+  });
+
   // reload handles the sections publish — a successful decision MUST refresh the list it acted
   // on (the extraction would otherwise leave a cancelled group on screen, inviting a re-decision)
   const reloadGroups = useRef<(() => void) | null>(null);
@@ -211,6 +233,7 @@ export default function AdminNotificationOps() {
         <WorkerRunsSection />
         <OrphanQueueSection onAct={(row, action) => orphanOp.open({ row, action })} onReady={(r) => { reloadOrphans.current = r; }} />
         <RecipientPreviewSection eventKeys={eventKeys} />
+        <StaleOutboxSection onDispose={(target) => staleDispose.open(target)} />
         <DestinationSearchSection />
         <DecisionAuditSection />
       </div>
@@ -220,6 +243,17 @@ export default function AdminNotificationOps() {
         title={t('notifOps.killTitle', { defaultValue: 'Kill the {{channel}} channel?', channel: kill.target ?? '' })}
         description={t('notifOps.killDesc', 'This stops sending NOW and cannot be undone from this page. A reason is required and recorded in the immutable audit.')}
         confirmLabel={t('notifOps.killConfirm', 'Kill channel')} busyLabel={t('notifOps.killing', 'Killing…')}
+      />
+      <OpsDecisionDialog
+        decision={staleDispose} testId="stale" destructive
+        title={t('notifOps.staleTitle', 'Dispose the rows this outage left behind?')}
+        description={t('notifOps.staleDialogDesc', {
+          defaultValue: 'Up to 500 {{channel}} rows older than {{mins}} minutes ({{n}} waiting) are marked skipped (stale_after_outage). A row a worker holds right now is never touched, and nothing is re-sent — this stops mail that resuming would otherwise send late, possibly twice.',
+          channel: staleDispose.target?.channel ?? '',
+          mins: staleDispose.target?.olderThanMinutes ?? '',
+          n: (staleDispose.target?.row.pending ?? 0) + (staleDispose.target?.row.abandoned_processing ?? 0),
+        })}
+        confirmLabel={t('notifOps.staleConfirm', 'Dispose')} busyLabel={t('notifOps.staleBusy', 'Disposing…')}
       />
       <OpsDecisionDialog
         decision={disposeBacklog} testId="dispose" destructive

@@ -177,9 +177,17 @@ describe('N6 doc pins — the operations reference', () => {
     // as safety while leaving the operator to improvise SQL against production.
     for (const fn of ['admin_stale_outbox_preview', 'admin_dispose_stale_outbox']) {
       expect(OPERATIONS, `the doc must name ${fn}`).toContain(fn);
-      expect(() => newestDefining(`CREATE OR REPLACE FUNCTION public.${fn}(`),
-        `${fn} is prescribed by the doc but does not exist`).not.toThrow();
+      const src = newestDefining(`CREATE OR REPLACE FUNCTION public.${fn}(`);
+      // …and it must be RUNNABLE where the doc sends the operator. Both are admin-gated on
+      // auth.uid(), so a psql runbook cannot execute them — the page is the only surface that
+      // carries the session, and a procedure that names a control the operator cannot reach is
+      // the same defect as one that names a control that does not exist.
+      expect(src, `${fn} must be admin-gated`).toMatch(/notif_admin_gate\(\)|has_role\(auth\.uid\(\), 'admin'\)/);
+      const page = read('src', 'pages', 'admin', 'AdminNotificationOps.tsx');
+      const section = read('src', 'components', 'notifications', 'admin', 'StaleOutboxSection.tsx');
+      expect(page + section, `${fn} must be reachable from the admin page`).toContain(fn);
     }
+    expect(OPERATIONS).toContain('/admin/notifications` → After a long outage');
   });
 
   it('the rollout steps the doc tables are the subcommands the runner actually has', () => {
