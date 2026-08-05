@@ -22,10 +22,15 @@ procedure below needs psql against production, that is a gap — say so rather t
 | Recipient preview | Who would receive this event, and *why* | Mirrors the resolver exactly, including its account-email fallback; a bounded scan says `PARTIAL` rather than implying completeness |
 | Decisions + rejected attempts | What did operators do, and what did the server refuse | Append-only; refusals are recorded on the return path |
 
-**Every control is disable-only.** There is no resend, no retry, no redeliver — because provider
-acceptance can be ambiguous and a "retry" over an ambiguous send is a duplicate. The complete admin
-function surface is pinned by a test that also asserts no function name matches
-`retry|resend|redeliver`.
+**There is no resend, no retry, no redeliver** — because provider acceptance can be ambiguous and
+a "retry" over an ambiguous send is a duplicate. The complete admin function surface is pinned by a
+test that also asserts no function name matches `retry|resend|redeliver`.
+
+That is not the same as "every control stops things". Two controls deliberately **restore send
+authority**: *reset circuit* closes a breaker (its own schema comment calls it send-enabling), and
+*requeue orphan* puts a reconcile back in the queue. Both are gated exactly like the stopping
+controls — admin-only, reasoned, request-id idempotent, audited — and neither can produce a *new*
+send of an already-attempted message; they let the pipeline resume deciding.
 
 ## 2. Stopping a send, right now
 
@@ -37,6 +42,30 @@ API path, because un-killing is the same act as deciding to send.
 If the digest path is misbehaving but email must keep flowing, prefer the narrower control: the
 breaker (`admin_reset_notification_circuit` only *closes* it) and the group cancel
 (pre-dispatch only — any send evidence refuses).
+
+### Clearing a kill — the way back
+
+Clearing decides that mail **resumes**, so it is a runbook act with the same weight as activation,
+not a page button. One command:
+
+```
+run-enablement.sh clear-kill --yes --channel=email \
+  --kill-request-id=<the request id OF THE KILL, from the admin page or `status`> \
+  --reason="<why it is safe now>" --backlog-confirmed <db_url>
+```
+
+In order, it: prints who killed the channel, why, and how long ago; prints **how many pending rows
+resume the moment it clears**; then clears *exactly* the kill you named — a different live kill is
+a different incident and is refused server-side — and writes the clearing into the immutable audit
+beside the original kill. `--backlog-confirmed` is your word that you read the second number.
+
+**Decide about that backlog before you clear, not after.** Everything queued while the channel was
+dead sends as soon as the kill is gone. If it should not, dispose of it first
+(`admin_dispose_pre_boundary_backlog` covers pre-boundary rows; a kill-era backlog that is simply
+unwanted is a product decision, not a mechanical one — kill first, decide, then clear).
+
+Nothing else can remove a kill: the table refuses UPDATE, DELETE and TRUNCATE from every other
+path, including the owner's own psql session.
 
 ## 3. Interpreting the monitors
 
@@ -78,9 +107,15 @@ is sufficient to identify a row, and the outbox id is sufficient for support.
 | A worker crashed mid-send | *nothing* | by design: the lease ages out, the state machine re-decides, and an ambiguous send finalizes `delivery_unknown` rather than being re-sent |
 
 Every one of them: platform-admin only, a reason of 3–500 characters, one request id per decision
-(a retry **replays** rather than deciding twice), inputs frozen on submit, stale-state rejection,
-and an immutable audit row. A refused decision is recorded as a rejected attempt — refusals are
-evidence too.
+(a retry **replays** rather than deciding twice), inputs frozen on submit, and an immutable audit
+row. A refused decision is recorded as a rejected attempt — refusals are evidence too.
+
+**Stale-state rejection is not universal, and the difference matters.** *Reset circuit* and *cancel
+group* take the exact state you are confirming against (`state`/`reason`/`tripped_at`, and the
+group's state) and refuse if it changed since your screen loaded. *Resolve* and *requeue orphan*
+take only the event id: they act on whatever classification the row holds when they lock it, so if
+the queue moved under you, the server decides on the NEW classification rather than refusing.
+Re-read the row before acting on an orphan.
 
 ## 6. The owner-gated rollout sequence
 
@@ -114,9 +149,10 @@ returns on its env switch: rows accumulate and are refused, which is the intende
 
 `rollback` deactivates the cron. It does **not** un-open a delivery path, and nothing can:
 a boundary is immutable by design. To stop sends after activation, use the **kill switch** — that
-is what it is for. To resume, the owner clears the kill through the runbook; the boundary is
-unchanged, so the queue that accumulated during the kill is *not* historical work and will send.
-If that is not wanted, dispose of it first.
+is what it is for. To resume, the owner runs `clear-kill` (above); the boundary is unchanged, so the queue that
+accumulated during the kill is *not* historical work and will send.
+If that is not wanted, dispose of it first — see *Clearing a kill* above, which prints the size of
+that queue before it commits.
 
 ## 8. Release inertness — what "deployed inert" means here
 

@@ -784,12 +784,25 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
 
   it('the shell allowlists the ids, prints the request id BEFORE the invoke, and accepts recovery', () => {
     const sh = readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'run-enablement.sh'), 'utf8');
-    expect(sh).toContain('ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id"');
-    // TWO uuid mints, and no more: the invocation's (inside the shared prepare helper) and the
-    // N5 boundary's. A per-execution uuid at any OTHER call site is exactly what could not
-    // recover an ambiguously-committed open — or, for the boundary, would re-date a delivery
-    // path's window on a retry.
-    expect(sh.match(/uuidgen/g)?.length).toBe(2);
+    // the allow-list, whatever it has grown to: every name in it must be a psql variable an
+    // artifact actually reads, and nothing may be a psql CONTROL variable (AUTOCOMMIT,
+    // ON_ERROR_STOP — those change how an artifact behaves rather than what it reads)
+    const vars = sh.match(/ARTIFACT_VARS="([^"]+)"/)?.[1].split(' ') ?? [];
+    expect(vars).toContain('invocation_request_id');
+    expect(vars).toContain('boundary_request_id');
+    for (const v of vars) {
+      expect(v).not.toMatch(/^(AUTOCOMMIT|ON_ERROR_STOP|ECHO|QUIET|VERBOSITY)$/i);
+      const used = readdirSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql'))
+        .some((f) => readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8')
+          .includes(`:'${v}'`));
+      expect(used, `${v} is allow-listed but no artifact reads it`).toBe(true);
+    }
+    // THREE uuid mints, and no more: the invocation's (inside the shared prepare helper), the N5
+    // boundary's, and the kill-clear's. A per-execution uuid at any OTHER call site is exactly
+    // what could not recover an ambiguously-committed open — or, for the boundary, would re-date
+    // a delivery path's window on a retry. (The clear's own id is safe to mint per run: the
+    // decision it replays is identified by the KILL's id, which the operator supplies.)
+    expect(sh.match(/uuidgen/g)?.length).toBe(3);
     expect(sh).toContain('--invocation-request-id=*)');
     expect(sh).toContain('--boundary-request-id=*)');
     // …and the id is printed BEFORE the artifact runs, for the same recovery reason

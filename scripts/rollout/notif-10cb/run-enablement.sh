@@ -130,6 +130,14 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   --monitor-confirmed asserts the EXTERNAL cron/uptime monitor on
                                   notif_digest_worker_liveness() is live: no SQL can see it, and it
                                   is the only detector for "the worker was never invoked"
+  clear-kill --yes --channel=<email|whatsapp> --kill-request-id=<uuid> --reason=<text>
+             --backlog-confirmed <db_url>
+                                  THE WAY BACK from a kill: prints who killed the channel, why,
+                                  and how many pending rows resume the moment it is cleared, then
+                                  clears exactly the kill you named (a different live kill is a
+                                  different incident and is refused) and audits the clearing
+                                  beside it. Clearing decides that mail RESUMES, which is why it
+                                  is here and not on the admin page
   rollback --yes --switch-off-confirmed <db_url>
                                   set DIGEST_SEND_ENABLED=false FIRST (owner action, outside this
                                   script), then this clears the event flag, deactivates the cron,
@@ -163,6 +171,10 @@ for a in "$@"; do
     # could never recover that case.
     --invocation-request-id=*) INVOCATION_REQUEST_ID="${a#*=}" ;;
     --boundary-request-id=*)   BOUNDARY_REQUEST_ID="${a#*=}" ;;
+    --kill-request-id=*)       KILL_REQUEST_ID="${a#*=}" ;;
+    --channel=*)               KILL_CHANNEL="${a#*=}" ;;
+    --reason=*)                CLEAR_REASON="${a#*=}" ;;
+    --backlog-confirmed)       BACKLOG_CONFIRMED=1 ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
@@ -250,7 +262,7 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 # uncommitted transaction that is discarded at disconnect, so the emergency rollback would do nothing
 # at all while every gate before it passed. `-v ON_ERROR_STOP=0` is the same shape. Three names are
 # actually used, so three names are permitted.
-ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id"
+ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id channel kill_request_id reason"
 assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
   local artifact="$1"; shift
   local expect_value=0 a
@@ -665,6 +677,29 @@ case "$SUB" in
     run_sql "$url" activate.sql -v run_id="${run_id}"
     run_sql "$url" status.sql
     ok "digest cron ARMED — watch the external monitor and notif_digest_worker_liveness()"
+    ;;
+
+  clear-kill)
+    # THE WAY BACK from a kill. It is here rather than on the admin page because clearing decides
+    # that mail RESUMES — the same class of decision as activation, and this bundle is where that
+    # class lives. Three confirmations, because all three are separate facts the operator must
+    # actually hold: --yes (intent), --channel + --kill-request-id (WHICH kill: a mismatch is
+    # refused server-side, so naming the wrong one cannot re-open a channel someone else killed),
+    # and --backlog-confirmed (that they have read how much queued mail resumes).
+    require_confirmed "clearing a channel kill"
+    [[ -n "${KILL_CHANNEL:-}" ]] || die "clear-kill requires --channel=email|whatsapp"
+    [[ "$KILL_CHANNEL" =~ ^(email|whatsapp)$ ]] || die "--channel must be email or whatsapp, got '${KILL_CHANNEL}'"
+    [[ -n "${KILL_REQUEST_ID:-}" ]] || die "clear-kill requires --kill-request-id=<the request id OF THE KILL you read> — clearing whatever kill is present would re-open a channel someone may have killed seconds ago for another incident"
+    [[ "$KILL_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+      || die "--kill-request-id must be a lowercase uuid, got '${KILL_REQUEST_ID}'"
+    [[ -n "${BACKLOG_CONFIRMED:-}" ]] || die "clear-kill requires --backlog-confirmed: the artifact prints how many pending rows resume the moment the kill is cleared — read it, decide whether to dispose of them first, then re-run"
+    [[ -n "${CLEAR_REASON:-}" ]] || die "clear-kill requires --reason=<3-500 chars>: it is recorded in the immutable audit beside the kill it clears"
+    url="$(db_url)"
+    CLEAR_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    ok "clear request id: ${CLEAR_REQ_ID} — if this step dies after this line, re-run it with the SAME --kill-request-id: the server replays the decision rather than clearing twice"
+    run_sql "$url" clear_kill.sql -v channel="$KILL_CHANNEL" -v kill_request_id="$KILL_REQUEST_ID" \
+      -v reason="$CLEAR_REASON" -v request_id="$CLEAR_REQ_ID"
+    ok "${KILL_CHANNEL} kill CLEARED — the channel is live again and whatever queued while it was dead will now send"
     ;;
 
   rollback)

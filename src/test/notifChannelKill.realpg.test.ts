@@ -200,6 +200,7 @@ beforeAll(async () => {
   await c.query(MIG('20261028100000_notif_n5_activation_boundary.sql'));
   await c.query(MIG('20261029100000_notif_n5_readiness_and_backlog_disposal.sql'));
   await c.query(MIG('20261030100000_notif_n5_round2_dispatch_boundary.sql'));
+  await c.query(MIG('20261031100000_notif_n6_kill_clear.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -277,38 +278,52 @@ describe('SET-ONLY, owner-effectively — nothing clears a kill', () => {
       .rejects.toThrow(/SET-ONLY/);
   });
 
-  it('NO function in the schema can clear or deactivate a kill — the catalog proves the absence', async () => {
+  it('exactly ONE function can clear a kill, it is runbook-only, and no ADMIN function can', async () => {
+    // N4's contract was "nothing clears a kill", and the catalog proved it. N6 changed that on
+    // purpose: "guard-disable + DELETE as superuser" is not a procedure, it is an invitation to
+    // improvise on the control that decides whether mail resumes. What must still hold is that
+    // the way back is ONE reviewed function, reachable only by the runbook — never by the page.
     const fns = (await c.query(`
       SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
       WHERE n.nspname = 'public' AND p.prokind = 'f'
         AND (p.proname ILIKE '%kill%' OR pg_get_functiondef(p.oid) ILIKE '%notification_channel_kill_switches%')
     `)).rows.map((r) => r.proname as string).sort();
-    // the COMPLETE kill surface: gate, read, set, release, guard + M4's two READERS —
-    // and nothing shaped like a clear
     expect(fns).toEqual([
       'admin_activate_channel_kill',
       'admin_notification_event_states',
       'admin_notification_gauges',
       'admin_notification_readiness',           // M6: reads kill state into the envelope
       'admin_preview_notification_decision',    // M6: kill context on the provenance row
+      'clear_notification_channel_kill',        // N6: the ONE way back
       'is_notification_channel_killed',
       'notif_channel_kill_gate',
       'notif_channel_kill_guard',
       'release_notification_claims_on_kill',
     ]);
-    for (const f of fns) {
-      expect(f).not.toMatch(/clear|deactivate|remove|unkill|resume|enable/);
+    // exactly one clearing function, and it is NOT part of the admin surface
+    const clearing = fns.filter((f) => /clear|deactivate|remove|unkill|resume|enable/.test(f));
+    expect(clearing).toEqual(['clear_notification_channel_kill']);
+    expect(clearing[0]).not.toMatch(/^admin_/);
+    // …and the API roles cannot execute it: un-killing is an owner/runbook decision
+    for (const role of ['anon', 'authenticated']) {
+      expect((await c.query(
+        `SELECT has_function_privilege($1, 'public.clear_notification_channel_kill(text,uuid,text,uuid)', 'EXECUTE') AS ok`,
+        [role])).rows[0].ok, `${role} must not be able to clear a kill`).toBe(false);
     }
-    // and none of them contains a DELETE or reason-updating UPDATE against the kill table
-    for (const f of ['admin_activate_channel_kill', 'notif_channel_kill_gate', 'is_notification_channel_killed', 'release_notification_claims_on_kill', 'admin_notification_gauges', 'admin_notification_event_states']) {
-      const def = (await c.query(`SELECT pg_get_functiondef(p.oid) d FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname=$1`, [f])).rows[0].d as string;
-      expect(def, `${f} must not delete from the kill table`).not.toMatch(/DELETE\s+FROM\s+public\.notification_channel_kill_switches/i);
-      expect(def, `${f} must not update the kill table`).not.toMatch(/UPDATE\s+public\.notification_channel_kill_switches/i);
+    expect((await c.query(
+      `SELECT has_function_privilege('service_role', 'public.clear_notification_channel_kill(text,uuid,text,uuid)', 'EXECUTE') AS ok`))
+      .rows[0].ok).toBe(true);
+    // and none of the OTHER functions touches the table destructively
+    for (const f of ['admin_activate_channel_kill', 'notif_channel_kill_gate', 'is_notification_channel_killed',
+                     'release_notification_claims_on_kill', 'admin_notification_gauges', 'admin_notification_event_states']) {
+      const def = (await c.query(
+        `SELECT pg_get_functiondef(p.oid) d FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+          WHERE n.nspname='public' AND p.proname=$1`, [f])).rows[0].d as string;
+      expect(def, `${f} must not delete a kill`).not.toMatch(/DELETE\s+FROM\s+public\.notification_channel_kill_switches/i);
+      expect(def, `${f} must not update a kill`).not.toMatch(/UPDATE\s+public\.notification_channel_kill_switches/i);
     }
   });
-});
 
-describe('the claim gate — FIRST, with ZERO ledger mutations on a killed channel', () => {
   it('a live channel claims normally (sanity), and the reap works', async () => {
     const fresh = await seedRow();
     const reapable = await seedRow({ status: 'processing', locked_at: new Date(Date.now() - 30 * 60_000).toISOString(), locked_by: 'w:dead', attempts: 3, max_attempts: 3 });
@@ -1572,5 +1587,85 @@ describe('N5 — the admin read of the delivery paths', () => {
     // an INERT path counts nothing: without a boundary, nothing there is provably historical
     expect(rows.find((r) => r.path === 'whatsapp:instant')!.pending_before_boundary).toBe(0);
     expect(rows.find((r) => r.path === 'email:digest')!.boundary_at).toBeNull();
+  });
+});
+
+describe('N6 — clearing a kill: the one reviewed way back', () => {
+  const clear = async (channel: string, killReq: string, req = crypto.randomUUID(), reason = 'incident closed') =>
+    (await c.query(`SELECT * FROM public.clear_notification_channel_kill($1,$2,$3,$4)`,
+      [channel, killReq, reason, req])).rows[0];
+  const killWith = async (req: string, channel = 'email') => {
+    await c.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+    try { await c.query(`SELECT public.admin_activate_channel_kill($1,'incident 7',$2)`, [channel, req]); }
+    finally { await c.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+
+  it('clears the EXACT kill it was shown, audits it beside the original, and says what it released', async () => {
+    const killReq = crypto.randomUUID();
+    await killWith(killReq);
+    await seedRow(); await seedRow();                                  // queued while the channel was dead
+    expect(await claim(c)).toEqual([]);                                // …and provably going nowhere
+    const r = await clear('email', killReq);
+    expect(r.verdict).toBe('cleared');
+    expect(r.pending_released).toBe(2);                                // the operator learns the size first
+    expect(r.pending_released_capped).toBe(false);
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(0);
+    // the DECISION survives its row: kill and clear, both immutable, in order
+    const audit = (await c.query(
+      `SELECT action, old_value, new_value, outcome FROM public.notification_admin_audit
+        WHERE action IN ('channel_kill','channel_kill_cleared') ORDER BY created_at`)).rows;
+    expect(audit.map((a) => a.action)).toEqual(['channel_kill', 'channel_kill_cleared']);
+    expect(audit[1]).toMatchObject({ old_value: 'killed', new_value: 'live', outcome: 'applied' });
+    expect((await claim(c)).length).toBe(2);                           // and mail resumes
+  });
+
+  it('REFUSES a kill it was not shown — a different live kill is a different incident', async () => {
+    const killReq = crypto.randomUUID();
+    await killWith(killReq);
+    const r = await clear('email', crypto.randomUUID());
+    expect(r.verdict).toBe('rejected_stale_kill');
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(1);
+    expect((await c.query(
+      `SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE action='channel_kill_cleared'`)).rows[0].n).toBe(1);
+    // …and clearing a channel that is not killed at all is its own typed refusal
+    expect((await clear('whatsapp', crypto.randomUUID())).verdict).toBe('rejected_not_killed');
+    // the real one still clears
+    expect((await clear('email', killReq)).verdict).toBe('cleared');
+  });
+
+  it('is request-id idempotent, and the guard still refuses every OTHER way out', async () => {
+    const killReq = crypto.randomUUID();
+    await killWith(killReq);
+    const req = crypto.randomUUID();
+    expect((await clear('email', killReq, req)).verdict).toBe('cleared');
+    expect((await clear('email', killReq, req)).verdict).toBe('cleared');   // replayed from the registry
+    // a second kill, and the ordinary ways out are still closed
+    const killReq2 = crypto.randomUUID();
+    await killWith(killReq2);
+    await expect(c.query(`DELETE FROM public.notification_channel_kill_switches WHERE channel='email'`))
+      .rejects.toThrow(/SET-ONLY/);
+    await expect(c.query(`UPDATE public.notification_channel_kill_switches SET reason='x' WHERE channel='email'`))
+      .rejects.toThrow(/SET-ONLY/);
+    await expect(c.query(`TRUNCATE public.notification_channel_kill_switches`)).rejects.toThrow(/SET-ONLY/);
+    // …including publishing the WRONG id into the guard's key
+    await c.query(`SELECT set_config('notif.kill_clear_request', $1, false)`, [crypto.randomUUID()]);
+    await expect(c.query(`DELETE FROM public.notification_channel_kill_switches WHERE channel='email'`))
+      .rejects.toThrow(/SET-ONLY/);
+    await c.query(`SELECT set_config('notif.kill_clear_request', '', false)`);
+    expect((await clear('email', killReq2)).verdict).toBe('cleared');
+  });
+
+  it('is not reachable by any API role — un-killing is a runbook decision, not a page control', async () => {
+    const c3 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+    await c3.connect();
+    try {
+      for (const role of ['anon', 'authenticated']) {
+        await c3.query(`SET ROLE ${role}`);
+        await expect(c3.query(
+          `SELECT * FROM public.clear_notification_channel_kill('email', gen_random_uuid(), 'x', gen_random_uuid())`),
+          `${role} must not clear a kill`).rejects.toThrow();
+        await c3.query(`RESET ROLE`);
+      }
+    } finally { await c3.end(); }
   });
 });

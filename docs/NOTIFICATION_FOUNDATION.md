@@ -22,7 +22,7 @@ is the one that matches the code.
 | **Resolver** (`enqueue_notification`) | Preferences, academy caps, consent scope, contact resolution, suppression, digest routing, idempotency identity | Send anything, or read provider state |
 | **State machine** (SQL) | Every transition, lease, retry, breaker move, group identity, reservation | Render, call a provider, or invent a decision the resolver did not record |
 | **Workers** (edge) | Calling the provider exactly once per attempt and reporting the outcome | Re-decide eligibility, re-render a frozen request, or continue past a refused claim |
-| **Admin surface** | Visibility and *disable-only* recovery, each audited and idempotent | Offer any generic resend/retry, or open a delivery path |
+| **Admin surface** | Visibility, plus audited idempotent recovery — stopping controls (kill, cancel, dispose) and two that RESTORE send authority (circuit reset, orphan requeue) | Offer any generic resend/retry primitive, or open a delivery path |
 | **Owner** | Merge, deploy, activation, real sends, provider configuration | — |
 
 The one-line version: **producers say what happened, the resolver decides, SQL owns state,
@@ -69,7 +69,8 @@ re-renders.
 
 1. **Catalogue support.** Unsupported channel → nothing.
 2. **Explicit preference** (`notification_preferences_v2`, per user × event × channel) wins over
-   everything below it, *including* an opt-in.
+   the opt-in, the catalogue default and any academy cap — but **not** over required delivery
+   (step 6), which is the one thing above it for email.
 3. **WhatsApp booking opt-in** — only when no explicit preference exists, only for events flagged
    `whatsapp_optin_via_booking`, and only from an in-scope opted-in contact.
 4. **Catalogue default** for the channel.

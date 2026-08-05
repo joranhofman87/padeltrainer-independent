@@ -64,17 +64,30 @@ describe('attribution matrix pins', () => {
       `grep -rl "enqueue_notification\\|enqueue_booking_notification" supabase/functions supabase/migrations`,
       { cwd: ROOT, encoding: 'utf8' },
     ).trim().split('\n');
-    const isCall = (line: string) => {
-      const code = line.replace(/^\s+/, '');
-      if (code.startsWith('--') || code.startsWith('//') || code.startsWith('*')) return false;
-      // a CALL passes arguments; a definition names the function after CREATE
-      if (/CREATE (OR REPLACE )?FUNCTION public\.(enqueue_notification|enqueue_booking_notification)\(/.test(code)) return false;
-      return /\b(enqueue_notification|enqueue_booking_notification)\s*\(/.test(code)
-          || /rpc\(\s*['"](enqueue_notification|enqueue_booking_notification)['"]/.test(code);
+    // WHOLE-FILE, not line-by-line: the ordinary multiline shape
+    //   supabase.rpc(
+    //     "enqueue_notification",
+    //     args,
+    //   )
+    // contains the call on no single line, and a line-based scan would drop a real producer while
+    // still looking strict. Comments are stripped first — prose about the resolver is not a call.
+    const stripComments = (src: string) => src
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
+      .split('\n')
+      .map((l) => l.replace(/(^|\s)--\s.*$/, '').replace(/(^|\s)\/\/.*$/, ''))
+      .filter((l) => !/^\s*[*]/.test(l))
+      .join('\n');
+    const callsResolver = (src: string) => {
+      const code = stripComments(src)
+        // a DEFINITION is not a call — the resolver-defining migrations name it after CREATE
+        .replace(/CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.(enqueue_notification|enqueue_booking_notification)\s*\(/gi, ' <definition> (');
+      return /\brpc\s*\(\s*["'](enqueue_notification|enqueue_booking_notification)["']/s.test(code)
+          || /(SELECT|PERFORM)\s+(public\.)?(enqueue_notification|enqueue_booking_notification)\s*\(/is.test(code)
+          || /\bFROM\s+(public\.)?(enqueue_notification|enqueue_booking_notification)\s*\(/is.test(code);
     };
     const out = mentions
       .filter((f) => !/\.test\./.test(f))
-      .filter((f) => read(f).split('\n').some(isCall))
+      .filter((f) => callsResolver(read(f)))
       // the resolver-definition migrations CALL it only to redefine/replay it
       .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000/.test(f))
       .sort();

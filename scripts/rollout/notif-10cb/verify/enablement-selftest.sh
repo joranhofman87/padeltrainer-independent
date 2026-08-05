@@ -115,6 +115,21 @@ logged 'assert_inert.sql' && ok "assert-inert runs its own artifact" || bad "ass
 run "assert-inert REFUSES a url belonging to another project" 1 -- assert-inert "$OTHER_URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
 
+# ── clear-kill: the way back, and every confirmation it demands ───────────────────────────────
+KREQ="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+run "clear-kill REFUSES without --yes" 1 -- clear-kill --channel=email --kill-request-id="$KREQ" --reason=ok --backlog-confirmed "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
+run "clear-kill REFUSES without a channel" 1 -- clear-kill --yes --kill-request-id="$KREQ" --reason=ok --backlog-confirmed "$URL"
+run "clear-kill REFUSES an unknown channel" 1 -- clear-kill --yes --channel=carrier-pigeon --kill-request-id="$KREQ" --reason=ok --backlog-confirmed "$URL"
+run "clear-kill REFUSES without the KILL's own request id" 1 -- clear-kill --yes --channel=email --reason=ok --backlog-confirmed "$URL"
+run "clear-kill REFUSES a non-uuid kill id" 1 -- clear-kill --yes --channel=email --kill-request-id=nope --reason=ok --backlog-confirmed "$URL"
+run "clear-kill REFUSES until the released backlog has been read" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --reason=ok "$URL"
+run "clear-kill REFUSES without a reason" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --backlog-confirmed "$URL"
+run "clear-kill runs its own artifact when every fact is supplied" 0 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --reason="incident closed" --backlog-confirmed "$URL"
+logged 'clear_kill.sql' && ok "clear-kill routes to clear_kill.sql" || bad "clear-kill routes to clear_kill.sql"
+grep -qF -- "-v kill_request_id=${KREQ}" "$PSQL_LOG" && ok "...passing the kill id it was given" || bad "...passing the kill id it was given"
+if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+
 run "enable-engine REFUSES without --yes" 1 -- enable-engine "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
 run "enable-engine REFUSES a url belonging to another project" 1 -- enable-engine --yes "$OTHER_URL"

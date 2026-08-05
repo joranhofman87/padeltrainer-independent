@@ -156,6 +156,23 @@ describe('N6 doc pins — the operations reference', () => {
     expect(OPERATIONS).toContain('refuses under a kill, an unresolved invocation');
   });
 
+  it('the kill-clear procedure the doc gives is the one the artifact and the RPC actually implement', () => {
+    // the P3 this closes: the doc used to send on-call to "the runbook" for a procedure that did
+    // not exist, over the single control that decides whether mail resumes
+    const sql = read('scripts', 'rollout', 'notif-10cb', 'sql', 'clear_kill.sql');
+    expect(sql).toContain('clear_notification_channel_kill');
+    expect(sql).toContain('pending_rows_that_would_resume');     // the size of the decision, printed first
+    const fn = newestDefining('CREATE OR REPLACE FUNCTION public.clear_notification_channel_kill(');
+    expect(fn).toContain("'rejected_stale_kill'");               // a different live kill is refused
+    expect(fn).toContain("'channel_kill_cleared'");              // …and the clearing is audited
+    const sh = read('scripts', 'rollout', 'notif-10cb', 'run-enablement.sh');
+    for (const flag of ['--kill-request-id=', '--backlog-confirmed', '--channel=']) {
+      expect(sh, `clear-kill must demand ${flag}`).toContain(flag);
+      expect(OPERATIONS, `the doc must tell the operator about ${flag}`).toContain(flag.replace('=', ''));
+    }
+    expect(OPERATIONS).toContain('clear-kill');
+  });
+
   it('rollback deactivates and never unschedules — the doc says so because the artifact does', () => {
     const sql = read('scripts', 'rollout', 'notif-10cb', 'sql', 'rollback_disable.sql');
     expect(sql).not.toContain('cron.unschedule');

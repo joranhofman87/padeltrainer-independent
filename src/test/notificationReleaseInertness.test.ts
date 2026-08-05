@@ -24,26 +24,72 @@ const read = (f: string) => readFileSync(resolve(MIG_DIR, f), 'utf8');
 // the v2 pipeline's own chain: migrations that touch ITS objects. Deliberately not "any file
 // mentioning notifications" — older features (the rebook-open cron, the legacy queue) are live by
 // design, and sweeping them in here would make this pin fail for someone else's working feature.
-const NOTIF = files.filter((f) => /notif/i.test(f)
-  || /notification_(outbox|digest|contacts|event_types|activation_boundaries|worker_)/.test(read(f)));
+// …identified by the OBJECTS they touch, never by their filename: `notify_rebook_member_open`
+// matches /notif/ and is a different feature's live cron, and a scope that swept it in would fail
+// this pin for someone else's working code.
+const PIPELINE_OBJECT = /notification_(outbox|digest|contacts|event_types|activation_boundaries|worker_|provider_|admin_|manage_|preferences_v2|orphan_)/;
+const NOTIF = files.filter((f) => PIPELINE_OBJECT.test(read(f)));
 
 /** source lines with comments stripped — a claim in prose is not a behaviour */
 const codeLines = (sql: string) =>
   sql.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('--'));
 
 /**
- * What the migration executes AT INSTALL: everything outside a dollar-quoted body. A function
- * body, a trigger's body and a scheduled cron command are all DEFINITIONS — they say what will
- * run later, under their own gates, and reading them as install-time behaviour would flag every
- * correct migration in the chain (the digest cron's own command contains the worker's http_post,
- * which is precisely the thing that is installed INACTIVE).
+ * What the migration executes AT INSTALL.
+ *
+ * A dollar-quoted block is NOT automatically deferred — that was the first version of this scan
+ * and it was wrong in the one way that matters: `DO $$ ... $$` RUNS while the migration is being
+ * applied, so erasing every dollar-quoted region would have hidden exactly the statement this
+ * test exists to catch. Only two kinds are deferred, and each is recognised by what precedes it:
+ *
+ *   * a CREATE FUNCTION / PROCEDURE body — it says what will run later, under its own gates;
+ *   * a cron command literal — it says what the SCHEDULER will run, and whether that ever happens
+ *     is the job's `active` state, which is checked separately.
+ *
+ * Everything else — DO blocks, EXECUTE strings, plain statements — is install-time behaviour and
+ * is scanned. String literals are kept for the same reason: `EXECUTE 'SELECT net.http_post(...)'`
+ * is a send. Only a COMMENT ON statement's text is dropped, because a docstring that describes
+ * the pipeline is not the pipeline.
  */
-const installStatements = (sql: string) => codeLines(
-  sql
-    .replace(/\$([a-z_]*)\$[\s\S]*?\$\1\$/g, ' <body> ')
-    // …and string LITERALS: a COMMENT ON FUNCTION that describes the pg_net request an invocation
-    // binds is documentation, not a call. Quoted text cannot execute anything.
-    .replace(/'(?:[^']|'')*'/g, " '<str>' "));
+function installStatements(sql: string): string[] {
+  const deferred: [number, number][] = [];
+  const closers = new Set<number>();      // closing tags of blocks we KEPT — never re-open them
+  const tag = /\$([a-z_]*)\$/gi;
+  let m: RegExpExecArray | null;
+  while ((m = tag.exec(sql))) {
+    if (closers.has(m.index)) continue;   // this is the end of a kept block, not a new one
+    const close = sql.indexOf(m[0], m.index + m[0].length);
+    if (close < 0) break;
+    const before = sql.slice(Math.max(0, m.index - 400), m.index);
+    // a cron COMMAND: written inline in the schedule/alter call, or assigned to a variable this
+    // file later hands to one (`format($cmd$…$cmd$, …)` is the older style, hence the open paren)
+    const assignedTo = before.match(/(\w+)\s*(?:text\s*)?:=\s*(?:format\s*\(\s*)?$/i)?.[1];
+    const isCronCommand = /cron\.(schedule|alter_job)\s*\([^;]*$/i.test(before)
+      || (!!assignedTo && new RegExp(`cron\\.(schedule|alter_job)\\s*\\([^;]*\\b${assignedTo}\\b`, 'i').test(sql));
+    const isFunctionBody = /CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE)\b[\s\S]*\bAS\s*$/i.test(before);
+    if (isFunctionBody || isCronCommand) {
+      deferred.push([m.index, close + m[0].length]);
+      tag.lastIndex = close + m[0].length;        // its contents are deferred; skip them whole
+    } else {
+      // KEPT — a DO block runs at install, so keep scanning INSIDE it: the digest cron's command
+      // literal lives inside one, and a naive skip-to-close would leave that literal in the scan
+      // (and, worse, could pair the block's closing tag with the next block's opening one).
+      closers.add(close);
+      tag.lastIndex = m.index + m[0].length;
+    }
+  }
+  let out = '';
+  let cursor = 0;
+  for (const [from, to] of deferred.sort((a, b) => a[0] - b[0])) {
+    if (from < cursor) continue;
+    out += sql.slice(cursor, from) + ' <deferred-body> ';
+    cursor = to;
+  }
+  out += sql.slice(cursor);
+  // a COMMENT ON statement's text is documentation, not behaviour
+  out = out.replace(/COMMENT ON [\s\S]*?;\s*\n/gi, ' <comment> \n');
+  return codeLines(out);
+}
 
 describe('the notification release unit is INERT', () => {
   it('scans a chain that actually contains the pipeline (the scan itself is not vacuous)', () => {
