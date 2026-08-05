@@ -297,7 +297,7 @@ const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?:
             </p>
             <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
               You're receiving this because you follow ${data.trainerName}. 
-              <a href="https://padeltrainer.ai/app/player/settings/notifications">Manage notification preferences</a>
+              <a href="https://padeltrainer.ai/app/settings/notifications">Manage notification preferences</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -323,7 +323,7 @@ const getEmailContent = (type: string, dataRaw: EmailRequest["data"], language?:
             </p>
             <p style="margin-top: 24px; color: #6b7280; font-size: 14px;">
               You're receiving this because you follow ${data.trainerName}. 
-              <a href="https://padeltrainer.ai/app/player/settings/notifications">Manage notification preferences</a>
+              <a href="https://padeltrainer.ai/app/settings/notifications">Manage notification preferences</a>
             </p>
             <p>Best regards,<br>PadelTrainer.ai Team</p>
           </div>
@@ -1358,21 +1358,22 @@ const handler = async (req: Request): Promise<Response> => {
     const prefColumn = TYPE_TO_PREF_COLUMN[type];
     const isSystemEmail = SYSTEM_EMAIL_TYPES.includes(type);
 
+    // Resolve the recipient's ACCOUNT once, for both the preference check and the footer. Hoisted
+    // out of the preference branch (N2 S2b): the footer must know whether this address belongs to
+    // an account even for types with no preference column, because a GUEST must never be handed a
+    // manage link they cannot use — that is a dead control at the end of every mail.
+    let recipientUserId = (data as any).userId || null;
+    if (!recipientUserId && !isSystemEmail) {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("user_id")
+        .eq("email", to)
+        .maybeSingle();
+      recipientUserId = profile?.user_id ?? null;
+    }
+
     // Check notification preferences if applicable
     if (prefColumn && !isSystemEmail) {
-      const recipientId = (data as any).userId || null;
-      let recipientUserId = recipientId;
-
-      // Try to look up user by email if no userId provided
-      if (!recipientUserId) {
-        const { data: profile } = await supabaseAdmin
-          .from("profiles")
-          .select("user_id")
-          .eq("email", to)
-          .maybeSingle();
-        recipientUserId = profile?.user_id;
-      }
-
       if (recipientUserId) {
         const { data: prefs } = await supabaseAdmin
           .from("notification_preferences")
@@ -1421,20 +1422,33 @@ const handler = async (req: Request): Promise<Response> => {
     // Add manage notifications footer (except for system emails)
     let finalHtml = emailHtml;
     if (!isSystemEmail) {
-      const notifPath = type.startsWith("new_booking") || type === "new_public_booking_admin" || type === "booking_request" || type === "review_received" || type === "payment_confirmed_trainer"
-        ? "/app/trainer/settings/notifications"
-        : "/app/player/settings/notifications";
+      // N2 S2b: the footer links the ROLE-AGNOSTIC settings entry. It used to GUESS the surface
+      // from the email TYPE (trainer-ish types → the trainer path, everything else → player),
+      // which is wrong for anyone holding a different mix of roles — an academy manager receiving
+      // a staff-type mail was sent into TrainerLayout, whose guard bounced them to the player
+      // dashboard and discarded the link. A sender cannot know the recipient's surface; the app
+      // can. Must equal NOTIFICATION_SETTINGS_ENTRY_PATH (src/lib/notificationSettingsRoute.ts);
+      // a cross-boundary parity test pins both.
+      const notifPath = "/app/settings/notifications";
 
       // Footer follows the email body's language — an NL body used to end in an
       // English footer.
       const footerCopy = language === "nl"
         ? { from: "Je ontvangt deze e-mail van PadelTrainer.ai.", manage: "E-mailmeldingen beheren" }
         : { from: "You're receiving this email from PadelTrainer.ai.", manage: "Manage email notifications" };
+      // PER-RECIPIENT footer (N2 §1): only an ACCOUNT gets the manage link. A guest address gets
+      // the from-line alone — an honest footer rather than a link that dead-ends on a login form
+      // for someone who cannot log in. (Guest marketing mail gets its signed one-click link in
+      // S3; optional service mail to guests keeps the plain line until the contact-scoped
+      // preference model exists — N2 §2.)
+      const manageLine = recipientUserId
+        ? `<br/>
+            <a href="https://padeltrainer.ai${notifPath}" style="color: #6b7280; text-decoration: underline;">${footerCopy.manage}</a>`
+        : "";
       finalHtml += `
         <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e5e7eb;">
           <p style="color: #6b7280; font-size: 12px; text-align: center;">
-            ${footerCopy.from}<br/>
-            <a href="https://padeltrainer.ai${notifPath}" style="color: #6b7280; text-decoration: underline;">${footerCopy.manage}</a>
+            ${footerCopy.from}${manageLine}
           </p>
         </div>
       `;

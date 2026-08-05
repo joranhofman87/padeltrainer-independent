@@ -24,7 +24,8 @@ const rpcMock = vi.fn();
 
 let authState = {
   user: { id: 'U1' },
-  role: 'player',
+  role: 'player' as string,
+  isClubManager: false,
   // The page tests the whole ROLES set, not the primary role: `useAuth` ranks admin above
   // trainer, so a primary-role test would hide every staff event from a trainer who is also an
   // admin. The fixture must carry both fields or the page reads `undefined.includes`.
@@ -103,7 +104,7 @@ beforeEach(() => {
   // A fresh tab from an email link: React Router's history index is 0, i.e. nothing of ours
   // behind us. Individual tests raise it to model in-app navigation.
   window.history.replaceState({ idx: 0 }, '');
-  authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isAcademyManager: false, loading: false };
+  authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isClubManager: false, isAcademyManager: false, loading: false };
   catalog = [
     evt({ key: 'booking_confirmed_player', required_delivery: true }),
     evt({ key: 'booking_cancelled_player' }),
@@ -229,7 +230,7 @@ describe('NotificationSettings v2', () => {
   });
 
   it('keeps EVERY v1 staff preference reachable for staff', async () => {
-    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isAcademyManager: false, loading: false };
+    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isClubManager: false, isAcademyManager: false, loading: false };
     render(<NotificationSettings />);
     for (const k of ['new_booking', 'booking_cancelled', 'new_follower', 'new_player',
                      'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received']) {
@@ -290,6 +291,7 @@ describe('NotificationSettings v2', () => {
       user: { id: 'U1' },
       role: 'admin',
       roles: ['admin', 'trainer'],
+      isClubManager: false,
       isAcademyManager: false,
       loading: false,
     };
@@ -311,7 +313,7 @@ describe('NotificationSettings v2', () => {
   });
 
   it('STAFF filtering includes trainers — a trainer-only account sees staff events', async () => {
-    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isAcademyManager: false, loading: false };
+    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isClubManager: false, isAcademyManager: false, loading: false };
     render(<NotificationSettings />);
     // catalogued audience is 'academy_manager', but PR 6b's fan-out also mails trainers
     expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
@@ -326,7 +328,7 @@ describe('NotificationSettings v2', () => {
   });
 
   it('an academy manager also lands in the staff bucket', async () => {
-    authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isAcademyManager: true, loading: false };
+    authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isClubManager: false, isAcademyManager: true, loading: false };
     render(<NotificationSettings />);
     expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
   });

@@ -29,11 +29,14 @@ in no group (silently undelivered) or a duplicate chunk (a doubled digest).
 These are not defects in S1; they are the bill S1's model presents to the later slices. Each was
 raised by review against the shipped schema and must be satisfied where named.
 
-1. **Optional-service footers must render per RECIPIENT (S2).** `email_footer_policy='manage_prefs'`
-   says the EVENT is optional; it cannot say what a given recipient can do. An account holder gets
-   the authenticated settings link; a GUEST cannot use that link and must get an explanatory line,
-   never a dead one. (Guests reach optional service mail today — e.g. `booking_cancelled_player`
-   via `enqueue_booking_notification`.) Omitting the footer instead would contradict the catalog.
+1. ~~**Optional-service footers must render per RECIPIENT (S2).**~~ **CLOSED in S2b** for the
+   live senders: `send-email` resolves the recipient's account ONCE (hoisted before the preference
+   branch, so types with no preference column know it too) and renders the manage link only for an
+   account — a guest gets the from-line alone, never a link that dead-ends on a login form. The
+   digest paths need no guest arm by construction: the v1 queue is user-keyed and the v2 resolver
+   refuses outbox rows with no `recipient_user_id` (20261011100000:403). Guest marketing mail gets
+   its signed one-click link in S3; optional service mail to guests keeps the plain line until the
+   contact-scoped preference model exists (item 2).
 2. **A guest "stop optional service mail" lever needs a per-event, contact-scoped preference model
    (future unit).** The only existing mechanism, `notification_contacts.consent_status`, also
    silences REQUIRED mail — the resolver excludes an opted-out contact even for `required_delivery`
@@ -111,6 +114,27 @@ raised by review against the shipped schema and must be satisfied where named.
    state *detectable* — and S4's entry refuses on it — but every layout and page that reads `roles`
    without checking a failure flag still trusts it. **Owner:** a `useAuth` hardening pass that
    clears routing state on identity change, not a notification slice. Found by review during S4.
+6g. **S2b SHIPPED (2026-08-05): every footer cites the neutral route; the legacy digest flush
+   gained a send-time gate.** Three senders changed. (a) `send-email`: the footer's TYPE-based
+   role guess is gone — the exact bug N1 deferred here — and both per-template follower links
+   (`new_availability`, `slot_reopened`; followers are account holders) now cite
+   `/app/settings/notifications`. (b) `_shared/digest-render.ts`: the v2 digest gained the same
+   footer, rendered BEFORE the request freezes so a retry reuses identical bytes under its
+   idempotency key; footer bytes are counted by the oversize measurement (test-pinned). Every
+   digest recipient is an account holder by construction, so the footer is unconditional.
+   (c) `send-digest-emails` re-checks at SEND time what it never re-checked: the current v1
+   preference (`_shared/digest-send-gate.ts` — the J rule, only a literal `off` refuses; junk
+   values fail OPEN deliberately, an opt-out is the only value safe to obey whatever its origin)
+   and canonical address suppression (`email_address_state.is_suppressed`, same normalization as
+   `is_email_suppressed`). Both reads happen BEFORE anything is claimed — a failed read aborts the
+   run with nothing consumed. Both drop kinds CONSUME the claim (a suppressed address must not
+   retry forever; an opt-out is a decision, not a queue); a send failure releases ONLY the items
+   it tried to send. Cross-boundary parity (`src/test/notificationFooterParity.test.ts`) pins the
+   edge-side URLs to `NOTIFICATION_SETTINGS_ENTRY_PATH` and forbids every role-guessed path —
+   the constant lives in frontend code Deno cannot import, so nothing else ties the two worlds.
+   **Accepted race, same family as 7b:** the gate reads preferences seconds before the send; an
+   opt-out landing inside that window rides along. The window was previously hours-to-days.
+
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
    `expires_at` more than 30 days past — and never a row that is merely revoked.
 7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising
