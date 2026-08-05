@@ -204,10 +204,10 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
     s.dispatchRunId = dispRun;
 
     // (0) INVOCATION CLAIM — N4 AC-6, before ANY pipeline mutation, keyed by the invocation THIS
-    // REQUEST NAMES. The scheduled command's body resolves the pending invocation at execution
-    // time, so an artifact's request carries the id it just opened and a tick's carries null —
-    // including a tick already in flight when the invocation was opened, whose body was frozen
-    // before it existed. 'owned' may do deliberate work; 'deferred' means this request owns
+    // REQUEST NAMES. The scheduled command's body reads a TRANSACTION-LOCAL setting that only the
+    // invoke artifacts publish, so an artifact's request carries the id it just opened and every
+    // cron tick's carries nothing — a tick runs in pg_cron's own session, whether it was selected
+    // before the invocation existed or started long after. 'owned' may do deliberate work; 'deferred' means this request owns
     // nothing while someone else's evidence window is open, so it does NO pipeline work; 'none'
     // is the ordinary steady-state tick. A named invocation this run cannot own RAISES — the
     // throw lands in the run-level catch, which finishes this run 'failed' having done nothing.

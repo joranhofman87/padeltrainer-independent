@@ -18,10 +18,11 @@ import { join, dirname, resolve } from 'node:path';
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 
 const MIGRATION = read('supabase', 'migrations', '20261012100000_notif_10cb_digest_cron_inert.sql');
-// N4 round 5 RE-POINTS that command: its body now names the pending invocation, so the request a
-// deliberate artifact sends carries the identity it just opened and a tick's carries null. The
-// command text is otherwise byte-identical, and THIS migration is now the authoritative source of
-// what the schedule runs — the pins below follow it, not the original.
+// N4 round 6 RE-POINTS that command: its body reads a TRANSACTION-LOCAL setting only the invoke
+// artifacts publish, so a deliberate request carries the identity it just opened and every cron
+// tick carries nothing (pg_cron has its own session). The command text is otherwise byte-identical,
+// and THIS migration is now the authoritative source of what the schedule runs — the pins below
+// follow it, not the original.
 const REPOINT = read('supabase', 'migrations', '20261027100000_notif_n4_dispatch_identity_is_session_local.sql');
 // The assertions live in a shared include, pulled in by BOTH the read-only dry run
 // (activation_preflight.sql) and the transactional gate (activate.sql), so the two can never
