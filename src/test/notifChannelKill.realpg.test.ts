@@ -997,6 +997,7 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
       'admin_cancel_digest_group',
       'admin_list_digest_groups',
       'admin_list_notification_audit',
+      'admin_list_notification_orphans',
       'admin_list_notification_outbox',
       'admin_list_notification_rejected',
       'admin_list_worker_invocations',

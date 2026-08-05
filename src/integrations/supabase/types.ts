@@ -9542,6 +9542,23 @@ export type Database = {
           target: string
         }[]
       }
+      admin_list_notification_orphans: {
+        Args: {
+          p_before_event_id?: string
+          p_before_updated_at?: string
+          p_limit?: number
+        }
+        Returns: {
+          attempts: number
+          channel: string
+          digest_group_id: string
+          last_error_code: string
+          next_eligible_at: string
+          quarantined: boolean
+          resend_event_id: string
+          updated_at: string
+        }[]
+      }
       admin_list_notification_outbox: {
         Args: {
           p_before_created_at?: string

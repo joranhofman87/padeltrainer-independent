@@ -424,3 +424,39 @@ CREATE INDEX IF NOT EXISTS idx_outbox_oldest_processing
 CREATE INDEX IF NOT EXISTS idx_digest_groups_oldest_uncertain
   ON public.notification_digest_groups (channel, uncertain_since)
   WHERE uncertain_since IS NOT NULL AND terminal_at IS NULL;
+
+-- ── 7. the orphan queue (M7 exposed the gap: resolve/requeue controls need a LIST) ──────────
+CREATE OR REPLACE FUNCTION public.admin_list_notification_orphans(
+  p_before_updated_at timestamptz DEFAULT NULL,
+  p_before_event_id text DEFAULT NULL,
+  p_limit int DEFAULT 50
+) RETURNS TABLE (
+  resend_event_id text,
+  channel text,
+  digest_group_id uuid,
+  attempts int,
+  last_error_code text,
+  quarantined boolean,
+  next_eligible_at timestamptz,
+  updated_at timestamptz
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  PERFORM public.notif_admin_gate();
+  IF (p_before_updated_at IS NULL) <> (p_before_event_id IS NULL) THEN
+    RAISE EXCEPTION 'admin_list_notification_orphans: a keyset cursor needs BOTH updated_at and event id (or neither)';
+  END IF;
+  RETURN QUERY
+  SELECT s.resend_event_id, s.channel, s.digest_group_id, s.attempts,
+         s.last_error_code, s.quarantined, s.next_eligible_at, s.updated_at
+    FROM public.notification_orphan_reconcile_state s
+   WHERE p_before_updated_at IS NULL
+      OR (s.updated_at, s.resend_event_id) < (p_before_updated_at, p_before_event_id)
+   ORDER BY s.quarantined DESC, s.updated_at DESC, s.resend_event_id DESC
+   LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200);
+END;
+$$;
+COMMENT ON FUNCTION public.admin_list_notification_orphans(timestamptz, text, int) IS
+  'N4 M7: the orphan reconcile queue, quarantined-first — fixed columns (ids, codes, states; no provider bodies), composite keyset, clamp 1..200, admin fail-closed. The resolve/requeue controls act on these rows.';
+REVOKE ALL ON FUNCTION public.admin_list_notification_orphans(timestamptz, text, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_list_notification_orphans(timestamptz, text, int) TO authenticated, service_role;

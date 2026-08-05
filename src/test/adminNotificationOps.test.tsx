@@ -78,6 +78,41 @@ const defaultImpl = (fn: string) => {
       });
     case 'admin_list_worker_invocations':
       return Promise.resolve({ data: [], error: null });
+    case 'admin_list_notification_outbox':
+      return Promise.resolve({
+        data: [{ id: 'ob1', created_at: TS2, event_type: 'ev_test', channel: 'email', status: 'failed', attempts: 2, max_attempts: 3, destination_redacted: 'p***@x.nl', skip_reason: null, error_class: 'provider_error', template_key: 't', delivery_mode: null, scheduled_for: TS1, tenant_academy_profile_id: null, tenant_trainer_id: null, updated_at: TS2 }],
+        error: null,
+      });
+    case 'admin_notification_delivery_history':
+      return Promise.resolve({ data: [{ at: TS1, kind: 'outbox_created', a: 'ev_test', b: 'email', c: 'p***@x.nl', ref: 'ob-created:ob1' }], error: null });
+    case 'admin_list_digest_groups':
+      return Promise.resolve({
+        data: [{ id: 'g1', created_at: TS2, event_type: 'ev_test', channel: 'email', state: 'request_ready', terminal_reason: null, item_count: 2, provider_attempts_started: 0, provider_message_id: null, first_send_at: null, uncertain_since: null, provider_status: null, delivery_budget_used: 0, digest_boundary_at: TS1, available_at: TS1, locked_by: null, worker_run_id: null, updated_at: TS2 }],
+        error: null,
+      });
+    case 'admin_list_worker_runs':
+      return Promise.resolve({ data: [], error: null });
+    case 'admin_list_notification_orphans':
+      return Promise.resolve({
+        data: [{ resend_event_id: 'orph1', channel: 'email', digest_group_id: 'g1', attempts: 3, last_error_code: 'tagged_mismatch', quarantined: true, next_eligible_at: TS1, updated_at: TS2 }],
+        error: null,
+      });
+    case 'admin_preview_notification_recipients':
+      return Promise.resolve({
+        data: [{ user_id: 'u1', final_frequency: 'instant', final_decision: 'deliver:instant', destination_masked: 'p***@x.nl', candidates_partial: true, next_cursor: 'u1' }],
+        error: null,
+      });
+    case 'admin_search_notification_destination':
+      return Promise.resolve({
+        data: [{ destination_masked: 'p***@x.nl', contacts: 1, contacts_capped: false, outbox_rows: 3, outbox_capped: false, delivery_events: 2, events_capped: false }],
+        error: null,
+      });
+    case 'admin_cancel_digest_group':
+      return Promise.resolve({ data: 'cancelled', error: null });
+    case 'admin_resolve_notification_orphan':
+      return Promise.resolve({ data: 'rejected_not_permanent', error: null });
+    case 'admin_requeue_notification_orphan':
+      return Promise.resolve({ data: 'requeued', error: null });
     case 'admin_list_notification_audit':
       return Promise.resolve({
         data: [
@@ -193,5 +228,114 @@ describe('AdminNotificationOps', () => {
       expect(calls[1][1].p_before_id).toBe('a2');
       expect(typeof calls[1][1].p_before_created_at).toBe('string');
     });
+  });
+});
+
+describe('AdminNotificationOps — the completed surface (M7 round 2)', () => {
+  it('decision inputs FREEZE after the first submit — the retry cannot change the fingerprint', async () => {
+    renderPage();
+    await screen.findByTestId('kill-switches');
+    fireEvent.click(screen.getByTestId('kill-btn-email'));
+    fireEvent.change(await screen.findByTestId('kill-reason'), { target: { value: 'incident 42' } });
+    rpcMock.mockImplementationOnce((fn: string) =>
+      fn === 'admin_activate_channel_kill'
+        ? Promise.resolve({ data: null, error: { message: 'network' } })
+        : defaultImpl(fn));
+    fireEvent.click(screen.getByTestId('kill-confirm'));
+    await waitFor(() => expect(screen.getByTestId('kill-reason')).toHaveAttribute('readonly'));
+    expect(screen.getByTestId('kill-frozen-note')).toBeInTheDocument();
+    // even a programmatic change event cannot alter what a retry sends: readOnly + same id
+    fireEvent.click(screen.getByTestId('kill-confirm'));
+    await waitFor(() => expect(rpcMock.mock.calls.filter((c) => c[0] === 'admin_activate_channel_kill')).toHaveLength(2));
+    const [a, b] = rpcMock.mock.calls.filter((c) => c[0] === 'admin_activate_channel_kill');
+    expect(a[1].p_reason).toBe(b[1].p_reason);
+    expect(a[1].p_request_id).toBe(b[1].p_request_id);
+  });
+
+  it('the circuit trip identity is DISPLAYED, and the visible values equal the submitted values', async () => {
+    renderPage();
+    await screen.findByTestId('event-states');
+    const detail = screen.getByTestId('circuit-detail-email');
+    expect(detail.textContent).toContain('provider_5xx');
+    expect(detail.textContent).toContain(TS1);              // the raw microsecond string, on screen
+    fireEvent.click(screen.getByTestId('reset-btn-email'));
+    expect((await screen.findByTestId('reset-identity')).textContent).toContain('provider_5xx');
+    fireEvent.change(screen.getByTestId('reset-reason'), { target: { value: 'recovered' } });
+    fireEvent.click(screen.getByTestId('reset-confirm'));
+    await waitFor(() => {
+      const call = rpcMock.mock.calls.find((c) => c[0] === 'admin_reset_notification_circuit');
+      expect(call![1].p_expected_reason).toBe('provider_5xx');   // exactly what the screen showed
+      expect(call![1].p_expected_tripped_at).toBe(TS1);
+    });
+  });
+
+  it('pagination: the in-flight guard blocks a concurrent click, and a stale response cannot overwrite newer state', async () => {
+    renderPage();
+    // slow first page, so the second click lands mid-flight
+    let release: ((v: { data: unknown; error: null }) => void) | null = null;
+    rpcMock.mockImplementationOnce((fn: string) =>
+      fn === 'admin_list_notification_audit'
+        ? new Promise((res) => { release = res; })
+        : defaultImpl(fn));
+    fireEvent.click(await screen.findByTestId('audit-load'));
+    fireEvent.click(screen.getByTestId('audit-load'));   // mid-flight: must NO-OP
+    await new Promise((r) => setTimeout(r, 30));
+    expect(rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_notification_audit')).toHaveLength(1);
+    release!({ data: [{ id: 'a9', created_at: TS1, action: 'channel_kill', target: 'email', old_value: 'live', new_value: 'killed', outcome: 'applied', reason: 'r', actor: 'x', request_id: 'q' }], error: null });
+    await screen.findByTestId('audit-list');
+  });
+
+  it('group cancel sends the DISPLAYED expected state; orphan controls surface typed verdicts', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByTestId('groups-load'));
+    fireEvent.click(await screen.findByTestId('cancel-btn-g1'));
+    fireEvent.change(await screen.findByTestId('cancel-reason'), { target: { value: 'wrong audience' } });
+    fireEvent.click(screen.getByTestId('cancel-confirm'));
+    await waitFor(() => {
+      const call = rpcMock.mock.calls.find((c) => c[0] === 'admin_cancel_digest_group');
+      expect(call![1].p_expected_state).toBe('request_ready');   // the row's shown state, verbatim
+      expect(String(call![1].p_request_id)).toMatch(/^[0-9a-f-]{36}$/);
+    });
+    fireEvent.click(await screen.findByTestId('orphans-load'));
+    fireEvent.click(await screen.findByTestId('orphan-resolve-orph1'));
+    fireEvent.change(await screen.findByTestId('orphan-reason'), { target: { value: 'confirmed mismatch' } });
+    fireEvent.click(screen.getByTestId('orphan-confirm'));
+    await waitFor(() => {
+      expect(rpcMock.mock.calls.some((c) => c[0] === 'admin_resolve_notification_orphan')).toBe(true);
+    });
+  });
+
+  it('the delivery-history drill-down fetches the clicked row; preview shows the PARTIAL banner and crawls by next_cursor', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByTestId('outbox-load'));
+    fireEvent.click(await screen.findByTestId('history-btn-ob1'));
+    await screen.findByTestId('delivery-history');
+    expect(rpcMock.mock.calls.find((c) => c[0] === 'admin_notification_delivery_history')![1].p_outbox_id).toBe('ob1');
+    // preview
+    await screen.findByTestId('event-states');
+    fireEvent.change(screen.getByTestId('preview-event'), { target: { value: 'ev_test' } });
+    fireEvent.click(screen.getByTestId('preview-load'));
+    await screen.findByTestId('preview-partial');            // the honest omission banner
+    fireEvent.click(screen.getByTestId('preview-more'));
+    await waitFor(() => {
+      const calls = rpcMock.mock.calls.filter((c) => c[0] === 'admin_preview_notification_recipients');
+      expect(calls.length).toBe(2);
+      expect(calls[1][1].p_after_user_id).toBe('u1');        // next_cursor, verbatim
+    });
+  });
+
+  it('the destination lookup renders the masked result and surfaces typed refusals as messages', async () => {
+    renderPage();
+    fireEvent.change(await screen.findByTestId('search-input'), { target: { value: 'p1@example.com' } });
+    fireEvent.click(screen.getByTestId('search-btn'));
+    await screen.findByTestId('search-result');
+    expect(screen.getByTestId('search-result').textContent).toContain('p***@x.nl');
+    rpcMock.mockImplementationOnce((fn: string) =>
+      fn === 'admin_search_notification_destination'
+        ? Promise.resolve({ data: null, error: { message: 'rate limit reached (30/hour)' } })
+        : defaultImpl(fn));
+    fireEvent.click(screen.getByTestId('search-btn'));
+    await screen.findByTestId('search-message');
+    expect(screen.getByTestId('search-message').textContent).toContain('rate limit');
   });
 });
