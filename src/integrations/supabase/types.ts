@@ -9503,6 +9503,23 @@ export type Database = {
           target: string
         }[]
       }
+      admin_list_notification_rejected: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          action: string
+          actor: string
+          conflict_with: string
+          created_at: string
+          id: string
+          reason: string
+          request_id: string
+          target: string
+        }[]
+      }
       admin_list_worker_invocations: {
         Args: { p_limit?: number }
         Returns: {

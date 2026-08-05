@@ -434,6 +434,37 @@ describe('N4 M3 — the ops audit: every decision recorded, exactly once, immuta
     await expect(c.query(`DELETE FROM public.notification_admin_rejected_attempts`)).rejects.toThrow(/append-only/);
   });
 
+  it('the rejected-attempts READER: admin-only, newest-first, real cursor, half-cursor refused — evidence is reachable', async () => {
+    const listRej = async (uid: string | null, args = 'NULL, NULL, NULL') => {
+      await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
+      try {
+        return (await c2.query(`SELECT * FROM public.admin_list_notification_rejected(${args})`)).rows;
+      } finally {
+        await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`);
+      }
+    };
+    await expect(listRej(null)).rejects.toThrow(/platform admin only/);
+    await expect(listRej(PLAYER)).rejects.toThrow(/platform admin only/);
+    const req = crypto.randomUUID();
+    await adminKill(c2, ADMIN, 'email', req, 'first');
+    expect(await adminKill(c2, ADMIN, 'whatsapp', req, 'first')).toBe('rejected_request_reuse');
+    expect(await adminKill(c2, ADMIN, 'email', req, 'later words')).toBe('rejected_request_reuse');
+    const page1 = await listRej(ADMIN, 'NULL, NULL, 1');
+    expect(page1.length).toBe(1);
+    expect(page1[0].reason).toBe('later words');   // newest first
+    const exactTs = (await c.query(`SELECT created_at::text AS t FROM public.notification_admin_rejected_attempts WHERE id=$1`, [page1[0].id])).rows[0].t;
+    const page2 = await listRej(ADMIN, `'${exactTs}'::timestamptz, '${page1[0].id}'::uuid, 5`);
+    expect(page2.length).toBe(1);
+    expect(page2[0].target).toBe('whatsapp');
+    await expect(listRej(ADMIN, `now()::timestamptz, NULL, 2`)).rejects.toThrow(/BOTH created_at and id/);
+    await expect(listRej(ADMIN, `NULL, gen_random_uuid(), 2`)).rejects.toThrow(/BOTH created_at and id/);
+    // and the schema types the ATTEMPT record too — an owner-direct impossible target refuses
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_rejected_attempts (actor, request_id, action, target, reason, conflict_with)
+       VALUES ($1, gen_random_uuid(), 'channel_kill', 'arbitrary', 'smuggled', 'conflict text')`, [ADMIN]))
+      .rejects.toThrow(/chk_notification_admin_rejected_coherent/);
+  });
+
   it('the schema refuses INCOHERENT audit evidence even from the owner — typed fields, not just lengths', async () => {
     await expect(c.query(
       `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)

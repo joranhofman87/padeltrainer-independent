@@ -86,7 +86,11 @@ CREATE TABLE public.notification_admin_rejected_attempts (
   target        text NOT NULL CHECK (length(btrim(target)) BETWEEN 1 AND 100),
   reason        text NOT NULL CHECK (length(btrim(reason)) BETWEEN 3 AND 500),
   conflict_with text NOT NULL CHECK (length(conflict_with) BETWEEN 3 AND 500),  -- what the id already meant
-  created_at    timestamptz NOT NULL DEFAULT now()
+  created_at    timestamptz NOT NULL DEFAULT now(),
+  -- the same schema-level typing as the decision table: owner-direct writes cannot record an
+  -- attempt against a target the action does not have
+  CONSTRAINT chk_notification_admin_rejected_coherent CHECK (
+    action <> 'channel_kill' OR target IN ('email', 'whatsapp'))
 );
 
 CREATE TRIGGER trg_notif_admin_rejected_guard
@@ -230,3 +234,47 @@ COMMENT ON FUNCTION public.admin_list_notification_audit(timestamptz, uuid, int)
 
 REVOKE ALL ON FUNCTION public.admin_list_notification_audit(timestamptz, uuid, int) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_list_notification_audit(timestamptz, uuid, int) TO authenticated, service_role;
+
+
+-- ── the rejected-attempts reader — evidence must be REACHABLE, not merely durable ───────────
+CREATE OR REPLACE FUNCTION public.admin_list_notification_rejected(
+  p_before_created_at timestamptz DEFAULT NULL,
+  p_before_id uuid DEFAULT NULL,
+  p_limit int DEFAULT 50
+) RETURNS TABLE (
+  id uuid,
+  actor uuid,
+  request_id uuid,
+  action text,
+  target text,
+  reason text,
+  conflict_with text,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF auth.uid() IS NULL OR NOT public.has_role(auth.uid(), 'admin') THEN
+    RAISE EXCEPTION 'admin_list_notification_rejected: platform admin only';
+  END IF;
+  IF (p_before_created_at IS NULL) <> (p_before_id IS NULL) THEN
+    RAISE EXCEPTION 'admin_list_notification_rejected: a keyset cursor needs BOTH created_at and id (or neither)';
+  END IF;
+  RETURN QUERY
+  SELECT t.id, t.actor, t.request_id, t.action, t.target, t.reason, t.conflict_with, t.created_at
+    FROM public.notification_admin_rejected_attempts t
+   WHERE p_before_created_at IS NULL
+      OR (t.created_at, t.id) < (p_before_created_at, p_before_id)
+   ORDER BY t.created_at DESC, t.id DESC
+   LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200);
+END;
+$$;
+
+COMMENT ON FUNCTION public.admin_list_notification_rejected(timestamptz, uuid, int) IS
+  'N4 M3: platform-admin keyset read over rejected admin attempts — the same contract as the decision reader (composite cursor both-or-neither, newest-first, fixed columns, clamp 1..200, fail-closed admin check).';
+
+REVOKE ALL ON FUNCTION public.admin_list_notification_rejected(timestamptz, uuid, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_list_notification_rejected(timestamptz, uuid, int) TO authenticated, service_role;
