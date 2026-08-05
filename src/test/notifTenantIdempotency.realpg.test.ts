@@ -815,13 +815,39 @@ describe('the CAPPABLE list against the POST-catalog truth (N3 round-4)', () => 
     const slot = await c.query(`INSERT INTO public.availability_slots (trainer_id) VALUES ('${T4}') RETURNING id`);
     await c.query(`INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1,'${PROF3}','confirmed')`, [slot.rows[0].id]);
     await asUser(U1);
-    const page1 = (await c.query(`SELECT * FROM public.get_my_notification_restriction_history(2, NULL)`)).rows;
+    const page1 = (await c.query(`SELECT * FROM public.get_my_notification_restriction_history(2, NULL, NULL)`)).rows;
     expect(page1.map((r) => r.reason)).toEqual(['change 1', 'change 2']);
-    const page2 = (await c.query(`SELECT * FROM public.get_my_notification_restriction_history(2, $1)`,
-      [page1[page1.length - 1].created_at])).rows;
+    const last1 = page1[page1.length - 1];
+    const page2 = (await c.query(`SELECT * FROM public.get_my_notification_restriction_history(2, $1, $2)`,
+      [last1.created_at, last1.id])).rows;
     expect(page2.map((r) => r.reason)).toEqual(['change 3']); // the oldest is REACHABLE
-    // the unpaginated 1-arg form is gone
-    await expect(c.query(`SELECT * FROM public.get_my_notification_restriction_history(2)`)).resolves.toBeTruthy();
+    // a HALF cursor is a caller bug, refused
+    await expect(c.query(`SELECT * FROM public.get_my_notification_restriction_history(2, now(), NULL)`))
+      .rejects.toThrow(/COMPOSITE/);
+  });
+
+  it('SAME-timestamp rows never fall through a page boundary — the cursor is composite', async () => {
+    // Five changes sharing ONE transaction timestamp, page size 2: a timestamp-only cursor
+    // permanently skips whichever same-stamp rows the first page did not return.
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit DISABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await c.query(`DELETE FROM public.academy_notification_restriction_audit;`);
+    await c.query(`INSERT INTO public.academy_notification_restriction_audit
+      (academy_profile_id, actor_user_id, event_type, channel, old_max_frequency, new_max_frequency, reason, request_id, created_at)
+      SELECT '${A}','${MGR}','session_reminder_player','email',NULL,'off','same-stamp '||g, gen_random_uuid(), '2026-08-01T12:00:00Z'
+      FROM generate_series(1,5) g`);
+    await c.query(`ALTER TABLE public.academy_notification_restriction_audit ENABLE TRIGGER trg_notif_restriction_audit_guard;`);
+    await asUser(U1);
+    const seen = new Set<string>();
+    let cursor: { created_at: string; id: string } | null = null;
+    for (let page = 0; page < 4; page++) {
+      const rows = (await c.query(
+        `SELECT * FROM public.get_my_notification_restriction_history(2, $1, $2)`,
+        [cursor?.created_at ?? null, cursor?.id ?? null])).rows;
+      if (rows.length === 0) break;
+      for (const r of rows) seen.add(r.reason);
+      cursor = rows[rows.length - 1];
+    }
+    expect(seen.size).toBe(5); // every same-stamp row reached, none skipped, none repeated
   });
 
   it('every UI-cappable (event, channel) is optional AND supported by the live catalog', async () => {

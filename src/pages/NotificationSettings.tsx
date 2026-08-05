@@ -231,10 +231,10 @@ export default function NotificationSettings() {
 
   /** Keyset pagination: every change stays REACHABLE (the surface promises it). */
   const loadMoreCapHistory = async () => {
-    const oldest = capHistory[capHistory.length - 1]?.created_at;
-    if (!oldest) return;
+    const last = capHistory[capHistory.length - 1];
+    if (!last?.created_at || !last?.id) return;
     const { data, error } = await supabase.rpc('get_my_notification_restriction_history', {
-      p_limit: 50, p_before: String(oldest),
+      p_limit: 50, p_before: String(last.created_at), p_before_id: String(last.id),
     });
     if (error) { failToast(error); return; }
     const page = (data ?? []) as Array<Record<string, unknown>>;

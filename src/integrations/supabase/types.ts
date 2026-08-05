@@ -10308,13 +10308,14 @@ export type Database = {
       }
       get_my_linked_guest_bookings: { Args: never; Returns: Json }
       get_my_notification_restriction_history: {
-        Args: { p_before?: string; p_limit?: number }
+        Args: { p_before?: string; p_before_id?: string; p_limit?: number }
         Returns: {
           academy_name: string
           academy_profile_id: string
           channel: string
           created_at: string
           event_type: string
+          id: string
           new_max_frequency: string
           old_max_frequency: string
           reason: string
