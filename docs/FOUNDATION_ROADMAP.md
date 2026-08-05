@@ -194,6 +194,10 @@ presentation and reachability only.
 | **N2 S3** — campaign/onboarding suppression + per-send capabilities + RFC 8058 | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `b961e7f1`, CI green at `7166d403` |
 | **N2 S5** — one-click endpoint + manage page + retention sweep | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `47e6658e` |
 | **N2 WHOLE-UNIT SWEEP** — fresh thread over `main..HEAD`, aimed at the seams | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | **CLEAR at `f1a7f1e8`** (4 findings, all fixed: RFC 8058 body marker; send-email pref read fail-closed; Retry-After; sweep index) |
+| **N2 FINAL** — clear reconfirmed through post-clear commits; CI | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | **ALL CHECKS GREEN at `4f002488`** — N2 complete, awaiting the owner gate (mark-ready/merge/deploy) |
+| **N3 M1–M3** — tenant-aware idempotency + academy caps/audit + cap at every send authority | (stacked draft PR) | **clear at `813f7f4e`** (design contract findings 1, 3, 7-11 closed; 3 review rounds; M4-M6 + seam review remain) |
+| **N3 M4–M6** — membership reader + player history, attribution matrix, both surfaces | [#633](https://github.com/joranhofman87/padeltrainer-independent/pull/633) | **clear at `626d03ce`** (4 rounds total; whole-unit seam review next) |
+| **N3 WHOLE-UNIT SWEEP** — fresh thread over the full unit, aimed at the seams | [#633](https://github.com/joranhofman87/padeltrainer-independent/pull/633) | **CLEAR at `bd09d652`** — N3 COMPLETE (6 seam-round fixes: fail-closed player reads, composite-keyset history, switch-race guard, completeness pin) |
 
 **N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
 `supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement

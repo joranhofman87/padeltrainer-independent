@@ -146,6 +146,12 @@ export default function NotificationSettings() {
   // it — silently replacing a stored `whatsapp: off` with the default the moment the recipient
   // touches the email control. Refuse to render controls at all until the load succeeds.
   const [loadFailed, setLoadFailed] = useState(false);
+  // N3: caps my academies placed on my events — the "limited by {academy}" markers. These
+  // BIND the player, so a failed read joins the page's fail-closed boundary: rendering plain
+  // controls while a cap exists would misrepresent the selected cadence as effective.
+  const [academyCaps, setAcademyCaps] = useState<Array<{ academy_name: string; event_type: string; channel: string; max_frequency: string }>>([]);
+  const [capHistory, setCapHistory] = useState<Array<Record<string, unknown>>>([]);
+  const [capHistoryHasMore, setCapHistoryHasMore] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -174,7 +180,19 @@ export default function NotificationSettings() {
         supabase.rpc('get_my_whatsapp_consent'),
       ]);
 
-      const readError = types.error ?? rows.error ?? v1.error ?? wa.error;
+      // N3 caps + history are NOT advisory decoration (review round: a cap BINDS the player,
+      // so silently rendering plain controls while it exists misleads) — they join the page's
+      // fail-closed boundary like every other read.
+      const [capsRes, capHistRes] = await Promise.all([
+        supabase.rpc('get_my_notification_restrictions'),
+        supabase.rpc('get_my_notification_restriction_history', { p_limit: 50 }),
+      ]);
+      setAcademyCaps((capsRes.data ?? []) as typeof academyCaps);
+      const histPage = (capHistRes.data ?? []) as Array<Record<string, unknown>>;
+      setCapHistory(histPage);
+      setCapHistoryHasMore(histPage.length === 50); // a full page ⇒ older entries may exist
+
+      const readError = types.error ?? rows.error ?? v1.error ?? wa.error ?? capsRes.error ?? capHistRes.error;
       if (readError) throw readError;
       setLoadFailed(false);
 
@@ -210,6 +228,19 @@ export default function NotificationSettings() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  /** Keyset pagination: every change stays REACHABLE (the surface promises it). */
+  const loadMoreCapHistory = async () => {
+    const last = capHistory[capHistory.length - 1];
+    if (!last?.created_at || !last?.id) return;
+    const { data, error } = await supabase.rpc('get_my_notification_restriction_history', {
+      p_limit: 50, p_before: String(last.created_at), p_before_id: String(last.id),
+    });
+    if (error) { failToast(error); return; }
+    const page = (data ?? []) as Array<Record<string, unknown>>;
+    setCapHistory((prev) => [...prev, ...page]);
+    setCapHistoryHasMore(page.length === 50);
+  };
 
   const failToast = (error: unknown) =>
     toast({
@@ -426,7 +457,21 @@ export default function NotificationSettings() {
           <CardContent className="space-y-4">
             {configurable.map((e) => (
               <div key={e.key} className="flex items-center justify-between gap-4" data-testid={`pref-row-${e.key}`}>
-                <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+                <div className="min-w-0">
+                  <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+                  {/* N3: an academy cap on this event — ADVISORY (the resolver enforces it
+                      either way), so the player is never surprised by quieter mail. */}
+                  {academyCaps.filter((r) => r.event_type === e.key).map((cap) => (
+                    <p key={`${cap.academy_name}:${cap.channel}`} className="text-xs text-muted-foreground" data-testid={`cap-marker-${e.key}`}>
+                      {t('notifications.cappedByChannel', {
+                        defaultValue: '{{channel}} limited to {{cap}} by {{academy}}',
+                        channel: t(`notifications.channelName.${cap.channel}`, cap.channel),
+                        cap: t(`notifications.frequency.${cap.max_frequency}`, cap.max_frequency),
+                        academy: cap.academy_name,
+                      })}
+                    </p>
+                  ))}
+                </div>
                 <div className="flex items-center gap-4">
                   {e.supports_email && (e.supports_digest ? (
                     <Select
@@ -514,6 +559,36 @@ export default function NotificationSettings() {
                 <Badge variant="secondary" className="font-normal">{t('notifications.alwaysOn', 'Always on')}</Badge>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* N3 finding 5: the CHANGES my academies made, not just the current caps — a
+          set→off→inherit sequence leaves no current row, and the player must still see it. */}
+      {capHistory.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('notifications.capHistoryTitle', 'Changes by your academies')}</CardTitle>
+            <CardDescription>
+              {t('notifications.capHistoryDesc', 'Your academy can reduce optional notifications for its players. Your own choices always win when they are stricter.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ul className="space-y-2">
+              {capHistory.map((h, i) => (
+                <li key={i} className="text-sm" data-testid="cap-history-entry">
+                  <span className="font-medium">{String(h.academy_name)}</span>{' '}
+                  <span className="text-muted-foreground">
+                    {eventLabel(String(h.event_type))} ({t(`notifications.channelName.${String(h.channel)}`, String(h.channel))}): {String(h.old_max_frequency ?? '—')} → {String(h.new_max_frequency ?? '—')} · {String(h.reason)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {capHistoryHasMore && (
+              <Button variant="outline" size="sm" data-testid="cap-history-more" onClick={() => void loadMoreCapHistory()}>
+                {t('notifications.capHistoryMore', 'Show older changes')}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

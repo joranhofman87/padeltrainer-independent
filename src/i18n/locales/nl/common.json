@@ -931,5 +931,38 @@
     "errorTitle": "Er ging iets mis",
     "errorBody": "We konden dit nu niet verwerken. Je verzoek is niet verloren — probeer het opnieuw.",
     "retry": "Opnieuw proberen"
+  },
+  "academyNotifControls": {
+    "title": "Meldingslimieten voor je academy",
+    "subtitle": "Verminder of stop optionele meldingen voor mensen bij je academy. Een limiet kan alleen verminderen: verplichte berichten zijn onaantastbaar, en de eigen keuze van een speler om minder te ontvangen wint altijd.",
+    "capsTitle": "Huidige limieten",
+    "timing": "“Uit” stopt wachtende mail bij de eerstvolgende verzendronde — niet direct. Dagelijkse/wekelijkse limieten gelden alleen voor nieuw aangemaakte meldingen.",
+    "scopeNote": "Alleen meldingen die je academy zelf verstuurt zijn hier te begrenzen. Trainer-mail (zoals open-slot-alerts van een gevolgde trainer) en platformmail vallen buiten het bereik van een academy.",
+    "historyTitle": "Recente wijzigingen",
+    "historyDesc": "Elke wijziging wordt vastgelegd en is zichtbaar voor betrokken spelers.",
+    "historyEmpty": "Nog geen wijzigingen.",
+    "outcomesTitle": "Recente meldingsactiviteit",
+    "outcomesDesc": "Stafmeldingen van je academy. Persoonlijke servicemail van spelers is privé en staat hier niet — limieten daarop zie je hierboven alleen als aantallen.",
+    "outcomesEmpty": "Niets recents.",
+    "impactCount": "{{count}} gestopt in de laatste 30 dagen",
+    "reasonTitle": "Waarom deze wijziging?",
+    "reasonDesc": "Een korte reden is verplicht. Die komt in het auditlog en is zichtbaar voor betrokken spelers.",
+    "reasonPlaceholder": "bijv. Te veel herinneringsmails in de toernooiweek",
+    "saving": "Opslaan…",
+    "confirm": "Toepassen",
+    "saved": "Meldingslimiet bijgewerkt",
+    "saveError": "Limiet bijwerken mislukt",
+    "cap": {
+      "inherit": "Geen limiet",
+      "daily": "Max. dagelijks",
+      "weekly": "Max. wekelijks",
+      "off": "Uit"
+    },
+    "channel": {
+      "email": "E-mail",
+      "whatsapp": "WhatsApp"
+    },
+    "cardTitle": "Meldingslimieten",
+    "cardDesc": "Verminder of stop optionele meldingen voor mensen bij je academy. Elke wijziging wordt vastgelegd en is zichtbaar voor betrokken spelers."
   }
 }

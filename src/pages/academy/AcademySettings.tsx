@@ -772,6 +772,32 @@ export default function AcademySettings() {
           </CardHeader>
         </Card>
 
+        {/* N3: academy-wide notification limits (manager controls; distinct from the
+            per-account notification settings card the N1 branch adds — kept separate so the
+            two merge cleanly). */}
+        <Card
+          className={flushOnMobileCardClass('cursor-pointer transition-colors hover:bg-muted/50')}
+          role="link"
+          tabIndex={0}
+          data-testid="academy-notif-controls-card"
+          onClick={() => { window.location.assign('/app/academy/settings/notification-controls'); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              window.location.assign('/app/academy/settings/notification-controls');
+            }
+          }}
+        >
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">
+              {t('academyNotifControls.cardTitle', 'Notification limits')}
+            </CardTitle>
+            <CardDescription>
+              {t('academyNotifControls.cardDesc', 'Reduce or stop optional notifications for people at your academy. Every change is audited and visible to affected players.')}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+
         {/* Danger Zone */}
         <div className="border-t border-destructive/20 pt-6">
           <h3 className="mb-4 text-lg font-semibold text-destructive">{t('settings.dangerZone', 'Danger Zone')}</h3>
