@@ -318,9 +318,13 @@ async function dispatchGroup(
   if (!state) throw new Error(`group ${g} vanished after claim`);
 
   // leased → prepare (leased-only). 'no_work' is a LEGITIMATE terminal (all members stopped), not an error.
+  // 'channel_killed' (N4 M2) is a PARK: the channel's kill switch landed after claim — count it
+  // deferred and walk away (no render, no store, no error; the lease rides the bounded
+  // stale-reclaim window, whose claim-side gate refuses the group while the kill holds).
   if (state === "leased") {
     const prep = await deps.rpc("prepare_notification_digest_group", { p_run_id: dispRun, p_group_id: g, p_worker: worker, p_now: nowIso() }) as string;
     if (prep === "no_work") { deps.log({ event: "group_no_work", group: g }); return; }
+    if (prep === "channel_killed") { s.deferred++; deps.log({ event: "group_channel_killed", group: g }); return; }
     state = "prepared";
   }
 

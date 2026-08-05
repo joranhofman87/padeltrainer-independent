@@ -147,7 +147,9 @@ describe('admin_activate_channel_kill — the only write, admin-checked, request
     const req = crypto.randomUUID();
     expect(await adminKill(c2, ADMIN, 'email', req)).toBe('killed');
     expect(await adminKill(c2, ADMIN, 'email', req)).toBe('killed');   // network-retry replay
-    await expect(adminKill(c2, ADMIN, 'whatsapp', req)).rejects.toThrow(/already used to kill email/);
+    // a reused id carrying a DIFFERENT decision (other reason) is refused — an id names ONE decision
+    await expect(adminKill(c2, ADMIN, 'email', req, 'some other reason')).rejects.toThrow(/different decision/);
+    await expect(adminKill(c2, ADMIN, 'whatsapp', req)).rejects.toThrow(/already used for a different decision/);
     expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(1);
   });
 
@@ -275,6 +277,37 @@ describe('the claim gate — FIRST, with ZERO ledger mutations on a killed chann
     expect(await claimer).toEqual([]);      // …and refuses once it lands
   });
 });
+
+describe('the pre-provider re-check and the admin RPC under concurrency — deterministic', () => {
+  it('is_notification_channel_killed WAITS OUT an uncommitted kill, then answers true — never races past it', async () => {
+    // the round-2 P1: a lock-free read could not see the admin's uncommitted kill INSERT and
+    // answered false while the kill transaction was open — the worker reached the provider.
+    await c.query('BEGIN');
+    await c.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [ADMIN]);
+    await c.query(`SELECT public.admin_activate_channel_kill('email','race kill',$1)`, [crypto.randomUUID()]);
+    let settled = false;
+    const check = c2.query(`SELECT public.is_notification_channel_killed('email') AS k`)
+      .finally(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(settled).toBe(false);                 // provably serialized behind the open kill
+    await c.query('COMMIT');
+    expect((await check).rows[0].k).toBe(true);  // …and sees the committed truth
+  });
+
+  it('two CONCURRENT identical kill requests CONVERGE on killed — the loser replays, never diverges', async () => {
+    const req = crypto.randomUUID();
+    await c.query('BEGIN');
+    await c.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [ADMIN]);
+    expect((await c.query(`SELECT public.admin_activate_channel_kill('email','ops decided',$1) AS r`, [req])).rows[0].r).toBe('killed');
+    let settled = false;
+    const loser = adminKill(c2, ADMIN, 'email', req, 'ops decided').finally(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(settled).toBe(false);                 // serialized on the REQUEST lock
+    await c.query('COMMIT');
+    expect(await loser).toBe('killed');          // exact replay — NOT 'already_killed'
+  });
+});
+
 
 describe('release_notification_claims_on_kill — defer, never terminal, never budget burn', () => {
   it('releases the claiming worker’s rows: pending again, the attempt increment undone, a backoff set', async () => {

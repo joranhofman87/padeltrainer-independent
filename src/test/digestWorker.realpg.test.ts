@@ -723,13 +723,53 @@ describe('N4 M2 — the channel kill switch over the digest engine', () => {
       await rpc('store_notification_digest_request', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_frozen_request: { from: 'S <s@x.com>', to: 'a@example.com', subject: 's', html: '<p>x</p>' }, p_now: nowIso });
       expect((await gstate(c, g)).state).toBe('request_ready');
       await kill(c);   // lands with the group one step from the provider
-      // begin — the step that mints the attempt — answers NULL, the breaker's own park shape
+      // begin — the step that mints the attempt — PARKS with the breaker's own defer transition
       expect(await rpc('begin_notification_digest_attempt', { p_run_id: drun, p_group_id: g, p_worker: 'W', p_now: nowIso })).toBeNull();
-      expect((await gstate(c, g)).state).toBe('request_ready');   // untouched, resumable after un-kill
+      const parked = await gstate(c, g);
+      expect(parked.state).toBe('request_ready');
+      expect(parked.locked_by).toBeNull();                       // genuinely RELEASED, not stranded on the lease
+      expect(new Date(parked.available_at).getTime()).toBeGreaterThan(NOW.getTime());  // bounded backoff
       expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_attempts`)).rows[0].n).toBe(0);
-      // …and the NEXT pass cannot re-claim it either while killed
+      expect((await c.query(`SELECT count(*)::int n FROM public.notification_digest_group_attempts WHERE action='deferred'`)).rows[0].n).toBe(1);
+      // …the NEXT pass cannot re-claim it while killed…
       const drun2 = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'dispatch' });
-      expect(await rpc('claim_notification_digest_group', { p_run_id: drun2, p_channel: 'email', p_now: new Date(NOW.getTime() + 3600_000).toISOString(), p_worker: 'W' })).toBeNull();
+      const later = new Date(NOW.getTime() + 3600_000).toISOString();
+      expect(await rpc('claim_notification_digest_group', { p_run_id: drun2, p_channel: 'email', p_now: later, p_worker: 'W' })).toBeNull();
+      // …and the moment the kill is lifted (runbook reset) the parked group is claimable AGAIN —
+      // request_ready + unowned is a legal due shape, no stale window needed
+      await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+      await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+      await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+      expect(await rpc('claim_notification_digest_group', { p_run_id: drun2, p_channel: 'email', p_now: later, p_worker: 'W' })).toBe(g);
+    } finally { await c.end(); }
+  });
+
+  it("killed BETWEEN claim and prepare: the worker gets the TYPED park ('channel_killed'), counts it deferred, renders nothing", async () => {
+    const c = conn(); await c.connect();
+    try {
+      await seedDigestGroup(c, 'k:4', 'a@example.com', [{ title: 'x' }]);
+      const sendCalls: DepOverrides['sendCalls'] = [];
+      // the deterministic mid-run kill: the moment the REAL claim returns this group, the kill
+      // row lands — before the worker's next rpc (prepare) fires
+      let killed = false;
+      const s = await runDigestWorker(mkDeps(c, {
+        sendCalls,
+        wrapRpc: (rpc) => async (name, args) => {
+          const out = await rpc(name, args);
+          if (name === 'claim_notification_digest_group' && out && !killed) {
+            killed = true;
+            await kill(c);
+          }
+          return out;
+        },
+      }));
+      expect(s.status).toBe('ok');
+      expect(s.deferred).toBe(1);
+      expect(s.sent).toBe(0);
+      expect(sendCalls.length).toBe(0);
+      const g = (await c.query(`SELECT * FROM public.notification_digest_groups WHERE recipient_key='k:4'`)).rows[0];
+      expect(g.state).toBe('leased');            // the lease is KEPT (no legal unowned-leased shape)…
+      expect(g.locked_by).not.toBeNull();        // …and rides the bounded stale-reclaim window
     } finally { await c.end(); }
   });
 

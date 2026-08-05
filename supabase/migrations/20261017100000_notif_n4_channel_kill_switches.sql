@@ -73,16 +73,24 @@ GRANT EXECUTE ON FUNCTION public.notif_channel_kill_gate(text) TO service_role;
 
 -- ── the workers' pre-provider re-check: lock-free STABLE read, fail-closed at the caller ────
 CREATE OR REPLACE FUNCTION public.is_notification_channel_killed(p_channel text) RETURNS boolean
-LANGUAGE sql
-STABLE
+LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT EXISTS (SELECT 1 FROM public.notification_channel_kill_switches k WHERE k.channel = p_channel);
+BEGIN
+  -- The SAME shared lock as every other kill-ordered path. A lock-free read here left a race:
+  -- an admin's kill INSERT, uncommitted but already holding the channel lock, was invisible
+  -- under READ COMMITTED — so a worker's pre-provider check answered false and reached the
+  -- provider while the kill transaction was open. Taking the lock serializes this check behind
+  -- an in-progress kill; a kill arriving AFTER a completed false check is the unavoidable,
+  -- correctly-ordered residual. Kill transactions are one INSERT — the wait is bounded.
+  PERFORM pg_advisory_xact_lock(hashtextextended('notif-channel-kill:' || p_channel, 0));
+  RETURN EXISTS (SELECT 1 FROM public.notification_channel_kill_switches k WHERE k.channel = p_channel);
+END;
 $$;
 
 COMMENT ON FUNCTION public.is_notification_channel_killed(text) IS
-  'N4 M2: the workers'' pre-provider re-check — called immediately before EACH provider send, because the claim-time gate alone leaves already-claimed rows live. Deliberately lock-free (a send loop must not queue behind a kill transaction; the claim gate provides the ordered handoff). The caller treats a read ERROR as killed: fail closed.';
+  'N4 M2: the workers'' pre-provider re-check — called immediately before EACH provider send, because the claim-time gate alone leaves already-claimed rows live. Takes the shared per-channel advisory lock so an in-progress kill (uncommitted, lock held) is WAITED OUT and then seen — never raced past. The caller treats a read ERROR as killed: fail closed.';
 
 REVOKE ALL ON FUNCTION public.is_notification_channel_killed(text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_notification_channel_killed(text) TO service_role;
@@ -112,11 +120,16 @@ BEGIN
     RAISE EXCEPTION 'admin_activate_channel_kill: a reason (3-500 chars) is required';
   END IF;
 
-  -- request replay FIRST: an exact network retry returns the same verdict, no second row
+  -- REQUEST lock, then replay lookup, then the channel lock — the same ordering as the M1
+  -- open(). Concurrent IDENTICAL calls serialize here and CONVERGE on 'killed' (the loser finds
+  -- the winner's row and replays); a reused id is refused TYPED, on any mismatch of what the
+  -- request said (channel or reason) — an id names one decision, exactly.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('notif-channel-kill-req:' || p_request_id::text, 0));
   SELECT * INTO v FROM public.notification_channel_kill_switches WHERE request_id = p_request_id;
   IF FOUND THEN
-    IF v.channel = p_channel THEN RETURN 'killed'; END IF;
-    RAISE EXCEPTION 'admin_activate_channel_kill: request % was already used to kill %', p_request_id, v.channel;
+    IF v.channel = p_channel AND v.reason = btrim(p_reason) THEN RETURN 'killed'; END IF;
+    RAISE EXCEPTION 'admin_activate_channel_kill: request % was already used for a different decision (channel %, reason %)', p_request_id, v.channel, v.reason;
   END IF;
 
   -- the shared per-channel lock: the kill lands strictly before or after any in-flight claim
@@ -429,21 +442,28 @@ DECLARE
   v_hb timestamptz; v_db timestamptz; v_hkey text; v_dkey text; v_hgate text; v_dgate text;
   v_breaker record;
 BEGIN
-  -- N4 M2 KILL SWITCH — the LAST SQL step before a provider send mints the attempt here, so
-  -- this is the digest path's pre-dispatch authority (the breaker already parks via NULL at
-  -- this same boundary, and the worker core maps NULL to deferred — not an error, no attempt
-  -- burn, the group stays request_ready for after the kill is lifted).
-  IF public.notif_channel_kill_gate(
-       (SELECT kg.channel FROM public.notification_digest_groups kg WHERE kg.id = p_group_id)) THEN
-    RETURN NULL;
-  END IF;
-
   SELECT * INTO g FROM public.notification_digest_groups
    WHERE id = p_group_id AND state = 'request_ready' AND locked_by = p_worker AND worker_run_id = p_run_id FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'begin: group % not owned/request_ready by %', p_group_id, p_worker; END IF;
   PERFORM notif_digest_assert_run(p_run_id, 'dispatch', g.channel);
   PERFORM notif_digest_require_range(p_hour_cap, 1, 1000000, 'begin: p_hour_cap');
   PERFORM notif_digest_require_range(p_day_cap, 1, 10000000, 'begin: p_day_cap');
+
+  -- N4 M2 KILL SWITCH — the digest pre-dispatch authority, at the step that mints the attempt.
+  -- The SAME defer transition as the breaker below (ownership cleared, bounded available_at,
+  -- ledger 'deferred', NULL back): request_ready + unowned is a legal due shape, so the group
+  -- is genuinely PARKED — re-claimable the moment the kill is lifted — never stranded on this
+  -- departing worker's lease until stale reclaim. Runs before the age-out so a kill defers
+  -- everything; available_at is clamped to the uncertainty deadline, so age-out still fires on
+  -- time at the next live pass.
+  IF public.notif_channel_kill_gate(g.channel) THEN
+    UPDATE public.notification_digest_groups
+       SET available_at = least(p_now + interval '5 minutes', coalesce(g.uncertain_deadline_at, 'infinity'::timestamptz)),
+           locked_by = NULL, locked_at = NULL, updated_at = p_now
+     WHERE id = p_group_id;
+    PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'deferred', 0);
+    RETURN NULL;
+  END IF;
 
   -- uncertainty age-out → delivery_unknown (never re-sent past the 23 h window).
   IF g.uncertain_since IS NOT NULL AND g.uncertain_deadline_at IS NOT NULL AND p_now >= g.uncertain_deadline_at THEN
@@ -716,4 +736,53 @@ BEGIN
     END IF;
   END LOOP;
   RETURN v_groups;
+END $$;
+
+
+-- prepare_notification_digest_group: reproduced VERBATIM from 20261004100000, with the
+-- kill gate after the ownership assertion (see the arm's comment for why the lease is KEPT).
+CREATE OR REPLACE FUNCTION public.prepare_notification_digest_group(
+    p_run_id uuid, p_group_id uuid, p_worker text, p_now timestamptz)
+  RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_n int; v_survivors int; m record; v_reason text; v_channel text;
+BEGIN
+  SELECT channel INTO v_channel FROM public.notification_digest_groups WHERE id = p_group_id;
+  PERFORM notif_digest_assert_run(p_run_id, 'dispatch', v_channel);
+  UPDATE public.notification_digest_groups SET updated_at = p_now
+   WHERE id = p_group_id AND state = 'leased' AND locked_by = p_worker AND worker_run_id = p_run_id;
+  GET DIAGNOSTICS v_n = ROW_COUNT;
+  IF v_n <> 1 THEN RAISE EXCEPTION 'prepare: group % not owned/leased by % (run %)', p_group_id, p_worker, p_run_id; END IF;
+
+  -- N4 M2 KILL SWITCH — the worker-visible TYPED parked verdict. A leased group has no legal
+  -- unowned-due shape (the due scan takes pending/request_ready + unowned; the reclaim arm
+  -- keys on a STALE locked_at), so clearing ownership here would strand it: instead the lease
+  -- is kept, the worker maps 'channel_killed' to deferred (no render, no store, no error), and
+  -- the group rides the bounded stale-reclaim window — whose claim-side gate then refuses it
+  -- while the kill holds. Send-safe either way; this makes the defer VISIBLE and counted.
+  IF public.notif_channel_kill_gate(v_channel) THEN
+    PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'deferred', 0);
+    RETURN 'channel_killed';
+  END IF;
+
+  -- §PS: drop members that fail the LIVE checks (opt-out / lost contact / suppression since enqueue).
+  FOR m IN SELECT id FROM public.notification_outbox WHERE digest_group_id = p_group_id AND status = 'pending' LOOP
+    v_reason := notif_digest_member_stop_reason(m.id);
+    IF v_reason IS NOT NULL THEN
+      UPDATE public.notification_outbox
+         SET status = 'skipped', skip_reason = v_reason, payload = NULL, digest_item = NULL, updated_at = p_now
+       WHERE id = m.id;
+    END IF;
+  END LOOP;
+
+  SELECT count(*) INTO v_survivors FROM public.notification_outbox
+   WHERE digest_group_id = p_group_id AND status = 'pending';
+  IF v_survivors = 0 THEN
+    PERFORM notif_digest_finalize_group(p_group_id, 'no_work', 'no_survivors', p_now);
+    PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'no_work', 0);
+    RETURN 'no_work';
+  END IF;
+  UPDATE public.notification_digest_groups SET state = 'prepared', item_count = v_survivors, updated_at = p_now
+   WHERE id = p_group_id;
+  PERFORM notif_digest_ledger(p_run_id, p_group_id, NULL, 'prepared', v_survivors);
+  RETURN 'prepared';
 END $$;
