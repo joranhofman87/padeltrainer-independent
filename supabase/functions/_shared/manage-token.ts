@@ -5,8 +5,8 @@
 // WHY THE SIGNATURE AT ALL, when the capability id is already an unguessable uuid. Two reasons,
 // and neither is secrecy of the id. First, the id alone would make the manage endpoints an
 // ORACLE: anyone could probe ids and learn from the response whether one exists, when it expired,
-// which scope it belongs to. With a signature, an unsigned probe is refused before any database
-// read. Second, the signing key is the REVOCATION LEVER for a whole generation of links — raising
+// which scope it belongs to. With a signature, an unsigned probe is refused before any
+// capability-specific database lookup. Second, the signing key is the REVOCATION LEVER for a whole generation of links — raising
 // `notification_manage_key_state.min_mintable_version` retires every token signed by a burned
 // key, which no property of the id could do.
 //

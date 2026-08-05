@@ -173,8 +173,9 @@ CREATE INDEX idx_notif_manage_cap_expiry
 COMMENT ON TABLE public.notification_manage_capabilities IS
   'One row per SEND, granting exactly one monotonic act: stop marketing to this address in this scope. The token an email carries is v<N>.<id>.<HMAC over "notif-manage:v1:v<N>:<id>", edge-held key vN> — this table never stores the HMAC or the key, so reading it cannot forge a live link. Claims are IMMUTABLE (no client DML; definer RPCs are the only writers; the guard trigger refuses updates outside revoked_at/last_used_at). Per-send identity is what makes a retry rebuild the same bytes.';
 
--- No direct DML for ANY client role — the definer RPCs are the only path. (The HMAC signs only
--- the id, so an UPDATE to a row's claims would silently retarget an already-signed link.)
+-- No direct DML for ANY client role — the definer RPCs are the only path. (The HMAC covers the
+-- format version, the key generation and the capability id — NOT the row's mutable claims — so an
+-- UPDATE to scope or address would silently retarget an already-signed link.)
 ALTER TABLE public.notification_manage_capabilities ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.notification_manage_capabilities FROM PUBLIC, anon, authenticated, service_role;
 
