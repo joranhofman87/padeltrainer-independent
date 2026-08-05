@@ -1,98 +1,133 @@
 import { assertEquals, assertRejects } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { buildManageToken, verifyManageToken, type KeyLookup } from "./manage-token.ts";
+import {
+  assertRowKeyVersion,
+  buildManageToken,
+  verifyManageToken,
+  type KeyLookup,
+} from "./manage-token.ts";
 
-// N2 — the manage-link token. What these pin, in order of how badly each would hurt:
-//   * a token is verified against the key the ROW names, never against whichever loaded key
-//     happens to match — otherwise retiring a key would do nothing until someone remembered to
-//     delete it from the environment;
-//   * the retirement floor is enforced BEFORE any database read;
-//   * every failure looks the same (null), so the endpoint is not an oracle;
-//   * minting is deterministic, which is what keeps a retry's email byte-identical under an
-//     unchanged provider idempotency key.
+// N2 — the manage-link token. What these pin, worst-consequence first:
+//   * an OPERATIONAL failure (missing key) is tagged separately from a forged token, because a
+//     one-click unsubscribe answered 200 during an outage is an opt-out that is simply lost;
+//   * the retirement floor and the signature are checked with NO database access at all, so a
+//     probe costs nothing and the endpoints are not an existence/expiry/scope oracle;
+//   * the signed generation must equal the row's stored generation, or per-row key binding is
+//     decorative;
+//   * the wire format is frozen by an externally computed KNOWN-ANSWER vector — round-tripping
+//     through this same implementation would let a serialization change invalidate 13–26 months
+//     of issued links with every test still green;
+//   * a weak or wrongly-encoded signing key is refused, since every issued link is a public
+//     (message, signature) pair to guess against.
 
 const CAP = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
-const keys: Record<number, string> = { 1: "key-one-secret", 2: "key-two-secret" };
+// 32 random bytes, hex — the documented key encoding.
+const K1 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const K2 = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
+const keys: Record<number, string> = { 1: K1, 2: K2 };
 const lookup: KeyLookup = (v) => keys[v];
-/** the database's answer for "which key signed this capability" */
-const storedVersion = (version: number | null) => async () => version;
 
-Deno.test("a token verifies against the version the row names", async () => {
+/**
+ * KNOWN-ANSWER VECTOR, computed OUTSIDE this module (node crypto, independently):
+ *   HMAC-SHA256(key = hex-decoded K1, msg = "notif-manage:v1:v1:<CAP>") → base64url, unpadded.
+ * If a change to the message shape, the encoding, or the key handling makes this fail, that
+ * change has invalidated every link already in somebody's inbox.
+ */
+const VECTOR = "GzsU-G69nu9BJ3Vj-GODL1kXcHgbru48JpKRWB9-ijg";
+
+Deno.test("KNOWN ANSWER: the wire format is frozen (mint) and accepted (verify)", async () => {
   const token = await buildManageToken(CAP, 1, lookup);
-  assertEquals(await verifyManageToken(token, storedVersion(1), 1, lookup), CAP);
+  assertEquals(token, `v1.${CAP}.${VECTOR}`);
+  const r = await verifyManageToken(token, 1, lookup);
+  assertEquals(r, { ok: true, capabilityId: CAP, keyVersion: 1 });
 });
 
 Deno.test("minting is deterministic — a retry rebuilds the same bytes", async () => {
-  const a = await buildManageToken(CAP, 1, lookup);
-  const b = await buildManageToken(CAP, 1, lookup);
-  assertEquals(a, b);
+  assertEquals(await buildManageToken(CAP, 1, lookup), await buildManageToken(CAP, 1, lookup));
 });
 
-Deno.test("different capabilities and different keys produce different signatures", async () => {
+Deno.test("the signature binds BOTH the capability and the key generation", async () => {
   const a = await buildManageToken(CAP, 1, lookup);
   const b = await buildManageToken(OTHER, 1, lookup);
   const c = await buildManageToken(CAP, 2, lookup);
   assertEquals(a === b, false);
-  assertEquals(a === c, false);
+  assertEquals(a.split(".")[2] === c.split(".")[2], false);   // same id, different generation
 });
 
-Deno.test("a token signed by ANOTHER loaded key is refused — no trial-and-accept", async () => {
-  // The whole point of per-row version binding: v2 is still configured and still valid for other
-  // capabilities, but this row says v1 signed it, so a v2 signature is not this token.
-  const forged = await buildManageToken(CAP, 2, lookup);
-  assertEquals(await verifyManageToken(forged, storedVersion(1), 1, lookup), null);
+Deno.test("a signature lifted onto another generation's header is refused", async () => {
+  // domain separation: the v1 signature does not verify as a v2 token
+  const v1 = await buildManageToken(CAP, 1, lookup);
+  const forged = `v2.${CAP}.${v1.split(".")[2]}`;
+  assertEquals(await verifyManageToken(forged, 1, lookup), { ok: false, reason: "invalid" });
 });
 
-Deno.test("a RETIRED key is refused before any database read", async () => {
+Deno.test("a RETIRED generation is 'inactive', decided before the key is even loaded", async () => {
   const token = await buildManageToken(CAP, 1, lookup);
-  let reads = 0;
-  const counting = async () => { reads++; return 1; };
-  // floor raised to 2 → the v1 row is retired
-  assertEquals(await verifyManageToken(token, counting, 2, lookup), null);
-  // the row lookup happens (it is how we learn the version), but nothing beyond it is attempted
-  assertEquals(reads, 1);
+  let loads = 0;
+  const counting: KeyLookup = (v) => { loads++; return keys[v]; };
+  assertEquals(await verifyManageToken(token, 2, counting), { ok: false, reason: "inactive" });
+  assertEquals(loads, 0);
 });
 
-Deno.test("an unknown capability, a missing key, and a lookup failure all read as null", async () => {
+Deno.test("a MISSING key is OPERATIONAL, not 'invalid' — the caller must retry, not acknowledge", async () => {
+  // minted while v3 was configured; verified after that env var went missing
+  const token = await buildManageToken(CAP, 3, (v) => (v === 3 ? K1 : undefined));
+  assertEquals(await verifyManageToken(token, 1, lookup), { ok: false, reason: "key_unavailable" });
+});
+
+Deno.test("a malformed key is also OPERATIONAL rather than a silent weak-key acceptance", async () => {
+  const weak: KeyLookup = () => "short";
   const token = await buildManageToken(CAP, 1, lookup);
-  assertEquals(await verifyManageToken(token, storedVersion(null), 1, lookup), null);
-  assertEquals(await verifyManageToken(token, storedVersion(9), 1, lookup), null);
-  const throwing = async () => { throw new Error("database unreachable"); };
-  assertEquals(await verifyManageToken(token, throwing, 1, lookup), null);
+  assertEquals(await verifyManageToken(token, 1, weak), { ok: false, reason: "key_unavailable" });
 });
 
-Deno.test("malformed tokens are refused without touching the database", async () => {
-  let reads = 0;
-  const counting = async () => { reads++; return 1; };
-  for (const bad of [
-    null, undefined, "", ".", `${CAP}.`, `.sig`, CAP, "not-a-uuid.sig",
-    `${CAP}x.sig`, ` ${CAP}.sig`,
-  ]) {
-    assertEquals(await verifyManageToken(bad as string | null, counting, 1, lookup), null, `${bad}`);
+Deno.test("STRICT GRAMMAR: nothing malformed reaches a key load", async () => {
+  let loads = 0;
+  const counting: KeyLookup = (v) => { loads++; return keys[v]; };
+  const good = await buildManageToken(CAP, 1, lookup);
+  const sig = good.split(".")[2];
+  const bad = [
+    null, undefined, "", ".", "..", `v1.${CAP}`, `${CAP}.${sig}`,          // shape
+    `v1.${CAP}.${sig}.extra`,                                              // extra separator
+    `v0.${CAP}.${sig}`, `vx.${CAP}.${sig}`, `v.${CAP}.${sig}`,             // version grammar
+    `v1.not-a-uuid.${sig}`, `v1.${CAP}x.${sig}`,                           // id grammar
+    `v1.${CAP}.${sig.slice(0, -1)}`,                                       // truncated signature
+    `v1.${CAP}.${sig}A`,                                                   // oversized signature
+    `v1.${CAP}.${"!".repeat(43)}`,                                         // invalid alphabet
+  ];
+  for (const t of bad) {
+    assertEquals(await verifyManageToken(t as string | null, 1, counting), { ok: false, reason: "invalid" }, `${t}`);
   }
-  assertEquals(reads, 0);
+  assertEquals(loads, 0);
 });
 
-Deno.test("a tampered signature is refused", async () => {
+Deno.test("a tampered signature of the right shape is refused", async () => {
   const token = await buildManageToken(CAP, 1, lookup);
-  const [id, sig] = token.split(".");
-  const flipped = sig.slice(0, -1) + (sig.endsWith("A") ? "B" : "A");
-  assertEquals(await verifyManageToken(`${id}.${flipped}`, storedVersion(1), 1, lookup), null);
-  // ...and a signature of the right shape but the wrong length is not a length-oracle either
-  assertEquals(await verifyManageToken(`${id}.${sig.slice(0, -2)}`, storedVersion(1), 1, lookup), null);
+  const [v, id, sig] = token.split(".");
+  const flipped = (sig.endsWith("A") ? "B" : "A") + sig.slice(1);
+  assertEquals(await verifyManageToken(`${v}.${id}.${flipped}`, 1, lookup), { ok: false, reason: "invalid" });
 });
 
-Deno.test("the token is URL-safe: base64url, unpadded", async () => {
+Deno.test("the signed generation must EQUAL the row's stored generation", async () => {
+  const ok = await verifyManageToken(await buildManageToken(CAP, 1, lookup), 1, lookup);
+  assertEquals(assertRowKeyVersion(ok, 1), true);
+  assertEquals(assertRowKeyVersion(ok, 2), false);    // row minted under another generation
+  assertEquals(assertRowKeyVersion(ok, null), false); // row absent
+  assertEquals(assertRowKeyVersion({ ok: false, reason: "invalid" }, 1), false);
+});
+
+Deno.test("the token is URL-safe end to end", async () => {
   const token = await buildManageToken(CAP, 1, lookup);
-  const sig = token.split(".")[1];
-  assertEquals(/^[A-Za-z0-9_-]+$/.test(sig), true, sig);
   assertEquals(encodeURIComponent(token), token);
 });
 
-Deno.test("minting with an unconfigured key THROWS rather than emitting a linkless footer", async () => {
+Deno.test("minting refuses an unconfigured key, a weak key, and a bad id or version", async () => {
+  await assertRejects(() => buildManageToken(CAP, 9, lookup), Error, "no signing key configured");
   await assertRejects(
-    () => buildManageToken(CAP, 3, lookup),
+    () => buildManageToken(CAP, 1, () => "not-32-bytes-of-hex"),
     Error,
-    "no signing key configured for version 3",
+    "32 random bytes",
   );
+  await assertRejects(() => buildManageToken("nope", 1, lookup), Error, "not a uuid");
+  await assertRejects(() => buildManageToken(CAP, 0, lookup), Error, "positive integer");
 });
