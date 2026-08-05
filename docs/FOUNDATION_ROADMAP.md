@@ -192,7 +192,7 @@ presentation and reachability only.
 | **N2 S4** — the neutral `/app/settings/notifications` route + Auth redirect sanitisation | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `a1d9ba8c` |
 | **N2 S2b** — neutral-route footers (send-email + digest render) + legacy flush send-time gate | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `ed2465cd`, CI green at `2980ccb3` |
 | **N2 S3** — campaign/onboarding suppression + per-send capabilities + RFC 8058 | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `b961e7f1`, CI green at `7166d403` |
-| **N2 S5** — one-click endpoint + manage page + retention sweep | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | in review |
+| **N2 S5** — one-click endpoint + manage page + retention sweep | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `47e6658e` — N2 slice plan COMPLETE, whole-unit sweep next |
 
 **N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
 `supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement
