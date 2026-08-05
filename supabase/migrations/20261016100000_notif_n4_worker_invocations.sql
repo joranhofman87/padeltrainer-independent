@@ -83,6 +83,14 @@ CREATE UNIQUE INDEX uq_notification_worker_invocation_net_request
   ON public.notification_worker_invocations (net_request_id)
   WHERE net_request_id IS NOT NULL;
 
+-- ...and one dispatch RUN evidences at most one invocation, SCHEMA-level. The RPCs already
+-- cannot produce two (single-flight + bind refuses an ended run), but activation counts
+-- qualifying rows for a run — without uniqueness, a historical/corrupted second row bound to
+-- the same run could hide beside a valid one and the count would still read 1-of-predicate.
+CREATE UNIQUE INDEX uq_notification_worker_invocation_run
+  ON public.notification_worker_invocations (worker_run_id)
+  WHERE worker_run_id IS NOT NULL;
+
 -- OWNER-EFFECTIVE STATE MACHINE (contract finding: ACLs stop API roles, but definer functions
 -- and future migrations run as the owner — the guard must bind THEM too, exactly like the
 -- digest ledger's). Inserts arrive only as clean pending; transitions are monotonic

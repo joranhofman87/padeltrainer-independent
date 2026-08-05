@@ -751,16 +751,46 @@ describe('resolve_invocation_for_canary_run (part 3): the strict canary reconcil
       .rejects.toThrow(/ABANDONED/);
   });
 
-  it('MANY invocations claiming one run RAISES as ambiguous (constructible only past the guards)', async () => {
-    const run = await newRun(true);
+  it('one run evidences at most ONE invocation — SCHEMA-level, immune even to guard-disabled corruption', async () => {
+    // The activation assertion counts qualifying rows for a run; without uniqueness a
+    // historical second row (a smoke beside a valid canary) could hide next to it and the
+    // predicate count would still read 1. The index makes that state unconstructible.
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await rec(inv);
+    const run = await newRun(false);
+    expect(await bind(inv, run)).toBe('bound');
     await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
-    await c.query(
-      `INSERT INTO public.notification_worker_invocations (request_id, purpose, source, status, worker_run_id, resolved_at)
-       VALUES (gen_random_uuid(), 'canary', 'ambig-a', 'completed', $1, now()),
-              (gen_random_uuid(), 'canary', 'ambig-b', 'started', $1, NULL)`, [run]);
-    await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
-    await expect(c.query(`SELECT public.resolve_invocation_for_canary_run($1)`, [run]))
-      .rejects.toThrow(/2 invocations claim run/);
+    try {
+      await expect(c.query(
+        `INSERT INTO public.notification_worker_invocations (request_id, purpose, source, status, worker_run_id, net_request_id, resolved_at)
+         VALUES (gen_random_uuid(), 'smoke', 'ambig-b', 'completed', $1, 960001, now())`, [run]))
+        .rejects.toThrow(/uq_notification_worker_invocation_run|duplicate key/);
+    } finally {
+      await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    }
+  });
+
+  it('a concurrent ABANDON cannot be reported as a successful reconciliation — deterministic two-session race', async () => {
+    // Session A abandons (uncommitted, holding the row); session B's reconcile BLOCKS on the
+    // classification lock; after A commits, B must refuse over the ABANDONED verdict — never
+    // return already_resolved as success. (Without the wrapper's FOR UPDATE, B read 'started'
+    // pre-commit, passed the abandoned arm, and the generic resolve's own 'already_resolved'
+    // sailed through as a completed reconciliation.)
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await rec(inv);
+    const run = await newRun(false);
+    expect(await bind(inv, run)).toBe('bound');
+    await endRun(run);
+    await c.query('BEGIN');
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator abort') AS r`, [inv])).rows[0].r).toBe('abandoned');
+    let settled = false;
+    const loser = c2.query(`SELECT public.resolve_invocation_for_canary_run($1)`, [run])
+      .finally(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(settled).toBe(false);   // provably serialized behind the uncommitted abandon
+    await c.query('COMMIT');
+    // the ABANDONED arm — locked classification saw the committed truth, not the stale read
+    await expect(loser).rejects.toThrow(/ABANDONED/);
   });
 });
 

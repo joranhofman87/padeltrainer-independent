@@ -238,8 +238,13 @@ BEGIN
     RAISE EXCEPTION 'resolve_invocation_for_canary_run: % invocations claim run % — evidence is ambiguous, stop and inspect', v_count, p_worker_run_id;
   END IF;
 
+  -- LOCKED before classification, held through the generic resolve (same row, same lock order
+  -- as bind/resolve: invocation first). Without this, a concurrent ABANDON landing between the
+  -- read and the generic resolve surfaced as its 'already_resolved' — and this wrapper would
+  -- have reported a successful reconciliation over an abandoned verdict.
   SELECT status, purpose, source, net_request_id INTO v_status, v_purpose, v_source, v_net
-    FROM public.notification_worker_invocations WHERE id = v_id;
+    FROM public.notification_worker_invocations WHERE id = v_id
+    FOR UPDATE;
   -- CANARY PROVENANCE, before any state change. The gate-bypass this closes: a SMOKE whose
   -- switch assertion was wrong actually sends; its dispatch run later gets handed to the canary
   -- command, this function completes the SMOKE invocation, and activation treats an accidental
@@ -262,6 +267,16 @@ BEGIN
   IF v_status NOT IN ('completed', 'already_resolved') THEN
     RAISE EXCEPTION 'resolve_invocation_for_canary_run: invocation % for run % refused completion — verdict % (the run has not provably ended; reconcile it first)',
       v_id, p_worker_run_id, v_status;
+  END IF;
+  -- 'already_resolved' deliberately conflates every terminal in the generic resolve; THIS
+  -- caller may only report success over 'completed'. Belt to the FOR UPDATE above: even if a
+  -- future refactor loosened the lock, an abandoned row could not read as reconciled.
+  IF v_status = 'already_resolved' THEN
+    SELECT status INTO v_status FROM public.notification_worker_invocations WHERE id = v_id;
+    IF v_status <> 'completed' THEN
+      RAISE EXCEPTION 'resolve_invocation_for_canary_run: invocation % for run % is terminally % — that is not a completed canary', v_id, p_worker_run_id, v_status;
+    END IF;
+    RETURN 'already_resolved';
   END IF;
   RETURN v_status;
 END;

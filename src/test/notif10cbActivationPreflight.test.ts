@@ -697,6 +697,12 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
     // and canary reconciliation requires canary PROVENANCE — a smoke that accidentally sent can
     // never be reconciled as the reviewed canary
     expect(mig).toContain(`v_purpose <> 'canary' OR v_source <> 'canary_invoke.sql'`);
+    // classification is LOCKED (a concurrent abandon must never read as reconciled)…
+    expect(mig).toMatch(/INTO v_status, v_purpose, v_source, v_net[\s\S]{0,200}FOR UPDATE/);
+    // …and one run evidences at most one invocation, schema-level
+    const core = readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations', '20261016100000_notif_n4_worker_invocations.sql'), 'utf8');
+    expect(core).toContain('uq_notification_worker_invocation_run');
+    expect(core).toContain('(worker_run_id)\n  WHERE worker_run_id IS NOT NULL');
   });
 
   it('activation asserts canary provenance INDEPENDENTLY — never trusting that reconcile ran correctly', () => {
