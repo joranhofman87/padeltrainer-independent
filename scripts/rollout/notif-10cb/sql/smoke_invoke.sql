@@ -117,7 +117,7 @@ BEGIN
   SELECT command INTO STRICT v_cmd FROM cron.job
    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job);
 
-  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '657295911df940d4aecc69a87169574c' THEN
+  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM 'f5eab65b8f72a71fb46be7015d017c4f' THEN
     RAISE EXCEPTION 'ASSERT FAILED: refusing to execute a cron command that is not EXACTLY the reviewed one';
   END IF;
 

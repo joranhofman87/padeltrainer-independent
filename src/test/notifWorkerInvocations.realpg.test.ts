@@ -110,6 +110,13 @@ beforeAll(async () => {
   // round 4 (convergence): the ownership CONTRACT — 'manual' is gone, and with it round 3's
   // timestamp comparison and the claim arm that comparison needed
   await c.query(MIG('20261025100000_notif_n4_invocation_ownership_contract.sql'));
+  // round 5: the claim binds ONLY the invocation the REQUEST names. The migration's first half
+  // re-points the scheduled cron command (pg_cron is not installed here — the rollout harness
+  // executes that half); the second half is the RPC, which is what this suite owns.
+  {
+    const r5 = MIG('20261026100000_notif_n4_dispatch_carries_invocation.sql');
+    await c.query(r5.slice(r5.indexOf('DROP FUNCTION IF EXISTS public.claim_pending_worker_invocation')));
+  }
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -342,9 +349,12 @@ describe('ACLs', () => {
 });
 
 
-describe('claim_pending_worker_invocation (part 3): the worker-side handshake', () => {
-  const claim = async (run: string) =>
-    (await c.query(`SELECT public.claim_pending_worker_invocation($1) AS r`, [run])).rows[0].r as string | null;
+describe('claim_worker_invocation (part 3): the worker-side handshake', () => {
+  /** the round-5 shape: the request's own identity goes in, one (status, invocation_id) row comes back */
+  const claimRow = async (run: string, inv: string | null = null) =>
+    (await c.query(`SELECT * FROM public.claim_worker_invocation($1, $2)`, [run, inv])).rows[0] as
+      { status: string; invocation_id: string | null };
+  const claim = async (run: string, inv: string | null = null) => (await claimRow(run, inv)).invocation_id;
 
   it('a STARTED invocation refuses every OTHER run — a duplicate HTTP request can never proceed as steady-state', async () => {
     // The bug this pins: the claim searched pending-only, so a duplicate request (pg_net retry,
@@ -353,12 +363,12 @@ describe('claim_pending_worker_invocation (part 3): the worker-side handshake', 
     // the operator's evidence window. (An earlier version of this test BLESSED that NULL.)
     const inv = await open(c, crypto.randomUUID());
     const run = await newRun(false);
-    expect(await claim(run)).toBe(inv);
+    expect(await claim(run, inv)).toBe(inv);
     // the same run retrying its own claim is a provably-identical replay → same id, may proceed
-    expect(await claim(run)).toBe(inv);
-    // any OTHER run — duplicate request or a cron tick landing mid-window — is REFUSED, loudly
+    expect(await claim(run, inv)).toBe(inv);
+    // a DUPLICATE HTTP request carries the SAME id (the body was built once) and is REFUSED loudly
     const dup = await newRun(false);
-    await expect(c.query(`SELECT public.claim_pending_worker_invocation($1)`, [dup]))
+    await expect(c.query(`SELECT * FROM public.claim_worker_invocation($1, $2)`, [dup, inv]))
       .rejects.toThrow(/conflict_other_run/);
   });
 
@@ -367,9 +377,9 @@ describe('claim_pending_worker_invocation (part 3): the worker-side handshake', 
     const runA = await newRun(false);
     const runB = await newRun(false);
     await c.query('BEGIN');
-    expect((await c.query(`SELECT public.claim_pending_worker_invocation($1) AS r`, [runA])).rows[0].r).toBe(inv);
+    expect((await c.query(`SELECT invocation_id FROM public.claim_worker_invocation($1, $2)`, [runA, inv])).rows[0].invocation_id).toBe(inv);
     let settled = false;
-    const loser = c2.query(`SELECT public.claim_pending_worker_invocation($1) AS r`, [runB])
+    const loser = c2.query(`SELECT * FROM public.claim_worker_invocation($1, $2)`, [runB, inv])
       .finally(() => { settled = true; });
     await new Promise((r) => setTimeout(r, 150));
     expect(settled).toBe(false);   // genuinely serialized behind the winner's open transaction
@@ -377,28 +387,57 @@ describe('claim_pending_worker_invocation (part 3): the worker-side handshake', 
     await expect(loser).rejects.toThrow(/conflict_other_run/);
   });
 
-  it('NULL only when ZERO unresolved invocations exist: the steady-state cron tick', async () => {
-    expect(await claim(await newRun(false))).toBe(null);
+  it("'none' only when ZERO unresolved invocations exist: the steady-state cron tick", async () => {
+    expect(await claimRow(await newRun(false))).toMatchObject({ status: 'none', invocation_id: null });
   });
 
-  it('a pending invocation the run cannot own RAISES — never a silent steady-state downgrade', async () => {
-    await open(c, crypto.randomUUID());
+  it('a NAMED invocation the run cannot own RAISES — never a silent steady-state downgrade', async () => {
+    const inv = await open(c, crypto.randomUUID());
     const impostor = await newRun(false, 'materialize');
-    await expect(c.query(`SELECT public.claim_pending_worker_invocation($1)`, [impostor]))
+    await expect(c.query(`SELECT * FROM public.claim_worker_invocation($1, $2)`, [impostor, inv]))
       .rejects.toThrow(/refused this run/);
+  });
+
+  // ── round 5: THE COUNTEREXAMPLE that ended the exclusion argument ────────────────────────
+  it('a request that names NOTHING can never bind an invocation — it DEFERS instead', async () => {
+    // the in-flight tick: dispatched while the cron was active, its body frozen BEFORE the
+    // invocation existed, arriving after the operator opened a canary. Under "claim the one
+    // unresolved invocation" it bound the canary's evidence to a steady-state run that carried
+    // none of the canary's blast-radius bounds.
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    const staleTick = await newRun(false);
+    expect(await claimRow(staleTick, null)).toMatchObject({ status: 'deferred', invocation_id: null });
+    expect((await c.query(
+      `SELECT status, worker_run_id FROM public.notification_worker_invocations WHERE id = $1`, [inv])).rows[0])
+      .toMatchObject({ status: 'pending', worker_run_id: null });
+    // …and the canary's OWN request, which names it, still owns it
+    const canaryRun = await newRun(false);
+    expect(await claimRow(canaryRun, inv)).toMatchObject({ status: 'owned', invocation_id: inv });
+  });
+
+  it('deferral is not stranding: once the invocation resolves, the next unnamed tick is steady-state again', async () => {
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await c.query(`SELECT public.record_invocation_net_request($1, 970001)`, [inv]);   // the dispatch provenance
+    const run = await newRun(false);
+    expect(await claim(run, inv)).toBe(inv);
+    expect(await claimRow(await newRun(false), null)).toMatchObject({ status: 'deferred' });  // started, still open
+    await endRun(run);
+    await c.query(`SELECT public.resolve_invocation_for_canary_run($1)`, [run]);
+    expect(await claimRow(await newRun(false), null)).toMatchObject({ status: 'none' });
   });
 
   // ── round 4 (convergence): ownership is proven by EXCLUSION, so the claim keeps exactly two
   //    arms — own it, or nothing is unresolved. The third arm round 3 needed for 'manual'
   //    returned NULL, which is the worker's signal to run a FULL steady-state pass: it
   //    authorised the overlapping unverified execution the loud arm exists to prevent.
-  it('an unresolved invocation this run cannot own ALWAYS raises — NULL means zero unresolved, and nothing else', async () => {
+  it('a NAMED invocation another run owns ALWAYS raises — the duplicate-request protection, unchanged by round 5', async () => {
     const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
     const owner = await newRun(false);
-    expect(await claim(owner)).toBe(inv);
-    // every other run, whatever its timing relative to the invocation, is refused LOUDLY
-    const later = await newRun(false);
-    await expect(c.query(`SELECT public.claim_pending_worker_invocation($1)`, [later]))
+    expect(await claim(owner, inv)).toBe(inv);
+    // a duplicate HTTP request carries the SAME id and starts its own run: refused LOUDLY, never
+    // downgraded to a silent second steady-state pass
+    const duplicate = await newRun(false);
+    await expect(c.query(`SELECT * FROM public.claim_worker_invocation($1, $2)`, [duplicate, inv]))
       .rejects.toThrow(/conflict_other_run/);
   });
 });

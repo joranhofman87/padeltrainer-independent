@@ -42,7 +42,7 @@ const entry = makeDigestWorkerEntry({
   // best-effort ops alert — notifySlackEdge never throws and no-ops if config/secret is absent.
   alert: (payload) => notifySlackEdge("digest_worker_alert", payload),
   corsHeaders,
-  run: ({ resendApiKey, supabaseUrl, serviceKey }) => {
+  run: ({ resendApiKey, supabaseUrl, serviceKey, invocationId }) => {
     const supabase = createClient(supabaseUrl, serviceKey);
     return runDigestWorker({
       enabled: true,
@@ -50,6 +50,8 @@ const entry = makeDigestWorkerEntry({
       channel: CHANNEL,
       from: DEFAULT_FROM,
       limits: LIMITS,
+      // the deliberate invocation THIS request names, from the body the scheduled command built
+      invocationId,
       rpc: async (name, args) => {
         const { data, error } = await supabase.rpc(name, args);
         if (error) throw new Error(`${name} rpc failed`); // no args/data in the message — PII-free

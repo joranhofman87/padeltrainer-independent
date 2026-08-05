@@ -10,14 +10,17 @@
 //     or reached the provider first;
 //  2. a claim REFUSAL (the RPC raises: duplicate request, foreign invocation) aborts the run:
 //     finished 'failed', zero pipeline work, error propagated;
-//  3. a claimed id reaches the summary; a NULL claim (steady-state cron tick) changes nothing.
+//  3. a claimed id reaches the summary; a 'none' claim (steady-state cron tick) changes nothing;
+//  4. (round 5) the run claims with the invocation THE REQUEST NAMED, and a 'deferred' verdict —
+//     this request names nothing while someone else's invocation is unresolved — does NO pipeline
+//     work and finishes the run cleanly rather than failing it.
 import { assert, assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { DigestWorkerError, runDigestWorker, type WorkerDeps, type WorkerSummary } from "./digest-worker-core.ts";
 
 const DISPATCH_RUN = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const INVOCATION = "11111111-2222-4333-8444-555555555555";
 
-function deps(claimBehavior: "null" | "id" | "throw") {
+function deps(claimBehavior: "none" | "id" | "throw" | "deferred", requestInvocation: string | null = null) {
   const rpcCalls: string[] = [];
   const rpcArgs: Array<{ name: string; args: Record<string, unknown> }> = [];
   const d: WorkerDeps = {
@@ -36,11 +39,14 @@ function deps(claimBehavior: "null" | "id" | "throw") {
         case "start_notification_worker_run":
           return Promise.resolve(rpcCalls.filter((n) => n === "start_notification_worker_run").length === 1
             ? DISPATCH_RUN : "mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm");
-        case "claim_pending_worker_invocation":
+        case "claim_worker_invocation":
           if (claimBehavior === "throw") {
-            return Promise.reject(new Error("claim_pending_worker_invocation: invocation refused this run — verdict conflict_other_run"));
+            return Promise.reject(new Error("claim_worker_invocation: invocation refused this run (…) — verdict conflict_other_run"));
           }
-          return Promise.resolve(claimBehavior === "id" ? INVOCATION : null);
+          // the REAL shape: one row from a RETURNS TABLE, as supabase-js hands it back
+          return Promise.resolve(claimBehavior === "id"
+            ? [{ status: "owned", invocation_id: INVOCATION }]
+            : [{ status: claimBehavior === "deferred" ? "deferred" : "none", invocation_id: null }]);
         case "reconcile_notification_digest_stale": return Promise.resolve(0);
         case "materialize_notification_digest_groups": return Promise.resolve(0);
         case "claim_notification_digest_group": return Promise.resolve(null);
@@ -66,6 +72,7 @@ function deps(claimBehavior: "null" | "id" | "throw") {
     now: () => new Date("2026-08-03T12:00:00Z"),
     monotonicNowMs: () => 0,
     newToken: () => "token-1",
+    invocationId: requestInvocation,
     log: () => {},
   };
   return { d, rpcCalls, rpcArgs };
@@ -83,8 +90,8 @@ Deno.test("the claim is the FIRST thing after the dispatch run starts — before
   const { d, rpcCalls } = deps("id");
   const s: WorkerSummary = await runDigestWorker(d);
   assertEquals(s.invocationId, INVOCATION);
-  const claimIdx = rpcCalls.indexOf("claim_pending_worker_invocation");
-  assert(claimIdx >= 0, "the worker never called claim_pending_worker_invocation");
+  const claimIdx = rpcCalls.indexOf("claim_worker_invocation");
+  assert(claimIdx >= 0, "the worker never called claim_worker_invocation");
   assertEquals(rpcCalls[claimIdx - 1], "start_notification_worker_run",
     "the claim must come immediately after the dispatch run start");
   for (const p of PIPELINE_RPCS) {
@@ -93,11 +100,44 @@ Deno.test("the claim is the FIRST thing after the dispatch run starts — before
   }
 });
 
-Deno.test("...and it claims with the run it just started", async () => {
-  const { d, rpcArgs } = deps("id");
+Deno.test("...and it claims with the run it just started AND the invocation the REQUEST named", async () => {
+  const { d, rpcArgs } = deps("id", INVOCATION);
   await runDigestWorker(d);
-  const call = rpcArgs.find((r) => r.name === "claim_pending_worker_invocation");
+  const call = rpcArgs.find((r) => r.name === "claim_worker_invocation");
   assertEquals(call?.args.p_worker_run_id, DISPATCH_RUN);
+  // round 5: the identity comes from the request body, never from a search for "the unresolved
+  // one" — that search is what let an unrelated in-flight tick bind a canary's evidence
+  assertEquals(call?.args.p_invocation_id, INVOCATION);
+});
+
+Deno.test("a request that names NOTHING passes null — it can never own an invocation", async () => {
+  const { d, rpcArgs } = deps("none");
+  await runDigestWorker(d);
+  const call = rpcArgs.find((r) => r.name === "claim_worker_invocation");
+  assertEquals(call?.args.p_invocation_id, null);
+});
+
+Deno.test("DEFERRED: no pipeline work, run finished CLEANLY, and the summary says so", async () => {
+  const { d, rpcCalls, rpcArgs } = deps("deferred");
+  const s: WorkerSummary = await runDigestWorker(d);
+  assertEquals(s.invocationDeferred, true);
+  assertEquals(s.status, "ok");            // nothing failed — the deliberate request is still coming
+  assertEquals(s.invocationId, undefined);
+  for (const p of PIPELINE_RPCS) {
+    assertEquals(rpcCalls.includes(p), false, `${p} ran inside someone else's evidence window`);
+  }
+  const finish = rpcArgs.filter((r) => r.name === "finish_notification_worker_run" && r.args.p_run_id === DISPATCH_RUN);
+  assertEquals(finish.map((r) => r.args.p_status), ["succeeded"]);
+});
+
+Deno.test("an UNREADABLE claim result is a refusal, never a silent steady-state pass", async () => {
+  const { d, rpcCalls } = deps("none");
+  const bad: WorkerDeps = { ...d, rpc: (name, args) => name === "claim_worker_invocation"
+    ? Promise.resolve([{ status: "surprise" }]) : d.rpc(name, args) };
+  await assertRejects(() => runDigestWorker(bad), DigestWorkerError);
+  for (const p of PIPELINE_RPCS) {
+    assertEquals(rpcCalls.includes(p), false, `${p} ran on an unreadable claim result`);
+  }
 });
 
 Deno.test("a claim REFUSAL aborts the run: finished 'failed', ZERO pipeline work, error propagated", async () => {
@@ -111,8 +151,8 @@ Deno.test("a claim REFUSAL aborts the run: finished 'failed', ZERO pipeline work
   assertEquals(finish.map((r) => r.args.p_status), ["failed"]);
 });
 
-Deno.test("a NULL claim is the steady-state tick: the pipeline proceeds and the summary carries no invocation", async () => {
-  const { d, rpcCalls } = deps("null");
+Deno.test("a 'none' claim is the steady-state tick: the pipeline proceeds and the summary carries no invocation", async () => {
+  const { d, rpcCalls } = deps("none");
   const s: WorkerSummary = await runDigestWorker(d);
   assertEquals(s.invocationId, undefined);
   assertEquals(s.status, "ok");

@@ -9953,10 +9953,6 @@ export type Database = {
         Args: { _cycle_id: string }
         Returns: boolean
       }
-      claim_pending_worker_invocation: {
-        Args: { p_worker_run_id: string }
-        Returns: string
-      }
       claim_skipped_required_alerts: {
         Args: {
           p_limit?: number
@@ -9980,6 +9976,13 @@ export type Database = {
           _subscription_id: string
         }
         Returns: boolean
+      }
+      claim_worker_invocation: {
+        Args: { p_invocation_id: string; p_worker_run_id: string }
+        Returns: {
+          invocation_id: string
+          status: string
+        }[]
       }
       club_has_managers: {
         Args: { _club_profile_id: string }

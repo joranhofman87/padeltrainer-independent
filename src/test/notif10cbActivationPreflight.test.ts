@@ -18,6 +18,11 @@ import { join, dirname, resolve } from 'node:path';
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 
 const MIGRATION = read('supabase', 'migrations', '20261012100000_notif_10cb_digest_cron_inert.sql');
+// N4 round 5 RE-POINTS that command: its body now names the pending invocation, so the request a
+// deliberate artifact sends carries the identity it just opened and a tick's carries null. The
+// command text is otherwise byte-identical, and THIS migration is now the authoritative source of
+// what the schedule runs — the pins below follow it, not the original.
+const REPOINT = read('supabase', 'migrations', '20261026100000_notif_n4_dispatch_carries_invocation.sql');
 // The assertions live in a shared include, pulled in by BOTH the read-only dry run
 // (activation_preflight.sql) and the transactional gate (activate.sql), so the two can never
 // diverge into checking different things.
@@ -41,7 +46,9 @@ const reviewed = (() => {
   const m = MIGRATION.match(
     /cron\.schedule\(\s*'notification-digest-worker'\s*,\s*'([^']+)'\s*,\s*\$cmd\$([\s\S]*?)\$cmd\$\s*\)/);
   if (!m) throw new Error('the F migration no longer schedules notification-digest-worker in the expected form');
-  return { schedule: m[1], command: m[2] };
+  const r = REPOINT.match(/v_cmd text := \$cmd\$([\s\S]*?)\$cmd\$;/);
+  if (!r) throw new Error('the re-point migration no longer carries a command');
+  return { schedule: m[1], command: r[1], installed: m[2] };
 })();
 
 /** What the preflight will demand of a live job. */
@@ -348,8 +355,22 @@ describe('I — the scheduled command survives a hostile search_path unaided', (
   it('names the qualified forms it is meant to have (best-effort; the proof is in preflight-pg.mjs)', () => {
     expect(reviewed.command).toContain('pg_catalog.jsonb_build_object');
     expect(reviewed.command).toContain('OPERATOR(pg_catalog.||)');
-    expect(reviewed.command).toContain('OPERATOR(pg_catalog.=)');
-    expect(reviewed.command).toContain('::pg_catalog.jsonb');
+    // TWO comparisons now — the Vault name and the invocation's status. A planted text = text
+    // answering false on the second would send a body naming no invocation, silently restoring
+    // the "search for the one unresolved invocation" ambiguity round 5 removed.
+    expect(reviewed.command.match(/OPERATOR\(pg_catalog\.=\)/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(reviewed.command).toContain('public.notification_worker_invocations');
+    expect(reviewed.command).toContain("'invocation_id'");
+  });
+
+  // The re-point is a BODY change and nothing else: same endpoint, same Vault bearer, same
+  // qualification — so the canary still executes what the schedule will execute, and the md5 pin
+  // still means what it meant.
+  it('re-points ONLY the body of the command the F migration installs', () => {
+    const withoutBody = (c: string) => normalize(c).replace(/body :=.*?\) AS request_id;/s, 'body := <B>) AS request_id;');
+    expect(withoutBody(reviewed.command)).toBe(withoutBody(reviewed.installed));
+    expect(normalize(reviewed.installed)).toContain("body := '{}'::pg_catalog.jsonb");
+    expect(normalize(reviewed.command)).not.toContain("body := '{}'::pg_catalog.jsonb");
   });
 
   it('still resolves the bearer from Vault, and posts to this project', () => {

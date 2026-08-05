@@ -53,6 +53,10 @@ beforeAll(async () => {
     // steady-state NULL — which is itself part of what these tests now prove.
     '20261016100000_notif_n4_worker_invocations.sql',
     '20261016110000_notif_n4_invocation_claim.sql',
+    // …and the round-4/5 corrections that own the claim's contract: ownership is proven by the
+    // identity the REQUEST carries, so this suite's runs (which carry none) are steady-state ticks
+    '20261025100000_notif_n4_invocation_ownership_contract.sql',
+    '20261026100000_notif_n4_dispatch_carries_invocation.sql',
     // N4 M2: per-channel kill switches gate the digest claim/materialize/begin in SQL. With no
     // kill row every prior test must behave IDENTICALLY — that unchanged-behavior guarantee is
     // part of what this chain now proves; the kill describe at the bottom proves the gates.
@@ -92,7 +96,7 @@ const FIXED_LIMITS: WorkerLimits = { maxMaterializeGroups: 200, maxMaterializeMe
  * fixture must too — `SELECT fn(...)` would hand back a composite string and the worker would
  * read every field as undefined while looking perfectly green.
  */
-const TABLE_RETURNING_RPCS = new Set(['reconcile_orphan_provider_events']);
+const TABLE_RETURNING_RPCS = new Set(['reconcile_orphan_provider_events', 'claim_worker_invocation']);
 
 /** Named-arg RPC caller: object keys → `p_x => $n` (jsonb-cast for object values). Throws on DB error. */
 function mkRpc(c: pg.Client) {

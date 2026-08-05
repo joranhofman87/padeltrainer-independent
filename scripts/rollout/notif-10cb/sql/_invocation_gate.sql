@@ -10,10 +10,9 @@
 -- "count was 1, expected 0" stranded exactly the operator this gate exists to protect.
 --
 -- IT TAKES M1'S OWN OPEN LOCK. A snapshot SELECT had the exact race the invocation record
--- exists to close: a manual invoker holding 'notif-worker-invocation-open' with an
--- UNCOMMITTED pending row is invisible here, so activation saw zero rows and armed the cron —
--- and the invocation then committed and dispatched into an armed system. (Smoke and canary
--- happen to serialize on the cron row lock; a manual invocation does not, and M1 exposes it.)
+-- exists to close: an invoker holding 'notif-worker-invocation-open' with an UNCOMMITTED pending
+-- row is invisible here, so activation saw zero rows and armed the cron — and the invocation then
+-- committed and dispatched into an armed system.
 -- The lock is held to COMMIT, so the arming transaction and any opener strictly order.
 DO $gate$
 DECLARE r record;

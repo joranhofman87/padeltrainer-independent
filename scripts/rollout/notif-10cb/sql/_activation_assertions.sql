@@ -195,7 +195,7 @@ SELECT pg_temp.assert_eq(
       AND purpose = 'canary'
       AND source = 'canary_invoke.sql'
       AND net_request_id IS NOT NULL), 1,
-  'the run is bound to exactly one COMPLETED canary-provenance invocation (purpose=canary, source=canary_invoke.sql, recorded pg_net request) — an accidental smoke/manual send cannot activate, and an unreconciled canary must pass canary-reconcile first');
+  'the run is bound to exactly one COMPLETED canary-provenance invocation (purpose=canary, source=canary_invoke.sql, recorded pg_net request) — an accidental smoke cannot activate, and an unreconciled canary must pass canary-reconcile first');
 
 
 -- 9. NO CHANNEL IS KILLED (N4 seam correction). Arming behind an active kill looks safe — the

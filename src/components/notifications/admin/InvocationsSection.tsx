@@ -36,7 +36,7 @@ export function InvocationsSection({
           </span>
         ) : undefined}
         isEmpty={(rows?.length ?? 0) === 0 && !isLoading && !isError}
-        empty={<EmptyState icon={PlayCircle} title={t('notifOps.noInvocations', 'No deliberate invocations recorded')} description={t('notifOps.noInvocationsDesc', 'Smoke, canary and manual invocations appear here with their evidence.')} />}
+        empty={<EmptyState icon={PlayCircle} title={t('notifOps.noInvocations', 'No deliberate invocations recorded')} description={t('notifOps.noInvocationsDesc', 'Smoke and canary invocations appear here with their evidence.')} />}
       >
         {rows ? (
           <div data-testid="invocations">

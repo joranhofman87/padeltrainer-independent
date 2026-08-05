@@ -56,11 +56,17 @@ const MSG = 'resend-msg-canary-1';
 // The reviewed command, taken from the migration itself so this file cannot
 // drift from what F actually schedules.
 const CRON_MIG = MIG('20261012100000_notif_10cb_digest_cron_inert.sql');
+// N4 round 5 re-points the command's BODY so the request names the pending invocation. The
+// schedule still comes from the F migration; the command comes from here, because this is what a
+// migrated database actually runs.
+const REPOINT_MIG = MIG('20261026100000_notif_n4_dispatch_carries_invocation.sql');
 const REVIEWED = (() => {
   const m = CRON_MIG.match(
     /cron\.schedule\(\s*'notification-digest-worker'\s*,\s*'([^']+)'\s*,\s*\$cmd\$([\s\S]*?)\$cmd\$\s*\)/);
   if (!m) throw new Error('could not extract the reviewed cron schedule/command from the F migration');
-  return { schedule: m[1], command: m[2] };
+  const r = REPOINT_MIG.match(/v_cmd text := \$cmd\$([\s\S]*?)\$cmd\$;/);
+  if (!r) throw new Error('could not extract the re-pointed command from the round-5 migration');
+  return { schedule: m[1], command: r[1] };
 })();
 
 /** A stable, filename-safe suffix so two generated shadows cannot collide on their helper name. */
@@ -148,8 +154,9 @@ try {
       active boolean NOT NULL DEFAULT true, jobname text,
       UNIQUE (jobname, username));
     -- alter_job by jobid, as real pg_cron does — activate.sql arms the id it locked, never a name.
-    CREATE FUNCTION cron.alter_job(job_id bigint, active boolean DEFAULT NULL)
-      RETURNS void LANGUAGE sql AS $f$ UPDATE cron.job SET active = coalesce($2, active) WHERE jobid = $1 $f$;`);
+    CREATE FUNCTION cron.alter_job(job_id bigint, active boolean DEFAULT NULL, command text DEFAULT NULL)
+      RETURNS void LANGUAGE sql AS $f$
+        UPDATE cron.job SET active = coalesce($2, active), command = coalesce($3, command) WHERE jobid = $1 $f$;`);
 
   // The catalog columns the preflight reads (20260910100000 + C's 20261011100000).
   await c.query(`
@@ -244,6 +251,13 @@ try {
     CREATE TABLE shadow.captured (v text);
     CREATE FUNCTION shadow.jsonb_build_object(text, text, text, text) RETURNS jsonb LANGUAGE sql AS $f$
       INSERT INTO shadow.captured VALUES ($4); SELECT '{"shadowed":true}'::jsonb; $f$;
+    -- ...and the BODY's own signature (N4 round 5): the command now builds a body naming the
+    -- pending invocation, and an exact-arity rival is what proves that call's qualification is
+    -- load-bearing too. Without it the positive control below cannot speak for this call at all —
+    -- a hijacked body would send a request that names NO invocation, silently restoring the
+    -- "claim whatever is unresolved" ambiguity round 5 removed.
+    CREATE FUNCTION shadow.jsonb_build_object(text, uuid) RETURNS jsonb LANGUAGE sql AS $f$
+      INSERT INTO shadow.captured VALUES ($1); SELECT '{"shadowed":true}'::jsonb; $f$;
     CREATE FUNCTION shadow.textcat_capture(text, text) RETURNS text LANGUAGE sql AS $f$
       INSERT INTO shadow.captured VALUES ($1 operator(pg_catalog.||) $2);
       SELECT $1 operator(pg_catalog.||) $2; $f$;
@@ -1069,11 +1083,28 @@ try {
     // THE POINT OF THE WHOLE DESIGN: what ran is the job's own reviewed command, not a transcription.
     // Both facts below come from the request the command itself made — the endpoint it names, and a
     // bearer it could only have got by reading Vault at execution time.
-    const q = (await c.query(`SELECT url, headers ->> 'Authorization' AS auth FROM net.http_request_queue`)).rows[0];
+    const q = (await c.query(`SELECT url, headers ->> 'Authorization' AS auth, body ->> 'invocation_id' AS inv FROM net.http_request_queue`)).rows[0];
     rec('...to the REVIEWED endpoint, taken from the job command itself',
       q?.url === 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker', q?.url ?? 'no request');
     rec('...carrying a bearer resolved from Vault at execution time',
       q?.auth === 'Bearer stub-key-not-a-real-credential', q?.auth ?? 'no Authorization header');
+    // ROUND 5, the whole point: the request NAMES the invocation the artifact just opened, so the
+    // run it starts can own that invocation and no other request can. The command is byte-identical
+    // for a cron tick — which is why the body is built at execution time rather than hard-coded.
+    const inv = (await c.query(
+      `SELECT id::text FROM public.notification_worker_invocations WHERE status = 'pending'`)).rows[0]?.id;
+    rec('...and NAMING the invocation this artifact opened, so only its own run can claim it',
+      !!inv && q?.inv === inv, `body invocation_id=${q?.inv ?? 'null'} pending=${inv ?? 'none'}`);
+  }
+
+  // ...while a TICK of the same command, with nothing pending, names nothing at all — the
+  // discriminator the in-flight-tick counterexample needed.
+  await seedBaseline();
+  {
+    const jobCmd = (await c.query(`SELECT command FROM cron.job WHERE jobname='notification-digest-worker'`)).rows[0].command;
+    await c.query(jobCmd);                    // exactly what pg_cron executes on a tick
+    const body = (await c.query(`SELECT body ->> 'invocation_id' AS inv FROM net.http_request_queue ORDER BY id DESC LIMIT 1`)).rows[0];
+    rec('a plain TICK of the same command names NO invocation', body?.inv === null, `body invocation_id=${body?.inv}`);
   }
 
   // ── the bearer must survive a hostile search_path, twice over ────────────
