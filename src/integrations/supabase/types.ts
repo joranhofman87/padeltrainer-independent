@@ -9609,6 +9609,10 @@ export type Database = {
         Args: { _require_active?: boolean; _slot_id: string }
         Returns: boolean
       }
+      bind_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_worker_run_id: string }
+        Returns: string
+      }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
       claim_guest_twin_for_academy: {
@@ -11201,6 +11205,10 @@ export type Database = {
           severity: string
         }[]
       }
+      open_notification_worker_invocation: {
+        Args: { p_purpose: string; p_request_id: string; p_source: string }
+        Returns: string
+      }
       record_email_event: {
         Args: {
           p_academy_profile_id?: string
@@ -11303,6 +11311,10 @@ export type Database = {
           p_ttl_seconds?: number
         }
         Returns: boolean
+      }
+      resolve_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_outcome: string; p_reason?: string }
+        Returns: string
       }
       reset_email_suppression: { Args: { p_email: string }; Returns: undefined }
       resolve_guest_member_contacts: {

@@ -30,6 +30,10 @@
 
 CREATE TABLE public.notification_worker_invocations (
   id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- CALLER-generated identity. An invoker whose COMMIT outcome is ambiguous (connection died)
+  -- retries with the SAME request_id and gets the SAME invocation back — without this, a
+  -- committed open stranded the operator: "already unresolved" with no way to recover the uuid.
+  request_id     uuid NOT NULL UNIQUE,
   purpose        text NOT NULL CHECK (purpose IN ('smoke', 'canary', 'manual')),
   source         text NOT NULL CHECK (length(btrim(source)) BETWEEN 3 AND 200),
   status         text NOT NULL DEFAULT 'pending'
@@ -60,56 +64,95 @@ COMMENT ON TABLE public.notification_worker_invocations IS
 REVOKE ALL ON public.notification_worker_invocations FROM PUBLIC, anon, authenticated, service_role;
 GRANT SELECT ON public.notification_worker_invocations TO service_role;  -- worker + admin reads
 
--- ── open: the invoker's pre-dispatch write ──────────────────────────────────────────────────
+-- ── open: the invoker's pre-dispatch write — REQUEST-ID IDEMPOTENT ──────────────────────────
+-- The lock order mirrors N3's request→state pattern: the REQUEST lock first (concurrent exact
+-- replays serialize and converge on one row), then the OPEN lock (concurrent DIFFERENT requests
+-- serialize on the single-flight check, so exactly one can open; the partial unique index stays
+-- as the backstop underneath both).
 CREATE OR REPLACE FUNCTION public.open_notification_worker_invocation(
   p_purpose text,
-  p_source text
+  p_source text,
+  p_request_id uuid
 ) RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE v_id uuid;
+DECLARE v public.notification_worker_invocations%ROWTYPE;
+        v_id uuid;
 BEGIN
-  -- The unique index is the real gate; this RAISE just turns a collision into a message the
-  -- runbook operator can act on. RAISING (not returning NULL) is the point: an invoker that
-  -- cannot record itself must not dispatch.
+  IF p_request_id IS NULL THEN
+    RAISE EXCEPTION 'open_notification_worker_invocation: a caller-generated request_id is required — it is what makes an ambiguous commit recoverable';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('notif-worker-invocation-req:' || p_request_id::text, 0));
+
+  SELECT * INTO v FROM public.notification_worker_invocations WHERE request_id = p_request_id;
+  IF FOUND THEN
+    -- EXACT replay of a committed open (whatever its current status): hand back the SAME
+    -- invocation — this is the ambiguous-commit recovery path. A reused id carrying a
+    -- DIFFERENT request is a caller bug and is refused: a request id names one request.
+    IF v.purpose = p_purpose AND v.source = btrim(p_source) THEN
+      RETURN v.id;
+    END IF;
+    RAISE EXCEPTION 'open_notification_worker_invocation: request % was already used for a different invocation', p_request_id;
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('notif-worker-invocation-open', 0));
+  -- Re-checked UNDER the open lock: two concurrent DIFFERENT requests serialize here, and the
+  -- loser sees the winner's unresolved row. RAISING (not returning NULL) is the point: an
+  -- invoker that cannot record itself must not dispatch.
   IF EXISTS (SELECT 1 FROM public.notification_worker_invocations
               WHERE status IN ('pending', 'started')) THEN
     RAISE EXCEPTION 'open_notification_worker_invocation: an invocation is already unresolved — resolve or abandon it first (single-flight)';
   END IF;
-  INSERT INTO public.notification_worker_invocations (purpose, source)
-  VALUES (p_purpose, btrim(p_source))
+  INSERT INTO public.notification_worker_invocations (request_id, purpose, source)
+  VALUES (p_request_id, p_purpose, btrim(p_source))
   RETURNING id INTO v_id;
   RETURN v_id;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.open_notification_worker_invocation(text, text) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.open_notification_worker_invocation(text, text) TO service_role;
+REVOKE ALL ON FUNCTION public.open_notification_worker_invocation(text, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.open_notification_worker_invocation(text, text, uuid) TO service_role;
 
--- ── bind: the worker stamps its run onto the invocation at startup ──────────────────────────
+-- ── bind: the worker stamps its run onto the invocation at startup — TYPED VERDICTS ─────────
+-- The first version returned one boolean for every non-pending state, and its comment invited
+-- the caller to proceed on false — so a retried HTTP request could run a SECOND worker pass
+-- without owning the invocation. The contract is now explicit, and the worker-side rule is:
+-- ONLY 'bound' and 'replayed' may proceed with deliberate work; every other verdict STOPS
+-- before any provider call. A cron tick carries NO invocation id and NEVER calls bind — the
+-- no-invocation path is the caller's own branch, not a bind verdict.
 CREATE OR REPLACE FUNCTION public.bind_notification_worker_invocation(
   p_invocation_id uuid,
   p_worker_run_id uuid
-) RETURNS boolean
+) RETURNS text
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE v_updated int;
+DECLARE v public.notification_worker_invocations%ROWTYPE;
 BEGIN
   IF p_invocation_id IS NULL OR p_worker_run_id IS NULL THEN
     RAISE EXCEPTION 'bind_notification_worker_invocation: both ids are required';
   END IF;
-  UPDATE public.notification_worker_invocations
-     SET status = 'started', worker_run_id = p_worker_run_id
-   WHERE id = p_invocation_id AND status = 'pending';
-  GET DIAGNOSTICS v_updated = ROW_COUNT;
-  -- FALSE (not an error): the worker may be a cron tick carrying no invocation id, or a retry
-  -- against an already-bound row — both are the caller's signal to proceed without claiming
-  -- the deliberate-invocation evidence.
-  RETURN v_updated = 1;
+  SELECT * INTO v FROM public.notification_worker_invocations
+   WHERE id = p_invocation_id FOR UPDATE;
+  IF NOT FOUND THEN RETURN 'missing'; END IF;                    -- STOP: nothing to own
+  IF v.status = 'pending' THEN
+    UPDATE public.notification_worker_invocations
+       SET status = 'started', worker_run_id = p_worker_run_id
+     WHERE id = v.id;
+    RETURN 'bound';                                              -- proceed
+  END IF;
+  IF v.status = 'started' THEN
+    IF v.worker_run_id = p_worker_run_id THEN
+      RETURN 'replayed';                                         -- provably identical retry: proceed
+    END IF;
+    RETURN 'conflict_other_run';                                 -- STOP: another run owns it
+  END IF;
+  RETURN 'resolved';                                             -- STOP: completed/abandoned
 END;
 $$;
 

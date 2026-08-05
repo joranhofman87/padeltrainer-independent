@@ -1,0 +1,189 @@
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { readFileSync, mkdtempSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import EmbeddedPostgres from 'embedded-postgres';
+import { Client } from 'pg';
+
+/**
+ * N4 M1 — the durable pending-invocation record (Stage-3.5 AC-6; contract CRITICAL 1, thread
+ * 019fd1e0-0979-7132-b5b3-081a49517231) — CORRECTED contract after the operator review:
+ *
+ *  BIND is typed, and only 'bound' | 'replayed' may proceed: the boolean version returned one
+ *  false for a provably-identical retry, a run STEALING the invocation, a missing row and a
+ *  resolved one — and its comment invited proceeding, so a retried HTTP request could run a
+ *  second worker pass without owning the invocation.
+ *
+ *  OPEN is request-id idempotent: an invoker whose COMMIT outcome was ambiguous retries with
+ *  the same id and RECOVERS its invocation uuid; concurrent exact replays converge on one row;
+ *  concurrent different requests cannot both open; a reused id carrying a different request is
+ *  refused.
+ */
+
+let epg: InstanceType<typeof EmbeddedPostgres>;
+let c: InstanceType<typeof Client>;
+let c2: InstanceType<typeof Client>;
+const PORT = 54437;
+const MIG = (f: string) =>
+  readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations', f), 'utf8');
+
+const open = async (client: InstanceType<typeof Client>, req: string, purpose = 'smoke', source = 'runbook:test') =>
+  (await client.query(`SELECT public.open_notification_worker_invocation($1,$2,$3) AS id`, [purpose, source, req])).rows[0].id as string;
+const bind = async (inv: string, run: string) =>
+  (await c.query(`SELECT public.bind_notification_worker_invocation($1,$2) AS r`, [inv, run])).rows[0].r as string;
+const newRun = async (ended = false) =>
+  (await c.query(`INSERT INTO public.notification_worker_runs (worker, ended_at) VALUES ('w', ${ended ? 'now()' : 'NULL'}) RETURNING id`)).rows[0].id as string;
+
+beforeAll(async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'n4inv-rp-'));
+  epg = new EmbeddedPostgres({ databaseDir: dir, user: 'postgres', password: 'postgres', port: PORT, persistent: false });
+  await epg.initialise();
+  await epg.start();
+  c = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+  await c.connect();
+  c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+  await c2.connect();
+  await c.query(`
+    CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+    CREATE TABLE public.notification_worker_runs (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(), worker text, channel text, phase text,
+      started_at timestamptz DEFAULT now(), ended_at timestamptz);
+  `);
+  await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));
+}, 180_000);
+
+afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
+
+beforeEach(async () => {
+  await c.query(`DELETE FROM public.notification_worker_invocations; DELETE FROM public.notification_worker_runs;`);
+});
+
+describe('open: request-id idempotency', () => {
+  it('an exact replay RECOVERS the same invocation — the ambiguous-commit path', async () => {
+    const req = crypto.randomUUID();
+    const first = await open(c, req);
+    const replay = await open(c, req);
+    expect(replay).toBe(first);
+    const n = await c.query(`SELECT count(*)::int AS n FROM public.notification_worker_invocations`);
+    expect(n.rows[0].n).toBe(1);
+  });
+
+  it('replay still recovers AFTER the invocation resolved — the id is durable identity, not state', async () => {
+    const req = crypto.randomUUID();
+    const inv = await open(c, req);
+    const run = await newRun(true);
+    expect(await bind(inv, run)).toBe('bound');
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r).toBe('completed');
+    expect(await open(c, req)).toBe(inv);
+  });
+
+  it('a reused id carrying a DIFFERENT request is refused — one id, one request', async () => {
+    const req = crypto.randomUUID();
+    await open(c, req, 'smoke', 'runbook:test');
+    await expect(open(c, req, 'canary', 'runbook:test')).rejects.toThrow(/different invocation/);
+    await expect(open(c, req, 'smoke', 'runbook:other')).rejects.toThrow(/different invocation/);
+  });
+
+  it('single-flight: a DIFFERENT request while one is unresolved is refused with the runbook message', async () => {
+    await open(c, crypto.randomUUID());
+    await expect(open(c, crypto.randomUUID())).rejects.toThrow(/single-flight/);
+  });
+
+  it('two-session EXACT replay converges on ONE row (deterministic: session 1 holds its txn open)', async () => {
+    const req = crypto.randomUUID();
+    await c.query('BEGIN');
+    const first = (await c.query(`SELECT public.open_notification_worker_invocation('smoke','runbook:test',$1) AS id`, [req])).rows[0].id;
+    const race = c2.query(`SELECT public.open_notification_worker_invocation('smoke','runbook:test',$1) AS id`, [req]);
+    await new Promise((r) => setTimeout(r, 150)); // let session 2 block on the request lock
+    await c.query('COMMIT');
+    const second = (await race).rows[0].id;
+    expect(second).toBe(first);
+    const n = await c.query(`SELECT count(*)::int AS n FROM public.notification_worker_invocations`);
+    expect(n.rows[0].n).toBe(1);
+  });
+
+  it('two-session DIFFERENT requests cannot both open (deterministic)', async () => {
+    await c.query('BEGIN');
+    await c.query(`SELECT public.open_notification_worker_invocation('smoke','runbook:test',$1)`, [crypto.randomUUID()]);
+    const race = c2.query(`SELECT public.open_notification_worker_invocation('canary','runbook:test',$1)`, [crypto.randomUUID()]);
+    await new Promise((r) => setTimeout(r, 150)); // session 2 blocks on the OPEN lock
+    await c.query('COMMIT');
+    await expect(race).rejects.toThrow(/single-flight/);
+  });
+
+  it('a NULL request id is refused outright', async () => {
+    await expect(c.query(`SELECT public.open_notification_worker_invocation('smoke','runbook:test',NULL)`))
+      .rejects.toThrow(/request_id is required/);
+  });
+});
+
+describe('bind: typed verdicts — only bound|replayed proceed', () => {
+  it('the full verdict table, each case distinguishable', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    const runA = await newRun();
+    const runB = await newRun();
+    expect(await bind(inv, runA)).toBe('bound');
+    expect(await bind(inv, runA)).toBe('replayed');           // provably identical retry
+    expect(await bind(inv, runB)).toBe('conflict_other_run'); // a second worker must STOP
+    expect(await bind(crypto.randomUUID(), runB)).toBe('missing');
+    // resolve, then bind again → resolved
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE id = $1`, [runA]);
+    await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed')`, [inv]);
+    expect(await bind(inv, runA)).toBe('resolved');
+  });
+
+  it('a conflicting bind never overwrites the owner', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    const runA = await newRun();
+    const runB = await newRun();
+    await bind(inv, runA);
+    await bind(inv, runB); // conflict — must not steal
+    const row = await c.query(`SELECT worker_run_id FROM public.notification_worker_invocations WHERE id = $1`, [inv]);
+    expect(row.rows[0].worker_run_id).toBe(runA);
+  });
+});
+
+describe('resolution', () => {
+  it('completion demands EVIDENCE: an unbound or still-running invocation is rejected', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r)
+      .toBe('rejected_run_not_ended');
+    const run = await newRun(false); // not ended
+    await bind(inv, run);
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r)
+      .toBe('rejected_run_not_ended');
+    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE id = $1`, [run]);
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r)
+      .toBe('completed');
+  });
+
+  it('abandon is reason-mandatory and age-gated — a young invocation might still land', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    await expect(c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned')`, [inv]))
+      .rejects.toThrow(/requires a reason/);
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator gave up') AS r`, [inv])).rows[0].r)
+      .toBe('rejected_too_young');
+    await c.query(`UPDATE public.notification_worker_invocations SET requested_at = now() - interval '11 minutes' WHERE id = $1`, [inv]);
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator gave up') AS r`, [inv])).rows[0].r)
+      .toBe('abandoned');
+    // and abandoning FREES the single-flight slot
+    await open(c, crypto.randomUUID());
+  });
+});
+
+describe('ACLs', () => {
+  it('clients touch nothing; service_role acts only through the RPCs', async () => {
+    const as = async (role: string, sql: string) => {
+      await c2.query(`SET ROLE ${role}`);
+      try { await c2.query(sql); return null; }
+      catch (e) { return (e as { code?: string }).code ?? 'error'; }
+      finally { await c2.query(`RESET ROLE`); }
+    };
+    expect(await as('authenticated', `SELECT * FROM public.notification_worker_invocations`)).toBe('42501');
+    expect(await as('anon', `SELECT public.open_notification_worker_invocation('smoke','x-test',gen_random_uuid())`)).toBe('42501');
+    expect(await as('service_role', `SELECT * FROM public.notification_worker_invocations`)).toBeNull();
+    expect(await as('service_role', `INSERT INTO public.notification_worker_invocations (request_id, purpose, source) VALUES (gen_random_uuid(),'smoke','direct')`)).toBe('42501');
+  });
+});
