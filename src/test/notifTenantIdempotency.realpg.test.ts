@@ -1099,3 +1099,74 @@ describe('N4 M6 — preview provenance EQUIVALENCE against the real resolver, an
     await asUser(null);
   });
 });
+
+describe('N4 M6 round-2 — serialized rate limit, channel-true masks, bounded preview work', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('the rate limit SERIALIZES: a concurrent 31st search waits behind the 30th, then is refused', async () => {
+    await asUser(ADMIN_UID);
+    for (let i = 0; i < 29; i++) {
+      await c.query(`SELECT * FROM public.admin_search_notification_destination('rl@example.com')`);
+    }
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query(`SELECT * FROM public.admin_search_notification_destination('rl@example.com')`);   // the 30th, held open
+      let settled = false;
+      const loser = c2.query(`SELECT * FROM public.admin_search_notification_destination('rl@example.com')`)
+        .finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(settled).toBe(false);          // provably serialized on the per-actor lock
+      await c.query('COMMIT');
+      await expect(loser).rejects.toThrow(/rate limit/);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+      await asUser(null);
+    }
+  });
+
+  it('the masked echo is CHANNEL-TRUE, and unrecognizable input is refused', async () => {
+    await asUser(ADMIN_UID);
+    // fresh actor budget: clear the log the sanctioned way
+    await c.query(`ALTER TABLE public.notification_admin_search_log DISABLE TRIGGER trg_notif_admin_search_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_search_log;`);
+    await c.query(`ALTER TABLE public.notification_admin_search_log ENABLE TRIGGER trg_notif_admin_search_guard;`);
+    const wa = (await c.query(`SELECT * FROM public.admin_search_notification_destination('+31612345678')`)).rows[0];
+    expect(wa.destination_masked).toBe('•••5678');           // the whatsapp redactor, not '***'
+    expect(wa.contacts_capped).toBe(false);
+    await expect(c.query(`SELECT * FROM public.admin_search_notification_destination('not-a-destination')`))
+      .rejects.toThrow(/normalized email or E.164/);
+    await asUser(null);
+  });
+
+  it('the recipient preview clamps, dedupes and PAGES over a 60-user population — bounded work, proven continuity', async () => {
+    // set-based fixture: 60 users, each with a preference row AND an eligible contact (the
+    // union must dedupe them), ids ordered for keyset verification
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('a0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 60) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+      SELECT ('a0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'session_reminder_player', 'instant'
+      FROM generate_series(1, 60) g ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, is_primary)
+      SELECT ('a0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'bulk' || g || '@example.com', 'b***@example.com', 'opted_in', 'global', true
+      FROM generate_series(1, 60) g;`);
+    await asUser(ADMIN_UID);
+    const page1 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,50)`)).rows;
+    expect(page1.length).toBe(50);
+    const ids1 = page1.map((r) => r.user_id as string);
+    expect(new Set(ids1).size).toBe(50);                     // deduped across the two sources
+    const page2 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'${ids1[49]}',50)`)).rows;
+    expect(page2.length).toBeGreaterThanOrEqual(10);          // the tail (60 bulk + fixture users)
+    expect(page2.length).toBeLessThanOrEqual(50);
+    for (const r of page2) expect(ids1).not.toContain(r.user_id);   // NO overlap: real continuity
+    await asUser(null);
+  });
+});

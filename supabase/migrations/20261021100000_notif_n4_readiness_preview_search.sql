@@ -28,33 +28,34 @@ BEGIN
   PERFORM public.notif_admin_gate();
 
   -- kill switches: authoritative DB state (M4 pin)
-  SELECT count(*) INTO v FROM public.notification_channel_kill_switches;
+  SELECT count(*) INTO v FROM (SELECT 1 FROM public.notification_channel_kill_switches LIMIT 11) b;
   checks := checks || jsonb_build_object('id', 'channel_kills', 'status', CASE WHEN v = 0 THEN 'pass' ELSE 'fail' END,
     'detail', v || ' channel(s) killed');
   add_fail := add_fail OR v > 0;
 
   -- circuit state
-  SELECT count(*) INTO v FROM public.notification_provider_circuit WHERE state <> 'closed';
+  SELECT count(*) INTO v FROM (SELECT 1 FROM public.notification_provider_circuit WHERE state <> 'closed' LIMIT 11) b;
   checks := checks || jsonb_build_object('id', 'provider_circuits', 'status', CASE WHEN v = 0 THEN 'pass' ELSE 'fail' END,
     'detail', v || ' circuit(s) not closed');
   add_fail := add_fail OR v > 0;
 
   -- unresolved deliberate invocations (M1)
-  SELECT count(*) INTO v FROM public.notification_worker_invocations WHERE status IN ('pending', 'started');
+  SELECT count(*) INTO v FROM (SELECT 1 FROM public.notification_worker_invocations WHERE status IN ('pending', 'started') LIMIT 11) b;
   checks := checks || jsonb_build_object('id', 'unresolved_invocations', 'status', CASE WHEN v = 0 THEN 'pass' ELSE 'fail' END,
     'detail', v || ' deliberate invocation(s) unresolved');
   add_fail := add_fail OR v > 0;
 
   -- in-flight work: claimed/sending/uncertain
-  SELECT count(*) INTO v FROM public.notification_outbox WHERE status = 'processing';
-  SELECT count(*) INTO v2 FROM public.notification_digest_groups
-   WHERE state IN ('sending', 'awaiting_evidence') OR (uncertain_since IS NOT NULL AND terminal_at IS NULL);
+  -- the verdict needs zero/nonzero authority, not an exact tally: every scan is LIMIT-bounded
+  SELECT count(*) INTO v FROM (SELECT 1 FROM public.notification_outbox WHERE status = 'processing' LIMIT 1001) b;
+  SELECT count(*) INTO v2 FROM (SELECT 1 FROM public.notification_digest_groups
+   WHERE state IN ('sending', 'awaiting_evidence') OR (uncertain_since IS NOT NULL AND terminal_at IS NULL) LIMIT 1001) b;
   checks := checks || jsonb_build_object('id', 'in_flight_work', 'status', CASE WHEN v + v2 = 0 THEN 'pass' ELSE 'fail' END,
     'detail', v || ' instant row(s) processing, ' || v2 || ' digest group(s) mid-send/uncertain');
   add_fail := add_fail OR (v + v2) > 0;
 
   -- quarantined orphans await a human
-  SELECT count(*) INTO v FROM public.notification_orphan_reconcile_state WHERE quarantined;
+  SELECT count(*) INTO v FROM (SELECT 1 FROM public.notification_orphan_reconcile_state WHERE quarantined LIMIT 1001) b;
   checks := checks || jsonb_build_object('id', 'quarantined_orphans', 'status', CASE WHEN v = 0 THEN 'pass' ELSE 'fail' END,
     'detail', v || ' orphan(s) quarantined');
   add_fail := add_fail OR v > 0;
@@ -218,6 +219,12 @@ COMMENT ON FUNCTION public.admin_preview_notification_decision(uuid, text, text,
 REVOKE ALL ON FUNCTION public.admin_preview_notification_decision(uuid, text, text, uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_preview_notification_decision(uuid, text, text, uuid) TO authenticated, service_role;
 
+CREATE INDEX IF NOT EXISTS idx_prefs_v2_event_user
+  ON public.notification_preferences_v2 (event_type, user_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_channel_user
+  ON public.notification_contacts (channel, user_id)
+  WHERE revoked_at IS NULL AND user_id IS NOT NULL;
+
 -- the bounded per-event recipient preview: users with a preference row or an eligible contact
 CREATE OR REPLACE FUNCTION public.admin_preview_notification_recipients(
   p_event_key text,
@@ -235,15 +242,23 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE u record;
 BEGIN
   PERFORM public.notif_admin_gate();
-  -- STRICT MAX (finding 10: no export-all): the clamp is deliberately small
+  -- STRICT MAX (finding 10: no export-all) — and bounded WORK, not just bounded output: each
+  -- source contributes at most 50 ordered candidates AFTER the cursor (index-served), and only
+  -- those bounded sets are unioned/deduped. A global DISTINCT over every preference and
+  -- contact row would scan the whole cross-tenant population on every page.
   FOR u IN
-    SELECT DISTINCT cand.uid FROM (
-      SELECT v2.user_id AS uid FROM public.notification_preferences_v2 v2 WHERE v2.event_type = p_event_key
+    SELECT cand.uid FROM (
+      (SELECT v2.user_id AS uid FROM public.notification_preferences_v2 v2
+        WHERE v2.event_type = p_event_key
+          AND (p_after_user_id IS NULL OR v2.user_id > p_after_user_id)
+        ORDER BY v2.user_id LIMIT 50)
       UNION
-      SELECT nc.user_id FROM public.notification_contacts nc
-       WHERE nc.channel = p_channel AND nc.revoked_at IS NULL AND nc.user_id IS NOT NULL
+      (SELECT nc.user_id FROM public.notification_contacts nc
+        WHERE nc.channel = p_channel AND nc.revoked_at IS NULL AND nc.user_id IS NOT NULL
+          AND (p_after_user_id IS NULL OR nc.user_id > p_after_user_id)
+        ORDER BY nc.user_id LIMIT 50)
     ) cand
-    WHERE cand.uid IS NOT NULL AND (p_after_user_id IS NULL OR cand.uid > p_after_user_id)
+    WHERE cand.uid IS NOT NULL
     ORDER BY cand.uid
     LIMIT LEAST(GREATEST(coalesce(p_limit, 25), 1), 50)
   LOOP
@@ -277,29 +292,51 @@ CREATE TRIGGER trg_notif_admin_search_no_truncate
 REVOKE ALL ON public.notification_admin_search_log FROM PUBLIC, anon, authenticated, service_role;
 CREATE INDEX idx_notif_admin_search_rate ON public.notification_admin_search_log (actor, created_at DESC);
 
+-- the searched sources get INDEXED fingerprint expressions — an exact search must never scan
+-- raw destinations (the fn is IMMUTABLE, so these are plain expression indexes)
+CREATE INDEX IF NOT EXISTS idx_contacts_dest_fp
+  ON public.notification_contacts (public.notif_digest_destination_fingerprint(destination_normalized));
+CREATE INDEX IF NOT EXISTS idx_outbox_dest_fp
+  ON public.notification_outbox (public.notif_digest_destination_fingerprint(destination_normalized))
+  WHERE destination_normalized IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_edev_dest_fp
+  ON public.email_delivery_events (public.notif_digest_destination_fingerprint(recipient_email))
+  WHERE recipient_email IS NOT NULL;
+
 CREATE OR REPLACE FUNCTION public.admin_search_notification_destination(
   p_destination text
 ) RETURNS TABLE (
   destination_masked text,
-  contacts int,
-  outbox_rows int,
-  delivery_events int
+  contacts int, contacts_capped boolean,
+  outbox_rows int, outbox_capped boolean,
+  delivery_events int, events_capped boolean
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+  CAP constant int := 1000;
   v_norm text;
+  v_kind text;
   v_fp text;
   v_rate int;
+  c1 int; c2 int; c3 int;
 BEGIN
   PERFORM public.notif_admin_gate();
   v_norm := lower(btrim(coalesce(p_destination, '')));
-  IF length(v_norm) < 3 THEN
-    RAISE EXCEPTION 'admin_search_notification_destination: an exact destination is required (no partial search exists, by design)';
+  -- the input must BE a normalized destination of a known kind — anything else is refused
+  -- (and the mask below is channel-appropriate, not the email redactor for everything)
+  IF position('@' IN v_norm) > 1 AND length(v_norm) >= 5 THEN
+    v_kind := 'email';
+  ELSIF v_norm ~ '^\+[1-9][0-9]{6,14}$' THEN
+    v_kind := 'whatsapp';
+  ELSE
+    RAISE EXCEPTION 'admin_search_notification_destination: input must be an exact normalized email or E.164 number (no partial search exists, by design)';
   END IF;
-  -- rate limit BEFORE the lookup: 30 searches / hour / actor
+  -- the rate limit is SERIALIZED per actor: an unlocked count-then-insert let concurrent
+  -- requests all observe 29 and all proceed
+  PERFORM pg_advisory_xact_lock(hashtextextended('notif-admin-search:' || auth.uid()::text, 0));
   SELECT count(*) INTO v_rate FROM public.notification_admin_search_log l
    WHERE l.actor = auth.uid() AND l.created_at > now() - interval '1 hour';
   IF v_rate >= 30 THEN
@@ -308,22 +345,25 @@ BEGIN
   v_fp := public.notif_digest_destination_fingerprint(v_norm);
   INSERT INTO public.notification_admin_search_log (actor, fingerprint) VALUES (auth.uid(), v_fp);
 
-  RETURN QUERY
-  SELECT public.notification_redact_destination(v_norm, 'email'),
-         (SELECT count(*)::int FROM public.notification_contacts nc
-           WHERE public.notif_digest_destination_fingerprint(nc.destination_normalized) = v_fp),
-         (SELECT count(*)::int FROM (
-            SELECT 1 FROM public.notification_outbox o
-             WHERE o.destination_fingerprint = v_fp
-                OR public.notif_digest_destination_fingerprint(o.destination_normalized) = v_fp
-             LIMIT 1001) b),
-         (SELECT count(*)::int FROM (
-            SELECT 1 FROM public.email_delivery_events de
-             WHERE public.notif_digest_destination_fingerprint(de.recipient_email) = v_fp
-             LIMIT 1001) b2);
+  -- every predicate is the INDEXED expression; every count SATURATES and says so
+  SELECT count(*) INTO c1 FROM (
+    SELECT 1 FROM public.notification_contacts nc
+     WHERE public.notif_digest_destination_fingerprint(nc.destination_normalized) = v_fp LIMIT CAP + 1) b;
+  SELECT count(*) INTO c2 FROM (
+    SELECT 1 FROM public.notification_outbox o
+     WHERE public.notif_digest_destination_fingerprint(o.destination_normalized) = v_fp LIMIT CAP + 1) b;
+  SELECT count(*) INTO c3 FROM (
+    SELECT 1 FROM public.email_delivery_events de
+     WHERE public.notif_digest_destination_fingerprint(de.recipient_email) = v_fp LIMIT CAP + 1) b;
+
+  destination_masked := public.notification_redact_destination(v_norm, v_kind);
+  contacts := least(c1, CAP); contacts_capped := c1 > CAP;
+  outbox_rows := least(c2, CAP); outbox_capped := c2 > CAP;
+  delivery_events := least(c3, CAP); events_capped := c3 > CAP;
+  RETURN NEXT;
 END;
 $$;
 COMMENT ON FUNCTION public.admin_search_notification_destination(text) IS
-  'N4 M6 (finding 12): EXACT-match destination lookup — normalized input, server-side fingerprint comparison (never substring, never a raw scan result), masked echo + bounded counts only. Rate-limited 30/hour/actor; every search logged append-only as a FINGERPRINT (the log itself carries no destination).';
+  'N4 M6 (finding 12): EXACT-match destination lookup — the input must BE a normalized email or E.164 number; comparison is the INDEXED server-side fingerprint expression (never substring, never a raw scan); channel-appropriate masked echo; SATURATING bounded counts (cap 1000, capped flags); rate-limited 30/hour/actor SERIALIZED on a per-actor lock; every search logged append-only as a fingerprint.';
 REVOKE ALL ON FUNCTION public.admin_search_notification_destination(text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_search_notification_destination(text) TO authenticated, service_role;

@@ -9745,8 +9745,11 @@ export type Database = {
         Args: { p_destination: string }
         Returns: {
           contacts: number
+          contacts_capped: boolean
           delivery_events: number
           destination_masked: string
+          events_capped: boolean
+          outbox_capped: boolean
           outbox_rows: number
         }[]
       }
