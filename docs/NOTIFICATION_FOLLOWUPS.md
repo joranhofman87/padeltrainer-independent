@@ -857,3 +857,20 @@ their sends do not appear in the v2 ledger, the admin surface or the delivery hi
 individually safe (deterministic idempotency keys, checkpointing), but "every send is attributable"
 is only true *within* the foundation. Recorded so nobody reads the admin surface as a complete
 picture of outbound mail.
+
+### FA-3 · Instant and digest prevent duplicates by different mechanisms (P3, recorded)
+
+The digest path never re-sends an ambiguous attempt: one HTTP call per recorded attempt, and
+ambiguity becomes `delivery_unknown`. The instant path retries — three attempts inside
+`resend-send.ts`, then a backoff requeue, then a stale-lease reclaim — all under the same stable
+idempotency key (`notification-outbox-<row id>`), so Resend deduplicates them inside its 24h
+window.
+
+Both are safe today: the backoff cap (60 min) and `max_attempts` bound the span far inside that
+window. But the instant path's safety depends on a *provider* guarantee while the digest path's
+depends on its own state machine, and only one of those is verifiable from this repository.
+
+**The improvement:** bring instant delivery onto the single-shot adapter and the same
+uncertain/`delivery_unknown` state machine. **Why it is recorded rather than done here:** it
+changes the retry semantics of the live email path, and the notification foundation's final gate is
+the wrong moment to redesign a sender that is working. Do it as its own reviewed unit.

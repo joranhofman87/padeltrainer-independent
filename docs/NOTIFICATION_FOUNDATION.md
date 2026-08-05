@@ -95,11 +95,27 @@ re-renders.
   `event:subject:recipient`, the recipient leg being person → user → guest. Tenant scope is part
   of the identity, so the same event legitimately reaching two tenants is two rows, and a retry of
   the same send is one.
-* **Provider identity** — a digest group carries a frozen `provider_idempotency_key`; the Resend
-  call passes it, so a retried HTTP request within the provider's window cannot duplicate.
-* **Ambiguity is a state, not an error.** A timeout or unreadable response makes the group
-  `uncertain` with a deadline. It is never re-sent on a guess: past the deadline it finalizes
-  `delivery_unknown`. That is why this system has **no generic retry/resend control** anywhere.
+* **Provider identity** — every provider call carries a stable idempotency key: a digest group's
+  frozen `provider_idempotency_key`, and for an instant row `notification-outbox-<row id>`. The key
+  is derived from durable identity, so it is *identical* across every attempt, requeue and
+  stale-lease reclaim of that row.
+* **The two paths prevent duplicates differently, and the difference matters.**
+  * **Digest** never re-sends an ambiguous attempt at all. A timeout or unreadable response makes
+    the group `uncertain` with a deadline; past it, the group finalizes `delivery_unknown`. The
+    single-shot adapter (`resend-send-once.ts`) makes exactly one HTTP attempt per recorded
+    attempt.
+  * **Instant** *does* retry: up to three HTTP attempts inside `resend-send.ts`, then a requeue
+    with exponential backoff (2^attempts minutes, capped at 60) up to `max_attempts`, and a
+    stale-lease reclaim after 15 minutes. Every one of those carries the SAME key, so duplicates
+    are prevented by the provider's idempotency window (Resend: 24h) rather than by not trying
+    again. The elapsed span from first attempt to last is bounded well inside that window by the
+    backoff cap and the attempt limit.
+  * The residual, stated rather than hidden: if a row's attempts were ever spread beyond the
+    provider's dedup window, the instant path could duplicate where the digest path could not.
+    Unifying instant onto the single-shot state machine is recorded in
+    [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) (FA-3).
+* **There is no generic retry/resend CONTROL** — no operator, admin surface or API can ask for a
+  re-send. What retries is the worker's own bounded attempt loop on a row it already owns.
 * **Correlation is checked.** If the provider accepts a message id the group is not bound to, the
   run is unhealthy and the channel is held for a human.
 
@@ -112,6 +128,15 @@ has one durable row in `notification_activation_boundaries`:
 |---|---|---|
 | `inert` | never opened | claim **nothing**, materialize **nothing**, dispatch **nothing** |
 | `active since boundary_at` | opened at that instant | only rows **created** at or after it |
+
+**What "created" means, precisely.** The boundary compares `notification_outbox.created_at` — the
+instant the resolver materialised the row — not an event-occurrence timestamp, because the pipeline
+has none. Every producer in the closed inventory enqueues **synchronously with the event it
+reports**, so for them the two are the same instant. A producer that back-filled or replayed
+history *after* activation would create post-boundary rows for pre-boundary events, and the
+boundary would not catch it. That is the assumption this invariant rests on, and it is a **rule for
+adding a producer** (§9), not an accident: if a back-filling producer is ever wanted, it needs an
+immutable occurrence timestamp and this predicate has to move to it.
 
 The transition is one-way and `boundary_at` is immutable (owner-effective guard): a boundary that
 can move is a window that can be widened to re-admit the history it excluded. Enforced at
@@ -173,6 +198,11 @@ reads), so a cron tick — whenever it was selected or arrives — can never cla
 5. Tests: a resolver test for the decision, and a tenant-isolation test if it is tenant-visible.
 6. Digest, if ever: `supports_digest` + `digest_cutover` first, and the engine only through the
    owner-gated rollout — the activation boundary is what keeps the pre-existing queue out.
+7. **Enqueue synchronously with the event.** The activation boundary compares the outbox row's
+   `created_at`, so a producer that back-fills or replays history would smuggle pre-boundary events
+   onto an activated path. A producer that cannot enqueue at event time needs an immutable
+   occurrence timestamp on the row *and* a change to the boundary predicate — come back and design
+   it rather than working around it.
 
 ## 10. Adding or replacing a provider safely
 

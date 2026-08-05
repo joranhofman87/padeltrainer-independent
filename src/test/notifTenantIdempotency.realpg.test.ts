@@ -148,6 +148,7 @@ beforeAll(async () => {
     '20261025100000_notif_n4_invocation_ownership_contract.sql',
     '20261028100000_notif_n5_activation_boundary.sql',
     '20261101100000_notif_audit_marketing_unsubscribe_seam.sql',
+    '20261102100000_notif_audit_unsubscribe_at_send_time.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -1878,5 +1879,71 @@ describe('FINAL AUDIT — the resolver honours the one-click unsubscribe its own
          p_idempotency_subject => 'svc-1', p_tenant_academy_profile_id => $2)`, [P1, A])).rows
       .filter((r: { channel: string }) => r.channel === 'email');
     expect(rows[0].status).toBe('pending');
+  });
+});
+
+describe('FINAL AUDIT (P1) — the unsubscribe bites at SEND time, not only at enqueue', () => {
+  const MARKETING = 'marketing_updates';
+  const suppress = (scope = 'platform', id: string | null = null) =>
+    c.query(`SELECT public.record_marketing_suppression('p1@example.com', $1, $2, 'manual', NULL, $3)`,
+      [scope, id, MGR]);
+  const stopReason = async (outboxId: string) =>
+    (await c.query(`SELECT public.notif_digest_member_stop_reason($1) AS r`, [outboxId])).rows[0].r as string | null;
+
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.email_marketing_suppression`);
+    await c.query(
+      `INSERT INTO public.notification_event_types
+         (key, category, audience, priority, required_delivery, supports_email, supports_whatsapp,
+          supports_digest, default_email_frequency, visibility_scope, email_footer_policy)
+       VALUES ($1, 'marketing', 'player', 'marketing', false, true, false, false, 'instant',
+               'private_user_only', 'marketing_unsubscribe')
+       ON CONFLICT (key) DO UPDATE SET default_email_frequency = 'instant',
+         email_footer_policy = 'marketing_unsubscribe', supports_email = true`, [MARKETING]);
+  });
+  /** enqueue while SUBSCRIBED — the row the recipient is about to unsubscribe from */
+  const enqueueWhileSubscribed = async (subject: string, tenant: { academy?: string; trainer?: string } = {}) => {
+    const rows = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => $1, p_recipient_person_id => $2, p_idempotency_subject => $3,
+         p_tenant_academy_profile_id => $4, p_tenant_trainer_id => $5)`,
+      [MARKETING, P1, subject, tenant.academy ?? null, tenant.trainer ?? null])).rows
+      .filter((r: { channel: string }) => r.channel === 'email');
+    expect(rows[0].status).toBe('pending');
+    return rows[0].outbox_id as string;
+  };
+
+  it('a row queued BEFORE the unsubscribe is stopped at the live gate — the case a recipient notices', async () => {
+    const id = await enqueueWhileSubscribed('s1');
+    expect(await stopReason(id)).toBeNull();          // subscribed: the gate lets it through
+    await suppress();
+    expect(await stopReason(id)).toBe('marketing_unsubscribed');
+  });
+
+  it('the send-time check is SCOPE-AWARE, exactly like the enqueue-time one', async () => {
+    const own = await enqueueWhileSubscribed('s2', { academy: A });
+    const other = await enqueueWhileSubscribed('s3', { academy: B });
+    await suppress('academy', A);
+    expect(await stopReason(own)).toBe('marketing_unsubscribed');
+    expect(await stopReason(other)).toBeNull();       // another academy's mail is not theirs to stop
+  });
+
+  it('service mail queued by the same recipient is untouched — an unsubscribe is not an account shutdown', async () => {
+    const svc = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player', p_recipient_person_id => $1,
+         p_idempotency_subject => 'svc-live', p_tenant_academy_profile_id => $2)`, [P1, A])).rows
+      .filter((r: { channel: string }) => r.channel === 'email')[0].outbox_id;
+    await suppress();
+    expect(await stopReason(svc)).toBeNull();
+  });
+
+  it('the DELIVERABILITY suppression still wins the report when both apply', async () => {
+    const id = await enqueueWhileSubscribed('s4');
+    await suppress();
+    await c.query(`INSERT INTO public.email_suppression_stub (email) VALUES ('p1@example.com')
+                   ON CONFLICT DO NOTHING`);
+    expect(await stopReason(id)).toBe('suppressed');   // the harder stop is the truthful cause
+    await c.query(`DELETE FROM public.email_suppression_stub WHERE email = 'p1@example.com'`);
   });
 });

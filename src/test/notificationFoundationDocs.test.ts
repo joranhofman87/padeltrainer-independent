@@ -85,10 +85,43 @@ describe('N6 doc pins — the foundation reference', () => {
     for (const s of states) expect(FOUNDATION, `the doc must name the ${s} state`).toContain(s);
   });
 
+  it('the instant path\'s duplicate prevention is what the doc says it is: ONE stable key', () => {
+    // the doc now claims duplicates are prevented by the PROVIDER's dedup window rather than by
+    // never retrying, and that claim is only true while the key is derived from durable identity.
+    // An attempt-dependent key would make every retry a new message at the provider.
+    const worker = read('supabase', 'functions', 'notification-email-worker', 'index.ts');
+    expect(worker).toContain('idempotencyKey: `notification-outbox-${row.outbox_id}`');
+    const adapter = read('supabase', 'functions', '_shared', 'resend-send.ts');
+    // the header is set ONCE, outside the attempt loop — inside it, a per-attempt key could creep in
+    const headerAt = adapter.indexOf('headers["Idempotency-Key"]');
+    const loopAt = adapter.indexOf('for (let attempt = 1');
+    expect(headerAt).toBeGreaterThan(0);
+    expect(headerAt).toBeLessThan(loopAt);
+    expect(FOUNDATION).toContain('notification-outbox-<row id>');
+    expect(FOUNDATION).toContain('across every attempt, requeue and');
+  });
+
+  it('the activation boundary compares MATERIALISATION time, and the doc says so plainly', () => {
+    // the invariant a unit-scoped review cannot check: the claim "only events at or after the
+    // boundary" is only as true as "producers enqueue at event time", and the pipeline has no
+    // occurrence clock to fall back on
+    const sql = migration('20261028100000_notif_n5_activation_boundary.sql');
+    expect(sql).toContain('o.created_at >= v_boundary');
+    const resolver = newestDefining('CREATE OR REPLACE FUNCTION public.enqueue_notification(');
+    expect(resolver).not.toMatch(/p_(event_)?occurred_at/);      // there is no occurrence parameter
+    expect(FOUNDATION).toContain('not an event-occurrence timestamp, because the pipeline');
+    expect(FOUNDATION).toContain('Enqueue synchronously with the event');
+  });
+
   it('the marketing unsubscribe the footer promises is READ by the resolver (the N2<->N3 seam)', () => {
     const resolver = newestDefining('CREATE OR REPLACE FUNCTION public.enqueue_notification(');
     expect(resolver).toContain('is_marketing_suppressed');
     expect(resolver).toContain("email_footer_policy = 'marketing_unsubscribe'");
+    // …and at SEND time too: enqueue and delivery are separated in time, and the live gate both
+    // paths delegate to is where a row queued before the unsubscribe gets stopped
+    const live = newestDefining('CREATE OR REPLACE FUNCTION public.notif_digest_member_stop_reason(');
+    expect(live).toContain('is_marketing_suppressed');
+    expect(live).toContain("RETURN 'marketing_unsubscribed'");
     // scope-aware: platform silences everything, a tenant one only that tenant
     expect(resolver).toContain("is_marketing_suppressed(v_dest, 'platform', NULL)");
     expect(resolver).toContain("'academy', p_tenant_academy_profile_id");
