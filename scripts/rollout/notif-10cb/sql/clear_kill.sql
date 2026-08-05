@@ -16,19 +16,14 @@ SET search_path = pg_catalog;
 
 \i ../../notif-10ca3/sql/_assert.sql
 
--- WHAT YOU ARE ABOUT TO CLEAR, printed BEFORE the transaction: the operator reads this, and the
--- assertion below refuses if it is not the kill they named.
-SELECT k.channel, k.request_id AS kill_request_id, k.activated_by, k.reason,
-       k.activated_at, (pg_catalog.now() - k.activated_at) AS killed_for
-  FROM public.notification_channel_kill_switches k
- WHERE k.channel = :'channel';
-
--- …and the queue this clear would release, so the size of the decision is visible before it is
--- taken. Disposing of it is a SEPARATE act (admin_dispose_pre_boundary_backlog, or simply letting
--- it send) — this artifact never decides that for you.
-SELECT pg_catalog.count(*) AS pending_rows_that_would_resume
-  FROM public.notification_outbox o
- WHERE o.channel = :'channel' AND o.status OPERATOR(pg_catalog.=) 'pending';
+-- WHAT YOU ARE ABOUT TO CLEAR, printed before the transaction. This is the SAME read the
+-- `clear-kill --preview` step showed you; it is reprinted because an operator should see what
+-- they are acting on in the transcript of the act itself.
+--
+-- The confirmation is NOT this printout: :expected_pending is the number the preview gave you, and
+-- the function below refuses if the queue has GROWN past it. A flag asserting "I read a number"
+-- that is printed one statement before the clear would have confirmed nothing.
+SELECT * FROM public.preview_notification_channel_kill_clear(:'channel');
 
 BEGIN;
 SET LOCAL lock_timeout = '5s';
@@ -38,6 +33,7 @@ CREATE TEMP TABLE _clear AS
   SELECT * FROM public.clear_notification_channel_kill(
     :'channel',
     :'kill_request_id'::pg_catalog.uuid,
+    :'expected_pending'::pg_catalog.int,
     :'reason',
     :'request_id'::pg_catalog.uuid);
 
@@ -45,7 +41,7 @@ CREATE TEMP TABLE _clear AS
 -- this assertion turns it into a non-zero exit without losing the evidence.
 SELECT pg_temp.assert(
   (SELECT verdict FROM pg_temp._clear) OPERATOR(pg_catalog.=) 'cleared',
-  'the kill was cleared (rejected_stale_kill = the live kill is not the one you named; rejected_not_killed = the channel was already live)');
+  'the kill was cleared (rejected_stale_kill = the live kill is not the one you named; rejected_backlog_grew = more mail queued than the preview showed you, so look again; rejected_not_killed = the channel was already live)');
 
 -- the postcondition, in the same transaction
 SELECT pg_temp.assert_eq(

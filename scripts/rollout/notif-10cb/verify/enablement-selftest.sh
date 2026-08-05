@@ -115,20 +115,29 @@ logged 'assert_inert.sql' && ok "assert-inert runs its own artifact" || bad "ass
 run "assert-inert REFUSES a url belonging to another project" 1 -- assert-inert "$OTHER_URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
 
-# ── clear-kill: the way back, and every confirmation it demands ───────────────────────────────
+# ── clear-kill: the way back, its preview, and every confirmation it demands ──────────────────
 KREQ="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
-run "clear-kill REFUSES without --yes" 1 -- clear-kill --channel=email --kill-request-id="$KREQ" --reason=ok --backlog-confirmed "$URL"
+run "clear-kill --preview needs no --yes and changes nothing" 0 -- clear-kill --preview --channel=email "$URL"
+logged 'preview_kill_clear.sql' && ok "...and routes to the READ-ONLY artifact" || bad "...and routes to the READ-ONLY artifact"
+if grep -qF -- 'clear_kill.sql' "$PSQL_LOG"; then bad "...and never runs the clearing artifact"; else ok "...and never runs the clearing artifact"; fi
+run "clear-kill REFUSES without --yes" 1 -- clear-kill --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason=ok "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
-run "clear-kill REFUSES without a channel" 1 -- clear-kill --yes --kill-request-id="$KREQ" --reason=ok --backlog-confirmed "$URL"
-run "clear-kill REFUSES an unknown channel" 1 -- clear-kill --yes --channel=carrier-pigeon --kill-request-id="$KREQ" --reason=ok --backlog-confirmed "$URL"
-run "clear-kill REFUSES without the KILL's own request id" 1 -- clear-kill --yes --channel=email --reason=ok --backlog-confirmed "$URL"
-run "clear-kill REFUSES a non-uuid kill id" 1 -- clear-kill --yes --channel=email --kill-request-id=nope --reason=ok --backlog-confirmed "$URL"
-run "clear-kill REFUSES until the released backlog has been read" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --reason=ok "$URL"
-run "clear-kill REFUSES without a reason" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --backlog-confirmed "$URL"
-run "clear-kill runs its own artifact when every fact is supplied" 0 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --reason="incident closed" --backlog-confirmed "$URL"
+run "clear-kill REFUSES without a channel" 1 -- clear-kill --yes --kill-request-id="$KREQ" --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES an unknown channel" 1 -- clear-kill --yes --channel=carrier-pigeon --kill-request-id="$KREQ" --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES without the KILL's own request id" 1 -- clear-kill --yes --channel=email --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES a non-uuid kill id" 1 -- clear-kill --yes --channel=email --kill-request-id=nope --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES without the queue size the PREVIEW showed" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --reason=ok "$URL"
+run "clear-kill REFUSES a non-numeric expected-pending" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=lots --reason=ok "$URL"
+run "clear-kill REFUSES without a reason" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 "$URL"
+run "clear-kill REFUSES a non-uuid --clear-request-id" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason=ok --clear-request-id=nope "$URL"
+run "clear-kill runs its own artifact when every fact is supplied" 0 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason="incident closed" "$URL"
 logged 'clear_kill.sql' && ok "clear-kill routes to clear_kill.sql" || bad "clear-kill routes to clear_kill.sql"
 grep -qF -- "-v kill_request_id=${KREQ}" "$PSQL_LOG" && ok "...passing the kill id it was given" || bad "...passing the kill id it was given"
+grep -qF -- "-v expected_pending=3" "$PSQL_LOG" && ok "...and the queue size the operator confirmed" || bad "...and the queue size the operator confirmed"
 if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+CREQ="bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+run "clear-kill ACCEPTS a supplied clear request id (the ambiguous-commit replay)" 0 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason=ok --clear-request-id="$CREQ" "$URL"
+grep -qF -- "-v request_id=${CREQ}" "$PSQL_LOG" && ok "...and replays under THAT id" || bad "...and replays under THAT id"
 
 run "enable-engine REFUSES without --yes" 1 -- enable-engine "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"

@@ -67,7 +67,7 @@ ALTER TABLE public.notification_admin_requests ADD CONSTRAINT notification_admin
 ALTER TABLE public.notification_admin_requests DROP CONSTRAINT chk_notification_admin_requests_verdict;
 ALTER TABLE public.notification_admin_requests ADD CONSTRAINT chk_notification_admin_requests_verdict CHECK (
   (action = 'channel_kill'   AND verdict IN ('killed', 'already_killed', 'rejected_id_collision'))
-  OR (action = 'channel_kill_cleared' AND verdict IN ('cleared', 'rejected_not_killed', 'rejected_stale_kill'))
+  OR (action = 'channel_kill_cleared' AND verdict IN ('cleared', 'rejected_not_killed', 'rejected_stale_kill', 'rejected_backlog_grew'))
   OR (action = 'circuit_reset' AND verdict IN ('reset', 'already_closed', 'rejected_channel_killed', 'rejected_invocation_open', 'rejected_correlation_mismatch', 'rejected_stale_state'))
   OR (action = 'group_cancel'  AND verdict IN ('cancelled', 'rejected_not_found', 'rejected_not_pre_dispatch', 'rejected_stale_state'))
   OR (action = 'orphan_resolve' AND verdict IN ('resolved', 'rejected_not_found', 'rejected_not_quarantined', 'rejected_not_permanent', 'rejected_not_resolvable'))
@@ -102,6 +102,7 @@ COMMENT ON TABLE public.notification_channel_kill_switches IS
 CREATE OR REPLACE FUNCTION public.clear_notification_channel_kill(
   p_channel text,
   p_expected_kill_request_id uuid,   -- the kill you READ: a different one is a different incident
+  p_expected_pending int,            -- the queue size you READ in the preview (see below)
   p_reason text,
   p_request_id uuid
 ) RETURNS TABLE (verdict text, pending_released int, pending_released_capped boolean)
@@ -133,9 +134,13 @@ BEGIN
     RAISE EXCEPTION 'clear_notification_channel_kill: a reason (3-500 chars) is required';
   END IF;
 
+  IF p_expected_pending IS NULL OR p_expected_pending < 0 THEN
+    RAISE EXCEPTION 'clear_notification_channel_kill: p_expected_pending is required — it is the queue size you were shown, and clearing without having seen it is the confirmation this control exists to make real';
+  END IF;
   v_fp := public.notif_admin_fingerprint(jsonb_build_object(
     'action', 'channel_kill_cleared', 'channel', p_channel,
-    'kill_request_id', p_expected_kill_request_id, 'reason', btrim(p_reason)));
+    'kill_request_id', p_expected_kill_request_id, 'expected_pending', p_expected_pending,
+    'reason', btrim(p_reason)));
   v_replay := public.notif_admin_replay_gate(v_actor, p_request_id, 'channel_kill_cleared', p_channel, p_reason, v_fp);
   IF v_replay IS NOT NULL THEN
     verdict := v_replay; pending_released := 0; pending_released_capped := false; RETURN NEXT; RETURN;
@@ -165,6 +170,17 @@ BEGIN
     SELECT 1 FROM public.notification_outbox o
      WHERE o.channel = p_channel AND o.status = 'pending' LIMIT CAP + 1) x;
 
+  -- THE CONFIRMATION, made real: the operator states the number the PREVIEW showed them, and this
+  -- refuses if the queue has GROWN past it. Enqueueing continues while a channel is killed, so an
+  -- exact match would be unusable on a busy channel — but "no more than you were shown" is exactly
+  -- the promise that matters, and a shrink (someone disposed of rows) is never a reason to refuse.
+  IF least(v_n, CAP) > p_expected_pending THEN
+    PERFORM public.notif_admin_record_refusal(v_actor, p_request_id, 'channel_kill_cleared', p_channel, p_reason,
+      format('the queue grew: %s pending now, %s when you looked', least(v_n, CAP), p_expected_pending));
+    verdict := public.notif_admin_record_verdict(v_actor, p_request_id, 'channel_kill_cleared', v_fp, 'rejected_backlog_grew');
+    pending_released := least(v_n, CAP)::int; pending_released_capped := v_n > CAP; RETURN NEXT; RETURN;
+  END IF;
+
   INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
   VALUES (v_actor, p_request_id, 'channel_kill_cleared', p_channel, 'killed', 'live', 'applied', btrim(p_reason));
 
@@ -177,7 +193,31 @@ BEGIN
   RETURN NEXT;
 END;
 $$;
-COMMENT ON FUNCTION public.clear_notification_channel_kill(text, uuid, text, uuid) IS
-  'N6: the ONE reviewed way to clear a channel kill — service-role/runbook only (un-killing decides that mail resumes, which is an owner-gated class of decision). Demands the exact kill''s request id (a different live kill is a different incident and is refused), audits the clearing beside the original kill, and returns how many pending rows the clear releases so the operator can decide on disposal before mail moves.';
-REVOKE ALL ON FUNCTION public.clear_notification_channel_kill(text, uuid, text, uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.clear_notification_channel_kill(text, uuid, text, uuid) TO service_role;
+COMMENT ON FUNCTION public.clear_notification_channel_kill(text, uuid, int, text, uuid) IS
+  'N6: the ONE reviewed way to clear a channel kill — service-role/runbook only (un-killing decides that mail resumes, which is an owner-gated class of decision). Demands the exact kill''s request id (a different live kill is a different incident) AND the queue size the operator was shown by the preview (a queue that has grown past it is refused, so the confirmation is about a number they actually saw). Audits the clearing beside the original kill and returns what it released.';
+REVOKE ALL ON FUNCTION public.clear_notification_channel_kill(text, uuid, int, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.clear_notification_channel_kill(text, uuid, int, text, uuid) TO service_role;
+
+-- the PREVIEW half: what a clear would face, without clearing anything. Same read the artifact
+-- prints, available as a function so the runbook's preview step and the clear itself cannot drift.
+CREATE OR REPLACE FUNCTION public.preview_notification_channel_kill_clear(p_channel text)
+RETURNS TABLE (channel text, kill_request_id uuid, activated_by uuid, reason text,
+               activated_at timestamptz, killed_for interval,
+               pending_now int, pending_now_capped boolean)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE CAP constant int := 10000; v_n bigint;
+BEGIN
+  SELECT count(*) INTO v_n FROM (
+    SELECT 1 FROM public.notification_outbox o
+     WHERE o.channel = p_channel AND o.status = 'pending' LIMIT CAP + 1) x;
+  RETURN QUERY
+  SELECT k.channel, k.request_id, k.activated_by, k.reason, k.activated_at,
+         now() - k.activated_at, least(v_n, CAP)::int, v_n > CAP
+    FROM public.notification_channel_kill_switches k
+   WHERE k.channel = p_channel;
+END;
+$$;
+COMMENT ON FUNCTION public.preview_notification_channel_kill_clear(text) IS
+  'N6: what clearing this channel''s kill would face — who killed it, why, how long ago, and how many pending rows would resume. Returns no row when the channel is not killed. Read-only; the number it reports is what the clear demands back as its confirmation.';
+REVOKE ALL ON FUNCTION public.preview_notification_channel_kill_clear(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.preview_notification_channel_kill_clear(text) TO authenticated, service_role;

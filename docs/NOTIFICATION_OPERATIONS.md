@@ -46,26 +46,37 @@ breaker (`admin_reset_notification_circuit` only *closes* it) and the group canc
 ### Clearing a kill — the way back
 
 Clearing decides that mail **resumes**, so it is a runbook act with the same weight as activation,
-not a page button. One command:
+not a page button. **Two steps, and the split is the point.**
 
 ```
+# 1. look. Changes nothing.
+run-enablement.sh clear-kill --preview --channel=email <db_url>
+#    → who killed it, why, how long ago, and PENDING=<N>: the mail that resumes the moment it clears
+
+# 2. clear, confirming the number you just read.
 run-enablement.sh clear-kill --yes --channel=email \
-  --kill-request-id=<the request id OF THE KILL, from the admin page or `status`> \
-  --reason="<why it is safe now>" --backlog-confirmed <db_url>
+  --kill-request-id=<the request id OF THE KILL> --expected-pending=<N> \
+  --reason="<why it is safe now>" <db_url>
 ```
 
-In order, it: prints who killed the channel, why, and how long ago; prints **how many pending rows
-resume the moment it clears**; then clears *exactly* the kill you named — a different live kill is
-a different incident and is refused server-side — and writes the clearing into the immutable audit
-beside the original kill. `--backlog-confirmed` is your word that you read the second number.
+The server refuses if the live kill is not the one you named (`rejected_stale_kill` — a different
+kill is a different incident) or if the queue has **grown past** the number you were shown
+(`rejected_backlog_grew` — look again). A queue that shrank is never a reason to refuse: someone
+disposing of mail is good news. Both refusals are recorded as rejected attempts, and the clearing
+itself is audited beside the original kill.
 
-**Decide about that backlog before you clear, not after.** Everything queued while the channel was
-dead sends as soon as the kill is gone. If it should not, dispose of it first
-(`admin_dispose_pre_boundary_backlog` covers pre-boundary rows; a kill-era backlog that is simply
-unwanted is a product decision, not a mechanical one — kill first, decide, then clear).
+The clear prints its own request id first: if it dies **ambiguously** (cleared, connection lost),
+re-run with `--clear-request-id=<that id>` and the server replays the recorded verdict instead of
+answering "not killed".
 
-Nothing else can remove a kill: the table refuses UPDATE, DELETE and TRUNCATE from every other
-path, including the owner's own psql session.
+**Decide about the backlog between the two steps.** Everything queued while the channel was dead
+sends as soon as the kill is gone.
+
+Nothing reachable from the app can remove a kill: the table refuses UPDATE, DELETE and TRUNCATE
+from every API path, and only the runbook function may delete — inside a transaction that has
+published that exact kill's id. A database **owner** with direct SQL can of course set that
+setting themselves; the guard binds code paths and mistakes, not the person who owns the database
+(no trigger can bind a superuser).
 
 ## 3. Interpreting the monitors
 

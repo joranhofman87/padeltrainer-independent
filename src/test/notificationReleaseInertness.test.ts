@@ -61,11 +61,17 @@ function installStatements(sql: string): string[] {
     const close = sql.indexOf(m[0], m.index + m[0].length);
     if (close < 0) break;
     const before = sql.slice(Math.max(0, m.index - 400), m.index);
-    // a cron COMMAND: written inline in the schedule/alter call, or assigned to a variable this
-    // file later hands to one (`format($cmd$…$cmd$, …)` is the older style, hence the open paren)
+    // a cron COMMAND: either the literal is syntactically an argument of the schedule/alter call,
+    // or it is assigned to a variable this file hands to one — but in the second case ONLY if that
+    // variable is never EXECUTEd. "It is later scheduled" does not prove the block did not also
+    // run it during installation, which is exactly how a send could hide:
+    //   cmd := format($cmd$SELECT net.http_post(…)$cmd$);  EXECUTE cmd;  PERFORM cron.schedule(…, cmd);
     const assignedTo = before.match(/(\w+)\s*(?:text\s*)?:=\s*(?:format\s*\(\s*)?$/i)?.[1];
+    const scheduledLater = !!assignedTo
+      && new RegExp(`cron\\.(schedule|alter_job)\\s*\\([^;]*\\b${assignedTo}\\b`, 'i').test(sql);
+    const executedHere = !!assignedTo && new RegExp(`\\bEXECUTE\\s+${assignedTo}\\b`, 'i').test(sql);
     const isCronCommand = /cron\.(schedule|alter_job)\s*\([^;]*$/i.test(before)
-      || (!!assignedTo && new RegExp(`cron\\.(schedule|alter_job)\\s*\\([^;]*\\b${assignedTo}\\b`, 'i').test(sql));
+      || (scheduledLater && !executedHere);
     const isFunctionBody = /CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE)\b[\s\S]*\bAS\s*$/i.test(before);
     if (isFunctionBody || isCronCommand) {
       deferred.push([m.index, close + m[0].length]);
@@ -148,6 +154,21 @@ describe('the notification release unit is INERT', () => {
       for (const line of installStatements(read(f))) {
         expect(line, `${f} makes an outbound call`).not.toMatch(/net\.http_(post|get|delete)\s*\(/);
         expect(line, `${f} reaches a provider`).not.toMatch(/api\.resend\.com|graph\.facebook\.com/);
+      }
+    }
+  });
+
+  it('install-time dynamic SQL is DDL, never a send', () => {
+    // EXECUTE at install is legitimate here — the chain builds RLS and grants dynamically — so it
+    // is not banned; what it may not do is carry a send. Checked independently of the dollar-quote
+    // classification, because a send hidden in a literal that is later ALSO used as a cron command
+    // would otherwise be deferred away.
+    for (const f of NOTIF) {
+      const sql = read(f);
+      for (const m of sql.matchAll(/\bEXECUTE\b[\s\S]{0,400}?;/gi)) {
+        const stmt = m[0];
+        expect(stmt, `${f} EXECUTEs something that reaches a provider`)
+          .not.toMatch(/net\.http_(post|get|delete)|api\.resend\.com|graph\.facebook\.com/i);
       }
     }
   });

@@ -298,20 +298,22 @@ describe('SET-ONLY, owner-effectively — nothing clears a kill', () => {
       'is_notification_channel_killed',
       'notif_channel_kill_gate',
       'notif_channel_kill_guard',
+      'preview_notification_channel_kill_clear',// …and its read-only preview
       'release_notification_claims_on_kill',
     ]);
     // exactly one clearing function, and it is NOT part of the admin surface
-    const clearing = fns.filter((f) => /clear|deactivate|remove|unkill|resume|enable/.test(f));
+    const clearing = fns.filter((f) => /clear|deactivate|remove|unkill|resume|enable/.test(f)
+      && !/^preview_/.test(f));
     expect(clearing).toEqual(['clear_notification_channel_kill']);
     expect(clearing[0]).not.toMatch(/^admin_/);
     // …and the API roles cannot execute it: un-killing is an owner/runbook decision
     for (const role of ['anon', 'authenticated']) {
       expect((await c.query(
-        `SELECT has_function_privilege($1, 'public.clear_notification_channel_kill(text,uuid,text,uuid)', 'EXECUTE') AS ok`,
+        `SELECT has_function_privilege($1, 'public.clear_notification_channel_kill(text,uuid,int,text,uuid)', 'EXECUTE') AS ok`,
         [role])).rows[0].ok, `${role} must not be able to clear a kill`).toBe(false);
     }
     expect((await c.query(
-      `SELECT has_function_privilege('service_role', 'public.clear_notification_channel_kill(text,uuid,text,uuid)', 'EXECUTE') AS ok`))
+      `SELECT has_function_privilege('service_role', 'public.clear_notification_channel_kill(text,uuid,int,text,uuid)', 'EXECUTE') AS ok`))
       .rows[0].ok).toBe(true);
     // and none of the OTHER functions touches the table destructively
     for (const f of ['admin_activate_channel_kill', 'notif_channel_kill_gate', 'is_notification_channel_killed',
@@ -1591,9 +1593,14 @@ describe('N5 — the admin read of the delivery paths', () => {
 });
 
 describe('N6 — clearing a kill: the one reviewed way back', () => {
-  const clear = async (channel: string, killReq: string, req = crypto.randomUUID(), reason = 'incident closed') =>
-    (await c.query(`SELECT * FROM public.clear_notification_channel_kill($1,$2,$3,$4)`,
-      [channel, killReq, reason, req])).rows[0];
+  const preview = async (channel: string) =>
+    (await c.query(`SELECT * FROM public.preview_notification_channel_kill_clear($1)`, [channel])).rows[0];
+  const clear = async (channel: string, killReq: string, req = crypto.randomUUID(),
+                       reason = 'incident closed', expectedPending?: number) => {
+    const n = expectedPending ?? (await preview(channel))?.pending_now ?? 0;
+    return (await c.query(`SELECT * FROM public.clear_notification_channel_kill($1,$2,$3,$4,$5)`,
+      [channel, killReq, n, reason, req])).rows[0];
+  };
   const killWith = async (req: string, channel = 'email') => {
     await c.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
     try { await c.query(`SELECT public.admin_activate_channel_kill($1,'incident 7',$2)`, [channel, req]); }
@@ -1655,6 +1662,34 @@ describe('N6 — clearing a kill: the one reviewed way back', () => {
     expect((await clear('email', killReq2)).verdict).toBe('cleared');
   });
 
+  it('the confirmation is about a number the operator SAW: a queue that grew is refused', async () => {
+    const killReq = crypto.randomUUID();
+    await killWith(killReq);
+    await seedRow();
+    const seen = (await preview('email')).pending_now;       // what the preview showed: 1
+    expect(seen).toBe(1);
+    await seedRow(); await seedRow();                        // …and three more arrive while they think
+    const r = await clear('email', killReq, crypto.randomUUID(), 'incident closed', seen);
+    expect(r.verdict).toBe('rejected_backlog_grew');
+    expect(r.pending_released).toBe(3);                      // the refusal SAYS what it found
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(1);
+    // a SHRINK is never a reason to refuse — someone disposing of the queue is good news
+    expect((await clear('email', killReq, crypto.randomUUID(), 'incident closed', 99)).verdict).toBe('cleared');
+  });
+
+  it('the preview reads without changing anything, and says nothing when the channel is live', async () => {
+    expect(await preview('email')).toBeUndefined();          // not killed → no row
+    const killReq = crypto.randomUUID();
+    await killWith(killReq);
+    await seedRow();
+    const p = await preview('email');
+    expect(p).toMatchObject({ channel: 'email', kill_request_id: killReq, pending_now: 1, pending_now_capped: false });
+    expect(p.reason).toBe('incident 7');
+    expect(p.killed_for).toBeTruthy();
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(1);
+    expect((await clear('email', killReq)).verdict).toBe('cleared');
+  });
+
   it('is not reachable by any API role — un-killing is a runbook decision, not a page control', async () => {
     const c3 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
     await c3.connect();
@@ -1662,7 +1697,7 @@ describe('N6 — clearing a kill: the one reviewed way back', () => {
       for (const role of ['anon', 'authenticated']) {
         await c3.query(`SET ROLE ${role}`);
         await expect(c3.query(
-          `SELECT * FROM public.clear_notification_channel_kill('email', gen_random_uuid(), 'x', gen_random_uuid())`),
+          `SELECT * FROM public.clear_notification_channel_kill('email', gen_random_uuid(), 0, 'x', gen_random_uuid())`),
           `${role} must not clear a kill`).rejects.toThrow();
         await c3.query(`RESET ROLE`);
       }
