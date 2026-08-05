@@ -22,7 +22,7 @@ const MIGRATION = read('supabase', 'migrations', '20261012100000_notif_10cb_dige
 // deliberate artifact sends carries the identity it just opened and a tick's carries null. The
 // command text is otherwise byte-identical, and THIS migration is now the authoritative source of
 // what the schedule runs — the pins below follow it, not the original.
-const REPOINT = read('supabase', 'migrations', '20261026100000_notif_n4_dispatch_carries_invocation.sql');
+const REPOINT = read('supabase', 'migrations', '20261027100000_notif_n4_dispatch_identity_is_session_local.sql');
 // The assertions live in a shared include, pulled in by BOTH the read-only dry run
 // (activation_preflight.sql) and the transactional gate (activate.sql), so the two can never
 // diverge into checking different things.
@@ -355,12 +355,15 @@ describe('I — the scheduled command survives a hostile search_path unaided', (
   it('names the qualified forms it is meant to have (best-effort; the proof is in preflight-pg.mjs)', () => {
     expect(reviewed.command).toContain('pg_catalog.jsonb_build_object');
     expect(reviewed.command).toContain('OPERATOR(pg_catalog.||)');
-    // TWO comparisons now — the Vault name and the invocation's status. A planted text = text
-    // answering false on the second would send a body naming no invocation, silently restoring
-    // the "search for the one unresolved invocation" ambiguity round 5 removed.
-    expect(reviewed.command.match(/OPERATOR\(pg_catalog\.=\)/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(reviewed.command).toContain('public.notification_worker_invocations');
+    expect(reviewed.command).toContain('OPERATOR(pg_catalog.=)');
+    // NO unqualified name at all — a NULLIF wrapper was tried and removed: it resolves an
+    // equality OPERATOR through search_path, which the rollout harness proved hijackable
+    expect(reviewed.command).not.toContain('NULLIF');
     expect(reviewed.command).toContain("'invocation_id'");
+    // round 6: the identity comes from the EXECUTING TRANSACTION, never from a database read —
+    // any state the artifact commits is state a late-started cron tick can read too
+    expect(reviewed.command).toContain("pg_catalog.current_setting('notif.dispatch_invocation', true)");
+    expect(reviewed.command).not.toContain('notification_worker_invocations');
   });
 
   // The re-point is a BODY change and nothing else: same endpoint, same Vault bearer, same

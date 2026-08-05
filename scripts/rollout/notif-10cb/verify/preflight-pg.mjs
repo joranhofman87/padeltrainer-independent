@@ -59,7 +59,7 @@ const CRON_MIG = MIG('20261012100000_notif_10cb_digest_cron_inert.sql');
 // N4 round 5 re-points the command's BODY so the request names the pending invocation. The
 // schedule still comes from the F migration; the command comes from here, because this is what a
 // migrated database actually runs.
-const REPOINT_MIG = MIG('20261026100000_notif_n4_dispatch_carries_invocation.sql');
+const REPOINT_MIG = MIG('20261027100000_notif_n4_dispatch_identity_is_session_local.sql');
 const REVIEWED = (() => {
   const m = CRON_MIG.match(
     /cron\.schedule\(\s*'notification-digest-worker'\s*,\s*'([^']+)'\s*,\s*\$cmd\$([\s\S]*?)\$cmd\$\s*\)/);
@@ -256,8 +256,14 @@ try {
     -- load-bearing too. Without it the positive control below cannot speak for this call at all —
     -- a hijacked body would send a request that names NO invocation, silently restoring the
     -- "claim whatever is unresolved" ambiguity round 5 removed.
-    CREATE FUNCTION shadow.jsonb_build_object(text, uuid) RETURNS jsonb LANGUAGE sql AS $f$
+    CREATE FUNCTION shadow.jsonb_build_object(text, text) RETURNS jsonb LANGUAGE sql AS $f$
       INSERT INTO shadow.captured VALUES ($1); SELECT '{"shadowed":true}'::jsonb; $f$;
+    -- ...and the GUC read that now carries the dispatch identity (N4 round 6). An exact-arity
+    -- rival is what lets the positive control below prove THAT qualification is load-bearing: a
+    -- hijacked current_setting could answer NULL for every request, so every dispatch would name
+    -- no invocation and the deliberate ones would silently stop being distinguishable.
+    CREATE FUNCTION shadow.current_setting(text, boolean) RETURNS text LANGUAGE sql AS $f$
+      INSERT INTO shadow.captured VALUES ($1); SELECT NULL::text $f$;
     CREATE FUNCTION shadow.textcat_capture(text, text) RETURNS text LANGUAGE sql AS $f$
       INSERT INTO shadow.captured VALUES ($1 operator(pg_catalog.||) $2);
       SELECT $1 operator(pg_catalog.||) $2; $f$;
@@ -1097,14 +1103,36 @@ try {
       !!inv && q?.inv === inv, `body invocation_id=${q?.inv ?? 'null'} pending=${inv ?? 'none'}`);
   }
 
-  // ...while a TICK of the same command, with nothing pending, names nothing at all — the
-  // discriminator the in-flight-tick counterexample needed.
+  // ...while a TICK of the same command names nothing — INCLUDING the interleaving that defeated
+  // the round-5 subquery: pg_cron selects a due execution while the job is active, the job is
+  // deactivated, the artifact opens and COMMITS an invocation, and only then does the selected
+  // tick begin its statement. A body that reads committed state would name that invocation; a
+  // body that reads the EXECUTING TRANSACTION cannot, because pg_cron runs its own session.
   await seedBaseline();
   {
     const jobCmd = (await c.query(`SELECT command FROM cron.job WHERE jobname='notification-digest-worker'`)).rows[0].command;
     await c.query(jobCmd);                    // exactly what pg_cron executes on a tick
     const body = (await c.query(`SELECT body ->> 'invocation_id' AS inv FROM net.http_request_queue ORDER BY id DESC LIMIT 1`)).rows[0];
-    rec('a plain TICK of the same command names NO invocation', body?.inv === null, `body invocation_id=${body?.inv}`);
+    // "nothing" is NULL, or the empty string a session keeps after a transaction-local set_config
+    // was reset at COMMIT. The worker's uuid check rejects both — a request must NAME an
+    // invocation to own one, and neither of these does.
+    rec('a plain TICK of the same command names NO invocation', !body?.inv, `body invocation_id=${JSON.stringify(body?.inv)}`);
+
+    // the LATE-STARTING tick, with an invocation already open and committed
+    const open = await c.query(
+      `SELECT public.open_notification_worker_invocation('smoke', 'smoke_invoke.sql', gen_random_uuid()) AS id`);
+    await c.query(jobCmd);                    // the same text, a session that published nothing
+    const late = (await c.query(`SELECT body ->> 'invocation_id' AS inv FROM net.http_request_queue ORDER BY id DESC LIMIT 1`)).rows[0];
+    rec('a LATE-STARTING tick still names nothing, even with an invocation already pending',
+      !late?.inv, `body invocation_id=${JSON.stringify(late?.inv)} (pending ${open.rows[0].id})`);
+    // …and the artifact's own transaction, which publishes the id, DOES name it
+    await c.query('BEGIN');
+    await c.query(`SELECT pg_catalog.set_config('notif.dispatch_invocation', $1, true)`, [open.rows[0].id]);
+    await c.query(jobCmd);
+    const mine = (await c.query(`SELECT body ->> 'invocation_id' AS inv FROM net.http_request_queue ORDER BY id DESC LIMIT 1`)).rows[0];
+    await c.query('COMMIT');
+    rec('...and the transaction that PUBLISHED the id names exactly that invocation',
+      mine?.inv === open.rows[0].id, `body invocation_id=${mine?.inv}`);
   }
 
   // ── the bearer must survive a hostile search_path, twice over ────────────

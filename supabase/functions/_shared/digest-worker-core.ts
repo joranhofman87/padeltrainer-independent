@@ -225,6 +225,10 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
       const rd = await reconcileSafe(dispRun);
       s.reconcile = rd.metrics;
       await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: rd.ok ? "succeeded" : "failed" });
+      // …and a deferral whose RECONCILE failed is not a healthy 200 either: the run is finished
+      // 'failed', so reporting ok would be the false green the reconciliation contract exists to
+      // prevent. Doing no work is fine; being unable to prove it is not.
+      if (!rd.ok) { s.status = "error"; s.reason = "reconcile_failed"; }
       return s;
     }
 

@@ -136,7 +136,15 @@ SELECT pg_temp.assert_eq(
 -- a retry carrying the same request id passes through to the idempotent open(); any OTHER
 -- unresolved invocation still refuses.
 \i _invocation_gate_replay.sql
-SELECT public.open_notification_worker_invocation('canary', 'canary_invoke.sql', :'invocation_request_id'::pg_catalog.uuid) AS invocation_id;
+-- ...and PUBLISH its id into this transaction, which is what the reviewed command's body reads.
+-- Transaction-local on purpose (round 6): a pg_cron execution runs in its OWN session and can
+-- never see it, so a tick selected before this transaction and started after it still names
+-- nothing. A database lookup could not give that guarantee — anything this transaction COMMITS is
+-- something a late-starting tick can read too.
+SELECT pg_catalog.set_config(
+  'notif.dispatch_invocation',
+  public.open_notification_worker_invocation('canary', 'canary_invoke.sql', :'invocation_request_id'::pg_catalog.uuid)::pg_catalog.text,
+  true) AS invocation_id;
 
 -- THE BLAST RADIUS. "Canary: one recipient" was a hope, not a fact: the worker sends to every group
 -- it can claim, plus everything materialization forms during the same run. If the engine has been on
@@ -196,7 +204,7 @@ BEGIN
   SELECT command INTO STRICT v_cmd FROM cron.job
    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job);
 
-  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM 'f5eab65b8f72a71fb46be7015d017c4f' THEN
+  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '69204549e8cb81680e492e49ef08fdd6' THEN
     RAISE EXCEPTION 'ASSERT FAILED: refusing to execute a cron command that is not EXACTLY the reviewed one';
   END IF;
 

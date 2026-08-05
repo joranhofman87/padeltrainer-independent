@@ -130,6 +130,15 @@ Deno.test("DEFERRED: no pipeline work, run finished CLEANLY, and the summary say
   assertEquals(finish.map((r) => r.args.p_status), ["succeeded"]);
 });
 
+Deno.test("a DEFERRED run whose RECONCILE fails is NOT a green 200 — the run is failed, so the status is too", async () => {
+  const { d } = deps("deferred");
+  const bad: WorkerDeps = { ...d, reconcile: () => Promise.reject(new Error("reconcile down")) };
+  const s: WorkerSummary = await runDigestWorker(bad);
+  assertEquals(s.invocationDeferred, true);
+  assertEquals(s.status, "error");           // 500 + alert, not a quiet success
+  assertEquals(s.reconcileErrors, 1);
+});
+
 Deno.test("an UNREADABLE claim result is a refusal, never a silent steady-state pass", async () => {
   const { d, rpcCalls } = deps("none");
   const bad: WorkerDeps = { ...d, rpc: (name, args) => name === "claim_worker_invocation"
