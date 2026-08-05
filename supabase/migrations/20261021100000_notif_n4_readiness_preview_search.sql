@@ -235,14 +235,17 @@ ALTER TABLE public.notification_contacts
 CREATE OR REPLACE FUNCTION public.notif_contact_effective_user()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-  -- serialize against the person-side sync on INSERT ONLY: an uncommitted insert is invisible
-  -- to the sync's contact-row UPDATE, so the advisory lock closes that window. On UPDATE the
-  -- lock must NOT be taken — the row lock is already held, and (contact row → person advisory)
-  -- against the sync's (person advisory → contact rows) is a deadlock inversion. The UPDATE
-  -- path is serialized by ROW locks alone: whichever side commits second recomputes over the
-  -- committed truth (the sync's no-op touch routes through this trigger), so the final
-  -- projection is fresh in either commit order.
-  IF TG_OP = 'INSERT' AND NEW.person_id IS NOT NULL THEN
+  -- serialize against the person-side sync EXACTLY where its predicate cannot see us:
+  --  * INSERT — an uncommitted insert is invisible to the sync's contact-row UPDATE;
+  --  * UPDATE that CHANGES person_id — the sync scanning the NEW person's rows sees our OLD
+  --    person in its snapshot and will neither match nor wait on us (the A→B relink race).
+  -- In both arms we wait on the advisory while holding only rows OUTSIDE that person's sync
+  -- predicate — so no lock cycle can form. A same-person UPDATE takes NO advisory (the row
+  -- lock is already held and the sync's predicate DOES cover us — taking the advisory there
+  -- is precisely the row→advisory vs advisory→row inversion): row locks alone serialize it,
+  -- and whichever side commits second recomputes over committed truth.
+  IF NEW.person_id IS NOT NULL
+     AND (TG_OP = 'INSERT' OR NEW.person_id IS DISTINCT FROM OLD.person_id) THEN
     PERFORM pg_advisory_xact_lock(hashtextextended('notif-person-link:' || NEW.person_id::text, 0));
   END IF;
   NEW.effective_user_id := coalesce(NEW.user_id,

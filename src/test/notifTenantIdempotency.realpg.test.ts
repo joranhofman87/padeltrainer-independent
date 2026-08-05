@@ -1527,3 +1527,36 @@ describe('N4 M6 round-7 — migration-time cap validation and the UPDATE-path lo
     }
   });
 });
+
+describe('N4 M6 round-8 — the A→B relink race', () => {
+  it('a contact relinking to person B while B gains a login: the relink WAITS on B, the projection ends fresh', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      const uidB = 'e7000000-0000-4000-8000-000000000002';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uidB]);
+      const pidA = (await c.query(`INSERT INTO public.persons (email) VALUES ('relink-a@example.com') RETURNING id`)).rows[0].id;
+      const pidB = (await c.query(`INSERT INTO public.persons (email) VALUES ('relink-b@example.com') RETURNING id`)).rows[0].id;
+      await c.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'relink@example.com', 'r***@example.com', 'opted_in', 'global')`, [pidA]);
+      // session 1: B gains its login — held open (advisory B held by the sync trigger; its
+      // contact scan sees NO rows for B, so it waits on nothing)
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uidB, pidB]);
+      // session 2: the A→B RELINK — the changed-person arm must WAIT on B's advisory, because
+      // B's sync could not see this row (old person = A in its snapshot)
+      let settled = false;
+      const relink = c2.query(`UPDATE public.notification_contacts SET person_id = $1 WHERE destination_normalized = 'relink@example.com'`, [pidB])
+        .finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(settled).toBe(false);            // provably serialized — the round-8 race closed
+      await c.query('COMMIT');
+      await relink;
+      expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='relink@example.com'`)).rows[0].effective_user_id)
+        .toBe(uidB);                           // the relink read B's COMMITTED login — never the stale NULL
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+});
