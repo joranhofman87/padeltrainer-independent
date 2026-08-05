@@ -22,9 +22,16 @@ procedure below needs psql against production, that is a gap — say so rather t
 | Recipient preview | Who would receive this event, and *why* | Mirrors the resolver exactly, including its account-email fallback; a bounded scan says `PARTIAL` rather than implying completeness |
 | Decisions + rejected attempts | What did operators do, and what did the server refuse | Append-only; refusals are recorded on the return path |
 
-**There is no resend, no retry, no redeliver** — because provider acceptance can be ambiguous and
-a "retry" over an ambiguous send is a duplicate. The complete admin function surface is pinned by a
-test that also asserts no function name matches `retry|resend|redeliver`.
+**No control here resends anything.** No operator, admin surface or API can ask for a re-send,
+because provider acceptance can be ambiguous and asking again over an ambiguous send is how you
+duplicate one. The complete admin function surface is pinned by a test that also asserts no
+function name matches `retry|resend|redeliver`.
+
+That is a statement about CONTROLS, not about the workers. The instant worker retries a row it
+already owns — three attempts in-adapter, a backoff requeue, and a stale-lease reclaim — all under
+one stable idempotency key, so the provider deduplicates them. The digest worker does not retry an
+ambiguous attempt at all. The difference matters when you are reading a row's history, and it is
+set out in [`NOTIFICATION_FOUNDATION.md`](NOTIFICATION_FOUNDATION.md) §5.
 
 That is not the same as "every control stops things". Two controls deliberately **restore send
 authority**: *reset circuit* closes a breaker (its own schema comment calls it send-enabling), and
@@ -120,7 +127,21 @@ is sufficient to identify a row, and the outbox id is sufficient for support.
 | A digest group must not go out | Cancel group | any send evidence exists (attempts, message id, first send, uncertainty) |
 | Provider callback cannot be correlated | Resolve / requeue orphan | not quarantined, or the reason class does not match the action |
 | Pending rows a boundary permanently excludes | Dispose backlog | the path is inert (nothing there is provably historical) |
-| A worker crashed mid-send | *nothing* | by design: the lease ages out, the state machine re-decides, and an ambiguous send finalizes `delivery_unknown` rather than being re-sent |
+| A **digest** worker crashed mid-send | *nothing* | by design: the lease ages out, the state machine re-decides, and an ambiguous send finalizes `delivery_unknown` rather than being re-sent |
+| An **instant** worker crashed mid-send | *nothing*, but know what happens | the stale lease is reclaimed after 15 minutes and the row is sent again under the SAME idempotency key — a no-op at the provider inside its 24h window. See the downtime note below |
+
+**After prolonged downtime, read this before you resume.** Nothing in this repository bounds the
+*wall-clock* gap between an instant row's attempts: `next_attempt_at` is a not-before condition,
+and a worker, cron, project or provider outage simply delays the next claim. If instant rows sat
+un-attempted for longer than the provider's deduplication window (Resend: 24h) *after* an attempt
+that may have been accepted, resuming can duplicate those specific deliveries. The digest path
+cannot do this — it never re-sends an ambiguous attempt.
+
+So after an outage longer than a day: look at `notification_outbox` rows in `pending` or
+`processing` whose `updated_at` predates the window, decide whether they are still worth sending at
+all, and dispose of the ones that are not before the worker resumes. The admin outbox list is the
+surface for that judgement; there is deliberately no automatic sweep, because "this message is
+still worth sending a day later" is not a decision code should make.
 
 Every one of them: platform-admin only, a reason of 3–500 characters, one request id per decision
 (a retry **replays** rather than deciding twice), inputs frozen on submit, and an immutable audit

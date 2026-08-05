@@ -108,12 +108,19 @@ re-renders.
     with exponential backoff (2^attempts minutes, capped at 60) up to `max_attempts`, and a
     stale-lease reclaim after 15 minutes. Every one of those carries the SAME key, so duplicates
     are prevented by the provider's idempotency window (Resend: 24h) rather than by not trying
-    again. The elapsed span from first attempt to last is bounded well inside that window by the
-    backoff cap and the attempt limit.
-  * The residual, stated rather than hidden: if a row's attempts were ever spread beyond the
-    provider's dedup window, the instant path could duplicate where the digest path could not.
-    Unifying instant onto the single-shot state machine is recorded in
-    [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) (FA-3).
+    again.
+  * **What bounds that, and what does not.** The backoff (2^attempts minutes, capped at 60) and
+    `max_attempts` bound how MANY attempts there are and how closely they can follow one another.
+    Nothing in this repository bounds the WALL-CLOCK gap between them: `next_attempt_at` is a
+    not-before condition, so a worker, cron, project or provider outage simply delays the next
+    claim. In normal operation every attempt lands well inside the provider's window; after an
+    outage longer than that window, a retry of an attempt that may already have been accepted can
+    duplicate. The digest path cannot do this, because it never re-sends an ambiguous attempt at
+    all.
+  * That residual is operational, and [`NOTIFICATION_OPERATIONS.md`](NOTIFICATION_OPERATIONS.md) §5
+    says what to do about it after a long outage. Unifying instant onto the single-shot state
+    machine — which would remove it rather than manage it — is recorded as FA-3 in
+    [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md).
 * **There is no generic retry/resend CONTROL** — no operator, admin surface or API can ask for a
   re-send. What retries is the worker's own bounded attempt loop on a row it already owns.
 * **Correlation is checked.** If the provider accepts a message id the group is not bound to, the

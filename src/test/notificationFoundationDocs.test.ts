@@ -165,7 +165,14 @@ describe('N6 doc pins — the operations reference', () => {
     }
     // and the doctrine that made this surface disable-only
     for (const c of controls) expect(c).not.toMatch(/retry|resend|redeliver/);
-    expect(OPERATIONS).toContain('There is no resend, no retry, no redeliver');
+    expect(OPERATIONS).toContain('No control here resends anything');
+    // …and the doc must not claim the WORKERS never retry: the instant one does, under a stable
+    // key, and an on-call reader comparing a row's history to the docs must not be misled
+    expect(OPERATIONS).toContain('The instant worker retries a row it');
+    // …and it must warn about the one case where a retry can duplicate: an outage longer than
+    // the provider's dedup window, which nothing in this repository bounds
+    expect(OPERATIONS).toContain('After prolonged downtime');
+    expect(OPERATIONS).toContain('not-before condition');
   });
 
   it('the rollout steps the doc tables are the subcommands the runner actually has', () => {

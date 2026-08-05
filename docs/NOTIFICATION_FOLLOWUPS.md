@@ -866,9 +866,14 @@ ambiguity becomes `delivery_unknown`. The instant path retries — three attempt
 idempotency key (`notification-outbox-<row id>`), so Resend deduplicates them inside its 24h
 window.
 
-Both are safe today: the backoff cap (60 min) and `max_attempts` bound the span far inside that
-window. But the instant path's safety depends on a *provider* guarantee while the digest path's
-depends on its own state machine, and only one of those is verifiable from this repository.
+In normal operation both are safe. But the instant path's safety depends on a *provider* guarantee
+while the digest path's depends on its own state machine, and only one of those is verifiable from
+this repository — and the bound is weaker than it first looks: the backoff cap and `max_attempts`
+bound the number and minimum spacing of attempts, **not** the wall-clock span, because
+`next_attempt_at` is only a not-before condition. After an outage longer than the provider's dedup
+window, a retry of a possibly-accepted attempt can duplicate. That case is operational and is
+documented in NOTIFICATION_OPERATIONS.md §5; removing it rather than managing it is this
+follow-up.
 
 **The improvement:** bring instant delivery onto the single-shot adapter and the same
 uncertain/`delivery_unknown` state machine. **Why it is recorded rather than done here:** it
