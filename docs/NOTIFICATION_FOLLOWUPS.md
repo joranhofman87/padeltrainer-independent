@@ -212,6 +212,17 @@ raised by review against the shipped schema and must be satisfied where named.
    redacted context only, apply strictly on the button. Analytics stayed safe by construction —
    pageview URLs are overridden and query params allow-listed (`trackingPrivacy.ts`).
 
+7e. **WHOLE-UNIT SWEEP CLEAR (2026-08-05, `main..f1a7f1e8`).** Fresh-thread review aimed at the
+   seams; no P1. Four findings, all fixed in the sweep round: (a) the one-click endpoint now
+   REQUIRES the RFC 8058 form body `List-Unsubscribe=One-Click` — mailbox scanners fire blind
+   POSTs at List-Unsubscribe URLs, and without the marker check one would unsubscribe a real
+   person; (b) `send-email`'s preference read failed OPEN (pre-existing on main — error
+   discarded, frequency defaulted to `instant`, mail sent against a stored `off`); now the same
+   fail-closed 503 as its account lookup; (c) operational 503s carry `Retry-After: 300` on the
+   result object so the wrappers cannot forget it; (d) the sweep gained a FULL `expires_at`
+   index — the S1 partial index excludes revoked rows, which the sweep deliberately includes, so
+   every "bounded" batch would have scanned the whole table.
+
 8. **Owner precondition before S3 deploys.** Every existing `onboarding_email_templates` row lands
    on `delivery_class='marketing'` (the suppressible direction). The owner must reclassify the live
    templates (`required_service` where the mail is genuinely obligatory) before S3's suppression
