@@ -3,6 +3,27 @@
 Durable record of out-of-scope findings surfaced during the notification migration, so they
 are not lost between PRs. Each has a spawned-task id where one exists.
 
+## 10c-a2 — a concurrent-materializer race, surfaced in CI (2026-08-05, found while landing N2 S1)
+
+`src/test/notificationDigestStateMachine.realpg.test.ts` → *"two concurrent materializers both
+complete; every member in exactly one group; no duplicate chunks"* FAILED once on CI
+(run `30968984926`, job `92189004788`): one of its three post-conditions — ungrouped members,
+duplicate `(canonical_group_key, chunk_ordinal)`, or a `pending` group with no members — came back
+as 1 instead of 0.
+
+**It is not a fixture artefact.** That suite TRUNCATEs the digest tables in `beforeEach`, and all
+three counts are read after the two parallel `materialize_notification_digest_groups` calls, so the
+row came from the test's own concurrency — i.e. from `materialize_notification_digest_groups`
+racing itself, which is exactly what the test exists to catch.
+
+**Not reproducible locally** (73/73 alone ×3; 196/196 with four realpg suites in parallel ×3) —
+the two-core CI runner interleaves far more aggressively than a dev machine. N2 S1 added a fourth
+embedded-postgres instance, which plausibly increased that pressure; it did not introduce the race.
+
+Owner: 10c-a2. Worth reproducing under deliberate contention (a loop, or `taskset`-style CPU
+limiting) before the digest engine is enabled for anyone, since the failure mode is a member landing
+in no group (silently undelivered) or a duplicate chunk (a doubled digest).
+
 ## N2 — constraints S1's schema imposes on S2–S5 (from the S1 design + 6 review rounds, 2026-08-05)
 
 These are not defects in S1; they are the bill S1's model presents to the later slices. Each was
