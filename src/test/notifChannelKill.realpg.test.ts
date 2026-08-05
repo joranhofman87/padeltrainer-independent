@@ -167,6 +167,9 @@ beforeAll(async () => {
   }
   await c.query(MIG('20261006110000_reconcile_orphan_provider_events.sql'));
   await c.query(MIG('20261020100000_notif_n4_send_enabling_recovery.sql'));
+  // M6 applies here too so the surface pin stays COMPLETE (its resolver-dependent fns are
+  // exercised in the N3 equivalence suite; creation is body-unresolved and safe here)
+  await c.query(MIG('20261021100000_notif_n4_readiness_preview_search.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -256,6 +259,8 @@ describe('SET-ONLY, owner-effectively — nothing clears a kill', () => {
       'admin_activate_channel_kill',
       'admin_notification_event_states',
       'admin_notification_gauges',
+      'admin_notification_readiness',           // M6: reads kill state into the envelope
+      'admin_preview_notification_decision',    // M6: kill context on the provenance row
       'is_notification_channel_killed',
       'notif_channel_kill_gate',
       'notif_channel_kill_guard',
@@ -979,10 +984,14 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
       'admin_notification_delivery_history',
       'admin_notification_event_states',
       'admin_notification_gauges',
+      'admin_notification_readiness',
       'admin_preview_circuit_release',
+      'admin_preview_notification_decision',
+      'admin_preview_notification_recipients',
       'admin_requeue_notification_orphan',
       'admin_reset_notification_circuit',
       'admin_resolve_notification_orphan',
+      'admin_search_notification_destination',
     ]);
     for (const f of fns) expect(f).not.toMatch(/retry|resend|redeliver/);
   });

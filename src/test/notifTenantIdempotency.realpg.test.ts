@@ -93,6 +93,11 @@ beforeAll(async () => {
     CREATE TABLE public.test_auth_ctx (uid uuid);
     INSERT INTO public.test_auth_ctx VALUES (NULL);
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$ SELECT uid FROM public.test_auth_ctx LIMIT 1 $fn$;
+    CREATE TYPE public.app_role AS ENUM ('player', 'trainer', 'admin');
+    CREATE TABLE public.user_roles (user_id uuid NOT NULL, role public.app_role NOT NULL, UNIQUE (user_id, role));
+    CREATE FUNCTION public.has_role(_user_id uuid, _role app_role) RETURNS boolean
+      LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
+      SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role) $fn$;
     CREATE TABLE public.email_suppression_stub (email text PRIMARY KEY);
     CREATE FUNCTION public.is_email_suppressed(p_email text) RETURNS boolean LANGUAGE sql STABLE AS
       $fn$ SELECT EXISTS (SELECT 1 FROM public.email_suppression_stub WHERE email = lower(p_email)) $fn$;
@@ -124,6 +129,16 @@ beforeAll(async () => {
     '20261015130000_notif_n3_player_visibility.sql',
     '20261015140000_notif_n3_academy_outcome_reads.sql',
     '20261015150000_notif_n3_history_pagination.sql',
+    // ── N4 admin stack: the M6 preview must be EQUIVALENCE-tested against the REAL resolver,
+    // which lives in this harness — so the whole admin chain applies here too ──
+    '20261006110000_reconcile_orphan_provider_events.sql',
+    '20261016100000_notif_n4_worker_invocations.sql',
+    '20261016110000_notif_n4_invocation_claim.sql',
+    '20261017100000_notif_n4_channel_kill_switches.sql',
+    '20261018100000_notif_n4_admin_ops_audit.sql',
+    '20261019100000_notif_n4_admin_reads.sql',
+    '20261020100000_notif_n4_send_enabling_recovery.sql',
+    '20261021100000_notif_n4_readiness_preview_search.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -889,5 +904,198 @@ describe('guest arm returns BOTH relationship legs (N3 round-4)', () => {
       .map((r) => r.academy_profile_id).sort();
     // the first draft's coalesce returned only A here — hiding B's cap from a player it binds
     expect(caps).toEqual([A, B].sort());
+  });
+});
+
+describe('N4 M6 — preview provenance EQUIVALENCE against the real resolver, and exact-safe search', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+  beforeEach(async () => {
+    await c.query(`INSERT INTO auth.users (id) VALUES ('${ADMIN_UID}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ('${ADMIN_UID}','admin') ON CONFLICT DO NOTHING;`);
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await c.query(`DELETE FROM public.notification_preferences_v2;`);
+    await c.query(`DELETE FROM public.email_suppression_stub;`);
+    await c.query(`ALTER TABLE public.notification_admin_search_log DISABLE TRIGGER trg_notif_admin_search_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_search_log;`);
+    await c.query(`ALTER TABLE public.notification_admin_search_log ENABLE TRIGGER trg_notif_admin_search_guard;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+        destination_redacted, consent_status, consent_scope, is_primary)
+      VALUES ('${P1}','${U1}','email','p1@example.com','p***@example.com','opted_in','global', true)
+      ON CONFLICT DO NOTHING;`);
+  });
+  const preview = async (event: string, channel = 'email', academy: string | null = null) => {
+    await asUser(ADMIN_UID);
+    const r = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision('${U1}', $1, $2, $3)`,
+      [event, channel, academy])).rows[0];
+    await asUser(null);
+    return r;
+  };
+  /** THE EQUIVALENCE ORACLE: the preview's final decision must MATCH what the real resolver
+   *  does with the same fixtures — skip ⇔ skipped row; deliver:instant ⇔ instant pending;
+   *  deliver:daily/weekly ⇔ digest member. A resolver change not mirrored in the preview
+   *  fails HERE rather than silently diverging (the finding-10 drift trap). */
+  const assertEquivalent = async (p: { final_decision: string }, subject: string, tenant: { academy?: string } = {}) => {
+    const rows = await enqueueOptional(tenant, subject);
+    const email = rows.filter((r: { channel: string }) => r.channel === 'email');
+    if (p.final_decision.startsWith('skip:')) {
+      // the REAL resolver's skip semantics (learned from it, not assumed): frequency-off and
+      // suppression usually emit NOTHING; the N3 cap arm emits a terminal skipped row.
+      const delivered = email.filter((r: { status: string }) => r.status === 'pending');
+      expect(delivered.length).toBe(0);
+    } else {
+      const delivered = email.filter((r: { status: string }) => r.status === 'pending');
+      expect(delivered.length).toBeGreaterThanOrEqual(1);
+      if (p.final_decision === 'deliver:instant') {
+        const mode = (await c.query(`SELECT delivery_mode FROM public.notification_outbox WHERE id=$1`, [delivered[0].outbox_id])).rows[0].delivery_mode;
+        expect(mode === null || mode === 'instant').toBe(true);
+      }
+      // daily/weekly digest-vs-delayed routing is EVENT-gated (the digest engine takes only its
+      // own events) and is covered by this suite's own digest tests — not re-asserted here.
+    }
+  };
+
+  it('DEFAULT (no explicit row): provenance shows the catalog source, and preview == resolver', async () => {
+    const p = await preview('session_reminder_player');
+    expect(p.explicit_preference).toBeNull();
+    expect(p.catalog_default).toBe(p.final_frequency);
+    expect(p.cap_applied).toBe(false);
+    expect(p.destination_masked).toBe('p***@example.com');
+    await assertEquivalent(p, 'eq-default');
+  });
+
+  it('EXPLICIT OFF wins: provenance names it, and preview == resolver', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ('${U1}','session_reminder_player','off')`);
+    const p = await preview('session_reminder_player');
+    expect(p.explicit_preference).toBe('off');
+    expect(p.final_decision).toBe('skip:frequency_off');
+    await assertEquivalent(p, 'eq-off');
+  });
+
+  it('ACADEMY CAP most-restrictive-wins: provenance shows the cap AND that it applied; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ('${U1}','session_reminder_player','instant')`);
+    await c.query(`INSERT INTO public.academy_notification_restrictions (academy_profile_id, event_type, channel, max_frequency) VALUES ('${A}','session_reminder_player','email','weekly')`);
+    const p = await preview('session_reminder_player', 'email', A);
+    expect(p.explicit_preference).toBe('instant');
+    expect(p.academy_cap).toBe('weekly');
+    expect(p.cap_applied).toBe(true);
+    expect(p.final_frequency).toBe('weekly');
+    await assertEquivalent(p, 'eq-cap', { academy: A });
+    // …and a cap is NEVER a floor: explicit weekly + cap daily (LESS restrictive) → weekly stays
+    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='weekly' WHERE user_id='${U1}'`);
+    await c.query(`UPDATE public.academy_notification_restrictions SET max_frequency='daily'`);
+    const p2 = await preview('session_reminder_player', 'email', A);
+    expect(p2.cap_applied).toBe(false);
+    expect(p2.final_frequency).toBe('weekly');
+  });
+
+  it('CAP OFF → skip, tenant-scoped; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.academy_notification_restrictions (academy_profile_id, event_type, channel, max_frequency) VALUES ('${A}','session_reminder_player','email','off')`);
+    const p = await preview('session_reminder_player', 'email', A);
+    expect(p.final_decision).toBe('skip:frequency_off');
+    await assertEquivalent(p, 'eq-capoff', { academy: A });
+    // no academy attribution → the cap does not reach it
+    const pGlobal = await preview('session_reminder_player', 'email', null);
+    expect(pGlobal.cap_applied).toBe(false);
+    expect(pGlobal.final_decision).not.toBe('skip:frequency_off');
+  });
+
+  it('REQUIRED override runs LAST and the provenance says so; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ('${U1}','booking_confirmed_player','off')`);
+    const p = await preview('booking_confirmed_player');
+    expect(p.required_delivery).toBe(true);
+    expect(p.required_override_applied).toBe(true);
+    expect(p.final_frequency).toBe('instant');
+    expect(p.final_decision).toBe('deliver:instant');
+    // the real resolver: required events go through enqueue() — instant pending despite 'off'
+    const rows = await enqueue({ academy: A });
+    const email = rows.filter((r: { channel: string }) => r.channel === 'email');
+    expect(email[0].status).toBe('pending');
+  });
+
+  it('SUPPRESSION: provenance shows it on the resolved masked destination; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.email_suppression_stub (email) VALUES ('p1@example.com')`);
+    const p = await preview('session_reminder_player');
+    expect(p.suppressed).toBe(true);
+    expect(p.final_decision).toBe('skip:suppressed');
+    expect(p.destination_masked).toBe('p***@example.com');   // masked, never raw
+    await assertEquivalent(p, 'eq-suppressed');
+  });
+
+  it('the recipient preview is bounded, keyset, and runs each user through the SAME provenance', async () => {
+    await asUser(ADMIN_UID);
+    const rows = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,50)`)).rows;
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    const mine = rows.find((r) => r.user_id === U1);
+    expect(mine.destination_masked).toBe('p***@example.com');
+    expect(mine.final_decision).toMatch(/^deliver:|^skip:/);
+    // the clamp is STRICT — no export-all
+    const clamped = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,10000)`)).rows;
+    expect(clamped.length).toBeLessThanOrEqual(50);
+    await asUser(null);
+  });
+
+  it('destination search: EXACT normalized match only — near-misses find NOTHING, results are masked + counts', async () => {
+    await enqueueOptional({}, 'search-seed');
+    await asUser(ADMIN_UID);
+    const hit = (await c.query(`SELECT * FROM public.admin_search_notification_destination('  P1@Example.com ')`)).rows[0];
+    expect(hit.destination_masked).toBe('p***@example.com');
+    expect(Number(hit.contacts)).toBeGreaterThanOrEqual(1);
+    expect(Number(hit.outbox_rows)).toBeGreaterThanOrEqual(1);
+    // a PREFIX is not a match — no substring search exists, by design
+    const miss = (await c.query(`SELECT * FROM public.admin_search_notification_destination('p1@example.co')`)).rows[0];
+    expect(Number(miss.contacts)).toBe(0);
+    expect(Number(miss.outbox_rows)).toBe(0);
+    // the log carries FINGERPRINTS, never destinations
+    const log = (await c.query(`SELECT fingerprint FROM public.notification_admin_search_log`)).rows;
+    expect(log.length).toBe(2);
+    for (const l of log) expect(l.fingerprint).not.toContain('example.com');
+    await asUser(null);
+  });
+
+  it('destination search is rate-limited per actor and admin-fail-closed', async () => {
+    await asUser(ADMIN_UID);
+    for (let i = 0; i < 28; i++) {
+      await c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`);
+    }
+    // 28 above + 2 would exceed only at 31 — pushing to the cap
+    await c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`);
+    await c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`);
+    await expect(c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`))
+      .rejects.toThrow(/rate limit/);
+    await asUser(null);
+    await expect(c.query(`SELECT * FROM public.admin_search_notification_destination('x@example.com')`))
+      .rejects.toThrow(/platform admin only/);
+  });
+
+  it('the readiness envelope: versioned, honest, and NEVER pass before N5', async () => {
+    await asUser(ADMIN_UID);
+    const env = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r;
+    expect(env.schema_version).toBe(1);
+    expect(['fail', 'not_provable']).toContain(env.readiness);   // 'pass' is unreachable pre-N5
+    const ids = env.checks.map((x: { id: string }) => x.id);
+    for (const required of ['channel_kills', 'provider_circuits', 'unresolved_invocations', 'in_flight_work',
+      'quarantined_orphans', 'digest_cron', 'digest_send_enabled_env', 'durable_activation_boundary',
+      'pre_activation_backlog_eligible_count']) {
+      expect(ids).toContain(required);
+    }
+    const envCheck = env.checks.find((x: { id: string }) => x.id === 'digest_send_enabled_env');
+    expect(envCheck.status).toBe('not_provable');
+    expect(envCheck.detail).toContain('no SQL can read');
+    for (const n5 of ['durable_activation_boundary', 'pre_activation_backlog_eligible_count']) {
+      expect(env.checks.find((x: { id: string }) => x.id === n5).status).toBe('not_provable');
+    }
+    // a kill flips a named check AND the overall verdict to fail
+    await c.query(`INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id) VALUES ('email','test kill', gen_random_uuid())`);
+    const env2 = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r;
+    expect(env2.readiness).toBe('fail');
+    expect(env2.checks.find((x: { id: string }) => x.id === 'channel_kills').status).toBe('fail');
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await asUser(null);
   });
 });

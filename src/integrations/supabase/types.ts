@@ -9668,12 +9668,58 @@ export type Database = {
           value: number
         }[]
       }
+      admin_notification_readiness: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       admin_preview_circuit_release: {
         Args: { p_channel: string }
         Returns: {
           capped: boolean
           metric: string
           value: number
+        }[]
+      }
+      admin_preview_notification_decision: {
+        Args: {
+          p_channel: string
+          p_event_key: string
+          p_tenant_academy_profile_id?: string
+          p_user_id: string
+        }
+        Returns: {
+          academy_cap: string
+          cap_applied: boolean
+          catalog_default: string
+          catalog_supported: boolean
+          channel: string
+          circuit_state: string
+          contact_found: boolean
+          destination_masked: string
+          event_type: string
+          explicit_preference: string
+          final_decision: string
+          final_frequency: string
+          kill_state: string
+          required_delivery: boolean
+          required_override_applied: boolean
+          suppressed: boolean
+          whatsapp_optin_arm: boolean
+        }[]
+      }
+      admin_preview_notification_recipients: {
+        Args: {
+          p_after_user_id?: string
+          p_channel: string
+          p_event_key: string
+          p_limit?: number
+          p_tenant_academy_profile_id?: string
+        }
+        Returns: {
+          destination_masked: string
+          final_decision: string
+          final_frequency: string
+          user_id: string
         }[]
       }
       admin_requeue_notification_orphan: {
@@ -9694,6 +9740,15 @@ export type Database = {
       admin_resolve_notification_orphan: {
         Args: { p_reason: string; p_request_id: string; p_resend_event_id: string }
         Returns: string
+      }
+      admin_search_notification_destination: {
+        Args: { p_destination: string }
+        Returns: {
+          contacts: number
+          delivery_events: number
+          destination_masked: string
+          outbox_rows: number
+        }[]
       }
       admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
