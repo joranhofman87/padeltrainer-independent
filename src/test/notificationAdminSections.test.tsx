@@ -286,3 +286,61 @@ describe('the repaired races are REGRESSION-LOCKED (each fails against the old b
     expect(screen.getByTestId('kill-confirm').textContent).toBe('Killing…');
   });
 });
+
+describe('M7 round-2: provenance drill-down, history paging', () => {
+  const DECISION = {
+    event_type: 'ev_test', channel: 'email', catalog_supported: true, catalog_default: 'instant',
+    required_delivery: false, explicit_preference: 'weekly', whatsapp_optin_arm: false,
+    academy_cap: 'off', cap_applied: true, required_override_applied: false,
+    final_frequency: 'off', contact_found: true, destination_masked: 'p***@x.nl',
+    suppressed: false, kill_state: 'live', circuit_state: 'closed', final_decision: 'skip:frequency_off',
+  };
+
+  it('the preview exposes EVERY contributing source per user, scoped to the academy context', async () => {
+    const { RecipientPreviewSection } = await import('@/components/notifications/admin/RecipientPreviewSection');
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'admin_preview_notification_recipients') {
+        return Promise.resolve({ data: [{ user_id: 'u1', final_frequency: 'off', final_decision: 'skip:frequency_off', destination_masked: 'p***@x.nl', candidates_partial: false, next_cursor: 'u1' }], error: null });
+      }
+      if (fn === 'admin_preview_notification_decision') return Promise.resolve({ data: [DECISION], error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+    render(<RecipientPreviewSection eventKeys={['ev_test']} />);
+    fireEvent.change(screen.getAllByTestId('native-select')[0], { target: { value: 'ev_test' } });
+    fireEvent.change(screen.getByTestId('preview-academy'), { target: { value: 'acad-1' } });
+    fireEvent.click(screen.getByTestId('preview-load'));
+    await screen.findByTestId('preview-list');
+    // the academy context reaches the LIST read (tenant caps are tenant-specific)
+    expect(rpcMock.mock.calls.find((c) => c[0] === 'admin_preview_notification_recipients')![1].p_tenant_academy_profile_id).toBe('acad-1');
+    fireEvent.click(screen.getByTestId('provenance-btn-u1'));
+    await screen.findByTestId('provenance-list');
+    const call = rpcMock.mock.calls.find((c) => c[0] === 'admin_preview_notification_decision')!;
+    expect(call[1]).toMatchObject({ p_user_id: 'u1', p_event_key: 'ev_test', p_channel: 'email', p_tenant_academy_profile_id: 'acad-1' });
+    const text = screen.getByTestId('provenance-list').textContent ?? '';
+    for (const expected of ['catalog', 'explicit preference', 'academy cap', 'required override',
+      'contact', 'suppressed', 'kill / circuit', 'final']) {
+      expect(text).toContain(expected);
+    }
+    expect(text).toContain('weekly');       // the explicit preference source
+    expect(text).toContain('APPLIED');      // the cap that actually decided it
+    expect(text).toContain('skip:frequency_off');
+  });
+
+  it('a failed provenance read is FAIL-CLOSED with a retry — never a blank panel', async () => {
+    const { RecipientPreviewSection } = await import('@/components/notifications/admin/RecipientPreviewSection');
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'admin_preview_notification_recipients') {
+        return Promise.resolve({ data: [{ user_id: 'u1', final_frequency: 'off', final_decision: 'skip:frequency_off', destination_masked: 'x', candidates_partial: false, next_cursor: 'u1' }], error: null });
+      }
+      if (fn === 'admin_preview_notification_decision') return Promise.resolve({ data: null, error: { message: 'boom' } });
+      return Promise.resolve({ data: [], error: null });
+    });
+    render(<RecipientPreviewSection eventKeys={['ev_test']} />);
+    fireEvent.change(screen.getAllByTestId('native-select')[0], { target: { value: 'ev_test' } });
+    fireEvent.click(screen.getByTestId('preview-load'));
+    await screen.findByTestId('preview-list');
+    fireEvent.click(screen.getByTestId('provenance-btn-u1'));
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
+    expect(screen.queryByTestId('provenance-list')).toBeNull();
+  });
+});

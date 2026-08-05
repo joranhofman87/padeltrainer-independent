@@ -1201,3 +1201,25 @@ describe('N4 M5 round-3 — canonical fingerprints, registry coherence, consumed
     expect(await adminKill(c2, ADMIN, 'whatsapp', req, 'pre-M5 kill')).toBe('rejected_request_reuse');
   });
 });
+
+
+describe('N4 M7 — the orphan reader is index-served on its OWN keyset order', () => {
+  it('an index matches (updated_at DESC, resend_event_id DESC) exactly', async () => {
+    const idx = (await c.query(`
+      SELECT indexdef FROM pg_indexes
+       WHERE schemaname='public' AND indexname='idx_orphan_state_keyset'`)).rows;
+    expect(idx.length).toBe(1);
+    expect(idx[0].indexdef).toContain('updated_at DESC');
+    expect(idx[0].indexdef).toContain('resend_event_id DESC');
+  });
+
+  it('the READER query plans onto it — no full sort behind the LIMIT', async () => {
+    const plan = (await c.query(`
+      EXPLAIN (FORMAT JSON)
+      SELECT s.resend_event_id, s.updated_at FROM public.notification_orphan_reconcile_state s
+       ORDER BY s.updated_at DESC, s.resend_event_id DESC LIMIT 50`)).rows[0]['QUERY PLAN'];
+    const txt = JSON.stringify(plan);
+    expect(txt).toContain('idx_orphan_state_keyset');
+    expect(txt).not.toContain('"Node Type": "Sort"');
+  });
+});

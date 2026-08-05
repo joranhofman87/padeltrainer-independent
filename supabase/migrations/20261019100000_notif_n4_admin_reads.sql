@@ -463,3 +463,8 @@ COMMENT ON FUNCTION public.admin_list_notification_orphans(timestamptz, text, in
   'N4 M7: the orphan reconcile queue, quarantined-first — fixed columns (ids, codes, states; no provider bodies), composite keyset, clamp 1..200, admin fail-closed. The resolve/requeue controls act on these rows.';
 REVOKE ALL ON FUNCTION public.admin_list_notification_orphans(timestamptz, text, int) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_list_notification_orphans(timestamptz, text, int) TO authenticated, service_role;
+
+-- the orphan reader's OWN keyset order (the pre-existing index leads with digest_group_id, so
+-- the reader's global (updated_at DESC, resend_event_id DESC) scan could still sort the table)
+CREATE INDEX IF NOT EXISTS idx_orphan_state_keyset
+  ON public.notification_orphan_reconcile_state (updated_at DESC, resend_event_id DESC);

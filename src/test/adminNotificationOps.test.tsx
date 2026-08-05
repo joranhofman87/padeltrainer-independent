@@ -232,12 +232,29 @@ describe('AdminNotificationOps', () => {
     });
   });
 
-  it('the outbox drill-down fetches the CLICKED row', async () => {
+  it('the outbox drill-down fetches the CLICKED row and PAGES its timeline (no silent truncation)', async () => {
+    // a FULL history page (50) must offer more — a >50-event row was previously inaccessible
+    const full = Array.from({ length: 50 }, (_, i) => ({
+      at: i === 49 ? TS1 : TS2, kind: 'provider_event', a: 'delivered', b: 're_x', c: null, ref: `pe:${i}`,
+    }));
+    rpcMock.mockImplementation((fn: string, args?: Record<string, unknown>) =>
+      fn === 'admin_notification_delivery_history'
+        ? Promise.resolve({ data: args?.p_before_ref ? [full[0]] : full, error: null })
+        : defaultImpl(fn));
     renderPage();
     fireEvent.click(await screen.findByTestId('outbox-load'));
     fireEvent.click(await screen.findByTestId('history-btn-ob1'));
     await screen.findByTestId('delivery-history');
     expect(rpcMock.mock.calls.find((c) => c[0] === 'admin_notification_delivery_history')![1].p_outbox_id).toBe('ob1');
+    fireEvent.click(await screen.findByTestId('history-more'));
+    await waitFor(() => {
+      const calls = rpcMock.mock.calls.filter((c) => c[0] === 'admin_notification_delivery_history');
+      expect(calls.length).toBe(2);
+      expect(calls[1][1].p_before_at).toBe(TS1);        // the LAST row's raw strings, verbatim
+      expect(calls[1][1].p_before_ref).toBe('pe:49');
+    });
+    // a short page ends the crawl
+    await waitFor(() => expect(screen.queryByTestId('history-more')).toBeNull());
   });
 });
 

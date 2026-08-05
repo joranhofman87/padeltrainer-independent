@@ -20,14 +20,18 @@ const STATUSES = ['pending', 'processing', 'sent', 'failed', 'skipped'] as const
  */
 export function NotificationOutboxSection({
   onOpenHistory,
+  onMoreHistory,
   historyFor,
   historyRows,
   historyError,
+  historyExhausted,
 }: {
   onOpenHistory: (outboxId: string) => void;
+  onMoreHistory: () => void;
   historyFor: string | null;
   historyRows: HistoryRow[] | null;
   historyError: boolean;
+  historyExhausted: boolean;
 }) {
   const { t } = useTranslation('admin');
   const [channel, setChannel] = useState('email');
@@ -135,6 +139,11 @@ export function NotificationOutboxSection({
               ))}
             </ul>
           </ListPageState>
+          {historyRows && historyRows.length > 0 && !historyExhausted && (
+            <Button size="sm" variant="outline" className="mt-2" onClick={onMoreHistory} data-testid="history-more">
+              {t('notifOps.more', 'Load more')}
+            </Button>
+          )}
         </div>
       )}
     </>

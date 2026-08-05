@@ -79,15 +79,29 @@ export default function AdminNotificationOps() {
   const [historyRows, setHistoryRows] = useState<HistoryRow[] | null>(null);
   const [historyError, setHistoryError] = useState(false);
   const historyEpoch = useRef(0);
-  const openHistory = async (outboxId: string) => {
+  const [historyExhausted, setHistoryExhausted] = useState(false);
+  const HISTORY_PAGE = 50;
+  const openHistory = async (outboxId: string, more = false) => {
     const myEpoch = ++historyEpoch.current;
-    setHistoryFor(outboxId);
-    setHistoryRows(null);
+    if (!more) {
+      setHistoryFor(outboxId);
+      setHistoryRows(null);
+      setHistoryExhausted(false);
+    }
     setHistoryError(false);
-    const { data, error } = await supabase.rpc('admin_notification_delivery_history', { p_outbox_id: outboxId, p_limit: 50 });
+    // the timeline is keyset-paginated too: a row with >50 events must not silently truncate
+    const last = more && historyRows?.length ? historyRows[historyRows.length - 1] : null;
+    const { data, error } = await supabase.rpc('admin_notification_delivery_history', {
+      p_outbox_id: outboxId,
+      p_before_at: last ? last.at : undefined,      // verbatim strings, microseconds intact
+      p_before_ref: last ? last.ref : undefined,
+      p_limit: HISTORY_PAGE,
+    });
     if (myEpoch !== historyEpoch.current) return;
     if (error) { setHistoryError(true); return; }
-    setHistoryRows((data ?? []) as HistoryRow[]);
+    const page = (data ?? []) as HistoryRow[];
+    setHistoryExhausted(page.length < HISTORY_PAGE);
+    setHistoryRows((prev) => (more && prev ? [...prev, ...page] : page));
   };
 
   const frozenNote = t('notifOps.frozenNote', 'The decision is locked to this exact wording — a retry replays it. To decide differently, cancel and start a new decision.');
@@ -214,7 +228,9 @@ export default function AdminNotificationOps() {
         />
         <NotificationOutboxSection
           onOpenHistory={(id) => void openHistory(id)}
+          onMoreHistory={() => { if (historyFor) void openHistory(historyFor, true); }}
           historyFor={historyFor} historyRows={historyRows} historyError={historyError}
+          historyExhausted={historyExhausted}
         />
         <DigestGroupsSection onCancel={(g) => cancelGroup.open(g)} onReady={(r) => { reloadGroups.current = r; }} />
         <WorkerRunsSection />

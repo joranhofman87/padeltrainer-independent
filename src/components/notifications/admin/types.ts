@@ -20,6 +20,7 @@ export type OrphanRow = Fn['admin_list_notification_orphans']['Returns'][number]
 export type AuditRow = Fn['admin_list_notification_audit']['Returns'][number];
 export type RejectedRow = Fn['admin_list_notification_rejected']['Returns'][number];
 export type HistoryRow = Fn['admin_notification_delivery_history']['Returns'][number];
+export type DecisionRow = Fn['admin_preview_notification_decision']['Returns'][number];
 export type PreviewRow = Fn['admin_preview_notification_recipients']['Returns'][number];
 export type SearchRow = Fn['admin_search_notification_destination']['Returns'][number];
 
