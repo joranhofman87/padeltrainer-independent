@@ -1265,17 +1265,36 @@ describe('N4 M6 round-4 — the persisted candidate projection is maintained and
     // structural plan pin: the projection query must be served by idx_contacts_effective_user
     // in index order (Unique over a sorted stream that STOPS at the limit) — never a
     // join-then-hash-dedup over every eligible contact
+    // the REAL staged query, verbatim shape: composite order, cursor, budget
     const plan = (await c.query(`
       EXPLAIN (FORMAT JSON)
-      SELECT DISTINCT nc.effective_user_id FROM public.notification_contacts nc
-       WHERE nc.channel = 'email' AND nc.revoked_at IS NULL AND nc.effective_user_id IS NOT NULL
-         AND nc.consent_status <> 'opted_out'
-       ORDER BY 1 LIMIT 50
+      SELECT nc.effective_user_id, nc.id, nc.consent_status, nc.consent_scope,
+             nc.consent_academy_profile_id, nc.consent_trainer_id
+        FROM public.notification_contacts nc
+       WHERE nc.channel = 'email' AND nc.revoked_at IS NULL
+         AND nc.effective_user_id IS NOT NULL
+         AND nc.effective_user_id > '00000000-0000-0000-0000-000000000000'::uuid
+       ORDER BY nc.effective_user_id, nc.id
+       LIMIT 500
     `)).rows[0]['QUERY PLAN'];
     const txt = JSON.stringify(plan);
     expect(txt).toContain('idx_contacts_effective_user');
     expect(txt).not.toContain('"Node Type": "Hash Join"');
-    expect(txt).not.toContain('"Node Type": "Sort"');   // index order feeds the dedup directly
+    expect(txt).not.toContain('"Node Type": "Sort"');
+    expect(txt).not.toContain('Incremental Sort');   // (channel, effective_user_id, id) carries the FULL order
+  });
+
+  it('the ≤500-active-contacts cap holds at the schema — the fragment-judgment arm is unreachable', async () => {
+    const cap = 'e4000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [cap]);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT $1, 'email', 'cap' || g || '@example.com', 'c***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 500) g`, [cap]);
+    await expect(c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'cap501@example.com', 'c***@example.com', 'opted_in', 'global')`, [cap]))
+      .rejects.toThrow(/at most 500 active contacts/);
   });
 });
 

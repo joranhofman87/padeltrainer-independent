@@ -273,9 +273,42 @@ UPDATE public.notification_contacts nc
    SET effective_user_id = coalesce(nc.user_id, (SELECT p.user_id FROM public.persons p WHERE p.id = nc.person_id))
  WHERE nc.effective_user_id IS DISTINCT FROM coalesce(nc.user_id, (SELECT p.user_id FROM public.persons p WHERE p.id = nc.person_id));
 
+-- (channel, effective_user_id, id): the staged scan orders by the COMPOSITE, so the index
+-- must carry id too — otherwise a large same-user group forces a sort and the 500-row budget
+-- bounds output, not rows examined
 CREATE INDEX IF NOT EXISTS idx_contacts_effective_user
-  ON public.notification_contacts (channel, effective_user_id)
+  ON public.notification_contacts (channel, effective_user_id, id)
   WHERE effective_user_id IS NOT NULL AND revoked_at IS NULL;
+
+-- THE SCHEMA CAP that makes the >budget single-user arm UNREACHABLE: at most 500 active
+-- contacts per (channel, effective user). Without it, a 501st eligible contact behind 500
+-- ineligible ones was permanently invisible to the bounded crawl. Serialized per user so two
+-- concurrent inserts at 499 cannot both pass.
+CREATE OR REPLACE FUNCTION public.notif_contact_cap_guard()
+RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE v int;
+BEGIN
+  IF NEW.effective_user_id IS NOT NULL AND NEW.revoked_at IS NULL THEN
+    PERFORM pg_advisory_xact_lock(
+      hashtextextended('notif-contact-cap:' || NEW.channel || ':' || NEW.effective_user_id::text, 0));
+    SELECT count(*) INTO v FROM (
+      SELECT 1 FROM public.notification_contacts nc
+       WHERE nc.channel = NEW.channel AND nc.effective_user_id = NEW.effective_user_id
+         AND nc.revoked_at IS NULL AND nc.id IS DISTINCT FROM NEW.id
+       LIMIT 500) b;
+    IF v >= 500 THEN
+      RAISE EXCEPTION 'notification_contacts: at most 500 active contacts per user per channel — the bounded recipient crawl depends on this cap';
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_zz_notif_contact_cap ON public.notification_contacts;
+-- 'zz' is load-bearing: same-event triggers fire in NAME order, and this one must see the
+-- effective_user_id that trg_notif_contact_effective_user just computed
+CREATE TRIGGER trg_zz_notif_contact_cap
+  BEFORE INSERT OR UPDATE ON public.notification_contacts
+  FOR EACH ROW EXECUTE FUNCTION public.notif_contact_cap_guard();
 
 -- the bounded per-event recipient preview: users with a preference row or an eligible contact
 CREATE OR REPLACE FUNCTION public.admin_preview_notification_recipients(
@@ -302,6 +335,7 @@ DECLARE
   v_boundary uuid;
   v_progress uuid;
   v_single boolean := false;
+  v_lookahead uuid;
   v_raw int := 0;
   v_emitted int := 0;
   v_last uuid := NULL;
@@ -323,23 +357,36 @@ BEGIN
      AND nc.effective_user_id IS NOT NULL
      AND (p_after_user_id IS NULL OR nc.effective_user_id > p_after_user_id)
    ORDER BY nc.effective_user_id, nc.id
-   LIMIT RAW_BUDGET;
+   LIMIT RAW_BUDGET + 1;   -- the LOOKAHEAD row: exactly-budget-and-complete is legal (the cap
+                           -- allows exactly 500) and must be judged whole, never raised on
   GET DIAGNOSTICS v_raw = ROW_COUNT;
-  v_partial := (v_raw >= RAW_BUDGET);
+  v_partial := (v_raw > RAW_BUDGET);
+  IF v_partial THEN
+    -- the lookahead row tells us whether the cut is INSIDE the boundary user's contact set
+    -- (same uid → they are split and must be deferred whole) or exactly ON a user border
+    -- (different uid → everyone staged is complete)
+    SELECT r.uid INTO v_lookahead FROM _preview_raw r ORDER BY r.uid DESC, r.cid DESC LIMIT 1;
+    DELETE FROM _preview_raw r
+     WHERE (r.uid, r.cid) = (SELECT r2.uid, r2.cid FROM _preview_raw r2 ORDER BY r2.uid DESC, r2.cid DESC LIMIT 1);
+  END IF;
 
   IF v_partial THEN
-    -- BOUNDARY-USER SEMANTICS: the budget may have SPLIT the last user's contact set — an
-    -- eligible contact past the cut would be lost if we judged them on the fragment, and the
-    -- horizon would skip them forever. So the boundary user is DEFERRED whole to the next
-    -- page (progress = the last COMPLETE user), unless the entire budget is one user's
-    -- contacts — then they are judged on the staged 500 (the documented per-user cap) so the
-    -- crawl cannot livelock.
     SELECT r.uid INTO v_boundary FROM _preview_raw r ORDER BY r.uid DESC, r.cid DESC LIMIT 1;
-    SELECT count(DISTINCT r.uid) = 1 INTO v_single FROM _preview_raw r;
-    IF NOT v_single THEN
-      DELETE FROM _preview_raw WHERE uid = v_boundary;
-      SELECT r.uid INTO v_progress FROM _preview_raw r ORDER BY r.uid DESC LIMIT 1;
+    IF v_lookahead = v_boundary THEN
+      -- the cut is INSIDE the boundary user's set: DEFER them whole (a fragment could hide an
+      -- eligible contact forever; the horizon would then skip them permanently)
+      SELECT count(DISTINCT r.uid) = 1 INTO v_single FROM _preview_raw r;
+      IF NOT v_single THEN
+        DELETE FROM _preview_raw WHERE uid = v_boundary;
+        SELECT r.uid INTO v_progress FROM _preview_raw r ORDER BY r.uid DESC LIMIT 1;
+      ELSE
+        -- UNREACHABLE while the ≤500-active-contacts cap holds (trg_zz_notif_contact_cap):
+        -- a >500-contact user cannot exist, so a whole-budget single-user split means the
+        -- cap regressed — loud, never a silent fragment-judgment
+        RAISE EXCEPTION 'admin_preview_notification_recipients: >% active contacts for one user — the schema cap has regressed', RAW_BUDGET;
+      END IF;
     ELSE
+      -- the cut fell exactly ON a user border: every staged user is COMPLETE
       v_progress := v_boundary;
     END IF;
   END IF;
