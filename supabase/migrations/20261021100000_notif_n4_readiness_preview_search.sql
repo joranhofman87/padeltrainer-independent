@@ -46,18 +46,22 @@ BEGIN
   add_fail := add_fail OR v > 0;
 
   -- in-flight work: claimed/sending/uncertain
-  -- the verdict needs zero/nonzero authority, not an exact tally: every scan is LIMIT-bounded
+  -- the verdict needs zero/nonzero authority, not an exact tally: every scan is LIMIT-bounded,
+  -- and a SATURATED count says 'at least' — a bounded count presented as exact misleads
   SELECT count(*) INTO v FROM (SELECT 1 FROM public.notification_outbox WHERE status = 'processing' LIMIT 1001) b;
   SELECT count(*) INTO v2 FROM (SELECT 1 FROM public.notification_digest_groups
    WHERE state IN ('sending', 'awaiting_evidence') OR (uncertain_since IS NOT NULL AND terminal_at IS NULL) LIMIT 1001) b;
   checks := checks || jsonb_build_object('id', 'in_flight_work', 'status', CASE WHEN v + v2 = 0 THEN 'pass' ELSE 'fail' END,
-    'detail', v || ' instant row(s) processing, ' || v2 || ' digest group(s) mid-send/uncertain');
+    'value', least(v, 1000) + least(v2, 1000), 'capped', (v > 1000 OR v2 > 1000),
+    'detail', CASE WHEN v > 1000 THEN 'at least 1000' ELSE v::text END || ' instant row(s) processing, '
+           || CASE WHEN v2 > 1000 THEN 'at least 1000' ELSE v2::text END || ' digest group(s) mid-send/uncertain');
   add_fail := add_fail OR (v + v2) > 0;
 
   -- quarantined orphans await a human
   SELECT count(*) INTO v FROM (SELECT 1 FROM public.notification_orphan_reconcile_state WHERE quarantined LIMIT 1001) b;
   checks := checks || jsonb_build_object('id', 'quarantined_orphans', 'status', CASE WHEN v = 0 THEN 'pass' ELSE 'fail' END,
-    'detail', v || ' orphan(s) quarantined');
+    'value', least(v, 1000), 'capped', v > 1000,
+    'detail', CASE WHEN v > 1000 THEN 'at least 1000' ELSE v::text END || ' orphan(s) quarantined');
   add_fail := add_fail OR v > 0;
 
   -- cron IDENTITY, not merely active (finding 9): plain allowlisted SELECT, no command text
@@ -253,10 +257,21 @@ BEGIN
           AND (p_after_user_id IS NULL OR v2.user_id > p_after_user_id)
         ORDER BY v2.user_id LIMIT 50)
       UNION
-      (SELECT nc.user_id FROM public.notification_contacts nc
-        WHERE nc.channel = p_channel AND nc.revoked_at IS NULL AND nc.user_id IS NOT NULL
-          AND (p_after_user_id IS NULL OR nc.user_id > p_after_user_id)
-        ORDER BY nc.user_id LIMIT 50)
+      -- DISTINCT effective users FIRST (a multi-contact user must not eat the budget), the
+      -- resolver's own eligibility predicates, and person-linked contacts count via
+      -- persons.user_id even when the contact's own user_id is NULL
+      (SELECT DISTINCT coalesce(nc.user_id, pe.user_id) AS uid
+         FROM public.notification_contacts nc
+         LEFT JOIN public.persons pe ON pe.id = nc.person_id
+        WHERE nc.channel = p_channel AND nc.revoked_at IS NULL
+          AND (CASE p_channel WHEN 'email' THEN nc.consent_status <> 'opted_out'
+                              ELSE nc.consent_status = 'opted_in' END)
+          AND public.is_notification_consent_in_scope(
+                nc.consent_scope, nc.consent_academy_profile_id, nc.consent_trainer_id,
+                p_tenant_academy_profile_id, NULL)
+          AND coalesce(nc.user_id, pe.user_id) IS NOT NULL
+          AND (p_after_user_id IS NULL OR coalesce(nc.user_id, pe.user_id) > p_after_user_id)
+        ORDER BY 1 LIMIT 50)
     ) cand
     WHERE cand.uid IS NOT NULL
     ORDER BY cand.uid
@@ -296,12 +311,12 @@ CREATE INDEX idx_notif_admin_search_rate ON public.notification_admin_search_log
 -- raw destinations (the fn is IMMUTABLE, so these are plain expression indexes)
 CREATE INDEX IF NOT EXISTS idx_contacts_dest_fp
   ON public.notification_contacts (public.notif_digest_destination_fingerprint(destination_normalized));
+-- NON-partial: the fingerprint fn is not STRICT, so the planner cannot infer a partial
+-- predicate from expression equality — a partial index here silently stops serving the search
 CREATE INDEX IF NOT EXISTS idx_outbox_dest_fp
-  ON public.notification_outbox (public.notif_digest_destination_fingerprint(destination_normalized))
-  WHERE destination_normalized IS NOT NULL;
+  ON public.notification_outbox (public.notif_digest_destination_fingerprint(destination_normalized));
 CREATE INDEX IF NOT EXISTS idx_edev_dest_fp
-  ON public.email_delivery_events (public.notif_digest_destination_fingerprint(recipient_email))
-  WHERE recipient_email IS NOT NULL;
+  ON public.email_delivery_events (public.notif_digest_destination_fingerprint(recipient_email));
 
 CREATE OR REPLACE FUNCTION public.admin_search_notification_destination(
   p_destination text

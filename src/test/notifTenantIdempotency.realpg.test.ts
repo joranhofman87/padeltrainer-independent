@@ -1170,3 +1170,73 @@ describe('N4 M6 round-2 — serialized rate limit, channel-true masks, bounded p
     await asUser(null);
   });
 });
+
+describe('N4 M6 round-3 — candidate eligibility shapes and index integrity', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+  const mkUser = async (suffix: string) => {
+    const uid = `b0000000-0000-4000-8000-${suffix.padStart(12, '0')}`;
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    return uid;
+  };
+
+  it('candidates: multi-contact users count ONCE, opted-out and out-of-scope are excluded, person-linked count', async () => {
+    const multi = await mkUser('1');
+    for (let i = 0; i < 3; i++) {
+      await c.query(
+        `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, is_primary)
+         VALUES ($1, 'email', $2, 'm***@example.com', 'opted_in', 'global', false)`, [multi, `multi${i}@example.com`]);
+    }
+    const optedOut = await mkUser('2');
+    await c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'out@example.com', 'o***@example.com', 'opted_out', 'global')`, [optedOut]);
+    const scoped = await mkUser('3');
+    await c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, consent_academy_profile_id)
+       VALUES ($1, 'email', 'scoped@example.com', 's***@example.com', 'opted_in', 'tenant', '${B}')`, [scoped]);
+    const personOnly = await mkUser('4');
+    const personRow = (await c.query(
+      `INSERT INTO public.persons (user_id, email) VALUES ($1, 'ponly@example.com') RETURNING id`, [personOnly])).rows[0].id;
+    await c.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'ponly@example.com', 'p***@example.com', 'opted_in', 'global')`, [personRow]);
+
+    await asUser(ADMIN_UID);
+    // tenant scope A: the B-scoped contact must be excluded
+    // cursor past the persisted 60-user bulk block (a000...) straight into this test's b000... users
+    const rows = (await c.query(
+      `SELECT user_id FROM public.admin_preview_notification_recipients('session_reminder_player','email','${A}','b0000000-0000-4000-8000-000000000000',50)`)).rows;
+    const ids = rows.map((r) => r.user_id as string);
+    expect(ids.filter((x) => x === multi).length).toBe(1);    // ONCE — three contacts, one user
+    expect(ids).not.toContain(optedOut);                       // resolver eligibility, mirrored
+    expect(ids).not.toContain(scoped);                         // out-of-scope tenant consent
+    expect(ids).toContain(personOnly);                         // person-linked reaches the user
+    await asUser(null);
+  });
+
+  it('the search-serving expression indexes are NON-partial — the structural pin', async () => {
+    const idx = (await c.query(`
+      SELECT indexname, indexdef FROM pg_indexes
+      WHERE schemaname = 'public' AND indexname IN ('idx_outbox_dest_fp', 'idx_edev_dest_fp', 'idx_contacts_dest_fp')
+    `)).rows;
+    expect(idx.length).toBe(3);
+    for (const i of idx) {
+      // the fingerprint fn is not STRICT, so a partial predicate silently stops serving the
+      // search's expression-equality lookups
+      expect(i.indexdef).not.toContain('WHERE');
+      expect(i.indexdef).toContain('notif_digest_destination_fingerprint');
+    }
+  });
+
+  it('a SATURATED readiness count says so — value + capped, "at least", never a fake exact', async () => {
+    await asUser(ADMIN_UID);
+    const env = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r;
+    const inflight = env.checks.find((x: { id: string }) => x.id === 'in_flight_work');
+    expect(inflight).toHaveProperty('value');
+    expect(inflight).toHaveProperty('capped');
+    expect(inflight.capped).toBe(false);   // small fixture: uncapped, and says so
+    const orphans = env.checks.find((x: { id: string }) => x.id === 'quarantined_orphans');
+    expect(orphans).toHaveProperty('capped');
+    await asUser(null);
+  });
+});
