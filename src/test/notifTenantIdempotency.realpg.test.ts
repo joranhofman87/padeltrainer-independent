@@ -107,6 +107,7 @@ beforeAll(async () => {
     // ── under test ──
     '20261015100000_notif_n3_tenant_aware_idempotency.sql',
     '20261015110000_notif_n3_academy_restrictions.sql',
+    '20261015120000_notif_n3_resolver_cap_integration.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -289,5 +290,232 @@ describe('academy restrictions + audit (N3 M2)', () => {
     const hist = (await c.query(`SELECT * FROM public.get_academy_notification_restriction_audit('${A}')`)).rows;
     expect(hist).toHaveLength(1);
     expect(hist[0].reason).toBe('too many complaints');
+  });
+});
+
+
+/** enqueue an OPTIONAL event (open_slots_player needs a payload shape; session_reminder_player
+ *  is optional + plain). Returns emitted rows. */
+async function enqueueOptional(tenant: { academy?: string; trainer?: string }, subject: string, event = 'session_reminder_player') {
+  // open_slots_player's digest item minter requires a structured payload with a subtype
+  const payload = event === 'open_slots_player'
+    ? `'{"subtype":"new_availability","data":{"trainer_name":"Coach","slot_count":1,"date_from":"2026-08-10"}}'::jsonb`
+    : 'NULL';
+  const r = await c.query(
+    `SELECT * FROM public.enqueue_notification(
+       p_event_key => $1, p_recipient_person_id => $2, p_idempotency_subject => $3,
+       p_tenant_academy_profile_id => $4, p_tenant_trainer_id => $5,
+       p_payload => ${payload})`,
+    [event, P1, subject, tenant.academy ?? null, tenant.trainer ?? null]);
+  return r.rows;
+}
+
+describe('resolver cap integration (N3 M3)', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await c.query(`DELETE FROM public.notification_preferences_v2;`);
+    await asUser(MGR);
+    // an email contact so the optional event is normally deliverable
+    await c.query(`
+      INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+        destination_redacted, consent_status, consent_scope, is_primary)
+      VALUES ('${P1}','${U1}','email','p1@example.com','p***@example.com','opted_in','global', true)
+      ON CONFLICT DO NOTHING;`);
+  });
+
+  it("cap 'off' → a terminal tenant_restricted skipped row, tenant-attributed, NO destination", async () => {
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    const rows = await enqueueOptional({ academy: A }, 's-off');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].status).toBe('skipped');
+    expect(rows[0].skip_reason).toBe('tenant_restricted');
+    expect(rows[0].destination_normalized).toBeNull();
+    const raw = await c.query(
+      `SELECT tenant_scope_key, destination_normalized FROM public.notification_outbox WHERE skip_reason='tenant_restricted'`);
+    expect(raw.rows[0].tenant_scope_key).toBe(`a:${A}`);
+    expect(raw.rows[0].destination_normalized).toBeNull();
+  });
+
+  it("a player's own 'off' keeps ITS reason — the cap never takes credit for the player's decision", async () => {
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+      VALUES ('${U1}','session_reminder_player','off')`);
+    const rows = await enqueueOptional({ academy: A }, 's-pref-off');
+    // player-off on an optional event emits NOTHING (pre-existing semantics), never tenant_restricted
+    expect(rows.filter((r) => r.skip_reason === 'tenant_restricted')).toHaveLength(0);
+  });
+
+  it("cap 'daily' caps instant→daily, but a player's weekly stays weekly (never a floor)", async () => {
+    // The engine flag is catalog data; enabling it in this ISOLATED harness makes the digest
+    // branch write real members whose digest_frequency exposes exactly which cadence won.
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true WHERE key='open_slots_player'`);
+    try {
+      await setCap({ event: 'open_slots_player', cap: 'daily' });
+      // instant-preferring player: the cap must reduce instant → daily
+      await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+        VALUES ('${U1}','open_slots_player','instant')`);
+      const capped = await enqueueOptional({ academy: A }, 's-daily', 'open_slots_player');
+      const cappedRow = capped.find((r) => r.channel === 'email');
+      expect(cappedRow).toBeTruthy();
+      const cappedShape = await c.query(
+        `SELECT delivery_mode, digest_frequency FROM public.notification_outbox WHERE id = $1`,
+        [cappedRow!.outbox_id]);
+      expect(cappedShape.rows[0]).toEqual({ delivery_mode: 'digest', digest_frequency: 'daily' });
+      // weekly-preferring player under the same daily cap: weekly SURVIVES (cap ≤ pref → no-op)
+      await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='weekly'
+        WHERE user_id='${U1}' AND event_type='open_slots_player'`);
+      const kept = await enqueueOptional({ academy: A }, 's-weekly', 'open_slots_player');
+      const keptRow = kept.find((r) => r.channel === 'email');
+      const keptShape = await c.query(
+        `SELECT digest_frequency FROM public.notification_outbox WHERE id = $1`, [keptRow!.outbox_id]);
+      expect(keptShape.rows[0].digest_frequency).toBe('weekly');
+    } finally {
+      await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false WHERE key='open_slots_player'`);
+    }
+  });
+
+  it('a REQUIRED event ignores even a smuggled cap row — the override runs last', async () => {
+    // smuggle a cap past the trigger (superuser, trigger disabled) to model a catalog flip
+    await c.query(`ALTER TABLE public.academy_notification_restrictions DISABLE TRIGGER trg_notif_academy_restriction_guard`);
+    await c.query(`INSERT INTO public.academy_notification_restrictions VALUES ('${A}','booking_confirmed_player','email','off')`);
+    await c.query(`ALTER TABLE public.academy_notification_restrictions ENABLE TRIGGER trg_notif_academy_restriction_guard`);
+    const rows = await enqueue({ academy: A }, 'req-1');
+    const email = rows.find((r) => r.channel === 'email');
+    expect(email!.status).toBe('pending'); // sent path, NOT skipped
+  });
+
+  it('a REQUIRED event is untouchable on NON-email channels too — the guard is per-event, not per-channel', async () => {
+    // The email arm is doubly protected (the required override runs last); whatsapp has no such
+    // override, so ONLY the NOT required_delivery guard stands between a smuggled cap and a
+    // required event's whatsapp leg. This is the test that makes that guard load-bearing.
+    await c.query(`
+      INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+        destination_redacted, consent_status, consent_scope, is_primary)
+      VALUES ('${P1}','${U1}','whatsapp','+31600000001','+3160***01','opted_in','global', true)
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+      VALUES ('${U1}','booking_confirmed_player','instant')
+      ON CONFLICT (user_id, event_type) DO UPDATE SET whatsapp_frequency='instant'`);
+    await c.query(`ALTER TABLE public.academy_notification_restrictions DISABLE TRIGGER trg_notif_academy_restriction_guard`);
+    await c.query(`INSERT INTO public.academy_notification_restrictions VALUES ('${A}','booking_confirmed_player','whatsapp','off')`);
+    await c.query(`ALTER TABLE public.academy_notification_restrictions ENABLE TRIGGER trg_notif_academy_restriction_guard`);
+    const rows = await enqueue({ academy: A }, 'req-wa');
+    const wa = rows.find((r) => r.channel === 'whatsapp');
+    expect(wa).toBeTruthy();
+    expect(wa!.status).toBe('pending');
+  });
+
+  it('a trainer-only send has no academy to answer to — the cap does not apply', async () => {
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    const rows = await enqueueOptional({ trainer: T }, 's-trainer');
+    expect(rows.filter((r) => r.skip_reason === 'tenant_restricted')).toHaveLength(0);
+    expect(rows.find((r) => r.channel === 'email')!.status).toBe('pending');
+  });
+
+  it("academy B's recipients are untouched by A's cap (tenant isolation)", async () => {
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    const rows = await enqueueOptional({ academy: B }, 's-b');
+    expect(rows.find((r) => r.channel === 'email')!.status).toBe('pending');
+  });
+});
+
+describe('live enforcement at the send authorities (N3 M3)', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await c.query(`DELETE FROM public.notification_preferences_v2;`);
+    await asUser(MGR);
+    await c.query(`
+      INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+        destination_redacted, consent_status, consent_scope, is_primary)
+      VALUES ('${P1}','${U1}','email','p1@example.com','p***@example.com','opted_in','global', true)
+      ON CONFLICT DO NOTHING;`);
+  });
+
+  it('a cap set AFTER enqueue converts the pending row at the next claim — nothing is handed to the worker', async () => {
+    await enqueueOptional({ academy: A }, 'live-1');
+    // the cap lands while the row sits pending
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    const claimed = await c.query(
+      `SELECT * FROM public.claim_notification_outbox_batch('email','w1',20)`);
+    expect(claimed.rows).toHaveLength(0);
+    const row = await c.query(
+      `SELECT status, skip_reason FROM public.notification_outbox
+        WHERE idempotency_key LIKE '%live-1%' AND channel = 'email'`);
+    expect(row.rows[0]).toEqual({ status: 'skipped', skip_reason: 'tenant_restricted' });
+  });
+
+  it('the cancel step spares required events, other tenants, and digest members', async () => {
+    await enqueue({ academy: A }, 'live-req');                    // required
+    await enqueueOptional({ academy: B }, 'live-b');              // other tenant
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    await c.query(`SELECT * FROM public.claim_notification_outbox_batch('email','w1',20)`);
+    const survivors = await c.query(
+      `SELECT idempotency_key, status FROM public.notification_outbox
+        WHERE status IN ('pending','processing') AND channel='email' ORDER BY idempotency_key`);
+    const keys = survivors.rows.map((r) => r.idempotency_key);
+    expect(keys.some((k: string) => k.includes('live-req'))).toBe(true);
+    expect(keys.some((k: string) => k.includes('live-b'))).toBe(true);
+  });
+
+  it('two-session: a cap committed while another session scans still lands before the NEXT claim', async () => {
+    // session 2 = a concurrent manager write racing the worker
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+    await c2.connect();
+    try {
+      await enqueueOptional({ academy: A }, 'live-race');
+      await c2.query('BEGIN');
+      await c2.query(
+        `INSERT INTO public.academy_notification_restrictions VALUES ('${A}','session_reminder_player','email','off')`);
+      // worker claims WHILE the cap transaction is open — the uncommitted cap is invisible, the
+      // row is claimed: this IS the accepted §7b-family residual, pinned here as such
+      const during = await c.query(`SELECT * FROM public.claim_notification_outbox_batch('email','w1',20)`);
+      expect(during.rows).toHaveLength(1);
+      await c2.query('COMMIT');
+      // release the claim back to pending (simulating a retry) — the NEXT claim honours the cap
+      await c.query(`UPDATE public.notification_outbox SET status='pending', locked_at=NULL, locked_by=NULL
+        WHERE id = $1`, [during.rows[0].outbox_id]);
+      const after = await c.query(`SELECT * FROM public.claim_notification_outbox_batch('email','w2',20)`);
+      expect(after.rows).toHaveLength(0);
+      const final = await c.query(
+        `SELECT status, skip_reason FROM public.notification_outbox WHERE id = $1`, [during.rows[0].outbox_id]);
+      expect(final.rows[0]).toEqual({ status: 'skipped', skip_reason: 'tenant_restricted' });
+    } finally {
+      await c2.end();
+    }
+  });
+
+  it('digest stop predicate: a cap landing after materialization stops the member (prepare AND begin call it)', async () => {
+    // a LIVE follow relationship so the baseline member is genuinely deliverable
+    await c.query(`
+      INSERT INTO public.profiles (id, user_id) VALUES ('77777777-7777-4777-8777-777777777777','${U1}')
+      ON CONFLICT DO NOTHING;
+      INSERT INTO public.trainer_followers (player_id, trainer_id, notify_new_availability)
+      VALUES ('77777777-7777-4777-8777-777777777777','${T}', true) ON CONFLICT DO NOTHING;`);
+    // a digest-mode member row, academy-attributed AND trainer-attributed (the follow check
+    // needs the trainer; the CAP keys on the academy)
+    const ins = await c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_user_id, recipient_person_id, tenant_academy_profile_id,
+         tenant_trainer_id,
+         visibility_scope, payload, public_summary, idempotency_key, status, delivery_mode, scheduled_for,
+         destination_fingerprint, recipient_key, digest_frequency, digest_boundary_at, digest_item,
+         group_locale, recipient_timezone, template_version)
+      VALUES ('open_slots_player','email','${U1}','${P1}','${A}','${T}','private_user_only','{}','{}',
+              'open_slots_player:dg1:${P1}','pending','digest', now() + interval '1 hour',
+              public.notif_digest_destination_fingerprint('p1@example.com'),
+              'p:${P1}','daily', now() + interval '1 hour', '{"title":"x"}'::jsonb,
+              'nl','Europe/Amsterdam', 1)
+      RETURNING id`);
+    const member = ins.rows[0].id;
+    expect((await c.query(`SELECT public.notif_digest_member_stop_reason($1) AS r`, [member])).rows[0].r)
+      .toBeNull(); // deliverable before the cap
+    await setCap({ event: 'open_slots_player', cap: 'off' });
+    expect((await c.query(`SELECT public.notif_digest_member_stop_reason($1) AS r`, [member])).rows[0].r)
+      .toBe('tenant_restricted');
+    // the player's own off still wins the REPORTED reason when both apply
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+      VALUES ('${U1}','open_slots_player','off')`);
+    expect((await c.query(`SELECT public.notif_digest_member_stop_reason($1) AS r`, [member])).rows[0].r)
+      .toBe('preference_off');
   });
 });
