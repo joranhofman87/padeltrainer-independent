@@ -52,7 +52,7 @@ const seedRow = async (over: Partial<{ status: string; channel: string; locked_a
        (channel, event_type, template_key, status, destination_normalized, scheduled_for,
         locked_at, locked_by, attempts, max_attempts, delivery_mode, payload, idempotency_key, recipient_user_id)
      VALUES ($1, 'ev_test', 'tpl', $2, 'a@example.com', now() - interval '1 minute',
-             $3, $4, $5, $6, $7, '{}'::jsonb, gen_random_uuid()::text, '22222222-2222-4222-8222-222222222222')
+             $3, $4, $5, $6, $7, jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, '22222222-2222-4222-8222-222222222222')
      RETURNING id`,
     [over.channel ?? 'email', over.status ?? 'pending', over.locked_at ?? null, over.locked_by ?? null,
      over.attempts ?? 0, over.max_attempts ?? 3, over.delivery_mode ?? null]);
@@ -147,12 +147,26 @@ beforeAll(async () => {
   if (!edevAlter) throw new Error('email_delivery_events generalization ALTER not found');
   await c.query(edevAlter);
   await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));   // gauges expose invocations
+  await c.query(MIG('20261016110000_notif_n4_invocation_claim.sql'));      // the invocation admin reader is part of the pinned surface
   await c.query(MIG('20261017100000_notif_n4_channel_kill_switches.sql'));
   // M3: the ops audit — redefines admin_activate_channel_kill THROUGH the audit (global
   // request lock → audit replay → channel lock), so every admin test below exercises the
   // audited, newest definition.
   await c.query(MIG('20261018100000_notif_n4_admin_ops_audit.sql'));
   await c.query(MIG('20261019100000_notif_n4_admin_reads.sql'));
+  // M5 needs: the group-attempts ledger table + the ledger/finalize pair (REAL, extracted from
+  // the state machine) and the WHOLE orphan migration (its recovery fns are what M5 wraps)
+  const gaDdl = dig.match(/CREATE TABLE (?:IF NOT EXISTS )?public\.notification_digest_group_attempts \([\s\S]*?\n\);/)?.[0];
+  if (!gaDdl) throw new Error('group_attempts DDL not found');
+  await c.query(gaDdl);
+  const sm = MIG('20261004100000_notification_digest_state_machine.sql');
+  for (const fn of ['notif_digest_ledger', 'notif_digest_finalize_group']) {
+    const def = sm.match(new RegExp(`CREATE OR REPLACE FUNCTION public\\.${fn}\\([\\s\\S]*?\\n(?:END )?\\$\\$(?:\\s+LANGUAGE\\s+plpgsql)?;`))?.[0];
+    if (!def) throw new Error(`${fn} not found in the state machine`);
+    await c.query(def);
+  }
+  await c.query(MIG('20261006110000_reconcile_orphan_provider_events.sql'));
+  await c.query(MIG('20261020100000_notif_n4_send_enabling_recovery.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -171,6 +185,7 @@ beforeEach(async () => {
   await c.query(`ALTER TABLE public.notification_admin_rejected_attempts ENABLE TRIGGER trg_notif_admin_rejected_guard;`);
   await c.query(`DELETE FROM public.notification_outbox;`);
   await c.query(`DELETE FROM public.notification_provider_events;`);
+  await c.query(`DELETE FROM public.notification_provider_circuit;`);
   await c.query(`DELETE FROM public.notification_digest_attempts;`);
   await c.query(`DELETE FROM public.notification_digest_groups;`);
   await c.query(`DELETE FROM public.notification_worker_runs;`);
@@ -281,7 +296,7 @@ describe('the claim gate — FIRST, with ZERO ledger mutations on a killed chann
     await c.query(`INSERT INTO public.academy_notification_restrictions (academy_profile_id, event_type, channel, max_frequency) VALUES ($1,'ev_test','email','off')`, [acadId]);
     const restricted = (await c.query(
       `INSERT INTO public.notification_outbox (channel, event_type, template_key, status, destination_normalized, scheduled_for, tenant_academy_profile_id, payload, idempotency_key, recipient_user_id)
-       VALUES ('email','ev_test','tpl','pending','a@example.com', now() - interval '1 minute', $1, '{}'::jsonb, gen_random_uuid()::text, '22222222-2222-4222-8222-222222222222') RETURNING id`, [acadId])).rows[0].id;
+       VALUES ('email','ev_test','tpl','pending','a@example.com', now() - interval '1 minute', $1, jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, '22222222-2222-4222-8222-222222222222') RETURNING id`, [acadId])).rows[0].id;
     await killDirect('email');
     expect(await claim(c)).toEqual([]);
     expect((await rowOf(restricted)).status).toBe('pending');     // not even skipped: NO mutations
@@ -583,7 +598,7 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
       `INSERT INTO public.notification_digest_groups
          (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
           recipient_timezone, digest_boundary_at, available_at, state, uncertain_since)
-       VALUES ('{}'::jsonb, gen_random_uuid()::text, $1, 'ev_test', 'p:1', 'fp:' || gen_random_uuid()::text,
+       VALUES (jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, $1, 'ev_test', 'p:1', 'fp:' || gen_random_uuid()::text,
                'Europe/Amsterdam', now(), now(), $2, $3)
        RETURNING id`,
       [over.channel ?? 'email', over.state ?? 'pending', over.uncertain ? new Date().toISOString() : null]);
@@ -766,5 +781,206 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     expect(digEmail.digest_conclusion).toBe('unknown');
     expect(digEmail.instant_conclusion).toBe('sendable');    // the engine flag is not an instant authority
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false WHERE key = 'ev_test'`);
+  });
+});
+
+describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence always wins', () => {
+  const call = async (uid: string | null, sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const TRIP = '2026-08-05T10:00:00.000Z';
+  const seedCircuit = (state = 'open', reason = 'provider_5xx') =>
+    c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, tripped_at) VALUES ('email', $1, $2, $3::timestamptz)`, [state, reason, TRIP]);
+  const resetSql = (req: string, over: Partial<{ state: string; reason: string; trip: string; why: string }> = {}) =>
+    `SELECT public.admin_reset_notification_circuit('email', '${over.state ?? 'open'}', '${over.reason ?? 'provider_5xx'}', '${over.trip ?? TRIP}'::timestamptz, '${over.why ?? 'provider recovered'}', '${req}') AS r`;
+  let orphanSeq = 0;
+  const seedOrphan = async (quarantined: boolean, code: string) => {
+    const g = (await c.query(
+      `INSERT INTO public.notification_digest_groups
+         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+          recipient_timezone, digest_boundary_at, available_at, state, provider_message_id, provider_status, provider_status_rank)
+       VALUES (jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, 'email', 'ev_test', 'p:o' || $1, 'fp:' || gen_random_uuid()::text,
+               'Europe/Amsterdam', now(), now(), 'sent', 're_orph_' || $1, 'sent', 1)
+       RETURNING id`, [String(++orphanSeq)])).rows[0].id;
+    const ev = `orph_ev_${orphanSeq}`;
+    await c.query(`INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, digest_group_id, status, occurred_at) VALUES ($1, 're_orph_' || $2, $3, 'delivered', now())`, [ev, String(orphanSeq), g]);
+    await c.query(`INSERT INTO public.notification_orphan_reconcile_state (resend_event_id, channel, digest_group_id, attempts, last_error_code, next_eligible_at, quarantined) VALUES ($1, 'email', $4, 3, $2, now(), $3)`, [ev, code, quarantined, g]);
+    return ev;
+  };
+  const rejections = async (action: string) =>
+    (await c.query(`SELECT * FROM public.notification_admin_rejected_attempts WHERE action = $1 ORDER BY created_at`, [action])).rows;
+
+  it('every recovery RPC is admin-fail-closed', async () => {
+    for (const sql of [
+      resetSql(crypto.randomUUID()),
+      `SELECT public.admin_cancel_digest_group(gen_random_uuid(), 'pending', 'why not', gen_random_uuid())`,
+      `SELECT public.admin_resolve_notification_orphan('x', 'why not', gen_random_uuid())`,
+      `SELECT public.admin_requeue_notification_orphan('x', 'why not', gen_random_uuid())`,
+      `SELECT * FROM public.admin_preview_circuit_release('email')`,
+    ]) {
+      await expect(call(null, sql)).rejects.toThrow(/platform admin only/);
+      await expect(call(PLAYER, sql)).rejects.toThrow(/platform admin only/);
+    }
+  });
+
+  it('circuit reset: exact typed confirmation resets, audits open→closed, and replays without a second entry', async () => {
+    await seedCircuit();
+    const req = crypto.randomUUID();
+    expect((await call(ADMIN, resetSql(req)))[0].r).toBe('reset');
+    const cb = (await c.query(`SELECT * FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0];
+    expect(cb.state).toBe('closed');
+    expect(cb.reason).toBeNull();
+    expect(cb.tripped_at).toBeNull();
+    const audit = (await c.query(`SELECT * FROM public.notification_admin_audit WHERE request_id=$1`, [req])).rows;
+    expect(audit.length).toBe(1);
+    expect(audit[0]).toMatchObject({ action: 'circuit_reset', target: 'email', old_value: 'open', new_value: 'closed', outcome: 'applied' });
+    expect((await call(ADMIN, resetSql(req)))[0].r).toBe('reset');   // exact replay
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_admin_audit WHERE request_id=$1`, [req])).rows[0].n).toBe(1);
+  });
+
+  it('circuit reset refusals: kill, open invocation, correlation_mismatch, stale confirmation — each typed AND recorded', async () => {
+    await seedCircuit();
+    await killDirect('email');
+    expect((await call(ADMIN, resetSql(crypto.randomUUID())))[0].r).toBe('rejected_channel_killed');
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`INSERT INTO public.notification_worker_invocations (request_id, purpose, source) VALUES (gen_random_uuid(), 'canary', 'm5-test')`);
+    expect((await call(ADMIN, resetSql(crypto.randomUUID())))[0].r).toBe('rejected_invocation_open');
+    await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    await c.query(`DELETE FROM public.notification_worker_invocations;`);
+    await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    // stale confirmation: the caller saw an EARLIER trip
+    expect((await call(ADMIN, resetSql(crypto.randomUUID(), { trip: '2026-08-05T09:00:00.000Z' })))[0].r).toBe('rejected_stale_state');
+    // correlation_mismatch: categorical — evidence cannot be reset true
+    await c.query(`UPDATE public.notification_provider_circuit SET reason = 'correlation_mismatch' WHERE channel = 'email'`);
+    expect((await call(ADMIN, resetSql(crypto.randomUUID(), { reason: 'correlation_mismatch' })))[0].r).toBe('rejected_correlation_mismatch');
+    const rej = await rejections('circuit_reset');
+    expect(rej.length).toBe(4);
+    expect(rej.map((r) => r.conflict_with)).toEqual([
+      'channel is killed',
+      'a deliberate worker invocation is unresolved',
+      expect.stringContaining('stale confirmation'),
+      expect.stringContaining('correlation_mismatch hold'),
+    ]);
+    // the circuit is STILL not closed — no refusal touched it
+    expect((await c.query(`SELECT state FROM public.notification_provider_circuit WHERE channel='email'`)).rows[0].state).toBe('open');
+  });
+
+  it("a MISSING circuit row reads 'already_closed' — audited as the no-op decision it is", async () => {
+    const req = crypto.randomUUID();
+    expect((await call(ADMIN, resetSql(req)))[0].r).toBe('already_closed');
+    expect((await c.query(`SELECT outcome FROM public.notification_admin_audit WHERE request_id=$1`, [req])).rows[0].outcome).toBe('already_closed');
+  });
+
+  it('group cancel: pre-dispatch only — cancels through the state machine, members skipped, history preserved', async () => {
+    const g = (await c.query(
+      `INSERT INTO public.notification_digest_groups
+         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+          recipient_timezone, digest_boundary_at, available_at, state)
+       VALUES (jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, 'email', 'ev_test', 'p:c1', 'fp:' || gen_random_uuid()::text,
+               'Europe/Amsterdam', now(), now(), 'pending') RETURNING id`)).rows[0].id;
+    const member = (await c.query(
+      `INSERT INTO public.notification_outbox (channel, event_type, template_key, status, destination_normalized, scheduled_for, payload, idempotency_key, recipient_user_id, delivery_mode, digest_group_id)
+       VALUES ('email','ev_test','tpl','pending','a@example.com', now(), jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, '${PLAYER}', 'digest', $1) RETURNING id`, [g])).rows[0].id;
+    const req = crypto.randomUUID();
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${g}', 'pending', 'wrong audience', '${req}') AS r`))[0].r).toBe('cancelled');
+    const after = (await c.query(`SELECT state, terminal_reason FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0];
+    expect(after.state).toBe('retry_stopped');
+    expect(after.terminal_reason).toBe('admin_cancel');
+    expect((await c.query(`SELECT status FROM public.notification_outbox WHERE id=$1`, [member])).rows[0].status).toBe('skipped');
+    expect((await c.query(`SELECT outcome, old_value, new_value FROM public.notification_admin_audit WHERE request_id=$1`, [req])).rows[0])
+      .toMatchObject({ outcome: 'applied', old_value: 'pending', new_value: 'retry_stopped' });
+    // replay converges
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${g}', 'pending', 'wrong audience', '${req}') AS r`))[0].r).toBe('cancelled');
+  });
+
+  it('group cancel refusals: send/uncertainty evidence and stale confirmations refuse, typed and recorded', async () => {
+    const mk = async (state: string, attempts = 0) => (await c.query(
+      `INSERT INTO public.notification_digest_groups
+         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+          recipient_timezone, digest_boundary_at, available_at, state, provider_attempts_started)
+       VALUES (jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, 'email', 'ev_test', 'p:c' || gen_random_uuid()::text, 'fp:' || gen_random_uuid()::text,
+               'Europe/Amsterdam', now(), now(), $1, $2) RETURNING id`, [state, attempts])).rows[0].id;
+    const withAttempts = await mk('request_ready', 1);
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${withAttempts}', 'request_ready', 'stop it', '${crypto.randomUUID()}') AS r`))[0].r)
+      .toBe('rejected_not_pre_dispatch');
+    const pendingG = await mk('pending');
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${pendingG}', 'leased', 'stop it', '${crypto.randomUUID()}') AS r`))[0].r)
+      .toBe('rejected_stale_state');
+    const rej = await rejections('group_cancel');
+    expect(rej.length).toBe(2);
+    expect(rej[0].conflict_with).toContain('not pre-dispatch');
+    expect(rej[1].conflict_with).toContain('stale confirmation');
+    // neither refusal touched a group
+    expect((await c.query(`SELECT state FROM public.notification_digest_groups WHERE id=$1`, [withAttempts])).rows[0].state).toBe('request_ready');
+  });
+
+  it('orphan resolve: permanent + quarantined only — the wrapped fn acts, evidence survives, audit lands', async () => {
+    const ev = await seedOrphan(true, 'tagged_mismatch');
+    const req = crypto.randomUUID();
+    expect((await call(ADMIN, `SELECT public.admin_resolve_notification_orphan('${ev}', 'confirmed mismatch', '${req}') AS r`))[0].r).toBe('resolved');
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_orphan_reconcile_state WHERE resend_event_id=$1`, [ev])).rows[0].n).toBe(0);
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_provider_events WHERE resend_event_id=$1`, [ev])).rows[0].n).toBe(1);  // evidence NEVER deleted
+    expect((await c.query(`SELECT action FROM public.notification_orphan_reconcile_actions WHERE resend_event_id=$1`, [ev])).rows[0].action).toBe('resolve');
+    expect((await c.query(`SELECT outcome, old_value, new_value FROM public.notification_admin_audit WHERE request_id=$1`, [req])).rows[0])
+      .toMatchObject({ outcome: 'applied', old_value: 'quarantined', new_value: 'resolved' });
+  });
+
+  it('orphan requeue: transient + quarantined only — back to the worker; every misclassification typed and recorded', async () => {
+    const ev = await seedOrphan(true, 'link_update_conflict');
+    expect((await call(ADMIN, `SELECT public.admin_requeue_notification_orphan('${ev}', 'transient blip', '${crypto.randomUUID()}') AS r`))[0].r).toBe('requeued');
+    expect((await c.query(`SELECT quarantined, last_error_code FROM public.notification_orphan_reconcile_state WHERE resend_event_id=$1`, [ev])).rows[0])
+      .toMatchObject({ quarantined: false, last_error_code: 'requeued' });
+    // misclassifications
+    const evPerm = await seedOrphan(true, 'tagged_mismatch');
+    expect((await call(ADMIN, `SELECT public.admin_requeue_notification_orphan('${evPerm}', 'oops', '${crypto.randomUUID()}') AS r`))[0].r).toBe('rejected_permanent_reason');
+    const evLive = await seedOrphan(false, 'link_update_conflict');
+    expect((await call(ADMIN, `SELECT public.admin_resolve_notification_orphan('${evLive}', 'oops', '${crypto.randomUUID()}') AS r`))[0].r).toBe('rejected_not_quarantined');
+    const evTransQ = await seedOrphan(true, 'link_update_conflict');
+    expect((await call(ADMIN, `SELECT public.admin_resolve_notification_orphan('${evTransQ}', 'oops', '${crypto.randomUUID()}') AS r`))[0].r).toBe('rejected_not_permanent');
+    expect((await call(ADMIN, `SELECT public.admin_resolve_notification_orphan('missing_ev', 'oops', '${crypto.randomUUID()}') AS r`))[0].r).toBe('rejected_not_found');
+    expect((await rejections('orphan_requeue')).length).toBe(1);
+    expect((await rejections('orphan_resolve')).length).toBe(3);
+  });
+
+  it('the preview shows what a reset would release', async () => {
+    await c.query(
+      `INSERT INTO public.notification_digest_groups
+         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+          recipient_timezone, digest_boundary_at, available_at, state)
+       VALUES (jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, 'email', 'ev_test', 'p:pr', 'fp:' || gen_random_uuid()::text,
+               'Europe/Amsterdam', now(), now(), 'request_ready')`);
+    await seedRow();
+    const rows = await call(ADMIN, `SELECT * FROM public.admin_preview_circuit_release('email')`);
+    expect(Number(rows.find((r) => r.metric === 'digest_groups_request_ready').value)).toBe(1);
+    expect(Number(rows.find((r) => r.metric === 'instant_rows_pending').value)).toBe(1);
+  });
+
+  it('NO retry exists: the COMPLETE admin surface is pinned — nothing shaped like a resend', async () => {
+    const fns = (await c.query(`
+      SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.prokind = 'f' AND p.proname LIKE 'admin\\_%'
+    `)).rows.map((r) => r.proname as string).sort();
+    expect(fns).toEqual([
+      'admin_activate_channel_kill',
+      'admin_cancel_digest_group',
+      'admin_list_digest_groups',
+      'admin_list_notification_audit',
+      'admin_list_notification_outbox',
+      'admin_list_notification_rejected',
+      'admin_list_worker_invocations',
+      'admin_list_worker_runs',
+      'admin_notification_delivery_history',
+      'admin_notification_event_states',
+      'admin_notification_gauges',
+      'admin_preview_circuit_release',
+      'admin_requeue_notification_orphan',
+      'admin_reset_notification_circuit',
+      'admin_resolve_notification_orphan',
+    ]);
+    for (const f of fns) expect(f).not.toMatch(/retry|resend|redeliver/);
   });
 });

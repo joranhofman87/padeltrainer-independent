@@ -9484,6 +9484,15 @@ export type Database = {
         Args: { p_channel: string; p_reason: string; p_request_id: string }
         Returns: string
       }
+      admin_cancel_digest_group: {
+        Args: {
+          p_expected_state: string
+          p_group_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
+      }
       admin_list_digest_groups: {
         Args: {
           p_before_created_at?: string
@@ -9658,6 +9667,33 @@ export type Database = {
           metric: string
           value: number
         }[]
+      }
+      admin_preview_circuit_release: {
+        Args: { p_channel: string }
+        Returns: {
+          capped: boolean
+          metric: string
+          value: number
+        }[]
+      }
+      admin_requeue_notification_orphan: {
+        Args: { p_reason: string; p_request_id: string; p_resend_event_id: string }
+        Returns: string
+      }
+      admin_reset_notification_circuit: {
+        Args: {
+          p_channel: string
+          p_expected_reason: string
+          p_expected_state: string
+          p_expected_tripped_at: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      admin_resolve_notification_orphan: {
+        Args: { p_reason: string; p_request_id: string; p_resend_event_id: string }
+        Returns: string
       }
       admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
@@ -11248,6 +11284,27 @@ export type Database = {
       notif_admin_gate: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      notif_admin_record_refusal: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_conflict: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: undefined
+      }
+      notif_admin_replay_gate: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: string
       }
       notif_channel_kill_gate: {
         Args: { p_channel: string }
