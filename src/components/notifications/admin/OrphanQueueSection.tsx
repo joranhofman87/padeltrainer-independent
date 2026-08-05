@@ -20,7 +20,7 @@ export function OrphanQueueSection({ onAct, onReady }: {
     ['p_before_updated_at', 'p_before_event_id'],
   );
 
-  useEffect(() => { onReady?.(() => void list.load(false)); });
+  useEffect(() => { onReady?.(() => void list.reload()); });
 
   const columns: ColumnDef<OrphanRow & { id: string }>[] = [
     {

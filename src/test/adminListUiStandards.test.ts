@@ -34,31 +34,23 @@ const SANCTIONED_HANDROLLED = new Set([
  * may only get shorter: a new offender fails, and a migrated page removed from the list can
  * never be re-added silently because the count assertion below shrinks with it.
  */
-const LEGACY_HANDROLLED_BASELINE = [
-  'AdminAcademies.tsx',
-  'AdminGuestPlayers.tsx',
-  'AdminTrainers.tsx',
-  'AdminUsers.tsx',
-] as const;
-/** Pre-existing surfaces that render tabular data OFF the engine (dialogs + two admin pages). */
 const LEGACY_OFF_ENGINE_BASELINE = [
   'AcademyEditDialog.tsx',
-  'AdminCertifications.tsx',
-  'AdminRatingSystems.tsx',
-  'ImportLocationsDialog.tsx',
-] as const;
-/** Pre-existing engine tables missing the compact/mobile props (the density sweep predates them). */
-const LEGACY_MISSING_PROPS_BASELINE = [
   'AdminAcademies.tsx',
-  'AdminBackups.tsx',
+  'AdminBackups.tsx',        // also a sanctioned escape hatch (expandable rows)
   'AdminGuestPlayers.tsx',
+  'AdminPlayerRatings.tsx',  // also a sanctioned escape hatch (inline-edit grid)
   'AdminTrainers.tsx',
   'AdminUsers.tsx',
+  'ImportLocationsDialog.tsx',
 ] as const;
-const EXEMPT = new Set<string>([
-  ...SANCTIONED_HANDROLLED, ...LEGACY_HANDROLLED_BASELINE, ...LEGACY_OFF_ENGINE_BASELINE,
-]);
-const PROPS_EXEMPT = new Set<string>(LEGACY_MISSING_PROPS_BASELINE);
+const EXEMPT = new Set<string>([...SANCTIONED_HANDROLLED, ...LEGACY_OFF_ENGINE_BASELINE]);
+/**
+ * NOTHING is exempt from the density props: every engine table in admin today carries
+ * compact + desktopOnly={false} (measured). The set stays for the shrink-only shape, but an
+ * empty set means a new offender fails immediately.
+ */
+const PROPS_EXEMPT = new Set<string>([]);
 
 /** Renders tabular data if it IMPORTS a table primitive (a prose mention is not a table). */
 const rendersTable = (src: string) =>
@@ -86,7 +78,10 @@ function dataTableUsages(src: string): string[] {
   const out: string[] = [];
   // a JSX opening tag ends at the first `>` that is NOT inside a {…} expression or a string —
   // naive matching stopped at `rows={rows.map((r) => …)}` and mis-read every multi-line usage
+  // EXACT component boundary: `<DataTableCard` is a different component and must not match
+  const atUsage = (at: number) => at !== -1 && /^[\s<>/]$/.test(src[at + 10] ?? '');
   let i = src.indexOf('<DataTable');
+  while (i !== -1 && !atUsage(i)) i = src.indexOf('<DataTable', i + 1);
   while (i !== -1) {
     // skip a TYPE-ARGUMENT list (`<DataTable<Row>` …): its `>` is not the tag end
     let start = i + 10;
@@ -110,6 +105,7 @@ function dataTableUsages(src: string): string[] {
     }
     out.push(src.slice(i, j + 1));
     i = src.indexOf('<DataTable', j);
+    while (i !== -1 && !atUsage(i)) i = src.indexOf('<DataTable', i + 1);
   }
   return out;
 }
@@ -143,17 +139,40 @@ describe('admin list/table UI standards guard', () => {
   it('EVERY DataTable usage anywhere in admin carries compact + desktopOnly={false}', () => {
     const offenders: string[] = [];
     for (const { name, src } of everything) {
-      if (PROPS_EXEMPT.has(name)) return;
+      if (PROPS_EXEMPT.has(name)) continue;   // `return` here exited the whole TEST loop
       dataTableUsages(src).forEach((usage, i) => {
-        if (!/\bcompact\b/.test(usage)) offenders.push(`${name}#${i}: missing compact`);
+        // `compact={false}` is not compact
+        const hasCompact = /(^|\s)compact(\s|\/|>|={true})/.test(usage) && !/compact=\{false\}/.test(usage);
+        if (!hasCompact) offenders.push(`${name}#${i}: missing compact`);
         if (!/desktopOnly=\{false\}/.test(usage)) offenders.push(`${name}#${i}: missing desktopOnly={false}`);
       });
     }
     expect(offenders).toEqual([]);
   });
 
-  /** The one pre-existing bespoke-shell page (predates ListPageShell adoption). Shrink-only. */
+  /** Pre-existing table pages that predate ListPageShell adoption. Shrink-only. */
+  const LEGACY_NO_SHELL = [
+    'AdminBackups.tsx', 'AdminBlog.tsx', 'AdminBlogSources.tsx', 'AdminBlogTopics.tsx',
+    'AdminClubs.tsx', 'AdminLocations.tsx', 'AdminOnboardingEmails.tsx', 'AdminPlayerRatings.tsx',
+    'AdminPricing.tsx',
+  ] as const;
+
+  /** The pre-existing bespoke-shell pages (predate ListPageShell adoption). Shrink-only. */
   const LEGACY_BESPOKE_SHELL = ['AdminCertifications.tsx', 'AdminRatingSystems.tsx'] as const;
+
+  it('every table-rendering admin PAGE uses ListPageShell (bespoke chrome is baselined, not allowed)', () => {
+    const offenders = pages
+      .filter(({ name, src }) => rendersTable(src)
+        && !src.includes('ListPageShell')
+        && !LEGACY_NO_SHELL.includes(name as never))
+      .map(({ name }) => name);
+    expect(offenders).toEqual([]);
+    for (const name of LEGACY_NO_SHELL) {
+      const file = pages.find((p) => p.name === name);
+      expect(file, `${name} no longer exists — remove it from the baseline`).toBeTruthy();
+      expect(file!.src.includes('ListPageShell'), `${name} now uses ListPageShell — remove it from the baseline`).toBe(false);
+    }
+  });
 
   it('no NEW admin page uses a bespoke shell instead of the canonical chrome', () => {
     const offenders = pages
@@ -170,25 +189,13 @@ describe('admin list/table UI standards guard', () => {
   it('the legacy baseline is SHRINK-ONLY — every listed file still exists and still hand-rolls', () => {
     // if someone migrates one, this fails until they delete it from the list (so the debt can
     // never be silently re-added under an existing name)
-    for (const name of LEGACY_HANDROLLED_BASELINE) {
-      const file = pages.find((p) => p.name === name);
-      expect(file, `${name} is in the baseline but no longer exists — remove it from the list`).toBeTruthy();
-      expect(handRollsTable(file!.src), `${name} no longer hand-rolls a table — remove it from the baseline`).toBe(true);
-      expect(usesEngine(file!.src), `${name} now uses the engine — remove it from the baseline`).toBe(false);
-    }
-    // the two other baselines shrink the same way: a migrated file must be removed from the list
     for (const name of LEGACY_OFF_ENGINE_BASELINE) {
       const file = everything.find((f) => f.name === name);
-      expect(file, `${name} no longer exists — remove it from the baseline`).toBeTruthy();
+      expect(file, `${name} is in the baseline but no longer exists — remove it from the list`).toBeTruthy();
       expect(usesEngine(file!.src), `${name} now uses the engine — remove it from the baseline`).toBe(false);
+      expect(handRollsTable(file!.src), `${name} no longer hand-rolls a table — remove it from the baseline`).toBe(true);
     }
-    for (const name of LEGACY_MISSING_PROPS_BASELINE) {
-      const file = everything.find((f) => f.name === name);
-      expect(file, `${name} no longer exists — remove it from the baseline`).toBeTruthy();
-      const usages = dataTableUsages(file!.src);
-      const stillMissing = usages.some((u) => !/\bcompact\b/.test(u) || !/desktopOnly=\{false\}/.test(u));
-      expect(stillMissing, `${name} now carries the props — remove it from the baseline`).toBe(true);
-    }
+    expect(PROPS_EXEMPT.size, 'the density baseline is empty and must stay that way').toBe(0);
   });
 
   it('the notification ops page is a THIN orchestrator on the canonical chrome', () => {
@@ -246,6 +253,24 @@ describe('admin list/table UI standards guard', () => {
       <DataTable rows={b} />`;
     const usages = dataTableUsages(mixed);
     expect(usages).toHaveLength(2);
-    expect(/\bcompact\b/.test(usages[1])).toBe(false);
+    expect(/(^|\s)compact(\s|\/|>|={true})/.test(usages[1])).toBe(false);
+
+    // `compact={false}` is NOT compact
+    const optOut = `<DataTable compact={false} desktopOnly={false} />`;
+    const optOutUsage = dataTableUsages(optOut)[0];
+    expect(/compact=\{false\}/.test(optOutUsage)).toBe(true);
+
+    // `<DataTableCard` is a DIFFERENT component and must not be read as an engine usage
+    expect(dataTableUsages(`<DataTableCard><Table /></DataTableCard>`)).toEqual([]);
+
+    // multi-line usages with an arrow function in a prop parse correctly (the naive regex
+    // stopped at the `=>`'s `>` and reported every real usage as prop-less)
+    const multiline = `<DataTable<Row>
+      rows={rows.map((r) => ({ ...r, id: r.x }))}
+      compact
+      desktopOnly={false}
+    />`;
+    expect(dataTableUsages(multiline)).toHaveLength(1);
+    expect(/desktopOnly=\{false\}/.test(dataTableUsages(multiline)[0])).toBe(true);
   });
 });

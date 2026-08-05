@@ -36,6 +36,8 @@ export function RecipientPreviewSection({ eventKeys }: { eventKeys: string[] }) 
     setPartial(false);
     setCursor(null);
     setError(false);          // a previous scope's failure must not linger over a new one
+    setBusy(false);           // …nor its in-flight spinner: the superseded response returns
+                              // early and would otherwise leave the new scope loading forever
   };
   const load = async (more = false) => {
     if (lock.current) return;

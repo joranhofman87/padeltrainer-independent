@@ -24,6 +24,10 @@ export interface CursorList<T> {
   /** true once a page returned fewer rows than requested — nothing more to fetch. */
   exhausted: boolean;
   load: (more?: boolean) => Promise<void>;
+  /** SUPERSEDING first-page reload: invalidates any in-flight page and cannot be swallowed by
+   *  the lock (a post-decision refresh is mandatory — dropping it leaves a stale row on screen
+   *  inviting a second decision). */
+  reload: () => Promise<void>;
   reset: () => void;
 }
 
@@ -63,6 +67,12 @@ export function useCursorList<T extends Record<string, unknown>>(
     setBusy(false);
   };
 
+  const reload = async () => {
+    epoch.current++;      // any in-flight page is now superseded and will drop its result…
+    lock.current = false; // …and its lock is released here, so this reload always proceeds
+    await load(false);
+  };
+
   const reset = () => {
     epoch.current++;
     lock.current = false;
@@ -72,5 +82,5 @@ export function useCursorList<T extends Record<string, unknown>>(
     setBusy(false);
   };
 
-  return { rows, error, busy, exhausted, load, reset };
+  return { rows, error, busy, exhausted, load, reload, reset };
 }

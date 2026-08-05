@@ -19,6 +19,7 @@ export function OpsDecisionDialog({
   frozen,
   busy,
   confirmLabel,
+  busyLabel,
   destructive,
   cancelLabel,
   frozenNote,
@@ -35,6 +36,7 @@ export function OpsDecisionDialog({
   frozen: boolean;
   busy: boolean;
   confirmLabel: string;
+  busyLabel: string;
   destructive?: boolean;
   cancelLabel: string;
   frozenNote: string;
@@ -49,7 +51,7 @@ export function OpsDecisionDialog({
       onOpenChange={(next) => { if (!next) onCancel(); }}
       title={title}
       description={<span data-testid={`${testId}-identity`}>{description}</span>}
-      confirmLabel={confirmLabel}
+      confirmLabel={busy ? busyLabel : confirmLabel}
       cancelLabel={cancelLabel}
       variant={destructive ? 'destructive' : 'default'}
       loading={busy}

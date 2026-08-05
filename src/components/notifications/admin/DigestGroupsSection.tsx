@@ -26,7 +26,7 @@ export function DigestGroupsSection({ onCancel, onReady }: {
     () => ({ p_state: state === 'all' ? undefined : state, p_days: 7 }),
   );
 
-  useEffect(() => { onReady?.(() => void list.load(false)); });
+  useEffect(() => { onReady?.(() => void list.reload()); });
 
   const columns: ColumnDef<DigestGroupRow>[] = [
     {
