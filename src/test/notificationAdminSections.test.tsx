@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, cleanup } from '@testing-library/react';
 
 /**
  * N4 M7 — the extracted admin section components, tested directly for the states the page-level
@@ -275,15 +275,29 @@ describe('the repaired races are REGRESSION-LOCKED (each fails against the old b
 
   it('the busy label renders while a decision is in flight', async () => {
     const { OpsDecisionDialog } = await import('@/components/notifications/admin/OpsDecisionDialog');
-    const props = {
-      open: true, title: 'T', description: 'D', reason: 'a reason', onReasonChange: () => {},
-      frozen: true, confirmLabel: 'Kill channel', busyLabel: 'Killing…', cancelLabel: 'Cancel',
-      frozenNote: 'locked', testId: 'kill', onCancel: () => {}, onConfirm: () => {},
-    };
-    const { rerender } = render(<OpsDecisionDialog {...props} busy={false} />);
+    // the dialog now takes the DECISION itself, so a fake one is the whole surface it reads
+    const decision = (busy: boolean) => ({
+      target: 'email', reason: 'a reason', setReason: () => {}, busy, frozen: true,
+      requestId: { current: 'req-1' }, open: () => {}, close: () => {},
+      submit: async () => {}, confirm: () => {},
+    });
+    const props = { title: 'T', description: 'D', confirmLabel: 'Kill channel', busyLabel: 'Killing…', testId: 'kill' };
+    const { rerender } = render(<OpsDecisionDialog {...props} decision={decision(false)} />);
     expect(screen.getByTestId('kill-confirm').textContent).toBe('Kill channel');
-    rerender(<OpsDecisionDialog {...props} busy />);
+    rerender(<OpsDecisionDialog {...props} decision={decision(true)} />);
     expect(screen.getByTestId('kill-confirm').textContent).toBe('Killing…');
+  });
+
+  it('a decision with NO target renders no dialog — the target IS the open state', async () => {
+    const { OpsDecisionDialog } = await import('@/components/notifications/admin/OpsDecisionDialog');
+    render(<OpsDecisionDialog
+      title="T" description="D" confirmLabel="Go" busyLabel="Going…" testId="closed"
+      decision={{
+        target: null, reason: '', setReason: () => {}, busy: false, frozen: false,
+        requestId: { current: null }, open: () => {}, close: () => {}, submit: async () => {}, confirm: () => {},
+      }}
+    />);
+    expect(screen.queryByTestId('closed-confirm')).toBeNull();
   });
 });
 
@@ -382,5 +396,63 @@ describe('M7 round-2: provenance drill-down, history paging', () => {
     fireEvent.click(screen.getByTestId('provenance-btn-u1'));
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument());
     expect(screen.queryByTestId('provenance-list')).toBeNull();
+  });
+});
+
+describe('N5: the delivery-paths section', () => {
+  const ROWS = [
+    { path: 'email:digest', state: 'inert', boundary_at: null, reason: null, activated_by: null,
+      pending_before_boundary: 0, pending_before_boundary_capped: false },
+    { path: 'email:instant', state: 'active', boundary_at: '2026-08-05T09:00:00+00:00', reason: 'legacy', activated_by: null,
+      pending_before_boundary: 3, pending_before_boundary_capped: false },
+  ];
+  const load = async (props: Record<string, unknown>) => {
+    const { ActivationBoundariesSection } = await import('@/components/notifications/admin/ActivationBoundariesSection');
+    render(<ActivationBoundariesSection
+      isLoading={false} isError={false} onRetry={() => {}} onDispose={() => {}} {...props} />);
+  };
+
+  it('renders each path, its boundary, and what it is holding back', async () => {
+    await load({ rows: ROWS });
+    const text = screen.getByTestId('boundaries').textContent ?? '';
+    expect(text).toContain('email:instant');
+    expect(text).toContain('inert — sends nothing');       // the inert path says so in words
+    expect(text).toContain('2026-08-05T09:00:00+00:00');
+    expect(screen.getByTestId('backlog-email:instant').textContent).toBe('3');
+    // an inert path has no boundary: the absence is rendered, never a blank that reads as a date
+    expect(text).toContain('—');
+  });
+
+  it('offers disposal ONLY where there is something to dispose, and never on an inert path', async () => {
+    const onDispose = vi.fn();
+    await load({ rows: ROWS, onDispose });
+    expect(screen.queryByTestId('dispose-email:digest')).toBeNull();          // inert: no control
+    fireEvent.click(screen.getByTestId('dispose-email:instant'));
+    expect(onDispose).toHaveBeenCalledWith(expect.objectContaining({ path: 'email:instant' }));
+    cleanup();
+    // an OPEN path with nothing held back offers nothing either — the control exists only where
+    // it would do something
+    await load({ rows: [{ ...ROWS[1], pending_before_boundary: 0 }], onDispose });
+    expect(screen.queryByTestId('dispose-email:instant')).toBeNull();
+  });
+
+  it('a saturated count says AT LEAST, never a precise number it does not have', async () => {
+    await load({ rows: [{ ...ROWS[1], pending_before_boundary: 1000, pending_before_boundary_capped: true }] });
+    expect(screen.getByTestId('backlog-email:instant').textContent).toContain('at least 1000');
+  });
+
+  it('loading, error-with-retry and empty are all distinguishable states', async () => {
+    await load({ isLoading: true });
+    expect(screen.queryByTestId('boundaries')).toBeNull();
+    cleanup();
+    const onRetry = vi.fn();
+    await load({ isError: true, onRetry });
+    fireEvent.click(screen.getByTestId('boundaries-retry'));
+    expect(onRetry).toHaveBeenCalled();
+    cleanup();
+    // EMPTY here means the migration is missing — the copy says exactly that, because "no rows"
+    // on this table means the send authorities are gating on nothing
+    await load({ rows: [] });
+    expect(screen.getByText(/gating on nothing/)).toBeTruthy();
   });
 });

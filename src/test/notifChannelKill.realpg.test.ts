@@ -46,16 +46,18 @@ const adminKill = async (client: InstanceType<typeof Client>, uid: string | null
     await client.query(`SELECT set_config('request.jwt.claim.sub', '', false)`);
   }
 };
-const seedRow = async (over: Partial<{ status: string; channel: string; locked_at: string; locked_by: string; attempts: number; max_attempts: number; delivery_mode: string }> = {}) => {
+const seedRow = async (over: Partial<{ status: string; channel: string; locked_at: string; locked_by: string; attempts: number; max_attempts: number; delivery_mode: string; created_at: string }> = {}) => {
   const r = await c.query(
     `INSERT INTO public.notification_outbox
        (channel, event_type, template_key, status, destination_normalized, scheduled_for,
-        locked_at, locked_by, attempts, max_attempts, delivery_mode, payload, idempotency_key, recipient_user_id)
+        locked_at, locked_by, attempts, max_attempts, delivery_mode, payload, idempotency_key, recipient_user_id,
+        created_at)
      VALUES ($1, 'ev_test', 'tpl', $2, 'a@example.com', now() - interval '1 minute',
-             $3, $4, $5, $6, $7, jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, '22222222-2222-4222-8222-222222222222')
+             $3, $4, $5, $6, $7, jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, '22222222-2222-4222-8222-222222222222',
+             coalesce($8::timestamptz, now()))
      RETURNING id`,
     [over.channel ?? 'email', over.status ?? 'pending', over.locked_at ?? null, over.locked_by ?? null,
-     over.attempts ?? 0, over.max_attempts ?? 3, over.delivery_mode ?? null]);
+     over.attempts ?? 0, over.max_attempts ?? 3, over.delivery_mode ?? null, over.created_at ?? null]);
   return r.rows[0].id as string;
 };
 const claim = async (client: InstanceType<typeof Client>, worker = 'w:test', channel = 'email') =>
@@ -194,6 +196,9 @@ beforeAll(async () => {
   await c.query(MIG('20261023100000_notif_n4_seam_corrections_round2.sql'));
   await c.query(MIG('20261024100000_notif_n4_seam_corrections_round3.sql'));
   await c.query(MIG('20261025100000_notif_n4_invocation_ownership_contract.sql'));
+  // N5: the no-backlog activation boundary — the claim under test now gates on it
+  await c.query(MIG('20261028100000_notif_n5_activation_boundary.sql'));
+  await c.query(MIG('20261029100000_notif_n5_readiness_and_backlog_disposal.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -1068,6 +1073,7 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
     expect(fns).toEqual([
       'admin_activate_channel_kill',
       'admin_cancel_digest_group',
+      'admin_dispose_pre_boundary_backlog',
       'admin_list_digest_groups',
       'admin_list_notification_audit',
       'admin_list_notification_orphans',
@@ -1075,6 +1081,7 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
       'admin_list_notification_rejected',
       'admin_list_worker_invocations',
       'admin_list_worker_runs',
+      'admin_notification_activation_boundaries',
       'admin_notification_delivery_history',
       'admin_notification_event_states',
       'admin_notification_gauges',
@@ -1294,5 +1301,255 @@ describe('N4 M7 — the orphan reader is index-served on its OWN keyset order', 
     const txt = JSON.stringify(plan);
     expect(txt).toContain('idx_orphan_state_keyset');
     expect(txt).not.toContain('"Node Type": "Sort"');
+  });
+});
+
+describe('N5 — the activation boundary: no historical work can become eligible', () => {
+  const boundaryOf = async (path: string) =>
+    (await c.query(`SELECT * FROM public.notification_activation_boundaries WHERE path = $1`, [path])).rows[0];
+  const open = async (path: string, req = crypto.randomUUID(), reason = 'rollout step 3') =>
+    (await c.query(`SELECT public.record_notification_activation_boundary($1,$2,$3) AS r`, [path, reason, req])).rows[0].r as string;
+
+  beforeEach(async () => {
+    // back to the shipped seed state: email:instant active from the earliest row, the other two inert
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`DELETE FROM public.notification_activation_boundaries;`);
+    await c.query(`
+      INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason)
+      VALUES ('email:instant', 'active', now() - interval '1 hour', 'suite baseline');
+      INSERT INTO public.notification_activation_boundaries (path, state)
+      VALUES ('email:digest', 'inert'), ('whatsapp:instant', 'inert');`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+  });
+
+  it('THE INVARIANT: a row created BEFORE the boundary is never claimed — not as fresh work, not as an orphan reclaim', async () => {
+    const before = await seedRow({ created_at: new Date(Date.now() - 2 * 3600_000).toISOString() });
+    const after = await seedRow();
+    const claimed = await claim(c);
+    expect(claimed.map((r: { outbox_id: string }) => r.outbox_id)).toEqual([after]);
+    expect((await rowOf(before)).status).toBe('pending');          // untouched, not failed, not skipped
+    expect((await rowOf(before)).attempts).toBe(0);                // …and not even an attempt spent
+
+    // the ORPHAN-RECLAIM arm is the side door: a historical row that was mid-flight at activation
+    // must not come back through it either
+    await c.query(
+      `UPDATE public.notification_outbox SET status='processing', locked_at = now() - interval '30 minutes', locked_by='dead' WHERE id=$1`,
+      [before]);
+    const again = await claim(c);
+    expect(again.map((r: { outbox_id: string }) => r.outbox_id)).not.toContain(before);
+    expect((await rowOf(before)).locked_by).toBe('dead');          // never re-leased
+  });
+
+  it('an INERT path claims nothing at all, and leaves no trace of having been asked', async () => {
+    const wa = await seedRow({ channel: 'whatsapp' });
+    expect(await claim(c, 'w:test', 'whatsapp')).toEqual([]);
+    const row = await rowOf(wa);
+    expect(row.status).toBe('pending');
+    expect(row.attempts).toBe(0);
+    expect(row.locked_by).toBeNull();
+    // …until the path is opened, after which only rows created since qualify
+    const stale = await seedRow({ channel: 'whatsapp', created_at: new Date(Date.now() - 60_000).toISOString() });
+    expect(await open('whatsapp:instant')).toBe('activated');
+    const fresh = await seedRow({ channel: 'whatsapp' });
+    const claimed = await claim(c, 'w:test', 'whatsapp');
+    expect(claimed.map((r: { outbox_id: string }) => r.outbox_id)).toEqual([fresh]);
+    expect((await rowOf(stale)).status).toBe('pending');
+    expect((await rowOf(wa)).status).toBe('pending');
+  });
+
+  it('opening a path is ONE-WAY and request-id idempotent — a boundary can never be moved', async () => {
+    const req = crypto.randomUUID();
+    expect(await open('whatsapp:instant', req)).toBe('activated');
+    const first = await boundaryOf('whatsapp:instant');
+    expect(await open('whatsapp:instant', req)).toBe('replayed');             // the exact retry
+    expect(await open('whatsapp:instant', crypto.randomUUID())).toBe('already_active');  // anyone else: REFUSED
+    expect((await boundaryOf('whatsapp:instant')).boundary_at).toEqual(first.boundary_at);
+    // …and the guard binds the owner too: no UPDATE, no DELETE, no TRUNCATE
+    await expect(c.query(
+      `UPDATE public.notification_activation_boundaries SET boundary_at = now() - interval '1 day' WHERE path='whatsapp:instant'`))
+      .rejects.toThrow(/already active since/);
+    await expect(c.query(`DELETE FROM public.notification_activation_boundaries WHERE path='whatsapp:instant'`))
+      .rejects.toThrow(/append-only/);
+    await expect(c.query(`TRUNCATE public.notification_activation_boundaries`)).rejects.toThrow(/append-only/);
+    await expect(c.query(
+      `UPDATE public.notification_activation_boundaries SET state='inert' WHERE path='email:digest'`))
+      .rejects.toThrow(/only transition is inert -> active/);
+  });
+
+  it('the boundary RPC refuses an unknown path, a missing request id and a thin reason', async () => {
+    await expect(c.query(`SELECT public.record_notification_activation_boundary('email:carrier-pigeon','why',gen_random_uuid())`))
+      .rejects.toThrow(/not a known delivery path/);
+    await expect(c.query(`SELECT public.record_notification_activation_boundary('whatsapp:instant','why',NULL)`))
+      .rejects.toThrow(/request_id is required/);
+    await expect(c.query(`SELECT public.record_notification_activation_boundary('whatsapp:instant','no',gen_random_uuid())`))
+      .rejects.toThrow(/reason \(3-500 chars\)/);
+  });
+
+  it('is not reachable by any API role: the table is definer-only and the opener is service-role-only', async () => {
+    const c3 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+    await c3.connect();
+    try {
+      for (const role of ['anon', 'authenticated']) {
+        await c3.query(`SET ROLE ${role}`);
+        await expect(c3.query(`SELECT * FROM public.notification_activation_boundaries`), `${role} must not read the table directly`).rejects.toThrow();
+        await expect(c3.query(`SELECT public.record_notification_activation_boundary('whatsapp:instant','x',gen_random_uuid())`),
+          `${role} must not open a delivery path`).rejects.toThrow();
+        await c3.query(`RESET ROLE`);
+      }
+      // service_role may READ (the admin surface) but not write directly
+      await c3.query(`SET ROLE service_role`);
+      await c3.query(`SELECT * FROM public.notification_activation_boundaries`);
+      await expect(c3.query(
+        `INSERT INTO public.notification_activation_boundaries (path, state) VALUES ('email:digest','inert')`))
+        .rejects.toThrow();
+      await c3.query(`RESET ROLE`);
+    } finally { await c3.end(); }
+  });
+});
+
+describe('N5 — the readiness envelope proves the boundary, and the backlog has ONE sanctioned exit', () => {
+  const asAdmin = async (sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const check = async (id: string) => {
+    const env = (await asAdmin(`SELECT public.admin_notification_readiness() AS e`))[0].e;
+    return (env.checks as { id: string; status: string; value?: number; detail: string }[]).find((k) => k.id === id)!;
+  };
+  const dispose = async (path: string, req = crypto.randomUUID(), reason = 'clearing pre-activation backlog', limit = 500) =>
+    (await asAdmin(
+      `SELECT * FROM public.admin_dispose_pre_boundary_backlog('${path}', '${reason}', '${req}'::uuid, ${limit})`))[0];
+
+  beforeEach(async () => {
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`DELETE FROM public.notification_activation_boundaries;`);
+    await c.query(`
+      INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason)
+      VALUES ('email:instant', 'active', now() - interval '1 hour', 'suite baseline');
+      INSERT INTO public.notification_activation_boundaries (path, state)
+      VALUES ('email:digest', 'inert'), ('whatsapp:instant', 'inert');`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+  });
+
+  it('durable_activation_boundary is REAL now: it passes on a coherent set and fails when the mechanism is incomplete', async () => {
+    const ok = await check('durable_activation_boundary');
+    expect(ok.status).toBe('pass');
+    expect(ok.detail).toContain('email:digest=inert');
+    expect(ok.detail).toContain('email:instant=active since');
+    // a missing path row means a send authority would be gating on nothing
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`DELETE FROM public.notification_activation_boundaries WHERE path = 'whatsapp:instant';`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    const bad = await check('durable_activation_boundary');
+    expect(bad.status).toBe('fail');
+    expect(bad.detail).toContain('expected 3 delivery paths, found 2');
+    // …and the envelope's overall verdict is dragged down with it
+    const env = (await asAdmin(`SELECT public.admin_notification_readiness() AS e`))[0].e;
+    expect(env.readiness).toBe('fail');
+  });
+
+  it('pre_activation_backlog_eligible_count counts what the boundary is refusing, and reaches zero only by disposal', async () => {
+    expect((await check('pre_activation_backlog_eligible_count')).status).toBe('pass');   // nothing yet
+    const old1 = await seedRow({ created_at: new Date(Date.now() - 2 * 3600_000).toISOString() });
+    const old2 = await seedRow({ created_at: new Date(Date.now() - 3 * 3600_000).toISOString() });
+    const fresh = await seedRow();
+    const c1 = await check('pre_activation_backlog_eligible_count');
+    expect(c1.status).toBe('fail');
+    expect(c1.value).toBe(2);                                    // the fresh row is not backlog
+    expect(c1.detail).toContain('admin_dispose_pre_boundary_backlog');
+
+    const r = await dispose('email:instant');
+    expect(r.verdict).toBe('disposed');
+    expect(r.disposed).toBe(2);
+    expect((await rowOf(old1)).status).toBe('skipped');
+    expect((await rowOf(old1)).skip_reason).toBe('pre_activation_boundary');
+    expect((await rowOf(old2)).status).toBe('skipped');
+    expect((await rowOf(fresh)).status).toBe('pending');          // live work untouched
+    expect((await check('pre_activation_backlog_eligible_count')).status).toBe('pass');
+    // the audit row carries the SIZE of the act, not merely that it happened
+    const audit = (await c.query(
+      `SELECT * FROM public.notification_admin_audit WHERE action = 'backlog_dispose'`)).rows;
+    expect(audit.length).toBe(1);
+    expect(audit[0]).toMatchObject({ target: 'email:instant', old_value: '2', new_value: 'pre_activation_boundary', outcome: 'applied' });
+  });
+
+  it('disposal is admin-fail-closed, request-id idempotent, and REFUSES an inert or unknown path', async () => {
+    await expect(c2.query(
+      `SELECT * FROM public.admin_dispose_pre_boundary_backlog('email:instant','why not',gen_random_uuid(),10)`))
+      .rejects.toThrow(/platform admin only/);
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [PLAYER]);
+    await expect(c2.query(
+      `SELECT * FROM public.admin_dispose_pre_boundary_backlog('email:instant','why not',gen_random_uuid(),10)`))
+      .rejects.toThrow(/platform admin only/);
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`);
+
+    // an INERT path has no boundary, so nothing there is provably historical
+    expect((await dispose('email:digest')).verdict).toBe('rejected_path_inert');
+    expect((await dispose('email:carrier-pigeon')).verdict).toBe('rejected_unknown_path');
+    expect((await c.query(
+      `SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE action='backlog_dispose'`)).rows[0].n).toBe(2);
+
+    // idempotency: the SAME request id returns the recorded decision and disposes nothing twice
+    await seedRow({ created_at: new Date(Date.now() - 2 * 3600_000).toISOString() });
+    const req = crypto.randomUUID();
+    expect((await dispose('email:instant', req)).disposed).toBe(1);
+    const replay = await dispose('email:instant', req);
+    expect(replay.verdict).toBe('disposed');
+    expect(replay.disposed).toBe(0);                              // the replay moves nothing
+    // …and a retry that WIDENS the batch is conflicting reuse, not a replay
+    expect((await dispose('email:instant', req, 'clearing pre-activation backlog', 900)).verdict)
+      .toBe('rejected_request_reuse');
+  });
+
+  it('disposal touches ONLY pending pre-boundary rows on the named path — never a sent row, never another channel', async () => {
+    const older = new Date(Date.now() - 2 * 3600_000).toISOString();
+    const sent = await seedRow({ status: 'sent', created_at: older });
+    const wa = await seedRow({ channel: 'whatsapp', created_at: older });
+    const digest = await seedRow({ delivery_mode: 'digest', created_at: older });
+    const target = await seedRow({ created_at: older });
+    const r = await dispose('email:instant');
+    expect(r.disposed).toBe(1);
+    expect((await rowOf(target)).status).toBe('skipped');
+    expect((await rowOf(sent)).status).toBe('sent');              // terminal work is not re-decided
+    expect((await rowOf(wa)).status).toBe('pending');             // another channel's queue
+    expect((await rowOf(digest)).status).toBe('pending');         // the digest path is its own boundary
+  });
+});
+
+describe('N5 — the admin read of the delivery paths', () => {
+  const asAdmin = async (sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+
+  it('reports every path, its boundary, and what is stuck behind it — admin fail-closed', async () => {
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`DELETE FROM public.notification_activation_boundaries;`);
+    await c.query(`
+      INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason)
+      VALUES ('email:instant', 'active', now() - interval '1 hour', 'suite baseline');
+      INSERT INTO public.notification_activation_boundaries (path, state)
+      VALUES ('email:digest', 'inert'), ('whatsapp:instant', 'inert');`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await seedRow({ created_at: new Date(Date.now() - 2 * 3600_000).toISOString() });
+    await seedRow();                                        // live work: never counted as backlog
+    await seedRow({ channel: 'whatsapp', created_at: new Date(Date.now() - 2 * 3600_000).toISOString() });
+
+    for (const uid of [null, PLAYER]) {
+      await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
+      await expect(c2.query(`SELECT * FROM public.admin_notification_activation_boundaries()`)).rejects.toThrow();
+      await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`);
+    }
+    const rows = await asAdmin(`SELECT * FROM public.admin_notification_activation_boundaries()`);
+    expect(rows.map((r) => r.path)).toEqual(['email:digest', 'email:instant', 'whatsapp:instant']);
+    const instant = rows.find((r) => r.path === 'email:instant')!;
+    expect(instant.state).toBe('active');
+    expect(instant.pending_before_boundary).toBe(1);
+    expect(instant.pending_before_boundary_capped).toBe(false);
+    // an INERT path counts nothing: without a boundary, nothing there is provably historical
+    expect(rows.find((r) => r.path === 'whatsapp:instant')!.pending_before_boundary).toBe(0);
+    expect(rows.find((r) => r.path === 'email:digest')!.boundary_at).toBeNull();
   });
 });

@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Textarea } from '@/components/ui/textarea';
+import type { OpsDecision } from './useOpsDecision';
 
 /**
  * The one confirmation dialog every N4 operational decision uses. It COMPOSES the app's
@@ -10,41 +12,37 @@ import { Textarea } from '@/components/ui/textarea';
  * specific to these decisions: the mandatory reason, frozen after the first submit, and the
  * identity line the confirmation is bound to.
  */
-export function OpsDecisionDialog({
-  open,
+export function OpsDecisionDialog<T>({
+  decision,
   title,
   description,
-  reason,
-  onReasonChange,
-  frozen,
-  busy,
   confirmLabel,
   busyLabel,
   destructive,
-  cancelLabel,
-  frozenNote,
   reasonPlaceholder,
   testId,
-  onCancel,
-  onConfirm,
 }: {
-  open: boolean;
+  /** The decision this dialog IS: it supplies open-ness, the frozen reason, busy and confirm.
+   *  Passing the object rather than eight derived props is what keeps the page an orchestrator —
+   *  and makes it impossible to wire a dialog to one decision's reason and another's confirm. */
+  decision: OpsDecision<T> & { confirm: () => void };
   title: ReactNode;
   description: ReactNode;
-  reason: string;
-  onReasonChange: (v: string) => void;
-  frozen: boolean;
-  busy: boolean;
   confirmLabel: string;
   busyLabel: string;
   destructive?: boolean;
-  cancelLabel: string;
-  frozenNote: string;
   reasonPlaceholder?: string;
   testId: string;
-  onCancel: () => void;
-  onConfirm: () => void;
 }) {
+  const { t } = useTranslation('admin');
+  // shared copy: the same two sentences for every decision, so the component owns them
+  const cancelLabel = t('cancel', 'Cancel');
+  const frozenNote = t('notifOps.frozenNote', 'The decision is locked to this exact wording — a retry replays it. To decide differently, cancel and start a new decision.');
+  const { target, reason, setReason, frozen, busy, close, confirm } = decision;
+  const open = target !== null;
+  const onCancel = close;
+  const onConfirm = confirm;
+  const onReasonChange = setReason;
   return (
     <ConfirmDialog
       open={open}

@@ -106,6 +106,10 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   no SQL can see an edge env var. Prints its invocation request id
                                   FIRST; after an ambiguous failure, re-run with
                                   --invocation-request-id=<that id> to resume the SAME invocation
+  enable-engine ... [--boundary-request-id=<uuid>]
+                                  the step prints a boundary request id before it runs; on an
+                                  AMBIGUOUS failure re-run with it to replay the SAME opening
+                                  rather than re-dating the delivery path's boundary
   canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N] <db_url>
                                   SENDS. Invokes the worker ONCE by running the cron job's OWN
                                   stored command, after asserting it hashes to the reviewed value
@@ -158,6 +162,7 @@ for a in "$@"; do
     # invocation instead of colliding with the single-flight gate. A fresh uuid per execution
     # could never recover that case.
     --invocation-request-id=*) INVOCATION_REQUEST_ID="${a#*=}" ;;
+    --boundary-request-id=*)   BOUNDARY_REQUEST_ID="${a#*=}" ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
@@ -245,7 +250,7 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 # uncommitted transaction that is discarded at disconnect, so the emergency rollback would do nothing
 # at all while every gate before it passed. `-v ON_ERROR_STOP=0` is the same shape. Three names are
 # actually used, so three names are permitted.
-ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id"
+ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id"
 assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
   local artifact="$1"; shift
   local expect_value=0 a
@@ -394,8 +399,21 @@ case "$SUB" in
     # every guard this bundle exists to provide.
     require_confirmed "enabling the digest engine"
     url="$(db_url)"
-    run_sql "$url" enable_engine.sql
-    ok "digest engine ENABLED for ${EVENT_KEY} — nothing sends until the worker is invoked"
+    # N5: this step also OPENS the email:digest delivery path, in the same transaction. The id is
+    # printed BEFORE the step for the same reason the invocation's is: if the step dies
+    # ambiguously, re-running with --boundary-request-id REPLAYS that opening instead of moving
+    # the boundary forward (which would re-admit everything enqueued in between).
+    if [[ -n "${BOUNDARY_REQUEST_ID:-}" ]]; then
+      [[ "$BOUNDARY_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+        || die "--boundary-request-id must be a lowercase uuid, got '${BOUNDARY_REQUEST_ID}'"
+      BND_REQ_ID="$BOUNDARY_REQUEST_ID"
+      warn "REUSING boundary request id ${BND_REQ_ID} — an exact replay re-opens NOTHING and leaves the recorded boundary where it is"
+    else
+      BND_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    fi
+    ok "boundary request id: ${BND_REQ_ID} — if this step dies after this line, re-run it with --boundary-request-id=${BND_REQ_ID}"
+    run_sql "$url" enable_engine.sql -v boundary_request_id="$BND_REQ_ID"
+    ok "digest engine ENABLED for ${EVENT_KEY} and the email:digest path OPENED — nothing sends until the worker is invoked, and nothing older than this moment can ever send"
     ;;
 
   preflight)

@@ -206,6 +206,18 @@ try {
     // round 4 (convergence): the ownership contract — smoke|canary only, no timestamp inference
     await c.query(MIG('20261025100000_notif_n4_invocation_ownership_contract.sql'));
   }
+  // auth.uid() is what the boundary opener attributes an activation to (NULL from psql, which is
+  // how the runbook calls it). The stand-in is the same one every realpg suite uses.
+  await c.query(`
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS
+      $fn$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $fn$;`);
+
+  // N5's activation boundaries: the enable-engine artifact opens the digest path in the same
+  // transaction that turns the engine on, and the send authorities gate on it. Applied whole —
+  // the table, its guard, the opener and the enforcement all belong to the same contract.
+  await c.query(MIG('20261028100000_notif_n5_activation_boundary.sql'));
+
   // M2's kill table: activation assertion 9 refuses to arm the cron while a channel is killed.
   // Table only — the RPC that writes it is admin-facing and no artifact calls it.
   await c.query(withoutForeignKeys(
@@ -386,7 +398,10 @@ try {
   const preflight = async () => (await runArtifact('activation_preflight.sql', { run_id: RUN })).err ?? null;
   const canaryVerify = async () => (await runArtifact('canary_verify.sql', { run_id: RUN })).err ?? null;
   const assertInert = async () => (await runArtifact('assert_inert.sql')).err ?? null;
-  const enableEngine = async () => (await runArtifact('enable_engine.sql')).err ?? null;
+  // N5: the step opens the email:digest delivery path in the same transaction, so it takes the
+  // boundary request id the runbook prints before running it
+  const enableEngine = async (req = randomUUID()) =>
+    (await runArtifact('enable_engine.sql', { boundary_request_id: req })).err ?? null;
   // N4 M1: every deliberate invocation carries a CALLER-generated request id — the artifacts
   // gate, open and (on a retry) replay on it, so the harness supplies one exactly as the runbook
   // tells the operator to. A fresh id per call: these scenarios are first attempts, not replays.
@@ -944,11 +959,27 @@ try {
   // ── enable-engine: guarded, single-row, and refuses over an armed cron ───
   await seedBaseline();
   await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false`);
+  // the digest path starts CLOSED, as a migrated database does
+  await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;
+                 UPDATE public.notification_activation_boundaries
+                    SET state='inert', boundary_at=NULL, request_id=NULL, reason=NULL WHERE path='email:digest';
+                 ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+  const bndReq = randomUUID();
   {
-    const err = await enableEngine();
+    const before = (await c.query(`SELECT state FROM public.notification_activation_boundaries WHERE path='email:digest'`)).rows[0];
+    const err = await enableEngine(bndReq);
     rec('enable-engine turns the cutover event ON', err === null, err ?? '');
     const on = (await c.query(`SELECT key FROM public.notification_event_types WHERE digest_engine_enabled`)).rows;
     rec('...and ONLY that event', on.length === 1 && on[0].key === 'open_slots_player', JSON.stringify(on));
+    // N5: routing and the boundary move TOGETHER. Enabling routing without opening the path would
+    // form groups from whatever is already pending — the flood the contract exists to prevent.
+    const after = (await c.query(
+      `SELECT state, boundary_at, request_id FROM public.notification_activation_boundaries WHERE path='email:digest'`)).rows[0];
+    rec('...and OPENS the email:digest delivery path in the same transaction',
+      before.state === 'inert' && after.state === 'active' && after.boundary_at !== null,
+      `${before.state} -> ${after.state} at ${after.boundary_at}`);
+    rec('...recording the request id the runbook printed, so an ambiguous retry replays it',
+      after.request_id === bndReq, `${after.request_id} vs ${bndReq}`);
   }
   // Re-running is not a silent no-op: zero rows changed means the world was not what the operator
   // thought, and that is worth stopping for.

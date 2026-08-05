@@ -784,11 +784,16 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
 
   it('the shell allowlists the ids, prints the request id BEFORE the invoke, and accepts recovery', () => {
     const sh = readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'run-enablement.sh'), 'utf8');
-    expect(sh).toContain('ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id"');
-    // ONE uuid mint, inside the shared prepare helper — a per-execution uuid at each call site is
-    // exactly what could not recover an ambiguously-committed open
-    expect(sh.match(/uuidgen/g)?.length).toBe(1);
+    expect(sh).toContain('ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id"');
+    // TWO uuid mints, and no more: the invocation's (inside the shared prepare helper) and the
+    // N5 boundary's. A per-execution uuid at any OTHER call site is exactly what could not
+    // recover an ambiguously-committed open — or, for the boundary, would re-date a delivery
+    // path's window on a retry.
+    expect(sh.match(/uuidgen/g)?.length).toBe(2);
     expect(sh).toContain('--invocation-request-id=*)');
+    expect(sh).toContain('--boundary-request-id=*)');
+    // …and the id is printed BEFORE the artifact runs, for the same recovery reason
+    expect(sh.indexOf('ok "boundary request id:')).toBeLessThan(sh.indexOf('run_sql "$url" enable_engine.sql'));
     expect(sh.match(/prepare_invocation_request_id "/g)?.length).toBe(2);
     // the smoke CLOSES its invocation after the verdicts
     expect(sh).toContain('smoke_resolve_disabled.sql');

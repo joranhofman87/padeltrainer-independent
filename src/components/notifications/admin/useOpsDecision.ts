@@ -1,4 +1,6 @@
 import { useRef, useState } from 'react';
+import { useToast } from '@/hooks/use-toast';
+import { logger } from '@/lib/logger';
 
 /**
  * The N4 DECISION contract, shared by every operational control (kill, circuit reset, group
@@ -53,4 +55,45 @@ export function useOpsDecision<T>(): OpsDecision<T> {
   };
 
   return { target, reason, setReason, busy, frozen, requestId, open, close, submit };
+}
+
+/**
+ * The other half of the contract, which every control on this page repeated verbatim: submit the
+ * decision, read its TYPED VERDICT as a value, tell the operator what the server decided, close
+ * only on success, and refresh the list the decision acted on. A thrown error keeps the dialog
+ * open with the SAME request id, because retrying must replay the decision rather than mint a
+ * second one — the reason the failure copy says so.
+ *
+ * Extracted once it was written five times (kill, circuit reset, group cancel, orphan
+ * resolve/requeue, backlog disposal). Everything genuinely per-control — which RPC, which
+ * arguments, how the verdict reads — stays with the caller.
+ */
+export function useOpsAction<T>(deps: {
+  /** Call the RPC and return its typed verdict. Throwing keeps the decision open for a replay. */
+  run: (target: T, reason: string, requestId: string) => Promise<string>;
+  /** What the operator is told about the verdict the server returned. */
+  describe: (verdict: string) => string;
+  /** What the operator is told when the call itself failed. */
+  failureTitle: string;
+  /** Refresh whatever the decision changed. */
+  onApplied: () => void;
+}): OpsDecision<T> & { confirm: () => void } {
+  const decision = useOpsDecision<T>();
+  const { toast } = useToast();
+  const confirm = () => void decision.submit(async () => {
+    try {
+      const verdict = await deps.run(decision.target!, decision.reason.trim(), decision.requestId.current!);
+      toast({
+        title: deps.describe(verdict),
+        // a rejection is a real outcome, not an error — it is shown as one, loudly
+        variant: verdict.startsWith('rejected') ? 'destructive' : undefined,
+      });
+      decision.close();
+      deps.onApplied();
+    } catch (error) {
+      logger.error(deps.failureTitle, undefined, { error });
+      toast({ title: deps.failureTitle, variant: 'destructive' });
+    }
+  });
+  return { ...decision, confirm };
 }

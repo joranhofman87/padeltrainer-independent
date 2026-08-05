@@ -63,6 +63,31 @@ WITH u AS (
 SELECT pg_temp.assert_eq((SELECT count(*)::int FROM u), 1,
   'exactly one event row was enabled (zero means it was already on — re-read status rather than assuming)');
 
+-- N5 — OPEN THE DIGEST DELIVERY PATH, in the SAME transaction that turns the engine on.
+--
+-- The engine flag decides how new events are ROUTED; the boundary decides which events may ever
+-- be sent on this path. They must move together: enabling routing without a boundary would form
+-- groups from whatever is already pending (the flood the no-backlog contract exists to prevent),
+-- and opening the boundary without routing would be a promise no row can keep. Because both are
+-- in this transaction, the instant the first digest row can exist is the instant the boundary
+-- already excludes everything older.
+--
+-- Idempotent by request id, like every other decision in this bundle: a re-run replays the SAME
+-- opening (`replayed`) instead of moving the boundary forward, and a DIFFERENT request against an
+-- already-open path is refused (`already_active`) rather than silently re-dating it. Both are
+-- accepted here; only a raise would strand an operator mid-sequence.
+SELECT pg_temp.assert(
+  (SELECT public.record_notification_activation_boundary(
+            'email:digest',
+            'rollout: digest engine enabled for open_slots_player',
+            :'boundary_request_id'::pg_catalog.uuid)
+     IN ('activated', 'replayed', 'already_active')),
+  'the email:digest delivery path is OPEN — its boundary excludes every event resolved before this moment');
+SELECT pg_temp.assert(
+  (SELECT state = 'active' AND boundary_at IS NOT NULL
+     FROM public.notification_activation_boundaries WHERE path = 'email:digest'),
+  'the email:digest boundary is recorded and durable');
+
 -- POSTCONDITION, inside the same transaction: this event on, nothing else.
 SELECT pg_temp.assert(
   (SELECT digest_engine_enabled FROM public.notification_event_types WHERE key = 'open_slots_player'),

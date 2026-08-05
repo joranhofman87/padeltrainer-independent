@@ -9493,6 +9493,18 @@ export type Database = {
         }
         Returns: string
       }
+      admin_dispose_pre_boundary_backlog: {
+        Args: {
+          p_limit?: number
+          p_path: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          disposed: number
+          verdict: string
+        }[]
+      }
       admin_list_digest_groups: {
         Args: {
           p_before_created_at?: string
@@ -9639,6 +9651,18 @@ export type Database = {
           started_at: string
           status: string
           worker: string
+        }[]
+      }
+      admin_notification_activation_boundaries: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          activated_by: string
+          boundary_at: string
+          path: string
+          pending_before_boundary: number
+          pending_before_boundary_capped: boolean
+          reason: string
+          state: string
         }[]
       }
       admin_notification_delivery_history: {
@@ -11364,6 +11388,10 @@ export type Database = {
         Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
         Returns: boolean
       }
+      notif_activation_boundary: {
+        Args: { p_path: string }
+        Returns: string
+      }
       notif_admin_gate: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -11581,6 +11609,10 @@ export type Database = {
       record_invocation_net_request: {
         Args: { p_invocation_id: string; p_net_request_id: number }
         Returns: undefined
+      }
+      record_notification_activation_boundary: {
+        Args: { p_path: string; p_reason: string; p_request_id: string }
+        Returns: string
       }
       record_marketing_suppression: {
         Args: {

@@ -35,6 +35,12 @@ beforeAll(async () => {
     CREATE TABLE public.notification_event_types (key text PRIMARY KEY, supports_digest boolean NOT NULL DEFAULT false, required_delivery boolean NOT NULL DEFAULT false);
     CREATE TABLE public.notification_contacts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), person_id uuid, user_id uuid, guest_player_id uuid, channel text NOT NULL DEFAULT 'email', destination_normalized text NOT NULL, consent_status text NOT NULL DEFAULT 'unknown', consent_scope text NOT NULL DEFAULT 'global', consent_academy_profile_id uuid, consent_trainer_id uuid, revoked_at timestamptz, is_primary boolean NOT NULL DEFAULT false, verified_at timestamptz);
     CREATE FUNCTION public.is_notification_consent_in_scope(_a text,_b uuid,_c uuid,_d uuid,_e uuid) RETURNS boolean LANGUAGE sql IMMUTABLE AS $$ SELECT true $$;
+    -- auth.uid() is what the N5 boundary RPC attributes an activation to. This suite has no auth
+    -- schema, so it gets the same NULL-returning stand-in the other realpg suites use — the RPC
+    -- must be exercised through its REAL definition, not around it.
+    CREATE SCHEMA IF NOT EXISTS auth;
+    CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS
+      $fn$ SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $fn$;
     CREATE TABLE public.notification_outbox (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), channel text NOT NULL DEFAULT 'email', event_type text, template_key text, status text NOT NULL DEFAULT 'pending', payload jsonb, skip_reason text, destination_normalized text, contact_id uuid, recipient_person_id uuid, recipient_user_id uuid, recipient_guest_player_id uuid, tenant_academy_profile_id uuid, tenant_trainer_id uuid, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(), CONSTRAINT notification_outbox_status_check CHECK (status IN ('pending','processing','sent','delivered','failed','skipped','cancelled')));
     CREATE TABLE public.email_suppression_stub (email text PRIMARY KEY);
     CREATE FUNCTION public.is_email_suppressed(p text) RETURNS boolean LANGUAGE sql STABLE AS $$ SELECT EXISTS (SELECT 1 FROM public.email_suppression_stub WHERE email = lower(p)) $$;
@@ -60,9 +66,18 @@ beforeAll(async () => {
     // N4 M2: per-channel kill switches gate the digest claim/materialize/begin in SQL. With no
     // kill row every prior test must behave IDENTICALLY — that unchanged-behavior guarantee is
     // part of what this chain now proves; the kill describe at the bottom proves the gates.
-    '20261017100000_notif_n4_channel_kill_switches.sql']) {
+    '20261017100000_notif_n4_channel_kill_switches.sql',
+    // N5 LAST, as the real chain applies it (20261028 > 20261017): it recreates the claim AND the
+    // materializer, so applying it earlier would let the kill-switch migration overwrite the
+    // activation-boundary gate and the suite would prove nothing about it.
+    '20261028100000_notif_n5_activation_boundary.sql']) {
     await c.query(readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'));
   }
+  // N5: this suite describes a RUNNING digest pipeline, so the digest path must be OPEN — through
+  // the real RPC, because the guard refuses anything else and because "someone opened it" is the
+  // only way a row ever becomes eligible. Every fixture row below is created after this instant.
+  await c.query(
+    `SELECT public.record_notification_activation_boundary('email:digest', 'digest worker suite', gen_random_uuid())`);
   await c.end();
 }, 180_000);
 
@@ -177,7 +192,7 @@ function mkDeps(c: pg.Client, o: DepOverrides = {}): WorkerDeps {
   };
 }
 
-async function seedDigestGroup(c: pg.Client, key: string, dest: string, items: object[]) {
+async function seedDigestGroup(c: pg.Client, key: string, dest: string, items: object[], createdAt?: string) {
   const fp = (await c.query(`SELECT public.notif_digest_destination_fingerprint($1) f`, [dest])).rows[0].f;
   const uid = (await c.query(`SELECT gen_random_uuid() u`)).rows[0].u;
   await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1,$2)`, [uid, dest]);
@@ -185,9 +200,10 @@ async function seedDigestGroup(c: pg.Client, key: string, dest: string, items: o
     await c.query(`INSERT INTO public.notification_outbox
       (channel, delivery_mode, recipient_key, destination_fingerprint, destination_normalized, recipient_user_id,
        event_type, template_key, template_version, group_locale, digest_frequency, recipient_timezone,
-       digest_boundary_at, digest_item, status)
-      VALUES ('email','digest',$1,$2,$3,$4,'ev','tpl',1,'en','daily','Europe/Amsterdam', ${BD}, $5, 'pending')`,
-      [key, fp, dest, uid, JSON.stringify(item)]);
+       digest_boundary_at, digest_item, status, created_at)
+      VALUES ('email','digest',$1,$2,$3,$4,'ev','tpl',1,'en','daily','Europe/Amsterdam', ${BD}, $5, 'pending',
+              coalesce($6::timestamptz, now()))`,
+      [key, fp, dest, uid, JSON.stringify(item), createdAt ?? null]);
   }
 }
 const gstate = async (c: pg.Client, g: string) => (await c.query(`SELECT * FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0];
@@ -786,6 +802,60 @@ describe('N4 M2 — the channel kill switch over the digest engine', () => {
       const s = await runDigestWorker(mkDeps(c, { sendCalls }));
       expect(s.sent).toBe(1);
       expect(sendCalls.length).toBe(1);
+    } finally { await c.end(); }
+  });
+});
+
+describe('N5 — the digest path may not shape historical work into groups', () => {
+  const past = () => new Date(Date.now() - 6 * 3600_000).toISOString();
+
+  it('a PRE-boundary row is never materialized, and never joins a post-boundary group', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const rpc = mkRpc(c);
+      const nowIso = NOW.toISOString();
+      // the same recipient key and destination, so both rows belong to ONE canonical group: the
+      // member scan is the only thing that can keep them apart, and a missing predicate there
+      // delivers the backlog INSIDE a legitimately formed digest.
+      await seedDigestGroup(c, 'n5:1', 'n5@example.com', [{ title: 'historical' }], past());
+      await seedDigestGroup(c, 'n5:1', 'n5@example.com', [{ title: 'fresh' }]);
+      const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: nowIso, p_max_groups: 100, p_max_members_per_call: 100 });
+      const rows = (await c.query(
+        `SELECT digest_item ->> 'title' AS title, digest_group_id FROM public.notification_outbox
+          WHERE recipient_key = 'n5:1' ORDER BY created_at`)).rows;
+      expect(rows.map((r) => r.title)).toEqual(['historical', 'fresh']);
+      expect(rows[0].digest_group_id).toBeNull();       // the backlog row stays outside every group
+      expect(rows[1].digest_group_id).not.toBeNull();
+      const g = (await c.query(
+        `SELECT item_count FROM public.notification_digest_groups WHERE id = $1`, [rows[1].digest_group_id])).rows[0];
+      expect(Number(g.item_count)).toBe(1);             // …and the group it did form carries ONLY it
+    } finally { await c.end(); }
+  });
+
+  it('an INERT digest path forms NO groups at all — the engine-enable cannot hand activation a backlog', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const rpc = mkRpc(c);
+      // close the path for this connection's world by proving the gate, not by editing state:
+      // a fresh database has it inert, so drop this suite's opened boundary the sanctioned way
+      await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard`);
+      await c.query(`UPDATE public.notification_activation_boundaries
+                        SET state='inert', boundary_at=NULL, request_id=NULL, reason=NULL WHERE path='email:digest'`);
+      await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard`);
+      try {
+        await seedDigestGroup(c, 'n5:inert', 'inert@example.com', [{ title: 'x' }]);
+        const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+        const formed = await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: NOW.toISOString(), p_max_groups: 100, p_max_members_per_call: 100 });
+        expect(formed).toBe(0);
+        expect((await c.query(
+          `SELECT count(*)::int n FROM public.notification_digest_groups WHERE recipient_key='n5:inert'`)).rows[0].n).toBe(0);
+        expect((await c.query(
+          `SELECT digest_group_id FROM public.notification_outbox WHERE recipient_key='n5:inert'`)).rows[0].digest_group_id).toBeNull();
+      } finally {
+        // …and re-open it for the rest of the suite, through the REAL RPC
+        await c.query(`SELECT public.record_notification_activation_boundary('email:digest','re-opened after the inert case', gen_random_uuid())`);
+      }
     } finally { await c.end(); }
   });
 });
