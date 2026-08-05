@@ -11296,6 +11296,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      notif_admin_fingerprint: {
+        Args: { p_input: Json }
+        Returns: string
+      }
       notif_admin_record_verdict: {
         Args: {
           p_action: string

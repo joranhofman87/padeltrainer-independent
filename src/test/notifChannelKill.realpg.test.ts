@@ -486,7 +486,7 @@ describe('N4 M3 — the ops audit: every decision recorded, exactly once, immuta
     const rej = (await c.query(`SELECT * FROM public.notification_admin_rejected_attempts WHERE request_id=$1 ORDER BY created_at`, [req])).rows;
     expect(rej.length).toBe(2);
     expect(rej[0]).toMatchObject({ actor: ADMIN, action: 'channel_kill', target: 'whatsapp', reason: 'first' });
-    expect(rej[0].conflict_with).toContain('channel_kill|email');   // the original decision, named
+    expect(rej[0].conflict_with).toContain('bound to a channel_kill decision');   // the original decision, named — never its raw content
     expect(rej[1]).toMatchObject({ target: 'email', reason: 'other words' });
     // the rejected record is append-only like everything else on this surface
     await expect(c.query(`DELETE FROM public.notification_admin_rejected_attempts`)).rejects.toThrow(/append-only/);
@@ -1075,5 +1075,84 @@ describe('N4 M5 round-2 — the request registry and the invocation-window lock'
     expect(settled2).toBe(false);  // the open provably waits behind the reset
     await c.query('COMMIT');
     expect((await openP).rows[0].id).toBeTruthy();   // strictly-after: the open lands cleanly
+  });
+});
+
+describe('N4 M5 round-3 — canonical fingerprints, registry coherence, consumed not-found, backfill', () => {
+  const call = async (uid: string | null, sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const TRIP = '2026-08-05T10:00:00.000Z';
+  const seedCircuit = () =>
+    c.query(`INSERT INTO public.notification_provider_circuit (channel, state, reason, tripped_at) VALUES ('email', 'open', 'provider_5xx', $1::timestamptz)`, [TRIP]);
+
+  it('fingerprints are COLLISION-SAFE: delimiter-moving and literal-sentinel inputs are DIFFERENT decisions', async () => {
+    await seedCircuit();
+    // delimiter-moving: under raw concatenation these two tuples rendered identically
+    const req = crypto.randomUUID();
+    expect((await call(ADMIN, `SELECT public.admin_reset_notification_circuit('email', 'a|b', 'c', '${TRIP}'::timestamptz, 'why not', '${req}') AS r`))[0].r)
+      .toBe('rejected_stale_state');
+    expect((await call(ADMIN, `SELECT public.admin_reset_notification_circuit('email', 'a', 'b|c', '${TRIP}'::timestamptz, 'why not', '${req}') AS r`))[0].r)
+      .toBe('rejected_request_reuse');
+    // literal '<null>' vs SQL NULL: under the sentinel scheme these were the same fingerprint
+    const req2 = crypto.randomUUID();
+    expect((await call(ADMIN, `SELECT public.admin_reset_notification_circuit('email', 'open', NULL, '${TRIP}'::timestamptz, 'why not', '${req2}') AS r`))[0].r)
+      .toBe('rejected_stale_state');
+    expect((await call(ADMIN, `SELECT public.admin_reset_notification_circuit('email', 'open', '<null>', '${TRIP}'::timestamptz, 'why not', '${req2}') AS r`))[0].r)
+      .toBe('rejected_request_reuse');
+    // and the registry never stores raw text — every fingerprint is a sha-256 digest
+    const fps = (await c.query(`SELECT fingerprint FROM public.notification_admin_requests`)).rows;
+    for (const f of fps) expect(f.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('the registry refuses an IMPOSSIBLE first verdict at the schema, even owner-direct', async () => {
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict)
+       VALUES ($1, gen_random_uuid(), 'circuit_reset', repeat('a', 64), 'killed')`, [ADMIN]))
+      .rejects.toThrow(/chk_notification_admin_requests_verdict/);
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict)
+       VALUES ($1, gen_random_uuid(), 'channel_kill', 'not-a-digest', 'killed')`, [ADMIN]))
+      .rejects.toThrow(/fingerprint/);
+  });
+
+  it('a group-cancel against a MISSING group is a recorded verdict that consumes the id', async () => {
+    const req = crypto.randomUUID();
+    const ghost = crypto.randomUUID();
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${ghost}', 'pending', 'why not', '${req}') AS r`))[0].r)
+      .toBe('rejected_not_found');
+    expect((await c.query(`SELECT verdict FROM public.notification_admin_requests WHERE request_id=$1`, [req])).rows[0].verdict).toBe('rejected_not_found');
+    // the id is consumed: a different decision under it is reuse, even against a REAL group
+    const g = (await c.query(
+      `INSERT INTO public.notification_digest_groups
+         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+          recipient_timezone, digest_boundary_at, available_at, state)
+       VALUES (jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, 'email', 'ev_test', 'p:nf', 'fp:' || gen_random_uuid()::text,
+               'Europe/Amsterdam', now(), now(), 'pending') RETURNING id`)).rows[0].id;
+    expect((await call(ADMIN, `SELECT public.admin_cancel_digest_group('${g}', 'pending', 'why not', '${req}') AS r`))[0].r)
+      .toBe('rejected_request_reuse');
+    expect((await c.query(`SELECT state FROM public.notification_digest_groups WHERE id=$1`, [g])).rows[0].state).toBe('pending');
+  });
+
+  it('the M3-continuity backfill rebuilds registry rows from kill audit evidence, with the SAME fingerprint', async () => {
+    const req = crypto.randomUUID();
+    expect(await adminKill(c2, ADMIN, 'email', req, 'pre-M5 kill')).toBe('killed');
+    // simulate the M3-era deploy state: the audit row exists, the registry row does not
+    await c.query(`ALTER TABLE public.notification_admin_requests DISABLE TRIGGER trg_notif_admin_requests_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_requests WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_requests ENABLE TRIGGER trg_notif_admin_requests_guard;`);
+    // run the REAL backfill statement, extracted verbatim from the migration
+    const mig = MIG('20261020100000_notif_n4_send_enabling_recovery.sql');
+    const backfill = mig.match(/INSERT INTO public\.notification_admin_requests \(actor, request_id, action, fingerprint, verdict, created_at\)[\s\S]*?ON CONFLICT \(actor, request_id\) DO NOTHING;/)?.[0];
+    if (!backfill) throw new Error('backfill statement not found in the migration');
+    await c.query(backfill);
+    const row = (await c.query(`SELECT verdict FROM public.notification_admin_requests WHERE request_id=$1`, [req])).rows[0];
+    expect(row.verdict).toBe('killed');
+    // …and the rebuilt fingerprint matches the live RPC's: an exact replay works again
+    expect(await adminKill(c2, ADMIN, 'email', req, 'pre-M5 kill')).toBe('killed');
+    // while a different decision under that old id is typed reuse, not a unique-violation raise
+    expect(await adminKill(c2, ADMIN, 'whatsapp', req, 'pre-M5 kill')).toBe('rejected_request_reuse');
   });
 });

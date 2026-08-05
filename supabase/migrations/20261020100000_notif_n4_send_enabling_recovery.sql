@@ -56,11 +56,32 @@ CREATE TABLE public.notification_admin_requests (
   actor       uuid NOT NULL,
   request_id  uuid NOT NULL,
   action      text NOT NULL CHECK (action IN ('channel_kill', 'circuit_reset', 'group_cancel', 'orphan_resolve', 'orphan_requeue')),
-  fingerprint text NOT NULL CHECK (length(fingerprint) BETWEEN 3 AND 2000),
-  verdict     text NOT NULL CHECK (length(verdict) BETWEEN 3 AND 60),
+  -- ALWAYS a sha-256 digest of the canonical jsonb input — never raw operator/provider text
+  -- (raw concatenation was delimiter-collidable, sentinel-collidable, unbounded, and leaked
+  -- circuit reasons through conflict messages)
+  fingerprint text NOT NULL CHECK (fingerprint ~ '^[0-9a-f]{64}$'),
+  verdict     text NOT NULL,
   created_at  timestamptz NOT NULL DEFAULT now(),
-  PRIMARY KEY (actor, request_id)
+  PRIMARY KEY (actor, request_id),
+  -- schema-level verdict coherence: an owner-direct row cannot bind an impossible first
+  -- verdict (say, circuit_reset → 'killed') that an exact replay would then return forever
+  CONSTRAINT chk_notification_admin_requests_verdict CHECK (
+    (action = 'channel_kill'   AND verdict IN ('killed', 'already_killed', 'rejected_request_reuse'))
+    OR (action = 'circuit_reset' AND verdict IN ('reset', 'already_closed', 'rejected_channel_killed', 'rejected_invocation_open', 'rejected_correlation_mismatch', 'rejected_stale_state'))
+    OR (action = 'group_cancel'  AND verdict IN ('cancelled', 'rejected_not_found', 'rejected_not_pre_dispatch', 'rejected_stale_state'))
+    OR (action = 'orphan_resolve' AND verdict IN ('resolved', 'rejected_not_found', 'rejected_not_quarantined', 'rejected_not_permanent', 'rejected_not_resolvable'))
+    OR (action = 'orphan_requeue' AND verdict IN ('requeued', 'rejected_not_found', 'rejected_not_quarantined', 'rejected_permanent_reason', 'rejected_not_requeueable'))
+  )
 );
+
+-- the ONE canonical fingerprint: jsonb (key-order canonical, real JSON nulls — no sentinel to
+-- collide with a literal string) rendered to text and digested
+CREATE OR REPLACE FUNCTION public.notif_admin_fingerprint(p_input jsonb) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT encode(sha256(convert_to(p_input::text, 'UTF8')), 'hex');
+$$;
+REVOKE ALL ON FUNCTION public.notif_admin_fingerprint(jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.notif_admin_fingerprint(jsonb) TO service_role;
 CREATE TRIGGER trg_notif_admin_requests_guard
   BEFORE UPDATE OR DELETE ON public.notification_admin_requests
   FOR EACH ROW EXECUTE FUNCTION public.notif_admin_audit_guard();
@@ -94,7 +115,7 @@ BEGIN
   END IF;
   INSERT INTO public.notification_admin_rejected_attempts (actor, request_id, action, target, reason, conflict_with)
   VALUES (p_actor, p_request_id, p_action, p_target, btrim(p_reason),
-          format('id already bound to %s [%s] with first verdict %s — a request id names ONE decision', r.action, r.fingerprint, r.verdict));
+          format('id already bound to a %s decision with first verdict %s — a request id names ONE decision', r.action, r.verdict));
   RETURN 'rejected_request_reuse';
 END;
 $$;
@@ -166,10 +187,10 @@ BEGIN
 
   -- the fingerprint carries EVERY confirmation input: a retry that changed the expected
   -- state/reason/version is a DIFFERENT decision, never a replay
-  v_fp := 'circuit_reset|' || p_channel || '|' || btrim(p_reason)
-       || '|' || coalesce(p_expected_state, '<null>')
-       || '|' || coalesce(p_expected_reason, '<null>')
-       || '|' || coalesce(to_char(p_expected_tripped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US'), '<null>');
+  v_fp := public.notif_admin_fingerprint(jsonb_build_object(
+    'action', 'circuit_reset', 'channel', p_channel, 'reason', btrim(p_reason),
+    'expected_state', p_expected_state, 'expected_reason', p_expected_reason,
+    'expected_tripped_at', to_char(p_expected_tripped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US')));
   v := public.notif_admin_replay_gate(auth.uid(), p_request_id, 'circuit_reset', p_channel, p_reason, v_fp);
   IF v IS NOT NULL THEN RETURN v; END IF;
 
@@ -279,14 +300,18 @@ BEGIN
     RAISE EXCEPTION 'admin_cancel_digest_group: a reason (3-500 chars) is required';
   END IF;
 
-  v_fp := 'group_cancel|' || p_group_id::text || '|' || btrim(p_reason)
-       || '|' || coalesce(p_expected_state, '<null>');
+  v_fp := public.notif_admin_fingerprint(jsonb_build_object(
+    'action', 'group_cancel', 'group_id', p_group_id, 'reason', btrim(p_reason),
+    'expected_state', p_expected_state));
   v := public.notif_admin_replay_gate(auth.uid(), p_request_id, 'group_cancel', p_group_id::text, p_reason, v_fp);
   IF v IS NOT NULL THEN RETURN v; END IF;
 
   SELECT * INTO g FROM public.notification_digest_groups WHERE id = p_group_id FOR UPDATE;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'admin_cancel_digest_group: group % does not exist', p_group_id;
+    -- a valid, authenticated post-validation decision — it CONSUMES the id like every other
+    -- verdict (a raise here would leave the id fresh and reusable, the round-2 defect shape)
+    PERFORM public.notif_admin_record_refusal(auth.uid(), p_request_id, 'group_cancel', p_group_id::text, p_reason, 'group does not exist');
+    RETURN public.notif_admin_record_verdict(auth.uid(), p_request_id, 'group_cancel', v_fp, 'rejected_not_found');
   END IF;
   -- ENUMERATED pre-dispatch states, and EVERY piece of send/uncertainty evidence refuses —
   -- a cancel must never overwrite what may already have reached a provider
@@ -341,7 +366,8 @@ BEGIN
   IF length(btrim(coalesce(p_reason, ''))) NOT BETWEEN 3 AND 500 THEN
     RAISE EXCEPTION 'admin_resolve_notification_orphan: a reason (3-500 chars) is required';
   END IF;
-  v_fp := 'orphan_resolve|' || p_resend_event_id || '|' || btrim(p_reason);
+  v_fp := public.notif_admin_fingerprint(jsonb_build_object(
+    'action', 'orphan_resolve', 'resend_event_id', p_resend_event_id, 'reason', btrim(p_reason)));
   v := public.notif_admin_replay_gate(auth.uid(), p_request_id, 'orphan_resolve', p_resend_event_id, p_reason, v_fp);
   IF v IS NOT NULL THEN RETURN v; END IF;
 
@@ -401,7 +427,8 @@ BEGIN
   IF length(btrim(coalesce(p_reason, ''))) NOT BETWEEN 3 AND 500 THEN
     RAISE EXCEPTION 'admin_requeue_notification_orphan: a reason (3-500 chars) is required';
   END IF;
-  v_fp := 'orphan_requeue|' || p_resend_event_id || '|' || btrim(p_reason);
+  v_fp := public.notif_admin_fingerprint(jsonb_build_object(
+    'action', 'orphan_requeue', 'resend_event_id', p_resend_event_id, 'reason', btrim(p_reason)));
   v := public.notif_admin_replay_gate(auth.uid(), p_request_id, 'orphan_requeue', p_resend_event_id, p_reason, v_fp);
   IF v IS NOT NULL THEN RETURN v; END IF;
 
@@ -469,7 +496,8 @@ BEGIN
     RAISE EXCEPTION 'admin_activate_channel_kill: a reason (3-500 chars) is required';
   END IF;
 
-  v_fp := 'channel_kill|' || p_channel || '|' || btrim(p_reason);
+  v_fp := public.notif_admin_fingerprint(jsonb_build_object(
+    'action', 'channel_kill', 'channel', p_channel, 'reason', btrim(p_reason)));
   v := public.notif_admin_replay_gate(auth.uid(), p_request_id, 'channel_kill', p_channel, p_reason, v_fp);
   IF v IS NOT NULL THEN RETURN v; END IF;
 
@@ -492,3 +520,19 @@ $$;
 
 COMMENT ON FUNCTION public.admin_activate_channel_kill(text, text, uuid) IS
   'N4 M2+M3+M5: the ONLY write on the kill surface — registry-consumed id (one id, one decision, across kills AND recoveries), audited, request-id idempotent, reason mandatory. There is deliberately NO clearing counterpart.';
+
+
+-- ── migration continuity: M3-era channel-kill decisions join the registry ───────────────────
+-- Without this, a kill request id issued before this migration is absent from the registry:
+-- its replay would pass the gate as FRESH and then hit the audit unique constraint (an
+-- unrecorded raise), or worse be bindable to a recovery. The backfill is deterministic from
+-- the audit's own fields, using the SAME canonical fingerprint the RPC now computes.
+INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict, created_at)
+SELECT a.actor, a.request_id, 'channel_kill',
+       public.notif_admin_fingerprint(jsonb_build_object(
+         'action', 'channel_kill', 'channel', a.target, 'reason', a.reason)),
+       CASE a.outcome WHEN 'applied' THEN 'killed' ELSE 'already_killed' END,
+       a.created_at
+  FROM public.notification_admin_audit a
+ WHERE a.action = 'channel_kill'
+ON CONFLICT (actor, request_id) DO NOTHING;
