@@ -168,6 +168,49 @@ No correctness/scale risk today; these lower the cost of every future change and
 
 ---
 
+## Notification-controls units — status 2026-08-05
+
+The pre-canary work, in flight on draft PRs. All three are independently Codex-reviewed to clear
+and CI-green; mark-ready, merge and deploy are owner gates. **None changes notification behaviour
+in production**: N0 is operator tooling, N2 ships inert schema nothing reads yet, and N1 is
+presentation and reachability only.
+
+| Unit | PR | State |
+|---|---|---|
+| **N0** — privilege-correct `cron.job` row lock for the enablement tooling | [#630](https://github.com/joranhofman87/padeltrainer-independent/pull/630) | clear at `6be077cf`, CI green |
+| **N1** — player notification-settings gap closure | [#631](https://github.com/joranhofman87/padeltrainer-independent/pull/631) | clear at `6cb96359`, CI green (full suite, 4697 tests) |
+| **N2 S1+S2a** — marketing suppression, signed manage capabilities, declared footer policy, token helper | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `470e1083`, CI green at `7109150e` |
+
+**N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
+`supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement
+artifacts was never executable there — a privilege model the superuser-only verify harness never
+exercised. #630 replaces it with a guarded no-op `cron.alter_job` lock, runs every artifact in the
+harness as a restricted role, adds a real-pg_cron rehearsal, and wires the previously CI-orphaned
+10c-b verifies into `rollout-tooling.yml`. **N0 is complete only when the corrected smoke exits 0
+in production** with the exact disabled response and zero counter deltas — an owner-gated
+operation, still outstanding. It unblocks the SMOKE, not the send: Admin Notification Operations
+(below) still blocks every canary and activation.
+
+**N2's remaining slices** continue on `feat/notif-n2-email-prefs`: S2b (worker + digest-render
+footer attach, the role-agnostic `send-email` link, and a send-time gate for the legacy
+`send-digest-emails`, which today sends claimed queue rows with no preference or suppression
+re-check); S3 (campaign/onboarding suppression, footers, RFC 8058 headers); S4 (the neutral
+`/app/settings/notifications` route — which must exist **before** S2b emits it — plus the guest
+manage page, Auth redirect sanitisation and analytics redaction); S5 (the one-click endpoint, the
+capability sweep, docs). Eight constraints S1 imposes on those slices, each naming the slice that
+must satisfy it, are in [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) §N2.
+
+**N3 (academy controls) and N4 (Admin Notification Operations) are not started.**
+
+**One finding from outside these units, recorded rather than fixed:** CI surfaced a concurrent
+materializer race in 10c-a2 — `materialize_notification_digest_groups` racing itself, leaving a
+member in no group or a duplicate chunk. Not introduced by N2, and not reproducible on a many-core
+machine. Evidence and reasoning in [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md)
+§10c-a2. Both failure modes are silent (an undelivered digest, or a doubled one), so it is worth
+reproducing under deliberate contention before the digest engine is enabled for anyone.
+
+---
+
 ## Blocking release unit — Admin Notification Operations (10c-b Stage 3.5)
 
 **Owner-requested. It BLOCKS the notification digest canary and activation, and is deliberately NOT
