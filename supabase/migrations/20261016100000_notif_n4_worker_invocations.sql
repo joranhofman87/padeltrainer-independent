@@ -203,10 +203,19 @@ BEGIN
     -- it exists, it is THIS pipeline's dispatch work on the email channel, and it is
     -- UNFINISHED at binding time. (A replay stays valid after the owned run ends — but only
     -- via the 'replayed' arm below, which demands the exact bound run id.)
+    -- LOCKED (invocation row → run row, the order every future caller keeps): a concurrent
+    -- finish_notification_worker_run could otherwise end the run between the unfinished check
+    -- and the invocation becoming started — binding over stale evidence. Same device as the
+    -- state machine's own canonical run assertion (20261004100000:177).
     SELECT * INTO v_run FROM public.notification_worker_runs r
-     WHERE r.run_id = p_worker_run_id;
+     WHERE r.run_id = p_worker_run_id
+     FOR UPDATE;
     IF NOT FOUND THEN RETURN 'run_missing'; END IF;              -- STOP
-    IF v_run.phase <> 'dispatch' OR v_run.channel <> 'email' THEN
+    IF v_run.phase <> 'dispatch' OR v_run.channel <> 'email'
+       -- the WORKER identity too: start_notification_worker_run accepts arbitrary worker text,
+       -- so without this any service-role code could mint an email/dispatch run and bind it as
+       -- deliberate digest evidence. The digest worker's tokens carry the canonical prefix.
+       OR v_run.worker NOT LIKE 'notification-digest-worker:%' THEN
       RETURN 'run_wrong_kind';                                   -- STOP
     END IF;
     IF v_run.ended_at IS NOT NULL THEN

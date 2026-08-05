@@ -31,11 +31,18 @@ const open = async (client: InstanceType<typeof Client>, req: string, purpose = 
   (await client.query(`SELECT public.open_notification_worker_invocation($1,$2,$3) AS id`, [purpose, source, req])).rows[0].id as string;
 const bind = async (inv: string, run: string) =>
   (await c.query(`SELECT public.bind_notification_worker_invocation($1,$2) AS r`, [inv, run])).rows[0].r as string;
-const newRun = async (ended = false, phase = 'dispatch', channel = 'email') =>
-  (await c.query(
-    `INSERT INTO public.notification_worker_runs (worker, channel, phase, ended_at)
-     VALUES ('notification-digest-worker:test', $1, $2, ${ended ? 'now()' : 'NULL'}) RETURNING run_id`,
-    [channel, phase])).rows[0].run_id as string;
+const newRun = async (ended = false, phase = 'dispatch', channel = 'email', worker = 'notification-digest-worker:test') => {
+  // born unfinished, finished through the PRODUCTION transition — the guard forbids pre-ended
+  // inserts, exactly as production does
+  const run = (await c.query(
+    `INSERT INTO public.notification_worker_runs (worker, channel, phase)
+     VALUES ($3, $1, $2) RETURNING run_id`,
+    [channel, phase, worker])).rows[0].run_id as string;
+  if (ended) await endRun(run);
+  return run;
+};
+const endRun = async (run: string) =>
+  c.query(`UPDATE public.notification_worker_runs SET ended_at = now(), status = 'succeeded' WHERE run_id = $1`, [run]);
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'n4inv-rp-'));
@@ -58,6 +65,16 @@ beforeAll(async () => {
     /CREATE TABLE IF NOT EXISTS public\.notification_worker_runs[\s\S]*?\);/)?.[0];
   if (!runsDdl) throw new Error('notification_worker_runs DDL not found in the foundation migration');
   await c.query(runsDdl);
+  // …WITH its production guard: born unfinished, finished only through the sanctioned UPDATE.
+  // Without it the fixture could INSERT pre-ended runs — a shape production cannot produce, and
+  // exactly the kind of divergence that hid the r.id defect.
+  const runsGuard = foundation.match(
+    /CREATE OR REPLACE FUNCTION public\.notification_worker_runs_guard\(\)[\s\S]*?\$\$ LANGUAGE plpgsql;|CREATE OR REPLACE FUNCTION public\.notification_worker_runs_guard\(\)[\s\S]*?\$\$;/)?.[0];
+  const runsTrigger = foundation.match(
+    /DROP TRIGGER IF EXISTS trg_worker_runs_guard[\s\S]*?notification_worker_runs_guard\(\);/)?.[0];
+  if (!runsGuard || !runsTrigger) throw new Error('worker_runs guard not found in the foundation migration');
+  await c.query(runsGuard);
+  await c.query(runsTrigger);
   await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));
 }, 180_000);
 
@@ -68,7 +85,9 @@ beforeEach(async () => {
   await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
   await c.query(`DELETE FROM public.notification_worker_invocations;`);
   await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+  await c.query(`ALTER TABLE public.notification_worker_runs DISABLE TRIGGER trg_worker_runs_guard;`);
   await c.query(`DELETE FROM public.notification_worker_runs;`);
+  await c.query(`ALTER TABLE public.notification_worker_runs ENABLE TRIGGER trg_worker_runs_guard;`);
 });
 
 describe('open: request-id idempotency', () => {
@@ -86,7 +105,7 @@ describe('open: request-id idempotency', () => {
     const inv = await open(c, req);
     const run = await newRun(false); // bound while LIVE (an ended run is rightly refused now)
     expect(await bind(inv, run)).toBe('bound');
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
+    await endRun(run);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r).toBe('completed');
     expect(await open(c, req)).toBe(inv);
   });
@@ -141,7 +160,7 @@ describe('bind: typed verdicts — only bound|replayed proceed', () => {
     expect(await bind(inv, runB)).toBe('conflict_other_run'); // a second worker must STOP
     expect(await bind(crypto.randomUUID(), runB)).toBe('missing');
     // resolve, then bind again → resolved
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [runA]);
+    await endRun(runA);
     await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed')`, [inv]);
     expect(await bind(inv, runA)).toBe('resolved');
   });
@@ -158,8 +177,32 @@ describe('bind: typed verdicts — only bound|replayed proceed', () => {
     // a replay stays valid after the OWNED run ends — the exact-run arm, not the fresh-bind arm
     const run = await newRun();
     expect(await bind(inv, run)).toBe('bound');
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
+    await endRun(run);
     expect(await bind(inv, run)).toBe('replayed');
+  });
+
+  it("a WRONG-WORKER run is not evidence — arbitrary service-role runs can't impersonate the digest worker", async () => {
+    const inv = await open(c, crypto.randomUUID());
+    const impostor = await newRun(false, 'dispatch', 'email', 'some-other-service:test');
+    expect(await bind(inv, impostor)).toBe('run_wrong_kind');
+    const row = await c.query(`SELECT status, worker_run_id FROM public.notification_worker_invocations WHERE id = $1`, [inv]);
+    expect(row.rows[0]).toEqual({ status: 'pending', worker_run_id: null });
+  });
+
+  it('two-session: bind cannot accept a run a concurrent finish is ending (deterministic)', async () => {
+    // Session 2 holds the run's finish OPEN (row lock held, ended_at uncommitted); bind must
+    // BLOCK on its FOR UPDATE and, once the finish commits, see the ended run — never bind over
+    // stale unfinished evidence read before the lock.
+    const inv = await open(c, crypto.randomUUID());
+    const run = await newRun(false);
+    await c2.query('BEGIN');
+    await c2.query(`UPDATE public.notification_worker_runs SET ended_at = now(), status = 'succeeded' WHERE run_id = $1`, [run]);
+    const race = c.query(`SELECT public.bind_notification_worker_invocation($1,$2) AS r`, [inv, run]);
+    await new Promise((r) => setTimeout(r, 150)); // bind is now blocked on the run row
+    await c2.query('COMMIT');
+    expect((await race).rows[0].r).toBe('run_already_ended');
+    const row = await c.query(`SELECT status FROM public.notification_worker_invocations WHERE id = $1`, [inv]);
+    expect(row.rows[0].status).toBe('pending');
   });
 
   it('a conflicting bind never overwrites the owner', async () => {
@@ -182,7 +225,7 @@ describe('resolution', () => {
     await bind(inv, run);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r)
       .toBe('rejected_run_not_ended');
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
+    await endRun(run);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r)
       .toBe('completed');
   });
@@ -203,7 +246,7 @@ describe('resolution', () => {
     expect(await bind(inv, run)).toBe('bound');
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator gave up') AS r`, [inv])).rows[0].r)
       .toBe('rejected_run_still_running');
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
+    await endRun(run);
     expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'abandoned','operator gave up') AS r`, [inv])).rows[0].r)
       .toBe('abandoned');
     // and abandoning FREES the single-flight slot
@@ -219,7 +262,7 @@ describe('resolution', () => {
     await bind(inv, run);
     await expect(c.query(`UPDATE public.notification_worker_invocations SET worker_run_id = gen_random_uuid() WHERE id = $1`, [inv]))
       .rejects.toThrow(/immutable/);
-    await c.query(`UPDATE public.notification_worker_runs SET ended_at = now() WHERE run_id = $1`, [run]);
+    await endRun(run);
     await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed')`, [inv]);
     await expect(c.query(`UPDATE public.notification_worker_invocations SET status = 'pending', resolved_at = NULL WHERE id = $1`, [inv]))
       .rejects.toThrow(/not a legal transition|never reopen/);
