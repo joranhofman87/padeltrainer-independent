@@ -160,6 +160,8 @@ AS $$
 DECLARE
   v_address text := lower(btrim(p_address));
   v_required boolean;
+  v_policy text;
+  v_floor int;
   v_row public.notification_manage_capabilities%ROWTYPE;
 BEGIN
   -- EVERY input is validated BEFORE the reuse lookup — an invalid request must never succeed
@@ -194,13 +196,23 @@ BEGIN
     IF p_user_id IS NULL OR p_event_type IS NULL OR p_contact_id IS NOT NULL THEN
       RAISE EXCEPTION 'mint_notification_manage_capability: account_event_optout is a user+event grant (no contact)';
     END IF;
-    -- A REQUIRED event must never gain a mutating opt-out capability: the settings page renders
-    -- it "Always on" and the resolver forces it — a token that could switch it off would be a
-    -- second, unreviewed enforcement path. Refused at mint AND re-checked at apply.
-    SELECT required_delivery INTO v_required
+    IF p_source_id IS NULL THEN
+      -- per-send capabilities (below) are keyed on the send; a NULL send id would collapse
+      -- every send into one consumable grant again.
+      RAISE EXCEPTION 'mint_notification_manage_capability: account_event_optout needs a stable source_id';
+    END IF;
+    -- A REQUIRED event must never gain a mutating opt-out capability, and the CATALOG's declared
+    -- footer policy is the routing authority: only a manage_prefs event may carry an event
+    -- opt-out (a marketing event's mail carries marketing_unsubscribe capabilities instead —
+    -- an event opt-out there would write a service preference where a suppression belongs).
+    -- Refused at mint AND re-checked at apply.
+    SELECT required_delivery, email_footer_policy INTO v_required, v_policy
       FROM public.notification_event_types WHERE key = p_event_type;
     IF v_required IS DISTINCT FROM false THEN
       RAISE EXCEPTION 'mint_notification_manage_capability: % is required-delivery (or unknown) — no opt-out capability may exist for it', p_event_type;
+    END IF;
+    IF v_policy IS DISTINCT FROM 'manage_prefs' THEN
+      RAISE EXCEPTION 'mint_notification_manage_capability: % declares footer policy % — an event opt-out capability requires manage_prefs', p_event_type, v_policy;
     END IF;
   END IF;
   IF p_kind IN ('marketing_unsubscribe', 'manage_context') AND p_event_type IS NOT NULL THEN
@@ -214,8 +226,27 @@ BEGIN
       || ':' || v_address || ':' || coalesce(p_user_id::text, '-')
       || ':' || coalesce(p_contact_id::text, '-') || ':' || coalesce(p_event_type, '-'), 0));
 
+  -- NO DOWNGRADE: a stale worker still configured with an old key version must not resurrect
+  -- retired-key links after a rotation — the floor is the highest version EVER issued for this
+  -- logical grant (revoked rows included; that is what makes it a floor).
+  SELECT coalesce(max(c.key_version), 0) INTO v_floor
+    FROM public.notification_manage_capabilities c
+   WHERE c.kind = p_kind
+     AND c.scope_kind = p_scope_kind
+     AND c.scope_id IS NOT DISTINCT FROM p_scope_id
+     AND c.address_normalized = v_address
+     AND c.user_id IS NOT DISTINCT FROM p_user_id
+     AND c.contact_id IS NOT DISTINCT FROM p_contact_id
+     AND c.event_type IS NOT DISTINCT FROM p_event_type;
+  IF p_key_version < v_floor THEN
+    RAISE EXCEPTION 'mint_notification_manage_capability: key_version % is below this grant''s floor % — a rotated-away key never signs again', p_key_version, v_floor;
+  END IF;
+
   -- Key rotation: a request under a NEWER version retires every live older-version grant for
-  -- this logical key, so the old links die when the old key does.
+  -- this logical key, so the old links die when the old key does. Rotation is a
+  -- COMPROMISE-DRIVEN act: it deliberately kills still-valid marketing links early — the
+  -- >= 13-month TTL floor is a promise about expiry under a stable key, not a shield for links
+  -- signed by a burned one.
   UPDATE public.notification_manage_capabilities c
      SET revoked_at = now()
    WHERE c.kind = p_kind
@@ -228,6 +259,12 @@ BEGIN
      AND c.revoked_at IS NULL
      AND c.key_version < p_key_version;
 
+  -- Reuse identity. account_event_optout is PER SEND (source-keyed): the grant is consumptive,
+  -- so a NEW email must always carry a fresh, unconsumed capability — reusing the consumed one
+  -- would ship an inert link — while a RETRY of the same send (same source) must reuse its
+  -- capability, consumed or not, to keep the frozen request byte-identical. The monotonic kinds
+  -- reuse the logical grant regardless of source: replaying a marketing unsubscribe merely
+  -- re-asserts a fact.
   SELECT * INTO v_row
     FROM public.notification_manage_capabilities c
    WHERE c.kind = p_kind
@@ -237,6 +274,8 @@ BEGIN
      AND c.user_id IS NOT DISTINCT FROM p_user_id
      AND c.contact_id IS NOT DISTINCT FROM p_contact_id
      AND c.event_type IS NOT DISTINCT FROM p_event_type
+     AND (p_kind <> 'account_event_optout'
+          OR (c.source_kind = p_source_kind AND c.source_id IS NOT DISTINCT FROM p_source_id))
      AND c.key_version = p_key_version
      AND c.revoked_at IS NULL
      AND c.expires_at > now()
@@ -356,6 +395,7 @@ DECLARE
   v_new boolean;
   v_rows int;
   v_required boolean;
+  v_policy text;
   v_wa text;
 BEGIN
   IF p_action NOT IN ('marketing_unsubscribe', 'event_optout') THEN
@@ -413,12 +453,15 @@ BEGIN
   IF v.last_used_at IS NOT NULL THEN
     RETURN 'already_applied';
   END IF;
-  -- Required-delivery is re-checked at APPLY time: a catalog reclassification between mint and
-  -- click must win over the older grant.
-  SELECT required_delivery INTO v_required
+  -- Required-delivery AND the declared footer policy are re-checked at APPLY time: a catalog
+  -- reclassification between mint and click must win over the older grant.
+  SELECT required_delivery, email_footer_policy INTO v_required, v_policy
     FROM public.notification_event_types WHERE key = v.event_type;
   IF v_required IS DISTINCT FROM false THEN
     RETURN 'rejected_required_event';
+  END IF;
+  IF v_policy IS DISTINCT FROM 'manage_prefs' THEN
+    RETURN 'rejected_event_policy';
   END IF;
   -- BOTH channel columns are always written on insert (the PR-8 trap): a fresh row must take the
   -- EVENT's whatsapp default, not the column default, or an email opt-out could silently move

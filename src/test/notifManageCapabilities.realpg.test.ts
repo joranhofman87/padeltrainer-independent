@@ -37,6 +37,8 @@ let c2: InstanceType<typeof Client>;   // the concurrent-mint second connection
 const U1 = '11111111-1111-4111-8111-111111111111';
 const ACADEMY = '22222222-2222-4222-8222-222222222222';
 const TRAINER = '33333333-3333-4333-8333-333333333333';
+const SEND_A = '44444444-4444-4444-8444-444444444444';
+const SEND_B = '55555555-5555-4555-8555-555555555555';
 
 const mintOn = async (client: InstanceType<typeof Client>, over: Record<string, unknown> = {}) => {
   const a = {
@@ -78,6 +80,7 @@ beforeAll(async () => {
       key text PRIMARY KEY,
       category text NOT NULL DEFAULT 'booking',
       required_delivery boolean NOT NULL DEFAULT false,
+      supports_email boolean NOT NULL DEFAULT true,
       default_whatsapp_frequency text NOT NULL DEFAULT 'off');
 
     CREATE TABLE public.notification_preferences_v2 (
@@ -263,6 +266,37 @@ describe('mint_notification_manage_capability', () => {
     expect(again.capability_id).toBe(v2.capability_id);
   });
 
+  it('NO DOWNGRADE: after a rotation, a stale worker minting under the old version is refused', async () => {
+    await mint({ key_version: 2 });
+    // the stale worker cannot resurrect a retired-key link — not even a fresh one
+    await expect(mint({ key_version: 1 })).rejects.toThrow(/below this grant's floor/);
+    const live = (await c.query(
+      `SELECT count(*)::int AS n FROM public.notification_manage_capabilities
+        WHERE revoked_at IS NULL AND address_normalized = 'person@example.com'`)).rows[0].n;
+    expect(live).toBe(1);
+  });
+
+  it('account opt-out capabilities are PER SEND: same source reuses, a new send mints fresh', async () => {
+    const base = {
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', ttl: '90 days',
+    };
+    const a1 = await mint({ ...base, source_id: SEND_A });
+    const a2 = await mint({ ...base, source_id: SEND_A });   // retry of the SAME send
+    expect(a2.capability_id).toBe(a1.capability_id);
+    const b = await mint({ ...base, source_id: SEND_B });    // a NEW email
+    expect(b.capability_id).not.toBe(a1.capability_id);
+    // ...and a NULL send id is refused rather than collapsing every send into one grant
+    await expect(mint({ ...base, source_id: null })).rejects.toThrow(/stable source_id/);
+  });
+
+  it('the CATALOG footer policy gates the opt-out kind: a marketing event never gets one', async () => {
+    await expect(mint({
+      kind: 'account_event_optout', user_id: U1, event_type: 'marketing_updates',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
+    })).rejects.toThrow(/requires manage_prefs/);
+  });
+
   it('validates EVERY input before reuse — an invalid request never succeeds via an existing row', async () => {
     await mint();   // a live grant exists
     await expect(mint({ ttl: '0 days' })).rejects.toThrow(/ttl out of bounds/);
@@ -277,7 +311,7 @@ describe('mint_notification_manage_capability', () => {
   it('REFUSES an opt-out capability for a required-delivery event — and for an unknown one', async () => {
     const optout = (over: Record<string, unknown> = {}) => mint({
       kind: 'account_event_optout', user_id: U1, contact_id: null,
-      source_kind: 'outbox', ttl: '90 days', ...over,
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days', ...over,
     });
     await expect(optout({ event_type: 'booking_confirmed_player' })).rejects.toThrow(/required-delivery/);
     await expect(optout({ event_type: 'does_not_exist' })).rejects.toThrow(/required-delivery/);
@@ -296,7 +330,7 @@ describe('mint_notification_manage_capability', () => {
        VALUES ('person@example.com') RETURNING id`)).rows[0].id;
     await expect(mint({
       kind: 'account_event_optout', user_id: U1, contact_id: contact,
-      event_type: 'open_slots_player', source_kind: 'outbox', ttl: '90 days',
+      event_type: 'open_slots_player', source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
     })).rejects.toThrow(/no contact/);
   });
 });
@@ -322,7 +356,7 @@ describe('apply_notification_manage_action', () => {
   it('event opt-out writes BOTH columns on insert (event whatsapp default, not the column default)', async () => {
     const cap = await mint({
       kind: 'account_event_optout', user_id: U1, event_type: 'session_reminder_player',
-      source_kind: 'outbox', ttl: '90 days',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
     });
     expect(await apply(cap.capability_id, 'event_optout')).toBe('applied');
     const row = (await c.query(
@@ -335,7 +369,7 @@ describe('apply_notification_manage_action', () => {
   it('the account opt-out is CONSUMPTIVE: a replay cannot undo a later authenticated re-enable', async () => {
     const cap = await mint({
       kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
-      source_kind: 'outbox', ttl: '90 days',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
     });
     expect(await apply(cap.capability_id, 'event_optout')).toBe('applied');
     // the person re-enables in authenticated settings…
@@ -347,6 +381,32 @@ describe('apply_notification_manage_action', () => {
       `SELECT email_frequency FROM public.notification_preferences_v2
         WHERE user_id = $1 AND event_type = 'open_slots_player'`, [U1])).rows[0];
     expect(row.email_frequency).toBe('weekly');
+    // ...but the NEXT email's fresh (per-send) capability must WORK — the consumed grant is
+    // spent, not the person's ability to opt out again.
+    const next = await mint({
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', source_id: SEND_B, ttl: '90 days',
+    });
+    expect(next.capability_id).not.toBe(cap.capability_id);
+    expect(await apply(next.capability_id, 'event_optout')).toBe('applied');
+    const after = (await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id = $1 AND event_type = 'open_slots_player'`, [U1])).rows[0];
+    expect(after.email_frequency).toBe('off');
+  });
+
+  it('the declared footer policy is re-checked at APPLY: a reclassified-to-marketing event refuses', async () => {
+    const cap = await mint({
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
+    });
+    await c.query(`UPDATE public.notification_event_types
+                     SET category = 'marketing', email_footer_policy = 'marketing_unsubscribe'
+                   WHERE key = 'open_slots_player'`);
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_event_policy');
+    await c.query(`UPDATE public.notification_event_types
+                     SET category = 'booking', email_footer_policy = 'manage_prefs'
+                   WHERE key = 'open_slots_player'`);
   });
 
   it('event opt-out on an EXISTING row moves email only, never the stored whatsapp choice', async () => {
@@ -355,7 +415,7 @@ describe('apply_notification_manage_action', () => {
       [U1]);
     const cap = await mint({
       kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
-      source_kind: 'outbox', ttl: '90 days',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
     });
     expect(await apply(cap.capability_id, 'event_optout')).toBe('applied');
     const row = (await c.query(
@@ -367,7 +427,7 @@ describe('apply_notification_manage_action', () => {
   it('an account capability stops acting when the CANONICAL account address changes', async () => {
     const cap = await mint({
       kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
-      source_kind: 'outbox', ttl: '90 days',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
     });
     await c.query(`UPDATE public.persons SET email = 'new-inbox@example.com' WHERE user_id = $1`, [U1]);
     expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_destination_changed');
@@ -378,7 +438,7 @@ describe('apply_notification_manage_action', () => {
   it('required_delivery is re-checked at APPLY time — a reclassified event wins over an old grant', async () => {
     const cap = await mint({
       kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
-      source_kind: 'outbox', ttl: '90 days',
+      source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
     });
     await c.query(`UPDATE public.notification_event_types SET required_delivery = true,
                      email_footer_policy = 'none' WHERE key = 'open_slots_player'`);
@@ -532,11 +592,28 @@ describe('email_footer_policy (seeded on a POPULATED catalog, the production ord
          ('future_marketing_blast', 'marketing', false)`)).rejects.toThrow(/coherent/i);
   });
 
-  it('onboarding templates default to the SUPPRESSIBLE class, from the three-class vocabulary', async () => {
+  it('every OPTIONAL email-capable event must carry a MUTATING footer policy', async () => {
+    await expect(c.query(
+      `UPDATE public.notification_event_types SET email_footer_policy = 'none'
+        WHERE key = 'open_slots_player'`)).rejects.toThrow(/has_footer/i);
+    // ...and a required→optional reclassification is LOUD unless it declares the footer too
+    await expect(c.query(
+      `UPDATE public.notification_event_types SET required_delivery = false
+        WHERE key = 'booking_confirmed_player'`)).rejects.toThrow(/has_footer/i);
+    await c.query(
+      `UPDATE public.notification_event_types SET required_delivery = false, email_footer_policy = 'manage_prefs'
+        WHERE key = 'booking_confirmed_player'`);
+    await c.query(
+      `UPDATE public.notification_event_types SET required_delivery = true, email_footer_policy = 'none'
+        WHERE key = 'booking_confirmed_player'`);
+  });
+
+  it('onboarding templates default to the SUPPRESSIBLE class; optional_service does not exist yet', async () => {
     const cls = (await c.query(
       `INSERT INTO public.onboarding_email_templates DEFAULT VALUES RETURNING delivery_class`)).rows[0];
     expect(cls.delivery_class).toBe('marketing');
     await expect(c.query(
-      `UPDATE public.onboarding_email_templates SET delivery_class = 'service'`)).rejects.toThrow(/check/i);
+      `UPDATE public.onboarding_email_templates SET delivery_class = 'optional_service'`)).rejects.toThrow(/check/i);
+    await c.query(`UPDATE public.onboarding_email_templates SET delivery_class = 'required_service'`);
   });
 });
