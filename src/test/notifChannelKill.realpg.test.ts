@@ -1615,7 +1615,6 @@ describe('N6 — clearing a kill: the one reviewed way back', () => {
     const r = await clear('email', killReq);
     expect(r.verdict).toBe('cleared');
     expect(r.pending_released).toBe(2);                                // the operator learns the size first
-    expect(r.pending_released_capped).toBe(false);
     expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(0);
     // the DECISION survives its row: kill and clear, both immutable, in order
     const audit = (await c.query(
@@ -1683,11 +1682,36 @@ describe('N6 — clearing a kill: the one reviewed way back', () => {
     await killWith(killReq);
     await seedRow();
     const p = await preview('email');
-    expect(p).toMatchObject({ channel: 'email', kill_request_id: killReq, pending_now: 1, pending_now_capped: false });
+    expect(p).toMatchObject({ channel: 'email', kill_request_id: killReq, pending_now: 1 });
     expect(p.reason).toBe('incident 7');
     expect(p.killed_for).toBeTruthy();
     expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(1);
     expect((await clear('email', killReq)).verdict).toBe('cleared');
+  });
+
+  it('the bound is TRANSACTIONAL: an enqueue cannot slip in between the count and the clear', async () => {
+    // the advisory lock the claims share does not cover enqueue_notification, so without the
+    // outbox SHARE lock a producer could commit rows after the count and before the kill is gone —
+    // and more mail would resume than the operator confirmed.
+    const killReq = crypto.randomUUID();
+    await killWith(killReq);
+    await seedRow();
+    const seen = (await preview('email')).pending_now;
+    await c.query('BEGIN');
+    await c.query(`SELECT * FROM public.clear_notification_channel_kill($1,$2,$3,$4,$5)`,
+      [ 'email', killReq, seen, 'incident closed', crypto.randomUUID() ]);
+    // …a concurrent INSERT must WAIT for this transaction rather than land inside its window
+    let settled = false;
+    const late = c2.query(
+      `INSERT INTO public.notification_outbox (channel, event_type, template_key, status, destination_normalized,
+         scheduled_for, payload, idempotency_key, recipient_user_id)
+       VALUES ('email','ev_test','tpl','pending','late@example.com', now(), '{}'::jsonb, gen_random_uuid()::text, $1)`,
+      [PLAYER]).finally(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 200));
+    expect(settled).toBe(false);                       // provably serialized behind the clear
+    await c.query('COMMIT');
+    await late;
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_channel_kill_switches`)).rows[0].n).toBe(0);
   });
 
   it('is not reachable by any API role — un-killing is a runbook decision, not a page control', async () => {

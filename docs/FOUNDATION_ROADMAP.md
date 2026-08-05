@@ -183,9 +183,26 @@ No correctness/scale risk today; these lower the cost of every future change and
 This section is the programme's single source of truth; the working memory notes point here rather
 than restating it.
 
-**Sequence.** Finish N4 → N5 → N6 → N7 → the *Notification Foundation Final Integration Audit* →
-resolve it → declare the architecture frozen → **stop before A1** and before the broader
-players/bookings/invoices/academy audit.
+**Sequence (corrected by the owner, 2026-08-06 — the audit is the GATE INTO N7, not a lap after
+it).** Finish N4 → N5 → N6 → *prepare every N7 artifact without activating anything* (rollout
+scripts and runbooks, the activation boundary and no-backlog enforcement, recipient preview, the
+email canary, staged activation, monitoring and alerts, kill switches and circuits,
+rollback/recovery, the WhatsApp provider-readiness and consent gates, postflight verification) →
+run the **Notification Foundation Final Integration Audit** across N0–N6 *and* the complete
+prepared N7 path → fix every legitimate finding and obtain final Codex verification with no
+unresolved P0/P1/P2 → declare the implementation **release-ready but inactive** → **stop for owner
+approval**.
+
+Only after that approval: merge/deploy inertly → production read-only preflight → prove the exact
+activation boundary, zero historical backlog eligibility, the recipient preview and expected
+would-send count, kill switches and circuits ready, admin visibility healthy, provider
+configuration ready → **separate owner approval** for the controlled future-event email canary →
+execute N7 gradually with monitoring and immediate kill capability → WhatsApp only through its own
+consent/provider-readiness gate → post-activation postflight → freeze → **stop before A1** and
+before the broader players/bookings/invoices/academy audit.
+
+N7 code may be written and reviewed beforehand. **No N7 production activation may occur before the
+final audit is clear.**
 
 **Owner gates (never crossed autonomously).** mark-ready/merge, deployment, production or
 credential access, migrations against production, cron/engine/secret/provider configuration, a real

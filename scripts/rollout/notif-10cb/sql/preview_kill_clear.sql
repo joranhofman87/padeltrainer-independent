@@ -9,8 +9,6 @@ SET search_path = pg_catalog;
 
 SELECT * FROM public.preview_notification_channel_kill_clear(:'channel');
 
-SELECT pg_catalog.format('KILL_PREVIEW=%s PENDING=%s%s',
+SELECT pg_catalog.format('KILL_PREVIEW=%s PENDING=%s',
          :'channel',
-         (SELECT pending_now FROM public.preview_notification_channel_kill_clear(:'channel')),
-         CASE WHEN (SELECT pending_now_capped FROM public.preview_notification_channel_kill_clear(:'channel'))
-              THEN '+' ELSE '' END) AS preview_marker;
+         (SELECT pending_now FROM public.preview_notification_channel_kill_clear(:'channel'))) AS preview_marker;

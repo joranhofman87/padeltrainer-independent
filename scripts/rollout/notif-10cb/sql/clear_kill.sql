@@ -26,6 +26,9 @@ SET search_path = pg_catalog;
 SELECT * FROM public.preview_notification_channel_kill_clear(:'channel');
 
 BEGIN;
+-- SHORT and bounded: the function takes a SHARE lock on the outbox so the number the operator
+-- confirmed cannot be overtaken by a concurrent enqueue. That lock is why these timeouts matter —
+-- a pathological wait must fail rather than hold producers.
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 
@@ -37,13 +40,18 @@ CREATE TEMP TABLE _clear AS
     :'reason',
     :'request_id'::pg_catalog.uuid);
 
--- Every refusal is a typed verdict, already recorded as a rejected attempt on the way out — so
--- this assertion turns it into a non-zero exit without losing the evidence.
+-- COMMIT BEFORE ASSERTING. Every refusal is a typed verdict that the function has already
+-- recorded as a rejected attempt and a consumed request id — and raising inside this transaction
+-- would roll that evidence back, which is the exact defect this bundle fixed once already on the
+-- admin RPCs. Commit the decision (whatever it was), then turn a non-'cleared' verdict into a
+-- non-zero exit from outside the transaction.
+COMMIT;
+
 SELECT pg_temp.assert(
   (SELECT verdict FROM pg_temp._clear) OPERATOR(pg_catalog.=) 'cleared',
-  'the kill was cleared (rejected_stale_kill = the live kill is not the one you named; rejected_backlog_grew = more mail queued than the preview showed you, so look again; rejected_not_killed = the channel was already live)');
+  'the kill was cleared (rejected_stale_kill = the live kill is not the one you named; rejected_backlog_grew = more mail queued than the preview showed you, so look again — the refusal names both numbers; rejected_not_killed = the channel was already live)');
 
--- the postcondition, in the same transaction
+-- the postconditions, read after the commit that made them true
 SELECT pg_temp.assert_eq(
   (SELECT pg_catalog.count(*)::pg_catalog.int FROM public.notification_channel_kill_switches
     WHERE channel = :'channel'), 0,
@@ -53,9 +61,7 @@ SELECT pg_temp.assert_eq(
     WHERE request_id = :'request_id'::pg_catalog.uuid AND action = 'channel_kill_cleared'), 1,
   'the clearing is audited beside the kill it cleared');
 
-SELECT pg_catalog.format('KILL_CLEARED=%s RELEASED=%s%s',
-         :'channel', (SELECT pending_released FROM pg_temp._clear),
-         CASE WHEN (SELECT pending_released_capped FROM pg_temp._clear) THEN '+' ELSE '' END) AS clear_marker;
+SELECT pg_catalog.format('KILL_CLEARED=%s RELEASED=%s',
+         :'channel', (SELECT pending_released FROM pg_temp._clear)) AS clear_marker;
 
 DROP TABLE pg_temp._clear;
-COMMIT;

@@ -105,14 +105,13 @@ CREATE OR REPLACE FUNCTION public.clear_notification_channel_kill(
   p_expected_pending int,            -- the queue size you READ in the preview (see below)
   p_reason text,
   p_request_id uuid
-) RETURNS TABLE (verdict text, pending_released int, pending_released_capped boolean)
+) RETURNS TABLE (verdict text, pending_released int)
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
   k public.notification_channel_kill_switches%ROWTYPE;
-  CAP constant int := 10000;
   v_n bigint := 0;
   -- THE RUNBOOK IS AN ACTOR. The audit and the request registry are keyed by (actor, request_id),
   -- and psql carries no JWT — leaving it NULL would write an actor-less audit row (the table
@@ -143,42 +142,53 @@ BEGIN
     'reason', btrim(p_reason)));
   v_replay := public.notif_admin_replay_gate(v_actor, p_request_id, 'channel_kill_cleared', p_channel, p_reason, v_fp);
   IF v_replay IS NOT NULL THEN
-    verdict := v_replay; pending_released := 0; pending_released_capped := false; RETURN NEXT; RETURN;
+    verdict := v_replay; pending_released := 0; RETURN NEXT; RETURN;
   END IF;
 
   -- the same per-channel lock every kill-aware authority takes, so a worker cannot be mid-claim
   -- with a stale view while the kill disappears underneath it
   PERFORM pg_advisory_xact_lock(hashtextextended('notif-channel-kill:' || p_channel, 0));
 
+  -- …and a SHARE lock on the outbox, which is what makes the operator's bound TRUE rather than
+  -- merely likely. Claims share the advisory lock above, but enqueue_notification does not: without
+  -- this, a producer could commit rows between the count below and the kill's removal, and more
+  -- mail would resume than the operator confirmed. SHARE conflicts with the INSERT's ROW
+  -- EXCLUSIVE, so any in-flight enqueue finishes first and any later one waits for this
+  -- transaction — which is short, deliberate, and rare. lock_timeout in the artifact keeps a
+  -- pathological wait from becoming an outage.
+  LOCK TABLE public.notification_outbox IN SHARE MODE;
+
   SELECT * INTO k FROM public.notification_channel_kill_switches WHERE channel = p_channel;
   IF NOT FOUND THEN
     PERFORM public.notif_admin_record_refusal(v_actor, p_request_id, 'channel_kill_cleared', p_channel, p_reason,
       'the channel is not killed');
     verdict := public.notif_admin_record_verdict(v_actor, p_request_id, 'channel_kill_cleared', v_fp, 'rejected_not_killed');
-    pending_released := 0; pending_released_capped := false; RETURN NEXT; RETURN;
+    pending_released := 0; RETURN NEXT; RETURN;
   END IF;
   IF k.request_id IS DISTINCT FROM p_expected_kill_request_id THEN
     PERFORM public.notif_admin_record_refusal(v_actor, p_request_id, 'channel_kill_cleared', p_channel, p_reason,
       format('stale kill: the live kill is %s (%s), not the one you read (%s)', k.request_id, k.reason, p_expected_kill_request_id));
     verdict := public.notif_admin_record_verdict(v_actor, p_request_id, 'channel_kill_cleared', v_fp, 'rejected_stale_kill');
-    pending_released := 0; pending_released_capped := false; RETURN NEXT; RETURN;
+    pending_released := 0; RETURN NEXT; RETURN;
   END IF;
 
-  -- WHAT THIS RELEASES: everything that queued while the channel was dead. Saturating, like every
-  -- other count in this system — the operator needs "is there a pile", not an exact tally.
-  SELECT count(*) INTO v_n FROM (
-    SELECT 1 FROM public.notification_outbox o
-     WHERE o.channel = p_channel AND o.status = 'pending' LIMIT CAP + 1) x;
+  -- WHAT THIS RELEASES: everything that queued while the channel was dead. EXACT, unlike the
+  -- saturating gauges elsewhere — a bound the operator is confirming cannot itself be "at least".
+  -- (A saturating version could not tell 10,001 from a million, so growth above the cap would
+  -- have been undetectable, which is precisely where the number matters most.)
+  SELECT count(*) INTO v_n
+    FROM public.notification_outbox o
+   WHERE o.channel = p_channel AND o.status = 'pending';
 
   -- THE CONFIRMATION, made real: the operator states the number the PREVIEW showed them, and this
   -- refuses if the queue has GROWN past it. Enqueueing continues while a channel is killed, so an
   -- exact match would be unusable on a busy channel — but "no more than you were shown" is exactly
   -- the promise that matters, and a shrink (someone disposed of rows) is never a reason to refuse.
-  IF least(v_n, CAP) > p_expected_pending THEN
+  IF v_n > p_expected_pending THEN
     PERFORM public.notif_admin_record_refusal(v_actor, p_request_id, 'channel_kill_cleared', p_channel, p_reason,
-      format('the queue grew: %s pending now, %s when you looked', least(v_n, CAP), p_expected_pending));
+      format('the queue grew: %s pending now, %s when you looked', v_n, p_expected_pending));
     verdict := public.notif_admin_record_verdict(v_actor, p_request_id, 'channel_kill_cleared', v_fp, 'rejected_backlog_grew');
-    pending_released := least(v_n, CAP)::int; pending_released_capped := v_n > CAP; RETURN NEXT; RETURN;
+    pending_released := v_n::int; RETURN NEXT; RETURN;
   END IF;
 
   INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
@@ -189,7 +199,7 @@ BEGIN
   PERFORM set_config('notif.kill_clear_request', '', true);
 
   verdict := public.notif_admin_record_verdict(v_actor, p_request_id, 'channel_kill_cleared', v_fp, 'cleared');
-  pending_released := least(v_n, CAP)::int; pending_released_capped := v_n > CAP;
+  pending_released := v_n::int;
   RETURN NEXT;
 END;
 $$;
@@ -202,17 +212,18 @@ GRANT EXECUTE ON FUNCTION public.clear_notification_channel_kill(text, uuid, int
 -- prints, available as a function so the runbook's preview step and the clear itself cannot drift.
 CREATE OR REPLACE FUNCTION public.preview_notification_channel_kill_clear(p_channel text)
 RETURNS TABLE (channel text, kill_request_id uuid, activated_by uuid, reason text,
-               activated_at timestamptz, killed_for interval,
-               pending_now int, pending_now_capped boolean)
+               activated_at timestamptz, killed_for interval, pending_now int)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
-DECLARE CAP constant int := 10000; v_n bigint;
+DECLARE v_n bigint;
 BEGIN
-  SELECT count(*) INTO v_n FROM (
-    SELECT 1 FROM public.notification_outbox o
-     WHERE o.channel = p_channel AND o.status = 'pending' LIMIT CAP + 1) x;
+  -- EXACT, for the same reason the clear's count is: this number is the bound the operator will
+  -- confirm, and a saturating one could not distinguish 10,001 from a million.
+  SELECT count(*) INTO v_n
+    FROM public.notification_outbox o
+   WHERE o.channel = p_channel AND o.status = 'pending';
   RETURN QUERY
   SELECT k.channel, k.request_id, k.activated_by, k.reason, k.activated_at,
-         now() - k.activated_at, least(v_n, CAP)::int, v_n > CAP
+         now() - k.activated_at, v_n::int
     FROM public.notification_channel_kill_switches k
    WHERE k.channel = p_channel;
 END;

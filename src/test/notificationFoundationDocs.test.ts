@@ -176,6 +176,13 @@ describe('N6 doc pins — the operations reference', () => {
     expect(read('scripts', 'rollout', 'notif-10cb', 'sql', 'preview_kill_clear.sql'))
       .toContain('preview_notification_channel_kill_clear');
     expect(fn).toContain("'rejected_backlog_grew'");
+    // the refusal EVIDENCE must survive the artifact: a raise inside the transaction would roll
+    // back the rejected attempt and the consumed request id, which is the defect this bundle
+    // already fixed once on the admin RPCs
+    expect(sql.indexOf('COMMIT;')).toBeGreaterThan(sql.indexOf('clear_notification_channel_kill'));
+    expect(sql.indexOf('COMMIT;')).toBeLessThan(sql.indexOf('pg_temp.assert('));
+    // and the bound is transactional, not merely likely
+    expect(fn).toContain('LOCK TABLE public.notification_outbox IN SHARE MODE');
     expect(sh).not.toContain('--backlog-confirmed');
     // …and the doc must not claim the owner is bound by a trigger
     expect(OPERATIONS).toContain('no trigger can bind a superuser');
