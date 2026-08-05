@@ -167,6 +167,9 @@
       "revoke": "Stop WhatsApp-berichten",
       "revoked": "WhatsApp-berichten gestopt",
       "toggleFor": "WhatsApp voor {{event}}"
-    }
+    },
+    "cappedBy": "Beperkt tot {{cap}} door {{academy}}",
+    "capHistoryTitle": "Wijzigingen door je academy",
+    "capHistoryDesc": "Je academy kan optionele meldingen voor haar spelers verminderen. Je eigen keuzes winnen altijd wanneer ze strenger zijn."
   }
 }

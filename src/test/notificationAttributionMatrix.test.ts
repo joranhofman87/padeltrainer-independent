@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import { CAPPABLE_EVENTS } from '@/lib/academyNotificationCappable';
 import { resolve } from 'node:path';
 
 /**
@@ -55,7 +57,6 @@ describe('attribution matrix pins', () => {
   it('the producer inventory is CLOSED: exactly these files call enqueue_notification', () => {
     // A new producer must join the matrix and these pins in the same change. This walks the two
     // trees that can hold callers and asserts the known set — a sixth caller fails here first.
-    const { execSync } = require('node:child_process') as typeof import('node:child_process');
     const out = execSync(
       `grep -rl "enqueue_notification\\|enqueue_booking_notification" supabase/functions supabase/migrations`,
       { cwd: ROOT, encoding: 'utf8' },
@@ -80,5 +81,22 @@ describe('attribution matrix pins', () => {
     expect(doc).toContain('iff the producer supplied `p_tenant_academy_profile_id`');
     expect(doc).toContain('NEVER infers an academy');
     expect(doc).toContain('affects nothing today');
+  });
+});
+
+
+describe('the UI cappable list stays inside the matrix', () => {
+  it('every CAPPABLE_EVENTS entry appears in a matrix row marked cappable', () => {
+    const doc = read('docs/NOTIFICATION_ATTRIBUTION_MATRIX.md');
+    for (const { event } of CAPPABLE_EVENTS) {
+      expect(doc, `${event} missing from the matrix`).toContain(event);
+    }
+    // and the two trainer-only events must NEVER appear in the UI list — a control for them
+    // would be a switch wired to nothing.
+    const uiEvents = CAPPABLE_EVENTS.map((e) => e.event);
+    expect(uiEvents).not.toContain('open_slots_player');
+    expect(uiEvents).not.toContain('review_received_trainer');
+    // and no REQUIRED event may be offered (booking_confirmed_player is the live required one)
+    expect(uiEvents).not.toContain('booking_confirmed_player');
   });
 });

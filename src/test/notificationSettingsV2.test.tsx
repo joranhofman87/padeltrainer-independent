@@ -21,6 +21,8 @@ let v2ReadError: { message: string } | null = null;
 const upsertMock = vi.fn();
 const legacyUpsertMock = vi.fn();
 const rpcMock = vi.fn();
+let myCaps: unknown[] = [];
+let myCapHistory: unknown[] = [];
 
 let authState = {
   user: { id: 'U1' },
@@ -43,7 +45,10 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, def?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
       const vars = (typeof def === 'string' ? opts : def) ?? {};
-      const template = typeof def === 'string' ? def : key;
+      // object form carries defaultValue, exactly as real i18next reads it
+      const template = typeof def === 'string'
+        ? def
+        : String((def as Record<string, unknown> | undefined)?.defaultValue ?? key);
       return template.replace(/\{\{(\w+)\}\}/g, (_m, name) => String(vars[name] ?? ''));
     },
   }),
@@ -76,6 +81,8 @@ vi.mock('@/lib/supabaseClient', () => ({
     rpc: (fn: string, ...rest: unknown[]) => {
       rpcMock(fn, ...rest);
       if (fn === 'get_my_whatsapp_consent') return Promise.resolve({ data: consentRows, error: null });
+      if (fn === 'get_my_notification_restrictions') return Promise.resolve({ data: myCaps, error: null });
+      if (fn === 'get_my_notification_restriction_history') return Promise.resolve({ data: myCapHistory, error: null });
       if (fn === 'revoke_my_whatsapp_consent') return Promise.resolve({ data: 1, error: null });
       return Promise.resolve({ data: null, error: null });
     },
@@ -100,6 +107,8 @@ beforeEach(() => {
   v2rows = [];
   v1row = null;
   v2ReadError = null;
+  myCaps = [];
+  myCapHistory = [];
   navigateMock.mockClear();
   // A fresh tab from an email link: React Router's history index is 0, i.e. nothing of ours
   // behind us. Individual tests raise it to model in-app navigation.
@@ -251,6 +260,21 @@ describe('NotificationSettings v2', () => {
     // row falls back to the catalog's weekly default for open_slots_player.
     expect(freq('pref-row-upcoming_sessions_digest')).toBe('daily');
     expect(freq('pref-row-booking_confirmation')).toBe('instant');
+  });
+
+  it('an academy cap renders an ADVISORY marker on the affected row, and only there', async () => {
+    myCaps = [{ academy_name: 'Padel Zuid', event_type: 'open_slots_player', channel: 'email', max_frequency: 'daily' }];
+    render(<NotificationSettings />);
+    expect(await screen.findByTestId('cap-marker-open_slots_player')).toHaveTextContent('Padel Zuid');
+    expect(screen.queryByTestId('cap-marker-booking_confirmation')).toBeNull();
+  });
+
+  it("the academies' change history renders when present — finding 5's player visibility", async () => {
+    myCapHistory = [{ academy_name: 'Padel Zuid', event_type: 'open_slots_player',
+      old_max_frequency: null, new_max_frequency: 'off', reason: 'tournament week' }];
+    render(<NotificationSettings />);
+    const entry = await screen.findByTestId('cap-history-entry');
+    expect(entry).toHaveTextContent('tournament week');
   });
 
   describe('the Back control at the neutral email-entry route', () => {

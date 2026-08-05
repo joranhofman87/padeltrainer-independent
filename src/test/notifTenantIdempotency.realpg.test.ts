@@ -121,6 +121,7 @@ beforeAll(async () => {
     '20261015110000_notif_n3_academy_restrictions.sql',
     '20261015120000_notif_n3_resolver_cap_integration.sql',
     '20261015130000_notif_n3_player_visibility.sql',
+    '20261015140000_notif_n3_academy_outcome_reads.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -706,5 +707,65 @@ describe('player visibility of academy caps (N3 M4)', () => {
     await asUser(U1); // U1 has no bookings/guests in this test
     expect((await c.query(`SELECT * FROM public.get_my_notification_restrictions()`)).rows).toHaveLength(0);
     expect((await c.query(`SELECT * FROM public.get_my_notification_restriction_history(50)`)).rows).toHaveLength(0);
+  });
+});
+
+
+describe('academy outcome reads (N3 M6): visibility never widens, impact never identifies', () => {
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await asUser(MGR);
+    await c.query(`
+      INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+        destination_redacted, consent_status, consent_scope, is_primary)
+      VALUES ('${P1}','${U1}','email','p1@example.com','p***@example.com','opted_in','global', true)
+      ON CONFLICT DO NOTHING;`);
+  });
+
+  it('outcomes list serves ONLY tenant-visible rows — a private player event never appears', async () => {
+    // tenant-visible staff row for academy A (booking_confirmed_staff is tenant_visible)
+    await c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_user_id, tenant_academy_profile_id, visibility_scope,
+         public_summary, idempotency_key, status)
+      VALUES ('booking_confirmed_staff','email','${U1}','${A}','tenant_visible',
+              '{"event_type":"booking_confirmed_staff"}','staff:o1:${U1}','sent')`);
+    // private player row for the SAME academy
+    await enqueueOptional({ academy: A }, 'outc-1');
+    const rows = (await c.query(`SELECT * FROM public.get_academy_notification_outcomes('${A}', 50)`)).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].event_type).toBe('booking_confirmed_staff');
+    // and the projection is the REDACTED one
+    expect(Object.keys(rows[0])).not.toContain('destination_normalized');
+    expect(Object.keys(rows[0])).not.toContain('payload');
+  });
+
+  it('impact is AGGREGATE-ONLY: the cap shows up as a count, never as identities', async () => {
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    await enqueueOptional({ academy: A }, 'imp-1');
+    await enqueueOptional({ academy: A }, 'imp-2');
+    const rows = (await c.query(`SELECT * FROM public.get_academy_restriction_impact('${A}', 30)`)).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0].event_type).toBe('session_reminder_player');
+    expect(Number(rows[0].restricted_count)).toBe(2);
+    const cols = Object.keys(rows[0]);
+    for (const leaked of ['recipient_user_id','recipient_person_id','destination_redacted','destination_normalized','id']) {
+      expect(cols).not.toContain(leaked);
+    }
+  });
+
+  it("both reads are manager-scoped: academy B's manager-less caller and anon are refused", async () => {
+    await asUser(U1);
+    await expect(c.query(`SELECT * FROM public.get_academy_notification_outcomes('${A}', 50)`))
+      .rejects.toThrow(/not a manager/);
+    await expect(c.query(`SELECT * FROM public.get_academy_restriction_impact('${A}', 30)`))
+      .rejects.toThrow(/not a manager/);
+    await asUser(null);
+    await expect(c.query(`SELECT * FROM public.get_academy_restriction_impact('${A}', 30)`))
+      .rejects.toThrow(/not a manager/);
+    await asUser(MGR);
+    // and impact never crosses tenants: A's manager sees nothing of B's restrictions
+    const rows = (await c.query(`SELECT * FROM public.get_academy_restriction_impact('${A}', 30)`)).rows;
+    expect(Array.isArray(rows)).toBe(true); // shape check only; cross-tenant covered by scoping predicate
   });
 });

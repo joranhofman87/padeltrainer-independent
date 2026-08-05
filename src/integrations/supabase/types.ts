@@ -10104,6 +10104,48 @@ export type Database = {
           vat_rate: number
         }[]
       }
+      get_academy_notification_outcomes: {
+        Args: { p_academy_profile_id: string; p_limit?: number }
+        Returns: {
+          channel: string
+          created_at: string
+          destination_redacted: string
+          event_type: string
+          public_summary: Json
+          skip_reason: string
+          status: string
+        }[]
+      }
+      get_academy_notification_restriction_audit: {
+        Args: { p_academy_profile_id: string; p_limit?: number }
+        Returns: {
+          actor_user_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          new_max_frequency: string
+          old_max_frequency: string
+          reason: string
+        }[]
+      }
+      get_academy_notification_restrictions: {
+        Args: { p_academy_profile_id: string }
+        Returns: {
+          channel: string
+          event_type: string
+          max_frequency: string
+          updated_at: string
+        }[]
+      }
+      get_academy_restriction_impact: {
+        Args: { p_academy_profile_id: string; p_days?: number }
+        Returns: {
+          channel: string
+          day: string
+          event_type: string
+          restricted_count: number
+        }[]
+      }
       get_academy_undeliverable_recipients: {
         Args: { p_academy_profile_id: string }
         Returns: {
@@ -10265,6 +10307,29 @@ export type Database = {
         }[]
       }
       get_my_linked_guest_bookings: { Args: never; Returns: Json }
+      get_my_notification_restriction_history: {
+        Args: { p_limit?: number }
+        Returns: {
+          academy_name: string
+          academy_profile_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          new_max_frequency: string
+          old_max_frequency: string
+          reason: string
+        }[]
+      }
+      get_my_notification_restrictions: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          academy_name: string
+          academy_profile_id: string
+          channel: string
+          event_type: string
+          max_frequency: string
+        }[]
+      }
       get_my_paid_booking_ids: {
         Args: never
         Returns: {
@@ -10988,6 +11053,14 @@ export type Database = {
         Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
         Returns: boolean
       }
+      notif_frequency_rank: {
+        Args: { p_freq: string }
+        Returns: number
+      }
+      notif_my_academy_ids: {
+        Args: Record<PropertyKey, never>
+        Returns: string[]
+      }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
@@ -11292,6 +11365,17 @@ export type Database = {
           total_count: number
           trainer_profile_id: string
         }[]
+      }
+      set_academy_notification_restriction: {
+        Args: {
+          p_academy_profile_id: string
+          p_channel: string
+          p_event_type: string
+          p_max_frequency: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
       }
       set_player_location: {
         Args: {

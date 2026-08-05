@@ -21,7 +21,7 @@ are out of its reach — by design, not omission.
 
 | # | Producer (call site) | Event(s) | Attribution supplied | Academy caps? |
 |---|---|---|---|---|
-| 1 | `supabase/migrations/20260926100000_booking_notification_enqueue_rpc.sql` (both call sites) | booking lifecycle events (player + staff arms) | **academy + trainer, derived from the booked SLOTS** — a set spanning academy scopes is refused outright | **Yes**, when the slot belongs to an academy and the event is optional |
+| 1 | `supabase/migrations/20260926100000_booking_notification_enqueue_rpc.sql` (both call sites) | `booking_request_staff`, `booking_confirmed_player`, `booking_cancelled_player` | **academy + trainer, derived from the booked SLOTS** — a set spanning academy scopes is refused outright | **Yes**, when the slot belongs to an academy and the event is optional |
 | 2 | `supabase/functions/_shared/booking-confirmation-email.ts:319` | `booking_confirmed_player` | academy (when the slot has one) + trainer | Moot — the event is `required_delivery`; caps are refused at write and ignored at read |
 | 3 | `supabase/functions/_shared/mollie-booking-paid-side-effects.ts:480` | `booking_confirmed_staff` | per-recipient staff scope: `scope.academy ?? null` / `scope.trainer ?? null` | **Yes** for academy-scoped staff copies; trainer-scoped copies are outside |
 | 4 | `supabase/functions/notify-followers/index.ts:320` (logic in `_shared/open-slots-notify.ts` — one producer, two files) | `open_slots_player` | **trainer only** | **No.** A follower follows a TRAINER; the send has no academy owner. An academy cap on `open_slots_player` therefore affects nothing today — M6's surface must say so rather than offer a dead control |

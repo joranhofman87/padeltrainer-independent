@@ -146,6 +146,11 @@ export default function NotificationSettings() {
   // it — silently replacing a stored `whatsapp: off` with the default the moment the recipient
   // touches the email control. Refuse to render controls at all until the load succeeds.
   const [loadFailed, setLoadFailed] = useState(false);
+  // N3: caps my academies placed on my events — powers the "capped by {academy}" markers.
+  // A FAILED read renders no markers rather than blocking the page: the marker is advisory
+  // (the resolver enforces the cap regardless of whether the badge rendered).
+  const [academyCaps, setAcademyCaps] = useState<Array<{ academy_name: string; event_type: string; channel: string; max_frequency: string }>>([]);
+  const [capHistory, setCapHistory] = useState<Array<Record<string, unknown>>>([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -173,6 +178,14 @@ export default function NotificationSettings() {
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle(),
         supabase.rpc('get_my_whatsapp_consent'),
       ]);
+
+      // Advisory reads (N3): failures here degrade to "no markers", never to a blocked page.
+      const [capsRes, capHistRes] = await Promise.all([
+        supabase.rpc('get_my_notification_restrictions'),
+        supabase.rpc('get_my_notification_restriction_history', { p_limit: 10 }),
+      ]);
+      setAcademyCaps((capsRes.data ?? []) as typeof academyCaps);
+      setCapHistory((capHistRes.data ?? []) as Array<Record<string, unknown>>);
 
       const readError = types.error ?? rows.error ?? v1.error ?? wa.error;
       if (readError) throw readError;
@@ -371,6 +384,10 @@ export default function NotificationSettings() {
     navigate(roleHomePath({ isAcademyManager, isClubManager, role }));
   };
 
+  /** The academies capping this event+channel, if any — rendered as an advisory badge. */
+  const capsFor = (eventKey: string, channel: string) =>
+    academyCaps.filter((r) => r.event_type === eventKey && r.channel === channel);
+
   const eventLabel = (key: string) => t(`notifications.events.${key}.label`, key.replace(/_/g, ' '));
   const freqLabel = (f: Frequency) => t(`notifications.frequency.${f}`);
 
@@ -426,7 +443,20 @@ export default function NotificationSettings() {
           <CardContent className="space-y-4">
             {configurable.map((e) => (
               <div key={e.key} className="flex items-center justify-between gap-4" data-testid={`pref-row-${e.key}`}>
-                <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+                <div className="min-w-0">
+                  <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+                  {/* N3: an academy cap on this event — ADVISORY (the resolver enforces it
+                      either way), so the player is never surprised by quieter mail. */}
+                  {capsFor(e.key, 'email').map((cap) => (
+                    <p key={cap.academy_name} className="text-xs text-muted-foreground" data-testid={`cap-marker-${e.key}`}>
+                      {t('notifications.cappedBy', {
+                        defaultValue: 'Limited to {{cap}} by {{academy}}',
+                        cap: t(`notifications.frequency.${cap.max_frequency}`, cap.max_frequency),
+                        academy: cap.academy_name,
+                      })}
+                    </p>
+                  ))}
+                </div>
                 <div className="flex items-center gap-4">
                   {e.supports_email && (e.supports_digest ? (
                     <Select
@@ -514,6 +544,31 @@ export default function NotificationSettings() {
                 <Badge variant="secondary" className="font-normal">{t('notifications.alwaysOn', 'Always on')}</Badge>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* N3 finding 5: the CHANGES my academies made, not just the current caps — a
+          set→off→inherit sequence leaves no current row, and the player must still see it. */}
+      {capHistory.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('notifications.capHistoryTitle', 'Changes by your academies')}</CardTitle>
+            <CardDescription>
+              {t('notifications.capHistoryDesc', 'Your academy can reduce optional notifications for its players. Your own choices always win when they are stricter.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {capHistory.map((h, i) => (
+                <li key={i} className="text-sm" data-testid="cap-history-entry">
+                  <span className="font-medium">{String(h.academy_name)}</span>{' '}
+                  <span className="text-muted-foreground">
+                    {eventLabel(String(h.event_type))}: {String(h.old_max_frequency ?? '—')} → {String(h.new_max_frequency ?? '—')} · {String(h.reason)}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </CardContent>
         </Card>
       )}

@@ -101,6 +101,7 @@ const FollowingList = lazy(() => import('@/pages/FollowingList'));
 const NotificationSettings = lazy(() => import('@/pages/NotificationSettings'));
 const NotificationSettingsEntry = lazy(() => import('@/pages/NotificationSettingsEntry'));
 const ManageEmail = lazy(() => import('@/pages/ManageEmail'));
+const AcademyNotificationControls = lazy(() => import('@/pages/academy/AcademyNotificationControls'));
 
 // Trainer pages
 const TrainerDashboard = lazy(() => import('@/pages/TrainerDashboard'));
@@ -395,6 +396,7 @@ export function DomainRouter() {
           <Route path="waiting-list" element={<AcademyWaitingList />} />
           <Route path="settings" element={<AcademySettings />} />
           <Route path="settings/notifications" element={<NotificationSettings />} />
+          <Route path="settings/notification-controls" element={<AcademyNotificationControls />} />
           <Route path="subscription" element={<AcademySubscription />} />
           
           <Route path="invoices" element={<AcademyInvoices />} />
