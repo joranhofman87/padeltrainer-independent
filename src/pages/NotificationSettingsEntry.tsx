@@ -1,15 +1,10 @@
 import { useEffect } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  NOTIFICATION_SETTINGS_ENTRY_PATH,
-  notificationSettingsPathFor,
-} from '@/lib/notificationSettingsRoute';
-import { Card, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { NOTIFICATION_SETTINGS_ENTRY_PATH } from '@/lib/notificationSettingsRoute';
+import NotificationSettings from '@/pages/NotificationSettings';
 import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { FullPageLoader } from '@/components/ui/page-spinner';
-import { Bell } from 'lucide-react';
 
 /**
  * `/app/settings/notifications` — the ROLE-AGNOSTIC entry to notification settings.
@@ -18,20 +13,24 @@ import { Bell } from 'lucide-react';
  * they must guess the recipient's surface from the EMAIL TYPE. That guess is wrong for anyone
  * holding more than one role: an academy manager sent to the trainer path is bounced by
  * TrainerLayout to the player dashboard, and the deep link is silently discarded. A sender cannot
- * know which surface a recipient belongs to; the app can. So senders link here and this resolves it.
+ * know which surface a recipient belongs to; the app can.
  *
- * IT IS MOUNTED OUTSIDE THE ROLE LAYOUTS on purpose. Mounting it under one would re-create the
- * bug: that layout's guard bounces every role it does not recognise, which is the exact failure
- * this route exists to prevent.
+ * IT RENDERS THE SETTINGS PAGE — IT DOES NOT FORWARD TO A ROLE ROUTE. Forwarding was the first
+ * design and it was wrong: the role layouts guard far more than role. AcademyLayout redirects an
+ * expired academy to `/app/academy/subscription`; TrainerLayout redirects an incomplete onboarding
+ * to `/app/onboarding/trainer`, and an expired solo trainer to subscription. Each fires on the
+ * settings path too, so forwarding only moved the bounce one hop later — and the people it
+ * stranded are precisely the ones most likely to be unsubscribing. Rendering here means no
+ * downstream guard, present or future, can stand between a recipient and turning mail off.
+ *
+ * That is also why it is mounted OUTSIDE every role layout in `DomainRouter`: nested under one,
+ * those same guards would apply and re-create the bug.
  */
 export default function NotificationSettingsEntry() {
-  const { user, roles, isAcademyManager, loading, profileReady, profileFetchFailed, refreshAuth } =
-    useAuth();
+  const { user, loading, profileReady, profileFetchFailed, refreshAuth } = useAuth();
   const navigate = useNavigate();
-  const { t } = useTranslation('common');
 
-  // Same shape as the role layouts: wait for the ROLES, not merely the session. Forwarding on a
-  // half-resolved auth state would send a trainer to the player surface and strand them there.
+  // Same predicate as the role layouts: wait for the profile, not merely the session.
   const authResolving = loading || (!!user && !profileReady);
 
   useEffect(() => {
@@ -47,10 +46,13 @@ export default function NotificationSettingsEntry() {
 
   if (authResolving || !user) return <FullPageLoader />;
 
-  // U-12: empty roles after a FAILED fetch means "couldn't load", not "this account has no
-  // notifications". Claiming the latter would be a lie about the account, and a dead end at the
-  // end of an email link. Offer the retry instead.
-  if (roles.length === 0 && profileFetchFailed) {
+  // ANY aggregate fetch failure disqualifies this page, not only one that left `roles` empty.
+  // `useAuth` publishes PARTIAL results on its final attempt: a failed academy-manager lookup
+  // beside a successful roles lookup yields `isAcademyManager === false` with real roles, and a
+  // failed fetch after an account switch keeps the PREVIOUS account's roles (neither is cleared on
+  // switch). Both feed the settings page's staff test, so rendering would quietly show a trainer
+  // or manager the player-only list — a wrong answer that looks like a complete one.
+  if (profileFetchFailed) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50/80 p-4">
         <QueryErrorState
@@ -63,22 +65,5 @@ export default function NotificationSettingsEntry() {
     );
   }
 
-  const target = notificationSettingsPathFor({ isAcademyManager, roles });
-  // `replace` so the entry never sits in history: Back from the settings page should return where
-  // the person came from, not bounce forward through the redirect again.
-  if (target) return <Navigate to={target} replace />;
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50/80 p-4">
-      <Card className="w-full max-w-md" data-testid="notification-settings-unavailable">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Bell className="h-5 w-5" />
-            {t('notifications.unavailableTitle')}
-          </CardTitle>
-          <CardDescription>{t('notifications.unavailableBody')}</CardDescription>
-        </CardHeader>
-      </Card>
-    </div>
-  );
+  return <NotificationSettings />;
 }

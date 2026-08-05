@@ -53,23 +53,48 @@ raised by review against the shipped schema and must be satisfied where named.
    live key window [min_mintable, current] and the signature are checked before any capability
    lookup; `bindManageTokenToRow` then requires the row's `key_version` to equal the signed one.
 6. ~~**The neutral settings route must exist before S2 emits it (S4).**~~ **CLOSED in S4**:
-   `/app/settings/notifications` is mounted in `DomainRouter` **outside every role layout** — under
-   one, that layout's guard would bounce the roles the route exists to serve, which is the original
-   bug. `notificationSettingsPathFor` (in `src/lib/notificationSettingsRoute.ts`, so email/footer
-   code can cite the path without importing a page) resolves academy → trainer → player; a
-   club-only account is told plainly rather than forwarded into a bouncing guard. Logged out, the
-   destination rides in `?redirect=`. Two things a later slice must not undo: a still-resolving auth
-   state decides NOTHING (a premature forward strands a multi-role recipient), and empty roles after
-   a FAILED fetch offers a retry — never "this account has no notification settings", which would be
-   a lie at the end of an email link. A depth-aware router-source test fails if the route is ever
-   nested under a layout.
-6b. **`?redirect=` was navigated unsanitised on the primary login path (fixed in S4).** `Auth.tsx`
-   stored the query param verbatim and called `navigate(redirectUrl)` on it after login; only the
-   no-roles branch used `sanitizeAppRedirect`. Since S2b hands this parameter out in email footers,
-   a crafted copy was a plausible off-origin jump (`//host` resolves protocol-relative). Now
-   sanitised at BOTH ends — sessionStorage survives reloads, so a value written by an older build
-   would otherwise still be trusted — and a value that fails is purged rather than left to be
-   re-evaluated at every future login.
+   `/app/settings/notifications` is mounted in `DomainRouter` **outside every role layout** and
+   **RENDERS the settings page — it does not forward to a role route.** Forwarding was the first
+   implementation and review killed it: the role layouts guard far more than role. `AcademyLayout`
+   redirects an expired academy to `/app/academy/subscription`; `TrainerLayout` redirects an
+   incomplete onboarding to `/app/onboarding/trainer` and an expired solo trainer to subscription.
+   Each fires on the settings path too, so a forward only moved the bounce one hop later — and the
+   people it stranded (expired, mid-onboarding) are the ones most likely to be unsubscribing.
+   Rendering in place means no downstream guard, present or future, stands between a recipient and
+   turning mail off. Two further invariants a later slice must not undo: a still-resolving auth
+   state decides NOTHING, and **any** aggregate `profileFetchFailed` offers a retry instead of
+   rendering — `useAuth` publishes PARTIAL results on its last attempt, so a failed
+   academy-manager lookup beside a successful roles lookup would otherwise show a manager the
+   player-only list, a wrong answer that looks like a complete one. A depth-aware,
+   comment-stripping router-source test fails if the route is ever nested under any of the five
+   layouts.
+6b. **`?redirect=` was navigated unsanitised on two paths (both fixed in S4).** `Auth.tsx` stored
+   the query param verbatim and called `navigate(redirectUrl)` on it after login, sanitising only
+   in the no-roles branch. Separately — and reachable from the same `?redirect=` — Auth's signup
+   link forwards the raw param to `/app/signup`, `SignupRootRedirect` preserves the query,
+   `TrainerSignup` stored it raw in `redirectAfterOnboarding` (three sites), and
+   `TrainerOnboardingFlow.finishRedirect` navigated to it raw. Since S2b hands this parameter out
+   in email footers, a crafted copy was a plausible off-origin jump (`//host` resolves
+   protocol-relative). All five sites now go through `sanitizeAppRedirect`, and a stored value that
+   fails is purged rather than re-evaluated at every future login/onboarding. **The tell was the
+   string literal:** every site that used `SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY` already
+   sanitised; the only two that did not were the two that hardcoded `'redirectAfterOnboarding'`. A
+   test now forbids that literal in all three files.
+6c. **`isStaff` read the PRIMARY role, so a trainer who is also an admin saw the player-only list
+   (fixed in S4).** `useAuth` ranks admin above trainer, so `role === 'trainer'` is false for an
+   account holding both, and `NotificationSettings` hid every staff catalog event and the legacy
+   staff settings from a real trainer. Now tested against the whole `roles` set. Pre-existing on
+   all three role routes, not introduced by S4 — but S4 renders this page directly, so it was
+   fixed rather than inherited. **Note for the N1 branch (PR #631):** it refactors this same file
+   and derives the back target from `location.pathname`; when both land, the neutral path needs a
+   back target there (the page's `navigate(-1)` is a no-op in the fresh tab an email link opens).
+6d. **OPEN — `useAuth` keeps the previous account's roles across a switch when the fetch fails.**
+   On a switch it clears `profileReady`/`profileFetchFailed` and the subscription, but not `roles`,
+   `role`, `profile` or `isAcademyManager` (`src/hooks/useAuth.tsx`); if every retry then throws it
+   sets `profileFetchFailed`/`profileReady` and leaves the previous account's values in place. S4's
+   entry refuses to render on any `profileFetchFailed`, so this route is safe, but every layout and
+   page that reads `roles` without checking that flag is not. **Owner:** a `useAuth` hardening pass
+   — clear routing state on identity change — not a notification slice. Found by review during S4.
 7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
    `expires_at` more than 30 days past — and never a row that is merely revoked.
 7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising

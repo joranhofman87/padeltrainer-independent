@@ -193,13 +193,18 @@ operation, still outstanding. It unblocks the SMOKE, not the send: Admin Notific
 (below) still blocks every canary and activation.
 
 **S4 landed first, out of numeric order, because S2b emits the route it mounts.**
-`/app/settings/notifications` is mounted OUTSIDE every role layout — under one, that layout's guard
-would bounce the very roles the route exists to serve — and resolves academy → trainer → player,
-telling a club-only account plainly instead of forwarding it into a bouncing guard. Logged out, the
-destination rides in `?redirect=`. Implementing it exposed a live open-redirect: `Auth.tsx` stored
-that parameter verbatim and navigated to it after login, sanitising only in the no-roles branch.
-Now sanitised on the way in and out, with a failing value purged. The guest manage page and
-analytics redaction stay with S3/S5.
+`/app/settings/notifications` is mounted OUTSIDE every role layout and RENDERS the settings page
+rather than forwarding to a role route. Forwarding was the first design; review killed it, because
+the role layouts guard far more than role — an expired academy or an incomplete trainer onboarding
+is redirected off the settings path by its own layout, so a forward only moved the bounce one hop
+later, stranding exactly the people most likely to be unsubscribing. Logged out, the destination
+rides in `?redirect=`.
+
+Implementing it exposed a live open redirect on two paths: `Auth.tsx` stored `?redirect=` verbatim
+and navigated to it after login, and the same parameter travelled through the signup link into
+`TrainerSignup` → `TrainerOnboardingFlow`, which stored and navigated it raw. All five sites now
+sanitise, and a stored value that fails is purged. The guest manage page and analytics redaction
+stay with S3/S5.
 
 **N2's remaining slices** continue on `feat/notif-n2-email-prefs`: S2b (worker + digest-render
 footer attach, the role-agnostic `send-email` link, and a send-time gate for the legacy

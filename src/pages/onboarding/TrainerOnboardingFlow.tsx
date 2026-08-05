@@ -32,6 +32,10 @@ import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { FullPageLoader } from '@/components/ui/page-spinner';
 import { toast } from 'sonner';
+import {
+  sanitizeAppRedirect,
+  SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY,
+} from '@/lib/signupClaimFlow';
 
 const TOTAL_STEPS = 4;
 
@@ -96,13 +100,14 @@ export default function TrainerOnboardingFlow() {
   } = useOnboardingResponses(trainerProfileId ?? undefined);
 
   const finishRedirect = useCallback(() => {
-    const redirectUrl = localStorage.getItem('redirectAfterOnboarding');
-    if (redirectUrl) {
-      localStorage.removeItem('redirectAfterOnboarding');
-      navigate(redirectUrl);
-    } else {
-      navigate('/app/trainer');
-    }
+    // Sanitised on the way out as well as in. localStorage outlives the build that wrote it, and
+    // this key is reachable from `/app/auth?redirect=` via the signup link, so a value stored by
+    // an older build must not be trusted here. Clear it either way — a rejected value that stayed
+    // would be re-evaluated at the end of every future onboarding.
+    const stored = localStorage.getItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY);
+    if (stored) localStorage.removeItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY);
+    const redirectUrl = sanitizeAppRedirect(stored);
+    navigate(redirectUrl ?? '/app/trainer');
   }, [navigate]);
 
   const initOnboarding = useCallback(async () => {

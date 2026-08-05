@@ -128,7 +128,7 @@ type LegacyKey = (typeof LEGACY_PLAYER)[number] | (typeof LEGACY_STAFF)[number];
 const STAFF_AUDIENCES = new Set(['academy_manager', 'trainer']);
 
 export default function NotificationSettings() {
-  const { user, role, isAcademyManager, loading } = useAuth();
+  const { user, roles, isAcademyManager, loading } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation('common');
@@ -141,8 +141,11 @@ export default function NotificationSettings() {
   const [dataLoading, setDataLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // academy_manager + trainer are ONE staff bucket (see header note).
-  const isStaff = Boolean(isAcademyManager) || role === 'trainer';
+  // academy_manager + trainer are ONE staff bucket (see header note). Tested against the whole
+  // ROLES set, not the primary role: `useAuth` ranks admin above trainer, so an account holding
+  // both resolves to `role === 'admin'` and a primary-role test would hide every staff event and
+  // legacy staff setting from a real trainer.
+  const isStaff = Boolean(isAcademyManager) || roles.includes('trainer');
 
   useEffect(() => {
     if (!loading && !user) navigate('/app/auth');

@@ -24,6 +24,10 @@ import { getUtmParams } from '@/lib/utm';
 import { useHoneypot } from '@/hooks/useHoneypot';
 import { logger } from '@/lib/logger';
 import { FeatureErrorBoundary } from '@/components/FeatureErrorBoundary';
+import {
+  sanitizeAppRedirect,
+  SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY,
+} from '@/lib/signupClaimFlow';
 
 export default function TrainerSignup() {
   const [isLoading, setIsLoading] = useState(false);
@@ -121,9 +125,9 @@ export default function TrainerSignup() {
           /* analytics must not block signup */
         }
         localStorage.setItem('pendingRole', 'trainer');
-        const redirectUrl = searchParams.get('redirect');
+        const redirectUrl = sanitizeAppRedirect(searchParams.get('redirect'));
         if (redirectUrl) {
-          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+          localStorage.setItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY, redirectUrl);
         }
         toast({
           title: t('signUp.success'),
@@ -137,9 +141,9 @@ export default function TrainerSignup() {
           /* analytics must not block signup */
         }
         localStorage.setItem('pendingRole', 'trainer');
-        const redirectUrl = searchParams.get('redirect');
+        const redirectUrl = sanitizeAppRedirect(searchParams.get('redirect'));
         if (redirectUrl) {
-          localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+          localStorage.setItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY, redirectUrl);
         }
         setShowVerification(true);
       }
@@ -164,9 +168,9 @@ export default function TrainerSignup() {
         /* analytics must not block signup */
       }
       localStorage.setItem('pendingRole', 'trainer');
-      const redirectUrl = searchParams.get('redirect');
+      const redirectUrl = sanitizeAppRedirect(searchParams.get('redirect'));
       if (redirectUrl) {
-        localStorage.setItem('redirectAfterOnboarding', redirectUrl);
+        localStorage.setItem(SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY, redirectUrl);
       }
 
       const { error } = await signInWithGoogle();

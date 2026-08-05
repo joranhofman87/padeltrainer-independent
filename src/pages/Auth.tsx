@@ -100,6 +100,9 @@ export default function Auth() {
     }
   }, [searchParams, toast, t]);
 
+  // The signup link forwards ?redirect= into the signup/onboarding chain, which stores and
+  // later navigates to it. Hand that chain a checked value rather than the raw query param.
+  const signupRedirect = sanitizeAppRedirect(searchParams.get('redirect'));
   const hasCheckedRoles = useRef(false);
 
   useEffect(() => {
@@ -423,7 +426,7 @@ export default function Auth() {
           <div className="pt-4 border-t text-center">
             <p className="text-sm text-muted-foreground">
               {t('signIn.noAccount', "Don't have an account?")}{' '}
-              <Link to={`/app/signup${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : ''}`} className="font-medium text-primary hover:underline">
+              <Link to={`/app/signup${signupRedirect ? `?redirect=${encodeURIComponent(signupRedirect)}` : ''}`} className="font-medium text-primary hover:underline">
                 {t('signupPicker.signUp', 'Sign up')}
               </Link>
             </p>
