@@ -170,6 +170,15 @@ No correctness/scale risk today; these lower the cost of every future change and
 
 ## Notification-controls units — status 2026-08-05
 
+> **OWNER BOUNDARY (2026-08-05): Complete N0–N7. Stop before A1. FOUNDATION AUDITS NOT STARTED.**
+> The notification programme runs through N7 (controlled rollout + postflight). The cross-domain
+> foundation certification audits (A1–A7) are POSTPONED and must not begin — no audit subagents,
+> no audit reconnaissance — until the owner gives a new instruction. Bounded reviews of
+> notification code remain in scope. WhatsApp rollout that lacks provider/template/webhook
+> readiness or separate owner approval is recorded as `BLOCKED_OWNER_WHATSAPP` and must not block
+> email completion.
+
+
 The pre-canary work, in flight on draft PRs. All three are independently Codex-reviewed to clear
 and CI-green; mark-ready, merge and deploy are owner gates. **None changes notification behaviour
 in production**: N0 is operator tooling, N2 ships inert schema nothing reads yet, and N1 is
