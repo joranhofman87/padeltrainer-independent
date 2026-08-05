@@ -77,10 +77,64 @@ function adminSources(dir: string): Array<{ name: string; src: string }> {
  * The SHARED prop checks — the self-test exercises THESE functions, not a substring lookalike.
  * Whitespace-tolerant: `compact = {false}` and `desktopOnly = {false}` are valid JSX.
  */
-const hasCompact = (usage: string): boolean =>
-  /(^|\s)compact(\s*=\s*\{true\}|(?=[\s/>]))/.test(usage) && !/(^|\s)compact\s*=\s*\{false\}/.test(usage);
-const hasMobile = (usage: string): boolean =>
-  /(^|\s)desktopOnly\s*=\s*\{false\}/.test(usage);
+type Attr = { name: string; value: string | null };
+
+/**
+ * Parse an opening tag's ATTRIBUTES rather than scanning its raw text — a string prop
+ * (`empty="use compact desktopOnly={false}"`) otherwise satisfied both checks, and a dynamic
+ * `compact={isCompact}` slipped through the bare-prop alternative.
+ */
+function tagAttributes(usage: string): Attr[] {
+  const body = usage.replace(/^<DataTable(<[^>]*>)?/, '').replace(/\/?>$/, '');
+  const attrs: Attr[] = [];
+  let i = 0;
+  while (i < body.length) {
+    while (i < body.length && /\s/.test(body[i])) i++;
+    const nameStart = i;
+    while (i < body.length && /[A-Za-z0-9_$]/.test(body[i])) i++;
+    const name = body.slice(nameStart, i);
+    if (!name) { i++; continue; }
+    let j = i;
+    while (j < body.length && /\s/.test(body[j])) j++;
+    if (body[j] !== '=') { attrs.push({ name, value: null }); continue; }   // bare prop
+    j++;
+    while (j < body.length && /\s/.test(body[j])) j++;
+    if (body[j] === '{') {
+      let depth = 1, k = j + 1, quote: string | null = null;
+      for (; k < body.length && depth > 0; k++) {
+        const ch = body[k];
+        if (quote) { if (ch === quote && body[k - 1] !== '\\') quote = null; continue; }
+        if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+        if (ch === '{') depth++;
+        else if (ch === '}') depth--;
+      }
+      attrs.push({ name, value: body.slice(j, k) });
+      i = k;
+    } else if (body[j] === '"' || body[j] === "'") {
+      const q = body[j];
+      let k = j + 1;
+      while (k < body.length && !(body[k] === q && body[k - 1] !== '\\')) k++;
+      attrs.push({ name, value: body.slice(j, k + 1) });
+      i = k + 1;
+    } else {
+      const k = body.indexOf(' ', j);
+      attrs.push({ name, value: body.slice(j, k === -1 ? undefined : k) });
+      i = k === -1 ? body.length : k;
+    }
+  }
+  return attrs;
+}
+
+/** compact must be BARE or literally {true} — a dynamic value is not a guarantee. */
+const hasCompact = (usage: string): boolean => {
+  const a = tagAttributes(usage).find((x) => x.name === 'compact');
+  return !!a && (a.value === null || /^\{\s*true\s*\}$/.test(a.value));
+};
+/** desktopOnly must be literally {false}. */
+const hasMobile = (usage: string): boolean => {
+  const a = tagAttributes(usage).find((x) => x.name === 'desktopOnly');
+  return !!a && /^\{\s*false\s*\}$/.test(a.value ?? '');
+};
 
 /** Every <DataTable …> JSX node in a source, as its raw prop text (multiple per file). */
 function dataTableUsages(src: string): string[] {
@@ -280,6 +334,25 @@ describe('admin list/table UI standards guard', () => {
     expect(hasMobile(dataTableUsages(`<DataTable compact desktopOnly = {false} />`)[0])).toBe(true);
     expect(hasMobile(dataTableUsages(`<DataTable compact desktopOnly={true} />`)[0])).toBe(false);
     expect(hasMobile(dataTableUsages(`<DataTable compact />`)[0])).toBe(false);
+    // a DYNAMIC value is not a guarantee, and a STRING prop cannot forge either check
+    expect(hasCompact(dataTableUsages(`<DataTable compact={isCompact} desktopOnly={false} />`)[0])).toBe(false);
+    expect(hasCompact(dataTableUsages(`<DataTable compact = {isCompact} desktopOnly={false} />`)[0])).toBe(false);
+    expect(hasMobile(dataTableUsages(`<DataTable compact desktopOnly={isMobile} />`)[0])).toBe(false);
+    const decoy = dataTableUsages(`<DataTable
+      columns={columns}
+      rows={rows}
+      empty="use compact desktopOnly={false}"
+    />`)[0];
+    expect(hasCompact(decoy)).toBe(false);
+    expect(hasMobile(decoy)).toBe(false);
+    // …and the real thing still passes, including with a decoy string ALSO present
+    const real = dataTableUsages(`<DataTable
+      empty="use compact desktopOnly={false}"
+      compact
+      desktopOnly={false}
+    />`)[0];
+    expect(hasCompact(real)).toBe(true);
+    expect(hasMobile(real)).toBe(true);
 
     // `<DataTableCard` is a DIFFERENT component and must not be read as an engine usage
     expect(dataTableUsages(`<DataTableCard><Table /></DataTableCard>`)).toEqual([]);
