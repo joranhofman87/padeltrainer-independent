@@ -73,6 +73,15 @@ function adminSources(dir: string): Array<{ name: string; src: string }> {
   return out;
 }
 
+/**
+ * The SHARED prop checks — the self-test exercises THESE functions, not a substring lookalike.
+ * Whitespace-tolerant: `compact = {false}` and `desktopOnly = {false}` are valid JSX.
+ */
+const hasCompact = (usage: string): boolean =>
+  /(^|\s)compact(\s*=\s*\{true\}|(?=[\s/>]))/.test(usage) && !/(^|\s)compact\s*=\s*\{false\}/.test(usage);
+const hasMobile = (usage: string): boolean =>
+  /(^|\s)desktopOnly\s*=\s*\{false\}/.test(usage);
+
 /** Every <DataTable …> JSX node in a source, as its raw prop text (multiple per file). */
 function dataTableUsages(src: string): string[] {
   const out: string[] = [];
@@ -141,10 +150,8 @@ describe('admin list/table UI standards guard', () => {
     for (const { name, src } of everything) {
       if (PROPS_EXEMPT.has(name)) continue;   // `return` here exited the whole TEST loop
       dataTableUsages(src).forEach((usage, i) => {
-        // `compact={false}` is not compact
-        const hasCompact = /(^|\s)compact(\s|\/|>|={true})/.test(usage) && !/compact=\{false\}/.test(usage);
-        if (!hasCompact) offenders.push(`${name}#${i}: missing compact`);
-        if (!/desktopOnly=\{false\}/.test(usage)) offenders.push(`${name}#${i}: missing desktopOnly={false}`);
+        if (!hasCompact(usage)) offenders.push(`${name}#${i}: missing compact`);
+        if (!hasMobile(usage)) offenders.push(`${name}#${i}: missing desktopOnly={false}`);
       });
     }
     expect(offenders).toEqual([]);
@@ -161,8 +168,17 @@ describe('admin list/table UI standards guard', () => {
   const LEGACY_BESPOKE_SHELL = ['AdminCertifications.tsx', 'AdminRatingSystems.tsx'] as const;
 
   it('every table-rendering admin PAGE uses ListPageShell (bespoke chrome is baselined, not allowed)', () => {
+    // a page is a LIST page if it renders a table directly OR composes any extracted section
+    // that does — a thin orchestrator must not escape the chrome rule by delegating its tables
+    const sectionNames = new Set(
+      [...notifSections, ...adminComponents]
+        .filter(({ src }) => usesEngine(src) || handRollsTable(src))
+        .map(({ name }) => name.replace(/\.tsx$/, '')),
+    );
+    const composesTableSection = (src: string) =>
+      [...sectionNames].some((n) => new RegExp(`\\b${n}\\b`).test(src));
     const offenders = pages
-      .filter(({ name, src }) => rendersTable(src)
+      .filter(({ name, src }) => (rendersTable(src) || composesTableSection(src))
         && !src.includes('ListPageShell')
         && !LEGACY_NO_SHELL.includes(name as never))
       .map(({ name }) => name);
@@ -255,10 +271,15 @@ describe('admin list/table UI standards guard', () => {
     expect(usages).toHaveLength(2);
     expect(/(^|\s)compact(\s|\/|>|={true})/.test(usages[1])).toBe(false);
 
-    // `compact={false}` is NOT compact
-    const optOut = `<DataTable compact={false} desktopOnly={false} />`;
-    const optOutUsage = dataTableUsages(optOut)[0];
-    expect(/compact=\{false\}/.test(optOutUsage)).toBe(true);
+    // the SHARED checkers reject every opt-out spelling (whitespace-tolerant JSX included)
+    expect(hasCompact(dataTableUsages(`<DataTable compact={false} desktopOnly={false} />`)[0])).toBe(false);
+    expect(hasCompact(dataTableUsages(`<DataTable compact = {false} desktopOnly={false} />`)[0])).toBe(false);
+    expect(hasCompact(dataTableUsages(`<DataTable compactish desktopOnly={false} />`)[0])).toBe(false);
+    expect(hasCompact(dataTableUsages(`<DataTable compact desktopOnly={false} />`)[0])).toBe(true);
+    expect(hasCompact(dataTableUsages(`<DataTable compact={true} desktopOnly={false} />`)[0])).toBe(true);
+    expect(hasMobile(dataTableUsages(`<DataTable compact desktopOnly = {false} />`)[0])).toBe(true);
+    expect(hasMobile(dataTableUsages(`<DataTable compact desktopOnly={true} />`)[0])).toBe(false);
+    expect(hasMobile(dataTableUsages(`<DataTable compact />`)[0])).toBe(false);
 
     // `<DataTableCard` is a DIFFERENT component and must not be read as an engine usage
     expect(dataTableUsages(`<DataTableCard><Table /></DataTableCard>`)).toEqual([]);

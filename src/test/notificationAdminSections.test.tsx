@@ -218,3 +218,71 @@ describe('filtered sections: filter → reset → RPC arguments, and the refresh
     expect(screen.getByTestId('kill-email').textContent).toContain('UNKNOWN');
   });
 });
+
+describe('the repaired races are REGRESSION-LOCKED (each fails against the old behaviour)', () => {
+  it('reload SUPERSEDES a pending load-more — the old load(false) handle would be swallowed by the lock', async () => {
+    const { OrphanQueueSection } = await import('@/components/notifications/admin/OrphanQueueSection');
+    const row = (id: string) => ({
+      resend_event_id: id, channel: 'email', digest_group_id: 'g', attempts: 1,
+      last_error_code: 'x', quarantined: true, next_eligible_at: TS, updated_at: TS,
+    });
+    // page 1 is FULL so "load more" is offered
+    rpcMock.mockImplementationOnce(() => Promise.resolve({ data: Array.from({ length: 25 }, (_, i) => row(`p${i}`)), error: null }));
+    let reload: (() => void) | null = null;
+    render(<OrphanQueueSection onAct={() => {}} onReady={(r) => { reload = r; }} />);
+    fireEvent.click(screen.getByTestId('orphans-load'));
+    await screen.findByTestId('orphans-list');
+
+    // a LOAD MORE is now pending (held open) — this is the state where the old handle died
+    let releaseStale: ((v: { data: unknown; error: null }) => void) | null = null;
+    rpcMock.mockImplementationOnce(() => new Promise((res) => { releaseStale = res; }));
+    fireEvent.click(screen.getByTestId('orphans-more'));
+    await new Promise((r) => setTimeout(r, 10));
+    const callsBefore = rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_notification_orphans').length;
+
+    // the decision settles and demands a refresh: it MUST issue immediately, not be dropped
+    rpcMock.mockImplementationOnce(() => Promise.resolve({ data: [row('fresh')], error: null }));
+    reload!();
+    await waitFor(() => {
+      const calls = rpcMock.mock.calls.filter((c) => c[0] === 'admin_list_notification_orphans');
+      expect(calls.length).toBe(callsBefore + 1);
+      expect(calls.at(-1)![1].p_before_updated_at).toBeUndefined();   // an UNCURSORED first page
+    });
+    await screen.findByTestId('orphan-resolve-fresh');
+
+    // the superseded page now returns — it must be DISCARDED, not appended
+    releaseStale!({ data: [row('stale')], error: null });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.queryByTestId('orphan-resolve-stale')).toBeNull();
+    expect(screen.getByTestId('orphan-resolve-fresh')).toBeInTheDocument();
+  });
+
+  it('a filter change DURING an unresolved preview clears busy — the old code span forever', async () => {
+    const { RecipientPreviewSection } = await import('@/components/notifications/admin/RecipientPreviewSection');
+    let release: ((v: { data: unknown; error: null }) => void) | null = null;
+    rpcMock.mockImplementationOnce(() => new Promise((res) => { release = res; }));
+    const { container } = render(<RecipientPreviewSection eventKeys={['ev_test']} />);
+    // choose the event through the native adapter, then start the preview
+    fireEvent.change(screen.getAllByTestId('native-select')[0], { target: { value: 'ev_test' } });
+    fireEvent.click(screen.getByTestId('preview-load'));
+    await waitFor(() => expect(container.querySelector('.animate-pulse')).toBeTruthy());   // loading
+    // …now change the CHANNEL mid-flight: the scope reset must clear busy as well
+    fireEvent.change(screen.getAllByTestId('native-select')[1], { target: { value: 'whatsapp' } });
+    release!({ data: [], error: null });                     // the superseded response returns
+    await new Promise((r) => setTimeout(r, 20));
+    expect(container.querySelector('.animate-pulse')).toBeNull();   // NOT stuck loading
+  });
+
+  it('the busy label renders while a decision is in flight', async () => {
+    const { OpsDecisionDialog } = await import('@/components/notifications/admin/OpsDecisionDialog');
+    const props = {
+      open: true, title: 'T', description: 'D', reason: 'a reason', onReasonChange: () => {},
+      frozen: true, confirmLabel: 'Kill channel', busyLabel: 'Killing…', cancelLabel: 'Cancel',
+      frozenNote: 'locked', testId: 'kill', onCancel: () => {}, onConfirm: () => {},
+    };
+    const { rerender } = render(<OpsDecisionDialog {...props} busy={false} />);
+    expect(screen.getByTestId('kill-confirm').textContent).toBe('Kill channel');
+    rerender(<OpsDecisionDialog {...props} busy />);
+    expect(screen.getByTestId('kill-confirm').textContent).toBe('Killing…');
+  });
+});
