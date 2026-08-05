@@ -9550,8 +9550,8 @@ export type Database = {
           delivery_mode: string
           destination_redacted: string
           event_type: string
+          error_class: string
           id: string
-          last_error: string
           max_attempts: number
           scheduled_for: string
           skip_reason: string
@@ -9616,13 +9616,19 @@ export type Database = {
         }[]
       }
       admin_notification_delivery_history: {
-        Args: { p_outbox_id: string }
+        Args: {
+          p_before_at?: string
+          p_before_ref?: string
+          p_limit?: number
+          p_outbox_id: string
+        }
         Returns: {
           a: string
           at: string
           b: string
           c: string
           kind: string
+          ref: string
         }[]
       }
       admin_notification_event_states: {
@@ -9633,10 +9639,11 @@ export type Database = {
           catalog_supported: boolean
           channel: string
           circuit_state: string
-          conclusion: string
           cron_state: string
+          digest_conclusion: string
           digest_engine_enabled: boolean
           event_type: string
+          instant_conclusion: string
           kill_state: string
           required_delivery: boolean
           send_env: string
@@ -9647,6 +9654,7 @@ export type Database = {
         Returns: {
           capped: boolean
           channel: string
+          event_type: string
           metric: string
           value: number
         }[]
@@ -11244,6 +11252,10 @@ export type Database = {
       notif_channel_kill_gate: {
         Args: { p_channel: string }
         Returns: boolean
+      }
+      notif_error_class: {
+        Args: { p_error: string }
+        Returns: string
       }
       notif_frequency_rank: {
         Args: { p_freq: string }

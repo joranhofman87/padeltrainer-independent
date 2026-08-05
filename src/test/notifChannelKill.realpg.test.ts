@@ -137,6 +137,10 @@ beforeAll(async () => {
   const orphDdl = orph.match(/CREATE TABLE (?:IF NOT EXISTS )?public\.notification_orphan_reconcile_state \([\s\S]*?\n\);/)?.[0];
   if (!orphDdl) throw new Error('orphan state DDL not found');
   await c.query(orphDdl);
+  const edev = MIG('20260615110000_email_delivery_tables.sql');
+  const edevDdl = edev.match(/CREATE TABLE (?:IF NOT EXISTS )?public\.email_delivery_events \([\s\S]*?\n\);/)?.[0];
+  if (!edevDdl) throw new Error('email_delivery_events DDL not found');
+  await c.query(edevDdl);
   await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));   // gauges expose invocations
   await c.query(MIG('20261017100000_notif_n4_channel_kill_switches.sql'));
   // M3: the ops audit — redefines admin_activate_channel_kill THROUGH the audit (global
@@ -613,6 +617,11 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     expect(Number(g('channel_killed', 'email').value)).toBe(0);
     expect(Number(g('invocations_unresolved', null).value)).toBe(1);
     expect(Number(g('orphans_quarantined', null).value)).toBe(0);
+    expect(g('orphans_quarantined', null).capped).toBe(false);
+    // the EVENT dimension: which event carries the backlog
+    const byEvent = rows.find((r) => r.metric === 'outbox_by_event_pending' && r.channel === 'email');
+    expect(byEvent.event_type).toBe('ev_test');
+    expect(Number(byEvent.value)).toBe(1);
   });
 
   it('the outbox feed: EXACT fixed columns (no payload, redacted destination), filters, bounds, half-cursor', async () => {
@@ -620,8 +629,8 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     const rows = await asAdmin(`SELECT * FROM public.admin_list_notification_outbox('email', NULL, 'pending', 7, NULL, NULL, 10)`);
     expect(rows.map((r) => r.id)).toContain(id);
     expect(Object.keys(rows[0]).sort()).toEqual([
-      'attempts', 'channel', 'created_at', 'delivery_mode', 'destination_redacted', 'event_type',
-      'id', 'last_error', 'max_attempts', 'scheduled_for', 'skip_reason', 'status', 'template_key',
+      'attempts', 'channel', 'created_at', 'delivery_mode', 'destination_redacted', 'error_class',
+      'event_type', 'id', 'max_attempts', 'scheduled_for', 'skip_reason', 'status', 'template_key',
       'tenant_academy_profile_id', 'tenant_trainer_id', 'updated_at',
     ]);
     expect(await asAdmin(`SELECT * FROM public.admin_list_notification_outbox('whatsapp', NULL, NULL, 7, NULL, NULL, 10)`)).toEqual([]);
@@ -655,14 +664,34 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     await c.query(
       `INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, digest_group_id, status, occurred_at)
        VALUES ('ev_1', 're_123', $1, 'delivered', now())`, [g]);
+    // a raw provider error echoing a destination — it must NEVER cross this boundary
+    await c.query(`UPDATE public.notification_outbox SET provider_message_id = 're_inst_1', last_error = 'SMTP 550: NEVER-b <victim@example.com> rejected' WHERE id = $1`, [ob]);
+    await c.query(
+      `INSERT INTO public.email_delivery_events (resend_event_id, resend_email_id, event_type, bounce_type, reason, recipient_email, occurred_at)
+       VALUES ('edev_1', 're_inst_1', 'bounced', 'hard', 'reason with NEVER-c marker', 'victim@example.com', now())`);
     const rows = await asAdmin(`SELECT * FROM public.admin_notification_delivery_history('${ob}'::uuid)`);
     const kinds = rows.map((r) => r.kind);
     expect(kinds).toContain('outbox_created');
     expect(kinds).toContain('outbox_state');
     expect(kinds).toContain('digest_attempt');
     expect(kinds).toContain('provider_event');
-    expect(JSON.stringify(rows)).not.toContain('NEVER');     // the payload cannot leak through
+    expect(kinds).toContain('delivery_event');               // the INSTANT ledger reaches the timeline
+    const dump = JSON.stringify(rows);
+    expect(dump).not.toContain('NEVER');                     // payload, raw error AND event reason are all tight
+    expect(dump).not.toContain('victim@example.com');        // no raw recipient from any arm
+    expect(rows.find((r) => r.kind === 'outbox_state').b).toBe('provider_error');  // classified, not echoed
+    const de = rows.find((r) => r.kind === 'delivery_event');
+    expect(de.a).toBe('bounced');
+    expect(de.b).toBe('hard');
     expect(rows.find((r) => r.kind === 'outbox_created').c).toBe('a***@example.com');
+    // bounded: clamp + real composite cursor + half-cursor refusal
+    // the cursor needs FULL microsecond precision — select at::text alongside (node-pg's Date
+    // truncates to ms, which silently broke same-millisecond pagination; found as a flake)
+    const page1 = await asAdmin(`SELECT h.*, h.at::text AS at_text FROM public.admin_notification_delivery_history('${ob}'::uuid, NULL, NULL, 2) h`);
+    expect(page1.length).toBe(2);
+    const page2 = await asAdmin(`SELECT * FROM public.admin_notification_delivery_history('${ob}'::uuid, '${page1[1].at_text}'::timestamptz, '${page1[1].ref}', 50)`);
+    expect(page2.length).toBe(rows.length - 2);
+    await expect(asAdmin(`SELECT * FROM public.admin_notification_delivery_history('${ob}'::uuid, now()::timestamptz, NULL, 5)`)).rejects.toThrow(/BOTH/);
     await expect(asAdmin(`SELECT * FROM public.admin_notification_delivery_history(gen_random_uuid())`)).rejects.toThrow(/does not exist/);
   });
 
@@ -675,22 +704,29 @@ describe('N4 M4 — the fixed-column admin read surface', () => {
     expect(wa.send_env).toBe('unverifiable');
     expect(email.cron_state).toBe('unavailable');            // no pg_cron here — the honest arm
     expect(email.kill_state).toBe('live');
-    expect(email.conclusion).toBe('sendable');               // instant path: no unverifiable authority
+    // the paths CONCLUDE SEPARATELY: instant has no cron/env authority; digest has both
+    expect(email.instant_conclusion).toBe('sendable');
+    expect(email.digest_conclusion).toBe('stopped');         // engine off = the digest path is stopped
     expect(wa.catalog_supported).toBe(false);
-    expect(wa.conclusion).toBe('stopped');                   // unsupported is a definitive stop
-    // kill flips the authority AND the conclusion
+    expect(wa.instant_conclusion).toBe('stopped');           // unsupported is a definitive stop
+    expect(wa.digest_conclusion).toBe('stopped');
+    // kill flips the authority AND both conclusions
     await killDirect('email');
     const after = await asAdmin(`SELECT * FROM public.admin_notification_event_states()`);
     const emailKilled = after.find((r) => r.event_type === 'ev_test' && r.channel === 'email');
     expect(emailKilled.kill_state).toBe('killed');
-    expect(emailKilled.conclusion).toBe('stopped');
-    // a digest-engine event can never conclude past unknown — the env is unverifiable
+    expect(emailKilled.instant_conclusion).toBe('stopped');
+    expect(emailKilled.digest_conclusion).toBe('stopped');
+    // engine ON + cron unavailable: the digest path can never conclude past unknown (the env
+    // has the last word and SQL cannot read it) — while the INSTANT path stays sendable
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true WHERE key = 'ev_test'`);
     await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
     await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
     await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
     const dig = await asAdmin(`SELECT * FROM public.admin_notification_event_states()`);
-    expect(dig.find((r) => r.event_type === 'ev_test' && r.channel === 'email').conclusion).toBe('unknown');
+    const digEmail = dig.find((r) => r.event_type === 'ev_test' && r.channel === 'email');
+    expect(digEmail.digest_conclusion).toBe('unknown');
+    expect(digEmail.instant_conclusion).toBe('sendable');    // the engine flag is not an instant authority
     await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false WHERE key = 'ev_test'`);
   });
 });

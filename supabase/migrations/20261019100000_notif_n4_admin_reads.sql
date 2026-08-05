@@ -28,9 +28,24 @@ $$;
 REVOKE ALL ON FUNCTION public.notif_admin_gate() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.notif_admin_gate() TO authenticated, service_role;
 
+-- ── 0. bounded error classification — raw provider text never crosses the tenant boundary ──
+-- last_error is worker-supplied free text (raw Resend/Twilio/network messages) and can echo a
+-- destination or response fragment; TRUNCATION IS NOT SANITIZATION. Only label-shaped internal
+-- codes pass through; everything else collapses to 'provider_error'.
+CREATE OR REPLACE FUNCTION public.notif_error_class(p_error text) RETURNS text
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE
+    WHEN p_error IS NULL THEN NULL
+    WHEN p_error ~ '^[a-z0-9_]{1,40}$' THEN p_error
+    ELSE 'provider_error'
+  END;
+$$;
+REVOKE ALL ON FUNCTION public.notif_error_class(text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.notif_error_class(text) TO service_role;
+
 -- ── 1. saturating gauges ────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.admin_notification_gauges() RETURNS TABLE (
-  metric text, channel text, value bigint, capped boolean
+  metric text, channel text, event_type text, value bigint, capped boolean
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -45,10 +60,24 @@ BEGIN
       SELECT count(*) INTO v FROM (
         SELECT 1 FROM public.notification_outbox o
          WHERE o.channel = ch AND o.status = st LIMIT CAP + 1) b;
-      metric := 'outbox_' || st; channel := ch;
+      metric := 'outbox_' || st; channel := ch; event_type := NULL;
       value := least(v, CAP); capped := v > CAP;
       RETURN NEXT;
     END LOOP;
+    -- the EVENT dimension (which event is failing / backing up) — computed over a CAPPED scan,
+    -- so per-event counts under saturation are partial AND SAY SO
+    FOR event_type, metric, v, capped IN
+      SELECT b.event_type, 'outbox_by_event_' || b.status, count(*),
+             (SELECT count(*) FROM (SELECT 1 FROM public.notification_outbox o2
+                                     WHERE o2.channel = ch LIMIT CAP + 1) t) > CAP
+        FROM (SELECT o.event_type, o.status FROM public.notification_outbox o
+               WHERE o.channel = ch LIMIT CAP + 1) b
+       GROUP BY b.event_type, b.status
+    LOOP
+      channel := ch; value := v;
+      RETURN NEXT;
+    END LOOP;
+    event_type := NULL;
     -- oldest-pending, split by phase (finding 15): a single "oldest" hides whether the backlog
     -- is unclaimed work, wedged claims, or provider uncertainty
     SELECT coalesce(extract(epoch FROM (now() - min(o.scheduled_for)))::bigint, 0) INTO v
@@ -73,11 +102,13 @@ BEGIN
     metric := 'channel_killed'; channel := ch; value := v; capped := false;
     RETURN NEXT;
   END LOOP;
-  SELECT count(*) INTO v FROM public.notification_orphan_reconcile_state s WHERE s.quarantined;
-  metric := 'orphans_quarantined'; channel := NULL; value := v; capped := false;
+  SELECT count(*) INTO v FROM (
+    SELECT 1 FROM public.notification_orphan_reconcile_state s WHERE s.quarantined LIMIT CAP + 1) b;
+  metric := 'orphans_quarantined'; channel := NULL; event_type := NULL;
+  value := least(v, CAP); capped := v > CAP;
   RETURN NEXT;
   SELECT count(*) INTO v FROM public.notification_worker_invocations i WHERE i.status IN ('pending', 'started');
-  metric := 'invocations_unresolved'; channel := NULL; value := v; capped := false;
+  metric := 'invocations_unresolved'; channel := NULL; event_type := NULL; value := v; capped := false;   -- single-flight: structurally 0..1
   RETURN NEXT;
 END;
 $$;
@@ -97,7 +128,7 @@ CREATE OR REPLACE FUNCTION public.admin_list_notification_outbox(
   p_limit int DEFAULT 50
 ) RETURNS TABLE (
   id uuid, channel text, event_type text, template_key text, status text,
-  skip_reason text, last_error text, destination_redacted text, delivery_mode text,
+  skip_reason text, error_class text, destination_redacted text, delivery_mode text,
   attempts int, max_attempts int, scheduled_for timestamptz,
   tenant_academy_profile_id uuid, tenant_trainer_id uuid,
   created_at timestamptz, updated_at timestamptz
@@ -113,7 +144,7 @@ BEGIN
   END IF;
   RETURN QUERY
   SELECT o.id, o.channel, o.event_type, o.template_key, o.status,
-         o.skip_reason, left(o.last_error, 200), o.destination_redacted, o.delivery_mode,
+         o.skip_reason, public.notif_error_class(o.last_error), o.destination_redacted, o.delivery_mode,
          o.attempts, o.max_attempts, o.scheduled_for,
          o.tenant_academy_profile_id, o.tenant_trainer_id,
          o.created_at, o.updated_at
@@ -211,52 +242,78 @@ COMMENT ON FUNCTION public.admin_list_worker_runs(int, timestamptz, uuid, int) I
 REVOKE ALL ON FUNCTION public.admin_list_worker_runs(int, timestamptz, uuid, int) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_list_worker_runs(int, timestamptz, uuid, int) TO authenticated, service_role;
 
--- ── 5. delivery history for ONE outbox row — the lifecycle, typed, no bodies ────────────────
+-- ── 5. delivery history for ONE outbox row — the lifecycle, typed, bounded, no bodies ───────
 CREATE OR REPLACE FUNCTION public.admin_notification_delivery_history(
-  p_outbox_id uuid
+  p_outbox_id uuid,
+  p_before_at timestamptz DEFAULT NULL,
+  p_before_ref text DEFAULT NULL,
+  p_limit int DEFAULT 50
 ) RETURNS TABLE (
-  at timestamptz, kind text, a text, b text, c text
+  at timestamptz, kind text, a text, b text, c text, ref text
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_group uuid;
+DECLARE v_group uuid; v_pmid text;
 BEGIN
   PERFORM public.notif_admin_gate();
   IF NOT EXISTS (SELECT 1 FROM public.notification_outbox o WHERE o.id = p_outbox_id) THEN
     RAISE EXCEPTION 'admin_notification_delivery_history: outbox row % does not exist', p_outbox_id;
   END IF;
-  SELECT o.digest_group_id INTO v_group FROM public.notification_outbox o WHERE o.id = p_outbox_id;
+  IF (p_before_at IS NULL) <> (p_before_ref IS NULL) THEN
+    RAISE EXCEPTION 'admin_notification_delivery_history: a keyset cursor needs BOTH at and ref (or neither)';
+  END IF;
+  SELECT o.digest_group_id, o.provider_message_id INTO v_group, v_pmid
+    FROM public.notification_outbox o WHERE o.id = p_outbox_id;
   RETURN QUERY
-  -- the row itself: status + redacted destination + reasons (typed scalars, truncated error)
-  SELECT o.created_at, 'outbox_created'::text, o.event_type, o.channel, o.destination_redacted
-    FROM public.notification_outbox o WHERE o.id = p_outbox_id
-  UNION ALL
-  SELECT o.updated_at, 'outbox_state'::text, o.status,
-         coalesce(o.skip_reason, left(o.last_error, 200)), o.attempts::text
-    FROM public.notification_outbox o WHERE o.id = p_outbox_id
-  UNION ALL
-  -- digest attempts (when the row is a digest member): outcome_class + http + provider id
-  SELECT a2.started_at, 'digest_attempt'::text, a2.outcome_class,
-         a2.http_status::text, a2.provider_message_id
-    FROM public.notification_digest_attempts a2
-   WHERE v_group IS NOT NULL AND a2.digest_group_id = v_group
-  UNION ALL
-  -- provider events: status transitions only — never a body
-  SELECT e.received_at, 'provider_event'::text, e.status, e.provider_message_id, NULL::text
-    FROM public.notification_provider_events e
-   WHERE v_group IS NOT NULL AND e.digest_group_id = v_group
-  UNION ALL
-  SELECT s.updated_at, 'orphan_state'::text,
-         CASE WHEN s.quarantined THEN 'quarantined' ELSE 'reconciling' END,
-         s.last_error_code, s.attempts::text
-    FROM public.notification_orphan_reconcile_state s
-   WHERE v_group IS NOT NULL AND s.digest_group_id = v_group
-  ORDER BY 1;
+  SELECT * FROM (
+    -- the row itself: status + redacted destination + CLASSIFIED error (raw provider text is
+    -- worker-supplied and can echo a destination — it never crosses this boundary)
+    SELECT o.created_at AS at, 'outbox_created'::text AS kind,
+           o.event_type AS a, o.channel AS b, o.destination_redacted AS c,
+           'ob-created:' || o.id::text AS ref
+      FROM public.notification_outbox o WHERE o.id = p_outbox_id
+    UNION ALL
+    SELECT o.updated_at, 'outbox_state', o.status,
+           coalesce(o.skip_reason, public.notif_error_class(o.last_error)), o.attempts::text,
+           'ob-state:' || o.id::text
+      FROM public.notification_outbox o WHERE o.id = p_outbox_id
+    UNION ALL
+    -- INSTANT delivery outcomes: the email delivery-event ledger, joined on the provider
+    -- message id this row was accepted under. Typed columns only — reason and the raw
+    -- recipient are deliberately omitted (finding 4).
+    SELECT de.occurred_at, 'delivery_event', de.event_type, de.bounce_type, de.resend_email_id,
+           'de:' || de.id::text
+      FROM public.email_delivery_events de
+     WHERE v_pmid IS NOT NULL AND de.resend_email_id = v_pmid
+    UNION ALL
+    -- digest attempts (when the row is a digest member): outcome_class + http + provider id
+    SELECT a2.started_at, 'digest_attempt', a2.outcome_class,
+           a2.http_status::text, a2.provider_message_id,
+           'da:' || a2.attempt_id::text
+      FROM public.notification_digest_attempts a2
+     WHERE v_group IS NOT NULL AND a2.digest_group_id = v_group
+    UNION ALL
+    -- provider events: status transitions only — never a body
+    SELECT e.received_at, 'provider_event', e.status, e.provider_message_id, NULL::text,
+           'pe:' || e.resend_event_id
+      FROM public.notification_provider_events e
+     WHERE v_group IS NOT NULL AND e.digest_group_id = v_group
+    UNION ALL
+    SELECT s2.updated_at, 'orphan_state',
+           CASE WHEN s2.quarantined THEN 'quarantined' ELSE 'reconciling' END,
+           s2.last_error_code, s2.attempts::text,
+           'orphan:' || s2.resend_event_id
+      FROM public.notification_orphan_reconcile_state s2
+     WHERE v_group IS NOT NULL AND s2.digest_group_id = v_group
+  ) t
+  WHERE p_before_at IS NULL OR (t.at, t.ref) < (p_before_at, p_before_ref)
+  ORDER BY t.at DESC, t.ref DESC
+  LIMIT LEAST(GREATEST(coalesce(p_limit, 50), 1), 200);
 END;
 $$;
-COMMENT ON FUNCTION public.admin_notification_delivery_history(uuid) IS
-  'N4 M4: one outbox row''s lifecycle as typed timeline rows — outbox state, digest attempts (outcome_class/http/provider id), provider-event transitions, orphan state. Redacted destination only; errors truncated; NEVER a payload or provider response body.';
-REVOKE ALL ON FUNCTION public.admin_notification_delivery_history(uuid) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.admin_notification_delivery_history(uuid) TO authenticated, service_role;
+COMMENT ON FUNCTION public.admin_notification_delivery_history(uuid, timestamptz, text, int) IS
+  'N4 M4: one outbox row''s lifecycle as typed timeline rows — outbox state (error CLASSIFIED, never raw), INSTANT delivery events (email_delivery_events via the provider message id; reason/recipient omitted), digest attempts, provider-event transitions, orphan state. Bounded: composite (at, ref) keyset, both-or-neither cursor, clamp 1..200. Never a payload or provider response body.';
+REVOKE ALL ON FUNCTION public.admin_notification_delivery_history(uuid, timestamptz, text, int) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_notification_delivery_history(uuid, timestamptz, text, int) TO authenticated, service_role;
 
 -- ── 6. per-event, PER-AUTHORITY state — each authority its own column, honestly (finding 16) ─
 CREATE OR REPLACE FUNCTION public.admin_notification_event_states() RETURNS TABLE (
@@ -268,7 +325,8 @@ CREATE OR REPLACE FUNCTION public.admin_notification_event_states() RETURNS TABL
   circuit_state text,       -- circuit row state, or 'none'
   kill_state text,          -- 'killed' | 'live' — authoritative DB state (the pinned exposure)
   send_env text,            -- ALWAYS 'unverifiable': DIGEST_SEND_ENABLED is an edge env var no SQL can read
-  conclusion text           -- 'stopped' | 'sendable' | 'unknown' — the honest tri-state
+  instant_conclusion text,  -- the instant path: no cron/env authority applies to it
+  digest_conclusion text    -- the digest path: engine + cron + the unverifiable env all apply
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -299,15 +357,23 @@ BEGIN
          CASE WHEN EXISTS (SELECT 1 FROM public.notification_channel_kill_switches k WHERE k.channel = ch.channel)
               THEN 'killed' ELSE 'live' END,
          'unverifiable'::text,
+         -- INSTANT: kill / circuit / catalog are its only authorities — no cron, no env
          CASE
-           -- definitive SQL-visible stops first
            WHEN EXISTS (SELECT 1 FROM public.notification_channel_kill_switches k WHERE k.channel = ch.channel) THEN 'stopped'
            WHEN coalesce((SELECT cb.state FROM public.notification_provider_circuit cb WHERE cb.channel = ch.channel), 'closed') IN ('open', 'half_open') THEN 'stopped'
            WHEN NOT (CASE ch.channel WHEN 'email' THEN et.supports_email ELSE et.supports_whatsapp END) THEN 'stopped'
-           -- the digest path depends on DIGEST_SEND_ENABLED, which SQL cannot verify: never
-           -- conclude past 'unknown' for it. The instant path has no unverifiable authority.
-           WHEN et.digest_engine_enabled THEN 'unknown'
            ELSE 'sendable'
+         END,
+         -- DIGEST: engine + cron are additional DEFINITIVE authorities; an active chain still
+         -- ends 'unknown' because DIGEST_SEND_ENABLED is unverifiable from SQL — the digest
+         -- path can NEVER conclude 'sendable' here, and says so rather than implying a check
+         CASE
+           WHEN EXISTS (SELECT 1 FROM public.notification_channel_kill_switches k WHERE k.channel = ch.channel) THEN 'stopped'
+           WHEN coalesce((SELECT cb.state FROM public.notification_provider_circuit cb WHERE cb.channel = ch.channel), 'closed') IN ('open', 'half_open') THEN 'stopped'
+           WHEN NOT (CASE ch.channel WHEN 'email' THEN et.supports_email ELSE et.supports_whatsapp END) THEN 'stopped'
+           WHEN NOT et.digest_engine_enabled THEN 'stopped'
+           WHEN v_cron IN ('inactive', 'absent') THEN 'stopped'
+           ELSE 'unknown'   -- engine on + cron active/unavailable: the env has the last word, and SQL cannot read it
          END
     FROM public.notification_event_types et
     CROSS JOIN (VALUES ('email'), ('whatsapp')) AS ch(channel);
