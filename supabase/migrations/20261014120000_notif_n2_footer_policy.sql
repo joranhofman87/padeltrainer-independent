@@ -52,6 +52,15 @@ ALTER TABLE public.notification_event_types
     CHECK (required_delivery OR NOT supports_email
            OR email_footer_policy IN ('manage_prefs', 'marketing_unsubscribe'));
 
+-- MARKETING IS NEVER REQUIRED. Without this, category='marketing' + required_delivery satisfies
+-- every arm above with policy 'none' — i.e. mandatory marketing with no unsubscribe, which is
+-- both the compliance hole and the collapse of the marketing/service distinction this unit
+-- exists to draw. Mail that is genuinely obligatory is service mail and belongs in a service
+-- category.
+ALTER TABLE public.notification_event_types
+  ADD CONSTRAINT notif_event_marketing_never_required
+    CHECK (NOT (category = 'marketing' AND required_delivery));
+
 -- ---------------------------------------------------------------------------
 -- Onboarding templates: marketing suppression may only silence MARKETING mail, and the drip
 -- table has no such notion — applying platform suppression to every template could silence a

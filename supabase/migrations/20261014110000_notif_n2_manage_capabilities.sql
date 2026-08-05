@@ -9,22 +9,40 @@
 -- This table stores ONLY the capability row — never the HMAC, never the secret. The signing key
 -- lives exclusively in edge-function env (NOTIF_MANAGE_TOKEN_KEY_V<n>), so a database read cannot
 -- reconstruct a live link (the improvement over the claim_token precedent, which stores its
--- secret raw), while the edge layer can DETERMINISTICALLY re-derive the same token for the same
--- capability — which is what lets the digest pipeline freeze a request byte-identically across
--- retries and deploys (the Resend idempotency contract). key_version names which secret signs a
--- capability so keys can rotate without a flag day.
+-- secret raw), while the edge layer re-derives the same token for the same capability — which is
+-- what lets a retry rebuild a byte-identical email under the same provider idempotency key.
 --
--- BECAUSE THE HMAC AUTHENTICATES ONLY THE ID, the row's claims are the authorization — so the
--- claims are IMMUTABLE, enforced three ways: no direct DML for any client role (the SECURITY
--- DEFINER RPCs below are the only writers), a BEFORE UPDATE trigger that refuses any change
--- outside revoked_at/last_used_at, and FKs that revoke authority by cascade when the underlying
--- user/contact row disappears.
+-- ============================================================================
+-- ONE CAPABILITY PER SEND. This is the model, and it replaces an earlier one that tried to reuse
+-- a capability across every send of the same "logical grant". Three review rounds found three
+-- separate defects in that idea — a consumed grant made the NEXT email's link inert; rotation
+-- changed the bytes of a retry under a stable idempotency key; the per-grant version floor let a
+-- stale worker mint a retired key for any grant it had not seen. All three came from the same
+-- root: a capability that outlives the message it was printed in has a lifecycle of its own, and
+-- every rule about consumption, rotation and binding then needs a second answer for "which send
+-- is this?". So the identity IS the send:
+--
+--     UNIQUE (kind, source_kind, source_id)
+--
+-- Determinism now comes from the unique index rather than from a lock plus a lookup: a retry of
+-- the same send finds its row (and every claim is re-verified equal — a same-source mint with
+-- different claims RAISES rather than silently re-pointing a printed link), and a new send gets
+-- a new row. Consumption is correct by construction: spending one send's link cannot make the
+-- next send's link inert.
+--
+-- ROTATION is database-owned state, not a mint-time revocation sweep
+-- (notification_manage_key_state). Mint refuses below `min_mintable_version`; existing rows are
+-- NEVER re-signed or revoked by a rotation, because rewriting an already-printed link's version
+-- is exactly how a retry's body changes underneath a fixed provider idempotency key. A burned
+-- key instead fails CLOSED at the edge: the verifier refuses a token whose stored version is
+-- below the minimum, and the link (or the retry) terminal-fails honestly.
 --
 -- CAPABILITY KINDS — each row grants exactly one narrow power:
 --   * marketing_unsubscribe : suppress marketing to THIS address within THIS sending scope.
 --   * account_event_optout  : set email 'off' for ONE optional event for ONE account holder.
---                             CONSUMPTIVE on first use: a forwarded or replayed link cannot
---                             re-apply after the person re-enabled the event in settings.
+--                             CONSUMPTIVE: a forwarded or replayed link cannot re-apply after
+--                             the person re-enabled the event in settings — and because rows are
+--                             per send, the next email still carries a working link.
 --   * manage_context        : open the guest manage page for THIS address/contact. In N2 the only
 --                             action it may apply is marketing_unsubscribe — a guest "stop
 --                             optional service mail" is deliberately NOT built, because the only
@@ -34,9 +52,35 @@
 --                             contact-scoped preference model is future work, recorded in
 --                             docs/NOTIFICATION_FOLLOWUPS.md.
 --
+-- BINDING IS TO THE DELIVERED DESTINATION, whatever resolved it. The resolver prefers an eligible
+-- notification_contacts row and falls back to the account's persons.email, so an account-holder's
+-- mail can arrive at either: a capability therefore carries contact_id when the send was
+-- contact-bound and none when it used the account fallback, and apply re-checks the fingerprint
+-- against THAT authority. Both authorities revoke on change (triggers below), and revocation is
+-- permanent — an address moved away and back does not reactivate an unused link.
+--
 -- A capability never carries the raw address into a URL, and its context RPC returns a REDACTED
 -- destination for LIVE rows only — non-live rows disclose status alone.
 
+-- ---------------------------------------------------------------------------
+-- Signing-key state: ONE row, owner-managed, read by mint and by the edge verifier.
+CREATE TABLE public.notification_manage_key_state (
+  id boolean PRIMARY KEY DEFAULT true CHECK (id),
+  current_version int NOT NULL DEFAULT 1 CHECK (current_version >= 1),
+  min_mintable_version int NOT NULL DEFAULT 1 CHECK (min_mintable_version >= 1),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT notif_manage_key_state_coherent CHECK (current_version >= min_mintable_version)
+);
+INSERT INTO public.notification_manage_key_state (id) VALUES (true);
+
+COMMENT ON TABLE public.notification_manage_key_state IS
+  'Single-row signing-key state for manage-link tokens. Raising min_mintable_version BEFORE rolling the workers is how a burned key is retired: no new capability may be minted below it, and the edge verifier refuses tokens whose stored key_version is below it. Existing rows are never re-signed — a retry under a burned key fails closed rather than silently changing an already-printed link.';
+
+ALTER TABLE public.notification_manage_key_state ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.notification_manage_key_state FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.notification_manage_key_state TO service_role;
+
+-- ---------------------------------------------------------------------------
 CREATE TABLE public.notification_manage_capabilities (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   kind text NOT NULL CHECK (kind IN ('marketing_unsubscribe', 'account_event_optout', 'manage_context')),
@@ -51,7 +95,7 @@ CREATE TABLE public.notification_manage_capabilities (
   address_normalized text NOT NULL
     CHECK (address_normalized = lower(btrim(address_normalized))
            AND position('@' IN address_normalized) > 1),
-  -- Binding, not secrecy: an old capability must not act after the underlying destination
+  -- Binding, not secrecy: an old capability must not act after the delivered destination
   -- changed. md5 is sufficient for equality binding and is built in.
   destination_fingerprint text NOT NULL,
 
@@ -59,40 +103,40 @@ CREATE TABLE public.notification_manage_capabilities (
   contact_id uuid REFERENCES public.notification_contacts(id) ON DELETE CASCADE,
   event_type text REFERENCES public.notification_event_types(key),
 
-  -- account_event_optout is a USER grant (never contact-bound: account mail can deliver via the
-  -- persons.email fallback with no contact row at all, so the binding that matters is to the
-  -- account's canonical address, re-checked at apply time).
   CONSTRAINT notif_manage_cap_kind_coherent CHECK (
-    (kind = 'account_event_optout' AND user_id IS NOT NULL AND event_type IS NOT NULL AND contact_id IS NULL)
+    -- account_event_optout: the PREFERENCE authority is the user; the DESTINATION authority is
+    -- the contact when the send was contact-bound, else the account's persons.email.
+    (kind = 'account_event_optout' AND user_id IS NOT NULL AND event_type IS NOT NULL)
     OR (kind = 'marketing_unsubscribe' AND event_type IS NULL)
     OR (kind = 'manage_context' AND event_type IS NULL)
   ),
 
+  -- THE IDENTITY: one capability per (kind, send).
   source_kind text NOT NULL
     CHECK (source_kind IN ('outbox', 'digest_group', 'campaign_recipient', 'onboarding_queue', 'legacy_send')),
-  source_id uuid,
+  source_id uuid NOT NULL,
 
-  key_version int NOT NULL DEFAULT 1 CHECK (key_version >= 1),
+  key_version int NOT NULL CHECK (key_version >= 1),
   expires_at timestamptz NOT NULL,
   revoked_at timestamptz,
   last_used_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT uniq_notif_manage_cap_per_send UNIQUE (kind, source_kind, source_id)
 );
 
-CREATE INDEX idx_notif_manage_cap_reuse
-  ON public.notification_manage_capabilities
-     (kind, scope_kind, scope_id, address_normalized, user_id, contact_id, event_type)
-  WHERE revoked_at IS NULL;
 CREATE INDEX idx_notif_manage_cap_contact
   ON public.notification_manage_capabilities (contact_id) WHERE contact_id IS NOT NULL AND revoked_at IS NULL;
+CREATE INDEX idx_notif_manage_cap_user
+  ON public.notification_manage_capabilities (user_id) WHERE user_id IS NOT NULL AND revoked_at IS NULL;
 CREATE INDEX idx_notif_manage_cap_expiry
   ON public.notification_manage_capabilities (expires_at) WHERE revoked_at IS NULL;
 
 COMMENT ON TABLE public.notification_manage_capabilities IS
-  'One row per signed manage-link grant. The token an email carries is <id>.<HMAC(id, edge-held key)> — this table never stores the HMAC or the key, so reading it cannot forge a live link. Claims are IMMUTABLE (no client DML; definer RPCs are the only writers; the guard trigger refuses updates outside revoked_at/last_used_at).';
+  'One row per (kind, send). The token an email carries is <id>.<HMAC(id, edge-held key)> — this table never stores the HMAC or the key, so reading it cannot forge a live link. Claims are IMMUTABLE (no client DML; definer RPCs are the only writers; the guard trigger refuses updates outside revoked_at/last_used_at). Per-send identity is what makes retries deterministic and consumption safe.';
 
 -- No direct DML for ANY client role — the definer RPCs are the only path. (The HMAC signs only
--- the id, so an UPDATE to a row''s claims would silently retarget an already-signed link.)
+-- the id, so an UPDATE to a row's claims would silently retarget an already-signed link.)
 ALTER TABLE public.notification_manage_capabilities ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.notification_manage_capabilities FROM PUBLIC, anon, authenticated, service_role;
 
@@ -129,17 +173,11 @@ CREATE TRIGGER trg_notif_manage_cap_guard_immutable
 -- ---------------------------------------------------------------------------
 -- MINT (service-role only via EXECUTE; called by the footer-attach layers at send time).
 --
--- DETERMINISTIC REUSE is the load-bearing property: the same logical grant returns the SAME live
--- capability id, so the edge layer derives the SAME token bytes — a digest retry or a worker
--- re-render cannot produce a different link under the same provider idempotency key. Concurrency
--- is serialized by an advisory xact lock over the canonical grant key (two workers minting the
--- same grant race a plain SELECT-then-INSERT into two different ids = two different token bytes).
---
--- source_kind/source_id are PROVENANCE OF THE FIRST MINT, deliberately outside the reuse
--- identity: later sends of the same logical grant share the capability (that is the point), and
--- claims on a signed row never change. p_ttl fixes expiry at first mint only — "extending" a
--- signed row would mutate its claims. A HIGHER key_version ROTATES: live older-version grants for
--- the same logical key are revoked and a fresh capability is minted under the new key.
+-- Idempotent on (kind, source_kind, source_id) — a retry of the same send returns the SAME row,
+-- so the edge layer derives the same token bytes and the rebuilt email is byte-identical under
+-- the same provider idempotency key. Every claim is RE-VERIFIED on that path: a second mint for
+-- the same send with different claims is a source-id collision, and it RAISES rather than
+-- handing back a link that no longer describes the mail it is printed in.
 CREATE OR REPLACE FUNCTION public.mint_notification_manage_capability(
   p_kind text,
   p_scope_kind text,
@@ -150,8 +188,7 @@ CREATE OR REPLACE FUNCTION public.mint_notification_manage_capability(
   p_event_type text,
   p_source_kind text,
   p_source_id uuid,
-  p_ttl interval,
-  p_key_version int DEFAULT 1
+  p_ttl interval
 ) RETURNS TABLE (capability_id uuid, key_version int)
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -161,11 +198,10 @@ DECLARE
   v_address text := lower(btrim(p_address));
   v_required boolean;
   v_policy text;
-  v_floor int;
+  v_version int;
   v_row public.notification_manage_capabilities%ROWTYPE;
 BEGIN
-  -- EVERY input is validated BEFORE the reuse lookup — an invalid request must never succeed
-  -- just because a matching row already exists.
+  -- EVERY input is validated BEFORE anything is looked up or written.
   IF v_address IS NULL OR position('@' IN v_address) <= 1 THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: not an email address';
   END IF;
@@ -180,8 +216,8 @@ BEGIN
      ('outbox', 'digest_group', 'campaign_recipient', 'onboarding_queue', 'legacy_send') THEN
     RAISE EXCEPTION 'mint_notification_manage_capability: unknown source_kind %', p_source_kind;
   END IF;
-  IF p_key_version IS NULL OR p_key_version < 1 THEN
-    RAISE EXCEPTION 'mint_notification_manage_capability: key_version must be >= 1';
+  IF p_source_id IS NULL THEN
+    RAISE EXCEPTION 'mint_notification_manage_capability: a capability belongs to ONE send — source_id is required';
   END IF;
   -- TTL bounds per kind: a zero/negative TTL mints dead links; an unbounded one is a forever
   -- credential. Marketing unsubscribe must outlive mailbox archaeology (>= 13 months per
@@ -193,19 +229,12 @@ BEGIN
     RAISE EXCEPTION 'mint_notification_manage_capability: marketing unsubscribe links must stay valid >= 13 months';
   END IF;
   IF p_kind = 'account_event_optout' THEN
-    IF p_user_id IS NULL OR p_event_type IS NULL OR p_contact_id IS NOT NULL THEN
-      RAISE EXCEPTION 'mint_notification_manage_capability: account_event_optout is a user+event grant (no contact)';
-    END IF;
-    IF p_source_id IS NULL THEN
-      -- per-send capabilities (below) are keyed on the send; a NULL send id would collapse
-      -- every send into one consumable grant again.
-      RAISE EXCEPTION 'mint_notification_manage_capability: account_event_optout needs a stable source_id';
+    IF p_user_id IS NULL OR p_event_type IS NULL THEN
+      RAISE EXCEPTION 'mint_notification_manage_capability: account_event_optout needs a user and an event';
     END IF;
     -- A REQUIRED event must never gain a mutating opt-out capability, and the CATALOG's declared
     -- footer policy is the routing authority: only a manage_prefs event may carry an event
-    -- opt-out (a marketing event's mail carries marketing_unsubscribe capabilities instead —
-    -- an event opt-out there would write a service preference where a suppression belongs).
-    -- Refused at mint AND re-checked at apply.
+    -- opt-out (a marketing event's mail carries marketing_unsubscribe capabilities instead).
     SELECT required_delivery, email_footer_policy INTO v_required, v_policy
       FROM public.notification_event_types WHERE key = p_event_type;
     IF v_required IS DISTINCT FROM false THEN
@@ -219,69 +248,24 @@ BEGIN
     RAISE EXCEPTION 'mint_notification_manage_capability: % carries no event_type', p_kind;
   END IF;
 
-  -- Serialize concurrent mints of the SAME logical grant. hashtextextended over the canonical
-  -- key; advisory xact locks release at commit/rollback.
-  PERFORM pg_advisory_xact_lock(hashtextextended(
-    'notif_manage_cap:' || p_kind || ':' || p_scope_kind || ':' || coalesce(p_scope_id::text, '-')
-      || ':' || v_address || ':' || coalesce(p_user_id::text, '-')
-      || ':' || coalesce(p_contact_id::text, '-') || ':' || coalesce(p_event_type, '-'), 0));
-
-  -- NO DOWNGRADE: a stale worker still configured with an old key version must not resurrect
-  -- retired-key links after a rotation — the floor is the highest version EVER issued for this
-  -- logical grant (revoked rows included; that is what makes it a floor).
-  SELECT coalesce(max(c.key_version), 0) INTO v_floor
-    FROM public.notification_manage_capabilities c
-   WHERE c.kind = p_kind
-     AND c.scope_kind = p_scope_kind
-     AND c.scope_id IS NOT DISTINCT FROM p_scope_id
-     AND c.address_normalized = v_address
-     AND c.user_id IS NOT DISTINCT FROM p_user_id
-     AND c.contact_id IS NOT DISTINCT FROM p_contact_id
-     AND c.event_type IS NOT DISTINCT FROM p_event_type;
-  IF p_key_version < v_floor THEN
-    RAISE EXCEPTION 'mint_notification_manage_capability: key_version % is below this grant''s floor % — a rotated-away key never signs again', p_key_version, v_floor;
+  SELECT current_version INTO v_version FROM public.notification_manage_key_state WHERE id;
+  IF v_version IS NULL THEN
+    RAISE EXCEPTION 'mint_notification_manage_capability: signing-key state is missing';
   END IF;
 
-  -- Key rotation: a request under a NEWER version retires every live older-version grant for
-  -- this logical key, so the old links die when the old key does. Rotation is a
-  -- COMPROMISE-DRIVEN act: it deliberately kills still-valid marketing links early — the
-  -- >= 13-month TTL floor is a promise about expiry under a stable key, not a shield for links
-  -- signed by a burned one.
-  UPDATE public.notification_manage_capabilities c
-     SET revoked_at = now()
-   WHERE c.kind = p_kind
-     AND c.scope_kind = p_scope_kind
-     AND c.scope_id IS NOT DISTINCT FROM p_scope_id
-     AND c.address_normalized = v_address
-     AND c.user_id IS NOT DISTINCT FROM p_user_id
-     AND c.contact_id IS NOT DISTINCT FROM p_contact_id
-     AND c.event_type IS NOT DISTINCT FROM p_event_type
-     AND c.revoked_at IS NULL
-     AND c.key_version < p_key_version;
-
-  -- Reuse identity. account_event_optout is PER SEND (source-keyed): the grant is consumptive,
-  -- so a NEW email must always carry a fresh, unconsumed capability — reusing the consumed one
-  -- would ship an inert link — while a RETRY of the same send (same source) must reuse its
-  -- capability, consumed or not, to keep the frozen request byte-identical. The monotonic kinds
-  -- reuse the logical grant regardless of source: replaying a marketing unsubscribe merely
-  -- re-asserts a fact.
-  SELECT * INTO v_row
-    FROM public.notification_manage_capabilities c
-   WHERE c.kind = p_kind
-     AND c.scope_kind = p_scope_kind
-     AND c.scope_id IS NOT DISTINCT FROM p_scope_id
-     AND c.address_normalized = v_address
-     AND c.user_id IS NOT DISTINCT FROM p_user_id
-     AND c.contact_id IS NOT DISTINCT FROM p_contact_id
-     AND c.event_type IS NOT DISTINCT FROM p_event_type
-     AND (p_kind <> 'account_event_optout'
-          OR (c.source_kind = p_source_kind AND c.source_id IS NOT DISTINCT FROM p_source_id))
-     AND c.key_version = p_key_version
-     AND c.revoked_at IS NULL
-     AND c.expires_at > now()
-   ORDER BY c.created_at DESC
-   LIMIT 1;
+  -- The send may already have a capability (a retry). Return it, but only after proving it still
+  -- describes THIS mail.
+  SELECT * INTO v_row FROM public.notification_manage_capabilities c
+   WHERE c.kind = p_kind AND c.source_kind = p_source_kind AND c.source_id = p_source_id;
   IF FOUND THEN
+    IF v_row.scope_kind IS DISTINCT FROM p_scope_kind
+       OR v_row.scope_id IS DISTINCT FROM p_scope_id
+       OR v_row.address_normalized IS DISTINCT FROM v_address
+       OR v_row.user_id IS DISTINCT FROM p_user_id
+       OR v_row.contact_id IS DISTINCT FROM p_contact_id
+       OR v_row.event_type IS DISTINCT FROM p_event_type THEN
+      RAISE EXCEPTION 'mint_notification_manage_capability: % % already has a % capability with different claims — a source id must identify ONE send', p_source_kind, p_source_id, p_kind;
+    END IF;
     RETURN QUERY SELECT v_row.id, v_row.key_version;
     RETURN;
   END IF;
@@ -293,23 +277,24 @@ BEGIN
   VALUES
     (p_kind, p_scope_kind, p_scope_id, v_address, md5(v_address),
      p_user_id, p_contact_id, p_event_type, p_source_kind, p_source_id,
-     p_key_version, now() + p_ttl)
+     v_version, now() + p_ttl)
   RETURNING id, notification_manage_capabilities.key_version;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.mint_notification_manage_capability(text, text, uuid, text, uuid, uuid, text, text, uuid, interval, int) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.mint_notification_manage_capability(text, text, uuid, text, uuid, uuid, text, text, uuid, interval, int) TO service_role;
+REVOKE ALL ON FUNCTION public.mint_notification_manage_capability(text, text, uuid, text, uuid, uuid, text, text, uuid, interval) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mint_notification_manage_capability(text, text, uuid, text, uuid, uuid, text, text, uuid, interval) TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- CONTEXT (service-role only — the edge function verifies the HMAC FIRST, then reads this).
 -- PII-TRIMMED per the claim-token doctrine: the link is forwardable, so the page it opens must
 -- show nothing a stranger could use — a redacted destination, the scope's display name, and what
 -- the capability may do. Never the raw address, never ids — and a NON-LIVE capability discloses
--- its status and NOTHING else: an expired or revoked link is a dead end, not a directory entry.
+-- its status and NOTHING else: an expired, revoked or retired-key link is a dead end, not a
+-- directory entry.
 CREATE OR REPLACE FUNCTION public.get_notification_manage_context(p_capability_id uuid)
 RETURNS TABLE (
-  status text,               -- live | expired | revoked | missing
+  status text,               -- live | expired | revoked | retired_key | missing
   kind text,
   scope_kind text,
   scope_display_name text,
@@ -324,6 +309,7 @@ SET search_path = public
 AS $$
 DECLARE
   v public.notification_manage_capabilities%ROWTYPE;
+  v_min int;
   v_status text;
   v_name text;
 BEGIN
@@ -333,9 +319,13 @@ BEGIN
     RETURN;
   END IF;
 
+  SELECT min_mintable_version INTO v_min FROM public.notification_manage_key_state WHERE id;
   v_status := CASE
     WHEN v.revoked_at IS NOT NULL THEN 'revoked'
     WHEN v.expires_at <= now() THEN 'expired'
+    -- A burned signing key retires every link it signed. Reported (and refused) here as well as
+    -- at the edge, so the database is not merely trusting the verifier to have been redeployed.
+    WHEN v.key_version < coalesce(v_min, 1) THEN 'retired_key'
     ELSE 'live'
   END;
   IF v_status <> 'live' THEN
@@ -357,13 +347,9 @@ BEGIN
   END IF;
 
   RETURN QUERY SELECT
-    v_status,
-    v.kind,
-    v.scope_kind,
-    v_name,
+    v_status, v.kind, v.scope_kind, v_name,
     public.notification_redact_destination(v.address_normalized, 'email'),
-    v.event_type,
-    v.key_version;
+    v.event_type, v.key_version;
 END;
 $$;
 
@@ -378,7 +364,8 @@ GRANT EXECUTE ON FUNCTION public.get_notification_manage_context(uuid) TO servic
 --   manage_context        → marketing suppression ONLY (N2: guests get no service-mail lever);
 --   account_event_optout  → prefs_v2 email 'off' for exactly (user, event) — CONSUMPTIVE on
 --                           first use, so a forwarded/replayed link cannot undo a later
---                           authenticated re-enable.
+--                           authenticated re-enable. (Per-send rows mean the NEXT email still
+--                           carries a working link.)
 -- Marketing actions stay idempotent and replayable (a re-clicked unsubscribe re-asserts a
 -- monotonic fact); the account opt-out is the one action whose replay could FIGHT the user.
 CREATE OR REPLACE FUNCTION public.apply_notification_manage_action(
@@ -396,6 +383,8 @@ DECLARE
   v_rows int;
   v_required boolean;
   v_policy text;
+  v_min int;
+  v_bound text;
   v_wa text;
 BEGIN
   IF p_action NOT IN ('marketing_unsubscribe', 'event_optout') THEN
@@ -411,25 +400,27 @@ BEGIN
   IF NOT FOUND THEN RETURN 'rejected_missing'; END IF;
   IF v.revoked_at IS NOT NULL THEN RETURN 'rejected_revoked'; END IF;
   IF v.expires_at <= now() THEN RETURN 'rejected_expired'; END IF;
+  SELECT min_mintable_version INTO v_min FROM public.notification_manage_key_state WHERE id;
+  IF v.key_version < coalesce(v_min, 1) THEN RETURN 'rejected_retired_key'; END IF;
 
-  -- Destination binding. Contact-bound grants: the trigger below revokes on address change
-  -- transactionally; the fingerprint re-check is the belt to that suspender. User-bound grants
-  -- (account_event_optout) have no contact — their mail delivers via the account's canonical
-  -- persons.email — so the binding is re-derived from THAT, and a capability minted for an old
-  -- inbox stops acting the moment the account's address moves on. A missing persons row reads
-  -- as changed: unknown must fail closed.
-  IF v.contact_id IS NOT NULL AND EXISTS (
-       SELECT 1 FROM public.notification_contacts nc
-        WHERE nc.id = v.contact_id
-          AND md5(lower(btrim(coalesce(nc.destination_normalized, '')))) <> v.destination_fingerprint
-     ) THEN
-    RETURN 'rejected_destination_changed';
+  -- DESTINATION BINDING, against the authority that actually delivered this mail. A
+  -- contact-bound capability re-checks the contact's CURRENT address (the trigger below also
+  -- revokes transactionally on change — belt and suspender); a capability with no contact was
+  -- delivered via the account's canonical persons.email, so that is what it re-checks. A missing
+  -- authority reads as changed: unknown fails closed.
+  IF v.contact_id IS NOT NULL THEN
+    SELECT md5(lower(btrim(nc.destination_normalized))) INTO v_bound
+      FROM public.notification_contacts nc WHERE nc.id = v.contact_id;
+  ELSIF v.user_id IS NOT NULL THEN
+    SELECT md5(lower(btrim(pe.email))) INTO v_bound
+      FROM public.persons pe WHERE pe.user_id = v.user_id;
+  ELSE
+    -- No live authority to re-check (a hand-typed campaign address): the address captured at
+    -- mint IS the binding, and it is immutable on the row.
+    v_bound := v.destination_fingerprint;
   END IF;
-  IF v.kind = 'account_event_optout' THEN
-    IF (SELECT md5(lower(btrim(pe.email))) FROM public.persons pe WHERE pe.user_id = v.user_id)
-       IS DISTINCT FROM v.destination_fingerprint THEN
-      RETURN 'rejected_destination_changed';
-    END IF;
+  IF v_bound IS DISTINCT FROM v.destination_fingerprint THEN
+    RETURN 'rejected_destination_changed';
   END IF;
 
   IF p_action = 'marketing_unsubscribe' THEN
@@ -484,9 +475,10 @@ REVOKE ALL ON FUNCTION public.apply_notification_manage_action(uuid, text, text)
 GRANT EXECUTE ON FUNCTION public.apply_notification_manage_action(uuid, text, text) TO service_role;
 
 -- ---------------------------------------------------------------------------
--- A contact whose ADDRESS changes revokes every live capability bound to it, in the same
--- transaction as the change — an emailed link must not keep authority over a destination it was
--- never minted for.
+-- A destination that CHANGES revokes every live capability bound to it, in the same transaction
+-- as the change — an emailed link must not keep authority over a destination it was never minted
+-- for. Revocation is PERMANENT: moving an address away and back does not reactivate an unused
+-- link, because revoked_at is never cleared.
 CREATE OR REPLACE FUNCTION public.notif_manage_cap_revoke_on_contact_change()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -508,3 +500,27 @@ CREATE TRIGGER trg_notif_manage_cap_revoke_on_contact_change
   AFTER UPDATE OF destination_normalized ON public.notification_contacts
   FOR EACH ROW
   EXECUTE FUNCTION public.notif_manage_cap_revoke_on_contact_change();
+
+-- ...and the same for the account-fallback authority: a person's canonical email changing
+-- retires the account-bound links printed against the old inbox.
+CREATE OR REPLACE FUNCTION public.notif_manage_cap_revoke_on_person_email_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NEW.email IS DISTINCT FROM OLD.email AND NEW.user_id IS NOT NULL THEN
+    UPDATE public.notification_manage_capabilities
+       SET revoked_at = now()
+     WHERE user_id = NEW.user_id AND contact_id IS NULL AND revoked_at IS NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_notif_manage_cap_revoke_on_person_email_change ON public.persons;
+CREATE TRIGGER trg_notif_manage_cap_revoke_on_person_email_change
+  AFTER UPDATE OF email ON public.persons
+  FOR EACH ROW
+  EXECUTE FUNCTION public.notif_manage_cap_revoke_on_person_email_change();

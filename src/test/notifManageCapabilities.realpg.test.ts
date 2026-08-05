@@ -5,14 +5,18 @@
 // opt-out the campaign/onboarding senders will consult at send time, the capability rows behind
 // the signed footer links, and the declared footer policy the attach layers read. The properties
 // pinned here are the ones a later edit is most likely to break silently:
-//   * mint is DETERMINISTIC for the same logical grant — including under REAL CONCURRENCY (two
-//     connections racing the same grant must converge on one capability id, or two token byte
-//     strings exist for one frozen provider request);
+//   * one capability PER SEND: a retry of the same send returns the same row (so the rebuilt
+//     email is byte-identical under a fixed provider idempotency key), a NEW send always gets a
+//     fresh unconsumed row, a same-source mint with different claims RAISES, and two connections
+//     racing one send converge on exactly one row via the unique index;
+//   * key rotation is database-owned state: the version comes from the key-state row, an
+//     already-printed capability is NEVER re-signed or revoked by a rotation, and a retired key
+//     fails CLOSED (rejected_retired_key / status retired_key);
 //   * a REQUIRED event can never gain an opt-out capability — refused at mint AND at apply;
 //   * the account opt-out is CONSUMPTIVE: a replayed/forwarded link cannot undo a later
 //     authenticated re-enable;
-//   * capabilities stop acting when their destination moves on (contact trigger + canonical
-//     persons.email re-check for user-bound grants);
+//   * capabilities stop acting when the DELIVERED destination moves on — whichever authority
+//     resolved it (contact address or the account's persons.email) — and revocation is permanent;
 //   * the suppression reader RAISES on malformed scope — a sender wiring error defers, it never
 //     clears;
 //   * claims are immutable and no client role can touch the tables directly;
@@ -44,13 +48,13 @@ const mintOn = async (client: InstanceType<typeof Client>, over: Record<string, 
   const a = {
     kind: 'marketing_unsubscribe', scope_kind: 'academy', scope_id: ACADEMY,
     address: 'Person@Example.com', user_id: null, contact_id: null, event_type: null,
-    source_kind: 'campaign_recipient', source_id: null, ttl: '400 days', key_version: 1,
+    source_kind: 'campaign_recipient', source_id: SEND_A, ttl: '400 days',
     ...over,
   };
   const r = await client.query(
-    `SELECT * FROM public.mint_notification_manage_capability($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::interval,$11)`,
+    `SELECT * FROM public.mint_notification_manage_capability($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::interval)`,
     [a.kind, a.scope_kind, a.scope_id, a.address, a.user_id, a.contact_id,
-     a.event_type, a.source_kind, a.source_id, a.ttl, a.key_version]);
+     a.event_type, a.source_kind, a.source_id, a.ttl]);
   return r.rows[0] as { capability_id: string; key_version: number };
 };
 const mint = (over: Record<string, unknown> = {}) => mintOn(c, over);
@@ -94,7 +98,7 @@ beforeAll(async () => {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       destination_normalized text NOT NULL);
 
-    CREATE TABLE public.persons (user_id uuid UNIQUE, email text);
+    CREATE TABLE public.persons (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), user_id uuid UNIQUE, email text);
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, name text);
     CREATE TABLE public.profiles (user_id uuid PRIMARY KEY, full_name text);
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, business_name text, user_id uuid);
@@ -142,6 +146,7 @@ beforeEach(async () => {
     DELETE FROM public.notification_preferences_v2;
     DELETE FROM public.notification_contacts;
     UPDATE public.persons SET email = 'person@example.com' WHERE user_id = '${U1}';
+    UPDATE public.notification_manage_key_state SET current_version = 1, min_mintable_version = 1;
   `);
 });
 
@@ -209,7 +214,7 @@ describe('email_marketing_suppression', () => {
 });
 
 describe('mint_notification_manage_capability', () => {
-  it('the same logical grant returns the SAME capability id (deterministic tokens)', async () => {
+  it('the same SEND returns the SAME capability id (deterministic tokens for a retry)', async () => {
     const a = await mint();
     const b = await mint();
     expect(b.capability_id).toBe(a.capability_id);
@@ -218,65 +223,69 @@ describe('mint_notification_manage_capability', () => {
   it('TWO CONNECTIONS racing the same grant converge on ONE capability id', async () => {
     // Without the advisory lock this is a SELECT-then-INSERT race: both see no live grant, both
     // insert, and two different token byte strings exist for one frozen provider request.
-    const addr = `race-${Date.now()}@example.com`;
-    const [a, b] = await Promise.all([
+    const addr = 'race@example.com';
+    const results = await Promise.allSettled([
       mintOn(c, { address: addr }),
       mintOn(c2, { address: addr }),
     ]);
-    expect(a.capability_id).toBe(b.capability_id);
+    // The unique index is the arbiter: either both mints return the one row, or the loser hits
+    // 23505 — never two rows, i.e. never two token byte strings for one send.
     const n = (await c.query(
       `SELECT count(*)::int AS n FROM public.notification_manage_capabilities WHERE address_normalized = $1`,
       [addr])).rows[0].n;
     expect(n).toBe(1);
+    const ids = new Set(results.filter((r) => r.status === 'fulfilled')
+      .map((r) => (r as PromiseFulfilledResult<{ capability_id: string }>).value.capability_id));
+    expect(ids.size).toBe(1);
   });
 
-  it('a revoked or expired capability is NOT reused — a fresh grant is minted', async () => {
+  it('a REVOKED capability stays the send\'s capability — a retry is not re-signed around it', async () => {
+    // Per-send identity means a spent/revoked send does not get a second, live link minted for
+    // it: the row IS the send. (A NEW send is what gets a new capability — pinned below.)
     const a = await mint();
     await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
       [a.capability_id]);
-    const b = await mint();
-    expect(b.capability_id).not.toBe(a.capability_id);
-    // an EXPIRED row cannot be manufactured by UPDATE (the immutability guard refuses even the
-    // harness), so the fixture inserts one directly — the guard protects live-claim mutation,
-    // not superuser fixture construction.
-    await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
-      [b.capability_id]);
-    const expired = (await c.query(
-      `INSERT INTO public.notification_manage_capabilities
-         (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
-          source_kind, key_version, expires_at)
-       VALUES ('marketing_unsubscribe', 'academy', $1, 'person@example.com', md5('person@example.com'),
-               'campaign_recipient', 1, now() - interval '1 hour')
-       RETURNING id`, [ACADEMY])).rows[0].id;
-    const d = await mint();
-    expect(d.capability_id).not.toBe(expired);
+    const retry = await mint();
+    expect(retry.capability_id).toBe(a.capability_id);
+    expect(await apply(a.capability_id, 'marketing_unsubscribe')).toBe('rejected_revoked');
+    // ...while a different send mints its own, live capability
+    const other = await mint({ source_id: SEND_B });
+    expect(other.capability_id).not.toBe(a.capability_id);
+    expect(await apply(other.capability_id, 'marketing_unsubscribe')).toBe('applied');
   });
 
-  it('a NEWER key_version ROTATES: old-version live grants are revoked, a fresh one minted', async () => {
-    const v1 = await mint();
-    const v2 = await mint({ key_version: 2 });
-    expect(v2.capability_id).not.toBe(v1.capability_id);
-    expect(v2.key_version).toBe(2);
-    const old = (await c.query(
-      `SELECT revoked_at IS NOT NULL AS r FROM public.notification_manage_capabilities WHERE id = $1`,
-      [v1.capability_id])).rows[0].r;
-    expect(old).toBe(true);
-    // ...and the new-version grant is now the reused one
-    const again = await mint({ key_version: 2 });
-    expect(again.capability_id).toBe(v2.capability_id);
+  it('the key VERSION comes from database-owned state, never from the caller', async () => {
+    const a = await mint();
+    expect(a.key_version).toBe(1);
+    await c.query(`UPDATE public.notification_manage_key_state SET current_version = 2`);
+    const b = await mint({ source_id: SEND_B });
+    expect(b.key_version).toBe(2);
+    // ...and the ROTATION DOES NOT TOUCH the already-printed link: rewriting a signed row is how
+    // a retry's body changes underneath a fixed provider idempotency key.
+    const first = (await c.query(
+      `SELECT key_version, revoked_at FROM public.notification_manage_capabilities WHERE id = $1`,
+      [a.capability_id])).rows[0];
+    expect(first).toEqual({ key_version: 1, revoked_at: null });
   });
 
-  it('NO DOWNGRADE: after a rotation, a stale worker minting under the old version is refused', async () => {
-    await mint({ key_version: 2 });
-    // the stale worker cannot resurrect a retired-key link — not even a fresh one
-    await expect(mint({ key_version: 1 })).rejects.toThrow(/below this grant's floor/);
-    const live = (await c.query(
-      `SELECT count(*)::int AS n FROM public.notification_manage_capabilities
-        WHERE revoked_at IS NULL AND address_normalized = 'person@example.com'`)).rows[0].n;
-    expect(live).toBe(1);
+  it('a RETIRED key fails closed: the old link is refused, and its retry cannot be re-signed', async () => {
+    const old = await mint();
+    await c.query(`UPDATE public.notification_manage_key_state
+                     SET current_version = 2, min_mintable_version = 2`);
+    // the printed link is a dead end...
+    expect(await apply(old.capability_id, 'marketing_unsubscribe')).toBe('rejected_retired_key');
+    const ctx = (await c.query(
+      `SELECT * FROM public.get_notification_manage_context($1)`, [old.capability_id])).rows[0];
+    expect(ctx.status).toBe('retired_key');
+    expect(ctx.destination_redacted).toBeNull();
+    // ...and a RETRY of that same send returns the SAME row (still v1) rather than silently
+    // re-signing it under the new key — the retry fails honestly at the edge instead.
+    const retry = await mint();
+    expect(retry.capability_id).toBe(old.capability_id);
+    expect(retry.key_version).toBe(1);
   });
 
-  it('account opt-out capabilities are PER SEND: same source reuses, a new send mints fresh', async () => {
+  it('capabilities are PER SEND: the same source reuses, a new send mints fresh', async () => {
     const base = {
       kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
       source_kind: 'outbox', ttl: '90 days',
@@ -287,7 +296,15 @@ describe('mint_notification_manage_capability', () => {
     const b = await mint({ ...base, source_id: SEND_B });    // a NEW email
     expect(b.capability_id).not.toBe(a1.capability_id);
     // ...and a NULL send id is refused rather than collapsing every send into one grant
-    await expect(mint({ ...base, source_id: null })).rejects.toThrow(/stable source_id/);
+    await expect(mint({ ...base, source_id: null })).rejects.toThrow(/source_id is required/);
+  });
+
+  it('a same-source mint with DIFFERENT claims RAISES rather than re-pointing a printed link', async () => {
+    await mint();
+    await expect(mint({ address: 'someone-else@example.com' }))
+      .rejects.toThrow(/different claims/);
+    await expect(mint({ scope_kind: 'trainer', scope_id: TRAINER }))
+      .rejects.toThrow(/different claims/);
   });
 
   it('the CATALOG footer policy gates the opt-out kind: a marketing event never gets one', async () => {
@@ -303,7 +320,6 @@ describe('mint_notification_manage_capability', () => {
     await expect(mint({ ttl: '30 days' })).rejects.toThrow(/13 months/);       // marketing floor
     await expect(mint({ scope_kind: 'academy', scope_id: null })).rejects.toThrow(/disagree/);
     await expect(mint({ source_kind: 'nowhere' })).rejects.toThrow(/unknown source_kind/);
-    await expect(mint({ key_version: 0 })).rejects.toThrow(/key_version/);
     await expect(mint({ kind: 'marketing_unsubscribe', event_type: 'open_slots_player' }))
       .rejects.toThrow(/carries no event_type/);
   });
@@ -324,14 +340,28 @@ describe('mint_notification_manage_capability', () => {
     await expect(optout({ event_type: 'open_slots_player' })).resolves.toBeTruthy();
   });
 
-  it('account_event_optout is a USER grant — a contact-bound request is refused', async () => {
+  it('an account grant may bind the CONTACT the mail was delivered to, not only the account email', async () => {
+    // The resolver prefers an eligible contact over the persons.email fallback, so a capability
+    // must be able to bind whichever one actually delivered this mail.
     const contact = (await c.query(
       `INSERT INTO public.notification_contacts (destination_normalized)
-       VALUES ('person@example.com') RETURNING id`)).rows[0].id;
-    await expect(mint({
+       VALUES ('contact-inbox@example.com') RETURNING id`)).rows[0].id;
+    const cap = await mint({
       kind: 'account_event_optout', user_id: U1, contact_id: contact,
+      address: 'contact-inbox@example.com',
       event_type: 'open_slots_player', source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
-    })).rejects.toThrow(/no contact/);
+    });
+    // it acts while the CONTACT address is unchanged, even though it differs from persons.email
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('applied');
+    // ...and dies with that contact's address, not the account's
+    const cap2 = await mint({
+      kind: 'account_event_optout', user_id: U1, contact_id: contact,
+      address: 'contact-inbox@example.com',
+      event_type: 'session_reminder_player', source_kind: 'outbox', source_id: SEND_B, ttl: '90 days',
+    });
+    await c.query(`UPDATE public.notification_contacts SET destination_normalized = 'moved@example.com'
+                    WHERE id = $1`, [contact]);
+    expect(await apply(cap2.capability_id, 'event_optout')).toBe('rejected_revoked');
   });
 });
 
@@ -430,7 +460,11 @@ describe('apply_notification_manage_action', () => {
       source_kind: 'outbox', source_id: SEND_A, ttl: '90 days',
     });
     await c.query(`UPDATE public.persons SET email = 'new-inbox@example.com' WHERE user_id = $1`, [U1]);
-    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_destination_changed');
+    // the trigger revokes account-fallback-bound capabilities transactionally...
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_revoked');
+    // ...and revocation is PERMANENT: moving the address back does not reactivate the link
+    await c.query(`UPDATE public.persons SET email = 'person@example.com' WHERE user_id = $1`, [U1]);
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_revoked');
     const n = (await c.query(`SELECT count(*)::int AS n FROM public.notification_preferences_v2`)).rows[0].n;
     expect(n).toBe(0);
   });
@@ -457,10 +491,10 @@ describe('apply_notification_manage_action', () => {
     const expired = (await c.query(
       `INSERT INTO public.notification_manage_capabilities
          (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
-          source_kind, key_version, expires_at)
+          source_kind, source_id, key_version, expires_at)
        VALUES ('marketing_unsubscribe', 'trainer', $1, 'person@example.com', md5('person@example.com'),
-               'campaign_recipient', 1, now() - interval '1 hour')
-       RETURNING id`, [TRAINER])).rows[0].id;
+               'campaign_recipient', $2, 1, now() - interval '1 hour')
+       RETURNING id`, [TRAINER, SEND_B])).rows[0].id;
     expect(await apply(expired, 'marketing_unsubscribe')).toBe('rejected_expired');
     const n = (await c.query(`SELECT count(*)::int AS n FROM public.email_marketing_suppression`)).rows[0].n;
     expect(n).toBe(0);
@@ -508,9 +542,13 @@ describe('immutability + ACLs', () => {
       `SELECT * FROM public.notification_manage_capabilities`)).toBe('42501');
     expect(await as('authenticated',
       `SELECT * FROM public.email_marketing_suppression`)).toBe('42501');
+    // The signature is spelled out per the REAL arity: a stale call would fail 42883
+    // (undefined function) and quietly "pass" a permission test it never reached.
     expect(await as('authenticated',
-      `SELECT public.mint_notification_manage_capability('marketing_unsubscribe','platform',NULL,'a@b.nl',NULL,NULL,NULL,'outbox',NULL,'400 days'::interval,1)`))
+      `SELECT public.mint_notification_manage_capability('marketing_unsubscribe','platform',NULL,'a@b.nl',NULL,NULL,NULL,'campaign_recipient',gen_random_uuid(),'400 days'::interval)`))
       .toBe('42501');
+    expect(await as('authenticated',
+      `SELECT * FROM public.notification_manage_key_state`)).toBe('42501');
     // service_role: the RPCs work, direct writes to the capability table do not
     expect(await as('service_role',
       `SELECT public.record_marketing_suppression('svc@b.nl','platform',NULL,'manual')`)).toBeNull();
@@ -518,8 +556,8 @@ describe('immutability + ACLs', () => {
       `UPDATE public.notification_manage_capabilities SET revoked_at = now()`)).toBe('42501');
     expect(await as('service_role',
       `INSERT INTO public.notification_manage_capabilities
-         (kind, scope_kind, address_normalized, destination_fingerprint, source_kind, expires_at)
-       VALUES ('manage_context','platform','a@b.nl','x','outbox', now())`)).toBe('42501');
+         (kind, scope_kind, address_normalized, destination_fingerprint, source_kind, source_id, key_version, expires_at)
+       VALUES ('manage_context','platform','a@b.nl','x','outbox', gen_random_uuid(), 1, now())`)).toBe('42501');
   });
 });
 
@@ -553,10 +591,10 @@ describe('get_notification_manage_context', () => {
     const expiredId = (await c.query(
       `INSERT INTO public.notification_manage_capabilities
          (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
-          source_kind, key_version, expires_at)
+          source_kind, source_id, key_version, expires_at)
        VALUES ('marketing_unsubscribe', 'trainer', $1, 'person@example.com', md5('person@example.com'),
-               'campaign_recipient', 1, now() - interval '1 hour')
-       RETURNING id`, [TRAINER])).rows[0].id;
+               'campaign_recipient', $2, 1, now() - interval '1 hour')
+       RETURNING id`, [TRAINER, SEND_B])).rows[0].id;
     const expired = (await c.query(
       `SELECT * FROM public.get_notification_manage_context($1)`, [expiredId])).rows[0];
     expect(expired.status).toBe('expired');
