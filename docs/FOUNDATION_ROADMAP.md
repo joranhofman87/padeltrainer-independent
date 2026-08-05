@@ -194,6 +194,7 @@ presentation and reachability only.
 | **N2 S3** — campaign/onboarding suppression + per-send capabilities + RFC 8058 | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `b961e7f1`, CI green at `7166d403` |
 | **N2 S5** — one-click endpoint + manage page + retention sweep | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `47e6658e` |
 | **N2 WHOLE-UNIT SWEEP** — fresh thread over `main..HEAD`, aimed at the seams | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | **CLEAR at `f1a7f1e8`** (4 findings, all fixed: RFC 8058 body marker; send-email pref read fail-closed; Retry-After; sweep index) |
+| **N2 FINAL** — clear reconfirmed through post-clear commits; CI | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | **ALL CHECKS GREEN at `4f002488`** — N2 complete, awaiting the owner gate (mark-ready/merge/deploy) |
 
 **N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
 `supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement
