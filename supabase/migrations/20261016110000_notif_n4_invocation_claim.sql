@@ -68,13 +68,63 @@ GRANT EXECUTE ON FUNCTION public.claim_pending_worker_invocation(uuid) TO servic
 
 
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
+-- The dispatch-evidence recorder. The invoke artifacts run open() and net.http_post in ONE
+-- transaction, and net.http_post returns its request id before COMMIT — so the request THIS
+-- invocation queued can be recorded on the invocation row causally, not correlated after the
+-- fact. Atomicity is the recovery oracle: an ambiguous commit either committed invocation +
+-- binding + queue row together, or none of them. On a replay the re-executed command mints a
+-- SECOND request id, this recorder refuses to overwrite the first — and that RAISE rolls the
+-- whole replay transaction back, un-queueing the second request. The operator is told the
+-- ORIGINAL request id to go read: the replay cannot double-dispatch.
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
+
+CREATE OR REPLACE FUNCTION public.record_invocation_net_request(
+  p_invocation_id uuid,
+  p_net_request_id bigint
+) RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE v public.notification_worker_invocations%ROWTYPE;
+BEGIN
+  IF p_net_request_id IS NULL THEN
+    RAISE EXCEPTION 'record_invocation_net_request: a pg_net request id is required';
+  END IF;
+  SELECT * INTO v FROM public.notification_worker_invocations
+   WHERE id = p_invocation_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'record_invocation_net_request: invocation % does not exist', p_invocation_id;
+  END IF;
+  IF v.net_request_id IS NOT NULL THEN
+    IF v.net_request_id = p_net_request_id THEN RETURN; END IF;   -- same binding, idempotent
+    RAISE EXCEPTION 'record_invocation_net_request: invocation % ALREADY dispatched pg_net request % — refusing to record request %. The earlier commit was real: this transaction will roll back (un-queueing the duplicate). Read net._http_response for id % instead of re-dispatching',
+      p_invocation_id, v.net_request_id, p_net_request_id, v.net_request_id;
+  END IF;
+  IF v.status <> 'pending' THEN
+    RAISE EXCEPTION 'record_invocation_net_request: invocation % is % — dispatch evidence is recorded in the invoker''s own transaction, before any worker could bind', p_invocation_id, v.status;
+  END IF;
+  UPDATE public.notification_worker_invocations
+     SET net_request_id = p_net_request_id
+   WHERE id = v.id;
+END;
+$$;
+
+COMMENT ON FUNCTION public.record_invocation_net_request(uuid, bigint) IS
+  'N4 AC-6: binds the pg_net request an invocation queued to its row, in the SAME transaction as the net.http_post (causal, not correlational). Set-once + unique + immutable; a replay that re-executed the command RAISES naming the original request — the raise rolls the replay back, un-queueing its duplicate request.';
+
+REVOKE ALL ON FUNCTION public.record_invocation_net_request(uuid, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_invocation_net_request(uuid, bigint) TO service_role;
+
+
+-- ─────────────────────────────────────────────────────────────────────────────────────────────
 -- The DISABLED-SMOKE completion arm. When DIGEST_SEND_ENABLED is off the worker answers the
 -- exact disabled 200 BEFORE any DB work: no run starts, so the smoke's invocation stays pending
 -- and the generic resolve — which demands a bound, ended run — correctly refuses it forever.
 -- This arm closes that gap WITHOUT weakening the generic path: it demands the pg_net response
--- evidence instead of a run. The response row cannot name the invocation (open() commits before
--- net.http_post returns an id), so the tie is: single-flight (this was THE invocation in
--- flight), the response postdating the open, a clean 200, and the exact disabled body.
+-- evidence instead of a run — for EXACTLY the request this invocation recorded at dispatch
+-- (record_invocation_net_request, same transaction as the http_post), answered clean, with the
+-- byte-for-byte documented disabled body.
 -- ─────────────────────────────────────────────────────────────────────────────────────────────
 
 CREATE OR REPLACE FUNCTION public.resolve_smoke_invocation_disabled(
@@ -105,6 +155,16 @@ BEGIN
     RAISE EXCEPTION 'resolve_smoke_invocation_disabled: invocation % is %, not pending — the disabled arm applies only when the worker never started a run',
       p_invocation_id, v.status;
   END IF;
+  -- CAUSAL binding, not correlation: the response must answer the exact request THIS invocation
+  -- recorded in its own dispatch transaction. Timestamps and single-flight only narrow; a later
+  -- qualifying response from some other request must never complete this smoke.
+  IF v.net_request_id IS NULL THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: invocation % never recorded its pg_net request — no causal evidence exists to complete it', p_invocation_id;
+  END IF;
+  IF v.net_request_id <> p_net_request_id THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: invocation % dispatched pg_net request %, not % — that is another request''s response',
+      p_invocation_id, v.net_request_id, p_net_request_id;
+  END IF;
 
   SELECT status_code, content, timed_out, error_msg, created INTO r
     FROM net._http_response WHERE id = p_net_request_id;
@@ -119,10 +179,13 @@ BEGIN
     RAISE EXCEPTION 'resolve_smoke_invocation_disabled: pg_net response % carries a transport failure (timed_out=%, error=%) — not disabled-smoke evidence',
       p_net_request_id, coalesce(r.timed_out, false), coalesce(r.error_msg, '<none>');
   END IF;
+  -- the EXACT documented body — whole-value jsonb equality, not a field probe. A body with a
+  -- missing/other reason or ANY extra field ("status":"disabled","error":…) is not the disabled
+  -- answer, and the shell's own check is deliberately not trusted here.
   IF r.status_code IS DISTINCT FROM 200
-     OR (r.content::jsonb ->> 'status') IS DISTINCT FROM 'disabled' THEN
-    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: response % answered HTTP % with status ''%'' — only the exact disabled 200 completes this arm',
-      p_net_request_id, r.status_code, coalesce(r.content::jsonb ->> 'status', '<absent>');
+     OR r.content::jsonb IS DISTINCT FROM '{"status":"disabled","reason":"disabled"}'::jsonb THEN
+    RAISE EXCEPTION 'resolve_smoke_invocation_disabled: response % answered HTTP % with body % — only the exact disabled 200 {"status":"disabled","reason":"disabled"} completes this arm',
+      p_net_request_id, r.status_code, left(coalesce(r.content, '<absent>'), 200);
   END IF;
 
   UPDATE public.notification_worker_invocations
@@ -133,7 +196,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.resolve_smoke_invocation_disabled(uuid, bigint) IS
-  'N4: completes a SMOKE invocation whose worker answered the exact disabled 200 before any DB work (no run exists to bind, so the generic evidence-demanding resolve correctly refuses it). Evidence: the pg_net response postdates the open, is a clean 200, and carries the exact disabled body. Smoke-only and pending-only — every other shape raises.';
+  'N4: completes a SMOKE invocation whose worker answered the exact disabled 200 before any DB work (no run exists to bind, so the generic evidence-demanding resolve correctly refuses it). Evidence is CAUSAL: the response must answer exactly the pg_net request this invocation recorded at dispatch (record_invocation_net_request), postdate the open, be a clean 200, and equal the documented disabled body byte-for-byte as jsonb. Smoke-only and pending-only — every other shape raises.';
 
 REVOKE ALL ON FUNCTION public.resolve_smoke_invocation_disabled(uuid, bigint) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.resolve_smoke_invocation_disabled(uuid, bigint) TO service_role;
@@ -211,9 +274,11 @@ CREATE OR REPLACE FUNCTION public.admin_list_worker_invocations(
   requested_at timestamptz,
   age_seconds bigint,
   worker_run_id uuid,
+  net_request_id bigint,
   run_status text,
   run_phase text,
   stale boolean,
+  actionable boolean,
   resolved_at timestamptz,
   abandon_reason text
 )
@@ -229,10 +294,15 @@ BEGIN
   RETURN QUERY
   SELECT i.id, i.purpose, i.source, i.status, i.requested_at,
          GREATEST(0, extract(epoch FROM (now() - i.requested_at)))::bigint AS age_seconds,
-         i.worker_run_id, r.status AS run_status, r.phase AS run_phase,
-         -- stale = unresolved past the abandon age-gate: the operator can act on it NOW
+         i.worker_run_id, i.net_request_id, r.status AS run_status, r.phase AS run_phase,
+         -- stale is an AGE signal only: unresolved past the abandon age-gate
          (i.status IN ('pending', 'started')
           AND i.requested_at < now() - interval '10 minutes') AS stale,
+         -- actionable = an operator verb exists RIGHT NOW: an old pending can be abandoned; a
+         -- started one whose run has ENDED can be resolved. A started invocation over a live
+         -- run is NOT actionable however old — abandon rightly refuses it while the run runs.
+         ((i.status = 'pending' AND i.requested_at < now() - interval '10 minutes')
+          OR (i.status = 'started' AND r.ended_at IS NOT NULL)) AS actionable,
          i.resolved_at, i.abandon_reason
     FROM public.notification_worker_invocations i
     LEFT JOIN public.notification_worker_runs r ON r.run_id = i.worker_run_id
@@ -242,7 +312,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.admin_list_worker_invocations(int) IS
-  'N4 AC-6 health: unresolved-first bounded list of deliberate worker invocations with their bound run''s status and a stale flag (unresolved past the 10-minute abandon age-gate). Fixed columns only; platform-admin fail-closed; limit clamped 1..200.';
+  'N4 AC-6 health: unresolved-first bounded list of deliberate worker invocations with their bound run''s status, a stale flag (pure age signal: unresolved past the 10-minute gate) and an actionable flag (an operator verb exists now: old pending is abandonable, started-with-ended-run is resolvable; started over a live run is not actionable at any age). Fixed columns only; platform-admin fail-closed; limit clamped 1..200.';
 
 REVOKE ALL ON FUNCTION public.admin_list_worker_invocations(int) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_list_worker_invocations(int) TO authenticated, service_role;

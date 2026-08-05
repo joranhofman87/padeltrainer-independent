@@ -132,8 +132,10 @@ SELECT pg_temp.assert_eq(
 -- N4 M1 (AC-6): the DURABLE half of the same guarantee, then OPEN this invocation's record in
 -- THIS transaction — it exists from the instant the request can. :invocation_request_id is
 -- generated once per operator command by run-enablement.sh, so an ambiguous-commit retry
--- recovers the SAME invocation instead of stacking a second.
-\i _invocation_gate.sql
+-- recovers the SAME invocation instead of stacking a second. The gate is the REPLAY-AWARE one:
+-- a retry carrying the same request id passes through to the idempotent open(); any OTHER
+-- unresolved invocation still refuses.
+\i _invocation_gate_replay.sql
 SELECT public.open_notification_worker_invocation('canary', 'canary_invoke.sql', :'invocation_request_id'::pg_catalog.uuid) AS invocation_id;
 
 -- THE BLAST RADIUS. "Canary: one recipient" was a hope, not a fact: the worker sends to every group
@@ -211,6 +213,15 @@ END $do$;
 
 SELECT pg_temp.assert_eq((SELECT count(*)::int FROM pg_temp._canary_request), 1,
   'exactly one pg_net request was queued');
+
+-- N4 (AC-6): record WHICH request this invocation queued, in this same transaction — causal
+-- dispatch evidence. On a replay whose original commit was real, this RAISES naming the
+-- original request id, rolling back (and un-queueing) the duplicate request the re-executed
+-- command just minted: a replay can never double-send.
+SELECT public.record_invocation_net_request(
+  (SELECT id FROM public.notification_worker_invocations
+    WHERE request_id = :'invocation_request_id'::pg_catalog.uuid),
+  (SELECT request_id FROM pg_temp._canary_request));
 
 -- PRINTED BEFORE THE COMMIT, ON PURPOSE. If the connection drops after COMMIT but before the marker
 -- below is emitted, psql exits non-zero over a request that IS committed and will be dispatched — and

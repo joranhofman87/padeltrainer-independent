@@ -9484,8 +9484,10 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: {
           abandon_reason: string
+          actionable: boolean
           age_seconds: number
           id: string
+          net_request_id: number
           purpose: string
           requested_at: string
           resolved_at: string
@@ -11243,6 +11245,10 @@ export type Database = {
           p_resend_event_id?: string
           p_trainer_id?: string
         }
+        Returns: undefined
+      }
+      record_invocation_net_request: {
+        Args: { p_invocation_id: string; p_net_request_id: number }
         Returns: undefined
       }
       record_marketing_suppression: {

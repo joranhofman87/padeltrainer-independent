@@ -45,6 +45,11 @@ CREATE TABLE public.notification_worker_invocations (
                    CHECK (status IN ('pending', 'started', 'completed', 'completed_disabled', 'abandoned')),
   requested_at   timestamptz NOT NULL DEFAULT now(),
   worker_run_id  uuid,                       -- bound at worker startup; NO FK (runs are swept)
+  -- The pg_net request THIS invocation queued, recorded in the SAME transaction as the reviewed
+  -- command's net.http_post (which returns its id before COMMIT) — so the association is
+  -- CAUSAL, not correlational. Set once, immutable (guard), unique (index below): one request
+  -- can evidence one invocation, and the disabled-smoke resolve demands an exact match.
+  net_request_id bigint,
   resolved_at    timestamptz,
   abandon_reason text,
   CONSTRAINT invocation_resolution_coherent CHECK (
@@ -70,6 +75,11 @@ CREATE TABLE public.notification_worker_invocations (
 CREATE UNIQUE INDEX uq_notification_worker_invocation_unresolved
   ON public.notification_worker_invocations ((true))
   WHERE status IN ('pending', 'started');
+
+-- one pg_net request evidences at most ONE invocation — the causal tie cannot be shared
+CREATE UNIQUE INDEX uq_notification_worker_invocation_net_request
+  ON public.notification_worker_invocations (net_request_id)
+  WHERE net_request_id IS NOT NULL;
 
 -- OWNER-EFFECTIVE STATE MACHINE (contract finding: ACLs stop API roles, but definer functions
 -- and future migrations run as the owner — the guard must bind THEM too, exactly like the
@@ -100,6 +110,9 @@ BEGIN
   END IF;
   IF OLD.worker_run_id IS NOT NULL AND NEW.worker_run_id IS DISTINCT FROM OLD.worker_run_id THEN
     RAISE EXCEPTION 'notification_worker_invocations: a bound run id is immutable — evidence does not change owners';
+  END IF;
+  IF OLD.net_request_id IS NOT NULL AND NEW.net_request_id IS DISTINCT FROM OLD.net_request_id THEN
+    RAISE EXCEPTION 'notification_worker_invocations: the recorded pg_net request is immutable — dispatch evidence does not change';
   END IF;
   IF NOT (
        (OLD.status = 'pending' AND NEW.status IN ('started', 'completed_disabled', 'abandoned'))

@@ -641,31 +641,43 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
   const SQL = (f: string) =>
     readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
 
-  it('the gate include exists, refuses on ANY unresolved invocation, and NAMES the recovery id', () => {
-    const gate = SQL('_invocation_gate.sql');
-    expect(gate).toContain("status IN ('pending', 'started')");
+  it('BOTH gates exist: strict refuses any unresolved row; replay-aware passes only the exact own request', () => {
+    const strict = SQL('_invocation_gate.sql');
+    expect(strict).toContain("status IN ('pending', 'started')");
     // the refusal must carry the row's identity — the request_id is the operator's recovery
     // handle (--invocation-request-id), so a bare count assertion would strand them
-    expect(gate).toContain('RAISE EXCEPTION');
-    expect(gate).toContain('--invocation-request-id=%s');
+    expect(strict).toContain('RAISE EXCEPTION');
+    expect(strict).toContain('--invocation-request-id=%s');
+    const replay = SQL('_invocation_gate_replay.sql');
+    expect(replay).toContain("status IN ('pending', 'started')");
+    // the ONE difference: a row whose request_id equals the supplied retry falls through to the
+    // idempotent open() (which itself refuses a purpose/source mismatch) — everything else refuses
+    expect(replay).toContain('IS DISTINCT FROM v_req');
+    expect(replay).toContain("set_config('notif.gate_request_id', :'invocation_request_id', true)");
   });
 
-  it.each(['smoke_invoke.sql', 'canary_invoke.sql'])('%s gates, then OPENS, before its dispatch', (f) => {
+  it.each(['smoke_invoke.sql', 'canary_invoke.sql'])('%s replay-gates, OPENS, and RECORDS its pg_net request — all inside its transaction', (f) => {
     const src = SQL(f);
-    const gateIdx = src.indexOf('\\i _invocation_gate.sql');
+    const gateIdx = src.indexOf('\\i _invocation_gate_replay.sql');
     const openIdx = src.indexOf('open_notification_worker_invocation(');
+    const recordIdx = src.indexOf('record_invocation_net_request(');
     expect(gateIdx).toBeGreaterThan(0);
     expect(openIdx).toBeGreaterThan(gateIdx);
-    // the open rides INSIDE the artifact transaction (before its COMMIT), so the record exists
-    // from the instant the request can
+    // open AND the causal dispatch-evidence recording ride INSIDE the artifact transaction —
+    // the record exists from the instant the request can, and names the exact request it queued
     const commitIdx = src.lastIndexOf('COMMIT');
     expect(openIdx).toBeLessThan(commitIdx);
+    expect(recordIdx).toBeGreaterThan(openIdx);
+    expect(recordIdx).toBeLessThan(commitIdx);
     expect(src).toContain(":'invocation_request_id'");
+    // and never the strict gate, which would make the advertised replay impossible
+    expect(src).not.toContain('\\i _invocation_gate.sql');
   });
 
-  it('activate gates WITHOUT opening — arming never rides over an unverified invocation', () => {
+  it('activate keeps the STRICT gate and opens nothing — arming never rides over ANY unresolved invocation, its own included', () => {
     const src = SQL('activate.sql');
     expect(src).toContain('\\i _invocation_gate.sql');
+    expect(src).not.toContain('_invocation_gate_replay');
     expect(src).not.toContain('open_notification_worker_invocation(');
   });
 
@@ -675,6 +687,13 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
     expect(src).toContain("resolve_invocation_for_canary_run(:'run_id'");
     expect(src).toContain('CANARY_INVOCATION_RESOLVED=');
     expect(src).not.toMatch(/status = 'started'/);
+  });
+
+  it('the migration demands the EXACT disabled body as jsonb — a field probe would pass decorated failures', () => {
+    const mig = readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations', '20261016110000_notif_n4_invocation_claim.sql'), 'utf8');
+    expect(mig).toContain(`IS DISTINCT FROM '{"status":"disabled","reason":"disabled"}'::jsonb`);
+    // and completion is causally bound to the recorded dispatch request
+    expect(mig).toContain('v.net_request_id <> p_net_request_id');
   });
 
   it('smoke_resolve_disabled closes the disabled smoke by request id, with the pg_net evidence', () => {

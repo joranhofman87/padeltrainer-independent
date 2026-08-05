@@ -382,9 +382,13 @@ describe('resolve_smoke_invocation_disabled (part 3): the disabled-smoke complet
   const resolveSmoke = async (inv: string, resp: number) =>
     (await c.query(`SELECT public.resolve_smoke_invocation_disabled($1,$2) AS r`, [inv, resp])).rows[0].r as string;
 
+  const bindNet = async (inv: string, resp: number) =>
+    c.query(`SELECT public.record_invocation_net_request($1,$2)`, [inv, resp]);
+
   it('the exact disabled 200 completes a pending smoke as completed_disabled — idempotently', async () => {
     const inv = await open(c, crypto.randomUUID());
     const resp = await addResp();
+    await bindNet(inv, resp);
     expect(await resolveSmoke(inv, resp)).toBe('completed_disabled');
     const row = (await c.query(`SELECT status, worker_run_id, resolved_at FROM public.notification_worker_invocations WHERE id=$1`, [inv])).rows[0];
     expect(row.status).toBe('completed_disabled');
@@ -398,7 +402,9 @@ describe('resolve_smoke_invocation_disabled (part 3): the disabled-smoke complet
   it('completed_disabled RELEASES the single-flight gate — the next deliberate invocation can open', async () => {
     const inv = await open(c, crypto.randomUUID());
     await expect(open(c2, crypto.randomUUID())).rejects.toThrow(/unresolved/);
-    await resolveSmoke(inv, await addResp());
+    const resp = await addResp();
+    await bindNet(inv, resp);
+    await resolveSmoke(inv, resp);
     expect(await open(c2, crypto.randomUUID())).toBeTruthy();
   });
 
@@ -417,25 +423,52 @@ describe('resolve_smoke_invocation_disabled (part 3): the disabled-smoke complet
       .rejects.toThrow(/not pending/);
   });
 
-  it('non-200, wrong body, transport failure, and missing response are each refused', async () => {
+  it.each([
+    ['a non-200', { status_code: 500 }, /only the exact disabled 200/],
+    ['an ok body', { content: '{"status":"ok","dispatchRunId":"x"}' }, /only the exact disabled 200/],
+    ['a missing reason', { content: '{"status":"disabled"}' }, /only the exact disabled 200/],
+    ['a wrong reason', { content: '{"status":"disabled","reason":"unexpected"}' }, /only the exact disabled 200/],
+    ['an EXTRA field', { content: '{"status":"disabled","reason":"disabled","error":"partial failure"}' }, /only the exact disabled 200/],
+    ['a timeout', { timed_out: true }, /transport failure/],
+    ['a transport error', { error_msg: 'connection reset' }, /transport failure/],
+  ] as const)('%s is refused — the body must EQUAL the documented answer as jsonb, not merely contain status=disabled', async (_label, over, why) => {
     const inv = await open(c, crypto.randomUUID());
-    for (const [resp, why] of [
-      [await addResp({ status_code: 500 }), /only the exact disabled 200/],
-      [await addResp({ content: '{"status":"ok","dispatchRunId":"x"}' }), /only the exact disabled 200/],
-      [await addResp({ timed_out: true }), /transport failure/],
-      [await addResp({ error_msg: 'connection reset' }), /transport failure/],
-      [999999999, /does not exist/],
-    ] as const) {
-      await expect(c.query(`SELECT public.resolve_smoke_invocation_disabled($1,$2)`, [inv, resp]))
-        .rejects.toThrow(why);
-    }
-    // all five refusals left it pending — no partial state
+    const resp = await addResp(over as Parameters<typeof addResp>[0]);
+    await bindNet(inv, resp);
+    await expect(c.query(`SELECT public.resolve_smoke_invocation_disabled($1,$2)`, [inv, resp]))
+      .rejects.toThrow(why);
+    // the refusal left it pending — no partial state
     expect((await c.query(`SELECT status FROM public.notification_worker_invocations WHERE id=$1`, [inv])).rows[0].status).toBe('pending');
   });
 
-  it("a response that PREDATES the open is refused — another request's evidence cannot complete this smoke", async () => {
+  it('a response row that does not exist is refused', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    await bindNet(inv, 999999999);   // bound at dispatch, but no response ever arrived
+    await expect(c.query(`SELECT public.resolve_smoke_invocation_disabled($1,$2)`, [inv, 999999999]))
+      .rejects.toThrow(/does not exist/);
+  });
+
+  it('CAUSAL binding: a later fully-qualifying response from ANOTHER request cannot complete this smoke', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    const mine = await addResp({ status_code: 500 });        // my request failed…
+    await bindNet(inv, mine);
+    const other = await addResp();                           // …someone else's disabled 200, later
+    await expect(c.query(`SELECT public.resolve_smoke_invocation_disabled($1,$2)`, [inv, other]))
+      .rejects.toThrow(/dispatched pg_net request/);
+    expect((await c.query(`SELECT status FROM public.notification_worker_invocations WHERE id=$1`, [inv])).rows[0].status).toBe('pending');
+  });
+
+  it('an invocation that never recorded its dispatch cannot be completed by ANY response', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    const resp = await addResp();
+    await expect(c.query(`SELECT public.resolve_smoke_invocation_disabled($1,$2)`, [inv, resp]))
+      .rejects.toThrow(/never recorded its pg_net request/);
+  });
+
+  it("a response that PREDATES the open is refused — stale evidence, even for the bound request id", async () => {
     const stale = await addResp({ created: new Date(Date.now() - 3600_000).toISOString() });
     const inv = await open(c, crypto.randomUUID());
+    await bindNet(inv, stale);
     await expect(c.query(`SELECT public.resolve_smoke_invocation_disabled($1,$2)`, [inv, stale]))
       .rejects.toThrow(/PREDATES/);
   });
@@ -449,7 +482,9 @@ describe('resolve_smoke_invocation_disabled (part 3): the disabled-smoke complet
 
   it('the guard: completed_disabled never reopens, its terminal shape is smoke-only and runless', async () => {
     const inv = await open(c, crypto.randomUUID());
-    await resolveSmoke(inv, await addResp());
+    const resp = await addResp();
+    await bindNet(inv, resp);
+    await resolveSmoke(inv, resp);
     await expect(c.query(`UPDATE public.notification_worker_invocations SET status='pending', resolved_at=NULL WHERE id=$1`, [inv]))
       .rejects.toThrow(/not a legal transition|never reopen/);
     // and the schema refuses the shape outright for a non-smoke, even with the guard disabled
@@ -459,6 +494,104 @@ describe('resolve_smoke_invocation_disabled (part 3): the disabled-smoke complet
        VALUES (gen_random_uuid(), 'canary', 'shape-test', 'completed_disabled', now())`))
       .rejects.toThrow(/invocation_disabled_is_runless_smoke/);
     await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+  });
+});
+
+
+describe('record_invocation_net_request (part 3): the causal dispatch-evidence recorder', () => {
+  const record = async (inv: string, resp: number) =>
+    c.query(`SELECT public.record_invocation_net_request($1,$2)`, [inv, resp]);
+
+  it('set-once: the same value replays silently; a DIFFERENT value raises naming the original request', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    await record(inv, 501);
+    await record(inv, 501);   // idempotent — the replay whose commit was real re-records itself
+    await expect(record(inv, 502)).rejects.toThrow(/ALREADY dispatched pg_net request 501/);
+    expect((await c.query(`SELECT net_request_id FROM public.notification_worker_invocations WHERE id=$1`, [inv])).rows[0].net_request_id).toBe('501');
+  });
+
+  it('one pg_net request evidences at most ONE invocation — ever, across resolutions', async () => {
+    const a = await open(c, crypto.randomUUID());
+    await record(a, 601);
+    const resp = await addRespShared(601);
+    expect((await c.query(`SELECT public.resolve_smoke_invocation_disabled($1,601) AS r`, [a])).rows[0].r).toBe('completed_disabled');
+    const b = await open(c, crypto.randomUUID());
+    await expect(record(b, 601)).rejects.toThrow(/uq_notification_worker_invocation_net_request|duplicate key/);
+  });
+
+  it('the recorded request is IMMUTABLE even past the RPC — the owner-effective guard blocks a direct change', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    await record(inv, 701);
+    await expect(c.query(`UPDATE public.notification_worker_invocations SET net_request_id = 702 WHERE id=$1`, [inv]))
+      .rejects.toThrow(/dispatch evidence does not change/);
+  });
+
+  it('recording is pending-only: the invoker binds in its OWN transaction, never after a worker claimed', async () => {
+    const inv = await open(c, crypto.randomUUID());
+    await bind(inv, await newRun(false));
+    await expect(record(inv, 801)).rejects.toThrow(/is started/);
+  });
+
+  // the disabled-resolve needs a response row for the happy path above
+  async function addRespShared(id: number) {
+    await c.query(
+      `INSERT INTO net._http_response (id, status_code, content, timed_out, error_msg)
+       VALUES ($1, 200, '{"status":"disabled","reason":"disabled"}', false, NULL)
+       ON CONFLICT (id) DO NOTHING`, [id]);
+    return id;
+  }
+});
+
+
+describe('the invocation gates (part 3): strict for activate, replay-aware for the invokers', () => {
+  // These execute the REAL artifact SQL — the same text psql sends — with the one psql
+  // substitution (:'invocation_request_id') applied the way psql would. The strict gate has no
+  // variables at all.
+  const ART = (f: string) =>
+    readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
+  const strictGate = () => c.query(ART('_invocation_gate.sql'));
+  const replayGate = (req: string) =>
+    c.query(`BEGIN`).then(async () => {
+      try {
+        await c.query(ART('_invocation_gate_replay.sql').replace(/:'invocation_request_id'/g, `'${req}'`));
+      } finally { /* caller commits/rolls back */ }
+    });
+
+  it('STRICT: passes on zero unresolved; refuses ANY unresolved row, naming its request id', async () => {
+    await strictGate();   // empty → no raise
+    const req = crypto.randomUUID();
+    await open(c, req);
+    await expect(strictGate()).rejects.toThrow(new RegExp(`UNRESOLVED.*request_id=${req}`));
+  });
+
+  it('REPLAY-AWARE: passes on zero unresolved, and passes the OWN interrupted invocation through to the idempotent open()', async () => {
+    const req = crypto.randomUUID();
+    await replayGate(req); await c.query('COMMIT');            // empty → no raise
+    const inv = await open(c, req);                            // the "committed but ambiguous" open
+    await replayGate(req);                                     // the retry reaches…
+    const again = (await c.query(
+      `SELECT public.open_notification_worker_invocation('smoke','runbook:test',$1) AS id`, [req])).rows[0].id;
+    await c.query('COMMIT');
+    expect(again).toBe(inv);                                   // …the SAME invocation
+    expect((await c.query(`SELECT count(*)::int AS n FROM public.notification_worker_invocations`)).rows[0].n).toBe(1);
+  });
+
+  it('REPLAY-AWARE: any OTHER unresolved invocation still refuses, naming the id to use', async () => {
+    const req = crypto.randomUUID();
+    await open(c, req);
+    await expect(replayGate(crypto.randomUUID())).rejects.toThrow(new RegExp(`NOT this request.*request_id=${req}`));
+    await c.query('ROLLBACK');
+  });
+
+  it('a reused id whose PURPOSE differs passes the gate but dies in open() — no second row, no dispatch', async () => {
+    const req = crypto.randomUUID();
+    await open(c, req, 'smoke');
+    await replayGate(req);
+    await expect(c.query(
+      `SELECT public.open_notification_worker_invocation('canary','canary_invoke.sql',$1)`, [req]))
+      .rejects.toThrow(/already used for a different invocation/);
+    await c.query('ROLLBACK');
+    expect((await c.query(`SELECT count(*)::int AS n FROM public.notification_worker_invocations`)).rows[0].n).toBe(1);
   });
 });
 
@@ -555,14 +688,33 @@ describe('admin_list_worker_invocations (part 3): AC-6 health exposure', () => {
     expect(r.purpose).toBe('canary');
     expect(r.status).toBe('pending');
     expect(r.stale).toBe(true);
+    expect(r.actionable).toBe(true);   // an old PENDING is abandonable right now
     expect(Number(r.age_seconds)).toBeGreaterThanOrEqual(11 * 60 - 5);
     expect(r.worker_run_id).toBeNull();
     expect(r.run_status).toBeNull();
     // the column set is FIXED — no payloads, no request bodies
     expect(Object.keys(r).sort()).toEqual([
-      'abandon_reason', 'age_seconds', 'id', 'purpose', 'requested_at', 'resolved_at',
-      'run_phase', 'run_status', 'source', 'stale', 'status', 'worker_run_id',
+      'abandon_reason', 'actionable', 'age_seconds', 'id', 'net_request_id', 'purpose',
+      'requested_at', 'resolved_at', 'run_phase', 'run_status', 'source', 'stale', 'status',
+      'worker_run_id',
     ]);
+  });
+
+  it('stale is an AGE signal; actionable is a VERB: a started invocation over a live run is stale but NOT actionable', async () => {
+    // an OLD invocation (born 11 minutes ago — settable only at INSERT), then bound to a LIVE run
+    const inv = (await c.query(
+      `INSERT INTO public.notification_worker_invocations (request_id, purpose, source, requested_at)
+       VALUES ($1, 'smoke', 'smoke_invoke.sql', now() - interval '11 minutes') RETURNING id`,
+      [crypto.randomUUID()])).rows[0].id as string;
+    const run = await newRun(false);
+    await bind(inv, run);
+    let mine = (await listAs(c2, ADMIN)).find((r) => r.id === inv);
+    expect(mine.stale).toBe(true);          // old, yes…
+    expect(mine.actionable).toBe(false);    // …but no verb exists: abandon refuses a live run
+    await endRun(run);
+    mine = (await listAs(c2, ADMIN)).find((r) => r.id === inv);
+    expect(mine.stale).toBe(true);
+    expect(mine.actionable).toBe(true);     // the run ended: resolve is available NOW
   });
 
   it('a freshly bound invocation is NOT stale and carries its run', async () => {
