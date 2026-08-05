@@ -5,14 +5,19 @@
 // opt-out the campaign/onboarding senders will consult at send time, the capability rows behind
 // the signed footer links, and the declared footer policy the attach layers read. The properties
 // pinned here are the ones a later edit is most likely to break silently:
-//   * mint is DETERMINISTIC for the same logical grant (same capability id → the edge layer
-//     derives the same token bytes → frozen provider requests stay byte-identical on retry);
-//   * a REQUIRED event can never gain an opt-out capability (mint refuses — the mutation pin);
-//   * guests' manage_context can apply marketing suppression but NEVER an event opt-out;
-//   * an address change on the underlying contact revokes live capabilities transactionally;
-//   * suppression is monotonic, idempotent, normalized in the database, and platform-scope
-//     uniqueness really is unique (partial index — plain UNIQUE dedupes nothing over NULL);
-//   * the event opt-out writes BOTH preference columns on insert (the PR-8 column-default trap).
+//   * mint is DETERMINISTIC for the same logical grant — including under REAL CONCURRENCY (two
+//     connections racing the same grant must converge on one capability id, or two token byte
+//     strings exist for one frozen provider request);
+//   * a REQUIRED event can never gain an opt-out capability — refused at mint AND at apply;
+//   * the account opt-out is CONSUMPTIVE: a replayed/forwarded link cannot undo a later
+//     authenticated re-enable;
+//   * capabilities stop acting when their destination moves on (contact trigger + canonical
+//     persons.email re-check for user-bound grants);
+//   * the suppression reader RAISES on malformed scope — a sender wiring error defers, it never
+//     clears;
+//   * claims are immutable and no client role can touch the tables directly;
+//   * the footer-policy migration seeds the LIVE catalog before constraining it (the ordering
+//     that passes on an empty database and fails on production is pinned by seeding first here).
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
@@ -27,24 +32,26 @@ const MIG = (f: string) =>
 
 let epg: InstanceType<typeof EmbeddedPostgres>;
 let c: InstanceType<typeof Client>;
+let c2: InstanceType<typeof Client>;   // the concurrent-mint second connection
 
 const U1 = '11111111-1111-4111-8111-111111111111';
 const ACADEMY = '22222222-2222-4222-8222-222222222222';
 const TRAINER = '33333333-3333-4333-8333-333333333333';
 
-const mint = async (over: Record<string, unknown> = {}) => {
+const mintOn = async (client: InstanceType<typeof Client>, over: Record<string, unknown> = {}) => {
   const a = {
     kind: 'marketing_unsubscribe', scope_kind: 'academy', scope_id: ACADEMY,
     address: 'Person@Example.com', user_id: null, contact_id: null, event_type: null,
     source_kind: 'campaign_recipient', source_id: null, ttl: '400 days', key_version: 1,
     ...over,
   };
-  const r = await c.query(
+  const r = await client.query(
     `SELECT * FROM public.mint_notification_manage_capability($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::interval,$11)`,
     [a.kind, a.scope_kind, a.scope_id, a.address, a.user_id, a.contact_id,
      a.event_type, a.source_kind, a.source_id, a.ttl, a.key_version]);
   return r.rows[0] as { capability_id: string; key_version: number };
 };
+const mint = (over: Record<string, unknown> = {}) => mintOn(c, over);
 
 const apply = async (id: string, action: string, source = 'one_click') =>
   (await c.query(`SELECT public.apply_notification_manage_action($1,$2,$3) AS r`, [id, action, source]))
@@ -58,6 +65,8 @@ beforeAll(async () => {
   await epg.start();
   c = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
   await c.connect();
+  c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+  await c2.connect();
 
   // Prod-shaped base the migrations reference (same device as the sibling realpg suites: hand
   // stubs for the PRE-EXISTING tables, real migration files for the code under test).
@@ -82,6 +91,7 @@ beforeAll(async () => {
       id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
       destination_normalized text NOT NULL);
 
+    CREATE TABLE public.persons (user_id uuid UNIQUE, email text);
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, name text);
     CREATE TABLE public.profiles (user_id uuid PRIMARY KEY, full_name text);
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, business_name text, user_id uuid);
@@ -95,28 +105,29 @@ beforeAll(async () => {
   if (!redact) throw new Error('notification_redact_destination not found in the resolver migration');
   await c.query(redact);
 
-  // The migrations under test — the REAL files.
+  // Suppression + capabilities under test — the REAL files.
   await c.query(MIG('20261014100000_notif_n2_marketing_suppression.sql'));
   await c.query(MIG('20261014110000_notif_n2_manage_capabilities.sql'));
-  await c.query(MIG('20261014120000_notif_n2_footer_policy.sql'));
 
+  // THE PRODUCTION ORDER: the catalog is POPULATED (with real required/marketing rows and no
+  // policy column) BEFORE the policy migration applies — so this suite fails if the migration
+  // ever adds its constraint before its seeds again.
   await c.query(`
     INSERT INTO auth.users (id) VALUES ('${U1}');
+    INSERT INTO public.persons (user_id, email) VALUES ('${U1}', 'person@example.com');
     INSERT INTO public.academy_profiles VALUES ('${ACADEMY}', 'Padel Academy Zuid');
     INSERT INTO public.trainer_profiles (id, business_name) VALUES ('${TRAINER}', 'Coach Co');
-    -- Seeded AFTER the policy migration, so the required event must declare 'none' explicitly —
-    -- the coherence constraint refuses a required event on the mutating default, which is the
-    -- property production seeds will now be held to at db:reset.
-    INSERT INTO public.notification_event_types
-      (key, category, required_delivery, default_whatsapp_frequency, email_footer_policy) VALUES
-      ('open_slots_player', 'booking', false, 'off', 'manage_prefs'),
-      ('session_reminder_player', 'reminder', false, 'instant', 'manage_prefs'),
-      ('booking_confirmed_player', 'booking', true, 'off', 'none'),
-      ('marketing_updates', 'marketing', false, 'off', 'marketing_unsubscribe');
+    INSERT INTO public.notification_event_types (key, category, required_delivery, default_whatsapp_frequency) VALUES
+      ('open_slots_player', 'booking', false, 'off'),
+      ('session_reminder_player', 'reminder', false, 'instant'),
+      ('booking_confirmed_player', 'booking', true, 'off'),
+      ('marketing_updates', 'marketing', false, 'off');
   `);
+  await c.query(MIG('20261014120000_notif_n2_footer_policy.sql'));
 }, 180_000);
 
 afterAll(async () => {
+  await c2?.end();
   await c?.end();
   await epg?.stop();
 });
@@ -127,6 +138,7 @@ beforeEach(async () => {
     DELETE FROM public.notification_manage_capabilities;
     DELETE FROM public.notification_preferences_v2;
     DELETE FROM public.notification_contacts;
+    UPDATE public.persons SET email = 'person@example.com' WHERE user_id = '${U1}';
   `);
 });
 
@@ -173,7 +185,17 @@ describe('email_marketing_suppression', () => {
     expect(await q('platform', null)).toBe(true);
   });
 
-  it('scope coherence is validated, not trusted', async () => {
+  it('the READER fails closed: malformed scope RAISES instead of answering false', async () => {
+    // an academy sender that loses its scope id must DEFER, never gain marketing clearance
+    await expect(c.query(
+      `SELECT public.is_marketing_suppressed('a@b.nl', 'academy', NULL)`)).rejects.toThrow(/disagree/);
+    await expect(c.query(
+      `SELECT public.is_marketing_suppressed('a@b.nl', 'tenant', $1)`, [ACADEMY])).rejects.toThrow(/unknown scope_kind/);
+    await expect(c.query(
+      `SELECT public.is_marketing_suppressed('not-an-address', 'platform', NULL)`)).rejects.toThrow(/not an email/);
+  });
+
+  it('scope coherence is validated by the writer too, not trusted', async () => {
     await expect(c.query(
       `SELECT public.record_marketing_suppression('a@b.nl', 'academy', NULL, 'manual')`))
       .rejects.toThrow(/disagree/);
@@ -190,40 +212,92 @@ describe('mint_notification_manage_capability', () => {
     expect(b.capability_id).toBe(a.capability_id);
   });
 
+  it('TWO CONNECTIONS racing the same grant converge on ONE capability id', async () => {
+    // Without the advisory lock this is a SELECT-then-INSERT race: both see no live grant, both
+    // insert, and two different token byte strings exist for one frozen provider request.
+    const addr = `race-${Date.now()}@example.com`;
+    const [a, b] = await Promise.all([
+      mintOn(c, { address: addr }),
+      mintOn(c2, { address: addr }),
+    ]);
+    expect(a.capability_id).toBe(b.capability_id);
+    const n = (await c.query(
+      `SELECT count(*)::int AS n FROM public.notification_manage_capabilities WHERE address_normalized = $1`,
+      [addr])).rows[0].n;
+    expect(n).toBe(1);
+  });
+
   it('a revoked or expired capability is NOT reused — a fresh grant is minted', async () => {
     const a = await mint();
     await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
       [a.capability_id]);
     const b = await mint();
     expect(b.capability_id).not.toBe(a.capability_id);
-    await c.query(`UPDATE public.notification_manage_capabilities SET expires_at = now() - interval '1 day'
-                    WHERE id = $1`, [b.capability_id]);
+    // an EXPIRED row cannot be manufactured by UPDATE (the immutability guard refuses even the
+    // harness), so the fixture inserts one directly — the guard protects live-claim mutation,
+    // not superuser fixture construction.
+    await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
+      [b.capability_id]);
+    const expired = (await c.query(
+      `INSERT INTO public.notification_manage_capabilities
+         (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
+          source_kind, key_version, expires_at)
+       VALUES ('marketing_unsubscribe', 'academy', $1, 'person@example.com', md5('person@example.com'),
+               'campaign_recipient', 1, now() - interval '1 hour')
+       RETURNING id`, [ACADEMY])).rows[0].id;
     const d = await mint();
-    expect(d.capability_id).not.toBe(b.capability_id);
+    expect(d.capability_id).not.toBe(expired);
+  });
+
+  it('a NEWER key_version ROTATES: old-version live grants are revoked, a fresh one minted', async () => {
+    const v1 = await mint();
+    const v2 = await mint({ key_version: 2 });
+    expect(v2.capability_id).not.toBe(v1.capability_id);
+    expect(v2.key_version).toBe(2);
+    const old = (await c.query(
+      `SELECT revoked_at IS NOT NULL AS r FROM public.notification_manage_capabilities WHERE id = $1`,
+      [v1.capability_id])).rows[0].r;
+    expect(old).toBe(true);
+    // ...and the new-version grant is now the reused one
+    const again = await mint({ key_version: 2 });
+    expect(again.capability_id).toBe(v2.capability_id);
+  });
+
+  it('validates EVERY input before reuse — an invalid request never succeeds via an existing row', async () => {
+    await mint();   // a live grant exists
+    await expect(mint({ ttl: '0 days' })).rejects.toThrow(/ttl out of bounds/);
+    await expect(mint({ ttl: '30 days' })).rejects.toThrow(/13 months/);       // marketing floor
+    await expect(mint({ scope_kind: 'academy', scope_id: null })).rejects.toThrow(/disagree/);
+    await expect(mint({ source_kind: 'nowhere' })).rejects.toThrow(/unknown source_kind/);
+    await expect(mint({ key_version: 0 })).rejects.toThrow(/key_version/);
+    await expect(mint({ kind: 'marketing_unsubscribe', event_type: 'open_slots_player' }))
+      .rejects.toThrow(/carries no event_type/);
   });
 
   it('REFUSES an opt-out capability for a required-delivery event — and for an unknown one', async () => {
-    await expect(mint({
-      kind: 'account_event_optout', user_id: U1, event_type: 'booking_confirmed_player',
-      source_kind: 'outbox',
-    })).rejects.toThrow(/required-delivery/);
-    await expect(mint({
-      kind: 'account_event_optout', user_id: U1, event_type: 'does_not_exist',
-      source_kind: 'outbox',
-    })).rejects.toThrow(/required-delivery/);
+    const optout = (over: Record<string, unknown> = {}) => mint({
+      kind: 'account_event_optout', user_id: U1, contact_id: null,
+      source_kind: 'outbox', ttl: '90 days', ...over,
+    });
+    await expect(optout({ event_type: 'booking_confirmed_player' })).rejects.toThrow(/required-delivery/);
+    await expect(optout({ event_type: 'does_not_exist' })).rejects.toThrow(/required-delivery/);
     // ...and the guard reads the CATALOG, not a copy: flipping the flag flips the refusal.
     await c.query(`UPDATE public.notification_event_types SET required_delivery = true,
                      email_footer_policy = 'none' WHERE key = 'open_slots_player'`);
-    await expect(mint({
-      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
-      source_kind: 'outbox',
-    })).rejects.toThrow(/required-delivery/);
+    await expect(optout({ event_type: 'open_slots_player' })).rejects.toThrow(/required-delivery/);
     await c.query(`UPDATE public.notification_event_types SET required_delivery = false,
                      email_footer_policy = 'manage_prefs' WHERE key = 'open_slots_player'`);
+    await expect(optout({ event_type: 'open_slots_player' })).resolves.toBeTruthy();
+  });
+
+  it('account_event_optout is a USER grant — a contact-bound request is refused', async () => {
+    const contact = (await c.query(
+      `INSERT INTO public.notification_contacts (destination_normalized)
+       VALUES ('person@example.com') RETURNING id`)).rows[0].id;
     await expect(mint({
-      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
-      source_kind: 'outbox',
-    })).resolves.toBeTruthy();
+      kind: 'account_event_optout', user_id: U1, contact_id: contact,
+      event_type: 'open_slots_player', source_kind: 'outbox', ttl: '90 days',
+    })).rejects.toThrow(/no contact/);
   });
 });
 
@@ -248,7 +322,7 @@ describe('apply_notification_manage_action', () => {
   it('event opt-out writes BOTH columns on insert (event whatsapp default, not the column default)', async () => {
     const cap = await mint({
       kind: 'account_event_optout', user_id: U1, event_type: 'session_reminder_player',
-      source_kind: 'outbox',
+      source_kind: 'outbox', ttl: '90 days',
     });
     expect(await apply(cap.capability_id, 'event_optout')).toBe('applied');
     const row = (await c.query(
@@ -256,7 +330,23 @@ describe('apply_notification_manage_action', () => {
         WHERE user_id = $1 AND event_type = 'session_reminder_player'`, [U1])).rows[0];
     // session_reminder_player's EVENT whatsapp default is 'instant'; the COLUMN default is 'off'.
     expect(row).toEqual({ email_frequency: 'off', whatsapp_frequency: 'instant' });
+  });
+
+  it('the account opt-out is CONSUMPTIVE: a replay cannot undo a later authenticated re-enable', async () => {
+    const cap = await mint({
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', ttl: '90 days',
+    });
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('applied');
+    // the person re-enables in authenticated settings…
+    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency = 'weekly'
+                    WHERE user_id = $1 AND event_type = 'open_slots_player'`, [U1]);
+    // …and the replayed/forwarded link must NOT fight them
     expect(await apply(cap.capability_id, 'event_optout')).toBe('already_applied');
+    const row = (await c.query(
+      `SELECT email_frequency FROM public.notification_preferences_v2
+        WHERE user_id = $1 AND event_type = 'open_slots_player'`, [U1])).rows[0];
+    expect(row.email_frequency).toBe('weekly');
   });
 
   it('event opt-out on an EXISTING row moves email only, never the stored whatsapp choice', async () => {
@@ -264,13 +354,37 @@ describe('apply_notification_manage_action', () => {
       (user_id, event_type, email_frequency, whatsapp_frequency) VALUES ($1, 'open_slots_player', 'weekly', 'daily')`,
       [U1]);
     const cap = await mint({
-      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player', source_kind: 'outbox',
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', ttl: '90 days',
     });
     expect(await apply(cap.capability_id, 'event_optout')).toBe('applied');
     const row = (await c.query(
       `SELECT email_frequency, whatsapp_frequency FROM public.notification_preferences_v2
         WHERE user_id = $1 AND event_type = 'open_slots_player'`, [U1])).rows[0];
     expect(row).toEqual({ email_frequency: 'off', whatsapp_frequency: 'daily' });
+  });
+
+  it('an account capability stops acting when the CANONICAL account address changes', async () => {
+    const cap = await mint({
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', ttl: '90 days',
+    });
+    await c.query(`UPDATE public.persons SET email = 'new-inbox@example.com' WHERE user_id = $1`, [U1]);
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_destination_changed');
+    const n = (await c.query(`SELECT count(*)::int AS n FROM public.notification_preferences_v2`)).rows[0].n;
+    expect(n).toBe(0);
+  });
+
+  it('required_delivery is re-checked at APPLY time — a reclassified event wins over an old grant', async () => {
+    const cap = await mint({
+      kind: 'account_event_optout', user_id: U1, event_type: 'open_slots_player',
+      source_kind: 'outbox', ttl: '90 days',
+    });
+    await c.query(`UPDATE public.notification_event_types SET required_delivery = true,
+                     email_footer_policy = 'none' WHERE key = 'open_slots_player'`);
+    expect(await apply(cap.capability_id, 'event_optout')).toBe('rejected_required_event');
+    await c.query(`UPDATE public.notification_event_types SET required_delivery = false,
+                     email_footer_policy = 'manage_prefs' WHERE key = 'open_slots_player'`);
   });
 
   it('missing / revoked / expired capabilities are rejected uniformly, and reject BEFORE acting', async () => {
@@ -280,10 +394,14 @@ describe('apply_notification_manage_action', () => {
     await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
       [cap.capability_id]);
     expect(await apply(cap.capability_id, 'marketing_unsubscribe')).toBe('rejected_revoked');
-    const cap2 = await mint();
-    await c.query(`UPDATE public.notification_manage_capabilities SET expires_at = now() - interval '1 hour'
-                    WHERE id = $1`, [cap2.capability_id]);
-    expect(await apply(cap2.capability_id, 'marketing_unsubscribe')).toBe('rejected_expired');
+    const expired = (await c.query(
+      `INSERT INTO public.notification_manage_capabilities
+         (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
+          source_kind, key_version, expires_at)
+       VALUES ('marketing_unsubscribe', 'trainer', $1, 'person@example.com', md5('person@example.com'),
+               'campaign_recipient', 1, now() - interval '1 hour')
+       RETURNING id`, [TRAINER])).rows[0].id;
+    expect(await apply(expired, 'marketing_unsubscribe')).toBe('rejected_expired');
     const n = (await c.query(`SELECT count(*)::int AS n FROM public.email_marketing_suppression`)).rows[0].n;
     expect(n).toBe(0);
   });
@@ -307,6 +425,44 @@ describe('apply_notification_manage_action', () => {
   });
 });
 
+describe('immutability + ACLs', () => {
+  it('claims are immutable — even a privileged direct UPDATE is refused by the guard trigger', async () => {
+    const cap = await mint();
+    await expect(c.query(
+      `UPDATE public.notification_manage_capabilities SET address_normalized = 'other@example.com'
+        WHERE id = $1`, [cap.capability_id])).rejects.toThrow(/immutable/);
+    // ...while the two lifecycle columns stay writable (that is what revocation IS)
+    await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
+      [cap.capability_id]);
+  });
+
+  it('no client role touches the tables directly; service_role acts only through the RPCs', async () => {
+    const as = async (role: string, sql: string, params: unknown[] = []) => {
+      await c2.query(`SET ROLE ${role}`);
+      try { await c2.query(sql, params); return null; }
+      catch (e) { return (e as { code?: string }).code ?? 'error'; }
+      finally { await c2.query(`RESET ROLE`); }
+    };
+    // authenticated: nothing at all
+    expect(await as('authenticated',
+      `SELECT * FROM public.notification_manage_capabilities`)).toBe('42501');
+    expect(await as('authenticated',
+      `SELECT * FROM public.email_marketing_suppression`)).toBe('42501');
+    expect(await as('authenticated',
+      `SELECT public.mint_notification_manage_capability('marketing_unsubscribe','platform',NULL,'a@b.nl',NULL,NULL,NULL,'outbox',NULL,'400 days'::interval,1)`))
+      .toBe('42501');
+    // service_role: the RPCs work, direct writes to the capability table do not
+    expect(await as('service_role',
+      `SELECT public.record_marketing_suppression('svc@b.nl','platform',NULL,'manual')`)).toBeNull();
+    expect(await as('service_role',
+      `UPDATE public.notification_manage_capabilities SET revoked_at = now()`)).toBe('42501');
+    expect(await as('service_role',
+      `INSERT INTO public.notification_manage_capabilities
+         (kind, scope_kind, address_normalized, destination_fingerprint, source_kind, expires_at)
+       VALUES ('manage_context','platform','a@b.nl','x','outbox', now())`)).toBe('42501');
+  });
+});
+
 describe('get_notification_manage_context', () => {
   it('returns a REDACTED destination and the scope display name — never the raw address', async () => {
     const cap = await mint();
@@ -318,14 +474,37 @@ describe('get_notification_manage_context', () => {
     expect(ctx.destination_redacted).toMatch(/\*/);
   });
 
-  it('reports missing / revoked / expired as status, exposing nothing else', async () => {
+  it('non-live capabilities disclose their STATUS and nothing else', async () => {
     const missing = (await c.query(
-      `SELECT status FROM public.get_notification_manage_context('99999999-9999-4999-8999-999999999999')`)).rows[0];
+      `SELECT * FROM public.get_notification_manage_context('99999999-9999-4999-8999-999999999999')`)).rows[0];
     expect(missing.status).toBe('missing');
+    expect(missing.destination_redacted).toBeNull();
+
+    const cap = await mint();
+    await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`,
+      [cap.capability_id]);
+    const revoked = (await c.query(
+      `SELECT * FROM public.get_notification_manage_context($1)`, [cap.capability_id])).rows[0];
+    expect(revoked.status).toBe('revoked');
+    expect(revoked.kind).toBeNull();
+    expect(revoked.scope_display_name).toBeNull();
+    expect(revoked.destination_redacted).toBeNull();
+
+    const expiredId = (await c.query(
+      `INSERT INTO public.notification_manage_capabilities
+         (kind, scope_kind, scope_id, address_normalized, destination_fingerprint,
+          source_kind, key_version, expires_at)
+       VALUES ('marketing_unsubscribe', 'trainer', $1, 'person@example.com', md5('person@example.com'),
+               'campaign_recipient', 1, now() - interval '1 hour')
+       RETURNING id`, [TRAINER])).rows[0].id;
+    const expired = (await c.query(
+      `SELECT * FROM public.get_notification_manage_context($1)`, [expiredId])).rows[0];
+    expect(expired.status).toBe('expired');
+    expect(expired.destination_redacted).toBeNull();
   });
 });
 
-describe('email_footer_policy', () => {
+describe('email_footer_policy (seeded on a POPULATED catalog, the production order)', () => {
   it('required events are none, marketing is marketing_unsubscribe, everything else manage_prefs', async () => {
     const rows = (await c.query(
       `SELECT key, email_footer_policy FROM public.notification_event_types ORDER BY key`)).rows;
@@ -344,9 +523,20 @@ describe('email_footer_policy', () => {
         WHERE key = 'booking_confirmed_player'`)).rejects.toThrow(/coherent/i);
   });
 
-  it('onboarding templates default to the SUPPRESSIBLE class', async () => {
+  it('an optional MARKETING event cannot carry a weaker policy than marketing_unsubscribe', async () => {
+    await expect(c.query(
+      `UPDATE public.notification_event_types SET email_footer_policy = 'manage_prefs'
+        WHERE key = 'marketing_updates'`)).rejects.toThrow(/coherent/i);
+    await expect(c.query(
+      `INSERT INTO public.notification_event_types (key, category, required_delivery) VALUES
+         ('future_marketing_blast', 'marketing', false)`)).rejects.toThrow(/coherent/i);
+  });
+
+  it('onboarding templates default to the SUPPRESSIBLE class, from the three-class vocabulary', async () => {
     const cls = (await c.query(
       `INSERT INTO public.onboarding_email_templates DEFAULT VALUES RETURNING delivery_class`)).rows[0];
     expect(cls.delivery_class).toBe('marketing');
+    await expect(c.query(
+      `UPDATE public.onboarding_email_templates SET delivery_class = 'service'`)).rejects.toThrow(/check/i);
   });
 });

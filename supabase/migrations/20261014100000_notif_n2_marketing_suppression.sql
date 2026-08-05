@@ -13,12 +13,13 @@
 -- (hand-typed addresses), and an unsubscribe is about the ADDRESS receiving the mail.
 --
 -- SCOPE MODEL. scope_kind 'platform' (PadelTrainer's own marketing: onboarding drip, product
--- mail), 'academy' or 'trainer' (that tenant's campaigns). A platform-wide row does not silence a
--- tenant's campaigns and vice versa — a person may want one academy's news and not another's; the
--- manage page can always write multiple rows. Rows are MONOTONIC and idempotent: re-asserting an
--- existing suppression is a no-op, and nothing here un-suppresses (a deliberate omission — an
--- un-suppress is a consent decision that belongs to an explicit, audited surface, not to a token
--- endpoint that anyone holding a forwarded link can replay).
+-- mail), 'academy' or 'trainer' (that tenant's campaigns). A TENANT row silences only that
+-- tenant — a person may want one academy's news and not another's. A PLATFORM row covers
+-- EVERYTHING, tenant campaigns included: "stop all marketing from this product" must mean all of
+-- it, and the reader below implements exactly that. Rows are MONOTONIC and idempotent:
+-- re-asserting an existing suppression is a no-op, and nothing here un-suppresses (a deliberate
+-- omission — an un-suppress is a consent decision that belongs to an explicit, audited surface,
+-- not to a token endpoint that anyone holding a forwarded link can replay).
 --
 -- Uniqueness uses TWO partial indexes rather than one nullable composite: plain UNIQUE treats
 -- NULLs as distinct, so (address, 'platform', NULL) could be inserted without bound.
@@ -61,22 +62,37 @@ REVOKE ALL ON public.email_marketing_suppression FROM PUBLIC, anon, authenticate
 GRANT SELECT, INSERT ON public.email_marketing_suppression TO service_role;
 
 -- ---------------------------------------------------------------------------
--- Send-time read. Fails CLOSED by shape: returns true when suppressed; a caller that cannot
--- reach it must defer the send, never proceed (the caller-side rule the workers already follow
--- for is_email_suppressed).
+-- Send-time read. Fails CLOSED in BOTH directions: true means suppressed, and a MALFORMED call
+-- RAISES rather than answering false — an S3 wiring error (an academy sender passing a NULL
+-- scope id, a typo'd scope kind, a non-address) must become a deferred send and an alert, never
+-- marketing clearance. The writer validates the same shapes; a reader that validated less would
+-- turn its own leniency into permission.
 CREATE OR REPLACE FUNCTION public.is_marketing_suppressed(
   p_address text,
   p_scope_kind text,
   p_scope_id uuid
 ) RETURNS boolean
-LANGUAGE sql
+LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT EXISTS (
+DECLARE
+  v_address text := lower(btrim(p_address));
+BEGIN
+  IF v_address IS NULL OR position('@' IN v_address) <= 1 THEN
+    RAISE EXCEPTION 'is_marketing_suppressed: not an email address';
+  END IF;
+  IF p_scope_kind IS NULL OR p_scope_kind NOT IN ('platform', 'academy', 'trainer') THEN
+    RAISE EXCEPTION 'is_marketing_suppressed: unknown scope_kind %', p_scope_kind;
+  END IF;
+  IF (p_scope_kind = 'platform') <> (p_scope_id IS NULL) THEN
+    RAISE EXCEPTION 'is_marketing_suppressed: scope_kind % and scope_id disagree', p_scope_kind;
+  END IF;
+
+  RETURN EXISTS (
     SELECT 1 FROM public.email_marketing_suppression s
-     WHERE s.address_normalized = lower(btrim(p_address))
+     WHERE s.address_normalized = v_address
        AND (
          -- the platform arm silences platform marketing AND is honoured by tenant campaigns:
          -- "stop all marketing from this product" must mean all of it.
@@ -84,10 +100,11 @@ AS $$
          OR (s.scope_kind = p_scope_kind AND s.scope_id = p_scope_id)
        )
   );
+END;
 $$;
 
 COMMENT ON FUNCTION public.is_marketing_suppressed(text, text, uuid) IS
-  'True when the address is marketing-suppressed for the given sending scope. A platform-wide suppression covers every scope; a tenant suppression covers only that tenant. Callers must treat an ERROR from this check as "do not send, defer and alert" — never as clearance.';
+  'True when the address is marketing-suppressed for the given sending scope. A platform-wide suppression covers every scope; a tenant suppression covers only that tenant. Malformed calls RAISE (fail closed) — callers must treat an ERROR as "do not send, defer and alert", never as clearance.';
 
 REVOKE ALL ON FUNCTION public.is_marketing_suppressed(text, text, uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_marketing_suppressed(text, text, uuid) TO service_role;
