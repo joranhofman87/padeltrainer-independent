@@ -24,6 +24,14 @@
 --   notif_digest_member_stop_reason ← 20261011100000
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 
+-- The cancel scan's index: without it every channel poll walks the whole pending population
+-- even when no cap exists. Shaped exactly for the cancellation join's outbox side.
+CREATE INDEX IF NOT EXISTS idx_notification_outbox_cap_cancel
+  ON public.notification_outbox (channel, tenant_academy_profile_id, event_type)
+  WHERE status IN ('pending', 'processing')
+    AND delivery_mode IS DISTINCT FROM 'digest'
+    AND tenant_academy_profile_id IS NOT NULL;
+
 -- The frequency order the cap comparator uses. IMMUTABLE so it can sit in any predicate;
 -- an unknown value ranks LEAST restrictive (0), so junk can never silence mail (the J rule).
 CREATE OR REPLACE FUNCTION public.notif_frequency_rank(p_freq text) RETURNS int
@@ -252,7 +260,9 @@ BEGIN
           v_user_id, v_person_id, v_guest_id,
           p_tenant_academy_profile_id, p_tenant_trainer_id, v_visibility,
           p_related_booking_ids, p_related_invoice_id, p_related_payment_id,
-          coalesce(p_payload, '{}'::jsonb), v_public_summary,
+          -- NO payload retention: this send was refused before rendering or contact resolution
+          -- ever ran, and evidence of a refusal needs no content — only the safe summary.
+          '{}'::jsonb, v_public_summary,
           v_idem_key, 'skipped', 'tenant_restricted', v_now
         )
         ON CONFLICT (channel, idempotency_key, tenant_scope_key) DO NOTHING
@@ -500,7 +510,15 @@ BEGIN
   FROM public.academy_notification_restrictions r
   JOIN public.notification_event_types et ON et.key = r.event_type
   WHERE o.channel = p_channel
-    AND o.status = 'pending'
+    AND (
+      o.status = 'pending'
+      -- A STALE claim is not in-flight work: the system has declared that worker dead and is
+      -- about to make a FRESH send decision (the reclaim arm below) — so the cap must win here
+      -- too, and win over the reap as well (once the cap exists, tenant_restricted is the
+      -- truthful terminal reason, not stuck_in_processing). Same threshold as the reclaim.
+      OR (o.status = 'processing'
+          AND o.locked_at < now() - make_interval(mins => greatest(p_stale_after_minutes, 1)))
+    )
     AND o.delivery_mode IS DISTINCT FROM 'digest'
     AND o.tenant_academy_profile_id = r.academy_profile_id
     AND o.event_type = r.event_type

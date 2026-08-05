@@ -160,13 +160,21 @@ BEGIN
      AND request_id = p_request_id;
   IF FOUND THEN
     IF v_prior.event_type = p_event_type AND v_prior.channel = p_channel
-       AND v_prior.new_max_frequency IS NOT DISTINCT FROM p_max_frequency THEN
+       AND v_prior.new_max_frequency IS NOT DISTINCT FROM p_max_frequency
+       AND v_prior.reason = btrim(p_reason) THEN
+      -- the REASON is part of the decision evidence (it is audited and player-visible), so a
+      -- replay must match it too — same id, different reason is a different decision.
       RETURN 'replayed';
     END IF;
     RAISE EXCEPTION 'set_academy_notification_restriction: request % was already used for a different change', p_request_id;
   END IF;
 
-  -- serialize same-triple writers so old→new in the audit is the truth
+  -- Serialize same-triple writers so old→new in the audit is the truth. FOR UPDATE alone
+  -- cannot do this for the FIRST write (no row exists to lock — two concurrent creators would
+  -- both read NULL and one audit would lie about the transition), so the lock is a
+  -- transaction-scoped ADVISORY lock derived from the triple, taken before the read.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended(p_academy_profile_id::text || ':' || p_event_type || ':' || p_channel, 0));
   SELECT max_frequency INTO v_old FROM public.academy_notification_restrictions
    WHERE academy_profile_id = p_academy_profile_id AND event_type = p_event_type
      AND channel = p_channel

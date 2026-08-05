@@ -272,6 +272,45 @@ describe('academy restrictions + audit (N3 M2)', () => {
     await expect(setCap({ reason: '  ' })).rejects.toThrow(/reason/);
   });
 
+  it('two-session FIRST write to an absent triple: the audit chain is NULL → first → second, never two NULLs', async () => {
+    // FOR UPDATE cannot serialize creators (no row exists to lock); the advisory lock must.
+    const c3 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+    await c3.connect();
+    try {
+      await c3.query(`UPDATE public.test_auth_ctx SET uid = '${MGR}'`); // same ctx table, shared
+      await c.query('BEGIN');
+      const r1 = await c.query(
+        `SELECT public.set_academy_notification_restriction($1,'session_reminder_player','email','daily','first writer',$2) AS r`,
+        [A, crypto.randomUUID()]);
+      expect(r1.rows[0].r).toBe('set');
+      // session 2 starts the SAME first-write while session 1 is still open — it must BLOCK on
+      // the advisory lock, then see session 1's committed row as its old value.
+      const race = c3.query(
+        `SELECT public.set_academy_notification_restriction($1,'session_reminder_player','email','off','second writer',$2) AS r`,
+        [A, crypto.randomUUID()]);
+      await new Promise((res) => setTimeout(res, 150)); // give it time to be genuinely blocked
+      await c.query('COMMIT');
+      const r2 = await race;
+      expect(r2.rows[0].r).toBe('changed'); // NOT 'set' — it saw the first writer's row
+      const audits = await c.query(
+        `SELECT old_max_frequency, new_max_frequency FROM public.academy_notification_restriction_audit
+          ORDER BY created_at, id`);
+      expect(audits.rows).toEqual([
+        { old_max_frequency: null, new_max_frequency: 'daily' },
+        { old_max_frequency: 'daily', new_max_frequency: 'off' },
+      ]);
+    } finally {
+      await c3.end();
+    }
+  });
+
+  it('a request-id replay with a CHANGED reason is a different decision — refused, not replayed', async () => {
+    const req = crypto.randomUUID();
+    expect(await setCap({ cap: 'off', reason: 'temporary reduction', req })).toBe('set');
+    await expect(setCap({ cap: 'off', reason: 'regulatory request', req }))
+      .rejects.toThrow(/already used for a different change/);
+  });
+
   it('the audit is append-only for EVERYONE — even the owner cannot rewrite history', async () => {
     await setCap({ cap: 'off' });
     await expect(c.query(`UPDATE public.academy_notification_restriction_audit SET reason = 'edited'`))
@@ -331,9 +370,11 @@ describe('resolver cap integration (N3 M3)', () => {
     expect(rows[0].skip_reason).toBe('tenant_restricted');
     expect(rows[0].destination_normalized).toBeNull();
     const raw = await c.query(
-      `SELECT tenant_scope_key, destination_normalized FROM public.notification_outbox WHERE skip_reason='tenant_restricted'`);
+      `SELECT tenant_scope_key, destination_normalized, payload FROM public.notification_outbox WHERE skip_reason='tenant_restricted'`);
     expect(raw.rows[0].tenant_scope_key).toBe(`a:${A}`);
     expect(raw.rows[0].destination_normalized).toBeNull();
+    // a refused send retains NO content — evidence of a refusal needs no payload
+    expect(raw.rows[0].payload).toEqual({});
   });
 
   it("a player's own 'off' keeps ITS reason — the cap never takes credit for the player's decision", async () => {
@@ -482,6 +523,34 @@ describe('live enforcement at the send authorities (N3 M3)', () => {
     } finally {
       await c2.end();
     }
+  });
+
+  it('a STALE claimed row does not bypass a late cap at reclaim — tenant_restricted, not redelivered', async () => {
+    await enqueueOptional({ academy: A }, 'live-stale');
+    const first = await c.query(`SELECT * FROM public.claim_notification_outbox_batch('email','w1',20)`);
+    const target = first.rows.find((r) => r.idempotency_key?.includes?.('live-stale')) ?? first.rows[0];
+    // the worker dies; the row goes stale
+    await c.query(`UPDATE public.notification_outbox SET locked_at = now() - interval '30 minutes'
+      WHERE id = $1`, [target.outbox_id]);
+    // the cap lands AFTER the crash, BEFORE the reclaim
+    await setCap({ event: 'session_reminder_player', cap: 'off' });
+    const reclaimed = await c.query(`SELECT * FROM public.claim_notification_outbox_batch('email','w2',20)`);
+    expect(reclaimed.rows.map((r) => r.outbox_id)).not.toContain(target.outbox_id);
+    const final = await c.query(`SELECT status, skip_reason FROM public.notification_outbox WHERE id = $1`,
+      [target.outbox_id]);
+    expect(final.rows[0]).toEqual({ status: 'skipped', skip_reason: 'tenant_restricted' });
+  });
+
+  it('the cancel scan has its index, and a populated table uses it', async () => {
+    // 5k unrelated pending rows: the cancel's outbox side must be an index scan, not a seq scan.
+    await c.query(`INSERT INTO public.notification_outbox (event_type, channel, idempotency_key, status, tenant_academy_profile_id, scheduled_for, recipient_person_id)
+      SELECT 'session_reminder_player','email','bulk:'||g||':x','pending','${B}', now(), '${P1}'
+      FROM generate_series(1,5000) g`);
+    const plan = await c.query(`EXPLAIN SELECT * FROM public.notification_outbox o
+      WHERE o.channel='email' AND o.tenant_academy_profile_id='${A}' AND o.event_type='session_reminder_player'
+        AND o.status IN ('pending','processing') AND o.delivery_mode IS DISTINCT FROM 'digest'`);
+    const text = plan.rows.map((r) => r['QUERY PLAN']).join('\n');
+    expect(text).toContain('idx_notification_outbox_cap_cancel');
   });
 
   it('digest stop predicate: a cap landing after materialization stops the member (prepare AND begin call it)', async () => {
