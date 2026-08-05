@@ -119,6 +119,10 @@ beforeAll(async () => {
   await c.query(`INSERT INTO public.notification_event_types (key, category, audience, priority) VALUES ('ev_test', 'booking', 'player', 'transactional')`);
 
   await c.query(MIG('20261017100000_notif_n4_channel_kill_switches.sql'));
+  // M3: the ops audit — redefines admin_activate_channel_kill THROUGH the audit (global
+  // request lock → audit replay → channel lock), so every admin test below exercises the
+  // audited, newest definition.
+  await c.query(MIG('20261018100000_notif_n4_admin_ops_audit.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -129,6 +133,9 @@ beforeEach(async () => {
   await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
   await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
   await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+  await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
+  await c.query(`DELETE FROM public.notification_admin_audit;`);
+  await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
   await c.query(`DELETE FROM public.notification_outbox;`);
   await c.query(`DELETE FROM public.academy_notification_restrictions;`);
 });
@@ -352,5 +359,111 @@ describe('ACLs', () => {
     expect(await as('anon', `SELECT public.release_notification_claims_on_kill('email','w')`)).toBe('42501');
     expect(await as('service_role', `SELECT * FROM public.notification_channel_kill_switches`)).toBe('42501');
     expect(await as('authenticated', `INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id) VALUES ('email','x y z', gen_random_uuid())`)).toBe('42501');
+  });
+});
+
+describe('N4 M3 — the ops audit: every decision recorded, exactly once, immutably', () => {
+  const audits = async (req?: string) =>
+    (await c.query(
+      req
+        ? `SELECT * FROM public.notification_admin_audit WHERE request_id = $1 ORDER BY created_at`
+        : `SELECT * FROM public.notification_admin_audit ORDER BY created_at`,
+      req ? [req] : [])).rows;
+  const listAs = async (client: InstanceType<typeof Client>, uid: string | null, args = 'NULL, NULL, NULL') => {
+    await client.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
+    try {
+      return (await client.query(`SELECT * FROM public.admin_list_notification_audit(${args})`)).rows;
+    } finally {
+      await client.query(`SELECT set_config('request.jwt.claim.sub', '', false)`);
+    }
+  };
+
+  it('a kill writes ONE typed audit row: actor, action, target, old live → new killed, applied', async () => {
+    const req = crypto.randomUUID();
+    expect(await adminKill(c2, ADMIN, 'email', req, 'incident 42')).toBe('killed');
+    const rows = await audits(req);
+    expect(rows.length).toBe(1);
+    expect(rows[0]).toMatchObject({
+      actor: ADMIN, action: 'channel_kill', target: 'email',
+      old_value: 'live', new_value: 'killed', outcome: 'applied', reason: 'incident 42',
+    });
+  });
+
+  it("a FRESH request against an already-killed channel gets its OWN row (old=killed, new=killed, already_killed) — the first kill's evidence untouched", async () => {
+    const req1 = crypto.randomUUID();
+    const req2 = crypto.randomUUID();
+    await adminKill(c2, ADMIN, 'email', req1, 'first');
+    expect(await adminKill(c2, ADMIN, 'email', req2, 'second look')).toBe('already_killed');
+    expect((await audits(req2))[0]).toMatchObject({
+      old_value: 'killed', new_value: 'killed', outcome: 'already_killed', reason: 'second look',
+    });
+    // the kill row still carries the FIRST decision
+    const kill = (await c.query(`SELECT reason, request_id FROM public.notification_channel_kill_switches WHERE channel='email'`)).rows[0];
+    expect(kill.reason).toBe('first');
+    expect(kill.request_id).toBe(req1);
+    expect((await audits()).length).toBe(2);
+  });
+
+  it('an exact replay returns the ORIGINAL result and writes NO second entry — for both outcomes', async () => {
+    const req1 = crypto.randomUUID();
+    await adminKill(c2, ADMIN, 'email', req1, 'first');
+    expect(await adminKill(c2, ADMIN, 'email', req1, 'first')).toBe('killed');
+    expect((await audits(req1)).length).toBe(1);
+    const req2 = crypto.randomUUID();
+    expect(await adminKill(c2, ADMIN, 'email', req2, 'again')).toBe('already_killed');
+    expect(await adminKill(c2, ADMIN, 'email', req2, 'again')).toBe('already_killed');  // replayed from the audit
+    expect((await audits(req2)).length).toBe(1);
+  });
+
+  it('a reused id carrying a DIFFERENT decision refuses typed and writes nothing new', async () => {
+    const req = crypto.randomUUID();
+    await adminKill(c2, ADMIN, 'email', req, 'first');
+    await expect(adminKill(c2, ADMIN, 'whatsapp', req, 'first')).rejects.toThrow(/different decision/);
+    await expect(adminKill(c2, ADMIN, 'email', req, 'other words')).rejects.toThrow(/different decision/);
+    expect((await audits(req)).length).toBe(1);
+  });
+
+  it('append-only, owner-effectively: UPDATE, DELETE and TRUNCATE are refused; the global uniqueness holds at the schema', async () => {
+    const req = crypto.randomUUID();
+    await adminKill(c2, ADMIN, 'email', req, 'first');
+    await expect(c.query(`UPDATE public.notification_admin_audit SET reason='edited'`)).rejects.toThrow(/append-only/);
+    await expect(c.query(`DELETE FROM public.notification_admin_audit`)).rejects.toThrow(/append-only/);
+    await expect(c.query(`TRUNCATE public.notification_admin_audit`)).rejects.toThrow(/append-only/);
+    // one id = one decision, enforced by the schema even past the RPC
+    await expect(c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, $2, 'channel_kill', 'whatsapp', 'live', 'killed', 'applied', 'smuggled')`, [ADMIN, req]))
+      .rejects.toThrow(/uq_notification_admin_audit_request|duplicate key/);
+  });
+
+  it('the keyset reader: admin-only, newest-first, a REAL cursor (no drift, no overlap), clamped', async () => {
+    await expect(listAs(c2, null)).rejects.toThrow(/platform admin only/);
+    await expect(listAs(c2, PLAYER)).rejects.toThrow(/platform admin only/);
+    await adminKill(c2, ADMIN, 'email', crypto.randomUUID(), 'one');
+    await adminKill(c2, ADMIN, 'email', crypto.randomUUID(), 'two');
+    await adminKill(c2, ADMIN, 'whatsapp', crypto.randomUUID(), 'three');
+    const page1 = await listAs(c2, ADMIN, 'NULL, NULL, 2');
+    expect(page1.length).toBe(2);
+    expect(page1[0].reason).toBe('three');    // newest first
+    // the cursor must carry FULL microsecond precision — node-pg's Date is millisecond-only,
+    // and a truncated cursor silently drops same-millisecond rows (found as a flake here)
+    const exactTs = (await c.query(`SELECT created_at::text AS t FROM public.notification_admin_audit WHERE id=$1`, [page1[1].id])).rows[0].t;
+    const page2 = await listAs(c2, ADMIN, `'${exactTs}'::timestamptz, '${page1[1].id}'::uuid, 2`);
+    expect(page2.length).toBe(1);
+    expect(page2[0].reason).toBe('one');
+    // clamp: a hostile limit is bounded, structural no-error
+    expect((await listAs(c2, ADMIN, 'NULL, NULL, 10000000')).length).toBe(3);
+  });
+
+  it('ACL: no API role reaches the audit table directly', async () => {
+    const as = async (role: string, sql: string) => {
+      await c2.query(`SET ROLE ${role}`);
+      try { await c2.query(sql); return null; }
+      catch (e) { return (e as { code?: string }).code ?? 'error'; }
+      finally { await c2.query(`RESET ROLE`); }
+    };
+    expect(await as('anon', `SELECT * FROM public.notification_admin_audit`)).toBe('42501');
+    expect(await as('authenticated', `SELECT * FROM public.notification_admin_audit`)).toBe('42501');
+    expect(await as('service_role', `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason) VALUES (gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'email', 'live', 'killed', 'applied', 'nope')`)).toBe('42501');
   });
 });

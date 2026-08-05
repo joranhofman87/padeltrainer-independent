@@ -9484,6 +9484,25 @@ export type Database = {
         Args: { p_channel: string; p_reason: string; p_request_id: string }
         Returns: string
       }
+      admin_list_notification_audit: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          action: string
+          actor: string
+          created_at: string
+          id: string
+          new_value: string
+          old_value: string
+          outcome: string
+          reason: string
+          request_id: string
+          target: string
+        }[]
+      }
       admin_list_worker_invocations: {
         Args: { p_limit?: number }
         Returns: {
