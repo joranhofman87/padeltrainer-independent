@@ -9484,6 +9484,36 @@ export type Database = {
         Args: { p_channel: string; p_reason: string; p_request_id: string }
         Returns: string
       }
+      admin_list_digest_groups: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_channel?: string
+          p_days?: number
+          p_limit?: number
+          p_state?: string
+        }
+        Returns: {
+          available_at: string
+          channel: string
+          created_at: string
+          delivery_budget_used: number
+          digest_boundary_at: string
+          event_type: string
+          first_send_at: string
+          id: string
+          item_count: number
+          locked_by: string
+          provider_attempts_started: number
+          provider_message_id: string
+          provider_status: string
+          state: string
+          terminal_reason: string
+          uncertain_since: string
+          updated_at: string
+          worker_run_id: string
+        }[]
+      }
       admin_list_notification_audit: {
         Args: {
           p_before_created_at?: string
@@ -9501,6 +9531,35 @@ export type Database = {
           reason: string
           request_id: string
           target: string
+        }[]
+      }
+      admin_list_notification_outbox: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_channel?: string
+          p_days?: number
+          p_event_type?: string
+          p_limit?: number
+          p_status?: string
+        }
+        Returns: {
+          attempts: number
+          channel: string
+          created_at: string
+          delivery_mode: string
+          destination_redacted: string
+          event_type: string
+          id: string
+          last_error: string
+          max_attempts: number
+          scheduled_for: string
+          skip_reason: string
+          status: string
+          template_key: string
+          tenant_academy_profile_id: string
+          tenant_trainer_id: string
+          updated_at: string
         }[]
       }
       admin_list_notification_rejected: {
@@ -9537,6 +9596,59 @@ export type Database = {
           stale: boolean
           status: string
           worker_run_id: string
+        }[]
+      }
+      admin_list_worker_runs: {
+        Args: {
+          p_before_run_id?: string
+          p_before_started_at?: string
+          p_days?: number
+          p_limit?: number
+        }
+        Returns: {
+          channel: string
+          ended_at: string
+          phase: string
+          run_id: string
+          started_at: string
+          status: string
+          worker: string
+        }[]
+      }
+      admin_notification_delivery_history: {
+        Args: { p_outbox_id: string }
+        Returns: {
+          a: string
+          at: string
+          b: string
+          c: string
+          kind: string
+        }[]
+      }
+      admin_notification_event_states: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          academy_off_caps: number
+          catalog_default: string
+          catalog_supported: boolean
+          channel: string
+          circuit_state: string
+          conclusion: string
+          cron_state: string
+          digest_engine_enabled: boolean
+          event_type: string
+          kill_state: string
+          required_delivery: boolean
+          send_env: string
+        }[]
+      }
+      admin_notification_gauges: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          capped: boolean
+          channel: string
+          metric: string
+          value: number
         }[]
       }
       admin_stats_summary: { Args: never; Returns: Json }
@@ -11124,6 +11236,10 @@ export type Database = {
       notification_orphan_reconcile_resolve: {
         Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
         Returns: boolean
+      }
+      notif_admin_gate: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       notif_channel_kill_gate: {
         Args: { p_channel: string }

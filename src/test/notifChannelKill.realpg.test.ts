@@ -112,17 +112,38 @@ beforeAll(async () => {
   const outboxAlter = digestFoundation.match(/ALTER TABLE public\.notification_outbox\n(?: {2}ADD COLUMN IF NOT EXISTS[\s\S]*?;)/)?.[0];
   if (!outboxAlter) throw new Error('outbox digest ALTER not found');
   await c.query(outboxAlter);
+  const eventsAlter = digestFoundation.match(/ALTER TABLE public\.notification_event_types\n(?: {2}ADD COLUMN IF NOT EXISTS digest_engine_enabled[\s\S]*?;)/)?.[0];
+  if (!eventsAlter) throw new Error('event_types digest ALTER not found');
+  await c.query(eventsAlter);
   const n3 = MIG('20261015110000_notif_n3_academy_restrictions.sql');
   const restrictionsDdl = n3.match(/CREATE TABLE public\.academy_notification_restrictions \([\s\S]*?\);/)?.[0];
   if (!restrictionsDdl) throw new Error('restrictions DDL not found');
   await c.query(restrictionsDdl);
   await c.query(`INSERT INTO public.notification_event_types (key, category, audience, priority) VALUES ('ev_test', 'booking', 'player', 'transactional')`);
 
+  // M4's read surface joins the digest/runs/orphan tables — REAL DDL, extracted verbatim
+  const dig = MIG('20261002100000_notification_digest_schema_foundation.sql');
+  for (const t of ['notification_worker_runs', 'notification_digest_groups', 'notification_digest_attempts',
+    'notification_provider_circuit', 'notification_provider_events']) {
+    const ddl = dig.match(new RegExp(`CREATE TABLE (?:IF NOT EXISTS )?public\\.${t} \\([\\s\\S]*?\\n\\);`))?.[0];
+    if (!ddl) throw new Error(`${t} DDL not found in the digest foundation`);
+    await c.query(ddl);
+  }
+  // digest_group_id references the groups table, so its ALTER runs after the groups DDL
+  const groupIdAlter = dig.match(/ALTER TABLE public\.notification_outbox\n {2}ADD COLUMN IF NOT EXISTS digest_group_id[\s\S]*?;/)?.[0];
+  if (!groupIdAlter) throw new Error('digest_group_id ALTER not found');
+  await c.query(groupIdAlter);
+  const orph = MIG('20261006110000_reconcile_orphan_provider_events.sql');
+  const orphDdl = orph.match(/CREATE TABLE (?:IF NOT EXISTS )?public\.notification_orphan_reconcile_state \([\s\S]*?\n\);/)?.[0];
+  if (!orphDdl) throw new Error('orphan state DDL not found');
+  await c.query(orphDdl);
+  await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));   // gauges expose invocations
   await c.query(MIG('20261017100000_notif_n4_channel_kill_switches.sql'));
   // M3: the ops audit — redefines admin_activate_channel_kill THROUGH the audit (global
   // request lock → audit replay → channel lock), so every admin test below exercises the
   // audited, newest definition.
   await c.query(MIG('20261018100000_notif_n4_admin_ops_audit.sql'));
+  await c.query(MIG('20261019100000_notif_n4_admin_reads.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -140,6 +161,13 @@ beforeEach(async () => {
   await c.query(`DELETE FROM public.notification_admin_rejected_attempts;`);
   await c.query(`ALTER TABLE public.notification_admin_rejected_attempts ENABLE TRIGGER trg_notif_admin_rejected_guard;`);
   await c.query(`DELETE FROM public.notification_outbox;`);
+  await c.query(`DELETE FROM public.notification_provider_events;`);
+  await c.query(`DELETE FROM public.notification_digest_attempts;`);
+  await c.query(`DELETE FROM public.notification_digest_groups;`);
+  await c.query(`DELETE FROM public.notification_worker_runs;`);
+  await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
+  await c.query(`DELETE FROM public.notification_worker_invocations;`);
+  await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
   await c.query(`DELETE FROM public.academy_notification_restrictions;`);
 });
 
@@ -195,9 +223,12 @@ describe('SET-ONLY, owner-effectively — nothing clears a kill', () => {
       WHERE n.nspname = 'public' AND p.prokind = 'f'
         AND (p.proname ILIKE '%kill%' OR pg_get_functiondef(p.oid) ILIKE '%notification_channel_kill_switches%')
     `)).rows.map((r) => r.proname as string).sort();
-    // the COMPLETE kill surface: gate, read, set, release, guard — and nothing shaped like a clear
+    // the COMPLETE kill surface: gate, read, set, release, guard + M4's two READERS —
+    // and nothing shaped like a clear
     expect(fns).toEqual([
       'admin_activate_channel_kill',
+      'admin_notification_event_states',
+      'admin_notification_gauges',
       'is_notification_channel_killed',
       'notif_channel_kill_gate',
       'notif_channel_kill_guard',
@@ -207,7 +238,7 @@ describe('SET-ONLY, owner-effectively — nothing clears a kill', () => {
       expect(f).not.toMatch(/clear|deactivate|remove|unkill|resume|enable/);
     }
     // and none of them contains a DELETE or reason-updating UPDATE against the kill table
-    for (const f of ['admin_activate_channel_kill', 'notif_channel_kill_gate', 'is_notification_channel_killed', 'release_notification_claims_on_kill']) {
+    for (const f of ['admin_activate_channel_kill', 'notif_channel_kill_gate', 'is_notification_channel_killed', 'release_notification_claims_on_kill', 'admin_notification_gauges', 'admin_notification_event_states']) {
       const def = (await c.query(`SELECT pg_get_functiondef(p.oid) d FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.proname=$1`, [f])).rows[0].d as string;
       expect(def, `${f} must not delete from the kill table`).not.toMatch(/DELETE\s+FROM\s+public\.notification_channel_kill_switches/i);
       expect(def, `${f} must not update the kill table`).not.toMatch(/UPDATE\s+public\.notification_channel_kill_switches/i);
@@ -524,5 +555,142 @@ describe('N4 M3 — the ops audit: every decision recorded, exactly once, immuta
     expect(await as('anon', `SELECT * FROM public.notification_admin_audit`)).toBe('42501');
     expect(await as('authenticated', `SELECT * FROM public.notification_admin_audit`)).toBe('42501');
     expect(await as('service_role', `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason) VALUES (gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'email', 'live', 'killed', 'applied', 'nope')`)).toBe('42501');
+  });
+});
+
+describe('N4 M4 — the fixed-column admin read surface', () => {
+  const asAdmin = async (sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const asUid = async (uid: string | null, sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [uid ?? '']);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const seedGroup = async (over: Partial<{ channel: string; state: string; uncertain: boolean }> = {}) => {
+    const r = await c.query(
+      `INSERT INTO public.notification_digest_groups
+         (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
+          recipient_timezone, digest_boundary_at, available_at, state, uncertain_since)
+       VALUES ('{}'::jsonb, gen_random_uuid()::text, $1, 'ev_test', 'p:1', 'fp:' || gen_random_uuid()::text,
+               'Europe/Amsterdam', now(), now(), $2, $3)
+       RETURNING id`,
+      [over.channel ?? 'email', over.state ?? 'pending', over.uncertain ? new Date().toISOString() : null]);
+    return r.rows[0].id as string;
+  };
+
+  it('every reader is admin-fail-closed', async () => {
+    const calls = [
+      `SELECT * FROM public.admin_notification_gauges()`,
+      `SELECT * FROM public.admin_list_notification_outbox()`,
+      `SELECT * FROM public.admin_list_digest_groups()`,
+      `SELECT * FROM public.admin_list_worker_runs()`,
+      `SELECT * FROM public.admin_notification_event_states()`,
+    ];
+    for (const sql of calls) {
+      await expect(asUid(null, sql)).rejects.toThrow(/platform admin only/);
+      await expect(asUid(PLAYER, sql)).rejects.toThrow(/platform admin only/);
+    }
+  });
+
+  it('gauges: counts by status, oldest-pending split, kill + quarantine + invocation exposure — typed rows', async () => {
+    await seedRow();                                         // pending email
+    await seedRow({ status: 'processing', locked_at: new Date(Date.now() - 5 * 60_000).toISOString(), locked_by: 'w:g' });
+    await seedGroup({ uncertain: true, state: 'awaiting_evidence' });
+    await killDirect('whatsapp');
+    await c.query(`INSERT INTO public.notification_worker_invocations (request_id, purpose, source) VALUES (gen_random_uuid(), 'smoke', 'gauge-test')`);
+    const rows = await asAdmin(`SELECT * FROM public.admin_notification_gauges()`);
+    const g = (metric: string, channel: string | null) =>
+      rows.find((r) => r.metric === metric && r.channel === channel);
+    expect(Number(g('outbox_pending', 'email').value)).toBe(1);
+    expect(g('outbox_pending', 'email').capped).toBe(false);
+    expect(Number(g('outbox_processing', 'email').value)).toBe(1);
+    expect(Number(g('oldest_processing_seconds', 'email').value)).toBeGreaterThanOrEqual(4 * 60);
+    expect(Number(g('oldest_uncertain_seconds', 'email').value)).toBeGreaterThanOrEqual(0);
+    expect(Number(g('channel_killed', 'whatsapp').value)).toBe(1);
+    expect(Number(g('channel_killed', 'email').value)).toBe(0);
+    expect(Number(g('invocations_unresolved', null).value)).toBe(1);
+    expect(Number(g('orphans_quarantined', null).value)).toBe(0);
+  });
+
+  it('the outbox feed: EXACT fixed columns (no payload, redacted destination), filters, bounds, half-cursor', async () => {
+    const id = await seedRow();
+    const rows = await asAdmin(`SELECT * FROM public.admin_list_notification_outbox('email', NULL, 'pending', 7, NULL, NULL, 10)`);
+    expect(rows.map((r) => r.id)).toContain(id);
+    expect(Object.keys(rows[0]).sort()).toEqual([
+      'attempts', 'channel', 'created_at', 'delivery_mode', 'destination_redacted', 'event_type',
+      'id', 'last_error', 'max_attempts', 'scheduled_for', 'skip_reason', 'status', 'template_key',
+      'tenant_academy_profile_id', 'tenant_trainer_id', 'updated_at',
+    ]);
+    expect(await asAdmin(`SELECT * FROM public.admin_list_notification_outbox('whatsapp', NULL, NULL, 7, NULL, NULL, 10)`)).toEqual([]);
+    await expect(asAdmin(`SELECT * FROM public.admin_list_notification_outbox(NULL, NULL, NULL, 0, NULL, NULL, 10)`)).rejects.toThrow(/1\.\.90/);
+    await expect(asAdmin(`SELECT * FROM public.admin_list_notification_outbox(NULL, NULL, NULL, 91, NULL, NULL, 10)`)).rejects.toThrow(/1\.\.90/);
+    await expect(asAdmin(`SELECT * FROM public.admin_list_notification_outbox(NULL, NULL, NULL, 7, now()::timestamptz, NULL, 10)`)).rejects.toThrow(/BOTH/);
+  });
+
+  it('the digest-group feed: fixed columns (no frozen_request, no fingerprint), state filter, bounds', async () => {
+    await seedGroup({ state: 'request_ready' });
+    const rows = await asAdmin(`SELECT * FROM public.admin_list_digest_groups('email', 'request_ready', 7, NULL, NULL, 10)`);
+    expect(rows.length).toBe(1);
+    const cols = Object.keys(rows[0]);
+    expect(cols).not.toContain('frozen_request');
+    expect(cols).not.toContain('destination_fingerprint');
+    expect(cols).not.toContain('canonical_group_key');
+    await expect(asAdmin(`SELECT * FROM public.admin_list_digest_groups(NULL, NULL, 91, NULL, NULL, 10)`)).rejects.toThrow(/1\.\.90/);
+  });
+
+  it('delivery history: the typed timeline — attempts, provider events, orphan state; never a body', async () => {
+    const g = await seedGroup({ state: 'sent' });
+    const ob = (await c.query(
+      `INSERT INTO public.notification_outbox (channel, event_type, template_key, status, destination_normalized, destination_redacted, scheduled_for, payload, idempotency_key, recipient_user_id, delivery_mode, digest_group_id)
+       VALUES ('email','ev_test','tpl','sent','a@example.com','a***@example.com', now(), '{"secret":"NEVER"}'::jsonb, gen_random_uuid()::text, $1, 'digest', $2) RETURNING id`,
+      [PLAYER, g])).rows[0].id;
+    await c.query(
+      `INSERT INTO public.notification_digest_attempts (digest_group_id, provider_idempotency_key, outcome_class, http_status, provider_message_id)
+       VALUES ($1, 'dg:v1:k', 'accepted', 200, 're_123')`, [g]);
+    // the provider-event FK is composite: (group, provider_message_id) must match the group's binding
+    await c.query(`UPDATE public.notification_digest_groups SET provider_message_id = 're_123', provider_status = 'delivered', provider_status_rank = 3 WHERE id = $1`, [g]);
+    await c.query(
+      `INSERT INTO public.notification_provider_events (resend_event_id, provider_message_id, digest_group_id, status, occurred_at)
+       VALUES ('ev_1', 're_123', $1, 'delivered', now())`, [g]);
+    const rows = await asAdmin(`SELECT * FROM public.admin_notification_delivery_history('${ob}'::uuid)`);
+    const kinds = rows.map((r) => r.kind);
+    expect(kinds).toContain('outbox_created');
+    expect(kinds).toContain('outbox_state');
+    expect(kinds).toContain('digest_attempt');
+    expect(kinds).toContain('provider_event');
+    expect(JSON.stringify(rows)).not.toContain('NEVER');     // the payload cannot leak through
+    expect(rows.find((r) => r.kind === 'outbox_created').c).toBe('a***@example.com');
+    await expect(asAdmin(`SELECT * FROM public.admin_notification_delivery_history(gen_random_uuid())`)).rejects.toThrow(/does not exist/);
+  });
+
+  it('event states: per-authority columns, the VISIBLE unverifiable env line, and the honest tri-state', async () => {
+    const rows = await asAdmin(`SELECT * FROM public.admin_notification_event_states()`);
+    const email = rows.find((r) => r.event_type === 'ev_test' && r.channel === 'email');
+    const wa = rows.find((r) => r.event_type === 'ev_test' && r.channel === 'whatsapp');
+    expect(email.catalog_supported).toBe(true);
+    expect(email.send_env).toBe('unverifiable');             // EVERY row carries the honest line
+    expect(wa.send_env).toBe('unverifiable');
+    expect(email.cron_state).toBe('unavailable');            // no pg_cron here — the honest arm
+    expect(email.kill_state).toBe('live');
+    expect(email.conclusion).toBe('sendable');               // instant path: no unverifiable authority
+    expect(wa.catalog_supported).toBe(false);
+    expect(wa.conclusion).toBe('stopped');                   // unsupported is a definitive stop
+    // kill flips the authority AND the conclusion
+    await killDirect('email');
+    const after = await asAdmin(`SELECT * FROM public.admin_notification_event_states()`);
+    const emailKilled = after.find((r) => r.event_type === 'ev_test' && r.channel === 'email');
+    expect(emailKilled.kill_state).toBe('killed');
+    expect(emailKilled.conclusion).toBe('stopped');
+    // a digest-engine event can never conclude past unknown — the env is unverifiable
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = true WHERE key = 'ev_test'`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+    const dig = await asAdmin(`SELECT * FROM public.admin_notification_event_states()`);
+    expect(dig.find((r) => r.event_type === 'ev_test' && r.channel === 'email').conclusion).toBe('unknown');
+    await c.query(`UPDATE public.notification_event_types SET digest_engine_enabled = false WHERE key = 'ev_test'`);
   });
 });
