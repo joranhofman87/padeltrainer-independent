@@ -235,22 +235,31 @@ ALTER TABLE public.notification_contacts
 CREATE OR REPLACE FUNCTION public.notif_contact_effective_user()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- serialize against the person-side sync: an INSERT reading persons while a persons.user_id
+  -- update is mid-flight (whose AFTER trigger cannot see this uncommitted row) left a
+  -- permanently stale projection — one per-person lock closes both orderings
+  IF NEW.person_id IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtextextended('notif-person-link:' || NEW.person_id::text, 0));
+  END IF;
   NEW.effective_user_id := coalesce(NEW.user_id,
     (SELECT p.user_id FROM public.persons p WHERE p.id = NEW.person_id));
   RETURN NEW;
 END;
 $$;
 DROP TRIGGER IF EXISTS trg_notif_contact_effective_user ON public.notification_contacts;
+-- EVERY insert and EVERY update — a direct owner/service write of effective_user_id itself is
+-- recomputed away (the projection is DERIVED state, owner-effectively: it cannot be assigned)
 CREATE TRIGGER trg_notif_contact_effective_user
-  BEFORE INSERT OR UPDATE OF user_id, person_id ON public.notification_contacts
+  BEFORE INSERT OR UPDATE ON public.notification_contacts
   FOR EACH ROW EXECUTE FUNCTION public.notif_contact_effective_user();
 
 -- a person gaining (or changing) its login must flow into the projection
 CREATE OR REPLACE FUNCTION public.notif_person_sync_effective_user()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  PERFORM pg_advisory_xact_lock(hashtextextended('notif-person-link:' || NEW.id::text, 0));
   UPDATE public.notification_contacts nc
-     SET effective_user_id = coalesce(nc.user_id, NEW.user_id)
+     SET user_id = nc.user_id   -- a no-op column touch: the BEFORE trigger recomputes the projection
    WHERE nc.person_id = NEW.id;
   RETURN NEW;
 END;
@@ -279,38 +288,60 @@ CREATE OR REPLACE FUNCTION public.admin_preview_notification_recipients(
   user_id uuid,
   final_frequency text,
   final_decision text,
-  destination_masked text
+  destination_masked text,
+  candidates_partial boolean,   -- the raw budget was hit: users beyond the horizon are OMITTED
+  next_cursor uuid              -- the scan horizon — ALWAYS advances, even on a zero-row page
 )
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
-DECLARE u record;
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+-- VOLATILE (not STABLE): the bounded raw scan stages through a temp table
+DECLARE
+  RAW_BUDGET constant int := 500;
+  u record;
+  v_partial boolean := false;
+  v_horizon uuid := NULL;
+  v_raw int := 0;
 BEGIN
   PERFORM public.notif_admin_gate();
-  -- STRICT MAX (finding 10: no export-all) — and bounded WORK, not just bounded output: each
-  -- source contributes at most 50 ordered candidates AFTER the cursor (index-served), and only
-  -- those bounded sets are unioned/deduped. A global DISTINCT over every preference and
-  -- contact row would scan the whole cross-tenant population on every page.
+  -- THE HARD WORK BOUND (the round-4 lesson, complete this time): the raw scan examines at
+  -- most RAW_BUDGET index-ordered projection rows AFTER the cursor — every predicate in the
+  -- raw scan is carried by idx_contacts_effective_user, so the bound is on ROWS EXAMINED, not
+  -- on rows qualifying. Eligibility (consent status, tenant scope) filters AFTERWARD, inside
+  -- the bounded set; when the budget is hit, candidates_partial says so and next_cursor is
+  -- the horizon, so a caller crawls an arbitrarily long ineligible prefix HONESTLY instead of
+  -- the server scanning it invisibly.
+  CREATE TEMP TABLE IF NOT EXISTS _preview_raw (
+    uid uuid, consent_status text, consent_scope text,
+    consent_academy_profile_id uuid, consent_trainer_id uuid
+  ) ON COMMIT DROP;
+  DELETE FROM _preview_raw;
+  INSERT INTO _preview_raw
+  SELECT nc.effective_user_id, nc.consent_status, nc.consent_scope,
+         nc.consent_academy_profile_id, nc.consent_trainer_id
+    FROM public.notification_contacts nc
+   WHERE nc.channel = p_channel AND nc.revoked_at IS NULL
+     AND nc.effective_user_id IS NOT NULL
+     AND (p_after_user_id IS NULL OR nc.effective_user_id > p_after_user_id)
+   ORDER BY nc.effective_user_id
+   LIMIT RAW_BUDGET;
+  GET DIAGNOSTICS v_raw = ROW_COUNT;
+  v_partial := (v_raw >= RAW_BUDGET);
+  SELECT r.uid INTO v_horizon FROM _preview_raw r ORDER BY r.uid DESC LIMIT 1;
+
   FOR u IN
     SELECT cand.uid FROM (
       (SELECT v2.user_id AS uid FROM public.notification_preferences_v2 v2
         WHERE v2.event_type = p_event_key
           AND (p_after_user_id IS NULL OR v2.user_id > p_after_user_id)
+          -- prefs candidates stay inside the SAME horizon so partial pages remain coherent
+          AND (NOT v_partial OR v2.user_id <= v_horizon)
         ORDER BY v2.user_id LIMIT 50)
       UNION
-      -- DISTINCT effective users over the PERSISTED projection: an ordered index stream on
-      -- (channel, effective_user_id) that dedupes as it streams and STOPS at 50 — no join, no
-      -- computed expression, no global dedup. Person-linked contacts are in the projection
-      -- (trigger-maintained on both sides of the link); eligibility predicates filter the
-      -- stream exactly as the resolver's do.
-      (SELECT DISTINCT nc.effective_user_id AS uid
-         FROM public.notification_contacts nc
-        WHERE nc.channel = p_channel AND nc.revoked_at IS NULL
-          AND nc.effective_user_id IS NOT NULL
-          AND (CASE p_channel WHEN 'email' THEN nc.consent_status <> 'opted_out'
-                              ELSE nc.consent_status = 'opted_in' END)
+      (SELECT DISTINCT r.uid FROM _preview_raw r
+        WHERE (CASE p_channel WHEN 'email' THEN r.consent_status <> 'opted_out'
+                              ELSE r.consent_status = 'opted_in' END)
           AND public.is_notification_consent_in_scope(
-                nc.consent_scope, nc.consent_academy_profile_id, nc.consent_trainer_id,
+                r.consent_scope, r.consent_academy_profile_id, r.consent_trainer_id,
                 p_tenant_academy_profile_id, NULL)
-          AND (p_after_user_id IS NULL OR nc.effective_user_id > p_after_user_id)
         ORDER BY 1 LIMIT 50)
     ) cand
     WHERE cand.uid IS NOT NULL
@@ -318,13 +349,19 @@ BEGIN
     LIMIT LEAST(GREATEST(coalesce(p_limit, 25), 1), 50)
   LOOP
     RETURN QUERY
-    SELECT u.uid, d.final_frequency, d.final_decision, d.destination_masked
+    SELECT u.uid, d.final_frequency, d.final_decision, d.destination_masked, v_partial, v_horizon
       FROM public.admin_preview_notification_decision(u.uid, p_event_key, p_channel, p_tenant_academy_profile_id) d;
   END LOOP;
+  -- a ZERO-eligible partial page still hands the caller a moving cursor
+  IF NOT FOUND AND v_partial THEN
+    user_id := NULL; final_frequency := NULL; final_decision := NULL; destination_masked := NULL;
+    candidates_partial := true; next_cursor := v_horizon;
+    RETURN NEXT;
+  END IF;
 END;
 $$;
 COMMENT ON FUNCTION public.admin_preview_notification_recipients(text, text, uuid, uuid, int) IS
-  'N4 M6 (finding 10): bounded keyset recipient preview per event/channel — the users holding a preference row or an eligible contact, each run through the SAME provenance preview. Clamp 1..50, no export-all. HONESTY BOUNDARY: this previews resolver state, not a producer''s audience — who an event actually fans out to is producer business logic.';
+  'N4 M6 (finding 10): bounded recipient preview — the raw scan examines AT MOST 500 index-ordered projection rows after the cursor (a bound on rows EXAMINED, carried entirely by idx_contacts_effective_user); eligibility filters inside that set; candidates_partial + next_cursor make omissions and progress HONEST (a zero-eligible partial page still returns one cursor row). Clamp 1..50, no export-all. Previews resolver state, not a producer''s audience.';
 REVOKE ALL ON FUNCTION public.admin_preview_notification_recipients(text, text, uuid, uuid, int) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.admin_preview_notification_recipients(text, text, uuid, uuid, int) TO authenticated, service_role;
 

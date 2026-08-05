@@ -9716,9 +9716,11 @@ export type Database = {
           p_tenant_academy_profile_id?: string
         }
         Returns: {
+          candidates_partial: boolean
           destination_masked: string
           final_decision: string
           final_frequency: string
+          next_cursor: string
           user_id: string
         }[]
       }

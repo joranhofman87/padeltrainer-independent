@@ -1278,3 +1278,91 @@ describe('N4 M6 round-4 — the persisted candidate projection is maintained and
     expect(txt).not.toContain('"Node Type": "Sort"');   // index order feeds the dedup directly
   });
 });
+
+describe('N4 M6 round-5 — the hard raw budget, the derived projection, the link races', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('a 501-row INELIGIBLE prefix cannot make the server scan invisibly: partial=true, the cursor CRAWLS, the eligible user is reached', async () => {
+    // 501 opted-out contacts strictly below one eligible user, all in the d-block
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('d0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 502) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('d0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'noise' || g || '@example.com', 'n***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 501) g;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      VALUES ('d0000000-0000-4000-8000-000000000502', 'email', 'needle@example.com', 'n***@example.com', 'opted_in', 'global');`);
+    await asUser(ADMIN_UID);
+    const page1 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'d0000000-0000-4000-8000-000000000000',50)`)).rows;
+    // the budget was hit inside the noise: the page says PARTIAL and hands a moving cursor
+    expect(page1.every((r) => r.candidates_partial === true)).toBe(true);
+    const cursor1 = page1[page1.length - 1].next_cursor;
+    expect(cursor1).not.toBeNull();
+    const page2 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'${cursor1}',50)`)).rows;
+    const found = page2.map((r) => r.user_id);
+    expect(found).toContain('d0000000-0000-4000-8000-000000000502');   // the crawl REACHES the needle
+    await asUser(null);
+  });
+
+  it('effective_user_id is DERIVED, owner-effectively: a direct tamper is recomputed away', async () => {
+    const victim = 'e0000000-0000-4000-8000-000000000001';
+    const attacker = 'e0000000-0000-4000-8000-000000000002';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1), ($2) ON CONFLICT DO NOTHING`, [victim, attacker]);
+    await c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'victim@example.com', 'v***@example.com', 'opted_in', 'global')`, [victim]);
+    await c.query(`UPDATE public.notification_contacts SET effective_user_id = $1 WHERE destination_normalized = 'victim@example.com'`, [attacker]);
+    expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='victim@example.com'`)).rows[0].effective_user_id)
+      .toBe(victim);   // the trigger recomputed — the projection cannot be assigned
+  });
+
+  it('the link race, BOTH orderings, deterministic: neither leaves a stale projection', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      // ordering 1: a persons.user_id update holds its lock; a contact INSERT for that person
+      // blocks, then reads the COMMITTED person value
+      const uidA = 'f0000000-0000-4000-8000-000000000001';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uidA]);
+      const pidA = (await c.query(`INSERT INTO public.persons (email) VALUES ('race1@example.com') RETURNING id`)).rows[0].id;
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uidA, pidA]);
+      let s1 = false;
+      const ins = c2.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'race1@example.com', 'r***@example.com', 'opted_in', 'global')`, [pidA])
+        .finally(() => { s1 = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(s1).toBe(false);      // provably serialized on the person-link lock
+      await c.query('COMMIT');
+      await ins;
+      expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='race1@example.com'`)).rows[0].effective_user_id).toBe(uidA);
+
+      // ordering 2: a contact INSERT holds the lock; the persons.user_id update blocks, then
+      // its sync SEES the committed contact
+      const uidB = 'f0000000-0000-4000-8000-000000000002';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uidB]);
+      const pidB = (await c.query(`INSERT INTO public.persons (email) VALUES ('race2@example.com') RETURNING id`)).rows[0].id;
+      await c.query('BEGIN');
+      await c.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'race2@example.com', 'r***@example.com', 'opted_in', 'global')`, [pidB]);
+      let s2 = false;
+      const upd = c2.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uidB, pidB])
+        .finally(() => { s2 = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(s2).toBe(false);
+      await c.query('COMMIT');
+      await upd;
+      expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='race2@example.com'`)).rows[0].effective_user_id).toBe(uidB);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+});
