@@ -203,6 +203,8 @@ const MANAGED = {
     'supabase/functions/mollie-callback/index.ts',
     'supabase/functions/mollie-connect-trainer/index.ts',
     'supabase/functions/mollie-webhook/index.ts',
+    'supabase/functions/notif-manage/index.ts',
+    'supabase/functions/notif-unsubscribe-one-click/index.ts',
     'supabase/functions/notification-email-worker/index.ts',
     'supabase/functions/notification-whatsapp-worker/index.ts',
     'supabase/functions/notify-followers/index.ts',
