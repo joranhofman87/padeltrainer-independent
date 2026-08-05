@@ -293,8 +293,48 @@ describe('M7 round-2: provenance drill-down, history paging', () => {
     required_delivery: false, explicit_preference: 'weekly', whatsapp_optin_arm: false,
     academy_cap: 'off', cap_applied: true, required_override_applied: false,
     final_frequency: 'off', contact_found: true, destination_masked: 'p***@x.nl',
+    contact_source: 'contact',
     suppressed: false, kill_state: 'live', circuit_state: 'closed', final_decision: 'skip:frequency_off',
   };
+  const openProvenanceWith = async (decision: Record<string, unknown>) => {
+    const { RecipientPreviewSection } = await import('@/components/notifications/admin/RecipientPreviewSection');
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'admin_preview_notification_recipients') {
+        return Promise.resolve({ data: [{ user_id: 'u1', final_frequency: null, final_decision: String(decision.final_decision), destination_masked: null, candidates_partial: false, next_cursor: 'u1' }], error: null });
+      }
+      if (fn === 'admin_preview_notification_decision') return Promise.resolve({ data: [decision], error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+    render(<RecipientPreviewSection eventKeys={['ev_test']} />);
+    fireEvent.change(screen.getAllByTestId('native-select')[0], { target: { value: 'ev_test' } });
+    fireEvent.click(screen.getByTestId('preview-load'));
+    await screen.findByTestId('preview-list');
+    fireEvent.click(screen.getByTestId('provenance-btn-u1'));
+    await screen.findByTestId('provenance-list');
+    return screen.getByTestId('provenance-list').textContent ?? '';
+  };
+
+  it('SEAM round 2: the drill-down names WHICH source resolved the destination — a contact row or the account-email fallback', async () => {
+    const text = await openProvenanceWith({
+      ...DECISION, contact_source: 'account_email', destination_masked: 'f***@x.nl',
+      final_frequency: 'instant', final_decision: 'deliver:instant',
+    });
+    expect(text).toContain('f***@x.nl');
+    expect(text).toContain('account email — no contact row');   // the distinction reaches the operator
+    expect(text).not.toContain('(contact row)');                // …and is not mislabelled as one
+  });
+
+  it('SEAM round 2: an UNSUPPORTED channel renders the ABSENCE of a resolution, not an empty gap', async () => {
+    const text = await openProvenanceWith({
+      ...DECISION, catalog_supported: false, explicit_preference: null, academy_cap: null,
+      cap_applied: false, final_frequency: null, contact_found: false, contact_source: 'none',
+      destination_masked: null, final_decision: 'skip:channel_unsupported',
+    });
+    expect(text).toContain('unsupported');
+    expect(text).toContain('skip:channel_unsupported');
+    expect(text).toContain('— → skip:channel_unsupported');   // final_frequency NULL, rendered
+    expect(text).not.toContain('APPLIED');
+  });
 
   it('the preview exposes EVERY contributing source per user, scoped to the academy context', async () => {
     const { RecipientPreviewSection } = await import('@/components/notifications/admin/RecipientPreviewSection');

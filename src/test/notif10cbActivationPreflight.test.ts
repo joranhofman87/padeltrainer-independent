@@ -653,6 +653,26 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
     expect(asserts).toContain("'notif-channel-kill:'");
   });
 
+  it('ROUND 2: the replay gate acquires those locks in open()s ORDER — request first, then open', () => {
+    // the round-1 correction introduced an ABBA inversion against open() itself. Pin the ORDER,
+    // not merely the presence: a concurrent direct open() on the same id deadlocked mid-rollout.
+    const replay = SQL('_invocation_gate_replay.sql');
+    const reqIdx = replay.indexOf("'notif-worker-invocation-req:'");
+    const openIdx = replay.indexOf("hashtextextended('notif-worker-invocation-open', 0)");
+    expect(reqIdx).toBeGreaterThan(0);
+    expect(openIdx).toBeGreaterThan(reqIdx);
+    // …and that IS open()'s order — read from the function, never assumed
+    const fn = readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations',
+      '20261016100000_notif_n4_worker_invocations.sql'), 'utf8')
+      .match(/CREATE OR REPLACE FUNCTION public\.open_notification_worker_invocation\([\s\S]*?\n\$\$;/)?.[0];
+    expect(fn).toBeTruthy();
+    expect(fn!.indexOf("'notif-worker-invocation-req:'"))
+      .toBeLessThan(fn!.indexOf("hashtextextended('notif-worker-invocation-open', 0)"));
+    // a missing request id must REFUSE: hashing NULL yields NULL and pg_advisory_xact_lock(NULL)
+    // takes no lock at all, which would silently restore the visibility race the lock closes
+    expect(replay).toContain('requires --invocation-request-id');
+  });
+
   it('BOTH gates exist: strict refuses any unresolved row; replay-aware passes only the exact own request', () => {
     const strict = SQL('_invocation_gate.sql');
     expect(strict).toContain("status IN ('pending', 'started')");

@@ -25,6 +25,7 @@
 // Run: node scripts/rollout/notif-10cb/verify/preflight-pg.mjs
 // ===========================================================================
 import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { boot } from '../../notif-10ca3/verify/chain.mjs';
@@ -43,6 +44,10 @@ const rec = (n, ok, d = '') => {
 };
 
 const RUN = '77777777-7777-4777-8777-777777777777';
+// production's per-invocation ownership token: `notification-digest-worker:<uuid>`
+// (notification-digest-worker/index.ts newToken). M1's bind REFUSES any other worker identity,
+// so a bare 'notification-digest-worker' here would be a shape production cannot produce.
+const WORKER_TOKEN = 'b0b0b0b0-0000-4000-8000-00000000c0de';
 const OTHER_RUN = '88888888-8888-4888-8888-888888888888';
 const GROUP = '99999999-9999-4999-8999-999999999999';
 const ATTEMPT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -176,6 +181,25 @@ try {
                      foundation.indexOf('ALTER TABLE public.notification_outbox DROP CONSTRAINT'))));
   await c.query(`ALTER TABLE public.notification_outbox ADD COLUMN IF NOT EXISTS digest_group_id uuid`);
 
+  // ── N4: what the artifacts THEMSELVES now depend on ──────────────────────
+  // M1 gave every deliberate invocation a durable pre-dispatch record, and the artifacts
+  // open/record/resolve against it. Applied as the REAL migration (its guard, its partial
+  // uniques and its lock order are exactly what the gates rely on) — a stand-in table would
+  // make these scenarios pass while production's single-flight and replay behaviour differ.
+  // Its claim/record/resolve companions come from their own migration, minus the one function
+  // that reaches into the M4 admin gate (not part of any artifact path).
+  await c.query(MIG('20261016100000_notif_n4_worker_invocations.sql'));
+  {
+    const claim = MIG('20261016110000_notif_n4_invocation_claim.sql');
+    await c.query(claim.slice(0, claim.indexOf(
+      'CREATE OR REPLACE FUNCTION public.admin_list_worker_invocations(')));
+  }
+  // M2's kill table: activation assertion 9 refuses to arm the cron while a channel is killed.
+  // Table only — the RPC that writes it is admin-facing and no artifact calls it.
+  await c.query(withoutForeignKeys(
+    tableDdl(MIG('20261017100000_notif_n4_channel_kill_switches.sql'),
+             'notification_channel_kill_switches', { ifNotExists: false })));
+
   // pg_net and Vault, minimally: the point of these is that the REVIEWED COMMAND ITSELF runs against
   // them unchanged, named arguments and Vault read included. `net.http_post` records what it was
   // called with, so a scenario can prove the reviewed endpoint — and only it — was posted to.
@@ -251,16 +275,24 @@ try {
       DELETE FROM public.notification_orphan_reconcile_state;
       DELETE FROM public.notification_outbox;
       DELETE FROM net.http_request_queue;
-      DELETE FROM net._http_response;`);
+      DELETE FROM net._http_response;
+      -- the invocation record is append-only by owner-effective guard (M1), so the RESET is the
+      -- same sanctioned escape the realpg suites use — production never deletes these
+      ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;
+      DELETE FROM public.notification_worker_invocations;
+      ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;
+      DELETE FROM public.notification_channel_kill_switches;`);
     await c.query(
       `INSERT INTO cron.job (jobname, schedule, command, active) VALUES ('notification-digest-worker', $1, $2, false)`,
       [REVIEWED.schedule, REVIEWED.command]);
     await c.query(`
       INSERT INTO public.notification_event_types (key, supports_digest, digest_engine_enabled, digest_cutover)
         VALUES ('open_slots_player', true, true, true);
-      INSERT INTO public.notification_worker_runs (run_id, worker, channel, phase, status, started_at, ended_at)
-        VALUES ('${RUN}', 'notification-digest-worker', 'email', 'dispatch', 'succeeded',
-                now() - interval '3 minutes', now() - interval '2 minutes');
+      -- born UNFINISHED (status NULL is production's in-flight shape — the CHECK admits only the
+      -- three terminals), so the invocation can BIND it the way the worker does at startup
+      INSERT INTO public.notification_worker_runs (run_id, worker, channel, phase, started_at)
+        VALUES ('${RUN}', 'notification-digest-worker:${WORKER_TOKEN}', 'email', 'dispatch',
+                now() - interval '3 minutes');
       INSERT INTO public.notification_digest_groups
         (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
          destination_fingerprint, recipient_timezone, digest_boundary_at, available_at,
@@ -282,6 +314,19 @@ try {
       -- really sent always leaves one. A baseline without it made "the circuit is closed" pass
       -- vacuously in every scenario.
       INSERT INTO public.notification_provider_circuit (channel, state) VALUES ('email', 'closed');`);
+    // N4 M1: activation now demands that the run it is asked to trust was produced by a
+    // COMPLETED canary-provenance invocation. The baseline earns that record the way production
+    // does — open → record the pg_net request → bind at startup → end the run → resolve — rather
+    // than inserting a finished row past the guard, which would prove nothing about the RPCs the
+    // artifacts actually call.
+    const inv = (await c.query(
+      `SELECT public.open_notification_worker_invocation('canary', 'canary_invoke.sql', gen_random_uuid()) AS id`)).rows[0].id;
+    await c.query(`SELECT public.record_invocation_net_request($1, 990001)`, [inv]);
+    await c.query(`SELECT public.bind_notification_worker_invocation($1, $2)`, [inv, RUN]);
+    await c.query(
+      `UPDATE public.notification_worker_runs SET status = 'succeeded', ended_at = now() - interval '2 minutes' WHERE run_id = $1`,
+      [RUN]);
+    await c.query(`SELECT public.resolve_invocation_for_canary_run($1)`, [RUN]);
   };
 
   // Every artifact now pins `SET search_path = pg_catalog` for its whole SESSION, which is the point
@@ -298,10 +343,15 @@ try {
   const canaryVerify = async () => (await runArtifact('canary_verify.sql', { run_id: RUN })).err ?? null;
   const assertInert = async () => (await runArtifact('assert_inert.sql')).err ?? null;
   const enableEngine = async () => (await runArtifact('enable_engine.sql')).err ?? null;
-  const canaryInvoke = async (max = 1) => (await runArtifact('canary_invoke.sql', { max_recipients: max })).err ?? null;
+  // N4 M1: every deliberate invocation carries a CALLER-generated request id — the artifacts
+  // gate, open and (on a retry) replay on it, so the harness supplies one exactly as the runbook
+  // tells the operator to. A fresh id per call: these scenarios are first attempts, not replays.
+  const canaryInvoke = async (max = 1, req = randomUUID()) =>
+    (await runArtifact('canary_invoke.sql', { max_recipients: max, invocation_request_id: req })).err ?? null;
   const scopeVerify = async (max = 1) =>
     (await runArtifact('canary_scope_verify.sql', { run_id: RUN, max_recipients: max })).err ?? null;
-  const smokeInvoke = async () => (await runArtifact('smoke_invoke.sql')).err ?? null;
+  const smokeInvoke = async (req = randomUUID()) =>
+    (await runArtifact('smoke_invoke.sql', { invocation_request_id: req })).err ?? null;
 
   // A scenario mutates ONE fact and must be REFUSED. `needle` pins which
   // assertion did the refusing, so a scenario cannot pass by failing elsewhere —
@@ -330,6 +380,16 @@ try {
     const err = await canaryVerify();
     rec('...and passes canary_verify too', err === null, err ?? '');
   }
+
+  // ── N4 seam: the two gates the admin surface added to activation ─────────
+  // Neither is reachable from the vitest preflight suite (it reads the SQL as text) nor from the
+  // invocation realpg suite (which scopes itself to section 8), so this is their only EXECUTING
+  // proof — the gap that let the artifacts drift from the migrations in the first place.
+  await refuses('activation is refused while a CHANNEL KILL is active',
+    () => c.query(
+      `INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id)
+       VALUES ('email', 'incident in progress', gen_random_uuid())`),
+    'no notification channel is killed');
 
   // ── finding 1: the job must be THE REVIEWED JOB ──────────────────────────
   await refuses('a DRIFTED SCHEDULE is refused',
@@ -591,6 +651,18 @@ try {
     rec('activate REFUSES a drifted job', !!err && err.includes('the cron schedule is the reviewed one'),
       err ?? 'it armed the job');
     rec('...and the cron is STILL INACTIVE (the transaction rolled back)', (await jobActive()) === false);
+  }
+
+  // N4 M1: the STRICT invocation gate lives in activate.sql, not in the preflight — arming must
+  // never ride over an evidence window someone else opened (a manual invocation does not
+  // serialize on the cron row the way smoke/canary happen to).
+  await seedBaseline();
+  await c.query(`SELECT public.open_notification_worker_invocation('manual', 'operator:adhoc', gen_random_uuid())`);
+  {
+    const err = await activate();
+    rec('activate REFUSES while a deliberate invocation is UNRESOLVED',
+      !!err && err.includes('a deliberate worker invocation is UNRESOLVED'), err ?? 'it armed the job');
+    rec('...and the cron is STILL INACTIVE after that refusal', (await jobActive()) === false);
   }
 
   await seedBaseline();

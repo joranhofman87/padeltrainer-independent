@@ -612,6 +612,32 @@ describe('the invocation gates (part 3): strict for activate, replay-aware for t
     await c.query('ROLLBACK');
   });
 
+  it('REPLAY-AWARE: takes open()\'s locks in open()\'s ORDER — a concurrent direct open() on the same id must NOT deadlock', async () => {
+    // Round 1 gave this gate the global open lock to close a visibility race, but took it FIRST,
+    // while open() takes the REQUEST lock first. Artifact holds open + wants req; a concurrent
+    // opener holds req + wants open. Postgres resolves that by killing one of them mid-rollout.
+    const req = crypto.randomUUID();
+    // c2 stands in for an opener that is INSIDE open(), past its first lock — reproduced with
+    // open()'s own key rather than a paraphrase of it.
+    await c2.query('BEGIN');
+    await c2.query(
+      `SELECT pg_advisory_xact_lock(hashtextextended('notif-worker-invocation-req:' || $1::text, 0))`, [req]);
+    await c.query('BEGIN');
+    let gateSettled = false;
+    const artifact = (async () => {
+      await c.query(ART('_invocation_gate_replay.sql').replace(/:'invocation_request_id'/g, `'${req}'`));
+      return open(c, req);
+    })().finally(() => { gateSettled = true; });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(gateSettled).toBe(false);                       // waiting on the REQUEST lock, holding nothing
+    const other = (await c2.query(
+      `SELECT public.open_notification_worker_invocation('smoke','runbook:test',$1) AS id`, [req])).rows[0].id;
+    await c2.query('COMMIT');                              // …so this can complete instead of deadlocking
+    expect(await artifact).toBe(other);                    // the gate then REPLAYS the same invocation
+    await c.query('COMMIT');
+    expect((await c.query(`SELECT count(*)::int AS n FROM public.notification_worker_invocations`)).rows[0].n).toBe(1);
+  });
+
   it('a reused id whose PURPOSE differs passes the gate but dies in open() — no second row, no dispatch', async () => {
     const req = crypto.randomUUID();
     await open(c, req, 'smoke');

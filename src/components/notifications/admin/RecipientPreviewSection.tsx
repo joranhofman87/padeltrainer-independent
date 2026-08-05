@@ -180,10 +180,19 @@ export function RecipientPreviewSection({ eventKeys }: { eventKeys: string[] }) 
                     <li>{t('notifOps.pvOptin', 'whatsapp booking opt-in arm')}: {provenance.whatsapp_optin_arm ? t('notifOps.yes', 'yes') : '—'}</li>
                     <li>{t('notifOps.pvCap', 'academy cap')}: {provenance.academy_cap ?? '—'}{provenance.cap_applied ? ` · ${t('notifOps.pvApplied', 'APPLIED')}` : ''}</li>
                     <li>{t('notifOps.pvOverride', 'required override')}: {provenance.required_override_applied ? t('notifOps.pvApplied', 'APPLIED') : '—'}</li>
-                    <li>{t('notifOps.pvContact', 'contact')}: {provenance.contact_found ? provenance.destination_masked : t('notifOps.pvNoContact', 'none in scope')}</li>
+                    {/* WHICH source resolved the destination: a contact row, or the resolver's
+                        account-email fallback. Reporting both as "contact" hid the fallback the
+                        backend had to be corrected to model. */}
+                    <li>{t('notifOps.pvContact', 'contact')}: {provenance.contact_found
+                      ? `${provenance.destination_masked} (${provenance.contact_source === 'account_email'
+                          ? t('notifOps.pvSrcAccount', 'account email — no contact row')
+                          : t('notifOps.pvSrcContact', 'contact row')})`
+                      : t('notifOps.pvNoContact', 'none in scope')}</li>
                     <li>{t('notifOps.pvSuppressed', 'suppressed')}: {provenance.suppressed ? t('notifOps.yes', 'yes') : '—'}</li>
                     <li>{t('notifOps.pvKill', 'kill / circuit')}: {provenance.kill_state} / {provenance.circuit_state}</li>
-                    <li><strong>{t('notifOps.pvFinal', 'final')}: {provenance.final_frequency} → {provenance.final_decision}</strong></li>
+                    {/* final_frequency is NULL when the resolver never resolves this channel at
+                        all (unsupported) — render the absence, not an empty gap */}
+                    <li><strong>{t('notifOps.pvFinal', 'final')}: {provenance.final_frequency ?? '—'} → {provenance.final_decision}</strong></li>
                   </ul>
                 ) : null}
               </div>

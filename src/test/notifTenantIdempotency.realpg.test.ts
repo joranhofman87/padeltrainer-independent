@@ -140,6 +140,7 @@ beforeAll(async () => {
     '20261020100000_notif_n4_send_enabling_recovery.sql',
     '20261021100000_notif_n4_readiness_preview_search.sql',
     '20261022100000_notif_n4_seam_corrections.sql',
+    '20261023100000_notif_n4_seam_corrections_round2.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -1652,6 +1653,115 @@ describe('N4 SEAM corrections — the whole-unit findings', () => {
     expect((await c.query(`SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE actor=$1`, [OTHER])).rows[0].n).toBe(1);
     expect((await c.query(`SELECT verdict FROM public.notification_admin_requests WHERE actor=$1`, [OTHER])).rows[0].verdict).toBe('rejected_id_collision');
     await asUser(null);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+  });
+});
+
+describe('N4 SEAM corrections ROUND 2 — the defects the first correction left behind', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+  beforeEach(async () => {
+    await c.query(`INSERT INTO auth.users (id) VALUES ('${ADMIN_UID}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ('${ADMIN_UID}','admin') ON CONFLICT DO NOTHING;`);
+  });
+
+  it('SEAM 9b/9c: a BLANK contact destination is NO contact and does NOT fall back to the account email — proven against the real resolver', async () => {
+    const uid = 'ad000000-0000-4000-8000-000000000003';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    const pid = (await c.query(
+      `INSERT INTO public.persons (user_id, email) VALUES ($1, 'real@example.com') RETURNING id`, [uid])).rows[0].id;
+    // destination_normalized is NOT NULL, but '' is not forbidden — and the resolver's rule is
+    // "a contact row that EXISTS consumes the decision", so this must NOT reach real@example.com
+    await c.query(
+      `INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+         destination_redacted, consent_status, consent_scope, is_primary)
+       VALUES ($1, $2, 'email', '   ', '***', 'opted_in', 'global', true)`, [pid, uid]);
+
+    await asUser(ADMIN_UID);
+    const d = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1,'booking_confirmed_player','email',$2)`, [uid, A])).rows[0];
+    await asUser(null);
+    expect(d.final_decision).toBe('skip:no_contact');   // was deliver:instant
+    expect(d.contact_found).toBe(false);
+    expect(d.contact_source).toBe('none');              // NOT 'account_email' — no fallback happens
+    expect(d.destination_masked).toBeNull();
+
+    // THE ORACLE: the real resolver on the same fixtures. booking_confirmed_player is
+    // required_delivery, so its refusal is a VISIBLE skipped row carrying the reason.
+    const rows = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player', p_recipient_person_id => $1,
+         p_idempotency_subject => 'blank-dest', p_tenant_academy_profile_id => $2)`, [pid, A])).rows;
+    const email = rows.filter((r: { channel: string }) => r.channel === 'email');
+    expect(email.length).toBe(1);
+    expect(email[0].status).toBe('skipped');
+    expect(email[0].skip_reason).toBe('no_email_contact');   // never delivered to real@example.com
+    expect((await c.query(
+      `SELECT count(*)::int n FROM public.notification_outbox
+        WHERE recipient_person_id = $1 AND status = 'pending'`, [pid])).rows[0].n).toBe(0);
+  });
+
+  it('SEAM 9a: an UNSUPPORTED channel reports NOTHING derived — the resolver computes none of it', async () => {
+    const evt = (await c.query(
+      `SELECT key FROM public.notification_event_types
+        WHERE NOT supports_whatsapp AND NOT required_delivery ORDER BY key LIMIT 1`)).rows[0];
+    expect(evt).toBeTruthy();
+    const uid = 'ad000000-0000-4000-8000-000000000004';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1, 'unsup@example.com')`, [uid]);
+    // a preference AND an academy cap that WOULD be reported if resolution ran
+    await c.query(
+      `INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+       VALUES ($1, $2, 'instant')`, [uid, evt.key]);
+    // the cap is inserted PAST the N3 guard on purpose: the RPC refuses a cap on a channel the
+    // event does not support, so this row can only arise from a catalog flip — the same stale
+    // shape the resolver's own comment anticipates, and precisely when a fabricated "APPLIED"
+    // reading would mislead an operator most
+    await c.query(`ALTER TABLE public.academy_notification_restrictions DISABLE TRIGGER trg_notif_academy_restriction_guard;`);
+    await c.query(
+      `INSERT INTO public.academy_notification_restrictions (academy_profile_id, event_type, channel, max_frequency)
+       VALUES ($1, $2, 'whatsapp', 'off')`, [A, evt.key]);
+    await c.query(`ALTER TABLE public.academy_notification_restrictions ENABLE TRIGGER trg_notif_academy_restriction_guard;`);
+    await asUser(ADMIN_UID);
+    const d = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1,$2,'whatsapp',$3)`, [uid, evt.key, A])).rows[0];
+    await asUser(null);
+    expect(d.final_decision).toBe('skip:channel_unsupported');
+    expect(d.catalog_supported).toBe(false);
+    // every column below is a RESOLUTION output; production never reaches them for this channel
+    expect(d.explicit_preference).toBeNull();          // was 'instant'
+    expect(d.academy_cap).toBeNull();                  // was 'off'
+    expect(d.cap_applied).toBe(false);                 // was true
+    expect(d.final_frequency).toBeNull();              // was 'off'
+    expect(d.whatsapp_optin_arm).toBe(false);
+    expect(d.contact_found).toBe(false);
+    expect(d.contact_source).toBe('none');
+    expect(d.suppressed).toBe(false);
+    // channel-level facts ARE still reported — they are not resolution outputs
+    expect(d.kill_state).toBe('live');
+    expect(d.circuit_state).toBe('none');
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id = $1`, [uid]);
+    await c.query(`DELETE FROM public.academy_notification_restrictions WHERE event_type = $1`, [evt.key]);
+  });
+
+  // SEAM 10 (the two-actor collision RACE) lives in notifChannelKill.realpg.test.ts: this
+  // harness fakes auth.uid() with a shared TABLE row, so two sessions cannot hold two different
+  // identities — the kill suite's per-session set_config() can.
+
+  it('SEAM 11: the round-1 evidence backfill ASSERTS rather than swallowing a contradicting binding', async () => {
+    const assertion = MIG('20261023100000_notif_n4_seam_corrections_round2.sql')
+      .match(/DO \$\$\nDECLARE v_missing text;[\s\S]*?END \$\$;/)?.[0];
+    if (!assertion) throw new Error('the seam-11 assertion was not found in the migration');
+    await c.query(assertion);                            // the clean world passes
+    // a kill whose (actor, request_id) carries NO channel_kill audit row: the exact shape
+    // ON CONFLICT DO NOTHING accepted in silence
+    const actor = 'af000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [actor]);
+    await c.query(
+      `INSERT INTO public.notification_channel_kill_switches (channel, activated_by, reason, request_id)
+       VALUES ('whatsapp', $1, 'legacy kill', gen_random_uuid())`, [actor]);
+    await expect(c.query(assertion)).rejects.toThrow(/no matching audit evidence/);
     await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
     await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
     await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);

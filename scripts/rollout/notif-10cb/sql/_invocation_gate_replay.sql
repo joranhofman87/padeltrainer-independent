@@ -18,10 +18,20 @@ SELECT pg_catalog.set_config('notif.gate_request_id', :'invocation_request_id', 
 DO $gate$
 DECLARE
   r record;
-  v_req text := pg_catalog.current_setting('notif.gate_request_id', true);
+  v_req uuid := NULLIF(pg_catalog.current_setting('notif.gate_request_id', true), '')::uuid;
 BEGIN
-  -- the same open lock as the strict gate (and as open() itself, which this falls through to):
-  -- a concurrent opener must not be invisible to the check that decides whether to proceed
+  IF v_req IS NULL THEN
+    RAISE EXCEPTION 'ASSERT FAILED: the replay-aware invocation gate requires --invocation-request-id — without it the gate cannot recognise its own interrupted invocation, and its locks would be no-ops';
+  END IF;
+  -- THE LOCK ORDER IS open()'S OWN, AND MUST STAY THAT WAY. This gate falls through to
+  -- open_notification_worker_invocation(), which takes the REQUEST lock first and the global
+  -- open lock second. Taking the open lock first here made the caller acquire them in the
+  -- opposite order from any concurrent direct open() on the same request id — a textbook ABBA
+  -- deadlock (artifact holds open + wants req; opener holds req + wants open), which Postgres
+  -- resolves by killing one of them mid-rollout. Both locks are still held to COMMIT, so the
+  -- read below still cannot miss an uncommitted opener.
+  PERFORM pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('notif-worker-invocation-req:' || v_req::text, 0));
   PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended('notif-worker-invocation-open', 0));
   SELECT id, request_id, purpose, source, status,
          (pg_catalog.now() - requested_at) AS age
@@ -29,7 +39,7 @@ BEGIN
     FROM public.notification_worker_invocations
    WHERE status IN ('pending', 'started')
    LIMIT 1;
-  IF FOUND AND r.request_id::text IS DISTINCT FROM v_req THEN
+  IF FOUND AND r.request_id IS DISTINCT FROM v_req THEN
     RAISE EXCEPTION USING MESSAGE = pg_catalog.format(
       'ASSERT FAILED: a deliberate worker invocation is UNRESOLVED and is NOT this request — id=%s request_id=%s purpose=%s source=%s status=%s age=%s. '
       'If this is YOUR interrupted %s: re-run that step with --invocation-request-id=%s to replay it. '

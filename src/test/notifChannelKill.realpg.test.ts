@@ -191,6 +191,7 @@ beforeAll(async () => {
   }
   await c.query(MIG('20261021100000_notif_n4_readiness_preview_search.sql'));
   await c.query(MIG('20261022100000_notif_n4_seam_corrections.sql'));
+  await c.query(MIG('20261023100000_notif_n4_seam_corrections_round2.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -999,7 +1000,41 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
     expect((await rejections('orphan_resolve')).length).toBe(3);
   });
 
-  it('the preview shows what a reset would release', async () => {
+  it('SEAM 10: two actors racing ONE request id across DIFFERENT channels — the loser is refused with a TYPED verdict', async () => {
+    const A2 = 'ae000000-0000-4000-8000-000000000002';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [A2]);
+    await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ($1,'admin') ON CONFLICT DO NOTHING`, [A2]);
+    const shared = crypto.randomUUID();
+    try {
+      // session 1 kills EMAIL inside an OPEN transaction: it holds the global request-id lock
+      await c.query('BEGIN');
+      await c.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+      expect((await c.query(`SELECT public.admin_activate_channel_kill('email','first admin',$1) AS r`, [shared])).rows[0].r)
+        .toBe('killed');
+      // session 2 kills WHATSAPP with the SAME uuid. Different channel ⇒ a DIFFERENT channel
+      // lock, so before the global request-id lock existed both ran the collision check on a
+      // pre-insert snapshot and the loser died on the kill table's unique index — taking its
+      // rejected-attempt evidence down with it.
+      let settled = false;
+      const loser = adminKill(c2, A2, 'whatsapp', shared, 'second admin').finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 200));
+      expect(settled).toBe(false);                          // provably serialized on the id
+      await c.query('COMMIT');
+      expect(await loser).toBe('rejected_id_collision');    // typed, not a raw 23505
+      expect((await c.query(
+        `SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE actor = $1`, [A2])).rows[0].n).toBe(1);
+      expect((await c.query(
+        `SELECT verdict FROM public.notification_admin_requests WHERE actor = $1`, [A2])).rows[0].verdict)
+        .toBe('rejected_id_collision');
+      expect((await c.query(
+        `SELECT count(*)::int n FROM public.notification_channel_kill_switches WHERE channel='whatsapp'`)).rows[0].n).toBe(0);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c.query(`SELECT set_config('request.jwt.claim.sub', '', false)`).catch(() => {});
+    }
+  });
+
+  it('the preview shows what a reset RELEASES — and says plainly that the instant backlog is not part of it', async () => {
     await c.query(
       `INSERT INTO public.notification_digest_groups
          (canonical_group_key, group_key_hash, channel, event_type, recipient_key, destination_fingerprint,
@@ -1009,7 +1044,14 @@ describe('N4 M5 — send-enabling recovery: every verdict recorded, evidence alw
     await seedRow();
     const rows = await call(ADMIN, `SELECT * FROM public.admin_preview_circuit_release('email')`);
     expect(Number(rows.find((r) => r.metric === 'digest_groups_request_ready').value)).toBe(1);
-    expect(Number(rows.find((r) => r.metric === 'instant_rows_pending').value)).toBe(1);
+    // the instant claim never reads the breaker, so closing it releases NOTHING here — the
+    // metric name must not invite "reset the circuit to unstick instant email"
+    expect(rows.map((r) => r.metric)).not.toContain('instant_rows_pending');
+    expect(Number(rows.find((r) => r.metric === 'instant_rows_pending_not_released').value)).toBe(1);
+    const claimSrc = (await c.query(
+      `SELECT prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname='public' AND p.proname='claim_notification_outbox_batch'`)).rows[0].prosrc as string;
+    expect(claimSrc).not.toContain('notification_provider_circuit');   // the claim that proves it
   });
 
   it('NO retry exists: the COMPLETE admin surface is pinned — nothing shaped like a resend', async () => {
