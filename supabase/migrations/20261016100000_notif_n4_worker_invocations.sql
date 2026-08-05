@@ -64,10 +64,12 @@ CREATE TABLE public.notification_worker_invocations (
   -- completion evidence is that run's end) — schema-level, not merely RPC discipline
   CONSTRAINT invocation_pending_is_clean CHECK (status <> 'pending' OR worker_run_id IS NULL),
   CONSTRAINT invocation_completed_has_run CHECK (status <> 'completed' OR worker_run_id IS NOT NULL),
-  -- the disabled arm exists ONLY for smokes and ONLY runless: a canary/manual invocation that
-  -- found the engine disabled is an operational failure, never a quiet success
+  -- the disabled arm exists ONLY for smokes, ONLY runless, and ONLY with its dispatch recorded:
+  -- a canary/manual invocation that found the engine disabled is an operational failure, never a
+  -- quiet success — and a disabled completion without a recorded request would be causeless
   CONSTRAINT invocation_disabled_is_runless_smoke CHECK (
-    status <> 'completed_disabled' OR (purpose = 'smoke' AND worker_run_id IS NULL))
+    status <> 'completed_disabled'
+    OR (purpose = 'smoke' AND worker_run_id IS NULL AND net_request_id IS NOT NULL))
 );
 
 -- SINGLE-FLIGHT: one unresolved deliberate invocation at a time, full stop. Not per-purpose:
@@ -96,9 +98,9 @@ BEGIN
     RAISE EXCEPTION 'notification_worker_invocations is append-only evidence — no % (retention is a future reviewed policy)', TG_OP;
   END IF;
   IF TG_OP = 'INSERT' THEN
-    IF NEW.status <> 'pending' OR NEW.worker_run_id IS NOT NULL
+    IF NEW.status <> 'pending' OR NEW.worker_run_id IS NOT NULL OR NEW.net_request_id IS NOT NULL
        OR NEW.resolved_at IS NOT NULL OR NEW.abandon_reason IS NOT NULL THEN
-      RAISE EXCEPTION 'notification_worker_invocations: rows are born clean pending — binding and resolution are TRANSITIONS, never birth states';
+      RAISE EXCEPTION 'notification_worker_invocations: rows are born clean pending — binding, dispatch evidence and resolution are TRANSITIONS, never birth states';
     END IF;
     RETURN NEW;
   END IF;
@@ -113,6 +115,13 @@ BEGIN
   END IF;
   IF OLD.net_request_id IS NOT NULL AND NEW.net_request_id IS DISTINCT FROM OLD.net_request_id THEN
     RAISE EXCEPTION 'notification_worker_invocations: the recorded pg_net request is immutable — dispatch evidence does not change';
+  END IF;
+  -- and it can only APPEAR while pending stays pending: the invoker records it in its own
+  -- transaction, before any worker could bind — evidence is never attached retroactively to a
+  -- started or resolved invocation, by ANY code path including the owner's
+  IF OLD.net_request_id IS NULL AND NEW.net_request_id IS NOT NULL
+     AND NOT (OLD.status = 'pending' AND NEW.status = 'pending') THEN
+    RAISE EXCEPTION 'notification_worker_invocations: dispatch evidence is recorded by the invoker while pending — never attached to a % invocation', OLD.status;
   END IF;
   IF NOT (
        (OLD.status = 'pending' AND NEW.status IN ('started', 'completed_disabled', 'abandoned'))

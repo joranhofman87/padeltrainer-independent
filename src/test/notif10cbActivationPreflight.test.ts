@@ -694,6 +694,20 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
     expect(mig).toContain(`IS DISTINCT FROM '{"status":"disabled","reason":"disabled"}'::jsonb`);
     // and completion is causally bound to the recorded dispatch request
     expect(mig).toContain('v.net_request_id <> p_net_request_id');
+    // and canary reconciliation requires canary PROVENANCE — a smoke that accidentally sent can
+    // never be reconciled as the reviewed canary
+    expect(mig).toContain(`v_purpose <> 'canary' OR v_source <> 'canary_invoke.sql'`);
+  });
+
+  it('activation asserts canary provenance INDEPENDENTLY — never trusting that reconcile ran correctly', () => {
+    const src = SQL('_activation_assertions.sql');
+    const sect = src.match(/-- 8\. THE CANARY'S PROVENANCE[\s\S]*$/)?.[0] ?? '';
+    expect(sect).toContain("status = 'completed'");
+    expect(sect).toContain("purpose = 'canary'");
+    expect(sect).toContain("source = 'canary_invoke.sql'");
+    expect(sect).toContain('net_request_id IS NOT NULL');
+    expect(sect).toContain("worker_run_id = :'run_id'");
+    expect(sect).toContain('1,');   // exactly one — not "at least"
   });
 
   it('smoke_resolve_disabled closes the disabled smoke by request id, with the pg_net evidence', () => {

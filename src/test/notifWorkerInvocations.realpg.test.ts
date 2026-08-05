@@ -513,7 +513,7 @@ describe('record_invocation_net_request (part 3): the causal dispatch-evidence r
   it('one pg_net request evidences at most ONE invocation — ever, across resolutions', async () => {
     const a = await open(c, crypto.randomUUID());
     await record(a, 601);
-    const resp = await addRespShared(601);
+    await addRespShared(601);
     expect((await c.query(`SELECT public.resolve_smoke_invocation_disabled($1,601) AS r`, [a])).rows[0].r).toBe('completed_disabled');
     const b = await open(c, crypto.randomUUID());
     await expect(record(b, 601)).rejects.toThrow(/uq_notification_worker_invocation_net_request|duplicate key/);
@@ -530,6 +530,35 @@ describe('record_invocation_net_request (part 3): the causal dispatch-evidence r
     const inv = await open(c, crypto.randomUUID());
     await bind(inv, await newRun(false));
     await expect(record(inv, 801)).rejects.toThrow(/is started/);
+  });
+
+  it('OWNER-EFFECTIVE, not just RPC discipline: birth with evidence, and late attachment in any state, are refused by the guard itself', async () => {
+    // birth: a row cannot arrive already carrying dispatch evidence
+    await expect(c.query(
+      `INSERT INTO public.notification_worker_invocations (request_id, purpose, source, net_request_id)
+       VALUES (gen_random_uuid(), 'smoke', 'guard-test', 901)`))
+      .rejects.toThrow(/born clean pending/);
+    // NULL→value on a STARTED invocation — the RPC refuses this, and so must the guard (a
+    // direct owner UPDATE is exactly the bypass the round-3 review named)
+    const inv = await open(c, crypto.randomUUID());
+    const run = await newRun(false);
+    await bind(inv, run);
+    await expect(c.query(`UPDATE public.notification_worker_invocations SET net_request_id = 902 WHERE id=$1`, [inv]))
+      .rejects.toThrow(/recorded by the invoker while pending/);
+    // ...and on a TERMINAL invocation
+    await endRun(run);
+    expect((await c.query(`SELECT public.resolve_notification_worker_invocation($1,'completed') AS r`, [inv])).rows[0].r).toBe('completed');
+    await expect(c.query(`UPDATE public.notification_worker_invocations SET net_request_id = 903 WHERE id=$1`, [inv]))
+      .rejects.toThrow(/recorded by the invoker while pending/);
+  });
+
+  it('the SCHEMA refuses a completed_disabled row with no recorded request, even with the guard disabled', async () => {
+    await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    await expect(c.query(
+      `INSERT INTO public.notification_worker_invocations (request_id, purpose, source, status, resolved_at)
+       VALUES (gen_random_uuid(), 'smoke', 'shape-test', 'completed_disabled', now())`))
+      .rejects.toThrow(/invocation_disabled_is_runless_smoke/);
+    await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
   });
 
   // the disabled-resolve needs a response row for the happy path above
@@ -596,6 +625,58 @@ describe('the invocation gates (part 3): strict for activate, replay-aware for t
 });
 
 
+describe("the activation gate's INDEPENDENT canary-provenance assertion (part 3)", () => {
+  // Activation is the authoritative gate: it must not depend on canary_reconcile having been
+  // run correctly. This executes the REAL assertion from _activation_assertions.sql (section 8),
+  // extracted verbatim and substituted the way psql would, over the real assert_eq helper.
+  const assertsFile = readFileSync(
+    resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', '_activation_assertions.sql'), 'utf8');
+  const section = assertsFile.match(/-- 8\. THE CANARY'S PROVENANCE[\s\S]*$/)?.[0];
+  const assertHelper = readFileSync(
+    resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10ca3', 'sql', '_assert.sql'), 'utf8')
+    .replace(/^\\set .*$/m, '');
+  const runAssert = async (run: string) => {
+    if (!section) throw new Error('provenance assertion not found in _activation_assertions.sql');
+    await c.query(assertHelper);
+    await c.query(section.replace(/:'run_id'/g, `'${run}'`));
+  };
+
+  it('passes for a run bound to exactly one COMPLETED canary-provenance invocation', async () => {
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await c.query(`SELECT public.record_invocation_net_request($1, 950001)`, [inv]);
+    const run = await newRun(false);
+    await bind(inv, run);
+    await endRun(run);
+    expect(await resolveForRunShared(run)).toBe('completed');
+    await runAssert(run);   // no raise
+  });
+
+  it("REFUSES a run whose invocation was a SMOKE — even one that 'completed' through the run path before the RPC provenance check existed", async () => {
+    // constructed past the guards, because the RPCs themselves now refuse this shape — the
+    // activation assertion must hold even against historical or manually-repaired rows
+    const run = await newRun(true);
+    await c.query(`ALTER TABLE public.notification_worker_invocations DISABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    await c.query(
+      `INSERT INTO public.notification_worker_invocations (request_id, purpose, source, status, worker_run_id, net_request_id, resolved_at)
+       VALUES (gen_random_uuid(), 'smoke', 'smoke_invoke.sql', 'completed', $1, 950002, now())`, [run]);
+    await c.query(`ALTER TABLE public.notification_worker_invocations ENABLE TRIGGER trg_notif_worker_invocation_guard;`);
+    await expect(runAssert(run)).rejects.toThrow(/exactly one COMPLETED canary-provenance invocation/);
+  });
+
+  it('REFUSES a run bound to NO completed invocation at all — an unreconciled canary cannot activate', async () => {
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await c.query(`SELECT public.record_invocation_net_request($1, 950003)`, [inv]);
+    const run = await newRun(false);
+    await bind(inv, run);          // started, never resolved
+    await endRun(run);
+    await expect(runAssert(run)).rejects.toThrow(/exactly one COMPLETED canary-provenance invocation/);
+  });
+
+  const resolveForRunShared = async (run: string) =>
+    (await c.query(`SELECT public.resolve_invocation_for_canary_run($1) AS r`, [run])).rows[0].r as string;
+});
+
+
 describe('resolve_invocation_for_canary_run (part 3): the strict canary reconciliation', () => {
   // The defect this replaces: the artifact resolved "WHERE worker_run_id = run AND status =
   // 'started'" — ZERO matches produced zero rows and the shell sailed on to verification with
@@ -604,14 +685,42 @@ describe('resolve_invocation_for_canary_run (part 3): the strict canary reconcil
   // generic resolve must RAISE too, never print as a quiet verdict.
   const resolveForRun = async (run: string) =>
     (await c.query(`SELECT public.resolve_invocation_for_canary_run($1) AS r`, [run])).rows[0].r as string;
+  let nextNet = 900000;
+  const rec = async (inv: string) =>
+    c.query(`SELECT public.record_invocation_net_request($1,$2)`, [inv, ++nextNet]);
 
   it('happy path: the bound, ended run completes its invocation; a re-run is already_resolved', async () => {
     const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await rec(inv);
     const run = await newRun(false);
     expect(await bind(inv, run)).toBe('bound');
     await endRun(run);
     expect(await resolveForRun(run)).toBe('completed');
     expect(await resolveForRun(run)).toBe('already_resolved');
+  });
+
+  it('CANARY PROVENANCE: a run claimed by a SMOKE can never be reconciled as the canary — the accidental-send gate-bypass', async () => {
+    // The scenario: smoke-disabled asserted the switch off, the switch was ON, the worker ran
+    // and SENT. That dispatch run handed to the canary command must refuse — completing the
+    // smoke invocation here would let activation treat the accident as the reviewed canary.
+    const inv = await open(c, crypto.randomUUID(), 'smoke', 'smoke_invoke.sql');
+    await rec(inv);
+    const run = await newRun(false);
+    expect(await bind(inv, run)).toBe('bound');
+    await endRun(run);
+    await expect(c.query(`SELECT public.resolve_invocation_for_canary_run($1)`, [run]))
+      .rejects.toThrow(/bound to a smoke invocation.*NEVER be reconciled as the reviewed canary/s);
+    // and the refusal changed NOTHING — the smoke invocation is still started, still the truth
+    expect((await c.query(`SELECT status FROM public.notification_worker_invocations WHERE id=$1`, [inv])).rows[0].status).toBe('started');
+  });
+
+  it('a canary invocation that never recorded its dispatch is refused — provenance is incomplete', async () => {
+    const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    const run = await newRun(false);
+    expect(await bind(inv, run)).toBe('bound');
+    await endRun(run);
+    await expect(c.query(`SELECT public.resolve_invocation_for_canary_run($1)`, [run]))
+      .rejects.toThrow(/never recorded its pg_net request/);
   });
 
   it('ZERO invocations for the run RAISES, naming the still-pending invocation — never a silent no-op', async () => {
@@ -623,6 +732,7 @@ describe('resolve_invocation_for_canary_run (part 3): the strict canary reconcil
 
   it('a typed refusal from the generic resolve RAISES — a still-running run cannot quietly “reconcile”', async () => {
     const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await rec(inv);
     const run = await newRun(false);
     expect(await bind(inv, run)).toBe('bound');
     // run NOT ended — the generic resolve answers rejected_run_not_ended
@@ -632,6 +742,7 @@ describe('resolve_invocation_for_canary_run (part 3): the strict canary reconcil
 
   it('an ABANDONED invocation is never overwritten by reconciliation', async () => {
     const inv = await open(c, crypto.randomUUID(), 'canary', 'canary_invoke.sql');
+    await rec(inv);
     const run = await newRun(false);
     expect(await bind(inv, run)).toBe('bound');
     await endRun(run);

@@ -220,6 +220,9 @@ DECLARE
   v_count int;
   v_id uuid;
   v_status text;
+  v_purpose text;
+  v_source text;
+  v_net bigint;
   v_pending int;
 BEGIN
   SELECT count(*), min(id::text)::uuid INTO v_count, v_id
@@ -235,7 +238,20 @@ BEGIN
     RAISE EXCEPTION 'resolve_invocation_for_canary_run: % invocations claim run % — evidence is ambiguous, stop and inspect', v_count, p_worker_run_id;
   END IF;
 
-  SELECT status INTO v_status FROM public.notification_worker_invocations WHERE id = v_id;
+  SELECT status, purpose, source, net_request_id INTO v_status, v_purpose, v_source, v_net
+    FROM public.notification_worker_invocations WHERE id = v_id;
+  -- CANARY PROVENANCE, before any state change. The gate-bypass this closes: a SMOKE whose
+  -- switch assertion was wrong actually sends; its dispatch run later gets handed to the canary
+  -- command, this function completes the SMOKE invocation, and activation treats an accidental
+  -- send as the reviewed canary. A run may only be reconciled AS a canary when its invocation
+  -- IS the canary artifact's — and recorded which pg_net request it dispatched.
+  IF v_purpose <> 'canary' OR v_source <> 'canary_invoke.sql' THEN
+    RAISE EXCEPTION 'resolve_invocation_for_canary_run: run % is bound to a % invocation (source %), not the canary — an accidental send by another step can NEVER be reconciled as the reviewed canary',
+      p_worker_run_id, v_purpose, v_source;
+  END IF;
+  IF v_net IS NULL THEN
+    RAISE EXCEPTION 'resolve_invocation_for_canary_run: invocation % never recorded its pg_net request — dispatch provenance is missing', v_id;
+  END IF;
   IF v_status = 'abandoned' THEN
     RAISE EXCEPTION 'resolve_invocation_for_canary_run: invocation % for run % was ABANDONED — reconciling over it would overwrite that verdict', v_id, p_worker_run_id;
   END IF;
@@ -252,7 +268,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.resolve_invocation_for_canary_run(uuid) IS
-  'N4: canary_reconcile''s closing step. Finds THE invocation bound to the given run — zero or many RAISE (zero means the worker never claimed the operator''s invocation, so the reconciled run is not the one the canary caused) — and completes it through the evidence-demanding generic resolve. Idempotent: already-completed returns already_resolved.';
+  'N4: canary_reconcile''s closing step. Finds THE invocation bound to the given run — zero or many RAISE (zero means the worker never claimed the operator''s invocation, so the reconciled run is not the one the canary caused) — REQUIRES canary provenance (purpose=canary, source=canary_invoke.sql, recorded pg_net request: a smoke that accidentally sent can never be reconciled as the canary) and completes it through the evidence-demanding generic resolve. Idempotent: already-completed returns already_resolved.';
 
 REVOKE ALL ON FUNCTION public.resolve_invocation_for_canary_run(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.resolve_invocation_for_canary_run(uuid) TO service_role;
