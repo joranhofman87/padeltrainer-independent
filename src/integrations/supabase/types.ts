@@ -11353,6 +11353,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      sweep_notification_manage_capabilities: {
+        Args: { p_limit?: number }
+        Returns: number
+      }
       unclaim_rebook_member_open_notice: {
         Args: { _cycle_id: string }
         Returns: undefined
