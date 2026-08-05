@@ -70,7 +70,8 @@ beforeAll(async () => {
     // N5 LAST, as the real chain applies it (20261028 > 20261017): it recreates the claim AND the
     // materializer, so applying it earlier would let the kill-switch migration overwrite the
     // activation-boundary gate and the suite would prove nothing about it.
-    '20261028100000_notif_n5_activation_boundary.sql']) {
+    '20261028100000_notif_n5_activation_boundary.sql',
+    '20261030100000_notif_n5_round2_dispatch_boundary.sql']) {
     await c.query(readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8'));
   }
   // N5: this suite describes a RUNNING digest pipeline, so the digest path must be OPEN — through
@@ -855,6 +856,60 @@ describe('N5 — the digest path may not shape historical work into groups', () 
       } finally {
         // …and re-open it for the rest of the suite, through the REAL RPC
         await c.query(`SELECT public.record_notification_activation_boundary('email:digest','re-opened after the inert case', gen_random_uuid())`);
+      }
+    } finally { await c.end(); }
+  });
+});
+
+describe('N5 round 2 — a group that predates the boundary never reaches the provider', () => {
+  it('an EXISTING group holding a pre-boundary member is passed over by the claim, and nothing is sent', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const rpc = mkRpc(c);
+      const nowIso = NOW.toISOString();
+      // form the group legitimately (post-boundary), then BACKDATE its member: the shape a group
+      // materialized before the path was opened would have, and the one round 1 could not see —
+      // materialization had already happened, so its gate no longer applies.
+      await seedDigestGroup(c, 'n5b:1', 'n5b@example.com', [{ title: 'historical' }]);
+      const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: nowIso, p_max_groups: 100, p_max_members_per_call: 100 });
+      const g = (await c.query(`SELECT id, state FROM public.notification_digest_groups WHERE recipient_key='n5b:1'`)).rows[0];
+      expect(g.state).toBe('pending');
+      await c.query(
+        `UPDATE public.notification_outbox SET created_at = now() - interval '9 hours' WHERE digest_group_id = $1`, [g.id]);
+
+      const drun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'dispatch' });
+      const claimed = await rpc('claim_notification_digest_group', { p_run_id: drun, p_channel: 'email', p_now: nowIso, p_worker: 'W' });
+      expect(claimed).toBeNull();                       // passed over: no ownership, so no send path
+      const after = (await c.query(`SELECT state, locked_by, terminal_at FROM public.notification_digest_groups WHERE id=$1`, [g.id])).rows[0];
+      expect(after).toMatchObject({ state: 'pending', locked_by: null, terminal_at: null });   // and NOT terminalized behind the operator's back
+
+      // …while a group whose members are all post-boundary is claimed normally
+      await seedDigestGroup(c, 'n5b:2', 'n5b2@example.com', [{ title: 'fresh' }]);
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: nowIso, p_max_groups: 100, p_max_members_per_call: 100 });
+      const g2 = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='n5b:2'`)).rows[0];
+      expect(await rpc('claim_notification_digest_group', { p_run_id: drun, p_channel: 'email', p_now: nowIso, p_worker: 'W' })).toBe(g2.id);
+    } finally { await c.end(); }
+  });
+
+  it('an INERT digest path dispatches nothing, even for a group that already exists', async () => {
+    const c = conn(); await c.connect();
+    try {
+      const rpc = mkRpc(c);
+      await seedDigestGroup(c, 'n5b:3', 'n5b3@example.com', [{ title: 'x' }]);
+      const mrun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'materialize' });
+      await rpc('materialize_notification_digest_groups', { p_run_id: mrun, p_channel: 'email', p_now: NOW.toISOString(), p_max_groups: 100, p_max_members_per_call: 100 });
+      const g = (await c.query(`SELECT id FROM public.notification_digest_groups WHERE recipient_key='n5b:3'`)).rows[0];
+      await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard`);
+      await c.query(`UPDATE public.notification_activation_boundaries
+                        SET state='inert', boundary_at=NULL, request_id=NULL, reason=NULL WHERE path='email:digest'`);
+      await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard`);
+      try {
+        const drun = await rpc('start_notification_worker_run', { p_worker: 'W', p_channel: 'email', p_phase: 'dispatch' });
+        expect(await rpc('claim_notification_digest_group', { p_run_id: drun, p_channel: 'email', p_now: NOW.toISOString(), p_worker: 'W' })).toBeNull();
+        expect((await c.query(`SELECT locked_by FROM public.notification_digest_groups WHERE id=$1`, [g.id])).rows[0].locked_by).toBeNull();
+      } finally {
+        await c.query(`SELECT public.record_notification_activation_boundary('email:digest','re-opened after the inert dispatch case', gen_random_uuid())`);
       }
     } finally { await c.end(); }
   });

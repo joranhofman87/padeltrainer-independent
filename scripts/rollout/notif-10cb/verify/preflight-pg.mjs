@@ -981,12 +981,24 @@ try {
     rec('...recording the request id the runbook printed, so an ambiguous retry replays it',
       after.request_id === bndReq, `${after.request_id} vs ${bndReq}`);
   }
-  // Re-running is not a silent no-op: zero rows changed means the world was not what the operator
-  // thought, and that is worth stopping for.
+  // Re-running is not a silent no-op. With a NEW request id it is refused at the boundary: the
+  // path is already open, and this step must not enable routing against a boundary another
+  // request established.
   {
     const err = await enableEngine();
-    rec('enable-engine REFUSES a second time rather than silently doing nothing',
-      !!err && err.includes('exactly one event row was enabled'), err ?? 'it passed');
+    rec('enable-engine REFUSES a second time with a NEW request id',
+      !!err && err.includes('must not ride on a boundary it cannot account for'), err ?? 'it passed');
+  }
+  // …while the EXACT replay — the ambiguous-commit recovery the runbook advertises — SUCCEEDS.
+  // Before round 2 it could not: the event was already enabled, so the one-row assertion aborted
+  // every retry and --boundary-request-id was advice that could not be followed.
+  {
+    const err = await enableEngine(bndReq);
+    rec('...and the EXACT replay (same boundary request id) succeeds — the advertised recovery',
+      err === null, err ?? '');
+    const after = (await c.query(
+      `SELECT boundary_at, request_id FROM public.notification_activation_boundaries WHERE path='email:digest'`)).rows[0];
+    rec('...leaving the boundary exactly where it was', after.request_id === bndReq, `${after.request_id}`);
   }
   // THE ORDERING INVARIANT: never enable the engine while the cron is armed.
   await seedBaseline();

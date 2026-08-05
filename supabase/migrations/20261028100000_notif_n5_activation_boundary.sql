@@ -33,14 +33,29 @@
 -- Both refuse everything while the path is inert, and both refuse pre-boundary rows while it is
 -- active. Neither mutates the ledger when refusing — the same doctrine as the kill gate.
 --
--- ── THE SEEDS, and why email:instant is not a fresh boundary ────────────────────────────────
--- email:instant is LIVE and has been sending for months (its cron runs every two minutes).
--- Stamping it with now() would strand every row enqueued in the minutes before this migration —
--- real mail, silently dropped. Its boundary is therefore the earliest row the outbox has ever
--- held: every existing row is at or after it, so the seed cannot exclude live work, and it
--- states the truth that this path was activated before the contract existed. The two inert paths
--- get their boundary from the operator at the moment they are opened, which is what N7's
--- enable-engine step does.
+-- ── THE SEEDS, and why email:instant's boundary is UNBOUNDED ────────────────────────────────
+-- email:instant is LIVE and has been sending for months (its cron runs every two minutes), so
+-- its boundary can only be a value that excludes NOTHING. Two weaker choices were written and
+-- rejected: now() strands every row enqueued in the minutes before this migration, and
+-- min(created_at) is a SNAPSHOT — an enqueue transaction that began earlier but commits after
+-- this statement carries an older created_at (DEFAULT now() is transaction-start time), and its
+-- mail would be permanently ineligible. There is no lock that closes that: SHARE mode delays the
+-- insert, it does not move the timestamp the waiting transaction already took.
+--
+-- So the honest boundary for a path that was activated before this contract existed is
+-- '-infinity': the row records WHEN it was opened (unbounded, i.e. before we were counting) and
+-- why, and the enforcement predicate is trivially true for every row. The invariant this
+-- contract exists for — that ACTIVATING a path cannot release history — is about paths opened
+-- from here on, and retro-closing a running path would drop live mail rather than protect
+-- anyone. Closing email:instant is what the channel KILL switch is for.
+--
+-- The two inert paths get their boundary from the operator at the moment they are opened, which
+-- is what the enable-engine step does.
+--
+-- (This seed was corrected in place rather than by a later migration: the guard makes an active
+-- boundary immutable — deliberately — so a follow-up could only change it by disabling the very
+-- protection that makes the contract worth anything. It has never been applied outside test
+-- harnesses, which rebuild the chain from scratch.)
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 
 CREATE TABLE public.notification_activation_boundaries (
@@ -111,13 +126,13 @@ REVOKE ALL ON public.notification_activation_boundaries FROM PUBLIC, anon, authe
 GRANT SELECT ON public.notification_activation_boundaries TO service_role;   -- admin reads
 
 -- ── the seeds ──────────────────────────────────────────────────────────────────────────────
--- email:instant, the live path. Its boundary is the earliest row this outbox has ever held (or
--- now() on an empty database), so every existing row is at or after it: seeding this contract
--- onto a running path cannot silently drop mail that is already queued.
+-- email:instant, the live path: UNBOUNDED, because it was opened before anyone was recording
+-- boundaries and no timestamp computed here can be proven not to exclude mail that is already
+-- queued (see the header). The enforcement predicate then admits every row, which is exactly
+-- today's behaviour — this seed changes what the system SAYS, not what it sends.
 INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason)
-SELECT 'email:instant', 'active',
-       coalesce((SELECT min(o.created_at) FROM public.notification_outbox o), now()),
-       'activated before the no-backlog contract existed; the boundary is the earliest row the outbox has ever held, so no queued mail is excluded'
+VALUES ('email:instant', 'active', '-infinity'::timestamptz,
+        'activated before the no-backlog contract existed: the boundary is unbounded, because no computed instant can be proven not to exclude mail already queued. Use the channel kill switch to stop this path.')
 ON CONFLICT (path) DO NOTHING;
 
 -- the two paths that have never sent anything. The operator opens them, once, at rollout.

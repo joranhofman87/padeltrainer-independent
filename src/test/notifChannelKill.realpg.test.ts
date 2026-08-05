@@ -199,6 +199,7 @@ beforeAll(async () => {
   // N5: the no-backlog activation boundary — the claim under test now gates on it
   await c.query(MIG('20261028100000_notif_n5_activation_boundary.sql'));
   await c.query(MIG('20261029100000_notif_n5_readiness_and_backlog_disposal.sql'));
+  await c.query(MIG('20261030100000_notif_n5_round2_dispatch_boundary.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -1322,6 +1323,24 @@ describe('N5 — the activation boundary: no historical work can become eligible
     await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
   });
 
+  it('the LIVE path is seeded UNBOUNDED: the contract cannot retro-drop mail that is already queued', async () => {
+    // the shipped seed, not the suite baseline — read from the migration the way production runs it
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`DELETE FROM public.notification_activation_boundaries WHERE path = 'email:instant';`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    const seed = MIG('20261028100000_notif_n5_activation_boundary.sql')
+      .match(/INSERT INTO public\.notification_activation_boundaries \(path, state, boundary_at, reason\)[\s\S]*?ON CONFLICT \(path\) DO NOTHING;/)?.[0];
+    if (!seed) throw new Error('the email:instant seed was not found in the migration');
+    await c.query(seed);
+    const row = (await c.query(`SELECT * FROM public.notification_activation_boundaries WHERE path='email:instant'`)).rows[0];
+    expect(row.state).toBe('active');
+    expect(String(row.boundary_at).toLowerCase()).toContain('-infinity');   // unbounded: excludes nothing
+    // a row created BEFORE any snapshot the migration could have taken is still claimable — the
+    // concurrent-enqueue case a min(created_at) boundary would have silently dropped
+    const ancient = await seedRow({ created_at: new Date(Date.now() - 90 * 24 * 3600_000).toISOString() });
+    expect((await claim(c)).map((r: { outbox_id: string }) => r.outbox_id)).toContain(ancient);
+  });
+
   it('THE INVARIANT: a row created BEFORE the boundary is never claimed — not as fresh work, not as an orphan reclaim', async () => {
     const before = await seedRow({ created_at: new Date(Date.now() - 2 * 3600_000).toISOString() });
     const after = await seedRow();
@@ -1457,6 +1476,8 @@ describe('N5 — the readiness envelope proves the boundary, and the backlog has
     const c1 = await check('pre_activation_backlog_eligible_count');
     expect(c1.status).toBe('fail');
     expect(c1.value).toBe(2);                                    // the fresh row is not backlog
+    expect(c1.detail).toContain('2 pending row(s)');
+    expect(c1.detail).toContain('0 non-terminal group(s)');      // the same fact one hop later
     expect(c1.detail).toContain('admin_dispose_pre_boundary_backlog');
 
     const r = await dispose('email:instant');
