@@ -286,3 +286,11 @@ verify_jwt = false
 # chain. Must stay false so the service-role caller isn't 401'd at the gateway.
 [functions.send-campaign-emails]
 verify_jwt = false
+
+# N2 S5: PUBLIC manage endpoints — the SIGNED capability token is the auth. A mailbox provider
+# (one-click) and a logged-out marketing recipient (manage page) cannot carry a Supabase JWT.
+[functions.notif-unsubscribe-one-click]
+verify_jwt = false
+
+[functions.notif-manage]
+verify_jwt = false

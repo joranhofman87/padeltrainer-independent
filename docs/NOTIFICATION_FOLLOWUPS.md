@@ -170,8 +170,13 @@ raised by review against the shipped schema and must be satisfied where named.
    owner-preview mail. Owner precondition (item 8) still stands before DEPLOY: classify the
    existing templates; the marketing default merely makes misclassification fail safe.
 
-7. **Retention (S5).** The sweep may delete a capability only once its source can never retry —
-   `expires_at` more than 30 days past — and never a row that is merely revoked.
+7. ~~**Retention (S5).**~~ **CLOSED in S5**: `sweep_notification_manage_capabilities(p_limit)`
+   (20261014140000) deletes only rows more than 30 days past expiry — revoked rows included,
+   through the same door, never early (revocation is audit state; deleting it would turn a
+   truthful 'revoked' answer into 'missing'). Bounded 1..10000, SKIP LOCKED, service_role-only.
+   Suppression provenance survives the sweep (no FK, by design — realpg-proven). **NOT wired to
+   any scheduler**: destructive cleanup is an owner gate; the deploy runbook gives the owner the
+   cron to install.
 7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising
    `min_mintable_version` serializes against MINT (the mint holds `FOR SHARE` on the key-state
    row), but it cannot serialize against a provider send: between the mint's commit and the moment
@@ -192,6 +197,21 @@ raised by review against the shipped schema and must be satisfied where named.
    ops alert — never as a transient RPC failure, which would poison-retry a send that can never
    succeed, since nothing about it can change. The send identity is preserved; no capability is
    ever rewritten.
+7d. **S5 SHIPPED (2026-08-05): the endpoints behind the frozen URLs.**
+   `notif-unsubscribe-one-click` (RFC 8058 POST target; GET NEVER applies — mailbox scanners
+   prefetch List-Unsubscribe URLs, so GET redirects to the manage page) and `notif-manage`
+   (the page's context/apply API), both `verify_jwt = false` — the SIGNED token is the auth.
+   The fail-direction table lives in `_shared/notif-manage-core.ts` under 15 Deno tests, and its
+   load-bearing rule is S1's twice-relearned lesson: AN OPERATIONAL FAILURE IS NEVER A SUCCESS —
+   key state unreadable, key material missing, or an RPC error all answer 503 so the provider
+   retries; invalid probes are 400; dead links are 410; only applied/already_applied are 200.
+   Context binds the SIGNED generation to the STORED one via `bindManageTokenToRow` (the
+   decorative-bind mutant is killed by a dedicated mismatch test). `/manage-email` is the PUBLIC
+   page (outside /app and every layout): token scrubbed from the address bar before anything else
+   (history sync, referrers and screenshots are not covered by the analytics allow-list),
+   redacted context only, apply strictly on the button. Analytics stayed safe by construction —
+   pageview URLs are overridden and query params allow-listed (`trackingPrivacy.ts`).
+
 8. **Owner precondition before S3 deploys.** Every existing `onboarding_email_templates` row lands
    on `delivery_class='marketing'` (the suppressible direction). The owner must reclassify the live
    templates (`required_service` where the mail is genuinely obligatory) before S3's suppression

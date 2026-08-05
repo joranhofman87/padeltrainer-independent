@@ -917,5 +917,19 @@
     "hours": "{{count}} uur",
     "days": "{{count}} dagen",
     "week": "7 dagen"
+  },
+  "manageEmail": {
+    "title": "Afmelden voor marketing-e-mail",
+    "confirmBody": "Geen marketing-e-mail meer van {{scope}} aan {{address}}? Serviceberichten over je boekingen blijven gewoon aankomen.",
+    "confirm": "Afmelden",
+    "applying": "Afmelden…",
+    "doneTitle": "Je bent afgemeld",
+    "doneBody": "Er wordt geen marketing-e-mail meer naar dit adres gestuurd.",
+    "alreadyBody": "Dit adres was al afgemeld. Er wordt geen marketing-e-mail meer gestuurd.",
+    "deadTitle": "Deze link is niet meer actief",
+    "deadBody": "Afmeldlinks verlopen na verloop van tijd. Gebruik de link in een recentere e-mail, of mail support@padeltrainer.ai — dan regelen wij het.",
+    "errorTitle": "Er ging iets mis",
+    "errorBody": "We konden dit nu niet verwerken. Je verzoek is niet verloren — probeer het opnieuw.",
+    "retry": "Opnieuw proberen"
   }
 }

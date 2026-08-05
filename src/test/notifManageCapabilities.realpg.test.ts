@@ -157,6 +157,7 @@ beforeAll(async () => {
   `);
   await c.query(MIG('20261014120000_notif_n2_footer_policy.sql'));
   await c.query(MIG('20261014130000_notif_n2_s3_capability_source_reader.sql'));
+  await c.query(MIG('20261014140000_notif_n2_s5_capability_sweep.sql'));
 }, 180_000);
 
 afterAll(async () => {
@@ -707,6 +708,75 @@ describe("onboarding queue 'suppressed' status (S3)", () => {
     await expect(c.query(`INSERT INTO public.onboarding_email_queue (status) VALUES ('vanished')`))
       .rejects.toThrow(/onboarding_email_queue_status_check/);
     await c.query(`DELETE FROM public.onboarding_email_queue`);
+  });
+});
+
+describe('sweep_notification_manage_capabilities (S5 retention)', () => {
+  const ageTo = async (capId: string, expiresAt: string) => {
+    // Expiry cannot be minted in the past; manufacture age the sanctioned way (guard off/on).
+    await c.query(`ALTER TABLE public.notification_manage_capabilities DISABLE TRIGGER trg_notif_manage_cap_guard_immutable`);
+    await c.query(`UPDATE public.notification_manage_capabilities SET expires_at = ${expiresAt} WHERE id = $1`, [capId]);
+    await c.query(`ALTER TABLE public.notification_manage_capabilities ENABLE TRIGGER trg_notif_manage_cap_guard_immutable`);
+  };
+  const count = async () =>
+    (await c.query(`SELECT count(*)::int AS n FROM public.notification_manage_capabilities`)).rows[0].n as number;
+
+  it('deletes ONLY rows more than 30 days past expiry — the retention floor', async () => {
+    const doomed = await mint({ source_id: SEND_A });
+    const recent = await mint({ source_id: SEND_B });
+    await ageTo(doomed.capability_id, `now() - interval '31 days'`);
+    await ageTo(recent.capability_id, `now() - interval '29 days'`); // expired, but inside the floor
+    const before = await count();
+    const swept = (await c.query(`SELECT public.sweep_notification_manage_capabilities(100) AS n`)).rows[0].n;
+    expect(swept).toBe(1);
+    expect(await count()).toBe(before - 1);
+    const left = await c.query(`SELECT source_id FROM public.notification_manage_capabilities WHERE source_id IN ($1,$2)`, [SEND_A, SEND_B]);
+    expect(left.rows.map((r) => r.source_id)).toEqual([SEND_B]);
+  });
+
+  it('a REVOKED row inside the floor survives — revocation is audit state, not a deletion trigger', async () => {
+    const cap = await mint({ source_id: SEND_A });
+    await c.query(`UPDATE public.notification_manage_capabilities SET revoked_at = now() WHERE id = $1`, [cap.capability_id]);
+    const swept = (await c.query(`SELECT public.sweep_notification_manage_capabilities(100) AS n`)).rows[0].n;
+    expect(swept).toBe(0);
+    const ctx = await c.query(`SELECT status FROM public.get_notification_manage_context($1)`, [cap.capability_id]);
+    expect(ctx.rows[0].status).toBe('revoked'); // still answers truthfully, not 'missing'
+  });
+
+  it('sweeping a capability leaves the suppression it produced — the audit outlives the credential', async () => {
+    const cap = await mint({ source_id: SEND_A });
+    await c.query(`SELECT public.record_marketing_suppression('person@example.com','academy',$1,'one_click',$2,NULL)`,
+      [ACADEMY, cap.capability_id]);
+    await ageTo(cap.capability_id, `now() - interval '40 days'`);
+    expect((await c.query(`SELECT public.sweep_notification_manage_capabilities(100) AS n`)).rows[0].n).toBe(1);
+    const supp = await c.query(
+      `SELECT capability_id FROM public.email_marketing_suppression WHERE capability_id = $1`, [cap.capability_id]);
+    expect(supp.rows).toHaveLength(1);
+    expect((await c.query(`SELECT public.is_marketing_suppressed('person@example.com','academy',$1) AS s`, [ACADEMY])).rows[0].s).toBe(true);
+  });
+
+  it('is BOUNDED by the limit, and refuses a nonsense limit', async () => {
+    const a = await mint({ source_id: SEND_A });
+    const b = await mint({ source_id: SEND_B });
+    await ageTo(a.capability_id, `now() - interval '40 days'`);
+    await ageTo(b.capability_id, `now() - interval '50 days'`);
+    expect((await c.query(`SELECT public.sweep_notification_manage_capabilities(1) AS n`)).rows[0].n).toBe(1);
+    expect((await c.query(`SELECT public.sweep_notification_manage_capabilities(1) AS n`)).rows[0].n).toBe(1);
+    expect((await c.query(`SELECT public.sweep_notification_manage_capabilities(1) AS n`)).rows[0].n).toBe(0);
+    await expect(c.query(`SELECT public.sweep_notification_manage_capabilities(0)`)).rejects.toThrow(/limit/);
+    await expect(c.query(`SELECT public.sweep_notification_manage_capabilities(NULL)`)).rejects.toThrow(/limit/);
+  });
+
+  it('service_role only', async () => {
+    const as = async (role: string) => {
+      await c2.query(`SET ROLE ${role}`);
+      try { await c2.query(`SELECT public.sweep_notification_manage_capabilities(1)`); return null; }
+      catch (e) { return (e as { code?: string }).code ?? 'error'; }
+      finally { await c2.query(`RESET ROLE`); }
+    };
+    expect(await as('authenticated')).toBe('42501');
+    expect(await as('anon')).toBe('42501');
+    expect(await as('service_role')).toBeNull();
   });
 });
 

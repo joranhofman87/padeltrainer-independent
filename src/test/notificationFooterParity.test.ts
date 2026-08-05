@@ -207,3 +207,46 @@ describe('S3: onboarding drip marketing layer wiring', () => {
     expect(src).toContain('...(extraHeaders ? { headers: extraHeaders } : {})');
   });
 });
+
+describe('S5: the frozen URL shapes are now MOUNTED', () => {
+  // S3 froze both addresses into outbound mail; S5 must serve them. A drift on either side is a
+  // 404 inside the one email whose purpose is letting people leave.
+  it('/manage-email is a real route, outside every layout', () => {
+    const router = read('src/components/DomainRouter.tsx');
+    expect(router).toContain('path="/manage-email"');
+    expect(router).toContain('ManageEmail');
+  });
+
+  it('the one-click function exists under exactly the frozen name', () => {
+    const marketing = read('supabase/functions/_shared/marketing-email.ts');
+    expect(marketing).toContain('export const ONE_CLICK_FUNCTION_NAME = "notif-unsubscribe-one-click"');
+    expect(() => read('supabase/functions/notif-unsubscribe-one-click/index.ts')).not.toThrow();
+  });
+
+  it('both endpoints are declared verify_jwt=false — a provider or a guest cannot carry a JWT', () => {
+    const config = read('supabase/config.toml');
+    expect(config).toMatch(/\[functions\.notif-unsubscribe-one-click\]\s*\nverify_jwt = false/);
+    expect(config).toMatch(/\[functions\.notif-manage\]\s*\nverify_jwt = false/);
+  });
+
+  it('the page constant and the mounted route agree', () => {
+    const marketing = read('supabase/functions/_shared/marketing-email.ts');
+    expect(marketing).toContain('export const MANAGE_EMAIL_PAGE_URL = "https://padeltrainer.ai/manage-email"');
+  });
+
+  it('the one-click wrapper never applies on GET — scanners prefetch List-Unsubscribe URLs', () => {
+    const fn = read('supabase/functions/notif-unsubscribe-one-click/index.ts');
+    const getIdx = fn.indexOf('req.method === "GET"');
+    // the CALL site, not the import at the top of the file
+    const applyIdx = fn.indexOf('await handleOneClickPost(');
+    expect(getIdx).toBeGreaterThan(0);
+    // The GET branch returns a redirect before the POST handler is ever reached.
+    // The GET branch runs from the method test to its early return; the apply handler may only
+    // appear after it. (The first oneClickGetRedirect occurrence in the FILE is the import, so
+    // the branch is sliced from the method test forward.)
+    const getBranch = fn.slice(getIdx, fn.indexOf('if (req.method !== "POST")'));
+    expect(getBranch).toContain('oneClickGetRedirect');
+    expect(getBranch).not.toContain('handleOneClickPost');
+    expect(applyIdx).toBeGreaterThan(getIdx);
+  });
+});

@@ -100,6 +100,7 @@ const EditProfile = lazy(() => import('@/pages/EditProfile'));
 const FollowingList = lazy(() => import('@/pages/FollowingList'));
 const NotificationSettings = lazy(() => import('@/pages/NotificationSettings'));
 const NotificationSettingsEntry = lazy(() => import('@/pages/NotificationSettingsEntry'));
+const ManageEmail = lazy(() => import('@/pages/ManageEmail'));
 
 // Trainer pages
 const TrainerDashboard = lazy(() => import('@/pages/TrainerDashboard'));
@@ -402,6 +403,11 @@ export function DomainRouter() {
           <Route path="invoices/:invoiceId/edit" element={<AcademyEditInvoice />} />
         </Route>
         <Route path="/app/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
+
+        {/* N2 S5: the PUBLIC manage page email unsubscribe links open. Outside /app and outside
+            every layout on purpose — a marketing recipient may have no account, and the signed
+            token in the URL is the entire authority. */}
+        <Route path="/manage-email" element={<ManageEmail />} />
 
         {/* ===== SHORT-LINK REDIRECTS (social-friendly) ===== */}
         <Route path="/a/:slug" element={<ShortLinkRedirect kind="academy" />} />
