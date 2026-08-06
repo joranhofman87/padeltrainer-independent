@@ -491,6 +491,20 @@ Prerequisites:
    PR 10 migrates those senders and the group goes.
    The route + the academy-managed-trainer exemption are unchanged: outbound email footers
    deep-link to `settings/notifications` as their unsubscribe target.
+   **N1 amendments (2026-08-05, player-settings gap closure):** the page adopted the shared
+   AppPage/PageHeader shell + `flushOnMobileCardClass` (it was the only settings surface
+   hand-rolling its shell, double-padding mobile); MARKETING events (`category='marketing'`)
+   render in their own labelled group with an opt-in description instead of sitting
+   undistinguished between service rows; a failed catalog/prefs/legacy read now renders an
+   ERROR STATE with retry instead of catalog defaults dressed as stored choices (the WhatsApp
+   consent read keeps its documented fail-safe-to-not-opted-in posture); the back control
+   navigates to the per-role settings hub (a deep-linked tab has no history for `navigate(-1)`);
+   the heading/subtitle are channel-neutral ("Notifications") now that the page manages
+   WhatsApp; the 10c-b `open_slots_player` event got its missing en/nl labels, and
+   `src/test/notificationEventLabels.test.ts` pins EVERY migration-seeded event key to a label
+   in BOTH languages so a future seed cannot render internal catalog keys to users again; the
+   ACADEMY settings hub finally links the page (player + trainer hubs already did). The
+   footer-path-by-recipient-role gap is deferred to N2 (NOTIFICATION_FOLLOWUPS.md).
 9. WhatsApp consent + phone normalization + WhatsApp worker + provider webhook.
    **Built and reviewable ahead of Twilio auth; SHIPPED DISABLED.** All Twilio/Meta side
    effects stay blocked until the owner confirms credentials — no templates created, none

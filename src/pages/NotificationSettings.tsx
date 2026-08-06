@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,9 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { FullPageLoader } from '@/components/ui/page-spinner';
+import { AppPage } from '@/components/ui/app-page';
+import { PageHeader } from '@/components/ui/page-header';
+import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
@@ -130,6 +133,7 @@ const STAFF_AUDIENCES = new Set(['academy_manager', 'trainer']);
 export default function NotificationSettings() {
   const { user, role, isAcademyManager, loading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { t } = useTranslation('common');
 
@@ -139,10 +143,20 @@ export default function NotificationSettings() {
   const [revoking, setRevoking] = useState(false);
   const [legacy, setLegacy] = useState<Record<string, Frequency>>({});
   const [dataLoading, setDataLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   // academy_manager + trainer are ONE staff bucket (see header note).
   const isStaff = Boolean(isAcademyManager) || role === 'trainer';
+
+  // This route is mounted under all three role layouts AND deep-linked from email footers as the
+  // unsubscribe target — a fresh tab has NO history, so navigate(-1) is a dead control for exactly
+  // the person the deep link serves. A fixed per-role settings hub always works.
+  const backTarget = location.pathname.startsWith('/app/academy')
+    ? '/app/academy/settings'
+    : location.pathname.startsWith('/app/trainer')
+      ? '/app/trainer/settings'
+      : '/app/player/settings';
 
   useEffect(() => {
     if (!loading && !user) navigate('/app/auth');
@@ -162,6 +176,14 @@ export default function NotificationSettings() {
         supabase.from('notification_preferences').select('*').eq('user_id', user.id).maybeSingle(),
         supabase.rpc('get_my_whatsapp_consent'),
       ]);
+
+      // PostgREST builders RESOLVE with {data:null,error} rather than throwing, so an unchecked
+      // failure here would render every control at its catalog default AS IF that were the
+      // person's stored choice — a page that lies about what is configured. The WhatsApp consent
+      // read is deliberately NOT in this check: its documented failure posture is fail-safe to
+      // not-opted-in (controls stay disabled), which is the right degradation for that one read.
+      const failed = types.error ?? rows.error ?? v1.error;
+      if (failed) throw failed;
 
       setCatalog(
         ((types.data ?? []) as unknown as EventType[]).filter((e) => e.supports_email || e.supports_whatsapp),
@@ -184,8 +206,10 @@ export default function NotificationSettings() {
         legacyMap[k] = (legacyRow[k] as Frequency | null) ?? LEGACY_DEFAULTS[k];
       }
       setLegacy(legacyMap);
+      setLoadFailed(false);
     } catch (error) {
       logger.error('Failed to load notification settings', undefined, { error });
+      setLoadFailed(true);
     } finally {
       setDataLoading(false);
     }
@@ -318,6 +342,11 @@ export default function NotificationSettings() {
   const visible = catalog.filter((e) => (STAFF_AUDIENCES.has(e.audience) ? isStaff : true));
   const alwaysOn = visible.filter((e) => e.required_delivery);
   const configurable = visible.filter((e) => !e.required_delivery);
+  // Marketing is a DIFFERENT kind of mail from the service events around it — opt-in product
+  // news, not "your booking changed" — so it gets its own labelled group instead of sitting
+  // undistinguished between service rows.
+  const service = configurable.filter((e) => e.category !== 'marketing');
+  const marketing = configurable.filter((e) => e.category === 'marketing');
   const legacyKeys: LegacyKey[] = [...LEGACY_PLAYER, ...(isStaff ? LEGACY_STAFF : [])];
   // Only show the WhatsApp card at all if some visible event could use the channel.
   const anyWhatsApp = visible.some((e) => e.supports_whatsapp);
@@ -325,23 +354,100 @@ export default function NotificationSettings() {
   const eventLabel = (key: string) => t(`notifications.events.${key}.label`, key.replace(/_/g, ' '));
   const freqLabel = (f: Frequency) => t(`notifications.frequency.${f}`);
 
-  return (
-    <main className="container mx-auto max-w-3xl px-4 py-6 space-y-6">
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate(-1)} aria-label={t('back')}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            {t('notifications.heading')}
-          </h1>
-          <p className="text-sm text-muted-foreground">{t('notifications.subtitle')}</p>
-        </div>
+  const backButton = (
+    <Button variant="ghost" size="icon" onClick={() => navigate(backTarget)} aria-label={t('back')}>
+      <ArrowLeft className="h-4 w-4" />
+    </Button>
+  );
+  const header = (
+    <PageHeader
+      title={
+        <span className="flex items-center gap-2">
+          <Bell className="h-5 w-5" />
+          {t('notifications.heading')}
+        </span>
+      }
+      description={t('notifications.subtitle')}
+      actions={backButton}
+    />
+  );
+
+  // A failed load must not render catalog defaults as if they were the person's stored choices.
+  if (loadFailed) {
+    return (
+      <AppPage width="narrow" as="main">
+        {header}
+        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-load-error">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">
+              {t('notifications.loadError', "We couldn't load your notification settings.")}
+            </CardTitle>
+            <CardDescription>{t('notifications.saveErrorDescription', 'Please try again.')}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setDataLoading(true); load(); }}
+              data-testid="notification-settings-retry"
+            >
+              {t('notifications.loadErrorRetry', 'Try again')}
+            </Button>
+          </CardContent>
+        </Card>
+      </AppPage>
+    );
+  }
+
+  /** One preference row — identical markup for service and marketing groups. */
+  const renderEventRow = (e: EventType) => (
+    <div key={e.key} className="flex items-center justify-between gap-4" data-testid={`pref-row-${e.key}`}>
+      <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+      <div className="flex items-center gap-4">
+        {e.supports_email && (e.supports_digest ? (
+          <Select
+            value={effective(e).email}
+            onValueChange={(v) => saveEvent(e, { email: v as Frequency })}
+            disabled={savingKey === e.key}
+          >
+            <SelectTrigger id={`pref-${e.key}`} className="w-[130px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {FREQUENCIES.map((f) => <SelectItem key={f} value={f}>{freqLabel(f)}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Switch
+            id={`pref-${e.key}`}
+            checked={effective(e).email !== 'off'}
+            onCheckedChange={(on) => saveEvent(e, { email: on ? 'instant' : 'off' })}
+            disabled={savingKey === e.key}
+          />
+        ))}
+        {/* WhatsApp: only for events that support it, and only actionable once there
+            IS an opted-in contact — otherwise the toggle would promise a delivery
+            the resolver's second gate will always refuse. */}
+        {e.supports_whatsapp && (
+          <div className="flex items-center gap-2" data-testid={`wa-cell-${e.key}`}>
+            <MessageCircle className="h-4 w-4 text-muted-foreground" aria-hidden />
+            <Switch
+              id={`wa-${e.key}`}
+              aria-label={t('notifications.whatsapp.toggleFor', 'WhatsApp for {{event}}', { event: eventLabel(e.key) })}
+              checked={consent.optedIn && effective(e).whatsapp !== 'off'}
+              onCheckedChange={(on) => saveEvent(e, { whatsapp: on ? 'instant' : 'off' })}
+              disabled={!consent.optedIn || savingKey === e.key}
+            />
+          </div>
+        )}
       </div>
+    </div>
+  );
+
+  return (
+    <AppPage width="narrow" as="main">
+      {header}
 
       {anyWhatsApp && (
-        <Card data-testid="notification-settings-whatsapp">
+        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-whatsapp">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <MessageCircle className="h-4 w-4" />
@@ -369,59 +475,33 @@ export default function NotificationSettings() {
         </Card>
       )}
 
-      {configurable.length > 0 && (
-        <Card data-testid="notification-settings-configurable">
+      {service.length > 0 && (
+        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-configurable">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{t('notifications.sections.choose', 'Your notifications')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {configurable.map((e) => (
-              <div key={e.key} className="flex items-center justify-between gap-4" data-testid={`pref-row-${e.key}`}>
-                <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
-                <div className="flex items-center gap-4">
-                  {e.supports_email && (e.supports_digest ? (
-                    <Select
-                      value={effective(e).email}
-                      onValueChange={(v) => saveEvent(e, { email: v as Frequency })}
-                      disabled={savingKey === e.key}
-                    >
-                      <SelectTrigger id={`pref-${e.key}`} className="w-[130px]"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {FREQUENCIES.map((f) => <SelectItem key={f} value={f}>{freqLabel(f)}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Switch
-                      id={`pref-${e.key}`}
-                      checked={effective(e).email !== 'off'}
-                      onCheckedChange={(on) => saveEvent(e, { email: on ? 'instant' : 'off' })}
-                      disabled={savingKey === e.key}
-                    />
-                  ))}
-                  {/* WhatsApp: only for events that support it, and only actionable once there
-                      IS an opted-in contact — otherwise the toggle would promise a delivery
-                      the resolver's second gate will always refuse. */}
-                  {e.supports_whatsapp && (
-                    <div className="flex items-center gap-2" data-testid={`wa-cell-${e.key}`}>
-                      <MessageCircle className="h-4 w-4 text-muted-foreground" aria-hidden />
-                      <Switch
-                        id={`wa-${e.key}`}
-                        aria-label={t('notifications.whatsapp.toggleFor', 'WhatsApp for {{event}}', { event: eventLabel(e.key) })}
-                        checked={consent.optedIn && effective(e).whatsapp !== 'off'}
-                        onCheckedChange={(on) => saveEvent(e, { whatsapp: on ? 'instant' : 'off' })}
-                        disabled={!consent.optedIn || savingKey === e.key}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+            {service.map(renderEventRow)}
+          </CardContent>
+        </Card>
+      )}
+
+      {marketing.length > 0 && (
+        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-marketing">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('notifications.sections.marketing', 'Marketing')}</CardTitle>
+            <CardDescription>
+              {t('notifications.sections.marketingDesc', 'Optional product news. Stays off unless you turn it on.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {marketing.map(renderEventRow)}
           </CardContent>
         </Card>
       )}
 
       {legacyKeys.length > 0 && (
-        <Card data-testid="notification-settings-legacy">
+        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-legacy">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">{t('notifications.sections.other', 'Other notifications')}</CardTitle>
           </CardHeader>
@@ -448,7 +528,7 @@ export default function NotificationSettings() {
       )}
 
       {alwaysOn.length > 0 && (
-        <Card data-testid="notification-settings-always-on">
+        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-always-on">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Lock className="h-4 w-4" />
@@ -468,6 +548,6 @@ export default function NotificationSettings() {
           </CardContent>
         </Card>
       )}
-    </main>
+    </AppPage>
   );
 }

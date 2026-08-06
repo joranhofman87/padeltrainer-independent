@@ -3,6 +3,17 @@
 Durable record of out-of-scope findings surfaced during the notification migration, so they
 are not lost between PRs. Each has a spawned-task id where one exists.
 
+## Email-footer settings link is chosen by TYPE, not recipient role (found by the N1 audit, 2026-08-05; owner: N2)
+
+`send-email` picks the "manage notification preferences" footer path from the EMAIL TYPE
+(`send-email/index.ts` ~L1424): staff-type emails link `/app/trainer/settings/notifications`.
+An ACADEMY MANAGER receiving a staff-type email is deep-linked into the trainer layout and
+bounced by its route guard instead of landing on their own settings
+(`/app/academy/settings/notifications` exists and now has an in-app path from the academy
+settings hub — N1). Fix belongs to N2 (the footer/manage-preferences contract): resolve the
+footer path from the RECIPIENT's role, or use a role-agnostic entry route that forwards to the
+right layout. Out of N1's frontend-only scope because `send-email` is a hand-deployed edge fn.
+
 ## Recipient-discovery fail-open sweep (found by PR 10b adversarial verification, 2026-07-22)
 
 The pattern: an edge function resolves a RECIPIENT ADDRESS or the send AUDIENCE from a

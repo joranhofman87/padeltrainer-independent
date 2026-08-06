@@ -1,10 +1,13 @@
 {
   "notifications": {
     "title": "Notificatie-instellingen",
-    "heading": "E-mailnotificaties",
-    "subtitle": "Kies hoe en wanneer je e-mailmeldingen ontvangt van PadelTrainer.ai.",
+    "heading": "Meldingen",
+    "subtitle": "Kies hoe en wanneer PadelTrainer.ai je op de hoogte houdt.",
     "saved": "Notificatievoorkeuren opgeslagen!",
     "saveError": "Fout bij opslaan voorkeuren",
+    "saveErrorDescription": "Probeer het opnieuw.",
+    "loadError": "We konden je meldingsinstellingen niet laden.",
+    "loadErrorRetry": "Opnieuw proberen",
     "securityNote": "Essentiële account- en beveiligingsmeldingen kunnen niet worden uitgeschakeld.",
     "frequency": {
       "instant": "Direct",
@@ -107,6 +110,9 @@
       "booking_cancelled_staff": {
         "label": "Boeking geannuleerd (team)"
       },
+      "open_slots_player": {
+        "label": "Open plekken van gevolgde trainers"
+      },
       "session_reminder_player": {
         "label": "Herinnering training"
       },
@@ -157,7 +163,9 @@
       "choose": "Jouw notificaties",
       "other": "Overige notificaties",
       "alwaysOn": "Altijd verstuurd",
-      "alwaysOnDesc": "Bevestigingen, betaalbewijzen en beveiligingsmails kun je niet uitzetten."
+      "alwaysOnDesc": "Bevestigingen, betaalbewijzen en beveiligingsmails kun je niet uitzetten.",
+      "marketing": "Marketing",
+      "marketingDesc": "Optioneel productnieuws. Blijft uit tenzij je het aanzet."
     },
     "alwaysOn": "Altijd aan",
     "whatsapp": {
