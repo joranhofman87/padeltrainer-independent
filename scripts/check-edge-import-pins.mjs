@@ -40,8 +40,10 @@
 // with). The contract it satisfies, stated as properties the self-test enforces:
 //
 //   1. COMPLETE — every specifier the bundler would resolve is reported, in every syntax form:
-//      static, side-effect, `export … from`, `export * from`, `import x = require(…)`, dynamic,
-//      attributed, multi-line, braced, and specifiers carrying comments inside the clause.
+//      static, side-effect, `export … from`, `export * from`, `import x = require(…)`, a bare
+//      `require(…)`, dynamic, attributed, multi-line, braced, specifiers carrying comments inside
+//      the clause, and the `@jsxImportSource` pragma — which is a dependency edge with no import
+//      statement at all, so it must be read from pragma metadata rather than from the node tree.
 //   2. SOUND — nothing that is not a module specifier is reported: not text in a string, not a
 //      comment, not a regex literal, not a call to a method that happens to be named `import`.
 //   3. COMPUTED IS A VIOLATION — a dynamic import whose specifier is not a string literal
@@ -53,6 +55,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import os from "node:os";
 import ts from "typescript";
 
 export const FUNCTIONS_ROOT = "supabase/functions";
@@ -128,7 +131,7 @@ export function isPinned(spec) {
 /**
  * Parse one source file and return every module specifier in it.
  *
- * `{ specifiers: [{spec, line}], computed: [{line, expr}], parseError: string|null }`.
+ * `{ specifiers: [{spec, line}], computed: [{line, expr}], parseError: {line, message}|null }`.
  *
  * The TypeScript parser decides what is code, what is a comment, what is a string and what is a
  * regex literal. That is the whole reason it is here: those four distinctions are exactly what a
@@ -137,17 +140,21 @@ export function isPinned(spec) {
  * which is precisely the computed/literal boundary this guard needs.
  */
 export function parseModule(source, fileName = "module.ts") {
-  const kind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind);
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, scriptKindFor(fileName));
 
   // FAIL CLOSED. `createSourceFile` never throws — it recovers and returns a partial tree — so a
   // file it could not parse would otherwise be reported as having no imports, i.e. as clean.
   const diagnostics = sf.parseDiagnostics ?? [];
   if (diagnostics.length > 0) {
     const d = diagnostics[0];
-    const where = sf.getLineAndCharacterOfPosition(d.start ?? 0).line + 1;
-    const what = ts.flattenDiagnosticMessageText(d.messageText, " ");
-    return { specifiers: [], computed: [], parseError: `line ${where}: ${what}` };
+    return {
+      specifiers: [],
+      computed: [],
+      parseError: {
+        line: sf.getLineAndCharacterOfPosition(d.start ?? 0).line + 1,
+        message: ts.flattenDiagnosticMessageText(d.messageText, " "),
+      },
+    };
   }
 
   const specifiers = [];
@@ -175,11 +182,40 @@ export function parseModule(source, fileName = "module.ts") {
       if (arg && ts.isStringLiteralLike(arg)) specifiers.push({ spec: arg.text, line: lineOf(arg) });
       else computed.push({ line: lineOf(arg ?? node), expr: `import(${arg ? arg.getText(sf).slice(0, 60) : ""})` });
     }
+    // `require("x")` — a CommonJS dependency edge. Only a BARE `require` identifier counts;
+    // `obj.require(…)` is an ordinary method call, exactly as with `import`.
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
+      const arg = node.arguments[0];
+      if (arg && ts.isStringLiteralLike(arg)) specifiers.push({ spec: arg.text, line: lineOf(arg) });
+      else if (arg) computed.push({ line: lineOf(arg), expr: `require(${arg.getText(sf).slice(0, 60)})` });
+    }
     ts.forEachChild(node, visit);
   };
   visit(sf);
 
+  // `/** @jsxImportSource https://esm.sh/preact@10 */` — the JSX transform resolves
+  // `<factory>/jsx-runtime` from this, so the pragma IS a dependency edge even though no import
+  // statement exists. It lives in source-file pragma metadata, not in the node tree, so the
+  // visitor above can never see it.
+  const jsxPragma = sf.pragmas?.get("jsximportsource");
+  for (const entry of jsxPragma === undefined ? [] : [].concat(jsxPragma)) {
+    const factory = entry?.arguments?.factory;
+    if (typeof factory !== "string" || factory === "") continue;
+    specifiers.push({
+      spec: factory,
+      line: sf.getLineAndCharacterOfPosition(entry.range?.pos ?? 0).line + 1,
+    });
+  }
+
   return { specifiers, computed, parseError: null };
+}
+
+/** Parse each extension as what it is, so syntax validation (and so fail-closed) is honest. */
+function scriptKindFor(fileName) {
+  if (fileName.endsWith(".tsx")) return ts.ScriptKind.TSX;
+  if (fileName.endsWith(".jsx")) return ts.ScriptKind.JSX;
+  if (/\.(js|mjs|cjs)$/.test(fileName)) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
 }
 
 /** Every external specifier in one source file, with line numbers. */
@@ -196,7 +232,7 @@ export function walk(dir, out = []) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const p = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(p, out);
-    else if (/\.(ts|tsx|js|mjs)$/.test(entry.name)) out.push(p);
+    else if (/\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/.test(entry.name)) out.push(p);
   }
   return out;
 }
@@ -206,7 +242,7 @@ export function findFloating(root = FUNCTIONS_ROOT) {
   for (const file of walk(root)) {
     const { specifiers, computed, parseError } = parseModule(fs.readFileSync(file, "utf8"), file);
     if (parseError) {
-      violations.push({ file, line: 1, spec: parseError, kind: "unparseable" });
+      violations.push({ file, line: parseError.line, spec: parseError.message, kind: "unparseable" });
       continue;
     }
     for (const { spec, line } of specifiers) {
@@ -428,11 +464,58 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
     assert(computedImportsIn(src).length === 0, `a .import() method call (${label}) was reported as computed`);
   }
 
+  // A JSX import-source pragma IS a dependency edge — the transform resolves
+  // `<factory>/jsx-runtime` from it — but it lives in pragma metadata, not in the node tree, so a
+  // visitor alone can never see it.
+  const pragmaSrc = "/** @jsxImportSource https://esm.sh/preact@10 */\nexport const v = <div />;\n";
+  const pragmaSpecs = specifiersIn(pragmaSrc, "view.tsx").map((s) => s.spec);
+  assert(pragmaSpecs.includes("https://esm.sh/preact@10"), `jsxImportSource pragma not scanned (found: ${pragmaSpecs.join(", ") || "nothing"})`);
+  assert(!isPinned("https://esm.sh/preact@10"), "the pragma fixture must be a FLOATING specifier to be meaningful");
+
+  // `require("x")` is a CommonJS dependency edge; `obj.require(…)` is an ordinary method call.
+  assert(specifiersIn('const x = require("npm:pkg@2");')[0]?.spec === "npm:pkg@2", "require() specifier not extracted");
+  assert(specifiersIn('const x = obj.require("npm:pkg@2");').length === 0, "obj.require() was extracted as a module load");
+  assert(computedImportsIn("const x = require(spec);").length === 1, "computed require() not reported");
+
   // FAIL CLOSED: a file that will not parse is a violation, never a silent "clean". Without this
   // the parser's error recovery would return an empty import list and the file would pass.
-  const broken = parseModule('import { x from "npm:pkg@2"\nfunction (( {');
+  const broken = parseModule('const ok = 1;\nimport { x from "npm:pkg@2"\nfunction (( {');
   assert(broken.parseError !== null, "an unparseable file did not report a parse error");
   assert(broken.specifiers.length === 0, "an unparseable file still yielded specifiers");
+  assert(typeof broken.parseError.line === "number" && broken.parseError.line > 1,
+    `a parse error must report its REAL line, not 1 (got ${JSON.stringify(broken.parseError)})`);
+
+  // …and the same through findFloating, which is what actually reports it. Asserting only on
+  // parseModule left the wiring untested: a findFloating that hardcoded line 1 stayed green.
+  const brokenDir = fs.mkdtempSync(path.join(os.tmpdir(), "edge-pins-broken-"));
+  try {
+    fs.writeFileSync(path.join(brokenDir, "bad.ts"), 'const ok = 1;\nimport { x from "npm:pkg@2"\nfunction (( {');
+    const reported = findFloating(brokenDir);
+    assert(reported.length === 1, `an unparseable file must be exactly one violation (got ${reported.length})`);
+    assert(reported[0].kind === "unparseable", "an unparseable file was not reported as such");
+    assert(reported[0].line === broken.parseError.line,
+      `findFloating reported line ${reported[0].line}, but the parse error is on line ${broken.parseError.line}`);
+  } finally {
+    fs.rmSync(brokenDir, { recursive: true, force: true });
+  }
+
+  // Deno resolves `.cjs`/`.cts`/`.mts`/`.jsx` too; a walk that skipped them would leave real
+  // dependency edges unscanned. Exercised on a real directory rather than by reading the regex.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "edge-pins-walk-"));
+  try {
+    for (const name of ["a.ts", "b.cjs", "c.cts", "d.mts", "e.jsx", "f.tsx", "g.mjs", "h.txt", "i.md"]) {
+      fs.writeFileSync(path.join(tmp, name), "");
+    }
+    const found = walk(tmp).map((f) => path.basename(f)).sort();
+    for (const name of ["a.ts", "b.cjs", "c.cts", "d.mts", "e.jsx", "f.tsx", "g.mjs"]) {
+      assert(found.includes(name), `walk skipped ${name} — its imports would never be scanned`);
+    }
+    for (const name of ["h.txt", "i.md"]) {
+      assert(!found.includes(name), `walk picked up ${name}, which is not a module`);
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 
   // The real repository is the last fixture: the guard must agree with the tree it guards.
   if (fs.existsSync(FUNCTIONS_ROOT)) {
