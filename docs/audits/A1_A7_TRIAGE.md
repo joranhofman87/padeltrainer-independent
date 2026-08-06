@@ -35,6 +35,35 @@ Not reopened, and not to be reopened without new contrary evidence: overbooking 
 shared-trainer `guest_players` roster leak; paid invoices hard-deletable; Mollie refunds ignored;
 the named edge functions failing silently. Each was verified fixed on this tree.
 
+## Scope: what gates N7, and what does not (owner, 2026-08-06)
+
+**The bounded N7 activation contract is authoritative.** A general P1 classification in this audit
+does not by itself block N7 — only direct evidence that an item violates a bounded N7 invariant
+does. The owner wants notifications live first; the broader foundation programme begins after N7
+activation and postflight.
+
+**In the release candidate**, because they *are* the no-backlog contract: F1 (the lifecycle-event
+occurrence ledger) and every lifecycle/notification correction on #634.
+
+**Deferred to the post-N7 foundation programme** — recorded here, not implemented now: F4, F7–F12,
+FA-1, FA-2, FA-3, the remaining OD-1 trainer-invitation and UI work (the three `create-*-trainer`
+endpoints still return a `temporaryPassword`), and the broad person / permissions / billing / DR /
+MFA / UI restructuring.
+
+## The release candidate is the combined tree
+
+`integration/notif-n0-n7` (PR #635, targeting `main`) — see
+[`N0_N7_INTEGRATION.md`](N0_N7_INTEGRATION.md). Composing the five reviewed heads found three
+defects no single-unit review could have seen:
+
+1. the ARMED job-identity assertions had lost N0's ownership re-check — the *post*-activation side;
+2. the rollout harness modelled the operator as owning nothing, so 34 scenarios died on
+   `permission denied` once N0's restricted role met N4–N7's definer functions;
+3. the committed Supabase types had been missing N3's tables since N3, because the drift gate only
+   runs on PRs against `main`.
+
+That is the argument for the branch, in three concrete instances.
+
 ## Queued as a SEPARATE release unit — not in this branch
 
 ### Registration → Planning → Calendar redesign
