@@ -76,14 +76,14 @@ SET LOCAL statement_timeout = '30s';
 --    also when pg_net first dispatches — so the worker this invocation triggers is never blocked.
 LOCK TABLE public.notification_worker_runs IN SHARE MODE;
 
--- 2. LOCK THE JOB ROW AND KEEP IT. Materialised once: under READ COMMITTED every statement takes a
---    fresh snapshot, so a job that was ABSENT locked nothing and a later name-based read could pick
---    up one another session inserted in between. Every assertion, and the command executed at the
---    end, refer to this one row.
-CREATE TEMP TABLE _gate_job AS
-  SELECT jobid FROM cron.job
-   WHERE jobname = 'notification-digest-worker' AND username = current_user
-     FOR UPDATE;
+-- 2. RESOLVE + LOCK THE JOB ROW AND KEEP IT — via _gate_job_lock.sql. The hosted role cannot
+--    FOR UPDATE the supabase_admin-owned cron.job (SELECT only), so the row lock is a guarded
+--    no-op cron.alter_job whose SPI update takes the tuple lock every cron writer queues behind
+--    (measured semantics + honest residuals in the include). Materialised once: under READ
+--    COMMITTED every statement takes a fresh snapshot, so a job that was ABSENT locked nothing and
+--    a later name-based read could pick up one another session inserted in between. Every
+--    assertion, and the command executed at the end, refer to this one row.
+\i _gate_job_lock.sql
 
 -- 3. ...and the event catalog, so "this event on, nothing else" is a transactional fact rather than
 --    a snapshot someone can invalidate before the request leaves. Same mode as enable_engine.sql.

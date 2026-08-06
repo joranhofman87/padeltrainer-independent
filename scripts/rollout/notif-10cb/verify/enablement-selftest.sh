@@ -181,7 +181,9 @@ if grep -qF -- 'active := true' "$PSQL_LOG"; then
 else
   ok "the cron is armed only inside the transactional artifact"
 fi
-grep -qF 'FOR UPDATE' "$HERE/../sql/activate.sql" && ok "activate.sql locks the job row before asserting" \
+# The row lock is the shared include now (a guarded no-op cron.alter_job — the hosted role cannot
+# FOR UPDATE the supabase_admin-owned cron.job), so the pin is on the include site.
+grep -qF '\i _gate_job_lock.sql' "$HERE/../sql/activate.sql" && ok "activate.sql locks the job row before asserting" \
   || bad "activate.sql locks the job row before asserting"
 grep -qE '^\s*BEGIN;' "$HERE/../sql/activate.sql" && grep -qE '^\s*COMMIT;' "$HERE/../sql/activate.sql" \
   && ok "activate.sql is one explicit transaction" || bad "activate.sql is one explicit transaction"
@@ -739,7 +741,8 @@ if sed 's/--.*$//' "$HERE/../sql/canary_invoke.sql" | grep -qE 'http_post|Author
 else
   ok "canary_invoke.sql never transcribes the request (it executes the hash-pinned stored command)"
 fi
-grep -qF 'FOR UPDATE' "$HERE/../sql/canary_invoke.sql" && ok "canary_invoke.sql locks the job row before asserting" \
+# The row lock is the shared include (see activate.sql's pin above for why not FOR UPDATE).
+grep -qF '\i _gate_job_lock.sql' "$HERE/../sql/canary_invoke.sql" && ok "canary_invoke.sql locks the job row before asserting" \
   || bad "canary_invoke.sql locks the job row before asserting"
 grep -qF '\i _job_identity_assertions.sql' "$HERE/../sql/canary_invoke.sql" \
   && ok "canary_invoke.sql re-runs the shared job-identity gate at send time" \

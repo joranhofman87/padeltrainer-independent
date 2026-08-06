@@ -9,10 +9,19 @@ on:
   push:
     paths:
       - 'scripts/rollout/notif-10ca3/**'
+      # the 10c-b bundle's own verifies ran in NO workflow before N0 (they were wired only into the
+      # local `verify:rollout` chain), which is how a superuser-only harness blind spot shipped —
+      # the production smoke was refused on a privilege the harness never modelled.
+      - 'scripts/rollout/notif-10cb/**'
+      # preflight-pg.mjs pins its fixtures to the F migration's scheduled command; a change there
+      # must re-run this workflow, not only the vitest hash pin.
+      - 'supabase/migrations/20261012100000_notif_10cb_digest_cron_inert.sql'
       - '.github/workflows/rollout-tooling.yml'
   pull_request:
     paths:
       - 'scripts/rollout/notif-10ca3/**'
+      - 'scripts/rollout/notif-10cb/**'
+      - 'supabase/migrations/20261012100000_notif_10cb_digest_cron_inert.sql'
       - '.github/workflows/rollout-tooling.yml'
 
 jobs:
@@ -74,6 +83,23 @@ jobs:
 
       - name: Clone safety on a REAL Postgres (executes the SQL artifacts)
         run: node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs
+
+      - name: 10c-b enablement selftest (dispatcher gates, stubbed psql)
+        run: bash scripts/rollout/notif-10cb/verify/enablement-selftest.sh
+
+      - name: 10c-b preflight/canary/lock artifacts on a REAL Postgres (restricted role)
+        run: node scripts/rollout/notif-10cb/verify/preflight-pg.mjs
+
+      - uses: supabase/setup-cli@v1
+        with:
+          # Pinned like migrations.yml: resolving `latest` hits the GitHub API every run and flakes.
+          version: 2.107.0
+
+      - name: Start Supabase local stack (real pg_cron + real supabase_admin/postgres split)
+        run: supabase start
+
+      - name: 10c-b cron-lock privilege rehearsal against REAL pg_cron
+        run: node scripts/rollout/notif-10cb/verify/cron-privilege-pg.mjs
 
       - name: Shell syntax check
         run: |

@@ -172,7 +172,20 @@ No correctness/scale risk today; these lower the cost of every future change and
 
 **Owner-requested. It BLOCKS the notification digest canary and activation, and is deliberately NOT
 part of PR #629**, which stays scoped to A–I. Entry: #629 merged and deployed inert. Exit: this unit
-is reviewed, CI-green, deployed, and the owner has confirmed the surfaces work. Only then may a
+is reviewed, CI-green, deployed, and the owner has confirmed the surfaces work.
+
+**Status 2026-08-05 (N0 correction).** #629 is merged and deployed inert, but NOT operationally
+acceptance-complete: the required disabled-path smoke (`smoke-disabled`, runbook step 2) was
+REFUSED before invocation on 2026-08-04 — hosted `postgres` can SELECT but cannot `FOR UPDATE` the
+`supabase_admin`-owned `cron.job`, a privilege model the review harness (superuser-only) never
+exercised. The fix (branch `fix/notif-10cb-cron-lock-privilege`) replaces the row lock in all four
+transactional artifacts with a shared guarded no-op `cron.alter_job(active := false)` include
+(`_gate_job_lock.sql`: same-snapshot inactivity gate, pg_cron version pin, xmin write-proof),
+re-runs every artifact in the verify harness as a restricted role that cannot `FOR UPDATE`, adds a
+real-pg_cron rehearsal against the Supabase local stack, and wires the previously-unwired 10c-b
+verifies into CI (`rollout-tooling.yml`). N0 is complete only when the corrected smoke exits 0 in
+production with the exact disabled response and zero counter deltas — a separate owner-gated
+production operation, still outstanding. Only then may a
 canary run or the cron be armed — `scripts/rollout/notif-10cb/run-enablement.sh` requires
 `--admin-ops-confirmed` on `canary-invoke`, `canary` and `activate`, and **this section is that
 flag's referent**. `canary-invoke` is the one that gates the send itself: it is the subcommand that

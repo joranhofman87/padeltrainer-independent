@@ -14,8 +14,9 @@
 -- `hostile._gate_job` resolves BEFORE the temp table, and a view that returns a reviewed jobid to
 -- the hash assertions and a different one to the arm puts the arbitrary-job problem straight back.
 --
--- EVERY cron.job READ BELOW GOES THROUGH `_gate_job`, the ONE row the caller resolved (and, in
--- activate.sql, LOCKED) before including this file. Re-looking the job up by name in each assertion
+-- EVERY cron.job READ BELOW GOES THROUGH `_gate_job`, the ONE row the caller resolved (and, in the
+-- TRANSACTIONAL artifacts, LOCKED via _gate_job_lock.sql) before including this file. Re-looking the
+-- job up by name in each assertion
 -- was unsound: under READ COMMITTED every statement takes a fresh snapshot, so a job that was absent
 -- when the lock was attempted — locking nothing — could be inserted by another session and then
 -- satisfy the later assertions, and a job altered between two assertions would be checked in one and
@@ -26,6 +27,19 @@
 --    (switch on, canary reconciled, THEN arm) no longer holds.
 SELECT pg_temp.assert_eq((SELECT count(*)::int FROM pg_temp._gate_job), 1,
   'the digest cron job exists (exactly one, owned by the current user)');
+-- 1a. ...and that jobid still carries the resolved NAME and OWNER. The transactional artifacts
+--     resolve the jobid WITHOUT a lock (the hosted role cannot FOR UPDATE cron.job) and lock it via
+--     _gate_job_lock.sql afterwards, so name and owner are re-proven here against the row as it is
+--     NOW, under the held lock. In the read-only consumers this is a point-in-time check like
+--     everything else in this file. (alter_job cannot rename a job, and only a superuser can change
+--     its owner — this closes exactly that residue.)
+SELECT pg_temp.assert(
+  (SELECT jobname = 'notification-digest-worker' AND username = current_user
+     FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
+  'the resolved jobid is still the notification-digest-worker job owned by the current user');
+-- 1b. INACTIVE. In the transactional artifacts the lock statement already refused an armed job
+--     inside its own snapshot; here this stays the primary detection for the read-only consumers
+--     and a belt-and-braces re-read for the locked ones.
 SELECT pg_temp.assert(NOT (SELECT active FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
   'the digest cron is still INACTIVE (if not, someone armed it out of band — stop)');
 -- ...and the liveness read a monitor uses must agree with the row we resolved. If these two ever

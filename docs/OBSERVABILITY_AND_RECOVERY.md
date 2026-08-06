@@ -124,6 +124,13 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
   is `DIGEST_SEND_ENABLED` being off — the worker claims existing groups regardless of the engine
   flags, so its zero-backlog assertions are a snapshot bound on the damage a wrong switch assertion
   could do, not a proof that sending is impossible.
+- **The row lock is a guarded no-op `cron.alter_job`, not `FOR UPDATE`** (N0 correction,
+  2026-08-05). The first production `smoke-disabled` was refused before invocation: hosted
+  `postgres` can SELECT but not row-lock the `supabase_admin`-owned `cron.job`. The shared
+  `sql/_gate_job_lock.sql` locks through the one write API the role holds on its own jobs, gates it
+  on inactivity in the same snapshot, and proves the tuple write happened (`xmin` = this
+  transaction). Full rationale, residuals, and the real-pg_cron CI rehearsal are in the 10c-b
+  README.
 - **Rollback is three switches, and only two are in the database:** `DIGEST_SEND_ENABLED` is an edge
   env var that no SQL can read (Supabase's own secret tooling sets it; this bundle has no view of
   it), so the operator turns it off FIRST and says so (`--switch-off-confirmed`); then the tooling
