@@ -3,6 +3,241 @@
 Durable record of out-of-scope findings surfaced during the notification migration, so they
 are not lost between PRs. Each has a spawned-task id where one exists.
 
+## Email-footer settings link is chosen by TYPE, not recipient role (found by the N1 audit, 2026-08-05; owner: N2)
+
+`send-email` picks the "manage notification preferences" footer path from the EMAIL TYPE
+(`send-email/index.ts` ~L1424): staff-type emails link `/app/trainer/settings/notifications`.
+An ACADEMY MANAGER receiving a staff-type email is deep-linked into the trainer layout and
+bounced by its route guard instead of landing on their own settings
+(`/app/academy/settings/notifications` exists and now has an in-app path from the academy
+settings hub — N1). Fix belongs to N2 (the footer/manage-preferences contract): resolve the
+footer path from the RECIPIENT's role, or use a role-agnostic entry route that forwards to the
+right layout. Out of N1's frontend-only scope because `send-email` is a hand-deployed edge fn.
+## 10c-a2 — a concurrent-materializer race, surfaced in CI (2026-08-05, found while landing N2 S1)
+
+`src/test/notificationDigestStateMachine.realpg.test.ts` → *"two concurrent materializers both
+complete; every member in exactly one group; no duplicate chunks"* FAILED once on CI
+(run `30968984926`, job `92189004788`): one of its three post-conditions — ungrouped members,
+duplicate `(canonical_group_key, chunk_ordinal)`, or a `pending` group with no members — came back
+as 1 instead of 0.
+
+**It is not a fixture artefact.** That suite TRUNCATEs the digest tables in `beforeEach`, and all
+three counts are read after the two parallel `materialize_notification_digest_groups` calls, so the
+row came from the test's own concurrency — i.e. from `materialize_notification_digest_groups`
+racing itself, which is exactly what the test exists to catch.
+
+**Not reproducible locally** (73/73 alone ×3; 196/196 with four realpg suites in parallel ×3) —
+the two-core CI runner interleaves far more aggressively than a dev machine. N2 S1 added a fourth
+embedded-postgres instance, which plausibly increased that pressure; it did not introduce the race.
+
+Owner: 10c-a2. Worth reproducing under deliberate contention (a loop, or `taskset`-style CPU
+limiting) before the digest engine is enabled for anyone, since the failure mode is a member landing
+in no group (silently undelivered) or a duplicate chunk (a doubled digest).
+
+## N2 — constraints S1's schema imposes on S2–S5 (from the S1 design + 6 review rounds, 2026-08-05)
+
+These are not defects in S1; they are the bill S1's model presents to the later slices. Each was
+raised by review against the shipped schema and must be satisfied where named.
+
+1. ~~**Optional-service footers must render per RECIPIENT (S2).**~~ **CLOSED in S2b** for the
+   live senders: `send-email` resolves the recipient's account ONCE (hoisted before the preference
+   branch, so types with no preference column know it too) and renders the manage link only for an
+   account — a guest gets the from-line alone, never a link that dead-ends on a login form. The
+   digest paths need no guest arm by construction: the v1 queue is user-keyed and the v2 resolver
+   refuses outbox rows with no `recipient_user_id` (20261011100000:403). Guest marketing mail gets
+   its signed one-click link in S3; optional service mail to guests keeps the plain line until the
+   contact-scoped preference model exists (item 2).
+2. **A guest "stop optional service mail" lever needs a per-event, contact-scoped preference model
+   (future unit).** The only existing mechanism, `notification_contacts.consent_status`, also
+   silences REQUIRED mail — the resolver excludes an opted-out contact even for `required_delivery`
+   — so N2 deliberately ships marketing-only guest management.
+3. ~~**Retry epoch (S3/S5).**~~ **CLOSED in S3** for both marketing senders: a non-live
+   capability blocks the SEND, not only the click. `resolveMarketingAttachment` returns
+   `terminal` for a revoked or expired capability, a retired key generation, or missing key
+   state, and BOTH senders mark the row failed with `unsubscribe unavailable: <reason>` before
+   any provider call — never a footer-less send. A mint NMRET propagates as a throw and lands in
+   the same failed-terminal path. S5's sweep must still respect item 7's retention floor so it
+   cannot delete a capability whose source is retryable.
+4. ~~**Deployment cutover (S2/S3).**~~ **CLOSED in S3**: capability EXISTENCE is the cutover
+   marker. `get_manage_capability_for_source` (20261014130000, read-only, service_role-only,
+   raises on malformed input so an error can never read as "legacy row") distinguishes the three
+   cases: capability exists → attach the same deterministic token; none + never attempted →
+   mint + attach; none + attempted → the provider-accepted body is footer-less, retry it
+   byte-identical (`legacy_no_footer`). Digest was already safe (footer renders before request
+   freezing; production has zero digest groups). The onboarding drip has no provider idempotency
+   key, so it attaches on every attempt with no cutover concern. Residual: a row mid-flight at
+   deploy whose runner dies between Resend accepting and the status write retries footer-less —
+   byte-identical, correct. The deploy runbook should still avoid deploying the campaign sender
+   while any campaign is status='sending'.
+5. ~~**Token format + key selection (S2).**~~ **CLOSED in S2a**: the token is
+   `v<N>.<id>.<base64url HMAC-SHA256("notif-manage:v1:v<N>:<id>", key vN)>`, frozen by a
+   known-answer vector in `_shared/manage-token.test.ts`. The version rides in the token, so the
+   live key window [min_mintable, current] and the signature are checked before any capability
+   lookup; `bindManageTokenToRow` then requires the row's `key_version` to equal the signed one.
+6. ~~**The neutral settings route must exist before S2 emits it (S4).**~~ **CLOSED in S4**:
+   `/app/settings/notifications` is mounted in `DomainRouter` **outside every role layout** and
+   **RENDERS the settings page — it does not forward to a role route.** Forwarding was the first
+   implementation and review killed it: the role layouts guard far more than role. `AcademyLayout`
+   redirects an expired academy to `/app/academy/subscription`; `TrainerLayout` redirects an
+   incomplete onboarding to `/app/onboarding/trainer` and an expired solo trainer to subscription.
+   Each fires on the settings path too, so a forward only moved the bounce one hop later — and the
+   people it stranded (expired, mid-onboarding) are the ones most likely to be unsubscribing.
+   Rendering in place means no downstream guard, present or future, stands between a recipient and
+   turning mail off. Two further invariants a later slice must not undo: a still-resolving auth
+   state decides NOTHING, and **any** aggregate `profileFetchFailed` offers a retry instead of
+   rendering — `useAuth` publishes PARTIAL results on its last attempt, so a failed
+   academy-manager lookup beside a successful roles lookup would otherwise show a manager the
+   player-only list, a wrong answer that looks like a complete one. A depth-aware,
+   comment-stripping router-source test fails if the route is ever nested under any of the five
+   layouts.
+6b. **`?redirect=` was navigated unsanitised on two paths (both fixed in S4).** `Auth.tsx` stored
+   the query param verbatim and called `navigate(redirectUrl)` on it after login, sanitising only
+   in the no-roles branch. Separately — and reachable from the same `?redirect=` — Auth's signup
+   link forwards the raw param to `/app/signup`, `SignupRootRedirect` preserves the query,
+   `TrainerSignup` stored it raw in `redirectAfterOnboarding` (three sites), and
+   `TrainerOnboardingFlow.finishRedirect` navigated to it raw. Since S2b hands this parameter out
+   in email footers, a crafted copy was a plausible off-origin jump (`//host` resolves
+   protocol-relative). All five sites now go through `sanitizeAppRedirect`, and a stored value that
+   fails is purged rather than re-evaluated at every future login/onboarding. **The tell was the
+   string literal:** every site that used `SIGNUP_REDIRECT_AFTER_ONBOARDING_KEY` already
+   sanitised; the only two that did not were the two that hardcoded `'redirectAfterOnboarding'`. A
+   test now forbids that literal in all three files.
+6c. **`isStaff` read the PRIMARY role, so a trainer who is also an admin saw the player-only list
+   (fixed in S4).** `useAuth` ranks admin above trainer, so `role === 'trainer'` is false for an
+   account holding both, and `NotificationSettings` hid every staff catalog event and the legacy
+   staff settings from a real trainer. Now tested against the whole `roles` set, with a behavioural
+   test (`roles: ['admin','trainer']` renders staff rows). Pre-existing on all three role routes,
+   not introduced by S4 — but S4 renders this page directly, so it was fixed rather than inherited.
+   **Note for the N1 branch (PR #631):** it refactors this same file, so expect a conflict here.
+6d. **A failed preference READ used to overwrite the other channel (fixed in S4).** PostgREST
+   resolves with `{data: null, error}` rather than rejecting, so `NotificationSettings.load()`
+   consumed four unchecked results: a failed `notification_preferences_v2` read left `prefs` empty,
+   `effective()` then answered with CATALOG DEFAULTS, and `saveEvent` writes BOTH channel columns
+   from `effective()`. Touching the email control therefore replaced a stored `whatsapp: 'off'`
+   with the catalog default — a silent reversal of an opt-out, in the page whose entire job is
+   honouring them. The page now checks every read, renders a retry state on failure, and renders no
+   control that could write. Pre-existing; S4 made this page the destination of every email footer,
+   which is why it is fixed here rather than deferred.
+6e. **`profileFetchFailed` was too coarse to gate on; `roleDataFailed` was added (S4).** The old
+   flag aggregates four reads (roles, profile, club-manager, academy-manager), so refusing on it
+   would take the footer route offline for a profile failure that cannot affect authority — while
+   NOT refusing means rendering on partial role data. `useAuth` now also publishes
+   `roleDataFailed`, true when specifically the roles or academy-manager read failed, or when the
+   fetch threw and nothing was published at all. Pinned by `src/test/useAuthRoleDataFailed.test.tsx`
+   against the REAL provider: every consumer mocks `useAuth`, so without it the wiring could be
+   deleted with every other test still green.
+6f. **OPEN — `useAuth` keeps the previous account's roles across a switch when the fetch fails.**
+   On a switch it clears `profileReady`/`profileFetchFailed`/`roleDataFailed` and the subscription,
+   but not `roles`, `role`, `profile` or `isAcademyManager`; if every retry then throws, it marks
+   the profile ready with the previous account's values still in state. `roleDataFailed` makes that
+   state *detectable* — and S4's entry refuses on it — but every layout and page that reads `roles`
+   without checking a failure flag still trusts it. **Owner:** a `useAuth` hardening pass that
+   clears routing state on identity change, not a notification slice. Found by review during S4.
+6g. **S2b SHIPPED (2026-08-05): every footer cites the neutral route; the legacy digest flush
+   gained a send-time gate.** Three senders changed. (a) `send-email`: the footer's TYPE-based
+   role guess is gone — the exact bug N1 deferred here — and both per-template follower links
+   (`new_availability`, `slot_reopened`; followers are account holders) now cite
+   `/app/settings/notifications`. (b) `_shared/digest-render.ts`: the v2 digest gained the same
+   footer, rendered BEFORE the request freezes so a retry reuses identical bytes under its
+   idempotency key; footer bytes are counted by the oversize measurement (test-pinned). Every
+   digest recipient is an account holder by construction, so the footer is unconditional.
+   (c) `send-digest-emails` re-checks at SEND time what it never re-checked: the current v1
+   preference (`_shared/digest-send-gate.ts` — the J rule, only a literal `off` refuses; junk
+   values fail OPEN deliberately, an opt-out is the only value safe to obey whatever its origin)
+   and canonical address suppression (`email_address_state.is_suppressed`, same normalization as
+   `is_email_suppressed`). Both reads happen BEFORE anything is claimed — a failed read aborts the
+   run with nothing consumed. Both drop kinds CONSUME the claim (a suppressed address must not
+   retry forever; an opt-out is a decision, not a queue); a send failure releases ONLY the items
+   it tried to send. Cross-boundary parity (`src/test/notificationFooterParity.test.ts`) pins the
+   edge-side URLs to `NOTIFICATION_SETTINGS_ENTRY_PATH` and forbids every role-guessed path —
+   the constant lives in frontend code Deno cannot import, so nothing else ties the two worlds.
+   **Accepted race, same family as 7b:** the gate reads preferences seconds before the send; an
+   opt-out landing inside that window rides along. The window was previously hours-to-days.
+
+6h. **DEFERRED to 10c-d: `send-digest-emails`' profile/role reads are unchunked.** The S2b review
+   flagged the new suppression read's `.in()` URL size; that one is now chunked (100/query). The
+   pre-existing `profiles` and `user_roles` reads still pass up to 1000 UUIDs through one `.in()`
+   (≈37KB URL) — uniform-length keys, so the practical limit is higher, and Codex classified it
+   deferrable rather than blocking. Chunk or RPC them when 10c-d touches this function; do not let
+   the legacy sender grow another batch read without chunking it.
+
+6i. **S3 SHIPPED (2026-08-05): the marketing attach layer.** `_shared/marketing-email.ts` is the
+   decision core (Deno-tested, 12 cases): per-send capability (the SEND identity — campaigns key
+   on the recipient ROW, onboarding on the QUEUE row), deterministic unsubscribe footer to
+   `https://padeltrainer.ai/manage-email?token=…`, RFC 8058 `List-Unsubscribe` +
+   `List-Unsubscribe-Post: List-Unsubscribe=One-Click` pointing at
+   `functions/v1/notif-unsubscribe-one-click`. BOTH URL shapes are frozen here and S5 must ship
+   the page and the endpoint AT those addresses (parity-pinned). Send-time suppression uses the
+   canonical `is_marketing_suppressed` per recipient (an ERROR marks the row failed — never
+   clearance); a suppressed row goes to status `'suppressed'`, terminal by construction because
+   campaign retryFailed re-queues only `'failed'`, and the onboarding CHECK gained the
+   `'suppressed'` arm (20261014130000 — the claim RPC optimistically marks rows 'sent', so a
+   failed suppressed-write is CRITICAL-logged rather than left as a recorded delivery).
+   Campaign scope = the campaign's OWNER (academy → trainer → platform). An UNCLASSIFIED
+   onboarding template is treated as MARKETING deliberately: the safe error is an unnecessary
+   unsubscribe on service mail, never marketing without one. TTL 480 days (mint bounds 395–800).
+   testMode sends carry no footer (no durable send identity to bind); acceptable for
+   owner-preview mail. Owner precondition (item 8) still stands before DEPLOY: classify the
+   existing templates; the marketing default merely makes misclassification fail safe.
+
+7. ~~**Retention (S5).**~~ **CLOSED in S5**: `sweep_notification_manage_capabilities(p_limit)`
+   (20261014140000) deletes only rows more than 30 days past expiry — revoked rows included,
+   through the same door, never early (revocation is audit state; deleting it would turn a
+   truthful 'revoked' answer into 'missing'). Bounded 1..10000, SKIP LOCKED, service_role-only.
+   Suppression provenance survives the sweep (no FK, by design — realpg-proven). **NOT wired to
+   any scheduler**: destructive cleanup is an owner gate; the deploy runbook gives the owner the
+   cron to install.
+7b. **ACCEPTED RACE: mail in flight across an emergency key retirement.** Raising
+   `min_mintable_version` serializes against MINT (the mint holds `FOR SHARE` on the key-state
+   row), but it cannot serialize against a provider send: between the mint's commit and the moment
+   Resend accepts the message there is an external call the database has no part in. A retirement
+   committed inside that window ships with mail already sent, and those links are dead on arrival —
+   they fail closed at click, so the recipient sees an unsubscribe that does nothing. **This is
+   accepted, not overlooked.** Retirement is an emergency act, and the alternative — a
+   drain/lease/grace protocol spanning the worker's provider call — is a subsystem whose failure
+   modes would be less understood than the one it removes. The invariant the code does hold, per
+   layer: mint never inserts or returns a generation retired in the snapshot it holds the row lock
+   on; attachment never signs a generation retired in the authoritative state it was given (a
+   snapshot check, not a barrier). If an emergency retirement ever happens with mail in flight, the
+   remedy is operational: re-send to the affected window after the new key is live — as a NEW
+   durable send with a new `source_id`, never by retrying the terminal identity, which would only
+   raise `NMRET` again.
+7c. **`NMRET` is a terminal contract (S2b/S3).** A retry whose capability was signed by a retired
+   generation raises SQLSTATE `NMRET`. Workers MUST classify it as terminal for that send plus an
+   ops alert — never as a transient RPC failure, which would poison-retry a send that can never
+   succeed, since nothing about it can change. The send identity is preserved; no capability is
+   ever rewritten.
+7d. **S5 SHIPPED (2026-08-05): the endpoints behind the frozen URLs.**
+   `notif-unsubscribe-one-click` (RFC 8058 POST target; GET NEVER applies — mailbox scanners
+   prefetch List-Unsubscribe URLs, so GET redirects to the manage page) and `notif-manage`
+   (the page's context/apply API), both `verify_jwt = false` — the SIGNED token is the auth.
+   The fail-direction table lives in `_shared/notif-manage-core.ts` under 15 Deno tests, and its
+   load-bearing rule is S1's twice-relearned lesson: AN OPERATIONAL FAILURE IS NEVER A SUCCESS —
+   key state unreadable, key material missing, or an RPC error all answer 503 so the provider
+   retries; invalid probes are 400; dead links are 410; only applied/already_applied are 200.
+   Context binds the SIGNED generation to the STORED one via `bindManageTokenToRow` (the
+   decorative-bind mutant is killed by a dedicated mismatch test). `/manage-email` is the PUBLIC
+   page (outside /app and every layout): token scrubbed from the address bar before anything else
+   (history sync, referrers and screenshots are not covered by the analytics allow-list),
+   redacted context only, apply strictly on the button. Analytics stayed safe by construction —
+   pageview URLs are overridden and query params allow-listed (`trackingPrivacy.ts`).
+
+7e. **WHOLE-UNIT SWEEP CLEAR (2026-08-05, `main..f1a7f1e8`).** Fresh-thread review aimed at the
+   seams; no P1. Four findings, all fixed in the sweep round: (a) the one-click endpoint now
+   REQUIRES the RFC 8058 form body `List-Unsubscribe=One-Click` — mailbox scanners fire blind
+   POSTs at List-Unsubscribe URLs, and without the marker check one would unsubscribe a real
+   person; (b) `send-email`'s preference read failed OPEN (pre-existing on main — error
+   discarded, frequency defaulted to `instant`, mail sent against a stored `off`); now the same
+   fail-closed 503 as its account lookup; (c) operational 503s carry `Retry-After: 300` on the
+   result object so the wrappers cannot forget it; (d) the sweep gained a FULL `expires_at`
+   index — the S1 partial index excludes revoked rows, which the sweep deliberately includes, so
+   every "bounded" batch would have scanned the whole table.
+
+8. **Owner precondition before S3 deploys.** Every existing `onboarding_email_templates` row lands
+   on `delivery_class='marketing'` (the suppressible direction). The owner must reclassify the live
+   templates (`required_service` where the mail is genuinely obligatory) before S3's suppression
+   starts consulting the column.
+
 ## Recipient-discovery fail-open sweep (found by PR 10b adversarial verification, 2026-07-22)
 
 The pattern: an edge function resolves a RECIPIENT ADDRESS or the send AUDIENCE from a
@@ -594,3 +829,63 @@ timeout the same way. All pass in isolation. They belong to 10c-a2 and the invoi
 
 **Owner:** whoever next touches those suites — either raise the per-test timeout/budget or mark them
 serial. Do not "fix" them by relaxing what they assert.
+
+---
+
+## Final Integration Audit (2026-08-06) — recorded, not fixed
+
+The audit that gates N7. These are findings it surfaced **outside** the notification foundation's
+boundary; the in-scope ones were fixed in the same pass (see the roadmap's N-unit rows).
+
+### FA-1 · Suppression is not enforced on every legacy email sender (P2, out of scope here)
+
+`is_email_suppressed` (hard bounce / complaint) is enforced on the v2 paths — the instant worker,
+the digest state machine — and on `send-digest-emails` and `send-invoice-email`. It is **not**
+checked by these direct senders:
+
+`send-email` (the generic one, which does check *preferences*), `notify-rebook-member-open`,
+`process-onboarding-emails`, `send-campaign-emails`, `trigger-welcome-emails`,
+`send-priority-claim-invitation`, `send-rebook-group-confirmation`, `signup-user`, `update-user`,
+`send-auth-email`.
+
+Some of those are legitimately exempt (`send-auth-email` carries password resets: a suppressed
+address should arguably still receive a security mail, and that is a product decision, not an
+oversight). Most are not: mailing an address that hard-bounced or filed a complaint costs domain
+reputation and, for the marketing ones, is a compliance problem.
+
+**Why it is recorded rather than fixed:** every one of them is outside the notification
+foundation. The foundation's claims stay true — this is a system-wide email question, which is
+what the postponed A-audits are for. The fix per sender is one RPC call before dispatch
+(`is_email_suppressed`), plus a decision about the security-mail exemption.
+
+**Owner:** whoever runs A1–A7. **Do not** treat this as closed by the notification programme.
+
+### FA-2 · Two parallel senders own their own idempotency (P3)
+
+`notify-rebook-member-open` and `send-digest-emails` send without a `notification_outbox` row, so
+their sends do not appear in the v2 ledger, the admin surface or the delivery history. Both are
+individually safe (deterministic idempotency keys, checkpointing), but "every send is attributable"
+is only true *within* the foundation. Recorded so nobody reads the admin surface as a complete
+picture of outbound mail.
+
+### FA-3 · Instant and digest prevent duplicates by different mechanisms (P3, recorded)
+
+The digest path never re-sends an ambiguous attempt: one HTTP call per recorded attempt, and
+ambiguity becomes `delivery_unknown`. The instant path retries — three attempts inside
+`resend-send.ts`, then a backoff requeue, then a stale-lease reclaim — all under the same stable
+idempotency key (`notification-outbox-<row id>`), so Resend deduplicates them inside its 24h
+window.
+
+In normal operation both are safe. But the instant path's safety depends on a *provider* guarantee
+while the digest path's depends on its own state machine, and only one of those is verifiable from
+this repository — and the bound is weaker than it first looks: the backoff cap and `max_attempts`
+bound the number and minimum spacing of attempts, **not** the wall-clock span, because
+`next_attempt_at` is only a not-before condition. After an outage longer than the provider's dedup
+window, a retry of a possibly-accepted attempt can duplicate. That case is operational and is
+documented in NOTIFICATION_OPERATIONS.md §5; removing it rather than managing it is this
+follow-up.
+
+**The improvement:** bring instant delivery onto the single-shot adapter and the same
+uncertain/`delivery_unknown` state machine. **Why it is recorded rather than done here:** it
+changes the retry semantics of the live email path, and the notification foundation's final gate is
+the wrong moment to redesign a sender that is working. Do it as its own reviewed unit.

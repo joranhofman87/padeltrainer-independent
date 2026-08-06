@@ -9,7 +9,13 @@ type Row = Record<string, unknown>;
 //   invoices.guest_player_id -> guest_players.id    (SET NULL) — nulled when the guest is erased
 //   intake_requests.guest_player_id -> guest_players.id (NO ACTION) — still blocks until removed
 // The trainer_profiles row is anonymized (update), never deleted; its slots + invoices are retained.
-function makeFakeAdmin() {
+/**
+ * `fail` injects a database error on one table+operation, which is the only way to test the
+ * property that matters here: a cleanup step that fails must stop the run BEFORE the auth account
+ * is deleted. Awaiting a Supabase builder never rejects — it resolves to `{ error }` — so a test
+ * that only exercises the happy path proves nothing about the failure ordering.
+ */
+function makeFakeAdmin(fail?: { table: string; op: "delete" | "update" | "select" }) {
   const store: Record<string, Row[]> = {
     trainer_profiles: [{ id: "tp1", user_id: "u1" }],
     profiles: [], // no player profile
@@ -33,10 +39,18 @@ function makeFakeAdmin() {
     q.eq = (c: string, v: unknown) => { filters.push((r) => r[c] === v); return q; };
     q.single = () => {
       const rows = (store[t] ?? []).filter((r) => filters.every((f) => f(r)));
-      return Promise.resolve({ data: rows[0] ?? null, error: rows[0] ? null : { message: "not found" } });
+      return Promise.resolve({
+        data: rows[0] ?? null,
+        // PostgREST's real shape: .single() finding nothing is PGRST116, which is an ANSWER, not a
+        // failure. Without the code a caller that (correctly) fails closed on read errors cannot
+        // tell "this user has no trainer profile" from "the query broke".
+        error: rows[0] ? null : { code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned" },
+      });
     };
-    q.then = (res: (v: { data: Row[]; error: null }) => void) =>
-      res({ data: (store[t] ?? []).filter((r) => filters.every((f) => f(r))), error: null });
+    q.then = (res: (v: { data: Row[] | null; error: unknown }) => void) =>
+      res(fail?.table === t && fail.op === "select"
+        ? { data: null, error: { code: "42501", message: `injected failure reading ${t}` } }
+        : { data: (store[t] ?? []).filter((r) => filters.every((f) => f(r))), error: null });
     return q;
   };
 
@@ -44,6 +58,9 @@ function makeFakeAdmin() {
     const filters: Array<(r: Row) => boolean> = [];
     const run = () => {
       callOrder.push(`delete:${t}`);
+      if (fail?.table === t && fail.op === "delete") {
+        return Promise.resolve({ error: { code: "42501", message: `injected failure deleting ${t}` } });
+      }
       if (t === "guest_players") {
         if (intakeStillRefsGuest()) {
           return Promise.resolve({ error: { code: "23503", message: "update or delete on guest_players violates FK" } });
@@ -65,6 +82,9 @@ function makeFakeAdmin() {
     const filters: Array<(r: Row) => boolean> = [];
     const run = () => {
       callOrder.push(`update:${t}`);
+      if (fail?.table === t && fail.op === "update") {
+        return Promise.resolve({ data: null, error: { code: "42501", message: `injected failure updating ${t}` } });
+      }
       for (const r of store[t] ?? []) if (filters.every((f) => f(r))) Object.assign(r, patch);
       return Promise.resolve({ data: null, error: null });
     };
@@ -95,7 +115,14 @@ function makeFakeAdmin() {
       };
     },
     storage,
-    auth: { admin: { deleteUser: (_id: string) => Promise.resolve({ error: null }) } },
+    auth: {
+      admin: {
+        deleteUser: (_id: string) => {
+          callOrder.push("auth:deleteUser");
+          return Promise.resolve({ error: null });
+        },
+      },
+    },
   };
   return admin as unknown as SupabaseClient & { _store: Record<string, Row[]>; _callOrder: string[]; _removedStoragePaths: string[] };
 }
@@ -165,7 +192,13 @@ function makeOrgAdmin(orgType: "club" | "academy") {
     q.in = (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return q; };
     q.single = () => {
       const rows = (store[t] ?? []).filter((r) => filters.every((f) => f(r)));
-      return Promise.resolve({ data: rows[0] ?? null, error: rows[0] ? null : { message: "not found" } });
+      return Promise.resolve({
+        data: rows[0] ?? null,
+        // PostgREST's real shape: .single() finding nothing is PGRST116, which is an ANSWER, not a
+        // failure. Without the code a caller that (correctly) fails closed on read errors cannot
+        // tell "this user has no trainer profile" from "the query broke".
+        error: rows[0] ? null : { code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned" },
+      });
     };
     q.then = (res: (v: { data: Row[]; error: null }) => void) =>
       res({ data: (store[t] ?? []).filter((r) => filters.every((f) => f(r))), error: null });
@@ -207,3 +240,47 @@ for (const orgType of ["club", "academy"] as const) {
     assertEquals(slotIdx !== -1 && slotIdx < cycIdx, true, "slots deleted before cycle");
   });
 }
+// ── A1/A6 F2: the deletion must FAIL CLOSED, and the auth account must be the last thing to go ──
+//
+// The defect this closes: every step awaited its Supabase builder without inspecting `{ error }`.
+// A builder resolves rather than rejects, so a failed delete looked exactly like a successful one
+// and the run continued — to deleting the auth user. The result is the worst version of an
+// incomplete privacy operation: the rows survive, and the identity that could have found them
+// does not.
+
+Deno.test("a failed DELETE aborts before the auth account is removed", async () => {
+  for (const table of ["notification_preferences", "user_roles", "profiles", "banner_events"]) {
+    const admin = makeFakeAdmin({ table, op: "delete" });
+    await assertRejects(
+      () => deleteUserData(admin, "u1"),
+      Error,
+      table,                                            // the error names what failed
+    );
+    assertEquals(
+      admin._callOrder.includes("auth:deleteUser"), false,
+      `${table}: the auth account was deleted after a failed cleanup step`,
+    );
+  }
+});
+
+Deno.test("a failed ANONYMIZING UPDATE aborts too — a retained row must not keep the departed identity", async () => {
+  const admin = makeFakeAdmin({ table: "trainer_profiles", op: "update" });
+  await assertRejects(() => deleteUserData(admin, "u1"), Error, "trainer_profiles");
+  assertEquals(admin._callOrder.includes("auth:deleteUser"), false);
+});
+
+Deno.test("a failed READ aborts: 'no rows' and 'the query broke' must not be the same answer", async () => {
+  // the subtlest arm. A read that decides WHAT to delete, returning [] because it failed, means
+  // those rows are silently skipped — and then the account is deleted anyway.
+  const admin = makeFakeAdmin({ table: "cycles", op: "select" });
+  await assertRejects(() => deleteUserData(admin, "u1"), Error, "cycles");
+  assertEquals(admin._callOrder.includes("auth:deleteUser"), false);
+});
+
+Deno.test("the happy path still reaches the auth deletion, and reaches it LAST", async () => {
+  const admin = makeFakeAdmin();
+  await deleteUserData(admin, "u1");
+  const order = admin._callOrder;
+  assertEquals(order.includes("auth:deleteUser"), true);
+  assertEquals(order[order.length - 1], "auth:deleteUser");   // nothing runs after it
+});

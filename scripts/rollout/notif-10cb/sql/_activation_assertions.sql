@@ -180,3 +180,39 @@ SELECT pg_temp.assert_eq(
                    WHERE a.digest_group_id = o.digest_group_id
                      AND a.worker_run_id = :'run_id'::uuid)), 0,
   'no provider event is still unreconciled against a group this canary sent (a tag/message mismatch enrols an orphan that is NOT quarantined and leaves the group looking sent)');
+
+-- 8. THE CANARY'S PROVENANCE, asserted INDEPENDENTLY here (N4 AC-6). canary_reconcile refuses a
+-- non-canary invocation, but activation is the authoritative gate and must not depend on the
+-- operator having run reconciliation correctly. Without this, a SMOKE whose switch assertion was
+-- wrong could actually send, its dispatch run be handed to `activate`, and every run-level
+-- assertion above pass over evidence the reviewed canary never produced. The run must be bound
+-- to exactly ONE invocation, COMPLETED, opened by the canary artifact, with its dispatched
+-- pg_net request recorded.
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_worker_invocations
+    WHERE worker_run_id = :'run_id'::uuid
+      AND status = 'completed'
+      AND purpose = 'canary'
+      AND source = 'canary_invoke.sql'
+      AND net_request_id IS NOT NULL), 1,
+  'the run is bound to exactly one COMPLETED canary-provenance invocation (purpose=canary, source=canary_invoke.sql, recorded pg_net request) — an accidental smoke cannot activate, and an unreconciled canary must pass canary-reconcile first');
+
+
+-- 9. NO CHANNEL IS KILLED (N4 seam correction). Arming behind an active kill looks safe — the
+-- gated claim parks every tick — but it moves the send decision to whoever later deletes the
+-- kill row: a runbook DELETE would release an ALREADY-ARMED cron with no fresh canary and no
+-- activation decision. M5 refuses a circuit reset under a kill for exactly this reason
+-- ("queue send authority behind a single runbook DELETE"); arming is the larger version of the
+-- same act. The shared per-channel lock is taken so an in-flight kill cannot be missed.
+DO $kill$
+DECLARE ch text;
+BEGIN
+  -- take the shared per-channel lock FIRST (an in-flight kill must not be invisible), then read
+  FOREACH ch IN ARRAY ARRAY['email', 'whatsapp'] LOOP
+    PERFORM pg_advisory_xact_lock(pg_catalog.hashtextextended('notif-channel-kill:' || ch, 0));
+  END LOOP;
+END
+$kill$;
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int FROM public.notification_channel_kill_switches), 0,
+  'no notification channel is killed (arming while a kill is active hands the send decision to whoever deletes the kill row, with no canary and no activation gate)');

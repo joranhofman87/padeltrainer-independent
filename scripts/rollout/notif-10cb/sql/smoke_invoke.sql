@@ -56,10 +56,11 @@ SET LOCAL statement_timeout = '30s';
 -- Same lock order as the rest of the bundle: worker_runs → cron.job → event catalog.
 LOCK TABLE public.notification_worker_runs IN SHARE MODE;
 
-CREATE TEMP TABLE _gate_job AS
-  SELECT jobid FROM cron.job
-   WHERE jobname = 'notification-digest-worker' AND username = current_user
-     FOR UPDATE;
+-- Resolve + LOCK the job row via the shared include: the hosted role cannot FOR UPDATE the
+-- supabase_admin-owned cron.job (SELECT only — the refusal the first production smoke hit), so the
+-- row lock is a guarded no-op cron.alter_job. Measured semantics + honest residuals live in the
+-- include.
+\i _gate_job_lock.sql
 
 LOCK TABLE public.notification_event_types IN SHARE ROW EXCLUSIVE MODE;
 
@@ -98,6 +99,20 @@ SELECT pg_temp.assert_eq(
     WHERE url = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
   'no request to the digest worker is already queued (another invocation is in progress — wait for it)');
 
+-- N4 M1 (AC-6): durable in-flight record — see canary_invoke.sql for the full rationale. The
+-- REPLAY-AWARE gate: a re-run carrying the same --invocation-request-id passes through to the
+-- idempotent open() below; any OTHER unresolved invocation still refuses.
+\i _invocation_gate_replay.sql
+-- ...and PUBLISH its id into this transaction, which is what the reviewed command's body reads.
+-- Transaction-local on purpose (round 6): a pg_cron execution runs in its OWN session and can
+-- never see it, so a tick selected before this transaction and started after it still names
+-- nothing. A database lookup could not give that guarantee — anything this transaction COMMITS is
+-- something a late-starting tick can read too.
+SELECT pg_catalog.set_config(
+  'notif.dispatch_invocation',
+  public.open_notification_worker_invocation('smoke', 'smoke_invoke.sql', :'invocation_request_id'::pg_catalog.uuid)::pg_catalog.text,
+  true) AS invocation_id;
+
 -- ===========================================================================
 -- Execute the reviewed command. The hash is re-asserted in the same statement that reads the text,
 -- for the reason canary_invoke.sql sets out: losing the include above would otherwise turn this into
@@ -111,7 +126,7 @@ BEGIN
   SELECT command INTO STRICT v_cmd FROM cron.job
    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job);
 
-  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '657295911df940d4aecc69a87169574c' THEN
+  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '69204549e8cb81680e492e49ef08fdd6' THEN
     RAISE EXCEPTION 'ASSERT FAILED: refusing to execute a cron command that is not EXACTLY the reviewed one';
   END IF;
 
@@ -127,6 +142,15 @@ END $do$;
 
 SELECT pg_temp.assert_eq((SELECT count(*)::int FROM pg_temp._smoke_request), 1,
   'exactly one pg_net request was queued');
+
+-- N4 (AC-6): record WHICH request this invocation queued, in this same transaction — the
+-- causal tie the disabled-smoke resolve demands. On a replay whose original commit was real,
+-- this RAISES naming the original request id, rolling back (and thereby un-queueing) the
+-- duplicate request the re-executed command just minted: a replay can never double-dispatch.
+SELECT public.record_invocation_net_request(
+  (SELECT id FROM public.notification_worker_invocations
+    WHERE request_id = :'invocation_request_id'::pg_catalog.uuid),
+  (SELECT request_id FROM pg_temp._smoke_request));
 
 -- PRINTED BEFORE THE COMMIT, ON PURPOSE. If the connection drops after COMMIT but before the marker
 -- below is emitted, psql exits non-zero over a request that IS committed and will be dispatched — and

@@ -24,6 +24,17 @@ interface AuthContextType {
   profileReady: boolean;
   /** True if the last profile/role fetch failed due to network/auth errors */
   profileFetchFailed: boolean;
+  /**
+   * True if specifically the ROLE-BEARING reads (roles, academy-manager) failed, so `roles` and
+   * `isAcademyManager` may be absent, partial, or left over from a previous account.
+   *
+   * `profileFetchFailed` aggregates four reads, and the last attempt PUBLISHES partial results —
+   * a failed academy-manager lookup beside a successful roles lookup yields
+   * `isAcademyManager === false` with real roles. A surface whose content depends on authority
+   * must refuse on this flag; refusing on the aggregate instead would also take it down for an
+   * unrelated profile or club-manager failure.
+   */
+  roleDataFailed: boolean;
   refreshAuth: () => Promise<void>;
   refreshSubscription: () => Promise<void>;
 }
@@ -60,6 +71,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   profileReady: false,
   profileFetchFailed: false,
+  roleDataFailed: false,
   refreshAuth: async () => {},
   refreshSubscription: async () => {},
 });
@@ -76,6 +88,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileReady, setProfileReady] = useState(false);
   const [profileFetchFailed, setProfileFetchFailed] = useState(false);
+  const [roleDataFailed, setRoleDataFailed] = useState(false);
   const lastFetchedRef = useRef<string | null>(null);
 
   const fetchUserData = async (userId: string) => {
@@ -129,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsAcademyManager(academyResult.data);
         setProfile(profileResult.data);
         setProfileFetchFailed(anyFailed);
+        setRoleDataFailed(rolesResult.failed || academyResult.failed);
         setProfileReady(true);
 
         // Apply saved language preference
@@ -156,6 +170,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logger.error('Failed to fetch user data after retries', lastError as Error, { component: 'useAuth' });
     if (lastFetchedRef.current !== userId) return;
     setProfileFetchFailed(true);
+    // Nothing was published, so `roles`/`isAcademyManager` hold whatever the previous account (or
+    // the previous attempt) left behind.
+    setRoleDataFailed(true);
     setProfileReady(true);
   };
 
@@ -233,6 +250,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Gate layouts on the in-flight refetch so an empty-roles redirect can't race it
       setProfileReady(false);
       setProfileFetchFailed(false);
+      setRoleDataFailed(false);
       await fetchUserData(user.id);
     }
   };
@@ -259,6 +277,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         lastFetchedRef.current = nextSession.user.id;
         setProfileReady(false);
         setProfileFetchFailed(false);
+        setRoleDataFailed(false);
         // Different user in this same provider instance — drop the previous user's
         // subscription so the fetchSubscription fail-open (prev-keep) can never hand
         // it to the new user before their own check resolves.
@@ -407,6 +426,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading, 
       profileReady,
       profileFetchFailed,
+      roleDataFailed,
       refreshAuth,
       refreshSubscription,
     }}>

@@ -542,7 +542,9 @@
     "minNotice": "Minimale aanmeldtijd voor spelers",
     "minNoticeDescription": "Spelers kunnen zich niet meer aanmelden binnen deze tijd voor aanvang. Medewerkers kunnen altijd nog handmatig iemand toevoegen.",
     "minNoticeSaved": "Aanmeldlimiet bijgewerkt",
-    "minNoticeSaveError": "Aanmeldlimiet bijwerken mislukt"
+    "minNoticeSaveError": "Aanmeldlimiet bijwerken mislukt",
+    "notifications": "Meldingen",
+    "notificationsDescription": "Beheer je meldingsvoorkeuren"
   },
   "terms": {
     "title": "Algemene voorwaarden",

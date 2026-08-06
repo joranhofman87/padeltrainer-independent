@@ -66,18 +66,19 @@ SET LOCAL statement_timeout = '30s';
 -- email path for the whole activation, which is a worse trade than the residual.
 LOCK TABLE public.notification_worker_runs IN SHARE MODE;
 
--- LOCK FIRST, THEN LOOK, AND KEEP THE ROW. FOR UPDATE on the exact (jobname, username) row —
+-- LOCK FIRST, THEN LOOK, AND KEEP THE ROW — via _gate_job_lock.sql. The hosted role cannot
+-- FOR UPDATE the supabase_admin-owned cron.job (SELECT only), so the row lock is a guarded no-op
+-- cron.alter_job(active := false) — the same owner-authorized API the arm below uses — whose SPI
+-- update takes the tuple lock every cron writer queues behind (measured semantics + honest
+-- residuals in the include). The row is resolved on the owner-scoped (jobname, username) pair —
 -- pg_cron scopes named-job uniqueness that way, so a bare jobname lookup can see another role's job.
 --
--- The result is MATERIALISED here rather than re-looked-up per assertion. Under READ COMMITTED each
--- statement takes a fresh snapshot, so if the job was ABSENT the FOR UPDATE locked nothing, and
--- another session could insert one that every later name-based assertion would then happily read —
--- and a job altered between two assertions would be checked in one and armed by the other. Capturing
--- the jobid once means every assertion, the arm, and the postcondition all refer to the same row.
-CREATE TEMP TABLE _gate_job AS
-  SELECT jobid FROM cron.job
-   WHERE jobname = 'notification-digest-worker' AND username = current_user
-     FOR UPDATE;
+-- The result is MATERIALISED once rather than re-looked-up per assertion. Under READ COMMITTED each
+-- statement takes a fresh snapshot, so if the job was ABSENT the lock matched nothing and refused,
+-- and a job altered between two assertions would otherwise be checked in one and armed by the
+-- other. Capturing the jobid once means every assertion, the arm, and the postcondition all refer
+-- to the same row.
+\i _gate_job_lock.sql
 
 -- FREEZE THE CANARY'S OWN GROUPS TOO. The run-ledger lock stops a new dispatch run, but a Resend
 -- CALLBACK needs no run: apply_notification_provider_event passes a null run id, so a bounce or a
@@ -105,6 +106,8 @@ SELECT g.id FROM public.notification_digest_groups g
    FOR SHARE;
 
 \i _activation_assertions.sql
+-- N4 M1 (AC-6): arming must never ride over an unverified deliberate invocation.
+\i _invocation_gate.sql
 
 -- ARM — by the jobid of the row we just locked and verified, never by a fresh name lookup, and
 -- count-checked: `UPDATE ... WHERE` matching nothing is a successful no-op, and "arming" nothing
@@ -126,7 +129,7 @@ SELECT pg_temp.assert(
 SELECT pg_temp.assert_eq(
   (SELECT md5(btrim(regexp_replace(command, '\s+', ' ', 'g')))::text FROM cron.job
     WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
-  '657295911df940d4aecc69a87169574c'::text,
+  '69204549e8cb81680e492e49ef08fdd6'::text,
   'the armed job is still EXACTLY the reviewed command');
 
 DROP TABLE pg_temp._gate_job;

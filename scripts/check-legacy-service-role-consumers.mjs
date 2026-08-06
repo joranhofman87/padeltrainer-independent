@@ -203,6 +203,8 @@ const MANAGED = {
     'supabase/functions/mollie-callback/index.ts',
     'supabase/functions/mollie-connect-trainer/index.ts',
     'supabase/functions/mollie-webhook/index.ts',
+    'supabase/functions/notif-manage/index.ts',
+    'supabase/functions/notif-unsubscribe-one-click/index.ts',
     'supabase/functions/notification-email-worker/index.ts',
     'supabase/functions/notification-whatsapp-worker/index.ts',
     'supabase/functions/notify-followers/index.ts',
@@ -302,7 +304,15 @@ const MANAGED_SQL = {
   'supabase/migrations/20260919110000_notification_whatsapp_worker_cron.sql':
     { status: 'active', note: 'Vault-based notification-whatsapp-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20261012100000_notif_10cb_digest_cron_inert.sql':
-    { status: 'active', note: 'Vault-based notification-digest-worker cron, INSTALLED INACTIVE (10c-b F) — activation is an owner gate, and a re-run never re-arms or disarms an existing job', replacement: '(Path B) future sb_secret_ cutover migration' },
+    { status: 'active', note: 'Vault-based notification-digest-worker cron, INSTALLED INACTIVE (10c-b F) — activation is an owner gate, and a re-run never re-arms or disarms an existing job. N4 later re-points this job\'s COMMAND twice (20261026100000 then 20261027100000) via cron.alter_job, which does not restate the job name — so those are registered active beside this one rather than superseding it, and all three carry a Vault read Path B must see', replacement: '(Path B) future sb_secret_ cutover migration' },
+  // N4's two re-points of THAT SAME digest-worker job. Each rewrites the cron command (and therefore
+  // re-states the Vault service_role_key read), so Path B must see them: they are where the live
+  // command text will be when the key is cut over. The job stays INACTIVE throughout — re-pointing a
+  // command is not arming it.
+  'supabase/migrations/20261026100000_notif_n4_dispatch_carries_invocation.sql':
+    { status: 'active', note: 'N4 round 4: re-points the INACTIVE notification-digest-worker cron command (cron.alter_job) so a dispatch carries an invocation id; reads the Vault service_role_key at tick time. Superseded in substance by 20261027100000, but alter_job does not restate the job name, so the lifecycle signal cannot see that and active is the honest registration', replacement: '(Path B) future sb_secret_ cutover migration' },
+  'supabase/migrations/20261027100000_notif_n4_dispatch_identity_is_session_local.sql':
+    { status: 'active', note: 'N4 round 5 (current definition): the inactive notification-digest-worker cron command reads its invocation identity from a transaction-local GUC; reads the Vault service_role_key at tick time', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260606120000_phase5_email_idempotency_and_cron_ficwb.sql':
     { status: 'active-legacy', note: 'invoice-health-check-daily via app.settings (redundant with the Vercel maintenance job; app.settings reads empty on Supabase → effectively inert)', replacement: 'unschedule the redundant cron, or (Path B) sb_secret_ cutover' },
   'supabase/migrations/20260714110000_notify_rebook_member_open_cron.sql':

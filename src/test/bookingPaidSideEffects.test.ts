@@ -20,6 +20,10 @@ type FakeOpts = {
   invoiceFallbackRow?: { id: string } | null;
   /** rows for the staff-notification .in() bookings fetch (default: none). */
   staffBookings?: Record<string, unknown>[];
+  /** keep staffBookings EXACTLY as written — no created_at is filled in (the undateable case). */
+  staffBookingsRaw?: boolean;
+  /** the booking lifecycle ledger: event_type -> occurred_at. Omit an entry to model "never happened". */
+  lifecycle?: Record<string, string | null>;
   /** academy_managers rows (user_id + academy) for the involved academies. */
   managers?: { user_id: string; academy_profile_id: string }[];
   /** trainer_profiles rows (id, user_id) for the involved trainers. */
@@ -121,6 +125,14 @@ function makeFakeSupabase(opts: FakeOpts) {
   });
   // The staff fan-out (PR 6b) + the player confirmation (PR 6a) enqueue via rpc.
   const rpc = vi.fn(async (name: string, _params?: Record<string, unknown>) => {
+    // the occurrence comes from the booking lifecycle LEDGER now. `lifecycle` lets a test model
+    // "this transition has no ledger row" (historical, or it never happened), which is the
+    // fail-closed case.
+    if (name === 'booking_transition_event') {
+      const at = (opts.lifecycle ?? { paid: '2026-08-06T08:00:00+00:00' })[
+        String((_params as { p_event_type?: string } | undefined)?.p_event_type)];
+      return { data: at ? [{ occurred_at: at, seq: 42 }] : [], error: null };
+    }
     if (name === 'get_invoice_recipient_identity' && opts.identityThrow) {
       throw new Error(opts.identityThrow);
     }
@@ -147,7 +159,16 @@ function makeFakeSupabase(opts: FakeOpts) {
       case 'bookings':
         // Awaited chains (finalizePriorityClaims + the staff .in() fetch) resolve
         // thenData; the email block ends in .single() (rowData: booking under test).
-        return chain(opts.staffBookings ?? [], opts.booking, {
+        // every booking row carries created_at in production, and the staff producer now DERIVES
+        // the event-occurrence time from it (the activation boundary measures the event, not the
+        // enqueue). A fixture without one models a booking that cannot exist.
+        // the staff lane reports a TRANSITION (the payment landed), so it dates from updated_at
+        return chain(opts.staffBookingsRaw ? (opts.staffBookings ?? [])
+          : (opts.staffBookings ?? []).map((b) => ({
+              created_at: '2026-08-06T08:00:00+00:00',
+              updated_at: '2026-08-06T08:00:00+00:00',
+              ...b,
+            })), opts.booking, {
           rowError: opts.bookingContextError,
           throws,
           throwsSingle: opts.throwOnSingle === 'bookings',
@@ -282,6 +303,43 @@ const legacyStaffEmails = (invoke: ReturnType<typeof makeFakeSupabase>['invoke']
   );
 
 describe('runBookingPaidSideEffects — staff booking notifications (outbox)', () => {
+  it('the staff lane dates from the PAID transition ledger, and refuses when there is no ledger row', async () => {
+    // A Mollie webhook can be redelivered days later and the verify path re-runs on demand, so the
+    // enqueue instant is not the event instant — and neither is any column on the booking row.
+    {
+      const { supabase, rpc } = makeFakeSupabase({
+        booking: guestBooking,
+        invoiceInvokeData: { invoiceId: 'INV-1' },
+        lifecycle: { paid: '2026-07-01T10:00:00+00:00' },
+        staffBookings: [staffBooking()],
+        trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
+        profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
+      });
+      await run(supabase);
+      const staff = staffEnqueues(rpc);
+      expect(staff).toHaveLength(1);
+      expect((staff[0][1] as { p_occurred_at: string }).p_occurred_at).toBe('2026-07-01T10:00:00+00:00');
+      // it asked the ledger for the PAID transition
+      const ask = (rpc.mock.calls as Array<[string, Record<string, unknown>]>)
+        .find((c) => c[0] === 'booking_transition_event');
+      expect(ask?.[1]).toMatchObject({ p_event_type: 'paid' });
+    }
+    // …and with no ledger row nothing is queued: falling back to a mutable column would re-open
+    // the hole the ledger exists to close.
+    {
+      const { supabase, rpc } = makeFakeSupabase({
+        booking: guestBooking,
+        invoiceInvokeData: { invoiceId: 'INV-1' },
+        lifecycle: {},
+        staffBookings: [staffBooking()],
+        trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
+        profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
+      });
+      await run(supabase);
+      expect(staffEnqueues(rpc)).toHaveLength(0);
+    }
+  });
+
   it('enqueues the trainer WITHOUT any amount (bookings only), tenant-scoped to the trainer — and NO legacy send-email', async () => {
     const { supabase, invoke, rpc } = makeFakeSupabase({
       booking: guestBooking,

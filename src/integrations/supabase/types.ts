@@ -350,6 +350,111 @@ export type Database = {
           },
         ]
       }
+      academy_notification_restriction_audit: {
+        Row: {
+          academy_profile_id: string
+          actor_user_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          id: string
+          new_max_frequency: string | null
+          old_max_frequency: string | null
+          reason: string
+          request_id: string
+          txid: number
+        }
+        Insert: {
+          academy_profile_id: string
+          actor_user_id: string
+          channel: string
+          created_at?: string
+          event_type: string
+          id?: string
+          new_max_frequency?: string | null
+          old_max_frequency?: string | null
+          reason: string
+          request_id: string
+          txid?: number
+        }
+        Update: {
+          academy_profile_id?: string
+          actor_user_id?: string
+          channel?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          new_max_frequency?: string | null
+          old_max_frequency?: string | null
+          reason?: string
+          request_id?: string
+          txid?: number
+        }
+        Relationships: []
+      }
+      academy_notification_restrictions: {
+        Row: {
+          academy_profile_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          max_frequency: string
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          channel: string
+          created_at?: string
+          event_type: string
+          max_frequency: string
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          channel?: string
+          created_at?: string
+          event_type?: string
+          max_frequency?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_event_type_fkey"
+            columns: ["event_type"]
+            isOneToOne: false
+            referencedRelation: "notification_event_types"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       academy_player_locations: {
         Row: {
           academy_profile_id: string
@@ -1052,6 +1157,51 @@ export type Database = {
           },
         ]
       }
+      account_deletion_audit: {
+        Row: {
+          actor_user_id: string
+          failure_reason: string | null
+          finished_at: string | null
+          id: string
+          ip_address: string | null
+          self_service: boolean
+          started_at: string
+          status: string
+          subject_email: string | null
+          subject_name: string | null
+          subject_user_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          actor_user_id: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          ip_address?: string | null
+          self_service: boolean
+          started_at?: string
+          status?: string
+          subject_email?: string | null
+          subject_name?: string | null
+          subject_user_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          actor_user_id?: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          ip_address?: string | null
+          self_service?: boolean
+          started_at?: string
+          status?: string
+          subject_email?: string | null
+          subject_name?: string | null
+          subject_user_id?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       admin_impersonation_logs: {
         Row: {
           action: string | null
@@ -1488,6 +1638,45 @@ export type Database = {
           rotation_interval_seconds?: number
           slug?: string
           width?: number | null
+        }
+        Relationships: []
+      }
+      booking_lifecycle_events: {
+        Row: {
+          actor_user_id: string | null
+          booking_id: string
+          event_type: string
+          from_payment_status: string | null
+          from_status: string | null
+          id: string
+          occurred_at: string
+          seq: number
+          to_payment_status: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          booking_id: string
+          event_type: string
+          from_payment_status?: string | null
+          from_status?: string | null
+          id?: string
+          occurred_at?: string
+          seq?: never
+          to_payment_status?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          booking_id?: string
+          event_type?: string
+          from_payment_status?: string | null
+          from_status?: string | null
+          id?: string
+          occurred_at?: string
+          seq?: never
+          to_payment_status?: string | null
+          to_status?: string | null
         }
         Relationships: []
       }
@@ -3069,6 +3258,39 @@ export type Database = {
           },
         ]
       }
+      email_marketing_suppression: {
+        Row: {
+          address_normalized: string
+          capability_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          scope_id: string | null
+          scope_kind: string
+          source: string
+        }
+        Insert: {
+          address_normalized: string
+          capability_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          scope_id?: string | null
+          scope_kind: string
+          source: string
+        }
+        Update: {
+          address_normalized?: string
+          capability_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          scope_id?: string | null
+          scope_kind?: string
+          source?: string
+        }
+        Relationships: []
+      }
       expenses: {
         Row: {
           academy_profile_id: string | null
@@ -4247,6 +4469,186 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_activation_boundaries: {
+        Row: {
+          activated_by: string | null
+          boundary_at: string | null
+          created_at: string
+          max_event_age_minutes: number | null
+          path: string
+          reason: string | null
+          request_id: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          activated_by?: string | null
+          boundary_at?: string | null
+          created_at?: string
+          max_event_age_minutes?: number | null
+          path: string
+          reason?: string | null
+          request_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          activated_by?: string | null
+          boundary_at?: string | null
+          created_at?: string
+          max_event_age_minutes?: number | null
+          path?: string
+          reason?: string | null
+          request_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notification_admin_audit: {
+        Row: {
+          action: string
+          actor: string
+          created_at: string
+          id: string
+          new_value: string
+          old_value: string
+          outcome: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          created_at?: string
+          id?: string
+          new_value: string
+          old_value: string
+          outcome: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          created_at?: string
+          id?: string
+          new_value?: string
+          old_value?: string
+          outcome?: string
+          reason?: string
+          request_id?: string
+          target?: string
+        }
+        Relationships: []
+      }
+      notification_admin_rejected_attempts: {
+        Row: {
+          action: string
+          actor: string
+          conflict_with: string
+          created_at: string
+          id: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          conflict_with: string
+          created_at?: string
+          id?: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          conflict_with?: string
+          created_at?: string
+          id?: string
+          reason?: string
+          request_id?: string
+          target?: string
+        }
+        Relationships: []
+      }
+      notification_admin_requests: {
+        Row: {
+          action: string
+          actor: string
+          created_at: string
+          fingerprint: string
+          request_id: string
+          verdict: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          created_at?: string
+          fingerprint: string
+          request_id: string
+          verdict: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          created_at?: string
+          fingerprint?: string
+          request_id?: string
+          verdict?: string
+        }
+        Relationships: []
+      }
+      notification_admin_search_log: {
+        Row: {
+          actor: string
+          created_at: string
+          fingerprint: string
+          id: string
+        }
+        Insert: {
+          actor: string
+          created_at?: string
+          fingerprint: string
+          id?: string
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          fingerprint?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      notification_channel_kill_switches: {
+        Row: {
+          activated_at: string
+          activated_by: string | null
+          channel: string
+          reason: string
+          request_id: string
+        }
+        Insert: {
+          activated_at?: string
+          activated_by?: string | null
+          channel: string
+          reason: string
+          request_id: string
+        }
+        Update: {
+          activated_at?: string
+          activated_by?: string | null
+          channel?: string
+          reason?: string
+          request_id?: string
+        }
+        Relationships: []
+      }
       notification_contacts: {
         Row: {
           channel: string
@@ -4259,6 +4661,7 @@ export type Database = {
           created_at: string
           destination_normalized: string
           destination_redacted: string
+          effective_user_id: string | null
           guest_player_id: string | null
           id: string
           is_primary: boolean
@@ -4279,6 +4682,7 @@ export type Database = {
           created_at?: string
           destination_normalized: string
           destination_redacted: string
+          effective_user_id?: string | null
           guest_player_id?: string | null
           id?: string
           is_primary?: boolean
@@ -4299,6 +4703,7 @@ export type Database = {
           created_at?: string
           destination_normalized?: string
           destination_redacted?: string
+          effective_user_id?: string | null
           guest_player_id?: string | null
           id?: string
           is_primary?: boolean
@@ -4639,6 +5044,7 @@ export type Database = {
           default_whatsapp_frequency: string
           digest_cutover: boolean
           digest_engine_enabled: boolean
+          email_footer_policy: string
           key: string
           max_per_user_per_day: number | null
           max_per_user_per_hour: number | null
@@ -4666,6 +5072,7 @@ export type Database = {
           default_whatsapp_frequency?: string
           digest_cutover?: boolean
           digest_engine_enabled?: boolean
+          email_footer_policy?: string
           key: string
           max_per_user_per_day?: number | null
           max_per_user_per_hour?: number | null
@@ -4693,6 +5100,7 @@ export type Database = {
           default_whatsapp_frequency?: string
           digest_cutover?: boolean
           digest_engine_enabled?: boolean
+          email_footer_policy?: string
           key?: string
           max_per_user_per_day?: number | null
           max_per_user_per_hour?: number | null
@@ -4709,6 +5117,75 @@ export type Database = {
           updated_at?: string
           visibility_scope?: string
           whatsapp_optin_via_booking?: boolean
+        }
+        Relationships: []
+      }
+      notification_manage_capabilities: {
+        Row: {
+          address_normalized: string
+          created_at: string
+          destination_fingerprint: string
+          expires_at: string
+          id: string
+          key_version: number
+          kind: string
+          last_used_at: string | null
+          revoked_at: string | null
+          scope_id: string | null
+          scope_kind: string
+          source_id: string
+          source_kind: string
+        }
+        Insert: {
+          address_normalized: string
+          created_at?: string
+          destination_fingerprint: string
+          expires_at: string
+          id?: string
+          key_version: number
+          kind: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          scope_id?: string | null
+          scope_kind: string
+          source_id: string
+          source_kind: string
+        }
+        Update: {
+          address_normalized?: string
+          created_at?: string
+          destination_fingerprint?: string
+          expires_at?: string
+          id?: string
+          key_version?: number
+          kind?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          scope_id?: string | null
+          scope_kind?: string
+          source_id?: string
+          source_kind?: string
+        }
+        Relationships: []
+      }
+      notification_manage_key_state: {
+        Row: {
+          current_version: number
+          id: boolean
+          min_mintable_version: number
+          updated_at: string
+        }
+        Insert: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
+        }
+        Update: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -4811,6 +5288,7 @@ export type Database = {
           locked_by: string | null
           max_attempts: number
           next_attempt_at: string | null
+          occurred_at: string
           ops_alert_attempts: number
           ops_alert_last_attempt_at: string | null
           ops_alerted_at: string | null
@@ -4833,6 +5311,7 @@ export type Database = {
           template_key: string | null
           template_version: number | null
           tenant_academy_profile_id: string | null
+          tenant_scope_key: string | null
           tenant_trainer_id: string | null
           updated_at: string
           visibility_scope: string
@@ -4864,6 +5343,7 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          occurred_at: string
           ops_alert_attempts?: number
           ops_alert_last_attempt_at?: string | null
           ops_alerted_at?: string | null
@@ -4886,6 +5366,7 @@ export type Database = {
           template_key?: string | null
           template_version?: number | null
           tenant_academy_profile_id?: string | null
+          tenant_scope_key?: string | null
           tenant_trainer_id?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -4917,6 +5398,7 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          occurred_at?: string
           ops_alert_attempts?: number
           ops_alert_last_attempt_at?: string | null
           ops_alerted_at?: string | null
@@ -4939,6 +5421,7 @@ export type Database = {
           template_key?: string | null
           template_version?: number | null
           tenant_academy_profile_id?: string | null
+          tenant_scope_key?: string | null
           tenant_trainer_id?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -5341,6 +5824,45 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_worker_invocations: {
+        Row: {
+          abandon_reason: string | null
+          id: string
+          net_request_id: number | null
+          purpose: string
+          request_id: string
+          requested_at: string
+          resolved_at: string | null
+          source: string
+          status: string
+          worker_run_id: string | null
+        }
+        Insert: {
+          abandon_reason?: string | null
+          id?: string
+          net_request_id?: number | null
+          purpose: string
+          request_id: string
+          requested_at?: string
+          resolved_at?: string | null
+          source: string
+          status?: string
+          worker_run_id?: string | null
+        }
+        Update: {
+          abandon_reason?: string | null
+          id?: string
+          net_request_id?: number | null
+          purpose?: string
+          request_id?: string
+          requested_at?: string
+          resolved_at?: string | null
+          source?: string
+          status?: string
+          worker_run_id?: string | null
+        }
+        Relationships: []
+      }
       notification_worker_runs: {
         Row: {
           channel: string
@@ -5504,6 +6026,7 @@ export type Database = {
           body_html: string
           created_at: string
           delay_days: number
+          delivery_class: string
           id: string
           is_active: boolean
           name: string
@@ -5516,6 +6039,7 @@ export type Database = {
           body_html: string
           created_at?: string
           delay_days?: number
+          delivery_class?: string
           id?: string
           is_active?: boolean
           name: string
@@ -5528,6 +6052,7 @@ export type Database = {
           body_html?: string
           created_at?: string
           delay_days?: number
+          delivery_class?: string
           id?: string
           is_active?: boolean
           name?: string
@@ -9372,6 +9897,362 @@ export type Database = {
         Args: { p_job_name: string; p_ttl_seconds?: number }
         Returns: string
       }
+      admin_activate_channel_kill: {
+        Args: { p_channel: string; p_reason: string; p_request_id: string }
+        Returns: string
+      }
+      admin_cancel_digest_group: {
+        Args: {
+          p_expected_state: string
+          p_group_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      admin_dispose_pre_boundary_backlog: {
+        Args: {
+          p_limit?: number
+          p_path: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          disposed: number
+          verdict: string
+        }[]
+      }
+      admin_dispose_stale_outbox: {
+        Args: {
+          p_channel: string
+          p_cutoff_at: string
+          p_expected_abandoned: number
+          p_expected_pending: number
+          p_limit?: number
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          disposed: number
+          observed_abandoned: number
+          observed_pending: number
+          verdict: string
+        }[]
+      }
+      admin_list_digest_groups: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_channel?: string
+          p_days?: number
+          p_limit?: number
+          p_state?: string
+        }
+        Returns: {
+          available_at: string
+          channel: string
+          created_at: string
+          delivery_budget_used: number
+          digest_boundary_at: string
+          event_type: string
+          first_send_at: string
+          id: string
+          item_count: number
+          locked_by: string
+          provider_attempts_started: number
+          provider_message_id: string
+          provider_status: string
+          state: string
+          terminal_reason: string
+          uncertain_since: string
+          updated_at: string
+          worker_run_id: string
+        }[]
+      }
+      admin_list_notification_audit: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          action: string
+          actor: string
+          created_at: string
+          id: string
+          new_value: string
+          old_value: string
+          outcome: string
+          reason: string
+          request_id: string
+          target: string
+        }[]
+      }
+      admin_list_notification_orphans: {
+        Args: {
+          p_before_event_id?: string
+          p_before_updated_at?: string
+          p_limit?: number
+        }
+        Returns: {
+          attempts: number
+          channel: string
+          digest_group_id: string
+          last_error_code: string
+          next_eligible_at: string
+          quarantined: boolean
+          resend_event_id: string
+          updated_at: string
+        }[]
+      }
+      admin_list_notification_outbox: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_channel?: string
+          p_days?: number
+          p_event_type?: string
+          p_limit?: number
+          p_status?: string
+        }
+        Returns: {
+          attempts: number
+          channel: string
+          created_at: string
+          delivery_mode: string
+          destination_redacted: string
+          error_class: string
+          event_type: string
+          id: string
+          max_attempts: number
+          scheduled_for: string
+          skip_reason: string
+          status: string
+          template_key: string
+          tenant_academy_profile_id: string
+          tenant_trainer_id: string
+          updated_at: string
+        }[]
+      }
+      admin_list_notification_rejected: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          action: string
+          actor: string
+          conflict_with: string
+          created_at: string
+          id: string
+          reason: string
+          request_id: string
+          target: string
+        }[]
+      }
+      admin_list_worker_invocations: {
+        Args: { p_limit?: number }
+        Returns: {
+          abandon_reason: string
+          actionable: boolean
+          age_seconds: number
+          id: string
+          net_request_id: number
+          purpose: string
+          requested_at: string
+          resolved_at: string
+          run_phase: string
+          run_status: string
+          source: string
+          stale: boolean
+          status: string
+          worker_run_id: string
+        }[]
+      }
+      admin_list_worker_runs: {
+        Args: {
+          p_before_run_id?: string
+          p_before_started_at?: string
+          p_days?: number
+          p_limit?: number
+        }
+        Returns: {
+          channel: string
+          ended_at: string
+          phase: string
+          run_id: string
+          started_at: string
+          status: string
+          worker: string
+        }[]
+      }
+      admin_notification_activation_boundaries: {
+        Args: never
+        Returns: {
+          activated_by: string
+          boundary_at: string
+          max_event_age_minutes: number
+          min_occurred_at: string
+          path: string
+          pending_before_boundary: number
+          pending_before_boundary_capped: boolean
+          pending_before_occurrence_floor: number
+          pending_before_occurrence_floor_capped: boolean
+          reason: string
+          state: string
+        }[]
+      }
+      admin_notification_delivery_history: {
+        Args: {
+          p_before_at?: string
+          p_before_ref?: string
+          p_limit?: number
+          p_outbox_id: string
+        }
+        Returns: {
+          a: string
+          at: string
+          b: string
+          c: string
+          kind: string
+          ref: string
+        }[]
+      }
+      admin_notification_event_states: {
+        Args: never
+        Returns: {
+          academy_off_caps: number
+          catalog_default: string
+          catalog_supported: boolean
+          channel: string
+          circuit_reason: string
+          circuit_state: string
+          circuit_tripped_at: string
+          cron_state: string
+          digest_conclusion: string
+          digest_engine_enabled: boolean
+          event_type: string
+          instant_conclusion: string
+          kill_state: string
+          required_delivery: boolean
+          send_env: string
+        }[]
+      }
+      admin_notification_gauges: {
+        Args: never
+        Returns: {
+          capped: boolean
+          channel: string
+          event_type: string
+          metric: string
+          value: number
+        }[]
+      }
+      admin_notification_readiness: { Args: never; Returns: Json }
+      admin_preview_circuit_release: {
+        Args: { p_channel: string }
+        Returns: {
+          capped: boolean
+          metric: string
+          value: number
+        }[]
+      }
+      admin_preview_notification_decision: {
+        Args: {
+          p_channel: string
+          p_event_key: string
+          p_tenant_academy_profile_id?: string
+          p_user_id: string
+        }
+        Returns: {
+          academy_cap: string
+          cap_applied: boolean
+          catalog_default: string
+          catalog_supported: boolean
+          channel: string
+          circuit_state: string
+          contact_found: boolean
+          contact_source: string
+          destination_masked: string
+          event_type: string
+          explicit_preference: string
+          final_decision: string
+          final_frequency: string
+          kill_state: string
+          required_delivery: boolean
+          required_override_applied: boolean
+          suppressed: boolean
+          whatsapp_optin_arm: boolean
+        }[]
+      }
+      admin_preview_notification_recipients: {
+        Args: {
+          p_after_user_id?: string
+          p_channel: string
+          p_event_key: string
+          p_limit?: number
+          p_tenant_academy_profile_id?: string
+        }
+        Returns: {
+          candidates_partial: boolean
+          destination_masked: string
+          final_decision: string
+          final_frequency: string
+          next_cursor: string
+          user_id: string
+        }[]
+      }
+      admin_requeue_notification_orphan: {
+        Args: {
+          p_reason: string
+          p_request_id: string
+          p_resend_event_id: string
+        }
+        Returns: string
+      }
+      admin_reset_notification_circuit: {
+        Args: {
+          p_channel: string
+          p_expected_reason: string
+          p_expected_state: string
+          p_expected_tripped_at: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      admin_resolve_notification_orphan: {
+        Args: {
+          p_reason: string
+          p_request_id: string
+          p_resend_event_id: string
+        }
+        Returns: string
+      }
+      admin_search_notification_destination: {
+        Args: { p_destination: string }
+        Returns: {
+          contacts: number
+          contacts_capped: boolean
+          delivery_events: number
+          destination_masked: string
+          events_capped: boolean
+          outbox_capped: boolean
+          outbox_rows: number
+        }[]
+      }
+      admin_stale_outbox_preview: {
+        Args: { p_channel: string; p_older_than_minutes: number }
+        Returns: {
+          abandoned_processing: number
+          channel: string
+          cutoff_at: string
+          older_than_minutes: number
+          oldest: string
+          pending: number
+        }[]
+      }
       admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
         Args: { p_invoice_id: string; p_reason: string }
@@ -9381,6 +10262,15 @@ export type Database = {
       append_rebook_member_open_notified: {
         Args: { _cycle_id: string; _keys: string[] }
         Returns: undefined
+      }
+      apply_notification_manage_action: {
+        Args: {
+          p_action: string
+          p_capability_id: string
+          p_signed_key_version: number
+          p_source: string
+        }
+        Returns: string
       }
       apply_notification_provider_event: {
         Args: {
@@ -9419,6 +10309,10 @@ export type Database = {
           p_run_id: string
           p_worker: string
         }
+        Returns: string
+      }
+      bind_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_worker_run_id: string }
         Returns: string
       }
       book_guest_cart_for_payment: {
@@ -9463,6 +10357,22 @@ export type Database = {
       booking_occupies_seat: {
         Args: { p_hold_expires_at: string; p_status: string }
         Returns: boolean
+      }
+      booking_transition_event: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: {
+          occurred_at: string
+          seq: number
+          set_key: string
+        }[]
+      }
+      booking_transition_occurred_at: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: string
+      }
+      booking_transition_seq: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: number
       }
       bump_rebook_reminders: {
         Args: {
@@ -9560,6 +10470,26 @@ export type Database = {
           _subscription_id: string
         }
         Returns: boolean
+      }
+      claim_worker_invocation: {
+        Args: { p_invocation_id: string; p_worker_run_id: string }
+        Returns: {
+          invocation_id: string
+          status: string
+        }[]
+      }
+      clear_notification_channel_kill: {
+        Args: {
+          p_channel: string
+          p_expected_kill_request_id: string
+          p_expected_pending: number
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          pending_released: number
+          verdict: string
+        }[]
       }
       club_has_managers: {
         Args: { _club_profile_id: string }
@@ -9731,6 +10661,7 @@ export type Database = {
         Args: {
           p_event_key: string
           p_idempotency_subject?: string
+          p_occurred_at?: string
           p_payload?: Json
           p_public_summary?: Json
           p_recipient_guest_player_id?: string
@@ -9987,6 +10918,48 @@ export type Database = {
           vat_rate: number
         }[]
       }
+      get_academy_notification_outcomes: {
+        Args: { p_academy_profile_id: string; p_limit?: number }
+        Returns: {
+          channel: string
+          created_at: string
+          destination_redacted: string
+          event_type: string
+          public_summary: Json
+          skip_reason: string
+          status: string
+        }[]
+      }
+      get_academy_notification_restriction_audit: {
+        Args: { p_academy_profile_id: string; p_limit?: number }
+        Returns: {
+          actor_user_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          new_max_frequency: string
+          old_max_frequency: string
+          reason: string
+        }[]
+      }
+      get_academy_notification_restrictions: {
+        Args: { p_academy_profile_id: string }
+        Returns: {
+          channel: string
+          event_type: string
+          max_frequency: string
+          updated_at: string
+        }[]
+      }
+      get_academy_restriction_impact: {
+        Args: { p_academy_profile_id: string; p_days?: number }
+        Returns: {
+          channel: string
+          day: string
+          event_type: string
+          restricted_count: number
+        }[]
+      }
       get_academy_undeliverable_recipients: {
         Args: { p_academy_profile_id: string }
         Returns: {
@@ -10115,6 +11088,15 @@ export type Database = {
         Args: { _location_id: string }
         Returns: Json
       }
+      get_manage_capability_for_source: {
+        Args: { p_source_id: string; p_source_kind: string }
+        Returns: {
+          capability_id: string
+          expired: boolean
+          key_version: number
+          revoked: boolean
+        }[]
+      }
       get_my_invoices: {
         Args: never
         Returns: {
@@ -10139,6 +11121,30 @@ export type Database = {
         }[]
       }
       get_my_linked_guest_bookings: { Args: never; Returns: Json }
+      get_my_notification_restriction_history: {
+        Args: { p_before?: string; p_before_id?: string; p_limit?: number }
+        Returns: {
+          academy_name: string
+          academy_profile_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          id: string
+          new_max_frequency: string
+          old_max_frequency: string
+          reason: string
+        }[]
+      }
+      get_my_notification_restrictions: {
+        Args: never
+        Returns: {
+          academy_name: string
+          academy_profile_id: string
+          channel: string
+          event_type: string
+          max_frequency: string
+        }[]
+      }
       get_my_paid_booking_ids: {
         Args: never
         Returns: {
@@ -10167,6 +11173,17 @@ export type Database = {
           consent_at: string
           destination_redacted: string
           opted_in: boolean
+        }[]
+      }
+      get_notification_manage_context: {
+        Args: { p_capability_id: string }
+        Returns: {
+          destination_redacted: string
+          key_version: number
+          kind: string
+          scope_display_name: string
+          scope_kind: string
+          status: string
         }[]
       }
       get_or_create_short_link: {
@@ -10512,6 +11529,14 @@ export type Database = {
         Args: { _guest_player_id: string }
         Returns: boolean
       }
+      is_marketing_suppressed: {
+        Args: { p_address: string; p_scope_id: string; p_scope_kind: string }
+        Returns: boolean
+      }
+      is_notification_channel_killed: {
+        Args: { p_channel: string }
+        Returns: boolean
+      }
       is_notification_consent_in_scope: {
         Args: {
           _consent_academy: string
@@ -10581,6 +11606,21 @@ export type Database = {
         }
         Returns: Json
       }
+      mint_notification_manage_capability: {
+        Args: {
+          p_address: string
+          p_kind: string
+          p_scope_id: string
+          p_scope_kind: string
+          p_source_id: string
+          p_source_kind: string
+          p_ttl: string
+        }
+        Returns: {
+          capability_id: string
+          key_version: number
+        }[]
+      }
       next_invoice_sequence: {
         Args: { p_min?: number; p_profile_id: string; p_profile_type: string }
         Returns: number
@@ -10589,6 +11629,46 @@ export type Database = {
         Args: { p_default_country_code?: string; p_phone: string }
         Returns: string
       }
+      notif_activation_boundary: { Args: { p_path: string }; Returns: string }
+      notif_activation_min_occurred_at: {
+        Args: { p_path: string }
+        Returns: string
+      }
+      notif_admin_fingerprint: { Args: { p_input: Json }; Returns: string }
+      notif_admin_gate: { Args: never; Returns: undefined }
+      notif_admin_record_refusal: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_conflict: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: undefined
+      }
+      notif_admin_record_verdict: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_fingerprint: string
+          p_request_id: string
+          p_verdict: string
+        }
+        Returns: string
+      }
+      notif_admin_replay_gate: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_fingerprint: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: string
+      }
+      notif_channel_kill_gate: { Args: { p_channel: string }; Returns: boolean }
       notif_digest_action_for_class: {
         Args: { p_class: string }
         Returns: string
@@ -10810,6 +11890,9 @@ export type Database = {
           seconds_since_success: number
         }[]
       }
+      notif_error_class: { Args: { p_error: string }; Returns: string }
+      notif_frequency_rank: { Args: { p_freq: string }; Returns: number }
+      notif_my_academy_ids: { Args: never; Returns: string[] }
       notif_open_slots_escape_html: {
         Args: { p_text: string }
         Returns: string
@@ -10846,6 +11929,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      open_notification_worker_invocation: {
+        Args: { p_purpose: string; p_request_id: string; p_source: string }
+        Returns: string
+      }
       person_has_tenant_relationship: {
         Args: {
           p_academy_profile_id: string
@@ -10866,6 +11953,18 @@ export type Database = {
           p_worker: string
         }
         Returns: string
+      }
+      preview_notification_channel_kill_clear: {
+        Args: { p_channel: string }
+        Returns: {
+          activated_at: string
+          activated_by: string
+          channel: string
+          kill_request_id: string
+          killed_for: string
+          pending_now: number
+          reason: string
+        }[]
       }
       purge_notification_digest: {
         Args: {
@@ -10986,6 +12085,25 @@ export type Database = {
         }
         Returns: undefined
       }
+      record_invocation_net_request: {
+        Args: { p_invocation_id: string; p_net_request_id: number }
+        Returns: undefined
+      }
+      record_marketing_suppression: {
+        Args: {
+          p_address: string
+          p_capability_id?: string
+          p_created_by?: string
+          p_scope_id: string
+          p_scope_kind: string
+          p_source: string
+        }
+        Returns: boolean
+      }
+      record_notification_activation_boundary: {
+        Args: { p_path: string; p_reason: string; p_request_id: string }
+        Returns: string
+      }
       record_notification_digest_result: {
         Args: {
           p_attempt_id: string
@@ -11054,6 +12172,10 @@ export type Database = {
       }
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
+      release_notification_claims_on_kill: {
+        Args: { p_channel: string; p_worker: string }
+        Returns: number
+      }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
       renew_cron_lease: {
         Args: {
@@ -11075,6 +12197,14 @@ export type Database = {
           own_name: string
         }[]
       }
+      resolve_invocation_for_canary_run: {
+        Args: { p_worker_run_id: string }
+        Returns: string
+      }
+      resolve_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_outcome: string; p_reason?: string }
+        Returns: string
+      }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
       resolve_short_link: {
         Args: { _code: string }
@@ -11084,6 +12214,10 @@ export type Database = {
         }[]
       }
       resolve_slot_booking_tier: { Args: { _slot_id: string }; Returns: string }
+      resolve_smoke_invocation_disabled: {
+        Args: { p_invocation_id: string; p_net_request_id: number }
+        Returns: string
+      }
       respond_to_priority_claim: {
         Args: { _action: string; _reason?: string; _token: string }
         Returns: Json
@@ -11125,6 +12259,17 @@ export type Database = {
           total_count: number
           trainer_profile_id: string
         }[]
+      }
+      set_academy_notification_restriction: {
+        Args: {
+          p_academy_profile_id: string
+          p_channel: string
+          p_event_type: string
+          p_max_frequency: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
       }
       set_player_location: {
         Args: {
@@ -11185,6 +12330,10 @@ export type Database = {
           _slot_b_trainer_id: string
         }
         Returns: undefined
+      }
+      sweep_notification_manage_capabilities: {
+        Args: { p_limit?: number }
+        Returns: number
       }
       unclaim_rebook_member_open_notice: {
         Args: { _cycle_id: string }

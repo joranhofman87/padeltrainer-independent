@@ -15,6 +15,7 @@
     "check:edge-types": "node scripts/check-edge-deno.mjs",
     "check:edge-types:update": "node scripts/check-edge-deno.mjs --update",
     "verify:rollout": "node scripts/rollout/notif-10ca3/verify/verify-artifacts.mjs && node scripts/rollout/notif-10ca3/verify/rehearsals.mjs && bash scripts/rollout/notif-10ca3/verify/identity-selftest.sh && bash scripts/rollout/notif-10ca3/verify/guard-mutation-test.sh && bash scripts/rollout/notif-10ca3/verify/operator-flow-test.sh && bash scripts/rollout/notif-10ca3/verify/exit-status-test.sh && bash scripts/rollout/notif-10ca3/verify/step6-verifier-test.sh && bash scripts/rollout/notif-10ca3/verify/logfetch-integration-test.sh && bash scripts/rollout/notif-10ca3/verify/dryrun-diagnostics-test.sh && bash scripts/rollout/notif-10ca3/verify/worktree-link-test.sh && bash scripts/rollout/notif-10ca3/verify/clone-safety-test.sh && bash scripts/rollout/notif-10ca3/verify/repo-guard-test.sh && bash scripts/rollout/notif-10ca3/verify/inventory-parse-test.sh && node scripts/rollout/notif-10ca3/verify/clone-safety-pg.mjs && bash scripts/rollout/notif-10cb/verify/enablement-selftest.sh && node scripts/rollout/notif-10cb/verify/preflight-pg.mjs",
+    "verify:cron-privilege": "node scripts/rollout/notif-10cb/verify/cron-privilege-pg.mjs",
     "lint:fix": "eslint . --fix",
     "lint:prune": "eslint . --prune-suppressions",
     "lint:baseline": "eslint . --suppress-all",
@@ -22,7 +23,7 @@
     "typecheck:baseline": "node scripts/check-tsc-baseline.mjs",
     "typecheck:baseline:update": "node scripts/check-tsc-baseline.mjs --update",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --project unit && vitest run --project db",
     "test:watch": "vitest",
     "test:edge": "deno test --allow-env --allow-net supabase/functions/_shared/",
     "test:e2e": "playwright test",
@@ -44,7 +45,9 @@
     "dev:e2e": "vite --mode e2e",
     "e2e:local": "bash scripts/db/e2e-local-paid.sh",
     "e2e:local:paid": "bash scripts/db/e2e-local-paid.sh",
-    "edge:serve:local": "bash scripts/db/edge-serve-local.sh"
+    "edge:serve:local": "bash scripts/db/edge-serve-local.sh",
+    "test:unit": "vitest run --project unit",
+    "test:db": "vitest run --project db"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

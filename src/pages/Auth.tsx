@@ -69,9 +69,12 @@ export default function Auth() {
     }
   }, [toast, t]);
 
-  // Capture redirect query param and store for post-login navigation
+  // Capture redirect query param and store for post-login navigation.
+  // Sanitised HERE as well as on the way out: `?redirect=` is attacker-controlled (it is handed
+  // out in email footers, so a crafted copy is trivial to send), and an unchecked value reaches
+  // navigate() as `//host` — a protocol-relative jump off-origin.
   useEffect(() => {
-    const redirect = searchParams.get('redirect');
+    const redirect = sanitizeAppRedirect(searchParams.get('redirect'));
     if (redirect) {
       sessionStorage.setItem('redirectAfterLogin', redirect);
     }
@@ -97,11 +100,20 @@ export default function Auth() {
     }
   }, [searchParams, toast, t]);
 
+  // The signup link forwards ?redirect= into the signup/onboarding chain, which stores and
+  // later navigates to it. Hand that chain a checked value rather than the raw query param.
+  const signupRedirect = sanitizeAppRedirect(searchParams.get('redirect'));
   const hasCheckedRoles = useRef(false);
 
   useEffect(() => {
     if (!loading && user && !isProcessingMagicLink && profileReady) {
-      const redirectUrl = sessionStorage.getItem('redirectAfterLogin');
+      // Sanitised at BOTH ends. Storing a checked value is not enough on its own: sessionStorage
+      // survives across reloads, so a value written by an older build — or by a tab opened before
+      // this fix — would otherwise be navigated to verbatim. Purge anything that fails, so a
+      // poisoned entry cannot sit in the tab being re-evaluated at every future login.
+      const storedRedirect = sessionStorage.getItem('redirectAfterLogin');
+      const redirectUrl = sanitizeAppRedirect(storedRedirect);
+      if (storedRedirect && !redirectUrl) sessionStorage.removeItem('redirectAfterLogin');
 
       // If profile fetch failed, do NOT assume new user — show error and let user retry
       if (profileFetchFailed && !role) {
@@ -414,7 +426,7 @@ export default function Auth() {
           <div className="pt-4 border-t text-center">
             <p className="text-sm text-muted-foreground">
               {t('signIn.noAccount', "Don't have an account?")}{' '}
-              <Link to={`/app/signup${searchParams.get('redirect') ? `?redirect=${encodeURIComponent(searchParams.get('redirect')!)}` : ''}`} className="font-medium text-primary hover:underline">
+              <Link to={`/app/signup${signupRedirect ? `?redirect=${encodeURIComponent(signupRedirect)}` : ''}`} className="font-medium text-primary hover:underline">
                 {t('signupPicker.signUp', 'Sign up')}
               </Link>
             </p>

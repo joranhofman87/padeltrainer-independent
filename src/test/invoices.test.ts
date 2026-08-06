@@ -9,12 +9,18 @@ import {
 /**
  * Characterization + invariant test for the invoice delete/cancel facade
  * (Codex mutation-boundary Finding 3, the one real P1 move). Pins the exact
- * delete-vs-cancel partition the six duplicated handlers implemented, and proves
- * the load-bearing money invariant: a non-draft (esp. PAID) invoice is NEVER
- * hard-deleted — it is soft-cancelled.
+ * delete/cancel/refuse partition, and proves the load-bearing money invariants:
+ * a paid invoice is never hard-deleted AND never soft-cancelled by this path.
+ *
+ * These tests previously pinned paid -> cancelled as correct. It was not (A1-A7 F6): cancelling a
+ * paid invoice is not a refund, and letting an ordinary bulk "delete" make a paid record read as
+ * cancelled diverges the financial state from the payment evidence. Paid rows are now REFUSED.
  */
-function makeClient(opts: { deleteError?: unknown; cancelError?: unknown } = {}) {
-  const calls = { deletedIds: [] as string[], cancelledIds: [] as string[], updateData: null as unknown };
+function makeClient(opts: { deleteError?: unknown; cancelError?: unknown; matched?: string[] } = {}) {
+  const calls = {
+    deletedIds: [] as string[], cancelledIds: [] as string[], updateData: null as unknown,
+    statusFilter: null as string[] | null,
+  };
   const client = {
     from() {
       return {
@@ -28,12 +34,26 @@ function makeClient(opts: { deleteError?: unknown; cancelError?: unknown } = {})
         },
         update(data: unknown) {
           calls.updateData = data;
-          return {
-            in: (_col: string, ids: string[]) => {
-              calls.cancelledIds.push(...ids);
-              return Promise.resolve({ error: opts.cancelError ?? null });
+          // .in() chains: the write filters by id AND by current status, so the fake has to be
+          // chainable to model it — and the status filter is recorded, because "the database
+          // re-checks the status at write time" is the property that closes the paid race.
+          // the write ends in .select('id'), returning the rows that ACTUALLY matched — which is
+          // the whole point: a raced paid invoice matches nothing and must not be reported as
+          // cancelled. `matched` lets a test model that race.
+          const result = () => ({
+            data: opts.cancelError ? null : (opts.matched ?? calls.cancelledIds).map((id) => ({ id })),
+            error: opts.cancelError ?? null,
+          });
+          const chain: Record<string, unknown> = {
+            in: (col: string, vals: string[]) => {
+              if (col === 'status') calls.statusFilter = vals;
+              else calls.cancelledIds.push(...vals);
+              return chain;
             },
+            select: () => ({ then: (res: (v: unknown) => void) => Promise.resolve(result()).then(res) }),
+            then: (res: (v: unknown) => void) => Promise.resolve(result()).then(res),
           };
+          return chain;
         },
       };
     },
@@ -42,7 +62,7 @@ function makeClient(opts: { deleteError?: unknown; cancelError?: unknown } = {})
 }
 
 describe('deleteOrCancelInvoices', () => {
-  it('partitions: drafts are DELETED, every other status is soft-cancelled', async () => {
+  it('partitions: drafts DELETED, unpaid soft-cancelled, PAID refused', async () => {
     const { client, calls } = makeClient();
     const res = await deleteOrCancelInvoices(
       [
@@ -56,20 +76,38 @@ describe('deleteOrCancelInvoices', () => {
     );
 
     expect(res.deletedIds).toEqual(['d']);
-    expect(res.cancelledIds).toEqual(['s', 'o', 'p', 'c']);
+    expect(res.cancelledIds).toEqual(['s', 'o', 'c']);
+    expect(res.refusedIds).toEqual(['p']);            // the paid one is reported, not processed
     expect(calls.deletedIds).toEqual(['d']);
-    expect(calls.cancelledIds).toEqual(['s', 'o', 'p', 'c']);
+    expect(calls.cancelledIds).toEqual(['s', 'o', 'c']);
+    expect(calls.cancelledIds).not.toContain('p');    // and no UPDATE ever touched it
     expect(calls.updateData).toEqual({ status: 'cancelled' });
+    // the write itself re-checks: an invoice paid between the list read and this click does not
+    // match the predicate, so it cannot be cancelled by an id that was captured while it was unpaid
+    expect(calls.statusFilter).toEqual(['sent', 'overdue', 'cancelled']);
   });
 
-  it('INVARIANT: a paid (non-draft) invoice is never hard-deleted — it is cancelled', async () => {
+  it('an UNRECOGNISED status is refused, not assumed cancellable', async () => {
+    // the allow-list, doing its job: a financial status added later (a partial payment, a refund in
+    // progress) must not inherit "safe to cancel" merely by not being a draft.
+    const { client, calls } = makeClient();
+    const res = await deleteOrCancelInvoices([{ id: 'x', status: 'partially_refunded' }, { id: 'n', status: null }], client);
+    expect(res.cancelledIds).toEqual([]);
+    expect(res.refusedIds).toEqual(['x', 'n']);
+    expect(calls.cancelledIds).toEqual([]);
+    expect(calls.deletedIds).toEqual([]);
+  });
+
+  it('INVARIANT: a paid invoice is neither deleted NOR cancelled by the generic path', async () => {
     const { client, calls } = makeClient();
     const res = await deleteOrCancelInvoices([{ id: 'paid1', status: 'paid' }], client);
 
-    expect(calls.deletedIds).toEqual([]); // nothing deleted
-    expect(calls.cancelledIds).toEqual(['paid1']);
+    expect(calls.deletedIds).toEqual([]);        // no hard delete…
+    expect(calls.cancelledIds).toEqual([]);      // …and no status change either
+    expect(calls.updateData).toBeNull();         // the UPDATE was never even built
     expect(res.deletedIds).toEqual([]);
-    expect(res.cancelledIds).toEqual(['paid1']);
+    expect(res.cancelledIds).toEqual([]);
+    expect(res.refusedIds).toEqual(['paid1']);   // surfaced so the caller can say so
   });
 
   it('all-drafts → only a DELETE, no cancel UPDATE', async () => {
@@ -87,7 +125,7 @@ describe('deleteOrCancelInvoices', () => {
     expect(r1.cancelError).toBeNull();
 
     const cancErr = { message: 'cancel boom' };
-    const r2 = await deleteOrCancelInvoices([{ id: 'p', status: 'paid' }], makeClient({ cancelError: cancErr }).client);
+    const r2 = await deleteOrCancelInvoices([{ id: 'p', status: 'sent' }], makeClient({ cancelError: cancErr }).client);
     expect(r2.cancelError).toBe(cancErr);
     expect(r2.deleteError).toBeNull();
   });
@@ -95,7 +133,7 @@ describe('deleteOrCancelInvoices', () => {
   it('empty list is a no-op', async () => {
     const { client, calls } = makeClient();
     const res = await deleteOrCancelInvoices([], client);
-    expect(res).toEqual({ deletedIds: [], cancelledIds: [], deleteError: null, cancelError: null });
+    expect(res).toEqual({ deletedIds: [], cancelledIds: [], refusedIds: [], deleteError: null, cancelError: null });
     expect(calls.deletedIds).toEqual([]);
     expect(calls.cancelledIds).toEqual([]);
   });
@@ -234,5 +272,28 @@ describe('setInvoicesDueDate', () => {
     const res = await setInvoicesDueDate([], '2026-07-01', client);
     expect(res.error).toBeNull();
     expect(calls.updateData).toBeNull();
+  });
+});
+
+describe('deleteOrCancelInvoices — the result reports what CHANGED, not what was hoped', () => {
+  it('an invoice paid between the list read and the click is refused, not reported cancelled', async () => {
+    // The database predicate already stops the write. What this pins is the REPORT: counting the
+    // candidate set as cancelled would tell the user it happened and — worse — annotate a paid
+    // invoice with a cancellation reason.
+    const { client, calls } = makeClient({ matched: ['a'] });   // 'b' was paid in the meantime
+    const res = await deleteOrCancelInvoices(
+      [{ id: 'a', status: 'sent' }, { id: 'b', status: 'sent' }], client);
+    expect(calls.cancelledIds).toEqual(['a', 'b']);   // both were attempted…
+    expect(res.cancelledIds).toEqual(['a']);          // …only one actually changed
+    expect(res.refusedIds).toEqual(['b']);            // and the other is reported as refused
+    expect(res.cancelError).toBeNull();               // no error: the row simply did not match
+  });
+
+  it('a cancel ERROR leaves the candidate set alone — an error is not a refusal', async () => {
+    const err = { message: 'cancel boom' };
+    const res = await deleteOrCancelInvoices([{ id: 'a', status: 'sent' }], makeClient({ cancelError: err }).client);
+    expect(res.cancelError).toBe(err);
+    expect(res.cancelledIds).toEqual(['a']);   // reported as attempted; the caller counts it failed
+    expect(res.refusedIds).toEqual([]);
   });
 });

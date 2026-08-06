@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 // NotificationSettings v2 (PR 8). Pins the five things this page must not get wrong:
@@ -11,17 +11,42 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 //  5. a failed save must not leave the UI showing a value the database does not have.
 
 let catalog: unknown[] = [];
+/** When set, the catalog read resolves with THIS instead — used to model a failed read. */
+let catalogResult: { data: unknown[] | null; error: { message: string } | null } | null = null;
 let v2rows: unknown[] = [];
 let v1row: Record<string, string> | null = null;
 let upsertResult: { error: { message: string } | null } = { error: null };
 let consentRows: unknown[] = [];
+// PostgREST resolves with {data: null, error} instead of rejecting. Hardcoding error:null
+// everywhere is what let an unchecked read look like "no preferences stored" for so long.
+let v2ReadError: { message: string } | null = null;
 const upsertMock = vi.fn();
 const legacyUpsertMock = vi.fn();
 const rpcMock = vi.fn();
+let myCaps: unknown[] = [];
+let myCapHistory: unknown[] = [];
+let myCapsError: { message: string } | null = null;
 
-let authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: false, loading: false };
+let authState = {
+  user: { id: 'U1' },
+  role: 'player' as string,
+  isClubManager: false,
+  // The page tests the whole ROLES set, not the primary role: `useAuth` ranks admin above
+  // trainer, so a primary-role test would hide every staff event from a trainer who is also an
+  // admin. The fixture must carry both fields or the page reads `undefined.includes`.
+  roles: ['player'] as string[],
+  isAcademyManager: false,
+  loading: false,
+};
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => authState }));
-vi.mock('react-router-dom', () => ({ useNavigate: () => vi.fn() }));
+// A SHARED navigate spy (so back-button targets are assertable) and a settable pathname (the page
+// derives its back target from which role layout mounted it).
+const navigateMock = vi.fn();
+let locationPath = '/app/player/settings/notifications';
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => navigateMock,
+  useLocation: () => ({ pathname: locationPath }),
+}));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
 // The mock INTERPOLATES {{vars}} like real i18next — otherwise a value passed into a string
 // (the redacted number below) is invisible to assertions and could silently go missing.
@@ -29,7 +54,10 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, def?: string | Record<string, unknown>, opts?: Record<string, unknown>) => {
       const vars = (typeof def === 'string' ? opts : def) ?? {};
-      const template = typeof def === 'string' ? def : key;
+      // object form carries defaultValue, exactly as real i18next reads it
+      const template = typeof def === 'string'
+        ? def
+        : String((def as Record<string, unknown> | undefined)?.defaultValue ?? key);
       return template.replace(/\{\{(\w+)\}\}/g, (_m, name) => String(vars[name] ?? ''));
     },
   }),
@@ -38,11 +66,16 @@ vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     from: (table: string) => {
       if (table === 'notification_event_types') {
-        return { select: () => Promise.resolve({ data: catalog, error: null }) };
+        return { select: () => Promise.resolve(catalogResult ?? { data: catalog, error: null }) };
       }
       if (table === 'notification_preferences_v2') {
         return {
-          select: () => ({ eq: () => Promise.resolve({ data: v2rows, error: null }) }),
+          select: () => ({
+            eq: () =>
+              Promise.resolve(
+                v2ReadError ? { data: null, error: v2ReadError } : { data: v2rows, error: null },
+              ),
+          }),
           upsert: (...args: unknown[]) => { upsertMock(...args); return Promise.resolve(upsertResult); },
         };
       }
@@ -57,6 +90,8 @@ vi.mock('@/lib/supabaseClient', () => ({
     rpc: (fn: string, ...rest: unknown[]) => {
       rpcMock(fn, ...rest);
       if (fn === 'get_my_whatsapp_consent') return Promise.resolve({ data: consentRows, error: null });
+      if (fn === 'get_my_notification_restrictions') return Promise.resolve(myCapsError ? { data: null, error: myCapsError } : { data: myCaps, error: null });
+      if (fn === 'get_my_notification_restriction_history') return Promise.resolve({ data: myCapHistory, error: null });
       if (fn === 'revoke_my_whatsapp_consent') return Promise.resolve({ data: 1, error: null });
       return Promise.resolve({ data: null, error: null });
     },
@@ -76,11 +111,22 @@ beforeEach(() => {
   upsertMock.mockReset();
   legacyUpsertMock.mockReset();
   rpcMock.mockReset();
+  navigateMock.mockReset();
+  locationPath = '/app/player/settings/notifications';
+  catalogResult = null;
   consentRows = [{ opted_in: false, destination_redacted: null, consent_at: null }];
   upsertResult = { error: null };
   v2rows = [];
   v1row = null;
-  authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: false, loading: false };
+  v2ReadError = null;
+  myCaps = [];
+  myCapHistory = [];
+  myCapsError = null;
+  navigateMock.mockClear();
+  // A fresh tab from an email link: React Router's history index is 0, i.e. nothing of ours
+  // behind us. Individual tests raise it to model in-app navigation.
+  window.history.replaceState({ idx: 0 }, '');
+  authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isClubManager: false, isAcademyManager: false, loading: false };
   catalog = [
     evt({ key: 'booking_confirmed_player', required_delivery: true }),
     evt({ key: 'booking_cancelled_player' }),
@@ -206,7 +252,7 @@ describe('NotificationSettings v2', () => {
   });
 
   it('keeps EVERY v1 staff preference reachable for staff', async () => {
-    authState = { user: { id: 'U1' }, role: 'trainer', isAcademyManager: false, loading: false };
+    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isClubManager: false, isAcademyManager: false, loading: false };
     render(<NotificationSettings />);
     for (const k of ['new_booking', 'booking_cancelled', 'new_follower', 'new_player',
                      'new_registration', 'new_review', 'upcoming_schedule_digest', 'payment_received']) {
@@ -229,8 +275,114 @@ describe('NotificationSettings v2', () => {
     expect(freq('pref-row-booking_confirmation')).toBe('instant');
   });
 
+  it('an academy cap renders an ADVISORY marker on the affected row, and only there', async () => {
+    myCaps = [{ academy_name: 'Padel Zuid', event_type: 'open_slots_player', channel: 'whatsapp', max_frequency: 'daily' }];
+    render(<NotificationSettings />);
+    const marker = await screen.findByTestId('cap-marker-open_slots_player');
+    expect(marker).toHaveTextContent('Padel Zuid');
+    // channel-specific: a WHATSAPP cap must be visible AND name its channel (round-4 finding 4)
+    expect(marker).toHaveTextContent(/whatsapp/i);
+    expect(screen.queryByTestId('cap-marker-booking_confirmation')).toBeNull();
+  });
+
+  it('a FAILED caps read joins the fail-closed boundary — plain controls under a binding cap mislead', async () => {
+    myCapsError = { message: 'unavailable' };
+    render(<NotificationSettings />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByTestId('pref-row-booking_confirmation')).toBeNull();
+  });
+
+  it("the academies' change history renders when present — finding 5's player visibility", async () => {
+    myCapHistory = [{ academy_name: 'Padel Zuid', event_type: 'open_slots_player',
+      old_max_frequency: null, new_max_frequency: 'off', reason: 'tournament week' }];
+    render(<NotificationSettings />);
+    const entry = await screen.findByTestId('cap-history-entry');
+    expect(entry).toHaveTextContent('tournament week');
+  });
+
+  describe('the Back control at the neutral email-entry route', () => {
+    // The page is mounted three ways and Back means something different in each. These cases are
+    // the ROLE-AGNOSTIC entry the email footers link to, so the pathname must actually be it —
+    // when this suite gained a settable pathname (N1's back-target work) the default became a
+    // player route, and these were silently asserting the wrong mount.
+    beforeEach(() => { locationPath = '/app/settings/notifications'; });
+    afterEach(() => { locationPath = '/app/player/settings/notifications'; });
+
+    // An email footer opens a FRESH tab, so navigate(-1) has nothing to go back to. The fallback
+    // must be a surface the account can actually ENTER: the first version guessed, and sent a
+    // club-only account to /app/player, whose layout guard redirects it to the login form.
+    const homes: Array<[string, Partial<typeof authState>, string]> = [
+      ['academy manager', { isAcademyManager: true }, '/app/academy'],
+      ['admin', { role: 'admin', roles: ['admin'] }, '/app/admin'],
+      ['trainer', { role: 'trainer', roles: ['trainer'] }, '/app/trainer'],
+      ['club', { role: 'club', roles: ['club'] }, '/app/club'],
+      ['club manager without the role', { isClubManager: true }, '/app/club'],
+      ['academy staff who is not a manager', { role: 'academy', roles: ['academy'] }, '/app/academy/onboarding'],
+      ['player', { role: 'player', roles: ['player'] }, '/app/player'],
+    ];
+
+    it.each(homes)('with no in-app history, %s goes to its own home', async (_l, patch, expected) => {
+      authState = { ...authState, ...patch };
+      render(<NotificationSettings />);
+      const back = await screen.findByLabelText('back');
+      back.click();
+      expect(navigateMock).toHaveBeenCalledWith(expected);
+    });
+
+    it.each([
+      ['/app/academy/settings/notifications', '/app/academy/settings'],
+      ['/app/trainer/settings/notifications', '/app/trainer/settings'],
+      ['/app/player/settings/notifications', '/app/player/settings'],
+    ])('mounted under %s, Back goes to that role\'s settings hub', async (path, expected) => {
+      // the other half of the merged Back control: under a role layout the useful target is where
+      // the person just came from, not the account's home. Pinned beside the neutral-route cases
+      // because the integration merge had to combine the two and either could regress alone.
+      locationPath = path;
+      render(<NotificationSettings />);
+      const back = await screen.findByLabelText('back');
+      back.click();
+      expect(navigateMock).toHaveBeenCalledWith(expected);
+    });
+
+    it('prefers real in-app history when there is any', async () => {
+      window.history.replaceState({ idx: 3 }, '');
+      render(<NotificationSettings />);
+      const back = await screen.findByLabelText('back');
+      back.click();
+      expect(navigateMock).toHaveBeenCalledWith(-1);
+    });
+  });
+
+  it('STAFF filtering reads the ROLES set — admin+trainer is staff, though role is admin', async () => {
+    // `useAuth` ranks admin above trainer, so this account's PRIMARY role is 'admin'. Testing the
+    // primary role hid every staff event and legacy staff setting from a real trainer.
+    authState = {
+      user: { id: 'U1' },
+      role: 'admin',
+      roles: ['admin', 'trainer'],
+      isClubManager: false,
+      isAcademyManager: false,
+      loading: false,
+    };
+    render(<NotificationSettings />);
+    expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
+    expect(await screen.findByTestId('pref-row-new_booking')).toBeInTheDocument();
+  });
+
+  it('a FAILED preference read shows a retry, and renders NO control that could overwrite it', async () => {
+    // The destructive shape this prevents: an unchecked read leaves `prefs` empty, `effective()`
+    // then answers with catalog DEFAULTS, and saveEvent writes BOTH columns — so touching the
+    // email control would replace a stored `whatsapp: off` with the default.
+    v2ReadError = { message: 'connection reset' };
+    render(<NotificationSettings />);
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.queryByTestId('pref-row-booking_confirmation')).toBeNull();
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
   it('STAFF filtering includes trainers — a trainer-only account sees staff events', async () => {
-    authState = { user: { id: 'U1' }, role: 'trainer', isAcademyManager: false, loading: false };
+    authState = { user: { id: 'U1' }, role: 'trainer', roles: ['trainer'], isClubManager: false, isAcademyManager: false, loading: false };
     render(<NotificationSettings />);
     // catalogued audience is 'academy_manager', but PR 6b's fan-out also mails trainers
     expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
@@ -245,7 +397,7 @@ describe('NotificationSettings v2', () => {
   });
 
   it('an academy manager also lands in the staff bucket', async () => {
-    authState = { user: { id: 'U1' }, role: 'player', isAcademyManager: true, loading: false };
+    authState = { user: { id: 'U1' }, role: 'player', roles: ['player'], isClubManager: false, isAcademyManager: true, loading: false };
     render(<NotificationSettings />);
     expect(await screen.findByTestId('pref-row-booking_request_staff')).toBeInTheDocument();
   });
@@ -325,5 +477,50 @@ describe('NotificationSettings v2', () => {
     render(<NotificationSettings />);
     const cell = await screen.findByTestId('wa-cell-invoice_reminder_player');
     expect(cell.querySelector('[role="switch"]')).not.toBeChecked();
+  });
+
+  it('MARKETING renders in its own labelled group, not among service events', async () => {
+    catalog = [
+      evt({ key: 'booking_cancelled_player' }),
+      evt({ key: 'marketing_updates', category: 'marketing', default_email_frequency: 'off' }),
+    ];
+    render(<NotificationSettings />);
+    const marketingCard = await screen.findByTestId('notification-settings-marketing');
+    // the marketing row lives in the marketing card...
+    expect(marketingCard.querySelector('[data-testid="pref-row-marketing_updates"]')).not.toBeNull();
+    // ...and NOT in the service card, where it read as just another service mail
+    const serviceCard = screen.getByTestId('notification-settings-configurable');
+    expect(serviceCard.querySelector('[data-testid="pref-row-marketing_updates"]')).toBeNull();
+    expect(serviceCard.querySelector('[data-testid="pref-row-booking_cancelled_player"]')).not.toBeNull();
+  });
+
+  it('a FAILED catalog read shows an error state, never defaults dressed as choices', async () => {
+    // PostgREST builders RESOLVE with {data:null,error} — they do not throw. Unchecked, the page
+    // rendered every control at its catalog default as if that were the stored preference.
+    catalogResult = { data: null, error: { message: 'permission denied' } };
+    render(<NotificationSettings />);
+    expect(await screen.findByTestId('notification-settings-load-error')).toBeInTheDocument();
+    expect(screen.queryByTestId('notification-settings-configurable')).toBeNull();
+    expect(screen.queryByTestId('notification-settings-legacy')).toBeNull();
+    // ...and retry reloads rather than dead-ending
+    catalogResult = null;
+    // the retry lives inside the SHARED QueryErrorState now (ten other pages use it), so it is
+    // found by its accessible name rather than a page-private test id — a stronger assertion, and
+    // one that does not break the next time the shared component's markup changes
+    fireEvent.click(screen.getByRole('button', { name: /try again/i }));
+    expect(await screen.findByTestId('notification-settings-configurable')).toBeInTheDocument();
+  });
+
+  it.each([
+    ['/app/player/settings/notifications', '/app/player/settings'],
+    ['/app/trainer/settings/notifications', '/app/trainer/settings'],
+    ['/app/academy/settings/notifications', '/app/academy/settings'],
+  ])('the back button from %s goes to the role settings hub (a deep-linked tab has no history)',
+    async (path, target) => {
+    locationPath = path;
+    render(<NotificationSettings />);
+    await screen.findByTestId('notification-settings-configurable');
+    fireEvent.click(screen.getByRole('button', { name: 'back' }));
+    expect(navigateMock).toHaveBeenCalledWith(target);
   });
 });

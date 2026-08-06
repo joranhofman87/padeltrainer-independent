@@ -103,7 +103,13 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   is enabled, then requires the reply to be exactly
                                   200 {"status":"disabled","reason":"disabled"} and every counter to
                                   be unmoved. Also needs your word that DIGEST_SEND_ENABLED is off —
-                                  no SQL can see an edge env var
+                                  no SQL can see an edge env var. Prints its invocation request id
+                                  FIRST; after an ambiguous failure, re-run with
+                                  --invocation-request-id=<that id> to resume the SAME invocation
+  enable-engine ... [--boundary-request-id=<uuid>]
+                                  the step prints a boundary request id before it runs; on an
+                                  AMBIGUOUS failure re-run with it to replay the SAME opening
+                                  rather than re-dating the delivery path's boundary
   canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N] <db_url>
                                   SENDS. Invokes the worker ONCE by running the cron job's OWN
                                   stored command, after asserting it hashes to the reviewed value
@@ -111,7 +117,9 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   hand-typed lookalike naming some other endpoint. Refuses an armed
                                   cron, a disabled engine, an in-flight run, and a reachable
                                   population above --max-recipients (default 1). Prints the reply so
-                                  you can read dispatchRunId; that uuid is what `canary` verifies
+                                  you can read dispatchRunId; that uuid is what `canary` verifies.
+                                  Prints its invocation request id FIRST; after an ambiguous
+                                  failure, re-run with --invocation-request-id=<that id>
   canary --yes --admin-ops-confirmed <db_url> <run_id>
                                   reconcile ONE canary's ACTUAL returned run id
   activate --yes --monitor-confirmed --admin-ops-confirmed <db_url> <run_id>
@@ -122,6 +130,40 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   --monitor-confirmed asserts the EXTERNAL cron/uptime monitor on
                                   notif_digest_worker_liveness() is live: no SQL can see it, and it
                                   is the only detector for "the worker was never invoked"
+  clear-kill --preview --channel=<email|whatsapp> <db_url>
+                                  READ-ONLY: who killed the channel, why, how long ago, and how
+                                  many pending rows resume the moment it is cleared
+  clear-kill --yes --channel=<email|whatsapp> --kill-request-id=<uuid>
+             --expected-pending=<N from the preview> --reason=<text>
+             [--clear-request-id=<uuid>] <db_url>
+                                  THE WAY BACK from a kill: clears exactly the kill you named (a
+                                  different live kill is a different incident and is refused) and
+                                  refuses if the queue has GROWN past the number the preview
+                                  showed you, then audits the clearing beside the kill. Prints its
+                                  clear request id FIRST; after an ambiguous failure re-run with
+                                  --clear-request-id=<that id>. Clearing decides that mail
+                                  RESUMES, which is why it is here and not on the admin page
+  stage-event --yes --admin-ops-confirmed --event=<catalogue key> <db_url>
+                                  EVERY DIGEST STAGE AFTER THE FIRST: adds one more event to the
+                                  already-open path and already-armed cron. Prints the event's
+                                  recent volume first, then refuses unless the path is open, the
+                                  reviewed job is armed, and the pipeline is healthy right now (no
+                                  kill, closed circuits, no quarantined orphans, a success inside
+                                  the last hour, nothing uncertain)
+  whatsapp-readiness [--provider-confirmed] [--templates-confirmed] [--consent-confirmed] <db_url>
+                                  READ-ONLY gate for the SEPARATE WhatsApp decision: reports the
+                                  consent the database recorded (and refuses an unscoped tenant
+                                  consent), the events that support the channel, and the queue that
+                                  a boundary would exclude — then refuses unless the owner has
+                                  confirmed the provider, the approved templates and the opt-in
+                                  policy, none of which any SQL can see. Exits BLOCKED_OWNER_WHATSAPP
+                                  by default, which is the correct answer until all three are true
+  postflight [--window-minutes=N] <db_url>
+                                  READ-ONLY, run after activation and thereafter: re-proves the
+                                  no-backlog invariant FROM THE LEDGER, that the armed job is
+                                  still the reviewed one, that the worker has succeeded inside the
+                                  window, and that no group, orphan or run is stuck. Every check
+                                  raises rather than reports, so it can be scheduled as an alarm
   rollback --yes --switch-off-confirmed <db_url>
                                   set DIGEST_SEND_ENABLED=false FIRST (owner action, outside this
                                   script), then this clears the event flag, deactivates the cron,
@@ -149,6 +191,23 @@ for a in "$@"; do
     --monitor-confirmed)     MONITOR_CONFIRMED=1 ;;
     --admin-ops-confirmed)   ADMIN_OPS_CONFIRMED=1 ;;
     --max-recipients=*)      MAX_RECIPIENTS="${a#*=}" ;;
+    # RECOVERY, not routine: after an AMBIGUOUS invoke (connection died — the open may have
+    # committed), re-running with the id the step printed makes open() REPLAY the same
+    # invocation instead of colliding with the single-flight gate. A fresh uuid per execution
+    # could never recover that case.
+    --invocation-request-id=*) INVOCATION_REQUEST_ID="${a#*=}" ;;
+    --boundary-request-id=*)   BOUNDARY_REQUEST_ID="${a#*=}" ;;
+    --kill-request-id=*)       KILL_REQUEST_ID="${a#*=}" ;;
+    --channel=*)               KILL_CHANNEL="${a#*=}" ;;
+    --reason=*)                CLEAR_REASON="${a#*=}" ;;
+    --expected-pending=*)      EXPECTED_PENDING="${a#*=}" ;;
+    --clear-request-id=*)      CLEAR_REQUEST_ID="${a#*=}" ;;
+    --preview)                 PREVIEW_ONLY=1 ;;
+    --window-minutes=*)        WINDOW_MINUTES="${a#*=}" ;;
+    --event=*)                 STAGE_EVENT="${a#*=}" ;;
+    --provider-confirmed)      WA_PROVIDER=1 ;;
+    --templates-confirmed)     WA_TEMPLATES=1 ;;
+    --consent-confirmed)       WA_CONSENT=1 ;;
     *)                       ARGS+=("$a") ;;
   esac
 done
@@ -236,7 +295,7 @@ require_run_id() {   # $1 = candidate, $2 = which subcommand wants it
 # uncommitted transaction that is discarded at disconnect, so the emergency rollback would do nothing
 # at all while every gate before it passed. `-v ON_ERROR_STOP=0` is the same shape. Three names are
 # actually used, so three names are permitted.
-ARTIFACT_VARS="run_id max_recipients request_id"
+ARTIFACT_VARS="run_id max_recipients request_id invocation_request_id net_request_id boundary_request_id channel kill_request_id reason expected_pending window_minutes event_key provider_confirmed templates_confirmed consent_confirmed"
 assert_artifact_args() {   # $1 = artifact (for the message), $@ = the forwarded arguments
   local artifact="$1"; shift
   local expect_value=0 a
@@ -344,6 +403,24 @@ marker_values() {   # $1 = file, $2 = marker name, $3 = ERE for the value
   { grep -Eo "$2=($3)" "$1" || true; } | cut -d= -f2- | sort -u
 }
 
+# The invocation request id, PRINTED BEFORE the invoke runs — that ordering is the recovery
+# mechanism. If the invoke dies AMBIGUOUSLY (connection lost mid-commit) the open() may have
+# committed; a fresh uuid on the retry would then collide with the single-flight gate and no
+# execution could ever recover the committed id. Printing first means the operator always holds
+# the id; --invocation-request-id feeds it back and open() REPLAYS the same invocation.
+prepare_invocation_request_id() {   # $1 = what this invocation is, for the messages
+  local what="$1"
+  if [[ -n "${INVOCATION_REQUEST_ID:-}" ]]; then
+    [[ "$INVOCATION_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+      || die "--invocation-request-id must be a lowercase uuid, got '${INVOCATION_REQUEST_ID}'"
+    INV_REQ_ID="$INVOCATION_REQUEST_ID"
+    warn "REUSING invocation request id ${INV_REQ_ID} for ${what} — an exact replay returns the SAME invocation (recovery path)"
+  else
+    INV_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+  fi
+  ok "invocation request id: ${INV_REQ_ID} — if ${what} dies after this line, re-run this step with --invocation-request-id=${INV_REQ_ID} (an exact replay resumes the SAME invocation instead of colliding with the single-flight gate)"
+}
+
 case "$SUB" in
   status)
     url="$(db_url)"
@@ -367,8 +444,21 @@ case "$SUB" in
     # every guard this bundle exists to provide.
     require_confirmed "enabling the digest engine"
     url="$(db_url)"
-    run_sql "$url" enable_engine.sql
-    ok "digest engine ENABLED for ${EVENT_KEY} — nothing sends until the worker is invoked"
+    # N5: this step also OPENS the email:digest delivery path, in the same transaction. The id is
+    # printed BEFORE the step for the same reason the invocation's is: if the step dies
+    # ambiguously, re-running with --boundary-request-id REPLAYS that opening instead of moving
+    # the boundary forward (which would re-admit everything enqueued in between).
+    if [[ -n "${BOUNDARY_REQUEST_ID:-}" ]]; then
+      [[ "$BOUNDARY_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+        || die "--boundary-request-id must be a lowercase uuid, got '${BOUNDARY_REQUEST_ID}'"
+      BND_REQ_ID="$BOUNDARY_REQUEST_ID"
+      warn "REUSING boundary request id ${BND_REQ_ID} — an exact replay re-opens NOTHING and leaves the recorded boundary where it is"
+    else
+      BND_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    fi
+    ok "boundary request id: ${BND_REQ_ID} — if this step dies after this line, re-run it with --boundary-request-id=${BND_REQ_ID}"
+    run_sql "$url" enable_engine.sql -v boundary_request_id="$BND_REQ_ID"
+    ok "digest engine ENABLED for ${EVENT_KEY} and the email:digest path OPENED — nothing sends until the worker is invoked, and nothing older than this moment can ever send"
     ;;
 
   preflight)
@@ -416,7 +506,9 @@ case "$SUB" in
     warn "sending is DIGEST_SEND_ENABLED being off — your assertion, which no SQL here can check: the"
     warn "worker claims existing groups regardless of the engine flags. The backlog assertions are a"
     warn "SNAPSHOT that removes the work a wrong assertion would have sent."
-    if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql; then
+    prepare_invocation_request_id "the disabled smoke"
+    if ! run_sql_capture "$CANARY_TMP/invoke.out" "$url" smoke_invoke.sql -v invocation_request_id="$INV_REQ_ID"; then
+      warn "invocation request id was ${INV_REQ_ID} — if the failure below is AMBIGUOUS (connection lost, not a rolled-back assertion), re-run with --invocation-request-id=${INV_REQ_ID}"
       report_failed_invoke "$CANARY_TMP/invoke.out" "the disabled smoke"
     fi
     req_id="$(marker_values "$CANARY_TMP/invoke.out" CANARY_REQUEST_ID '[0-9]+')"
@@ -466,7 +558,21 @@ case "$SUB" in
     [[ "$disabled" == "t" || "$disabled" == "true" ]] \
       || die "the disabled smoke did not answer exactly the disabled body — DIGEST_SEND_ENABLED may not be off. The counters either side were compared first and are above; read them and the body, and do NOT continue"
 
-    ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"} and moved no counter"
+    # N4 AC-6: CLOSE the invocation record, with the evidence attached. The disabled worker
+    # never starts a run, so the generic run-evidence resolve refuses this invocation forever —
+    # left open it blocks every later smoke/canary/activate at the gate. This dedicated arm
+    # re-verifies the SAME facts in SQL (clean 200, exact disabled body, response postdates the
+    # open) rather than taking this shell's verdict on trust, and it refuses anything that is
+    # not a pending smoke. Runs only AFTER every verdict above passed.
+    if ! run_sql_capture "$CANARY_TMP/resolve.out" "$url" smoke_resolve_disabled.sql \
+           -v invocation_request_id="$INV_REQ_ID" -v net_request_id="$req_id"; then
+      die "the disabled smoke PASSED but its invocation could not be resolved — the record for request_id=${INV_REQ_ID} is still open and will (correctly) block later steps. Read the error above, then resolve it via smoke_resolve_disabled.sql or the invocation RPCs"
+    fi
+    resolved="$(marker_values "$CANARY_TMP/resolve.out" SMOKE_INVOCATION_RESOLVED '[a-z_]+')"
+    [[ "$resolved" == "completed_disabled" || "$resolved" == "already_resolved" ]] \
+      || die "smoke_resolve_disabled.sql printed verdict '${resolved:-<none>}' — expected completed_disabled or already_resolved"
+
+    ok "disabled smoke: answered exactly {\"status\":\"disabled\",\"reason\":\"disabled\"}, moved no counter, and its invocation record is closed (${resolved})"
     ;;
 
   canary-invoke)
@@ -495,7 +601,9 @@ case "$SUB" in
     resp_out="$CANARY_TMP/response.out"
 
     warn "canary-invoke SENDS. It runs the reviewed cron command once, with the cron still inactive."
-    if ! run_sql_capture "$inv_out" "$url" canary_invoke.sql -v max_recipients="$MAX_RECIPIENTS"; then
+    prepare_invocation_request_id "the canary invocation"
+    if ! run_sql_capture "$inv_out" "$url" canary_invoke.sql -v max_recipients="$MAX_RECIPIENTS" -v invocation_request_id="$INV_REQ_ID"; then
+      warn "invocation request id was ${INV_REQ_ID} — if the failure below is AMBIGUOUS (connection lost, not a rolled-back assertion), re-run with --invocation-request-id=${INV_REQ_ID}"
       report_failed_invoke "$inv_out" "the canary invocation"
     fi
 
@@ -602,6 +710,92 @@ case "$SUB" in
     run_sql "$url" activate.sql -v run_id="${run_id}"
     run_sql "$url" status.sql
     ok "digest cron ARMED — watch the external monitor and notif_digest_worker_liveness()"
+    ;;
+
+  clear-kill)
+    # THE WAY BACK from a kill, in TWO steps on purpose.
+    #
+    #   --preview   reads and prints: who killed the channel, why, how long ago, and how many
+    #               pending rows resume the moment it is cleared. Changes nothing.
+    #   (then)      the real clear, which demands --expected-pending=<that number>. The server
+    #               refuses if the queue has GROWN past it, so the confirmation is about a value
+    #               the operator actually saw — a flag saying "I read it" next to a printout one
+    #               statement above the clear confirmed nothing at all.
+    #
+    # It lives here rather than on the admin page because clearing decides that mail RESUMES —
+    # the same class of decision as activation.
+    [[ -n "${KILL_CHANNEL:-}" ]] || die "clear-kill requires --channel=email|whatsapp"
+    [[ "$KILL_CHANNEL" =~ ^(email|whatsapp)$ ]] || die "--channel must be email or whatsapp, got '${KILL_CHANNEL}'"
+    url="$(db_url)"
+    if [[ -n "${PREVIEW_ONLY:-}" ]]; then
+      run_sql "$url" preview_kill_clear.sql -v channel="$KILL_CHANNEL"
+      ok "preview only — nothing changed. Re-run WITHOUT --preview and WITH --expected-pending=<the PENDING number above> to clear"
+      exit 0
+    fi
+    require_confirmed "clearing a channel kill"
+    [[ -n "${KILL_REQUEST_ID:-}" ]] || die "clear-kill requires --kill-request-id=<the request id OF THE KILL you read> — clearing whatever kill is present would re-open a channel someone may have killed seconds ago for another incident"
+    [[ "$KILL_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+      || die "--kill-request-id must be a lowercase uuid, got '${KILL_REQUEST_ID}'"
+    [[ "${EXPECTED_PENDING:-}" =~ ^[0-9]+$ ]] \
+      || die "clear-kill requires --expected-pending=<the PENDING number that 'clear-kill --preview' printed>: the server refuses if more mail has queued since, so this is a confirmation about a number you have seen"
+    [[ -n "${CLEAR_REASON:-}" ]] || die "clear-kill requires --reason=<3-500 chars>: it is recorded in the immutable audit beside the kill it clears"
+    # the clear's own request id, PRINTED FIRST and reusable — the same recovery mechanism as the
+    # invocation's and the boundary's. Without it, an ambiguous commit (cleared, connection lost)
+    # would be re-run under a fresh id and answer rejected_not_killed instead of replaying.
+    if [[ -n "${CLEAR_REQUEST_ID:-}" ]]; then
+      [[ "$CLEAR_REQUEST_ID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
+        || die "--clear-request-id must be a lowercase uuid, got '${CLEAR_REQUEST_ID}'"
+      CLEAR_REQ_ID="$CLEAR_REQUEST_ID"
+      warn "REUSING clear request id ${CLEAR_REQ_ID} — an exact replay returns the recorded verdict instead of deciding again"
+    else
+      CLEAR_REQ_ID="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+    fi
+    ok "clear request id: ${CLEAR_REQ_ID} — if this step dies AMBIGUOUSLY, re-run it with --clear-request-id=${CLEAR_REQ_ID}"
+    run_sql "$url" clear_kill.sql -v channel="$KILL_CHANNEL" -v kill_request_id="$KILL_REQUEST_ID" \
+      -v expected_pending="$EXPECTED_PENDING" -v reason="$CLEAR_REASON" -v request_id="$CLEAR_REQ_ID"
+    ok "${KILL_CHANNEL} kill CLEARED — the channel is live again and whatever queued while it was dead will now send"
+    ;;
+
+  stage-event)
+    # EVERY DIGEST STAGE AFTER THE FIRST. The first one (enable-engine) opens the delivery path
+    # while the cron is inactive; this one adds an event to a path that is already open and a cron
+    # that is already armed — so its preconditions are the opposite ones, and it refuses unless the
+    # pipeline is healthy at this moment. Staging exists so a bad event costs one event's worth of
+    # mail instead of the catalogue's; the health checks are the reason to stage at all.
+    require_confirmed "staging another event onto the running digest path"
+    require_admin_ops "stage-event"
+    [[ -n "${STAGE_EVENT:-}" ]] || die "stage-event requires --event=<catalogue key>"
+    [[ "$STAGE_EVENT" =~ ^[a-z][a-z0-9_]*$ ]] || die "--event must be a catalogue key, got '${STAGE_EVENT}'"
+    url="$(db_url)"
+    run_sql "$url" enable_event.sql -v event_key="$STAGE_EVENT"
+    ok "digest engine ENABLED for ${STAGE_EVENT} — watch it with 'postflight --window-minutes=<your watch window>' before staging the next one"
+    ;;
+
+  whatsapp-readiness)
+    # WhatsApp is a SEPARATE owner decision. This step reads only: it reports what the database can
+    # prove (consent recorded and scoped, the catalogue, the queue that would be excluded) and
+    # REFUSES on the three facts no SQL can see — the provider account, the approved templates, and
+    # that the opt-ins were collected the way the policy says. Without all three confirmations it
+    # exits non-zero with BLOCKED_OWNER_WHATSAPP, which is the intended answer today.
+    url="$(db_url)"
+    run_sql "$url" whatsapp_readiness.sql \
+      -v provider_confirmed="${WA_PROVIDER:+true}" -v templates_confirmed="${WA_TEMPLATES:+true}" \
+      -v consent_confirmed="${WA_CONSENT:+true}" \
+      || die "BLOCKED_OWNER_WHATSAPP — see the assertion above. Nothing was changed."
+    ok "whatsapp readiness: every check the database can make PASSED, and the owner has confirmed the three it cannot"
+    ;;
+
+  postflight)
+    # AFTER activation, and as often as you like: read-only, changes nothing, and every check
+    # either passes or raises — so a scheduled run of this is an alarm rather than a report nobody
+    # reads. It re-proves the NO-BACKLOG invariant from the ledger (not from the code), checks the
+    # armed job is still the reviewed one, that the worker has succeeded inside the watch window,
+    # and that nothing is stuck or holding the channel.
+    url="$(db_url)"
+    win="${WINDOW_MINUTES:-60}"
+    [[ "$win" =~ ^[0-9]+$ ]] || die "--window-minutes must be a number, got '${win}'"
+    run_sql "$url" postflight.sql -v window_minutes="$win"
+    ok "postflight PASSED over the last ${win} minutes — the no-backlog invariant held, the reviewed job is armed and healthy, nothing is stuck"
     ;;
 
   rollback)

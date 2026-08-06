@@ -46,17 +46,40 @@ afterEach(() => {
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeSupabase(opts: { bookings: any[]; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[]; contactError?: string; identityError?: string; identityThrow?: string }) {
+function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; lifecycle?: Record<string, string | null>; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[]; contactError?: string; identityError?: string; identityThrow?: string }) {
+  // by default the transition this producer reports DID happen; a test opts out to exercise the
+  // fail-closed path
+  opts = { lifecycle: { paid: '2026-08-06T08:00:00+00:00' }, ...opts };
   const rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain = (data: any) => {
+    // .order()/.limit() are HONOURED, not swallowed. A proxy that returned the fixtures in
+    // insertion order would make "take the latest transition" and "take the earliest creation"
+    // indistinguishable — which is exactly the bug the occurrence dating had.
+    let order: { col: string; asc: boolean } | null = null;
+    let limit: number | null = null;
+    const shape = () => {
+      if (!Array.isArray(data)) return data;
+      let rows = [...data];
+      if (order) {
+        const { col, asc } = order;
+        rows.sort((a, b) => String(a?.[col] ?? '').localeCompare(String(b?.[col] ?? '')) * (asc ? 1 : -1));
+      }
+      if (limit !== null) rows = rows.slice(0, limit);
+      return rows;
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const self: any = new Proxy(() => {}, {
       get(_t, p) {
-        if (p === 'then') return (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res);
+        if (p === 'then') return (res: (v: unknown) => unknown) => Promise.resolve({ data: shape(), error: null }).then(res);
         if (p === 'single' || p === 'maybeSingle') {
-          return () => Promise.resolve({ data: Array.isArray(data) ? data[0] ?? null : data, error: null });
+          const rows = shape();
+          return () => Promise.resolve({ data: Array.isArray(rows) ? rows[0] ?? null : rows, error: null });
         }
+        if (p === 'order') {
+          return (col: string, o?: { ascending?: boolean }) => { order = { col, asc: o?.ascending !== false }; return self; };
+        }
+        if (p === 'limit') return (n: number) => { limit = n; return self; };
         return () => self;
       },
     });
@@ -64,12 +87,30 @@ function makeSupabase(opts: { bookings: any[]; identityEmail?: string | null; in
   };
   const supabase = {
     from: (table: string) => {
-      if (table === 'bookings') return chain(opts.bookings);
+      if (table === 'bookings') {
+        // every booking row carries created_at in production, and the producer now DERIVES the
+        // event-occurrence time from it (the activation boundary measures the event, not the
+        // enqueue). A fixture without one models a booking that cannot exist.
+        const withCreated = (opts.bookings ?? []).map((b: Record<string, unknown>) => ({
+          created_at: '2026-08-06T08:00:00+00:00',
+          updated_at: '2026-08-06T08:00:00+00:00',
+          ...b,
+        }));
+        return chain(opts.bookingsRaw ? opts.bookings : withCreated);
+      }
       if (table === 'invoices') return chain({ id: 'INV-FB', invoice_number: opts.invoiceNumber ?? 'F-2026-001' });
       return chain(null);
     },
     rpc: async (name: string, params: Record<string, unknown>) => {
       rpcCalls.push({ name, params });
+      // The occurrence now comes from the booking lifecycle LEDGER, not from a column on the
+      // bookings row — created_at was the wrong question and updated_at was launderable. The fake
+      // serves it from the fixtures' `lifecycle` map so a test can model "this transition never
+      // happened" (the fail-closed case) as well as the happy one.
+      if (name === 'booking_transition_event') {
+        const at = (opts.lifecycle ?? {})[String((params as { p_event_type: string }).p_event_type)];
+        return { data: at ? [{ occurred_at: at, seq: 42 }] : [], error: null };
+      }
       if (name === 'get_invoice_recipient_identity') {
         if (opts.identityThrow) throw new Error(opts.identityThrow);
         if (opts.identityError) return { data: null, error: { message: opts.identityError } };
@@ -106,6 +147,41 @@ const SLOT = (over: any = {}) => ({
 const logStep = () => {};
 
 describe('sendPlayerBookingConfirmation', () => {
+  it('dates the confirmation from the TRANSITION LEDGER, not from any column on the booking row', async () => {
+    // created_at was the wrong question (a current confirmation of an old booking was buried under
+    // the event-age floor); updated_at was the right question but launderable (any unrelated edit
+    // moved it). The ledger is the only clock, and it is what the producer must read.
+    const { supabase, rpcCalls } = makeSupabase({
+      lifecycle: { paid: '2026-08-06T09:00:01+00:00' },
+      bookings: [
+        { id: 'B1', created_at: '2026-06-01T10:00:00+00:00', updated_at: '2026-08-06T23:59:59+00:00',
+          player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+      ],
+    });
+    await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: 'INV-1', molliePaymentId: 'tr_123', logStep });
+    expect(enqueueCall(rpcCalls).p_occurred_at).toBe('2026-08-06T09:00:01+00:00');
+    // and emphatically not either column on the row
+    expect(enqueueCall(rpcCalls).p_occurred_at).not.toBe('2026-06-01T10:00:00+00:00');
+    expect(enqueueCall(rpcCalls).p_occurred_at).not.toBe('2026-08-06T23:59:59+00:00');
+    // it asked for the PAID transition — the one this producer reports
+    const call = rpcCalls.find((c) => c.name === 'booking_transition_event');
+    expect(call?.params).toMatchObject({ p_event_type: 'paid', p_booking_ids: ['B1'] });
+  });
+
+  it('FAILS CLOSED when the occurrence cannot be established — an undateable message is not sent', async () => {
+    // The alternative is falling back to now(), which re-creates the exact hole the boundary
+    // exists to close: a year-old event, freshly stamped, indistinguishable from a real one.
+    // a payer resolves fine — it is only the TIME that cannot be established (bookingsRaw keeps
+    // the fixture exactly as written, with no created_at)
+    const { supabase, rpcCalls } = makeSupabase({
+      lifecycle: {},          // the transition has no ledger row: it never happened, or predates the ledger
+      bookings: [{ id: 'B1', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null }],
+    });
+    const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: 'INV-1', molliePaymentId: null, logStep });
+    expect(res).toMatchObject({ ok: false, reason: 'enqueue_failed', detail: 'occurrence_undeterminable' });
+    expect(enqueueCall(rpcCalls)).toBeUndefined();      // nothing was queued at all
+  });
+
   it('registered player: enqueues to the account (user_id) with ALL sessions, a PDF payload, and a LOGIN link', async () => {
     const { supabase, rpcCalls } = makeSupabase({
       bookings: [

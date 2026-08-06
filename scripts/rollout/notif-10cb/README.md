@@ -78,7 +78,7 @@ event with the engine on, a group mid-send or awaiting evidence, and any quarant
 
 ## Verification and arming are one transaction
 
-`activate.sql` opens a transaction, takes `FOR UPDATE` on the exact `(jobname, username)` row,
+`activate.sql` opens a transaction, locks the exact `(jobname, username)` row,
 runs every assertion against **that locked row**, arms **that jobid**, and asserts the postcondition
 before committing. The assertions themselves live in `sql/_activation_assertions.sql`, shared with
 the read-only dry run so the two cannot drift into checking different things.
@@ -88,6 +88,36 @@ time-of-check/time-of-use hole. Between the two the job can be altered, re-point
 and everything the check proved describes a job that is no longer there. Worse, arming *by name*
 when the job has been deleted matches zero rows and **succeeds** — so the tooling would report the
 cron as ARMED over nothing at all.
+
+## The row lock is cron.alter_job, because FOR UPDATE is not the operator's to take
+
+The first production run of `smoke-disabled` (2026-08-04) was **refused before invocation**: on
+hosted Supabase `cron.job` is owned by `supabase_admin`, the connected `postgres` role holds SELECT
+and nothing else, and every row-locking clause — and every conflicting `LOCK TABLE` mode — needs a
+write privilege on the table. The harness that reviewed the artifacts ran everything as a
+superuser, which is exactly the privilege model production does not have.
+
+The lock is now `sql/_gate_job_lock.sql`, shared by all four transactional artifacts
+(`smoke-disabled`, `canary-invoke`, `enable-engine`, `activate`): a **guarded no-op
+`cron.alter_job(active := false)`** — the one write API the role is authorized to use on its own
+jobs, and the same one the arm itself uses. Measured on pg_cron 1.6.4: the alter is an SPI UPDATE
+of the job row under the extension owner's context after pg_cron's own ownership check, so it takes
+a genuine tuple lock every cron writer (alter, same-name schedule upsert, removal) queues behind
+until commit. The include gates the alter on `active IS FALSE` **in the same statement's
+snapshot** (an armed, replaced, or vanished job locks nothing and the count-check refuses), pins
+the pg_cron version its measured semantics belong to, and then **proves the write happened** (the
+row's `xmin` must be this transaction's id) so a future pg_cron that quietly skips value-identical
+updates cannot leave the gate running unlocked. The honest residuals — `active` is the one
+attribute whose in-statement drift the write masks instead of refusing, and a disarm only lands at
+COMMIT — are documented in the include; concurrent out-of-band arming remains an unsupported
+precondition of this single-operator runbook, exactly as before.
+
+The proofs run in CI now (`.github/workflows/rollout-tooling.yml`): `verify/preflight-pg.mjs`
+executes every artifact as a **restricted role that cannot FOR UPDATE cron.job** (the modelling
+failure that let this ship is itself pinned), and `verify/cron-privilege-pg.mjs` re-proves the
+refusal, the lock, the blocking, and the fail-closed arms against **real pg_cron** on the Supabase
+local stack — on a throwaway job, never the real one. Before N0 the 10c-b verifies ran in no
+workflow at all; they were only in the local `verify:rollout` chain.
 
 ## Three things the gate refuses that are easy to get wrong
 
