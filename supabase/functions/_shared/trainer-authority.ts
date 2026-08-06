@@ -66,24 +66,22 @@ export async function assessTrainerTenancy(
   // paused, suspended, or a status added next year) still represents a tenant with a live or
   // resuming association, and treating it as absent is how "this trainer only works for us"
   // becomes true by omission.
-  const [academies, clubs, managedAcademies, managedClubs] = await Promise.all([
+  // NO `club_trainers` READ. That table does not exist in this schema — `update-user` has always
+  // queried it and silently ignored the error, which is why nobody noticed. Asking for it here,
+  // where the result is CHECKED, would make every lookup fail and every manager lose the
+  // capability this function is supposed to preserve. Clubs are not modelled as trainer tenancies;
+  // if they ever are, add the read here and the exclusivity answer widens with it.
+  const [academies, managedAcademies] = await Promise.all([
     supabaseAdmin.from("academy_trainers").select("academy_profile_id")
       .eq("trainer_profile_id", trainerProfileId).not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
-    supabaseAdmin.from("club_trainers").select("club_profile_id")
-      .eq("trainer_profile_id", trainerProfileId).not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
     supabaseAdmin.from("academy_managers").select("academy_profile_id").eq("user_id", callerUserId),
-    supabaseAdmin.from("club_managers").select("club_profile_id").eq("user_id", callerUserId),
   ]);
-  if (academies.error || clubs.error || managedAcademies.error || managedClubs.error) return null;
+  if (academies.error || managedAcademies.error) return null;
 
-  const activeTenants = [
-    ...(academies.data ?? []).map((r: { academy_profile_id: string }) => `academy:${r.academy_profile_id}`),
-    ...(clubs.data ?? []).map((r: { club_profile_id: string }) => `club:${r.club_profile_id}`),
-  ];
-  const managed = new Set([
-    ...(managedAcademies.data ?? []).map((r: { academy_profile_id: string }) => `academy:${r.academy_profile_id}`),
-    ...(managedClubs.data ?? []).map((r: { club_profile_id: string }) => `club:${r.club_profile_id}`),
-  ]);
+  const activeTenants: string[] = (academies.data ?? [])
+    .map((r: { academy_profile_id: string }) => `academy:${r.academy_profile_id}`);
+  const managed = new Set<string>((managedAcademies.data ?? [])
+    .map((r: { academy_profile_id: string }) => `academy:${r.academy_profile_id}`));
 
   const managedTenants = activeTenants.filter((t) => managed.has(t));
   const foreignTenants = activeTenants.filter((t) => !managed.has(t));

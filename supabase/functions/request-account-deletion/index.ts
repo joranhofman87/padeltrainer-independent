@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { deleteUserData } from "../_shared/delete-user-data.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -105,14 +106,35 @@ Deno.serve(async (req) => {
       await deleteUserData(supabaseAdmin, user.id);
     } catch (err) {
       // the row stays as evidence, marked for what it is: a deletion that began and did not finish
-      await supabaseAdmin.from("account_deletion_audit")
+      const { error: stampErr } = await supabaseAdmin.from("account_deletion_audit")
         .update({ status: "failed", failure_reason: String((err as Error)?.message ?? err).slice(0, 500) })
         .eq("id", auditRow.id);
+      // a stamp that fails leaves the row at `started`, which the unfinished-deletions index
+      // already surfaces — but say so loudly, because the two states mean different things
+      if (stampErr) console.error("request-account-deletion: could not stamp the audit as failed", auditRow.id, stampErr);
       throw err;
     }
-    await supabaseAdmin.from("account_deletion_audit")
+    const { error: completeErr } = await supabaseAdmin.from("account_deletion_audit")
       .update({ status: "completed" })
       .eq("id", auditRow.id);
+    if (completeErr) {
+      // The account IS gone; this cannot be undone and must not be reported as an outright
+      // failure. What it must not do is claim a clean success: the row stays at `started`, which
+      // reads as "began and did not finish" — the opposite of the truth — so it is alerted on and
+      // the response says the erasure completed but its record did not.
+      console.error("request-account-deletion: DELETION COMPLETED BUT UNSTAMPED", auditRow.id, completeErr);
+      await notifySlackEdgeError("request-account-deletion",
+        "account deleted but its audit row is still 'started' — reconcile manually",
+        { audit_id: auditRow.id }).catch(() => {});
+      return new Response(
+        JSON.stringify({
+          success: true,
+          message: "Account deleted successfully",
+          audit_incomplete: true,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     console.log(`User self-deleted: ${user.id}`);
 

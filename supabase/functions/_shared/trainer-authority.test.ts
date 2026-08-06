@@ -13,8 +13,7 @@ import { assessTrainerTenancy, GLOBAL_IDENTITY_FIELDS } from "./trainer-authorit
 type Row = Record<string, unknown>;
 
 function fakeAdmin(store: {
-  academy_trainers?: Row[]; club_trainers?: Row[];
-  academy_managers?: Row[]; club_managers?: Row[];
+  academy_trainers?: Row[]; academy_managers?: Row[];
 }, failTable?: string) {
   return {
     from(table: string) {
@@ -44,10 +43,8 @@ const SHARED = {
     { trainer_profile_id: "T", academy_profile_id: "A", status: "active" },
     { trainer_profile_id: "T", academy_profile_id: "B", status: "active" },
   ],
-  club_trainers: [],
   // the caller manages only A
   academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }],
-  club_managers: [],
 };
 
 Deno.test("a SHARED trainer is not exclusive to either academy's manager", async () => {
@@ -60,23 +57,35 @@ Deno.test("a SHARED trainer is not exclusive to either academy's manager", async
 Deno.test("an EXCLUSIVE trainer still belongs to the academy that manages them", async () => {
   const t = await assessTrainerTenancy(fakeAdmin({
     academy_trainers: [{ trainer_profile_id: "T", academy_profile_id: "A", status: "active" }],
-    club_trainers: [],
     academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }],
-    club_managers: [],
   }), "mgrA", "T");
   assertEquals(t?.isExclusiveToCaller, true);
   assertEquals(t?.foreignTenants, []);
 });
 
-Deno.test("a CLUB relationship counts too — exclusivity is across every tenant kind", async () => {
-  const t = await assessTrainerTenancy(fakeAdmin({
-    academy_trainers: [{ trainer_profile_id: "T", academy_profile_id: "A", status: "active" }],
-    club_trainers: [{ trainer_profile_id: "T", club_profile_id: "C", status: "active" }],
-    academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }],
-    club_managers: [],
-  }), "mgrA", "T");
-  assertEquals(t?.isExclusiveToCaller, false);
-  assertEquals(t?.foreignTenants, ["club:C"]);
+Deno.test("it reads ONLY tables that exist — a fake cannot invent a schema", async () => {
+  // The lesson that made this test necessary: the first version queried `club_trainers`, which is
+  // not in this schema at all. Because the fake happily served an in-memory table of that name,
+  // every test passed while production would have errored on every call — and, since this function
+  // fails closed, silently revoked the capability it exists to preserve. A fake is only evidence
+  // about tables the migrations actually create.
+  const read: string[] = [];
+  const spy = {
+    from(table: string) {
+      read.push(table);
+      const q: Record<string, unknown> = {};
+      q.select = () => q;
+      q.eq = () => q;
+      q.not = () => q;
+      q.then = (res: (v: { data: Row[]; error: null }) => void) => res({ data: [], error: null });
+      return q;
+    },
+    // deno-lint-ignore no-explicit-any
+  } as any;
+  await assessTrainerTenancy(spy, "mgrA", "T");
+  // the assertion is on what it READS, not on what the source mentions — the file names
+  // club_trainers in a comment precisely to record why it must not be queried
+  assertEquals(read.sort(), ["academy_managers", "academy_trainers"]);
 });
 
 Deno.test("a PENDING relationship DOES make a trainer shared — only an ended one does not", async () => {
@@ -88,9 +97,7 @@ Deno.test("a PENDING relationship DOES make a trainer shared — only an ended o
       { trainer_profile_id: "T", academy_profile_id: "A", status: "active" },
       { trainer_profile_id: "T", academy_profile_id: "B", status: "pending" },
     ],
-    club_trainers: [],
     academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }],
-    club_managers: [],
   }), "mgrA", "T");
   assertEquals(t?.isExclusiveToCaller, false);
   assertEquals(t?.foreignTenants, ["academy:B"]);
@@ -102,23 +109,21 @@ Deno.test("an INACTIVE relationship does not make a trainer shared", async () =>
       { trainer_profile_id: "T", academy_profile_id: "A", status: "active" },
       { trainer_profile_id: "T", academy_profile_id: "B", status: "inactive" },
     ],
-    club_trainers: [],
     academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }],
-    club_managers: [],
   }), "mgrA", "T");
   assertEquals(t?.isExclusiveToCaller, true);
 });
 
 Deno.test("a trainer with NO active tenancy is nobody's to rename", async () => {
   const t = await assessTrainerTenancy(fakeAdmin({
-    academy_trainers: [], club_trainers: [],
-    academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }], club_managers: [],
+    academy_trainers: [],
+    academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }],
   }), "mgrA", "T");
   assertEquals(t?.isExclusiveToCaller, false);
 });
 
 Deno.test("FAILS CLOSED: an unreadable relationship table never widens authority", async () => {
-  for (const table of ["academy_trainers", "club_trainers", "academy_managers", "club_managers"]) {
+  for (const table of ["academy_trainers", "academy_managers"]) {
     const t = await assessTrainerTenancy(fakeAdmin(SHARED, table), "mgrA", "T");
     assertEquals(t, null, `${table}: a read failure must not resolve to a tenancy`);
   }

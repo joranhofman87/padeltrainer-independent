@@ -68,7 +68,7 @@ export async function deleteOrCancelInvoices(
   client: SupabaseClient<Database> = supabase,
 ): Promise<DeleteOrCancelInvoicesResult> {
   const deletedIds = invoices.filter((i) => i.status === 'draft').map((i) => i.id);
-  const cancelledIds = invoices
+  let cancelledIds = invoices
     .filter((i) => CANCELLABLE_STATUSES.has(i.status ?? ''))
     .map((i) => i.id);
   // everything else — paid today, and anything financial added later
@@ -89,12 +89,23 @@ export async function deleteOrCancelInvoices(
     // a Mollie webhook lands, the payer completes checkout — and an id-only UPDATE would cancel it
     // anyway. Filtering on the allow-list makes the write itself refuse: the row simply does not
     // match, so nothing is cancelled that is not still cancellable at the moment of cancelling.
-    const { error } = await client
+    const { data, error } = await client
       .from('invoices')
       .update({ status: 'cancelled' })
       .in('id', cancelledIds)
-      .in('status', [...CANCELLABLE_STATUSES]);
+      .in('status', [...CANCELLABLE_STATUSES])
+      .select('id');
     cancelError = error ?? null;
+    if (!error) {
+      // WHAT ACTUALLY CHANGED, not what we hoped would. The predicate above stops a raced paid
+      // invoice from being cancelled — but reporting the candidate set as cancelled would still
+      // tell the user it happened, and (worse) annotate the paid invoice with a cancellation
+      // reason. Anything that did not match moves to `refusedIds`, where it is reported honestly.
+      const actual = new Set(((data ?? []) as Array<{ id: string }>).map((r) => r.id));
+      const missed = cancelledIds.filter((id) => !actual.has(id));
+      cancelledIds = cancelledIds.filter((id) => actual.has(id));
+      refusedIds.push(...missed);
+    }
   }
 
   return { deletedIds, cancelledIds, refusedIds, deleteError, cancelError };

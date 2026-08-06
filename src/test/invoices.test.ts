@@ -16,7 +16,7 @@ import {
  * paid invoice is not a refund, and letting an ordinary bulk "delete" make a paid record read as
  * cancelled diverges the financial state from the payment evidence. Paid rows are now REFUSED.
  */
-function makeClient(opts: { deleteError?: unknown; cancelError?: unknown } = {}) {
+function makeClient(opts: { deleteError?: unknown; cancelError?: unknown; matched?: string[] } = {}) {
   const calls = {
     deletedIds: [] as string[], cancelledIds: [] as string[], updateData: null as unknown,
     statusFilter: null as string[] | null,
@@ -37,17 +37,22 @@ function makeClient(opts: { deleteError?: unknown; cancelError?: unknown } = {})
           // .in() chains: the write filters by id AND by current status, so the fake has to be
           // chainable to model it — and the status filter is recorded, because "the database
           // re-checks the status at write time" is the property that closes the paid race.
-          const chain = {
+          // the write ends in .select('id'), returning the rows that ACTUALLY matched — which is
+          // the whole point: a raced paid invoice matches nothing and must not be reported as
+          // cancelled. `matched` lets a test model that race.
+          const result = () => ({
+            data: opts.cancelError ? null : (opts.matched ?? calls.cancelledIds).map((id) => ({ id })),
+            error: opts.cancelError ?? null,
+          });
+          const chain: Record<string, unknown> = {
             in: (col: string, vals: string[]) => {
               if (col === 'status') calls.statusFilter = vals;
               else calls.cancelledIds.push(...vals);
-              return chainThenable;
+              return chain;
             },
+            select: () => ({ then: (res: (v: unknown) => void) => Promise.resolve(result()).then(res) }),
+            then: (res: (v: unknown) => void) => Promise.resolve(result()).then(res),
           };
-          const chainThenable = Object.assign(
-            { then: (res: (v: { error: unknown }) => void) => Promise.resolve({ error: opts.cancelError ?? null }).then(res) },
-            chain,
-          );
           return chain;
         },
       };
@@ -267,5 +272,28 @@ describe('setInvoicesDueDate', () => {
     const res = await setInvoicesDueDate([], '2026-07-01', client);
     expect(res.error).toBeNull();
     expect(calls.updateData).toBeNull();
+  });
+});
+
+describe('deleteOrCancelInvoices — the result reports what CHANGED, not what was hoped', () => {
+  it('an invoice paid between the list read and the click is refused, not reported cancelled', async () => {
+    // The database predicate already stops the write. What this pins is the REPORT: counting the
+    // candidate set as cancelled would tell the user it happened and — worse — annotate a paid
+    // invoice with a cancellation reason.
+    const { client, calls } = makeClient({ matched: ['a'] });   // 'b' was paid in the meantime
+    const res = await deleteOrCancelInvoices(
+      [{ id: 'a', status: 'sent' }, { id: 'b', status: 'sent' }], client);
+    expect(calls.cancelledIds).toEqual(['a', 'b']);   // both were attempted…
+    expect(res.cancelledIds).toEqual(['a']);          // …only one actually changed
+    expect(res.refusedIds).toEqual(['b']);            // and the other is reported as refused
+    expect(res.cancelError).toBeNull();               // no error: the row simply did not match
+  });
+
+  it('a cancel ERROR leaves the candidate set alone — an error is not a refusal', async () => {
+    const err = { message: 'cancel boom' };
+    const res = await deleteOrCancelInvoices([{ id: 'a', status: 'sent' }], makeClient({ cancelError: err }).client);
+    expect(res.cancelError).toBe(err);
+    expect(res.cancelledIds).toEqual(['a']);   // reported as attempted; the caller counts it failed
+    expect(res.refusedIds).toEqual([]);
   });
 });
