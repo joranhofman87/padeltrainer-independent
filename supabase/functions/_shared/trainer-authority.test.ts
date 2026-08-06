@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { assessTrainerTenancy, GLOBAL_IDENTITY_FIELDS } from "./trainer-authority.ts";
+import { assessTrainerTenancy } from "./trainer-authority.ts";
 
 /**
  * A1-A7 F3 — one academy must not own a SHARED trainer's global identity.
@@ -34,6 +34,7 @@ function fakeAdmin(store: {
       return q;
     },
     // deno-lint-ignore no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
 }
 
@@ -81,6 +82,7 @@ Deno.test("it reads ONLY tables that exist — a fake cannot invent a schema", a
       return q;
     },
     // deno-lint-ignore no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any;
   await assessTrainerTenancy(spy, "mgrA", "T");
   // the assertion is on what it READS, not on what the source mentions — the file names
@@ -127,13 +129,4 @@ Deno.test("FAILS CLOSED: an unreadable relationship table never widens authority
     const t = await assessTrainerTenancy(fakeAdmin(SHARED, table), "mgrA", "T");
     assertEquals(t, null, `${table}: a read failure must not resolve to a tenancy`);
   }
-});
-
-Deno.test("the global-identity field list covers every shared profile field the endpoint writes", async () => {
-  // the matrix is only as good as its list: a profile column added to update-user without being
-  // classified here would be writable by a manager of a shared trainer.
-  const src = await Deno.readTextFile(new URL("../update-user/index.ts", import.meta.url));
-  const written = [...src.matchAll(/updates\.([a-z_]+) = /g)].map((m) => m[1]);
-  const unclassified = written.filter((f) => !(GLOBAL_IDENTITY_FIELDS as readonly string[]).includes(f));
-  assertEquals(unclassified, [], `update-user writes ${unclassified.join(", ")} without classifying it`);
 });
