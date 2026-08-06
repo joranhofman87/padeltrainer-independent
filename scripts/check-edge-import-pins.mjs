@@ -101,30 +101,124 @@ export function isPinned(spec) {
 }
 
 const IMPORT_PATTERNS = [
-  // static `import … from "x"` / `export … from "x"`.
+  // static `import … from "x"` / `export … from "x"` / `export * from "x"`.
   // The clause body must admit `{`, `}` and newlines — a braced or multi-line import list is the
   // common case, and excluding `{` here would silently skip almost every real import in the repo.
-  // It is bounded by `;` (lazily) so one import cannot swallow the file.
-  /(?:^|[\s;}])(?:import|export)\b[^;]*?\bfrom\s*["']([^"']+)["']/gm,
+  // It is bounded by `;` (lazily) so one import cannot swallow the file. Because a `;` inside a
+  // COMMENT would end that bound early, extraction runs over a comment-stripped copy (see below).
+  // `(?:^|[\s;}])` also keeps `foo.import`-style member access from matching.
+  /(?:^|[\s;}])(?:import|export)\b[^;]*?\bfrom\s*["'`]([^"'`]+)["'`]/gm,
   // side-effect `import "x"`
-  /(?:^|[\s;}])import\s+["']([^"']+)["']/gm,
+  /(?:^|[\s;}])import\s+["'`]([^"'`]+)["'`]/gm,
   // dynamic `import("x")` and `import("x", { with: { … } })`. The specifier may be followed by a
   // comma as well as the closing paren — requiring `)` made every attributed dynamic import
   // invisible to the guard, which is exactly the shape a floating specifier could hide in.
-  /\bimport\s*\(\s*["']([^"']+)["']\s*[,)]/gm,
+  // The lookbehind rejects `loader.import("x", opts)`: a method that happens to be named `import`
+  // is an ordinary call, not a module load, and flagging it would be a false positive.
+  /(?<![.\w$])import\s*\(\s*["'`]([^"'`]+)["'`]\s*[,)]/gm,
 ];
 
-/** Every external specifier in one source file, with line numbers. */
+/**
+ * A dynamic import whose specifier is not a plain literal: `import(`npm:pkg@${v}`)`,
+ * `import("npm:pkg@" + v)`, `import(spec)`. These are reported as violations in their own right —
+ * a specifier assembled at runtime cannot be an exact source-level pin by construction, so there
+ * is nothing for the version check to inspect.
+ */
+const DYNAMIC_IMPORT_HEAD = /(?<![.\w$])import\s*\(\s*([^)]{0,160})/gm;
+
+/**
+ * True when a dynamic import's argument list starts with a literal specifier the version check can
+ * actually read. A quoted string always is. A template literal is ONLY if it has no `${…}` — that
+ * interpolation is the whole point of this check, and a character class like `[^"'`]*` matches it
+ * happily, so it must be tested explicitly rather than excluded by a lookahead.
+ */
+function startsWithLiteralSpecifier(argText) {
+  // The capture stops before `)`, so the terminator may be a comma OR the end of the captured text.
+  if (/^(["'])[^"']*\1\s*(?:,|$)/.test(argText)) return true;
+  const template = /^`([^`]*)`\s*(?:,|$)/.exec(argText);
+  return template !== null && !template[1].includes("${");
+}
+
+/**
+ * Return `source` with comments replaced by nothing, preserving line breaks (so reported line
+ * numbers stay true) and leaving string and template literals untouched — a URL's `//` must not be
+ * mistaken for a comment. Deliberately small: it tracks quotes, escapes and both comment forms.
+ *
+ * It does NOT understand regex literals, so a regex containing an unbalanced quote could desync it.
+ * That is why extraction unions this pass with a pass over the RAW source: the stripped pass exists
+ * only to find imports the raw pass loses to a `;` in a comment, and can never subtract from it.
+ */
+export function stripComments(source) {
+  let out = "";
+  for (let i = 0; i < source.length;) {
+    const c = source[i];
+    if (c === '"' || c === "'" || c === "`") {
+      out += c;
+      i += 1;
+      while (i < source.length) {
+        if (source[i] === "\\") { out += source.slice(i, i + 2); i += 2; continue; }
+        out += source[i];
+        i += 1;
+        if (source[i - 1] === c) break;
+      }
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "/") {
+      while (i < source.length && source[i] !== "\n") i += 1;
+      continue;
+    }
+    if (c === "/" && source[i + 1] === "*") {
+      i += 2;
+      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
+        if (source[i] === "\n") out += "\n";
+        i += 1;
+      }
+      i += 2;
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * Every external specifier in one source file, with line numbers.
+ *
+ * Runs over the raw source AND a comment-stripped copy, then unions the results. The union is the
+ * point: the stripped pass catches an import the raw pass loses to a `;` inside a comment, while
+ * the raw pass covers anything the (deliberately simple) stripper might desync on. A union can only
+ * add specifiers, never lose one, so neither pass can create a blind spot in the other.
+ */
 export function specifiersIn(source) {
-  const found = [];
-  for (const pattern of IMPORT_PATTERNS) {
-    pattern.lastIndex = 0;
-    let m;
-    while ((m = pattern.exec(source)) !== null) {
-      found.push({ spec: m[1], line: source.slice(0, m.index).split("\n").length });
+  const found = new Map();
+  for (const text of [source, stripComments(source)]) {
+    for (const pattern of IMPORT_PATTERNS) {
+      pattern.lastIndex = 0;
+      let m;
+      while ((m = pattern.exec(text)) !== null) {
+        const line = text.slice(0, m.index).split("\n").length;
+        const key = `${m[1]}@@${line}`;
+        if (!found.has(key)) found.set(key, { spec: m[1], line });
+      }
     }
   }
-  return found;
+  return [...found.values()];
+}
+
+/** Dynamic imports whose specifier is computed, and so cannot be pinned at all. */
+export function computedImportsIn(source) {
+  const found = new Map();
+  const text = stripComments(source);
+  DYNAMIC_IMPORT_HEAD.lastIndex = 0;
+  let m;
+  while ((m = DYNAMIC_IMPORT_HEAD.exec(text)) !== null) {
+    const arg = m[1].trim();
+    if (startsWithLiteralSpecifier(arg)) continue;
+    const line = text.slice(0, m.index).split("\n").length;
+    if (!found.has(line)) found.set(line, { line, expr: `import(${arg.split("\n")[0].slice(0, 60)}…` });
+  }
+  return [...found.values()];
 }
 
 export function walk(dir, out = []) {
@@ -142,6 +236,9 @@ export function findFloating(root = FUNCTIONS_ROOT) {
     const source = fs.readFileSync(file, "utf8");
     for (const { spec, line } of specifiersIn(source)) {
       if (!isPinned(spec)) violations.push({ file, line, spec });
+    }
+    for (const { line, expr } of computedImportsIn(source)) {
+      violations.push({ file, line, spec: expr, computed: true });
     }
   }
   return violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
@@ -162,7 +259,9 @@ function main() {
   console.error("A deployment bundle may not contain a version range. `@2` is a range; `@2.57.2` is a version.");
   console.error("A floating specifier makes deployability depend on what a CDN resolves this hour — it is");
   console.error("what broke 15 of 18 function deploys on 2026-08-06.\n");
-  for (const v of violations) console.error(`  ${v.file}:${v.line}  ${v.spec}`);
+  for (const v of violations) {
+    console.error(`  ${v.file}:${v.line}  ${v.spec}${v.computed ? "   <- computed specifier: cannot be pinned; use a literal" : ""}`);
+  }
   console.error(`\n${violations.length} floating import(s). Pin each to the exact version the repository already uses.`);
   process.exit(1);
 }
@@ -279,6 +378,51 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
   assert(
     specifiersIn(sample).find((s) => s.spec === "npm:@sanity/client@6").line === 10,
     "dynamic import line number wrong",
+  );
+
+  // A `;` inside a comment must not end the import clause. The raw pattern is bounded by `;`, so
+  // without the comment-stripped pass these two imports vanish entirely — a floating specifier
+  // could sit behind any inline comment and the guard would call the file clean.
+  for (const [label, src] of [
+    ["line comment", 'import {\n  x, // explanation; still valid\n} from "npm:hidden-a@2";\n'],
+    ["block comment", 'import { x /* explanation; still valid */ } from "npm:hidden-b@2";\n'],
+  ]) {
+    const specs = specifiersIn(src).map((s) => s.spec);
+    assert(specs.some((s) => s.startsWith("npm:hidden")), `a semicolon in a ${label} hid the import (found: ${specs.join(", ") || "nothing"})`);
+  }
+
+  // A URL's `//` is not a comment; the stripper must leave string literals alone.
+  assert(
+    stripComments('import x from "https://esm.sh/pkg@1.2.3";').includes("https://esm.sh/pkg@1.2.3"),
+    "stripComments ate a URL inside a string literal",
+  );
+  assert(stripComments("a // c\nb").split("\n").length === 2, "stripComments did not preserve line count");
+
+  // A computed specifier cannot be an exact pin by construction, so it is a violation itself.
+  for (const [label, src] of [
+    ["template literal", "const m = await import(`npm:pkg@${version}`);"],
+    ["concatenation", 'const m = await import("npm:pkg@" + version);'],
+    ["bare identifier", "const m = await import(spec);"],
+  ]) {
+    assert(computedImportsIn(src).length === 1, `computed dynamic import (${label}) not reported`);
+  }
+  // …but a plain literal, with or without attributes, is NOT computed.
+  for (const src of [
+    'const m = await import("npm:pkg@1.2.3");',
+    'const m = await import("npm:pkg@1.2.3", { with: { type: "json" } });',
+    "const m = await import(`npm:pkg@1.2.3`);",
+  ]) {
+    assert(computedImportsIn(src).length === 0, `plain literal dynamic import wrongly flagged as computed: ${src}`);
+  }
+
+  // A method that happens to be named `import` is an ordinary call, not a module load.
+  assert(
+    specifiersIn('loader.import("npm:pkg@2", options);').length === 0,
+    "a .import() method call was extracted as a dynamic import",
+  );
+  assert(
+    computedImportsIn("loader.import(spec);").length === 0,
+    "a .import() method call was reported as a computed import",
   );
 
   // The real repository is the last fixture: the guard must agree with the tree it guards.
