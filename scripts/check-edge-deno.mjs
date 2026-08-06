@@ -13,8 +13,11 @@
  *
  *   - check each function's index.ts on its own (a single merged graph dies on the first npm:
  *     resolution quirk; per-file mirrors how each function actually deploys)
- *   - `--node-modules-dir=manual` so the 14 functions that import `npm:` specifiers resolve against
- *     the node_modules that `npm ci` populated (the deno-only edge-tests job can't do this)
+ *   - `--node-modules-dir=manual` so any `npm:` specifier resolves against the node_modules that
+ *     `npm ci` populated (the deno-only edge-tests job can't do this). NOTE that this is exactly why
+ *     edge specifiers use the `https://esm.sh/…` URL form: an `npm:` pin that disagrees with what
+ *     package.json installs is UNRESOLVABLE here, and an unresolvable file used to contribute zero
+ *     errors — see the CHECKED contract below, which now fails closed on it
  *   - signature each error as `file|code|message`, with abs paths + version-pinned dep segments
  *     normalized out so a signature is stable across machines/CI and across dependency bumps
  *   - count occurrences per signature; FAIL if any signature exceeds the committed baseline
@@ -23,6 +26,8 @@
  * Regenerate after intentionally changing the error set:  node scripts/check-edge-deno.mjs --update
  */
 import { execSync } from 'node:child_process';
+import * as fsMod from 'node:fs';
+import { tmpdir } from 'node:os';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -151,6 +156,60 @@ function collectErrorCounts() {
   }
   return counts;
 }
+
+// ── Self-test (`--self-test`): the CHECKED contract, executable ────────────────────────────────
+// The contract keys on deno's OUTPUT SHAPE, so it is coupled to the toolchain: CI installs
+// `deno-version: v2.x`, and a future 2.x could change the wording. That direction fails CLOSED
+// (a real check reported as unchecked), never open — but it would be a baffling CI failure. These
+// shims make the coupling explicit and self-describing, so an output change fails HERE, naming the
+// contract, instead of surfacing as "14 entrypoints could not be checked" on an unrelated PR.
+function selfTest() {
+  const { mkdtempSync, writeFileSync, chmodSync, rmSync } = require_fs();
+  const dir = mkdtempSync(join(tmpdir(), 'edge-deno-selftest-'));
+  const shim = (body) => {
+    writeFileSync(join(dir, 'deno'), `#!/bin/sh\n${body}\n`);
+    chmodSync(join(dir, 'deno'), 0o755);
+  };
+  const DIAG = "TS2304 [ERROR]: Cannot find name 'x'.\n    at file:///tmp/a.ts:1:1";
+  const cases = [
+    ['exit 0 (completed, no errors)',                    'exit 0',                                                        true],
+    ['exit 1 + diagnostic + completion marker',          `cat <<EOT >&2\n${DIAG}\n\nerror: Type checking failed.\nEOT\nexit 1`, true],
+    ['killed after one diagnostic, NO marker',           `cat <<EOT >&2\n${DIAG}\nEOT\nexit 137`,                        false],
+    ['unresolvable specifier',                           'echo "error: Could not find a matching package." >&2\nexit 1',  false],
+    ['missing binary / crash (no output)',               'exit 127',                                                      false],
+    ['marker but NO diagnostic (format drift)',          'echo "error: Type checking failed." >&2\nexit 1',               false],
+  ];
+  let failures = 0;
+  for (const [label, body, shouldBeChecked] of cases) {
+    shim(body);
+    let hard = false;
+    try {
+      execSync(`node "${join(ROOT, 'scripts', 'check-edge-deno.mjs')}"`, {
+        cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, NO_COLOR: '1' },
+      });
+    } catch (e) {
+      hard = /could not be CHECKED AT ALL/.test(`${e.stdout || ''}${e.stderr || ''}`);
+    }
+    const ok = hard === !shouldBeChecked;
+    if (!ok) failures += 1;
+    console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${label} -> ${hard ? 'hard failure' : 'accepted as checked'}`);
+  }
+  rmSync(dir, { recursive: true, force: true });
+  if (failures) {
+    console.error(`\n${failures} case(s) wrong. If you upgraded deno, its output shape may have changed:`);
+    console.error(`re-derive the completion marker (COMPLETED_WITH_ERRORS_RE) from a real run before relaxing anything.`);
+    process.exit(1);
+  }
+  console.log(`OK — deno CHECKED contract holds (${cases.length} cases, deno ${denoVersion()}).`);
+  process.exit(0);
+}
+function require_fs() { return fsMod; }
+function denoVersion() {
+  try { return execSync('deno --version', { encoding: 'utf8' }).split('\n')[0]; } catch { return 'unknown'; }
+}
+
+if (process.argv.includes('--self-test')) selfTest();
 
 const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
 const current = collectErrorCounts();

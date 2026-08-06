@@ -267,8 +267,10 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
         `*[_type == "cityPage" && citySlug == $slug && language == $lang && !(_id in path("drafts.**"))][0]{ "titleTag": seo.titleTag, "metaDescription": seo.metaDescription, cityName, province }`,
         { slug: citySlug, lang }
       );
-      if (cityPage?.titleTag) seoTitle = cityPage.titleTag;
-      if (cityPage?.metaDescription) seoDesc = cityPage.metaDescription;
+      // Same Sanity boundary, same rule: truthy is not the same as usable. A non-string here
+      // reaches esc() further down and throws.
+      if (typeof cityPage?.titleTag === 'string' && cityPage.titleTag.trim()) seoTitle = cityPage.titleTag;
+      if (typeof cityPage?.metaDescription === 'string' && cityPage.metaDescription.trim()) seoDesc = cityPage.metaDescription;
     } catch {
       // Sanity fetch failed — use defaults
     }
@@ -743,14 +745,9 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
         { lang, slug: topicSlug },
         ...(topic.alternates || []).filter(a => a && a.language && a.slug).map(a => ({ lang: a.language, slug: a.slug })),
       ];
-      // `featuredGuides: Array<{ slug: string; … }>` is a TypeScript ASSERTION over unvalidated
-      // Sanity JSON, not a guarantee: a broken reference comes back null, and a guide can be
-      // published without `slug.current`. Either one made `esc()` call `.replace` on undefined and
-      // took down the whole topic page. Validate at the boundary instead of trusting the type —
-      // and filter BEFORE slicing, so a broken entry costs a card rather than a slot.
+      // Entries are already validated by normalizeTopicHub, which drops broken references and
+      // guides without a slug — so a card can no longer take the page down.
       const cardsHtml = (topic.featuredGuides || [])
-        .filter((g): g is { slug: string; title?: string; h1?: string } =>
-          !!g && typeof g.slug === 'string' && g.slug.length > 0)
         .slice(0, 6)
         .map(g => `<li><a href="${SITE_URL}/${lang}/learn/${esc(g.slug)}">${esc(g.h1 || g.title || g.slug)}</a></li>`)
         .join('');
@@ -1083,6 +1080,43 @@ interface TopicHubData {
   featuredGuides?: Array<{ slug: string; title?: string; h1?: string }>;
 }
 
+/**
+ * Sanity returns arbitrary JSON. `as TopicHubData` asserts a shape it never checks, so any field an
+ * editor leaves unset — or a broken reference, which resolves to null — arrives as the wrong type and
+ * blows up in whatever consumer touches it first: `.toLowerCase()` on a non-string title, `.slice()`
+ * on a non-string description, `.filter()` on a non-array `alternates`, `.replace()` inside `esc()`.
+ *
+ * Validate ONCE here, at the boundary the data actually crosses, so every consumer downstream is
+ * safe by construction rather than by remembering to guard. A field that is not a non-empty string
+ * becomes `undefined`, which the existing `||` fallbacks already handle.
+ */
+function normalizeTopicHub(raw: unknown): TopicHubData | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const str = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim().length > 0 ? v : undefined;
+  const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+
+  return {
+    title: str(r.title),
+    h1: str(r.h1),
+    intro: str(r.intro),
+    description: str(r.description),
+    contentType: str(r.contentType),
+    alternates: arr(r.alternates).flatMap((a) => {
+      const o = a as Record<string, unknown> | null;
+      const language = str(o?.language);
+      const slug = str(o?.slug);
+      return language && slug ? [{ language, slug }] : [];
+    }),
+    featuredGuides: arr(r.featuredGuides).flatMap((g) => {
+      const o = g as Record<string, unknown> | null;
+      const slug = str(o?.slug);
+      return slug ? [{ slug, title: str(o?.title), h1: str(o?.h1) }] : [];
+    }),
+  };
+}
+
 const topicHubCache = new Map<string, { data: TopicHubData | null; at: number }>();
 
 async function fetchTopicHub(lang: string, slug: string): Promise<TopicHubData | null> {
@@ -1106,7 +1140,7 @@ async function fetchTopicHub(lang: string, slug: string): Promise<TopicHubData |
       return null;
     }
     const json = await res.json();
-    const data = (json && json.result) ? (json.result as TopicHubData) : null;
+    const data = normalizeTopicHub(json?.result);
     topicHubCache.set(key, { data, at: Date.now() });
     return data;
   } catch (err) {

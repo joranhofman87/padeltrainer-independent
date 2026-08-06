@@ -150,9 +150,12 @@ jobs:
   # edge-tests job above is deno-only and runs --no-check, so a mistyped / un-imported name in an
   # edge fn — incl. money-critical mollie-webhook — used to ship as a runtime ReferenceError with a
   # green build (e.g. backfill-invoices references undefined supabaseUrl/supabaseServiceKey). This
-  # job needs BOTH `npm ci` (so the 14 functions importing `npm:` specifiers resolve against
-  # node_modules) AND Deno; the script passes --node-modules-dir=manual. NEW errors fail; the known
-  # perma-red set does not block. Regenerate: npm run check:edge-types:update.
+  # job needs BOTH `npm ci` (the script imports typescript, and --node-modules-dir=manual resolves
+  # any surviving `npm:` specifier against node_modules) AND Deno. Every edge specifier is now the
+  # `https://esm.sh/…` URL form precisely BECAUSE `npm:` resolves against whatever package.json
+  # installs — a pin that disagreed with it made 14 entrypoints unresolvable, and the gate counted
+  # them as zero errors. It now fails CLOSED on any entrypoint deno could not finish checking.
+  # NEW errors fail; the known perma-red set does not block. Regenerate: npm run check:edge-types:update.
   edge-typecheck:
     runs-on: ubuntu-latest
     steps:
@@ -173,5 +176,11 @@ jobs:
         with:
           deno-version: v2.x
 
+      # Proves the CHECKED contract against deno shims: a killed run, an unresolvable specifier,
+      # a missing binary and a format drift must all be hard failures, while a genuinely completed
+      # type-error run must NOT be. Couples the gate to deno's output shape explicitly, so a
+      # toolchain upgrade fails here with an explanation instead of as a mystery elsewhere.
+      - name: Edge type-gate contract self-test
+        run: npm run check:edge-types:selftest
       - name: Edge-function type-check (ratcheted vs baseline)
         run: npm run check:edge-types
