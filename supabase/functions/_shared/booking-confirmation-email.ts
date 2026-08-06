@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveAppBase } from "./priority-claim-invite.ts";
-import { occurrenceForBookings } from "./notification-occurrence.ts";
+import { occurrenceForBookingEvent } from "./notification-occurrence.ts";
 
 /**
  * The player-facing PAYMENT CONFIRMATION email, sent after a public Mollie payment
@@ -319,7 +319,7 @@ async function enqueueConfirmation(
   // WHEN IT HAPPENED, from the bookings themselves. Derived rather than defaulted: this function
   // is reached from the paid-claim and from webhook redelivery, so "now" is not reliably the time
   // the booking was made, and the activation boundary measures the event.
-  const occurredAt = await occurrenceForBookings(supabase, bookingIds);
+  const occurredAt = await occurrenceForBookingEvent(supabase, bookingIds, "transition");
   if (!occurredAt) {
     logStep("Player confirmation enqueue refused: the booking's occurrence time could not be established", { isGuest });
     return { ok: false, reason: "enqueue_failed", isGuest, pdfAttached, detail: "occurrence_undeterminable" };

@@ -91,7 +91,7 @@ describe('attribution matrix pins', () => {
       // the resolver-definition migrations CALL it only to redefine/replay it — and 20261104100000
       // re-defines the two SQL PRODUCERS as well, to give them the occurrence argument. Neither
       // adds a producer; the pin below is what holds them to the contract.
-      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000|20261104100000/.test(f))
+      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000|20261104100000|20261106100000/.test(f))
       .sort();
     expect(out).toEqual([
       'supabase/functions/_shared/booking-confirmation-email.ts',
@@ -122,9 +122,12 @@ describe('attribution matrix pins', () => {
       for (const call of calls) expect(call, `${file}: a call site omits p_occurred_at`).toMatch(pattern);
     }
     // …and the two in-database producers, in the migration that owns their current definition
-    const mig = read('supabase/migrations/20261104100000_notif_audit_event_occurrence_boundary.sql');
+    // BOTH audit migrations: the round-2 one re-lifts enqueue_booking_notification to date its
+    // transitions correctly, so it is the newest definition of that producer.
+    const mig = read('supabase/migrations/20261104100000_notif_audit_event_occurrence_boundary.sql')
+      + '\n' + read('supabase/migrations/20261106100000_notif_audit_occurrence_is_the_transition.sql');
     const sqlCalls = mig.match(/public\.enqueue_notification\(\s*[\s\S]{0,1400}?\n\s*\);/g) ?? [];
-    expect(sqlCalls.length, 'the audit migration should carry both SQL producers').toBe(3);
+    expect(sqlCalls.length, 'both audit migrations should carry the SQL producers').toBe(5);
     for (const call of sqlCalls) expect(call).toMatch(/p_occurred_at\s*=>/);
     // fail closed rather than dating an undateable message with now()
     expect(mig).toMatch(/refusing to enqueue a message we cannot date/);

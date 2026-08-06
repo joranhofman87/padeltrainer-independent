@@ -3,7 +3,7 @@ import { sendPlayerBookingConfirmation } from "./booking-confirmation-email.ts";
 import { renderStaffBookingEmail } from "./staff-booking-email.ts";
 import { writePaymentAuditLog, PaymentAuditStatus } from "./payment-audit.ts";
 import { redactDetail } from "./redact-detail.ts";
-import { occurrenceForBookings } from "./notification-occurrence.ts";
+import { occurrenceForBookingEvent } from "./notification-occurrence.ts";
 import { personDisplayName } from "./person-identity.ts";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
@@ -462,7 +462,7 @@ export async function sendStaffBookingNotifications(opts: {
     // WHEN IT HAPPENED, from the bookings this payment paid for. A Mollie webhook can be
     // redelivered long after the fact and the verify path re-runs on demand, so the enqueue
     // instant is not the event instant — and the activation boundary measures the event.
-    const occurredAt = await occurrenceForBookings(supabase, bookingIds);
+    const occurredAt = await occurrenceForBookingEvent(supabase, bookingIds, "transition");
     let enqueueErrors = 0;
     // Counted from the ROWS enqueue_notification returns, never from the recipient list:
     // the resolver can legitimately answer [] (idempotent no-op) or a 'skipped' row with NO

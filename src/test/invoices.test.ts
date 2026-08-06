@@ -17,7 +17,10 @@ import {
  * cancelled diverges the financial state from the payment evidence. Paid rows are now REFUSED.
  */
 function makeClient(opts: { deleteError?: unknown; cancelError?: unknown } = {}) {
-  const calls = { deletedIds: [] as string[], cancelledIds: [] as string[], updateData: null as unknown };
+  const calls = {
+    deletedIds: [] as string[], cancelledIds: [] as string[], updateData: null as unknown,
+    statusFilter: null as string[] | null,
+  };
   const client = {
     from() {
       return {
@@ -31,12 +34,21 @@ function makeClient(opts: { deleteError?: unknown; cancelError?: unknown } = {})
         },
         update(data: unknown) {
           calls.updateData = data;
-          return {
-            in: (_col: string, ids: string[]) => {
-              calls.cancelledIds.push(...ids);
-              return Promise.resolve({ error: opts.cancelError ?? null });
+          // .in() chains: the write filters by id AND by current status, so the fake has to be
+          // chainable to model it — and the status filter is recorded, because "the database
+          // re-checks the status at write time" is the property that closes the paid race.
+          const chain = {
+            in: (col: string, vals: string[]) => {
+              if (col === 'status') calls.statusFilter = vals;
+              else calls.cancelledIds.push(...vals);
+              return chainThenable;
             },
           };
+          const chainThenable = Object.assign(
+            { then: (res: (v: { error: unknown }) => void) => Promise.resolve({ error: opts.cancelError ?? null }).then(res) },
+            chain,
+          );
+          return chain;
         },
       };
     },
@@ -65,6 +77,9 @@ describe('deleteOrCancelInvoices', () => {
     expect(calls.cancelledIds).toEqual(['s', 'o', 'c']);
     expect(calls.cancelledIds).not.toContain('p');    // and no UPDATE ever touched it
     expect(calls.updateData).toEqual({ status: 'cancelled' });
+    // the write itself re-checks: an invoice paid between the list read and this click does not
+    // match the predicate, so it cannot be cancelled by an id that was captured while it was unpaid
+    expect(calls.statusFilter).toEqual(['sent', 'overdue', 'cancelled']);
   });
 
   it('an UNRECOGNISED status is refused, not assumed cancellable', async () => {

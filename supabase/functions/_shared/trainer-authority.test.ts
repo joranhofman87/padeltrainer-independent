@@ -23,6 +23,11 @@ function fakeAdmin(store: {
       const q: Record<string, unknown> = {};
       q.select = () => q;
       q.eq = (c: string, v: unknown) => { filters.push((r) => r[c] === v); return q; };
+      q.not = (c: string, op: string, list: string) => {
+        const vals = list.replace(/^\(|\)$/g, "").split(",");
+        if (op === "in") filters.push((r) => !vals.includes(String(r[c])));
+        return q;
+      };
       q.then = (res: (v: { data: Row[] | null; error: unknown }) => void) =>
         res(failTable === table
           ? { data: null, error: { message: `injected failure reading ${table}` } }
@@ -72,6 +77,23 @@ Deno.test("a CLUB relationship counts too — exclusivity is across every tenant
   }), "mgrA", "T");
   assertEquals(t?.isExclusiveToCaller, false);
   assertEquals(t?.foreignTenants, ["club:C"]);
+});
+
+Deno.test("a PENDING relationship DOES make a trainer shared — only an ended one does not", async () => {
+  // the status bypass: exclusivity answered with `status = 'active'` treats an invited or paused
+  // association as absent, so a manager gains authority over a trainer another tenant is
+  // mid-onboarding. An unfamiliar status must count as somebody's claim, not as nobody's.
+  const t = await assessTrainerTenancy(fakeAdmin({
+    academy_trainers: [
+      { trainer_profile_id: "T", academy_profile_id: "A", status: "active" },
+      { trainer_profile_id: "T", academy_profile_id: "B", status: "pending" },
+    ],
+    club_trainers: [],
+    academy_managers: [{ user_id: "mgrA", academy_profile_id: "A" }],
+    club_managers: [],
+  }), "mgrA", "T");
+  assertEquals(t?.isExclusiveToCaller, false);
+  assertEquals(t?.foreignTenants, ["academy:B"]);
 });
 
 Deno.test("an INACTIVE relationship does not make a trainer shared", async () => {

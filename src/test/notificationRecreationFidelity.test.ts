@@ -25,6 +25,8 @@ const MIG = (f: string) =>
   readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations', f), 'utf8');
 
 const AUDIT = '20261104100000_notif_audit_event_occurrence_boundary.sql';
+/** the round-2 correction, which re-lifts one of the SQL producers */
+const AUDIT2 = '20261106100000_notif_audit_occurrence_is_the_transition.sql';
 
 /** the body of one definition: from its CREATE to the `$$;` that closes it */
 function bodyOf(src: string, fn: string): string {
@@ -82,6 +84,16 @@ const LIFTED: Array<[string, string, string[]]> = [
   ]],
 ];
 
+/** functions the round-2 migration re-lifts, and the definition it must start from */
+const LIFTED2: Array<[string, string, string[]]> = [
+  ['enqueue_booking_notification', AUDIT, [
+    'booking_request_staff',
+    'booking_cancelled_player',
+    'refusing to enqueue a message we cannot date',   // round 1's fail-closed derivation
+    'p_occurred_at               => v_occurred',      // …and the argument it added
+  ]],
+];
+
 describe('the audit migration recreates each function from its newest definition', () => {
   const audit = MIG(AUDIT);
 
@@ -96,6 +108,17 @@ describe('the audit migration recreates each function from its newest definition
       expect(lifted, `${fn} in ${AUDIT} dropped ${JSON.stringify(phrase)}: it was lifted from an older definition than ${priorFile}`)
         .toContain(phrase);
     }
+  });
+
+  it.each(LIFTED2)('round 2: %s keeps what %s contributed', (fn, priorFile, phrases) => {
+    const prior = bodyOf(MIG(priorFile), fn);
+    const lifted = bodyOf(MIG(AUDIT2), fn);
+    for (const phrase of phrases) {
+      expect(prior, `${priorFile} does not contain ${JSON.stringify(phrase)} — the pin is stale`).toContain(phrase);
+      expect(lifted, `${fn} in ${AUDIT2} dropped ${JSON.stringify(phrase)}`).toContain(phrase);
+    }
+    // …and it actually made the change it exists for
+    expect(lifted).toContain('max(b.updated_at)');
   });
 
   it('names every function the audit migration recreates — a new one cannot be added unpinned', () => {

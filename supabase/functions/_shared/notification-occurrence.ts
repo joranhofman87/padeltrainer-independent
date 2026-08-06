@@ -30,7 +30,43 @@
 type Db = any;
 
 /**
- * For an event ABOUT bookings: the earliest booking the message reports.
+ * WHICH MOMENT AN EVENT IS ABOUT — creation, or the transition being reported.
+ *
+ * This distinction is the whole point and the first version got it wrong: it dated every
+ * booking-related message from `bookings.created_at`. That is truthful for "a booking was
+ * requested" and false for everything that happens to a booking afterwards. A cancellation of a
+ * booking made three weeks ago is an event that happened NOW; dating it three weeks back put it
+ * below the event-age floor, and the cancellation email — the one the player most needs — became
+ * permanently unsendable. The fix must not trade a backlog risk for silent delivery loss.
+ *
+ *   'created'    → `min(created_at)`: the booking REQUEST. Earliest, because the floor should be
+ *                  conservative about a message covering several bookings.
+ *   'transition' → `max(updated_at)`: confirmation, payment, cancellation — the moment the state
+ *                  actually changed. Latest, because that is the transition being reported; a
+ *                  redelivered webhook still dates to the payment rather than to its redelivery.
+ */
+export type BookingEventKind = "created" | "transition";
+
+export async function occurrenceForBookingEvent(
+  supabase: Db,
+  bookingIds: string[],
+  kind: BookingEventKind,
+): Promise<string | null> {
+  if (kind === "created") return occurrenceForBookings(supabase, bookingIds);
+  if (!Array.isArray(bookingIds) || bookingIds.length === 0) return null;
+  const { data, error } = await supabase
+    .from("bookings")
+    .select("updated_at")
+    .in("id", bookingIds)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error) return null;
+  const at = (Array.isArray(data) ? data[0] : null)?.updated_at;
+  return typeof at === "string" && at.length > 0 ? at : null;
+}
+
+/**
+ * For an event about the CREATION of bookings: the earliest booking the message reports.
  *
  * The earliest rather than the latest, because the floor must be conservative — a message covering
  * one old session and one new one is, in the part that matters, old.

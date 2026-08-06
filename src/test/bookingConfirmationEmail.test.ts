@@ -50,13 +50,33 @@ function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; identityEm
   const rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain = (data: any) => {
+    // .order()/.limit() are HONOURED, not swallowed. A proxy that returned the fixtures in
+    // insertion order would make "take the latest transition" and "take the earliest creation"
+    // indistinguishable — which is exactly the bug the occurrence dating had.
+    let order: { col: string; asc: boolean } | null = null;
+    let limit: number | null = null;
+    const shape = () => {
+      if (!Array.isArray(data)) return data;
+      let rows = [...data];
+      if (order) {
+        const { col, asc } = order;
+        rows.sort((a, b) => String(a?.[col] ?? '').localeCompare(String(b?.[col] ?? '')) * (asc ? 1 : -1));
+      }
+      if (limit !== null) rows = rows.slice(0, limit);
+      return rows;
+    };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const self: any = new Proxy(() => {}, {
       get(_t, p) {
-        if (p === 'then') return (res: (v: unknown) => unknown) => Promise.resolve({ data, error: null }).then(res);
+        if (p === 'then') return (res: (v: unknown) => unknown) => Promise.resolve({ data: shape(), error: null }).then(res);
         if (p === 'single' || p === 'maybeSingle') {
-          return () => Promise.resolve({ data: Array.isArray(data) ? data[0] ?? null : data, error: null });
+          const rows = shape();
+          return () => Promise.resolve({ data: Array.isArray(rows) ? rows[0] ?? null : rows, error: null });
         }
+        if (p === 'order') {
+          return (col: string, o?: { ascending?: boolean }) => { order = { col, asc: o?.ascending !== false }; return self; };
+        }
+        if (p === 'limit') return (n: number) => { limit = n; return self; };
         return () => self;
       },
     });
@@ -68,8 +88,11 @@ function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; identityEm
         // every booking row carries created_at in production, and the producer now DERIVES the
         // event-occurrence time from it (the activation boundary measures the event, not the
         // enqueue). A fixture without one models a booking that cannot exist.
-        const withCreated = (opts.bookings ?? []).map((b: Record<string, unknown>) =>
-          ('created_at' in b ? b : { ...b, created_at: '2026-08-06T08:00:00+00:00' }));
+        const withCreated = (opts.bookings ?? []).map((b: Record<string, unknown>) => ({
+          created_at: '2026-08-06T08:00:00+00:00',
+          updated_at: '2026-08-06T08:00:00+00:00',
+          ...b,
+        }));
         return chain(opts.bookingsRaw ? opts.bookings : withCreated);
       }
       if (table === 'invoices') return chain({ id: 'INV-FB', invoice_number: opts.invoiceNumber ?? 'F-2026-001' });
@@ -113,6 +136,24 @@ const SLOT = (over: any = {}) => ({
 const logStep = () => {};
 
 describe('sendPlayerBookingConfirmation', () => {
+  it('dates the confirmation from the TRANSITION, not the booking\'s birthday', async () => {
+    // The defect this closes: dating a confirmation from `created_at` buries a current
+    // confirmation of an older booking under the event-age floor, and the message is lost.
+    // A confirmation is something that happens TO a booking, so it is dated by updated_at.
+    const { supabase, rpcCalls } = makeSupabase({
+      bookingsRaw: true,
+      bookings: [
+        { id: 'B1', created_at: '2026-06-01T10:00:00+00:00', updated_at: '2026-08-06T09:00:00+00:00',
+          player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+        { id: 'B2', created_at: '2026-06-02T10:00:00+00:00', updated_at: '2026-08-06T09:00:01+00:00',
+          player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+      ],
+    });
+    await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: 'INV-1', molliePaymentId: 'tr_123', logStep });
+    // the LATEST transition — the change being reported — not either creation
+    expect(enqueueCall(rpcCalls).p_occurred_at).toBe('2026-08-06T09:00:01+00:00');
+  });
+
   it('declares WHEN THE BOOKING HAPPENED, derived from the bookings — not the moment this ran', async () => {
     // This helper is reached from the paid claim AND from webhook redelivery, so "now" is not
     // reliably the time the booking was made. The activation boundary measures the event, so the
@@ -120,12 +161,12 @@ describe('sendPlayerBookingConfirmation', () => {
     // message covering one old session and one new one is, in the part that matters, old.
     const { supabase, rpcCalls } = makeSupabase({
       bookings: [
-        { id: 'B1', created_at: '2026-07-01T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
-        { id: 'B2', created_at: '2026-07-02T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+        { id: 'B1', updated_at: '2026-07-01T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+        { id: 'B2', updated_at: '2026-07-02T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
       ],
     });
     await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: 'INV-1', molliePaymentId: 'tr_123', logStep });
-    expect(enqueueCall(rpcCalls).p_occurred_at).toBe('2026-07-01T10:00:00+00:00');
+    expect(enqueueCall(rpcCalls).p_occurred_at).toBe('2026-07-02T10:00:00+00:00');
   });
 
   it('FAILS CLOSED when the occurrence cannot be established — an undateable message is not sent', async () => {

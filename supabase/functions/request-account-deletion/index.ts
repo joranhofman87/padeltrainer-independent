@@ -40,12 +40,22 @@ Deno.serve(async (req) => {
     }
 
     // Prevent admins from using this self-deletion endpoint
-    const { data: adminRole } = await supabaseAdmin
+    const { data: adminRole, error: adminRoleError } = await supabaseAdmin
       .from("user_roles")
       .select("role")
       .eq("user_id", user.id)
       .eq("role", "admin")
       .single();
+    // PGRST116 is the ANSWER ("no admin role"), not a failure. Any other error means we do not
+    // know whether this caller is an admin, and "we don't know" must not become "go ahead and
+    // delete" — this endpoint deliberately refuses admins.
+    if (adminRoleError && (adminRoleError as { code?: string }).code !== "PGRST116") {
+      console.error("request-account-deletion: admin-role check failed", adminRoleError);
+      return new Response(
+        JSON.stringify({ error: "Could not verify your account type — no data was deleted." }),
+        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (adminRole) {
       return new Response(
@@ -54,31 +64,32 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user profile for logging
+    // Get user profile for logging (best-effort: missing metadata must not block an erasure the
+    // user is entitled to, and the audit row records the ids regardless)
     const { data: userProfile } = await supabaseAdmin
       .from("profiles")
       .select("email, full_name")
       .eq("user_id", user.id)
       .single();
 
-    // AUDIT FIRST, then delete. The audit table's admin/target columns reference auth.users, so an
-    // insert attempted AFTER the account is gone is an insert that can only fail — which is what
-    // made the previous ordering silently unauditable. Writing it first also means a deletion that
-    // fails part-way still leaves the evidence that it was attempted.
-    const { error: auditError } = await supabaseAdmin.from("admin_impersonation_logs").insert({
-      admin_user_id: user.id,
-      target_user_id: user.id,
-      action: 'self_delete_account',
-      details: { 
-        deleted_email: userProfile?.email,
-        deleted_name: userProfile?.full_name,
-        self_service: true
-      },
-      ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
-      user_agent: req.headers.get("user-agent"),
-      expires_at: new Date().toISOString(),
-    });
-    if (auditError) {
+    // AUDIT FIRST, in a table that OUTLIVES the account. `admin_impersonation_logs` cascades from
+    // auth.users, so a self-deletion destroyed its own record — and writing it earlier only moved
+    // the problem: the row then existed exactly when the deletion had FAILED. Two phases here, in
+    // a FK-free table: `started` before anything is touched, `completed` once the account is gone.
+    const { data: auditRow, error: auditError } = await supabaseAdmin
+      .from("account_deletion_audit")
+      .insert({
+        subject_user_id: user.id,
+        actor_user_id: user.id,
+        self_service: true,
+        subject_email: userProfile?.email ?? null,
+        subject_name: userProfile?.full_name ?? null,
+        ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
+        user_agent: req.headers.get("user-agent"),
+      })
+      .select("id")
+      .single();
+    if (auditError || !auditRow) {
       // An unauditable deletion is one we do not perform: this is a privacy operation, and "it
       // happened but nothing recorded it" is not an acceptable outcome of one.
       console.error("request-account-deletion: could not record the audit entry", auditError);
@@ -90,7 +101,18 @@ Deno.serve(async (req) => {
 
     // Delete all user data. Every step fails loudly, so the auth account is removed only after
     // every dependent row has actually gone.
-    await deleteUserData(supabaseAdmin, user.id);
+    try {
+      await deleteUserData(supabaseAdmin, user.id);
+    } catch (err) {
+      // the row stays as evidence, marked for what it is: a deletion that began and did not finish
+      await supabaseAdmin.from("account_deletion_audit")
+        .update({ status: "failed", failure_reason: String((err as Error)?.message ?? err).slice(0, 500) })
+        .eq("id", auditRow.id);
+      throw err;
+    }
+    await supabaseAdmin.from("account_deletion_audit")
+      .update({ status: "completed" })
+      .eq("id", auditRow.id);
 
     console.log(`User self-deleted: ${user.id}`);
 

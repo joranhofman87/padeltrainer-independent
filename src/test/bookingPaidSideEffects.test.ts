@@ -152,9 +152,13 @@ function makeFakeSupabase(opts: FakeOpts) {
         // every booking row carries created_at in production, and the staff producer now DERIVES
         // the event-occurrence time from it (the activation boundary measures the event, not the
         // enqueue). A fixture without one models a booking that cannot exist.
+        // the staff lane reports a TRANSITION (the payment landed), so it dates from updated_at
         return chain(opts.staffBookingsRaw ? (opts.staffBookings ?? [])
-          : (opts.staffBookings ?? []).map((b) =>
-              ('created_at' in b ? b : { ...b, created_at: '2026-08-06T08:00:00+00:00' })), opts.booking, {
+          : (opts.staffBookings ?? []).map((b) => ({
+              created_at: '2026-08-06T08:00:00+00:00',
+              updated_at: '2026-08-06T08:00:00+00:00',
+              ...b,
+            })), opts.booking, {
           rowError: opts.bookingContextError,
           throws,
           throwsSingle: opts.throwOnSingle === 'bookings',
@@ -296,7 +300,7 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
       const { supabase, rpc } = makeFakeSupabase({
         booking: guestBooking,
         invoiceInvokeData: { invoiceId: 'INV-1' },
-        staffBookings: [{ ...staffBooking(), created_at: '2026-07-01T10:00:00+00:00' }],
+        staffBookings: [{ ...staffBooking(), updated_at: '2026-07-01T10:00:00+00:00' }],
         trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
         profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
       });

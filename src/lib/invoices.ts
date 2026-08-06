@@ -84,7 +84,16 @@ export async function deleteOrCancelInvoices(
     deleteError = error ?? null;
   }
   if (cancelledIds.length) {
-    const { error } = await client.from('invoices').update({ status: 'cancelled' }).in('id', cancelledIds);
+    // The status predicate is repeated HERE, in the database, on purpose. The partition above uses
+    // the statuses the client last READ; between that read and this write an invoice can be paid —
+    // a Mollie webhook lands, the payer completes checkout — and an id-only UPDATE would cancel it
+    // anyway. Filtering on the allow-list makes the write itself refuse: the row simply does not
+    // match, so nothing is cancelled that is not still cancellable at the moment of cancelling.
+    const { error } = await client
+      .from('invoices')
+      .update({ status: 'cancelled' })
+      .in('id', cancelledIds)
+      .in('status', [...CANCELLABLE_STATUSES]);
     cancelError = error ?? null;
   }
 

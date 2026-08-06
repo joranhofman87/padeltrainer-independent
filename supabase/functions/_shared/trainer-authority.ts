@@ -28,8 +28,15 @@
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
+/**
+ * The statuses that genuinely END a tenant's association. Everything else counts as a claim.
+ * An allow-list of endings rather than an allow-list of "counts": for an authority question the
+ * safe default is that an unfamiliar status still belongs to someone.
+ */
+const TERMINAL_STATUSES = ["removed", "rejected", "declined", "left", "ended", "inactive"];
+
 export interface TrainerTenancy {
-  /** every ACTIVE academy + club the trainer works for, as `academy:<id>` / `club:<id>`. */
+  /** every NON-TERMINAL academy + club the trainer is associated with, as `academy:<id>` / `club:<id>`. */
   activeTenants: string[];
   /** the subset of those the caller manages. */
   managedTenants: string[];
@@ -54,11 +61,16 @@ export async function assessTrainerTenancy(
 ): Promise<TrainerTenancy | null> {
   if (!callerUserId || !trainerProfileId) return null;
 
+  // NOT `status = 'active'`. Exclusivity is a question about who ELSE has a claim, so it must be
+  // answered by excluding the statuses that end a relationship — anything else (pending, invited,
+  // paused, suspended, or a status added next year) still represents a tenant with a live or
+  // resuming association, and treating it as absent is how "this trainer only works for us"
+  // becomes true by omission.
   const [academies, clubs, managedAcademies, managedClubs] = await Promise.all([
     supabaseAdmin.from("academy_trainers").select("academy_profile_id")
-      .eq("trainer_profile_id", trainerProfileId).eq("status", "active"),
+      .eq("trainer_profile_id", trainerProfileId).not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
     supabaseAdmin.from("club_trainers").select("club_profile_id")
-      .eq("trainer_profile_id", trainerProfileId).eq("status", "active"),
+      .eq("trainer_profile_id", trainerProfileId).not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
     supabaseAdmin.from("academy_managers").select("academy_profile_id").eq("user_id", callerUserId),
     supabaseAdmin.from("club_managers").select("club_profile_id").eq("user_id", callerUserId),
   ]);
