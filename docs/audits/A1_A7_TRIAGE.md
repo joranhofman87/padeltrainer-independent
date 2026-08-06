@@ -135,8 +135,9 @@ Recorded because a fix that creates a new defect is worth as much attention as t
 1. **Dating every booking message from `created_at`.** Truthful for a booking request, false for a
    confirmation, payment or cancellation. A cancellation of a three-week-old booking was dated three
    weeks back, fell under the event-age floor, and became permanently unsendable — a backlog risk
-   traded for silent delivery loss. Now: `created` → `min(created_at)`, `transition` →
-   `max(updated_at)`.
+   traded for silent delivery loss. Round 2's answer — `transition` → `max(updated_at)` — was
+   itself withdrawn one round later for the laundering described above; the ledger is where this
+   ended up.
 2. **Auditing a deletion into a table that cascades from the deleted user.** Moving the insert
    earlier only inverted the problem: the record then existed exactly when the deletion had failed.
    Now a dedicated FK-free, append-only, two-phase table.
