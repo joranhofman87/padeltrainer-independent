@@ -38,6 +38,18 @@ CREATE TEMP TABLE _gate_job AS
 --    (switch on, canary reconciled, THEN arm) no longer holds.
 SELECT pg_temp.assert_eq((SELECT count(*)::int FROM pg_temp._gate_job), 1,
   'the digest cron job exists (exactly one, owned by the current user)');
+-- 1a. ...and that jobid still carries the resolved NAME and OWNER.
+--
+-- INTEGRATION GAP, found by composing N0 with N4–N7 and by the pin below. N0 added this re-check
+-- to the pre-activation file; this armed variant was generated from the pre-N0 copy, so the two
+-- files had drifted apart by more than the state assertion — and the side that lost the check was
+-- the POST-activation one, where a re-pointed or re-owned job matters most. Restored verbatim, so
+-- the two files differ in exactly the state check again. This is precisely the class of defect a
+-- unit reviewed only against its own base cannot see.
+SELECT pg_temp.assert(
+  (SELECT jobname = 'notification-digest-worker' AND username = current_user
+     FROM cron.job WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
+  'the resolved jobid is still the notification-digest-worker job owned by the current user');
 -- POSTFLIGHT VARIANT: after activation the job must be ARMED. Everything else in this file is
 -- byte-identical to the pre-activation assertions, because the identity question does not change
 -- when the answer to the state question does: the command a tick executes still posts a
