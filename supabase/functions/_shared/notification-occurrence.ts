@@ -47,8 +47,14 @@ export type BookingEventKind = "created" | "confirmed" | "cancelled" | "paid" | 
 
 export interface BookingTransition {
   occurredAt: string;
-  /** the ledger sequence — the discriminator that makes a SECOND transition a second message */
+  /** the ledger sequence of the OLDEST member's latest transition */
   seq: number | null;
+  /**
+   * The discriminator, over EVERY member's latest transition. One member's sequence is not enough:
+   * in a two-booking set the oldest member's seq does not move when the OTHER one transitions
+   * again, so a genuine second payment collapsed onto the first.
+   */
+  setKey: string | null;
 }
 
 /**
@@ -72,7 +78,12 @@ export async function bookingTransition(
   if (typeof at !== "string" || at.length === 0) return null;
   const rawSeq = (row as { seq?: unknown } | null)?.seq;
   const seq = typeof rawSeq === "string" ? Number(rawSeq) : (typeof rawSeq === "number" ? rawSeq : null);
-  return { occurredAt: at, seq: Number.isFinite(seq as number) ? (seq as number) : null };
+  const setKey = (row as { set_key?: unknown } | null)?.set_key;
+  return {
+    occurredAt: at,
+    seq: Number.isFinite(seq as number) ? (seq as number) : null,
+    setKey: typeof setKey === "string" && setKey.length > 0 ? setKey : null,
+  };
 }
 
 export async function occurrenceForBookingEvent(

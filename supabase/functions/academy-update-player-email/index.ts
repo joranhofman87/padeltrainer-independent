@@ -83,7 +83,10 @@ Deno.serve(async (req) => {
     // Defense-in-depth: re-verify the account is STILL nascent right before the
     // write (closes the gate->write race, and redundantly enforces never-confirmed
     // independent of the capability RPC).
-    const { data: targetAuth } = await admin.auth.admin.getUserById(targetUserId);
+    const { data: targetAuth, error: targetAuthErr } = await admin.auth.admin.getUserById(targetUserId);
+    // a lookup that FAILED is not evidence the account is nascent. Treating it as "inactive" made
+    // the defence-in-depth check fail open, which is the opposite of its purpose.
+    if (targetAuthErr || !targetAuth?.user) return json(503, { error: "account_state_unknown" });
     if (targetAuth?.user?.last_sign_in_at || targetAuth?.user?.email_confirmed_at) {
       return json(403, { error: "account_active" });
     }

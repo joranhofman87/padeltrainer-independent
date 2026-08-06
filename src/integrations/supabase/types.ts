@@ -1571,15 +1571,7 @@ export type Database = {
           to_payment_status?: string | null
           to_status?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "booking_lifecycle_events_booking_id_fkey"
-            columns: ["booking_id"]
-            isOneToOne: false
-            referencedRelation: "bookings"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       bookings: {
         Row: {
@@ -10024,7 +10016,7 @@ export type Database = {
       }
       booking_transition_event: {
         Args: { p_booking_ids: string[]; p_event_type: string }
-        Returns: { occurred_at: string; seq: number }[]
+        Returns: { occurred_at: string; seq: number; set_key: string }[]
       }
       booking_transition_occurred_at: {
         Args: { p_booking_ids: string[]; p_event_type: string }

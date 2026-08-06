@@ -331,7 +331,7 @@ async function enqueueConfirmation(
     p_occurred_at: occurredAt,
     // the transition DISCRIMINATOR — see the ledger migration. Without it a genuine second `paid`
     // transition of the same bookings collapses onto the first as a duplicate.
-    p_idempotency_subject: `paid:${bookingIds.slice().sort().join(",")}:${paidTransition?.seq ?? "none"}`,
+    p_idempotency_subject: `paid:${paidTransition?.setKey ?? "none"}`,
     p_recipient_person_id: null,
     p_recipient_user_id: recipient.p_recipient_user_id ?? null,
     p_recipient_guest_player_id: recipient.p_recipient_guest_player_id ?? null,

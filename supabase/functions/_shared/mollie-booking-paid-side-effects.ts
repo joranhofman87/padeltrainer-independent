@@ -495,7 +495,7 @@ export async function sendStaffBookingNotifications(opts: {
         // the transition DISCRIMINATOR. Without it the subject falls back to the invoice/payment
         // identifiers, so a genuine SECOND paid transition of the same bookings collapses onto the
         // first as a duplicate — the very case the ledger's seq exists to separate.
-        p_idempotency_subject: `paid:${bookingIds.slice().sort().join(",")}:${paidTransition?.seq ?? "none"}`,
+        p_idempotency_subject: `paid:${paidTransition?.setKey ?? "none"}`,
         p_recipient_user_id: userId,
         p_tenant_academy_profile_id: scope.academy ?? null,
         p_tenant_trainer_id: scope.trainer ?? null,

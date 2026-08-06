@@ -77,7 +77,7 @@ const occurrence = async (ids: string[], kind: string) =>
   (await db.query<{ at: string | null }>(
     `SELECT public.booking_transition_occurred_at($1::uuid[], $2) AS at`, [ids, kind])).rows[0].at;
 const transition = async (ids: string[], kind: string) =>
-  (await db.query<{ occurred_at: string | null; seq: string | null }>(
+  (await db.query<{ occurred_at: string | null; seq: string | null; set_key: string | null }>(
     `SELECT * FROM public.booking_transition_event($1::uuid[], $2)`, [ids, kind])).rows[0] ?? null;
 
 describe('the lifecycle ledger records transitions, and only transitions', () => {
@@ -246,15 +246,37 @@ describe('the corrections from the ledger review', () => {
       .toBe(new Date(oldAt as unknown as string).getTime());
   });
 
-  it('occurrence and discriminator come from the SAME ledger row', async () => {
-    const id = await seedBooking({ status: 'confirmed' });
-    await db.query(`UPDATE public.bookings SET status='cancelled' WHERE id=$1`, [id]);
-    const t = await transition([id], 'cancelled');
-    expect(t?.occurred_at).toBeTruthy();
-    const rowSeq = (await db.query<{ seq: string }>(
-      `SELECT seq FROM public.booking_lifecycle_events
-        WHERE booking_id=$1 AND event_type='cancelled' ORDER BY seq DESC LIMIT 1`, [id])).rows[0].seq;
-    expect(String(t?.seq)).toBe(String(rowSeq));
+  it('the discriminator describes the WHOLE SET, not one member', async () => {
+    // one member's seq is not enough: with A paid first and B paid second, the oldest is A, so a
+    // subject built from A's seq does not move when B re-pays — and a genuine second payment is
+    // suppressed as a duplicate of the first.
+    const a = await seedBooking();
+    const b = await seedBooking();
+    await db.query(`UPDATE public.bookings SET payment_status='paid' WHERE id=$1`, [a]);
+    await db.query(`UPDATE public.bookings SET payment_status='paid' WHERE id=$1`, [b]);
+    const first = await transition([a, b], 'paid');
+    expect(first?.set_key).toBeTruthy();
+
+    // B unpays and pays again; A is untouched and still the oldest
+    await db.query(`UPDATE public.bookings SET payment_status='pending' WHERE id=$1`, [b]);
+    await db.query(`UPDATE public.bookings SET payment_status='paid' WHERE id=$1`, [b]);
+    const second = await transition([a, b], 'paid');
+    expect(second?.occurred_at).toBeTruthy();
+    expect(second?.set_key).not.toBe(first?.set_key);      // the message is a NEW message
+    // …and the ORDER of the ids does not change the key
+    const reordered = await transition([b, a], 'paid');
+    expect(reordered?.set_key).toBe(second?.set_key);
+  });
+
+  it('FAILS CLOSED when only PART of the set has ledger evidence', async () => {
+    // a message covering a dated booking and an undateable one (e.g. a pre-ledger paid with no
+    // paid_at) must not be dated by the half it can see.
+    const dated = await seedBooking();
+    await db.query(`UPDATE public.bookings SET payment_status='paid' WHERE id=$1`, [dated]);
+    const undated = await seedBooking();
+    expect(await transition([dated], 'paid')).toBeTruthy();
+    expect(await transition([dated, undated], 'paid')).toBeNull();
+    expect(await occurrence([dated, undated], 'paid')).toBeNull();
   });
 
   it('the ledger OUTLIVES the booking — deleting one neither cascades nor fails', async () => {
