@@ -183,8 +183,11 @@ export function parseModule(source, fileName = "module.ts") {
       else computed.push({ line: lineOf(arg ?? node), expr: `import(${arg ? arg.getText(sf).slice(0, 60) : ""})` });
     }
     // `require("x")` — a CommonJS dependency edge. Only a BARE `require` identifier counts;
-    // `obj.require(…)` is an ordinary method call, exactly as with `import`.
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "require") {
+    // `obj.require(…)` is an ordinary method call, exactly as with `import`. And only when the
+    // name is NOT lexically bound: `function useLoader(require) { require("npm:pkg@2") }` calls a
+    // parameter, not the CommonJS loader, and reporting it would be a false CI failure.
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)
+        && node.expression.text === "require" && !isLexicallyBound(node, "require")) {
       const arg = node.arguments[0];
       if (arg && ts.isStringLiteralLike(arg)) specifiers.push({ spec: arg.text, line: lineOf(arg) });
       else if (arg) computed.push({ line: lineOf(arg), expr: `require(${arg.getText(sf).slice(0, 60)})` });
@@ -208,6 +211,31 @@ export function parseModule(source, fileName = "module.ts") {
   }
 
   return { specifiers, computed, parseError: null };
+}
+
+/**
+ * True when `name` is declared in a scope enclosing `node` — a parameter, a `var`/`let`/`const`, or
+ * a function declaration. Used to tell the CommonJS `require` loader apart from a local binding
+ * that merely shares its name. Deliberately conservative: it only walks enclosing scopes and only
+ * looks at their direct declarations, which is enough for the shapes that actually occur, and a
+ * miss here costs a false positive rather than a missed dependency.
+ */
+function isLexicallyBound(node, name) {
+  for (let n = node.parent; n; n = n.parent) {
+    if (ts.isFunctionLike(n) && n.parameters?.some((p) => ts.isIdentifier(p.name) && p.name.text === name)) {
+      return true;
+    }
+    const statements = ts.isSourceFile(n) || ts.isBlock(n) || ts.isModuleBlock(n) ? n.statements : null;
+    if (!statements) continue;
+    for (const s of statements) {
+      if (ts.isVariableStatement(s)
+          && s.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name)) {
+        return true;
+      }
+      if (ts.isFunctionDeclaration(s) && s.name?.text === name) return true;
+    }
+  }
+  return false;
 }
 
 /** Parse each extension as what it is, so syntax validation (and so fail-closed) is honest. */
@@ -515,6 +543,48 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });
+  }
+
+  // ── INTEGRATION: every form driven through findFloating, the path the guard actually runs ──
+  // Helper-level assertions proved extraction, classification and walking separately, and that is
+  // not the same thing: a findFloating that dropped its specifier loop, dropped its computed loop,
+  // or ignored what walk returned would satisfy all of them and still report a dirty tree clean.
+  // The real-tree fixture cannot catch that either, because the real tree has no violations. So
+  // this builds a directory that DOES.
+  const integrationDir = fs.mkdtempSync(path.join(os.tmpdir(), "edge-pins-integration-"));
+  try {
+    const files = {
+      "view.tsx": "/** @jsxImportSource https://esm.sh/preact@10 */\nexport const v = <div />;\n",
+      "cjs-dep.cjs": 'const p = require("npm:floating-cjs@2");\n',
+      "computed.ts": "export const load = () => import(`npm:computed@${v}`);\n",
+      "static.mts": 'import { a } from "https://esm.sh/floating-mts@2";\n',
+      "clean.ts": 'import { b } from "https://esm.sh/pinned@1.2.3";\nimport c from "./local.ts";\n',
+    };
+    for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(integrationDir, name), body);
+
+    const reported = findFloating(integrationDir);
+    const byFile = Object.fromEntries(reported.map((v) => [path.basename(v.file), v]));
+
+    assert(byFile["view.tsx"]?.spec === "https://esm.sh/preact@10", "findFloating did not report the floating jsxImportSource pragma");
+    assert(byFile["cjs-dep.cjs"]?.spec === "npm:floating-cjs@2", "findFloating did not report a floating require() in a .cjs file");
+    assert(byFile["computed.ts"]?.kind === "computed", "findFloating did not report the computed dynamic import");
+    assert(byFile["static.mts"]?.spec === "https://esm.sh/floating-mts@2", "findFloating did not report a floating import in a .mts file");
+    assert(byFile["clean.ts"] === undefined, "findFloating reported a violation in the clean file");
+    assert(reported.length === 4, `findFloating reported ${reported.length} violations, expected exactly 4`);
+    assert(reported.every((v) => v.line >= 1), "a violation carried no usable line number");
+
+    // A pinned pragma and a shadowed `require` must NOT be violations — the false-positive side.
+    fs.rmSync(path.join(integrationDir, "view.tsx"));
+    fs.rmSync(path.join(integrationDir, "cjs-dep.cjs"));
+    fs.rmSync(path.join(integrationDir, "computed.ts"));
+    fs.rmSync(path.join(integrationDir, "static.mts"));
+    fs.writeFileSync(path.join(integrationDir, "pinned-view.tsx"), "/** @jsxImportSource https://esm.sh/preact@10.19.3 */\nexport const v = <div />;\n");
+    fs.writeFileSync(path.join(integrationDir, "shadowed.ts"), 'export function useLoader(require: (s: string) => unknown) {\n  return require("npm:pkg@2");\n}\n');
+    fs.writeFileSync(path.join(integrationDir, "shadowed-const.ts"), 'const require = customLoader;\nrequire("npm:pkg@2");\n');
+    const clean = findFloating(integrationDir);
+    assert(clean.length === 0, `a pinned pragma or shadowed require was reported: ${clean.map((v) => `${path.basename(v.file)}:${v.line} ${v.spec}`).join("; ")}`);
+  } finally {
+    fs.rmSync(integrationDir, { recursive: true, force: true });
   }
 
   // The real repository is the last fixture: the guard must agree with the tree it guards.
