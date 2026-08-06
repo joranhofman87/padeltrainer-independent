@@ -1,97 +1,20 @@
 /**
- * WHO MAY CHANGE WHAT ON A TRAINER'S ACCOUNT.
+ * WHO MAY CHANGE WHAT ON A TRAINER'S ACCOUNT — and, since OD-1, the answer for global identity is
+ * "not a tenant manager, ever".
  *
  * A trainer has ONE login and ONE `profiles` row, and can work for several academies and clubs at
- * the same time. Those two facts together are the whole problem: authority to manage a trainer
- * *within your academy* is not authority over the identity they use everywhere else.
+ * the same time. An earlier version of this module answered the narrower question "does this
+ * manager manage every tenant the trainer belongs to?", and let an exclusive manager rotate the
+ * login. The owner resolved that (OD-1, 2026-08-06) in the strict direction: identity is
+ * self-service. A tenant manager manages membership, academy role and permissions; the trainer
+ * owns their credentials and changes them from their own account. An academy may INITIATE an
+ * invitation, an email-change confirmation or a password reset — flows that end with the trainer
+ * acting. A platform-administrator recovery path exists and is audited.
  *
- * The capability being preserved is real — an academy that created a trainer's account, and is the
- * only tenant they work for, manages it end to end, including rotating the login. That is
- * deliberate and it stays. What A1-A7 F3 found is that the same code path let a manager of academy
- * A change the global email and shared profile of a trainer who ALSO works for academy B: it
- * rotates a login A does not own, and rewrites the name and photo B sees, with no B-side consent
- * or even notice.
- *
- * So the rule is exclusivity, checked server-side against every ACTIVE relationship:
- *
- *   * the caller manages every tenant the trainer is active in  → global identity is theirs to
- *     change (audited, and the old address is notified, as before);
- *   * the trainer is active anywhere the caller does not manage → the caller may not touch the
- *     global identity at all. Tenant-scoped overlays are unaffected; this module says nothing
- *     about them.
- *
- * Platform admins and the trainer themselves are outside this: they are handled by their own
- * branches and never reach here.
+ * So the tenancy calculation is gone rather than left dead: a rule nobody consults is a rule that
+ * quietly comes back. What remains is the field list, because the question "is this field part of
+ * the shared identity?" is exactly what the endpoint still has to ask.
  */
-
-// deno-lint-ignore no-explicit-any
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Db = any;
-
-/**
- * The statuses that genuinely END a tenant's association. Everything else counts as a claim.
- * An allow-list of endings rather than an allow-list of "counts": for an authority question the
- * safe default is that an unfamiliar status still belongs to someone.
- */
-const TERMINAL_STATUSES = ["removed", "rejected", "declined", "left", "ended", "inactive"];
-
-export interface TrainerTenancy {
-  /** every NON-TERMINAL academy + club the trainer is associated with, as `academy:<id>` / `club:<id>`. */
-  activeTenants: string[];
-  /** the subset of those the caller manages. */
-  managedTenants: string[];
-  /**
-   * true when the caller manages EVERY tenant the trainer is active in (and there is at least
-   * one). Only then is the trainer's global identity the caller's to change.
-   */
-  isExclusiveToCaller: boolean;
-  /** tenants the trainer works for that the caller does NOT manage — the reason for a refusal. */
-  foreignTenants: string[];
-}
-
-/**
- * Fails CLOSED: any read error is reported as `null`, and the caller must treat that as "no
- * exclusivity established" rather than assuming it. An unreadable relationship table must never
- * widen someone's authority.
- */
-export async function assessTrainerTenancy(
-  supabaseAdmin: Db,
-  callerUserId: string,
-  trainerProfileId: string,
-): Promise<TrainerTenancy | null> {
-  if (!callerUserId || !trainerProfileId) return null;
-
-  // NOT `status = 'active'`. Exclusivity is a question about who ELSE has a claim, so it must be
-  // answered by excluding the statuses that end a relationship — anything else (pending, invited,
-  // paused, suspended, or a status added next year) still represents a tenant with a live or
-  // resuming association, and treating it as absent is how "this trainer only works for us"
-  // becomes true by omission.
-  // NO `club_trainers` READ. That table does not exist in this schema — `update-user` has always
-  // queried it and silently ignored the error, which is why nobody noticed. Asking for it here,
-  // where the result is CHECKED, would make every lookup fail and every manager lose the
-  // capability this function is supposed to preserve. Clubs are not modelled as trainer tenancies;
-  // if they ever are, add the read here and the exclusivity answer widens with it.
-  const [academies, managedAcademies] = await Promise.all([
-    supabaseAdmin.from("academy_trainers").select("academy_profile_id")
-      .eq("trainer_profile_id", trainerProfileId).not("status", "in", `(${TERMINAL_STATUSES.join(",")})`),
-    supabaseAdmin.from("academy_managers").select("academy_profile_id").eq("user_id", callerUserId),
-  ]);
-  if (academies.error || managedAcademies.error) return null;
-
-  const activeTenants: string[] = (academies.data ?? [])
-    .map((r: { academy_profile_id: string }) => `academy:${r.academy_profile_id}`);
-  const managed = new Set<string>((managedAcademies.data ?? [])
-    .map((r: { academy_profile_id: string }) => `academy:${r.academy_profile_id}`));
-
-  const managedTenants = activeTenants.filter((t) => managed.has(t));
-  const foreignTenants = activeTenants.filter((t) => !managed.has(t));
-  return {
-    activeTenants,
-    managedTenants,
-    foreignTenants,
-    isExclusiveToCaller: activeTenants.length > 0 && foreignTenants.length === 0,
-  };
-}
 
 /**
  * The fields that live on the ONE shared identity — the login and the `profiles` row every tenant

@@ -319,7 +319,7 @@ async function enqueueConfirmation(
   // WHEN IT HAPPENED, from the bookings themselves. Derived rather than defaulted: this function
   // is reached from the paid-claim and from webhook redelivery, so "now" is not reliably the time
   // the booking was made, and the activation boundary measures the event.
-  const occurredAt = await occurrenceForBookingEvent(supabase, bookingIds, "transition");
+  const occurredAt = await occurrenceForBookingEvent(supabase, bookingIds, "paid");
   if (!occurredAt) {
     logStep("Player confirmation enqueue refused: the booking's occurrence time could not be established", { isGuest });
     return { ok: false, reason: "enqueue_failed", isGuest, pdfAttached, detail: "occurrence_undeterminable" };

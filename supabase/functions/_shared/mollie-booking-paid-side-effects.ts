@@ -462,7 +462,7 @@ export async function sendStaffBookingNotifications(opts: {
     // WHEN IT HAPPENED, from the bookings this payment paid for. A Mollie webhook can be
     // redelivered long after the fact and the verify path re-runs on demand, so the enqueue
     // instant is not the event instant — and the activation boundary measures the event.
-    const occurredAt = await occurrenceForBookingEvent(supabase, bookingIds, "transition");
+    const occurredAt = await occurrenceForBookingEvent(supabase, bookingIds, "paid");
     let enqueueErrors = 0;
     // Counted from the ROWS enqueue_notification returns, never from the recipient list:
     // the resolver can legitimately answer [] (idempotent no-op) or a 'skipped' row with NO

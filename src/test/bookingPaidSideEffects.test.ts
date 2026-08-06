@@ -22,6 +22,8 @@ type FakeOpts = {
   staffBookings?: Record<string, unknown>[];
   /** keep staffBookings EXACTLY as written — no created_at is filled in (the undateable case). */
   staffBookingsRaw?: boolean;
+  /** the booking lifecycle ledger: event_type -> occurred_at. Omit an entry to model "never happened". */
+  lifecycle?: Record<string, string | null>;
   /** academy_managers rows (user_id + academy) for the involved academies. */
   managers?: { user_id: string; academy_profile_id: string }[];
   /** trainer_profiles rows (id, user_id) for the involved trainers. */
@@ -123,6 +125,19 @@ function makeFakeSupabase(opts: FakeOpts) {
   });
   // The staff fan-out (PR 6b) + the player confirmation (PR 6a) enqueue via rpc.
   const rpc = vi.fn(async (name: string, _params?: Record<string, unknown>) => {
+    // the occurrence comes from the booking lifecycle LEDGER now. `lifecycle` lets a test model
+    // "this transition has no ledger row" (historical, or it never happened), which is the
+    // fail-closed case.
+    if (name === 'booking_transition_occurred_at') {
+      const at = (opts.lifecycle ?? { paid: '2026-08-06T08:00:00+00:00' })[
+        String((_params as { p_event_type?: string } | undefined)?.p_event_type)];
+      return { data: at ?? null, error: null };
+    }
+    if (name === 'booking_transition_seq') {
+      const at = (opts.lifecycle ?? { paid: '2026-08-06T08:00:00+00:00' })[
+        String((_params as { p_event_type?: string } | undefined)?.p_event_type)];
+      return { data: at ? 42 : null, error: null };
+    }
     if (name === 'get_invoice_recipient_identity' && opts.identityThrow) {
       throw new Error(opts.identityThrow);
     }
@@ -293,14 +308,15 @@ const legacyStaffEmails = (invoke: ReturnType<typeof makeFakeSupabase>['invoke']
   );
 
 describe('runBookingPaidSideEffects — staff booking notifications (outbox)', () => {
-  it('the staff lane declares WHEN THE BOOKING HAPPENED, and refuses to enqueue when it cannot', async () => {
+  it('the staff lane dates from the PAID transition ledger, and refuses when there is no ledger row', async () => {
     // A Mollie webhook can be redelivered days later and the verify path re-runs on demand, so the
-    // enqueue instant is not the event instant — and the activation boundary measures the event.
+    // enqueue instant is not the event instant — and neither is any column on the booking row.
     {
       const { supabase, rpc } = makeFakeSupabase({
         booking: guestBooking,
         invoiceInvokeData: { invoiceId: 'INV-1' },
-        staffBookings: [{ ...staffBooking(), updated_at: '2026-07-01T10:00:00+00:00' }],
+        lifecycle: { paid: '2026-07-01T10:00:00+00:00' },
+        staffBookings: [staffBooking()],
         trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
         profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
       });
@@ -308,14 +324,18 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
       const staff = staffEnqueues(rpc);
       expect(staff).toHaveLength(1);
       expect((staff[0][1] as { p_occurred_at: string }).p_occurred_at).toBe('2026-07-01T10:00:00+00:00');
+      // it asked the ledger for the PAID transition
+      const ask = (rpc.mock.calls as Array<[string, Record<string, unknown>]>)
+        .find((c) => c[0] === 'booking_transition_occurred_at');
+      expect(ask?.[1]).toMatchObject({ p_event_type: 'paid' });
     }
-    // …and with no dateable booking, nothing is queued: falling back to now() would re-create the
-    // hole the boundary exists to close.
+    // …and with no ledger row nothing is queued: falling back to a mutable column would re-open
+    // the hole the ledger exists to close.
     {
       const { supabase, rpc } = makeFakeSupabase({
         booking: guestBooking,
         invoiceInvokeData: { invoiceId: 'INV-1' },
-        staffBookingsRaw: true,
+        lifecycle: {},
         staffBookings: [staffBooking()],
         trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
         profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],

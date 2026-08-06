@@ -22,7 +22,7 @@
     "typecheck:baseline": "node scripts/check-tsc-baseline.mjs",
     "typecheck:baseline:update": "node scripts/check-tsc-baseline.mjs --update",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "vitest run --project unit && vitest run --project db",
     "test:watch": "vitest",
     "test:edge": "deno test --allow-env --allow-net supabase/functions/_shared/",
     "test:e2e": "playwright test",
@@ -44,7 +44,9 @@
     "dev:e2e": "vite --mode e2e",
     "e2e:local": "bash scripts/db/e2e-local-paid.sh",
     "e2e:local:paid": "bash scripts/db/e2e-local-paid.sh",
-    "edge:serve:local": "bash scripts/db/edge-serve-local.sh"
+    "edge:serve:local": "bash scripts/db/edge-serve-local.sh",
+    "test:unit": "vitest run --project unit",
+    "test:db": "vitest run --project db"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

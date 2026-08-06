@@ -46,7 +46,10 @@ afterEach(() => {
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[]; contactError?: string; identityError?: string; identityThrow?: string }) {
+function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; lifecycle?: Record<string, string | null>; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[]; contactError?: string; identityError?: string; identityThrow?: string }) {
+  // by default the transition this producer reports DID happen; a test opts out to exercise the
+  // fail-closed path
+  opts = { lifecycle: { paid: '2026-08-06T08:00:00+00:00' }, ...opts };
   const rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain = (data: any) => {
@@ -100,6 +103,18 @@ function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; identityEm
     },
     rpc: async (name: string, params: Record<string, unknown>) => {
       rpcCalls.push({ name, params });
+      // The occurrence now comes from the booking lifecycle LEDGER, not from a column on the
+      // bookings row — created_at was the wrong question and updated_at was launderable. The fake
+      // serves it from the fixtures' `lifecycle` map so a test can model "this transition never
+      // happened" (the fail-closed case) as well as the happy one.
+      if (name === 'booking_transition_occurred_at') {
+        const at = (opts.lifecycle ?? {})[String((params as { p_event_type: string }).p_event_type)];
+        return { data: at ?? null, error: null };
+      }
+      if (name === 'booking_transition_seq') {
+        const at = (opts.lifecycle ?? {})[String((params as { p_event_type: string }).p_event_type)];
+        return { data: at ? 42 : null, error: null };
+      }
       if (name === 'get_invoice_recipient_identity') {
         if (opts.identityThrow) throw new Error(opts.identityThrow);
         if (opts.identityError) return { data: null, error: { message: opts.identityError } };
@@ -136,37 +151,25 @@ const SLOT = (over: any = {}) => ({
 const logStep = () => {};
 
 describe('sendPlayerBookingConfirmation', () => {
-  it('dates the confirmation from the TRANSITION, not the booking\'s birthday', async () => {
-    // The defect this closes: dating a confirmation from `created_at` buries a current
-    // confirmation of an older booking under the event-age floor, and the message is lost.
-    // A confirmation is something that happens TO a booking, so it is dated by updated_at.
+  it('dates the confirmation from the TRANSITION LEDGER, not from any column on the booking row', async () => {
+    // created_at was the wrong question (a current confirmation of an old booking was buried under
+    // the event-age floor); updated_at was the right question but launderable (any unrelated edit
+    // moved it). The ledger is the only clock, and it is what the producer must read.
     const { supabase, rpcCalls } = makeSupabase({
-      bookingsRaw: true,
+      lifecycle: { paid: '2026-08-06T09:00:01+00:00' },
       bookings: [
-        { id: 'B1', created_at: '2026-06-01T10:00:00+00:00', updated_at: '2026-08-06T09:00:00+00:00',
-          player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
-        { id: 'B2', created_at: '2026-06-02T10:00:00+00:00', updated_at: '2026-08-06T09:00:01+00:00',
+        { id: 'B1', created_at: '2026-06-01T10:00:00+00:00', updated_at: '2026-08-06T23:59:59+00:00',
           player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
       ],
     });
-    await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: 'INV-1', molliePaymentId: 'tr_123', logStep });
-    // the LATEST transition — the change being reported — not either creation
+    await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: 'INV-1', molliePaymentId: 'tr_123', logStep });
     expect(enqueueCall(rpcCalls).p_occurred_at).toBe('2026-08-06T09:00:01+00:00');
-  });
-
-  it('declares WHEN THE BOOKING HAPPENED, derived from the bookings — not the moment this ran', async () => {
-    // This helper is reached from the paid claim AND from webhook redelivery, so "now" is not
-    // reliably the time the booking was made. The activation boundary measures the event, so the
-    // producer reads it from the rows the message is about — the EARLIEST of them, because a
-    // message covering one old session and one new one is, in the part that matters, old.
-    const { supabase, rpcCalls } = makeSupabase({
-      bookings: [
-        { id: 'B1', updated_at: '2026-07-01T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
-        { id: 'B2', updated_at: '2026-07-02T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
-      ],
-    });
-    await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: 'INV-1', molliePaymentId: 'tr_123', logStep });
-    expect(enqueueCall(rpcCalls).p_occurred_at).toBe('2026-07-02T10:00:00+00:00');
+    // and emphatically not either column on the row
+    expect(enqueueCall(rpcCalls).p_occurred_at).not.toBe('2026-06-01T10:00:00+00:00');
+    expect(enqueueCall(rpcCalls).p_occurred_at).not.toBe('2026-08-06T23:59:59+00:00');
+    // it asked for the PAID transition — the one this producer reports
+    const call = rpcCalls.find((c) => c.name === 'booking_transition_occurred_at');
+    expect(call?.params).toMatchObject({ p_event_type: 'paid', p_booking_ids: ['B1'] });
   });
 
   it('FAILS CLOSED when the occurrence cannot be established — an undateable message is not sent', async () => {
@@ -175,7 +178,7 @@ describe('sendPlayerBookingConfirmation', () => {
     // a payer resolves fine — it is only the TIME that cannot be established (bookingsRaw keeps
     // the fixture exactly as written, with no created_at)
     const { supabase, rpcCalls } = makeSupabase({
-      bookingsRaw: true,
+      lifecycle: {},          // the transition has no ledger row: it never happened, or predates the ledger
       bookings: [{ id: 'B1', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null }],
     });
     const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: 'INV-1', molliePaymentId: null, logStep });

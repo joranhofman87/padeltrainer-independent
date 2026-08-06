@@ -30,59 +30,55 @@
 type Db = any;
 
 /**
- * WHICH MOMENT AN EVENT IS ABOUT — creation, or the transition being reported.
+ * WHICH MOMENT AN EVENT IS ABOUT — read from the append-only booking lifecycle ledger.
  *
- * This distinction is the whole point and the first version got it wrong: it dated every
- * booking-related message from `bookings.created_at`. That is truthful for "a booking was
- * requested" and false for everything that happens to a booking afterwards. A cancellation of a
- * booking made three weeks ago is an event that happened NOW; dating it three weeks back put it
- * below the event-age floor, and the cancellation email — the one the player most needs — became
- * permanently unsendable. The fix must not trade a backlog risk for silent delivery loss.
+ * Two clocks were tried on the bookings row itself and both are wrong. `created_at` is immutable
+ * but answers a different question, so a current cancellation of an old booking was dated back
+ * three weeks, fell under the event-age floor, and was never sent. `updated_at` answers the right
+ * question and is refreshed by every unrelated write, so editing a note or writing a payment id
+ * re-dated a year-old cancellation into the sendable window — the laundering the whole mechanism
+ * exists to prevent.
  *
- *   'created'    → `min(created_at)`: the booking REQUEST. Earliest, because the floor should be
- *                  conservative about a message covering several bookings.
- *   'transition' → `max(updated_at)`: confirmation, payment, cancellation — the moment the state
- *                  actually changed. Latest, because that is the transition being reported; a
- *                  redelivered webhook still dates to the payment rather than to its redelivery.
+ * `booking_lifecycle_events` carries one immutable row per real transition. This reads it through
+ * a definer RPC so the SQL producers and these edge producers measure the floor against exactly
+ * one clock.
  */
-export type BookingEventKind = "created" | "transition";
+export type BookingEventKind = "created" | "confirmed" | "cancelled" | "paid" | "rejected" | "completed";
 
 export async function occurrenceForBookingEvent(
   supabase: Db,
   bookingIds: string[],
   kind: BookingEventKind,
 ): Promise<string | null> {
-  if (kind === "created") return occurrenceForBookings(supabase, bookingIds);
   if (!Array.isArray(bookingIds) || bookingIds.length === 0) return null;
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("updated_at")
-    .in("id", bookingIds)
-    .order("updated_at", { ascending: false })
-    .limit(1);
+  const { data, error } = await supabase.rpc("booking_transition_occurred_at", {
+    p_booking_ids: bookingIds,
+    p_event_type: kind,
+  });
   if (error) return null;
-  const at = (Array.isArray(data) ? data[0] : null)?.updated_at;
-  return typeof at === "string" && at.length > 0 ? at : null;
+  // NULL means the transition has no ledger row — a historical one from before the ledger, or a
+  // caller naming a transition that did not happen. Either way: do not enqueue.
+  return typeof data === "string" && data.length > 0 ? data : null;
 }
 
 /**
- * For an event about the CREATION of bookings: the earliest booking the message reports.
- *
- * The earliest rather than the latest, because the floor must be conservative — a message covering
- * one old session and one new one is, in the part that matters, old.
+ * The discriminator that makes a genuine SECOND transition of the same booking set a second
+ * message. Without it the idempotency subject is (kind, booking set) alone and a
+ * cancel -> re-add -> cancel is silently swallowed as a duplicate.
  */
-export async function occurrenceForBookings(supabase: Db, bookingIds: string[]): Promise<string | null> {
+export async function transitionSeq(
+  supabase: Db,
+  bookingIds: string[],
+  kind: BookingEventKind,
+): Promise<number | null> {
   if (!Array.isArray(bookingIds) || bookingIds.length === 0) return null;
-  const { data, error } = await supabase
-    .from("bookings")
-    .select("created_at")
-    .in("id", bookingIds)
-    .order("created_at", { ascending: true })
-    .limit(1);
+  const { data, error } = await supabase.rpc("booking_transition_seq", {
+    p_booking_ids: bookingIds,
+    p_event_type: kind,
+  });
   if (error) return null;
-  const row = Array.isArray(data) ? data[0] : null;
-  const at = row?.created_at;
-  return typeof at === "string" && at.length > 0 ? at : null;
+  const n = typeof data === "string" ? Number(data) : data;
+  return typeof n === "number" && Number.isFinite(n) ? n : null;
 }
 
 export type OpenSlotsOccurrenceSpec =
@@ -118,29 +114,16 @@ export async function occurrenceForOpenSlots(supabase: Db, spec: OpenSlotsOccurr
     return typeof at === "string" && at.length > 0 ? at : null;
   }
 
-  // slot_reopened: prefer the booking whose cancellation freed the slot; fall back to the slot
-  // itself when the caller identified it by date/time instead.
-  if (spec.bookingId) {
-    const { data, error } = await supabase
-      .from("bookings")
-      .select("updated_at")
-      .eq("id", spec.bookingId)
-      .limit(1);
-    if (error) return null;
-    const at = (Array.isArray(data) ? data[0] : null)?.updated_at;
-    if (typeof at === "string" && at.length > 0) return at;
-    return null;
-  }
-  if (!spec.slotDate || !spec.slotTime) return null;
-  const { data, error } = await supabase
-    .from("availability_slots")
-    .select("updated_at")
-    .eq("trainer_id", spec.trainerId)
-    .gte("start_time", `${spec.slotDate}T00:00:00`)
-    .lte("start_time", `${spec.slotDate}T23:59:59`)
-    .order("updated_at", { ascending: false })
-    .limit(1);
-  if (error) return null;
-  const at = (Array.isArray(data) ? data[0] : null)?.updated_at;
-  return typeof at === "string" && at.length > 0 ? at : null;
+  // slot_reopened: the slot came free because a booking was CANCELLED, so the cancellation is the
+  // event. Read from the same lifecycle ledger as every other booking transition — not from
+  // `bookings.updated_at`, which any unrelated edit moves.
+  //
+  // The date/time fallback that used to live here read `availability_slots.updated_at`, a column
+  // that does not exist in this schema (verified against the migrations and the generated types).
+  // PostgREST answers 42703, the helper returns null, and the caller 503s — latent only because
+  // slot_reopened currently has no in-repo invoker. It is removed rather than repaired: an
+  // occurrence must come from the transition that caused it, and a slot row does not record one.
+  // A caller that cannot name the booking cannot date the event, and does not send.
+  if (!spec.bookingId) return null;
+  return await occurrenceForBookingEvent(supabase, [spec.bookingId], "cancelled");
 }

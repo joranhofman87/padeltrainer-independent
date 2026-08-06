@@ -1052,6 +1052,51 @@ export type Database = {
           },
         ]
       }
+      account_deletion_audit: {
+        Row: {
+          actor_user_id: string
+          failure_reason: string | null
+          finished_at: string | null
+          id: string
+          ip_address: string | null
+          self_service: boolean
+          started_at: string
+          status: string
+          subject_email: string | null
+          subject_name: string | null
+          subject_user_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          actor_user_id: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          ip_address?: string | null
+          self_service: boolean
+          started_at?: string
+          status?: string
+          subject_email?: string | null
+          subject_name?: string | null
+          subject_user_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          actor_user_id?: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          ip_address?: string | null
+          self_service?: boolean
+          started_at?: string
+          status?: string
+          subject_email?: string | null
+          subject_name?: string | null
+          subject_user_id?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       admin_impersonation_logs: {
         Row: {
           action: string | null
@@ -1490,6 +1535,51 @@ export type Database = {
           width?: number | null
         }
         Relationships: []
+      }
+      booking_lifecycle_events: {
+        Row: {
+          actor_user_id: string | null
+          booking_id: string
+          event_type: string
+          from_payment_status: string | null
+          from_status: string | null
+          id: string
+          occurred_at: string
+          seq: number
+          to_payment_status: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          booking_id: string
+          event_type: string
+          from_payment_status?: string | null
+          from_status?: string | null
+          id?: string
+          occurred_at?: string
+          to_payment_status?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          booking_id?: string
+          event_type?: string
+          from_payment_status?: string | null
+          from_status?: string | null
+          id?: string
+          occurred_at?: string
+          to_payment_status?: string | null
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "booking_lifecycle_events_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       bookings: {
         Row: {
@@ -9931,6 +10021,14 @@ export type Database = {
       booking_occupies_seat: {
         Args: { p_hold_expires_at: string; p_status: string }
         Returns: boolean
+      }
+      booking_transition_occurred_at: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: string
+      }
+      booking_transition_seq: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: number
       }
       bump_rebook_reminders: {
         Args: {
