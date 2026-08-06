@@ -11,9 +11,9 @@ owner decision rather than a defect.
 
 | # | Area | Classification | Where it stands |
 |---|---|---|---|
-| **F1** | activation measures enqueue time | **accepted** | **OPEN** — the mechanism ships, the clock does not yet. See "F1 is not closed" below. Was: Immutable `occurred_at`, per-path `max_event_age_minutes`, enforcement at every send authority + a BEFORE UPDATE backstop, producers derive the time from the domain row and fail closed. Round 2 corrected a defect in the correction: transitions are dated from `updated_at`, not the booking's `created_at` (see below). |
+| **F1** | activation measures enqueue time | **accepted** | **CLOSED** at `8010aa53`, Codex-clear after four correction rounds. `booking_lifecycle_events` gives every transition an immutable `occurred_at`; producers read it through `booking_transition_event` (service-role only, oldest-of-latest, set-wide sha256 discriminator, fail-closed unless EVERY member has evidence). Earlier note: Immutable `occurred_at`, per-path `max_event_age_minutes`, enforcement at every send authority + a BEFORE UPDATE backstop, producers derive the time from the domain row and fail closed. Round 2 corrected a defect in the correction: transitions are dated from `updated_at`, not the booking's `created_at` (see below). |
 | **F2** | account deletion fails open | **accepted** | Closed. `runAll` / `runDelete` / `requireRead` check every operation; the auth deletion is unreachable after a failure. Round 2: evidence moved to `account_deletion_audit`, FK-free and two-phase, because the old table cascaded from `auth.users` and destroyed its own record. |
-| **F3** | shared-trainer global identity | **accepted, with an owner decision inside it** | The cross-tenant risk is closed: a manager cannot touch the global identity of a trainer associated with any tenant they do not manage, and the check counts every non-terminal relationship status, not just `active`. The residual is below. |
+| **F3** / **OD-1** | shared-trainer global identity | **accepted; OD-1 RESOLVED STRICT by the owner 2026-08-06 and implemented** | The cross-tenant risk is closed: a manager cannot touch the global identity of a trainer associated with any tenant they do not manage, and the check counts every non-terminal relationship status, not just `active`. The residual is below. |
 | **F4** | non-atomic cycle editing | **accepted** | **OPEN.** Needs one server-owned transactional RPC. Not started. |
 | **F5** | DST-unsafe cycle extension | **accepted** | Closed. `planWeeklySessionsAfter` projects the owner-local wall time; the editor uses it. |
 | **F6** | paid invoices into generic cancellation | **accepted** | Closed. Paid rows are refused and reported; round 2 added the database-side status predicate to the write, so an invoice paid between the list read and the click cannot be cancelled by a captured id. |
@@ -48,28 +48,28 @@ this programme.
 
 ## Owner decisions
 
-### OD-1 — a manager may still change the login of a trainer who works ONLY for them
+### OD-1 — RESOLVED by the owner, 2026-08-06, in the strict direction
 
-**Decision needed from:** Tom. **Raised:** 2026-08-06. **Risk if left as is:** low, bounded.
+> An academy manager may manage a trainer's membership, academy-specific role and permissions, but
+> must never directly change that trainer's global login identity, login email, password or
+> credentials. The trainer owns their identity and changes it through self-service. An academy may
+> initiate an invitation, email-change confirmation or password-reset flow. A separately authorized
+> platform-administrator recovery path may exist, but it must be audited. This applies even when one
+> manager currently manages every academy to which the trainer belongs.
 
-The audit's closure criterion for F3 reads: *"global login/identity changes require the trainer, a
-platform admin, or an explicit audited consent/recovery flow."* What ships is narrower than that
-sentence: a manager who manages **every** tenant a trainer is associated with may still change that
-trainer's login and shared profile, audited and with a notice to the old address.
+**Implemented.** `update-user` refuses every manager caller (`identity_is_self_service`), the
+exclusivity carve-out and the dead `club_trainers` grant are gone, and
+`profiles_login_identity_guard` enforces it at the mutation boundary. `academy-update-player-email`
+refuses outright when the target is a trainer. Proven by `src/test/identitySelfService.pglite.test.ts`,
+including the "manages every academy" case the decision names.
 
-*Why it was not made stricter unilaterally:* academies routinely create their trainers' accounts and
-manage them end to end, and that capability is deliberate and in use. Removing it is a product
-change, not a bug fix, and it would break a live workflow the day it deployed.
+**Known remaining OD-1 surface, NOT yet closed:** `create-academy-trainer`, `create-club-trainer`
+and `create-admin-trainer` still generate and return a `temporaryPassword` — an academy holding a
+trainer's initial credential. They should create the account without one and send an invitation.
+The academy/club trainer-edit UIs also still submit global profile fields and now receive a 403
+rather than a disabled field.
 
-*What is closed regardless:* the cross-tenant case the finding actually describes — academy A
-rewriting the identity of a trainer who also works for academy B. That cannot happen now.
-
-*The follow-up if OD-1 is decided the strict way:* route manager-initiated email changes through a
-trainer-confirmed link (the same primitive the notification programme already uses for signed
-management links), and reduce the manager's write set to tenant-scoped overlay fields only.
-**Target:** the trainer-permissions unit (F9), which has to model tenant overlays anyway.
-
-## F1 is not closed — the transition clock is still launderable
+## F1 — how it was closed (was: "not closed")
 
 Everything structural is in place: `occurred_at` is immutable and never future-dated, every send
 authority enforces `greatest(boundary_at, now() - max_event_age)`, a BEFORE UPDATE backstop catches
