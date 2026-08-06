@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
+import { assessTrainerTenancy, GLOBAL_IDENTITY_FIELDS } from "../_shared/trainer-authority.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -140,6 +141,21 @@ Deno.serve(async (req) => {
       }
     }
 
+    // FIELD-LEVEL AUTHORITY (A1-A7 F3). Managing a trainer inside your academy is not authority
+    // over the identity they use everywhere else. A trainer has one login and one profiles row; if
+    // they are ALSO active in a tenant this caller does not manage, changing either would rotate a
+    // login that tenant depends on and rewrite the name and photo it shows — with no consent from
+    // it and no notice to it. Exclusive trainers are unaffected: an academy that is the only place
+    // a trainer works still manages that account end to end, exactly as before.
+    let mayChangeGlobalIdentity = isAdmin || isSelf;
+    let foreignTenants: string[] = [];
+    if (!mayChangeGlobalIdentity && isAuthorizedManager && trainer_profile_id) {
+      const tenancy = await assessTrainerTenancy(supabaseAdmin, callerUser.id, trainer_profile_id);
+      // fails closed: an unreadable relationship table is never read as exclusivity
+      mayChangeGlobalIdentity = tenancy?.isExclusiveToCaller === true;
+      foreignTenants = tenancy?.foreignTenants ?? [];
+    }
+
     if (!isAdmin && !isSelf && !isAuthorizedManager) {
       return new Response(
         JSON.stringify({ error: "Unauthorized: You don't have permission to update this user" }),
@@ -173,6 +189,18 @@ Deno.serve(async (req) => {
     // and a notification is sent to the OLD address so a real account owner notices.
     let emailChanged = false;
     let previousEmail: string | null = null;
+    if (normalizedEmail && !mayChangeGlobalIdentity && isAuthorizedManager) {
+      // the sharpest edge of the rule: this would rotate the LOGIN of someone who also works
+      // elsewhere. Refused with the reason, not silently dropped — the manager needs to know the
+      // change did not happen and why.
+      return new Response(
+        JSON.stringify({
+          error: "This trainer also works for another academy or club, so their login email can only be changed by the trainer themselves or a platform admin.",
+          shared_with_other_tenants: foreignTenants.length,
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     if (normalizedEmail) {
       if (isAdmin || isAuthorizedManager) {
         if (isAuthorizedManager) {
@@ -213,7 +241,10 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update profile - support all profile fields
+    // Update profile — every field below lives on the ONE shared identity (GLOBAL_IDENTITY_FIELDS),
+    // so a caller without that authority writes none of them. Refusing the whole write rather than
+    // silently dropping fields: a partial success that reports success is how a manager comes to
+    // believe they renamed someone.
     const updates: Record<string, string | number | null> = {};
     if (normalizedEmail && (isAdmin || isSelf || isAuthorizedManager)) updates.email = normalizedEmail;
     if (full_name !== undefined) updates.full_name = full_name;
@@ -223,6 +254,19 @@ Deno.serve(async (req) => {
     if (skill_rating !== undefined) updates.skill_rating = skill_rating;
     if (rating_system !== undefined) updates.rating_system = rating_system;
     if (rating_member_id !== undefined) updates.rating_member_id = rating_member_id;
+
+    const attemptedGlobal = Object.keys(updates).filter(
+      (k) => (GLOBAL_IDENTITY_FIELDS as readonly string[]).includes(k));
+    if (attemptedGlobal.length > 0 && !mayChangeGlobalIdentity) {
+      return new Response(
+        JSON.stringify({
+          error: "This trainer also works for another academy or club, so their shared profile can only be changed by the trainer themselves or a platform admin.",
+          fields: attemptedGlobal,
+          shared_with_other_tenants: foreignTenants.length,
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error: profileError } = await supabaseAdmin
