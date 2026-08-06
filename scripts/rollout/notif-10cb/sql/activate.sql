@@ -106,6 +106,8 @@ SELECT g.id FROM public.notification_digest_groups g
    FOR SHARE;
 
 \i _activation_assertions.sql
+-- N4 M1 (AC-6): arming must never ride over an unverified deliberate invocation.
+\i _invocation_gate.sql
 
 -- ARM — by the jobid of the row we just locked and verified, never by a fresh name lookup, and
 -- count-checked: `UPDATE ... WHERE` matching nothing is a successful no-op, and "arming" nothing
@@ -127,7 +129,7 @@ SELECT pg_temp.assert(
 SELECT pg_temp.assert_eq(
   (SELECT md5(btrim(regexp_replace(command, '\s+', ' ', 'g')))::text FROM cron.job
     WHERE jobid = (SELECT jobid FROM pg_temp._gate_job)),
-  '657295911df940d4aecc69a87169574c'::text,
+  '69204549e8cb81680e492e49ef08fdd6'::text,
   'the armed job is still EXACTLY the reviewed command');
 
 DROP TABLE pg_temp._gate_job;

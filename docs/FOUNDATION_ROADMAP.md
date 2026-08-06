@@ -168,6 +168,200 @@ No correctness/scale risk today; these lower the cost of every future change and
 
 ---
 
+## Notification-controls units — status 2026-08-05
+
+> **OWNER BOUNDARY (2026-08-05): Complete N0–N7. Stop before A1. FOUNDATION AUDITS NOT STARTED.**
+> The notification programme runs through N7 (controlled rollout + postflight). The cross-domain
+> foundation certification audits (A1–A7) are POSTPONED and must not begin — no audit subagents,
+> no audit reconnaissance — until the owner gives a new instruction. Bounded reviews of
+> notification code remain in scope. WhatsApp rollout that lacks provider/template/webhook
+> readiness or separate owner approval is recorded as `BLOCKED_OWNER_WHATSAPP` and must not block
+> email completion.
+
+### Completion contract (owner, 2026-08-05) — authoritative
+
+This section is the programme's single source of truth; the working memory notes point here rather
+than restating it.
+
+**Sequence (corrected by the owner, 2026-08-06 — the audit is the GATE INTO N7, not a lap after
+it).** Finish N4 → N5 → N6 → *prepare every N7 artifact without activating anything* (rollout
+scripts and runbooks, the activation boundary and no-backlog enforcement, recipient preview, the
+email canary, staged activation, monitoring and alerts, kill switches and circuits,
+rollback/recovery, the WhatsApp provider-readiness and consent gates, postflight verification) →
+run the **Notification Foundation Final Integration Audit** across N0–N6 *and* the complete
+prepared N7 path → fix every legitimate finding and obtain final Codex verification with no
+unresolved P0/P1/P2 → declare the implementation **release-ready but inactive** → **stop for owner
+approval**.
+
+Only after that approval: merge/deploy inertly → production read-only preflight → prove the exact
+activation boundary, zero historical backlog eligibility, the recipient preview and expected
+would-send count, kill switches and circuits ready, admin visibility healthy, provider
+configuration ready → **separate owner approval** for the controlled future-event email canary →
+execute N7 gradually with monitoring and immediate kill capability → WhatsApp only through its own
+consent/provider-readiness gate → post-activation postflight → freeze → **stop before A1** and
+before the broader players/bookings/invoices/academy audit.
+
+N7 code may be written and reviewed beforehand. **No N7 production activation may occur before the
+final audit is clear.**
+
+**Queued as separate release units (accepted, NOT in the notification branch).** The
+Registration → Planning → Calendar redesign audit is accepted and queued as its own release unit.
+It is **pending** — no part of it is implemented by the notification programme, and it must not be
+marked complete by it. Tracked in [`docs/audits/A1_A7_TRIAGE.md`](audits/A1_A7_TRIAGE.md).
+
+**Owner gates (never crossed autonomously).** mark-ready/merge, deployment, production or
+credential access, migrations against production, cron/engine/secret/provider configuration, a real
+canary or send, channel activation, destructive cleanup or legacy deletion. Email and WhatsApp
+activation are *separate* owner decisions.
+
+**Engineering objective.** Not green tests — a foundation where future change is small, localized,
+observable and hard to make unsafe: explicit DB/app contracts, typed RPC results, narrow ownership
+boundaries, reusable UI components and hooks, provider *adapters* rather than provider logic spread
+through the app, durable auditable state transitions, operational visibility, documented recovery,
+behavioural tests for invariants, and documentation that explains the reasoning as well as the
+behaviour.
+
+**THE RELEASE CANDIDATE IS THE COMBINED TREE — `integration/notif-n0-n7`, not the stacked
+branches.** Each unit was reviewed on its own stack, and #633/#634 target other feature branches,
+so the substantive workflows never ran on them. `integration/notif-n0-n7` branches from `main` and
+merges the five exact reviewed heads (see
+[`docs/audits/N0_N7_INTEGRATION.md`](audits/N0_N7_INTEGRATION.md) for the composition, the
+conflicts and how each was resolved):
+
+| Unit | PR | Exact head |
+|---|---|---|
+| N0 | #630 | `6be077cf4a5decfc52c6a930466452d2e54ffa25` |
+| N1 | #631 | `6cb96359c9d2f37abeaf25bef96dc0b82a116420` |
+| N2 | #632 | `4f002488921b146f3e096ba10b7e96fc89cb47a7` |
+| N3 | #633 | `3d1e23454e2907cf1db16924a335fe3adfebb606` |
+| N4–N7 + corrections | #634 | `fe4af7967275128fc085d9ea10cd47db16449a63` |
+
+**The `4ae0c8ad` audit is NOT the shipped tree, and its "architecture frozen" claim was withdrawn.**
+That audit ran on a tree containing N2+N3+N4–N7 but **not** N0 or N1, so it was never a
+whole-foundation audit. Since then an independent review reopened five findings from the final
+report, and the A1–A7 audit (`codex/foundation-audit-a1-a7` @ `8bf23f71`) found six P1 and six core
+P2. What is closed, what is deferred and what is an owner decision is recorded finding-by-finding in
+[`docs/audits/A1_A7_TRIAGE.md`](audits/A1_A7_TRIAGE.md).
+
+**Deferred A-audit findings are NOT N7 blockers.** The bounded N7 activation contract is what gates
+activation. A general P1 classification in the A-audit does not by itself block N7 — only direct
+evidence that an item violates a bounded N7 invariant does. Deferred to the post-N7 foundation
+programme, explicitly **not** implemented here: F4 (non-atomic cycle editing), F7–F12, FA-1/FA-2/FA-3,
+the remaining OD-1 trainer-invitation and UI work, and the broad person/permissions/billing/DR/MFA/UI
+restructuring. F1 and the lifecycle-ledger corrections stay in the release candidate because they
+directly support truthful occurrence and no-backlog enforcement.
+
+**Architecture freeze.** N7 is the feature boundary. After it, architecture changes only where the
+final audit names a concrete correctness, security, scalability, operability or user-facing defect.
+Every P0/P1/P2 finding is resolved; P3 findings are resolved when they affect users or
+maintainability or are cheap, and otherwise recorded in a bounded follow-up list
+([`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md)). Cleared areas are not reopened without
+evidence of a regression or a newly discovered cross-unit contradiction.
+
+**Review loop per milestone.** Read the contract → implement a coherent batch → focused tests →
+bounded Codex MCP review of that exact diff → evaluate every finding on the merits → fix legitimate
+P0/P1/P2 (and relevant P3) → re-run focused tests → *one* correction verification → full applicable
+gates at milestone completion → continue automatically. One whole-unit seam review at each N-unit
+boundary; no repeated whole-unit audits once a unit is clear, absent concrete evidence of another
+cross-unit defect.
+
+**Non-negotiable invariants the finished foundation must prove.** No historical backlog can become
+eligible after activation, and only events at or after the activation boundary may enter a newly
+activated path · no logical notification delivered twice through retry, concurrency, duplicate
+dispatch or ambiguous provider acceptance · every send attributable to event, effective preference,
+tenant, channel, attempt and provider outcome · player preference/consent/suppression enforced ·
+academy controls restrict but never expand eligibility · required service notifications follow
+their documented rules · no cross-tenant or PII leakage through admin or academy surfaces · kill
+switches and circuits checked immediately before provider work · failures observable and
+recoverable without unsafe replay · WhatsApp gated on provider readiness *and* consent · engine and
+channel activation never inferred from DB state alone when an env switch is authoritative · the UI
+never claims certainty about unknown state · every operator decision audited and idempotent.
+
+**Final Integration Audit (the GATE INTO N7 execution — not a lap after activation).** It runs when
+N0–N6 are complete and every N7 artifact is *prepared but unexecuted*, and its clearance is the
+precondition for asking the owner to merge, deploy or activate anything. Inventory and contract
+reconciliation → cross-unit seam audit over the complete flows → security and privacy →
+scalability and reliability → executable verification **on a real combined N0–N7 tree** (full
+gates, migration reset + types drift, all notification suites, edge, UI, architecture guards,
+selected browser workflows, no-backlog and recipient-preview proofs, mutation only for critical
+invariants) → one independent Codex whole-foundation review → fix → one final verification. Then
+declare release-ready-but-inactive, freeze, and stop for the owner.
+
+**The audit tree must be the tree that ships.** A unit reviewed only on its own stack has not been
+integration-audited: the audit must run on a tree that contains *every* unit — N0 and N1 included,
+not just the N2→N3→N4 stack they are siblings of — because the conflicts between them are exactly
+where cross-unit defects live. See §"Integration tree" below.
+
+
+The pre-canary work, in flight on draft PRs. All three are independently Codex-reviewed to clear
+and CI-green; mark-ready, merge and deploy are owner gates. **None changes notification behaviour
+in production**: N0 is operator tooling, N2 ships inert schema nothing reads yet, and N1 is
+presentation and reachability only.
+
+| Unit | PR | State |
+|---|---|---|
+| **N0** — privilege-correct `cron.job` row lock for the enablement tooling | [#630](https://github.com/joranhofman87/padeltrainer-independent/pull/630) | clear at `6be077cf`, CI green |
+| **N1** — player notification-settings gap closure | [#631](https://github.com/joranhofman87/padeltrainer-independent/pull/631) | clear at `6cb96359`, CI green (full suite, 4697 tests) |
+| **N2 S1+S2a** — marketing suppression, signed manage capabilities, declared footer policy, token helper | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `4595a03f`, CI green |
+| **N2 S4** — the neutral `/app/settings/notifications` route + Auth redirect sanitisation | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `a1d9ba8c` |
+| **N2 S2b** — neutral-route footers (send-email + digest render) + legacy flush send-time gate | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `ed2465cd`, CI green at `2980ccb3` |
+| **N2 S3** — campaign/onboarding suppression + per-send capabilities + RFC 8058 | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `b961e7f1`, CI green at `7166d403` |
+| **N2 S5** — one-click endpoint + manage page + retention sweep | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | clear at `47e6658e` |
+| **N2 WHOLE-UNIT SWEEP** — fresh thread over `main..HEAD`, aimed at the seams | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | **CLEAR at `f1a7f1e8`** (4 findings, all fixed: RFC 8058 body marker; send-email pref read fail-closed; Retry-After; sweep index) |
+| **N2 FINAL** — clear reconfirmed through post-clear commits; CI | [#632](https://github.com/joranhofman87/padeltrainer-independent/pull/632) | **ALL CHECKS GREEN at `4f002488`** — N2 complete, awaiting the owner gate (mark-ready/merge/deploy) |
+| **N3 M1–M3** — tenant-aware idempotency + academy caps/audit + cap at every send authority | (stacked draft PR) | **clear at `813f7f4e`** (design contract findings 1, 3, 7-11 closed; 3 review rounds; M4-M6 + seam review remain) |
+| **N3 M4–M6** — membership reader + player history, attribution matrix, both surfaces | [#633](https://github.com/joranhofman87/padeltrainer-independent/pull/633) | **clear at `626d03ce`** (4 rounds total; whole-unit seam review next) |
+| **N3 WHOLE-UNIT SWEEP** — fresh thread over the full unit, aimed at the seams | [#633](https://github.com/joranhofman87/padeltrainer-independent/pull/633) | **CLEAR at `bd09d652`** — N3 **CODE-COMPLETE, Codex-clear, local-gates green; NOT release-ready**: #633 targets the N2 branch, so only Vercel checks have run — the substantive workflows (lint/typecheck/test/edge/db-reset/types-drift) trigger on PRs against `main` only. Full integration CI runs after the ordered retarget (merge #632 → rebase #633 onto main). Do not weaken workflow branch filters to manufacture green checks. |
+| **N4 design review** — admin ops, 16-finding contract (4 CRITICAL) | (branch `feat/notif-n4-admin-ops`) | REQUEST-CHANGES consumed as the implementation contract (memory/notif-n4-design.md); M1 invocation record first |
+| **N4 M1–M7** — invocation record, kill switches, audit + rejected attempts, admin reads, recovery, readiness/preview/search, the admin UI | (branch `feat/notif-n4-admin-ops`) | each milestone Codex-clear; UI refactored to the `UI_COMPONENT_STANDARDS` primitives with a self-testing architecture guard |
+| **N4 WHOLE-UNIT SEAM REVIEW** — fresh thread over `bd09d652..HEAD` | (branch `feat/notif-n4-admin-ops`) | **CLEAR at `382ec4e0`** — 6 rounds. R1: authority-matrix honesty, cap-guard deadlock, helper ACLs, preview/resolver equivalence. R2: gate lock inversion, circuit-release naming, blank/found-contact equivalence, cross-actor collision, evidence backfill. R3: run/invocation causality, whatsapp digest verdict, applied-decision evidence. **R4 = convergence** (three rounds in one invariant family): the deliberate-invocation *ownership contract* is written out in `20261025100000` and `purpose='manual'` is removed. R5–R6 then replaced the exclusion argument itself, because it had a counterexample (pg_cron selects a tick, the job is deactivated, the artifact opens an invocation, the *already-selected* tick starts and could claim it). **The dispatch now carries its own identity**: the artifact publishes the invocation id into a transaction-local GUC and the reviewed command — byte-identical, still executed verbatim, still md5-pinned — reads it, so pg_cron's own session can never name one. The claim binds only what the request names (`owned` / `deferred` / `none`) |
+| **N5** — the no-backlog contract as a RUNTIME invariant | (branch `feat/notif-n4-admin-ops`) | **CLEAR at `208399e8`** (3 rounds). `notification_activation_boundaries`: one row per delivery path, inert (claims nothing) or active since an immutable `boundary_at`. Enforced at the instant claim (fresh + orphan-reclaim arms), materialization (candidate + member scans) and the digest claim (scan + the half-open breaker probe). `email:instant` is seeded **unbounded** — no computed instant can be proven not to exclude mail queued concurrently, so retro-closing a live path is the kill switch's job. `enable_engine` opens `email:digest` in the same transaction that enables routing, and its verdict is the ambiguous-commit replay oracle. Readiness's two `not_provable` checks are now real; `admin_dispose_pre_boundary_backlog` is the one exit for permanently-ineligible rows |
+| **N6** — documentation + the final inert release unit | (branch `feat/notif-n4-admin-ops`) | [`NOTIFICATION_FOUNDATION.md`](NOTIFICATION_FOUNDATION.md) (as-built: ownership, catalogue, instant vs digest, precedence, idempotency + provider ambiguity, the boundary, every state machine, tenant/PII, adding an event or a provider) and [`NOTIFICATION_OPERATIONS.md`](NOTIFICATION_OPERATIONS.md) (the admin page, stopping a send, monitors, safe diagnosis, recovery, the owner-gated sequence, rollback, inertness). Both **drift-pinned** by `src/test/notificationFoundationDocs.test.ts`; release inertness proven by `src/test/notificationReleaseInertness.test.ts`. `NOTIFICATION_ARCHITECTURE.md` becomes the historical design record |
+| **N7 artifacts** — prepared, executed nowhere | [#634](https://github.com/joranhofman87/padeltrainer-independent/pull/634) | postflight (read-only, every check raises so it can be scheduled; re-proves the no-backlog invariant FROM THE LEDGER), `stage-event` (every digest stage after the first — refuses unless the path is open, the job armed and the pipeline healthy *now*), `whatsapp-readiness` (answers `BLOCKED_OWNER_WHATSAPP` by default), `clear-kill` (two-step: preview, then clear exactly the kill you named), and the long-outage recovery on the admin page |
+| **FINAL INTEGRATION AUDIT** — N0–N6 + the prepared N7 path | [#634](https://github.com/joranhofman87/padeltrainer-independent/pull/634) | **SUPERSEDED.** Reported clear at `4ae0c8ad`, but that tree contained neither N0 nor N1, so it was never the whole foundation; an independent review of its final report then reopened five findings. Retained for the history of what it *did* close. At the time: no unresolved P0/P1/P2. Six phases; five rounds of corrections. Closed: the resolver ignored the one-click unsubscribe its own footer promised (P1 at enqueue, then P1 again at the live gate for mail already queued); "ambiguity is never re-sent" was false for the instant path (true for digest); "only events at or after the boundary" was stronger than the `created_at` predicate enforces; the documented long-outage recovery named a control that did not exist, then one an operator could not reach. Recorded as bounded follow-ups: FA-1 (ten legacy senders outside the foundation never check `is_email_suppressed` — an A-audit question), FA-2 (two legacy senders leave no outbox row), FA-3 (unify instant onto the single-shot ambiguity state machine) |
+
+**N0 is the reason the disabled smoke could not run.** On hosted Supabase `cron.job` is owned by
+`supabase_admin` and the connected role holds SELECT only, so the `FOR UPDATE` in four enablement
+artifacts was never executable there — a privilege model the superuser-only verify harness never
+exercised. #630 replaces it with a guarded no-op `cron.alter_job` lock, runs every artifact in the
+harness as a restricted role, adds a real-pg_cron rehearsal, and wires the previously CI-orphaned
+10c-b verifies into `rollout-tooling.yml`. **N0 is complete only when the corrected smoke exits 0
+in production** with the exact disabled response and zero counter deltas — an owner-gated
+operation, still outstanding. It unblocks the SMOKE, not the send: Admin Notification Operations
+(below) still blocks every canary and activation.
+
+**S4 landed first, out of numeric order, because S2b emits the route it mounts.**
+`/app/settings/notifications` is mounted OUTSIDE every role layout and RENDERS the settings page
+rather than forwarding to a role route. Forwarding was the first design; review killed it, because
+the role layouts guard far more than role — an expired academy or an incomplete trainer onboarding
+is redirected off the settings path by its own layout, so a forward only moved the bounce one hop
+later, stranding exactly the people most likely to be unsubscribing. Logged out, the destination
+rides in `?redirect=`.
+
+Implementing it exposed a live open redirect on two paths: `Auth.tsx` stored `?redirect=` verbatim
+and navigated to it after login, and the same parameter travelled through the signup link into
+`TrainerSignup` → `TrainerOnboardingFlow`, which stored and navigated it raw. All five sites now
+sanitise, and a stored value that fails is purged. The guest manage page and analytics redaction
+stay with S3/S5.
+
+**N2's remaining slices** continue on `feat/notif-n2-email-prefs`: S2b (worker + digest-render
+footer attach, the role-agnostic `send-email` link, and a send-time gate for the legacy
+`send-digest-emails`, which today sends claimed queue rows with no preference or suppression
+re-check); S3 (campaign/onboarding suppression, footers, RFC 8058 headers); S5 (the one-click
+endpoint, the capability sweep, docs). The constraints S1 imposes on those slices, each naming the
+slice that must satisfy it, are in [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) §N2.
+
+**N3 (academy controls) and N4 (Admin Notification Operations) are not started.**
+
+**One finding from outside these units, recorded rather than fixed:** CI surfaced a concurrent
+materializer race in 10c-a2 — `materialize_notification_digest_groups` racing itself, leaving a
+member in no group or a duplicate chunk. Not introduced by N2, and not reproducible on a many-core
+machine. Evidence and reasoning in [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md)
+§10c-a2. Both failure modes are silent (an undelivered digest, or a doubled one), so it is worth
+reproducing under deliberate contention before the digest engine is enabled for anyone.
+
+---
+
 ## Blocking release unit — Admin Notification Operations (10c-b Stage 3.5)
 
 **Owner-requested. It BLOCKS the notification digest canary and activation, and is deliberately NOT

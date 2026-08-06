@@ -182,7 +182,12 @@ export default function TrainerEditInvoice() {
     if (!invoice) return;
     // Draft → hard-delete; anything else → soft-cancel (audit trail). The facade
     // owns that partition so a paid invoice can never be hard-deleted here.
-    const { deleteError, cancelError } = await deleteOrCancelInvoices([invoice]);
+    const { refusedIds, deleteError, cancelError } = await deleteOrCancelInvoices([invoice]);
+    if (refusedIds.length) {
+      // a paid invoice is refused by the facade: cancelling one is not a refund
+      toast.error(t('invoiceEdit.paidNotCancellable', 'A paid invoice cannot be cancelled — issue a refund or credit note instead.'));
+      return;
+    }
     if (deleteError || cancelError) { toast.error(t('invoiceEdit.deleteError')); return; }
     toast.success(isDraft ? tTrainer('invoices.deleted', 'Invoice deleted') : tTrainer('invoices.cancelled', 'Invoice cancelled'));
     queryClient.invalidateQueries({ queryKey: ['trainer-invoices'] });

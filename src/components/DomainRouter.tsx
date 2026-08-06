@@ -99,6 +99,9 @@ const PlayerSettings = lazy(() => import('@/pages/PlayerSettings'));
 const EditProfile = lazy(() => import('@/pages/EditProfile'));
 const FollowingList = lazy(() => import('@/pages/FollowingList'));
 const NotificationSettings = lazy(() => import('@/pages/NotificationSettings'));
+const NotificationSettingsEntry = lazy(() => import('@/pages/NotificationSettingsEntry'));
+const ManageEmail = lazy(() => import('@/pages/ManageEmail'));
+const AcademyNotificationControls = lazy(() => import('@/pages/academy/AcademyNotificationControls'));
 
 // Trainer pages
 const TrainerDashboard = lazy(() => import('@/pages/TrainerDashboard'));
@@ -152,6 +155,7 @@ const AdminBlogEditor = lazy(() => import('@/pages/admin/AdminBlogEditor'));
 const AdminBlogTopics = lazy(() => import('@/pages/admin/AdminBlogTopics'));
 const AdminBlogSources = lazy(() => import('@/pages/admin/AdminBlogSources'));
 const AdminBackups = lazy(() => import('@/pages/admin/AdminBackups'));
+const AdminNotificationOps = lazy(() => import('@/pages/admin/AdminNotificationOps'));
 const AdminGuestPlayers = lazy(() => import('@/pages/admin/AdminGuestPlayers'));
 const AdminCourtReviews = lazy(() => import('@/pages/admin/AdminCourtReviews'));
 
@@ -248,6 +252,11 @@ export function DomainRouter() {
         <Route path="/app/onboarding/:role" element={<Onboarding />} />
         <Route path="/app/academy/onboarding" element={<AcademyOnboarding />} />
         
+        {/* Role-agnostic notification-settings entry. Mounted OUTSIDE the role layouts so no
+            layout guard can bounce a recipient arriving from an email footer; it resolves the
+            account's real settings surface (or says plainly that it has none). */}
+        <Route path="/app/settings/notifications" element={<NotificationSettingsEntry />} />
+
         {/* Player routes */}
         <Route path="/app/player" element={<PlayerLayout />}>
           <Route index element={<PlayerDashboard />} />
@@ -331,6 +340,7 @@ export function DomainRouter() {
           <Route path="blog/:id" element={<AdminBlogEditor />} />
           <Route path="blog/:id/sources" element={<AdminBlogSources />} />
           <Route path="backups" element={<AdminBackups />} />
+          <Route path="notifications" element={<AdminNotificationOps />} />
           <Route path="guest-players" element={<AdminGuestPlayers />} />
           <Route path="court-reviews" element={<AdminCourtReviews />} />
         </Route>
@@ -388,6 +398,7 @@ export function DomainRouter() {
           <Route path="waiting-list" element={<AcademyWaitingList />} />
           <Route path="settings" element={<AcademySettings />} />
           <Route path="settings/notifications" element={<NotificationSettings />} />
+          <Route path="settings/notification-controls" element={<AcademyNotificationControls />} />
           <Route path="subscription" element={<AcademySubscription />} />
           
           <Route path="invoices" element={<AcademyInvoices />} />
@@ -396,6 +407,11 @@ export function DomainRouter() {
           <Route path="invoices/:invoiceId/edit" element={<AcademyEditInvoice />} />
         </Route>
         <Route path="/app/academy/invitation/:token" element={<AcademyTrainerInvitation />} />
+
+        {/* N2 S5: the PUBLIC manage page email unsubscribe links open. Outside /app and outside
+            every layout on purpose — a marketing recipient may have no account, and the signed
+            token in the URL is the entire authority. */}
+        <Route path="/manage-email" element={<ManageEmail />} />
 
         {/* ===== SHORT-LINK REDIRECTS (social-friendly) ===== */}
         <Route path="/a/:slug" element={<ShortLinkRedirect kind="academy" />} />

@@ -326,7 +326,16 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
   // Draft → hard-delete; anything else → soft-cancel (audit trail). The facade
   // owns that partition so a paid invoice can never be hard-deleted here.
   const removeInvoice = async (invoice: Invoice) => {
-    const { deleteError, cancelError } = await deleteOrCancelInvoices([invoice]);
+    const { refusedIds, deleteError, cancelError } = await deleteOrCancelInvoices([invoice]);
+    if (refusedIds.length) {
+      // a paid invoice is refused by the facade: cancelling one is not a refund
+      toast({
+        title: 'Betaalde factuur',
+        description: 'Een betaalde factuur kan niet geannuleerd worden — maak een terugbetaling of creditnota.',
+        variant: 'destructive',
+      });
+      return;
+    }
     if (deleteError || cancelError) {
       toast({
         title: 'Fout',

@@ -44,6 +44,7 @@ import {
   splitProcessed,
   tally,
 } from "../_shared/open-slots-notify.ts";
+import { occurrenceForOpenSlots } from "../_shared/notification-occurrence.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -263,6 +264,17 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     const subject = eventSubject(notify, trainerId);
+    // WHEN THE AVAILABILITY APPEARED, read from the slots themselves. This handler is invoked
+    // AFTER the slot write commits and is retried on its own budget, so the enqueue instant is
+    // emphatically not the event instant — which is the precise shape of the replay the
+    // activation boundary now has to catch. Fail closed: undateable means un-sent, and the
+    // caller's bounded retry gets another go.
+    const occurredAt = await occurrenceForOpenSlots(supabase, notify.subtype === "slot_reopened"
+      ? { subtype: "slot_reopened", trainerId, bookingId: notify.bookingId ?? null, slotDate: notify.slotDate ?? null, slotTime: notify.slotTime ?? null }
+      : { subtype: "new_availability", trainerId, dateFrom: notify.dateFrom, dateTo: notify.dateTo });
+    if (!occurredAt) {
+      return json({ error: "the availability's occurrence time could not be established", ...newCounts() }, 503);
+    }
     const payload = digestPayload(notify, trainerName);
     const counts = newCounts();
     const errors: string[] = [];
@@ -321,6 +333,7 @@ const handler = async (req: Request): Promise<Response> => {
             p_recipient_user_id: player.user_id,
             p_tenant_trainer_id: trainerId,
             p_idempotency_subject: subject,
+            p_occurred_at: occurredAt,
             p_payload: payload,
           });
           if (error) {

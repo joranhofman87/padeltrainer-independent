@@ -46,6 +46,34 @@ LOCK TABLE public.notification_event_types IN SHARE ROW EXCLUSIVE MODE;
 -- gate runs, not a weaker local copy.
 \i _job_identity_assertions.sql
 
+-- N5 — OPEN THE DIGEST DELIVERY PATH, in the SAME transaction that turns the engine on.
+--
+-- The engine flag decides how new events are ROUTED; the boundary decides which events may ever
+-- be sent on this path. They must move together: enabling routing without a boundary would form
+-- groups from whatever is already pending (the flood the no-backlog contract exists to prevent),
+-- and opening the boundary without routing would be a promise no row can keep.
+--
+-- IT RUNS FIRST, and its verdict is kept, because it is also this step's REPLAY ORACLE. An
+-- ambiguous first execution (committed, connection lost) leaves the event already enabled, so
+-- the "exactly one row was enabled" assertion below would abort every retry — the recovery the
+-- runbook advertises would not exist. The registry knows the difference: the SAME request id
+-- returns 'replayed', which is proof this transaction is that execution again. A DIFFERENT
+-- request id against an open path returns 'already_active' and is REFUSED here: proceeding would
+-- mean enabling routing against a boundary somebody else established, which is exactly the
+-- correlation this bundle keeps everywhere else.
+CREATE TEMP TABLE _boundary AS
+  SELECT public.record_notification_activation_boundary(
+           'email:digest',
+           'rollout: digest engine enabled for open_slots_player',
+           :'boundary_request_id'::pg_catalog.uuid) AS verdict;
+SELECT pg_temp.assert(
+  (SELECT verdict IN ('activated', 'replayed') FROM pg_temp._boundary),
+  'the email:digest path was opened by THIS request (or is an exact replay of it) — already_active means another request opened it, and this step must not ride on a boundary it cannot account for');
+SELECT pg_temp.assert(
+  (SELECT state = 'active' AND boundary_at IS NOT NULL
+     FROM public.notification_activation_boundaries WHERE path = 'email:digest'),
+  'the email:digest boundary is recorded and durable');
+
 -- ...and only the cutover event may be turned on.
 SELECT pg_temp.assert(
   (SELECT digest_cutover FROM public.notification_event_types WHERE key = 'open_slots_player'),
@@ -59,8 +87,14 @@ WITH u AS (
    WHERE key = 'open_slots_player' AND NOT digest_engine_enabled
   RETURNING 1
 )
-SELECT pg_temp.assert_eq((SELECT count(*)::int FROM u), 1,
-  'exactly one event row was enabled (zero means it was already on — re-read status rather than assuming)');
+SELECT pg_temp.assert(
+  (SELECT count(*)::int FROM u) = 1
+  -- …OR this is the exact replay of the execution that enabled it: the boundary registry said so
+  -- above, and only that makes --boundary-request-id a real recovery rather than advice that
+  -- cannot be followed. Any OTHER zero-row case still aborts: the world was not what the
+  -- operator thought, which is worth stopping for.
+  OR (SELECT verdict = 'replayed' FROM pg_temp._boundary),
+  'exactly one event row was enabled — or this is the EXACT replay (same boundary request id) of the execution that enabled it');
 
 -- POSTCONDITION, inside the same transaction: this event on, nothing else.
 SELECT pg_temp.assert(
@@ -72,5 +106,6 @@ SELECT pg_temp.assert_eq(
   'no other event was enabled');
 
 DROP TABLE pg_temp._gate_job;
+DROP TABLE pg_temp._boundary;
 
 COMMIT;

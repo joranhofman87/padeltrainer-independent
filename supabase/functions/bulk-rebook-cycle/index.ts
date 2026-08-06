@@ -547,8 +547,28 @@ serve(async (req) => {
     // disambiguation may need trainer/location tiers against the round's existing names.
     if (qualifyingSeries.length > 1 || extendRound) {
       if (nmTrainerIds.length > 0) {
-        const { data: tn } = await supabase.from("trainer_profiles").select("id, full_name").in("id", nmTrainerIds);
-        for (const t of tn ?? []) if (t.full_name) nmTrainerById.set(t.id, String(t.full_name).split(" ")[0]);
+        // A trainer's display name lives on their PROFILE, not on trainer_profiles — that table has
+        // `business_name` and `user_id`, never `full_name`. Selecting a column that does not exist
+        // makes PostgREST answer 42703, and because the error was dropped the map stayed empty and
+        // every disambiguated cycle name silently lost its trainer prefix. Resolved the same way
+        // the sibling lookup below already does it.
+        const { data: tps } = await supabase.from("trainer_profiles").select("id, user_id").in("id", nmTrainerIds);
+        const nmUserByTrainer = new Map<string, string>();
+        const nmUserIds: string[] = [];
+        for (const t of (tps ?? []) as Array<{ id: string; user_id: string | null }>) {
+          if (t.user_id) { nmUserByTrainer.set(t.id, t.user_id); nmUserIds.push(t.user_id); }
+        }
+        if (nmUserIds.length > 0) {
+          const { data: profs } = await supabase.from("profiles").select("user_id, full_name").in("user_id", nmUserIds);
+          const nmNameByUser = new Map<string, string>();
+          for (const pr of (profs ?? []) as Array<{ user_id: string; full_name: string | null }>) {
+            if (pr.full_name) nmNameByUser.set(pr.user_id, String(pr.full_name));
+          }
+          for (const [tid, uid] of nmUserByTrainer) {
+            const nm = nmNameByUser.get(uid);
+            if (nm) nmTrainerById.set(tid, nm.split(" ")[0]);
+          }
+        }
       }
       if (nmLocationIds.length > 0) {
         const { data: ln } = await supabase.from("locations").select("id, name").in("id", nmLocationIds);

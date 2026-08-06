@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@2.0.0";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
+import { gateDigestItems, normalizeEmailForSuppression } from "../_shared/digest-send-gate.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -113,7 +114,7 @@ function buildDigestHtml(
       <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 24px 0;" />
       <p style="color: #6b7280; font-size: 14px;">
         You're receiving this digest from PadelTrainer.ai.<br/>
-        <a href="https://padeltrainer.ai${dashboardPath}/settings/notifications" style="color: #6b7280;">Manage email notifications</a>
+        <a href="https://padeltrainer.ai/app/settings/notifications" style="color: #6b7280;">Manage email notifications</a>
       </p>
     </div>
   `;
@@ -214,10 +215,61 @@ const handler = async (req: Request): Promise<Response> => {
       roleMap[r.user_id] = r.role;
     }
 
+    // N2 S2b — the SEND-TIME gate's inputs, read BEFORE anything is claimed so a failed read
+    // aborts the whole run with nothing consumed (same fail-closed shape as the profile fetch
+    // above). The gap this closes: items queue when the preference says daily/weekly and flush
+    // days later — someone who opted out in between still got the digest, and a hard-bounced
+    // address was retried forever. Only an explicit CURRENT 'off' refuses (the J rule); a
+    // suppressed address is consumed without sending, because it provably cannot receive and
+    // releasing it would loop forever.
+    const { data: prefRows, error: prefsErr } = await supabaseAdmin
+      .from("notification_preferences")
+      .select("*")
+      .in("user_id", userIds);
+    if (prefsErr) {
+      console.error("Error fetching notification preferences (aborting before claim):", prefsErr);
+      throw prefsErr;
+    }
+    const prefsMap: Record<string, Record<string, unknown>> = {};
+    for (const row of (prefRows || []) as Array<Record<string, unknown>>) {
+      prefsMap[String(row.user_id)] = row;
+    }
+
+    // Deduplicated + CHUNKED: `.in()` rides in the request URL, and up to 1000 raw email strings
+    // can exceed proxy/PostgREST URI limits — which would trip the pre-claim abort below on EVERY
+    // run over the same leading batch, starving the whole queue. 100 addresses per query keeps
+    // each URL bounded regardless of address length.
+    const normalizedEmails = [...new Set(
+      Object.values(profileMap)
+        .map((p) => (p.email ? normalizeEmailForSuppression(p.email) : null))
+        .filter((e): e is string => !!e),
+    )];
+    const SUPPRESSION_CHUNK = 100;
+    const suppressedSet = new Set<string>();
+    for (let i = 0; i < normalizedEmails.length; i += SUPPRESSION_CHUNK) {
+      // email_address_state stores addresses normalized (lower/btrim) — the same normalization
+      // normalizeEmailForSuppression applies — and is_suppressed is the canonical generated
+      // predicate is_email_suppressed() reads. A read failure aborts: we cannot prove any
+      // address is safe to send to, and nothing is claimed yet.
+      const chunk = normalizedEmails.slice(i, i + SUPPRESSION_CHUNK);
+      const { data: suppressedRows, error: suppErr } = await supabaseAdmin
+        .from("email_address_state")
+        .select("email")
+        .in("email", chunk)
+        .eq("is_suppressed", true);
+      if (suppErr) {
+        console.error("Error fetching suppression state (aborting before claim):", suppErr);
+        throw suppErr;
+      }
+      for (const r of (suppressedRows || []) as Array<{ email: string }>) suppressedSet.add(r.email);
+    }
+
     let processed = 0;
     let consumed = 0;
     let failedUsers = 0;
     let releasedItems = 0;
+    let droppedSuppressedUsers = 0;
+    let droppedOffItems = 0;
 
     for (const userId of userIds) {
       // Atomic claim: only rows this UPDATE flips from NULL belong to this run;
@@ -247,8 +299,29 @@ const handler = async (req: Request): Promise<Response> => {
         continue;
       }
 
+      // SEND-TIME GATE (N2 S2b). Both drops CONSUME the claim rather than releasing it: a
+      // suppressed address cannot receive (releasing loops forever), and an opted-out item is a
+      // decision already taken, not a queue awaiting drainage.
+      if (suppressedSet.has(normalizeEmailForSuppression(profile.email))) {
+        console.log(`Address suppressed for user ${userId} — digest dropped (${items.length} items)`);
+        consumed += items.length;
+        droppedSuppressedUsers++;
+        continue;
+      }
+
+      const gate = gateDigestItems(items, prefsMap[userId] ?? null);
+      if (gate.droppedOff.length > 0) {
+        console.log(`User ${userId} opted out since enqueue — dropping ${gate.droppedOff.length} item(s)`);
+        consumed += gate.droppedOff.length;
+        droppedOffItems += gate.droppedOff.length;
+      }
+      if (gate.send.length === 0) {
+        // Everything this user had queued has since been opted out of — nothing to send.
+        continue;
+      }
+
       const role = roleMap[userId] || "player";
-      const { subject, html } = buildDigestHtml(items, profile.name, role);
+      const { subject, html } = buildDigestHtml(gate.send, profile.name, role);
 
       try {
         // Resend's SDK reports API failures via the error field, not by throwing.
@@ -260,25 +333,27 @@ const handler = async (req: Request): Promise<Response> => {
         });
         if (sendErr) throw sendErr;
         processed++;
-        consumed += items.length;
+        consumed += gate.send.length;
       } catch (emailErr) {
         console.error(`Failed to send digest to user ${userId}:`, emailErr);
         failedUsers++;
-        // Release the claim so the next run retries this user's digest.
+        // Release ONLY the items we tried to send, so the next run retries this user's digest.
+        // The opted-out items stay consumed — releasing them would resurrect rows whose refusal
+        // was already decided, and the gate would just drop them again next run.
         const { error: releaseErr } = await supabaseAdmin
           .from("notification_queue")
           .update({ processed_at: null })
-          .in("id", items.map((i) => i.id));
+          .in("id", gate.send.map((i) => i.id));
         if (releaseErr) {
           console.error(`Error releasing claimed items for user ${userId} (digest lost):`, releaseErr);
         } else {
-          releasedItems += items.length;
+          releasedItems += gate.send.length;
         }
       }
     }
 
     console.log(
-      `Digest complete: ${processed} emails sent, ${consumed} items processed, ${failedUsers} users failed (${releasedItems} items released for retry)`
+      `Digest complete: ${processed} emails sent, ${consumed} items processed, ${failedUsers} users failed (${releasedItems} items released for retry), ${droppedSuppressedUsers} suppressed user(s) dropped, ${droppedOffItems} opted-out item(s) dropped`
     );
 
     // Per-user send failures return HTTP 200, so the daily-emails cron wrapper's
@@ -293,7 +368,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     return new Response(
-      JSON.stringify({ processed, items: consumed, failed: failedUsers, released: releasedItems }),
+      JSON.stringify({ processed, items: consumed, failed: failedUsers, released: releasedItems, suppressed_users: droppedSuppressedUsers, opted_out_items: droppedOffItems }),
       { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } }
     );
   } catch (error) {

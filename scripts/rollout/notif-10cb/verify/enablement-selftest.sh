@@ -60,6 +60,8 @@ if [[ -n "$file" ]]; then
     *smoke_invoke.sql)
       printf 'CANARY_REQUEST_PROVISIONAL=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
       printf 'CANARY_REQUEST_ID=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}" ;;
+    *smoke_resolve_disabled.sql)
+      printf 'SMOKE_INVOCATION_RESOLVED=%s\n' "${STUB_SMOKE_RESOLVE:-completed_disabled}" ;;
     *canary_invoke.sql)
       [[ -n "${STUB_NO_PROVISIONAL:-}" ]] || printf 'CANARY_REQUEST_PROVISIONAL=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
       printf 'CANARY_REQUEST_ID=%s\n' "${STUB_CANARY_REQUEST_ID:-4242}"
@@ -112,6 +114,66 @@ run "assert-inert is read-only and needs no --yes" 0 -- assert-inert "$URL"
 logged 'assert_inert.sql' && ok "assert-inert runs its own artifact" || bad "assert-inert runs its own artifact"
 run "assert-inert REFUSES a url belonging to another project" 1 -- assert-inert "$OTHER_URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and ran nothing against it" || bad "...and ran nothing against it"
+
+# ── stage-event: every digest stage after the first ───────────────────────────────────────────
+run "stage-event REFUSES without --yes" 1 -- stage-event --admin-ops-confirmed --event=session_reminder_player "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
+run "stage-event REFUSES without --admin-ops-confirmed" 1 -- stage-event --yes --event=session_reminder_player "$URL"
+run "stage-event REFUSES without an event" 1 -- stage-event --yes --admin-ops-confirmed "$URL"
+run "stage-event REFUSES a non-catalogue-key event" 1 -- stage-event --yes --admin-ops-confirmed --event="DROP TABLE" "$URL"
+run "stage-event runs its own artifact" 0 -- stage-event --yes --admin-ops-confirmed --event=session_reminder_player "$URL"
+logged 'enable_event.sql' && ok "stage-event routes to enable_event.sql" || bad "stage-event routes to enable_event.sql"
+grep -qF -- '-v event_key=session_reminder_player' "$PSQL_LOG" && ok "...passing the event it was given" || bad "...passing the event it was given"
+if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+
+# ── whatsapp-readiness: the gate that says NO by default ──────────────────────────────────────
+run "whatsapp-readiness runs read-only, with no confirmations" 0 -- whatsapp-readiness "$URL"
+logged 'whatsapp_readiness.sql' && ok "...and routes to its own artifact" || bad "...and routes to its own artifact"
+grep -qF -- '-v provider_confirmed=' "$PSQL_LOG" && ok "...passing the three owner confirmations through" || bad "...passing the three owner confirmations through"
+grep -qE -- '-v provider_confirmed=true' "$PSQL_LOG" && bad "...UNSET by default" || ok "...UNSET by default (the artifact refuses on an empty value)"
+run "whatsapp-readiness forwards the confirmations when given" 0 -- whatsapp-readiness --provider-confirmed --templates-confirmed --consent-confirmed "$URL"
+grep -qF -- '-v provider_confirmed=true' "$PSQL_LOG" && ok "...as true" || bad "...as true"
+if grep -qE 'active := true|digest_engine_enabled = true' "$PSQL_LOG"; then bad "...and changes nothing"; else ok "...and changes nothing"; fi
+export PSQL_LOG="$TMP/log.wa_fail"; : > "$PSQL_LOG"
+set +e
+STUB_FAIL_ON=whatsapp_readiness EXPECTED_REF="$REF" bash "$SCRIPT" whatsapp-readiness "$URL" >"$TMP/wa.out" 2>&1
+wa_rc=$?
+set -e
+[[ "$wa_rc" != "0" ]] && ok "a failing readiness artifact fails the subcommand (rc=$wa_rc)" || bad "a failing readiness artifact fails the subcommand"
+grep -qF 'BLOCKED_OWNER_WHATSAPP' "$TMP/wa.out" && ok "...naming the owner gate" || bad "...naming the owner gate"
+
+# ── postflight: read-only, runs after activation, needs no confirmations ──────────────────────
+run "postflight needs no --yes (it changes nothing)" 0 -- postflight "$URL"
+logged 'postflight.sql' && ok "...and routes to postflight.sql" || bad "...and routes to postflight.sql"
+grep -qF -- '-v window_minutes=60' "$PSQL_LOG" && ok "...with the default watch window" || bad "...with the default watch window"
+run "postflight takes a window" 0 -- postflight --window-minutes=15 "$URL"
+grep -qF -- '-v window_minutes=15' "$PSQL_LOG" && ok "...and passes it through" || bad "...and passes it through"
+run "postflight REFUSES a non-numeric window" 1 -- postflight --window-minutes=lots "$URL"
+if grep -qE 'active := true|SET active' "$PSQL_LOG"; then bad "...and changes nothing"; else ok "...and changes nothing"; fi
+
+# ── clear-kill: the way back, its preview, and every confirmation it demands ──────────────────
+KREQ="aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+run "clear-kill --preview needs no --yes and changes nothing" 0 -- clear-kill --preview --channel=email "$URL"
+logged 'preview_kill_clear.sql' && ok "...and routes to the READ-ONLY artifact" || bad "...and routes to the READ-ONLY artifact"
+if grep -qF -- 'clear_kill.sql' "$PSQL_LOG"; then bad "...and never runs the clearing artifact"; else ok "...and never runs the clearing artifact"; fi
+run "clear-kill REFUSES without --yes" 1 -- clear-kill --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason=ok "$URL"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
+run "clear-kill REFUSES without a channel" 1 -- clear-kill --yes --kill-request-id="$KREQ" --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES an unknown channel" 1 -- clear-kill --yes --channel=carrier-pigeon --kill-request-id="$KREQ" --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES without the KILL's own request id" 1 -- clear-kill --yes --channel=email --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES a non-uuid kill id" 1 -- clear-kill --yes --channel=email --kill-request-id=nope --expected-pending=3 --reason=ok "$URL"
+run "clear-kill REFUSES without the queue size the PREVIEW showed" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --reason=ok "$URL"
+run "clear-kill REFUSES a non-numeric expected-pending" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=lots --reason=ok "$URL"
+run "clear-kill REFUSES without a reason" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 "$URL"
+run "clear-kill REFUSES a non-uuid --clear-request-id" 1 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason=ok --clear-request-id=nope "$URL"
+run "clear-kill runs its own artifact when every fact is supplied" 0 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason="incident closed" "$URL"
+logged 'clear_kill.sql' && ok "clear-kill routes to clear_kill.sql" || bad "clear-kill routes to clear_kill.sql"
+grep -qF -- "-v kill_request_id=${KREQ}" "$PSQL_LOG" && ok "...passing the kill id it was given" || bad "...passing the kill id it was given"
+grep -qF -- "-v expected_pending=3" "$PSQL_LOG" && ok "...and the queue size the operator confirmed" || bad "...and the queue size the operator confirmed"
+if grep -qF -- 'active := true' "$PSQL_LOG"; then bad "...and arms nothing"; else ok "...and arms nothing"; fi
+CREQ="bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+run "clear-kill ACCEPTS a supplied clear request id (the ambiguous-commit replay)" 0 -- clear-kill --yes --channel=email --kill-request-id="$KREQ" --expected-pending=3 --reason=ok --clear-request-id="$CREQ" "$URL"
+grep -qF -- "-v request_id=${CREQ}" "$PSQL_LOG" && ok "...and replays under THAT id" || bad "...and replays under THAT id"
 
 run "enable-engine REFUSES without --yes" 1 -- enable-engine "$URL"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and touched the database not at all" || bad "...and touched the database not at all"
@@ -220,6 +282,8 @@ set -e
 grep -qF 'smoke_invoke.sql' "$PSQL_LOG" && ok "...by running the guarded invoke artifact" \
   || { bad "...by running the guarded invoke artifact"; cat "$PSQL_LOG"; }
 grep -qF 'smoke_counters.sql' "$PSQL_LOG" && ok "...capturing the counters either side" || bad "...capturing the counters either side"
+grep -qF 'smoke_resolve_disabled.sql' "$PSQL_LOG" && ok "...and CLOSES the invocation record afterwards (AC-6)" \
+  || bad "...and CLOSES the invocation record afterwards (AC-6)"
 [[ "$(grep -cF 'smoke_counters.sql' "$PSQL_LOG")" == "2" ]] && ok "...twice, so the comparison is a DELTA" \
   || bad "...twice, so the comparison is a DELTA"
 grep -qF 'canary_invoke_response.sql' "$PSQL_LOG" && ok "...and reading pg_net's reply" || bad "...and reading pg_net's reply"
@@ -264,6 +328,52 @@ sb_rc=$?
 set -e
 [[ "$sb_rc" != "0" ]] && ok "a 200 with any OTHER body fails the disabled smoke" \
   || { bad "a 200 with any OTHER body fails the disabled smoke"; cat "$TMP/out"; }
+
+# RECOVERY IDENTITY (AC-6, finding 4): the invocation request id must be PRINTED before the
+# invoke runs, and --invocation-request-id must feed the SAME id to the artifact — that is what
+# lets an operator whose invoke died ambiguously resume the committed invocation instead of
+# colliding with the single-flight gate on a fresh uuid.
+FIXED_INV_ID="99999999-9999-4999-8999-999999999999"
+export PSQL_LOG="$TMP/log.smoke_invreq"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' \
+  EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed --invocation-request-id="$FIXED_INV_ID" "$URL" >"$TMP/out" 2>&1
+ir_rc=$?
+set -e
+[[ "$ir_rc" == "0" ]] && ok "smoke-disabled accepts --invocation-request-id (rc=$ir_rc)" \
+  || { bad "smoke-disabled accepts --invocation-request-id (rc=$ir_rc)"; cat "$TMP/out"; }
+grep -qF "invocation_request_id=$FIXED_INV_ID" "$PSQL_LOG" \
+  && ok "...and the artifact received exactly that id" || bad "...and the artifact received exactly that id"
+grep -qF "invocation request id: $FIXED_INV_ID" "$TMP/out" \
+  && ok "...and the id is printed BEFORE the invoke (the recovery line)" \
+  || { bad "...and the id is printed BEFORE the invoke"; cat "$TMP/out"; }
+run "a malformed --invocation-request-id is refused before any SQL" 1 -- \
+  smoke-disabled --yes --switch-off-confirmed --invocation-request-id=not-a-uuid "$URL"
+
+# THE INVOCATION MUST ACTUALLY CLOSE — a smoke whose resolve step failed (or answered with any
+# verdict but completed_disabled/already_resolved) must FAIL the subcommand, not report success
+# over a record that will (correctly) block every later step at the gate.
+export PSQL_LOG="$TMP/log.smoke_resolve_fail"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' \
+  STUB_FAIL_ON=smoke_resolve_disabled EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sr_rc=$?
+set -e
+[[ "$sr_rc" != "0" ]] && ok "a FAILING resolve step fails the smoke (record left open is named)" \
+  || { bad "a FAILING resolve step fails the smoke"; cat "$TMP/out"; }
+grep -qF 'still open' "$TMP/out" && ok "...telling the operator the record is still open" \
+  || { bad "...telling the operator the record is still open"; cat "$TMP/out"; }
+export PSQL_LOG="$TMP/log.smoke_resolve_verdict"; : > "$PSQL_LOG"
+set +e
+env 'STUB_CANARY_BODY={"status":"disabled","reason":"disabled"}' \
+  STUB_SMOKE_RESOLVE=missing EXPECTED_REF="$REF" PSQL_LOG="$PSQL_LOG" bash "$SCRIPT" \
+  smoke-disabled --yes --switch-off-confirmed "$URL" >"$TMP/out" 2>&1
+sv_rc=$?
+set -e
+[[ "$sv_rc" != "0" ]] && ok "an unexpected resolve verdict fails the smoke" \
+  || { bad "an unexpected resolve verdict fails the smoke"; cat "$TMP/out"; }
 
 # THE CASE THAT MATTERS MOST: an unexpected body AND a moved counter — "the worker sent, and then
 # something went wrong". Both verdicts must come after the comparison, so the operator is told WHAT

@@ -67,6 +67,9 @@ export type WorkerDeps = {
   now: () => Date; // wall clock for p_now
   monotonicNowMs: () => number; // for the wall-clock budget (Date.now-free, resume-safe)
   newToken: () => string; // per-invocation ownership token
+  /** The deliberate invocation THIS request names, taken from the request body the scheduled
+   *  command built at execution time (N4 round 5). A cron tick carries none. */
+  invocationId?: string | null;
   log: (event: Record<string, unknown>) => void; // PII-free structured log
 };
 
@@ -74,6 +77,12 @@ export type WorkerSummary = {
   status: "disabled" | "misconfigured" | "ok" | "error";
   reason?: string;
   dispatchRunId?: string;
+  /** the deliberate invocation this dispatch run claimed, when the request named one (N4 M1) */
+  invocationId?: string;
+  /** this request named NO invocation while a deliberate one was unresolved: the run did NO
+   *  pipeline work rather than execute a second, unverified pass inside someone's evidence
+   *  window (N4 round 5). Not an error — the deliberate request is still on its way. */
+  invocationDeferred?: boolean;
   materializeRunId?: string;
   reconcile?: ReconcileMetric[];            // dispatch-run metrics
   reconcileMaterialize?: ReconcileMetric[]; // materialize-run metrics (every started run is reconciled)
@@ -113,6 +122,7 @@ export class DigestWorkerError extends Error {
 function safeSummary(s: WorkerSummary): Partial<WorkerSummary> {
   return {
     status: s.status, dispatchRunId: s.dispatchRunId, materializeRunId: s.materializeRunId,
+    invocationId: s.invocationId, invocationDeferred: s.invocationDeferred,
     sweptStale: s.sweptStale, materialized: s.materialized, claimed: s.claimed, sent: s.sent,
     deferred: s.deferred, oversizeSplit: s.oversizeSplit, oversizeFailed: s.oversizeFailed,
     recorded: s.recorded, groupErrors: s.groupErrors, reconcileErrors: s.reconcileErrors,
@@ -144,6 +154,20 @@ function recordedOutcome(v: unknown, depth = 0): string | null {
     return vals.length === 1 ? recordedOutcome(vals[0], depth + 1) : null;
   }
   return null;
+}
+
+/** claim_worker_invocation returns ONE row (status, invocation_id); supabase-js hands it back as a
+ *  one-element array. An unreadable shape is treated as a REFUSAL, never as "no invocation": the
+ *  fail-open reading would run a full pass inside an evidence window. */
+function claimResult(v: unknown): { status: string; invocationId: string | null } {
+  const row = Array.isArray(v) ? v[0] : v;
+  if (!row || typeof row !== "object") throw new Error("claim_worker_invocation returned an unreadable result");
+  const r = row as Record<string, unknown>;
+  const status = typeof r.status === "string" ? r.status : null;
+  if (status !== "owned" && status !== "deferred" && status !== "none") {
+    throw new Error("claim_worker_invocation returned an unknown status");
+  }
+  return { status, invocationId: typeof r.invocation_id === "string" ? r.invocation_id : null };
 }
 
 export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> {
@@ -178,6 +202,35 @@ export async function runDigestWorker(deps: WorkerDeps): Promise<WorkerSummary> 
   try {
     dispRun = await deps.rpc("start_notification_worker_run", { p_worker: worker, p_channel: deps.channel, p_phase: "dispatch" }) as string;
     s.dispatchRunId = dispRun;
+
+    // (0) INVOCATION CLAIM — N4 AC-6, before ANY pipeline mutation, keyed by the invocation THIS
+    // REQUEST NAMES. The scheduled command's body reads a TRANSACTION-LOCAL setting that only the
+    // invoke artifacts publish, so an artifact's request carries the id it just opened and every
+    // cron tick's carries nothing — a tick runs in pg_cron's own session, whether it was selected
+    // before the invocation existed or started long after. 'owned' may do deliberate work; 'deferred' means this request owns
+    // nothing while someone else's evidence window is open, so it does NO pipeline work; 'none'
+    // is the ordinary steady-state tick. A named invocation this run cannot own RAISES — the
+    // throw lands in the run-level catch, which finishes this run 'failed' having done nothing.
+    const claim = claimResult(await deps.rpc("claim_worker_invocation", {
+      p_worker_run_id: dispRun, p_invocation_id: deps.invocationId ?? null,
+    }));
+    if (claim.status === "owned") {
+      s.invocationId = claim.invocationId ?? undefined;
+      deps.log({ event: "digest_worker_invocation_claimed", dispatch_run: dispRun, invocation: s.invocationId });
+    } else if (claim.status === "deferred") {
+      // finish CLEANLY with no pipeline work: nothing failed, and nothing is stranded — the
+      // deliberate request is still travelling and will start its own run.
+      s.invocationDeferred = true;
+      deps.log({ event: "digest_worker_deferred_to_invocation", dispatch_run: dispRun });
+      const rd = await reconcileSafe(dispRun);
+      s.reconcile = rd.metrics;
+      await deps.rpc("finish_notification_worker_run", { p_run_id: dispRun, p_status: rd.ok ? "succeeded" : "failed" });
+      // …and a deferral whose RECONCILE failed is not a healthy 200 either: the run is finished
+      // 'failed', so reporting ok would be the false green the reconciliation contract exists to
+      // prevent. Doing no work is fine; being unable to prove it is not.
+      if (!rd.ok) { s.status = "error"; s.reason = "reconcile_failed"; }
+      return s;
+    }
 
     // (1) STALE RECONCILIATION / SWEEP — ages out due uncertain groups first, independent of the breaker.
     s.sweptStale = await deps.rpc("reconcile_notification_digest_stale", {
@@ -306,9 +359,13 @@ async function dispatchGroup(
   if (!state) throw new Error(`group ${g} vanished after claim`);
 
   // leased → prepare (leased-only). 'no_work' is a LEGITIMATE terminal (all members stopped), not an error.
+  // 'channel_killed' (N4 M2) is a PARK: the channel's kill switch landed after claim — count it
+  // deferred and walk away (no render, no store, no error; the lease rides the bounded
+  // stale-reclaim window, whose claim-side gate refuses the group while the kill holds).
   if (state === "leased") {
     const prep = await deps.rpc("prepare_notification_digest_group", { p_run_id: dispRun, p_group_id: g, p_worker: worker, p_now: nowIso() }) as string;
     if (prep === "no_work") { deps.log({ event: "group_no_work", group: g }); return; }
+    if (prep === "channel_killed") { s.deferred++; deps.log({ event: "group_channel_killed", group: g }); return; }
     state = "prepared";
   }
 

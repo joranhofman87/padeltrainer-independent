@@ -86,15 +86,19 @@ export function countsAsFailure(outcome: MissingTemplateOutcome): boolean {
 // countsAsFailure from the tally, drops the observed alert count to zero and fails
 // the suite.
 
-/** The counts one invocation accumulates; `failCount` is what arms the alert. */
+/** The counts one invocation accumulates; `failCount` is what arms the alert. `suppressedCount`
+ *  (N2 S3) counts marketing rows refused by a send-time opt-out — deliberately NOT part of
+ *  `failCount`: a suppression is the system working, and alerting on it would train the operator
+ *  to ignore the alert. */
 export type OnboardingRunTally = {
   failCount: number;
   successCount: number;
+  suppressedCount: number;
   processed: number;
 };
 
 export function newOnboardingRunTally(processed = 0): OnboardingRunTally {
-  return { failCount: 0, successCount: 0, processed };
+  return { failCount: 0, successCount: 0, suppressedCount: 0, processed };
 }
 
 /**

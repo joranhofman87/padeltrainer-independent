@@ -164,7 +164,7 @@ const COPY_OMIT = new Set([
 type SlotRow = Record<string, unknown> & { id: string; start_time: string; end_time: string };
 
 /** The academy/trainer timezone for a cycle's owner (defaults Europe/Amsterdam — NEVER browser tz). */
-async function getCycleTimezone(ownerType: string, ownerId: string): Promise<string> {
+export async function getCycleTimezone(ownerType: string, ownerId: string): Promise<string> {
   const table = ownerType === 'academy' ? 'academy_profiles' : 'trainer_profiles';
   const { data } = await supabase.from(table).select('timezone').eq('id', ownerId).maybeSingle();
   return (data as { timezone?: string } | null)?.timezone || 'Europe/Amsterdam';
@@ -420,4 +420,39 @@ export async function applyCycleEndDate(
     removed += res.deletedCount;
   }
   return { added, removed };
+}
+
+/**
+ * Add `count` more WEEKLY sessions after the cycle's last one, keeping the local wall time.
+ *
+ * The by-count sibling of `planCycleExtension` (which plans to an end DATE). Both exist because
+ * the schedule editor extends a cycle by session count while the cycle-end flow extends it to a
+ * date; what they must never differ on is the arithmetic.
+ *
+ * A1-A7 F5: the editor added `i * 7 * 24 * 60 * 60 * 1000` to a UTC instant. Across the October
+ * and March transitions that is 168 hours of elapsed time, not "the same time next week" — so a
+ * 19:00 class silently became 18:00 or 20:00 for everyone booked into it. Going through the
+ * timezone the class is actually taught in fixes that by construction.
+ */
+export function planWeeklySessionsAfter(
+  last: { start_time: string; end_time: string },
+  count: number,
+  timezone: string,
+): Array<{ start_time: string; end_time: string }> {
+  if (!timezone) throw new SlotPlanError('timezone is required');
+  if (!Number.isInteger(count) || count < 1) return [];
+  if (count > MAX_PLANNED_SLOTS) {
+    throw new SlotPlanError(`Extension would create more than ${MAX_PLANNED_SLOTS} sessions — add fewer at a time.`);
+  }
+  const lp = utcToLocalParts(last.start_time, timezone);
+  const durationMs = new Date(last.end_time).getTime() - new Date(last.start_time).getTime();
+  const baseDay = dayNumber(lp.y, lp.mo, lp.d);
+
+  const out: Array<{ start_time: string; end_time: string }> = [];
+  for (let i = 1; i <= count; i++) {
+    const { y, mo, d } = fromDayNumber(baseDay + 7 * i);
+    const start = localWallTimeToUtc(y, mo, d, lp.h, lp.mi, timezone);
+    out.push({ start_time: start.toISOString(), end_time: new Date(start.getTime() + durationMs).toISOString() });
+  }
+  return out;
 }

@@ -107,16 +107,32 @@ export function safeHttpsUrl(raw: unknown): string | null {
   return u.protocol === "https:" ? s : null;
 }
 
-const COPY: Record<string, { subjectOne: string; subjectMany: (n: number) => string; heading: string }> = {
+/**
+ * N2 S2b: the ROLE-AGNOSTIC notification-settings entry. A digest cannot know which surface its
+ * recipient belongs to (an academy manager sent to a role path is bounced by that layout's guard
+ * and the deep link dies), so footers link the neutral route and the APP resolves it. Must match
+ * `NOTIFICATION_SETTINGS_ENTRY_PATH` in `src/lib/notificationSettingsRoute.ts` — a cross-boundary
+ * parity test pins both to this exact value.
+ */
+export const MANAGE_SETTINGS_URL = "https://padeltrainer.ai/app/settings/notifications";
+
+const COPY: Record<string, {
+  subjectOne: string; subjectMany: (n: number) => string; heading: string;
+  footerFrom: string; footerManage: string;
+}> = {
   nl: {
     subjectOne: "Je PadelTrainer-update",
     subjectMany: (n) => `Je PadelTrainer-update (${n} items)`,
     heading: "Je updates",
+    footerFrom: "Je ontvangt deze e-mail van PadelTrainer.ai.",
+    footerManage: "E-mailmeldingen beheren",
   },
   en: {
     subjectOne: "Your PadelTrainer update",
     subjectMany: (n) => `Your PadelTrainer update (${n} items)`,
     heading: "Your updates",
+    footerFrom: "You're receiving this email from PadelTrainer.ai.",
+    footerManage: "Manage email notifications",
   },
 };
 
@@ -135,10 +151,21 @@ export function renderDigestEmail(input: DigestRenderInput): DigestRenderOutput 
     return `<li style="margin:0 0 12px"><strong>${esc(title)}</strong>${link}${bodyHtml}</li>`;
   }).join("");
 
+  // N2 S2b footer: every digest email is OPTIONAL service mail sent to an ACCOUNT HOLDER, by
+  // construction — the resolver refuses outbox rows with no recipient_user_id
+  // (20261011100000:403) and required-delivery events are never digested (the resolver forces
+  // them instant) — so the manage-preferences footer is unconditional, and the authenticated
+  // settings link is always usable by its recipient. Rendered BEFORE the request is frozen, so a
+  // retry reuses the same bytes under the same idempotency key (the worker never re-renders).
   const html =
     `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto">` +
     `<h2 style="font-size:18px;margin:0 0 16px">${esc(copy.heading)}</h2>` +
     `<ul style="list-style:none;padding:0;margin:0">${rows}</ul>` +
+    `<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb">` +
+    `<p style="color:#6b7280;font-size:12px;text-align:center;margin:0">` +
+    `${esc(copy.footerFrom)}<br/>` +
+    `<a href="${MANAGE_SETTINGS_URL}" style="color:#6b7280;text-decoration:underline">${esc(copy.footerManage)}</a>` +
+    `</p></div>` +
     `</div>`;
 
   // `from` is a header value (not HTML) — jsonb-safe (NUL/lone-surrogate stripped) but not HTML-escaped.

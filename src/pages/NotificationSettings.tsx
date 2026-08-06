@@ -9,11 +9,13 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { FullPageLoader } from '@/components/ui/page-spinner';
+import { QueryErrorState } from '@/components/ui/QueryErrorState';
 import { AppPage } from '@/components/ui/app-page';
 import { PageHeader } from '@/components/ui/page-header';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/lib/supabaseClient';
+import { roleHomePath } from '@/lib/roleHome';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { ArrowLeft, Bell, Lock, MessageCircle } from 'lucide-react';
 import { logger } from '@/lib/logger';
@@ -131,7 +133,7 @@ type LegacyKey = (typeof LEGACY_PLAYER)[number] | (typeof LEGACY_STAFF)[number];
 const STAFF_AUDIENCES = new Set(['academy_manager', 'trainer']);
 
 export default function NotificationSettings() {
-  const { user, role, isAcademyManager, loading } = useAuth();
+  const { user, role, roles, isClubManager, isAcademyManager, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const { toast } = useToast();
@@ -142,21 +144,61 @@ export default function NotificationSettings() {
   const [consent, setConsent] = useState<WhatsAppConsent>({ optedIn: false, redacted: null });
   const [revoking, setRevoking] = useState(false);
   const [legacy, setLegacy] = useState<Record<string, Frequency>>({});
-  const [dataLoading, setDataLoading] = useState(true);
+  // A READ FAILURE MUST NOT LOOK LIKE "no preferences stored". PostgREST resolves with
+  // `{data: null, error}` instead of rejecting, so an unchecked read leaves `prefs` empty,
+  // `effective()` then answers with catalog DEFAULTS, and `saveEvent` writes BOTH columns from
+  // it — silently replacing a stored `whatsapp: off` with the default the moment the recipient
+  // touches the email control. Refuse to render controls at all until the load succeeds.
   const [loadFailed, setLoadFailed] = useState(false);
+  // N3: caps my academies placed on my events — the "limited by {academy}" markers. These
+  // BIND the player, so a failed read joins the page's fail-closed boundary: rendering plain
+  // controls while a cap exists would misrepresent the selected cadence as effective.
+  const [academyCaps, setAcademyCaps] = useState<Array<{ academy_name: string; event_type: string; channel: string; max_frequency: string }>>([]);
+  const [capHistory, setCapHistory] = useState<Array<Record<string, unknown>>>([]);
+  const [capHistoryHasMore, setCapHistoryHasMore] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
-  // academy_manager + trainer are ONE staff bucket (see header note).
-  const isStaff = Boolean(isAcademyManager) || role === 'trainer';
+  // academy_manager + trainer are ONE staff bucket (see header note). Tested against the whole
+  // ROLES set, not the primary role: `useAuth` ranks admin above trainer, so an account holding
+  // both resolves to `role === 'admin'` and a primary-role test would hide every staff event and
+  // legacy staff setting from a real trainer.
+  const isStaff = Boolean(isAcademyManager) || roles.includes('trainer');
 
-  // This route is mounted under all three role layouts AND deep-linked from email footers as the
-  // unsubscribe target — a fresh tab has NO history, so navigate(-1) is a dead control for exactly
-  // the person the deep link serves. A fixed per-role settings hub always works.
-  const backTarget = location.pathname.startsWith('/app/academy')
+  /**
+   * BACK, for a page that is mounted three different ways. Both merged units were right about a
+   * different one of them, so both survive:
+   *
+   *   * under a ROLE LAYOUT (`/app/academy/...`, `/app/trainer/...`, `/app/player/...`) the useful
+   *     target is that role's settings hub — where the person just came from (N1);
+   *   * at the ROLE-AGNOSTIC email-entry route the pathname says nothing about the account, and an
+   *     email footer opens a FRESH tab, so `navigate(-1)` is a dead control for exactly the person
+   *     the deep link serves. Fall back to the account's own home via `roleHomePath`, which mirrors
+   *     Auth's post-login table — guessing it sent a club-only account to `/app/player`, whose
+   *     layout guard bounced it to the login form: a Back button that logged you out (N2–N4).
+   *
+   * In-app history wins over both when there is any.
+   */
+  const roleSettingsHub = location.pathname.startsWith('/app/academy')
     ? '/app/academy/settings'
     : location.pathname.startsWith('/app/trainer')
       ? '/app/trainer/settings'
-      : '/app/player/settings';
+      : location.pathname.startsWith('/app/player')
+        ? '/app/player/settings'
+        : null;
+
+  const goBack = () => {
+    if (roleSettingsHub) {
+      navigate(roleSettingsHub);
+      return;
+    }
+    const historyIndex = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof historyIndex === 'number' && historyIndex > 0) {
+      navigate(-1);
+      return;
+    }
+    navigate(roleHomePath({ isAcademyManager, isClubManager, role }));
+  };
 
   useEffect(() => {
     if (!loading && !user) navigate('/app/auth');
@@ -177,13 +219,30 @@ export default function NotificationSettings() {
         supabase.rpc('get_my_whatsapp_consent'),
       ]);
 
+      // N3 caps + history are NOT advisory decoration (review round: a cap BINDS the player,
+      // so silently rendering plain controls while it exists misleads) — they join the page's
+      // fail-closed boundary like every other read.
+      const [capsRes, capHistRes] = await Promise.all([
+        supabase.rpc('get_my_notification_restrictions'),
+        supabase.rpc('get_my_notification_restriction_history', { p_limit: 50 }),
+      ]);
+      setAcademyCaps((capsRes.data ?? []) as typeof academyCaps);
+      const histPage = (capHistRes.data ?? []) as Array<Record<string, unknown>>;
+      setCapHistory(histPage);
+      setCapHistoryHasMore(histPage.length === 50); // a full page ⇒ older entries may exist
+
       // PostgREST builders RESOLVE with {data:null,error} rather than throwing, so an unchecked
       // failure here would render every control at its catalog default AS IF that were the
       // person's stored choice — a page that lies about what is configured. The WhatsApp consent
-      // read is deliberately NOT in this check: its documented failure posture is fail-safe to
-      // not-opted-in (controls stay disabled), which is the right degradation for that one read.
-      const failed = types.error ?? rows.error ?? v1.error;
-      if (failed) throw failed;
+      // read (`wa`) is deliberately NOT in this check: its documented failure posture is fail-safe
+      // to not-opted-in (controls stay disabled), which is the right degradation for that one
+      // read. That exemption is a BEHAVIOUR DECISION, kept on purpose while merging the N3 caps
+      // into this boundary — failing the whole page shut because a consent lookup blipped would
+      // take away the very controls the person came here to use. Every other read, including the
+      // two N3 cap reads, fails the page closed.
+      const readError = types.error ?? rows.error ?? v1.error ?? capsRes.error ?? capHistRes.error;
+      if (readError) throw readError;
+      setLoadFailed(false);
 
       setCatalog(
         ((types.data ?? []) as unknown as EventType[]).filter((e) => e.supports_email || e.supports_whatsapp),
@@ -206,7 +265,6 @@ export default function NotificationSettings() {
         legacyMap[k] = (legacyRow[k] as Frequency | null) ?? LEGACY_DEFAULTS[k];
       }
       setLegacy(legacyMap);
-      setLoadFailed(false);
     } catch (error) {
       logger.error('Failed to load notification settings', undefined, { error });
       setLoadFailed(true);
@@ -218,6 +276,19 @@ export default function NotificationSettings() {
   useEffect(() => {
     if (user) load();
   }, [user, load]);
+
+  /** Keyset pagination: every change stays REACHABLE (the surface promises it). */
+  const loadMoreCapHistory = async () => {
+    const last = capHistory[capHistory.length - 1];
+    if (!last?.created_at || !last?.id) return;
+    const { data, error } = await supabase.rpc('get_my_notification_restriction_history', {
+      p_limit: 50, p_before: String(last.created_at), p_before_id: String(last.id),
+    });
+    if (error) { failToast(error); return; }
+    const page = (data ?? []) as Array<Record<string, unknown>>;
+    setCapHistory((prev) => [...prev, ...page]);
+    setCapHistoryHasMore(page.length === 50);
+  };
 
   const failToast = (error: unknown) =>
     toast({
@@ -355,7 +426,7 @@ export default function NotificationSettings() {
   const freqLabel = (f: Frequency) => t(`notifications.frequency.${f}`);
 
   const backButton = (
-    <Button variant="ghost" size="icon" onClick={() => navigate(backTarget)} aria-label={t('back')}>
+    <Button variant="ghost" size="icon" onClick={goBack} aria-label={t('back')}>
       <ArrowLeft className="h-4 w-4" />
     </Button>
   );
@@ -372,29 +443,29 @@ export default function NotificationSettings() {
     />
   );
 
-  // A failed load must not render catalog defaults as if they were the person's stored choices.
+  /**
+   * A failed load must not render catalog defaults as if they were the person's stored choices.
+   *
+   * The error state stays INSIDE the page chrome, header and back button included: a standalone
+   * centred error block strands the recipient of an unsubscribe link on a page with no way out.
+   * `role="alert"` announces it, and the retry re-runs the whole fail-closed read.
+   */
   if (loadFailed) {
+    // BOTH sides of the N1/N4 merge, preserved: N1's canonical chrome and its `role="alert"` test
+    // id, around the SHARED `QueryErrorState` the merge side used and ten other pages already do.
+    // A bespoke error card here would have been a private copy of a component this repo has one of.
     return (
       <AppPage width="narrow" as="main">
         {header}
-        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-load-error">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">
-              {t('notifications.loadError', "We couldn't load your notification settings.")}
-            </CardTitle>
-            <CardDescription>{t('notifications.saveErrorDescription', 'Please try again.')}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => { setDataLoading(true); load(); }}
-              data-testid="notification-settings-retry"
-            >
-              {t('notifications.loadErrorRetry', 'Try again')}
-            </Button>
-          </CardContent>
-        </Card>
+        {/* QueryErrorState renders its own role="alert"; a second one here would make the
+            page ambiguous to assistive tech and to getByRole. The wrapper carries only the test id. */}
+        <div data-testid="notification-settings-load-error" className={flushOnMobileCardClass()}>
+          <QueryErrorState
+            title={t('notifications.loadError', "We couldn't load your notification settings.")}
+            description={t('notifications.saveErrorDescription', 'Please try again.')}
+            onRetry={() => { setDataLoading(true); void load(); }}
+          />
+        </div>
       </AppPage>
     );
   }
@@ -402,7 +473,21 @@ export default function NotificationSettings() {
   /** One preference row — identical markup for service and marketing groups. */
   const renderEventRow = (e: EventType) => (
     <div key={e.key} className="flex items-center justify-between gap-4" data-testid={`pref-row-${e.key}`}>
-      <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+      <div className="min-w-0">
+        <Label htmlFor={`pref-${e.key}`} className="font-normal">{eventLabel(e.key)}</Label>
+        {/* N3: an academy cap on this event — ADVISORY (the resolver enforces it
+            either way), so the player is never surprised by quieter mail. */}
+        {academyCaps.filter((r) => r.event_type === e.key).map((cap) => (
+          <p key={`${cap.academy_name}:${cap.channel}`} className="text-xs text-muted-foreground" data-testid={`cap-marker-${e.key}`}>
+            {t('notifications.cappedByChannel', {
+              defaultValue: '{{channel}} limited to {{cap}} by {{academy}}',
+              channel: t(`notifications.channelName.${cap.channel}`, cap.channel),
+              cap: t(`notifications.frequency.${cap.max_frequency}`, cap.max_frequency),
+              academy: cap.academy_name,
+            })}
+          </p>
+        ))}
+      </div>
       <div className="flex items-center gap-4">
         {e.supports_email && (e.supports_digest ? (
           <Select
@@ -545,6 +630,36 @@ export default function NotificationSettings() {
                 <Badge variant="secondary" className="font-normal">{t('notifications.alwaysOn', 'Always on')}</Badge>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* N3 finding 5: the CHANGES my academies made, not just the current caps — a
+          set→off→inherit sequence leaves no current row, and the player must still see it. */}
+      {capHistory.length > 0 && (
+        <Card className={flushOnMobileCardClass()} data-testid="notification-settings-cap-history">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">{t('notifications.capHistoryTitle', 'Changes by your academies')}</CardTitle>
+            <CardDescription>
+              {t('notifications.capHistoryDesc', 'Your academy can reduce optional notifications for its players. Your own choices always win when they are stricter.')}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <ul className="space-y-2">
+              {capHistory.map((h, i) => (
+                <li key={i} className="text-sm" data-testid="cap-history-entry">
+                  <span className="font-medium">{String(h.academy_name)}</span>{' '}
+                  <span className="text-muted-foreground">
+                    {eventLabel(String(h.event_type))} ({t(`notifications.channelName.${String(h.channel)}`, String(h.channel))}): {String(h.old_max_frequency ?? '—')} → {String(h.new_max_frequency ?? '—')} · {String(h.reason)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {capHistoryHasMore && (
+              <Button variant="outline" size="sm" data-testid="cap-history-more" onClick={() => void loadMoreCapHistory()}>
+                {t('notifications.capHistoryMore', 'Show older changes')}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

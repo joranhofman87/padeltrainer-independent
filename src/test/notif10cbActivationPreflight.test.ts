@@ -18,6 +18,12 @@ import { join, dirname, resolve } from 'node:path';
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 
 const MIGRATION = read('supabase', 'migrations', '20261012100000_notif_10cb_digest_cron_inert.sql');
+// N4 round 6 RE-POINTS that command: its body reads a TRANSACTION-LOCAL setting only the invoke
+// artifacts publish, so a deliberate request carries the identity it just opened and every cron
+// tick carries nothing (pg_cron has its own session). The command text is otherwise byte-identical,
+// and THIS migration is now the authoritative source of what the schedule runs — the pins below
+// follow it, not the original.
+const REPOINT = read('supabase', 'migrations', '20261027100000_notif_n4_dispatch_identity_is_session_local.sql');
 // The assertions live in a shared include, pulled in by BOTH the read-only dry run
 // (activation_preflight.sql) and the transactional gate (activate.sql), so the two can never
 // diverge into checking different things.
@@ -41,7 +47,9 @@ const reviewed = (() => {
   const m = MIGRATION.match(
     /cron\.schedule\(\s*'notification-digest-worker'\s*,\s*'([^']+)'\s*,\s*\$cmd\$([\s\S]*?)\$cmd\$\s*\)/);
   if (!m) throw new Error('the F migration no longer schedules notification-digest-worker in the expected form');
-  return { schedule: m[1], command: m[2] };
+  const r = REPOINT.match(/v_cmd text := \$cmd\$([\s\S]*?)\$cmd\$;/);
+  if (!r) throw new Error('the re-point migration no longer carries a command');
+  return { schedule: m[1], command: r[1], installed: m[2] };
 })();
 
 /** What the preflight will demand of a live job. */
@@ -461,7 +469,24 @@ describe('I — the scheduled command survives a hostile search_path unaided', (
     expect(reviewed.command).toContain('pg_catalog.jsonb_build_object');
     expect(reviewed.command).toContain('OPERATOR(pg_catalog.||)');
     expect(reviewed.command).toContain('OPERATOR(pg_catalog.=)');
-    expect(reviewed.command).toContain('::pg_catalog.jsonb');
+    // NO unqualified name at all — a NULLIF wrapper was tried and removed: it resolves an
+    // equality OPERATOR through search_path, which the rollout harness proved hijackable
+    expect(reviewed.command).not.toContain('NULLIF');
+    expect(reviewed.command).toContain("'invocation_id'");
+    // round 6: the identity comes from the EXECUTING TRANSACTION, never from a database read —
+    // any state the artifact commits is state a late-started cron tick can read too
+    expect(reviewed.command).toContain("pg_catalog.current_setting('notif.dispatch_invocation', true)");
+    expect(reviewed.command).not.toContain('notification_worker_invocations');
+  });
+
+  // The re-point is a BODY change and nothing else: same endpoint, same Vault bearer, same
+  // qualification — so the canary still executes what the schedule will execute, and the md5 pin
+  // still means what it meant.
+  it('re-points ONLY the body of the command the F migration installs', () => {
+    const withoutBody = (c: string) => normalize(c).replace(/body :=.*?\) AS request_id;/s, 'body := <B>) AS request_id;');
+    expect(withoutBody(reviewed.command)).toBe(withoutBody(reviewed.installed));
+    expect(normalize(reviewed.installed)).toContain("body := '{}'::pg_catalog.jsonb");
+    expect(normalize(reviewed.command)).not.toContain("body := '{}'::pg_catalog.jsonb");
   });
 
   it('still resolves the bearer from Vault, and posts to this project', () => {
@@ -745,5 +770,217 @@ describe('G — the dispatcher can only reach psql through the sanitising wrappe
     const dispatch = SCRIPT.indexOf('case "$SUB" in');
     expect(guard, 'the guard must be called').toBeGreaterThan(-1);
     expect(guard).toBeLessThan(dispatch);
+  });
+});
+
+
+describe('N7 (prepared) — the postflight, staging and WhatsApp artifacts', () => {
+  const SQLDIR = (f: string) => readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
+
+  it('the ARMED job-identity assertions differ from the pre-activation ones in exactly the state check', () => {
+    // the identity question does not change when the state question does: a hardening added to one
+    // file must never quietly miss the other
+    const pre = SQLDIR('_job_identity_assertions.sql');
+    const armed = SQLDIR('_job_identity_assertions_armed.sql');
+    const strip = (t: string) => t
+      .replace(/^--.*$/gm, '')
+      .replace(/SELECT pg_temp\.assert\(\s*(NOT )?\(SELECT active FROM cron\.job[\s\S]*?\);/g, '<ACTIVE-CHECK>')
+      .replace(/DROP TABLE IF EXISTS pg_temp\._gate_job;[\s\S]*?username = current_user;/, '')
+      .replace(/\s+/g, ' ').trim();
+    expect(strip(armed)).toBe(strip(pre));
+    // …and they DO differ on the state itself
+    expect(pre).toContain('the digest cron is still INACTIVE');
+    expect(armed).toContain('the digest cron is ARMED');
+  });
+
+  it('postflight is READ-ONLY and re-proves the invariant from the ledger', () => {
+    const sql = SQLDIR('postflight.sql');
+    for (const write of [/\bINSERT\s+INTO\b/i, /\bUPDATE\s+public\./i, /\bDELETE\s+FROM\b/i,
+                         /\bTRUNCATE\b/i, /cron\.(schedule|alter_job|unschedule)/i]) {
+      expect(sql, `postflight must not write: ${write}`).not.toMatch(write);
+    }
+    expect(sql).toContain('NO-BACKLOG HELD');
+    expect(sql).toContain('NO-BACKLOG HELD at the group hop');
+    expect(sql).toContain('_job_identity_assertions_armed.sql');
+  });
+
+  it('the WhatsApp gate is read-only and refuses on all three facts SQL cannot see', () => {
+    const sql = SQLDIR('whatsapp_readiness.sql');
+    for (const write of [/\bINSERT\s+INTO\b/i, /\bUPDATE\s+public\./i, /\bDELETE\s+FROM\b/i, /\bTRUNCATE\b/i]) {
+      expect(sql, `the readiness gate must not write: ${write}`).not.toMatch(write);
+    }
+    for (const v of ['provider_confirmed', 'templates_confirmed', 'consent_confirmed']) {
+      expect(sql).toContain(`:'${v}' OPERATOR(pg_catalog.=) 'true'`);
+    }
+    expect((sql.match(/BLOCKED_OWNER_WHATSAPP/g) ?? []).length).toBe(3);
+  });
+
+  it('a stage runs on an OPEN path and an ARMED job — the opposite preconditions to the first one', () => {
+    const stage = SQLDIR('enable_event.sql');
+    expect(stage).toContain('_job_identity_assertions_armed.sql');
+    expect(stage).toContain('the email:digest path is already OPEN');
+    expect(stage).not.toContain('record_notification_activation_boundary');   // a stage never opens a path
+    const first = SQLDIR('enable_engine.sql');
+    expect(first).toContain('_job_identity_assertions.sql');                  // …and the first one is the reverse
+    expect(first).toContain('record_notification_activation_boundary');
+  });
+
+  it('every artifact in the bundle pins its search_path, including the new ones', () => {
+    for (const f of ['postflight.sql', 'whatsapp_readiness.sql', 'enable_event.sql', 'clear_kill.sql',
+                     'preview_kill_clear.sql']) {
+      expect(SQLDIR(f), `${f} must pin search_path`).toContain('SET search_path = pg_catalog;');
+      expect(SQLDIR(f), `${f} must stop on error`).toContain('\\set ON_ERROR_STOP on');
+    }
+  });
+});
+
+describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact', () => {
+  const SQL = (f: string) =>
+    readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8');
+
+  it('the N4 SEAM corrections: both gates take M1s open lock, and activation refuses under a kill', () => {
+    // a snapshot SELECT could not see a manual invoker holding the open lock with an
+    // UNCOMMITTED pending row — activation armed the cron and the invocation then dispatched
+    for (const f of ['_invocation_gate.sql', '_invocation_gate_replay.sql']) {
+      expect(SQL(f)).toContain("hashtextextended('notif-worker-invocation-open', 0)");
+    }
+    // arming behind an active kill hands the send decision to whoever deletes the kill row
+    const asserts = SQL('_activation_assertions.sql');
+    expect(asserts).toContain('notification_channel_kill_switches');
+    expect(asserts).toContain("'notif-channel-kill:'");
+  });
+
+  it('ROUND 2: the replay gate acquires those locks in open()s ORDER — request first, then open', () => {
+    // the round-1 correction introduced an ABBA inversion against open() itself. Pin the ORDER,
+    // not merely the presence: a concurrent direct open() on the same id deadlocked mid-rollout.
+    const replay = SQL('_invocation_gate_replay.sql');
+    const reqIdx = replay.indexOf("'notif-worker-invocation-req:'");
+    const openIdx = replay.indexOf("hashtextextended('notif-worker-invocation-open', 0)");
+    expect(reqIdx).toBeGreaterThan(0);
+    expect(openIdx).toBeGreaterThan(reqIdx);
+    // …and that IS open()'s order — read from the function, never assumed
+    const fn = readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations',
+      '20261016100000_notif_n4_worker_invocations.sql'), 'utf8')
+      .match(/CREATE OR REPLACE FUNCTION public\.open_notification_worker_invocation\([\s\S]*?\n\$\$;/)?.[0];
+    expect(fn).toBeTruthy();
+    expect(fn!.indexOf("'notif-worker-invocation-req:'"))
+      .toBeLessThan(fn!.indexOf("hashtextextended('notif-worker-invocation-open', 0)"));
+    // a missing request id must REFUSE: hashing NULL yields NULL and pg_advisory_xact_lock(NULL)
+    // takes no lock at all, which would silently restore the visibility race the lock closes
+    expect(replay).toContain('requires --invocation-request-id');
+  });
+
+  it('BOTH gates exist: strict refuses any unresolved row; replay-aware passes only the exact own request', () => {
+    const strict = SQL('_invocation_gate.sql');
+    expect(strict).toContain("status IN ('pending', 'started')");
+    // the refusal must carry the row's identity — the request_id is the operator's recovery
+    // handle (--invocation-request-id), so a bare count assertion would strand them
+    expect(strict).toContain('RAISE EXCEPTION');
+    expect(strict).toContain('--invocation-request-id=%s');
+    const replay = SQL('_invocation_gate_replay.sql');
+    expect(replay).toContain("status IN ('pending', 'started')");
+    // the ONE difference: a row whose request_id equals the supplied retry falls through to the
+    // idempotent open() (which itself refuses a purpose/source mismatch) — everything else refuses
+    expect(replay).toContain('IS DISTINCT FROM v_req');
+    expect(replay).toContain("set_config('notif.gate_request_id', :'invocation_request_id', true)");
+  });
+
+  it.each(['smoke_invoke.sql', 'canary_invoke.sql'])('%s replay-gates, OPENS, and RECORDS its pg_net request — all inside its transaction', (f) => {
+    const src = SQL(f);
+    const gateIdx = src.indexOf('\\i _invocation_gate_replay.sql');
+    const openIdx = src.indexOf('open_notification_worker_invocation(');
+    const recordIdx = src.indexOf('record_invocation_net_request(');
+    expect(gateIdx).toBeGreaterThan(0);
+    expect(openIdx).toBeGreaterThan(gateIdx);
+    // open AND the causal dispatch-evidence recording ride INSIDE the artifact transaction —
+    // the record exists from the instant the request can, and names the exact request it queued
+    const commitIdx = src.lastIndexOf('COMMIT');
+    expect(openIdx).toBeLessThan(commitIdx);
+    expect(recordIdx).toBeGreaterThan(openIdx);
+    expect(recordIdx).toBeLessThan(commitIdx);
+    expect(src).toContain(":'invocation_request_id'");
+    // and never the strict gate, which would make the advertised replay impossible
+    expect(src).not.toContain('\\i _invocation_gate.sql');
+  });
+
+  it('activate keeps the STRICT gate and opens nothing — arming never rides over ANY unresolved invocation, its own included', () => {
+    const src = SQL('activate.sql');
+    expect(src).toContain('\\i _invocation_gate.sql');
+    expect(src).not.toContain('_invocation_gate_replay');
+    expect(src).not.toContain('open_notification_worker_invocation(');
+  });
+
+  it('canary_reconcile resolves STRICTLY: exact run id, one row or raise, quiet only when already resolved', () => {
+    const src = SQL('canary_reconcile.sql');
+    // the strict RPC — never the bare status-filtered UPDATE whose zero-match sailed through
+    expect(src).toContain("resolve_invocation_for_canary_run(:'run_id'");
+    expect(src).toContain('CANARY_INVOCATION_RESOLVED=');
+    expect(src).not.toMatch(/status = 'started'/);
+  });
+
+  it('the migration demands the EXACT disabled body as jsonb — a field probe would pass decorated failures', () => {
+    const mig = readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations', '20261016110000_notif_n4_invocation_claim.sql'), 'utf8');
+    expect(mig).toContain(`IS DISTINCT FROM '{"status":"disabled","reason":"disabled"}'::jsonb`);
+    // and completion is causally bound to the recorded dispatch request
+    expect(mig).toContain('v.net_request_id <> p_net_request_id');
+    // and canary reconciliation requires canary PROVENANCE — a smoke that accidentally sent can
+    // never be reconciled as the reviewed canary
+    expect(mig).toContain(`v_purpose <> 'canary' OR v_source <> 'canary_invoke.sql'`);
+    // classification is LOCKED (a concurrent abandon must never read as reconciled)…
+    expect(mig).toMatch(/INTO v_status, v_purpose, v_source, v_net[\s\S]{0,200}FOR UPDATE/);
+    // …and one run evidences at most one invocation, schema-level
+    const core = readFileSync(resolve(__dirname, '..', '..', 'supabase', 'migrations', '20261016100000_notif_n4_worker_invocations.sql'), 'utf8');
+    expect(core).toContain('uq_notification_worker_invocation_run');
+    expect(core).toContain('(worker_run_id)\n  WHERE worker_run_id IS NOT NULL');
+  });
+
+  it('activation asserts canary provenance INDEPENDENTLY — never trusting that reconcile ran correctly', () => {
+    const src = SQL('_activation_assertions.sql');
+    const sect = src.match(/-- 8\. THE CANARY'S PROVENANCE[\s\S]*$/)?.[0] ?? '';
+    expect(sect).toContain("status = 'completed'");
+    expect(sect).toContain("purpose = 'canary'");
+    expect(sect).toContain("source = 'canary_invoke.sql'");
+    expect(sect).toContain('net_request_id IS NOT NULL');
+    expect(sect).toContain("worker_run_id = :'run_id'");
+    expect(sect).toContain('1,');   // exactly one — not "at least"
+  });
+
+  it('smoke_resolve_disabled closes the disabled smoke by request id, with the pg_net evidence', () => {
+    const src = SQL('smoke_resolve_disabled.sql');
+    expect(src).toContain('resolve_smoke_invocation_disabled(');
+    expect(src).toContain(":'invocation_request_id'");
+    expect(src).toContain(":'net_request_id'");
+    expect(src).toContain('SMOKE_INVOCATION_RESOLVED=');
+    expect(src).toContain('SET search_path = pg_catalog;');
+  });
+
+  it('the shell allowlists the ids, prints the request id BEFORE the invoke, and accepts recovery', () => {
+    const sh = readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'run-enablement.sh'), 'utf8');
+    // the allow-list, whatever it has grown to: every name in it must be a psql variable an
+    // artifact actually reads, and nothing may be a psql CONTROL variable (AUTOCOMMIT,
+    // ON_ERROR_STOP — those change how an artifact behaves rather than what it reads)
+    const vars = sh.match(/ARTIFACT_VARS="([^"]+)"/)?.[1].split(' ') ?? [];
+    expect(vars).toContain('invocation_request_id');
+    expect(vars).toContain('boundary_request_id');
+    for (const v of vars) {
+      expect(v).not.toMatch(/^(AUTOCOMMIT|ON_ERROR_STOP|ECHO|QUIET|VERBOSITY)$/i);
+      const used = readdirSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql'))
+        .some((f) => readFileSync(resolve(__dirname, '..', '..', 'scripts', 'rollout', 'notif-10cb', 'sql', f), 'utf8')
+          .includes(`:'${v}'`));
+      expect(used, `${v} is allow-listed but no artifact reads it`).toBe(true);
+    }
+    // THREE uuid mints, and no more: the invocation's (inside the shared prepare helper), the N5
+    // boundary's, and the kill-clear's. A per-execution uuid at any OTHER call site is exactly
+    // what could not recover an ambiguously-committed open — or, for the boundary, would re-date
+    // a delivery path's window on a retry. (The clear's own id is safe to mint per run: the
+    // decision it replays is identified by the KILL's id, which the operator supplies.)
+    expect(sh.match(/uuidgen/g)?.length).toBe(3);
+    expect(sh).toContain('--invocation-request-id=*)');
+    expect(sh).toContain('--boundary-request-id=*)');
+    // …and the id is printed BEFORE the artifact runs, for the same recovery reason
+    expect(sh.indexOf('ok "boundary request id:')).toBeLessThan(sh.indexOf('run_sql "$url" enable_engine.sql'));
+    expect(sh.match(/prepare_invocation_request_id "/g)?.length).toBe(2);
+    // the smoke CLOSES its invocation after the verdicts
+    expect(sh).toContain('smoke_resolve_disabled.sql');
   });
 });

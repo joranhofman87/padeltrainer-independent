@@ -10,6 +10,7 @@
 // under our token → lease + confirm the ops Slack alert on skipped-required rows.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { evaluateInstantSendGate } from "../_shared/instant-send-gate.ts";
+import { checkChannelKillOrRelease } from "../_shared/channel-kill-check.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
@@ -103,8 +104,23 @@ const handler = async (req: Request): Promise<Response> => {
     let sent = 0;
     let failed = 0;
     let suppressed = 0;
+    let deferred = 0;
 
     for (const row of rows) {
+      // N4 M2 — the pre-provider KILL re-check, top of EVERY iteration and fail-closed: the
+      // claim-time gate cannot stop rows claimed before the kill landed, and a kill means mail
+      // stops NOW. On kill (or an unreadable check) release everything still held — attempts
+      // given back, nothing terminal — and end the loop.
+      const kill = await checkChannelKillOrRelease(
+        async (name, args) => await supabase.rpc(name, args),
+        "email",
+        workerToken,
+      );
+      if (kill.killed) {
+        deferred = kill.released;
+        console.log(JSON.stringify({ event: "channel_killed", channel: "email", reason: kill.reason, released: kill.released }));
+        break;
+      }
       // THE SEND GATE lives in _shared/instant-send-gate.ts so it can be tested directly:
       // renderability -> suppression -> the COMPLETE live policy, all fail-closed. The handler
       // only executes the verdict, so the check order and terminal-ness cannot regress unseen.
@@ -182,7 +198,7 @@ const handler = async (req: Request): Promise<Response> => {
       await notifySlackEdgeError(JOB, `${failed} email notification(s) failed to send`, { failed, sent, suppressed });
     }
 
-    return json({ processed: rows.length, sent, failed, suppressed, alerted });
+    return json({ processed: rows.length, sent, failed, suppressed, deferred, alerted });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";
     try {
