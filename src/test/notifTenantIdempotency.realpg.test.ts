@@ -93,6 +93,11 @@ beforeAll(async () => {
     CREATE TABLE public.test_auth_ctx (uid uuid);
     INSERT INTO public.test_auth_ctx VALUES (NULL);
     CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$ SELECT uid FROM public.test_auth_ctx LIMIT 1 $fn$;
+    CREATE TYPE public.app_role AS ENUM ('player', 'trainer', 'admin');
+    CREATE TABLE public.user_roles (user_id uuid NOT NULL, role public.app_role NOT NULL, UNIQUE (user_id, role));
+    CREATE FUNCTION public.has_role(_user_id uuid, _role app_role) RETURNS boolean
+      LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $fn$
+      SELECT EXISTS (SELECT 1 FROM public.user_roles WHERE user_id = _user_id AND role = _role) $fn$;
     CREATE TABLE public.email_suppression_stub (email text PRIMARY KEY);
     CREATE FUNCTION public.is_email_suppressed(p_email text) RETURNS boolean LANGUAGE sql STABLE AS
       $fn$ SELECT EXISTS (SELECT 1 FROM public.email_suppression_stub WHERE email = lower(p_email)) $fn$;
@@ -117,6 +122,9 @@ beforeAll(async () => {
     '20261011120000_notif_10cb_instant_claim_excludes_digest.sql',
     '20261011140000_notif_10cb_cutover_compat.sql',
     '20261013100000_notif_10cb_pref_bridge_v2_to_v1.sql',
+    // N2's marketing half — the resolver now honours the one-click unsubscribe it records, so the
+    // suppression table, its reader and the footer-policy column are part of this suite's chain
+    '20261014100000_notif_n2_marketing_suppression.sql',
     // ── under test ──
     '20261015100000_notif_n3_tenant_aware_idempotency.sql',
     '20261015110000_notif_n3_academy_restrictions.sql',
@@ -124,8 +132,38 @@ beforeAll(async () => {
     '20261015130000_notif_n3_player_visibility.sql',
     '20261015140000_notif_n3_academy_outcome_reads.sql',
     '20261015150000_notif_n3_history_pagination.sql',
+    // ── N4 admin stack: the M6 preview must be EQUIVALENCE-tested against the REAL resolver,
+    // which lives in this harness — so the whole admin chain applies here too ──
+    '20261006110000_reconcile_orphan_provider_events.sql',
+    '20261016100000_notif_n4_worker_invocations.sql',
+    '20261016110000_notif_n4_invocation_claim.sql',
+    '20261017100000_notif_n4_channel_kill_switches.sql',
+    '20261018100000_notif_n4_admin_ops_audit.sql',
+    '20261019100000_notif_n4_admin_reads.sql',
+    '20261020100000_notif_n4_send_enabling_recovery.sql',
+    '20261021100000_notif_n4_readiness_preview_search.sql',
+    '20261022100000_notif_n4_seam_corrections.sql',
+    '20261023100000_notif_n4_seam_corrections_round2.sql',
+    '20261024100000_notif_n4_seam_corrections_round3.sql',
+    '20261025100000_notif_n4_invocation_ownership_contract.sql',
+    '20261028100000_notif_n5_activation_boundary.sql',
+    // the rest of N5, so this suite's readiness envelope is the one that ships rather than a
+    // pre-N5 stub whose checks answer 'not_provable' for reasons the deployed chain fixed
+    '20261029100000_notif_n5_readiness_and_backlog_disposal.sql',
+    '20261030100000_notif_n5_round2_dispatch_boundary.sql',
+    '20261101100000_notif_audit_marketing_unsubscribe_seam.sql',
+    '20261102100000_notif_audit_unsubscribe_at_send_time.sql',
+    '20261104100000_notif_audit_event_occurrence_boundary.sql',
   ]) {
     await c.query(MIG(f));
+  }
+  {
+    // the footer-policy COLUMN half of 20261014120000 (its other half alters an onboarding-template
+    // table this suite does not carry). The resolver's marketing arm reads this column, so it is
+    // part of the chain under test.
+    const footer = MIG('20261014120000_notif_n2_footer_policy.sql');
+    const upToOnboarding = footer.slice(0, footer.indexOf('ALTER TABLE public.onboarding_email_templates'));
+    await c.query(upToOnboarding);
   }
 
   await c.query(`
@@ -889,5 +927,1090 @@ describe('guest arm returns BOTH relationship legs (N3 round-4)', () => {
       .map((r) => r.academy_profile_id).sort();
     // the first draft's coalesce returned only A here — hiding B's cap from a player it binds
     expect(caps).toEqual([A, B].sort());
+  });
+});
+
+describe('N4 M6 — preview provenance EQUIVALENCE against the real resolver, and exact-safe search', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+  beforeEach(async () => {
+    await c.query(`INSERT INTO auth.users (id) VALUES ('${ADMIN_UID}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ('${ADMIN_UID}','admin') ON CONFLICT DO NOTHING;`);
+    await c.query(`DELETE FROM public.academy_notification_restrictions;`);
+    await c.query(`DELETE FROM public.notification_preferences_v2;`);
+    await c.query(`DELETE FROM public.email_suppression_stub;`);
+    await c.query(`ALTER TABLE public.notification_admin_search_log DISABLE TRIGGER trg_notif_admin_search_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_search_log;`);
+    await c.query(`ALTER TABLE public.notification_admin_search_log ENABLE TRIGGER trg_notif_admin_search_guard;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+        destination_redacted, consent_status, consent_scope, is_primary)
+      VALUES ('${P1}','${U1}','email','p1@example.com','p***@example.com','opted_in','global', true)
+      ON CONFLICT DO NOTHING;`);
+  });
+  const preview = async (event: string, channel = 'email', academy: string | null = null) => {
+    await asUser(ADMIN_UID);
+    const r = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision('${U1}', $1, $2, $3)`,
+      [event, channel, academy])).rows[0];
+    await asUser(null);
+    return r;
+  };
+  /** THE EQUIVALENCE ORACLE: the preview's final decision must MATCH what the real resolver
+   *  does with the same fixtures — skip ⇔ skipped row; deliver:instant ⇔ instant pending;
+   *  deliver:daily/weekly ⇔ digest member. A resolver change not mirrored in the preview
+   *  fails HERE rather than silently diverging (the finding-10 drift trap). */
+  const assertEquivalent = async (p: { final_decision: string }, subject: string, tenant: { academy?: string } = {}) => {
+    const rows = await enqueueOptional(tenant, subject);
+    const email = rows.filter((r: { channel: string }) => r.channel === 'email');
+    if (p.final_decision.startsWith('skip:')) {
+      // the REAL resolver's skip semantics (learned from it, not assumed): frequency-off and
+      // suppression usually emit NOTHING; the N3 cap arm emits a terminal skipped row.
+      const delivered = email.filter((r: { status: string }) => r.status === 'pending');
+      expect(delivered.length).toBe(0);
+    } else {
+      const delivered = email.filter((r: { status: string }) => r.status === 'pending');
+      expect(delivered.length).toBeGreaterThanOrEqual(1);
+      if (p.final_decision === 'deliver:instant') {
+        const mode = (await c.query(`SELECT delivery_mode FROM public.notification_outbox WHERE id=$1`, [delivered[0].outbox_id])).rows[0].delivery_mode;
+        expect(mode === null || mode === 'instant').toBe(true);
+      }
+      // daily/weekly digest-vs-delayed routing is EVENT-gated (the digest engine takes only its
+      // own events) and is covered by this suite's own digest tests — not re-asserted here.
+    }
+  };
+
+  it('DEFAULT (no explicit row): provenance shows the catalog source, and preview == resolver', async () => {
+    const p = await preview('session_reminder_player');
+    expect(p.explicit_preference).toBeNull();
+    expect(p.catalog_default).toBe(p.final_frequency);
+    expect(p.cap_applied).toBe(false);
+    expect(p.destination_masked).toBe('p***@example.com');
+    await assertEquivalent(p, 'eq-default');
+  });
+
+  it('EXPLICIT OFF wins: provenance names it, and preview == resolver', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ('${U1}','session_reminder_player','off')`);
+    const p = await preview('session_reminder_player');
+    expect(p.explicit_preference).toBe('off');
+    expect(p.final_decision).toBe('skip:frequency_off');
+    await assertEquivalent(p, 'eq-off');
+  });
+
+  it('ACADEMY CAP most-restrictive-wins: provenance shows the cap AND that it applied; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ('${U1}','session_reminder_player','instant')`);
+    await c.query(`INSERT INTO public.academy_notification_restrictions (academy_profile_id, event_type, channel, max_frequency) VALUES ('${A}','session_reminder_player','email','weekly')`);
+    const p = await preview('session_reminder_player', 'email', A);
+    expect(p.explicit_preference).toBe('instant');
+    expect(p.academy_cap).toBe('weekly');
+    expect(p.cap_applied).toBe(true);
+    expect(p.final_frequency).toBe('weekly');
+    await assertEquivalent(p, 'eq-cap', { academy: A });
+    // …and a cap is NEVER a floor: explicit weekly + cap daily (LESS restrictive) → weekly stays
+    await c.query(`UPDATE public.notification_preferences_v2 SET email_frequency='weekly' WHERE user_id='${U1}'`);
+    await c.query(`UPDATE public.academy_notification_restrictions SET max_frequency='daily'`);
+    const p2 = await preview('session_reminder_player', 'email', A);
+    expect(p2.cap_applied).toBe(false);
+    expect(p2.final_frequency).toBe('weekly');
+  });
+
+  it('CAP OFF → skip, tenant-scoped; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.academy_notification_restrictions (academy_profile_id, event_type, channel, max_frequency) VALUES ('${A}','session_reminder_player','email','off')`);
+    const p = await preview('session_reminder_player', 'email', A);
+    expect(p.final_decision).toBe('skip:frequency_off');
+    await assertEquivalent(p, 'eq-capoff', { academy: A });
+    // no academy attribution → the cap does not reach it
+    const pGlobal = await preview('session_reminder_player', 'email', null);
+    expect(pGlobal.cap_applied).toBe(false);
+    expect(pGlobal.final_decision).not.toBe('skip:frequency_off');
+  });
+
+  it('REQUIRED override runs LAST and the provenance says so; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency) VALUES ('${U1}','booking_confirmed_player','off')`);
+    const p = await preview('booking_confirmed_player');
+    expect(p.required_delivery).toBe(true);
+    expect(p.required_override_applied).toBe(true);
+    expect(p.final_frequency).toBe('instant');
+    expect(p.final_decision).toBe('deliver:instant');
+    // the real resolver: required events go through enqueue() — instant pending despite 'off'
+    const rows = await enqueue({ academy: A });
+    const email = rows.filter((r: { channel: string }) => r.channel === 'email');
+    expect(email[0].status).toBe('pending');
+  });
+
+  it('SUPPRESSION: provenance shows it on the resolved masked destination; preview == resolver', async () => {
+    await c.query(`INSERT INTO public.email_suppression_stub (email) VALUES ('p1@example.com')`);
+    const p = await preview('session_reminder_player');
+    expect(p.suppressed).toBe(true);
+    expect(p.final_decision).toBe('skip:suppressed');
+    expect(p.destination_masked).toBe('p***@example.com');   // masked, never raw
+    await assertEquivalent(p, 'eq-suppressed');
+  });
+
+  it('the recipient preview is bounded, keyset, and runs each user through the SAME provenance', async () => {
+    await asUser(ADMIN_UID);
+    const rows = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,50)`)).rows;
+    expect(rows.length).toBeGreaterThanOrEqual(1);
+    const mine = rows.find((r) => r.user_id === U1);
+    expect(mine.destination_masked).toBe('p***@example.com');
+    expect(mine.final_decision).toMatch(/^deliver:|^skip:/);
+    // the clamp is STRICT — no export-all
+    const clamped = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,10000)`)).rows;
+    expect(clamped.length).toBeLessThanOrEqual(50);
+    await asUser(null);
+  });
+
+  it('destination search: EXACT normalized match only — near-misses find NOTHING, results are masked + counts', async () => {
+    await enqueueOptional({}, 'search-seed');
+    await asUser(ADMIN_UID);
+    const hit = (await c.query(`SELECT * FROM public.admin_search_notification_destination('  P1@Example.com ')`)).rows[0];
+    expect(hit.destination_masked).toBe('p***@example.com');
+    expect(Number(hit.contacts)).toBeGreaterThanOrEqual(1);
+    expect(Number(hit.outbox_rows)).toBeGreaterThanOrEqual(1);
+    // a PREFIX is not a match — no substring search exists, by design
+    const miss = (await c.query(`SELECT * FROM public.admin_search_notification_destination('p1@example.co')`)).rows[0];
+    expect(Number(miss.contacts)).toBe(0);
+    expect(Number(miss.outbox_rows)).toBe(0);
+    // the log carries FINGERPRINTS, never destinations
+    const log = (await c.query(`SELECT fingerprint FROM public.notification_admin_search_log`)).rows;
+    expect(log.length).toBe(2);
+    for (const l of log) expect(l.fingerprint).not.toContain('example.com');
+    await asUser(null);
+  });
+
+  it('destination search is rate-limited per actor and admin-fail-closed', async () => {
+    await asUser(ADMIN_UID);
+    for (let i = 0; i < 28; i++) {
+      await c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`);
+    }
+    // 28 above + 2 would exceed only at 31 — pushing to the cap
+    await c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`);
+    await c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`);
+    await expect(c.query(`SELECT * FROM public.admin_search_notification_destination('rate@example.com')`))
+      .rejects.toThrow(/rate limit/);
+    await asUser(null);
+    await expect(c.query(`SELECT * FROM public.admin_search_notification_destination('x@example.com')`))
+      .rejects.toThrow(/platform admin only/);
+  });
+
+  it('the readiness envelope: versioned, honest, and NEVER pass before N5', async () => {
+    await asUser(ADMIN_UID);
+    const env = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r;
+    expect(env.schema_version).toBe(1);
+    expect(['fail', 'not_provable']).toContain(env.readiness);   // 'pass' is unreachable pre-N5
+    const ids = env.checks.map((x: { id: string }) => x.id);
+    for (const required of ['channel_kills', 'provider_circuits', 'unresolved_invocations', 'in_flight_work',
+      'quarantined_orphans', 'digest_cron', 'digest_send_enabled_env', 'durable_activation_boundary',
+      'pre_activation_backlog_eligible_count', 'pre_occurrence_floor_backlog_count']) {
+      expect(ids).toContain(required);
+    }
+    const envCheck = env.checks.find((x: { id: string }) => x.id === 'digest_send_enabled_env');
+    expect(envCheck.status).toBe('not_provable');
+    expect(envCheck.detail).toContain('no SQL can read');
+    // The N5 checks are REAL now — this chain carries the whole of N5, so they compute rather than
+    // shrug. On a clean fixture that means 'pass', and the meaningful assertion is that they are
+    // decided at all: 'not_provable' from these two would mean the boundary tables were missing.
+    for (const n5 of ['durable_activation_boundary', 'pre_activation_backlog_eligible_count',
+      'pre_occurrence_floor_backlog_count']) {
+      expect(['pass', 'fail']).toContain(env.checks.find((x: { id: string }) => x.id === n5).status);
+    }
+    // …and the OVERALL verdict is still never 'pass', because DIGEST_SEND_ENABLED is an edge env
+    // var no SQL can read. That is the honesty this check exists for, and N5 did not change it.
+    expect(env.readiness).toBe('not_provable');
+    // a kill flips a named check AND the overall verdict to fail
+    await c.query(`INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id) VALUES ('email','test kill', gen_random_uuid())`);
+    const env2 = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r;
+    expect(env2.readiness).toBe('fail');
+    expect(env2.checks.find((x: { id: string }) => x.id === 'channel_kills').status).toBe('fail');
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await asUser(null);
+  });
+});
+
+describe('N4 M6 round-2 — serialized rate limit, channel-true masks, bounded preview work', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('the rate limit SERIALIZES: a concurrent 31st search waits behind the 30th, then is refused', async () => {
+    await asUser(ADMIN_UID);
+    for (let i = 0; i < 29; i++) {
+      await c.query(`SELECT * FROM public.admin_search_notification_destination('rl@example.com')`);
+    }
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      await c.query('BEGIN');
+      await c.query(`SELECT * FROM public.admin_search_notification_destination('rl@example.com')`);   // the 30th, held open
+      let settled = false;
+      const loser = c2.query(`SELECT * FROM public.admin_search_notification_destination('rl@example.com')`)
+        .finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(settled).toBe(false);          // provably serialized on the per-actor lock
+      await c.query('COMMIT');
+      await expect(loser).rejects.toThrow(/rate limit/);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+      await asUser(null);
+    }
+  });
+
+  it('the masked echo is CHANNEL-TRUE, and unrecognizable input is refused', async () => {
+    await asUser(ADMIN_UID);
+    // fresh actor budget: clear the log the sanctioned way
+    await c.query(`ALTER TABLE public.notification_admin_search_log DISABLE TRIGGER trg_notif_admin_search_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_search_log;`);
+    await c.query(`ALTER TABLE public.notification_admin_search_log ENABLE TRIGGER trg_notif_admin_search_guard;`);
+    const wa = (await c.query(`SELECT * FROM public.admin_search_notification_destination('+31612345678')`)).rows[0];
+    expect(wa.destination_masked).toBe('•••5678');           // the whatsapp redactor, not '***'
+    expect(wa.contacts_capped).toBe(false);
+    await expect(c.query(`SELECT * FROM public.admin_search_notification_destination('not-a-destination')`))
+      .rejects.toThrow(/normalized email or E.164/);
+    await asUser(null);
+  });
+
+  it('the recipient preview clamps, dedupes and PAGES over a 60-user population — bounded work, proven continuity', async () => {
+    // set-based fixture: 60 users, each with a preference row AND an eligible contact (the
+    // union must dedupe them), ids ordered for keyset verification
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('a0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 60) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_preferences_v2 (user_id, event_type, email_frequency)
+      SELECT ('a0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'session_reminder_player', 'instant'
+      FROM generate_series(1, 60) g ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, is_primary)
+      SELECT ('a0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'bulk' || g || '@example.com', 'b***@example.com', 'opted_in', 'global', true
+      FROM generate_series(1, 60) g;`);
+    await asUser(ADMIN_UID);
+    const page1 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,50)`)).rows;
+    expect(page1.length).toBe(50);
+    const ids1 = page1.map((r) => r.user_id as string);
+    expect(new Set(ids1).size).toBe(50);                     // deduped across the two sources
+    const page2 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'${ids1[49]}',50)`)).rows;
+    expect(page2.length).toBeGreaterThanOrEqual(10);          // the tail (60 bulk + fixture users)
+    expect(page2.length).toBeLessThanOrEqual(50);
+    for (const r of page2) expect(ids1).not.toContain(r.user_id);   // NO overlap: real continuity
+    await asUser(null);
+  });
+});
+
+describe('N4 M6 round-3 — candidate eligibility shapes and index integrity', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+  const mkUser = async (suffix: string) => {
+    const uid = `b0000000-0000-4000-8000-${suffix.padStart(12, '0')}`;
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    return uid;
+  };
+
+  it('candidates: multi-contact users count ONCE, opted-out and out-of-scope are excluded, person-linked count', async () => {
+    const multi = await mkUser('1');
+    for (let i = 0; i < 3; i++) {
+      await c.query(
+        `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, is_primary)
+         VALUES ($1, 'email', $2, 'm***@example.com', 'opted_in', 'global', false)`, [multi, `multi${i}@example.com`]);
+    }
+    const optedOut = await mkUser('2');
+    await c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'out@example.com', 'o***@example.com', 'opted_out', 'global')`, [optedOut]);
+    const scoped = await mkUser('3');
+    await c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope, consent_academy_profile_id)
+       VALUES ($1, 'email', 'scoped@example.com', 's***@example.com', 'opted_in', 'tenant', '${B}')`, [scoped]);
+    const personOnly = await mkUser('4');
+    const personRow = (await c.query(
+      `INSERT INTO public.persons (user_id, email) VALUES ($1, 'ponly@example.com') RETURNING id`, [personOnly])).rows[0].id;
+    await c.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'ponly@example.com', 'p***@example.com', 'opted_in', 'global')`, [personRow]);
+
+    await asUser(ADMIN_UID);
+    // tenant scope A: the B-scoped contact must be excluded
+    // cursor past the persisted 60-user bulk block (a000...) straight into this test's b000... users
+    const rows = (await c.query(
+      `SELECT user_id FROM public.admin_preview_notification_recipients('session_reminder_player','email','${A}','b0000000-0000-4000-8000-000000000000',50)`)).rows;
+    const ids = rows.map((r) => r.user_id as string);
+    expect(ids.filter((x) => x === multi).length).toBe(1);    // ONCE — three contacts, one user
+    expect(ids).not.toContain(optedOut);                       // resolver eligibility, mirrored
+    expect(ids).not.toContain(scoped);                         // out-of-scope tenant consent
+    expect(ids).toContain(personOnly);                         // person-linked reaches the user
+    await asUser(null);
+  });
+
+  it('the search-serving expression indexes are NON-partial — the structural pin', async () => {
+    const idx = (await c.query(`
+      SELECT indexname, indexdef FROM pg_indexes
+      WHERE schemaname = 'public' AND indexname IN ('idx_outbox_dest_fp', 'idx_edev_dest_fp', 'idx_contacts_dest_fp')
+    `)).rows;
+    expect(idx.length).toBe(3);
+    for (const i of idx) {
+      // the fingerprint fn is not STRICT, so a partial predicate silently stops serving the
+      // search's expression-equality lookups
+      expect(i.indexdef).not.toContain('WHERE');
+      expect(i.indexdef).toContain('notif_digest_destination_fingerprint');
+    }
+  });
+
+  it('a SATURATED readiness count says so — value + capped, "at least", never a fake exact', async () => {
+    await asUser(ADMIN_UID);
+    const env = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r;
+    const inflight = env.checks.find((x: { id: string }) => x.id === 'in_flight_work');
+    expect(inflight).toHaveProperty('value');
+    expect(inflight).toHaveProperty('capped');
+    expect(inflight.capped).toBe(false);   // small fixture: uncapped, and says so
+    const orphans = env.checks.find((x: { id: string }) => x.id === 'quarantined_orphans');
+    expect(orphans).toHaveProperty('capped');
+    await asUser(null);
+  });
+});
+
+describe('N4 M6 round-4 — the persisted candidate projection is maintained and index-served', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('a person GAINING a login later flows into the projection — the sync trigger', async () => {
+    const late = 'c0000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [late]);
+    const pid = (await c.query(`INSERT INTO public.persons (email) VALUES ('late@example.com') RETURNING id`)).rows[0].id;
+    await c.query(
+      `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'late@example.com', 'l***@example.com', 'opted_in', 'global')`, [pid]);
+    expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='late@example.com'`)).rows[0].effective_user_id).toBeNull();
+    await c.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [late, pid]);
+    expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='late@example.com'`)).rows[0].effective_user_id).toBe(late);
+    await asUser(ADMIN_UID);
+    const rows = (await c.query(
+      `SELECT user_id FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'c0000000-0000-4000-8000-000000000000',50)`)).rows;
+    expect(rows.map((r) => r.user_id)).toContain(late);
+    await asUser(null);
+  });
+
+  it('the candidate scan is BOUNDED BEFORE dedup: an ordered index stream, no join, no sort', async () => {
+    // structural plan pin: the projection query must be served by idx_contacts_effective_user
+    // in index order (Unique over a sorted stream that STOPS at the limit) — never a
+    // join-then-hash-dedup over every eligible contact
+    // the REAL staged query, verbatim shape: composite order, cursor, budget
+    const plan = (await c.query(`
+      EXPLAIN (FORMAT JSON)
+      SELECT nc.effective_user_id, nc.id, nc.consent_status, nc.consent_scope,
+             nc.consent_academy_profile_id, nc.consent_trainer_id
+        FROM public.notification_contacts nc
+       WHERE nc.channel = 'email' AND nc.revoked_at IS NULL
+         AND nc.effective_user_id IS NOT NULL
+         AND nc.effective_user_id > '00000000-0000-0000-0000-000000000000'::uuid
+       ORDER BY nc.effective_user_id, nc.id
+       LIMIT 500
+    `)).rows[0]['QUERY PLAN'];
+    const txt = JSON.stringify(plan);
+    expect(txt).toContain('idx_contacts_effective_user');
+    expect(txt).not.toContain('"Node Type": "Hash Join"');
+    expect(txt).not.toContain('"Node Type": "Sort"');
+    expect(txt).not.toContain('Incremental Sort');   // (channel, effective_user_id, id) carries the FULL order
+  });
+
+  it('the ≤500-active-contacts cap holds at the schema — the fragment-judgment arm is unreachable', async () => {
+    const cap = 'e4000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [cap]);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT $1, 'email', 'cap' || g || '@example.com', 'c***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 500) g`, [cap]);
+    await expect(c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'cap501@example.com', 'c***@example.com', 'opted_in', 'global')`, [cap]))
+      .rejects.toThrow(/at most 500 active contacts/);
+  });
+});
+
+describe('N4 M6 round-5 — the hard raw budget, the derived projection, the link races', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('a 501-row INELIGIBLE prefix cannot make the server scan invisibly: partial=true, the cursor CRAWLS, the eligible user is reached', async () => {
+    // 501 opted-out contacts strictly below one eligible user, all in the d-block
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('d0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 502) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('d0000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'noise' || g || '@example.com', 'n***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 501) g;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      VALUES ('d0000000-0000-4000-8000-000000000502', 'email', 'needle@example.com', 'n***@example.com', 'opted_in', 'global');`);
+    await asUser(ADMIN_UID);
+    const page1 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'d0000000-0000-4000-8000-000000000000',50)`)).rows;
+    // the budget was hit inside the noise: the page says PARTIAL and hands a moving cursor
+    expect(page1.every((r) => r.candidates_partial === true)).toBe(true);
+    const cursor1 = page1[page1.length - 1].next_cursor;
+    expect(cursor1).not.toBeNull();
+    const page2 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'${cursor1}',50)`)).rows;
+    const found = page2.map((r) => r.user_id);
+    expect(found).toContain('d0000000-0000-4000-8000-000000000502');   // the crawl REACHES the needle
+    await asUser(null);
+  });
+
+  it('effective_user_id is DERIVED, owner-effectively: a direct tamper is recomputed away', async () => {
+    const victim = 'e0000000-0000-4000-8000-000000000001';
+    const attacker = 'e0000000-0000-4000-8000-000000000002';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1), ($2) ON CONFLICT DO NOTHING`, [victim, attacker]);
+    await c.query(
+      `INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+       VALUES ($1, 'email', 'victim@example.com', 'v***@example.com', 'opted_in', 'global')`, [victim]);
+    await c.query(`UPDATE public.notification_contacts SET effective_user_id = $1 WHERE destination_normalized = 'victim@example.com'`, [attacker]);
+    expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='victim@example.com'`)).rows[0].effective_user_id)
+      .toBe(victim);   // the trigger recomputed — the projection cannot be assigned
+  });
+
+  it('the link race, BOTH orderings, deterministic: neither leaves a stale projection', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      // ordering 1: a persons.user_id update holds its lock; a contact INSERT for that person
+      // blocks, then reads the COMMITTED person value
+      const uidA = 'f0000000-0000-4000-8000-000000000001';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uidA]);
+      const pidA = (await c.query(`INSERT INTO public.persons (email) VALUES ('race1@example.com') RETURNING id`)).rows[0].id;
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uidA, pidA]);
+      let s1 = false;
+      const ins = c2.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'race1@example.com', 'r***@example.com', 'opted_in', 'global')`, [pidA])
+        .finally(() => { s1 = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(s1).toBe(false);      // provably serialized on the person-link lock
+      await c.query('COMMIT');
+      await ins;
+      expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='race1@example.com'`)).rows[0].effective_user_id).toBe(uidA);
+
+      // ordering 2: a contact INSERT holds the lock; the persons.user_id update blocks, then
+      // its sync SEES the committed contact
+      const uidB = 'f0000000-0000-4000-8000-000000000002';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uidB]);
+      const pidB = (await c.query(`INSERT INTO public.persons (email) VALUES ('race2@example.com') RETURNING id`)).rows[0].id;
+      await c.query('BEGIN');
+      await c.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'race2@example.com', 'r***@example.com', 'opted_in', 'global')`, [pidB]);
+      let s2 = false;
+      const upd = c2.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uidB, pidB])
+        .finally(() => { s2 = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(s2).toBe(false);
+      await c.query('COMMIT');
+      await upd;
+      expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='race2@example.com'`)).rows[0].effective_user_id).toBe(uidB);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+});
+
+describe('N4 M6 round-6 — truncation-safe cursors and the boundary-split user', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('p_limit truncation skips NOTHING: the cursor is the last emitted user, the crawl collects everyone', async () => {
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('e1000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 5) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('e1000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'trunc' || g || '@example.com', 't***@example.com', 'opted_in', 'global'
+      FROM generate_series(1, 5) g;`);
+    await asUser(ADMIN_UID);
+    const collected: string[] = [];
+    let cursor = `'e1000000-0000-4000-8000-000000000000'`;
+    for (let page = 0; page < 4 && collected.length < 5; page++) {
+      const rows = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,${cursor},2)`)).rows;
+      for (const r of rows) if (r.user_id) collected.push(r.user_id);
+      if (rows.length === 0) break;
+      // the round-5 defect: this cursor was the scan HORIZON, silently skipping users 3..5
+      cursor = `'${rows[rows.length - 1].next_cursor}'`;
+    }
+    expect(collected.filter((x) => x.startsWith('e1000000')).length).toBe(5);   // no skips
+    expect(new Set(collected).size).toBe(collected.length);                      // no dupes
+    await asUser(null);
+  });
+
+  it('a budget-SPLIT user is deferred WHOLE — their post-split eligible contact is reached, never lost', async () => {
+    // 499 noise users (opted_out) then user X with 3 contacts: rows 500-502 — the budget cuts
+    // X's set after one row, and X's ELIGIBLE contact is beyond the cut
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('e2000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 500) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('e2000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'split' || g || '@example.com', 's***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 499) g;`);
+    const X = 'e2000000-0000-4000-8000-000000000500';
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      VALUES ($1, 'email', 'xa@example.com', 'x***@example.com', 'opted_out', 'global'),
+             ($1, 'email', 'xb@example.com', 'x***@example.com', 'opted_out', 'global'),
+             ($1, 'email', 'xc@example.com', 'x***@example.com', 'opted_in', 'global')`, [X]);
+    await asUser(ADMIN_UID);
+    const page1 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'e2000000-0000-4000-8000-000000000000',50)`)).rows;
+    // page 1: partial; X must NOT be judged on the fragment
+    expect(page1.every((r) => r.candidates_partial === true)).toBe(true);
+    expect(page1.map((r) => r.user_id)).not.toContain(X);
+    const cursor = page1[page1.length - 1].next_cursor;
+    const page2 = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'${cursor}',50)`)).rows;
+    expect(page2.map((r) => r.user_id)).toContain(X);   // the WHOLE contact set judged → eligible
+    await asUser(null);
+  });
+});
+
+describe('N4 M6 round-6b — truncation on a PARTIAL page', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('a truncated PARTIAL page cursors from the last EMITTED user — the eligible users below the horizon are all reached', async () => {
+    // 500+ raw rows (mostly opted-out noise) with 25 ELIGIBLE users interleaved below the
+    // boundary; p_limit=2 truncates far below the eligible count on every page
+    await c.query(`
+      INSERT INTO auth.users (id)
+      SELECT ('e3000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid FROM generate_series(1, 530) g
+      ON CONFLICT DO NOTHING;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT ('e3000000-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid, 'email',
+             'pt' || g || '@example.com', 'p***@example.com',
+             CASE WHEN g % 20 = 0 THEN 'opted_in' ELSE 'opted_out' END, 'global'
+      FROM generate_series(1, 530) g;`);
+    await asUser(ADMIN_UID);
+    const collected: string[] = [];
+    let cursor = `'e3000000-0000-4000-8000-000000000000'`;
+    for (let page = 0; page < 40; page++) {
+      const rows = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,${cursor},2)`)).rows;
+      const emitted = rows.filter((r) => r.user_id);
+      for (const r of emitted) collected.push(r.user_id);
+      if (rows.length === 0) break;
+      cursor = `'${rows[rows.length - 1].next_cursor}'`;
+    }
+    const mine = collected.filter((x) => x.startsWith('e3000000'));
+    // 530/20 = 26 eligible users (g = 20,40,...,520); ALL must be collected, none skipped
+    expect(new Set(mine).size).toBe(26);
+    await asUser(null);
+  });
+});
+
+describe('N4 M6 round-7 — migration-time cap validation and the UPDATE-path lock order', () => {
+  it('the migration REFUSES to deploy over an over-cap group — the extracted assertion, proven on 501 rows', async () => {
+    const over = 'e5000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [over]);
+    await c.query(`ALTER TABLE public.notification_contacts DISABLE TRIGGER trg_zz_notif_contact_cap;`);
+    await c.query(`
+      INSERT INTO public.notification_contacts (user_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+      SELECT $1, 'email', 'over' || g || '@example.com', 'o***@example.com', 'opted_out', 'global'
+      FROM generate_series(1, 501) g`, [over]);
+    await c.query(`ALTER TABLE public.notification_contacts ENABLE TRIGGER trg_zz_notif_contact_cap;`);
+    const mig = MIG('20261021100000_notif_n4_readiness_preview_search.sql');
+    const assertion = mig.match(/DO \$\$\nDECLARE r record;\nBEGIN\n {2}SELECT nc\.channel[\s\S]*?END \$\$;/)?.[0];
+    if (!assertion) throw new Error('cap assertion not found in the migration');
+    await expect(c.query(assertion)).rejects.toThrow(/migration blocked.*501 active contacts/);
+    // cleanup so later tests see a legal world
+    await c.query(`DELETE FROM public.notification_contacts WHERE user_id = $1`, [over]);
+  });
+
+  it('a contact UPDATE racing a persons.user_id update: row-lock order, NO deadlock, fresh final projection', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      const uid = 'e6000000-0000-4000-8000-000000000001';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+      const pid = (await c.query(`INSERT INTO public.persons (email) VALUES ('updrace@example.com') RETURNING id`)).rows[0].id;
+      await c.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'updrace@example.com', 'u***@example.com', 'opted_in', 'global')`, [pid]);
+      // session A holds an ordinary contact UPDATE open (row lock held, NO advisory taken)
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.notification_contacts SET is_primary = true WHERE destination_normalized = 'updrace@example.com'`);
+      // session B: the persons.user_id update — its sync touch must WAIT on the row, not deadlock
+      let settled = false;
+      const upd = c2.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uid, pid])
+        .finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(settled).toBe(false);            // serialized on the ROW lock — deterministic, no inversion
+      await c.query('COMMIT');
+      await upd;                               // completes cleanly — no deadlock abort
+      expect((await c.query(`SELECT effective_user_id, is_primary FROM public.notification_contacts WHERE destination_normalized='updrace@example.com'`)).rows[0])
+        .toMatchObject({ effective_user_id: uid, is_primary: true });   // BOTH writes land, projection fresh
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+});
+
+describe('N4 M6 round-8 — the A→B relink race', () => {
+  it('a contact relinking to person B while B gains a login: the relink WAITS on B, the projection ends fresh', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      const uidB = 'e7000000-0000-4000-8000-000000000002';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uidB]);
+      const pidA = (await c.query(`INSERT INTO public.persons (email) VALUES ('relink-a@example.com') RETURNING id`)).rows[0].id;
+      const pidB = (await c.query(`INSERT INTO public.persons (email) VALUES ('relink-b@example.com') RETURNING id`)).rows[0].id;
+      await c.query(
+        `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+         VALUES ($1, 'email', 'relink@example.com', 'r***@example.com', 'opted_in', 'global')`, [pidA]);
+      // session 1: B gains its login — held open (advisory B held by the sync trigger; its
+      // contact scan sees NO rows for B, so it waits on nothing)
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uidB, pidB]);
+      // session 2: the A→B RELINK — the changed-person arm must WAIT on B's advisory, because
+      // B's sync could not see this row (old person = A in its snapshot)
+      let settled = false;
+      const relink = c2.query(`UPDATE public.notification_contacts SET person_id = $1 WHERE destination_normalized = 'relink@example.com'`, [pidB])
+        .finally(() => { settled = true; });
+      await new Promise((r) => setTimeout(r, 150));
+      expect(settled).toBe(false);            // provably serialized — the round-8 race closed
+      await c.query('COMMIT');
+      await relink;
+      expect((await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE destination_normalized='relink@example.com'`)).rows[0].effective_user_id)
+        .toBe(uidB);                           // the relink read B's COMMITTED login — never the stale NULL
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+});
+
+describe('N4 SEAM corrections — the whole-unit findings', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  it('SEAM 6: the preview mirrors the resolver’s ACCOUNT-EMAIL fallback and its unsupported-channel skip', async () => {
+    // a logged-in user with NO eligible contact — production still mails persons.email
+    const uid = 'aa000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1, 'fallback@example.com')`, [uid]);
+    await asUser(ADMIN_UID);
+    const d = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1, 'session_reminder_player', 'email', NULL)`, [uid])).rows[0];
+    expect(d.contact_found).toBe(true);
+    expect(d.contact_source).toBe('account_email');           // NOT skip:no_contact
+    expect(d.destination_masked).toBe('f***@example.com');
+    expect(d.final_decision).not.toContain('no_contact');
+    // …and the candidate LIST includes them (they were omitted entirely before)
+    const rows = (await c.query(
+      `SELECT user_id FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'aa000000-0000-4000-8000-000000000000',50)`)).rows;
+    expect(rows.map((r) => r.user_id)).toContain(uid);
+    // an UNSUPPORTED channel is skipped BEFORE resolution, exactly as the resolver does —
+    // read the catalog rather than assuming which pair is unsupported
+    const unsupported = (await c.query(
+      `SELECT key FROM public.notification_event_types WHERE NOT supports_whatsapp ORDER BY key LIMIT 1`)).rows[0];
+    expect(unsupported).toBeTruthy();
+    const wa = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1, $2, 'whatsapp', NULL)`, [uid, unsupported.key])).rows[0];
+    expect(wa.catalog_supported).toBe(false);
+    expect(wa.final_decision).toBe('skip:channel_unsupported');
+    await asUser(null);
+  });
+
+  it('SEAM 5: the internal evidence helpers are not reachable by any API role', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      for (const role of ['anon', 'authenticated', 'service_role']) {
+        await c2.query(`SET ROLE ${role}`);
+        for (const fn of [
+          `public.notif_admin_replay_gate(gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'email', 'x', 'y')`,
+          `public.notif_admin_record_verdict(gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'f', 'killed')`,
+          `public.notif_admin_record_refusal(gen_random_uuid(), gen_random_uuid(), 'channel_kill', 'email', 'x', 'y')`,
+        ]) {
+          await expect(c2.query(`SELECT ${fn}`), `${role} must not reach ${fn}`).rejects.toThrow();
+        }
+        await c2.query(`RESET ROLE`);
+      }
+    } finally { await c2.end(); }
+  });
+
+  it('SEAM 4: a person-sync concurrent with a direct contact update does not DEADLOCK', async () => {
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` }); await c2.connect();
+    try {
+      const uid = 'ab000000-0000-4000-8000-000000000001';
+      await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+      const pid = (await c.query(`INSERT INTO public.persons (email) VALUES ('multi@example.com') RETURNING id`)).rows[0].id;
+      // TWO contacts for one person — the shape the single-contact tests could not exercise
+      for (const d of ['m1@example.com', 'm2@example.com']) {
+        await c.query(
+          `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_status, consent_scope)
+           VALUES ($1, 'email', $2, 'm***@example.com', 'opted_in', 'global')`, [pid, d]);
+      }
+      // session A holds contact 2's row; session B runs the person sync (advisory then rows)
+      await c.query('BEGIN');
+      await c.query(`UPDATE public.notification_contacts SET is_primary = true WHERE destination_normalized = 'm2@example.com'`);
+      const sync = c2.query(`UPDATE public.persons SET user_id = $1 WHERE id = $2`, [uid, pid]);
+      await new Promise((r) => setTimeout(r, 150));
+      await c.query('COMMIT');
+      await sync;                                   // completes — NO deadlock abort
+      const rows = (await c.query(`SELECT effective_user_id FROM public.notification_contacts WHERE person_id = $1`, [pid])).rows;
+      expect(rows.every((r) => r.effective_user_id === uid)).toBe(true);
+    } finally {
+      await c.query('ROLLBACK').catch(() => {});
+      await c2.end();
+    }
+  });
+
+  it('SEAM 7: a cross-actor request-id collision is a TYPED verdict, not a raw unique violation', async () => {
+    const OTHER = 'ac000000-0000-4000-8000-000000000002';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [OTHER]);
+    await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ($1,'admin') ON CONFLICT DO NOTHING`, [OTHER]);
+    const shared = crypto.randomUUID();
+    await asUser(ADMIN_UID);
+    expect((await c.query(`SELECT public.admin_activate_channel_kill('email','first admin',$1) AS r`, [shared])).rows[0].r).toBe('killed');
+    await asUser(OTHER);
+    // the SAME uuid, a different actor, a different channel: both pass their actor-scoped gate,
+    // and the kill table's GLOBAL uniqueness would have raised and rolled the evidence back
+    expect((await c.query(`SELECT public.admin_activate_channel_kill('whatsapp','second admin',$1) AS r`, [shared])).rows[0].r)
+      .toBe('rejected_id_collision');
+    expect((await c.query(`SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE actor=$1`, [OTHER])).rows[0].n).toBe(1);
+    expect((await c.query(`SELECT verdict FROM public.notification_admin_requests WHERE actor=$1`, [OTHER])).rows[0].verdict).toBe('rejected_id_collision');
+    await asUser(null);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+    await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+    await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+  });
+});
+
+describe('N4 SEAM corrections ROUND 2 — the defects the first correction left behind', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+  beforeEach(async () => {
+    await c.query(`INSERT INTO auth.users (id) VALUES ('${ADMIN_UID}') ON CONFLICT DO NOTHING;`);
+    await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ('${ADMIN_UID}','admin') ON CONFLICT DO NOTHING;`);
+  });
+
+  it('SEAM 9b/9c: a BLANK contact destination is NO contact and does NOT fall back to the account email — proven against the real resolver', async () => {
+    const uid = 'ad000000-0000-4000-8000-000000000003';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    const pid = (await c.query(
+      `INSERT INTO public.persons (user_id, email) VALUES ($1, 'real@example.com') RETURNING id`, [uid])).rows[0].id;
+    // destination_normalized is NOT NULL, but '' is not forbidden — and the resolver's rule is
+    // "a contact row that EXISTS consumes the decision", so this must NOT reach real@example.com
+    await c.query(
+      `INSERT INTO public.notification_contacts (person_id, user_id, channel, destination_normalized,
+         destination_redacted, consent_status, consent_scope, is_primary)
+       VALUES ($1, $2, 'email', '   ', '***', 'opted_in', 'global', true)`, [pid, uid]);
+
+    await asUser(ADMIN_UID);
+    const d = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1,'booking_confirmed_player','email',$2)`, [uid, A])).rows[0];
+    await asUser(null);
+    expect(d.final_decision).toBe('skip:no_contact');   // was deliver:instant
+    expect(d.contact_found).toBe(false);
+    expect(d.contact_source).toBe('none');              // NOT 'account_email' — no fallback happens
+    expect(d.destination_masked).toBeNull();
+
+    // THE ORACLE: the real resolver on the same fixtures. booking_confirmed_player is
+    // required_delivery, so its refusal is a VISIBLE skipped row carrying the reason.
+    const rows = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player', p_recipient_person_id => $1,
+         p_idempotency_subject => 'blank-dest', p_tenant_academy_profile_id => $2)`, [pid, A])).rows;
+    const email = rows.filter((r: { channel: string }) => r.channel === 'email');
+    expect(email.length).toBe(1);
+    expect(email[0].status).toBe('skipped');
+    expect(email[0].skip_reason).toBe('no_email_contact');   // never delivered to real@example.com
+    expect((await c.query(
+      `SELECT count(*)::int n FROM public.notification_outbox
+        WHERE recipient_person_id = $1 AND status = 'pending'`, [pid])).rows[0].n).toBe(0);
+  });
+
+  it('SEAM 9a: an UNSUPPORTED channel reports NOTHING derived — the resolver computes none of it', async () => {
+    const evt = (await c.query(
+      `SELECT key FROM public.notification_event_types
+        WHERE NOT supports_whatsapp AND NOT required_delivery ORDER BY key LIMIT 1`)).rows[0];
+    expect(evt).toBeTruthy();
+    const uid = 'ad000000-0000-4000-8000-000000000004';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [uid]);
+    await c.query(`INSERT INTO public.persons (user_id, email) VALUES ($1, 'unsup@example.com')`, [uid]);
+    // a preference AND an academy cap that WOULD be reported if resolution ran
+    await c.query(
+      `INSERT INTO public.notification_preferences_v2 (user_id, event_type, whatsapp_frequency)
+       VALUES ($1, $2, 'instant')`, [uid, evt.key]);
+    // the cap is inserted PAST the N3 guard on purpose: the RPC refuses a cap on a channel the
+    // event does not support, so this row can only arise from a catalog flip — the same stale
+    // shape the resolver's own comment anticipates, and precisely when a fabricated "APPLIED"
+    // reading would mislead an operator most
+    await c.query(`ALTER TABLE public.academy_notification_restrictions DISABLE TRIGGER trg_notif_academy_restriction_guard;`);
+    await c.query(
+      `INSERT INTO public.academy_notification_restrictions (academy_profile_id, event_type, channel, max_frequency)
+       VALUES ($1, $2, 'whatsapp', 'off')`, [A, evt.key]);
+    await c.query(`ALTER TABLE public.academy_notification_restrictions ENABLE TRIGGER trg_notif_academy_restriction_guard;`);
+    await asUser(ADMIN_UID);
+    const d = (await c.query(
+      `SELECT * FROM public.admin_preview_notification_decision($1,$2,'whatsapp',$3)`, [uid, evt.key, A])).rows[0];
+    await asUser(null);
+    expect(d.final_decision).toBe('skip:channel_unsupported');
+    expect(d.catalog_supported).toBe(false);
+    // every column below is a RESOLUTION output; production never reaches them for this channel
+    expect(d.explicit_preference).toBeNull();          // was 'instant'
+    expect(d.academy_cap).toBeNull();                  // was 'off'
+    expect(d.cap_applied).toBe(false);                 // was true
+    expect(d.final_frequency).toBeNull();              // was 'off'
+    expect(d.whatsapp_optin_arm).toBe(false);
+    expect(d.contact_found).toBe(false);
+    expect(d.contact_source).toBe('none');
+    expect(d.suppressed).toBe(false);
+    // channel-level facts ARE still reported — they are not resolution outputs
+    expect(d.kill_state).toBe('live');
+    expect(d.circuit_state).toBe('none');
+    await c.query(`DELETE FROM public.notification_preferences_v2 WHERE user_id = $1`, [uid]);
+    await c.query(`DELETE FROM public.academy_notification_restrictions WHERE event_type = $1`, [evt.key]);
+  });
+
+  // SEAM 10 (the two-actor collision RACE) lives in notifChannelKill.realpg.test.ts: this
+  // harness fakes auth.uid() with a shared TABLE row, so two sessions cannot hold two different
+  // identities — the kill suite's per-session set_config() can.
+
+  it('SEAM 11/14: the evidence assertion demands the APPLIED DECISION, not merely a row with the right ids', async () => {
+    const assertion = MIG('20261024100000_notif_n4_seam_corrections_round3.sql')
+      .match(/DO \$\$\nDECLARE v_bad text;[\s\S]*?END \$\$;/)?.[0];
+    if (!assertion) throw new Error('the seam-14 assertion was not found in the round-3 migration');
+    const clearKills = async () => {
+      await c.query(`ALTER TABLE public.notification_channel_kill_switches DISABLE TRIGGER trg_notif_channel_kill_guard;`);
+      await c.query(`DELETE FROM public.notification_channel_kill_switches;`);
+      await c.query(`ALTER TABLE public.notification_channel_kill_switches ENABLE TRIGGER trg_notif_channel_kill_guard;`);
+    };
+    await clearKills();
+    await c.query(assertion);                            // the clean world passes
+    const actor = 'af000000-0000-4000-8000-000000000001';
+    await c.query(`INSERT INTO auth.users (id) VALUES ($1) ON CONFLICT DO NOTHING`, [actor]);
+
+    // (a) a kill with NO audit row at all — the shape ON CONFLICT DO NOTHING accepted in silence
+    const req = crypto.randomUUID();
+    await c.query(
+      `INSERT INTO public.notification_channel_kill_switches (channel, activated_by, reason, request_id)
+       VALUES ('whatsapp', $1, 'legacy kill', $2)`, [actor, req]);
+    await expect(c.query(assertion)).rejects.toThrow(/no APPLIED audit decision/);
+
+    // (b) the case round 2 ACCEPTED: an M2-era kill whose id was replayed after M3, leaving an
+    // 'already_killed' audit row. Same actor, same request id, same action, same target — and
+    // still no evidence that this kill was ever applied.
+    await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_audit WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, $2, 'channel_kill', 'whatsapp', 'killed', 'killed', 'already_killed', 'legacy kill')`,
+      [actor, req]);
+    await expect(c.query(assertion)).rejects.toThrow(/no APPLIED audit decision/);
+
+    // (c) the real evidence — applied + the registry verdict under the canonical fingerprint
+    await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_audit WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(
+      `INSERT INTO public.notification_admin_audit (actor, request_id, action, target, old_value, new_value, outcome, reason)
+       VALUES ($1, $2, 'channel_kill', 'whatsapp', 'live', 'killed', 'applied', 'legacy kill')`,
+      [actor, req]);
+    // …the audit alone is still not enough: the registry must carry the 'killed' verdict
+    await expect(c.query(assertion)).rejects.toThrow(/no matching registry verdict/);
+    await c.query(
+      `INSERT INTO public.notification_admin_requests (actor, request_id, action, fingerprint, verdict)
+       VALUES ($1, $2, 'channel_kill',
+               public.notif_admin_fingerprint(jsonb_build_object('action','channel_kill','channel','whatsapp','reason','legacy kill')),
+               'killed')`, [actor, req]);
+    await c.query(assertion);                            // now it passes
+    await clearKills();
+    await c.query(`ALTER TABLE public.notification_admin_audit DISABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_audit WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_audit ENABLE TRIGGER trg_notif_admin_audit_guard;`);
+    await c.query(`ALTER TABLE public.notification_admin_requests DISABLE TRIGGER trg_notif_admin_requests_guard;`);
+    await c.query(`DELETE FROM public.notification_admin_requests WHERE request_id = $1`, [req]);
+    await c.query(`ALTER TABLE public.notification_admin_requests ENABLE TRIGGER trg_notif_admin_requests_guard;`);
+  });
+});
+
+describe('FINAL AUDIT — the resolver honours the one-click unsubscribe its own footer promises', () => {
+  const MARKETING = 'marketing_updates';
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.email_marketing_suppression`);
+    // a marketing event this suite can actually enqueue: email-capable, instant, footer-promising
+    await c.query(
+      `INSERT INTO public.notification_event_types
+         (key, category, audience, priority, required_delivery, supports_email, supports_whatsapp,
+          supports_digest, default_email_frequency, visibility_scope, email_footer_policy)
+       VALUES ($1, 'marketing', 'player', 'marketing', false, true, false, false, 'instant',
+               'private_user_only', 'marketing_unsubscribe')
+       ON CONFLICT (key) DO UPDATE SET default_email_frequency = 'instant',
+         email_footer_policy = 'marketing_unsubscribe', supports_email = true`, [MARKETING]);
+  });
+  const send = async (subject: string, tenant: { academy?: string; trainer?: string } = {}) =>
+    (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => $1, p_recipient_person_id => $2, p_idempotency_subject => $3,
+         p_tenant_academy_profile_id => $4, p_tenant_trainer_id => $5)`,
+      [MARKETING, P1, subject, tenant.academy ?? null, tenant.trainer ?? null])).rows
+      .filter((r: { channel: string }) => r.channel === 'email');
+
+  it('a PLATFORM unsubscribe silences marketing everywhere — the promise the footer makes', async () => {
+    expect((await send('m1'))[0].status).toBe('pending');            // before: it sends
+    // recorded as a MANUAL suppression (an actor, no capability): the capability table lives in
+    // another N2 migration, and the resolver's question is only "is this address suppressed"
+    await c.query(
+      `SELECT public.record_marketing_suppression('p1@example.com', 'platform', NULL, 'manual', NULL, $1)`,
+      [MGR]);
+    // …after: NOTHING is emitted on the email channel. (An optional event's refusal writes no
+    // row, exactly as preference_off does — the terminal skipped row is reserved for required
+    // delivery and for the tenant-cap arm, which is where an operator needs to see WHO silenced
+    // it. What matters here is that nothing sends.)
+    expect(await send('m2')).toEqual([]);
+    // …in every tenant context, because "stop all marketing from this product" means all of it
+    expect(await send('m3', { academy: A })).toEqual([]);
+    expect(await send('m4', { trainer: T })).toEqual([]);
+  });
+
+  it('an ACADEMY unsubscribe silences THAT academy only — a tenant decision stays that tenant\'s', async () => {
+    await c.query(`SELECT public.record_marketing_suppression('p1@example.com', 'academy', $1, 'manual', NULL, $2)`, [A, MGR]);
+    expect(await send('a1', { academy: A })).toEqual([]);                   // that academy: silenced
+    expect((await send('a2', { academy: B }))[0].status).toBe('pending');   // another academy still may
+    expect((await send('a3'))[0].status).toBe('pending');                   // and platform mail still may
+  });
+
+  it('a suppression does NOT touch service mail — an unsubscribe is not an account shutdown', async () => {
+    await c.query(`SELECT public.record_marketing_suppression('p1@example.com', 'platform', NULL, 'manual', NULL, $1)`, [MGR]);
+    // booking_confirmed_player carries no marketing footer: it is service mail and must still send
+    const rows = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player', p_recipient_person_id => $1,
+         p_idempotency_subject => 'svc-1', p_tenant_academy_profile_id => $2)`, [P1, A])).rows
+      .filter((r: { channel: string }) => r.channel === 'email');
+    expect(rows[0].status).toBe('pending');
+  });
+});
+
+describe('FINAL AUDIT (P1) — the unsubscribe bites at SEND time, not only at enqueue', () => {
+  const MARKETING = 'marketing_updates';
+  const suppress = (scope = 'platform', id: string | null = null) =>
+    c.query(`SELECT public.record_marketing_suppression('p1@example.com', $1, $2, 'manual', NULL, $3)`,
+      [scope, id, MGR]);
+  const stopReason = async (outboxId: string) =>
+    (await c.query(`SELECT public.notif_digest_member_stop_reason($1) AS r`, [outboxId])).rows[0].r as string | null;
+
+  beforeEach(async () => {
+    await c.query(`DELETE FROM public.email_marketing_suppression`);
+    await c.query(
+      `INSERT INTO public.notification_event_types
+         (key, category, audience, priority, required_delivery, supports_email, supports_whatsapp,
+          supports_digest, default_email_frequency, visibility_scope, email_footer_policy)
+       VALUES ($1, 'marketing', 'player', 'marketing', false, true, false, false, 'instant',
+               'private_user_only', 'marketing_unsubscribe')
+       ON CONFLICT (key) DO UPDATE SET default_email_frequency = 'instant',
+         email_footer_policy = 'marketing_unsubscribe', supports_email = true`, [MARKETING]);
+  });
+  /** enqueue while SUBSCRIBED — the row the recipient is about to unsubscribe from */
+  const enqueueWhileSubscribed = async (subject: string, tenant: { academy?: string; trainer?: string } = {}) => {
+    const rows = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => $1, p_recipient_person_id => $2, p_idempotency_subject => $3,
+         p_tenant_academy_profile_id => $4, p_tenant_trainer_id => $5)`,
+      [MARKETING, P1, subject, tenant.academy ?? null, tenant.trainer ?? null])).rows
+      .filter((r: { channel: string }) => r.channel === 'email');
+    expect(rows[0].status).toBe('pending');
+    return rows[0].outbox_id as string;
+  };
+
+  it('a row queued BEFORE the unsubscribe is stopped at the live gate — the case a recipient notices', async () => {
+    const id = await enqueueWhileSubscribed('s1');
+    expect(await stopReason(id)).toBeNull();          // subscribed: the gate lets it through
+    await suppress();
+    expect(await stopReason(id)).toBe('marketing_unsubscribed');
+  });
+
+  it('the send-time check is SCOPE-AWARE, exactly like the enqueue-time one', async () => {
+    const own = await enqueueWhileSubscribed('s2', { academy: A });
+    const other = await enqueueWhileSubscribed('s3', { academy: B });
+    await suppress('academy', A);
+    expect(await stopReason(own)).toBe('marketing_unsubscribed');
+    expect(await stopReason(other)).toBeNull();       // another academy's mail is not theirs to stop
+  });
+
+  it('service mail queued by the same recipient is untouched — an unsubscribe is not an account shutdown', async () => {
+    const svc = (await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player', p_recipient_person_id => $1,
+         p_idempotency_subject => 'svc-live', p_tenant_academy_profile_id => $2)`, [P1, A])).rows
+      .filter((r: { channel: string }) => r.channel === 'email')[0].outbox_id;
+    await suppress();
+    expect(await stopReason(svc)).toBeNull();
+  });
+
+  it('the DELIVERABILITY suppression still wins the report when both apply', async () => {
+    const id = await enqueueWhileSubscribed('s4');
+    await suppress();
+    await c.query(`INSERT INTO public.email_suppression_stub (email) VALUES ('p1@example.com')
+                   ON CONFLICT DO NOTHING`);
+    expect(await stopReason(id)).toBe('suppressed');   // the harder stop is the truthful cause
+    await c.query(`DELETE FROM public.email_suppression_stub WHERE email = 'p1@example.com'`);
+  });
+});
+
+describe('FINAL AUDIT round 2 — the resolver stamps WHEN THE EVENT HAPPENED', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  const enqueueAt = async (subject: string, occurredAt: string | null) => {
+    const r = await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player',
+         p_recipient_person_id => $1,
+         p_idempotency_subject => $2,
+         p_occurred_at => $3::timestamptz)`,
+      [P1, subject, occurredAt]);
+    return r.rows;
+  };
+  const rowOf = async (id: string) =>
+    (await c.query(`SELECT occurred_at, created_at FROM public.notification_outbox WHERE id = $1`, [id])).rows[0];
+
+  it('carries the producer\'s declaration onto every row it writes', async () => {
+    const then = new Date(Date.now() - 40 * 24 * 3600_000).toISOString();
+    const rows = await enqueueAt('occ-declared', then);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      const row = await rowOf(r.outbox_id);
+      expect(new Date(row.occurred_at).getTime()).toBe(new Date(then).getTime());
+      // …and created_at is still now: the two clocks are recorded separately, not conflated
+      expect(new Date(row.created_at).getTime()).toBeGreaterThan(new Date(then).getTime());
+    }
+  });
+
+  it('defaults to now when the producer says nothing — and REFUSES a future declaration', async () => {
+    const rows = await enqueueAt('occ-default', null);
+    const row = await rowOf(rows[0].outbox_id);
+    expect(Math.abs(new Date(row.occurred_at).getTime() - new Date(row.created_at).getTime())).toBeLessThan(2000);
+    // the laundering direction: a future stamp would sail over every occurrence floor
+    await expect(enqueueAt('occ-future', new Date(Date.now() + 3600_000).toISOString()))
+      .rejects.toThrow(/is in the future/);
+  });
+
+  it('the readiness envelope counts what the occurrence floor is holding, separately from the boundary', async () => {
+    await asUser(ADMIN_UID);
+    try {
+      const before = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r
+        .checks.find((x: { id: string }) => x.id === 'pre_occurrence_floor_backlog_count');
+      expect(before.status).toBe('pass');
+      // a row written NOW for an event 40 days ago: post-boundary on the created_at clock, and
+      // refused on the occurrence one. It is the replay shape, and the operator must see it.
+      await enqueueAt('occ-visible', new Date(Date.now() - 40 * 24 * 3600_000).toISOString());
+      const after = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r
+        .checks.find((x: { id: string }) => x.id === 'pre_occurrence_floor_backlog_count');
+      expect(after.status).toBe('fail');
+      expect(after.value).toBeGreaterThan(0);
+      expect(after.detail).toContain('admin_dispose_stale_outbox');    // names the exit that works
+    } finally { await asUser(null); }
   });
 });

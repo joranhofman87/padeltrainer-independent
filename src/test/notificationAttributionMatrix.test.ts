@@ -57,23 +57,99 @@ describe('attribution matrix pins', () => {
   it('the producer inventory is CLOSED: exactly these files call enqueue_notification', () => {
     // A new producer must join the matrix and these pins in the same change. This walks the two
     // trees that can hold callers and asserts the known set — a sixth caller fails here first.
-    const out = execSync(
+    // CALL SITES, not mentions: N4/N5 migrations describe the resolver in comments and function
+    // COMMENTs (the preview mirrors it, the boundary explains what it writes), and a pin that
+    // counted prose would fail for a docstring while missing a caller hidden in a one-liner.
+    const mentions = execSync(
       `grep -rl "enqueue_notification\\|enqueue_booking_notification" supabase/functions supabase/migrations`,
       { cwd: ROOT, encoding: 'utf8' },
-    )
-      .trim()
+    ).trim().split('\n');
+    // WHOLE-FILE, not line-by-line: the ordinary multiline shape
+    //   supabase.rpc(
+    //     "enqueue_notification",
+    //     args,
+    //   )
+    // contains the call on no single line, and a line-based scan would drop a real producer while
+    // still looking strict. Comments are stripped first — prose about the resolver is not a call.
+    const stripComments = (src: string) => src
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')
       .split('\n')
-      // resolver-definition migrations and N3's own files DEFINE or replay the function; tests aside
-      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000|\.test\./.test(f))
+      .map((l) => l.replace(/(^|\s)--\s.*$/, '').replace(/(^|\s)\/\/.*$/, ''))
+      .filter((l) => !/^\s*[*]/.test(l))
+      .join('\n');
+    const callsResolver = (src: string) => {
+      const code = stripComments(src)
+        // a DEFINITION is not a call — the resolver-defining migrations name it after CREATE
+        .replace(/CREATE\s+(OR\s+REPLACE\s+)?FUNCTION\s+public\.(enqueue_notification|enqueue_booking_notification)\s*\(/gi, ' <definition> (');
+      return /\brpc\s*\(\s*["'](enqueue_notification|enqueue_booking_notification)["']/s.test(code)
+          || /(SELECT|PERFORM)\s+(public\.)?(enqueue_notification|enqueue_booking_notification)\s*\(/is.test(code)
+          || /\bFROM\s+(public\.)?(enqueue_notification|enqueue_booking_notification)\s*\(/is.test(code);
+    };
+    const out = mentions
+      .filter((f) => !/\.test\./.test(f))
+      .filter((f) => callsResolver(read(f)))
+      // the resolver-definition migrations CALL it only to redefine/replay it — and 20261104100000
+      // re-defines the two SQL PRODUCERS as well, to give them the occurrence argument. Neither
+      // adds a producer; the pin below is what holds them to the contract.
+      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000|20261104100000|20261106100000|20261108100000/.test(f))
       .sort();
     expect(out).toEqual([
       'supabase/functions/_shared/booking-confirmation-email.ts',
       'supabase/functions/_shared/mollie-booking-paid-side-effects.ts',
-      'supabase/functions/_shared/open-slots-notify.ts',
       'supabase/functions/notify-followers/index.ts',
       'supabase/migrations/20260913100000_notification_pilot_review_received.sql',
       'supabase/migrations/20260926100000_booking_notification_enqueue_rpc.sql',
     ]);
+  });
+
+  it('EVERY producer declares when the event occurred — no call site relies on the default', () => {
+    // The final audit's second round: the activation boundary measures `occurred_at`, and a
+    // producer that omits it gets "whenever this row was written", which for a retried or
+    // redelivered producer is exactly the historical event the boundary exists to refuse. This
+    // walks the same closed inventory as the pin above and requires the argument at every site.
+    //
+    // The newest definition of each SQL producer lives in the audit migration, so that is where
+    // those two are checked — grepping the superseded original would pass on dead text.
+    const sites: Array<[string, RegExp]> = [
+      ['supabase/functions/_shared/booking-confirmation-email.ts', /p_occurred_at:\s*occurredAt/],
+      ['supabase/functions/_shared/mollie-booking-paid-side-effects.ts', /p_occurred_at:\s*occurredAt/],
+      ['supabase/functions/notify-followers/index.ts', /p_occurred_at:\s*occurredAt/],
+    ];
+    for (const [file, pattern] of sites) {
+      const src = read(file);
+      // the window grew when the producers gained p_occurred_at and the transition discriminator;
+      // a fixed 900 chars silently matched ZERO calls in the staff producer and the pin passed
+      // vacuously, which is the failure mode a call-site guard exists to avoid
+      const calls = src.match(/rpc\(\s*["']enqueue_notification["'][\s\S]{0,1600}?\n\s*\}\);/g) ?? [];
+      expect(calls.length, `${file}: no enqueue_notification call found`).toBeGreaterThan(0);
+      for (const call of calls) expect(call, `${file}: a call site omits p_occurred_at`).toMatch(pattern);
+    }
+    // …and the two in-database producers, in the migration that owns their current definition
+    // BOTH audit migrations: the round-2 one re-lifts enqueue_booking_notification to date its
+    // transitions correctly, so it is the newest definition of that producer.
+    // every audit migration that re-lifts a SQL producer; 20261108100000 is the newest, moving
+    // both arms onto the booking lifecycle ledger
+    const mig = ['20261104100000_notif_audit_event_occurrence_boundary.sql',
+                 '20261106100000_notif_audit_occurrence_is_the_transition.sql',
+                 '20261108100000_booking_lifecycle_events.sql']
+      .map((f) => read('supabase/migrations/' + f)).join('\n');
+    const sqlCalls = mig.match(/public\.enqueue_notification\(\s*[\s\S]{0,1400}?\n\s*\);/g) ?? [];
+    expect(sqlCalls.length, 'the audit migrations should carry the SQL producers').toBe(7);
+    for (const call of sqlCalls) expect(call).toMatch(/p_occurred_at\s*=>/);
+    // fail closed rather than dating an undateable message with now()
+    expect(mig).toMatch(/refusing to enqueue a message we cannot date/);
+  });
+
+  // open-slots-notify.ts COMPOSES the open_slots_player send but does not call the resolver
+  // itself — notify-followers does, and the matrix attributes the row there. Pinned separately so
+  // the split is a fact rather than an accident of which file the grep happened to match.
+  it('open-slots-notify composes the open_slots_player payload; notify-followers is the caller', () => {
+    const composer = read('supabase/functions/_shared/open-slots-notify.ts');
+    expect(composer).toContain('open_slots_player');
+    expect(composer).not.toMatch(/rpc\(\s*["']enqueue_notification["']/);
+    const caller = read('supabase/functions/notify-followers/index.ts');
+    expect(caller).toMatch(/rpc\(\s*["']enqueue_notification["']/);
+    expect(caller).toContain('p_tenant_trainer_id: trainerId');
   });
 
   it('the matrix document exists and states the rule', () => {

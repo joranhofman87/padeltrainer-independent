@@ -22,9 +22,26 @@ export type EntryDeps = {
   requireServiceRole: (req: Request) => Response | null;
   log: (event: Record<string, unknown>) => void;
   alert: (payload: Record<string, unknown>) => Promise<void> | void;
-  run: (config: { resendApiKey: string; supabaseUrl: string; serviceKey: string }) => Promise<WorkerSummary>;
+  run: (config: { resendApiKey: string; supabaseUrl: string; serviceKey: string; invocationId: string | null }) => Promise<WorkerSummary>;
   corsHeaders: Record<string, string>;
 };
+
+/** The deliberate invocation THIS request names (N4 round 5). The scheduled command builds the
+ *  body at execution time, so an artifact's request carries the id it just opened and a tick's
+ *  carries null. Read leniently — an absent, malformed or non-uuid value is simply "no identity",
+ *  which is the SAFE reading: a request that names nothing owns nothing, and the claim then
+ *  refuses to do pipeline work while someone else's invocation is unresolved. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export async function readInvocationId(req: Request): Promise<string | null> {
+  try {
+    const raw = await req.clone().text();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return null;
+    const v = (parsed as Record<string, unknown>).invocation_id;
+    return typeof v === "string" && UUID.test(v) ? v : null;
+  } catch { return null; }
+}
 
 export function makeDigestWorkerEntry(deps: EntryDeps): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
@@ -34,8 +51,13 @@ export function makeDigestWorkerEntry(deps: EntryDeps): (req: Request) => Promis
     const guard = deps.requireServiceRole(req);
     if (guard) return guard;
 
+    // AFTER auth, BEFORE any config read or DB call: reading the body is cheap and PII-free (it
+    // carries one uuid), and an unauthenticated caller must never reach even this.
+    const invocationId = await readInvocationId(req);
+
     const result: HandlerResult = await runDigestWorkerHandler({
-      env: deps.env, log: deps.log, alert: deps.alert, run: deps.run,
+      env: deps.env, log: deps.log, alert: deps.alert,
+      run: (config) => deps.run({ ...config, invocationId }),
     });
     return new Response(JSON.stringify(result.body), {
       status: result.http, headers: { ...deps.corsHeaders, "Content-Type": "application/json" },

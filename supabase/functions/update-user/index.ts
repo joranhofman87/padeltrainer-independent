@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
+import { GLOBAL_IDENTITY_FIELDS } from "../_shared/trainer-authority.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -99,28 +100,11 @@ Deno.serve(async (req) => {
         }
       }
 
-      // If still not authorized, check club manager
-      if (!isAuthorizedManager) {
-        const { data: trainerClubs } = await supabaseAdmin
-          .from('club_trainers')
-          .select('club_profile_id')
-          .eq('trainer_profile_id', trainer_profile_id)
-          .eq('status', 'active');
-
-        if (trainerClubs && trainerClubs.length > 0) {
-          const clubIds = trainerClubs.map(c => c.club_profile_id);
-          const { data: clubManagerCheck } = await supabaseAdmin
-            .from('club_managers')
-            .select('id')
-            .eq('user_id', callerUser.id)
-            .in('club_profile_id', clubIds)
-            .limit(1);
-          
-          if (clubManagerCheck && clubManagerCheck.length > 0) {
-            isAuthorizedManager = true;
-          }
-        }
-      }
+      // The club-manager grant that used to live here queried `club_trainers`, a table no
+      // migration creates: PostgREST answered 42703, the error was dropped, and the branch could
+      // never authorize anyone. Removed rather than repaired — under OD-1 a tenant manager has no
+      // global-identity authority to grant, so restoring it would only re-create a path that must
+      // refuse anyway. Club trainer management belongs to the trainer-permissions unit.
     }
 
     // SECURITY (IDOR guard): the manager checks above prove the caller manages the
@@ -139,6 +123,23 @@ Deno.serve(async (req) => {
         isAuthorizedManager = false;
       }
     }
+
+    // IDENTITY IS SELF-SERVICE (OD-1, owner decision 2026-08-06).
+    //
+    // A tenant manager may manage a trainer's membership, their academy role and their
+    // permissions. They may never change that trainer's global login identity — the auth email,
+    // the password, the credential — because the trainer owns it, not the academy. This holds even
+    // when one manager happens to manage every academy the trainer belongs to: "nobody else is
+    // affected today" is not the same as "this is mine to change", and a trainer who joins a second
+    // academy tomorrow should not discover their login was rotated by the first.
+    //
+    // What an academy MAY do instead is INITIATE: invite, send a password-reset link, ask the
+    // trainer to confirm an email change. Those flows end with the trainer acting, which is the
+    // point. A platform-administrator recovery path exists and is audited.
+    //
+    // This replaces the earlier exclusivity carve-out (a manager of every tenant could still
+    // rotate the login). The cross-tenant case it closed stays closed; the rest is now closed too.
+    const mayChangeGlobalIdentity = isAdmin || isSelf;
 
     if (!isAdmin && !isSelf && !isAuthorizedManager) {
       return new Response(
@@ -173,14 +174,25 @@ Deno.serve(async (req) => {
     // and a notification is sent to the OLD address so a real account owner notices.
     let emailChanged = false;
     let previousEmail: string | null = null;
+    if (normalizedEmail && !mayChangeGlobalIdentity) {
+      // Refused, not silently dropped: a manager who believes they changed a login and did not is
+      // worse off than one who is told they cannot. The answer names what they CAN do.
+      return new Response(
+        JSON.stringify({
+          error: "A trainer's login email can only be changed by the trainer themselves, or by a platform administrator through the audited recovery path. Send them a password-reset or email-change link instead — they confirm it from their own account.",
+          code: "identity_is_self_service",
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
     if (normalizedEmail) {
-      if (isAdmin || isAuthorizedManager) {
-        if (isAuthorizedManager) {
-          const { data: oldUser, error: lookupError } = await supabaseAdmin.auth.admin.getUserById(target_user_id);
-          if (lookupError) console.error("Old-email lookup failed (notification may be skipped):", lookupError);
-          previousEmail = oldUser?.user?.email?.toLowerCase() ?? null;
-          if (previousEmail === normalizedEmail) previousEmail = null; // no-op change → no notice
-        }
+      if (isAdmin) {
+        // the audited platform-administrator recovery path. A notice still goes to the OLD address
+        // below, so a real account owner sees that their login moved.
+        const { data: oldUser, error: lookupError } = await supabaseAdmin.auth.admin.getUserById(target_user_id);
+        if (lookupError) console.error("Old-email lookup failed (notification may be skipped):", lookupError);
+        previousEmail = oldUser?.user?.email?.toLowerCase() ?? null;
+        if (previousEmail === normalizedEmail) previousEmail = null; // no-op change → no notice
         // Directly update via admin API (no verification needed)
         const { error: updateAuthError } = await supabaseAdmin.auth.admin.updateUserById(
           target_user_id,
@@ -213,9 +225,12 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Update profile - support all profile fields
+    // Update profile — every field below lives on the ONE shared identity (GLOBAL_IDENTITY_FIELDS),
+    // so a caller without that authority writes none of them. Refusing the whole write rather than
+    // silently dropping fields: a partial success that reports success is how a manager comes to
+    // believe they renamed someone.
     const updates: Record<string, string | number | null> = {};
-    if (normalizedEmail && (isAdmin || isSelf || isAuthorizedManager)) updates.email = normalizedEmail;
+    if (normalizedEmail && mayChangeGlobalIdentity) updates.email = normalizedEmail;
     if (full_name !== undefined) updates.full_name = full_name;
     if (phone !== undefined) updates.phone = phone;
     if (bio !== undefined) updates.bio = bio;
@@ -223,6 +238,23 @@ Deno.serve(async (req) => {
     if (skill_rating !== undefined) updates.skill_rating = skill_rating;
     if (rating_system !== undefined) updates.rating_system = rating_system;
     if (rating_member_id !== undefined) updates.rating_member_id = rating_member_id;
+
+    // EVERY field this endpoint writes lives on the ONE shared identity — the profiles row every
+    // tenant reads. So under OD-1 a manager caller writes none of them, and the honest answer is a
+    // refusal rather than a 200 that changed nothing. Listed explicitly (GLOBAL_IDENTITY_FIELDS)
+    // so adding a column here is a decision about whose it is rather than an accident.
+    const attemptedGlobal = Object.keys(updates).filter(
+      (k) => (GLOBAL_IDENTITY_FIELDS as readonly string[]).includes(k));
+    if (attemptedGlobal.length > 0 && !mayChangeGlobalIdentity) {
+      return new Response(
+        JSON.stringify({
+          error: "A trainer's own name, contact details and photo belong to them. Ask the trainer to update them in their account, or change what your academy controls — their membership, role and permissions.",
+          code: "identity_is_self_service",
+          fields: attemptedGlobal,
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (Object.keys(updates).length > 0) {
       const { error: profileError } = await supabaseAdmin
@@ -243,7 +275,7 @@ Deno.serve(async (req) => {
     // account owner must be able to notice a takeover. Sent only after BOTH the auth
     // and profiles writes landed; never blocks the update. The address is HTML-escaped
     // as defense-in-depth (GoTrue already rejects addresses with markup characters).
-    if (emailChanged && isAuthorizedManager && previousEmail && normalizedEmail) {
+    if (emailChanged && isAdmin && !isSelf && previousEmail && normalizedEmail) {
       const escapedEmail = normalizedEmail
         .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
       const resendKey = Deno.env.get("RESEND_API_KEY");

@@ -42,6 +42,10 @@ function deps(recordReturns: unknown, opts: { httpStatus?: number } = {}) {
       rpcCalls.push(name);
       rpcArgs.push({ name, args });
       switch (name) {
+        // the round-5 claim: this suite's runs carry no deliberate identity, so the honest
+        // stand-in is the steady-state row (an unreadable result is a REFUSAL by design)
+        case "claim_worker_invocation":
+          return Promise.resolve([{ status: "none", invocation_id: null }]);
         case "start_notification_worker_run":
           return Promise.resolve(rpcCalls.filter((n) => n === "start_notification_worker_run").length === 1
             ? DISPATCH_RUN : "mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm");

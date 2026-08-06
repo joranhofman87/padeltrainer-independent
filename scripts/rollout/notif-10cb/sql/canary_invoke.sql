@@ -119,16 +119,32 @@ SELECT pg_temp.assert_eq(
 -- between another invocation's COMMIT and that moment there is nothing in notification_worker_runs to
 -- see, and the check above reads clean over a canary that is already on its way.
 --
--- STATED PRECISELY, because this narrows the window rather than closing it: pg_net owns the lifetime
--- of the queue row and removes it on its own schedule, so a request already dispatched but whose
--- worker has not yet recorded a run stays invisible here. Closing that gap needs a durable
--- pending-invocation record, which is deferred to the Admin Notification Operations release unit
--- (docs/FOUNDATION_ROADMAP.md) — that is where "what is the pipeline doing right now" belongs, and
--- it is a mandatory prerequisite for any canary in the first place.
+-- STATED PRECISELY: this queue check NARROWS the window (pg_net owns the queue row's lifetime,
+-- so a dispatched-but-not-yet-running request is invisible here); the DURABLE closure is the
+-- invocation record gated + opened just below (N4 M1, Stage-3.5 AC-6) — the record exists from
+-- this transaction's commit until the reconcile resolves it, so nothing can read "idle" over a
+-- travelling canary again.
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int FROM net.http_request_queue
     WHERE url = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
   'no request to the digest worker is already queued (another canary invocation is in progress — wait for it to answer)');
+
+-- N4 M1 (AC-6): the DURABLE half of the same guarantee, then OPEN this invocation's record in
+-- THIS transaction — it exists from the instant the request can. :invocation_request_id is
+-- generated once per operator command by run-enablement.sh, so an ambiguous-commit retry
+-- recovers the SAME invocation instead of stacking a second. The gate is the REPLAY-AWARE one:
+-- a retry carrying the same request id passes through to the idempotent open(); any OTHER
+-- unresolved invocation still refuses.
+\i _invocation_gate_replay.sql
+-- ...and PUBLISH its id into this transaction, which is what the reviewed command's body reads.
+-- Transaction-local on purpose (round 6): a pg_cron execution runs in its OWN session and can
+-- never see it, so a tick selected before this transaction and started after it still names
+-- nothing. A database lookup could not give that guarantee — anything this transaction COMMITS is
+-- something a late-starting tick can read too.
+SELECT pg_catalog.set_config(
+  'notif.dispatch_invocation',
+  public.open_notification_worker_invocation('canary', 'canary_invoke.sql', :'invocation_request_id'::pg_catalog.uuid)::pg_catalog.text,
+  true) AS invocation_id;
 
 -- THE BLAST RADIUS. "Canary: one recipient" was a hope, not a fact: the worker sends to every group
 -- it can claim, plus everything materialization forms during the same run. If the engine has been on
@@ -188,7 +204,7 @@ BEGIN
   SELECT command INTO STRICT v_cmd FROM cron.job
    WHERE jobid = (SELECT jobid FROM pg_temp._gate_job);
 
-  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '657295911df940d4aecc69a87169574c' THEN
+  IF md5(btrim(regexp_replace(v_cmd, '\s+', ' ', 'g'))) IS DISTINCT FROM '69204549e8cb81680e492e49ef08fdd6' THEN
     RAISE EXCEPTION 'ASSERT FAILED: refusing to execute a cron command that is not EXACTLY the reviewed one';
   END IF;
 
@@ -205,6 +221,15 @@ END $do$;
 
 SELECT pg_temp.assert_eq((SELECT count(*)::int FROM pg_temp._canary_request), 1,
   'exactly one pg_net request was queued');
+
+-- N4 (AC-6): record WHICH request this invocation queued, in this same transaction — causal
+-- dispatch evidence. On a replay whose original commit was real, this RAISES naming the
+-- original request id, rolling back (and un-queueing) the duplicate request the re-executed
+-- command just minted: a replay can never double-send.
+SELECT public.record_invocation_net_request(
+  (SELECT id FROM public.notification_worker_invocations
+    WHERE request_id = :'invocation_request_id'::pg_catalog.uuid),
+  (SELECT request_id FROM pg_temp._canary_request));
 
 -- PRINTED BEFORE THE COMMIT, ON PURPOSE. If the connection drops after COMMIT but before the marker
 -- below is emitted, psql exits non-zero over a request that IS committed and will be dispatched — and

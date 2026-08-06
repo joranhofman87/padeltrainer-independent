@@ -61,14 +61,32 @@ Deno.serve(async (req) => {
     const oldEmail = prof.email as string | null;
 
     // Never touch an admin account.
-    const { data: targetAdmin } = await admin
+    const { data: targetAdmin, error: targetAdminErr } = await admin
       .from("user_roles").select("role").eq("user_id", targetUserId).eq("role", "admin").maybeSingle();
+    if (targetAdminErr) return json(503, { error: "role_check_failed" });
     if (targetAdmin) return json(403, { error: "cannot_modify_admin" });
+
+    // NEVER A TRAINER (OD-1). A trainer owns their login and changes it themselves; an academy may
+    // only INITIATE an invitation or reset. This endpoint exists for the narrower case the gate
+    // below enforces — correcting a typo in a player invitation that has never been used — and a
+    // trainer is outside it regardless of how nascent the account looks.
+    const { data: targetTrainer, error: targetTrainerErr } = await admin
+      .from("trainer_profiles").select("id").eq("user_id", targetUserId).maybeSingle();
+    if (targetTrainerErr) return json(503, { error: "trainer_check_failed" });
+    if (targetTrainer) {
+      return json(403, {
+        error: "identity_is_self_service",
+        detail: "A trainer's login belongs to them. Send an invitation or a password-reset link instead — they confirm the change from their own account.",
+      });
+    }
 
     // Defense-in-depth: re-verify the account is STILL nascent right before the
     // write (closes the gate->write race, and redundantly enforces never-confirmed
     // independent of the capability RPC).
-    const { data: targetAuth } = await admin.auth.admin.getUserById(targetUserId);
+    const { data: targetAuth, error: targetAuthErr } = await admin.auth.admin.getUserById(targetUserId);
+    // a lookup that FAILED is not evidence the account is nascent. Treating it as "inactive" made
+    // the defence-in-depth check fail open, which is the opposite of its purpose.
+    if (targetAuthErr || !targetAuth?.user) return json(503, { error: "account_state_unknown" });
     if (targetAuth?.user?.last_sign_in_at || targetAuth?.user?.email_confirmed_at) {
       return json(403, { error: "account_active" });
     }

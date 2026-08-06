@@ -1052,6 +1052,51 @@ export type Database = {
           },
         ]
       }
+      account_deletion_audit: {
+        Row: {
+          actor_user_id: string
+          failure_reason: string | null
+          finished_at: string | null
+          id: string
+          ip_address: string | null
+          self_service: boolean
+          started_at: string
+          status: string
+          subject_email: string | null
+          subject_name: string | null
+          subject_user_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          actor_user_id: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          ip_address?: string | null
+          self_service: boolean
+          started_at?: string
+          status?: string
+          subject_email?: string | null
+          subject_name?: string | null
+          subject_user_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          actor_user_id?: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          ip_address?: string | null
+          self_service?: boolean
+          started_at?: string
+          status?: string
+          subject_email?: string | null
+          subject_name?: string | null
+          subject_user_id?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       admin_impersonation_logs: {
         Row: {
           action: string | null
@@ -1488,6 +1533,43 @@ export type Database = {
           rotation_interval_seconds?: number
           slug?: string
           width?: number | null
+        }
+        Relationships: []
+      }
+      booking_lifecycle_events: {
+        Row: {
+          actor_user_id: string | null
+          booking_id: string
+          event_type: string
+          from_payment_status: string | null
+          from_status: string | null
+          id: string
+          occurred_at: string
+          seq: number
+          to_payment_status: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          booking_id: string
+          event_type: string
+          from_payment_status?: string | null
+          from_status?: string | null
+          id?: string
+          occurred_at?: string
+          to_payment_status?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          booking_id?: string
+          event_type?: string
+          from_payment_status?: string | null
+          from_status?: string | null
+          id?: string
+          occurred_at?: string
+          to_payment_status?: string | null
+          to_status?: string | null
         }
         Relationships: []
       }
@@ -9480,6 +9562,357 @@ export type Database = {
         Args: { p_job_name: string; p_ttl_seconds?: number }
         Returns: string
       }
+      admin_activate_channel_kill: {
+        Args: { p_channel: string; p_reason: string; p_request_id: string }
+        Returns: string
+      }
+      admin_cancel_digest_group: {
+        Args: {
+          p_expected_state: string
+          p_group_id: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      admin_dispose_pre_boundary_backlog: {
+        Args: {
+          p_limit?: number
+          p_path: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          disposed: number
+          verdict: string
+        }[]
+      }
+      admin_dispose_stale_outbox: {
+        Args: {
+          p_channel: string
+          p_cutoff_at: string
+          p_expected_abandoned: number
+          p_expected_pending: number
+          p_limit?: number
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          disposed: number
+          observed_abandoned: number
+          observed_pending: number
+          verdict: string
+        }[]
+      }
+      admin_list_digest_groups: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_channel?: string
+          p_days?: number
+          p_limit?: number
+          p_state?: string
+        }
+        Returns: {
+          available_at: string
+          channel: string
+          created_at: string
+          delivery_budget_used: number
+          digest_boundary_at: string
+          event_type: string
+          first_send_at: string
+          id: string
+          item_count: number
+          locked_by: string
+          provider_attempts_started: number
+          provider_message_id: string
+          provider_status: string
+          state: string
+          terminal_reason: string
+          uncertain_since: string
+          updated_at: string
+          worker_run_id: string
+        }[]
+      }
+      admin_list_notification_audit: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          action: string
+          actor: string
+          created_at: string
+          id: string
+          new_value: string
+          old_value: string
+          outcome: string
+          reason: string
+          request_id: string
+          target: string
+        }[]
+      }
+      admin_list_notification_orphans: {
+        Args: {
+          p_before_event_id?: string
+          p_before_updated_at?: string
+          p_limit?: number
+        }
+        Returns: {
+          attempts: number
+          channel: string
+          digest_group_id: string
+          last_error_code: string
+          next_eligible_at: string
+          quarantined: boolean
+          resend_event_id: string
+          updated_at: string
+        }[]
+      }
+      admin_list_notification_outbox: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_channel?: string
+          p_days?: number
+          p_event_type?: string
+          p_limit?: number
+          p_status?: string
+        }
+        Returns: {
+          attempts: number
+          channel: string
+          created_at: string
+          delivery_mode: string
+          destination_redacted: string
+          event_type: string
+          error_class: string
+          id: string
+          max_attempts: number
+          scheduled_for: string
+          skip_reason: string
+          status: string
+          template_key: string
+          tenant_academy_profile_id: string
+          tenant_trainer_id: string
+          updated_at: string
+        }[]
+      }
+      admin_list_notification_rejected: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_limit?: number
+        }
+        Returns: {
+          action: string
+          actor: string
+          conflict_with: string
+          created_at: string
+          id: string
+          reason: string
+          request_id: string
+          target: string
+        }[]
+      }
+      admin_list_worker_invocations: {
+        Args: { p_limit?: number }
+        Returns: {
+          abandon_reason: string
+          actionable: boolean
+          age_seconds: number
+          id: string
+          net_request_id: number
+          purpose: string
+          requested_at: string
+          resolved_at: string
+          run_phase: string
+          run_status: string
+          source: string
+          stale: boolean
+          status: string
+          worker_run_id: string
+        }[]
+      }
+      admin_list_worker_runs: {
+        Args: {
+          p_before_run_id?: string
+          p_before_started_at?: string
+          p_days?: number
+          p_limit?: number
+        }
+        Returns: {
+          channel: string
+          ended_at: string
+          phase: string
+          run_id: string
+          started_at: string
+          status: string
+          worker: string
+        }[]
+      }
+      admin_notification_activation_boundaries: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          activated_by: string
+          boundary_at: string
+          max_event_age_minutes: number
+          min_occurred_at: string
+          path: string
+          pending_before_boundary: number
+          pending_before_boundary_capped: boolean
+          pending_before_occurrence_floor: number
+          pending_before_occurrence_floor_capped: boolean
+          reason: string
+          state: string
+        }[]
+      }
+      admin_notification_delivery_history: {
+        Args: {
+          p_before_at?: string
+          p_before_ref?: string
+          p_limit?: number
+          p_outbox_id: string
+        }
+        Returns: {
+          a: string
+          at: string
+          b: string
+          c: string
+          kind: string
+          ref: string
+        }[]
+      }
+      admin_notification_event_states: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          academy_off_caps: number
+          catalog_default: string
+          catalog_supported: boolean
+          channel: string
+          circuit_reason: string
+          circuit_state: string
+          circuit_tripped_at: string
+          cron_state: string
+          digest_conclusion: string
+          digest_engine_enabled: boolean
+          event_type: string
+          instant_conclusion: string
+          kill_state: string
+          required_delivery: boolean
+          send_env: string
+        }[]
+      }
+      admin_notification_gauges: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          capped: boolean
+          channel: string
+          event_type: string
+          metric: string
+          value: number
+        }[]
+      }
+      admin_notification_readiness: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      admin_preview_circuit_release: {
+        Args: { p_channel: string }
+        Returns: {
+          capped: boolean
+          metric: string
+          value: number
+        }[]
+      }
+      admin_preview_notification_decision: {
+        Args: {
+          p_channel: string
+          p_event_key: string
+          p_tenant_academy_profile_id?: string
+          p_user_id: string
+        }
+        Returns: {
+          academy_cap: string
+          cap_applied: boolean
+          catalog_default: string
+          catalog_supported: boolean
+          channel: string
+          circuit_state: string
+          contact_found: boolean
+          contact_source: string
+          destination_masked: string
+          event_type: string
+          explicit_preference: string
+          final_decision: string
+          final_frequency: string
+          kill_state: string
+          required_delivery: boolean
+          required_override_applied: boolean
+          suppressed: boolean
+          whatsapp_optin_arm: boolean
+        }[]
+      }
+      admin_preview_notification_recipients: {
+        Args: {
+          p_after_user_id?: string
+          p_channel: string
+          p_event_key: string
+          p_limit?: number
+          p_tenant_academy_profile_id?: string
+        }
+        Returns: {
+          candidates_partial: boolean
+          destination_masked: string
+          final_decision: string
+          final_frequency: string
+          next_cursor: string
+          user_id: string
+        }[]
+      }
+      admin_requeue_notification_orphan: {
+        Args: { p_reason: string; p_request_id: string; p_resend_event_id: string }
+        Returns: string
+      }
+      admin_reset_notification_circuit: {
+        Args: {
+          p_channel: string
+          p_expected_reason: string
+          p_expected_state: string
+          p_expected_tripped_at: string
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: string
+      }
+      admin_resolve_notification_orphan: {
+        Args: { p_reason: string; p_request_id: string; p_resend_event_id: string }
+        Returns: string
+      }
+      admin_search_notification_destination: {
+        Args: { p_destination: string }
+        Returns: {
+          contacts: number
+          contacts_capped: boolean
+          delivery_events: number
+          destination_masked: string
+          events_capped: boolean
+          outbox_capped: boolean
+          outbox_rows: number
+        }[]
+      }
+      admin_stale_outbox_preview: {
+        Args: { p_channel: string; p_older_than_minutes: number }
+        Returns: {
+          abandoned_processing: number
+          channel: string
+          cutoff_at: string
+          older_than_minutes: number
+          oldest: string
+          pending: number
+        }[]
+      }
       admin_stats_summary: { Args: never; Returns: Json }
       annotate_invoice_status_reason: {
         Args: { p_invoice_id: string; p_reason: string }
@@ -9581,6 +10014,18 @@ export type Database = {
         Args: { p_hold_expires_at: string; p_status: string }
         Returns: boolean
       }
+      booking_transition_event: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: { occurred_at: string; seq: number; set_key: string }[]
+      }
+      booking_transition_occurred_at: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: string
+      }
+      booking_transition_seq: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: number
+      }
       bump_rebook_reminders: {
         Args: {
           p_guest_ids: string[]
@@ -9608,6 +10053,10 @@ export type Database = {
       can_report_attendance_on_slot: {
         Args: { _require_active?: boolean; _slot_id: string }
         Returns: boolean
+      }
+      bind_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_worker_run_id: string }
+        Returns: string
       }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
@@ -9677,6 +10126,13 @@ export type Database = {
           _subscription_id: string
         }
         Returns: boolean
+      }
+      claim_worker_invocation: {
+        Args: { p_invocation_id: string; p_worker_run_id: string }
+        Returns: {
+          invocation_id: string
+          status: string
+        }[]
       }
       club_has_managers: {
         Args: { _club_profile_id: string }
@@ -9855,6 +10311,7 @@ export type Database = {
           p_recipient_user_id?: string
           p_related_booking_ids?: string[]
           p_related_invoice_id?: string
+          p_occurred_at?: string
           p_related_payment_id?: string
           p_scheduled_for?: string
           p_template_key?: string
@@ -10719,6 +11176,10 @@ export type Database = {
         Args: { p_address: string; p_scope_id: string; p_scope_kind: string }
         Returns: boolean
       }
+      is_notification_channel_killed: {
+        Args: { p_channel: string }
+        Returns: boolean
+      }
       is_notification_consent_in_scope: {
         Args: {
           _consent_academy: string
@@ -11054,6 +11515,58 @@ export type Database = {
         Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
         Returns: boolean
       }
+      notif_activation_boundary: {
+        Args: { p_path: string }
+        Returns: string
+      }
+      notif_admin_gate: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      notif_admin_record_refusal: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_conflict: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: undefined
+      }
+      notif_admin_fingerprint: {
+        Args: { p_input: Json }
+        Returns: string
+      }
+      notif_admin_record_verdict: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_fingerprint: string
+          p_request_id: string
+          p_verdict: string
+        }
+        Returns: string
+      }
+      notif_admin_replay_gate: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_fingerprint: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: string
+      }
+      notif_channel_kill_gate: {
+        Args: { p_channel: string }
+        Returns: boolean
+      }
+      notif_error_class: {
+        Args: { p_error: string }
+        Returns: string
+      }
       notif_frequency_rank: {
         Args: { p_freq: string }
         Returns: number
@@ -11201,6 +11714,10 @@ export type Database = {
           severity: string
         }[]
       }
+      open_notification_worker_invocation: {
+        Args: { p_purpose: string; p_request_id: string; p_source: string }
+        Returns: string
+      }
       record_email_event: {
         Args: {
           p_academy_profile_id?: string
@@ -11215,6 +11732,14 @@ export type Database = {
           p_trainer_id?: string
         }
         Returns: undefined
+      }
+      record_invocation_net_request: {
+        Args: { p_invocation_id: string; p_net_request_id: number }
+        Returns: undefined
+      }
+      record_notification_activation_boundary: {
+        Args: { p_path: string; p_reason: string; p_request_id: string }
+        Returns: string
       }
       record_marketing_suppression: {
         Args: {
@@ -11295,6 +11820,10 @@ export type Database = {
       }
       release_expired_guest_slot_holds: { Args: never; Returns: number }
       release_expired_rebook_holds: { Args: never; Returns: number }
+      release_notification_claims_on_kill: {
+        Args: { p_channel: string; p_worker: string }
+        Returns: number
+      }
       release_rebook_hold: { Args: { _booking_id: string }; Returns: Json }
       renew_cron_lease: {
         Args: {
@@ -11303,6 +11832,18 @@ export type Database = {
           p_ttl_seconds?: number
         }
         Returns: boolean
+      }
+      resolve_invocation_for_canary_run: {
+        Args: { p_worker_run_id: string }
+        Returns: string
+      }
+      resolve_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_outcome: string; p_reason?: string }
+        Returns: string
+      }
+      resolve_smoke_invocation_disabled: {
+        Args: { p_invocation_id: string; p_net_request_id: number }
+        Returns: string
       }
       reset_email_suppression: { Args: { p_email: string }; Returns: undefined }
       resolve_guest_member_contacts: {

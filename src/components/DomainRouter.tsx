@@ -155,6 +155,7 @@ const AdminBlogEditor = lazy(() => import('@/pages/admin/AdminBlogEditor'));
 const AdminBlogTopics = lazy(() => import('@/pages/admin/AdminBlogTopics'));
 const AdminBlogSources = lazy(() => import('@/pages/admin/AdminBlogSources'));
 const AdminBackups = lazy(() => import('@/pages/admin/AdminBackups'));
+const AdminNotificationOps = lazy(() => import('@/pages/admin/AdminNotificationOps'));
 const AdminGuestPlayers = lazy(() => import('@/pages/admin/AdminGuestPlayers'));
 const AdminCourtReviews = lazy(() => import('@/pages/admin/AdminCourtReviews'));
 
@@ -339,6 +340,7 @@ export function DomainRouter() {
           <Route path="blog/:id" element={<AdminBlogEditor />} />
           <Route path="blog/:id/sources" element={<AdminBlogSources />} />
           <Route path="backups" element={<AdminBackups />} />
+          <Route path="notifications" element={<AdminNotificationOps />} />
           <Route path="guest-players" element={<AdminGuestPlayers />} />
           <Route path="court-reviews" element={<AdminCourtReviews />} />
         </Route>
