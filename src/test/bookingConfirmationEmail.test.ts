@@ -107,13 +107,9 @@ function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; lifecycle?
       // bookings row — created_at was the wrong question and updated_at was launderable. The fake
       // serves it from the fixtures' `lifecycle` map so a test can model "this transition never
       // happened" (the fail-closed case) as well as the happy one.
-      if (name === 'booking_transition_occurred_at') {
+      if (name === 'booking_transition_event') {
         const at = (opts.lifecycle ?? {})[String((params as { p_event_type: string }).p_event_type)];
-        return { data: at ?? null, error: null };
-      }
-      if (name === 'booking_transition_seq') {
-        const at = (opts.lifecycle ?? {})[String((params as { p_event_type: string }).p_event_type)];
-        return { data: at ? 42 : null, error: null };
+        return { data: at ? [{ occurred_at: at, seq: 42 }] : [], error: null };
       }
       if (name === 'get_invoice_recipient_identity') {
         if (opts.identityThrow) throw new Error(opts.identityThrow);
@@ -168,7 +164,7 @@ describe('sendPlayerBookingConfirmation', () => {
     expect(enqueueCall(rpcCalls).p_occurred_at).not.toBe('2026-06-01T10:00:00+00:00');
     expect(enqueueCall(rpcCalls).p_occurred_at).not.toBe('2026-08-06T23:59:59+00:00');
     // it asked for the PAID transition — the one this producer reports
-    const call = rpcCalls.find((c) => c.name === 'booking_transition_occurred_at');
+    const call = rpcCalls.find((c) => c.name === 'booking_transition_event');
     expect(call?.params).toMatchObject({ p_event_type: 'paid', p_booking_ids: ['B1'] });
   });
 

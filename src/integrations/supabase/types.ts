@@ -10022,6 +10022,10 @@ export type Database = {
         Args: { p_hold_expires_at: string; p_status: string }
         Returns: boolean
       }
+      booking_transition_event: {
+        Args: { p_booking_ids: string[]; p_event_type: string }
+        Returns: { occurred_at: string; seq: number }[]
+      }
       booking_transition_occurred_at: {
         Args: { p_booking_ids: string[]; p_event_type: string }
         Returns: string

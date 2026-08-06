@@ -117,7 +117,10 @@ describe('attribution matrix pins', () => {
     ];
     for (const [file, pattern] of sites) {
       const src = read(file);
-      const calls = src.match(/rpc\(\s*["']enqueue_notification["'][\s\S]{0,900}?\}\s*\)/g) ?? [];
+      // the window grew when the producers gained p_occurred_at and the transition discriminator;
+      // a fixed 900 chars silently matched ZERO calls in the staff producer and the pin passed
+      // vacuously, which is the failure mode a call-site guard exists to avoid
+      const calls = src.match(/rpc\(\s*["']enqueue_notification["'][\s\S]{0,1600}?\n\s*\}\);/g) ?? [];
       expect(calls.length, `${file}: no enqueue_notification call found`).toBeGreaterThan(0);
       for (const call of calls) expect(call, `${file}: a call site omits p_occurred_at`).toMatch(pattern);
     }

@@ -42,9 +42,16 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  -- service_role with NO end-user JWT: the signup / invitation / auth-callback machinery, which
-  -- has no academy manager behind it. A manager's request always carries their JWT, so it lands on
-  -- the refusal above rather than here.
+  -- service_role with NO end-user JWT: the signup / invitation / auth-callback machinery.
+  --
+  -- WHAT THIS BRANCH CANNOT SEE, stated plainly rather than assumed away: an edge function that
+  -- authenticates a manager with a user client and then WRITES with an admin client arrives here
+  -- with no JWT, and is allowed. The trigger is defence in depth against a direct write carrying a
+  -- manager's own token; it is NOT the whole boundary, and it cannot guard GoTrue's auth.users at
+  -- all. The endpoint is the boundary for privileged service-role paths, which is why
+  -- `academy-update-player-email` carries its own trainer refusal and `update-user` refuses every
+  -- manager caller outright. A new privileged path must do the same — this trigger will not catch
+  -- it for you.
   IF v_uid IS NULL AND current_setting('request.jwt.claim.sub', true) IS NULL THEN
     RETURN NEW;
   END IF;

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveAppBase } from "./priority-claim-invite.ts";
-import { occurrenceForBookingEvent } from "./notification-occurrence.ts";
+import { bookingTransition } from "./notification-occurrence.ts";
 
 /**
  * The player-facing PAYMENT CONFIRMATION email, sent after a public Mollie payment
@@ -319,7 +319,8 @@ async function enqueueConfirmation(
   // WHEN IT HAPPENED, from the bookings themselves. Derived rather than defaulted: this function
   // is reached from the paid-claim and from webhook redelivery, so "now" is not reliably the time
   // the booking was made, and the activation boundary measures the event.
-  const occurredAt = await occurrenceForBookingEvent(supabase, bookingIds, "paid");
+  const paidTransition = await bookingTransition(supabase, bookingIds, "paid");
+  const occurredAt = paidTransition?.occurredAt ?? null;
   if (!occurredAt) {
     logStep("Player confirmation enqueue refused: the booking's occurrence time could not be established", { isGuest });
     return { ok: false, reason: "enqueue_failed", isGuest, pdfAttached, detail: "occurrence_undeterminable" };
@@ -328,6 +329,9 @@ async function enqueueConfirmation(
   const { data, error } = await supabase.rpc("enqueue_notification", {
     p_event_key: "booking_confirmed_player",
     p_occurred_at: occurredAt,
+    // the transition DISCRIMINATOR — see the ledger migration. Without it a genuine second `paid`
+    // transition of the same bookings collapses onto the first as a duplicate.
+    p_idempotency_subject: `paid:${bookingIds.slice().sort().join(",")}:${paidTransition?.seq ?? "none"}`,
     p_recipient_person_id: null,
     p_recipient_user_id: recipient.p_recipient_user_id ?? null,
     p_recipient_guest_player_id: recipient.p_recipient_guest_player_id ?? null,

@@ -128,15 +128,10 @@ function makeFakeSupabase(opts: FakeOpts) {
     // the occurrence comes from the booking lifecycle LEDGER now. `lifecycle` lets a test model
     // "this transition has no ledger row" (historical, or it never happened), which is the
     // fail-closed case.
-    if (name === 'booking_transition_occurred_at') {
+    if (name === 'booking_transition_event') {
       const at = (opts.lifecycle ?? { paid: '2026-08-06T08:00:00+00:00' })[
         String((_params as { p_event_type?: string } | undefined)?.p_event_type)];
-      return { data: at ?? null, error: null };
-    }
-    if (name === 'booking_transition_seq') {
-      const at = (opts.lifecycle ?? { paid: '2026-08-06T08:00:00+00:00' })[
-        String((_params as { p_event_type?: string } | undefined)?.p_event_type)];
-      return { data: at ? 42 : null, error: null };
+      return { data: at ? [{ occurred_at: at, seq: 42 }] : [], error: null };
     }
     if (name === 'get_invoice_recipient_identity' && opts.identityThrow) {
       throw new Error(opts.identityThrow);
@@ -326,7 +321,7 @@ describe('runBookingPaidSideEffects — staff booking notifications (outbox)', (
       expect((staff[0][1] as { p_occurred_at: string }).p_occurred_at).toBe('2026-07-01T10:00:00+00:00');
       // it asked the ledger for the PAID transition
       const ask = (rpc.mock.calls as Array<[string, Record<string, unknown>]>)
-        .find((c) => c[0] === 'booking_transition_occurred_at');
+        .find((c) => c[0] === 'booking_transition_event');
       expect(ask?.[1]).toMatchObject({ p_event_type: 'paid' });
     }
     // …and with no ledger row nothing is queued: falling back to a mutable column would re-open

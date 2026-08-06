@@ -57,6 +57,7 @@ beforeAll(async () => {
     CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
   `);
   await db.exec(ledgerMigration());
+  await db.exec(MIG('20261110100000_lifecycle_ledger_corrections.sql'));
 }, 60_000);
 
 afterAll(async () => { await db?.close(); });
@@ -75,6 +76,9 @@ const events = async (id: string) =>
 const occurrence = async (ids: string[], kind: string) =>
   (await db.query<{ at: string | null }>(
     `SELECT public.booking_transition_occurred_at($1::uuid[], $2) AS at`, [ids, kind])).rows[0].at;
+const transition = async (ids: string[], kind: string) =>
+  (await db.query<{ occurred_at: string | null; seq: string | null }>(
+    `SELECT * FROM public.booking_transition_event($1::uuid[], $2)`, [ids, kind])).rows[0] ?? null;
 
 describe('the lifecycle ledger records transitions, and only transitions', () => {
   it('an INSERT records created at the row\'s own created_at, not at the statement\'s now()', async () => {
@@ -221,5 +225,58 @@ describe('the backfill is deliberately partial', () => {
     expect(src).toContain("SELECT b.id, 'created', b.status, b.payment_status, b.created_at FROM public.bookings b");
     expect(src).toContain("WHERE b.paid_at IS NOT NULL");
     expect(src).not.toMatch(/INSERT INTO public\.booking_lifecycle_events[\s\S]{0,400}'cancelled'[\s\S]{0,200}updated_at/);
+  });
+});
+
+describe('the corrections from the ledger review', () => {
+  it('a MIXED set is dated by its OLDEST member — one fresh cancellation cannot re-date old ones', async () => {
+    // max(occurred_at) let a single newly transitioned member make the whole set current: the same
+    // shape as the max(updated_at) defect, arriving through the aggregate instead of the column.
+    const old1 = await seedBooking({ status: 'confirmed' });
+    const old2 = await seedBooking({ status: 'confirmed' });
+    await db.query(`UPDATE public.bookings SET status='cancelled' WHERE id = ANY($1::uuid[])`, [[old1, old2]]);
+    const oldAt = await occurrence([old1, old2], 'cancelled');
+
+    await new Promise((r) => setTimeout(r, 5));
+    const fresh = await seedBooking({ status: 'confirmed' });
+    await db.query(`UPDATE public.bookings SET status='cancelled' WHERE id=$1`, [fresh]);
+
+    const mixed = await occurrence([old1, old2, fresh], 'cancelled');
+    expect(new Date(mixed as unknown as string).getTime())
+      .toBe(new Date(oldAt as unknown as string).getTime());
+  });
+
+  it('occurrence and discriminator come from the SAME ledger row', async () => {
+    const id = await seedBooking({ status: 'confirmed' });
+    await db.query(`UPDATE public.bookings SET status='cancelled' WHERE id=$1`, [id]);
+    const t = await transition([id], 'cancelled');
+    expect(t?.occurred_at).toBeTruthy();
+    const rowSeq = (await db.query<{ seq: string }>(
+      `SELECT seq FROM public.booking_lifecycle_events
+        WHERE booking_id=$1 AND event_type='cancelled' ORDER BY seq DESC LIMIT 1`, [id])).rows[0].seq;
+    expect(String(t?.seq)).toBe(String(rowSeq));
+  });
+
+  it('the ledger OUTLIVES the booking — deleting one neither cascades nor fails', async () => {
+    // ON DELETE CASCADE beside an append-only guard meant deleting a booking either failed or
+    // quietly erased the record of what happened to it. An audit outlives its subject.
+    const id = await seedBooking({ status: 'confirmed' });
+    await db.query(`UPDATE public.bookings SET status='cancelled' WHERE id=$1`, [id]);
+    await db.query(`DELETE FROM public.bookings WHERE id=$1`, [id]);
+    const rows = (await db.query(
+      `SELECT 1 FROM public.booking_lifecycle_events WHERE booking_id=$1`, [id])).rows;
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it('the timeline readers are NOT granted to authenticated users', async () => {
+    // they are SECURITY DEFINER and take arbitrary booking ids, so a grant to `authenticated` let
+    // any logged-in player ask when someone else's booking was cancelled or paid.
+    for (const fn of ['booking_transition_event', 'booking_transition_occurred_at', 'booking_transition_seq']) {
+      const r = await db.query<{ ok: boolean }>(
+        `SELECT has_function_privilege('authenticated', p.oid, 'EXECUTE') AS ok
+           FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname='public' AND p.proname=$1`, [fn]);
+      for (const row of r.rows) expect(row.ok, `${fn} must not be executable by authenticated`).toBe(false);
+    }
   });
 });

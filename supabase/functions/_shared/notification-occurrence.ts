@@ -45,40 +45,42 @@ type Db = any;
  */
 export type BookingEventKind = "created" | "confirmed" | "cancelled" | "paid" | "rejected" | "completed";
 
+export interface BookingTransition {
+  occurredAt: string;
+  /** the ledger sequence — the discriminator that makes a SECOND transition a second message */
+  seq: number | null;
+}
+
+/**
+ * ONE call, so an occurrence can never be paired with a different transition's discriminator: a
+ * transition landing between two separate reads would otherwise return the first event's instant
+ * with the second event's sequence.
+ */
+export async function bookingTransition(
+  supabase: Db,
+  bookingIds: string[],
+  kind: BookingEventKind,
+): Promise<BookingTransition | null> {
+  if (!Array.isArray(bookingIds) || bookingIds.length === 0) return null;
+  const { data, error } = await supabase.rpc("booking_transition_event", {
+    p_booking_ids: bookingIds,
+    p_event_type: kind,
+  });
+  if (error) return null;
+  const row = Array.isArray(data) ? data[0] : data;
+  const at = (row as { occurred_at?: string } | null)?.occurred_at;
+  if (typeof at !== "string" || at.length === 0) return null;
+  const rawSeq = (row as { seq?: unknown } | null)?.seq;
+  const seq = typeof rawSeq === "string" ? Number(rawSeq) : (typeof rawSeq === "number" ? rawSeq : null);
+  return { occurredAt: at, seq: Number.isFinite(seq as number) ? (seq as number) : null };
+}
+
 export async function occurrenceForBookingEvent(
   supabase: Db,
   bookingIds: string[],
   kind: BookingEventKind,
 ): Promise<string | null> {
-  if (!Array.isArray(bookingIds) || bookingIds.length === 0) return null;
-  const { data, error } = await supabase.rpc("booking_transition_occurred_at", {
-    p_booking_ids: bookingIds,
-    p_event_type: kind,
-  });
-  if (error) return null;
-  // NULL means the transition has no ledger row — a historical one from before the ledger, or a
-  // caller naming a transition that did not happen. Either way: do not enqueue.
-  return typeof data === "string" && data.length > 0 ? data : null;
-}
-
-/**
- * The discriminator that makes a genuine SECOND transition of the same booking set a second
- * message. Without it the idempotency subject is (kind, booking set) alone and a
- * cancel -> re-add -> cancel is silently swallowed as a duplicate.
- */
-export async function transitionSeq(
-  supabase: Db,
-  bookingIds: string[],
-  kind: BookingEventKind,
-): Promise<number | null> {
-  if (!Array.isArray(bookingIds) || bookingIds.length === 0) return null;
-  const { data, error } = await supabase.rpc("booking_transition_seq", {
-    p_booking_ids: bookingIds,
-    p_event_type: kind,
-  });
-  if (error) return null;
-  const n = typeof data === "string" ? Number(data) : data;
-  return typeof n === "number" && Number.isFinite(n) ? n : null;
+  return (await bookingTransition(supabase, bookingIds, kind))?.occurredAt ?? null;
 }
 
 export type OpenSlotsOccurrenceSpec =
