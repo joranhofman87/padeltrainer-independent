@@ -61,11 +61,11 @@ Deno.serve(async (req) => {
       .eq("user_id", user.id)
       .single();
 
-    // Delete all user data
-    await deleteUserData(supabaseAdmin, user.id);
-
-    // Log the self-deletion action for audit
-    await supabaseAdmin.from("admin_impersonation_logs").insert({
+    // AUDIT FIRST, then delete. The audit table's admin/target columns reference auth.users, so an
+    // insert attempted AFTER the account is gone is an insert that can only fail — which is what
+    // made the previous ordering silently unauditable. Writing it first also means a deletion that
+    // fails part-way still leaves the evidence that it was attempted.
+    const { error: auditError } = await supabaseAdmin.from("admin_impersonation_logs").insert({
       admin_user_id: user.id,
       target_user_id: user.id,
       action: 'self_delete_account',
@@ -78,6 +78,19 @@ Deno.serve(async (req) => {
       user_agent: req.headers.get("user-agent"),
       expires_at: new Date().toISOString(),
     });
+    if (auditError) {
+      // An unauditable deletion is one we do not perform: this is a privacy operation, and "it
+      // happened but nothing recorded it" is not an acceptable outcome of one.
+      console.error("request-account-deletion: could not record the audit entry", auditError);
+      return new Response(
+        JSON.stringify({ error: "Could not record the deletion audit entry — no data was deleted." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Delete all user data. Every step fails loudly, so the auth account is removed only after
+    // every dependent row has actually gone.
+    await deleteUserData(supabaseAdmin, user.id);
 
     console.log(`User self-deleted: ${user.id}`);
 

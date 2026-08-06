@@ -572,7 +572,7 @@ export default function AcademyInvoices() {
     setBulkRunning(true);
     // Drafts hard-deleted, everything else soft-cancelled — owned by the facade
     // so a paid invoice can never be hard-deleted in a bulk action.
-    const { deletedIds, cancelledIds, deleteError, cancelError } = await deleteOrCancelInvoices(selectedInvoices);
+    const { deletedIds, cancelledIds, refusedIds, deleteError, cancelError } = await deleteOrCancelInvoices(selectedInvoices);
     let ok = 0, fail = 0;
     if (deletedIds.length) {
       if (deleteError) fail += deletedIds.length; else ok += deletedIds.length;
@@ -595,6 +595,15 @@ export default function AcademyInvoices() {
       toast.error(t("invoices.bulk.deletePartial", "{{ok}} processed, {{fail}} failed", { ok, fail }));
     } else {
       toast.success(t("invoices.bulk.deleteDone", "{{count}} invoices removed", { count: ok }));
+    }
+    // PAID invoices are never touched by this action, and saying nothing about them would report
+    // success for work deliberately not done. Cancelling a paid invoice is not a refund, so the
+    // correction lives in its own audited flow rather than behind this button.
+    if (refusedIds.length) {
+      toast.warning(t("invoices.bulk.deleteRefusedPaid", {
+        defaultValue: "{{count}} paid invoice(s) were left unchanged — a paid invoice needs a refund or credit note, not a cancellation.",
+        count: refusedIds.length,
+      }));
     }
   };
 

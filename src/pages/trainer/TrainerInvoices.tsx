@@ -376,7 +376,7 @@ export default function TrainerInvoices() {
     setBulkRunning(true);
     // Drafts hard-deleted, everything else soft-cancelled — owned by the facade
     // so a paid invoice can never be hard-deleted in a bulk action.
-    const { deletedIds, cancelledIds, deleteError, cancelError } = await deleteOrCancelInvoices(selectedInvoices);
+    const { deletedIds, cancelledIds, refusedIds, deleteError, cancelError } = await deleteOrCancelInvoices(selectedInvoices);
     let ok = 0, fail = 0;
     if (deletedIds.length) { if (deleteError) fail += deletedIds.length; else ok += deletedIds.length; }
     if (cancelledIds.length) { if (cancelError) fail += cancelledIds.length; else ok += cancelledIds.length; }
@@ -386,6 +386,14 @@ export default function TrainerInvoices() {
     invalidateInvoicesAndPlayers();
     if (fail > 0) toast.error(t("invoices.bulk.deletePartial", "{{ok}} verwerkt, {{fail}} mislukt", { ok, fail }));
     else toast.success(t("invoices.bulk.deleteDone", "{{count}} facturen verwijderd", { count: ok }));
+    // PAID invoices are deliberately untouched — cancelling one is not a refund. Saying nothing
+    // would report success for work this action refused to do.
+    if (refusedIds.length) {
+      toast.warning(t("invoices.bulk.deleteRefusedPaid", {
+        defaultValue: "{{count}} betaalde factuur(en) zijn niet gewijzigd — een betaalde factuur vraagt om een terugbetaling of creditnota, niet om een annulering.",
+        count: refusedIds.length,
+      }));
+    }
   };
 
   const handleBulkUpdateDueDate = async () => {

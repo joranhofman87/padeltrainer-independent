@@ -19,6 +19,56 @@ async function runDelete(
 }
 
 /**
+ * Await a GROUP of parallel delete/update builders and surface EVERY failure.
+ *
+ * `await Promise.all([builder, builder])` looks like error handling and is not: a Supabase
+ * builder resolves to `{ data, error }` rather than rejecting, so a failed delete resolves
+ * happily and the run continues to the next step — and, eventually, to deleting the auth user.
+ * That turns an incomplete privacy operation into a silent one: the account is gone, the rows
+ * are not, and nobody can revisit it because the identity that owned them no longer exists.
+ *
+ * So every group goes through here. It keeps the parallelism (these are independent tables) but
+ * inspects each result, and throws naming the group and every table that failed. The caller's
+ * failure is the point: `deleteUserData` must not reach the auth deletion after one.
+ */
+async function runAll(
+  group: string,
+  ops: Array<[string, PromiseLike<{ error: unknown }>]>,
+): Promise<void> {
+  const results = await Promise.all(
+    ops.map(async ([label, op]) => {
+      const { error } = await op;
+      return { label, error };
+    }),
+  );
+  const failed = results.filter((r) => r.error);
+  if (failed.length > 0) {
+    for (const f of failed) console.error(`deleteUserData: failed to delete ${f.label}:`, f.error);
+    const detail = failed
+      .map((f) => `${f.label}: ${(f.error as { message?: string } | null)?.message ?? String(f.error)}`)
+      .join('; ');
+    throw new Error(`deleteUserData failed at ${group} — ${detail}`);
+  }
+}
+
+/**
+ * A read whose RESULT DECIDES WHAT GETS DELETED must not fail silently.
+ *
+ * `{ data, error }` with the error dropped makes "this user owns no cycles" and "the query for
+ * their cycles failed" the same value: an empty array. The first means there is nothing to
+ * delete; the second means we do not know, and continuing to the auth deletion after it leaves
+ * rows behind that nobody can reach again. PGRST116 is the exception — `.single()` reporting
+ * "no rows" IS the answer, not a failure.
+ */
+function requireRead(error: unknown, label: string): void {
+  if (!error) return;
+  if ((error as { code?: string } | null)?.code === "PGRST116") return;   // .single() found nothing
+  console.error(`deleteUserData: could not read ${label}:`, error);
+  const msg = (error as { message?: string } | null)?.message ?? String(error);
+  throw new Error(`deleteUserData failed reading ${label}: ${msg}`);
+}
+
+/**
  * Deletes all data associated with a user across all tables.
  * Used by both admin delete-user and self-service request-account-deletion.
  * 
@@ -32,46 +82,48 @@ export async function deleteUserData(
   _preserveClubsAndAcademies: boolean = true
 ) {
   // 1. Delete calendar events & calendar connections
-  await Promise.all([
-    supabaseAdmin.from("calendar_events").delete().eq("user_id", targetUserId),
-    supabaseAdmin.from("user_calendar_connections").delete().eq("user_id", targetUserId),
+  await runAll("calendar_events group", [
+    ["calendar_events", supabaseAdmin.from("calendar_events").delete().eq("user_id", targetUserId)],
+    ["user_calendar_connections", supabaseAdmin.from("user_calendar_connections").delete().eq("user_id", targetUserId)],
   ]);
 
   // 2. Delete notification-related data
-  await Promise.all([
-    supabaseAdmin.from("notification_preferences").delete().eq("user_id", targetUserId),
-    supabaseAdmin.from("notifications").delete().eq("user_id", targetUserId),
-    supabaseAdmin.from("notification_queue").delete().eq("user_id", targetUserId),
+  await runAll("notification_preferences group", [
+    ["notification_preferences", supabaseAdmin.from("notification_preferences").delete().eq("user_id", targetUserId)],
+    ["notifications", supabaseAdmin.from("notifications").delete().eq("user_id", targetUserId)],
+    ["notification_queue", supabaseAdmin.from("notification_queue").delete().eq("user_id", targetUserId)],
   ]);
 
   // 3. Delete onboarding email data
-  await Promise.all([
-    supabaseAdmin.from("onboarding_email_queue").delete().eq("user_id", targetUserId),
-    supabaseAdmin.from("onboarding_email_logs").delete().eq("user_id", targetUserId),
-    supabaseAdmin.from("trainer_onboarding").delete().eq("user_id", targetUserId),
+  await runAll("onboarding_email_queue group", [
+    ["onboarding_email_queue", supabaseAdmin.from("onboarding_email_queue").delete().eq("user_id", targetUserId)],
+    ["onboarding_email_logs", supabaseAdmin.from("onboarding_email_logs").delete().eq("user_id", targetUserId)],
+    ["trainer_onboarding", supabaseAdmin.from("trainer_onboarding").delete().eq("user_id", targetUserId)],
   ]);
 
   // 4. Delete user discounts and banner events
-  await Promise.all([
-    supabaseAdmin.from("user_discounts").delete().eq("user_id", targetUserId),
-    supabaseAdmin.from("banner_events").delete().eq("user_id", targetUserId),
+  await runAll("user_discounts group", [
+    ["user_discounts", supabaseAdmin.from("user_discounts").delete().eq("user_id", targetUserId)],
+    ["banner_events", supabaseAdmin.from("banner_events").delete().eq("user_id", targetUserId)],
   ]);
 
   // 5. Handle club profiles created by this user
-  const { data: userClubProfiles } = await supabaseAdmin
+  const { data: userClubProfiles, error: userClubProfilesErr } = await supabaseAdmin
     .from("club_profiles")
     .select("id")
     .eq("created_by", targetUserId);
+  requireRead(userClubProfilesErr, "club profiles owned by the user");
 
   if (userClubProfiles && userClubProfiles.length > 0) {
     const clubIds = userClubProfiles.map((c) => c.id);
     
     // Delete cycles owned by these clubs
-    const { data: clubCycles } = await supabaseAdmin
+    const { data: clubCycles, error: clubCyclesErr } = await supabaseAdmin
       .from("cycles")
       .select("id")
       .eq("owner_type", "club")
       .in("owner_id", clubIds);
+    requireRead(clubCyclesErr, "cycles of those clubs");
 
     if (clubCycles && clubCycles.length > 0) {
       const cycleIds = clubCycles.map((c) => c.id);
@@ -96,29 +148,33 @@ export async function deleteUserData(
   }
 
   // Nullify created_by on club profiles (preserve the club itself)
-  await supabaseAdmin
+  await runDelete(
+    supabaseAdmin
     .from("club_profiles")
     .update({ created_by: null })
-    .eq("created_by", targetUserId);
+    .eq("created_by", targetUserId),
+    "club_profiles (anonymize)");
 
   // Remove user from club_managers
-  await supabaseAdmin.from("club_managers").delete().eq("user_id", targetUserId);
+  await runDelete(supabaseAdmin.from("club_managers").delete().eq("user_id", targetUserId), "club_managers");
 
   // 6. Handle academy profiles created by this user
-  const { data: userAcademyProfiles } = await supabaseAdmin
+  const { data: userAcademyProfiles, error: userAcademyProfilesErr } = await supabaseAdmin
     .from("academy_profiles")
     .select("id")
     .eq("created_by", targetUserId);
+  requireRead(userAcademyProfilesErr, "academy profiles owned by the user");
 
   if (userAcademyProfiles && userAcademyProfiles.length > 0) {
     const academyIds = userAcademyProfiles.map((c) => c.id);
 
     // Delete cycles owned by these academies
-    const { data: academyCycles } = await supabaseAdmin
+    const { data: academyCycles, error: academyCyclesErr } = await supabaseAdmin
       .from("cycles")
       .select("id")
       .eq("owner_type", "academy")
       .in("owner_id", academyIds);
+    requireRead(academyCyclesErr, "cycles of those academies");
 
     if (academyCycles && academyCycles.length > 0) {
       const cycleIds = academyCycles.map((c) => c.id);
@@ -140,31 +196,34 @@ export async function deleteUserData(
   }
 
   // Nullify created_by on academy profiles (preserve the academy itself)
-  await supabaseAdmin
+  await runDelete(
+    supabaseAdmin
     .from("academy_profiles")
     .update({ created_by: null })
-    .eq("created_by", targetUserId);
+    .eq("created_by", targetUserId),
+    "academy_profiles (anonymize)");
 
   // Remove user from academy_managers
-  await supabaseAdmin.from("academy_managers").delete().eq("user_id", targetUserId);
+  await runDelete(supabaseAdmin.from("academy_managers").delete().eq("user_id", targetUserId), "academy_managers");
 
   // 7. Handle trainer profile if exists
-  const { data: trainerProfile } = await supabaseAdmin
+  const { data: trainerProfile, error: trainerProfileErr } = await supabaseAdmin
     .from("trainer_profiles")
     .select("id")
     .eq("user_id", targetUserId)
     .single();
+  requireRead(trainerProfileErr, "the trainer profile");
 
   if (trainerProfile) {
     // Delete all trainer-related data in parallel where possible
-    await Promise.all([
-      supabaseAdmin.from("trainer_locations").delete().eq("trainer_id", trainerProfile.id),
-      supabaseAdmin.from("trainer_followers").delete().eq("trainer_id", trainerProfile.id),
-      supabaseAdmin.from("trainer_profile_views").delete().eq("trainer_id", trainerProfile.id),
-      supabaseAdmin.from("trainer_working_hours").delete().eq("trainer_id", trainerProfile.id),
-      supabaseAdmin.from("trainer_mollie_accounts").delete().eq("trainer_id", trainerProfile.id),
-      supabaseAdmin.from("profile_videos").delete().eq("trainer_profile_id", trainerProfile.id),
-      supabaseAdmin.from("proposed_assignments").delete().eq("trainer_id", trainerProfile.id),
+    await runAll("trainer_locations group", [
+      ["trainer_locations", supabaseAdmin.from("trainer_locations").delete().eq("trainer_id", trainerProfile.id)],
+      ["trainer_followers", supabaseAdmin.from("trainer_followers").delete().eq("trainer_id", trainerProfile.id)],
+      ["trainer_profile_views", supabaseAdmin.from("trainer_profile_views").delete().eq("trainer_id", trainerProfile.id)],
+      ["trainer_working_hours", supabaseAdmin.from("trainer_working_hours").delete().eq("trainer_id", trainerProfile.id)],
+      ["trainer_mollie_accounts", supabaseAdmin.from("trainer_mollie_accounts").delete().eq("trainer_id", trainerProfile.id)],
+      ["profile_videos", supabaseAdmin.from("profile_videos").delete().eq("trainer_profile_id", trainerProfile.id)],
+      ["proposed_assignments", supabaseAdmin.from("proposed_assignments").delete().eq("trainer_id", trainerProfile.id)],
     ]);
 
     // RETAIN financial records (R03). Previously this branch hard-deleted the trainer's
@@ -175,11 +234,12 @@ export async function deleteUserData(
     // Delete cycles owned by this trainer + their intake_requests. Cycles are programs, not
     // financial records: availability_slots.cyclus_id and invoices.cycle_id are ON DELETE SET NULL,
     // so removing the cycle detaches the retained slots/invoices from it rather than erasing them.
-    const { data: trainerCycles } = await supabaseAdmin
+    const { data: trainerCycles, error: trainerCyclesErr } = await supabaseAdmin
       .from("cycles")
       .select("id")
       .eq("owner_type", "trainer")
       .eq("owner_id", trainerProfile.id);
+    requireRead(trainerCyclesErr, "cycles owned by the trainer");
 
     if (trainerCycles && trainerCycles.length > 0) {
       const cycleIds = trainerCycles.map((c) => c.id);
@@ -203,17 +263,19 @@ export async function deleteUserData(
     );
 
     // Remove trainer from academy associations and invitations
-    await Promise.all([
-      supabaseAdmin.from("academy_trainers").delete().eq("trainer_profile_id", trainerProfile.id),
-      supabaseAdmin.from("academy_trainer_invitations").delete().eq("trainer_profile_id", trainerProfile.id),
-      supabaseAdmin.from("club_trainer_invitations").delete().eq("trainer_profile_id", trainerProfile.id),
+    await runAll("academy_trainers group", [
+      ["academy_trainers", supabaseAdmin.from("academy_trainers").delete().eq("trainer_profile_id", trainerProfile.id)],
+      ["academy_trainer_invitations", supabaseAdmin.from("academy_trainer_invitations").delete().eq("trainer_profile_id", trainerProfile.id)],
+      ["club_trainer_invitations", supabaseAdmin.from("club_trainer_invitations").delete().eq("trainer_profile_id", trainerProfile.id)],
     ]);
 
     // Anonymize reviews of this trainer (keep for record-keeping)
-    await supabaseAdmin
+    await runDelete(
+      supabaseAdmin
       .from("reviews")
       .update({ trainer_id: null })
-      .eq("trainer_id", trainerProfile.id);
+      .eq("trainer_id", trainerProfile.id),
+      "reviews (anonymize)");
 
     // Anonymize the trainer_profiles row into a retained SHELL instead of deleting it (R03): null the
     // business/identity PII, hide it, detach it from the (about-to-be-deleted) auth user, and stamp
@@ -257,28 +319,29 @@ export async function deleteUserData(
   }
 
   // 8. Handle player profile if exists
-  const { data: playerProfile } = await supabaseAdmin
+  const { data: playerProfile, error: playerProfileErr } = await supabaseAdmin
     .from("profiles")
     .select("id")
     .eq("user_id", targetUserId)
     .single();
+  requireRead(playerProfileErr, "the player profile");
 
   if (playerProfile) {
     // Delete player-related data in parallel
-    await Promise.all([
-      supabaseAdmin.from("player_locations").delete().eq("profile_id", playerProfile.id),
-      supabaseAdmin.from("player_rating_history").delete().eq("profile_id", playerProfile.id),
-      supabaseAdmin.from("trainer_followers").delete().eq("player_id", playerProfile.id),
-      supabaseAdmin.from("academy_followers").delete().eq("player_id", playerProfile.id),
-      supabaseAdmin.from("club_followers").delete().eq("player_id", playerProfile.id),
-      supabaseAdmin.from("waiting_list_entries").delete().eq("player_id", playerProfile.id),
-      supabaseAdmin.from("subscription_payments").delete().eq("profile_id", playerProfile.id),
+    await runAll("player_locations group", [
+      ["player_locations", supabaseAdmin.from("player_locations").delete().eq("profile_id", playerProfile.id)],
+      ["player_rating_history", supabaseAdmin.from("player_rating_history").delete().eq("profile_id", playerProfile.id)],
+      ["trainer_followers", supabaseAdmin.from("trainer_followers").delete().eq("player_id", playerProfile.id)],
+      ["academy_followers", supabaseAdmin.from("academy_followers").delete().eq("player_id", playerProfile.id)],
+      ["club_followers", supabaseAdmin.from("club_followers").delete().eq("player_id", playerProfile.id)],
+      ["waiting_list_entries", supabaseAdmin.from("waiting_list_entries").delete().eq("player_id", playerProfile.id)],
+      ["subscription_payments", supabaseAdmin.from("subscription_payments").delete().eq("profile_id", playerProfile.id)],
     ]);
 
     // Nullify linked_profile_id references (keep the roster entries)
-    await Promise.all([
-      supabaseAdmin.from("club_players").update({ linked_profile_id: null }).eq("linked_profile_id", playerProfile.id),
-      supabaseAdmin.from("guest_players").update({ linked_profile_id: null }).eq("linked_profile_id", playerProfile.id),
+    await runAll("club_players group", [
+      ["club_players", supabaseAdmin.from("club_players").update({ linked_profile_id: null }).eq("linked_profile_id", playerProfile.id)],
+      ["guest_players", supabaseAdmin.from("guest_players").update({ linked_profile_id: null }).eq("linked_profile_id", playerProfile.id)],
     ]);
 
     // Anonymize bookings (keep for record-keeping): detach the player and stamp anonymized_at so
@@ -295,29 +358,35 @@ export async function deleteUserData(
     );
 
     // Anonymize reviews by this player
-    await supabaseAdmin
+    await runDelete(
+      supabaseAdmin
       .from("reviews")
       .update({ is_anonymous: true })
-      .eq("player_id", playerProfile.id);
+      .eq("player_id", playerProfile.id),
+      "reviews (anonymize)");
 
     // Anonymize invoices for this player
-    await supabaseAdmin
+    await runDelete(
+      supabaseAdmin
       .from("invoices")
       .update({ player_id: null })
-      .eq("player_id", playerProfile.id);
+      .eq("player_id", playerProfile.id),
+      "invoices (anonymize)");
 
     // Anonymize intake requests by this player
-    await supabaseAdmin
+    await runDelete(
+      supabaseAdmin
       .from("intake_requests")
       .update({ player_id: null })
-      .eq("player_id", playerProfile.id);
+      .eq("player_id", playerProfile.id),
+      "intake_requests (anonymize)");
   }
 
   // 9. Delete user roles
-  await supabaseAdmin.from("user_roles").delete().eq("user_id", targetUserId);
+  await runDelete(supabaseAdmin.from("user_roles").delete().eq("user_id", targetUserId), "user_roles");
 
   // 10. Delete profile
-  await supabaseAdmin.from("profiles").delete().eq("user_id", targetUserId);
+  await runDelete(supabaseAdmin.from("profiles").delete().eq("user_id", targetUserId), "profiles");
 
   // 10b. Remove the user's avatar/banner objects (R06): the 'avatars' bucket is PUBLIC and these
   // live under the user's own folder (`<user_id>/avatar.*`, `<user_id>/banner.*`) — leaving them
@@ -334,7 +403,13 @@ export async function deleteUserData(
     console.error("deleteUserData: avatar cleanup failed (non-blocking):", avatarErr);
   }
 
-  // 11. Delete the auth user
+  // 11. Delete the auth user — LAST, and reachable only because nothing above threw.
+  //
+  // That ordering is the whole safety property. Every step from here backwards fails loudly, so
+  // this line is unreachable after an unacknowledged cleanup failure: the account survives, the
+  // caller gets an error, and the operation can be retried against an identity that still exists.
+  // The previous version awaited its deletes without inspecting them, which meant this ran no
+  // matter what — deleting the only key to the rows it had failed to remove.
   const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(targetUserId);
 
   if (deleteError) {

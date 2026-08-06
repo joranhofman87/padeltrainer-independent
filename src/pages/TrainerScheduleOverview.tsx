@@ -13,6 +13,7 @@ import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { syncSplitCountForCycle } from "@/lib/invoiceSync";
 import { cancelBookingsAndSync, setBookingPaymentAndReconcile, insertBookings } from "@/lib/bookings";
 import { buildCycleExtensionBookings } from "@/lib/cycleExtensionBookings";
+import { planWeeklySessionsAfter, getCycleTimezone } from "@/lib/cycleExtension";
 import { applySlotDeleteToCycle } from "@/lib/slotDeleteGuard";
 import { insertAvailabilitySlots, setSlotVisibility } from "@/lib/slots";
 import { isTrainerSlotOverlapError } from "@/lib/slotConflicts";
@@ -610,18 +611,27 @@ export default function TrainerScheduleOverview() {
           if (newCount > cycleSlots.length) {
             // Add new slots at the end
             const lastSlot = cycleSlots[cycleSlots.length - 1];
-            const lastStart = new Date(lastSlot.start_time);
-            const lastEnd = new Date(lastSlot.end_time);
             const slotsToAdd = newCount - cycleSlots.length;
+
+            // DST-SAFE (A1-A7 F5): adding 7*24h to a UTC instant is 168 hours of ELAPSED time, not
+            // "the same time next week" — across the October and March transitions a 19:00 class
+            // silently became 18:00 or 20:00 for everyone booked into it. The planner goes through
+            // the timezone the class is actually taught in, which is the owner's, never the
+            // browser's.
+            const cycleTz = await getCycleTimezone(
+              (lastSlot as { academy_profile_id?: string | null }).academy_profile_id ? 'academy' : 'trainer',
+              (lastSlot as { academy_profile_id?: string | null }).academy_profile_id
+                ?? (lastSlot.trainer_id as string));
+            const planned = planWeeklySessionsAfter(
+              { start_time: lastSlot.start_time, end_time: lastSlot.end_time }, slotsToAdd, cycleTz);
 
             const newSlots = [];
             for (let i = 1; i <= slotsToAdd; i++) {
-              const newStart = new Date(lastStart.getTime() + i * 7 * 24 * 60 * 60 * 1000);
-              const newEnd = new Date(lastEnd.getTime() + i * 7 * 24 * 60 * 60 * 1000);
+              const p = planned[i - 1];
               newSlots.push({
                 trainer_id: lastSlot.trainer_id,
-                start_time: newStart.toISOString(),
-                end_time: newEnd.toISOString(),
+                start_time: p.start_time,
+                end_time: p.end_time,
                 cyclus_id: editCycleId,
                 cyclus_name: cycleEditData.name.trim(),
                 max_participants: lastSlot.max_participants,

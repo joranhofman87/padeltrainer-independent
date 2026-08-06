@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planCycleExtension, buildRosterCopyRows, type ExtensionSlotInput, type TemplateRosterBooking } from '@/lib/cycleExtension';
+import { planCycleExtension, planWeeklySessionsAfter, buildRosterCopyRows, type ExtensionSlotInput, type TemplateRosterBooking } from '@/lib/cycleExtension';
 import { SlotPlanError } from '@/lib/slotPlan';
 
 describe('buildRosterCopyRows', () => {
@@ -151,5 +151,50 @@ describe('planCycleExtension', () => {
   it('caps runaway extensions (> 500 sessions throws)', () => {
     // ~11 years of weekly sessions ≫ 500.
     expect(() => planCycleExtension([slot('s1', '2026-01-05T17:00:00.000Z')], '2037-01-05', TZ)).toThrow(/500/);
+  });
+});
+
+describe('planWeeklySessionsAfter — the by-count extension the schedule editor uses (A1-A7 F5)', () => {
+  const TZ = 'Europe/Amsterdam';
+
+  it('keeps the local class time across the AUTUMN transition (clocks go back)', () => {
+    // last session Sat 25 Oct 2026 19:00 local = 17:00Z (CEST, +02). The next weeks are CET (+01),
+    // so 19:00 local becomes 18:00Z. Adding 7*24h to the UTC instant would have produced 17:00Z —
+    // an 18:00 class for everyone booked into it.
+    const out = planWeeklySessionsAfter(
+      { start_time: '2026-10-24T17:00:00.000Z', end_time: '2026-10-24T18:00:00.000Z' }, 2, TZ);
+    expect(out).toHaveLength(2);
+    expect(out[0].start_time).toBe('2026-10-31T18:00:00.000Z');
+    expect(out[1].start_time).toBe('2026-11-07T18:00:00.000Z');
+    // the duration is carried, not recomputed
+    for (const s of out) {
+      expect(new Date(s.end_time).getTime() - new Date(s.start_time).getTime()).toBe(3600_000);
+    }
+  });
+
+  it('keeps the local class time across the SPRING transition (clocks go forward)', () => {
+    // last session Sat 21 Mar 2026 19:00 local = 18:00Z (CET). From 29 March it is CEST, so 19:00
+    // local is 17:00Z.
+    const out = planWeeklySessionsAfter(
+      { start_time: '2026-03-21T18:00:00.000Z', end_time: '2026-03-21T19:30:00.000Z' }, 2, TZ);
+    expect(out[0].start_time).toBe('2026-03-28T18:00:00.000Z');   // still CET
+    expect(out[1].start_time).toBe('2026-04-04T17:00:00.000Z');   // CEST — same 19:00 local
+    expect(new Date(out[1].end_time).getTime() - new Date(out[1].start_time).getTime()).toBe(90 * 60_000);
+  });
+
+  it('is a no-op for a non-positive count, and refuses an absurd one rather than planning it', () => {
+    const last = { start_time: '2026-05-02T17:00:00.000Z', end_time: '2026-05-02T18:00:00.000Z' };
+    expect(planWeeklySessionsAfter(last, 0, TZ)).toEqual([]);
+    expect(planWeeklySessionsAfter(last, -3, TZ)).toEqual([]);
+    expect(() => planWeeklySessionsAfter(last, 10_000, TZ)).toThrow(/more than/);
+    expect(() => planWeeklySessionsAfter(last, 1, '')).toThrow(/timezone is required/);
+  });
+
+  it('outside a transition it is plain weekly spacing — the fix changes nothing it should not', () => {
+    const out = planWeeklySessionsAfter(
+      { start_time: '2026-05-02T17:00:00.000Z', end_time: '2026-05-02T18:00:00.000Z' }, 3, TZ);
+    expect(out.map((s) => s.start_time)).toEqual([
+      '2026-05-09T17:00:00.000Z', '2026-05-16T17:00:00.000Z', '2026-05-23T17:00:00.000Z',
+    ]);
   });
 });

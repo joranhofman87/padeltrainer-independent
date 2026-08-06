@@ -19,11 +19,23 @@ export interface DeletableInvoice {
   status: string | null;
 }
 
+/**
+ * The statuses a generic "delete" may soft-cancel. An allow-list, not `!== 'draft'`: a destructive
+ * bulk action must refuse what it does not recognise rather than assume it is safe to cancel.
+ */
+const CANCELLABLE_STATUSES = new Set(['sent', 'overdue', 'cancelled']);
+
 export interface DeleteOrCancelInvoicesResult {
   /** DRAFT invoices that were hard-deleted. */
   deletedIds: string[];
   /** Non-draft invoices that were soft-cancelled (status='cancelled'). */
   cancelledIds: string[];
+  /**
+   * Invoices this path REFUSED to touch — paid ones, and any status it does not recognise.
+   * Never empty silently: the caller must tell the user which rows were left alone and why,
+   * or a bulk action reports success for work it deliberately did not do.
+   */
+  refusedIds: string[];
   /** Raw error from the draft DELETE (null = nothing to delete or it succeeded). */
   deleteError: unknown | null;
   /** Raw error from the non-draft cancel UPDATE (null = nothing to cancel or it succeeded). */
@@ -31,22 +43,38 @@ export interface DeleteOrCancelInvoicesResult {
 }
 
 /**
- * Remove invoice(s): hard-delete the drafts, soft-cancel everything else.
+ * Remove invoice(s): hard-delete the drafts, soft-cancel the unpaid ones, REFUSE the paid ones.
  *
- * A `draft` invoice (never sent, no financial trail) is DELETEd; any other
- * status — sent / overdue / paid / cancelled — is UPDATEd to `status='cancelled'`
- * so the record (and its number) survives for the audit trail. A paid invoice
- * can therefore NEVER be hard-deleted through this path. The DELETE and the
- * cancel UPDATE are reported separately so callers can keep their own per-bucket
- * toasts / counts and annotate a cancel reason on `cancelledIds`. An empty list
- * is a no-op.
+ * A `draft` invoice (never sent, no financial trail) is DELETEd. `sent`, `overdue` and an already
+ * `cancelled` one are UPDATEd to `status='cancelled'` so the record and its number survive for the
+ * audit trail.
+ *
+ * A **paid** invoice is neither, and that is the point (A1-A7 F6). This function used to fold every
+ * non-draft status into `cancelled`, so an ordinary bulk "delete" in a list view could make a
+ * genuinely paid invoice read as cancelled — money received, provider evidence intact, and the
+ * financial record now saying the opposite. Cancelling is not a refund; the two must not be reachable
+ * by the same click. Paid ids come back as `refusedIds` for the caller to report, and the correction
+ * for a paid invoice is an explicit, audited refund/credit flow reconciled against the provider.
+ *
+ * The bucket rule is an ALLOW-LIST, deliberately. For a destructive action the safe default is to
+ * refuse what it does not recognise: a status added later (a partial payment, a refund in progress)
+ * must not inherit "cancellable" by being merely non-draft.
+ *
+ * The DELETE and the cancel UPDATE are reported separately so callers can keep their own per-bucket
+ * toasts / counts and annotate a cancel reason on `cancelledIds`. An empty list is a no-op.
  */
 export async function deleteOrCancelInvoices(
   invoices: DeletableInvoice[],
   client: SupabaseClient<Database> = supabase,
 ): Promise<DeleteOrCancelInvoicesResult> {
   const deletedIds = invoices.filter((i) => i.status === 'draft').map((i) => i.id);
-  const cancelledIds = invoices.filter((i) => i.status !== 'draft').map((i) => i.id);
+  const cancelledIds = invoices
+    .filter((i) => CANCELLABLE_STATUSES.has(i.status ?? ''))
+    .map((i) => i.id);
+  // everything else — paid today, and anything financial added later
+  const refusedIds = invoices
+    .filter((i) => i.status !== 'draft' && !CANCELLABLE_STATUSES.has(i.status ?? ''))
+    .map((i) => i.id);
 
   let deleteError: unknown | null = null;
   let cancelError: unknown | null = null;
@@ -60,7 +88,7 @@ export async function deleteOrCancelInvoices(
     cancelError = error ?? null;
   }
 
-  return { deletedIds, cancelledIds, deleteError, cancelError };
+  return { deletedIds, cancelledIds, refusedIds, deleteError, cancelError };
 }
 
 /**
