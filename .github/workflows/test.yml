@@ -176,10 +176,12 @@ jobs:
         with:
           deno-version: v2.x
 
-      # Proves the CHECKED contract against deno shims: a killed run, an unresolvable specifier,
-      # a missing binary and a format drift must all be hard failures, while a genuinely completed
-      # type-error run must NOT be. Couples the gate to deno's output shape explicitly, so a
-      # toolchain upgrade fails here with an explanation instead of as a mystery elsewhere.
+      # Proves the CHECKED contract two ways. Six deno SHIMS pin the branching: a killed run, an
+      # unresolvable specifier, a missing binary and a format drift are hard failures, while a
+      # genuinely completed type-error run is not. Then one case runs the REAL installed deno on a
+      # file with a genuine type error and asserts its output still has the shape the contract keys
+      # on — shims alone would agree with a stale marker, so THAT is the case a `v2.x` wording
+      # change fails on, here, with an explanation, instead of as a mystery on someone's PR.
       - name: Edge type-gate contract self-test
         run: npm run check:edge-types:selftest
       - name: Edge-function type-check (ratcheted vs baseline)

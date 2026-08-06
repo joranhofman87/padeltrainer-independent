@@ -195,13 +195,39 @@ function selfTest() {
     if (!ok) failures += 1;
     console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${label} -> ${hard ? 'hard failure' : 'accepted as checked'}`);
   }
+
+  // The shims above pin the IMPLEMENTATION against a marker this file also defines — which proves
+  // the branching but would happily agree with itself if the real deno changed its wording. So
+  // exercise the INSTALLED toolchain too: one file, one genuine type error, and assert the real
+  // output still has the shape the contract keys on. THIS is the case that fails on a deno upgrade.
+  const probe = join(dir, 'marker-probe.ts');
+  writeFileSync(probe, 'const a: string = 1;\n');
+  let realOut = '';
+  let realStatus = 0;
+  try {
+    realOut = execSync(`deno check --no-lock "${probe}"`, {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, NO_COLOR: '1' },
+    });
+  } catch (e) {
+    realOut = `${e.stdout || ''}${e.stderr || ''}`;
+    realStatus = typeof e.status === 'number' ? e.status : 1;
+  }
+  const realLines = realOut.split('\n');
+  const realMarker = realLines.some((l) => COMPLETED_WITH_ERRORS_RE.test(l.trim()));
+  const realDiag = realLines.some((l) => ERR_RE.test(l.trim()));
+  const realOk = realStatus === 1 && realMarker && realDiag;
+  if (!realOk) failures += 1;
+  console.log(`  ${realOk ? 'PASS' : 'FAIL'}  REAL deno still emits the contract shape `
+    + `(exit ${realStatus}, marker ${realMarker ? 'present' : 'ABSENT'}, diagnostic ${realDiag ? 'present' : 'ABSENT'})`);
+
   rmSync(dir, { recursive: true, force: true });
   if (failures) {
     console.error(`\n${failures} case(s) wrong. If you upgraded deno, its output shape may have changed:`);
     console.error(`re-derive the completion marker (COMPLETED_WITH_ERRORS_RE) from a real run before relaxing anything.`);
     process.exit(1);
   }
-  console.log(`OK — deno CHECKED contract holds (${cases.length} cases, deno ${denoVersion()}).`);
+  console.log(`OK — deno CHECKED contract holds (${cases.length} shim cases + the real toolchain, ${denoVersion()}).`);
   process.exit(0);
 }
 function require_fs() { return fsMod; }
