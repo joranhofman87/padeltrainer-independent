@@ -35,6 +35,17 @@ Not reopened, and not to be reopened without new contrary evidence: overbooking 
 shared-trainer `guest_players` roster leak; paid invoices hard-deletable; Mollie refunds ignored;
 the named edge functions failing silently. Each was verified fixed on this tree.
 
+## Queued as a SEPARATE release unit — not in this branch
+
+### Registration → Planning → Calendar redesign
+
+**Status: PENDING. Accepted by the owner, queued, and deliberately NOT implemented here.**
+
+The owner accepted that audit and queued it as its own release unit. It is recorded here so it is
+visible in the same ledger as everything else, and so nobody reads its absence from the closure
+table as completion. Nothing in this branch implements it, and it must not be marked complete by
+this programme.
+
 ## Owner decisions
 
 ### OD-1 — a manager may still change the login of a trainer who works ONLY for them

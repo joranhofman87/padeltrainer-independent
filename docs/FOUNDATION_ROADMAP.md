@@ -204,6 +204,11 @@ before the broader players/bookings/invoices/academy audit.
 N7 code may be written and reviewed beforehand. **No N7 production activation may occur before the
 final audit is clear.**
 
+**Queued as separate release units (accepted, NOT in the notification branch).** The
+Registration → Planning → Calendar redesign audit is accepted and queued as its own release unit.
+It is **pending** — no part of it is implemented by the notification programme, and it must not be
+marked complete by it. Tracked in [`docs/audits/A1_A7_TRIAGE.md`](audits/A1_A7_TRIAGE.md).
+
 **Owner gates (never crossed autonomously).** mark-ready/merge, deployment, production or
 credential access, migrations against production, cron/engine/secret/provider configuration, a real
 canary or send, channel activation, destructive cleanup or legacy deletion. Email and WhatsApp
