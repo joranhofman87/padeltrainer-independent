@@ -11,7 +11,7 @@ owner decision rather than a defect.
 
 | # | Area | Classification | Where it stands |
 |---|---|---|---|
-| **F1** | activation measures enqueue time | **accepted** | **CLOSED** at `8010aa53`, Codex-clear after four correction rounds. `booking_lifecycle_events` gives every transition an immutable `occurred_at`; producers read it through `booking_transition_event` (service-role only, oldest-of-latest, set-wide sha256 discriminator, fail-closed unless EVERY member has evidence). Earlier note: Immutable `occurred_at`, per-path `max_event_age_minutes`, enforcement at every send authority + a BEFORE UPDATE backstop, producers derive the time from the domain row and fail closed. Round 2 corrected a defect in the correction: transitions are dated from `updated_at`, not the booking's `created_at` (see below). |
+| **F1** | activation measures enqueue time | **accepted** | **CLOSED** at `8010aa53`, Codex-clear after four correction rounds. `booking_lifecycle_events` gives every transition an immutable `occurred_at`; producers read it through `booking_transition_event` — service-role only, each booking's latest event then the OLDEST of those, a set-wide sha256 discriminator, and no rows unless EVERY member of the set has evidence. The route there is below. |
 | **F2** | account deletion fails open | **accepted** | Closed. `runAll` / `runDelete` / `requireRead` check every operation; the auth deletion is unreachable after a failure. Round 2: evidence moved to `account_deletion_audit`, FK-free and two-phase, because the old table cascaded from `auth.users` and destroyed its own record. |
 | **F3** / **OD-1** | shared-trainer global identity | **accepted; OD-1 RESOLVED STRICT by the owner 2026-08-06 and implemented** | The cross-tenant risk is closed: a manager cannot touch the global identity of a trainer associated with any tenant they do not manage, and the check counts every non-terminal relationship status, not just `active`. The residual is below. |
 | **F4** | non-atomic cycle editing | **accepted** | **OPEN.** Needs one server-owned transactional RPC. Not started. |
@@ -98,32 +98,35 @@ trainer's initial credential. They should create the account without one and sen
 The academy/club trainer-edit UIs also still submit global profile fields and now receive a 403
 rather than a disabled field.
 
-## F1 — how it was closed (was: "not closed")
+## F1 — the two wrong clocks, and the one that was right
 
-Everything structural is in place: `occurred_at` is immutable and never future-dated, every send
-authority enforces `greatest(boundary_at, now() - max_event_age)`, a BEFORE UPDATE backstop catches
-any other route into the pipeline, producers derive the time from a domain row and fail closed when
-they cannot, and ten mutants prove each guard load-bearing.
+Kept because the route matters: two plausible answers were shipped and withdrawn before the third,
+and each failed in a way the other could not.
 
-What is not right is the value fed into it for transitions. `bookings.updated_at` is a generic
-touch timestamp refreshed by every write to the row, so:
+**`created_at` — immutable, and the wrong question.** A cancellation of a three-week-old booking
+was dated three weeks back, fell under the event-age floor, and was never sent. Correctness about
+history bought silent delivery loss in the present.
 
-* an unrelated later edit (notes, attribution, payment metadata) re-dates a historical
-  cancellation or confirmation forward and past the floor;
-* for a message covering several bookings, `max(updated_at)` lets ONE recently edited member
-  re-date the whole historical set.
+**`updated_at` — the right question, not immutable.** The `BEFORE UPDATE` trigger refreshes it on
+every column write, so editing a note, writing a `mollie_payment_id`, rewriting a split share or
+anonymising a departed player's history re-dated a year-old cancellation into the sendable window.
+That is the laundering the whole mechanism exists to prevent, arriving through the value instead of
+through an UPDATE. `max(updated_at)` over a set was worse still: one recently touched member
+re-dated every historical one beside it.
 
-That is the same laundering the column exists to prevent, arriving through the value instead of
-through an UPDATE. Using `created_at` instead is not an option — it re-creates the delivery-loss
-defect (a current cancellation of an old booking dated three weeks back, refused, never sent).
+**The ledger — the transition gets its own row.** `booking_lifecycle_events` is append-only,
+captured by a trigger rather than by the ~15 call sites that write `bookings.status` across UI, lib
+and edge, because per-call-site stamping misses one and the one it misses is silent. Four review
+rounds then closed four more defects in the fix itself: definer readers granted to `authenticated`
+(a cross-tenant timeline disclosure), `ON DELETE CASCADE` beside an append-only guard, an aggregate
+that still let a fresh member re-date a mixed set, and a discriminator that never moved when a
+*different* member re-transitioned.
 
-**The fix is event-specific immutable timestamps** — `paid_at`, `cancelled_at`, `confirmed_at`, or
-a booking status-history ledger — which `bookings` does not currently have. Schema change plus
-producer changes plus their own regressions; it is the next unit of work, not a patch.
-
-**Until then:** the no-backlog contract is provable on ENQUEUE time and on the boundary/age floor,
-and is NOT yet provable on true event time for booking transitions. No channel may be activated on
-the strength of the event-time claim.
+**Where it stands:** the no-backlog contract is provable on true event time for booking
+transitions. The backfill is deliberately partial — `created` and `paid` only, nothing synthesised
+for historical cancellations — so pre-ledger transitions have no row and their notifications are
+refused rather than sent. That refusal *is* the no-backlog outcome, and it is a real behaviour
+change recorded in the migration header and in NOTIFICATION_OPERATIONS.md.
 
 ## Round-2 corrections (defects the corrections themselves introduced)
 
