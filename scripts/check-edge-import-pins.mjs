@@ -218,20 +218,34 @@ export function parseModule(source, fileName = "module.ts") {
  * a function declaration. Used to tell the CommonJS `require` loader apart from a local binding
  * that merely shares its name.
  *
- * The two error directions are NOT symmetric, and the asymmetry drives the design. Missing a
- * shadowing form costs a false positive: annoying, visible, harmless. Wrongly reporting a binding
- * SUPPRESSES a real dependency, which is an evasion — the thing this guard exists to prevent. So
- * this errs toward "not bound":
+ * The two error directions are NOT symmetric, and the asymmetry is the whole design. Missing a
+ * shadowing form costs a false positive: annoying, visible, harmless. Wrongly believing something
+ * is a binding SUPPRESSES a real dependency — an evasion, the one thing this guard exists to
+ * prevent. Three separate review rounds each found an evasion here, every one of them the same
+ * mistake: treating a construct that TYPESCRIPT ERASES as if it bound a name at runtime.
  *
- *   * `declare const require: …` / `declare function require(…)` are AMBIENT. They are erased at
- *     emit, so at runtime the call still reaches the module environment's real `require`. Counting
- *     them as bindings would let `declare const require; require("npm:floating@2")` through.
- *   * It inspects only the direct declarations of enclosing scopes, so destructuring, catch
- *     parameters, loop bindings, class declarations and named function expressions are missed —
- *     all in the false-positive direction, deliberately.
+ * So the rule is stated once, over the complete set rather than case by case. A declaration counts
+ * only if it survives to runtime. Among the constructs that introduce a name in VALUE space, the
+ * erasable ones are exactly:
+ *
+ *   * anything carrying `declare` (ambient) — `declare const require`, `declare function require`;
+ *   * a function declaration with NO BODY — an overload signature, which emits nothing. A real
+ *     overload set is still suppressed correctly, because its implementation HAS a body and this
+ *     scan finds that instead.
+ *
+ * Everything else in value space survives: parameters, `var`/`let`/`const` (initialised or not),
+ * classes, non-const enums, namespaces with bodies, import bindings. Of those this scan only
+ * inspects parameters and variable statements, so destructuring, catch parameters, loop bindings,
+ * class declarations, named function expressions and import bindings go unnoticed — every one of
+ * them in the false-positive direction, deliberately.
+ *
+ * Verified against `ts.transpileModule` rather than assumed: the three erasable forms emit no
+ * binding, the four runtime forms do.
  */
 function isLexicallyBound(node, name) {
-  const isAmbient = (s) => s.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) === true;
+  const isErased = (s) =>
+    s.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) === true
+    || (ts.isFunctionDeclaration(s) && s.body === undefined);
 
   for (let n = node.parent; n; n = n.parent) {
     if (ts.isFunctionLike(n) && n.parameters?.some((p) => ts.isIdentifier(p.name) && p.name.text === name)) {
@@ -240,7 +254,7 @@ function isLexicallyBound(node, name) {
     const statements = ts.isSourceFile(n) || ts.isBlock(n) || ts.isModuleBlock(n) ? n.statements : null;
     if (!statements) continue;
     for (const s of statements) {
-      if (isAmbient(s)) continue; // erased at runtime — not a binding the call can reach
+      if (isErased(s)) continue; // emits nothing — not a binding the call can reach
       if (ts.isVariableStatement(s)
           && s.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name)) {
         return true;
@@ -518,6 +532,38 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
   assert(specifiersIn('const x = obj.require("npm:pkg@2");').length === 0, "obj.require() was extracted as a module load");
   assert(computedImportsIn("const x = require(spec);").length === 1, "computed require() not reported");
 
+  // ── The `require`-shadowing model, over the COMPLETE set of value declarations ──────────────
+  // Three rounds produced an evasion here, each the same mistake: treating a construct TypeScript
+  // ERASES as if it bound the name at runtime. So the table below is checked against what the
+  // compiler actually emits, not against a reading of the spec — `shadows` is asserted to match
+  // `ts.transpileModule`, and then the guard is asserted to agree with that. A future edit that
+  // gets erasure wrong fails on the emit comparison, not just on a hand-written expectation.
+  const SHADOW_CASES = [
+    ["parameter",             'function f(require: F) { return require("npm:s@2"); }',                       true],
+    ["const with initialiser", 'const require = load;\nconst d = require("npm:s@2");',                       true],
+    ["let without initialiser", 'let require: F;\nconst d = require("npm:s@2");',                            true],
+    ["function with a body",  'function require(s: string) { return null; }\nconst d = require("npm:s@2");', true],
+    ["overload + implementation",
+     'function require(s: string): unknown;\nfunction require(s: string) { return null; }\nconst d = require("npm:s@2");', true],
+    ["declare const",         'declare const require: F;\nconst d = require("npm:s@2");',                    false],
+    ["declare function",      'declare function require(s: string): unknown;\nconst d = require("npm:s@2");', false],
+    ["bodyless overload",     'function require(s: string): unknown;\nconst d = require("npm:s@2");',        false],
+  ];
+  for (const [label, src, shadows] of SHADOW_CASES) {
+    // What the compiler really does: does a `require` binding survive emit?
+    const emitted = ts.transpileModule(src, { compilerOptions: { target: ts.ScriptTarget.ESNext } }).outputText;
+    const bindingSurvives = /(^|\n)\s*(function|const|let|var)\s+require\b/.test(emitted)
+      || /function\s+\w*\s*\(\s*require\b/.test(src);
+    assert(bindingSurvives === shadows, `the ${label} fixture disagrees with real emit — the table is wrong, not the guard`);
+
+    // …and the guard must agree with the compiler.
+    const found = specifiersIn(src).map((s) => s.spec);
+    assert(found.includes("npm:s@2") === !shadows,
+      shadows
+        ? `a ${label} does not shadow: the guard reported a dependency it should not have`
+        : `a ${label} is ERASED, so the call reaches the real loader — suppressing it is an evasion`);
+  }
+
   // FAIL CLOSED: a file that will not parse is a violation, never a silent "clean". Without this
   // the parser's error recovery would return an empty import list and the file would pass.
   const broken = parseModule('const ok = 1;\nimport { x from "npm:pkg@2"\nfunction (( {');
@@ -577,6 +623,8 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
       // An AMBIENT `require` is erased at emit, so the call still reaches the real loader at
       // runtime. Treating it as a binding would suppress a genuine dependency — an evasion.
       "ambient.cts": 'declare const require: (s: string) => unknown;\nconst d = require("npm:floating-ambient@2");\n',
+      // A bodyless overload signature emits nothing either — same erasure class as `declare`.
+      "overload.cts": 'function require(s: string): unknown;\nconst d = require("npm:floating-overload@2");\n',
       "clean.ts": 'import { b } from "https://esm.sh/pinned@1.2.3";\nimport c from "./local.ts";\n',
     };
     for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(integrationDir, name), body);
@@ -590,6 +638,7 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
     assert(one("computed.ts")?.kind === "computed", "findFloating did not report the computed dynamic import");
     assert(one("static.mts")?.spec === "https://esm.sh/floating-mts@2", "findFloating did not report a floating import in a .mts file");
     assert(one("ambient.cts")?.spec === "npm:floating-ambient@2", "an AMBIENT `declare const require` suppressed a real dependency — this is an evasion, not a false positive");
+    assert(one("overload.cts")?.spec === "npm:floating-overload@2", "a BODYLESS overload signature suppressed a real dependency — same erasure class, same evasion");
     assert(specsFor("clean.ts").length === 0, "findFloating reported a violation in the clean file");
 
     // BOTH violations in the two-violation file, so a loop that stops after its first element fails.
@@ -598,7 +647,7 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
     assert(two[0] === "https://esm.sh/floating-first@2" && two[1] === "https://esm.sh/floating-second@3",
       `wrong specifiers from the multi-violation file: ${two.join(", ")}`);
 
-    assert(reported.length === 7, `findFloating reported ${reported.length} violations, expected exactly 7`);
+    assert(reported.length === 8, `findFloating reported ${reported.length} violations, expected exactly 8`);
     assert(reported.every((v) => v.line >= 1), "a violation carried no usable line number");
     // The second violation is on a later line than the first — line numbers are per-specifier,
     // not per-file.
@@ -612,9 +661,11 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
     fs.rmSync(path.join(integrationDir, "static.mts"));
     fs.rmSync(path.join(integrationDir, "two-in-one.ts"));
     fs.rmSync(path.join(integrationDir, "ambient.cts"));
+    fs.rmSync(path.join(integrationDir, "overload.cts"));
     fs.writeFileSync(path.join(integrationDir, "pinned-view.tsx"), "/** @jsxImportSource https://esm.sh/preact@10.19.3 */\nexport const v = <div />;\n");
     fs.writeFileSync(path.join(integrationDir, "shadowed.ts"), 'export function useLoader(require: (s: string) => unknown) {\n  return require("npm:pkg@2");\n}\n');
     fs.writeFileSync(path.join(integrationDir, "shadowed-const.ts"), 'const require = customLoader;\nrequire("npm:pkg@2");\n');
+    fs.writeFileSync(path.join(integrationDir, "real-overload.ts"), 'function require(s: string): unknown;\nfunction require(s: string) { return null; }\nrequire("npm:pkg@2");\n');
     const clean = findFloating(integrationDir);
     assert(clean.length === 0, `a pinned pragma or shadowed require was reported: ${clean.map((v) => `${path.basename(v.file)}:${v.line} ${v.spec}`).join("; ")}`);
   } finally {
