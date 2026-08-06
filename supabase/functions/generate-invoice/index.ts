@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { PDFDocument, StandardFonts, rgb } from "https://esm.sh/pdf-lib@1.17.1";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { resolveInvoicePlayerAccess, type AuthzClient } from "../_shared/invoice-player-authz.ts";

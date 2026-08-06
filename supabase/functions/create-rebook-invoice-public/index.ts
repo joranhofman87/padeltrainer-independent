@@ -8,7 +8,7 @@
 // at ACCEPT here (respond_to_priority_claim), NOT by the webhook. Full price is structural — a single
 // claimant identity means auto-create-invoice's split auto-detect cannot fire. Idempotency is the
 // unique partial index on invoices.rebook_cyclus_id (one active invoice per claimant+cyclus).
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { withTimeout } from "../_shared/edge-timeout.ts";
 

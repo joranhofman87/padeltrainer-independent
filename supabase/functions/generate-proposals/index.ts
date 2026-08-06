@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { aiTextModel, fetchChatCompletion, isAiGatewayConfigured } from "../_shared/ai-gateway.ts";
 import { canManageCycle, isAdminUser } from "../_shared/cycle-access.ts";
 

@@ -132,10 +132,38 @@ bundles server-side and never sees `deno.lock`.** That is the whole gap: the loc
 surface reproducible and left the one surface that ships unpinned. A green CI proved nothing about the
 deploy, and could not have. Pinning in the source specifier is the only place the deploy bundler reads.
 
+**Which version, and why it is 2.108.2.** `deno.lock` had been resolving the floating specifier to
+`2.108.2`, so every local `deno check`, every edge test and every CI run in this repository has been
+validated against that version — it is the most exercised version we have, and it is one minor
+release from what the deploy was actually fetching. An earlier attempt pinned `2.57.2` (the version
+29 functions already named) and that was **wrong**, for a reason no type-check could see:
+`auth.getClaims()` in auth-js 2.71.1 THROWS on an expired or exp-less JWT, where 2.108.2 returns
+`{data: null, error}`. Seven functions destructure `{data, error}` and branch on `error`; six of them
+have `verify_jwt = false`, so `getClaims` is their only gate and every expired token — a routine
+client condition — would have become an uncaught 500. Verified by running both versions, not read
+off a changelog. **When choosing a pin, diff the RUNTIME behaviour of the APIs you actually call,
+not just the types.**
+
+**Use the `https://esm.sh/…` form, not `npm:`.** `scripts/check-edge-deno.mjs` runs
+`deno check --node-modules-dir=manual`, which resolves an `npm:` specifier against the
+`node_modules` that `npm ci` populated. So `npm:@supabase/supabase-js@2.57.2` cannot resolve when
+`package.json` installs `^2.90.1` — deno fails with `Could not find a matching package`, produces no
+`TS####` line, and the gate counted **zero errors** for that file. Fourteen entrypoints silently
+stopped being type-checked and the ratchet read it as an improvement. A URL specifier is resolved
+from the network/cache instead, so it is immune to that skew, and one form repo-wide also removes
+the two-module-identity problem below. The gate now fails closed on any non-type `deno` error.
+
 **Scope: `_shared/` counts.** A shared module is bundled into every function that imports it. Five of
 the fifteen failures had clean entrypoints and inherited the floating specifier transitively through
 `_shared/auth.ts`, `_shared/booking-access.ts`, `_shared/booking-confirmation-email.ts` and
 `_shared/mollie-booking-paid-side-effects.ts`. Pin the shared modules or the guard is theatre.
+
+**A `./cors` subpath DOES exist.** supabase-js publishes `./cors` from 2.95.0 (2026-02-05) onward.
+`send-campaign-emails` imports it and always has resolved at deploy time, because it named the
+floating `@2`. Do not "repair" it to `_shared/cors.ts`: upstream sends
+`Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS` and `_shared/cors.ts` sends no
+Allow-Methods at all, which a browser preflight needs to permit a cross-origin POST. Probing an old
+pinned version makes the subpath look nonexistent — check the version the deploy actually resolves.
 
 **One package, one specifier form.** `npm:@supabase/supabase-js@2.57.2` and
 `https://esm.sh/@supabase/supabase-js@2.57.2` are the *same library at the same version* but two

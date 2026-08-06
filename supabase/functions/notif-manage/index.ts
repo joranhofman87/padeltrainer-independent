@@ -8,7 +8,7 @@
 // CORS is open deliberately: the page runs on padeltrainer.ai, this function on *.supabase.co,
 // and the token in the body is the only credential — there is no cookie or ambient auth for a
 // cross-site request to ride on.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import {
   handleManageApply,
   handleManageContext,

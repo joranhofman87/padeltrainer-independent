@@ -17,7 +17,8 @@
   "supabase/functions/get-public-rating/index.ts|TS2339|Property 'window_start' does not exist on type 'never'.": 1,
   "supabase/functions/get-public-rating/index.ts|TS2345|Argument of type '{ request_count: any; }' is not assignable to parameter of type 'never'.": 1,
   "supabase/functions/get-public-rating/index.ts|TS2345|Argument of type 'SupabaseClient<any, \"public\", \"public\", any, any>' is not assignable to parameter of type 'SupabaseClient<unknown, { PostgrestVersion: string; }, never, never, { PostgrestVersion: string; }>'.": 1,
-  "supabase/functions/get-public-rating/index.ts|TS2769|No overload matches this call.": 1,
+  "supabase/functions/get-public-rating/index.ts|TS2353|Object literal may only specify known properties, and 'identifier' does not exist in type 'never[]'.": 1,
   "supabase/functions/import-pipeline-data/index.ts|TS18046|'error' is of type 'unknown'.": 1,
-  "supabase/functions/mollie-webhook/index.ts|TS2322|Type 'string | null' is not assignable to type 'string'.": 1
+  "supabase/functions/mollie-webhook/index.ts|TS2322|Type 'string | null' is not assignable to type 'string'.": 1,
+  "supabase/functions/render-page/index.ts|TS2345|Argument of type 'string | undefined' is not assignable to parameter of type 'string'.": 1
 }

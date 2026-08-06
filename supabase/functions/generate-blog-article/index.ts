@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { requireAdmin } from "../_shared/auth.ts";
 import { restrictedCors } from "../_shared/cors.ts";
 import { aiTextModel, fetchChatCompletion } from "../_shared/ai-gateway.ts";

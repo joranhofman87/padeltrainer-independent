@@ -1,4 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { corsHeaders, requireServiceRole } from "../_shared/auth.ts";
 
 Deno.serve(async (req) => {

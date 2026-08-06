@@ -61,8 +61,22 @@ function functionEntrypoints() {
     .sort();
 }
 
+// A `deno check` failure that is NOT a type error — an unresolvable specifier, a bundle error, a
+// missing `deno` binary — produces no `TS#### [ERROR]:` line at all. Counting only those lines
+// therefore reads such a file as having ZERO errors, and the ratchet (which fails only ABOVE the
+// baseline) stays green while the file is not being checked at all.
+//
+// That is not hypothetical. Pinning `npm:@supabase/supabase-js@2.57.2` while `package.json`
+// installs 2.90.1 made `deno check --node-modules-dir=manual` fail with
+// `error: Could not find a matching package …` for 14 entrypoints. The gate reported "no new type
+// errors" — a false green — and the count even went DOWN, which read as an improvement. This gate
+// exists to catch un-imported names shipping as runtime ReferenceErrors; failing open is the one
+// thing it must not do.
+const HARD_FAIL_RE = /^error: (.+)$/;
+
 function collectErrorCounts() {
   const counts = {};
+  const hardFailures = [];
   for (const entry of functionEntrypoints()) {
     let out = '';
     try {
@@ -78,6 +92,13 @@ function collectErrorCounts() {
       out = `${e.stdout || ''}${e.stderr || ''}`;
     }
     const lines = out.split('\n');
+    // Fail CLOSED on anything that stopped deno from type-checking this entrypoint.
+    for (const line of lines) {
+      const hard = HARD_FAIL_RE.exec(line.trim());
+      if (hard && !/^Type checking failed/.test(hard[1])) {
+        hardFailures.push(`${normalize(entry)}: ${hard[1]}`);
+      }
+    }
     for (let i = 0; i < lines.length; i++) {
       const m = ERR_RE.exec(lines[i]);
       if (!m) continue;
@@ -90,6 +111,14 @@ function collectErrorCounts() {
       const sig = `${file}|${m[1]}|${normalize(m[2])}`;
       counts[sig] = (counts[sig] || 0) + 1;
     }
+  }
+  if (hardFailures.length > 0) {
+    console.error(`\n❌ edge functions (deno check) — ${hardFailures.length} entrypoint(s) could not be CHECKED AT ALL:\n`);
+    for (const f of hardFailures) console.error(`  ${f}`);
+    console.error(`\nThese are not type errors — deno never got far enough to produce any. A file that`);
+    console.error(`cannot be checked silently contributes ZERO errors, so the ratchet would read this as`);
+    console.error(`an improvement. Fix the resolution failure; do not regenerate the baseline over it.`);
+    process.exit(1);
   }
   return counts;
 }

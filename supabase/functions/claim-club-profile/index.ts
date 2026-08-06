@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { corsHeaders, requireUser } from "../_shared/auth.ts";
 
 interface ClaimClubBody {

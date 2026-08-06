@@ -11,7 +11,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { evaluateInstantSendGate } from "../_shared/instant-send-gate.ts";
 import { checkChannelKillOrRelease } from "../_shared/channel-kill-check.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { notifySlackEdgeError, notifySlackEdgeResult } from "../_shared/edge-slack.ts";

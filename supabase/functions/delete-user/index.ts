@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { deleteUserData } from "../_shared/delete-user-data.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 

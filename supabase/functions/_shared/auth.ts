@@ -2,7 +2,7 @@
 // All functions in this project run with verify_jwt = false, so each one must
 // validate identity in code. These helpers centralize that pattern.
 
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { extractBearerToken, getEnvServiceRoleKey, isServiceRoleRequest } from "./service-role-auth.ts";
 
 export const corsHeaders = {

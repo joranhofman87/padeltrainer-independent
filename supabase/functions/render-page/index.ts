@@ -256,7 +256,7 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
     let seoDesc = `Find padel clubs and coaches in ${city}. Compare courts, book lessons and start playing padel today.`;
 
     try {
-      const { createClient: createSanityClient } = await import("npm:@sanity/client@6.29.1");
+      const { createClient: createSanityClient } = await import("https://esm.sh/@sanity/client@6.29.1");
       const sanityCli = createSanityClient({
         projectId: 'ru3aqhjn',
         dataset: 'production',

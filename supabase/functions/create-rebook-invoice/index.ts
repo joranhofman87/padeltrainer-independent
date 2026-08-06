@@ -7,7 +7,7 @@
 // role via auto-create-invoice (whose own auth is manager-only), AFTER that gate —
 // the exact pattern create-registration-invoice uses for event registrations.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { resolveSplitDivisorFromSlots } from "../_shared/booking-pricing.ts";
 

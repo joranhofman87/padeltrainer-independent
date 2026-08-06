@@ -4,7 +4,7 @@
 // later uses to confirm the paid hold, or the payment strands. Duplicating this was
 // the P1 that adversarial review caught for the single-slot fn; sharing it makes the
 // invariant structural.
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 
 export type MollieRecipient = {
   accessToken: string | null;

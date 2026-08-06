@@ -11,7 +11,7 @@
 //
 // GET never unsubscribes — mailbox scanners prefetch List-Unsubscribe URLs with GET; acting on
 // that would mass-unsubscribe people who clicked nothing. GET redirects to the manage page.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import {
   handleOneClickPost,
   oneClickGetRedirect,
