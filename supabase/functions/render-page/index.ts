@@ -743,7 +743,15 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
         { lang, slug: topicSlug },
         ...(topic.alternates || []).filter(a => a && a.language && a.slug).map(a => ({ lang: a.language, slug: a.slug })),
       ];
-      const cardsHtml = (topic.featuredGuides || []).slice(0, 6)
+      // `featuredGuides: Array<{ slug: string; … }>` is a TypeScript ASSERTION over unvalidated
+      // Sanity JSON, not a guarantee: a broken reference comes back null, and a guide can be
+      // published without `slug.current`. Either one made `esc()` call `.replace` on undefined and
+      // took down the whole topic page. Validate at the boundary instead of trusting the type —
+      // and filter BEFORE slicing, so a broken entry costs a card rather than a slot.
+      const cardsHtml = (topic.featuredGuides || [])
+        .filter((g): g is { slug: string; title?: string; h1?: string } =>
+          !!g && typeof g.slug === 'string' && g.slug.length > 0)
+        .slice(0, 6)
         .map(g => `<li><a href="${SITE_URL}/${lang}/learn/${esc(g.slug)}">${esc(g.h1 || g.title || g.slug)}</a></li>`)
         .join('');
       const body = `<h1>${esc(title)}</h1>

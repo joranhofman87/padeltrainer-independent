@@ -79,6 +79,11 @@ function functionEntrypoints() {
 // produced at least one parsable `TS#### [ERROR]` diagnostic. Anything else means deno did not get
 // far enough to have an opinion, and must not read as zero errors.
 const HARD_FAIL_RE = /^error: (.+)$/;
+// `error: Type checking failed.` is deno's COMPLETION marker for a run that finished and found type
+// errors. (`Found N errors.` is printed only when N > 1 — verified on deno 2.8.3 — so it cannot be
+// the marker.) Its presence is what distinguishes "checked, and here are the errors" from "died
+// partway through". Without it, a deno killed after emitting ONE diagnostic would look checked.
+const COMPLETED_WITH_ERRORS_RE = /^error: Type checking failed\.$/;
 
 function collectErrorCounts() {
   const counts = {};
@@ -121,8 +126,19 @@ function collectErrorCounts() {
       counts[sig] = (counts[sig] || 0) + 1;
       parsedHere += 1;
     }
-    if (exitStatus !== 0 && parsedHere === 0) {
-      hardFailures.push(`${normalize(entry)}: deno exited ${exitStatus} without producing a single parsable diagnostic`);
+    // An entrypoint counts as CHECKED in exactly two shapes, and nothing else:
+    //   * exit 0                                   — completed, no type errors;
+    //   * exit 1 + the completion marker + >=1 parsed diagnostic — completed, with type errors.
+    // Everything else (127 missing binary, 137 killed, a crash, a diagnostic-format change, or a
+    // run that emitted one error and then died) means deno never finished forming an opinion about
+    // this file, and must not be recorded as zero errors.
+    const completed = lines.some((l) => COMPLETED_WITH_ERRORS_RE.test(l.trim()));
+    const checked = exitStatus === 0 || (exitStatus === 1 && completed && parsedHere > 0);
+    if (!checked) {
+      hardFailures.push(
+        `${normalize(entry)}: deno exited ${exitStatus} without completing the check `
+        + `(${parsedHere} diagnostic(s) parsed, completion marker ${completed ? 'present' : 'ABSENT'})`,
+      );
     }
   }
   if (hardFailures.length > 0) {
