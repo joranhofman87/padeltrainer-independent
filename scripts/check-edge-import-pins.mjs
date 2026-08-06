@@ -25,10 +25,35 @@
 // imports it, which is exactly how five of the fifteen failures happened: their own entrypoints
 // were clean and they inherited the floating specifier transitively. Test files are scanned too;
 // a floating import breaks CI the same way it breaks a deploy.
+//
+// ── HOW SPECIFIERS ARE FOUND, and why it is not a regex ─────────────────────────────────────
+// This guard originally lexed imports with regular expressions. Three consecutive review rounds
+// each found a fresh defect in the SAME invariant family — "which text in this file is a module
+// specifier": an attributed dynamic import, a `;` inside a comment ending the import clause, a
+// computed specifier, a method named `import`, a stripper that desynced on a regex literal
+// containing a quote, `import(` matched inside a string. Each patch was locally correct and the
+// family kept producing defects, which is the signature of an incomplete model rather than a
+// missing case. Deciding what is code, what is a comment, what is a string and what is a regex
+// literal IS parsing; a regex cannot do it, and every patch was an approximation of a lexer.
+//
+// So the extraction is now the TypeScript parser (a devDependency this repo already type-checks
+// with). The contract it satisfies, stated as properties the self-test enforces:
+//
+//   1. COMPLETE — every specifier the bundler would resolve is reported, in every syntax form:
+//      static, side-effect, `export … from`, `export * from`, `import x = require(…)`, dynamic,
+//      attributed, multi-line, braced, and specifiers carrying comments inside the clause.
+//   2. SOUND — nothing that is not a module specifier is reported: not text in a string, not a
+//      comment, not a regex literal, not a call to a method that happens to be named `import`.
+//   3. COMPUTED IS A VIOLATION — a dynamic import whose specifier is not a string literal
+//      (`import(`…${v}`)`, `import(a + b)`, `import(spec)`) cannot be an exact pin by
+//      construction, so it is reported in its own right rather than skipped.
+//   4. FAILS CLOSED — a file that will not parse is a violation, never a silent "clean".
+//   5. Reported line numbers are real source lines.
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
 import fs from "node:fs";
 import path from "node:path";
+import ts from "typescript";
 
 export const FUNCTIONS_ROOT = "supabase/functions";
 
@@ -100,125 +125,71 @@ export function isPinned(spec) {
   return EXACT_VERSION.test(parsed.version);
 }
 
-const IMPORT_PATTERNS = [
-  // static `import … from "x"` / `export … from "x"` / `export * from "x"`.
-  // The clause body must admit `{`, `}` and newlines — a braced or multi-line import list is the
-  // common case, and excluding `{` here would silently skip almost every real import in the repo.
-  // It is bounded by `;` (lazily) so one import cannot swallow the file. Because a `;` inside a
-  // COMMENT would end that bound early, extraction runs over a comment-stripped copy (see below).
-  // `(?:^|[\s;}])` also keeps `foo.import`-style member access from matching.
-  /(?:^|[\s;}])(?:import|export)\b[^;]*?\bfrom\s*["'`]([^"'`]+)["'`]/gm,
-  // side-effect `import "x"`
-  /(?:^|[\s;}])import\s+["'`]([^"'`]+)["'`]/gm,
-  // dynamic `import("x")` and `import("x", { with: { … } })`. The specifier may be followed by a
-  // comma as well as the closing paren — requiring `)` made every attributed dynamic import
-  // invisible to the guard, which is exactly the shape a floating specifier could hide in.
-  // The lookbehind rejects `loader.import("x", opts)`: a method that happens to be named `import`
-  // is an ordinary call, not a module load, and flagging it would be a false positive.
-  /(?<![.\w$])import\s*\(\s*["'`]([^"'`]+)["'`]\s*[,)]/gm,
-];
-
 /**
- * A dynamic import whose specifier is not a plain literal: `import(`npm:pkg@${v}`)`,
- * `import("npm:pkg@" + v)`, `import(spec)`. These are reported as violations in their own right —
- * a specifier assembled at runtime cannot be an exact source-level pin by construction, so there
- * is nothing for the version check to inspect.
+ * Parse one source file and return every module specifier in it.
+ *
+ * `{ specifiers: [{spec, line}], computed: [{line, expr}], parseError: string|null }`.
+ *
+ * The TypeScript parser decides what is code, what is a comment, what is a string and what is a
+ * regex literal. That is the whole reason it is here: those four distinctions are exactly what a
+ * regex kept getting wrong, and they are free from a real parser. `isStringLiteralLike` is true for
+ * a plain string and for a template with NO substitutions, and false for an interpolated template —
+ * which is precisely the computed/literal boundary this guard needs.
  */
-const DYNAMIC_IMPORT_HEAD = /(?<![.\w$])import\s*\(\s*([^)]{0,160})/gm;
+export function parseModule(source, fileName = "module.ts") {
+  const kind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind);
 
-/**
- * True when a dynamic import's argument list starts with a literal specifier the version check can
- * actually read. A quoted string always is. A template literal is ONLY if it has no `${…}` — that
- * interpolation is the whole point of this check, and a character class like `[^"'`]*` matches it
- * happily, so it must be tested explicitly rather than excluded by a lookahead.
- */
-function startsWithLiteralSpecifier(argText) {
-  // The capture stops before `)`, so the terminator may be a comma OR the end of the captured text.
-  if (/^(["'])[^"']*\1\s*(?:,|$)/.test(argText)) return true;
-  const template = /^`([^`]*)`\s*(?:,|$)/.exec(argText);
-  return template !== null && !template[1].includes("${");
+  // FAIL CLOSED. `createSourceFile` never throws — it recovers and returns a partial tree — so a
+  // file it could not parse would otherwise be reported as having no imports, i.e. as clean.
+  const diagnostics = sf.parseDiagnostics ?? [];
+  if (diagnostics.length > 0) {
+    const d = diagnostics[0];
+    const where = sf.getLineAndCharacterOfPosition(d.start ?? 0).line + 1;
+    const what = ts.flattenDiagnosticMessageText(d.messageText, " ");
+    return { specifiers: [], computed: [], parseError: `line ${where}: ${what}` };
+  }
+
+  const specifiers = [];
+  const computed = [];
+  const lineOf = (node) => sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+
+  const visit = (node) => {
+    // `import … from "x"`, `import "x"`, `export … from "x"`, `export * from "x"`
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+      if (ts.isStringLiteralLike(node.moduleSpecifier)) {
+        specifiers.push({ spec: node.moduleSpecifier.text, line: lineOf(node.moduleSpecifier) });
+      }
+    }
+    // `import x = require("y")`
+    if (ts.isImportEqualsDeclaration(node) && ts.isExternalModuleReference(node.moduleReference)) {
+      const e = node.moduleReference.expression;
+      if (e && ts.isStringLiteralLike(e)) specifiers.push({ spec: e.text, line: lineOf(e) });
+      else if (e) computed.push({ line: lineOf(e), expr: `import = require(${e.getText(sf).slice(0, 60)})` });
+    }
+    // `import("x")`, `import("x", { with: … })`, and every computed form. The parser reports the
+    // real `import(` call ONLY — `loader.import(…)` is a PropertyAccessExpression, so the member
+    // -call false positive cannot arise at all, with or without whitespace or a comment.
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) {
+      const arg = node.arguments[0];
+      if (arg && ts.isStringLiteralLike(arg)) specifiers.push({ spec: arg.text, line: lineOf(arg) });
+      else computed.push({ line: lineOf(arg ?? node), expr: `import(${arg ? arg.getText(sf).slice(0, 60) : ""})` });
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+
+  return { specifiers, computed, parseError: null };
 }
 
-/**
- * Return `source` with comments replaced by nothing, preserving line breaks (so reported line
- * numbers stay true) and leaving string and template literals untouched — a URL's `//` must not be
- * mistaken for a comment. Deliberately small: it tracks quotes, escapes and both comment forms.
- *
- * It does NOT understand regex literals, so a regex containing an unbalanced quote could desync it.
- * That is why extraction unions this pass with a pass over the RAW source: the stripped pass exists
- * only to find imports the raw pass loses to a `;` in a comment, and can never subtract from it.
- */
-export function stripComments(source) {
-  let out = "";
-  for (let i = 0; i < source.length;) {
-    const c = source[i];
-    if (c === '"' || c === "'" || c === "`") {
-      out += c;
-      i += 1;
-      while (i < source.length) {
-        if (source[i] === "\\") { out += source.slice(i, i + 2); i += 2; continue; }
-        out += source[i];
-        i += 1;
-        if (source[i - 1] === c) break;
-      }
-      continue;
-    }
-    if (c === "/" && source[i + 1] === "/") {
-      while (i < source.length && source[i] !== "\n") i += 1;
-      continue;
-    }
-    if (c === "/" && source[i + 1] === "*") {
-      i += 2;
-      while (i < source.length && !(source[i] === "*" && source[i + 1] === "/")) {
-        if (source[i] === "\n") out += "\n";
-        i += 1;
-      }
-      i += 2;
-      continue;
-    }
-    out += c;
-    i += 1;
-  }
-  return out;
-}
-
-/**
- * Every external specifier in one source file, with line numbers.
- *
- * Runs over the raw source AND a comment-stripped copy, then unions the results. The union is the
- * point: the stripped pass catches an import the raw pass loses to a `;` inside a comment, while
- * the raw pass covers anything the (deliberately simple) stripper might desync on. A union can only
- * add specifiers, never lose one, so neither pass can create a blind spot in the other.
- */
-export function specifiersIn(source) {
-  const found = new Map();
-  for (const text of [source, stripComments(source)]) {
-    for (const pattern of IMPORT_PATTERNS) {
-      pattern.lastIndex = 0;
-      let m;
-      while ((m = pattern.exec(text)) !== null) {
-        const line = text.slice(0, m.index).split("\n").length;
-        const key = `${m[1]}@@${line}`;
-        if (!found.has(key)) found.set(key, { spec: m[1], line });
-      }
-    }
-  }
-  return [...found.values()];
+/** Every external specifier in one source file, with line numbers. */
+export function specifiersIn(source, fileName = "module.ts") {
+  return parseModule(source, fileName).specifiers;
 }
 
 /** Dynamic imports whose specifier is computed, and so cannot be pinned at all. */
-export function computedImportsIn(source) {
-  const found = new Map();
-  const text = stripComments(source);
-  DYNAMIC_IMPORT_HEAD.lastIndex = 0;
-  let m;
-  while ((m = DYNAMIC_IMPORT_HEAD.exec(text)) !== null) {
-    const arg = m[1].trim();
-    if (startsWithLiteralSpecifier(arg)) continue;
-    const line = text.slice(0, m.index).split("\n").length;
-    if (!found.has(line)) found.set(line, { line, expr: `import(${arg.split("\n")[0].slice(0, 60)}…` });
-  }
-  return [...found.values()];
+export function computedImportsIn(source, fileName = "module.ts") {
+  return parseModule(source, fileName).computed;
 }
 
 export function walk(dir, out = []) {
@@ -233,16 +204,25 @@ export function walk(dir, out = []) {
 export function findFloating(root = FUNCTIONS_ROOT) {
   const violations = [];
   for (const file of walk(root)) {
-    const source = fs.readFileSync(file, "utf8");
-    for (const { spec, line } of specifiersIn(source)) {
+    const { specifiers, computed, parseError } = parseModule(fs.readFileSync(file, "utf8"), file);
+    if (parseError) {
+      violations.push({ file, line: 1, spec: parseError, kind: "unparseable" });
+      continue;
+    }
+    for (const { spec, line } of specifiers) {
       if (!isPinned(spec)) violations.push({ file, line, spec });
     }
-    for (const { line, expr } of computedImportsIn(source)) {
-      violations.push({ file, line, spec: expr, computed: true });
+    for (const { line, expr } of computed) {
+      violations.push({ file, line, spec: expr, kind: "computed" });
     }
   }
   return violations.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 }
+
+const KIND_NOTE = {
+  computed: "   <- computed specifier: cannot be pinned; use a literal",
+  unparseable: "   <- FILE DID NOT PARSE: treated as a violation, never as clean",
+};
 
 function main() {
   if (!fs.existsSync(FUNCTIONS_ROOT)) {
@@ -260,7 +240,7 @@ function main() {
   console.error("A floating specifier makes deployability depend on what a CDN resolves this hour — it is");
   console.error("what broke 15 of 18 function deploys on 2026-08-06.\n");
   for (const v of violations) {
-    console.error(`  ${v.file}:${v.line}  ${v.spec}${v.computed ? "   <- computed specifier: cannot be pinned; use a literal" : ""}`);
+    console.error(`  ${v.file}:${v.line}  ${v.spec}${KIND_NOTE[v.kind] ?? ""}`);
   }
   console.error(`\n${violations.length} floating import(s). Pin each to the exact version the repository already uses.`);
   process.exit(1);
@@ -380,23 +360,36 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
     "dynamic import line number wrong",
   );
 
-  // A `;` inside a comment must not end the import clause. The raw pattern is bounded by `;`, so
-  // without the comment-stripped pass these two imports vanish entirely — a floating specifier
-  // could sit behind any inline comment and the guard would call the file clean.
+  // ── COMPLETENESS: a comment inside the import clause must not hide the import ──────────────
+  // A regex bounded by `;` lost these entirely, and a regex literal containing a quote could
+  // desync a hand-rolled comment stripper so that BOTH passes lost them. The parser has no such
+  // failure mode: it knows what a comment is.
   for (const [label, src] of [
     ["line comment", 'import {\n  x, // explanation; still valid\n} from "npm:hidden-a@2";\n'],
     ["block comment", 'import { x /* explanation; still valid */ } from "npm:hidden-b@2";\n'],
+    ["after a regex literal containing a quote",
+     'const pattern = /"/;\nimport { x /* note; here */ } from "npm:hidden-c@2";\n'],
+    ["after a regex literal containing a slash",
+     'const pattern = /a\\/b"/;\nimport { x } from "npm:hidden-d@2";\n'],
   ]) {
     const specs = specifiersIn(src).map((s) => s.spec);
-    assert(specs.some((s) => s.startsWith("npm:hidden")), `a semicolon in a ${label} hid the import (found: ${specs.join(", ") || "nothing"})`);
+    assert(specs.some((s) => s.startsWith("npm:hidden")), `a comment ${label} hid the import (found: ${specs.join(", ") || "nothing"})`);
   }
 
-  // A URL's `//` is not a comment; the stripper must leave string literals alone.
+  // ── SOUNDNESS: a URL's `//` is not a comment, and import-shaped TEXT is not an import ───────
   assert(
-    stripComments('import x from "https://esm.sh/pkg@1.2.3";').includes("https://esm.sh/pkg@1.2.3"),
-    "stripComments ate a URL inside a string literal",
+    specifiersIn('import x from "https://esm.sh/pkg@1.2.3";')[0].spec === "https://esm.sh/pkg@1.2.3",
+    "a URL inside a string literal was mangled",
   );
-  assert(stripComments("a // c\nb").split("\n").length === 2, "stripComments did not preserve line count");
+  for (const [label, src] of [
+    ["a string mentioning import()", 'const help = "call import(spec) here";'],
+    ["a regex literal shaped like import()", "const re = /import(spec)/;"],
+    ["a commented-out import", '// import { x } from "npm:pkg@2";'],
+    ["a floating specifier named in prose", "// we used to import npm:pkg@2 here"],
+  ]) {
+    assert(specifiersIn(src).length === 0, `${label} was extracted as an import`);
+    assert(computedImportsIn(src).length === 0, `${label} was reported as a computed import`);
+  }
 
   // A computed specifier cannot be an exact pin by construction, so it is a violation itself.
   for (const [label, src] of [
@@ -406,24 +399,40 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
   ]) {
     assert(computedImportsIn(src).length === 1, `computed dynamic import (${label}) not reported`);
   }
-  // …but a plain literal, with or without attributes, is NOT computed.
+  // …but a plain literal is NOT computed — with attributes, as a non-interpolated template, or
+  // longer than any fixed scan window a regex would have needed.
+  const longSpec = `https://esm.sh/@scope/${"a".repeat(220)}@1.2.3`;
   for (const src of [
     'const m = await import("npm:pkg@1.2.3");',
     'const m = await import("npm:pkg@1.2.3", { with: { type: "json" } });',
     "const m = await import(`npm:pkg@1.2.3`);",
+    `const m = await import("${longSpec}");`,
   ]) {
-    assert(computedImportsIn(src).length === 0, `plain literal dynamic import wrongly flagged as computed: ${src}`);
+    assert(computedImportsIn(src).length === 0, `plain literal dynamic import wrongly flagged as computed: ${src.slice(0, 60)}…`);
+  }
+  assert(
+    specifiersIn(`const m = await import("${longSpec}");`)[0].spec === longSpec,
+    "a specifier longer than a scan window was truncated or lost",
+  );
+
+  // A method that happens to be named `import` is an ordinary call, not a module load — including
+  // the whitespace and comment forms, which a lookbehind on the keyword could not reject.
+  for (const [label, src] of [
+    ["plain", 'loader.import("npm:pkg@2", options);'],
+    ["space before the property", 'loader. import("npm:pkg@2", options);'],
+    ["comment before the property", 'loader./* gap */import("npm:pkg@2", options);'],
+    ["optional chaining", 'loader?.import("npm:pkg@2", options);'],
+    ["computed member", 'loader["import"]("npm:pkg@2", options);'],
+  ]) {
+    assert(specifiersIn(src).length === 0, `a .import() method call (${label}) was extracted as a dynamic import`);
+    assert(computedImportsIn(src).length === 0, `a .import() method call (${label}) was reported as computed`);
   }
 
-  // A method that happens to be named `import` is an ordinary call, not a module load.
-  assert(
-    specifiersIn('loader.import("npm:pkg@2", options);').length === 0,
-    "a .import() method call was extracted as a dynamic import",
-  );
-  assert(
-    computedImportsIn("loader.import(spec);").length === 0,
-    "a .import() method call was reported as a computed import",
-  );
+  // FAIL CLOSED: a file that will not parse is a violation, never a silent "clean". Without this
+  // the parser's error recovery would return an empty import list and the file would pass.
+  const broken = parseModule('import { x from "npm:pkg@2"\nfunction (( {');
+  assert(broken.parseError !== null, "an unparseable file did not report a parse error");
+  assert(broken.specifiers.length === 0, "an unparseable file still yielded specifiers");
 
   // The real repository is the last fixture: the guard must agree with the tree it guards.
   if (fs.existsSync(FUNCTIONS_ROOT)) {

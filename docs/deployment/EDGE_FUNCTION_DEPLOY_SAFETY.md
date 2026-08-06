@@ -143,6 +143,19 @@ distinct module identities to TypeScript, so a client created from one cannot be
 typed against the other. Prefer the `https://esm.sh/…` form used by the majority of this repo, and
 never mix forms across an entrypoint and the `_shared/` modules it calls.
 
+**A computed specifier is a violation too.** `import(`npm:pkg@${v}`)`, `import("npm:pkg@" + v)` and
+`import(spec)` cannot be exact pins by construction — there is no version in the source for anyone
+to check. The guard reports them in their own right.
+
+**Why the guard parses instead of grepping.** It originally used regexes, and three consecutive
+review rounds each found a fresh hole in the same place: an attributed dynamic import, a `;` inside
+a comment ending the import clause, a computed specifier, a call to a method named `import`, a
+comment-stripper that desynced on a regex literal containing a quote, `import(` matched inside a
+string. Each patch was locally correct and the family kept producing defects. Deciding what is code,
+what is a comment, what is a string and what is a regex literal *is* parsing, so the guard now uses
+the TypeScript parser and fails closed on any file it cannot parse. If you extend it, extend the AST
+walk — do not reintroduce a pattern.
+
 **Avoid `ReturnType<typeof createClient>` for a client parameter.** It instantiates the *default*
 generics, which differ between supabase-js versions, so it breaks on any version bump. Import the type
 instead: `import { createClient, type SupabaseClient } from "…"` and annotate the parameter
