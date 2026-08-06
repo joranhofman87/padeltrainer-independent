@@ -182,6 +182,10 @@ REVOKE ALL ON FUNCTION public.booking_transition_seq(uuid[], text) FROM PUBLIC, 
 GRANT EXECUTE ON FUNCTION public.booking_transition_seq(uuid[], text) TO authenticated, service_role;
 
 -- ── the SQL producer, re-lifted onto the ledger ─────────────────────────────────────────────
+-- FORWARD REFERENCE, deliberately: this body calls `booking_transition_event`, which the next
+-- migration (20261110100000) creates. plpgsql resolves function calls at execution time, not at
+-- CREATE time, and nothing invokes this producer during a migration run — the first real call
+-- happens after the whole chain has applied. Stated rather than left to be discovered.
 -- Lifted from its newest definition (20261106100000) with three changes and nothing else:
 --   * both arms read the ledger instead of bookings.created_at / bookings.updated_at;
 --   * the per-recipient idempotency subject gains the transition's ledger `seq`, so a genuine
@@ -205,7 +209,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_occurred timestamptz;
-  v_seq      bigint;
+  v_setkey   text;
   v_evt      text;
   v_actor     uuid := auth.uid();
   v_ids       uuid[];
@@ -431,8 +435,8 @@ BEGIN
 
     -- from the LEDGER, not from bookings.created_at: one clock for every producer, and the
     -- ledger's 'created' row is written by the same trigger that records every later transition.
-    v_occurred := public.booking_transition_occurred_at(v_ids, 'created');
-    v_seq      := public.booking_transition_seq(v_ids, 'created');
+    SELECT e.occurred_at, e.set_key INTO v_occurred, v_setkey
+      FROM public.booking_transition_event(v_ids, 'created') e;
     IF v_occurred IS NULL THEN
       RAISE EXCEPTION 'enqueue_booking_notification: no booking in % — refusing to enqueue a message we cannot date', v_ids;
     END IF;
@@ -515,8 +519,8 @@ BEGIN
       -- current cancellation under the event-age floor and lost the message) and not updated_at
       -- (which any unrelated write moves, re-dating a year-old cancellation into the window).
       v_evt      := CASE WHEN p_kind = 'confirmation_player' THEN 'confirmed' ELSE 'cancelled' END;
-      v_occurred := public.booking_transition_occurred_at(r.ids, v_evt);
-      v_seq      := public.booking_transition_seq(r.ids, v_evt);
+      SELECT e.occurred_at, e.set_key INTO v_occurred, v_setkey
+        FROM public.booking_transition_event(r.ids, v_evt) e;
       IF v_occurred IS NULL THEN
         RAISE EXCEPTION 'enqueue_booking_notification: no booking in % — refusing to enqueue a message we cannot date', r.ids;
       END IF;
@@ -528,7 +532,7 @@ BEGIN
         p_recipient_guest_player_id => r.rguest,
         p_tenant_trainer_id         => v_trainer,
         p_tenant_academy_profile_id => v_academy,
-        p_idempotency_subject       => v_key || ':' || md5(array_to_string(r.ids, ',')) || ':' || coalesce(v_seq::text, 'none'),
+        p_idempotency_subject       => v_key || ':' || md5(array_to_string(r.ids, ',')) || ':' || coalesce(v_setkey, 'none'),
         p_related_booking_ids       => r.ids,
         p_payload                   => jsonb_build_object('subject', v_subject, 'html', v_html),
         p_public_summary            => jsonb_build_object(

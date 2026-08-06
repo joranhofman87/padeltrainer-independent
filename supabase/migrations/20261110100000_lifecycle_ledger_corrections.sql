@@ -69,7 +69,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
     min(l.seq),
     -- …and a discriminator over EVERY member's latest transition, so the subject changes whenever
     -- any one of them moves. Ordered by booking id, so the same set always renders identically.
-    string_agg(l.booking_id::text || ':' || l.seq::text, ',' ORDER BY l.booking_id)
+    -- HASHED, because this lands in `notification_outbox.idempotency_key`, which is part of a
+    -- unique B-tree index. A cycle-sized set of raw uuid:seq pairs is ~50 bytes each and would
+    -- blow past the ~2.7 KB index-tuple limit at roughly 50 bookings — well inside the sizes this
+    -- system already handles — failing the enqueue outright. A digest is fixed-width and just as
+    -- discriminating.
+    encode(sha256(convert_to(
+      string_agg(l.booking_id::text || ':' || l.seq::text, ',' ORDER BY l.booking_id), 'UTF8')), 'hex')
     FROM latest_per_booking l
    HAVING count(*) = (SELECT count(*) FROM requested)   -- FAIL CLOSED: every member, or none
       AND count(*) > 0;
