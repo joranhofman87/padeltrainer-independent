@@ -350,6 +350,111 @@ export type Database = {
           },
         ]
       }
+      academy_notification_restriction_audit: {
+        Row: {
+          academy_profile_id: string
+          actor_user_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          id: string
+          new_max_frequency: string | null
+          old_max_frequency: string | null
+          reason: string
+          request_id: string
+          txid: number
+        }
+        Insert: {
+          academy_profile_id: string
+          actor_user_id: string
+          channel: string
+          created_at?: string
+          event_type: string
+          id?: string
+          new_max_frequency?: string | null
+          old_max_frequency?: string | null
+          reason: string
+          request_id: string
+          txid?: number
+        }
+        Update: {
+          academy_profile_id?: string
+          actor_user_id?: string
+          channel?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          new_max_frequency?: string | null
+          old_max_frequency?: string | null
+          reason?: string
+          request_id?: string
+          txid?: number
+        }
+        Relationships: []
+      }
+      academy_notification_restrictions: {
+        Row: {
+          academy_profile_id: string
+          channel: string
+          created_at: string
+          event_type: string
+          max_frequency: string
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          channel: string
+          created_at?: string
+          event_type: string
+          max_frequency: string
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          channel?: string
+          created_at?: string
+          event_type?: string
+          max_frequency?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_notification_restrictions_event_type_fkey"
+            columns: ["event_type"]
+            isOneToOne: false
+            referencedRelation: "notification_event_types"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       academy_player_locations: {
         Row: {
           academy_profile_id: string
@@ -1557,6 +1662,7 @@ export type Database = {
           from_status?: string | null
           id?: string
           occurred_at?: string
+          seq?: never
           to_payment_status?: string | null
           to_status?: string | null
         }
@@ -1568,6 +1674,7 @@ export type Database = {
           from_status?: string | null
           id?: string
           occurred_at?: string
+          seq?: never
           to_payment_status?: string | null
           to_status?: string | null
         }
@@ -4362,6 +4469,186 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_activation_boundaries: {
+        Row: {
+          activated_by: string | null
+          boundary_at: string | null
+          created_at: string
+          max_event_age_minutes: number | null
+          path: string
+          reason: string | null
+          request_id: string | null
+          state: string
+          updated_at: string
+        }
+        Insert: {
+          activated_by?: string | null
+          boundary_at?: string | null
+          created_at?: string
+          max_event_age_minutes?: number | null
+          path: string
+          reason?: string | null
+          request_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Update: {
+          activated_by?: string | null
+          boundary_at?: string | null
+          created_at?: string
+          max_event_age_minutes?: number | null
+          path?: string
+          reason?: string | null
+          request_id?: string | null
+          state?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      notification_admin_audit: {
+        Row: {
+          action: string
+          actor: string
+          created_at: string
+          id: string
+          new_value: string
+          old_value: string
+          outcome: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          created_at?: string
+          id?: string
+          new_value: string
+          old_value: string
+          outcome: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          created_at?: string
+          id?: string
+          new_value?: string
+          old_value?: string
+          outcome?: string
+          reason?: string
+          request_id?: string
+          target?: string
+        }
+        Relationships: []
+      }
+      notification_admin_rejected_attempts: {
+        Row: {
+          action: string
+          actor: string
+          conflict_with: string
+          created_at: string
+          id: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          conflict_with: string
+          created_at?: string
+          id?: string
+          reason: string
+          request_id: string
+          target: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          conflict_with?: string
+          created_at?: string
+          id?: string
+          reason?: string
+          request_id?: string
+          target?: string
+        }
+        Relationships: []
+      }
+      notification_admin_requests: {
+        Row: {
+          action: string
+          actor: string
+          created_at: string
+          fingerprint: string
+          request_id: string
+          verdict: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          created_at?: string
+          fingerprint: string
+          request_id: string
+          verdict: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          created_at?: string
+          fingerprint?: string
+          request_id?: string
+          verdict?: string
+        }
+        Relationships: []
+      }
+      notification_admin_search_log: {
+        Row: {
+          actor: string
+          created_at: string
+          fingerprint: string
+          id: string
+        }
+        Insert: {
+          actor: string
+          created_at?: string
+          fingerprint: string
+          id?: string
+        }
+        Update: {
+          actor?: string
+          created_at?: string
+          fingerprint?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      notification_channel_kill_switches: {
+        Row: {
+          activated_at: string
+          activated_by: string | null
+          channel: string
+          reason: string
+          request_id: string
+        }
+        Insert: {
+          activated_at?: string
+          activated_by?: string | null
+          channel: string
+          reason: string
+          request_id: string
+        }
+        Update: {
+          activated_at?: string
+          activated_by?: string | null
+          channel?: string
+          reason?: string
+          request_id?: string
+        }
+        Relationships: []
+      }
       notification_contacts: {
         Row: {
           channel: string
@@ -4374,6 +4661,7 @@ export type Database = {
           created_at: string
           destination_normalized: string
           destination_redacted: string
+          effective_user_id: string | null
           guest_player_id: string | null
           id: string
           is_primary: boolean
@@ -4394,6 +4682,7 @@ export type Database = {
           created_at?: string
           destination_normalized: string
           destination_redacted: string
+          effective_user_id?: string | null
           guest_player_id?: string | null
           id?: string
           is_primary?: boolean
@@ -4414,6 +4703,7 @@ export type Database = {
           created_at?: string
           destination_normalized?: string
           destination_redacted?: string
+          effective_user_id?: string | null
           guest_player_id?: string | null
           id?: string
           is_primary?: boolean
@@ -4998,6 +5288,7 @@ export type Database = {
           locked_by: string | null
           max_attempts: number
           next_attempt_at: string | null
+          occurred_at: string
           ops_alert_attempts: number
           ops_alert_last_attempt_at: string | null
           ops_alerted_at: string | null
@@ -5020,6 +5311,7 @@ export type Database = {
           template_key: string | null
           template_version: number | null
           tenant_academy_profile_id: string | null
+          tenant_scope_key: string | null
           tenant_trainer_id: string | null
           updated_at: string
           visibility_scope: string
@@ -5051,6 +5343,7 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          occurred_at: string
           ops_alert_attempts?: number
           ops_alert_last_attempt_at?: string | null
           ops_alerted_at?: string | null
@@ -5073,6 +5366,7 @@ export type Database = {
           template_key?: string | null
           template_version?: number | null
           tenant_academy_profile_id?: string | null
+          tenant_scope_key?: string | null
           tenant_trainer_id?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -5104,6 +5398,7 @@ export type Database = {
           locked_by?: string | null
           max_attempts?: number
           next_attempt_at?: string | null
+          occurred_at?: string
           ops_alert_attempts?: number
           ops_alert_last_attempt_at?: string | null
           ops_alerted_at?: string | null
@@ -5126,6 +5421,7 @@ export type Database = {
           template_key?: string | null
           template_version?: number | null
           tenant_academy_profile_id?: string | null
+          tenant_scope_key?: string | null
           tenant_trainer_id?: string | null
           updated_at?: string
           visibility_scope?: string
@@ -5525,6 +5821,45 @@ export type Database = {
           created_at?: string
           dedup_key?: string
           id?: string
+        }
+        Relationships: []
+      }
+      notification_worker_invocations: {
+        Row: {
+          abandon_reason: string | null
+          id: string
+          net_request_id: number | null
+          purpose: string
+          request_id: string
+          requested_at: string
+          resolved_at: string | null
+          source: string
+          status: string
+          worker_run_id: string | null
+        }
+        Insert: {
+          abandon_reason?: string | null
+          id?: string
+          net_request_id?: number | null
+          purpose: string
+          request_id: string
+          requested_at?: string
+          resolved_at?: string | null
+          source: string
+          status?: string
+          worker_run_id?: string | null
+        }
+        Update: {
+          abandon_reason?: string | null
+          id?: string
+          net_request_id?: number | null
+          purpose?: string
+          request_id?: string
+          requested_at?: string
+          resolved_at?: string | null
+          source?: string
+          status?: string
+          worker_run_id?: string | null
         }
         Relationships: []
       }
@@ -9686,8 +10021,8 @@ export type Database = {
           created_at: string
           delivery_mode: string
           destination_redacted: string
-          event_type: string
           error_class: string
+          event_type: string
           id: string
           max_attempts: number
           scheduled_for: string
@@ -9753,7 +10088,7 @@ export type Database = {
         }[]
       }
       admin_notification_activation_boundaries: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           activated_by: string
           boundary_at: string
@@ -9785,7 +10120,7 @@ export type Database = {
         }[]
       }
       admin_notification_event_states: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           academy_off_caps: number
           catalog_default: string
@@ -9805,7 +10140,7 @@ export type Database = {
         }[]
       }
       admin_notification_gauges: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           capped: boolean
           channel: string
@@ -9814,10 +10149,7 @@ export type Database = {
           value: number
         }[]
       }
-      admin_notification_readiness: {
-        Args: Record<PropertyKey, never>
-        Returns: Json
-      }
+      admin_notification_readiness: { Args: never; Returns: Json }
       admin_preview_circuit_release: {
         Args: { p_channel: string }
         Returns: {
@@ -9872,7 +10204,11 @@ export type Database = {
         }[]
       }
       admin_requeue_notification_orphan: {
-        Args: { p_reason: string; p_request_id: string; p_resend_event_id: string }
+        Args: {
+          p_reason: string
+          p_request_id: string
+          p_resend_event_id: string
+        }
         Returns: string
       }
       admin_reset_notification_circuit: {
@@ -9887,7 +10223,11 @@ export type Database = {
         Returns: string
       }
       admin_resolve_notification_orphan: {
-        Args: { p_reason: string; p_request_id: string; p_resend_event_id: string }
+        Args: {
+          p_reason: string
+          p_request_id: string
+          p_resend_event_id: string
+        }
         Returns: string
       }
       admin_search_notification_destination: {
@@ -9971,6 +10311,10 @@ export type Database = {
         }
         Returns: string
       }
+      bind_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_worker_run_id: string }
+        Returns: string
+      }
       book_guest_cart_for_payment: {
         Args: {
           _amounts: number[]
@@ -10016,7 +10360,11 @@ export type Database = {
       }
       booking_transition_event: {
         Args: { p_booking_ids: string[]; p_event_type: string }
-        Returns: { occurred_at: string; seq: number; set_key: string }[]
+        Returns: {
+          occurred_at: string
+          seq: number
+          set_key: string
+        }[]
       }
       booking_transition_occurred_at: {
         Args: { p_booking_ids: string[]; p_event_type: string }
@@ -10053,10 +10401,6 @@ export type Database = {
       can_report_attendance_on_slot: {
         Args: { _require_active?: boolean; _slot_id: string }
         Returns: boolean
-      }
-      bind_notification_worker_invocation: {
-        Args: { p_invocation_id: string; p_worker_run_id: string }
-        Returns: string
       }
       check_enrichment_job_status: { Args: never; Returns: Json }
       check_logo_fetch_job_status: { Args: never; Returns: Json }
@@ -10132,6 +10476,19 @@ export type Database = {
         Returns: {
           invocation_id: string
           status: string
+        }[]
+      }
+      clear_notification_channel_kill: {
+        Args: {
+          p_channel: string
+          p_expected_kill_request_id: string
+          p_expected_pending: number
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: {
+          pending_released: number
+          verdict: string
         }[]
       }
       club_has_managers: {
@@ -10304,6 +10661,7 @@ export type Database = {
         Args: {
           p_event_key: string
           p_idempotency_subject?: string
+          p_occurred_at?: string
           p_payload?: Json
           p_public_summary?: Json
           p_recipient_guest_player_id?: string
@@ -10311,7 +10669,6 @@ export type Database = {
           p_recipient_user_id?: string
           p_related_booking_ids?: string[]
           p_related_invoice_id?: string
-          p_occurred_at?: string
           p_related_payment_id?: string
           p_scheduled_for?: string
           p_template_key?: string
@@ -10779,7 +11136,7 @@ export type Database = {
         }[]
       }
       get_my_notification_restrictions: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           academy_name: string
           academy_profile_id: string
@@ -11272,6 +11629,46 @@ export type Database = {
         Args: { p_default_country_code?: string; p_phone: string }
         Returns: string
       }
+      notif_activation_boundary: { Args: { p_path: string }; Returns: string }
+      notif_activation_min_occurred_at: {
+        Args: { p_path: string }
+        Returns: string
+      }
+      notif_admin_fingerprint: { Args: { p_input: Json }; Returns: string }
+      notif_admin_gate: { Args: never; Returns: undefined }
+      notif_admin_record_refusal: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_conflict: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: undefined
+      }
+      notif_admin_record_verdict: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_fingerprint: string
+          p_request_id: string
+          p_verdict: string
+        }
+        Returns: string
+      }
+      notif_admin_replay_gate: {
+        Args: {
+          p_action: string
+          p_actor: string
+          p_fingerprint: string
+          p_reason: string
+          p_request_id: string
+          p_target: string
+        }
+        Returns: string
+      }
+      notif_channel_kill_gate: { Args: { p_channel: string }; Returns: boolean }
       notif_digest_action_for_class: {
         Args: { p_class: string }
         Returns: string
@@ -11493,6 +11890,9 @@ export type Database = {
           seconds_since_success: number
         }[]
       }
+      notif_error_class: { Args: { p_error: string }; Returns: string }
+      notif_frequency_rank: { Args: { p_freq: string }; Returns: number }
+      notif_my_academy_ids: { Args: never; Returns: string[] }
       notif_open_slots_escape_html: {
         Args: { p_text: string }
         Returns: string
@@ -11515,66 +11915,6 @@ export type Database = {
         Args: { p_actor: string; p_reason: string; p_resend_event_id: string }
         Returns: boolean
       }
-      notif_activation_boundary: {
-        Args: { p_path: string }
-        Returns: string
-      }
-      notif_admin_gate: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      notif_admin_record_refusal: {
-        Args: {
-          p_action: string
-          p_actor: string
-          p_conflict: string
-          p_reason: string
-          p_request_id: string
-          p_target: string
-        }
-        Returns: undefined
-      }
-      notif_admin_fingerprint: {
-        Args: { p_input: Json }
-        Returns: string
-      }
-      notif_admin_record_verdict: {
-        Args: {
-          p_action: string
-          p_actor: string
-          p_fingerprint: string
-          p_request_id: string
-          p_verdict: string
-        }
-        Returns: string
-      }
-      notif_admin_replay_gate: {
-        Args: {
-          p_action: string
-          p_actor: string
-          p_fingerprint: string
-          p_reason: string
-          p_request_id: string
-          p_target: string
-        }
-        Returns: string
-      }
-      notif_channel_kill_gate: {
-        Args: { p_channel: string }
-        Returns: boolean
-      }
-      notif_error_class: {
-        Args: { p_error: string }
-        Returns: string
-      }
-      notif_frequency_rank: {
-        Args: { p_freq: string }
-        Returns: number
-      }
-      notif_my_academy_ids: {
-        Args: Record<PropertyKey, never>
-        Returns: string[]
-      }
       notification_redact_destination: {
         Args: { p_channel: string; p_value: string }
         Returns: string
@@ -11588,6 +11928,10 @@ export type Database = {
           p_visibility_scope: string
         }
         Returns: boolean
+      }
+      open_notification_worker_invocation: {
+        Args: { p_purpose: string; p_request_id: string; p_source: string }
+        Returns: string
       }
       person_has_tenant_relationship: {
         Args: {
@@ -11609,6 +11953,18 @@ export type Database = {
           p_worker: string
         }
         Returns: string
+      }
+      preview_notification_channel_kill_clear: {
+        Args: { p_channel: string }
+        Returns: {
+          activated_at: string
+          activated_by: string
+          channel: string
+          kill_request_id: string
+          killed_for: string
+          pending_now: number
+          reason: string
+        }[]
       }
       purge_notification_digest: {
         Args: {
@@ -11714,10 +12070,6 @@ export type Database = {
           severity: string
         }[]
       }
-      open_notification_worker_invocation: {
-        Args: { p_purpose: string; p_request_id: string; p_source: string }
-        Returns: string
-      }
       record_email_event: {
         Args: {
           p_academy_profile_id?: string
@@ -11737,10 +12089,6 @@ export type Database = {
         Args: { p_invocation_id: string; p_net_request_id: number }
         Returns: undefined
       }
-      record_notification_activation_boundary: {
-        Args: { p_path: string; p_reason: string; p_request_id: string }
-        Returns: string
-      }
       record_marketing_suppression: {
         Args: {
           p_address: string
@@ -11751,6 +12099,10 @@ export type Database = {
           p_source: string
         }
         Returns: boolean
+      }
+      record_notification_activation_boundary: {
+        Args: { p_path: string; p_reason: string; p_request_id: string }
+        Returns: string
       }
       record_notification_digest_result: {
         Args: {
@@ -11833,18 +12185,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      resolve_invocation_for_canary_run: {
-        Args: { p_worker_run_id: string }
-        Returns: string
-      }
-      resolve_notification_worker_invocation: {
-        Args: { p_invocation_id: string; p_outcome: string; p_reason?: string }
-        Returns: string
-      }
-      resolve_smoke_invocation_disabled: {
-        Args: { p_invocation_id: string; p_net_request_id: number }
-        Returns: string
-      }
       reset_email_suppression: { Args: { p_email: string }; Returns: undefined }
       resolve_guest_member_contacts: {
         Args: { _guest_ids: string[] }
@@ -11857,6 +12197,14 @@ export type Database = {
           own_name: string
         }[]
       }
+      resolve_invocation_for_canary_run: {
+        Args: { p_worker_run_id: string }
+        Returns: string
+      }
+      resolve_notification_worker_invocation: {
+        Args: { p_invocation_id: string; p_outcome: string; p_reason?: string }
+        Returns: string
+      }
       resolve_public_handle: { Args: { _handle: string }; Returns: Json }
       resolve_short_link: {
         Args: { _code: string }
@@ -11866,6 +12214,10 @@ export type Database = {
         }[]
       }
       resolve_slot_booking_tier: { Args: { _slot_id: string }; Returns: string }
+      resolve_smoke_invocation_disabled: {
+        Args: { p_invocation_id: string; p_net_request_id: number }
+        Returns: string
+      }
       respond_to_priority_claim: {
         Args: { _action: string; _reason?: string; _token: string }
         Returns: Json
