@@ -188,6 +188,42 @@ describe('AdminNotificationOps', () => {
     expect(first[1].p_reason).toBe('incident 42');
   });
 
+  it('the stale disposal sends the SNAPSHOT it showed — cutoff and both counts, never a fresh window', async () => {
+    // the destructive-preview race: the dialog promises "exactly the rows you were just shown",
+    // and that promise is only kept if the act carries the preview's own cutoff and counts.
+    const CUTOFF = '2026-08-04T15:15:01.899123+00:00';
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'admin_stale_outbox_preview') {
+        return Promise.resolve({
+          data: [{ channel: 'email', older_than_minutes: 1440, cutoff_at: CUTOFF,
+                   pending: 4, abandoned_processing: 1, oldest: TS1 }],
+          error: null,
+        });
+      }
+      if (fn === 'admin_dispose_stale_outbox') {
+        return Promise.resolve({ data: [{ verdict: 'disposed', disposed: 5, observed_pending: 4, observed_abandoned: 1 }], error: null });
+      }
+      return defaultImpl(fn);
+    });
+    renderPage();
+    fireEvent.click(await screen.findByTestId('stale-preview'));
+    fireEvent.click(await screen.findByTestId('stale-dispose'));
+    fireEvent.change(await screen.findByTestId('stale-reason'), { target: { value: 'resumed after a two-day outage' } });
+    fireEvent.click(screen.getByTestId('stale-confirm'));
+    await waitFor(() => {
+      const call = rpcMock.mock.calls.find((c) => c[0] === 'admin_dispose_stale_outbox');
+      expect(call).toBeTruthy();
+      expect(call![1]).toMatchObject({
+        p_channel: 'email',
+        p_cutoff_at: CUTOFF,          // the instant the operator's number was measured at
+        p_expected_pending: 4,
+        p_expected_abandoned: 1,
+      });
+      // and emphatically NOT a duration for the server to re-evaluate
+      expect(call![1]).not.toHaveProperty('p_older_than_minutes');
+    });
+  });
+
   it('an already-killed channel offers NO kill button — and the page has no clear control at all', async () => {
     renderPage();
     await screen.findByTestId('kill-switches');

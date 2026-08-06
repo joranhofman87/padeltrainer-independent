@@ -57,13 +57,34 @@ export function ActivationBoundariesSection({
         )
         : <span className="text-muted-foreground">0</span>),
     },
+    {
+      // the OTHER clock. A row can be perfectly post-boundary and still report an event too old to
+      // send — the replay shape. Without this column an operator asking "why has this not gone
+      // out?" has no answer on the screen.
+      key: 'tooOld', header: t('notifOps.eventTooOld', 'Event too old'), className: 'whitespace-nowrap',
+      cellTitle: (r) => (r.max_event_age_minutes
+        ? t('notifOps.ceilingTitle', {
+          defaultValue: 'Events older than {{days}} days are never sent on this path',
+          days: Math.round(r.max_event_age_minutes / 1440),
+        })
+        : undefined),
+      renderCell: (r) => (r.pending_before_occurrence_floor > 0
+        ? (
+          <Badge variant="destructive" data-testid={`tooold-${r.path}`}>
+            {r.pending_before_occurrence_floor_capped
+              ? t('notifOps.atLeastN', { defaultValue: 'at least {{n}}', n: r.pending_before_occurrence_floor })
+              : r.pending_before_occurrence_floor}
+          </Badge>
+        )
+        : <span className="text-muted-foreground">0</span>),
+    },
   ];
 
   return (
     <section aria-label="delivery paths" data-testid="section-boundaries">
       <h2 className="font-medium">{t('notifOps.paths', 'Delivery paths')}</h2>
       <p className="text-sm text-muted-foreground">
-        {t('notifOps.pathsDesc', 'A path sends nothing until it is opened, and then only events resolved after that moment. Rows older than the boundary can never send — dispose of them so the queue reflects reality.')}
+        {t('notifOps.pathsDesc', 'A path sends nothing until it is opened, and then only events that happened after that moment. Two things are held back permanently: messages queued before the path opened, and messages for events older than the path\'s age limit. Neither can ever send — dispose of them so the queue reflects reality.')}
       </p>
       <ListPageState
         isLoading={isLoading}

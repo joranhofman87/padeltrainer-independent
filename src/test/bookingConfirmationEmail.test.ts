@@ -46,7 +46,7 @@ afterEach(() => {
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeSupabase(opts: { bookings: any[]; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[]; contactError?: string; identityError?: string; identityThrow?: string }) {
+function makeSupabase(opts: { bookings: any[]; bookingsRaw?: boolean; identityEmail?: string | null; invoiceNumber?: string | null; enqueueRows?: any[]; contactError?: string; identityError?: string; identityThrow?: string }) {
   const rpcCalls: Array<{ name: string; params: Record<string, unknown> }> = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const chain = (data: any) => {
@@ -64,7 +64,14 @@ function makeSupabase(opts: { bookings: any[]; identityEmail?: string | null; in
   };
   const supabase = {
     from: (table: string) => {
-      if (table === 'bookings') return chain(opts.bookings);
+      if (table === 'bookings') {
+        // every booking row carries created_at in production, and the producer now DERIVES the
+        // event-occurrence time from it (the activation boundary measures the event, not the
+        // enqueue). A fixture without one models a booking that cannot exist.
+        const withCreated = (opts.bookings ?? []).map((b: Record<string, unknown>) =>
+          ('created_at' in b ? b : { ...b, created_at: '2026-08-06T08:00:00+00:00' }));
+        return chain(opts.bookingsRaw ? opts.bookings : withCreated);
+      }
       if (table === 'invoices') return chain({ id: 'INV-FB', invoice_number: opts.invoiceNumber ?? 'F-2026-001' });
       return chain(null);
     },
@@ -106,6 +113,35 @@ const SLOT = (over: any = {}) => ({
 const logStep = () => {};
 
 describe('sendPlayerBookingConfirmation', () => {
+  it('declares WHEN THE BOOKING HAPPENED, derived from the bookings — not the moment this ran', async () => {
+    // This helper is reached from the paid claim AND from webhook redelivery, so "now" is not
+    // reliably the time the booking was made. The activation boundary measures the event, so the
+    // producer reads it from the rows the message is about — the EARLIEST of them, because a
+    // message covering one old session and one new one is, in the part that matters, old.
+    const { supabase, rpcCalls } = makeSupabase({
+      bookings: [
+        { id: 'B1', created_at: '2026-07-01T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+        { id: 'B2', created_at: '2026-07-02T10:00:00+00:00', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null },
+      ],
+    });
+    await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1', 'B2'], invoiceId: 'INV-1', molliePaymentId: 'tr_123', logStep });
+    expect(enqueueCall(rpcCalls).p_occurred_at).toBe('2026-07-01T10:00:00+00:00');
+  });
+
+  it('FAILS CLOSED when the occurrence cannot be established — an undateable message is not sent', async () => {
+    // The alternative is falling back to now(), which re-creates the exact hole the boundary
+    // exists to close: a year-old event, freshly stamped, indistinguishable from a real one.
+    // a payer resolves fine — it is only the TIME that cannot be established (bookingsRaw keeps
+    // the fixture exactly as written, with no created_at)
+    const { supabase, rpcCalls } = makeSupabase({
+      bookingsRaw: true,
+      bookings: [{ id: 'B1', player_id: 'P1', guest_player_id: null, availability_slots: SLOT(), profiles: { user_id: 'U1', full_name: 'Player P', email: 'p@example.com', preferred_language: 'nl' }, guest_players: null }],
+    });
+    const res = await sendPlayerBookingConfirmation({ supabase, bookingIds: ['B1'], invoiceId: 'INV-1', molliePaymentId: null, logStep });
+    expect(res).toMatchObject({ ok: false, reason: 'enqueue_failed', detail: 'occurrence_undeterminable' });
+    expect(enqueueCall(rpcCalls)).toBeUndefined();      // nothing was queued at all
+  });
+
   it('registered player: enqueues to the account (user_id) with ALL sessions, a PDF payload, and a LOGIN link', async () => {
     const { supabase, rpcCalls } = makeSupabase({
       bookings: [

@@ -145,11 +145,21 @@ So after an outage longer than a day, before the worker resumes: open
    oldest of them. A lease a worker still holds is never counted, because a worker may be
    mid-provider-call.
 2. **Dispose of what is no longer worth sending**, with a reason. Bounded to 500 per press,
-   audited with the count, and idempotent — the threshold is part of the decision, so a retry that
-   widens it is a new decision rather than a replay.
+   audited with the count, and idempotent — the whole decision is fingerprinted, so a retry that
+   widens the window is a new decision rather than a replay.
 
-Both halves refuse a threshold under 60 minutes: this is an outage tool, not a way to cancel a live
-queue. Neither touches a digest member — those belong to the state machine, and a group that must
+**The disposal acts on the snapshot you were shown, or it refuses.** *Look* returns the exact
+`cutoff_at` it measured, and *Dispose* hands that instant and both counts back to the server. It
+takes a short table lock, recounts, and applies the change only if the set is byte-for-byte the one
+you confirmed; anything else is refused as `rejected_stale_preview`, which names what it found. A
+**shrink** is refused too — consent to destroy four rows is not consent to destroy three others.
+The first version of this control recomputed `now() − threshold` at act time, so the window slid
+forward between reading the number and pressing the button; the confirmation said "these rows" and
+meant "whatever matches now". If you get a refusal, press *Look* again and decide on the new
+number: that is the control working, not a fault.
+
+Both halves refuse a window inside the last 60 minutes: this is an outage tool, not a way to cancel
+a live queue. Neither touches a digest member — those belong to the state machine, and a group that must
 not go out is *cancel group* instead. There is deliberately no automatic sweep: "is this message
 still worth sending a day later" is not a decision code should make.
 

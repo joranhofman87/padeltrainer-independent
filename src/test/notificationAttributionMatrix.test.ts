@@ -88,8 +88,10 @@ describe('attribution matrix pins', () => {
     const out = mentions
       .filter((f) => !/\.test\./.test(f))
       .filter((f) => callsResolver(read(f)))
-      // the resolver-definition migrations CALL it only to redefine/replay it
-      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000/.test(f))
+      // the resolver-definition migrations CALL it only to redefine/replay it — and 20261104100000
+      // re-defines the two SQL PRODUCERS as well, to give them the occurrence argument. Neither
+      // adds a producer; the pin below is what holds them to the contract.
+      .filter((f) => !/20260911|20260922|20261011100000|20261011110000|20261015100000|20261015120000|20261104100000/.test(f))
       .sort();
     expect(out).toEqual([
       'supabase/functions/_shared/booking-confirmation-email.ts',
@@ -98,6 +100,34 @@ describe('attribution matrix pins', () => {
       'supabase/migrations/20260913100000_notification_pilot_review_received.sql',
       'supabase/migrations/20260926100000_booking_notification_enqueue_rpc.sql',
     ]);
+  });
+
+  it('EVERY producer declares when the event occurred — no call site relies on the default', () => {
+    // The final audit's second round: the activation boundary measures `occurred_at`, and a
+    // producer that omits it gets "whenever this row was written", which for a retried or
+    // redelivered producer is exactly the historical event the boundary exists to refuse. This
+    // walks the same closed inventory as the pin above and requires the argument at every site.
+    //
+    // The newest definition of each SQL producer lives in the audit migration, so that is where
+    // those two are checked — grepping the superseded original would pass on dead text.
+    const sites: Array<[string, RegExp]> = [
+      ['supabase/functions/_shared/booking-confirmation-email.ts', /p_occurred_at:\s*occurredAt/],
+      ['supabase/functions/_shared/mollie-booking-paid-side-effects.ts', /p_occurred_at:\s*occurredAt/],
+      ['supabase/functions/notify-followers/index.ts', /p_occurred_at:\s*occurredAt/],
+    ];
+    for (const [file, pattern] of sites) {
+      const src = read(file);
+      const calls = src.match(/rpc\(\s*["']enqueue_notification["'][\s\S]{0,900}?\}\s*\)/g) ?? [];
+      expect(calls.length, `${file}: no enqueue_notification call found`).toBeGreaterThan(0);
+      for (const call of calls) expect(call, `${file}: a call site omits p_occurred_at`).toMatch(pattern);
+    }
+    // …and the two in-database producers, in the migration that owns their current definition
+    const mig = read('supabase/migrations/20261104100000_notif_audit_event_occurrence_boundary.sql');
+    const sqlCalls = mig.match(/public\.enqueue_notification\(\s*[\s\S]{0,1400}?\n\s*\);/g) ?? [];
+    expect(sqlCalls.length, 'the audit migration should carry both SQL producers').toBe(3);
+    for (const call of sqlCalls) expect(call).toMatch(/p_occurred_at\s*=>/);
+    // fail closed rather than dating an undateable message with now()
+    expect(mig).toMatch(/refusing to enqueue a message we cannot date/);
   });
 
   // open-slots-notify.ts COMPOSES the open_slots_player send but does not call the resolver

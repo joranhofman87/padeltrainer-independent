@@ -46,18 +46,19 @@ const adminKill = async (client: InstanceType<typeof Client>, uid: string | null
     await client.query(`SELECT set_config('request.jwt.claim.sub', '', false)`);
   }
 };
-const seedRow = async (over: Partial<{ status: string; channel: string; locked_at: string; locked_by: string; attempts: number; max_attempts: number; delivery_mode: string; created_at: string }> = {}) => {
+const seedRow = async (over: Partial<{ status: string; channel: string; locked_at: string; locked_by: string; attempts: number; max_attempts: number; delivery_mode: string; created_at: string; occurred_at: string }> = {}) => {
   const r = await c.query(
     `INSERT INTO public.notification_outbox
        (channel, event_type, template_key, status, destination_normalized, scheduled_for,
         locked_at, locked_by, attempts, max_attempts, delivery_mode, payload, idempotency_key, recipient_user_id,
-        created_at)
+        created_at, occurred_at)
      VALUES ($1, 'ev_test', 'tpl', $2, 'a@example.com', now() - interval '1 minute',
              $3, $4, $5, $6, $7, jsonb_build_object('k', gen_random_uuid()), gen_random_uuid()::text, '22222222-2222-4222-8222-222222222222',
-             coalesce($8::timestamptz, now()))
+             coalesce($8::timestamptz, now()), $9::timestamptz)
      RETURNING id`,
     [over.channel ?? 'email', over.status ?? 'pending', over.locked_at ?? null, over.locked_by ?? null,
-     over.attempts ?? 0, over.max_attempts ?? 3, over.delivery_mode ?? null, over.created_at ?? null]);
+     over.attempts ?? 0, over.max_attempts ?? 3, over.delivery_mode ?? null, over.created_at ?? null,
+     over.occurred_at ?? null]);
   return r.rows[0].id as string;
 };
 const claim = async (client: InstanceType<typeof Client>, worker = 'w:test', channel = 'email') =>
@@ -202,6 +203,8 @@ beforeAll(async () => {
   await c.query(MIG('20261030100000_notif_n5_round2_dispatch_boundary.sql'));
   await c.query(MIG('20261031100000_notif_n6_kill_clear.sql'));
   await c.query(MIG('20261103100000_notif_audit_stale_outbox_disposal.sql'));
+  await c.query(MIG('20261104100000_notif_audit_event_occurrence_boundary.sql'));
+  await c.query(MIG('20261105100000_notif_audit_stale_disposal_snapshot.sql'));
 }, 180_000);
 
 afterAll(async () => { await c2?.end(); await c?.end(); await epg?.stop(); });
@@ -1336,14 +1339,14 @@ describe('N5 — the activation boundary: no historical work can become eligible
     await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
     await c.query(`DELETE FROM public.notification_activation_boundaries;`);
     await c.query(`
-      INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason)
-      VALUES ('email:instant', 'active', now() - interval '1 hour', 'suite baseline');
-      INSERT INTO public.notification_activation_boundaries (path, state)
-      VALUES ('email:digest', 'inert'), ('whatsapp:instant', 'inert');`);
+      INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason, max_event_age_minutes)
+      VALUES ('email:instant', 'active', now() - interval '1 hour', 'suite baseline', 10080);
+      INSERT INTO public.notification_activation_boundaries (path, state, max_event_age_minutes)
+      VALUES ('email:digest', 'inert', 43200), ('whatsapp:instant', 'inert', 10080);`);
     await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
   });
 
-  it('the LIVE path is seeded UNBOUNDED: the contract cannot retro-drop mail that is already queued', async () => {
+  it('the LIVE path is seeded UNBOUNDED: the BOUNDARY cannot retro-drop mail that is already queued', async () => {
     // the shipped seed, not the suite baseline — read from the migration the way production runs it
     await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
     await c.query(`DELETE FROM public.notification_activation_boundaries WHERE path = 'email:instant';`);
@@ -1352,13 +1355,30 @@ describe('N5 — the activation boundary: no historical work can become eligible
       .match(/INSERT INTO public\.notification_activation_boundaries \(path, state, boundary_at, reason\)[\s\S]*?ON CONFLICT \(path\) DO NOTHING;/)?.[0];
     if (!seed) throw new Error('the email:instant seed was not found in the migration');
     await c.query(seed);
+    // …and the ceiling the audit migration adds to it, from that migration, for the same reason
+    const ceiling = MIG('20261104100000_notif_audit_event_occurrence_boundary.sql')
+      .match(/UPDATE public\.notification_activation_boundaries SET max_event_age_minutes = 10080[\s\S]*?;/)?.[0];
+    if (!ceiling) throw new Error('the instant-path event-age ceiling was not found in the migration');
+    await c.query(ceiling);
     const row = (await c.query(`SELECT * FROM public.notification_activation_boundaries WHERE path='email:instant'`)).rows[0];
     expect(row.state).toBe('active');
     expect(String(row.boundary_at).toLowerCase()).toContain('-infinity');   // unbounded: excludes nothing
     // a row created BEFORE any snapshot the migration could have taken is still claimable — the
     // concurrent-enqueue case a min(created_at) boundary would have silently dropped
+    const queued = await seedRow({ created_at: new Date(Date.now() - 6 * 24 * 3600_000).toISOString() });
+    expect((await claim(c)).map((r: { outbox_id: string }) => r.outbox_id)).toContain(queued);
+  });
+
+  it('…but the EVENT-AGE ceiling is the thing an -infinity boundary cannot be: a 90-day-old event is refused', async () => {
+    // The boundary admits everything on this path by design. Without a second floor, a replay of a
+    // year of history after activation would sail straight through it — which is exactly the
+    // defect the final audit's second round found. The ceiling is that floor.
     const ancient = await seedRow({ created_at: new Date(Date.now() - 90 * 24 * 3600_000).toISOString() });
-    expect((await claim(c)).map((r: { outbox_id: string }) => r.outbox_id)).toContain(ancient);
+    const fresh = await seedRow();
+    expect((await claim(c)).map((r: { outbox_id: string }) => r.outbox_id)).toEqual([fresh]);
+    const left = await rowOf(ancient);
+    expect(left.status).toBe('pending');      // passed over, not terminalized behind the operator
+    expect(left.attempts).toBe(0);            // and not even an attempt spent
   });
 
   it('THE INVARIANT: a row created BEFORE the boundary is never claimed — not as fresh work, not as an orphan reclaim', async () => {
@@ -1370,13 +1390,17 @@ describe('N5 — the activation boundary: no historical work can become eligible
     expect((await rowOf(before)).attempts).toBe(0);                // …and not even an attempt spent
 
     // the ORPHAN-RECLAIM arm is the side door: a historical row that was mid-flight at activation
-    // must not come back through it either
-    await c.query(
-      `UPDATE public.notification_outbox SET status='processing', locked_at = now() - interval '30 minutes', locked_by='dead' WHERE id=$1`,
-      [before]);
+    // must not come back through it either. Seeded straight into 'processing' rather than UPDATEd
+    // there, because that is how the state actually arises — the row was claimed while the path
+    // still admitted it, and the boundary moved afterwards. (The occurrence guard now refuses the
+    // UPDATE form outright, which is the point of it: nothing may ENTER the pipeline late.)
+    const midflight = await seedRow({
+      created_at: new Date(Date.now() - 2 * 3600_000).toISOString(),
+      status: 'processing', locked_at: new Date(Date.now() - 30 * 60_000).toISOString(), locked_by: 'dead',
+    });
     const again = await claim(c);
-    expect(again.map((r: { outbox_id: string }) => r.outbox_id)).not.toContain(before);
-    expect((await rowOf(before)).locked_by).toBe('dead');          // never re-leased
+    expect(again.map((r: { outbox_id: string }) => r.outbox_id)).not.toContain(midflight);
+    expect((await rowOf(midflight)).locked_by).toBe('dead');       // never re-leased
   });
 
   it('an INERT path claims nothing at all, and leaves no trace of having been asked', async () => {
@@ -1410,9 +1434,16 @@ describe('N5 — the activation boundary: no historical work can become eligible
     await expect(c.query(`DELETE FROM public.notification_activation_boundaries WHERE path='whatsapp:instant'`))
       .rejects.toThrow(/append-only/);
     await expect(c.query(`TRUNCATE public.notification_activation_boundaries`)).rejects.toThrow(/append-only/);
+    // going BACKWARDS is the direction that matters, and it is refused on the path where it would
+    // mean something: an opened path cannot be closed and re-opened with a newer window.
     await expect(c.query(
-      `UPDATE public.notification_activation_boundaries SET state='inert' WHERE path='email:digest'`))
-      .rejects.toThrow(/only transition is inert -> active/);
+      `UPDATE public.notification_activation_boundaries SET state='inert' WHERE path='email:instant'`))
+      .rejects.toThrow(/already active since/);
+    // an inert row may be UPDATEd without activating (the event-age ceiling lives there now), but
+    // it still cannot be handed the fields that make a path open — the coherence CHECK owns that.
+    await expect(c.query(
+      `UPDATE public.notification_activation_boundaries SET boundary_at = now() WHERE path='email:digest'`))
+      .rejects.toThrow(/activation_boundary_coherent/);
   });
 
   it('the boundary RPC refuses an unknown path, a missing request id and a thin reason', async () => {
@@ -1831,8 +1862,14 @@ describe('FINAL AUDIT — the long-outage recovery the operations doc prescribes
   };
   const preview = async (ch = 'email', mins = 1440) =>
     (await asAdmin(`SELECT * FROM public.admin_stale_outbox_preview('${ch}', ${mins})`))[0];
-  const dispose = async (ch = 'email', mins = 1440, req = crypto.randomUUID(), reason = 'resumed after a two-day outage', limit = 500) =>
-    (await asAdmin(`SELECT * FROM public.admin_dispose_stale_outbox('${ch}', ${mins}, '${reason}', '${req}'::uuid, ${limit})`))[0];
+  /** the SNAPSHOT protocol: look, then act on exactly what was shown */
+  const dispose = async (ch = 'email', mins = 1440, req = crypto.randomUUID(), reason = 'resumed after a two-day outage', limit = 500) => {
+    const p = await preview(ch, mins);
+    return disposeSnapshot(ch, p.cutoff_at, p.pending, p.abandoned_processing, req, reason, limit);
+  };
+  const disposeSnapshot = async (ch: string, cutoff: string, pending: number, abandoned: number,
+                                 req = crypto.randomUUID(), reason = 'resumed after a two-day outage', limit = 500) =>
+    (await asAdmin(`SELECT * FROM public.admin_dispose_stale_outbox('${ch}', '${new Date(cutoff).toISOString()}'::timestamptz, ${pending}, ${abandoned}, '${reason}', '${req}'::uuid, ${limit})`))[0];
   const age = (id: string, hours: number) =>
     c.query(`UPDATE public.notification_outbox SET updated_at = now() - make_interval(hours => $2) WHERE id = $1`, [id, hours]);
 
@@ -1869,7 +1906,10 @@ describe('FINAL AUDIT — the long-outage recovery the operations doc prescribes
   it('it is an OUTAGE tool, not a queue-cancel button: the 60-minute floor is enforced on both halves', async () => {
     const recent = await seedRow(); await age(recent, 2);
     await expect(c2.query(`SELECT * FROM public.admin_stale_outbox_preview('email', 5)`)).rejects.toThrow();
-    expect((await dispose('email', 5)).verdict).toBe('rejected_threshold_too_low');
+    // the act refuses the same thing on its own, from the cutoff alone — the preview is not the
+    // only guard, because the act is the one that destroys
+    expect((await disposeSnapshot('email', new Date(Date.now() - 5 * 60_000).toISOString(), 1, 0)).verdict)
+      .toBe('rejected_cutoff_too_recent');
     expect((await rowOf(recent)).status).toBe('pending');
     expect((await c.query(
       `SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE action='stale_dispose'`)).rows[0].n).toBe(1);
@@ -1885,13 +1925,237 @@ describe('FINAL AUDIT — the long-outage recovery the operations doc prescribes
   it('admin fail-closed, and request-id idempotent with the threshold in the decision', async () => {
     const stale = await seedRow(); await age(stale, 50);
     await expect(c2.query(
-      `SELECT * FROM public.admin_dispose_stale_outbox('email', 1440, 'why', gen_random_uuid(), 10)`))
+      `SELECT * FROM public.admin_dispose_stale_outbox('email', now() - interval '2 days', 1, 0, 'why', gen_random_uuid(), 10)`))
       .rejects.toThrow(/platform admin only/);
     const req = crypto.randomUUID();
-    expect((await dispose('email', 1440, req)).disposed).toBe(1);
-    expect((await dispose('email', 1440, req)).verdict).toBe('disposed');       // replayed
-    expect((await dispose('email', 1440, req)).disposed).toBe(0);               // …and moves nothing
-    // a retry that WIDENS the threshold is a different decision, not a replay
-    expect((await dispose('email', 120, req)).verdict).toBe('rejected_request_reuse');
+    const snap = await preview('email', 1440);
+    expect((await disposeSnapshot('email', snap.cutoff_at, snap.pending, snap.abandoned_processing, req)).disposed).toBe(1);
+    // the EXACT retry replays; it does not act twice
+    expect((await disposeSnapshot('email', snap.cutoff_at, snap.pending, snap.abandoned_processing, req)).verdict).toBe('disposed');
+    expect((await disposeSnapshot('email', snap.cutoff_at, snap.pending, snap.abandoned_processing, req)).disposed).toBe(0);
+    // a retry that widens the window is a different decision wearing the same id
+    expect((await disposeSnapshot('email', new Date(Date.now() - 90 * 60_000).toISOString(), snap.pending, snap.abandoned_processing, req)).verdict)
+      .toBe('rejected_request_reuse');
+  });
+});
+
+describe('FINAL AUDIT round 2 — the disposal acts on the snapshot the operator saw', () => {
+  const asAdmin = async (sql: string) => {
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+    try { return (await c2.query(sql)).rows; }
+    finally { await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`); }
+  };
+  const preview = async (ch = 'email', mins = 1440) =>
+    (await asAdmin(`SELECT * FROM public.admin_stale_outbox_preview('${ch}', ${mins})`))[0];
+  const act = async (cutoff: string, pending: number, abandoned: number, req = crypto.randomUUID()) =>
+    (await asAdmin(`SELECT * FROM public.admin_dispose_stale_outbox('email', '${new Date(cutoff).toISOString()}'::timestamptz, ${pending}, ${abandoned}, 'after the outage', '${req}'::uuid, 500)`))[0];
+  const age = (id: string, hours: number) =>
+    c.query(`UPDATE public.notification_outbox SET updated_at = now() - make_interval(hours => $2) WHERE id = $1`, [id, hours]);
+
+  it('the preview hands back the CUTOFF, and the act measures against that instant — not a new one', async () => {
+    const stale = await seedRow(); await age(stale, 50);
+    const p = await preview();
+    expect(p.cutoff_at).toBeTruthy();
+    // the cutoff is the threshold measured from the preview's own now(), not a duration to
+    // re-evaluate later: that difference is the entire bug this closes
+    expect(new Date(p.cutoff_at).getTime()).toBeLessThan(Date.now() - 1439 * 60_000);
+    expect((await act(p.cutoff_at, p.pending, p.abandoned_processing)).verdict).toBe('disposed');
+  });
+
+  it('THE RACE: a row that becomes eligible AFTER the preview is never silently disposed', async () => {
+    // the shape the old code destroyed: at preview time this row is 23h59m old and invisible;
+    // by act time the recomputed window would have swallowed it.
+    const shown = await seedRow(); await age(shown, 50);
+    const p = await preview();
+    expect(p.pending).toBe(1);                       // one row, and the operator consented to one
+
+    // a row just INSIDE the window's edge: 23 hours old against a 24-hour threshold. It is not in
+    // the preview, and as wall-clock advances a RECOMPUTED `now() - 24h` would swallow it.
+    const edge = await seedRow(); await age(edge, 23);
+    expect((await preview()).pending).toBe(1);             // still not shown
+
+    // the act measures against the instant the operator saw, so the edge row is untouched…
+    const r = await act(p.cutoff_at, p.pending, p.abandoned_processing);
+    expect(r.verdict).toBe('disposed');
+    expect(r.disposed).toBe(1);
+    expect((await rowOf(shown)).status).toBe('skipped');
+    expect((await rowOf(edge)).status).toBe('pending');    // NEVER destroyed unseen
+
+    // …and the counterfactual, so this is not passing by accident: the same row IS eligible the
+    // moment the window is allowed to move, which is exactly what the old code did at act time.
+    expect((await preview('email', 1380)).pending).toBe(1);
+  });
+
+  it('and if the shown set moves at all — in EITHER direction — the act refuses', async () => {
+    const a = await seedRow(); await age(a, 50);
+    const b = await seedRow(); await age(b, 50);
+    const p = await preview();
+    expect(p.pending).toBe(2);
+
+    // it grows: a third row is backdated behind the same cutoff
+    const c3 = await seedRow(); await age(c3, 60);
+    const grew = await act(p.cutoff_at, p.pending, p.abandoned_processing);
+    expect(grew.verdict).toBe('rejected_stale_preview');
+    expect(grew.disposed).toBe(0);
+    expect(grew.observed_pending).toBe(3);                 // the refusal NAMES what it found
+    for (const id of [a, b, c3]) expect((await rowOf(id)).status).toBe('pending');
+
+    // it shrinks: consent to destroy three is not consent to destroy two others
+    await c.query(`UPDATE public.notification_outbox SET status='sent' WHERE id=$1`, [c3]);
+    const shrank = await act(p.cutoff_at, 3, 0);
+    expect(shrank.verdict).toBe('rejected_stale_preview');
+    expect(shrank.observed_pending).toBe(2);
+    // the refusal is evidence, not a silent no-op
+    expect((await c.query(
+      `SELECT count(*)::int n FROM public.notification_admin_rejected_attempts WHERE action='stale_dispose'`)).rows[0].n)
+      .toBeGreaterThanOrEqual(2);
+  });
+
+  it('same COUNT, different ROWS: the cutoff carries its own weight, not just the totals', async () => {
+    // The count check alone is not enough. If one row leaves the set while another crosses into
+    // it, the totals still match — and a disposal that recomputed its window would destroy a row
+    // the operator never saw while the confirmation dialog said otherwise. Only a cutoff fixed at
+    // preview time makes "the set you were shown" mean the set.
+    const shown = await seedRow(); await age(shown, 50);
+    // a hair inside the window's edge: invisible at preview, and the first thing a re-evaluated
+    // `now() - 24h` would pick up a minute later
+    const edge = await seedRow();
+    await c.query(`UPDATE public.notification_outbox SET updated_at = now() - make_interval(mins => 1439) WHERE id = $1`, [edge]);
+    const p = await preview();
+    expect(p.pending).toBe(1);                            // one row, and it is `shown`
+
+    // the shown row leaves the set (a worker finished it), so the totals would still say 1
+    await c.query(`UPDATE public.notification_outbox SET status='sent' WHERE id=$1`, [shown]);
+    const r = await act(p.cutoff_at, p.pending, p.abandoned_processing);
+    expect(r.verdict).toBe('rejected_stale_preview');     // the set moved, whatever the total says
+    expect(r.observed_pending).toBe(0);
+    expect((await rowOf(edge)).status).toBe('pending');   // never destroyed unseen
+  });
+
+  it('the count is TRANSACTIONALLY true: the act holds the outbox against concurrent writers', async () => {
+    // The count and the disposal must see the same world. Without a lock a producer can enqueue
+    // between them and the "exactly what you were shown" promise is a race, not a guarantee.
+    // Proven by a second connection actually being blocked — a lock nobody can observe is a
+    // comment, not a control.
+    const stale = await seedRow(); await age(stale, 50);
+    const p = await preview();
+    await c2.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [ADMIN]);
+    await c2.query('BEGIN');
+    try {
+      await c2.query(
+        `SELECT * FROM public.admin_dispose_stale_outbox('email', $1::timestamptz, $2, $3, 'holding the lock', $4::uuid, 500)`,
+        [new Date(p.cutoff_at).toISOString(), p.pending, p.abandoned_processing, crypto.randomUUID()]);
+      // …the transaction is still open, so the SHARE ROW EXCLUSIVE lock is still held
+      await c.query(`SET lock_timeout = '900ms'`);
+      await expect(c.query(
+        `INSERT INTO public.notification_outbox (channel, event_type, status, destination_normalized, payload, idempotency_key, recipient_user_id)
+         VALUES ('email','ev_test','pending','a@example.com','{}'::jsonb, gen_random_uuid()::text, $1)`, [PLAYER]))
+        .rejects.toThrow(/lock timeout|canceling statement/i);
+    } finally {
+      await c.query(`SET lock_timeout = '0'`);
+      await c2.query('ROLLBACK');
+      await c2.query(`SELECT set_config('request.jwt.claim.sub', '', false)`);
+    }
+  });
+
+  it('a live lease still counts as untouchable, and the counts the operator confirms say so', async () => {
+    const abandoned = await seedRow({ status: 'processing', locked_at: new Date(Date.now() - 50 * 3600_000).toISOString(), locked_by: 'w:dead' });
+    await age(abandoned, 50);
+    const live = await seedRow({ status: 'processing', locked_at: new Date().toISOString(), locked_by: 'w:alive' });
+    await age(live, 50);
+    const p = await preview();
+    expect(p.pending).toBe(0);
+    expect(p.abandoned_processing).toBe(1);               // the live lease is not in the number
+    const r = await act(p.cutoff_at, p.pending, p.abandoned_processing);
+    expect(r.disposed).toBe(1);
+    expect((await rowOf(live)).status).toBe('processing');
+  });
+});
+
+describe('FINAL AUDIT round 2 — the occurrence clock: a boundary that measures the EVENT, not the row', () => {
+  const boundaryOf = async (path: string) =>
+    (await c.query(`SELECT * FROM public.notification_activation_boundaries WHERE path = $1`, [path])).rows[0];
+  const open = async (path: string, req = crypto.randomUUID(), reason = 'rollout step 3') =>
+    (await c.query(`SELECT public.record_notification_activation_boundary($1,$2,$3) AS r`, [path, reason, req])).rows[0].r as string;
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const DAY = 24 * 3600_000;
+
+  beforeEach(async () => {
+    await c.query(`ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER trg_notif_activation_boundary_guard;`);
+    await c.query(`DELETE FROM public.notification_activation_boundaries;`);
+    await c.query(`
+      INSERT INTO public.notification_activation_boundaries (path, state, boundary_at, reason, max_event_age_minutes)
+      VALUES ('email:instant', 'active', '-infinity'::timestamptz, 'shipped seed', 10080);
+      INSERT INTO public.notification_activation_boundaries (path, state, max_event_age_minutes)
+      VALUES ('email:digest', 'inert', 43200), ('whatsapp:instant', 'inert', 10080);`);
+    await c.query(`ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER trg_notif_activation_boundary_guard;`);
+  });
+
+  it('occurred_at defaults to the ROW\'s creation instant, never to the statement\'s', async () => {
+    // the footgun a `DEFAULT now()` would have shipped: a backfill supplying its own created_at
+    // would have been stamped with today's date and looked perfectly current to every gate.
+    const back = await seedRow({ created_at: ago(3 * DAY) });
+    const r = await rowOf(back);
+    expect(new Date(r.occurred_at).getTime()).toBe(new Date(r.created_at).getTime());
+    // and an explicit declaration wins over both
+    const stated = await seedRow({ created_at: ago(DAY), occurred_at: ago(2 * DAY) });
+    const s = await rowOf(stated);
+    expect(new Date(s.occurred_at).getTime()).toBeLessThan(new Date(s.created_at).getTime());
+  });
+
+  it('both clocks are frozen after insert, and neither may be set in the future', async () => {
+    const id = await seedRow();
+    await expect(c.query(`UPDATE public.notification_outbox SET occurred_at = now() WHERE id=$1`, [id]))
+      .rejects.toThrow(/occurred_at is immutable/);
+    await expect(c.query(`UPDATE public.notification_outbox SET created_at = now() WHERE id=$1`, [id]))
+      .rejects.toThrow(/created_at is immutable/);
+    // the same laundering attempt from the other side: stamp the future and sail over every floor
+    await expect(seedRow({ occurred_at: new Date(Date.now() + 3600_000).toISOString() }))
+      .rejects.toThrow(/chk_notification_outbox_occurred_not_future/);
+  });
+
+  it('THE INVARIANT, on the clock that matters: a HISTORICAL event enqueued AFTER activation is never claimed', async () => {
+    expect(await open('whatsapp:instant')).toBe('activated');
+    const b = await boundaryOf('whatsapp:instant');
+    // the replay: written now — POST-boundary by created_at, which is the only clock N5 had — for
+    // something that happened a year ago. This is the row the old contract would have sent.
+    const replayed = await seedRow({ channel: 'whatsapp', occurred_at: ago(365 * DAY) });
+    const real = await seedRow({ channel: 'whatsapp' });
+    const rr = await rowOf(replayed);
+    expect(new Date(rr.created_at).getTime()).toBeGreaterThanOrEqual(new Date(b.boundary_at).getTime());
+
+    const claimed = await claim(c, 'w:test', 'whatsapp');
+    expect(claimed.map((r: { outbox_id: string }) => r.outbox_id)).toEqual([real]);
+    const left = await rowOf(replayed);
+    expect(left.status).toBe('pending');
+    expect(left.attempts).toBe(0);
+    expect(left.locked_by).toBeNull();
+  });
+
+  it('the backstop refuses a pre-floor row that tries to ENTER the pipeline by any other door', async () => {
+    // every claim excludes these in its SELECT, which is what makes them passed over quietly. The
+    // trigger is for the claim nobody has written yet — a loud refusal beats a silent send.
+    const old = await seedRow({ occurred_at: ago(30 * DAY) });
+    await expect(c.query(
+      `UPDATE public.notification_outbox SET status='processing', locked_at=now(), locked_by='rogue' WHERE id=$1`, [old]))
+      .rejects.toThrow(/refused to enter the send pipeline/);
+    expect((await rowOf(old)).status).toBe('pending');
+  });
+
+  it('the ceiling is MONOTONE: it may be tightened, never raised and never removed', async () => {
+    await c.query(`UPDATE public.notification_activation_boundaries SET max_event_age_minutes = 1440 WHERE path='email:instant'`);
+    expect((await boundaryOf('email:instant')).max_event_age_minutes).toBe(1440);   // tightening: fine
+    await expect(c.query(`UPDATE public.notification_activation_boundaries SET max_event_age_minutes = 10080 WHERE path='email:instant'`))
+      .rejects.toThrow(/may only be tightened/);
+    await expect(c.query(`UPDATE public.notification_activation_boundaries SET max_event_age_minutes = NULL WHERE path='email:instant'`))
+      .rejects.toThrow(/may only be tightened/);
+    expect((await boundaryOf('email:instant')).max_event_age_minutes).toBe(1440);
+  });
+
+  it('every shipped path carries a ceiling — an unbounded one on an -infinity boundary is no contract', async () => {
+    const paths = (await c.query(
+      `SELECT path, max_event_age_minutes FROM public.notification_activation_boundaries ORDER BY path`)).rows;
+    expect(paths.map((p: { path: string }) => p.path)).toEqual(['email:digest', 'email:instant', 'whatsapp:instant']);
+    for (const p of paths) expect(p.max_event_age_minutes).toBeGreaterThan(0);
   });
 });

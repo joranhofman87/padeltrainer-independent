@@ -23,6 +23,17 @@ const OPERATIONS = read('docs', 'NOTIFICATION_OPERATIONS.md');
 const MIGRATIONS = resolve(ROOT, 'supabase', 'migrations');
 const migration = (f: string) => read('supabase', 'migrations', f);
 /** the newest migration text that defines a given function — the definition production runs */
+/** the newest definition of ONE function, body only — file-wide counts would blend functions */
+const bodyOfNewest = (fn: string) => {
+  const src = newestDefining(`CREATE OR REPLACE FUNCTION public.${fn}(`);
+  const start = src.indexOf(`CREATE OR REPLACE FUNCTION public.${fn}(`);
+  const term = /\n(?:END\s+)?\$\$;\n/g;
+  term.lastIndex = start;
+  const m = term.exec(src);
+  if (!m) throw new Error(`${fn}: unterminated definition`);
+  return src.slice(start, m.index + m[0].length);
+};
+
 const newestDefining = (needle: string) => {
   const files = readdirSync(MIGRATIONS).filter((f) => f.endsWith('.sql')).sort();
   const hit = files.filter((f) => migration(f).includes(needle)).pop();
@@ -101,16 +112,33 @@ describe('N6 doc pins — the foundation reference', () => {
     expect(FOUNDATION).toContain('across every attempt, requeue and');
   });
 
-  it('the activation boundary compares MATERIALISATION time, and the doc says so plainly', () => {
-    // the invariant a unit-scoped review cannot check: the claim "only events at or after the
-    // boundary" is only as true as "producers enqueue at event time", and the pipeline has no
-    // occurrence clock to fall back on
-    const sql = migration('20261028100000_notif_n5_activation_boundary.sql');
-    expect(sql).toContain('o.created_at >= v_boundary');
-    const resolver = newestDefining('CREATE OR REPLACE FUNCTION public.enqueue_notification(');
-    expect(resolver).not.toMatch(/p_(event_)?occurred_at/);      // there is no occurrence parameter
-    expect(FOUNDATION).toContain('not an event-occurrence timestamp, because the pipeline');
-    expect(FOUNDATION).toContain('Enqueue synchronously with the event');
+  it('the activation boundary compares EVENT-OCCURRENCE time, at every send authority', () => {
+    // The claim "only events at or after the boundary" used to be only as true as "producers
+    // enqueue at event time" — and none of them strictly does. The occurrence clock is what makes
+    // it enforceable, so these pin that it exists, that it is checked everywhere, and that the
+    // document describes the system that ships rather than the one that was planned.
+    const claim = bodyOfNewest('claim_notification_outbox_batch');
+    expect(claim).toContain('o.created_at >= v_boundary');
+    expect(claim).toContain('o.occurred_at >= v_min_occurred');       // BOTH clocks, both arms
+    const mat = bodyOfNewest('materialize_notification_digest_groups');
+    expect(mat.match(/o\.occurred_at >= v_min_occurred/g) ?? []).toHaveLength(2);  // candidate + member scans
+    const dispatch = bodyOfNewest('claim_notification_digest_group');
+    expect(dispatch.match(/o\.occurred_at < v_min_occurred/g) ?? []).toHaveLength(2);  // scan + breaker probe
+
+    const resolver = bodyOfNewest('enqueue_notification');
+    expect(resolver).toMatch(/p_occurred_at\s+timestamptz/);         // the parameter exists…
+    expect(resolver).toContain('is in the future');                   // …and cannot be laundered forward
+
+    // the floor is the LATER of the boundary and the age ceiling — which is the only reason the
+    // contract means anything on email:instant, whose boundary is -infinity
+    const floor = bodyOfNewest('notif_activation_min_occurred_at');
+    expect(floor).toContain('greatest(b.boundary_at');
+    expect(floor).toContain('max_event_age_minutes');
+
+    expect(FOUNDATION).toContain('the one that counts is the event');
+    expect(FOUNDATION).toContain('Pass `p_occurred_at`, derived from the domain row');
+    // the doc must NOT still carry the admission it was written to make honest
+    expect(FOUNDATION).not.toContain('not an event-occurrence timestamp, because the pipeline');
   });
 
   it('the marketing unsubscribe the footer promises is READ by the resolver (the N2<->N3 seam)', () => {
@@ -183,9 +211,14 @@ describe('N6 doc pins — the operations reference', () => {
       // carries the session, and a procedure that names a control the operator cannot reach is
       // the same defect as one that names a control that does not exist.
       expect(src, `${fn} must be admin-gated`).toMatch(/notif_admin_gate\(\)|has_role\(auth\.uid\(\), 'admin'\)/);
-      const page = read('src', 'pages', 'admin', 'AdminNotificationOps.tsx');
-      const section = read('src', 'components', 'notifications', 'admin', 'StaleOutboxSection.tsx');
-      expect(page + section, `${fn} must be reachable from the admin page`).toContain(fn);
+      // "reachable from the page" means the page OR the admin modules it composes — the decision
+      // itself lives in useOpsDecision so the page stays a thin orchestrator, and a pin that only
+      // looked at the page would push the call back into it to stay green.
+      const surface = ['AdminNotificationOps.tsx'].map((f) => read('src', 'pages', 'admin', f))
+        .concat(['StaleOutboxSection.tsx', 'useOpsDecision.ts']
+          .map((f) => read('src', 'components', 'notifications', 'admin', f)))
+        .join('\n');
+      expect(surface, `${fn} must be reachable from the admin page`).toContain(fn);
     }
     expect(OPERATIONS).toContain('/admin/notifications` → After a long outage');
   });

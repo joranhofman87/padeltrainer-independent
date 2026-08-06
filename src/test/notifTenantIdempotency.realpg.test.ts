@@ -147,8 +147,13 @@ beforeAll(async () => {
     '20261024100000_notif_n4_seam_corrections_round3.sql',
     '20261025100000_notif_n4_invocation_ownership_contract.sql',
     '20261028100000_notif_n5_activation_boundary.sql',
+    // the rest of N5, so this suite's readiness envelope is the one that ships rather than a
+    // pre-N5 stub whose checks answer 'not_provable' for reasons the deployed chain fixed
+    '20261029100000_notif_n5_readiness_and_backlog_disposal.sql',
+    '20261030100000_notif_n5_round2_dispatch_boundary.sql',
     '20261101100000_notif_audit_marketing_unsubscribe_seam.sql',
     '20261102100000_notif_audit_unsubscribe_at_send_time.sql',
+    '20261104100000_notif_audit_event_occurrence_boundary.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -1097,15 +1102,22 @@ describe('N4 M6 — preview provenance EQUIVALENCE against the real resolver, an
     const ids = env.checks.map((x: { id: string }) => x.id);
     for (const required of ['channel_kills', 'provider_circuits', 'unresolved_invocations', 'in_flight_work',
       'quarantined_orphans', 'digest_cron', 'digest_send_enabled_env', 'durable_activation_boundary',
-      'pre_activation_backlog_eligible_count']) {
+      'pre_activation_backlog_eligible_count', 'pre_occurrence_floor_backlog_count']) {
       expect(ids).toContain(required);
     }
     const envCheck = env.checks.find((x: { id: string }) => x.id === 'digest_send_enabled_env');
     expect(envCheck.status).toBe('not_provable');
     expect(envCheck.detail).toContain('no SQL can read');
-    for (const n5 of ['durable_activation_boundary', 'pre_activation_backlog_eligible_count']) {
-      expect(env.checks.find((x: { id: string }) => x.id === n5).status).toBe('not_provable');
+    // The N5 checks are REAL now — this chain carries the whole of N5, so they compute rather than
+    // shrug. On a clean fixture that means 'pass', and the meaningful assertion is that they are
+    // decided at all: 'not_provable' from these two would mean the boundary tables were missing.
+    for (const n5 of ['durable_activation_boundary', 'pre_activation_backlog_eligible_count',
+      'pre_occurrence_floor_backlog_count']) {
+      expect(['pass', 'fail']).toContain(env.checks.find((x: { id: string }) => x.id === n5).status);
     }
+    // …and the OVERALL verdict is still never 'pass', because DIGEST_SEND_ENABLED is an edge env
+    // var no SQL can read. That is the honesty this check exists for, and N5 did not change it.
+    expect(env.readiness).toBe('not_provable');
     // a kill flips a named check AND the overall verdict to fail
     await c.query(`INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id) VALUES ('email','test kill', gen_random_uuid())`);
     const env2 = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r;
@@ -1945,5 +1957,60 @@ describe('FINAL AUDIT (P1) — the unsubscribe bites at SEND time, not only at e
                    ON CONFLICT DO NOTHING`);
     expect(await stopReason(id)).toBe('suppressed');   // the harder stop is the truthful cause
     await c.query(`DELETE FROM public.email_suppression_stub WHERE email = 'p1@example.com'`);
+  });
+});
+
+describe('FINAL AUDIT round 2 — the resolver stamps WHEN THE EVENT HAPPENED', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  const enqueueAt = async (subject: string, occurredAt: string | null) => {
+    const r = await c.query(
+      `SELECT * FROM public.enqueue_notification(
+         p_event_key => 'booking_confirmed_player',
+         p_recipient_person_id => $1,
+         p_idempotency_subject => $2,
+         p_occurred_at => $3::timestamptz)`,
+      [P1, subject, occurredAt]);
+    return r.rows;
+  };
+  const rowOf = async (id: string) =>
+    (await c.query(`SELECT occurred_at, created_at FROM public.notification_outbox WHERE id = $1`, [id])).rows[0];
+
+  it('carries the producer\'s declaration onto every row it writes', async () => {
+    const then = new Date(Date.now() - 40 * 24 * 3600_000).toISOString();
+    const rows = await enqueueAt('occ-declared', then);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      const row = await rowOf(r.outbox_id);
+      expect(new Date(row.occurred_at).getTime()).toBe(new Date(then).getTime());
+      // …and created_at is still now: the two clocks are recorded separately, not conflated
+      expect(new Date(row.created_at).getTime()).toBeGreaterThan(new Date(then).getTime());
+    }
+  });
+
+  it('defaults to now when the producer says nothing — and REFUSES a future declaration', async () => {
+    const rows = await enqueueAt('occ-default', null);
+    const row = await rowOf(rows[0].outbox_id);
+    expect(Math.abs(new Date(row.occurred_at).getTime() - new Date(row.created_at).getTime())).toBeLessThan(2000);
+    // the laundering direction: a future stamp would sail over every occurrence floor
+    await expect(enqueueAt('occ-future', new Date(Date.now() + 3600_000).toISOString()))
+      .rejects.toThrow(/is in the future/);
+  });
+
+  it('the readiness envelope counts what the occurrence floor is holding, separately from the boundary', async () => {
+    await asUser(ADMIN_UID);
+    try {
+      const before = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r
+        .checks.find((x: { id: string }) => x.id === 'pre_occurrence_floor_backlog_count');
+      expect(before.status).toBe('pass');
+      // a row written NOW for an event 40 days ago: post-boundary on the created_at clock, and
+      // refused on the occurrence one. It is the replay shape, and the operator must see it.
+      await enqueueAt('occ-visible', new Date(Date.now() - 40 * 24 * 3600_000).toISOString());
+      const after = (await c.query(`SELECT public.admin_notification_readiness() AS r`)).rows[0].r
+        .checks.find((x: { id: string }) => x.id === 'pre_occurrence_floor_backlog_count');
+      expect(after.status).toBe('fail');
+      expect(after.value).toBeGreaterThan(0);
+      expect(after.detail).toContain('admin_dispose_stale_outbox');    // names the exit that works
+    } finally { await asUser(null); }
   });
 });

@@ -134,23 +134,54 @@ has one durable row in `notification_activation_boundaries`:
 | State | Meaning | Send authorities |
 |---|---|---|
 | `inert` | never opened | claim **nothing**, materialize **nothing**, dispatch **nothing** |
-| `active since boundary_at` | opened at that instant | only rows **created** at or after it |
+| `active since boundary_at` | opened at that instant | only rows whose **event occurred** at or after it |
 
-**What "created" means, precisely.** The boundary compares `notification_outbox.created_at` — the
-instant the resolver materialised the row — not an event-occurrence timestamp, because the pipeline
-has none. Every producer in the closed inventory enqueues **synchronously with the event it
-reports**, so for them the two are the same instant. A producer that back-filled or replayed
-history *after* activation would create post-boundary rows for pre-boundary events, and the
-boundary would not catch it. That is the assumption this invariant rests on, and it is a **rule for
-adding a producer** (§9), not an accident: if a back-filling producer is ever wanted, it needs an
-immutable occurrence timestamp and this predicate has to move to it.
+**Two clocks, and the one that counts is the event's.** `created_at` is when the row was written;
+`occurred_at` is when the thing it reports actually happened. The first version of this contract
+had only `created_at`, and said so: a producer that back-filled or replayed history after
+activation would write post-boundary rows for pre-boundary events and the boundary would wave them
+through. That is not a hypothetical — none of our producers is strictly synchronous. Slot creation
+commits and *then* invokes the follower notification on its own retry budget; a Mollie webhook can
+be redelivered days later. So the pipeline has an occurrence timestamp now:
 
-The transition is one-way and `boundary_at` is immutable (owner-effective guard): a boundary that
-can move is a window that can be widened to re-admit the history it excluded. Enforced at
-`claim_notification_outbox_batch` (fresh **and** orphan-reclaim arms),
+* `notification_outbox.occurred_at` is **immutable** after insert and **may not be in the future**
+  (a CHECK plus an owner-effective trigger) — those are the two directions a historical event could
+  otherwise be laundered into a current one;
+* it has **no column default**. An unspecified occurrence is filled from the row's *own*
+  `created_at` by a BEFORE INSERT trigger, so a backfill that supplies its own `created_at` cannot
+  be stamped with today's date;
+* every producer in the closed inventory **derives it from the domain row the event is about** —
+  the bookings' `created_at`, the announced slots' `created_at`, the review's own timestamp — never
+  from the clock at the moment the enqueue happened to run, and never from the request body. A
+  producer that cannot establish the time **does not enqueue**; it fails and is retried. The
+  attribution-matrix pin fails if a call site omits the argument.
+
+**The event-age ceiling, because a boundary alone cannot protect the live path.** `email:instant`
+is seeded `-infinity` (below), against which an occurrence floor is vacuous. Each path therefore
+also carries `max_event_age_minutes`, and the effective floor every authority enforces is
+`greatest(boundary_at, now() - max_event_age)`. Seven days on the instant paths, thirty on digest
+(a weekly digest's oldest member is legitimately six days old when it sends). The ceiling may be
+**tightened but never raised or removed** — a ceiling that can go up is a window that can be
+widened to re-admit the history it excluded, the same reasoning that froze `boundary_at`.
+
+*What this costs, stated plainly:* on the live instant path a pending row whose event is older than
+seven days stops being claimable. Nothing healthy comes close; what it catches is outage debris,
+which should not be sent after an outage that long (§ NOTIFICATION_OPERATIONS.md §5). Such rows are
+not hidden — they are counted per path by the admin *Delivery paths* table, reported by the
+readiness envelope as `pre_occurrence_floor_backlog_count`, printed by postflight, and disposed of
+through `admin_dispose_stale_outbox`.
+
+*What this does not claim:* a producer that stamps `now()` for a year-old event is indistinguishable
+from one reporting something that just happened. No database can tell those apart. What is enforced
+is that the declaration exists, is immutable, is not in the future, is checked at every door, and is
+derived from a domain row rather than asserted by a caller.
+
+The transition is one-way and `boundary_at` is immutable (owner-effective guard). Both clocks are
+enforced at `claim_notification_outbox_batch` (fresh **and** orphan-reclaim arms),
 `materialize_notification_digest_groups` (candidate **and** member scans) and
 `claim_notification_digest_group` (the scan **and** the half-open breaker probe — the one claim
-that does not come from the scan).
+that does not come from the scan). A BEFORE UPDATE backstop refuses any *other* route into the
+pipeline, so a future claim path that forgets the predicate fails loudly rather than sending.
 
 `email:instant` is seeded **unbounded** (`-infinity`): it was already sending when the contract was
 written, and no computed instant can be proven not to exclude mail that was queued concurrently.
@@ -205,11 +236,14 @@ reads), so a cron tick — whenever it was selected or arrives — can never cla
 5. Tests: a resolver test for the decision, and a tenant-isolation test if it is tenant-visible.
 6. Digest, if ever: `supports_digest` + `digest_cutover` first, and the engine only through the
    owner-gated rollout — the activation boundary is what keeps the pre-existing queue out.
-7. **Enqueue synchronously with the event.** The activation boundary compares the outbox row's
-   `created_at`, so a producer that back-fills or replays history would smuggle pre-boundary events
-   onto an activated path. A producer that cannot enqueue at event time needs an immutable
-   occurrence timestamp on the row *and* a change to the boundary predicate — come back and design
-   it rather than working around it.
+7. **Pass `p_occurred_at`, derived from the domain row.** The activation boundary and the event-age
+   ceiling are both measured against it, so a producer that omits it gets "whenever this row was
+   written" — which for anything retried, redelivered or replayed is exactly the historical event
+   the boundary exists to refuse. Read the time from the thing the message is *about* (the
+   booking's `created_at`, the slot's, the review's), never from `now()` and never from the request
+   body. If the time cannot be established, **do not enqueue** — fail and let the retry try again.
+   The attribution-matrix pin fails the build if a call site omits the argument, and there is no
+   route into the send pipeline that skips the floor.
 
 ## 10. Adding or replacing a provider safely
 

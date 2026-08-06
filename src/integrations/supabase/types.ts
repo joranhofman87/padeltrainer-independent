@@ -9508,13 +9508,17 @@ export type Database = {
       admin_dispose_stale_outbox: {
         Args: {
           p_channel: string
+          p_cutoff_at: string
+          p_expected_abandoned: number
+          p_expected_pending: number
           p_limit?: number
-          p_older_than_minutes: number
           p_reason: string
           p_request_id: string
         }
         Returns: {
           disposed: number
+          observed_abandoned: number
+          observed_pending: number
           verdict: string
         }[]
       }
@@ -9671,9 +9675,13 @@ export type Database = {
         Returns: {
           activated_by: string
           boundary_at: string
+          max_event_age_minutes: number
+          min_occurred_at: string
           path: string
           pending_before_boundary: number
           pending_before_boundary_capped: boolean
+          pending_before_occurrence_floor: number
+          pending_before_occurrence_floor_capped: boolean
           reason: string
           state: string
         }[]
@@ -9817,6 +9825,7 @@ export type Database = {
         Returns: {
           abandoned_processing: number
           channel: string
+          cutoff_at: string
           older_than_minutes: number
           oldest: string
           pending: number
@@ -10208,6 +10217,7 @@ export type Database = {
           p_recipient_user_id?: string
           p_related_booking_ids?: string[]
           p_related_invoice_id?: string
+          p_occurred_at?: string
           p_related_payment_id?: string
           p_scheduled_for?: string
           p_template_key?: string

@@ -36,6 +36,45 @@ SELECT pg_temp.assert_eq(
       AND o.status = ANY (ARRAY['sent', 'delivered', 'processing'])), 0,
   'NO-BACKLOG HELD: no row created before its path''s activation boundary has been sent, delivered, or is in flight');
 
+-- THE SAME QUESTION ON THE CLOCK THAT MATTERS. The check above reads created_at, which is when the
+-- ROW was written; a replay writes fresh rows for ancient events and sails past it. This one reads
+-- when the EVENT happened, against the floor the send authorities actually enforce
+-- (greatest(boundary_at, now() - max_event_age)). It is the check that would catch a backfill.
+--
+-- Note the floor moves with now(), so this is deliberately asked of the ledger as it stands: a row
+-- SENT while it was inside the window is not retroactively a violation. What it asserts is that
+-- nothing was sent whose event predates the path's own BOUNDARY — the immutable half of the floor.
+SELECT pg_temp.assert_eq(
+  (SELECT count(*)::int
+     FROM public.notification_outbox o
+     JOIN public.notification_activation_boundaries b
+       ON b.path = o.channel
+            OPERATOR(pg_catalog.||) (CASE WHEN o.delivery_mode OPERATOR(pg_catalog.=) 'digest'
+                                          THEN ':digest' ELSE ':instant' END)
+    WHERE b.state OPERATOR(pg_catalog.=) 'active'
+      AND o.occurred_at OPERATOR(pg_catalog.<) b.boundary_at
+      AND o.status = ANY (ARRAY['sent', 'delivered', 'processing'])), 0,
+  'NO-BACKLOG HELD ON EVENT TIME: nothing whose EVENT predates its path''s activation boundary has been sent, delivered, or is in flight');
+
+-- …and what the age ceiling is currently refusing, reported rather than asserted: these are rows
+-- the floor is holding back, which is correct behaviour and an operator decision to clear
+-- (admin_dispose_stale_outbox), not an incident.
+SELECT 'path' AS scope, b.path AS name,
+       count(o.id)::text AS value,
+       'pending row(s) whose event is older than the ' || coalesce(b.max_event_age_minutes::text, 'unset')
+         || '-minute ceiling — refused by every send authority; dispose via admin_dispose_stale_outbox' AS detail
+  FROM public.notification_activation_boundaries b
+  LEFT JOIN public.notification_outbox o
+    ON o.channel = pg_catalog.split_part(b.path, ':', 1)
+   AND (CASE WHEN pg_catalog.split_part(b.path, ':', 2) OPERATOR(pg_catalog.=) 'digest'
+             THEN o.delivery_mode OPERATOR(pg_catalog.=) 'digest'
+             ELSE o.delivery_mode IS DISTINCT FROM 'digest' END)
+   AND o.status OPERATOR(pg_catalog.=) 'pending'
+   AND o.occurred_at OPERATOR(pg_catalog.<) public.notif_activation_min_occurred_at(b.path)
+ WHERE b.state OPERATOR(pg_catalog.=) 'active'
+ GROUP BY b.path, b.max_event_age_minutes
+ ORDER BY b.path;
+
 -- …and the same one hop later: no group holding a pre-boundary member ever reached a provider.
 SELECT pg_temp.assert_eq(
   (SELECT count(*)::int

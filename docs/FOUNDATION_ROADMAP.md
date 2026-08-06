@@ -248,12 +248,20 @@ recoverable without unsafe replay · WhatsApp gated on provider readiness *and* 
 channel activation never inferred from DB state alone when an env switch is authoritative · the UI
 never claims certainty about unknown state · every operator decision audited and idempotent.
 
-**Final Integration Audit (after N7, one pass).** Inventory and contract reconciliation → cross-unit
-seam audit over the complete flows → security and privacy → scalability and reliability →
-executable verification (full gates, migration reset + types drift, all notification suites, edge,
-UI, architecture guards, selected browser workflows, no-backlog and recipient-preview proofs,
-mutation only for critical invariants) → one independent Codex whole-foundation review → fix → one
-final verification. Then freeze and stop.
+**Final Integration Audit (the GATE INTO N7 execution — not a lap after activation).** It runs when
+N0–N6 are complete and every N7 artifact is *prepared but unexecuted*, and its clearance is the
+precondition for asking the owner to merge, deploy or activate anything. Inventory and contract
+reconciliation → cross-unit seam audit over the complete flows → security and privacy →
+scalability and reliability → executable verification **on a real combined N0–N7 tree** (full
+gates, migration reset + types drift, all notification suites, edge, UI, architecture guards,
+selected browser workflows, no-backlog and recipient-preview proofs, mutation only for critical
+invariants) → one independent Codex whole-foundation review → fix → one final verification. Then
+declare release-ready-but-inactive, freeze, and stop for the owner.
+
+**The audit tree must be the tree that ships.** A unit reviewed only on its own stack has not been
+integration-audited: the audit must run on a tree that contains *every* unit — N0 and N1 included,
+not just the N2→N3→N4 stack they are siblings of — because the conflicts between them are exactly
+where cross-unit defects live. See §"Integration tree" below.
 
 
 The pre-canary work, in flight on draft PRs. All three are independently Codex-reviewed to clear

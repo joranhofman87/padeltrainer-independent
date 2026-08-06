@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { logger } from '@/lib/logger';
+import { supabase } from '@/lib/supabaseClient';
 
 /**
  * The N4 DECISION contract, shared by every operational control (kill, circuit reset, group
@@ -96,4 +97,32 @@ export function useOpsAction<T>(deps: {
     }
   });
   return { ...decision, confirm };
+}
+
+/**
+ * The long-outage disposal, SNAPSHOT-BOUND.
+ *
+ * It lives here rather than in the page because the rule it encodes is a notification-operations
+ * rule, not page orchestration: the act carries the cutoff and both counts from the preview the
+ * operator actually read, so the server destroys exactly that set or refuses. Recomputing the
+ * window at act time — which the first version did — let rows the operator never saw fall into the
+ * same click while the confirmation dialog said "these rows".
+ *
+ * Returns the typed verdict and the number moved; the caller decides how to say it.
+ */
+export async function disposeStaleOutbox(
+  target: { channel: string; row: { cutoff_at: string; pending: number; abandoned_processing: number } },
+  reason: string,
+  requestId: string,
+): Promise<{ verdict: string; disposed: number }> {
+  const { data, error } = await supabase.rpc('admin_dispose_stale_outbox', {
+    p_channel: target.channel,
+    p_cutoff_at: target.row.cutoff_at,
+    p_expected_pending: target.row.pending,
+    p_expected_abandoned: target.row.abandoned_processing,
+    p_reason: reason, p_request_id: requestId, p_limit: 500,
+  });
+  if (error) throw error;
+  const first = (data as { verdict: string; disposed: number }[] | null)?.[0];
+  return { verdict: String(first?.verdict ?? 'unknown'), disposed: first?.disposed ?? 0 };
 }

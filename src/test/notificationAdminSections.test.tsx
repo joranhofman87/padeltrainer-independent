@@ -402,9 +402,13 @@ describe('M7 round-2: provenance drill-down, history paging', () => {
 describe('N5: the delivery-paths section', () => {
   const ROWS = [
     { path: 'email:digest', state: 'inert', boundary_at: null, reason: null, activated_by: null,
-      pending_before_boundary: 0, pending_before_boundary_capped: false },
+      pending_before_boundary: 0, pending_before_boundary_capped: false,
+      max_event_age_minutes: 43200, min_occurred_at: null,
+      pending_before_occurrence_floor: 0, pending_before_occurrence_floor_capped: false },
     { path: 'email:instant', state: 'active', boundary_at: '2026-08-05T09:00:00+00:00', reason: 'legacy', activated_by: null,
-      pending_before_boundary: 3, pending_before_boundary_capped: false },
+      pending_before_boundary: 3, pending_before_boundary_capped: false,
+      max_event_age_minutes: 10080, min_occurred_at: '2026-07-30T09:00:00+00:00',
+      pending_before_occurrence_floor: 0, pending_before_occurrence_floor_capped: false },
   ];
   const load = async (props: Record<string, unknown>) => {
     const { ActivationBoundariesSection } = await import('@/components/notifications/admin/ActivationBoundariesSection');
@@ -434,6 +438,18 @@ describe('N5: the delivery-paths section', () => {
     // it would do something
     await load({ rows: [{ ...ROWS[1], pending_before_boundary: 0 }], onDispose });
     expect(screen.queryByTestId('dispose-email:instant')).toBeNull();
+  });
+
+  it('shows the OTHER clock: post-boundary rows whose event is too old to send', async () => {
+    // the replay shape. Without this column an operator asking "why has this not gone out?" has
+    // no answer on the screen — the row is post-boundary, so the backlog column reads zero.
+    await load({ rows: [{ ...ROWS[1], pending_before_boundary: 0, pending_before_occurrence_floor: 7 }] });
+    expect(screen.queryByTestId('backlog-email:instant')).toBeNull();   // nothing pre-boundary
+    expect(screen.getByTestId('tooold-email:instant').textContent).toBe('7');
+    // …and the section says, in words a non-engineer can act on, that neither can ever send
+    const text = screen.getByTestId('section-boundaries').textContent ?? '';
+    expect(text).toContain('age limit');
+    expect(text).toContain('Neither can ever send');
   });
 
   it('a saturated count says AT LEAST, never a precise number it does not have', async () => {

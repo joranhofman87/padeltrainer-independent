@@ -17,7 +17,7 @@ import { DecisionAuditSection } from '@/components/notifications/admin/DecisionA
 import { ActivationBoundariesSection } from '@/components/notifications/admin/ActivationBoundariesSection';
 import { StaleOutboxSection } from '@/components/notifications/admin/StaleOutboxSection';
 import { OpsDecisionDialog } from '@/components/notifications/admin/OpsDecisionDialog';
-import { useOpsAction } from '@/components/notifications/admin/useOpsDecision';
+import { useOpsAction, disposeStaleOutbox } from '@/components/notifications/admin/useOpsDecision';
 import { useOpsRead } from '@/components/notifications/admin/useOpsRead';
 import type {
   BoundaryRow, Channel, DigestGroupRow, EventStateRow, GaugeRow, HistoryRow, InvocationRow, OrphanRow,
@@ -167,14 +167,9 @@ export default function AdminNotificationOps() {
   // this page is where they live — with the same decision contract as every other control.
   const staleDispose = useOpsAction<{ channel: Channel; olderThanMinutes: number; row: StaleOutboxRow }>({
     run: async (target, reason, requestId) => {
-      const { data, error } = await supabase.rpc('admin_dispose_stale_outbox', {
-        p_channel: target.channel, p_older_than_minutes: target.olderThanMinutes,
-        p_reason: reason, p_request_id: requestId, p_limit: 500,
-      });
-      if (error) throw error;
-      const first = (data as { verdict: string; disposed: number }[] | null)?.[0];
-      lastDisposed.current = first?.disposed ?? 0;
-      return String(first?.verdict ?? 'unknown');
+      const r = await disposeStaleOutbox(target, reason, requestId);
+      lastDisposed.current = r.disposed;
+      return r.verdict;
     },
     describe: (verdict) => t('notifOps.staleVerdict', {
       defaultValue: 'Stale disposal: {{verdict}} ({{n}} row(s))', verdict, n: lastDisposed.current,
@@ -248,9 +243,9 @@ export default function AdminNotificationOps() {
         decision={staleDispose} testId="stale" destructive
         title={t('notifOps.staleTitle', 'Dispose the rows this outage left behind?')}
         description={t('notifOps.staleDialogDesc', {
-          defaultValue: 'Up to 500 {{channel}} rows older than {{mins}} minutes ({{n}} waiting) are marked skipped (stale_after_outage). A row a worker holds right now is never touched, and nothing is re-sent — this stops mail that resuming would otherwise send late, possibly twice.',
+          defaultValue: 'Exactly the {{n}} {{channel}} row(s) you were just shown — those untouched since {{cutoff}} — are marked skipped (stale_after_outage). If anything has changed since you looked, this is refused rather than applied. A row a worker holds right now is never touched, and nothing is re-sent: this stops mail that resuming would otherwise send late, possibly twice.',
           channel: staleDispose.target?.channel ?? '',
-          mins: staleDispose.target?.olderThanMinutes ?? '',
+          cutoff: staleDispose.target?.row.cutoff_at ?? '',
           n: (staleDispose.target?.row.pending ?? 0) + (staleDispose.target?.row.abandoned_processing ?? 0),
         })}
         confirmLabel={t('notifOps.staleConfirm', 'Dispose')} busyLabel={t('notifOps.staleBusy', 'Disposing…')}

@@ -20,6 +20,8 @@ type FakeOpts = {
   invoiceFallbackRow?: { id: string } | null;
   /** rows for the staff-notification .in() bookings fetch (default: none). */
   staffBookings?: Record<string, unknown>[];
+  /** keep staffBookings EXACTLY as written — no created_at is filled in (the undateable case). */
+  staffBookingsRaw?: boolean;
   /** academy_managers rows (user_id + academy) for the involved academies. */
   managers?: { user_id: string; academy_profile_id: string }[];
   /** trainer_profiles rows (id, user_id) for the involved trainers. */
@@ -147,7 +149,12 @@ function makeFakeSupabase(opts: FakeOpts) {
       case 'bookings':
         // Awaited chains (finalizePriorityClaims + the staff .in() fetch) resolve
         // thenData; the email block ends in .single() (rowData: booking under test).
-        return chain(opts.staffBookings ?? [], opts.booking, {
+        // every booking row carries created_at in production, and the staff producer now DERIVES
+        // the event-occurrence time from it (the activation boundary measures the event, not the
+        // enqueue). A fixture without one models a booking that cannot exist.
+        return chain(opts.staffBookingsRaw ? (opts.staffBookings ?? [])
+          : (opts.staffBookings ?? []).map((b) =>
+              ('created_at' in b ? b : { ...b, created_at: '2026-08-06T08:00:00+00:00' })), opts.booking, {
           rowError: opts.bookingContextError,
           throws,
           throwsSingle: opts.throwOnSingle === 'bookings',
@@ -282,6 +289,38 @@ const legacyStaffEmails = (invoke: ReturnType<typeof makeFakeSupabase>['invoke']
   );
 
 describe('runBookingPaidSideEffects — staff booking notifications (outbox)', () => {
+  it('the staff lane declares WHEN THE BOOKING HAPPENED, and refuses to enqueue when it cannot', async () => {
+    // A Mollie webhook can be redelivered days later and the verify path re-runs on demand, so the
+    // enqueue instant is not the event instant — and the activation boundary measures the event.
+    {
+      const { supabase, rpc } = makeFakeSupabase({
+        booking: guestBooking,
+        invoiceInvokeData: { invoiceId: 'INV-1' },
+        staffBookings: [{ ...staffBooking(), created_at: '2026-07-01T10:00:00+00:00' }],
+        trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
+        profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
+      });
+      await run(supabase);
+      const staff = staffEnqueues(rpc);
+      expect(staff).toHaveLength(1);
+      expect((staff[0][1] as { p_occurred_at: string }).p_occurred_at).toBe('2026-07-01T10:00:00+00:00');
+    }
+    // …and with no dateable booking, nothing is queued: falling back to now() would re-create the
+    // hole the boundary exists to close.
+    {
+      const { supabase, rpc } = makeFakeSupabase({
+        booking: guestBooking,
+        invoiceInvokeData: { invoiceId: 'INV-1' },
+        staffBookingsRaw: true,
+        staffBookings: [staffBooking()],
+        trainerProfiles: [{ id: 'tp-1', user_id: 'user-1' }],
+        profileRows: [{ user_id: 'user-1', full_name: 'Trainer T' }],
+      });
+      await run(supabase);
+      expect(staffEnqueues(rpc)).toHaveLength(0);
+    }
+  });
+
   it('enqueues the trainer WITHOUT any amount (bookings only), tenant-scoped to the trainer — and NO legacy send-email', async () => {
     const { supabase, invoke, rpc } = makeFakeSupabase({
       booking: guestBooking,

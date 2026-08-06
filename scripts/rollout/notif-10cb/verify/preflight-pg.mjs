@@ -218,6 +218,23 @@ try {
   // the table, its guard, the opener and the enforcement all belong to the same contract.
   await c.query(MIG('20261028100000_notif_n5_activation_boundary.sql'));
 
+  // …and the OCCURRENCE half of the same contract. postflight asserts on `occurred_at` and on the
+  // per-path event-age floor, so a harness without this column would prove the artifact against a
+  // schema that is not the one it runs on. The column, its guard and the floor function are what
+  // matter here; the send authorities it also recreates are inert in this harness.
+  // %ROWTYPE is resolved at COMPILE time, so the resolver this migration also recreates needs its
+  // referenced tables to exist even though nothing here calls it. Table DDL only — the resolver's
+  // behaviour is proven by the realpg suites, not by this artifact harness.
+  {
+    const foundationSchemaSql = MIG('20260910100000_notification_foundation_schema.sql');
+    for (const t of ['notification_event_types', 'notification_contacts']) {
+      await c.query(withoutForeignKeys(
+        tableDdl(foundationSchemaSql, t, { ifNotExists: false })
+          .replace(`CREATE TABLE public.${t} (`, `CREATE TABLE IF NOT EXISTS public.${t} (`)));
+    }
+  }
+  await c.query(MIG('20261104100000_notif_audit_event_occurrence_boundary.sql'));
+
   // M2's kill table: activation assertion 9 refuses to arm the cron while a channel is killed.
   // Table only — the RPC that writes it is admin-facing and no artifact calls it.
   await c.query(withoutForeignKeys(

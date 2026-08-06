@@ -3,6 +3,7 @@ import { sendPlayerBookingConfirmation } from "./booking-confirmation-email.ts";
 import { renderStaffBookingEmail } from "./staff-booking-email.ts";
 import { writePaymentAuditLog, PaymentAuditStatus } from "./payment-audit.ts";
 import { redactDetail } from "./redact-detail.ts";
+import { occurrenceForBookings } from "./notification-occurrence.ts";
 import { personDisplayName } from "./person-identity.ts";
 
 type LogStep = (step: string, details?: Record<string, unknown>) => void;
@@ -458,6 +459,10 @@ export async function sendStaffBookingNotifications(opts: {
     }
 
     const allSessions = bookings.map(toSession);
+    // WHEN IT HAPPENED, from the bookings this payment paid for. A Mollie webhook can be
+    // redelivered long after the fact and the verify path re-runs on demand, so the enqueue
+    // instant is not the event instant — and the activation boundary measures the event.
+    const occurredAt = await occurrenceForBookings(supabase, bookingIds);
     let enqueueErrors = 0;
     // Counted from the ROWS enqueue_notification returns, never from the recipient list:
     // the resolver can legitimately answer [] (idempotent no-op) or a 'skipped' row with NO
@@ -475,9 +480,17 @@ export async function sendStaffBookingNotifications(opts: {
       amount: string | undefined,
       name: string,
     ) => {
+      if (!occurredAt) {
+        // Fail closed: a notification we cannot date is one we do not send. Falling back to now()
+        // here would re-open the exact hole the occurrence boundary exists to close.
+        enqueueErrors++;
+        logStep("Staff notification enqueue refused: the booking's occurrence time could not be established", { userId });
+        return;
+      }
       const { subject, html } = renderStaffBookingEmail({ recipientName: name, playerName, sessions, amount });
       const { data: emitted, error } = await supabase.rpc("enqueue_notification", {
         p_event_key: "booking_confirmed_staff",
+        p_occurred_at: occurredAt,
         p_recipient_user_id: userId,
         p_tenant_academy_profile_id: scope.academy ?? null,
         p_tenant_trainer_id: scope.trainer ?? null,
