@@ -216,11 +216,23 @@ export function parseModule(source, fileName = "module.ts") {
 /**
  * True when `name` is declared in a scope enclosing `node` — a parameter, a `var`/`let`/`const`, or
  * a function declaration. Used to tell the CommonJS `require` loader apart from a local binding
- * that merely shares its name. Deliberately conservative: it only walks enclosing scopes and only
- * looks at their direct declarations, which is enough for the shapes that actually occur, and a
- * miss here costs a false positive rather than a missed dependency.
+ * that merely shares its name.
+ *
+ * The two error directions are NOT symmetric, and the asymmetry drives the design. Missing a
+ * shadowing form costs a false positive: annoying, visible, harmless. Wrongly reporting a binding
+ * SUPPRESSES a real dependency, which is an evasion — the thing this guard exists to prevent. So
+ * this errs toward "not bound":
+ *
+ *   * `declare const require: …` / `declare function require(…)` are AMBIENT. They are erased at
+ *     emit, so at runtime the call still reaches the module environment's real `require`. Counting
+ *     them as bindings would let `declare const require; require("npm:floating@2")` through.
+ *   * It inspects only the direct declarations of enclosing scopes, so destructuring, catch
+ *     parameters, loop bindings, class declarations and named function expressions are missed —
+ *     all in the false-positive direction, deliberately.
  */
 function isLexicallyBound(node, name) {
+  const isAmbient = (s) => s.modifiers?.some((m) => m.kind === ts.SyntaxKind.DeclareKeyword) === true;
+
   for (let n = node.parent; n; n = n.parent) {
     if (ts.isFunctionLike(n) && n.parameters?.some((p) => ts.isIdentifier(p.name) && p.name.text === name)) {
       return true;
@@ -228,6 +240,7 @@ function isLexicallyBound(node, name) {
     const statements = ts.isSourceFile(n) || ts.isBlock(n) || ts.isModuleBlock(n) ? n.statements : null;
     if (!statements) continue;
     for (const s of statements) {
+      if (isAmbient(s)) continue; // erased at runtime — not a binding the call can reach
       if (ts.isVariableStatement(s)
           && s.declarationList.declarations.some((d) => ts.isIdentifier(d.name) && d.name.text === name)) {
         return true;
@@ -558,26 +571,47 @@ import cfg from "https://esm.sh/withattrs@8" with { type: "json" };
       "cjs-dep.cjs": 'const p = require("npm:floating-cjs@2");\n',
       "computed.ts": "export const load = () => import(`npm:computed@${v}`);\n",
       "static.mts": 'import { a } from "https://esm.sh/floating-mts@2";\n',
+      // TWO violations in one file, after a PINNED one: a specifier loop that stopped at its first
+      // element — or at the first violation — would report this file once and look correct.
+      "two-in-one.ts": 'import "https://esm.sh/pinned@1.2.3";\nimport "https://esm.sh/floating-first@2";\nimport "https://esm.sh/floating-second@3";\n',
+      // An AMBIENT `require` is erased at emit, so the call still reaches the real loader at
+      // runtime. Treating it as a binding would suppress a genuine dependency — an evasion.
+      "ambient.cts": 'declare const require: (s: string) => unknown;\nconst d = require("npm:floating-ambient@2");\n',
       "clean.ts": 'import { b } from "https://esm.sh/pinned@1.2.3";\nimport c from "./local.ts";\n',
     };
     for (const [name, body] of Object.entries(files)) fs.writeFileSync(path.join(integrationDir, name), body);
 
     const reported = findFloating(integrationDir);
-    const byFile = Object.fromEntries(reported.map((v) => [path.basename(v.file), v]));
+    const specsFor = (name) => reported.filter((v) => path.basename(v.file) === name);
+    const one = (name) => specsFor(name)[0];
 
-    assert(byFile["view.tsx"]?.spec === "https://esm.sh/preact@10", "findFloating did not report the floating jsxImportSource pragma");
-    assert(byFile["cjs-dep.cjs"]?.spec === "npm:floating-cjs@2", "findFloating did not report a floating require() in a .cjs file");
-    assert(byFile["computed.ts"]?.kind === "computed", "findFloating did not report the computed dynamic import");
-    assert(byFile["static.mts"]?.spec === "https://esm.sh/floating-mts@2", "findFloating did not report a floating import in a .mts file");
-    assert(byFile["clean.ts"] === undefined, "findFloating reported a violation in the clean file");
-    assert(reported.length === 4, `findFloating reported ${reported.length} violations, expected exactly 4`);
+    assert(one("view.tsx")?.spec === "https://esm.sh/preact@10", "findFloating did not report the floating jsxImportSource pragma");
+    assert(one("cjs-dep.cjs")?.spec === "npm:floating-cjs@2", "findFloating did not report a floating require() in a .cjs file");
+    assert(one("computed.ts")?.kind === "computed", "findFloating did not report the computed dynamic import");
+    assert(one("static.mts")?.spec === "https://esm.sh/floating-mts@2", "findFloating did not report a floating import in a .mts file");
+    assert(one("ambient.cts")?.spec === "npm:floating-ambient@2", "an AMBIENT `declare const require` suppressed a real dependency — this is an evasion, not a false positive");
+    assert(specsFor("clean.ts").length === 0, "findFloating reported a violation in the clean file");
+
+    // BOTH violations in the two-violation file, so a loop that stops after its first element fails.
+    const two = specsFor("two-in-one.ts").map((v) => v.spec).sort();
+    assert(two.length === 2, `expected 2 violations in two-in-one.ts, got ${two.length}`);
+    assert(two[0] === "https://esm.sh/floating-first@2" && two[1] === "https://esm.sh/floating-second@3",
+      `wrong specifiers from the multi-violation file: ${two.join(", ")}`);
+
+    assert(reported.length === 7, `findFloating reported ${reported.length} violations, expected exactly 7`);
     assert(reported.every((v) => v.line >= 1), "a violation carried no usable line number");
+    // The second violation is on a later line than the first — line numbers are per-specifier,
+    // not per-file.
+    assert(specsFor("two-in-one.ts")[0].line !== specsFor("two-in-one.ts")[1].line,
+      "two violations in one file were reported on the same line");
 
     // A pinned pragma and a shadowed `require` must NOT be violations — the false-positive side.
     fs.rmSync(path.join(integrationDir, "view.tsx"));
     fs.rmSync(path.join(integrationDir, "cjs-dep.cjs"));
     fs.rmSync(path.join(integrationDir, "computed.ts"));
     fs.rmSync(path.join(integrationDir, "static.mts"));
+    fs.rmSync(path.join(integrationDir, "two-in-one.ts"));
+    fs.rmSync(path.join(integrationDir, "ambient.cts"));
     fs.writeFileSync(path.join(integrationDir, "pinned-view.tsx"), "/** @jsxImportSource https://esm.sh/preact@10.19.3 */\nexport const v = <div />;\n");
     fs.writeFileSync(path.join(integrationDir, "shadowed.ts"), 'export function useLoader(require: (s: string) => unknown) {\n  return require("npm:pkg@2");\n}\n');
     fs.writeFileSync(path.join(integrationDir, "shadowed-const.ts"), 'const require = customLoader;\nrequire("npm:pkg@2");\n');
