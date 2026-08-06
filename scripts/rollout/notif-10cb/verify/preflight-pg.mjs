@@ -370,7 +370,21 @@ try {
     GRANT USAGE ON ALL SEQUENCES IN SCHEMA net TO hosted_postgres;
     GRANT SELECT ON vault.decrypted_secrets TO hosted_postgres;
     GRANT ALL ON ALL TABLES IN SCHEMA shadow TO hosted_postgres;
-    ALTER FUNCTION public.notif_digest_worker_liveness() OWNER TO hosted_postgres;`);
+    ALTER FUNCTION public.notif_digest_worker_liveness() OWNER TO hosted_postgres;
+    -- …and EXECUTE on the public functions the artifacts call.
+    --
+    -- INTEGRATION FIDELITY, found by composing N0 with N4-N7. In production the operator runs the
+    -- runbook as the role that APPLIED the migrations, so it OWNS these functions and can execute
+    -- them however they are REVOKEd — an owner keeps its own privileges. Here the schema is created
+    -- by the boot superuser, so hosted_postgres owned nothing and every artifact that calls a
+    -- REVOKEd definer function (record_notification_activation_boundary,
+    -- notif_activation_min_occurred_at, …) failed with 'permission denied' — the harness being
+    -- STRICTER than production, not the artifacts being wrong.
+    --
+    -- What is NOT granted, deliberately: anything on cron.job beyond SELECT. That the hosted role
+    -- cannot FOR UPDATE the supabase_admin-owned cron.job is N0's entire finding and the reason
+    -- alter_job is the lock. Widening it here would delete the thing this harness exists to prove.
+    GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO hosted_postgres;`);
   // The artifacts' lock include pins the pg_cron VERSION its measured semantics belong to; the
   // extension is a mock here, so the catalog row it reads is planted (same device as the realpg
   // cron-inert suite), with the version the semantics were measured on.
