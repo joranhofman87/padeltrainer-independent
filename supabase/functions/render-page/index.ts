@@ -744,7 +744,7 @@ async function renderPathInner(cleanPath: string, lang: string): Promise<string>
         ...(topic.alternates || []).filter(a => a && a.language && a.slug).map(a => ({ lang: a.language, slug: a.slug })),
       ];
       const cardsHtml = (topic.featuredGuides || []).slice(0, 6)
-        .map(g => `<li><a href="${SITE_URL}/${lang}/learn/${esc(g.slug)}">${esc(g.h1 || g.title)}</a></li>`)
+        .map(g => `<li><a href="${SITE_URL}/${lang}/learn/${esc(g.slug)}">${esc(g.h1 || g.title || g.slug)}</a></li>`)
         .join('');
       const body = `<h1>${esc(title)}</h1>
         <p>${esc(description)}</p>

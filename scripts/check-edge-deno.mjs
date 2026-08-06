@@ -72,6 +72,12 @@ function functionEntrypoints() {
 // errors" — a false green — and the count even went DOWN, which read as an improvement. This gate
 // exists to catch un-imported names shipping as runtime ReferenceErrors; failing open is the one
 // thing it must not do.
+// Keyed on the PROCESS STATUS, not on matching text. Text matching alone still failed open for
+// `deno: command not found` (exit 127, no `error:` line), a killed process, a future change to
+// Deno's diagnostic format, and a bare `error: Type checking failed.` with nothing parsable before
+// it. The invariant is simple and complete: a NON-ZERO exit is only acceptable when this entrypoint
+// produced at least one parsable `TS#### [ERROR]` diagnostic. Anything else means deno did not get
+// far enough to have an opinion, and must not read as zero errors.
 const HARD_FAIL_RE = /^error: (.+)$/;
 
 function collectErrorCounts() {
@@ -79,6 +85,7 @@ function collectErrorCounts() {
   const hardFailures = [];
   for (const entry of functionEntrypoints()) {
     let out = '';
+    let exitStatus = 0;
     try {
       // deno check exits non-zero on type errors; diagnostics go to stdout/stderr.
       out = execSync(`deno check --node-modules-dir=manual "${entry}"`, {
@@ -90,8 +97,10 @@ function collectErrorCounts() {
       });
     } catch (e) {
       out = `${e.stdout || ''}${e.stderr || ''}`;
+      exitStatus = typeof e.status === 'number' ? e.status : 1;
     }
     const lines = out.split('\n');
+    let parsedHere = 0;
     // Fail CLOSED on anything that stopped deno from type-checking this entrypoint.
     for (const line of lines) {
       const hard = HARD_FAIL_RE.exec(line.trim());
@@ -110,6 +119,10 @@ function collectErrorCounts() {
       }
       const sig = `${file}|${m[1]}|${normalize(m[2])}`;
       counts[sig] = (counts[sig] || 0) + 1;
+      parsedHere += 1;
+    }
+    if (exitStatus !== 0 && parsedHere === 0) {
+      hardFailures.push(`${normalize(entry)}: deno exited ${exitStatus} without producing a single parsable diagnostic`);
     }
   }
   if (hardFailures.length > 0) {
