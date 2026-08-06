@@ -1,6 +1,6 @@
 /** Auth helpers for forward-invoice (service-role internal + user UI calls). */
 
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { jsonUnauthorized, type AuthedUser } from "./auth.ts";
 import {
   buildServiceRoleAuthDebug,

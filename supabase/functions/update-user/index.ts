@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { GLOBAL_IDENTITY_FIELDS } from "../_shared/trainer-authority.ts";
 

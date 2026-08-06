@@ -46,6 +46,20 @@ jobs:
       - name: Legacy API-key consumer guard
         run: npm run check:legacy-key
 
+      # Proves the pin classifier discriminates: every range form (@2, @2.57, ^2.57.2, latest,
+      # no version) is rejected and every exact form accepted, on fixtures plus the real tree.
+      # Most importantly it catches a brace-blind extractor, which would report a clean repo while
+      # silently skipping every braced import.
+      - name: Edge import-pin guard self-test
+        run: npm run check:edge-pins:selftest
+
+      # Fails if any external import in the edge-function bundle graph names a version RANGE.
+      # A floating specifier makes deployability depend on what a CDN resolves that hour; it is
+      # what broke 15 of 18 function deploys on 2026-08-06. Covers entrypoints AND _shared/,
+      # because a shared module is bundled into every function that imports it.
+      - name: Edge import-pin guard
+        run: npm run check:edge-pins
+
   # The REAL type-check. Root `tsc` has files:[] and checks nothing; this runs
   # `tsc -p tsconfig.app.json` and — since that project is perma-red with known
   # pre-existing errors — ratchets on NEW errors only vs scripts/tsc-app.baseline.json

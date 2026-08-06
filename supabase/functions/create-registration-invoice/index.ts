@@ -5,7 +5,7 @@
 // Security: the caller may only pay for their OWN intake_request (player_id must
 // resolve to the caller's profile). Service-role minting happens after that gate.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import {
   mintEventRegistrationInvoice,
   resolveEffectivePaymentMethod,

@@ -8,7 +8,7 @@
 //
 // Auto-confirms the new email (no verification spam — they never logged in) and
 // writes an audit row. verify_jwt=false: the caller's JWT is validated here.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

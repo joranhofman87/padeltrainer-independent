@@ -19,6 +19,7 @@ Before you change code, know which gate will catch a mistake — and which gates
 |---|---|---|---|---|
 | Lint (ratcheted) | `npm run lint` (`eslint .`) | New eslint violations of any rule (role-isolation imports, a11y, hooks, unused). | ✅ `test.yml` → `lint` | Gated by `eslint-suppressions.json`, **shrink-only**: a NEW violation fails; fixing a suppressed one requires `npm run lint:prune` + commit or the gate fails on stale suppressions. See [LINTING.md](./LINTING.md). |
 | Edge config drift | `npm run check:edge-config` (`scripts/check-edge-fn-config.mjs`) | A public/self-authenticating edge fn missing `verify_jwt = false` in `config.toml` → gateway 401s it on deploy (e.g. mollie/stripe webhooks, public images). | ✅ `test.yml` → `lint` | Hardcoded allowlist `MUST_BE_PUBLIC`. **Add every new no-JWT function to it** or the guard is blind to it. |
+| Edge import pins | `npm run check:edge-pins` (+ `:selftest`) (`scripts/check-edge-import-pins.mjs`) | An external import in the edge-function bundle graph that names a version **range** (`@2`, `@2.0`, `^2.57.2`, `latest`, or no version). A floating specifier makes deployability depend on what a CDN resolves that hour — it is what broke 15 of 18 function deploys on 2026-08-06. | ✅ `test.yml` → `lint` | Scans **entrypoints AND `_shared/`** — a shared module is bundled into every importer, which is how 5 of the 15 failures happened. **`deno.lock` cannot substitute:** `supabase functions deploy` bundles server-side and never reads it, so CI resolved a pinned 2.108.2 while the deploy resolved 2.112.2. See [EDGE_FUNCTION_DEPLOY_SAFETY.md §4e](./deployment/EDGE_FUNCTION_DEPLOY_SAFETY.md). |
 | Type-check (real) | `npm run typecheck:baseline` (`scripts/check-tsc-baseline.mjs`) | NEW `tsc -p tsconfig.app.json` errors vs `scripts/tsc-app.baseline.json`. Cross-module name resolution → the un-imported-name `ReferenceError` class. | ✅ `test.yml` → `typecheck` | Project is perma-red with known pre-existing errors; ratchets on new only (signature = `file\|code\|message`, line/col stripped). Regenerate: `npm run typecheck:baseline:update`. **`npm run typecheck` and root `tsc` check nothing.** |
 | Production build | `npm run build` (`vite build`) | Import/resolution/build-time failures; broken bundle. | ✅ `test.yml` → `typecheck` | Does NOT type-check app source (SWC strips types). Complements, does not replace, `typecheck:baseline`. |
 | Unit tests | `npm test` (`vitest run`) | App-lib logic, money-path libs (via the PGlite/Supabase harness), component behavior. | ✅ `test.yml` → `test` | Full `vitest run` is a required gate. Includes the real money-path libs against real Postgres (PGlite). Does NOT cover Deno edge fn `index.ts`. |
@@ -34,7 +35,7 @@ Before you change code, know which gate will catch a mistake — and which gates
 ## What each CI workflow runs
 
 - **`test.yml`** (every push/PR to main): 4 parallel jobs —
-  - `lint`: `npm run lint` + `check:edge-config`
+  - `lint`: `npm run lint` + `check:edge-config` + `check:legacy-key`(+selftest) + `check:edge-pins`(+selftest)
   - `typecheck`: `typecheck:baseline` + `vite build`
   - `test`: `vitest run` + `db:rehearse:all` + i18n parity
   - `edge-tests`: `deno test --no-check` on `_shared/`

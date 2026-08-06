@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { resolveAppBase } from "./priority-claim-invite.ts";
 import { bookingTransition } from "./notification-occurrence.ts";
 

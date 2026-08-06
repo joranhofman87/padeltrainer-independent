@@ -1,5 +1,10 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+// `npm:@supabase/supabase-js@2/cors` — the specifier this replaces — never existed. supabase-js
+// publishes no `exports` map and no `cors` entry point, so the import was unresolvable from the day
+// it was written (2026-04-04, e18c3d80). This is the repository's own CORS module, which sixteen
+// other functions already use, and its `corsHeaders` is byte-identical to the wide-open headers
+// this function was written against.
+import { corsHeaders } from "../_shared/cors.ts";
 import { isServiceRoleRequest } from "../_shared/service-role-auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {

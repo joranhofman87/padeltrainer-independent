@@ -18,7 +18,7 @@
 // Token-gated + self-authenticating (verify_jwt = false): the anon captain may be logged out.
 // The claim_token is the capability; everything DB-side runs as the service role after the gate.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";

@@ -103,6 +103,51 @@ timeout. When deno.land is slow/down the deploy dies (`Failed to bundle... timed
 native **`Deno.serve`** have no such fetch and deploy fine. **Prefer `Deno.serve` in new edge functions;**
 if a deploy fails on a deno.land fetch, it's the network, not the code — retry or migrate that import.
 
+### 4e. A CDN import must name an EXACT version — the specifier IS the defect
+
+**Rule: no external import that can enter a deployment bundle may contain a version range.** `@2` is a
+range. `@2.0` is a range. `^2.57.2` is a range. `@2.57.2` is a version. Enforced by
+`npm run check:edge-pins` (see [QUALITY_GATES.md](../QUALITY_GATES.md)).
+
+**What happened (2026-08-06).** The N0–N7 inert deployment partially failed: 15 of 18 functions would
+not deploy. Nothing in our code had changed to cause it. `https://esm.sh/@supabase/supabase-js@2`
+resolved that hour to a build depending on `@supabase/postgrest-js@2.112.2` — a version npm had not
+published — so the bundle could not be built.
+
+**Why this is not "upstream was broken".** Three observations from the same run refute that reading:
+
+- `mollie-webhook` carries the *same* floating specifier and deployed **successfully** in that run.
+- The two functions that pin exactly (`notif-manage`, `notif-unsubscribe-one-click`) deployed cleanly.
+- Within hours, `postgrest-js@2.112.2` **was** published and became the `latest` tag — the same
+  specifier that failed the deploy would now succeed.
+
+So the build outcome was decided by what a third party's mutable pointer resolved to at that moment.
+A deploy that succeeds or fails according to a CDN's clock is not reproducible, and the failure lands
+at deploy time, on a release, with no local reproduction.
+
+**Why local checks could not have caught it — the important part.** `deno.lock` *did* pin the floating
+specifier, to `https://esm.sh/@supabase/supabase-js@2.108.2`. Local `deno check`, the edge tests and CI
+therefore all resolved 2.108.2, deterministically and successfully. **`supabase functions deploy`
+bundles server-side and never sees `deno.lock`.** That is the whole gap: the lockfile made every local
+surface reproducible and left the one surface that ships unpinned. A green CI proved nothing about the
+deploy, and could not have. Pinning in the source specifier is the only place the deploy bundler reads.
+
+**Scope: `_shared/` counts.** A shared module is bundled into every function that imports it. Five of
+the fifteen failures had clean entrypoints and inherited the floating specifier transitively through
+`_shared/auth.ts`, `_shared/booking-access.ts`, `_shared/booking-confirmation-email.ts` and
+`_shared/mollie-booking-paid-side-effects.ts`. Pin the shared modules or the guard is theatre.
+
+**One package, one specifier form.** `npm:@supabase/supabase-js@2.57.2` and
+`https://esm.sh/@supabase/supabase-js@2.57.2` are the *same library at the same version* but two
+distinct module identities to TypeScript, so a client created from one cannot be passed to a helper
+typed against the other. Prefer the `https://esm.sh/…` form used by the majority of this repo, and
+never mix forms across an entrypoint and the `_shared/` modules it calls.
+
+**Avoid `ReturnType<typeof createClient>` for a client parameter.** It instantiates the *default*
+generics, which differ between supabase-js versions, so it breaks on any version bump. Import the type
+instead: `import { createClient, type SupabaseClient } from "…"` and annotate the parameter
+`SupabaseClient`.
+
 ---
 
 ## 5. Deploy commands (copy-paste)

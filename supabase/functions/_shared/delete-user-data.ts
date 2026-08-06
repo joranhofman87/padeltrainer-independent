@@ -1,4 +1,4 @@
-import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 /**
  * Await a Supabase delete/update builder, surface a real DB error instead of

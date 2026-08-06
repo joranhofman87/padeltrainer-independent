@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { sendResendEmail } from "../_shared/resend-send.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
@@ -117,7 +117,7 @@ const getEmailTemplate = (type: string, data: { userName?: string; actionLink: s
  * password reset — the recipient cap is the load-bearing anti-abuse guard.
  */
 async function throttle(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   identifier: string,
   max: number,
   windowMin: number,

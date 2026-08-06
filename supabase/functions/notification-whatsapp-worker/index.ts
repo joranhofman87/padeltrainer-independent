@@ -22,7 +22,7 @@
 //   ~62 minutes — shorter than a credential fix or a Meta template review. Those rows are
 //   deferred (attempt given back) so the gap parks the queue instead of destroying it.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { sendWhatsAppMessage, whatsappFailureAction } from "../_shared/whatsapp-send.ts";

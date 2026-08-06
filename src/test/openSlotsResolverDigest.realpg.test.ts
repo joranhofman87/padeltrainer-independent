@@ -926,7 +926,6 @@ describe('C — the INSTANT claim never touches a digest member', () => {
     // served": under an in-flight backlog this arm is unindexed, full stop.
     expect(removed).toBeGreaterThanOrEqual(20000);
     expect(indexNames(plan), 'the stale-reclaim arm is UNINDEXED in this shape — if this now uses an index, the measurement below is stale and the decision must be revisited').toEqual([]);
-    // eslint-disable-next-line no-console
     console.log(`[H] stale-reclaim residual: ${removed} rows removed by filter over a 20000-row in-flight backlog; indexes used: ${JSON.stringify(indexNames(plan))}`);
   }, 180_000);
 });
