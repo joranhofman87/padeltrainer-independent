@@ -139,6 +139,12 @@ file_mode() {
 make_workdir() {
   # An explicit template honours TMPDIR; the bare and -t forms escape a test sandbox.
   WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/notif-liveness.XXXXXX")" || die "$EXIT_USAGE" "mktemp failed"
+  # `mktemp -d` creates 0700 and `umask 077` reinforces it — so this asserts a property that should
+  # already hold rather than establishing one. It is here because everything the token touches lives
+  # in this directory, and "should already hold" is exactly the kind of assumption that turns out to
+  # be false on a platform nobody tested. Fails closed: an unrecognised mode reads as `unknown`.
+  [ "$(file_mode "$WORKDIR")" = "700" ] \
+    || die "$EXIT_USAGE" "workdir is not mode 0700 (got $(file_mode "$WORKDIR"))"
 }
 
 # ── shape validation ──────────────────────────────────────────────────────────────────────────
