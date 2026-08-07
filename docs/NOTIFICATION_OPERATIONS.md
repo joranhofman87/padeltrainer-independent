@@ -129,9 +129,34 @@ disarmed". The six fields cannot tell those apart, and no grace window can, beca
 are owner-paced and open-ended. An endpoint that guessed would page continuously through the exact
 window it was wired to watch. So the expectation is an explicit input, flipped as part of **step 7**:
 
+**The flip and the arming cannot be atomic**, so the order is part of the procedure. An Edge
+Function secret and a database cron row are changed by different systems; one of the two mismatch
+states is unavoidable for a few seconds. Take the one that fails safe:
+
 ```bash
-# at activation (step 7), alongside arming the cron:
+# STEP 7a — declare the expectation FIRST. The endpoint briefly reports cron_disarmed (503),
+# which is true: activation is expected and the cron is not yet armed.
 supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
+
+# STEP 7b — confirm the endpoint has picked it up before arming (expect 503 cron_disarmed):
+curl -s -o /dev/null -w '%{http_code}\n' \
+  -H "Authorization: Bearer <token>" \
+  https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness
+
+# STEP 7c — arm the cron via the reviewed tooling (run-enablement.sh activate ...).
+```
+
+Arming first would instead show `unexpectedly_armed` — a live cron that the monitor is not yet
+watching for staleness, which is the wrong way round. The documented "alert after 2 consecutive
+failures" policy absorbs the short transition either way.
+
+**Rollback must reset it too.** `rollback` disables the engine and leaves the cron inactive; if
+`NOTIF_LIVENESS_EXPECT_ARMED` stays `true` the endpoint will correctly but noisily report
+`cron_disarmed` for a pipeline that is deliberately down. Reset it as part of the rollback, or put
+the check in maintenance for the duration:
+
+```bash
+supabase secrets unset NOTIF_LIVENESS_EXPECT_ARMED --project-ref ficwbdrzefmblkbkomzw
 ```
 
 Before that it is absent/false: an inactive cron is correct, staleness does not apply (nothing is

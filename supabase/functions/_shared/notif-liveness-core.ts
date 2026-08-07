@@ -90,14 +90,19 @@ export function decideLiveness(
   }
 
   // From here the operator has declared the pipeline activated.
-  if (neverSucceeded) {
-    // Armed without a reconciled canary behind it — off the documented path.
-    return { httpStatus: 503, state: "never_invoked", detail: "activation is expected but the worker has never succeeded" };
+  //
+  // THE INACTIVE CHECK COMES FIRST, and the order is the meaning. `never_invoked` says "armed but
+  // never succeeded"; `cron_disarmed` says "activation expected but the cron is off". When BOTH are
+  // true the cron being off is the more immediate and more actionable fact — reporting
+  // `never_invoked` would send the operator looking for a failing worker when nothing is scheduled
+  // to run at all.
+  if (!row.job_active) {
+    return { httpStatus: 503, state: "cron_disarmed", detail: "activation is expected but the cron is INACTIVE" };
   }
 
-  if (!row.job_active) {
-    // Activation was declared and the cron is off: disarmed, or the job was rewritten.
-    return { httpStatus: 503, state: "cron_disarmed", detail: "activation is expected but the cron is INACTIVE" };
+  if (neverSucceeded) {
+    // Armed without a reconciled canary behind it — off the documented path.
+    return { httpStatus: 503, state: "never_invoked", detail: "cron is ARMED but the worker has never succeeded" };
   }
 
   // Armed and has succeeded: the only remaining question is whether it still is.

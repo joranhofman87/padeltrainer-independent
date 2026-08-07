@@ -118,6 +118,42 @@ Deno.test("armed while activation is NOT declared is itself an alert (the two ha
   assertEquals(v.httpStatus, 503);
 });
 
+// ── the full (expectArmed x active x prior-success) table, for a PRESENT job ────────────────────
+// Enumerated rather than sampled: the first version of this module was wrong about one cell, and a
+// state machine is exactly the kind of thing where the untested cell is the one that bites.
+
+Deno.test("every reachable combination maps to the intended verdict", () => {
+  const cases: Array<[boolean, boolean, boolean, string, number]> = [
+    // expectArmed, job_active, priorSuccess, state, http
+    [false, false, false, "inert", 200],
+    [false, false, true,  "inert", 200],              // the canary window
+    [false, true,  false, "unexpectedly_armed", 503],
+    [false, true,  true,  "unexpectedly_armed", 503],
+    [true,  false, false, "cron_disarmed", 503],      // inactive outranks never-succeeded
+    [true,  false, true,  "cron_disarmed", 503],
+    [true,  true,  false, "never_invoked", 503],
+    [true,  true,  true,  "live", 200],
+  ];
+  for (const [expectArmed, active, prior, state, http] of cases) {
+    const v = decideLiveness(
+      row({ job_present: true, job_active: active, last_success_at: prior ? "2026-08-07T00:00:00Z" : null, seconds_since_success: prior ? 30 : null }),
+      DEFAULT_STALE_AFTER_SECONDS,
+      expectArmed,
+    );
+    assertEquals(v.state, state, `expectArmed=${expectArmed} active=${active} prior=${prior}`);
+    assertEquals(v.httpStatus, http, `expectArmed=${expectArmed} active=${active} prior=${prior}`);
+  }
+});
+
+Deno.test("a MISSING job outranks every combination", () => {
+  for (const expectArmed of [false, true]) {
+    for (const active of [false, true]) {
+      const v = decideLiveness(row({ job_present: false, job_active: active }), DEFAULT_STALE_AFTER_SECONDS, expectArmed);
+      assertEquals(v.state, "cron_missing");
+    }
+  }
+});
+
 // ── authorization ───────────────────────────────────────────────────────────────────────────────
 
 Deno.test("authorizes nobody when no token is configured (fails closed)", async () => {
