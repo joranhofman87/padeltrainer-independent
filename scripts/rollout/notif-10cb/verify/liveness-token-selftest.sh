@@ -316,6 +316,12 @@ ck "(h) a bare JSON string FAILS"                                34 '"cron_disar
 # the explicit NUL check was added; the independent reviewer asserted this case could not reach
 # success, and it could.
 ck "(n) a NUL byte hiding a trailing value FAILS"                34 '{"state":"cron_disarmed"}@NUL@{"state":"query_failed"}'
+# jq REPLACES invalid raw UTF-8 inside a string with U+FFFD instead of rejecting it, so "parses as a
+# JSON object" is jq's notion, not a byte-level one. Both halves are pinned: a mangled UNRELATED
+# field still reports healthy, and the same mangling inside .state cannot fake a match, because
+# substitution only ever ADDS bytes — `cron_disarmed<U+FFFD>` is not `cron_disarmed`.
+ck "(u1) invalid UTF-8 in an unrelated field is accepted"        0  $'{"state":"cron_disarmed","x":"\xff"}'
+ck "(u2) invalid UTF-8 INSIDE .state cannot fake a match"        32 $'{"state":"cron_disarmed\xff"}'
 ck "(i) an EMPTY body FAILS"                                     34 '@EMPTY@'
 ck "(e) a MISSING state FAILS"                                   32 '{"ok":false}'
 ck "(f) a NULL state FAILS"                                      32 '{"state":null}'

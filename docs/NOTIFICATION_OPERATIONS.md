@@ -264,6 +264,13 @@ A body containing a **NUL byte** is rejected outright (34): `jq` stops reading a
 everything after it, so a truncated or proxy-mangled response could otherwise present a healthy
 prefix and hide the rest.
 
+"Parses as a JSON object" means *as `jq` parses it*, and jq is deliberately lenient about one thing:
+invalid raw UTF-8 **inside a string** is replaced with U+FFFD rather than rejected. A body carrying
+invalid bytes in some other field therefore still reports healthy. That cannot make a wrong state
+look right — substitution only ever *adds* bytes, so invalid UTF-8 inside `.state` itself yields
+`cron_disarmed<U+FFFD>`, which does not equal `cron_disarmed` and is rejected (32). Both behaviours
+are pinned by tests so neither can drift silently.
+
 The order is transport (30) → HTTP status (31) → body is a single JSON object (34) → `.state` is a
 string equal to the expectation (32), so a network failure can never be reported as a wrong state,
 and none of them can end in 0. Neither the response body nor `jq`'s stderr is ever printed — the
