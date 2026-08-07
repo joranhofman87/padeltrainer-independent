@@ -63,6 +63,44 @@ so a backlog left by an earlier rollout would have gone out on the first invocat
 split into chunk groups sharing a `recipient_key` — so the post-check counts recipients, not groups.
 Counting groups would refuse a perfectly good canary, and a gate that cries wolf gets switched off.
 
+### …and a FLOOR, because an empty canary is not a canary
+
+The ceiling asks *could this reach too many*. Nothing asked *could it reach anything at all* — and
+with no due work the answer is no: the worker starts, materializes nothing, claims nothing, ends
+`succeeded`, and the run ledger, the response body and your terminal all look exactly like a working
+path. `canary-invoke` now **refuses** in that world, before it takes a lock or opens an invocation
+record.
+
+The refusal is not a mass-send guard — an empty run is caught later too, by `canary_verify` and by
+the activation assertions, which both require at least one accepted send attempt. It is a guard
+against **spending the one controlled invocation** and starting its 6-hour evidence window against a
+run that shows nothing.
+
+Two things about it are worth knowing before you hit it:
+
+* **It is scoped to `open_slots_player`**, while the ceiling stays global. Due work under another
+  event key proves nothing about the cutover *and would be sent* — a real email to someone with no
+  connection to this rollout, on the strength of a green canary. The floor is narrow on purpose; the
+  ceiling is wide on purpose. They are not the same question.
+* **`--max-recipients` cannot help.** That is the ceiling, and raising it cannot create work. The
+  refusal message lists the causes in the order worth checking: the item's digest boundary is still
+  in the future; quiet hours are shut for the recipient timezone now *or within the next five
+  minutes* (pg_net dispatches after commit, so the worker claims a little later than you asked);
+  the email channel is **killed**; the `email:digest` activation boundary is unset; the provider
+  circuit is not closed; the only candidate is leased by a live worker and not yet stale; or its
+  group holds a member from before the activation boundary.
+
+**Wait for real work rather than manufacturing it.** The point of the canary is that a genuine
+`open_slots_player` digest goes out end to end. Note that the digest is never *immediately* due —
+a member becomes claimable at its `digest_boundary_at` — so plan the invocation for a moment when a
+real trainer's batch has matured, not for the minute after you create one.
+
+**A replay is exempt.** Re-running with `--invocation-request-id=<id>` after an ambiguous commit
+skips the floor entirely: the original invocation already dispatched, so the work is *gone*, and the
+floor would otherwise answer "no due work, wait and re-run" when the truth is "your first invocation
+committed and the mail has already gone out". The replay reaches the invocation gate, which says
+that plainly and names the original pg_net request.
+
 **Note what `--admin-ops-confirmed` actually gates.** With step 4 now a subcommand, the flag is a
 mechanical precondition on the send itself, not only on reconciling (step 5) and arming (step 7). A
 failed canary was never invisible — it has an HTTP result, `canary_verify.sql` and the worker's Slack

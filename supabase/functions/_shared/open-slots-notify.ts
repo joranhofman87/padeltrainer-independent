@@ -71,6 +71,19 @@ const LEGACY_MONTH_NAMES = [
  *
  * The OLD handler treats this value as opaque display text plus a dedup anchor, so widening the
  * format is safe for it: it renders the string and keys on it, and both remain self-consistent.
+ *
+ * THE ONE DUPLICATION THAT REMAINS, and why it is not removable. `legacyDateRange` in
+ * src/lib/notifyFollowers.ts produces the same string in the FRONTEND bundle. The two cannot be a
+ * single module — the browser bundle and the Deno edge function share no import graph — and they
+ * must not drift, because a drift means the two handler versions claim DIFFERENT legacy dedup
+ * markers for one batch and a follower is mailed twice during the deploy overlap. So the pair is
+ * pinned byte-for-byte by src/test/legacyDateRangeParity.test.ts, which imports both and compares
+ * their output across same-year, cross-year, single-day, month/year rollover and leap-day ranges.
+ * That test is the contract; do not edit either function without it.
+ *
+ * There is deliberately no SECOND copy inside this module. An earlier revision added a
+ * `canonicalLegacyDateRange` twin here for the server-side derivation below — a duplicate of a
+ * duplicate, in the same file, with nothing pinning it to the original.
  */
 export function formatLegacyDateRange(fromIso: string, toIso: string): string {
   const part = (iso: string) => {
@@ -149,33 +162,6 @@ export function parseLegacyDateRange(value: string): { from: string; to: string 
  */
 export const MAX_SLOT_IDS = 500;
 
-/**
- * The canonical legacy display range, derived SERVER-SIDE from the structured ISO dates.
- *
- * Byte-identical to `legacyDateRange` in src/lib/notifyFollowers.ts, which is what
- * `withLegacyCompatFields` sends. It is duplicated because the frontend bundle and the edge
- * function do not share a module — and because they must not drift,
- * src/test/legacyDateRangeParity.test.ts pins the two implementations byte-for-byte across
- * same-year, cross-year and single-day ranges.
- *
- * This exists for ONE purpose: preserving the transitional legacy `notification_sends` dedup
- * marker across the frontend/edge deploy overlap. It is never business truth — not membership,
- * not occurrence, not the date range shown to anyone.
- */
-export function canonicalLegacyDateRange(fromIso: string, toIso: string): string {
-  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const part = (iso: string) => {
-    const [y, m, d] = iso.split("-");
-    return { y, mon: MON[Number(m) - 1], d: String(Number(d)) };
-  };
-  const a = part(fromIso);
-  const b = part(toIso);
-  return a.y === b.y
-    ? `${a.mon} ${a.d} - ${b.mon} ${b.d}, ${b.y}`
-    : `${a.mon} ${a.d}, ${a.y} - ${b.mon} ${b.d}, ${b.y}`;
-}
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 export type NotifyRequest =
   | {
     subtype: "new_availability";
@@ -185,12 +171,29 @@ export type NotifyRequest =
     /** The exact inserted PUBLIC slot ids. Shape-validated here; PROVEN server-side by the RPC. */
     slotIds: string[];
     /**
-     * The legacy display range EXACTLY as received, when the caller sent one. Used for one
-     * thing only: reconstructing the pre-cutover dedup key during the deploy overlap. Keeping
-     * the received string rather than re-deriving it guarantees the reconstructed key is
-     * byte-identical to whatever the old handler would have claimed for this same request.
+     * The transitional legacy display range — DERIVED, never accepted.
+     *
+     * It used to be "the string exactly as received", and that is no longer what happens. This
+     * value is now produced SERVER-SIDE by `formatLegacyDateRange(dateFrom, dateTo)` from the
+     * structured ISO dates, so it exists for every `new_availability` request whether or not the
+     * caller sent anything resembling it. A request carrying `date_range` does not supply this
+     * field; it asserts it. The supplied string is compared BYTE-FOR-BYTE against the derived one
+     * and a mismatch REFUSES the request — it is a consistency assertion about which batch this
+     * is, not an input, and two disagreeing answers mean the caller and the server are not talking
+     * about the same batch.
+     *
+     * Deriving is what makes the value trustworthy AND still byte-identical to whatever the old
+     * handler would have claimed: the frontend builds its `date_range` from the same ISO dates
+     * with the same formatter (`legacyDateRange`, pinned by the parity test), so for any request
+     * that is accepted at all, derived and received are provably the same string.
+     *
+     * Its ONE use is `legacyDedupKey` — the pre-cutover `notification_sends` marker that keeps a
+     * follower from being notified twice across the frontend/edge deploy overlap. It is never
+     * business truth: not membership, not occurrence, and not the date range any recipient reads.
+     * It is REQUIRED rather than optional because the parser always produces it; the optionality
+     * only ever described the old "if the caller happened to send one" behaviour.
      */
-    legacyRange?: string;
+    legacyRange: string;
   }
   | { subtype: "slot_reopened"; slotCount: number; slotDate: string; slotTime: string; bookingId?: string };
 
@@ -269,17 +272,53 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
   if (rawIds.length > MAX_SLOT_IDS) {
     return { ok: false, error: `slot_ids must contain at most ${MAX_SLOT_IDS} ids` };
   }
+  // STRUCTURE AND CASE ARE TWO QUESTIONS, ANSWERED SEPARATELY.
+  //
+  // `isUuid` is the module's one uuid test and it is deliberately case-insensitive: it answers
+  // "is this the shape of a uuid", and it is stricter than a plain hex-and-dashes pattern —
+  // it also pins the RFC version and variant nibbles. Every id this route can legitimately see is
+  // an `availability_slots.id`, whose default is `gen_random_uuid()` (v4), so nothing real is
+  // excluded by that strictness. Re-declaring a looser local regex here, as an earlier revision
+  // did, would have been a SECOND uuid definition that quietly accepted values the rest of the
+  // module rejects.
+  //
+  // The lowercase requirement is then checked ON TOP, and it is not cosmetic. The duplicate test
+  // below compares STRINGS; `supplied_distinct_count` in the validation RPC compares UUID VALUES.
+  // Postgres parses `A1B2…` and `a1b2…` to one uuid, JavaScript's Set sees two. Left unconstrained,
+  // the edge and the database would be counting with different notions of "distinct", and a batch
+  // submitting one slot twice in two cases would pass this check with N and come back matched N-1
+  // — reported as "an id does not exist", which is a true refusal for an untrue reason. Requiring
+  // the canonical lowercase form makes string equality and uuid equality the same relation, so
+  // both sides count the same thing. It is REJECTED rather than normalized because every real
+  // producer (PostgREST output, `crypto.randomUUID()`) already emits lowercase: a mixed-case id
+  // means something upstream is not what this handler thinks it is, and that is worth a 400.
+  const ids: string[] = [];
   for (const id of rawIds) {
-    if (typeof id !== "string" || !UUID_RE.test(id)) {
-      return { ok: false, error: "slot_ids must contain only lowercase uuid strings" };
+    if (!isUuid(id)) {
+      return { ok: false, error: "slot_ids must contain only uuid strings" };
     }
+    if (id !== id.toLowerCase()) {
+      return { ok: false, error: "slot_ids must contain only lowercase canonical uuids" };
+    }
+    ids.push(id);
   }
   // DUPLICATES ARE REJECTED, NOT NORMALIZED. Silently de-duplicating would make the handler's
   // "distinct count == submitted count" proof tautological, so a request repeating one id could
   // claim to cover a batch it never identified.
-  const ids = rawIds as string[];
   if (new Set(ids).size !== ids.length) {
     return { ok: false, error: "slot_ids must not contain duplicates" };
+  }
+  // slot_count MUST DESCRIBE THIS BATCH — it is not an independent number the caller may pick.
+  //
+  // It reaches the recipient: the renderer prints "N new slots" from it, and the digest item is
+  // immutable and hash-covered once formed. A caller that sends 40 ids and slot_count 200 would
+  // therefore mail a figure no row supports, and the all-or-nothing id proof would not catch it —
+  // that proof is about the ids. With duplicates already rejected, `ids.length` IS the size of the
+  // batch, so this equality is the whole of the constraint. The handler additionally re-derives
+  // the count from the RPC's `public_owned_count` and refuses on disagreement, so the number the
+  // recipient reads is one the database vouched for rather than one the client asserted.
+  if (slotCount !== ids.length) {
+    return { ok: false, error: "slot_count must equal the number of slot_ids" };
   }
 
   // THE TRANSITIONAL LEGACY DEDUP MARKER, derived — never accepted.
@@ -292,7 +331,12 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
   // reconciled, because two disagreeing ranges mean the caller and the server disagree about which
   // batch this is. A `date_range`-ONLY request is never converted — slot_ids are required above, so
   // such a caller cannot identify a batch at all and fails closed with nothing enqueued.
-  const legacyRange = canonicalLegacyDateRange(b.date_from, b.date_to);
+  //
+  // The formatter is `formatLegacyDateRange` — this module's ONE definition of that string, the
+  // function `parseLegacyDateRange` is the inverse of, and the one pinned byte-for-byte to the
+  // frontend's `legacyDateRange` by src/test/legacyDateRangeParity.test.ts. That parity is what
+  // makes "derived" and "what the old handler would have claimed" the same value.
+  const legacyRange = formatLegacyDateRange(b.date_from, b.date_to);
   if (b.date_range !== undefined && b.date_range !== null) {
     if (typeof b.date_range !== "string" || b.date_range !== legacyRange) {
       return { ok: false, error: "date_range does not match the canonical range derived from date_from/date_to" };
@@ -309,6 +353,162 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
       slotIds: ids,
       legacyRange,
     },
+  };
+}
+
+// ===========================================================================
+// SERVER-SIDE BATCH AUTHORITY — what the DATABASE says this batch is.
+//
+// parseNotifyRequest above validates SHAPE. Nothing it accepts is trusted as fact: the ids are
+// well-formed, the dates are well-formed, and that is all a body can ever establish. Everything
+// below turns the single scalar row from `notif_open_slots_validate_batch` into the values the run
+// actually uses — the count the recipient reads, the range the idempotency subject is built from,
+// and the occurrence the activation boundary is measured against.
+// ===========================================================================
+
+/**
+ * The validation RPC's one row. `min_start_date`/`max_start_date` are CALENDAR DATES already —
+ * computed inside the database as `(start_time AT TIME ZONE <trainer tz>)::date`, not timestamps
+ * for the edge to convert. That is deliberate: a timestamptz becomes a calendar date only under
+ * some timezone, doing that conversion in JavaScript would re-introduce the day-boundary off-by-one
+ * this whole correction removes, and the trainer's own `trainer_profiles.timezone` is the only
+ * defensible answer to "which day is this slot on".
+ */
+export type BatchValidationRow = {
+  supplied_distinct_count: number;
+  matched_count: number;
+  public_owned_count: number;
+  max_created_at: string | null;
+  min_start_date: string | null;
+  max_start_date: string | null;
+};
+
+export type BatchDecision =
+  | {
+    ok: true;
+    /** Authoritative, from `public_owned_count` — never the client's `slot_count`. */
+    slotCount: number;
+    /** Authoritative, from `min_start_date` in the trainer's timezone. */
+    dateFrom: string;
+    /** Authoritative, from `max_start_date` in the trainer's timezone. */
+    dateTo: string;
+    /** Authoritative occurrence, from `max_created_at` over the owned public rows. */
+    occurredAt: string;
+    /** Re-derived from the AUTHORITATIVE dates, so the legacy marker follows the same authority. */
+    legacyRange: string;
+  }
+  | { ok: false; error: string };
+
+const isNonNegInt = (v: unknown): v is number =>
+  typeof v === "number" && Number.isInteger(v) && v >= 0;
+
+/**
+ * Decide whether a submitted batch may be announced, and on what terms.
+ *
+ * ALL-OR-NOTHING, AND NEVER A SUBSET. The three counts are only meaningful together:
+ * `supplied_distinct == matched == public_owned == the number of ids submitted`. Any inequality
+ * means the submitted set is not wholly the caller's own public slots, and the ONLY correct answer
+ * is to refuse the whole request. Trimming to the ids that did validate is the failure this
+ * function exists to prevent: the operator asked to announce a batch, and announcing a different,
+ * smaller batch while reporting success is worse than announcing nothing.
+ *
+ * Each inequality is reported distinctly because they mean genuinely different things to whoever
+ * reads the log — a missing id is usually a slot deleted between creation and this call, a
+ * non-owned id is either a private slot of the caller's own or a foreign one, and a distinct-count
+ * disagreement means the edge and the database counted the set differently at all (which the
+ * lowercase-canonical rule in the parser is what rules out).
+ *
+ * THE CLIENT'S VALUES ARE COMPATIBILITY INPUTS, NOT AUTHORITY. `slot_count`, `date_from` and
+ * `date_to` still arrive — the frontend deploys before the edge function, so a new bundle must
+ * keep speaking to the old handler — and every one of them is checked against what the database
+ * says rather than used. A disagreement REFUSES rather than reconciles, because the date range is
+ * the idempotency subject: two versions of "which batch is this" produce two subjects, and two
+ * subjects mean the same followers can be notified twice.
+ *
+ * Returns the DERIVED values, so the caller never has to decide which source won.
+ */
+export function decideBatch(
+  req: Extract<NotifyRequest, { subtype: "new_availability" }>,
+  data: unknown,
+): BatchDecision {
+  // A TABLE-returning function with an ungrouped aggregate yields exactly ONE row, always — for a
+  // thousand ids, for none. Zero or several means we are not talking to the function we think we
+  // are (a signature change, a stale schema cache, a rewrite that started returning slots), and
+  // that is a refusal rather than something to take the first element of.
+  const rows = Array.isArray(data) ? data : (data === null || data === undefined ? [] : [data]);
+  if (rows.length !== 1 || rows[0] === null || typeof rows[0] !== "object") {
+    return { ok: false, error: "slot batch validation did not return exactly one result row" };
+  }
+  const r = rows[0] as Record<string, unknown>;
+
+  if (!isNonNegInt(r.supplied_distinct_count) || !isNonNegInt(r.matched_count) || !isNonNegInt(r.public_owned_count)) {
+    return { ok: false, error: "slot batch validation returned a malformed result" };
+  }
+  const expected = req.slotIds.length;
+  if (r.supplied_distinct_count !== expected) {
+    return {
+      ok: false,
+      error: `slot batch validation disagreed about the submitted set (${r.supplied_distinct_count} distinct of ${expected} submitted)`,
+    };
+  }
+  if (r.matched_count !== expected) {
+    return {
+      ok: false,
+      error: `${expected - r.matched_count} of ${expected} submitted slot(s) no longer exist`,
+    };
+  }
+  if (r.public_owned_count !== expected) {
+    return {
+      ok: false,
+      error: `${expected - r.public_owned_count} of ${expected} submitted slot(s) are not public slots of this trainer`,
+    };
+  }
+
+  // OCCURRENCE, from the rows themselves. max(created_at) over the owned public subset — the
+  // moment the announced availability became true. Not start_time (future, and the enqueue rejects
+  // an occurrence more than a minute ahead), and emphatically not now() (which would launder a
+  // delayed or replayed creation across the activation boundary). Unreadable means un-sent.
+  const occurredAt = r.max_created_at;
+  if (typeof occurredAt !== "string" || occurredAt.length === 0) {
+    return { ok: false, error: "the availability's occurrence time could not be established" };
+  }
+
+  const dateFrom = r.min_start_date;
+  const dateTo = r.max_start_date;
+  if (!isIsoDate(dateFrom) || !isIsoDate(dateTo)) {
+    return { ok: false, error: "slot batch validation returned no usable date range" };
+  }
+  if (dateTo < dateFrom) {
+    return { ok: false, error: "slot batch validation returned an inverted date range" };
+  }
+
+  // THE COMPATIBILITY ASSERTIONS. Everything below compares a client value to a database value and
+  // refuses on disagreement. None of them can be satisfied by adjusting the client value in place —
+  // there is no reconciliation branch, deliberately.
+  if (req.slotCount !== r.public_owned_count) {
+    return {
+      ok: false,
+      error: `slot_count (${req.slotCount}) disagrees with the ${r.public_owned_count} validated slot(s)`,
+    };
+  }
+  if (req.dateFrom !== dateFrom || req.dateTo !== dateTo) {
+    return {
+      ok: false,
+      error:
+        `the submitted date range (${req.dateFrom}..${req.dateTo}) disagrees with the validated slots (${dateFrom}..${dateTo})`,
+    };
+  }
+
+  return {
+    ok: true,
+    slotCount: r.public_owned_count,
+    dateFrom,
+    dateTo,
+    occurredAt,
+    // Derived from the AUTHORITATIVE dates. Identical to the parser's value for any request that
+    // gets this far — the equality above is what guarantees that — but sourced from the database
+    // so the marker cannot outlive the authority it was supposed to follow.
+    legacyRange: formatLegacyDateRange(dateFrom, dateTo),
   };
 }
 
@@ -333,8 +533,15 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
  * `sr:<booking_id>` falling back to `sr:<date>:<time>`. `playerId` is the PROFILE id, which is
  * what the old handler used — not the auth user id.
  *
- * Returns null when the request carries no legacy range at all, because there is then no string
- * the old handler could have keyed on and therefore nothing to reconcile against.
+ * THE RANGE IS DERIVED, SO THE ANCHOR IS ALWAYS AVAILABLE. `legacyRange` used to be "whatever the
+ * caller happened to send", and an ISO-only request therefore produced NO key and no marker —
+ * silently losing the cross-version protection for exactly the new-bundle-to-old-handler direction
+ * it exists for. The parser now derives it from the structured dates for every `new_availability`
+ * request, with the same formatter the frontend uses, so the key is always reconstructible and is
+ * byte-identical to the one the old handler builds. The empty-string guard below is defensive
+ * only — the type makes it unreachable from the parser — and it fails CLOSED: no marker at all is
+ * recoverable (the worst case is one duplicate email on a rollback), whereas a marker built from
+ * an empty anchor would collide every batch of that trainer onto one key and suppress real sends.
  *
  * REMOVE with the rest of the compatibility branch, one full rollout + cache window after cutover.
  */

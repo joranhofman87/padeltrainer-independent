@@ -90,6 +90,22 @@ function tableDdl(sql, name, { ifNotExists = true } = {}) {
 }
 
 /**
+ * Slice a real CREATE [OR REPLACE] FUNCTION block out of a migration — never a hand-written stub.
+ *
+ * Module scope, not block scope, because THREE separate grafts need it now: the two pure digest
+ * helpers the floor calls, and `notif_channel_kill_gate`. A stub would be worse than useless here —
+ * a hand-written `RETURNS false` kill gate makes every kill scenario pass by construction, which is
+ * the precise shape of a test that proves nothing.
+ */
+function fnDdl(sql, name) {
+  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
+  if (start < 0) throw new Error(`no DDL for function ${name}`);
+  const end = sql.indexOf('$$;', start);
+  if (end < 0) throw new Error(`unterminated DDL for function ${name}`);
+  return sql.slice(start, end + 3);
+}
+
+/**
  * The same real DDL with only its FOREIGN KEYS removed.
  *
  * notification_outbox references auth.users, persons, academy_profiles, trainer_profiles, invoices
@@ -283,13 +299,6 @@ try {
   // not have, and both directions of the resulting error are silent.
   {
     const stateMachine = MIG('20261004100000_notification_digest_state_machine.sql');
-    const fnDdl = (sql, name) => {
-      const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}(`);
-      if (start < 0) throw new Error(`no DDL for function ${name}`);
-      const end = sql.indexOf('$$;', start);
-      if (end < 0) throw new Error(`unterminated DDL for function ${name}`);
-      return sql.slice(start, end + 3);
-    };
     for (const fn of ['notif_digest_quiet_hours_bump', 'notif_digest_uncertainty_deadline']) {
       await c.query(fnDdl(stateMachine, fn));
     }
@@ -297,9 +306,25 @@ try {
 
   // M2's kill table: activation assertion 9 refuses to arm the cron while a channel is killed.
   // Table only — the RPC that writes it is admin-facing and no artifact calls it.
-  await c.query(withoutForeignKeys(
-    tableDdl(MIG('20261017100000_notif_n4_channel_kill_switches.sql'),
-             'notification_channel_kill_switches', { ifNotExists: false })));
+  // …and M2's kill GATE, which the C-3 due-work floor now calls by name.
+  //
+  // The table alone was enough while only activation assertion 9 read it (through its own SQL).
+  // The floor calls `notif_channel_kill_gate('email')` — because that function is
+  // claim_notification_digest_group's literal first act, and because it takes the per-channel
+  // advisory lock that makes "not killed" still true when the worker claims. It is plain SQL
+  // inside a CREATE TEMP TABLE, so it resolves at PARSE time: without the function, every canary
+  // scenario in this file fails with `function public.notif_channel_kill_gate(unknown) does not
+  // exist` rather than with anything about the world it was asked to check. That is exactly how
+  // the omission was found, and it is why the graft is here rather than in a fixture.
+  //
+  // SLICED from the real migration for the same reason as everything else in this block: a
+  // hand-written `RETURNS false` stub would make every kill scenario pass by construction.
+  {
+    const killSwitches = MIG('20261017100000_notif_n4_channel_kill_switches.sql');
+    await c.query(withoutForeignKeys(
+      tableDdl(killSwitches, 'notification_channel_kill_switches', { ifNotExists: false })));
+    await c.query(fnDdl(killSwitches, 'notif_channel_kill_gate'));
+  }
 
   // pg_net and Vault, minimally: the point of these is that the REVIEWED COMMAND ITSELF runs against
   // them unchanged, named arguments and Vault read included. `net.http_post` records what it was
@@ -1585,7 +1610,7 @@ try {
     const before = await queuedCount();
     const err = await canaryInvoke();
     rec('canary-invoke REFUSES an engine-on, quiet world with ZERO due cutover work',
-      !!err && err.includes('NO due, claimable open_slots_player'),
+      !!err && err.includes('NO due, CLAIMABLE open_slots_player'),
       err ?? 'it PASSED — it would have queued a request for an EMPTY dispatch run');
     rec('...and queued nothing', await queuedCount() === before, `queued=${await queuedCount() - before}`);
     // the refusal has to be ACTIONABLE, not merely correct: an operator who cannot tell why the
@@ -2156,7 +2181,23 @@ try {
   // reaches anything at all, and each case mutates exactly one clause of the floor's predicate away
   // from a world that passes — the same discipline as the refusal scenarios, applied to a guard
   // whose failure mode is a green empty run rather than a flood.
-  const FLOOR = 'NO due, claimable open_slots_player';
+  const FLOOR = 'NO due, CLAIMABLE open_slots_player';
+
+  // THE PRECONDITION THIS WHOLE SECTION RESTS ON, ASSERTED RATHER THAN ASSUMED.
+  //
+  // Both halves of the floor gate on the email:digest activation boundary, and `seedBaseline()`
+  // never touches `notification_activation_boundaries` — the row exists only because the
+  // enable-engine block ran earlier in this same process. Reorder or delete that block and every
+  // scenario below refuses for a reason that reads exactly like a floor defect. One query says so
+  // out loud instead.
+  {
+    const r = (await c.query(
+      `SELECT public.notif_activation_boundary('email:digest') AS b,
+              public.notif_activation_min_occurred_at('email:digest') AS m`)).rows[0];
+    rec('the C-3 floor scenarios run with email:digest ACTIVATED (a precondition, not a fixture)',
+      r.b !== null && r.m !== null,
+      `boundary=${r.b} min_occurred=${r.m} — the enable-engine block above must run first`);
+  }
 
   // A zone in which quiet hours are SHUT right now, whatever the wall clock says. Same device as
   // middayTz, aimed at 23:xx local instead of noon.
@@ -2351,6 +2392,226 @@ try {
                b.boundary_at - interval '1 hour'
           FROM public.notification_activation_boundaries b WHERE b.path = 'email:digest'`);
     },
+    FLOOR);
+
+  // ═══ THE OTHER DOOR: THE CHANNEL KILL SWITCH ════════════════════════════════════════════════
+  // claim_notification_digest_group's FIRST act is `IF notif_channel_kill_gate(p_channel) THEN
+  // RETURN NULL`, and materialize's is the same. So a killed email channel produces exactly the
+  // empty run the floor exists to refuse, while every other clause of the predicate is satisfied.
+  // The first draft of the floor modelled neither door's kill gate, and no scenario covered it —
+  // the guard was green on a world where nothing could ever be claimed.
+  await invokeRefuses('canary-invoke REFUSES due cutover work while the EMAIL channel is KILLED',
+    async () => {
+      await seedDueCutoverGroup();
+      await c.query(
+        `INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id)
+         VALUES ('email', 'incident in progress', gen_random_uuid())`);
+    },
+    'the email channel is KILLED');
+  // ...and the kill is CHANNEL-SCOPED. A kill on another channel stops nothing here, so a floor
+  // that checked "is anything killed" would refuse a perfectly good canary. Both directions, or
+  // the clause degenerates into a constant.
+  await seedBaseline();
+  await seedDueCutoverGroup();
+  await c.query(
+    `INSERT INTO public.notification_channel_kill_switches (channel, reason, request_id)
+     VALUES ('whatsapp', 'unrelated incident', gen_random_uuid())`);
+  {
+    const err = await canaryInvoke();
+    rec('...while a kill on ANOTHER channel does not block the email canary', err === null, err ?? '');
+  }
+
+  // ═══ THE ACTIVATION BOUNDARY MUST EXIST, NOT MERELY COMPARE ═════════════════════════════════
+  // The claim RETURNs NULL outright when notif_activation_boundary('email:digest') IS NULL. The
+  // group half of the floor only used the boundary INSIDE a NOT EXISTS, where `created_at < NULL`
+  // is NULL, the subquery is empty and NOT EXISTS is TRUE — so a due group with NO MEMBERS (which
+  // is exactly what seedDueCutoverGroup makes) counted on a path where the claim can return
+  // nothing at all. The member half failed closed on the same NULL. The two halves disagreed.
+  //
+  // SELF-RESTORING, and that is not incidental. The email:digest boundary is opened ONCE, by the
+  // enable-engine block far earlier in this file, and every scenario after this one depends on it:
+  // `seedBaseline()` does not recreate it. Written as an ordinary `invokeRefuses` this scenario
+  // deleted a global precondition and two later positive controls failed with "activation boundary
+  // NOT SET" — refusals that looked like floor bugs and were this test's litter. So the row is
+  // captured, removed, and put back before anything is asserted.
+  await seedBaseline();
+  await seedDueCutoverGroup();
+  {
+    const GUARD = 'trg_notif_activation_boundary_guard';
+    const off = `ALTER TABLE public.notification_activation_boundaries DISABLE TRIGGER ${GUARD};`;
+    const on = `ALTER TABLE public.notification_activation_boundaries ENABLE TRIGGER ${GUARD};`;
+    const saved = (await c.query(
+      `SELECT to_jsonb(b) AS j FROM public.notification_activation_boundaries b
+        WHERE b.path = 'email:digest'`)).rows[0]?.j ?? null;
+    await c.query(`${off} DELETE FROM public.notification_activation_boundaries WHERE path = 'email:digest'; ${on}`);
+    const err = await canaryInvoke();
+    // RESTORE BEFORE ASSERTING — a rec() that throws must not leave the world broken either.
+    if (saved) {
+      // three separate round trips: node-pg cannot put a PARAMETER into a multi-statement query.
+      await c.query(off);
+      await c.query(
+        `INSERT INTO public.notification_activation_boundaries
+         SELECT * FROM jsonb_populate_record(NULL::public.notification_activation_boundaries, $1::jsonb)`,
+        [JSON.stringify(saved)]);
+      await c.query(on);
+    }
+    rec('canary-invoke REFUSES a due group when the email:digest activation boundary is UNSET',
+      !!err && err.includes('activation boundary NOT SET'),
+      err ?? 'it PASSED — a due group with no members counts on a path the claim cannot return from');
+    const back = (await c.query(
+      `SELECT public.notif_activation_boundary('email:digest') IS NOT NULL AS ok`)).rows[0].ok;
+    rec('...and the scenario put the activation boundary back', back === true,
+      'the boundary is still missing — every later scenario would refuse for this reason');
+  }
+
+  // ═══ A GENUINE REPLAY IS NOT A FLOOR QUESTION ═══════════════════════════════════════════════
+  // The scope gates run BEFORE the replay-aware invocation gate on purpose. For a replay of an
+  // invocation that ALREADY COMMITTED, that ordering inverts the diagnosis: the original dispatch
+  // consumed the work, so the floor is the first thing to fire and it tells the operator "there is
+  // no due work, wait and re-run" — when the truth is "your original invocation committed and the
+  // mail has already gone out". The replay must reach _invocation_gate_replay.sql and
+  // record_invocation_net_request, which is where that truth is stated by name.
+  //
+  // The assertion is deliberately NEGATIVE — "not refused by the floor" — because what happens
+  // afterwards belongs to the replay gate's own scenarios, not to this one.
+  await seedBaseline();
+  {
+    const replayReq = '99999999-9999-4999-8999-999999999999';
+    await c.query(`
+      INSERT INTO public.notification_worker_invocations (request_id, purpose, source, status)
+      VALUES ('${replayReq}', 'canary', 'canary_invoke.sql', 'pending')`);
+    // ZERO due work — the world the floor would normally refuse outright.
+    const err = await canaryInvoke(1, replayReq);
+    rec('canary-invoke does NOT hide a genuine replay behind the due-work floor',
+      !(err ?? '').includes(FLOOR),
+      err ?? '(passed through the floor)');
+  }
+  // ...and the floor is NOT switched off by some OTHER operator's unresolved invocation. If it
+  // were, the replay escape would be a hole rather than a recovery: any stuck invocation would
+  // disable the guard for everyone.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_worker_invocations (request_id, purpose, source, status)
+    VALUES ('88888888-8888-4888-8888-888888888888', 'canary', 'canary_invoke.sql', 'pending')`);
+  {
+    const err = await canaryInvoke(1, '77777777-7777-4777-8777-777777777777');
+    rec('...and a DIFFERENT unresolved invocation does not switch the floor off',
+      !!err && err.includes(FLOOR), err ?? 'it PASSED — the replay escape is a hole');
+  }
+
+  // ═══ THE UNCERTAINTY AGE-OUT CARRIES THE SAME +5 MINUTE MARGIN AS QUIET HOURS ═══════════════
+  // The worker's FIRST pipeline step — before materialize, before the claim loop — is
+  // reconcile_notification_digest_stale, which finalizes to delivery_unknown every group whose
+  // uncertain_deadline_at has passed AT THE WORKER'S CLOCK. A group whose deadline falls between
+  // this transaction committing and that sweep running is counted here and aged out before the
+  // claim: the same commit-to-claim gap the quiet-hours margin exists for, the same empty run.
+  await invokeRefuses('canary-invoke REFUSES a group whose UNCERTAINTY deadline falls inside the next 5 minutes',
+    () => c.query(`
+      INSERT INTO public.notification_digest_groups
+        (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+         destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state,
+         uncertain_since, uncertain_deadline_at)
+      VALUES (gen_random_uuid(), '{"expiring":1}'::jsonb, 'hash-expiring', 'email', 'open_slots_player',
+              'rk-expiring', 'fp-expiring', '${middayTz}', now(), now(), 'pending',
+              now() - interval '10 minutes', now() + interval '3 minutes')`),
+    FLOOR);
+  // ...and a deadline comfortably beyond the margin is still due work. Without this the margin
+  // clause could be widened to "any uncertain group" and the suite would not notice.
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_digest_groups
+      (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+       destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state,
+       uncertain_since, uncertain_deadline_at)
+    VALUES (gen_random_uuid(), '{"faraway":1}'::jsonb, 'hash-faraway', 'email', 'open_slots_player',
+            'rk-faraway', 'fp-faraway', '${middayTz}', now(), now(), 'pending',
+            now() - interval '10 minutes', now() + interval '2 hours')`);
+  {
+    const err = await canaryInvoke();
+    rec('...while a deadline well beyond the margin is still due work', err === null, err ?? '');
+  }
+
+  // ═══ THE MEMBER HALF'S CLAUSES, ONE MUTATION EACH ═══════════════════════════════════════════
+  // Every clause below was previously unpinned: deleting it left the suite green. Each scenario
+  // seeds a member identical to the one that PASSES above and moves exactly one fact.
+  await invokeRefuses('canary-invoke REFUSES a due member on the WRONG CHANNEL',
+    () => c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode,
+         digest_boundary_at, recipient_timezone)
+      VALUES ('open_slots_player', 'whatsapp', gen_random_uuid(), 'idem-chan', 'pending', 'digest',
+              now(), '${middayTz}')`),
+    FLOOR);
+  await invokeRefuses('canary-invoke REFUSES a due member in INSTANT delivery mode',
+    () => c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode,
+         digest_boundary_at, recipient_timezone)
+      VALUES ('open_slots_player', 'email', gen_random_uuid(), 'idem-instant', 'pending', 'instant',
+              now(), '${middayTz}')`),
+    FLOOR);
+  await invokeRefuses('canary-invoke REFUSES a due member that is NOT pending',
+    () => c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode,
+         digest_boundary_at, recipient_timezone)
+      VALUES ('open_slots_player', 'email', gen_random_uuid(), 'idem-sent', 'sent', 'digest',
+              now(), '${middayTz}')`),
+    FLOOR);
+  // Already grouped: materialize only forms groups from rows with digest_group_id IS NULL, and the
+  // GROUP half is what covers an already-grouped member. Counting it in both halves would
+  // double-count one recipient — and here, where the group itself is absent, count a phantom.
+  await invokeRefuses('canary-invoke REFUSES a due member that is already attached to a group',
+    async () => {
+      await c.query(`
+        INSERT INTO public.notification_digest_groups
+          (id, canonical_group_key, group_key_hash, channel, event_type, recipient_key,
+           destination_fingerprint, recipient_timezone, digest_boundary_at, available_at, state,
+           terminal_at, terminal_reason)
+        VALUES ('${DUE_GROUP}', '{"terminal":1}'::jsonb, 'hash-terminal', 'email', 'open_slots_player',
+                'rk-terminal', 'fp-terminal', '${middayTz}', now(), now(), 'sent', now(), 'sent')`);
+      await c.query(`
+        INSERT INTO public.notification_outbox
+          (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode,
+           digest_group_id, digest_boundary_at, recipient_timezone)
+        VALUES ('open_slots_player', 'email', gen_random_uuid(), 'idem-grouped', 'pending', 'digest',
+                '${DUE_GROUP}', now(), '${middayTz}')`);
+    },
+    FLOOR);
+  // OVERSIZE. materialize refuses a single item larger than the budget, so it can never form a
+  // group and can never be sent — a floor counting it asserts work that is structurally undeliverable.
+  await invokeRefuses('canary-invoke REFUSES a due member whose digest item exceeds the byte budget',
+    () => c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode,
+         digest_boundary_at, recipient_timezone, digest_item_bytes)
+      VALUES ('open_slots_player', 'email', gen_random_uuid(), 'idem-oversize', 'pending', 'digest',
+              now(), '${middayTz}', 92161)`),
+    FLOOR);
+  // ...and one byte under it is still due work, so the bound is the real one and not "any value".
+  await seedBaseline();
+  await c.query(`
+    INSERT INTO public.notification_outbox
+      (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode,
+       digest_boundary_at, recipient_timezone, digest_item_bytes)
+    VALUES ('open_slots_player', 'email', gen_random_uuid(), 'idem-atcap', 'pending', 'digest',
+            now(), '${middayTz}', 92160)`);
+  {
+    const err = await canaryInvoke();
+    rec('...while a member exactly AT the byte budget is still due work', err === null, err ?? '');
+  }
+  // occurred_at and created_at are SEPARATE disjuncts of the boundary test. The pre-boundary
+  // scenario above moves both at once, so deleting either one leaves the suite green. This moves
+  // only occurred_at — a row written NOW for something that happened BEFORE the boundary, which is
+  // precisely the replay the occurrence contract exists to catch.
+  await invokeRefuses('canary-invoke REFUSES a due member whose OCCURRENCE predates the activation floor',
+    () => c.query(`
+      INSERT INTO public.notification_outbox
+        (event_type, channel, recipient_person_id, idempotency_key, status, delivery_mode,
+         digest_boundary_at, recipient_timezone, created_at, occurred_at)
+      SELECT 'open_slots_player', 'email', gen_random_uuid(), 'idem-oldoccur', 'pending', 'digest',
+             now(), '${middayTz}', now(), b.boundary_at - interval '1 hour'
+        FROM public.notification_activation_boundaries b WHERE b.path = 'email:digest'`),
     FLOOR);
 
   // The same blindness lets activation arm over an unverified canary that is in flight.

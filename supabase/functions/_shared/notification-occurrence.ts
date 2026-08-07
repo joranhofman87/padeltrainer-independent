@@ -95,37 +95,41 @@ export async function occurrenceForBookingEvent(
 }
 
 export type OpenSlotsOccurrenceSpec =
-  | { subtype: "new_availability"; trainerId: string; dateFrom: string; dateTo: string }
-  | { subtype: "slot_reopened"; trainerId: string; bookingId?: string | null; slotDate?: string | null; slotTime?: string | null };
+  { subtype: "slot_reopened"; trainerId: string; bookingId?: string | null; slotDate?: string | null; slotTime?: string | null };
 
 /**
  * For the open-slots alert: when the availability it announces actually appeared.
  *
- * `new_availability` announces a batch, so the occurrence is the NEWEST slot in the announced
- * range — the moment the thing being announced became true. (The earliest would be wrong here in a
- * way it is not for bookings: a range can legitimately contain slots posted weeks ago beside the
- * ones just created, and dating the announcement to the oldest would refuse a genuinely new event.)
- *
  * `slot_reopened` announces one slot coming free, so the occurrence is when that slot was last
  * changed — the cancellation that freed it.
+ *
+ * THERE IS NO `new_availability` ARM ANY MORE, AND ITS REMOVAL IS THE POINT.
+ *
+ * It used to re-DISCOVER the announced slots from the date range:
+ *
+ *     .eq("trainer_id", …).gte("start_time", `${dateFrom}T00:00:00`)
+ *                         .lte("start_time", `${dateTo}T23:59:59`)
+ *
+ * Two independent defects, either of which is enough to delete it:
+ *
+ *  1. OFFSETLESS LITERALS AGAINST A timestamptz COLUMN. `2026-08-10T00:00:00` carries no offset,
+ *     so Postgres resolves it in the SESSION timezone — UTC for the service-role connection —
+ *     while the caller derived those dates in the trainer's local timezone. Every slot in the
+ *     first or last local hours of the range fell outside the window, so a batch could be dated
+ *     from a slot it does not contain, or find nothing at all and 503 with nothing enqueued.
+ *  2. IT MATCHED SLOTS THE CALLER NEVER CREATED. Any slot of that trainer inside the range
+ *     qualified — including one created months earlier — so the occurrence of a brand-new batch
+ *     could be an old row's created_at, and the activation boundary would then reject a
+ *     genuinely new event.
+ *
+ * The producer now sends the EXACT ids, `notif_open_slots_validate_batch` proves the whole set
+ * belongs to the trainer and is public, and the occurrence comes back from that same call as
+ * `max_created_at` over precisely those rows. A range is no longer a way to find slots — it is
+ * only ever an OUTPUT derived from slots already identified. Restoring a lookup here would
+ * re-open both holes, which is why the shape no longer exists rather than merely being unused.
  */
 export async function occurrenceForOpenSlots(supabase: Db, spec: OpenSlotsOccurrenceSpec): Promise<string | null> {
   if (!spec.trainerId) return null;
-
-  if (spec.subtype === "new_availability") {
-    if (!spec.dateFrom || !spec.dateTo) return null;
-    const { data, error } = await supabase
-      .from("availability_slots")
-      .select("created_at")
-      .eq("trainer_id", spec.trainerId)
-      .gte("start_time", `${spec.dateFrom}T00:00:00`)
-      .lte("start_time", `${spec.dateTo}T23:59:59`)
-      .order("created_at", { ascending: false })
-      .limit(1);
-    if (error) return null;
-    const at = (Array.isArray(data) ? data[0] : null)?.created_at;
-    return typeof at === "string" && at.length > 0 ? at : null;
-  }
 
   // slot_reopened: the slot came free because a booking was CANCELLED, so the cancellation is the
   // event. Read from the same lifecycle ledger as every other booking transition — not from

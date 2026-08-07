@@ -31,12 +31,14 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import {
   classifyEnqueue,
+  decideBatch,
   digestPayload,
   type EnqueueOutcome,
   eventSubject,
   legacyDedupKey,
   markableLegacyKeys,
   newCounts,
+  type NotifyRequest,
   parseNotifyRequest,
   parseResumeState,
   planRunOutcome,
@@ -87,9 +89,13 @@ const handler = async (req: Request): Promise<Response> => {
     const start = Date.now();
 
     // Trainer identity comes from the AUTHENTICATED user, never from request data.
+    // `timezone` is NOT NULL DEFAULT 'Europe/Amsterdam' (20260403144302) and is the trainer's own
+    // answer to "which calendar day is this slot on" — the question the validation RPC needs in
+    // order to return a date range at all. Reading it here rather than assuming one is what keeps
+    // the derived range correct for a trainer who is not in the app's default timezone.
     const { data: trainerProfile, error: trainerError } = await supabase
       .from("trainer_profiles")
-      .select("id, user_id, business_name")
+      .select("id, user_id, business_name, timezone")
       .eq("user_id", user.id)
       .single();
 
@@ -104,10 +110,74 @@ const handler = async (req: Request): Promise<Response> => {
     if (!parsed.ok) {
       return json({ error: parsed.error }, 400);
     }
-    const notify = parsed.req;
     // A self-continuation carries only a cursor and a hop count. Trainer identity still comes
     // from the authenticated user on every hop, so the chain can never widen its own scope.
     const resumeState = parseResumeState(rawBody);
+
+    // ══ THE BATCH IS PROVEN BEFORE ANYTHING ELSE HAPPENS, ON EVERY HOP ═══════════════════════
+    //
+    // This sits immediately after authentication and parsing and BEFORE follower discovery, the
+    // trainer-name read, and every side effect, for the plainest of reasons: a batch this trainer
+    // may not announce must cost nothing. Refusing here means no enqueue, no legacy marker, no
+    // continuation, and no partially-notified follower set to reconcile afterwards.
+    //
+    // WHAT THE BODY IS ALLOWED TO ESTABLISH: nothing. `parseNotifyRequest` proved the ids are
+    // well-formed, distinct and lowercase-canonical, and that `slot_count` equals their number —
+    // all facts about the STRING, none about the world. The trainer id passed below is the one
+    // derived from the JWT two reads ago, never a field of the request, so the question asked of
+    // the database is always "are these slots THIS caller's own public slots".
+    //
+    // ALL OR NOTHING. `decideBatch` requires supplied == matched == public_owned == the number of
+    // ids submitted. It never trims to the ids that did validate: a deleted, foreign, private or
+    // vanished slot makes the whole announcement wrong, and announcing the remainder while
+    // reporting success is the exact failure this replaces.
+    //
+    // AND EVERY HOP REPEATS IT — there is no "already validated" flag, and there must not be. The
+    // continuation re-POSTs this route with the same authenticated body, and this route accepts an
+    // authenticated body from anywhere; a marker saying "hop 1 checked this" would be an
+    // attacker-suppliable bypass of the only proof there is. It is also not merely defensive:
+    // slots can be DELETED or flipped private between hops, and a run that keeps announcing a
+    // batch that stopped being true is precisely what re-validation catches. The cost is one
+    // scalar-aggregate round trip per hop.
+    //
+    // AFTER THIS BLOCK, `notify` CARRIES DATABASE VALUES. The count the recipient reads, the date
+    // range the idempotency subject is built from, and the legacy dedup anchor are all replaced by
+    // what the RPC returned. The client's versions survive only as the compatibility assertions
+    // `decideBatch` refuses on.
+    let notify: NotifyRequest = parsed.req;
+    let batchOccurredAt: string | null = null;
+    if (parsed.req.subtype === "new_availability") {
+      const { data: batch, error: batchError } = await supabase.rpc(
+        "notif_open_slots_validate_batch",
+        {
+          p_trainer_id: trainerId,
+          p_slot_ids: parsed.req.slotIds,
+          p_timezone: trainerProfile.timezone,
+        },
+      );
+      if (batchError) {
+        // A validation we could not RUN is not a validation that passed. 503, so the caller's
+        // bounded retry treats it as the transient thing it is.
+        console.error("Slot batch validation failed:", batchError.message);
+        return json({ error: "the submitted slots could not be validated", ...newCounts() }, 503);
+      }
+      const decision = decideBatch(parsed.req, batch);
+      if (!decision.ok) {
+        // 422, not 400: the request was well-formed: it is the WORLD that disagrees with it. The
+        // distinction is what an operator reading the logs needs, because a 400 says "fix the
+        // caller" and this says "these slots are not what the caller thinks they are".
+        console.error(`Slot batch refused: ${decision.error}`);
+        return json({ error: decision.error, ...newCounts() }, 422);
+      }
+      notify = {
+        ...parsed.req,
+        slotCount: decision.slotCount,
+        dateFrom: decision.dateFrom,
+        dateTo: decision.dateTo,
+        legacyRange: decision.legacyRange,
+      };
+      batchOccurredAt = decision.occurredAt;
+    }
 
     // business_name takes precedence (matches the in-app trainer name resolver).
     const { data: profile } = await supabase
@@ -263,15 +333,31 @@ const handler = async (req: Request): Promise<Response> => {
       return json({ message: "No followers with an account", ...newCounts() }, 200);
     }
 
+    // The subject is built from the DERIVED range, so a stale or disagreeing client cannot mint a
+    // second subject for the same batch and notify everyone twice. Its SHAPE is unchanged
+    // (`na:<trainerId>:<from>:<to>`) — deliberately. Switching to an id-set key would make this
+    // batch distinct from the one an older cached bundle announces for the same slots, and the
+    // resolver would then deduplicate neither.
     const subject = eventSubject(notify, trainerId);
     // WHEN THE AVAILABILITY APPEARED, read from the slots themselves. This handler is invoked
     // AFTER the slot write commits and is retried on its own budget, so the enqueue instant is
     // emphatically not the event instant — which is the precise shape of the replay the
     // activation boundary now has to catch. Fail closed: undateable means un-sent, and the
     // caller's bounded retry gets another go.
-    const occurredAt = await occurrenceForOpenSlots(supabase, notify.subtype === "slot_reopened"
-      ? { subtype: "slot_reopened", trainerId, bookingId: notify.bookingId ?? null, slotDate: notify.slotDate ?? null, slotTime: notify.slotTime ?? null }
-      : { subtype: "new_availability", trainerId, dateFrom: notify.dateFrom, dateTo: notify.dateTo });
+    //
+    // For `new_availability` this came back with the validation above — `max(created_at)` over
+    // exactly the proven rows, so the occurrence and the membership proof are ONE read of ONE set
+    // and cannot describe different slots. `slot_reopened` still resolves its own occurrence from
+    // the booking lifecycle ledger, which is the transition that actually freed the slot.
+    const occurredAt = notify.subtype === "slot_reopened"
+      ? await occurrenceForOpenSlots(supabase, {
+        subtype: "slot_reopened",
+        trainerId,
+        bookingId: notify.bookingId ?? null,
+        slotDate: notify.slotDate ?? null,
+        slotTime: notify.slotTime ?? null,
+      })
+      : batchOccurredAt;
     if (!occurredAt) {
       return json({ error: "the availability's occurrence time could not be established", ...newCounts() }, 503);
     }
@@ -471,6 +557,16 @@ const handler = async (req: Request): Promise<Response> => {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: authHeader },
         body: JSON.stringify({
+          // THE WHOLE ORIGINAL BODY, `slot_ids` INCLUDED — this spread is what carries the batch
+          // identity across the hop, and the next hop re-proves ALL of it through the validation
+          // RPC before it enqueues anyone. Nothing here says "already validated", by design.
+          //
+          // A consequence worth naming rather than discovering: if the slots are deleted or turned
+          // private between hops, the continuation REFUSES (422) and the tail is not notified. The
+          // followers this hop already enqueued keep their notification — that batch was true when
+          // they were enqueued — and the run reports itself incomplete. Fail-closed on a batch that
+          // stopped being true is the correct half to lose; the alternative is announcing slots
+          // that no longer exist to everyone discovered after the change.
           ...(rawBody as Record<string, unknown>),
           // A null cursor is meaningful — "resume from the beginning" — so it is sent as an
           // explicit absence rather than a bogus id.

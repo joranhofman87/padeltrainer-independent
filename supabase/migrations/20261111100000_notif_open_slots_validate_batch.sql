@@ -1,5 +1,14 @@
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
--- OPEN-SLOTS CANARY — the submitted slot set is validated as a WHOLE, or not at all.
+-- OPEN-SLOTS PRODUCER BATCH VALIDATION — the submitted slot set is validated as a WHOLE, or not
+-- at all.
+--
+-- NAMING, because an earlier draft of this file got it wrong and the wrong word is load-bearing.
+-- This is NOT the rollout canary. The canary is a one-off, operator-supervised invocation of the
+-- digest worker (scripts/rollout/notif-10cb/), gated by its own ceiling and due-work floor. THIS
+-- function runs on the ordinary production path, on every single open-slots announcement, for
+-- ever — it is part of the PRODUCER contract, not part of the rollout. Filing it under "canary"
+-- would suggest it is temporary rollout scaffolding that can be removed once the cutover is done;
+-- it cannot.
 --
 -- The open_slots_player producer is handed a list of slot ids by its caller and then notifies
 -- players about them. Before this function the edge path validated that list by SELECTing the
@@ -29,7 +38,7 @@
 --
 -- HOW THE CALLER USES IT. The three counts are only meaningful together:
 --
---   supplied_distinct == matched == public_owned
+--   supplied_distinct == matched == public_owned == the number of ids the caller submitted
 --
 -- Any inequality means the submitted set is not wholly the caller's own public slots, and the send
 -- must be REFUSED — not trimmed:
@@ -37,14 +46,32 @@
 --   supplied_distinct > matched      → at least one id does not exist;
 --   matched > public_owned           → at least one id exists but is foreign, or private, or both.
 --
--- WHY THE AGGREGATES ARE FILTERED TO THE PUBLIC+OWNED SUBSET. max_created_at / min_start_time /
--- max_start_time are computed over ONLY the rows satisfying BOTH trainer_id = p_trainer_id AND
+-- WHY THE AGGREGATES ARE FILTERED TO THE PUBLIC+OWNED SUBSET. max_created_at / min_start_date /
+-- max_start_date are computed over ONLY the rows satisfying BOTH trainer_id = p_trainer_id AND
 -- is_public — never over "everything that matched". That is what makes the equality above a proof
 -- rather than a coincidence: when the three counts agree, the public+owned subset provably COVERS
 -- the entire submitted set, so the window those aggregates describe is the window of the whole
 -- batch. Had they been computed over all matched rows, a foreign slot could widen the reported
 -- window while the counts still looked plausible, and a downstream freshness or horizon check
 -- would be reasoning about a slot the trainer does not own.
+--
+-- THE DATE RANGE IS RETURNED AS CALENDAR DATES, NOT TIMESTAMPS, AND THAT IS THE POINT.
+-- `start_time` is timestamptz — an instant. "Which day is this slot on" has no answer until a
+-- timezone is named, and the whole defect being repaired here is a day-boundary off-by-one that
+-- came from answering it with an implicit one. So the caller passes the trainer's own
+-- `trainer_profiles.timezone` (NOT NULL, default 'Europe/Amsterdam') and the conversion happens
+-- HERE, in the database, against the tz database — never in JavaScript from a UTC ISO string.
+--
+-- min/max are taken over the CONVERTED DATES, not over the instants. `AT TIME ZONE` is not
+-- monotonic across a DST fall-back — 01:00Z maps to local 03:00 while the LATER 01:30Z maps to
+-- local 02:30 — so `(min(start_time) AT TIME ZONE tz)::date` and `min((start_time AT TIME ZONE
+-- tz)::date)` are genuinely different functions, and only the second one answers "the earliest
+-- calendar date this batch covers". One hour a year, and it costs nothing to be right about it.
+--
+-- A NULL p_timezone falls back to 'Europe/Amsterdam', the app-wide default that the column itself
+-- defaults to. An INVALID timezone name raises (invalid_parameter_value) rather than silently
+-- picking a substitute — the caller then gets an RPC error, refuses the batch, and enqueues
+-- nothing, which is the correct fail-closed outcome for a request we cannot date.
 --
 -- FAIL-CLOSED, deliberately, in the degenerate inputs:
 --
@@ -65,16 +92,23 @@
 -- question about a trainer id they merely typed.
 -- ═══════════════════════════════════════════════════════════════════════════════════════════
 
+-- This migration has never been applied outside this branch, and an earlier revision of it
+-- declared a two-argument form. Dropping that form keeps a re-applied or already-rehearsed
+-- database from ending up with two overloads, where PostgREST would have to guess which one a
+-- three-key body meant.
+DROP FUNCTION IF EXISTS public.notif_open_slots_validate_batch(uuid, uuid[]);
+
 CREATE OR REPLACE FUNCTION public.notif_open_slots_validate_batch(
   p_trainer_id uuid,
-  p_slot_ids   uuid[]
+  p_slot_ids   uuid[],
+  p_timezone   text
 ) RETURNS TABLE (
   supplied_distinct_count integer,
   matched_count           integer,
   public_owned_count      integer,
   max_created_at          timestamptz,
-  min_start_time          timestamptz,
-  max_start_time          timestamptz
+  min_start_date          date,
+  max_start_date          date
 )
 LANGUAGE sql
 STABLE
@@ -101,20 +135,21 @@ AS $$
     max(s.created_at) FILTER (
       WHERE s.trainer_id = p_trainer_id AND s.is_public IS TRUE
     ) AS max_created_at,
-    min(s.start_time) FILTER (
+    -- min/max over the CONVERTED DATES — see the DST note in the header.
+    min((s.start_time AT TIME ZONE coalesce(p_timezone, 'Europe/Amsterdam'))::date) FILTER (
       WHERE s.trainer_id = p_trainer_id AND s.is_public IS TRUE
-    ) AS min_start_time,
-    max(s.start_time) FILTER (
+    ) AS min_start_date,
+    max((s.start_time AT TIME ZONE coalesce(p_timezone, 'Europe/Amsterdam'))::date) FILTER (
       WHERE s.trainer_id = p_trainer_id AND s.is_public IS TRUE
-    ) AS max_start_time
+    ) AS max_start_date
   FROM public.availability_slots s
   -- an ungrouped aggregate over zero matching rows still yields exactly one row (0, 0, 0, NULL,
   -- NULL, NULL), which is what makes the empty/NULL-array case answerable without a special path.
   WHERE s.id = ANY (coalesce(p_slot_ids, ARRAY[]::uuid[]));
 $$;
 
-COMMENT ON FUNCTION public.notif_open_slots_validate_batch(uuid, uuid[]) IS
-  'Open-slots canary pre-send validation: one scalar-aggregate row describing a submitted slot batch, immune to PostgREST row caps because it never returns slot rows. The caller must require supplied_distinct_count = matched_count = public_owned_count and REFUSE the send otherwise (an inequality means a missing, foreign, or private id) — never trim the batch to the authorized subset. max_created_at/min_start_time/max_start_time are computed over ONLY the trainer-owned public rows, which is what makes that equality prove the subset covers the whole batch.';
+COMMENT ON FUNCTION public.notif_open_slots_validate_batch(uuid, uuid[], text) IS
+  'Open-slots PRODUCER batch validation (not the rollout canary): one scalar-aggregate row describing a submitted slot batch, immune to PostgREST row caps because it never returns slot rows. The caller must require supplied_distinct_count = matched_count = public_owned_count = the number of ids it submitted, and REFUSE the send otherwise (an inequality means a missing, foreign, or private id) — never trim the batch to the authorized subset. max_created_at/min_start_date/max_start_date are computed over ONLY the trainer-owned public rows, which is what makes that equality prove the subset covers the whole batch. The date range is returned as calendar dates converted in p_timezone (the trainer''s own trainer_profiles.timezone; NULL falls back to Europe/Amsterdam), because a timestamptz has no calendar date until a timezone is named.';
 
-REVOKE ALL ON FUNCTION public.notif_open_slots_validate_batch(uuid, uuid[]) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.notif_open_slots_validate_batch(uuid, uuid[]) TO service_role;
+REVOKE ALL ON FUNCTION public.notif_open_slots_validate_batch(uuid, uuid[], text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.notif_open_slots_validate_batch(uuid, uuid[], text) TO service_role;

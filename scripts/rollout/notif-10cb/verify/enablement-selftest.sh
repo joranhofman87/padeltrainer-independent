@@ -1008,5 +1008,62 @@ logged '--no-psqlrc' && ok "...--no-psqlrc on the artifact path" || bad "...--no
 run "and on the rollback path too" 0 -- rollback --yes --switch-off-confirmed "$URL"
 logged '--no-psqlrc' && ok "...--no-psqlrc on the rollback path" || bad "...--no-psqlrc on the rollback path"
 
+# ── C-3: the SCOPE GATES precede the invocation the artifact commits to ───────────────────────
+#
+# STRUCTURAL, and it has to be. canary_invoke.sql's ceiling and due-work floor sit before the
+# replay-aware invocation gate so that a request the world has already disqualified never takes the
+# gate's two advisory locks, never sets its GUC and never writes a durable invocation row. No
+# behavioural test can observe that ordering — the transaction rolls back either way, so a floor
+# placed after the gate produces an identical end state. The only witness is the file.
+#
+# It lives here as well as in src/test/notif10cbActivationPreflight.test.ts because this bundle is
+# shipped and run as a UNIT: an operator who copies scripts/rollout/notif-10cb/ onto a jump host has
+# this self-test and not the vitest suite, and the ordering is exactly the property they cannot
+# check by running the thing.
+#
+# Comments are stripped first. This file's own prose names these statements constantly, and an
+# earlier version of the vitest ordering pin matched a COMMENT 190 lines above the real call — a
+# correctly-ordered file reported as mis-ordered.
+CANARY_SQL="$HERE/../sql/canary_invoke.sql"
+if [[ ! -f "$CANARY_SQL" ]]; then
+  bad "canary_invoke.sql is missing from the bundle"
+else
+  canary_code() { sed -e 's/--.*$//' "$CANARY_SQL"; }
+  line_of() { canary_code | grep -nF -- "$1" | head -1 | cut -d: -f1; }
+  L_CLOCK="$(line_of 'CREATE TEMP TABLE _canary_clock')"
+  L_CEIL="$(line_of 'FROM pg_temp._canary_radius));')"
+  L_FLOOR="$(line_of 'FROM pg_temp._canary_floor));')"
+  L_GATE="$(line_of '\i _invocation_gate_replay.sql')"
+  L_OPEN="$(line_of 'open_notification_worker_invocation(')"
+  if [[ -z "$L_CLOCK" || -z "$L_CEIL" || -z "$L_FLOOR" || -z "$L_GATE" || -z "$L_OPEN" ]]; then
+    bad "canary_invoke.sql is missing a scope gate (clock=$L_CLOCK ceiling=$L_CEIL floor=$L_FLOOR gate=$L_GATE open=$L_OPEN)"
+  else
+    [[ "$L_CLOCK" -lt "$L_CEIL" ]] \
+      && ok "canary_invoke captures its clock before the ceiling reads it" \
+      || bad "canary_invoke captures its clock before the ceiling reads it ($L_CLOCK !< $L_CEIL)"
+    [[ "$L_CEIL" -lt "$L_FLOOR" ]] \
+      && ok "...the ceiling is asserted before the due-work floor" \
+      || bad "...the ceiling is asserted before the due-work floor ($L_CEIL !< $L_FLOOR)"
+    [[ "$L_FLOOR" -lt "$L_GATE" ]] \
+      && ok "...the due-work FLOOR precedes the replay gate (no locks for a disqualified request)" \
+      || bad "...the due-work FLOOR precedes the replay gate ($L_FLOOR !< $L_GATE)"
+    [[ "$L_GATE" -lt "$L_OPEN" ]] \
+      && ok "...and the replay gate still precedes open()" \
+      || bad "...and the replay gate still precedes open() ($L_GATE !< $L_OPEN)"
+  fi
+  # The floor is EVENT-SCOPED (both halves) while the ceiling stays global — the two questions the
+  # rollout must not conflate. An event-agnostic floor is satisfied by unrelated due work, mails a
+  # real recipient who has nothing to do with the cutover, and still proves nothing.
+  floor_events="$(canary_code | sed -n "${L_FLOOR%%:*}q;/CREATE TEMP TABLE _canary_floor/,\$p" \
+                   | grep -c "event_type = 'open_slots_player'" || true)"
+  [[ "$floor_events" == "2" ]] \
+    && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
+    || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
+  # And the floor consults the OTHER door the claim goes through.
+  canary_code | grep -qF "notif_channel_kill_gate('email')" \
+    && ok "...the floor consults the channel kill gate (the claim's own first act)" \
+    || bad "...the floor consults the channel kill gate (the claim's own first act)"
+fi
+
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
 [[ "$FAIL" == "0" ]]

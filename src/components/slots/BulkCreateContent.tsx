@@ -902,14 +902,22 @@ export function BulkCreateContent({
       const hasPublicSlots = publicSlots.length > 0;
       if (shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots, academyId })) {
         try {
-          const earliestStart = new Date(
-            Math.min(...publicSlots.map((s) => new Date(s.start_time).getTime()))
-          );
-          // NOTE: this is the latest START, not an end time. The name is historical; it is left
-          // unchanged here to keep this safety fix's diff focused.
-          const latestEnd = new Date(
-            Math.max(...publicSlots.map((s) => new Date(s.start_time).getTime()))
-          );
+          // MIN/MAX OVER THE CALENDAR DATES, NOT OVER THE INSTANTS — and this is not pedantry.
+          // The edge derives the authoritative range in SQL as
+          // `min((start_time AT TIME ZONE <trainer tz>)::date)`, i.e. it converts first and takes
+          // the extreme of the DATES. Taking the extreme of the INSTANTS and converting afterwards
+          // is a different function, because `AT TIME ZONE` is not monotonic across a DST
+          // fall-back: 01:00Z maps to local 03:00 while the LATER 01:30Z maps to local 02:30. On
+          // that one hour a year the two orderings disagree, the client's range would not match
+          // the server's, and the request would be REFUSED. Converting first makes the two
+          // definitions the same function whenever this browser and the trainer's profile are in
+          // the same timezone — which is the case the compatibility assertion has to survive.
+          //
+          // These are the LATEST/EARLIEST START. There is no end_time involved; the historical
+          // name `latestEnd` said otherwise and is gone.
+          const slotDates = publicSlots.map((s) => format(new Date(s.start_time), "yyyy-MM-dd")).sort();
+          const earliestStartDate = slotDates[0];
+          const latestStartDate = slotDates[slotDates.length - 1];
 
           const { data: { session } } = await supabase.auth.getSession();
           // STRUCTURED ISO dates, not display text (10c-b D): the copy is rendered server-side
@@ -926,9 +934,11 @@ export function BulkCreateContent({
               // Dates are sent for BACKWARD COMPATIBILITY ONLY. The frontend deploys before the
               // edge function (ADR 0008: migrations -> frontend -> bundle-cache wait -> edge fn),
               // so during that window a new client still talks to the OLD edge, which needs them.
-              // The NEW edge ignores them as authority and derives its own from the verified rows.
-              date_from: format(earliestStart, "yyyy-MM-dd"),
-              date_to: format(latestEnd, "yyyy-MM-dd"),
+              // The NEW edge does not take them as authority: it derives its own range from the
+              // verified rows and REFUSES if these disagree, which is why they are computed the
+              // same way the database computes them (see the note above).
+              date_from: earliestStartDate,
+              date_to: latestStartDate,
               // EXACT PROVENANCE. The occurrence used to come from a date-RANGE lookup built with
               // offsetless literals against a timestamptz column, which was both an off-by-one at
               // day boundaries (occurrence null -> 503, nothing enqueued) and a query that could

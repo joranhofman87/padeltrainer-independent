@@ -135,7 +135,7 @@ SELECT pg_temp.assert_eq(
 -- THE SCOPE GATES — CEILING then FLOOR — and they run BEFORE anything is opened or mutated.
 --
 -- ORDERING, STATED ONCE BECAUSE IT IS LOAD-BEARING. Both scope gates used to sit AFTER the replay
--- gate and after open_notification_worker_invocation(). That was wrong in two directions at once.
+-- gate and after the invocation was opened. That was wrong in two directions at once.
 -- The replay gate takes two advisory locks and a transaction-local set_config, and open() writes a
 -- durable invocation row; performing either for a request already known to be meaningless makes
 -- the rollout's own bookkeeping the first casualty of a refusal — an operator who trips a scope
@@ -206,11 +206,19 @@ SELECT pg_temp.assert(
 -- materializes nothing, claims nothing, ends the run `succeeded`, and canary_verify then reads a
 -- run that sent to nobody. In the run ledger, in the response body, and in the operator's terminal
 -- that is INDISTINGUISHABLE from a working path — it is the very state the engine-on assertion
--- above refuses to invoke into, arrived at by a different route. Worse, it is not free: the
--- invocation record is consumed, canary_scope_verify passes trivially (zero recipients is within
--- any ceiling), activation's provenance assertion is satisfied by a completed canary-provenance
--- run, and the cron is then armed against the entire population on the strength of an empty run.
--- The comment that used to sit here said as much and stopped there; this is the guard it described.
+-- above refuses to invoke into, arrived at by a different route.
+--
+-- WHAT AN EMPTY RUN ACTUALLY COSTS — stated precisely, because an earlier draft of this comment
+-- overstated it and the overstatement was load-bearing in how the guard was argued. It claimed the
+-- cron would then be "armed against the entire population on the strength of an empty run". It
+-- would NOT: an empty run is refused twice downstream, by canary_verify.sql ("the canary recorded
+-- at least one ACCEPTED send attempt", and "at least one group this canary attempted is STILL
+-- sent") and independently by _activation_assertions.sql, which both activation_preflight.sql and
+-- activate.sql include. The real cost is smaller and still worth a refusal: the ONE controlled
+-- invocation record is consumed, the 6-hour evidence window starts against a run that proves
+-- nothing, and the operator is sent back around a loop whose failure mode reads — in the ledger,
+-- in the response body and in the terminal — exactly like a working path. That is what this
+-- refuses. It is a guard against wasted, misleading effort, not against a mass send.
 --
 -- IT IS EVENT-SPECIFIC, AND THAT IS THE WHOLE POINT. open_slots_player is the cutover event. Due
 -- work under any OTHER event proves nothing about it — and, because the worker claims whatever is
@@ -234,6 +242,23 @@ SELECT pg_temp.assert(
 -- refuses. Drift is the standing risk here and it is accepted knowingly: this is a rollout
 -- artifact run once under supervision, not a second implementation of the claim.
 --
+-- WHERE THE TWO HALVES DO NOT COME FROM THE FUNCTION THEY NAME, stated so the mirror claim above
+-- is not read as more than it is. The forming half's `digest_boundary_at <= ck.t` and BOTH its
+-- quiet-hours conjuncts come from the CLAIM, not from materialize — materialize filters on
+-- neither (20261104100000:798-949). They belong here anyway: a member materialize forms into a
+-- group that the claim will then decline is still an empty run. The floor is the CONJUNCTION of
+-- both doors, which is what "will something actually be claimed" requires.
+--
+-- WHAT THE FLOOR PROVES, AND WHAT IT DOES NOT. It proves work is DUE AND CLAIMABLE. It does not
+-- prove a message is DELIVERED, and it cannot: after the claim, prepare can still return
+-- 'no_work'/'channel_killed', begin can defer or terminalize, and a lone member whose RAW item is
+-- just under the 92160 budget can still exceed DIGEST_BYTE_BUDGET once RENDERED (the budget the
+-- floor mirrors is materialize's raw-item test; digest-render.ts measures the rendered request)
+-- and be finalized oversize_failed with nothing sent. Those residuals are accepted rather than
+-- modelled — modelling the renderer here would be a second implementation of the send path, and
+-- the downstream canary_verify assertions already refuse a run that sent nothing. The refusal
+-- message below says "claimable" for that reason and does not promise a send.
+--
 -- THE UNCERTAINTY CLAUSE IS A CASE, NOT AN OR. `state <> 'sending' OR deadline(...)` reads more
 -- naturally and is a live hazard: SQL does not promise left-to-right evaluation of OR, and
 -- notif_digest_uncertainty_deadline RAISES on a NULL first_send_at — which every not-yet-sent
@@ -247,25 +272,83 @@ SELECT pg_temp.assert(
 -- be deferred, and produce precisely the empty run this guard exists to refuse. Five minutes is
 -- the operational slack between "this transaction commits" and "the worker claims", not a theory.
 --
--- CIRCUIT: CLOSED **OR ABSENT**. There is no row until the breaker first trips, so absent IS the
--- healthy state; requiring state = 'closed' would refuse every canary on a system that has never
--- had a provider failure. `IS DISTINCT FROM 'closed'` inverted through NOT EXISTS states it once:
--- no row, or a row that says closed. Anything else (open, half_open, a state added later) refuses.
+-- CIRCUIT: CLOSED **OR ABSENT**, and deliberately STRICTER than the real breaker preflight. There
+-- is no row until the breaker first trips, so absent IS the healthy state; requiring
+-- state = 'closed' would refuse every canary on a system that has never had a provider failure.
+-- `IS DISTINCT FROM 'closed'` inverted through NOT EXISTS states it once: no row, or a row that
+-- says closed. Anything else refuses — including two states the real claim CAN still work in
+-- ('open' whose retry_at has passed, and 'half_open' holding a bound probe). That over-refusal is
+-- chosen: a canary run through a half-open breaker proves the wrong thing even when it sends, and
+-- a refusal here costs an operator a wait while the alternative costs the rollout its one
+-- controlled invocation.
+--
+-- THE KILL SWITCH, WHICH THE FIRST DRAFT MISSED ENTIRELY. `claim_notification_digest_group`'s
+-- FIRST act is `IF notif_channel_kill_gate(p_channel) THEN RETURN NULL`, and materialize's is the
+-- same. With email killed, every predicate below can be satisfied and the worker still claims
+-- nothing — the exact empty run this guard exists to refuse, reached by the one door the guard did
+-- not model. It is checked through the function rather than by reading the table because the
+-- function takes the per-channel advisory lock that the kill-set and every claim path also take:
+-- that is what makes "not killed at T" still true when the worker claims, instead of a read that a
+-- concurrent kill can invalidate a millisecond later.
+--
+-- THE ACTIVATION BOUNDARY MUST EXIST, checked explicitly rather than left to three-valued logic.
+-- The claim RETURNs NULL outright when `notif_activation_boundary('email:digest')` is NULL. The
+-- group half only used the boundary INSIDE a NOT EXISTS, where `created_at < NULL` is NULL, the
+-- subquery is empty, NOT EXISTS is TRUE — so on an inert path a due group with no members COUNTED,
+-- and the floor passed on a world where the claim cannot return anything at all. The member half
+-- failed closed on the same NULL (`>= NULL` excludes the row), so the two halves disagreed about
+-- the same missing boundary. Now neither does.
+--
+-- RLS MUST NOT BE FILTERING THESE READS. Both halves read notification_outbox, which has RLS
+-- enabled, and the group half reads it through a NOT EXISTS — the shape where "filtered to zero
+-- rows" and "no disqualifying member" are indistinguishable, so a restricted role would make every
+-- group look eligible. The bundle is run as the owning role, which is why this has never bitten;
+-- it is asserted rather than assumed because the failure is silent and fails OPEN.
+--
+-- THE UNCERTAINTY EXCLUSION CARRIES THE SAME +5 MINUTE MARGIN AS QUIET HOURS, and for the same
+-- reason. The worker's FIRST pipeline step — before materialize, before the claim loop — is
+-- reconcile_notification_digest_stale, which finalizes to delivery_unknown every group whose
+-- uncertain_deadline_at has passed AT THE WORKER'S CLOCK. A group whose deadline falls between
+-- this transaction and that sweep is counted here and aged out before the claim runs: the same
+-- commit-to-claim gap, the same magnitude, the same empty run.
+--
+-- THERE IS NO `awaiting_evidence` ARM, though the real claim has one. Every write of that state
+-- sets available_at = uncertain_deadline_at, so `available_at <= ck.t` implies
+-- `uncertain_deadline_at <= ck.t` — which this floor's own uncertainty exclusion already removes.
+-- The arm is therefore dead except in the single configuration where uncertain_deadline_at is
+-- NULL, and there the worker's dispatch throws on the unexpected claimed state and sends nothing.
+-- An arm that can only ever contribute a FALSE positive is worse than a missing one: this floor
+-- may be stricter than the claim (it costs a wait), never looser (it costs the canary).
 CREATE TEMP TABLE _canary_floor AS
 SELECT
+  -- IS THIS A REPLAY OF AN INVOCATION THAT ALREADY COMMITTED? Read without a lock, and it is the
+  -- one thing that switches the whole floor off. The scope gates run BEFORE the replay-aware
+  -- invocation gate on purpose (see the ordering note above), and for a genuine replay that
+  -- ordering inverts the diagnosis: the original invocation already dispatched, so its work is
+  -- GONE, so the floor is the first thing to fire and it tells the operator "there is no due work,
+  -- wait and re-run" — when the truth is "your original invocation committed and the mail has
+  -- already gone out". The replay must reach _invocation_gate_replay.sql and
+  -- record_invocation_net_request, which is where that truth is stated and where the duplicate
+  -- request is refused by name. So the floor asks its question only of a request that is not one.
+  EXISTS (SELECT 1 FROM public.notification_worker_invocations wi
+           WHERE wi.status IN ('pending', 'started')
+             AND wi.request_id = :'invocation_request_id'::pg_catalog.uuid) AS is_replay,
+  NOT public.notif_channel_kill_gate('email') AS channel_live,
+  (public.notif_activation_boundary('email:digest') IS NOT NULL) AS boundary_open,
+  NOT pg_catalog.row_security_active('public.notification_outbox'::pg_catalog.regclass) AS reads_unfiltered,
   (SELECT count(*)::int
      FROM public.notification_digest_groups dg
     WHERE dg.channel = 'email'
       AND dg.event_type = 'open_slots_player'
       AND dg.terminal_at IS NULL
       AND ( (dg.state IN ('pending','request_ready') AND dg.locked_by IS NULL AND dg.available_at <= ck.t)
-         OR (dg.state = 'awaiting_evidence' AND dg.available_at <= ck.t)
          OR (dg.state IN ('leased','prepared','request_ready','sending')
              AND dg.locked_at IS NOT NULL AND dg.locked_at < ck.t - interval '15 minutes') )
       AND NOT (dg.uncertain_since IS NOT NULL AND dg.uncertain_deadline_at IS NOT NULL
-               AND ck.t >= dg.uncertain_deadline_at)
+               AND ck.t + interval '5 minutes' >= dg.uncertain_deadline_at)
       AND (CASE WHEN dg.state = 'sending'
-                THEN ck.t < public.notif_digest_uncertainty_deadline(dg.first_send_at, dg.uncertain_deadline_at)
+                THEN ck.t + interval '5 minutes'
+                       < public.notif_digest_uncertainty_deadline(dg.first_send_at, dg.uncertain_deadline_at)
                 ELSE true END)
       AND public.notif_digest_quiet_hours_bump(ck.t, dg.recipient_timezone) = ck.t
       AND public.notif_digest_quiet_hours_bump(ck.t + interval '5 minutes', dg.recipient_timezone)
@@ -295,20 +378,30 @@ SELECT
 FROM pg_temp._canary_clock ck;
 
 SELECT pg_temp.assert(
-  (SELECT circuit_ok AND (due_groups + due_members) >= 1 FROM pg_temp._canary_floor),
+  (SELECT is_replay
+       OR (channel_live AND boundary_open AND reads_unfiltered AND circuit_ok
+           AND (due_groups + due_members) >= 1)
+     FROM pg_temp._canary_floor),
   (SELECT pg_catalog.format(
-     'there is NO due, claimable open_slots_player email digest work for this invocation to send '
-     '(%s due digest group(s) + %s ungrouped due member(s); email circuit %s). Invoking now would '
-     'queue a request the worker answers with an EMPTY dispatch run — a 200, a `succeeded` status '
-     'and nothing sent, which proves NOTHING about the cutover path while consuming the one '
-     'controlled canary this rollout gets. Likely causes, in the order worth checking: the item''s '
-     'digest boundary has not passed yet (digest_boundary_at / available_at still in the future); '
-     'quiet hours are shut for the recipient timezone now or within the next 5 minutes; the email '
-     'provider circuit is not closed; the only candidate is leased by a worker and not yet stale '
-     '(15 minutes); or its group holds a member from before the email digest activation boundary. '
+     'there is NO due, CLAIMABLE open_slots_player email digest work for this invocation '
+     '(%s due digest group(s) + %s ungrouped due member(s); email circuit %s; channel %s; '
+     'activation boundary %s; outbox reads %s). Invoking now would queue a request the worker '
+     'answers with an EMPTY dispatch run — a 200, a `succeeded` status and nothing sent, which '
+     'proves NOTHING about the cutover path while consuming the one controlled invocation this '
+     'rollout gets and starting its evidence window against a run that shows nothing. Likely '
+     'causes, in the order worth checking: the item''s digest boundary has not passed yet '
+     '(digest_boundary_at / available_at still in the future); quiet hours are shut for the '
+     'recipient timezone now or within the next 5 minutes; the email channel is KILLED '
+     '(notification_channel_kill_switches); the email digest activation boundary is not set; the '
+     'email provider circuit is not closed; the only candidate is leased by a worker and not yet '
+     'stale (15 minutes); or its group holds a member from before the activation boundary. '
      'Wait until real open_slots_player work is due and re-run — raising --max-recipients cannot '
      'help, that is the ceiling and it cannot create work.',
-     due_groups, due_members, CASE WHEN circuit_ok THEN 'closed/absent' ELSE 'NOT closed' END)
+     due_groups, due_members,
+     CASE WHEN circuit_ok THEN 'closed/absent' ELSE 'NOT closed' END,
+     CASE WHEN channel_live THEN 'live' ELSE 'KILLED' END,
+     CASE WHEN boundary_open THEN 'set' ELSE 'NOT SET' END,
+     CASE WHEN reads_unfiltered THEN 'unfiltered' ELSE 'RLS-FILTERED (run this as the owning role)' END)
    FROM pg_temp._canary_floor));
 
 -- N4 M1 (AC-6): the DURABLE half of the same guarantee, then OPEN this invocation's record in

@@ -441,6 +441,30 @@ Both invoking steps print their **invocation request id first**: after an ambigu
 invocation instead of colliding with the single-flight gate. `enable-engine` does the same with
 `--boundary-request-id`.
 
+**Step 6 refuses when there is nothing to send.** `canary-invoke` checks a **due-work floor** as
+well as the `--max-recipients` ceiling, and it checks it *before* it takes a lock or opens an
+invocation record. With zero due `open_slots_player` digest work the worker would materialize
+nothing, claim nothing, and return `succeeded` — which in the ledger, the response body and your
+terminal is indistinguishable from a working path, while consuming the one controlled invocation
+and starting its 6-hour evidence window against a run that shows nothing.
+
+If you hit it, **do not raise `--max-recipients`** — that is the ceiling and it cannot create work.
+The message names the causes in the order worth checking, and the two that surprise people are:
+
+* **quiet hours must be open now *and* five minutes from now.** pg_net dispatches only after the
+  transaction commits, so the worker claims a little after you invoke; a canary valid at 19:59:30
+  local would reach the claim with the window already shut.
+* **the digest is never immediately due.** A member becomes claimable at its `digest_boundary_at`,
+  so schedule the invocation for a moment when a real trainer's batch has matured rather than for
+  the minute after one is created. Waiting for genuine work is the point — the floor is scoped to
+  `open_slots_player` precisely so an unrelated event's backlog cannot satisfy it and mail someone
+  who has nothing to do with this rollout.
+
+The floor is **skipped for a genuine replay** (`--invocation-request-id=<id>` naming an unresolved
+invocation): that invocation already dispatched, so its work is gone, and the floor would otherwise
+report "no due work" when the truth is "your first invocation committed and the mail has already
+gone out". The replay reaches the invocation gate, which says so and names the original request.
+
 `whatsapp:instant` stays inert and its worker returns on its env switch: rows accumulate and are
 refused, which is the intended state, not a bug.
 
