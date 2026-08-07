@@ -3,7 +3,7 @@ import {
   DEFAULT_STALE_AFTER_SECONDS,
   createLivenessHandler,
   decideLiveness,
-  firstRow,
+  parseLivenessRow,
   isAuthorizedMonitor,
   livenessBody,
   resolveStaleAfter,
@@ -331,12 +331,36 @@ Deno.test("handler: the x-monitor-token header authenticates too", async () => {
   assertEquals((await handler(new Request("https://x/", { headers: { "x-monitor-token": TOKEN } }))).status, 200);
 });
 
-Deno.test("firstRow / resolveStaleAfter are correct in isolation", () => {
-  assertEquals(firstRow(null), null);
-  assertEquals(firstRow([]), null);
-  assertEquals(firstRow("nope"), null);
-  assertEquals(firstRow(OK_ROW), OK_ROW);
-  assertEquals(firstRow([OK_ROW]), OK_ROW);
+Deno.test("parseLivenessRow REJECTS anything it does not fully understand", () => {
+  // A blind cast made a malformed payload read 200 live: `last_success_at !== null` is true of any
+  // garbage, and a plausible-looking age compares below the threshold.
+  const malformed: unknown[] = [
+    null, undefined, [], "nope", 42, true,
+    { job_present: true },                                                  // missing fields
+    { ...OK_ROW, job_present: "yes" },                                      // wrong type
+    { ...OK_ROW, seconds_since_success: "0" },                              // numeric string
+    { ...OK_ROW, last_success_at: 12345 },                                  // wrong type
+    { ...OK_ROW, last_status: {} },                                         // wrong type
+    [OK_ROW, OK_ROW],                                                       // more than one row
+    [[OK_ROW]],                                                             // nested
+  ];
+  for (const bad of malformed) {
+    assertEquals(parseLivenessRow(bad), null, `must reject ${JSON.stringify(bad)}`);
+  }
+  // ...and accepts exactly the two legitimate shapes
+  assertEquals(parseLivenessRow(OK_ROW), OK_ROW);
+  assertEquals(parseLivenessRow([OK_ROW]), OK_ROW);
+});
+
+Deno.test("a malformed RPC payload is 503 query_failed, never 200 live", async () => {
+  const malformed = { job_present: true, job_active: true, last_success_at: "garbage", seconds_since_success: 0 };
+  const { handler } = handlerWith({ readLiveness: async () => malformed }, { NOTIF_LIVENESS_EXPECT_ARMED: "true" });
+  const res = await handler(authed());
+  assertEquals(res.status, 503);
+  assertEquals((await res.json()).state, "query_failed");
+});
+
+Deno.test("resolveStaleAfter is correct in isolation", () => {
   assertEquals(resolveStaleAfter(undefined), DEFAULT_STALE_AFTER_SECONDS);
   assertEquals(resolveStaleAfter(""), DEFAULT_STALE_AFTER_SECONDS);
   assertEquals(resolveStaleAfter("0"), DEFAULT_STALE_AFTER_SECONDS);

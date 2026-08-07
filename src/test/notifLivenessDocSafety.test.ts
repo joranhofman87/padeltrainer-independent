@@ -39,11 +39,58 @@ describe('notif-liveness documentation cannot reintroduce a secret in argv', () 
   it('the operations doc documents the SAFE forms it is meant to steer people to', () => {
     const src = read('docs/NOTIFICATION_OPERATIONS.md');
     expect(src).toMatch(/secrets\s+set\s+--env-file/);      // env-file, not inline
-    expect(src).toMatch(/curl\s+-sf\s+--config/);            // curl config, not -H
-    expect(src).toMatch(/chmod\s+600/);                      // mode-0600
+    expect(src).toMatch(/curl\s+-s\s+-w[^\n]*--config/);     // curl config, not -H
+    expect(src).toMatch(/umask\s+077/);                      // 0600 by construction
     expect(src).toMatch(/trap\s+'rm -f/);                    // fail-closed cleanup
     expect(src).toMatch(/security (add|find)-generic-password/); // named Keychain item
     expect(src).toMatch(/secrets unset NOTIF_LIVENESS_TOKEN/);   // revocation
+  });
+});
+
+describe('the endpoint proof must be able to succeed, and must assert both facts', () => {
+  const src = () => read('docs/NOTIFICATION_OPERATIONS.md');
+
+  it('never uses curl -f against the liveness endpoint', () => {
+    // The expected answer at 7b is an HTTP ERROR (503 with a body). `curl -f` suppresses the body
+    // and exits 22, so a grep for the state could never match — the proof would be unsatisfiable,
+    // which is the same class of defect as the stale-before-first-send requirement it replaced.
+    const blocks: string[] = src().match(/```bash\n([\s\S]*?)```/g) ?? [];
+    for (const b of blocks) {
+      if (!b.includes('notif-liveness')) continue;
+      // COMMANDS only — the blocks deliberately explain in comments why `curl -f` is wrong here,
+      // and a check that flagged its own explanation would be uselessly literal.
+      const commands = b.split('\n').filter((l) => !l.trim().startsWith('#')).join('\n');
+      expect(commands).not.toMatch(/curl\s+(-\w*f\w*|--fail)\b/);
+    }
+  });
+
+  it('asserts the STATUS as well as the state', () => {
+    // 503 alone is ambiguous (query_failed / misconfigured / stale share it) and the state alone
+    // does not prove the transport worked, so both are required.
+    expect(src()).toMatch(/%\{http_code\}/);
+    expect(src()).toMatch(/"\$CODE"\s*=\s*"503"/);
+    expect(src()).toMatch(/"state":"cron_disarmed"/);
+  });
+});
+
+describe('credential handling leaves nothing behind and nothing in argv', () => {
+  const src = () => read('docs/NOTIFICATION_OPERATIONS.md');
+
+  it('scopes cleanup to a subshell rather than an interactive EXIT trap', () => {
+    // A bare `trap … EXIT` typed into an interactive shell fires at LOGOUT, and a later trap on the
+    // same signal REPLACES it — so the temp file survives the session, or forever.
+    const all: string[] = src().match(/```bash\n([\s\S]*?)```/g) ?? [];
+    const blocks = all.filter((b) => b.includes('mktemp'));
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const b of blocks) {
+      expect(b).toMatch(/^\(|\n\(/m);        // opens a subshell
+      expect(b).toMatch(/trap 'rm -f/);
+    }
+  });
+
+  it('never passes the token as a value to security add-generic-password', () => {
+    // `-w "$token"` puts the secret in argv, observable via ps. `-w` with no value prompts.
+    expect(src()).not.toMatch(/add-generic-password[^\n]*-w\s+["'$]/);
   });
 });
 

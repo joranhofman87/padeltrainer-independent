@@ -267,7 +267,7 @@ require_liveness_expectation() {
 
 require_monitor() {
   [[ "$MONITOR_CONFIRMED" == "1" ]] || die \
-    "$1 requires --monitor-confirmed: wire the EXTERNAL cron/uptime monitor on public.notif_digest_worker_liveness() FIRST and verify it alerts on a stale last_success_at (this script cannot see anything outside the database, and it is the only detector for a worker that is never invoked)"
+    "$1 requires --monitor-confirmed: deploy notif-liveness, point an INDEPENDENT uptime service at it, and prove the alert with the INERT rehearsal in docs/NOTIFICATION_OPERATIONS.md (expectation ON against a still-inactive cron must produce cron_disarmed/503 AND a provider alert; expectation OFF must restore inert/200 AND a recovery notice). Do NOT try to prove it with a stale last_success_at: that field is about a SUCCEEDED run, so before the first send there is nothing to make stale. This script cannot see anything outside the database, and this is the only detector for a worker that is never invoked"
 }
 
 db_url() {

@@ -208,12 +208,46 @@ export const JSON_HEADERS: Record<string, string> = {
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 
-/** Coerce the RPC payload to a single row, accepting either an object or a one-element array. */
-export function firstRow(payload: unknown): LivenessRow | null {
-  if (payload === null || payload === undefined) return null;
-  if (Array.isArray(payload)) return (payload.length > 0 ? payload[0] as LivenessRow : null);
-  if (typeof payload === "object") return payload as LivenessRow;
-  return null;
+/**
+ * Coerce the RPC payload to EXACTLY ONE VALID row, or null.
+ *
+ * A blind `as LivenessRow` cast was worse than no check: a payload whose fields are the wrong types
+ * — `last_success_at: "garbage"`, a numeric string, a missing boolean — sailed through into the
+ * state machine, where `last_success_at !== null` is true of any garbage and a plausible-looking
+ * age compares below the threshold. The endpoint answered **200 live** for a response it had not
+ * understood, which is the one direction a liveness check must never fail.
+ *
+ * The one-row contract is enforced too. `notif_digest_worker_liveness()` RETURNS TABLE with a
+ * single row; more than one means the function is not what this endpoint thinks it is, and picking
+ * `[0]` would hide that.
+ */
+export function parseLivenessRow(payload: unknown): LivenessRow | null {
+  let candidate: unknown = payload;
+  if (Array.isArray(payload)) {
+    if (payload.length !== 1) return null;   // zero rows, or a shape we do not understand
+    candidate = payload[0];
+  }
+  if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) return null;
+  const r = candidate as Record<string, unknown>;
+
+  const isBool = (v: unknown) => typeof v === "boolean";
+  const isNullableString = (v: unknown) => v === null || typeof v === "string";
+  const isNullableNumber = (v: unknown) => v === null || typeof v === "number";
+
+  if (!isBool(r.job_present) || !isBool(r.job_active)) return null;
+  if (!isNullableString(r.last_success_at)) return null;
+  if (!isNullableNumber(r.seconds_since_success)) return null;
+  if (!isNullableString(r.last_finished_at)) return null;
+  if (!isNullableString(r.last_status)) return null;
+
+  return {
+    job_present: r.job_present as boolean,
+    job_active: r.job_active as boolean,
+    last_success_at: r.last_success_at as string | null,
+    seconds_since_success: r.seconds_since_success as number | null,
+    last_finished_at: r.last_finished_at as string | null,
+    last_status: r.last_status as string | null,
+  };
 }
 
 /** Parse the stale threshold, falling back on anything unusable rather than trusting it. */
@@ -247,7 +281,7 @@ export function createLivenessHandler(deps: LivenessDeps): (req: Request) => Pro
       return json({ ok: false, state: "query_failed", detail: "the liveness read failed; see function logs" }, 503);
     }
 
-    const row = firstRow(payload);
+    const row = parseLivenessRow(payload);
     if (!row) {
       return json({ ok: false, state: "query_failed", detail: "liveness returned no row" }, 503);
     }

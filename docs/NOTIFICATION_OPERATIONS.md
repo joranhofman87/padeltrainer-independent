@@ -140,18 +140,18 @@ states is unavoidable for a few seconds. Take the one that fails safe:
 # NOTIF_LIVENESS_TOKEN, which must never appear in argv or history.)
 supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
 
-# STEP 7b — confirm the endpoint has picked it up before arming. Check the STATE, not the code:
-# (CURLRC is the mode-0600 curl config from the setup section — the token must not reach argv.)
-# query_failed, misconfigured, stale and cron_disarmed ALL return 503, so a status-only check
-# would let you arm on a broken endpoint believing the expectation had propagated.
-# NOTE the shape: `grep … && echo ok || echo bad` would exit 0 on BOTH arms, because the final
-# echo succeeds — so a network failure or an unhealthy endpoint would look like a pass.
-if curl -sf --config "$CURLRC" \
-     https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness \
-     | grep -q '"state":"cron_disarmed"'; then
-  echo "expectation propagated — safe to arm"
+# STEP 7b — PROVE the endpoint picked it up. Assert the STATUS and the STATE together:
+#   * `curl -f` would suppress the 503 body and exit 22 — the expected answer here IS an error;
+#   * 503 alone is ambiguous (query_failed, misconfigured and stale share it);
+#   * the state alone is not enough either, so require exactly 503 AND exactly cron_disarmed.
+OUT="$(curl -s -w '\n%{http_code}' --config "$CURLRC" \
+        https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness)"
+CODE="$(printf '%s' "$OUT" | tail -n1)"
+JSON="$(printf '%s' "$OUT" | sed '$d')"
+if [ "$CODE" = "503" ] && printf '%s' "$JSON" | grep -q '"state":"cron_disarmed"'; then
+  echo "expectation propagated (503 cron_disarmed) — safe to arm"
 else
-  echo "NOT propagated, unreachable, or unhealthy — do NOT arm" >&2
+  printf 'NOT propagated / unreachable / unhealthy — do NOT arm (status=%s body=%s)\n' "$CODE" "$JSON" >&2
   exit 1
 fi
 
@@ -220,21 +220,29 @@ is runbook step 3c and must happen **before** the canary, so it is watching from
 **Setup:**
 
 ```bash
-# NEVER `supabase secrets set NAME=<value>` — the value lands in argv, in `ps` output while the
-# command runs, and in shell history. Use a mode-0600 env file and delete it on every exit path.
-umask 077
-ENVFILE="$(mktemp -t notif-liveness-env)"
-trap 'rm -f "$ENVFILE"' EXIT INT TERM HUP        # fail-closed cleanup, including on Ctrl-C
-printf 'NOTIF_LIVENESS_TOKEN=%s\n' "$(openssl rand -base64 39 | tr -d '\n')" > "$ENVFILE"
-chmod 600 "$ENVFILE"
+# NEVER `supabase secrets set NAME=<value>` — the value lands in argv, is visible in `ps` while the
+# command runs, and is written to shell history.
+#
+# RUN THIS AS A SUBSHELL, the surrounding ( … ). An `EXIT` trap fires when its shell exits; typed
+# straight into an interactive session that means "at logout", so the file would sit on disk for the
+# rest of the day — and a second `trap … EXIT` later would REPLACE this one, so it would never run
+# at all. A subshell exits at the closing paren, so the trap fires there.
+(
+  umask 077
+  ENVFILE="$(mktemp -t notif-liveness-env)"
+  trap 'rm -f "$ENVFILE"' EXIT INT TERM HUP
 
-# keep a copy in the login Keychain so rotation does not depend on remembering the value
-security add-generic-password -s padeltrainer-notif-liveness -a "$USER" \
-  -w "$(sed 's/^NOTIF_LIVENESS_TOKEN=//' "$ENVFILE")" -U
+  printf 'NOTIF_LIVENESS_TOKEN=%s\n' "$(openssl rand -base64 39 | tr -d '\n')" > "$ENVFILE"
 
-supabase secrets set --env-file "$ENVFILE" --project-ref ficwbdrzefmblkbkomzw
-supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
-# the trap removes ENVFILE here
+  # Keep a copy in the login Keychain for rotation. `-w` with NO value makes `security` PROMPT and
+  # read the secret from the terminal — passing it as `-w "$token"` would put it straight into argv,
+  # which is the leak this whole block exists to avoid.
+  sed 's/^NOTIF_LIVENESS_TOKEN=//' "$ENVFILE"        # shown once, for you to paste at the prompt
+  security add-generic-password -s padeltrainer-notif-liveness -a "$USER" -U -w
+
+  supabase secrets set --env-file "$ENVFILE" --project-ref ficwbdrzefmblkbkomzw
+  supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
+)   # <- ENVFILE is removed here, whatever happened above
 ```
 
 Point the uptime service at `GET https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness`
@@ -245,13 +253,22 @@ do not put it in a shell command.
 **Verifying the endpoint by hand** — same rule, the token must not reach argv or history:
 
 ```bash
-umask 077
-CURLRC="$(mktemp -t notif-liveness-curlrc)"
-trap 'rm -f "$CURLRC"' EXIT INT TERM HUP
-printf 'header = "Authorization: Bearer %s"\n' \
-  "$(security find-generic-password -s padeltrainer-notif-liveness -a "$USER" -w)" > "$CURLRC"
-chmod 600 "$CURLRC"
-curl -sf --config "$CURLRC" https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness
+# The expected answer is an HTTP ERROR (503 with a body), so `curl -f` is exactly wrong here: it
+# suppresses the body and exits 22, and a `grep` for the state could never match. Capture the body
+# and the status, and assert BOTH.
+(
+  umask 077
+  CURLRC="$(mktemp -t notif-liveness-curlrc)"
+  trap 'rm -f "$CURLRC"' EXIT INT TERM HUP
+  security find-generic-password -s padeltrainer-notif-liveness -a "$USER" -w \
+    | sed 's/^/header = "Authorization: Bearer /; s/$/"/' > "$CURLRC"
+
+  BODY="$(curl -s -w '\n%{http_code}' --config "$CURLRC" \
+           https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness)"
+  CODE="$(printf '%s' "$BODY" | tail -n1)"
+  JSON="$(printf '%s' "$BODY" | sed '$d')"
+  printf 'status=%s body=%s\n' "$CODE" "$JSON"
+)
 ```
 
 **Rotation / revocation.** Generate a new value into a fresh mode-0600 env file, `supabase secrets
