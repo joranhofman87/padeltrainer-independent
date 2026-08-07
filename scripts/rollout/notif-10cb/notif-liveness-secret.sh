@@ -237,10 +237,10 @@ validate_identifier() {   # $1 = value, $2 = what it is
   # LENGTH IS CHECKED LAST so that its meaning is provable rather than incidental: `${#v}` counts
   # CHARACTERS under a UTF-8 locale and BYTES under C, so a bound applied to arbitrary input means
   # two different things. By here every character has been proven single-byte ASCII and the two
-  # agree. Honest note: this ordering is NOT observable — anything the charset check rejects is
-  # rejected under either order, so the two orders accept exactly the same set. A mutant that swaps
-  # them is equivalent and cannot be killed; that is recorded rather than papered over with a test
-  # that would only be exercising the harness.
+  # agree. Precisely: both orders accept exactly the same set and refuse with the same status, so
+  # swapping them is equivalent for safety — but NOT unobservable, because a name that is both
+  # overlong and invalid is then diagnosed by the wrong check. The self-test asserts that message,
+  # which is the only thing that can tell the two orders apart.
   [ "${#v}" -le 128 ] || die "$EXIT_BAD_NAME" "$what is ${#v} characters; must be ${SAFE_NAME_DESC}"
 }
 

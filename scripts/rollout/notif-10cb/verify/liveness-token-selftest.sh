@@ -438,6 +438,12 @@ inj "a leading '-' would read as an option"            '-svc'                   
 inj "an empty --service"                               ''                             acct
 inj "an empty --account"                               svc                            ''
 inj "an over-long --service (129 safe chars)"          "$(printf 'a%.0s' $(seq 1 129))"  acct
+# The ONLY observable consequence of checking the charset before the length: a name that is BOTH
+# overlong and invalid is diagnosed as a safe-set violation rather than a length one. Both orders
+# refuse it with 17, so this message assertion is the only thing that distinguishes them — which is
+# why it exists. Without it the ordering would be an untested preference dressed up as a guarantee.
+SEED_KC=1 SEED_KC_VALUE="$PRIOR_TOKEN" expect_rc "an overlong AND invalid name is diagnosed by CHARSET, not length" 17 -- provision --service "$(printf 'a%.0s' $(seq 1 200)) bad" --account acct
+if grep -q 'outside the safe set' "$LAST_OUT"; then ok "...the charset check ran first"; else bad "...the charset check ran first"; fi
 # THE COLLATION TRAP. `[A-Za-z]` is a locale range, not an ASCII set: under en_US.UTF-8 bash 3.2
 # accepts é, ß and full-width Ｕ as members, so the documented safe set was not the set enforced.
 # This row only means something in a locale that exhibits that, hence the dedicated probe.
