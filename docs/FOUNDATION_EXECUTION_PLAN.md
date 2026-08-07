@@ -77,9 +77,10 @@ academies relate to one Player independently without seeing each other's relatio
 inventory deterministic and mutation-free; migration reset/types drift green. **Rollback:** drop the unused
 additive objects. **Gate:** owner approves the production additive migration separately.
 
-**Status:** authorized 2026-08-07; documentation checkpoint under iterative independent Codex review
-(six rounds by 2026-08-08; open items are the recorded owner decisions OD-09/OD-10 and two deferred
-code-comment chores); implementation not started.
+**Status:** authorized 2026-08-07; documentation checkpoint REVIEW-CLEAR 2026-08-08 (11 independent Codex
+rounds — final verdict "no actionable findings beyond the recorded open owner decisions"; open: OD-09/OD-10
+plus the deferred code-adjacent chores in `DOCUMENTATION_INDEX.md`); implementation not started, awaiting
+the owner's answers to the U1a decision batch (OD-09, table shape, OD-10).
 
 #### U1b — legacy mapping + backfill rehearsal (NOT authorized)
 
