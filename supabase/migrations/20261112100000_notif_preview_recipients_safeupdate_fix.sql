@@ -57,9 +57,28 @@
 --     code depended on the DELETE for that, which is precisely the statement production refused —
 --     so on a hosted database the previous invocation's rows were never cleared at all, they were
 --     simply unreachable behind an error;
---   * a caller-created relation of ANY shape is replaced, not adopted. If it is not a table at all
---     (a temp VIEW of that name), `DROP TABLE` raises "is not a table" — a loud, immediate refusal
---     rather than a preview computed over someone else's definition.
+--   * a caller-created relation is replaced, not adopted. If it is not a table at all (a temp VIEW
+--     of that name), `DROP TABLE` raises "is not a table" — a loud, immediate refusal rather than a
+--     preview computed over someone else's definition.
+--
+-- THE LIMIT OF THAT LAST CLAIM, because an earlier draft of this comment overstated it. DROP is an
+-- OWNERSHIP operation: schema-qualifying the name does not bypass it. Measured with a NON-superuser
+-- definer, which is what Supabase's `postgres` is:
+--   * definer NOT a member of the relation's owning role -> `42501 must be owner of table
+--     _preview_raw`. Loud, no adoption, no data exposure — but the preview stays unavailable for
+--     that session until the relation is dropped.
+--   * definer IS a member -> the DROP succeeds and the relation is replaced.
+-- The second is the deployed configuration: Supabase grants `anon`, `authenticated` and
+-- `service_role` to `postgres`, so any relation created under an API role is droppable here. And
+-- the API path cannot create one at all — PostgREST executes this RPC, it does not run arbitrary
+-- DDL — so reaching this at all takes a direct psql session that created that exact name.
+--
+-- Rather than leave that as a raw 42501, the guard below turns it into a diagnostic that names the
+-- owning role and the one-line fix. The alternative — a per-invocation randomized relation name —
+-- would remove the collision entirely, at the cost of routing all eight references to the staging
+-- table through dynamic SQL on a launch-critical path whose paging semantics must not move. That
+-- trade is not worth making for a state the API cannot reach; it is recorded here so the next
+-- reader can revisit it deliberately rather than discover it.
 --
 -- EVERY REFERENCE IS SCHEMA-QUALIFIED as `pg_temp._preview_raw`. The function pins
 -- `search_path = public`, which does NOT remove pg_temp from table resolution, so an unqualified
@@ -102,6 +121,21 @@ BEGIN
   -- A FRESH staging relation, every invocation. See the header: this replaces both the unqualified
   -- DELETE that production's safeupdate guard refuses AND the `IF NOT EXISTS` that would adopt a
   -- caller-created relation of the same name.
+  --
+  -- DROP is an ownership operation, so a relation this function may not drop becomes a NAMED
+  -- refusal rather than a bare 42501 from three frames down. Unreachable through the API (PostgREST
+  -- runs no DDL) and unreachable on Supabase's role graph (postgres is a member of the API roles);
+  -- it exists so a direct-SQL session gets told what it did and how to undo it.
+  IF to_regclass('pg_temp._preview_raw') IS NOT NULL
+     AND NOT pg_catalog.pg_has_role(
+           current_user,
+           (SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid = to_regclass('pg_temp._preview_raw')),
+           'USAGE') THEN
+    RAISE EXCEPTION
+      'admin_preview_notification_recipients: this session already holds a temp relation named _preview_raw owned by %, and this function may not replace it. Run DROP TABLE pg_temp._preview_raw in this session and retry. The preview stages into a relation of that name and refuses to read one it did not create.',
+      (SELECT pg_get_userbyid(c.relowner) FROM pg_catalog.pg_class c
+        WHERE c.oid = to_regclass('pg_temp._preview_raw'));
+  END IF;
   DROP TABLE IF EXISTS pg_temp._preview_raw;
   CREATE TEMP TABLE _preview_raw (
     uid uuid, cid uuid, consent_status text, consent_scope text,
