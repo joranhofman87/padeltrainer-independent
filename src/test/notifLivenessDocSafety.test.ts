@@ -88,6 +88,19 @@ describe('credential handling leaves nothing behind and nothing in argv', () => 
     }
   });
 
+  it('every block that USES $CURLRC also creates and removes it', () => {
+    // The setup block is a subshell, so its $CURLRC goes out of scope and its file is deleted at
+    // the closing paren. A later block that merely referenced it would be unexecutable — which is
+    // exactly how the 7b proof broke once already.
+    const all: string[] = src().match(/```bash\n([\s\S]*?)```/g) ?? [];
+    const users = all.filter((b) => b.includes('$CURLRC'));
+    expect(users.length).toBeGreaterThan(0);
+    for (const b of users) {
+      expect(b).toMatch(/CURLRC="\$\(mktemp/);          // creates its own
+      expect(b).toMatch(/trap 'rm -f "\$CURLRC"'/);      // and removes it
+    }
+  });
+
   it('never passes the token as a value to security add-generic-password', () => {
     // `-w "$token"` puts the secret in argv, observable via ps. `-w` with no value prompts.
     expect(src()).not.toMatch(/add-generic-password[^\n]*-w\s+["'$]/);

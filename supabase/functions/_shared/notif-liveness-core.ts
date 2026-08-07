@@ -233,11 +233,17 @@ export function parseLivenessRow(payload: unknown): LivenessRow | null {
   const isBool = (v: unknown) => typeof v === "boolean";
   const isNullableString = (v: unknown) => v === null || typeof v === "string";
   const isNullableNumber = (v: unknown) => v === null || typeof v === "number";
+  // A TIMESTAMP FIELD MUST PARSE. Type-checking it as `string` is not enough: the state machine
+  // branches on `last_success_at !== null`, so any non-empty garbage — a truncated value, an error
+  // string, a column that drifted — reads as "it has succeeded" and the endpoint answers 200 live
+  // for a response it did not understand. For a fail-closed monitor, unparseable is unusable.
+  const isNullableTimestamp = (v: unknown) =>
+    v === null || (typeof v === "string" && v !== "" && Number.isFinite(Date.parse(v)));
 
   if (!isBool(r.job_present) || !isBool(r.job_active)) return null;
-  if (!isNullableString(r.last_success_at)) return null;
+  if (!isNullableTimestamp(r.last_success_at)) return null;
   if (!isNullableNumber(r.seconds_since_success)) return null;
-  if (!isNullableString(r.last_finished_at)) return null;
+  if (!isNullableTimestamp(r.last_finished_at)) return null;
   if (!isNullableString(r.last_status)) return null;
 
   return {

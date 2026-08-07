@@ -290,7 +290,7 @@ Deno.test("handler: accepts BOTH the object and the single-element array RPC sha
 });
 
 Deno.test("handler: an unusable stale threshold falls back rather than being trusted", async () => {
-  const armed: LivenessRow = { ...OK_ROW, job_active: true, last_success_at: "x", seconds_since_success: 600 };
+  const armed: LivenessRow = { ...OK_ROW, job_active: true, last_success_at: "2026-08-07T06:00:00Z", seconds_since_success: 600 };
   // 600s is inside the 900s default but outside a bogus tiny one; a bogus value must not shrink it
   for (const bad of ["0", "-5", "abc", "", "NaN", "Infinity"]) {
     const { handler } = handlerWith({ readLiveness: async () => armed },
@@ -304,7 +304,7 @@ Deno.test("handler: an unusable stale threshold falls back rather than being tru
 });
 
 Deno.test("handler: NOTIF_LIVENESS_EXPECT_ARMED is honoured, case-insensitively, and defaults off", async () => {
-  const canaryDone: LivenessRow = { ...OK_ROW, job_active: false, last_success_at: "x", seconds_since_success: 30 };
+  const canaryDone: LivenessRow = { ...OK_ROW, job_active: false, last_success_at: "2026-08-07T06:00:00Z", seconds_since_success: 30 };
   for (const [val, status] of [[undefined, 200], ["", 200], ["false", 200], ["true", 503], ["TRUE", 503]] as const) {
     const { handler } = handlerWith({ readLiveness: async () => canaryDone },
       { NOTIF_LIVENESS_EXPECT_ARMED: val as string | undefined });
@@ -343,17 +343,26 @@ Deno.test("parseLivenessRow REJECTS anything it does not fully understand", () =
     { ...OK_ROW, last_status: {} },                                         // wrong type
     [OK_ROW, OK_ROW],                                                       // more than one row
     [[OK_ROW]],                                                             // nested
+    // COMPLETE rows whose only fault is an unparseable timestamp. The earlier fixture was rejected
+    // for MISSING fields, so it proved less than it appeared to — this is the real case.
+    { job_present: true, job_active: true, last_success_at: "garbage", seconds_since_success: 0, last_finished_at: null, last_status: null },
+    { job_present: true, job_active: true, last_success_at: "", seconds_since_success: 0, last_finished_at: null, last_status: null },
+    { ...OK_ROW, last_finished_at: "not-a-date" },
   ];
   for (const bad of malformed) {
     assertEquals(parseLivenessRow(bad), null, `must reject ${JSON.stringify(bad)}`);
   }
-  // ...and accepts exactly the two legitimate shapes
+  // ...and accepts exactly the two legitimate shapes, with real postgres timestamptz text
   assertEquals(parseLivenessRow(OK_ROW), OK_ROW);
   assertEquals(parseLivenessRow([OK_ROW]), OK_ROW);
+  const real = { ...OK_ROW, job_active: true, last_success_at: "2026-08-07T06:09:20.632+00:00", seconds_since_success: 30.5, last_finished_at: "2026-08-07 06:09:20.632+00", last_status: "succeeded" };
+  assertEquals(parseLivenessRow(real)?.last_success_at, real.last_success_at, "a real timestamptz must be accepted");
+  assertEquals(parseLivenessRow([real])?.seconds_since_success, 30.5, "numeric arrives as a JSON number");
 });
 
 Deno.test("a malformed RPC payload is 503 query_failed, never 200 live", async () => {
-  const malformed = { job_present: true, job_active: true, last_success_at: "garbage", seconds_since_success: 0 };
+  // a COMPLETE row — every field present and correctly typed — whose timestamp is unparseable
+  const malformed = { job_present: true, job_active: true, last_success_at: "garbage", seconds_since_success: 0, last_finished_at: null, last_status: null };
   const { handler } = handlerWith({ readLiveness: async () => malformed }, { NOTIF_LIVENESS_EXPECT_ARMED: "true" });
   const res = await handler(authed());
   assertEquals(res.status, 503);

@@ -134,26 +134,37 @@ Function secret and a database cron row are changed by different systems; one of
 states is unavoidable for a few seconds. Take the one that fails safe:
 
 ```bash
-# STEP 7a — declare the expectation FIRST. The endpoint briefly reports cron_disarmed (503),
-# which is true: activation is expected and the cron is not yet armed.
-# (The VALUE here is literally "true" and is not a secret, so it may be set inline — unlike
-# NOTIF_LIVENESS_TOKEN, which must never appear in argv or history.)
-supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
+# ONE SUBSHELL for 7a and 7b. The curl config from the setup section is gone — that block is
+# itself a subshell, so its $CURLRC went out of scope and its file was deleted at the closing
+# paren. Anything that needs the token has to create, use and remove its own.
+(
+  umask 077
+  CURLRC="$(mktemp -t notif-liveness-curlrc)"
+  trap 'rm -f "$CURLRC"' EXIT INT TERM HUP
+  security find-generic-password -s padeltrainer-notif-liveness -a "$USER" -w \
+    | sed 's/^/header = "Authorization: Bearer /; s/$/"/' > "$CURLRC"
 
-# STEP 7b — PROVE the endpoint picked it up. Assert the STATUS and the STATE together:
-#   * `curl -f` would suppress the 503 body and exit 22 — the expected answer here IS an error;
-#   * 503 alone is ambiguous (query_failed, misconfigured and stale share it);
-#   * the state alone is not enough either, so require exactly 503 AND exactly cron_disarmed.
-OUT="$(curl -s -w '\n%{http_code}' --config "$CURLRC" \
-        https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness)"
-CODE="$(printf '%s' "$OUT" | tail -n1)"
-JSON="$(printf '%s' "$OUT" | sed '$d')"
-if [ "$CODE" = "503" ] && printf '%s' "$JSON" | grep -q '"state":"cron_disarmed"'; then
-  echo "expectation propagated (503 cron_disarmed) — safe to arm"
-else
-  printf 'NOT propagated / unreachable / unhealthy — do NOT arm (status=%s body=%s)\n' "$CODE" "$JSON" >&2
-  exit 1
-fi
+  # STEP 7a — declare the expectation FIRST. The endpoint then reports cron_disarmed (503),
+  # which is TRUE: activation is expected and the cron is not yet armed.
+  # (The VALUE here is literally "true" and is not a secret, so it may be set inline — unlike
+  # NOTIF_LIVENESS_TOKEN, which must never appear in argv or history.)
+  supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
+
+  # STEP 7b — PROVE the endpoint picked it up. Assert the STATUS and the STATE together:
+  #   * `curl -f` would suppress the 503 body and exit 22 — the expected answer here IS an error;
+  #   * 503 alone is ambiguous (query_failed, misconfigured and stale share it);
+  #   * the state alone does not prove the transport worked.
+  OUT="$(curl -s -w '\n%{http_code}' --config "$CURLRC" \
+          https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness)"
+  CODE="$(printf '%s' "$OUT" | tail -n1)"
+  JSON="$(printf '%s' "$OUT" | sed '$d')"
+  if [ "$CODE" = "503" ] && printf '%s' "$JSON" | grep -q '"state":"cron_disarmed"'; then
+    echo "expectation propagated (503 cron_disarmed) — safe to arm"
+  else
+    printf 'NOT propagated / unreachable / unhealthy — do NOT arm (status=%s body=%s)\n' "$CODE" "$JSON" >&2
+    exit 1
+  fi
+)   # <- CURLRC removed here, on success, failure or Ctrl-C
 
 # STEP 7c — arm, via the reviewed tooling only. `activate` REFUSES without
 # --liveness-expectation-confirmed, so 7a and 7b cannot be skipped by accident.
