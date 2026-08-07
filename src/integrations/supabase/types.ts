@@ -11901,6 +11901,17 @@ export type Database = {
         Args: { p_item: Json }
         Returns: Json
       }
+      notif_open_slots_validate_batch: {
+        Args: { p_slot_ids: string[]; p_timezone: string; p_trainer_id: string }
+        Returns: {
+          matched_count: number
+          max_created_at: string
+          max_start_date: string
+          min_start_date: string
+          public_owned_count: number
+          supplied_distinct_count: number
+        }[]
+      }
       notif_pref_bridge_hop_active: { Args: never; Returns: boolean }
       notification_html_escape: { Args: { p_text: string }; Returns: string }
       notification_orphan_reconcile_permanent_reason: {

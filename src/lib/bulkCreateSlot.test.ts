@@ -64,16 +64,20 @@ describe("bulk generate booking toasts", () => {
 });
 
 describe("shouldInvokeNotifyFollowersOnBulkGenerate", () => {
+  // `hasPublicSlots` is REQUIRED and every call now states it. It used to default to `true`, and
+  // the caller passed a hardcoded `true` besides — so an all-private batch still notified
+  // followers. These three calls previously omitted it and passed, which is precisely how the
+  // defect survived review. Omitting it is now a compile error, and that is the point.
   it("does not invoke notify-followers in academy mode", () => {
     expect(
-      shouldInvokeNotifyFollowersOnBulkGenerate({ academyId: "academy-1" }),
+      shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots: true, academyId: "academy-1" }),
     ).toBe(false);
   });
 
   it("invokes notify-followers for trainer self-service", () => {
-    expect(shouldInvokeNotifyFollowersOnBulkGenerate({})).toBe(true);
+    expect(shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots: true })).toBe(true);
     expect(
-      shouldInvokeNotifyFollowersOnBulkGenerate({ academyId: null }),
+      shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots: true, academyId: null }),
     ).toBe(true);
   });
 

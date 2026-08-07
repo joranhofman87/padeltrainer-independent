@@ -20,7 +20,11 @@ import {
   parseLegacyDateRange,
 } from '../../supabase/functions/_shared/open-slots-notify';
 
-const BODY: NotifyFollowersBody = { slot_count: 3, date_from: '2026-08-10', date_to: '2026-08-16' };
+// slot_ids are REQUIRED by the new contract: the occurrence comes from these exact rows, not
+// from a date-range rediscovery. The dates stay because the client keeps sending them for the
+// old edge during the deploy overlap.
+const SLOT_IDS = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
+const BODY: NotifyFollowersBody = { slot_count: 3, date_from: '2026-08-10', date_to: '2026-08-16', slot_ids: SLOT_IDS };
 
 type InvokeResult = { error: { message: string } | null; data?: unknown; errorBody?: unknown };
 
@@ -163,7 +167,7 @@ describe('deploy-overlap compatibility', () => {
     // on the same `na:undefined` so they collapse together. Emitting both shapes makes either
     // handler version understand the identical request.
     const inv = invoker([{ error: null }]);
-    await notifyFollowers({ slot_count: 3, date_from: '2026-08-10', date_to: '2026-08-16' },
+    await notifyFollowers({ slot_count: 3, date_from: '2026-08-10', date_to: '2026-08-16', slot_ids: SLOT_IDS },
       { client: inv.client });
     const sent = inv.bodies[0] as unknown as Record<string, unknown>;
     expect(sent.date_from).toBe('2026-08-10');
@@ -187,7 +191,7 @@ describe('deploy-overlap compatibility', () => {
     ];
     for (const [date_from, date_to] of cases) {
       const inv = invoker([{ error: null }]);
-      await notifyFollowers({ slot_count: 1, date_from, date_to }, { client: inv.client });
+      await notifyFollowers({ slot_count: 1, date_from, date_to, slot_ids: SLOT_IDS }, { client: inv.client });
       const sent = inv.bodies[0] as unknown as Record<string, unknown>;
       expect(typeof sent.date_range).toBe('string');
       expect(parseLegacyDateRange(sent.date_range as string), `${date_from}..${date_to}`)

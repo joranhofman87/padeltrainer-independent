@@ -42,6 +42,28 @@ const SMOKE = read('scripts', 'rollout', 'notif-10cb', 'sql', 'smoke_invoke.sql'
 /** The same normalisation the preflight applies in SQL: btrim + collapse whitespace runs. */
 const normalize = (s: string) => s.replace(/\s+/g, ' ').trim();
 
+/**
+ * The file with every `--` comment BLANKED OUT — same length, so byte offsets stay comparable.
+ *
+ * Every ordering assertion below works by comparing `indexOf` positions, and these files are
+ * heavily commented with prose that legitimately names the very statements being ordered. That
+ * bit for real: a comment explaining that the scope gates now run "before
+ * open_notification_worker_invocation()" put a matching substring 190 lines ABOVE the actual call,
+ * and the pre-existing gate→open→record test started failing on a file whose ordering was correct.
+ * Rewording the prose fixes one instance; masking the comments fixes the class, and keeps the
+ * assertions about what the file DOES rather than about what it says.
+ *
+ * Only `--` line comments exist in these artifacts (no C-style blocks), and a `--` inside a string
+ * literal would over-mask — harmless here, because nothing these tests anchor on lives in one.
+ */
+const codeOnly = (s: string) =>
+  s.split('\n')
+    .map((line) => {
+      const at = line.indexOf('--');
+      return at === -1 ? line : line.slice(0, at) + ' '.repeat(line.length - at);
+    })
+    .join('\n');
+
 /** What the F migration ACTUALLY schedules. */
 const reviewed = (() => {
   const m = MIGRATION.match(
@@ -886,7 +908,9 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
   });
 
   it.each(['smoke_invoke.sql', 'canary_invoke.sql'])('%s replay-gates, OPENS, and RECORDS its pg_net request — all inside its transaction', (f) => {
-    const src = SQL(f);
+    // codeOnly: the prose in these files names these very statements, and an ordering test that
+    // matched a comment would report a file as mis-ordered for saying the right thing.
+    const src = codeOnly(SQL(f));
     const gateIdx = src.indexOf('\\i _invocation_gate_replay.sql');
     const openIdx = src.indexOf('open_notification_worker_invocation(');
     const recordIdx = src.indexOf('record_invocation_net_request(');
@@ -901,6 +925,215 @@ describe('N4 M1 part 3 — the invocation gate reaches every deliberate artifact
     expect(src).toContain(":'invocation_request_id'");
     // and never the strict gate, which would make the advertised replay impossible
     expect(src).not.toContain('\\i _invocation_gate.sql');
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+  // C-3 — THE DUE-WORK FLOOR, AND WHERE IT SITS.
+  //
+  // These are STRUCTURAL assertions on purpose. The ordering inside canary_invoke.sql cannot be
+  // observed behaviourally by the pg harness: the transaction rolls back either way, so a floor
+  // placed after the replay gate produces exactly the same end state as one placed before it. The
+  // difference is what has already happened when a refusal fires — two advisory locks, a
+  // set_config, and a durable invocation row — and the only place that is visible is the file.
+  // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+  it('canary_invoke gates SCOPE before it commits to the invocation: clock -> ceiling -> floor -> replay gate -> open -> record', () => {
+    const src = codeOnly(INVOKE);
+    const clock = src.indexOf('CREATE TEMP TABLE _canary_clock');
+    const radius = src.indexOf('CREATE TEMP TABLE _canary_radius');
+    const ceiling = src.indexOf("FROM pg_temp._canary_radius));");
+    const floor = src.indexOf('CREATE TEMP TABLE _canary_floor');
+    const floorAssert = src.indexOf('FROM pg_temp._canary_floor));');
+    const gate = src.indexOf('\\i _invocation_gate_replay.sql');
+    const open = src.indexOf('open_notification_worker_invocation(');
+    const record = src.indexOf('record_invocation_net_request(');
+    const commit = src.lastIndexOf('COMMIT');
+
+    for (const [name, idx] of Object.entries({ clock, radius, ceiling, floor, floorAssert, gate, open, record })) {
+      expect(idx, `canary_invoke.sql is missing ${name}`).toBeGreaterThan(0);
+    }
+    // ONE clock, captured before anything reads it.
+    expect(clock, 'the clock must be captured before the ceiling is built').toBeLessThan(radius);
+    expect(clock, 'the clock must be captured before the floor is built').toBeLessThan(floor);
+    // Ceiling first (cheapest, and it bounds the damage), then floor.
+    expect(radius).toBeLessThan(ceiling);
+    expect(ceiling, 'the ceiling must be asserted before the floor is built').toBeLessThan(floor);
+    expect(floor).toBeLessThan(floorAssert);
+    // THE ONE THAT MATTERS: both scope gates precede the replay gate. The replay gate takes
+    // advisory locks and a set_config, and open() writes a durable row — neither should happen
+    // for a request the world has already disqualified.
+    expect(floorAssert, 'the due-work floor must precede the replay gate').toBeLessThan(gate);
+    expect(gate, 'the replay gate must precede open()').toBeLessThan(open);
+    expect(open).toBeLessThan(record);
+    expect(record).toBeLessThan(commit);
+  });
+
+  it('the FLOOR is event-specific and the CEILING is event-agnostic — they are not the same question', () => {
+    // Comment-masked, and the window stops at the END of the ceiling assertion: the prose that
+    // introduces the floor legitimately names open_slots_player while explaining why the CEILING
+    // must not be narrowed to it, and an assertion that matched that would fail on the file
+    // saying the right thing.
+    const code = codeOnly(INVOKE);
+    const radiusBlock = code.slice(
+      code.indexOf('CREATE TEMP TABLE _canary_radius'),
+      code.indexOf('FROM pg_temp._canary_radius));') + 'FROM pg_temp._canary_radius));'.length,
+    );
+    const floorBlock = code.slice(
+      code.indexOf('CREATE TEMP TABLE _canary_floor'),
+      code.indexOf('FROM pg_temp._canary_floor));'),
+    );
+
+    // The worker sends whatever it can claim, under ANY event key, so the blast radius must count
+    // all of it. Narrowing the ceiling to open_slots_player would let a backlog under another key
+    // ride out on the canary, uncounted.
+    expect(radiusBlock, 'the ceiling must not be narrowed to one event').not.toContain('open_slots_player');
+    expect(radiusBlock).toContain("channel = 'email'");
+
+    // The floor is the opposite: due work under another event proves nothing about the cutover
+    // path and would still be SENT — a real email to a real person that demonstrates nothing.
+    // Both halves of the floor (grouped and ungrouped) must be scoped.
+    expect(floorBlock.match(/event_type = 'open_slots_player'/g) ?? [],
+      'BOTH the group half and the member half of the floor must be event-scoped')
+      .toHaveLength(2);
+  });
+
+  it('the floor reads ONE captured clock — never now(), never clock_timestamp()', () => {
+    expect(INVOKE).toContain('CREATE TEMP TABLE _canary_clock AS SELECT pg_catalog.statement_timestamp()');
+    const code = codeOnly(INVOKE);
+    const floorBlock = code.slice(
+      code.indexOf('CREATE TEMP TABLE _canary_floor'),
+      code.indexOf('FROM pg_temp._canary_floor));'),
+    );
+    // now() is transaction-start and by this point the transaction has taken a table lock, a cron
+    // row lock and run five assertions — it can be many seconds stale. clock_timestamp() is the
+    // opposite failure: it advances DURING evaluation, so the group scan, the member scan and the
+    // quiet-hours margin would each be asked about a different instant.
+    expect(floorBlock, 'the floor must not read now()').not.toMatch(/\bnow\(\)/);
+    expect(floorBlock, 'the floor must not read clock_timestamp()').not.toContain('clock_timestamp()');
+    expect(floorBlock, 'the floor must read the captured clock').toContain('ck.t');
+    expect(INVOKE).toContain('FROM pg_temp._canary_clock ck;');
+  });
+
+  it('the floor requires quiet hours open at T AND at T+5 minutes, on both halves', () => {
+    // pg_net dispatches only after this transaction COMMITS; the worker then boots, materializes,
+    // and only then claims. A canary asserted valid at 19:59:30 local would reach the claim with
+    // the window already shut, be deferred, and produce the empty run this guard exists to refuse.
+    const code = codeOnly(INVOKE);
+    const floorBlock = code.slice(
+      code.indexOf('CREATE TEMP TABLE _canary_floor'),
+      code.indexOf('FROM pg_temp._canary_floor));'),
+    );
+    expect(floorBlock.match(/notif_digest_quiet_hours_bump/g) ?? [],
+      'two calls per half: at T and at T + 5 minutes').toHaveLength(4);
+    // Six occurrences of the margin, not four: the two quiet-hours pairs plus the two UNCERTAINTY
+    // terms, which carry it for the same reason — the worker's first pipeline step is the stale
+    // sweep, which ages a group out at the WORKER's clock, in exactly that commit-to-claim gap.
+    expect(floorBlock.match(/interval '5 minutes'/g) ?? []).toHaveLength(6);
+    expect(floorBlock, 'the uncertainty age-out must carry the margin')
+      .toContain("ck.t + interval '5 minutes' >= dg.uncertain_deadline_at");
+  });
+
+  it('the floor models BOTH doors the claim goes through — the kill switch included', () => {
+    // claim_notification_digest_group's FIRST act is the channel kill gate, and materialize's is
+    // the same. With email killed every other predicate can hold and the worker still claims
+    // nothing — the empty run this guard exists to refuse, through the one door it did not model.
+    const code = codeOnly(INVOKE);
+    expect(code, 'the floor must consult the channel kill gate')
+      .toContain("NOT public.notif_channel_kill_gate('email') AS channel_live");
+    // Through the FUNCTION, not the table: the function takes the per-channel advisory lock that
+    // the kill-set and every claim path take, which is what keeps the answer true until the claim.
+    expect(code, 'reading the table directly would race a concurrent kill')
+      .not.toContain('FROM public.notification_channel_kill_switches');
+    expect(code).toContain('channel_live AND boundary_open');
+  });
+
+  it('the floor requires the activation boundary to EXIST, not merely to compare', () => {
+    // The claim RETURNs NULL outright on a NULL boundary. The group half only used the boundary
+    // inside a NOT EXISTS, where `created_at < NULL` is NULL, the subquery is empty and NOT EXISTS
+    // is TRUE — so a due group with no members counted on an inert path, while the member half
+    // failed closed on the same NULL. The two halves disagreed about one missing boundary.
+    const code = codeOnly(INVOKE);
+    expect(code).toContain("(public.notif_activation_boundary('email:digest') IS NOT NULL) AS boundary_open");
+    expect(code).toContain('boundary_open AND reads_unfiltered');
+  });
+
+  it('the floor refuses to answer through RLS-filtered reads — the fail-OPEN shape', () => {
+    // Both halves read notification_outbox (RLS enabled), and the group half reads it through a
+    // NOT EXISTS, where "filtered to zero rows" and "no disqualifying member" are the same answer.
+    // A restricted role would make every group look eligible. Silent, and open.
+    const code = codeOnly(INVOKE);
+    expect(code).toContain("row_security_active('public.notification_outbox'");
+    expect(code).toContain('reads_unfiltered');
+  });
+
+  it('a genuine REPLAY switches the floor off so the replay gate can state the real diagnosis', () => {
+    // The scope gates run before the replay-aware gate by design. For a replay of an invocation
+    // that already committed, the work is GONE — so the floor would fire first and say "no due
+    // work, wait and re-run" when the truth is "your original invocation committed and the mail
+    // has already gone out". _invocation_gate_replay.sql and record_invocation_net_request are
+    // where that truth lives, and the floor must not stand in front of them.
+    const code = codeOnly(INVOKE);
+    expect(code).toContain('AS is_replay');
+    expect(code).toContain("wi.status IN ('pending', 'started')");
+    expect(code).toContain("wi.request_id = :'invocation_request_id'");
+    // is_replay must SHORT-CIRCUIT the whole conjunction, not be one term among many.
+    expect(code).toMatch(/\(SELECT is_replay\s*\n\s*OR \(channel_live/);
+  });
+
+  it('the floor has NO awaiting_evidence arm, though the claim does — it could only ever false-positive', () => {
+    // Every write of that state sets available_at = uncertain_deadline_at, so `available_at <=
+    // ck.t` implies the deadline has passed, which the floor's own uncertainty exclusion already
+    // removes. The arm is dead except when uncertain_deadline_at is NULL — and there the worker's
+    // dispatch throws on the unexpected claimed state and sends nothing. This floor may be
+    // stricter than the claim (it costs a wait), never looser (it costs the canary).
+    const code = codeOnly(INVOKE);
+    expect(code, 'the dead arm must not come back').not.toContain("dg.state = 'awaiting_evidence'");
+  });
+
+  it('the refusal message says CLAIMABLE and names every gate it actually checked', () => {
+    // The floor proves due-and-claimable, never delivered: prepare can still return no_work,
+    // begin can defer, and a rendered request can still exceed the byte budget. An assertion that
+    // promised a send would be making a claim the predicate does not support.
+    expect(INVOKE).toContain('there is NO due, CLAIMABLE open_slots_player email digest work');
+    for (const cause of ['the email channel is KILLED', 'activation boundary is not set', 'RLS-FILTERED']) {
+      expect(INVOKE, `the operator needs ${cause} in the diagnosis`).toContain(cause);
+    }
+  });
+
+  it("the floor treats the email circuit as closed OR ABSENT — a system that never tripped is healthy", () => {
+    // There is no notification_provider_circuit row until the breaker first trips, so requiring
+    // state = 'closed' would refuse every canary on a system that has never had a provider
+    // failure. Inverted through NOT EXISTS, absent and closed are both healthy and anything else
+    // (open, half_open, a state added later) refuses.
+    expect(INVOKE).toContain("c.channel = 'email' AND c.state IS DISTINCT FROM 'closed'");
+    expect(INVOKE).toMatch(/NOT EXISTS \(SELECT 1 FROM public\.notification_provider_circuit c/);
+    expect(codeOnly(INVOKE), 'the floor must require the circuit, not merely compute it')
+      .toMatch(/circuit_ok\s*\n?\s*AND \(due_groups \+ due_members\) >= 1/);
+  });
+
+  it('the floor is >= 1, not = 1 — several forming members collapse into one group', () => {
+    // An exact-one floor would refuse worlds the ceiling has already declared safe. "At least one
+    // item will actually be sent" is what a canary needs; bounding how much is the ceiling's job.
+    expect(INVOKE).toContain('(due_groups + due_members) >= 1');
+    expect(INVOKE).not.toContain('(due_groups + due_members) = 1');
+  });
+
+  it('every canary temp table is dropped before AND after the transaction', () => {
+    // A failed run leaves its temp tables behind, and the next invocation would then fail on
+    // "relation already exists" — a confusing refusal that says nothing about the world.
+    for (const t of ['_canary_clock', '_canary_radius', '_canary_floor']) {
+      expect(INVOKE, `${t} needs a pre-transaction DROP ... IF EXISTS`)
+        .toContain(`DROP TABLE IF EXISTS pg_temp.${t};`);
+      expect(INVOKE, `${t} needs an in-transaction DROP`).toContain(`DROP TABLE pg_temp.${t};`);
+    }
+  });
+
+  it('smoke_invoke deliberately carries NO scope gates — it is a different artifact', () => {
+    // The floor asks "is there due open_slots_player work". The production smoke invocation is not
+    // trying to prove the cutover path and has no ceiling either; adding the floor there would
+    // block it on a question it is not asking.
+    expect(SMOKE).not.toContain('_canary_floor');
+    expect(SMOKE).not.toContain('_canary_radius');
   });
 
   it('activate keeps the STRICT gate and opens nothing — arming never rides over ANY unresolved invocation, its own included', () => {

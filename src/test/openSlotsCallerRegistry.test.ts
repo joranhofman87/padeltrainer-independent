@@ -103,16 +103,47 @@ describe('the notify-followers caller registry', () => {
   });
 
   it('the body builder sends STRUCTURED ISO dates, never display text', () => {
-    // The component builds the request body and hands it to the central caller.
+    // The component builds the request body and hands it to the central caller. The window starts
+    // at the DERIVATION rather than at the call, because the range is now computed a few lines
+    // earlier — min/max over the formatted calendar DATES, so that it matches the edge's
+    // `min((start_time AT TIME ZONE tz)::date)` across a DST fall-back.
     const src = read('src/components/slots/BulkCreateContent.tsx');
-    const at = src.indexOf('notifyFollowers(');
+    const from = src.indexOf('const slotDates');
+    expect(from, 'BulkCreateContent must derive the range from the returned rows').toBeGreaterThan(-1);
+    const at = src.indexOf('notifyFollowers(', from);
     expect(at, 'BulkCreateContent must build its body through the central caller').toBeGreaterThan(-1);
-    const body = src.slice(at, at + 900);
+    const body = src.slice(from, at + 900);
     expect(body).toContain('date_from');
     expect(body).toContain('date_to');
     expect(body).toContain('yyyy-MM-dd');
     expect(body, 'the pre-cutover display range must not come back').not.toContain('date_range');
     expect(body).not.toContain('MMM d');
+  });
+
+  it('the body builder sends the EXACT PUBLIC slot ids, taken from the INSERT result', () => {
+    // C-1 + C-2 in one assertion, because the two failures were the same failure: the client used
+    // to hardcode `hasPublicSlots = true` and pass its own pre-insert array, so a wholly-private
+    // batch notified followers and `slot_count` counted private slots. Visibility and identity
+    // must both come from the rows the DATABASE returned.
+    const src = read('src/components/slots/BulkCreateContent.tsx');
+    const at = src.indexOf('notifyFollowers(');
+    const body = src.slice(at, at + 1400);
+    expect(body, 'the exact inserted public ids must be sent').toContain('slot_ids');
+    expect(body).toContain('publicSlots.map((s) => s.id)');
+    expect(body, 'slot_count must count the PUBLIC rows').toContain('slot_count: publicSlots.length');
+
+    // and `publicSlots` is derived by filtering the RETURNED rows, not the client's input array
+    const derivation = src.slice(src.indexOf('const publicSlots'), src.indexOf('const publicSlots') + 200);
+    expect(derivation).toContain('insertedSlots.filter');
+    expect(derivation).toContain('is_public === true');
+    // Line-based, not a substring of the whole file: the comment above the fix QUOTES the old
+    // line to explain what went wrong, and a naive `.not.toContain` would match that prose and
+    // fail for the wrong reason. Only a real statement counts.
+    const hardcoded = src.split('\n')
+      .map((l) => l.trim())
+      .filter((l) => !l.startsWith('//') && !l.startsWith('*'))
+      .filter((l) => /^const hasPublicSlots\s*=\s*true/.test(l));
+    expect(hardcoded, 'the hardcoded visibility must not come back').toEqual([]);
   });
 
   it('every registered caller carries a real reason', () => {

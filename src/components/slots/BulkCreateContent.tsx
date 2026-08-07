@@ -747,13 +747,24 @@ export function BulkCreateContent({
         return;
       }
 
+      // `is_public` and `start_time` come back from the INSERT itself so visibility is SERVER
+      // truth, not what the client believed it was sending. This is an INSERT … RETURNING via
+      // .select(), so widening the projection costs a few scalars per row and no extra round trip —
+      // and it is the only shape that reflects BEFORE-trigger rewrites and excludes rows that were
+      // not actually inserted.
       const { data, error } = await insertAvailabilitySlots(
         slotsToInsert,
         supabase,
-        "id, cyclus_id",
+        "id, cyclus_id, is_public, start_time",
       );
       if (error) throw error;
-      const insertedSlots = (data as { id: string; cyclus_id: string | null }[]) ?? [];
+      const insertedSlots =
+        (data as {
+          id: string;
+          cyclus_id: string | null;
+          is_public: boolean | null;
+          start_time: string;
+        }[]) ?? [];
       slotsInserted = true;
 
       // Create bookings for selected players using the config-to-cyclus mapping
@@ -878,17 +889,35 @@ export function BulkCreateContent({
         });
       }
 
-      // notify-followers requires caller's trainer_profiles; academy managers lack one (see shouldInvokeNotifyFollowersOnBulkGenerate).
-      const hasPublicSlots = true; // New slots are public by default
+      // notify-followers requires caller's trainer_profiles; academy managers lack one (see
+      // shouldInvokeNotifyFollowersOnBulkGenerate).
+      //
+      // VISIBILITY IS SERVER TRUTH. This used to be a hardcoded `const hasPublicSlots = true` with
+      // `publicSlots = slotsToInsert` — the ENTIRE insert list — so a batch where every entry was
+      // "Mark cyclus as private" still notified followers, and slot_count counted private slots.
+      // `is_public` is written per row as `!config.isMarkedFull`, and the edge function never reads
+      // it, so the client was the only place this could be enforced and it wasn't enforcing it.
+      // Now the filter runs over the rows the DATABASE returned.
+      const publicSlots = insertedSlots.filter((s) => s.is_public === true);
+      const hasPublicSlots = publicSlots.length > 0;
       if (shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots, academyId })) {
         try {
-          const publicSlots = slotsToInsert;
-          const earliestStart = new Date(
-            Math.min(...publicSlots.map((s) => new Date(s.start_time).getTime()))
-          );
-          const latestEnd = new Date(
-            Math.max(...publicSlots.map((s) => new Date(s.start_time).getTime()))
-          );
+          // MIN/MAX OVER THE CALENDAR DATES, NOT OVER THE INSTANTS — mirroring the edge exactly.
+          // The authoritative range is derived server-side as
+          // `min((start_time AT TIME ZONE <trainer tz>)::date)`: convert first, then take the
+          // extreme of the DATES. Computing it the same way here means the two are the same
+          // function by CONSTRUCTION whenever this browser and `trainer_profiles.timezone` agree,
+          // rather than agreeing for a reason someone has to re-derive. The edge refuses a range it
+          // did not derive itself, so "the same function" is the whole requirement.
+          //
+          // (No DATE-level divergence between the two forms has been found — see the migration
+          // header for the survey and its limits. This deliberately does not rely on that.)
+          //
+          // These are the LATEST/EARLIEST START. There is no end_time involved; the historical
+          // name `latestEnd` said otherwise and is gone.
+          const slotDates = publicSlots.map((s) => format(new Date(s.start_time), "yyyy-MM-dd")).sort();
+          const earliestStartDate = slotDates[0];
+          const latestStartDate = slotDates[slotDates.length - 1];
 
           const { data: { session } } = await supabase.auth.getSession();
           // STRUCTURED ISO dates, not display text (10c-b D): the copy is rendered server-side
@@ -902,8 +931,20 @@ export function BulkCreateContent({
           const notifyOutcome = await notifyFollowers(
             {
               slot_count: publicSlots.length,
-              date_from: format(earliestStart, "yyyy-MM-dd"),
-              date_to: format(latestEnd, "yyyy-MM-dd"),
+              // Dates are sent for BACKWARD COMPATIBILITY ONLY. The frontend deploys before the
+              // edge function (ADR 0008: migrations -> frontend -> bundle-cache wait -> edge fn),
+              // so during that window a new client still talks to the OLD edge, which needs them.
+              // The NEW edge does not take them as authority: it derives its own range from the
+              // verified rows and REFUSES if these disagree, which is why they are computed the
+              // same way the database computes them (see the note above).
+              date_from: earliestStartDate,
+              date_to: latestStartDate,
+              // EXACT PROVENANCE. The occurrence used to come from a date-RANGE lookup built with
+              // offsetless literals against a timestamptz column, which was both an off-by-one at
+              // day boundaries (occurrence null -> 503, nothing enqueued) and a query that could
+              // match slots this caller never created. These are the ids the database just
+              // returned as public and owned.
+              slot_ids: publicSlots.map((s) => s.id),
             },
             { client: supabase, accessToken: session?.access_token },
           );

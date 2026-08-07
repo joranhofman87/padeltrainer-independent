@@ -154,6 +154,10 @@ beforeAll(async () => {
     '20261101100000_notif_audit_marketing_unsubscribe_seam.sql',
     '20261102100000_notif_audit_unsubscribe_at_send_time.sql',
     '20261104100000_notif_audit_event_occurrence_boundary.sql',
+    // the Recipient Preview launch blocker: the deployed function cleared its pg_temp
+    // staging table with an unqualified DELETE, which Supabase's safeupdate guard refuses
+    // with 21000 — the surface was dead in production while every harness passed.
+    '20261112100000_notif_preview_recipients_safeupdate_fix.sql',
   ]) {
     await c.query(MIG(f));
   }
@@ -2012,5 +2016,327 @@ describe('FINAL AUDIT round 2 — the resolver stamps WHEN THE EVENT HAPPENED', 
       expect(after.value).toBeGreaterThan(0);
       expect(after.detail).toContain('admin_dispose_stale_outbox');    // names the exit that works
     } finally { await asUser(null); }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// RECIPIENT PREVIEW — the launch blocker, and the guard that would have caught it.
+//
+// Production returned `21000 delete requires a where clause` and no recipients, for every use of
+// the admin Recipient Preview surface. The cause was one statement in the deployed function
+// (20261022100000:416): `DELETE FROM _preview_raw;`. Supabase's hosted Postgres loads the
+// `safeupdate` guard, which refuses an UPDATE or DELETE carrying no WHERE clause — inside SECURITY
+// DEFINER plpgsql exactly as at top level.
+//
+// WHY NO TEST CAUGHT IT, AND WHAT THAT MEANS FOR THIS ONE. `safeupdate` is a Supabase extension.
+// It does not exist in embedded-postgres, and there is no way to emulate its contract behaviourally
+// in stock PostgreSQL: a statement-level trigger cannot see whether a DELETE carried a WHERE, and a
+// row-level one cannot distinguish "deleted everything" from "the qualification matched
+// everything". So the discriminating guard here is STRUCTURAL — it reads the definition Postgres
+// actually compiled and requires every DELETE/UPDATE against the staging relation to carry a WHERE.
+// That is the same property `safeupdate` enforces, checked where we can check it, and it is
+// mutation-verified below against a deliberately restored bare DELETE.
+//
+// Everything else in this block is ordinary behaviour, run against the real function.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+describe('Recipient Preview — the unqualified DELETE that killed it in production', () => {
+  const ADMIN_UID = '99999999-9999-4999-8999-999999999999';
+
+  /** The compiled body of a plpgsql function, comments stripped, whitespace collapsed. */
+  const bodyOf = async (name: string): Promise<string> => {
+    const src = (await c.query(
+      `SELECT pg_get_functiondef(p.oid) AS src
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = $1
+        ORDER BY p.oid DESC LIMIT 1`, [name])).rows[0].src as string;
+    return src.split('\n')
+      .map((l) => { const i = l.indexOf('--'); return i === -1 ? l : l.slice(0, i); })
+      .join('\n').replace(/\s+/g, ' ');
+  };
+
+  /**
+   * THE GUARD — an exact ALLOW-LIST, not a search for missing WHERE clauses.
+   *
+   * The obvious guard is "every DELETE/UPDATE against the staging relation must contain WHERE", and
+   * it has the same failure class as the bug it is looking for: a FALSE NEGATIVE. It passes
+   *     UPDATE pg_temp._preview_raw SET uid = (SELECT uid FROM t WHERE active);
+   * which contains the word WHERE and is nonetheless unqualified and refused by safeupdate. It also
+   * misses `DELETE FROM ONLY …`, `DELETE … USING … WHERE …`, and any `WITH … DELETE` form.
+   *
+   * This function performs exactly TWO permitted mutations of the staging relation, so they are
+   * enumerated. Anything else — of any shape, qualified or not — is an offender by construction,
+   * and no regex has to understand SQL. When these two statements legitimately change, this list
+   * changes with them, deliberately.
+   */
+  const PERMITTED_STAGING_MUTATIONS = [
+    'DELETE FROM pg_temp._preview_raw r WHERE (r.uid, r.cid) = '
+      + '(SELECT r2.uid, r2.cid FROM pg_temp._preview_raw r2 ORDER BY r2.uid DESC, r2.cid DESC LIMIT 1)',
+    'DELETE FROM pg_temp._preview_raw WHERE uid = v_boundary',
+  ];
+
+  /**
+   * Every statement in the compiled body that MUTATES the staging relation and is not on the list.
+   *
+   * Statement splitting is on `;`, which is sound for these functions because neither contains a
+   * semicolon inside a string literal or a dollar-quoted body. TRUNCATE is included in the scan:
+   * safeupdate does not refuse it, but an undeclared TRUNCATE of this relation would still be a
+   * change to how staging is cleared, and this list is the place that decides that.
+   */
+  const disallowedStagingMutations = (body: string): string[] =>
+    body.split(';')
+      // Each chunk may carry plpgsql control keywords in front of the statement
+      // (`IF NOT v_single THEN DELETE FROM …`), so the mutation is taken from its VERB onward.
+      // Without this the allow-list would never match the real body and the guard would report
+      // every legitimate statement — loudly wrong, but wrong.
+      .map((chunk) => {
+        const m = /\b(DELETE|UPDATE|TRUNCATE)\b/i.exec(chunk);
+        return m ? chunk.slice(m.index).trim() : '';
+      })
+      .filter((stmt) => stmt !== '' && /_preview_raw\b/.test(stmt))
+      .filter((stmt) => !PERMITTED_STAGING_MUTATIONS.includes(stmt));
+
+  it('REPRODUCES the defect on the previously deployed definition', async () => {
+    // The old function, restored under a different name from the migration that shipped it, so the
+    // reproduction runs against the REAL statement rather than a re-typed lookalike.
+    const deployed = readFileSync(
+      join(process.cwd(), 'supabase', 'migrations', '20261022100000_notif_n4_seam_corrections.sql'), 'utf8');
+    const start = deployed.indexOf('CREATE OR REPLACE FUNCTION public.admin_preview_notification_recipients(');
+    const end = deployed.indexOf('$$;', start) + 3;
+    expect(start, 'the deployed migration must still contain the function').toBeGreaterThan(-1);
+    const old = deployed.slice(start, end)
+      .replace('public.admin_preview_notification_recipients(', 'public.zz_preview_recipients_asdeployed(');
+    await c.query(old);
+    try {
+      const offenders = disallowedStagingMutations(await bodyOf('zz_preview_recipients_asdeployed'));
+      // The deployed body stages through the UNQUALIFIED name, so BOTH its trimming deletes are off
+      // the list as well as the bare one. What matters is that the bare DELETE is among them.
+      expect(offenders, 'the deployed definition must contain the defect this fixes')
+        .toContain('DELETE FROM _preview_raw');
+    } finally {
+      await c.query('DROP FUNCTION IF EXISTS public.zz_preview_recipients_asdeployed(text,text,uuid,uuid,int)');
+    }
+  });
+
+  it('...and the CURRENT definition mutates the staging relation ONLY in the two declared ways', async () => {
+    expect(disallowedStagingMutations(await bodyOf('admin_preview_notification_recipients'))).toEqual([]);
+  });
+
+  it('the guard catches the shapes a "must contain WHERE" heuristic would wave through', async () => {
+    // The false-negative class, stated as a test rather than as a comment. Each of these is
+    // unqualified or otherwise not one of the two declared mutations, and each contains the word
+    // WHERE somewhere — which is exactly why the naive guard was replaced.
+    const sneaky = [
+      'UPDATE pg_temp._preview_raw SET uid = (SELECT uid FROM t WHERE active)',
+      'DELETE FROM ONLY pg_temp._preview_raw',
+      'DELETE FROM pg_temp._preview_raw USING t WHERE t.x = 1',
+      'TRUNCATE TABLE pg_temp._preview_raw',
+      'DELETE FROM _preview_raw',
+    ];
+    for (const stmt of sneaky) {
+      expect(disallowedStagingMutations(`BEGIN ${stmt}; END`), stmt).toEqual([stmt]);
+    }
+    // ...and the two REAL statements are not flagged, so the guard is not simply "everything fails"
+    for (const ok of PERMITTED_STAGING_MUTATIONS) {
+      expect(disallowedStagingMutations(`BEGIN ${ok}; END`), ok).toEqual([]);
+    }
+  });
+
+  it('MUTANT: restoring the bare DELETE is caught by that same guard', async () => {
+    // Requirement 8, and the reason the structural guard is worth having: it must FAIL on the exact
+    // statement production refused. Built by mutating the CURRENT function, so the mutant differs
+    // from production code in one statement and nothing else.
+    const current = (await c.query(
+      `SELECT pg_get_functiondef(p.oid) AS src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = 'admin_preview_notification_recipients'`)).rows[0].src as string;
+    const mutated = current
+      .replace('public.admin_preview_notification_recipients(', 'public.zz_preview_recipients_mutant(')
+      .replace('DROP TABLE IF EXISTS pg_temp._preview_raw;',
+        'CREATE TEMP TABLE IF NOT EXISTS _preview_raw (uid uuid, cid uuid, consent_status text, consent_scope text, consent_academy_profile_id uuid, consent_trainer_id uuid) ON COMMIT DROP; DELETE FROM pg_temp._preview_raw;');
+    expect(mutated, 'the mutation must actually apply').not.toBe(current);
+    await c.query(mutated);
+    try {
+      const offenders = disallowedStagingMutations(await bodyOf('zz_preview_recipients_mutant'));
+      expect(offenders, 'the guard must catch the restored bare DELETE')
+        .toContain('DELETE FROM pg_temp._preview_raw');
+    } finally {
+      await c.query('DROP FUNCTION IF EXISTS public.zz_preview_recipients_mutant(text,text,uuid,uuid,int)');
+    }
+  });
+
+  it('the preview SUCCEEDS and returns masked rows', async () => {
+    await asUser(ADMIN_UID);
+    try {
+      const rows = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,50)`)).rows;
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+      for (const r of rows) {
+        expect(r.final_decision).toMatch(/^deliver:|^skip:/);
+        // masked, never raw — the local part is reduced to its first character
+        if (r.destination_masked) expect(r.destination_masked).not.toMatch(/^[^@*]{2,}@/);
+      }
+    } finally { await asUser(null); }
+  });
+
+  it('TWO SEQUENTIAL invocations do not share staged rows — in one transaction and across two', async () => {
+    // The old code relied on the bare DELETE for this, which is the statement production refused —
+    // so on a hosted database the previous invocation's rows were never cleared at all. Now the
+    // staging table is recreated per call, so leakage is impossible by construction rather than by
+    // a statement that may not run.
+    await asUser(ADMIN_UID);
+    try {
+      const call = async () => (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,50)`)).rows;
+      const a = await call();
+      const b = await call();
+      expect(b.map((r) => r.user_id).sort()).toEqual(a.map((r) => r.user_id).sort());
+
+      await c.query('BEGIN');
+      const inTxA = await call();
+      const inTxB = await call();
+      await c.query('COMMIT');
+      expect(inTxB.map((r) => r.user_id).sort()).toEqual(inTxA.map((r) => r.user_id).sort());
+      expect(inTxB.length).toBe(a.length);
+    } finally { await asUser(null); }
+  });
+
+  it('a caller-created INCOMPATIBLE temp relation is REPLACED, never adopted', async () => {
+    // `CREATE TEMP TABLE IF NOT EXISTS` silently reuses whatever answers to that name, and pg_temp
+    // is searched before every schema in search_path for tables — inside SECURITY DEFINER too. On a
+    // real server the old shape then died with 42601 (`INSERT has more expressions than target
+    // columns`); a caller relation with COMPATIBLE types would not have errored at all, it would
+    // have staged the caller's rows and previewed them.
+    const c2 = new Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+    await c2.connect();
+    try {
+      await c2.query(`UPDATE public.test_auth_ctx SET uid = '${ADMIN_UID}'`);
+      await c2.query('CREATE TEMP TABLE _preview_raw (junk text)');
+      await c2.query(`INSERT INTO _preview_raw VALUES ('hostile')`);
+      // ONE transaction, because the relation the function creates is ON COMMIT DROP: observing
+      // its shape after the commit would find nothing, which is the correct end state but not the
+      // thing under test.
+      await c2.query('BEGIN');
+      const rows = (await c2.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,50)`)).rows;
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+      // the relation now carries OUR shape, not the caller's
+      const shape = (await c2.query(
+        `SELECT string_agg(attname, ',' ORDER BY attnum) AS s FROM pg_attribute
+          WHERE attrelid = 'pg_temp._preview_raw'::regclass AND attnum > 0 AND NOT attisdropped`)).rows[0].s;
+      expect(shape).toBe('uid,cid,consent_status,consent_scope,consent_academy_profile_id,consent_trainer_id');
+      await c2.query('COMMIT');
+      // ...and the caller's hostile table is gone rather than restored: ours replaced it and then
+      // dropped itself at commit.
+      const left = (await c2.query(`SELECT to_regclass('pg_temp._preview_raw') AS r`)).rows[0].r;
+      expect(left).toBeNull();
+    } finally {
+      await c2.query(`UPDATE public.test_auth_ctx SET uid = NULL`).catch(() => {});
+      await c2.end();
+    }
+  });
+
+  it('an EMPTY result is a success, not an error', async () => {
+    await asUser(ADMIN_UID);
+    try {
+      // THE LAST PAGE OF A CRAWL — a real, reachable state, and the one the UI hits every time it
+      // pages to the end. A cursor past the highest user id leaves every candidate source empty.
+      // (An unknown event KEY is deliberately not used here: that raises in
+      // admin_preview_notification_decision, and it raising is correct — an operator asking about
+      // an event that does not exist has made a mistake worth reporting, not an empty result.)
+      const rows = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients(
+           'session_reminder_player','email',NULL,'ffffffff-ffff-4fff-8fff-ffffffffffff',25)`)).rows;
+      expect(Array.isArray(rows)).toBe(true);
+      expect(rows.length).toBe(0);
+
+      // ...and an unknown event key still RAISES, which is what makes the assertion above mean
+      // "no candidates" rather than "errors are being swallowed".
+      await expect(c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('no_such_event_key','email',NULL,NULL,25)`))
+        .rejects.toThrow(/unknown event/);
+    } finally { await asUser(null); }
+  });
+
+  it('PAGING and the clamp are unchanged', async () => {
+    await asUser(ADMIN_UID);
+    try {
+      const page = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,1)`)).rows;
+      expect(page.length).toBe(1);
+      // the keyset cursor advances: asking again AFTER that user must not return them again
+      const next = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,'${page[0].user_id}',50)`)).rows;
+      expect(next.map((r) => r.user_id)).not.toContain(page[0].user_id);
+      for (const r of next) expect(r.user_id > page[0].user_id).toBe(true);
+      // and the clamp is still STRICT — no export-all
+      const clamped = (await c.query(
+        `SELECT * FROM public.admin_preview_notification_recipients('session_reminder_player','email',NULL,NULL,10000)`)).rows;
+      expect(clamped.length).toBeLessThanOrEqual(50);
+    } finally { await asUser(null); }
+  });
+
+  it('a NON-ADMIN caller is still refused, and NEITHER refusal leaks anything', async () => {
+    const PREVIEW = `SELECT * FROM public.admin_preview_notification_recipients(
+      'session_reminder_player','email',NULL,NULL,50)`;
+    const refusalFor = async (uid: string | null): Promise<Error> => {
+      await asUser(uid);
+      const e = await c.query(PREVIEW).then(() => null, (err: Error) => err);
+      expect(e, `${uid ?? 'anonymous'} must be refused`).toBeInstanceOf(Error);
+      return e as Error;
+    };
+    try {
+      // BOTH errors are captured and BOTH are inspected. An earlier version discarded the
+      // authenticated one with a bare `.rejects.toThrow()` and checked only the anonymous message —
+      // so the gate could have started naming the caller's own uuid or address and the test, whose
+      // name promises exactly that check, would still have passed.
+      const authenticated = await refusalFor(U1);
+      const anonymous = await refusalFor(null);
+      for (const [label, err] of [['authenticated non-admin', authenticated], ['anonymous', anonymous]] as const) {
+        expect(err.message, `${label}: raw address`).not.toContain('p1@example.com');
+        expect(err.message, `${label}: any address`).not.toContain('@example.com');
+        expect(err.message, `${label}: the caller's user id`).not.toContain(U1);
+        expect(err.message, `${label}: an admin id`).not.toContain(ADMIN_UID);
+      }
+    } finally { await asUser(null); }
+  });
+
+  it('the ownership predicate the DROP guard turns on actually discriminates', async () => {
+    // WHY THIS IS NOT AN END-TO-END TEST OF THE RAISE. DROP is an ownership operation, and the
+    // definer in THIS harness is `postgres`, a superuser — for whom `pg_has_role` is true against
+    // every role, so the guard's branch is correctly unreachable here and the DROP genuinely
+    // succeeds. Supabase's `postgres` is not a superuser; the end-to-end behaviour was measured
+    // separately with a non-superuser definer and is recorded in the migration header:
+    //   * definer NOT a member of the owning role -> 42501 must be owner of table _preview_raw
+    //   * definer IS a member (Supabase grants anon/authenticated/service_role to postgres) -> DROP
+    // What IS testable here is the DECISION the guard makes, so that is what this asserts.
+    await c.query(`CREATE ROLE zz_stranger NOLOGIN`).catch(() => {});
+    await c.query(`CREATE ROLE zz_member NOLOGIN`).catch(() => {});
+    await c.query(`CREATE ROLE zz_definer NOLOGIN`).catch(() => {});
+    await c.query(`GRANT zz_member TO zz_definer`).catch(() => {});
+    const r = (await c.query(`
+      SELECT pg_catalog.pg_has_role('zz_definer', 'zz_stranger'::regrole::oid, 'USAGE') AS stranger,
+             pg_catalog.pg_has_role('zz_definer', 'zz_member'::regrole::oid,   'USAGE') AS member,
+             pg_catalog.pg_has_role('zz_definer', 'zz_definer'::regrole::oid,  'USAGE') AS self`)).rows[0];
+    expect(r.stranger, 'a relation owned by an unrelated role is NOT droppable').toBe(false);
+    expect(r.member, 'membership is what makes it droppable — the Supabase configuration').toBe(true);
+    expect(r.self, 'and our own relation always is').toBe(true);
+  });
+
+  it('the DROP guard is present, and its message tells the operator what to do', async () => {
+    const body = await bodyOf('admin_preview_notification_recipients');
+    // THE WHOLE CONDITION, not a fragment of it. A fragment is satisfied by a short-circuited
+    // guard: `IF false AND to_regclass(…) IS NOT NULL AND NOT pg_has_role(…)` keeps every
+    // substring while never firing, and that mutant survived an earlier version of this test.
+    expect(body, 'the guard must test membership against the relation OWNER, unconditionally')
+      .toContain(
+        "IF to_regclass('pg_temp._preview_raw') IS NOT NULL "
+        + 'AND NOT pg_catalog.pg_has_role( current_user, '
+        + "(SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid = to_regclass('pg_temp._preview_raw')), "
+        + "'USAGE') THEN");
+    expect(body).toContain('already holds a temp relation named _preview_raw');
+    expect(body, 'the message must name the one-line fix')
+      .toContain('DROP TABLE pg_temp._preview_raw in this session and retry');
+    // and it runs BEFORE the drop, or it is decoration
+    expect(body.indexOf('already holds a temp relation'))
+      .toBeLessThan(body.indexOf('DROP TABLE IF EXISTS pg_temp._preview_raw'));
   });
 });
