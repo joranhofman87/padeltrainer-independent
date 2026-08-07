@@ -472,8 +472,12 @@ RBD="$HERE/../sql/rollback_disable.sql"
 grep -qF 'digest_engine_enabled = false' "$RBD" && ok "rollback disables the engine" || bad "rollback disables the engine"
 grep -qF 'active := false' "$RBD" && ok "rollback deactivates the cron" || bad "rollback deactivates the cron"
 # order: the switch first (stop creating work), then the cron (stop draining)
-if [[ "$(grep -n 'digest_engine_enabled = false' "$RBD" | cut -d: -f1 | head -1)" -lt \
-      "$(grep -n 'active := false' "$RBD" | cut -d: -f1 | head -1)" ]]; then
+# awk, not `grep | cut | head`: head closes the pipe on its first line and the producers can then
+# die on SIGPIPE under `pipefail` — the same defect that made the C-3 checks pass on BSD sed and
+# fail on GNU sed. One process, reads to its answer, nothing downstream to close on it.
+first_line_of() { pat="$1" awk 'BEGIN{p=ENVIRON["pat"]} index($0, p) { print NR; exit }' "$2"; }
+if [[ "$(first_line_of 'digest_engine_enabled = false' "$RBD")" -lt \
+      "$(first_line_of 'active := false' "$RBD")" ]]; then
   ok "rollback switches the engine off BEFORE the cron"
 else bad "rollback switches the engine off BEFORE the cron"; fi
 # ...and it must NOT be one transaction: if the engine goes off and the cron deactivation fails, a
@@ -574,7 +578,7 @@ logged 'run_id=11111111-1111-4111-8111-111111111111' && ok "...and the binding r
   || bad "...and the binding reaches psql"
 
 # ...and belt and braces on the two spellings of an inline statement, across line continuations.
-if strip_comments | tr '\n' ' ' | grep -qE 'psql_safe[^;|&]*(-c |--command)'; then
+if strip_comments | awk '{ line = line " " $0 } END { exit !(line ~ /psql_safe[^;|&]*(-c |--command)/) }'; then
   bad "the dispatcher sends an inline statement instead of a path-pinned artifact"
 else
   ok "no inline psql statement in any spelling (-c or --command), continuations included"
@@ -861,7 +865,7 @@ grep -qF 'UNKNOWN' "$TMP/out" && ok "...and says the send is UNKNOWN, not 'did n
 # COMMENTS STRIPPED FIRST. That artifact explains at length why it does NOT write the request out,
 # and naming http_post in prose is not transcribing it — the same vacuous-match trap this slice has
 # paid for repeatedly, in a new place.
-if sed 's/--.*$//' "$HERE/../sql/canary_invoke.sql" | grep -qE 'http_post|Authorization'; then
+if awk '{ sub(/--.*$/, "") } /http_post|Authorization/ { f = 1 } END { exit !f }' "$HERE/../sql/canary_invoke.sql"; then
   bad "canary_invoke.sql transcribes the request instead of executing the reviewed command"
 else
   ok "canary_invoke.sql never transcribes the request (it executes the hash-pinned stored command)"
@@ -1042,10 +1046,19 @@ else
   #
   # One awk process, no pipe, no early-closing reader, identical on both seds. `sub(/--.*$/,"")`
   # does the comment stripping inline, which is why the sed stage is gone entirely.
-  code_line_of() { awk -v pat="$1" '{ sub(/--.*$/, "") } index($0, pat) { print NR; exit }' "$CANARY_SQL"; }
-  code_has() { awk -v pat="$1" '{ sub(/--.*$/, "") } index($0, pat) { found = 1; exit } END { exit !found }' "$CANARY_SQL"; }
-  code_count_from() {
-    awk -v pat="$1" -v from="$2" '{ sub(/--.*$/, "") } NR >= from && index($0, pat) { n++ } END { print n + 0 }' "$CANARY_SQL"
+  # THE PATTERN TRAVELS IN THE ENVIRONMENT, NOT IN -v. `awk -v pat='\i foo'` processes escape
+  # sequences in the assignment: gawk and BSD awk both turn `\i` into `i` (gawk warns), so the gate
+  # lookup would have matched a line MISSING its backslash — quietly weaker than the `grep -F` it
+  # replaced. ENVIRON does no escape processing on any implementation, so the pattern arrives byte
+  # for byte, which is what a fixed-string search has to mean.
+  code_line_of() { pat="$1" awk 'BEGIN{p=ENVIRON["pat"]} { sub(/--.*$/, "") } index($0, p) { print NR; exit }' "$CANARY_SQL"; }
+  code_has() { pat="$1" awk 'BEGIN{p=ENVIRON["pat"]} { sub(/--.*$/, "") } index($0, p) { f = 1; exit } END { exit !f }' "$CANARY_SQL"; }
+  # HALF-OPEN [from, to) — the upper bound is not decoration. The sed range it replaced was
+  # `${L_FLOOR}q;/CREATE TEMP TABLE _canary_floor/,$p`, which stops BEFORE the floor assertion's
+  # terminating line. Counting to EOF instead would let a mutant move a predicate out of
+  # `_canary_floor` and satisfy the count from anywhere later in the file.
+  code_count_between() {
+    pat="$1" awk -v from="$2" -v to="$3" 'BEGIN{p=ENVIRON["pat"]} { sub(/--.*$/, "") } NR >= from && NR < to && index($0, p) { n++ } END { print n + 0 }' "$CANARY_SQL"
   }
   line_of() { code_line_of "$1"; }
   L_CLOCK="$(line_of 'CREATE TEMP TABLE _canary_clock')"
@@ -1073,7 +1086,7 @@ else
   # rollout must not conflate. An event-agnostic floor is satisfied by unrelated due work, mails a
   # real recipient who has nothing to do with the cutover, and still proves nothing.
   L_FLOOR_START="$(code_line_of 'CREATE TEMP TABLE _canary_floor')"
-  floor_events="$(code_count_from "event_type = 'open_slots_player'" "${L_FLOOR_START:-1}")"
+  floor_events="$(code_count_between "event_type = 'open_slots_player'" "${L_FLOOR_START:-1}" "${L_FLOOR:-999999}")"
   [[ "$floor_events" == "2" ]] \
     && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
     || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
