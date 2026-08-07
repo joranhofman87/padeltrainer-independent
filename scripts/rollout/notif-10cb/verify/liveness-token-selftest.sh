@@ -318,8 +318,12 @@ ck "(h) a bare JSON string FAILS"                                34 '"cron_disar
 ck "(n) a NUL byte hiding a trailing value FAILS"                34 '{"state":"cron_disarmed"}@NUL@{"state":"query_failed"}'
 # jq REPLACES invalid raw UTF-8 inside a string with U+FFFD instead of rejecting it, so "parses as a
 # JSON object" is jq's notion, not a byte-level one. Both halves are pinned: a mangled UNRELATED
-# field still reports healthy, and the same mangling inside .state cannot fake a match, because
-# substitution only ever ADDS bytes — `cron_disarmed<U+FFFD>` is not `cron_disarmed`.
+# field still reports healthy, and the same mangling inside .state cannot fake a match.
+#
+# The reason is NOT that substitution only adds bytes — that is false, jq's replacement can change a
+# value's length either way. It is that a malformed sequence always decodes to at least one U+FFFD,
+# which is not ASCII, while every state the endpoint emits is. So no mangling can decode to exactly
+# `cron_disarmed`. That holds because the EXPECTATION is ASCII, not universally.
 ck "(u1) invalid UTF-8 in an unrelated field is accepted"        0  $'{"state":"cron_disarmed","x":"\xff"}'
 ck "(u2) invalid UTF-8 INSIDE .state cannot fake a match"        32 $'{"state":"cron_disarmed\xff"}'
 ck "(i) an EMPTY body FAILS"                                     34 '@EMPTY@'

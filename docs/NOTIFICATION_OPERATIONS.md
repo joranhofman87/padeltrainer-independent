@@ -266,10 +266,16 @@ prefix and hide the rest.
 
 "Parses as a JSON object" means *as `jq` parses it*, and jq is deliberately lenient about one thing:
 invalid raw UTF-8 **inside a string** is replaced with U+FFFD rather than rejected. A body carrying
-invalid bytes in some other field therefore still reports healthy. That cannot make a wrong state
-look right — substitution only ever *adds* bytes, so invalid UTF-8 inside `.state` itself yields
-`cron_disarmed<U+FFFD>`, which does not equal `cron_disarmed` and is rejected (32). Both behaviours
-are pinned by tests so neither can drift silently.
+invalid bytes in some other field therefore still reports healthy.
+
+That cannot make a wrong state look right, and the reason is worth stating precisely, because the
+convenient version of it is false. It is *not* that substitution only adds bytes — jq's replacement
+can change a value's byte length in either direction. It is that a malformed sequence always decodes
+to **at least one U+FFFD**, and U+FFFD is not ASCII, while every state the endpoint emits
+(`cron_disarmed`, `inert`, `stale`, …) is pure ASCII. So a mangled body can never decode to exactly
+one of them: invalid UTF-8 inside `.state` yields `cron_disarmed<U+FFFD>`, which is rejected (32).
+The guarantee rests on the *expectation being ASCII*, and would not hold for an `--expect-state` that
+itself contained U+FFFD. Both behaviours are pinned by tests so neither can drift silently.
 
 The order is transport (30) → HTTP status (31) → body is a single JSON object (34) → `.state` is a
 string equal to the expectation (32), so a network failure can never be reported as a wrong state,
