@@ -50,9 +50,11 @@ converge on ONE Mollie payment; the owed test asserts that convergence). (Correc
 `mollieIdempotencyKey`, `_shared/mollie-idempotency.ts`.)
 
 **Shipped + remaining:** the deterministic `Idempotency-Key` on `POST /v2/payments` is SHIPPED (all five
-charge fns). Remaining hardening: re-check for a freshly-minted payment inside the lock before creating
-(or a short DB claim/lease around the probe — never hold a transaction advisory lock across the external
-Mollie HTTP call); add the concurrent-re-click convergence test.
+charge fns). Remaining hardening: a persisted atomic claim/lease recorded BEFORE the Mollie POST so
+concurrent creators serialize (a lock-scoped recheck alone still lets two callers observe no-payment
+before posting; never hold a transaction advisory lock across the external Mollie HTTP call) — until
+then the deterministic provider idempotency key is the convergence guard; add the concurrent-re-click
+convergence test.
 
 ## 2. An invoice cannot be paid twice 🟢 (P0)
 
@@ -253,9 +255,9 @@ and academy (roster/invoicing UIs, FAM-02 identity coalesce); guest data becomes
 **Why:** silent failures = money problems discovered by angry customers, not by us.
 
 **Enforced today (corrected 2026-08-08 — the old "webhook does NOT write payment_audit_log" claim was
-stale):** the charge-side coverage is a per-fn matrix — `create-mollie-payment` audit + Slack;
-`create-invoice-payment` audit only; the guest fns partial inline audit with silent no-account refusals
-(see the gaps below); the
+stale):** the charge-side NO-ACCOUNT-refusal coverage is a per-fn matrix — `create-mollie-payment`
+audit + Slack; `create-invoice-payment` audit (Slack fires on other branches); the guest fns neither on
+no-account (partial inline audit elsewhere — see the gaps below); the
 **webhook now writes audit rows at 16 call sites** — `webhook_received` on entry (`mollie-webhook/index.ts:108`),
 `invoice_marked_paid`/`booking_marked_paid`, `duplicate_webhook_ignored`, `amount_mismatch_blocked`,
 `payment_for_unknown_invoice`, `payment_for_cancelled_invoice`/`_booking`, `no_connected_mollie_account`,

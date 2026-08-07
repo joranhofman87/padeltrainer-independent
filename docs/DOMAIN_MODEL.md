@@ -221,7 +221,7 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 | **lib** | `admin.ts`, `adminStatus.ts`, `impersonate`-related helpers. |
 | **Edge/RPC** | `get-admin-stats`, `backup-database`, `bulk-cleanup-users`, `health-check`, `invoice-health-check`, `impersonate-user`, `admin-reset-password`, `create-stripe-checkout`, `stripe-subscription-webhook`, `customer-portal`, `cancel-stripe-subscription`, `reditus-referral-*`; pg_cron for reminders/expiry/digests. |
 | **Dangerous** | Impersonation, bulk-cleanup, backups are service-role privileged; most edge fns run `verify_jwt=false` and authenticate class-appropriately (in-function via `_shared/auth.ts` or legacy direct `auth.getUser`; provider signatures; or public/token scoping) — ~20 of 108 keep gateway JWT verification (see ARCHITECTURE_BOUNDARIES; forged-JWT service-role bypass was the audit P0 — now fixed). |
-| **Invariants** | (1) Every edge fn authenticates its caller in `_shared/auth.ts`; never trust the JWT claim alone for service-role escalation. (2) Cron jobs (claim expiry, reminders, digests) must be idempotent + heartbeat-monitored. |
+| **Invariants** | (1) Every edge fn enforces its class-appropriate auth boundary (user/service fns via `_shared/auth.ts` or legacy direct `auth.getUser`; webhooks via provider verification; public fns via token scoping); never trust the JWT claim alone for service-role escalation. (2) Cron jobs (claim expiry, reminders, digests) must be idempotent + heartbeat-monitored. |
 | **Tests** | `rls-smoke-test`, `get-admin-stats`/`health-check` fns; observability alerts via `slack-notify`. |
 
 ---

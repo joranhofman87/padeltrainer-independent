@@ -1,7 +1,8 @@
 # Payment Flow Map
 
 End-to-end map of the money flows in padeltrainer (the guest-CART checkout has no dedicated flow section
-yet — its RPC, idempotency, and audit facts appear in the shared tables; flow write-up pending). Grounded
+yet — its RPC appears in the shared tables and its idempotency coverage in `PAYMENT_TEST_GAPS.md` G2;
+flow write-up pending). Grounded
 in the code (file:line refs). Companion
 docs: [`PAYMENT_INVARIANTS.md`](PAYMENT_INVARIANTS.md) (the rules these flows must never break),
 [`PAYMENT_RECONCILIATION_PLAN.md`](PAYMENT_RECONCILIATION_PLAN.md) (detecting drift),

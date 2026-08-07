@@ -51,8 +51,9 @@ reviewed (two rounds — the first caught the fresh-path 400, the second the raw
   retry can strand a `pending` booking row (no TTL sweep for logged-in pending rows). Follow-up: make
   `book_slot_for_payment` idempotent on (slot, player, recent unpaid pending) like the guest hold RPCs.
 - *Split-amount body drift* (`create-mollie-payment` existing-bookings + `create-guest-cyclus-payment`): if
-  the charge AMOUNT legitimately changes between a timed-out attempt and its retry (a price edit, or the
-  commitment-subsystem divisor — the one non-frozen divisor), the body (hence the key) changes → a second
+  the charge AMOUNT legitimately changes between a timed-out attempt and its retry (a price or extras
+  edit; the commitment-subsystem divisor is a separate invoicing path, not these charge fns), the body
+  (hence the key) changes → a second
   payable checkout. Not a NEW double-charge (that window predates G2). Direct auto-split divisors are
   capacity-frozen (G5 ✅), so participant churn alone no longer drifts the body (corrected 2026-08-08).
 - *cip drift-cancel salt is best-effort:* the re-price-back-to-original salt works whenever the superseding
