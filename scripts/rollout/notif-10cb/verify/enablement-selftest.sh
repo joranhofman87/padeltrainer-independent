@@ -1028,8 +1028,26 @@ CANARY_SQL="$HERE/../sql/canary_invoke.sql"
 if [[ ! -f "$CANARY_SQL" ]]; then
   bad "canary_invoke.sql is missing from the bundle"
 else
-  canary_code() { sed -e 's/--.*$//' "$CANARY_SQL"; }
-  line_of() { canary_code | grep -nF -- "$1" | head -1 | cut -d: -f1; }
+  # PIPE-FREE ON PURPOSE — every helper here is ONE awk process reading the file directly.
+  #
+  # The first version of this block piped `sed` into `grep -q` and into `head -1`. Both of those
+  # close the pipe as soon as they have their answer, which sends SIGPIPE upstream. BSD sed (macOS,
+  # where this was written) dies silently; GNU sed (Linux, where CI runs) reports
+  # "couldn't flush stdout: Broken pipe" and exits non-zero — and `set -Eeuo pipefail` at the top of
+  # this file turns that into the pipeline's status. So the kill-gate check FAILED on merged main
+  # while passing locally, on a file whose content was correct.
+  #
+  # The `head -1` variant is the same defect wearing a disguise: it only ever passed because grep
+  # usually finishes writing this small file before head exits. That is a race, not a result.
+  #
+  # One awk process, no pipe, no early-closing reader, identical on both seds. `sub(/--.*$/,"")`
+  # does the comment stripping inline, which is why the sed stage is gone entirely.
+  code_line_of() { awk -v pat="$1" '{ sub(/--.*$/, "") } index($0, pat) { print NR; exit }' "$CANARY_SQL"; }
+  code_has() { awk -v pat="$1" '{ sub(/--.*$/, "") } index($0, pat) { found = 1; exit } END { exit !found }' "$CANARY_SQL"; }
+  code_count_from() {
+    awk -v pat="$1" -v from="$2" '{ sub(/--.*$/, "") } NR >= from && index($0, pat) { n++ } END { print n + 0 }' "$CANARY_SQL"
+  }
+  line_of() { code_line_of "$1"; }
   L_CLOCK="$(line_of 'CREATE TEMP TABLE _canary_clock')"
   L_CEIL="$(line_of 'FROM pg_temp._canary_radius));')"
   L_FLOOR="$(line_of 'FROM pg_temp._canary_floor));')"
@@ -1054,15 +1072,17 @@ else
   # The floor is EVENT-SCOPED (both halves) while the ceiling stays global — the two questions the
   # rollout must not conflate. An event-agnostic floor is satisfied by unrelated due work, mails a
   # real recipient who has nothing to do with the cutover, and still proves nothing.
-  floor_events="$(canary_code | sed -n "${L_FLOOR%%:*}q;/CREATE TEMP TABLE _canary_floor/,\$p" \
-                   | grep -c "event_type = 'open_slots_player'" || true)"
+  L_FLOOR_START="$(code_line_of 'CREATE TEMP TABLE _canary_floor')"
+  floor_events="$(code_count_from "event_type = 'open_slots_player'" "${L_FLOOR_START:-1}")"
   [[ "$floor_events" == "2" ]] \
     && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
     || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
   # And the floor consults the OTHER door the claim goes through.
-  canary_code | grep -qF "notif_channel_kill_gate('email')" \
-    && ok "...the floor consults the channel kill gate (the claim's own first act)" \
-    || bad "...the floor consults the channel kill gate (the claim's own first act)"
+  if code_has "notif_channel_kill_gate('email')"; then
+    ok "...the floor consults the channel kill gate (the claim's own first act)"
+  else
+    bad "...the floor consults the channel kill gate (the claim's own first act)"
+  fi
 fi
 
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
