@@ -90,6 +90,60 @@ setting themselves; the guard binds code paths and mistakes, not the person who 
 | Signal | Where | What it means | What it does NOT mean |
 |---|---|---|---|
 | `notif_digest_worker_liveness()` | external uptime monitor (owner-wired) | last **succeeded** dispatch run and its age | Not "mail is arriving" — only that the worker ran |
+
+### The external monitor — `notif-liveness` (N7 step 3c)
+
+`notif_digest_worker_liveness()` is `SECURITY DEFINER` and granted to `service_role` **only**, so no
+uptime provider can read it directly, and giving one the service-role key would be far worse than the
+problem it solves. `notif-liveness` is the surface that closes that gap.
+
+**Why it is genuinely external.** The worker's own Slack alert cannot report that the worker never
+ran — a process that does not run sends nothing. Nor can the digest cron (it *is* the thing being
+watched), a dashboard nobody opens, or `--monitor-confirmed`, which is an operator's assertion rather
+than a detector. The detector must run on different infrastructure, on a different schedule, and
+alert through a different channel. This endpoint is the read; the uptime service is the poller; that
+service's own notification channel is the alert.
+
+**The status code is the contract**, so any provider works without being taught to parse anything:
+
+| HTTP | state | meaning |
+|---|---|---|
+| 200 | `live` | armed and succeeded within the threshold |
+| 200 | `inert` | cron present and INACTIVE, never run — the current pre-activation state, deliberately not an alert |
+| 401 | `unauthorized` | missing/incorrect token (no detail is leaked) |
+| 503 | `cron_missing` | the job installed by migration is gone |
+| 503 | `never_invoked` | cron ARMED but the worker has never succeeded |
+| 503 | `cron_disarmed` | it succeeded before and the cron is now inactive |
+| 503 | `stale` | last success older than the threshold (default 900s ≈ 3 missed ticks) |
+| 503 | `query_failed` / `misconfigured` | the liveness read itself failed — never reported as healthy |
+
+`inert` returning 200 is deliberate: a monitor that paged through the whole pre-activation period
+would be switched off long before it was ever needed.
+
+**Credentials.** `NOTIF_LIVENESS_TOKEN` — a dedicated secret, **not** the service-role key. An uptime
+provider stores whatever you give it and displays it in their UI; if that provider is breached the
+blast radius should be "someone can see whether our digest worker ran", not "someone owns the
+database". Compared in constant time, and **fails closed**: with no token set the endpoint authorizes
+nobody, so a half-finished setup cannot leave an open surface. Optional
+`NOTIF_LIVENESS_STALE_SECONDS` overrides the threshold.
+
+**Body is PII-free** — six operational fields plus a verdict; a test asserts the key set and that the
+serialized body contains no `@`, `email`, `recipient`, `user_id`, `profile` or `phone`.
+
+**Operating ownership.** The owner wires and owns the uptime check and its alert channel. Wiring it
+is runbook step 3c and must happen **before** the canary, so it is watching from the first send.
+
+**Setup:**
+
+```bash
+supabase secrets set NOTIF_LIVENESS_TOKEN=<generated> --project-ref ficwbdrzefmblkbkomzw
+supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
+# then point the uptime service at:
+#   GET https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness
+#   header: Authorization: Bearer <token>      (or x-monitor-token: <token>)
+#   alert on: any non-2xx; interval 5m; confirm after 2 consecutive failures
+```
+
 | Worker Slack alert | `digest_worker_alert` | a run finished unhealthy (group error, reconcile failure, orphan drain failure, correlation mismatch) | Not a page: the run is recorded either way |
 | `correlationMismatches > 0` | run summary / admin | the provider accepted a message the group is **not** bound to | Never a retry trigger — hold the channel and investigate |
 | Quarantined orphans | Orphan queue | a provider callback could not be correlated after N attempts | Not a lost email; the send may well have arrived |

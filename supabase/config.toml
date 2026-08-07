@@ -268,6 +268,12 @@ verify_jwt = false
 [functions.health-check]
 verify_jwt = false
 
+# N7 step 3c — the EXTERNAL digest-worker liveness endpoint. An uptime provider cannot carry a
+# Supabase JWT, so NOTIF_LIVENESS_TOKEN is the auth (constant-time, fails closed when unset).
+# The body is six PII-free operational fields; the STATUS CODE is the alert contract.
+[functions.notif-liveness]
+verify_jwt = false
+
 # Twilio WhatsApp status callbacks + inbound (STOP) messages. Twilio sends no Supabase JWT;
 # the endpoint authenticates every request by X-Twilio-Signature and 403s anything unsigned.
 [functions.twilio-whatsapp-webhook]
