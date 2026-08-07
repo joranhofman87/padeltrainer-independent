@@ -43,6 +43,10 @@ const MUST_VERIFY_JWT_FALSE = [
   // SUPABASE_SERVICE_ROLE_KEY (the LEGACY service-role JWT); the cron sends that JWT from Vault. verify_jwt=false
   // so the JWT reaches the function's own guard rather than the gateway's verifier.
   'notification-email-worker', 'notification-whatsapp-worker', 'notification-digest-worker',
+  // N7 3c external liveness endpoint: an uptime provider carries no Supabase JWT, so
+  // NOTIF_LIVENESS_TOKEN is the auth (constant-time, fails closed when unset). verify_jwt=false
+  // so the token reaches the function's own guard rather than the gateway's JWT verifier.
+  'notif-liveness',
   // ops tool, service-role guarded + restricted CORS; called with the service-role JWT, self-verified the same way
   'twilio-content-admin',
 ];

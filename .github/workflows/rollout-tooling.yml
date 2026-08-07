@@ -87,6 +87,15 @@ jobs:
       - name: 10c-b enablement selftest (dispatcher gates, stubbed psql)
         run: bash scripts/rollout/notif-10cb/verify/enablement-selftest.sh
 
+
+      # Executable proof for the liveness credential helper: fail-closed on every credential
+
+      # failure, non-zero on INT/TERM/HUP with cleanup, and the token in no output or argv.
+
+      - name: Liveness credential helper self-test
+
+        run: bash scripts/rollout/notif-10cb/verify/liveness-token-selftest.sh
+
       - name: 10c-b preflight/canary/lock artifacts on a REAL Postgres (restricted role)
         run: node scripts/rollout/notif-10cb/verify/preflight-pg.mjs
 
@@ -111,4 +120,10 @@ jobs:
                    verify/worktree-link-test.sh verify/clone-safety-test.sh \
                    verify/repo-guard-test.sh; do
             bash -n "scripts/rollout/notif-10ca3/$f"
+          done
+          # 10c-b was executed by the steps above but never syntax-checked, so a parse error in a
+          # branch no row reaches would only surface in front of an operator.
+          for f in run-enablement.sh notif-liveness-secret.sh \
+                   verify/enablement-selftest.sh verify/liveness-token-selftest.sh; do
+            bash -n "scripts/rollout/notif-10cb/$f"
           done

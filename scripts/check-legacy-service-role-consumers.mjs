@@ -286,6 +286,14 @@ const MANAGED = {
     'supabase/functions/backup-database/index.ts',        // requireServiceRoleOrAdmin
     'supabase/functions/invoice-storage-gc/index.ts',     // requireServiceRoleOrAdmin
     'supabase/functions/notification-digest-worker/index.ts', // requireServiceRole + createClient(serviceKey)
+    // N7 3c external liveness endpoint. Uses the service-role key ONLY to read the
+    // service_role-granted notif_digest_worker_liveness() RPC; its own callers authenticate with
+    // NOTIF_LIVENESS_TOKEN, so the service-role key never leaves the platform.
+    'supabase/functions/notif-liveness/index.ts', // createClient(serviceKey) for the liveness RPC
+    // The handler factory + its tests NAME the env var (they read it through an injected
+    // `env()` and assert the misconfigured branch); neither holds or forwards a key.
+    'supabase/functions/_shared/notif-liveness-core.ts',
+    'supabase/functions/_shared/notif-liveness-core.test.ts',
     'supabase/functions/twilio-content-admin/index.ts',   // requireServiceRole
   ],
 };

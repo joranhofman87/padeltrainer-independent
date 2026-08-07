@@ -90,6 +90,224 @@ setting themselves; the guard binds code paths and mistakes, not the person who 
 | Signal | Where | What it means | What it does NOT mean |
 |---|---|---|---|
 | `notif_digest_worker_liveness()` | external uptime monitor (owner-wired) | last **succeeded** dispatch run and its age | Not "mail is arriving" — only that the worker ran |
+
+### The external monitor — `notif-liveness` (N7 step 3c)
+
+`notif_digest_worker_liveness()` is `SECURITY DEFINER` and granted to `service_role` **only**, so no
+uptime provider can read it directly, and giving one the service-role key would be far worse than the
+problem it solves. `notif-liveness` is the surface that closes that gap.
+
+**Why it is genuinely external.** The worker's own Slack alert cannot report that the worker never
+ran — a process that does not run sends nothing. Nor can the digest cron (it *is* the thing being
+watched), a dashboard nobody opens, or `--monitor-confirmed`, which is an operator's assertion rather
+than a detector. The detector must run on different infrastructure, on a different schedule, and
+alert through a different channel. This endpoint is the read; the uptime service is the poller; that
+service's own notification channel is the alert.
+
+**The status code is the contract**, so any provider works without being taught to parse anything:
+
+| HTTP | state | meaning |
+|---|---|---|
+| 200 | `live` | armed and succeeded within the threshold |
+| 200 | `inert` | cron present and INACTIVE, never run — the current pre-activation state, deliberately not an alert |
+| 401 | `unauthorized` | missing/incorrect token (no detail is leaked) |
+| 503 | `cron_missing` | the job installed by migration is gone |
+| 503 | `never_invoked` | cron ARMED but the worker has never succeeded |
+| 503 | `cron_disarmed` | activation is DECLARED and the cron is inactive |
+| 503 | `unexpectedly_armed` | the cron is active but activation was never declared — the two have drifted |
+| 503 | `stale` | last success older than the threshold (default 900s ≈ 3 missed ticks) |
+| 503 | `query_failed` / `misconfigured` | the liveness read itself failed — never reported as healthy |
+
+`inert` returning 200 is deliberate: a monitor that paged through the whole pre-activation period
+would be switched off long before it was ever needed.
+
+**`NOTIF_LIVENESS_EXPECT_ARMED` — why the operator states this, rather than the endpoint inferring
+it.** The runbook order is 3c wire monitor → **4 canary SUCCEEDS while the cron is still inactive** →
+5/6 reconcile and preflight → 7a declare → 7b prove → 7c arm. Between the canary and activation the liveness row reads
+`last_success_at != null` **and** `job_active = false` — byte-identical to "a live cron was
+disarmed". The six fields cannot tell those apart, and no grace window can, because steps 5 and 6
+are owner-paced and open-ended. An endpoint that guessed would page continuously through the exact
+window it was wired to watch. So the expectation is an explicit input, flipped at **step 7a** and PROVEN at **7b** before 7c arms anything:
+
+**The flip and the arming cannot be atomic**, so the order is part of the procedure. An Edge
+Function secret and a database cron row are changed by different systems; one of the two mismatch
+states is unavoidable for a few seconds. Take the one that fails safe:
+
+```bash
+# STEP 7a — declare the expectation FIRST. The endpoint then reports cron_disarmed (503), which is
+# TRUE: activation is expected and the cron is not yet armed. (The value is literally "true" and is
+# not a secret, so it may be set inline — unlike NOTIF_LIVENESS_TOKEN.)
+supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
+
+# STEP 7b — PROVE it propagated. Asserts BOTH the status and the state; 503 alone is ambiguous,
+# since query_failed, misconfigured and stale share it. Non-zero on any failure.
+scripts/rollout/notif-10cb/notif-liveness-secret.sh check-endpoint \
+  --url https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness \
+  --expect-status 503 --expect-state cron_disarmed
+
+# STEP 7c — arm, via the reviewed tooling only. `activate` REFUSES without
+# --liveness-expectation-confirmed, so 7a and 7b cannot be skipped by accident.
+EXPECTED_REF=ficwbdrzefmblkbkomzw scripts/rollout/notif-10cb/run-enablement.sh activate \
+  --yes --monitor-confirmed --liveness-expectation-confirmed --admin-ops-confirmed \
+  "$DB_URL" "$CANARY_RUN_ID"
+```
+
+Arming first would instead show `unexpectedly_armed` — a live cron that the monitor is not yet
+watching for staleness, which is the wrong way round. The documented "alert after 2 consecutive
+failures" policy absorbs the short transition either way.
+
+**Rollback must reset it too.** `rollback` disables the engine and leaves the cron inactive; if
+`NOTIF_LIVENESS_EXPECT_ARMED` stays `true` the endpoint will correctly but noisily report
+`cron_disarmed` for a pipeline that is deliberately down. Reset it as part of the rollback, or put
+the check in maintenance for the duration:
+
+```bash
+supabase secrets unset NOTIF_LIVENESS_EXPECT_ARMED --project-ref ficwbdrzefmblkbkomzw
+```
+
+Before that it is absent/false: an inactive cron is correct, staleness does not apply (nothing is
+scheduled), and only `cron_missing`, `unexpectedly_armed` and read failures alert.
+
+**Credentials.** `NOTIF_LIVENESS_TOKEN` — a dedicated secret, **not** the service-role key. An uptime
+provider stores whatever you give it and displays it in their UI; if that provider is breached the
+blast radius should be "someone can see whether our digest worker ran", not "someone owns the
+database". Compared in constant time, and **fails closed**: with no token set the endpoint authorizes
+nobody, so a half-finished setup cannot leave an open surface. Optional
+`NOTIF_LIVENESS_STALE_SECONDS` overrides the threshold.
+
+**Body is PII-free** — six operational fields plus a verdict; a test asserts the key set and that the
+serialized body contains no `@`, `email`, `recipient`, `user_id`, `profile` or `phone`.
+
+### Proving the alert works — the safe rehearsal (runbook step 3c)
+
+**Do not try to prove it with a stale `last_success_at`.** That field is deliberately about a
+SUCCEEDED run, so before the first send there is nothing to make stale. An instruction to "verify it
+alerts on a stale last_success_at" at step 3c is not merely awkward, it is impossible to satisfy —
+and an impossible precondition gets satisfied by ticking the box. Staleness is covered before
+activation by this module's own state-machine tests, and can only be observed end-to-end after a
+prior successful invocation.
+
+What IS provable now — safely, with the cron still inactive and nothing sent — is the thing that
+actually matters: that the provider notices and that recovery clears. Rehearse it:
+
+| | action | required result |
+|---|---|---|
+| a | confirm the cron is INACTIVE and every engine disabled (`assert-inert` exits 0) | precondition — this rehearsal must never arm anything |
+| b | set `NOTIF_LIVENESS_EXPECT_ARMED=true` | — |
+| c | poll the deployed endpoint | the exact state `cron_disarmed` with **HTTP 503** |
+| d | wait for the uptime service's own confirmation threshold | **the provider alerts through its own channel** |
+| e | unset `NOTIF_LIVENESS_EXPECT_ARMED` | — |
+| f | poll the endpoint again | the exact state `inert` with **HTTP 200** |
+| g | wait | **the provider reports recovery** |
+
+Nothing in this sequence arms the cron, enables an engine, or sends anything: it only changes what
+the monitor *expects*, and the endpoint reports the truth about a system that stays inert throughout.
+Record the provider's alert and recovery notifications as the step 3c evidence.
+
+**Operating ownership.** The owner wires and owns the uptime check and its alert channel. Wiring it
+is runbook step 3c and must happen **before** the canary, so it is watching from the first send.
+
+**Setup:**
+
+```bash
+# The credential never appears in argv, history, logs or the terminal — which is why this is a
+# script with tests rather than a snippet. See scripts/rollout/notif-10cb/notif-liveness-secret.sh.
+scripts/rollout/notif-10cb/notif-liveness-secret.sh provision
+
+# `with-env` materialises a mode-0600 env file, RE-EXTRACTS the value from that finished file and
+# proves it byte-for-byte against the Keychain before the command runs, substitutes {} with its
+# path, then removes it and verifies its absence on every exit path — including Ctrl-C.
+scripts/rollout/notif-10cb/notif-liveness-secret.sh with-env -- \
+  supabase secrets set --env-file {} --project-ref ficwbdrzefmblkbkomzw
+
+# The deploy is an ordinary command; it needs no secret.
+supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
+```
+
+The helper exits non-zero on every failure and **never proceeds past one**: a failed Keychain write
+(10), read (11), a readback that is empty / truncated / multiline / hex (12), a value that differs
+from what was generated (13), or a `cmp` that could not run (14) all stop before anything is
+deployed. An item that already exists is refused with 15, and a lookup that fails for any reason
+other than "not found" — a locked keychain, denied access — is refused with 16 **before a token is
+generated or anything is written**.
+
+`--service` and `--account` must match `A-Za-z0-9` plus `.` `_` `@` `-`, with no leading `-`, 1–128
+characters; anything else is refused with 17 before the work directory exists. This is an allow-list
+rather than escaping because those names are **command text**, not argv: `security -i` reads
+whitespace-separated subcommands from stdin, so a service name of `svc -U` smuggled a `-U` into the
+generated command and performed an **update with no `--force`** — verified, including that it exited
+0 reporting success. A newline appends a whole second subcommand, and `security -i` returns only the
+last one's status. There is no documented quoting form to escape against, so an allow-list is the
+only construct that fails closed. `with-env` returns the wrapped command's own status verbatim, so a failed
+`secrets set` is reported as that failure and not masked. Cleanup failure is reported honestly and
+escalates a success to 90 — it never converts a failure into a success. INT/TERM/HUP clean up and
+exit 130/143/129, so Ctrl-C cannot leave the token on disk *or* let the next step run.
+
+**Clipboard: deliberately not used.** Clearing it afterwards does not undo the exposure — a clipboard
+manager or Universal Clipboard has already captured the value — and it exists only to serve a paste,
+which requires displaying the token. A test asserts `pbcopy` is never invoked.
+
+Point the uptime service at `GET https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness`
+with header `Authorization: Bearer <token>` (or `x-monitor-token`), interval 5m, alert on any
+non-2xx, confirm after 2 consecutive failures. Paste the token into the provider's own secret field;
+do not put it in a shell command.
+
+**Verifying the endpoint by hand** — same rule, the token must not reach argv or history:
+
+```bash
+scripts/rollout/notif-10cb/notif-liveness-secret.sh check-endpoint \
+  --url https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness \
+  --expect-status 200 --expect-state inert
+```
+
+**Requires `jq`**, and checks for it *first* — before the Keychain is read and before any request is
+made (33 if absent). The state is then validated **structurally**, not by text matching: the body
+must parse as a single JSON object whose `.state` is a string exactly equal to the expectation.
+Matching text was fail-open in a way that mattered — an error envelope that merely echoed the
+requested state anywhere in the body read as success, so
+`{"ok":false,"state":"query_failed","echo":{"state":"cron_disarmed"}}` passed a check for
+`cron_disarmed`. It was fail-*closed* in the other direction too: a pretty-printed body, or one
+serialized with a space after the colon, failed a perfectly healthy check.
+
+A body containing a **NUL byte** is rejected outright (34): `jq` stops reading at a NUL and ignores
+everything after it, so a truncated or proxy-mangled response could otherwise present a healthy
+prefix and hide the rest. That scan runs under `LC_ALL=C` because it is a **byte** operation — under
+a UTF-8 locale BSD `tr` rejects invalid UTF-8 with "Illegal byte sequence", which made the helper
+report "contains a NUL byte" for a body containing none. The self-test now runs under a UTF-8 locale
+by default *and* pins the same bytes under `C`, because that bug was invisible to a suite that
+inherited a C-locale shell.
+
+"Parses as a JSON object" means *as `jq` parses it*, and jq is deliberately lenient about one thing:
+invalid raw UTF-8 **inside a string** is replaced with U+FFFD rather than rejected. A body carrying
+invalid bytes in some other field therefore still reports healthy.
+
+That cannot make a wrong state look right, and the reason is worth stating precisely, because the
+convenient version of it is false. It is *not* that substitution only adds bytes — jq's replacement
+can change a value's byte length in either direction. It is that a malformed sequence always decodes
+to **at least one U+FFFD**, and U+FFFD is not ASCII, while every state the endpoint emits
+(`cron_disarmed`, `inert`, `stale`, …) is pure ASCII. So a mangled body can never decode to exactly
+one of them: invalid UTF-8 inside `.state` yields `cron_disarmed<U+FFFD>`, which is rejected (32).
+The guarantee rests on the *expectation being ASCII*, and would not hold for an `--expect-state` that
+itself contained U+FFFD. Both behaviours are pinned by tests so neither can drift silently.
+
+The order is transport (30) → HTTP status (31) → body is a single JSON object (34) → `.state` is a
+string equal to the expectation (32), so a network failure can never be reported as a wrong state,
+and none of them can end in 0. Neither the response body nor `jq`'s stderr is ever printed — the
+exit code carries the diagnosis — because the body is PII-free *today* and the check should not
+depend on that staying true. It never uses `-f` (which would suppress the very body being checked)
+and never `-H` (argv).
+
+**Rotation / revocation.** `notif-liveness-secret.sh provision --force` regenerates and re-proves
+the Keychain item; re-run `with-env -- supabase secrets set --env-file {} …` and update the
+provider's stored secret. Without `--force` an existing item is never touched: the write is a
+**create**, and the keychain itself refuses a duplicate (`errSecDuplicateItem`) with the stored
+bytes untouched. That, not the preceding lookup, is what makes it safe — an item created in the
+window between the two is refused rather than overwritten. `--force` is the only path that replaces
+a value, and it re-proves the round trip byte-for-byte afterwards. To revoke,
+`supabase secrets unset NOTIF_LIVENESS_TOKEN` — the endpoint
+then fails closed and authorizes nobody, which is the safe direction: the monitor goes dark loudly
+rather than the endpoint going open quietly.
+
 | Worker Slack alert | `digest_worker_alert` | a run finished unhealthy (group error, reconcile failure, orphan drain failure, correlation mismatch) | Not a page: the run is recorded either way |
 | `correlationMismatches > 0` | run summary / admin | the provider accepted a message the group is **not** bound to | Never a retry trigger — hold the channel and investigate |
 | Quarantined orphans | Orphan queue | a provider callback could not be correlated after N attempts | Not a lost email; the send may well have arrived |

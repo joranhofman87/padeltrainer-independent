@@ -17,12 +17,15 @@ of the mutating subcommands is an owner decision made from the runbook, not by a
 | 2 | `smoke-disabled --yes --switch-off-confirmed <url>` | **INVOKES** — not read-only. Runs the cron job's own reviewed command through the real Vault/pg_net path, checks the reply is **exactly** `200 {"status":"disabled","reason":"disabled"}` (compared in SQL, not as a substring) and that **no** counter moved across it. Refuses unless the cron is inactive, no engine is enabled, and there is **no dispatchable work at all** — because the worker claims existing groups regardless of the engine flag. |
 | 3 | *(owner)* set `DIGEST_SEND_ENABLED=true` on `notification-digest-worker` | The edge kill switch. No SQL can see it; this bundle has no view of it. |
 | 3b | `enable-engine --yes <url>` | Turns the engine on for the cutover event **only**, in one transaction: the cron must still be inactive, exactly one row changes, and the postcondition proves this event on and nothing else. The activation gate requires this to be true already. |
-| 3c | *(owner)* wire the EXTERNAL monitor | Point cron/uptime monitoring at `public.notif_digest_worker_liveness()` and verify it alerts on a stale `last_success_at`. Before the canary, so it is watching from the first send. |
+| 3c | *(owner)* deploy `notif-liveness`, wire an INDEPENDENT uptime service, and rehearse its alert + recovery | Deploy the endpoint that makes the `service_role`-only `public.notif_digest_worker_liveness()` readable by a provider without handing it the service-role key; set `NOTIF_LIVENESS_TOKEN`; point an independent uptime service at it. **Prove the alert with the safe rehearsal below — not with a stale `last_success_at`, which cannot exist before the first successful send.** Full contract, states, credential handling and the rehearsal: [`docs/NOTIFICATION_OPERATIONS.md`](../../../docs/NOTIFICATION_OPERATIONS.md). |
 | 4 | `canary-invoke --yes --admin-ops-confirmed --monitor-confirmed [--max-recipients=N] <url>` | **SENDS.** Invokes the worker once, cron still INACTIVE, through the real Vault/pg_net path — by executing the cron job's *own* stored command after asserting it hashes to the reviewed value under a row lock. It prints the reply so you can read **`dispatchRunId`**; that uuid is what every later step passes as `<run_id>`. |
 | 5 | `canary --yes --admin-ops-confirmed <url> <run_id>` | Reconciles **that** run and verifies it delivered. Does not invoke anything. |
 | 6 | `preflight <url> <run_id>` | Read-only **dry run** of the whole activation gate. Arms nothing. |
-| 7 | `activate --yes --monitor-confirmed --admin-ops-confirmed <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. |
+| 7a | *(owner)* set `NOTIF_LIVENESS_EXPECT_ARMED=true` | The monitor cannot INFER activation: between the canary and arming, the liveness row reads `last_success_at != null` **and** `job_active = false` — identical to a disarmed live cron. Tell it before a live cron exists. |
+| 7b | *(owner)* prove the DEPLOYED endpoint answers with HTTP 503 and the exact state `cron_disarmed` while the cron is still inactive | 503 alone is ambiguous — `query_failed`, `misconfigured` and `stale` share it. This is the step that proves the expectation actually propagated. |
+| 7c | `activate --yes --monitor-confirmed --liveness-expectation-confirmed --admin-ops-confirmed <url> <run_id>` | Verifies **and** arms, in one transaction against the locked job row. **Refuses without `--liveness-expectation-confirmed`** — a live cron that nothing is watching for staleness is the failure this ordering exists to prevent. |
 | 8 | `rollback --yes --switch-off-confirmed <url>` | Engine off **and** cron inactive, then proves both. |
+| 8a | *(owner)* reset the monitor expectation | Order matters: monitor maintenance (if used) → `DIGEST_SEND_ENABLED` off → `rollback` (engine off, cron inactive) → **then** unset `NOTIF_LIVENESS_EXPECT_ARMED` → verify inert → end maintenance. Unsetting it BEFORE the cron is confirmed inactive yields `unexpectedly_armed` and stops staleness monitoring while the cron is still live. Leaving it set reports `cron_disarmed` for a pipeline that is deliberately down. |
 
 **Step 4 has a subcommand, and it did not always.** It used to read "*(owner)* invoke the worker by
 hand", on the reasoning that the moment mail goes out should not happen on a script's say-so. That
@@ -226,8 +229,19 @@ verified something it never looked at.
   a worker that is never invoked — an unscheduled or disabled job, a missing Vault secret, a paused
   project all produce silence, and the in-worker Slack alert needs the worker to run in order to
   fire. `--monitor-confirmed` on `canary-invoke` **and** `activate`. Wire it and verify it alerts on
-  a stale `last_success_at` before the FIRST send, not before the arm: the canary *is* the first
-  send, so requiring it only at activation would start the watch one step too late.
+  before the FIRST send, not before the arm: the canary *is* the first send, so requiring it only
+  at activation would start the watch one step too late.
+
+  **What can and cannot be proven before that first send.** `last_success_at` is deliberately about
+  a SUCCEEDED run, so before any send there is nothing to make stale — a "verify it alerts on a
+  stale last_success_at" instruction at step 3c is not merely hard, it is impossible, and an
+  operator who tried would either wait forever or fake the confirmation. Staleness is covered
+  *before* activation by the endpoint's own state-machine tests, and can only be observed
+  end-to-end *after* a prior successful invocation. What IS provable at 3c, safely and without
+  arming anything or sending anything, is the alert-and-recovery path itself — see the rehearsal in
+  `docs/NOTIFICATION_OPERATIONS.md`, which flips the expectation against a still-inactive cron to
+  force a real `cron_disarmed`/503, requires the provider to alert, then restores `inert`/200 and
+  requires it to report recovery.
 
 ## Two rules that are asserted, not merely written down
 
