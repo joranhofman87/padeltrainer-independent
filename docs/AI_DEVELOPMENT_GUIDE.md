@@ -12,7 +12,7 @@ Status: canonical (source of truth) | last updated 2026-07-02
 
 Padeltrainer is a multi-tenant SaaS for padel academies, trainers, clubs, and players: scheduling, registrations, bookings, invoicing, and Mollie payments.
 
-- **Stack:** React + TypeScript + Vite SPA; Supabase (Postgres + RLS + `SECURITY DEFINER` RPCs + ~96 Deno edge functions + pg_cron); Mollie via OAuth-connected accounts; react-i18next (nl/en); email via Resend.
+- **Stack:** React + TypeScript + Vite SPA; Supabase (Postgres + RLS + `SECURITY DEFINER` RPCs + 108 Deno edge functions (2026-08-08 count) + pg_cron); Mollie via OAuth-connected accounts; react-i18next (nl/en); email via Resend.
 - **Roles** (`app_role` enum): `player`, `trainer`, `academy_manager`, `club_manager`, `admin`. RLS is gated by the `has_role()` SECURITY DEFINER function. **Clubs are read-only** for scheduling.
 - **Not this app:** Rallyo is the free tournament product — different repo, no payments/trainers/academies. Don't cross-reference.
 
@@ -35,7 +35,7 @@ The money spine in one line:
 
 ## 4. Where NOT to add code
 
-- **No business-critical mutations in UI components or pages.** Route dangerous actions through domain helpers / RPCs / edge functions ([ADR-0003](./adr/0003-mutation-boundary-facades.md)). The mutation boundary is shrink-only — `src/test/mutationBoundary.test.ts` fails if you add a new page-level write.
+- **No business-critical mutations in UI components or pages.** Route dangerous actions through domain helpers / RPCs / edge functions ([ADR-0003](./adr/0003-mutation-boundary-facades.md)). The mutation-boundary guard (`src/test/mutationBoundary.test.ts`) is a per-file count ceiling — it fails on a new file or a count increase; a count-neutral swap stays green ("shrink-only" is convention, not enforced), so never rely on it as permission.
 - **No cross-role imports.** `components/<role>` and `pages/<role>` must not import another role's code (ESLint `no-restricted-imports`, baseline = 0). To share, lift to a neutral folder (`components/ui`, `components/slots`, `components/invoices`, `components/players`, `hooks/`, `lib/`). Note: `components/player` = the player role (private); `components/players` = shared.
 - **No new UI primitive when one exists.** Check the registry first (§10).
 - **No cycle-level price scalar.** Price lives on the slot ([ADR-0002](./adr/0002-slot-is-price-source-of-truth.md)).
@@ -75,7 +75,7 @@ Open coverage gaps are tracked in [`TEST_COVERAGE_GAPS.md`](./TEST_COVERAGE_GAPS
 
 ## 8. Supabase edge-function caveats
 
-- All edge fns run with **`verify_jwt=false`** and **self-authenticate** via [`_shared/auth.ts`](../supabase/functions/_shared/auth.ts) (`requireUser` / service-role check). The SPA never holds a service-role key ([ADR-0007](./adr/README.md)).
+- Most edge fns (89 of 108 config entries; corrected 2026-08-08) run with **`verify_jwt=false`** and **self-authenticate** via [`_shared/auth.ts`](../supabase/functions/_shared/auth.ts) (`requireUser` / service-role check); a couple keep gateway JWT verification (`config.toml` `verify_jwt = true`), and `check:edge-config` gates a curated `MUST_VERIFY_JWT_FALSE` allowlist, not the whole set. The SPA never holds a service-role key ([ADR-0007](./adr/README.md)).
 - Service-role bypass is a real timing-safe key compare ([`_shared/service-role-auth.ts`](../supabase/functions/_shared/service-role-auth.ts)) — do not weaken it to a claims-only check (that was the fixed P0).
 - The `check:edge-config` gate enforces a hand-maintained `verify_jwt` allowlist — a new public function must be added to it deliberately.
 - **Bundle shared logic in `_shared/`** so it is testable and CI-covered; keep `index.ts` thin.
@@ -134,4 +134,4 @@ For a migration change also run `npm run db:reset` (the real migration gate) and
 
 ### Current state (do NOT reopen — fixed & deployed 2026-07-02)
 
-The [fresh-eyes audit](./audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) is the audit of record. These are **fixed and deployed** — treat any older audit describing them as open as stale/historical: forged-JWT service-role bypass (P0); `swap_slots` ownership guard; `merge_guest_players` cascade; M-17 webhook `23505` tolerance; extras charge/invoice; `create_invoice_deduped` dedup RPC; invoice-sync paging (now via `src/lib/supabasePaging.ts`); academy-Mollie routing. Push/OneSignal is disabled (email-only). Still open: Mollie idempotency-key on retry (G2), capacity lock on logged-in cyclus (B-1). Since fixed (2026-08-07 correction): refund/chargeback reversal detection now alerts (`_shared/mollie-webhook-reversal*`), edge-fn `index.ts` files are `deno check`ed by the `edge-typecheck` ratchet, and paid invoices carry a DB-level delete/rewrite guard (`20260908100000_protect_paid_invoice_integrity.sql`). See [`technical-debt/`](./technical-debt/) for the ranked backlogs.
+The [fresh-eyes audit](./audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) was the audit of record until the [2026-08 foundation audit](./audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md). These are **fixed and deployed** — treat any older audit describing them as open as stale/historical: forged-JWT service-role bypass (P0); `swap_slots` ownership guard; `merge_guest_players` cascade; M-17 webhook `23505` tolerance; extras charge/invoice; `create_invoice_deduped` dedup RPC; invoice-sync paging (now via `src/lib/supabasePaging.ts`); academy-Mollie routing. Push/OneSignal is disabled (email-only). Still open: B-1 capacity — corrected 2026-08-08: the authenticated cyclus insert IS locked by the current trigger, the uncovered path is service-role `finalize_cycle_proposals` (no lock/recount). The G2 Mollie idempotency-key SHIPPED (`_shared/mollie-idempotency.ts`). Since fixed (2026-08-07 correction): refund/chargeback reversal detection now alerts (`_shared/mollie-webhook-reversal*`), edge-fn `index.ts` files are `deno check`ed by the `edge-typecheck` ratchet, and paid invoices carry a DB-level delete/rewrite guard (`20260908100000_protect_paid_invoice_integrity.sql`). See [`technical-debt/`](./technical-debt/) for the ranked backlogs.

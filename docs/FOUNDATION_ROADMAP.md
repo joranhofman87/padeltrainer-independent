@@ -4,7 +4,7 @@ Purpose (HISTORICAL): was the single clean, forward-looking priority list of fou
 Audience / AI-read: yes
 Status: historical record — superseded 2026-08-07 for forward planning by [`FOUNDATION_EXECUTION_PLAN.md`](FOUNDATION_EXECUTION_PLAN.md); the notification-unit sections remain the N0–N7 record | last updated 2026-08-07
 
-> **2026-08-07:** foundation work now proceeds under the owner-approved programme docs:
+> **2026-08-07:** foundation work now proceeds under the owner-directed programme docs:
 > [`audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md`](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md) (A1–A7 audit),
 > [`FOUNDATION_DECISIONS.md`](FOUNDATION_DECISIONS.md) (accepted OD-02–OD-06; OD-07/08 open),
 > [`FOUNDATION_ARCHITECTURE_BLUEPRINT.md`](FOUNDATION_ARCHITECTURE_BLUEPRINT.md), and

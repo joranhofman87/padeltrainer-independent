@@ -1,9 +1,9 @@
 # Person Unification Plan — one `persons` table, "has a login" as an attribute
 
-Status: **IN EXECUTION** (last updated 2026-08-07). Phases 0–3.5d are **shipped + deployed**
+Status: **IN EXECUTION** (last updated 2026-08-08). Phases 0–3.5d are **shipped + deployed**
 (`persons` + `person_links` live and backfilled, dual-write stamps on, person-keyed readers through
 the money-path dedup guard and the 3.5 reader slices — migrations `20260903100000`–`20260906100000`
-are in the tree). The membership layer now proceeds under the owner-approved foundation programme
+are in the tree). The membership layer now proceeds under the owner-directed foundation programme
 (`FOUNDATION_EXECUTION_PLAN.md`, first slice U1a, per OD-03); remaining 3.x slices + Phase 4
 (CONTRACT) stay owner-gated. This is the tracker for the largest migration in the codebase. Execute it as a
 **strangler / expand→migrate→contract** program of small, independently-shippable PRs — never a
@@ -38,11 +38,11 @@ divergences. Each past fix patched one crack; this plan removes the seam.
 
 ## 2. Decisions locked (2026-07-16, owner)
 
-> **Supersession note (2026-08-07):** owner decision D-04 (`FOUNDATION_DECISIONS.md`) — email or
-> phone alone never authorizes an identity merge — supersedes auto-merge key (b) below going
-> forward. The shipped unique-email-pair rule (B2) and its live H1/H2 arms are recorded
-> nonconformance to D-04; remediation is a separately owner-authorized unit (no later than U2 of
-> `FOUNDATION_EXECUTION_PLAN.md`). The text below is the historical record of what shipped.
+> **Conflict note (2026-08-07):** owner decision D-04 (`FOUNDATION_DECISIONS.md`) — email or phone
+> alone never authorizes an identity merge — conflicts, read strictly, with auto-merge key (b)
+> below. Disposition (D-04 supersedes + a remediation slice vs B2 kept as an explicit exception) is
+> **OPEN owner decision OD-09** in `FOUNDATION_DECISIONS.md`; until answered, the shipped B2/H1/H2
+> behavior stands exactly as documented below.
 
 1. **One table.** A single `persons` table holds identity **and** account fields. "Has a login
    account" is simply **`persons.user_id IS NOT NULL`**. `profiles` is absorbed; `guest_players` and
@@ -119,7 +119,9 @@ partial membership layer already exists (`academy_player_metadata`, `academy_pla
 creation; first slice U1a in `FOUNDATION_EXECUTION_PLAN.md`). `academy_player_metadata` /
 `academy_player_locations` migrate into it additively and remain as compatibility until
 reconciliation and owner-gated contraction — the earlier "extend metadata in place, don't invent a
-new table" recommendation is superseded.
+new table" recommendation is superseded. OD-03 resolves the TOPOLOGY only: membership-row lifecycle
+on person merge/collapse/anonymize/delete (and academy deletion) is OPEN owner decision OD-10, which
+gates population — not the empty U1a skeleton.
 
 ### 4.3 The collapse: every `(player_id | guest_player_id)` → `person_id`
 
@@ -610,7 +612,8 @@ One domain per PR, each with tests + live-verify, in dependency order:
   `FOUNDATION_DECISIONS.md`): global person; academy-private data moves to one canonical
   `academy_player_memberships` row per `(academy, person)`; `academy_player_metadata` is migrated
   additively and retained as compatibility until owner-gated contraction. The earlier reuse-metadata
-  recommendation is superseded. First slice: U1a (`FOUNDATION_EXECUTION_PLAN.md`).
+  recommendation is superseded. First slice: U1a (`FOUNDATION_EXECUTION_PLAN.md`). Topology only —
+  membership lifecycle on merge/collapse/anonymize/delete is OPEN owner decision OD-10 (gates population).
 - **P-B (Phase 2):** disposition of the 76 no-email guests and 28 shared-email families after the
   review report — merge, keep, or manual case-by-case.
 - **P-C (Phase 3.4): RESOLVED — identity-only.** Owner chose "dedup/grouping only, amount math

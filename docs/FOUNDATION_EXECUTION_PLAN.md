@@ -1,6 +1,6 @@
 # Foundation execution plan
 
-**Status:** U1a authorized by owner 2026-08-07 (additive canonical membership foundation + read-only migration inventory only); every other unit remains proposed and gated. OD-07/OD-08 stay open and must not be decided inside U1a  
+**Status:** U1a authorized by owner 2026-08-07 (additive canonical membership foundation + read-only migration inventory only); every other unit remains proposed and gated. Open owner decisions: OD-07/OD-08 (gate U3/U7), OD-09 (merge semantics — gates U2), OD-10 (membership lifecycle — gates the first populated membership writer). None may be decided inside U1a  
 **Baseline:** `ea54f08b3a204a4ed29c3d37976d51ed2d841ad6`
 
 ## Programme rules
@@ -19,27 +19,35 @@
 ### U0 — Owner design approval and baseline certification
 
 **Depends on:** none.  
-**Work:** resolve remaining OD-07–OD-08 (not a U1a prerequisite — the owner keeps both open as of 2026-08-07;
-they gate U3 and U7 respectively); reconcile stale canonical status; freeze entity/state/permission vocabulary;
-capture schema/function/grant/reference inventory at exact main SHA.
+**Work:** record and classify the open owner decisions OD-07–OD-10 (none is a U1a prerequisite — OD-07/08
+gate U3/U7, OD-09 gates U2 merge semantics, OD-10 gates membership population; recording is not resolving);
+reconcile stale canonical status; freeze entity/state/permission vocabulary; capture
+schema/function/grant/reference inventory at exact main SHA.
 
 **Acceptance:** owner signs the decision ledger; no conflicting canonical statement remains unclassified; inventory
-scripts are read-only and reproducible. **Rollback:** documentation revert. **Owner gate:** approve blueprint and U1.
+scripts are read-only and reproducible. **Rollback:** documentation revert. **Owner gate:** approve the blueprint direction and the next bounded subunit (currently U1a; each subunit gates separately).
 
-### U1 — Additive Player membership contract (split U1a / U1b)
+### U1 — Additive Player membership contract (split U1a / U1b / U1c)
 
-**Depends on:** accepted OD-02/OD-03 only — explicitly not OD-07/OD-08, which stay open and must not be
-decided in this unit.
+**Depends on:** accepted OD-02/OD-03 — sufficient for U1a (empty additive skeleton). Open OD-10 gates the
+FIRST populated membership writer (U1c, or U2 if it writes membership rows earlier), not the empty U1a
+table; OD-07/OD-08/OD-09 stay open and must not be decided in this unit.
 
 #### U1a — membership foundation + migration inventory (AUTHORIZED by owner 2026-08-07)
 
 **Work:** add the canonical `academy_player_memberships` skeleton with exactly this DDL: `id uuid PRIMARY
 KEY DEFAULT gen_random_uuid()`; `academy_profile_id uuid NOT NULL` FK → `academy_profiles(id)`;
 `person_id uuid NOT NULL` FK → `persons(id)` — both FKs with preservation-safe actions
-(`RESTRICT`/`NO ACTION`; never cascading deletion of membership evidence or Player history; the final
-action is fixed in the U1a design review) — `UNIQUE (academy_profile_id, person_id)` (both columns NOT
-NULL, so the uniqueness cannot be defeated by NULL pairs); `created_at`/`updated_at` `timestamptz NOT NULL
-DEFAULT now()`, with `updated_at` maintained by the standard `update_updated_at_column()` trigger. Nothing
+(`RESTRICT`/`NO ACTION`; never cascading deletion of membership evidence or Player history; provisional
+pending OD-10 — see the note below) — `UNIQUE (academy_profile_id, person_id)` (both columns NOT
+NULL, so the uniqueness cannot be defeated by NULL pairs); a person-leading index (`CREATE INDEX ... ON academy_player_memberships (person_id)` — the
+`idx_apm_person` precedent) for person-side reads, FK checks, and future repoints; `created_at`/`updated_at`
+`timestamptz NOT NULL DEFAULT now()`, with `updated_at` maintained by the standard
+`update_updated_at_column()` trigger. The FK deletion actions are PROVISIONAL while the table is empty:
+the person-side action is fixed by open OD-10, and the academy-side action must reconcile with the admin
+academy-delete flow (which promises removal of the academy and all associated data —
+`src/pages/admin/AdminAcademies.tsx:536` — while existing academy-owned tables CASCADE); both are
+confirmed in the U1a design review and re-examined before any writer populates the table. Nothing
 else in U1a: no notes/status/tags/trainer-assignment/settings/billing columns (those arrive only with
 later reviewed slices). RLS enabled default-deny from creation (zero policies plus named-role REVOKEs,
 including the service-role table lockdown idiom). Plus a read-only, reproducible inventory/rehearsal
@@ -48,10 +56,17 @@ the academy-/trainer-owned `guest_players` rows, resolved exclusively through ex
 (eligibility is never derived from email/phone/contact inference) — reporting: totals; rows missing
 `person_id`; duplicate `(academy, person)` groups; field conflicts (notes, tags, billing email, removal
 state, trainer assignment, preferred location); orphaned references; cross-tenant trainer/location
-anomalies; rows deterministically eligible for later backfill; per-academy reconciliation counts — with
-split-frozen guests, email-auto-merged (`auto_merged_email_pair`) links, and trainer-owned
-(`trainer_profile_id`) metadata rows each reported as their own class and marked unresolved/ineligible,
-never silently folded into eligible counts. No read or write switch, no backfill, no dual-write, no legacy
+anomalies; rows deterministically eligible for later backfill; per-academy reconciliation counts; plus
+read-only arms counting relationships today derivable only from bookings at academy trainers
+(`bookings` × `availability_slots` × `academy_trainers` — the shipped reader rule in
+`20261006120000`/`20261015130000`), so the later backfill can be reconciled against every live
+derivation path, with trainer-only guest associations classified unresolved unless direct academy
+evidence exists — and with split-frozen guests, email-auto-merged (`auto_merged_email_pair`) links,
+trainer-owned (`trainer_profile_id`) metadata rows, dual-key visibility-only relationships (rows that
+reach an academy only through the deliberately unguarded visibility arms —
+`20260904100000_phase35b_rls_helpers_person.sql:106-146`, `20261015130000_notif_n3_player_visibility.sql:32-67`),
+and twin/linked-bridge relationships that diverge from `person_links` each reported as their own class and
+marked unresolved/ineligible, never silently folded into eligible counts. No read or write switch, no backfill, no dual-write, no legacy
 modification.
 
 **Acceptance/tests:** the additive migration applies from the real chain; existing tables/rows untouched;
@@ -62,14 +77,16 @@ academies relate to one Player independently without seeing each other's relatio
 inventory deterministic and mutation-free; migration reset/types drift green. **Rollback:** drop the unused
 additive objects. **Gate:** owner approves the production additive migration separately.
 
-**Status:** authorized 2026-08-07; the documentation checkpoint completed three independent Codex review
-rounds WITHOUT clearance (round-3 findings remain open — recorded in the owner report of 2026-08-07);
-implementation not started.
+**Status:** authorized 2026-08-07; documentation checkpoint under iterative independent Codex review
+(six rounds by 2026-08-08; open items are the recorded owner decisions OD-09/OD-10 and two deferred
+code-comment chores); implementation not started.
 
 #### U1b — legacy mapping + backfill rehearsal (NOT authorized)
 
-**Work:** define the deterministic mapping from every academy metadata/guest/profile record; add drift and
-cross-tenant anomaly reports as durable artifacts; checkpointed, resumable backfill rehearsal.
+**Work:** define the deterministic mapping from every relationship source inventoried in U1a (academy
+metadata, locations, guest/profile records, AND the booking-derived arms), classifying every U1a inventory
+arm as eligible or one of the unresolved classes; add drift and cross-tenant anomaly reports as durable
+artifacts; checkpointed, resumable backfill rehearsal.
 
 **Acceptance/tests:** backfill rehearsal reports deterministic counts, orphans, duplicates, and
 checkpoints; reconciliation stable across reruns. **Rollback:** stop writes/drop only unused additive
@@ -77,32 +94,49 @@ objects. **Gate:** owner authorizes U1b explicitly; the production backfill is a
 
 #### U1c — production membership backfill execution (NOT authorized)
 
+**Depends on:** U1b, and a membership-aware person-lifecycle slice — the shipped
+`collapse_guest_person_into`, last-source cleanup, and `merge_guest_players` repoint only the legacy
+stamp tables and then DELETE the `persons` row (`20260826280000_persons_backfill.sql:488-508,840-851`;
+current merge definition `20260826240000_twin_reader_precedence_and_lock.sql:293`), so populated
+membership FKs would block or
+orphan those flows. Membership behavior on merge/collapse/anonymize/delete is **open owner decision
+OD-10** (`FOUNDATION_DECISIONS.md`) and must be decided and implemented before U1c executes. (U1a is
+unaffected: its table stays empty.)
+
 **Work:** execute the U1b-rehearsed deterministic backfill against production data with resumable
 checkpoints, before/after counts by academy, and reconciliation reports; no notifications, no provider
 calls, no legacy modification beyond the additive membership writes.
 
 **Acceptance/tests:** reconciliation counts match the U1b rehearsal predictions; re-running changes no
-rows; unresolved classes (split-frozen, auto-merged-pair, trainer-owned) remain untouched and reported.
-**Rollback:** the backfill is additive — truncate/delete only the backfilled membership rows.
+rows; unresolved classes (split-frozen, auto-merged-pair, trainer-owned, dual-key visibility-only,
+bridge-divergent) remain untouched and reported.
+**Rollback:** the backfill is additive — delete only the rows this backfill wrote, identified by its batch
+manifest/checkpoint log (never `TRUNCATE`: later units may already write membership rows).
 **Gate:** explicit owner approval; must be complete before any reader/writer switch (U3+) that depends on
 complete membership data.
 
 ### U2 — Player claim and identity writer convergence
 
-**Depends on:** U1a; reconfirm D-07 (recorded direction, no dated record) at unit start; the B2
-nonconformance recorded in `FOUNDATION_DECISIONS.md` must be owner-resolved in or before this unit.  
+**Depends on:** U1a; reconfirm D-07 (recorded direction, no dated record) at unit start; open owner
+decision OD-09 (B2 disposition, `FOUNDATION_DECISIONS.md`) must be answered before this unit relies
+on merge semantics; and if this unit writes membership rows before U1c, the OD-10 membership-lifecycle
+prerequisite applies to it first (it is then the first populated membership writer).  
 **Work:** one idempotent server command for academy-created Player and later account claim; route bounded creation/linking
 flows through canonical person/membership writes while maintaining compatibility projections.
 
-**Acceptance/tests:** same Player UUID before/after signup; replay stable; email/phone signals alone never merge
-(the shipped unique-pair B2 auto-merge is recorded nonconformance to D-04 — its remediation must be
-owner-authorized in or before this unit); existing merge command remains sole duplicate resolution; failure
-injection leaves no partial auth/person link; no notification backfill. **Rollback:** switch callers back while dual-write remains. **Gate:** owner approves auth-flow rollout.
+**Acceptance/tests:** same Player UUID before/after signup; replay stable; merge semantics conform to the
+owner's OD-09 answer (the shipped unique-pair B2 auto-merge conflicts with D-04 read strictly — see the
+recorded conflict in `FOUNDATION_DECISIONS.md`); the reviewed merge command remains the sole duplicate
+resolution — with, if OD-09 retains B2, the documented narrow unique-email auto-merge as the one automatic
+exception; failure injection leaves no partial auth/person link; no notification backfill. **Rollback:** switch callers back while dual-write remains. **Gate:** owner approves auth-flow rollout.
 
 ### U3 — Read migration and tenant/capability foundation
 
 **Depends on:** U2, OD-04/05/07; U1c (executed membership backfill) for any reader that depends on
-complete membership data; reconfirm D-07 if not already reconfirmed at U2.  
+complete membership data — and membership-dependent readers retain compatibility reads for every
+class U1c leaves unresolved (split-frozen, auto-merged-pair pending OD-09, trainer-owned, dual-key
+visibility-only, bridge-divergent) until the owner-gated adjudication resolves them; reconfirm D-07 if
+not already reconfirmed at U2.  
 **Work:** central academy scope and trainer capability predicates; fix `get_player_locations`; migrate player roster/detail
 readers in bounded clusters; add permission audit ledger and management UI with planning off by default.
 

@@ -15,6 +15,7 @@ multi-academy (F3) routing, guest/linked identity, and invoice email. Result: **
 
 | PR | Phase(s) | Type | Contents |
 |---|---|---|---|
+| — | — | — | **2026-08-08 status banner:** this is a point-in-time report; several statuses below have moved. G2 ✅ SHIPPED (`_shared/mollie-idempotency.ts`); G5 ✅ decided + shipped (freeze-to-capacity, Option A); G6 re-scoped to service-role `finalize_cycle_proposals` (backlog B-1); #314's webhook audit coverage is PARTIAL (paid-path terminal rows only — see `PAYMENT_INVARIANTS.md` #13). Verify in `PAYMENT_TEST_GAPS.md` before acting on any row. |
 | #313 | 1, 2, 7 | docs | `PAYMENT_FLOW_MAP.md`, `PAYMENT_INVARIANTS.md` (15 invariants w/ enforcement + gaps), `EDGE_FUNCTION_DEPLOY_SAFETY.md` (+ money-path PR checklist) |
 | #314 | 4 | code + docs | `_shared/payment-audit.ts` (best-effort helper) + **`mollie-webhook` now writes `payment_audit_log`** at every terminal outcome; `PAYMENT_OBSERVABILITY_AUDIT.md` |
 | #315 | 3 | code + docs | Extracted + tested `bookingSumTolerance`; `paymentAmountInvariant.test.ts` (#5), `chargeConfirmParity.pglite.test.ts` (#6); `PAYMENT_TEST_GAPS.md` (G1–G10) |
@@ -46,9 +47,9 @@ incident has a **recovery procedure**.
 
 | ID | Sev | Item | Status | Where |
 |---|---|---|---|---|
-| G2 | **P0** | No Mollie `idempotencyKey` on payment creation → a network-timeout + client retry can mint a 2nd Mollie payment (double-charge vector) | **OPEN (code fix)** | `PAYMENT_TEST_GAPS.md` G2 |
-| G6 | **P1** | Logged-in **cycle** insert has no per-slot capacity lock → concurrent cycle bookings can overbook | **OPEN (code fix)** | G6 |
-| G5 | **P1** | Split-payment divisor race (Codex F4): divisor fixed at charge time, no re-division if the cohort changes | **OPEN — needs a product decision** (freeze vs re-divide) | G5 |
+| G2 | **P0** | ~~No Mollie `idempotencyKey` on payment creation~~ | **✅ SHIPPED** (`mollieIdempotencyKey`, `_shared/mollie-idempotency.ts` — noted 2026-08-08) | `PAYMENT_TEST_GAPS.md` G2 |
+| G6 | **P1** | ~~Logged-in cycle insert has no per-slot capacity lock~~ CORRECTED 2026-08-08: the authenticated path is trigger-locked (`20260715100000`); the uncovered path is service-role `finalize_cycle_proposals` (no lock/recount) | **OPEN (code fix, re-scoped)** | G6 |
+| G5 | **P1** | Split-payment divisor race (Codex F4) | **✅ RESOLVED by design** (freeze-to-capacity, Option A — noted 2026-08-08) | G5 |
 | G4 | P0-hardening | Charge==confirm **code-path** parity: predicate is correct + tested, but the two functions could diverge in future | Predicate-tested; **structural fix recommended** (extract shared helper) | G4 |
 | #13 | P0 | Webhook had no durable audit trail | **FIXED (#314)** — pending `mollie-webhook` redeploy to activate | — |
 | G1/#15, G3, G7, G8, G9, G10 | P1/P2 | Concurrency proofs, adversarial cross-tenant suite, e2e webhook, etc. — mechanisms are sound, tests missing | OPEN (coverage) | `PAYMENT_TEST_GAPS.md` |

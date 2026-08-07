@@ -20,19 +20,19 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 | **B. Cron wrapper** | Slack (via A) | a wired cron sub-job returning non-2xx | `api/_lib/cron.ts:59` `alertCronFailure` |
 | **C. Client PostHog** | eng PostHog dashboard | **browser** errors only | `src/lib/logger.ts:68` `sendToMonitoring` → `ph.capture('$exception')` |
 
-**Coverage is all-or-nothing per edge function.** ~22 of ~96 functions alert; the rest emit only `console.*` to the Supabase log drain that nobody watches. The remaining silent gaps are the backlog.
+**Coverage varies per function AND per branch.** 41 of 108 entrypoints call the canonical Slack helper directly (recounted 2026-08-08), plus 8 legacy inline wrappers — but several alerting functions still have silent branches (see the PARTIAL backlog items); the rest emit only `console.*` to the Supabase log drain that nobody watches. The remaining silent gaps are the backlog.
 
 ### Channel A — Slack backbone
 - **Canonical helper:** `supabase/functions/_shared/edge-slack.ts` — `notifySlackEdge(event, data)` (`:4`) and `notifySlackEdgeError(fn, msg, ctx)` (`:22`). Invokes the `slack-notify` edge fn with the service-role key. **Never throws** (try/catch swallow at `:17`) — alerts must not break primary flows. **Prefer this over new inline wrappers.**
-- **`slack-notify` edge fn:** formats Block Kit; `EVENT_CONFIG` = `edge_function_error`, `payment_received`, `new_registration`, `registration_error`. Auth = Bearer must equal `SUPABASE_SERVICE_ROLE_KEY`.
+- **`slack-notify` edge fn:** formats Block Kit; `EVENT_CONFIG` = 14 configured events (recounted 2026-08-08: signups ×3, booking_created, payment_received, profile_published, subscription_purchased, new_review, account_deletion, new_club_claim, edge_function_error, new_registration, registration_error, cron_heartbeat — `slack-notify/index.ts:14-28`; unknown events render with a generic title). Auth = Bearer must equal `SUPABASE_SERVICE_ROLE_KEY`.
 - **Structural risk:** if `SLACK_WEBHOOK_URL` is unset, `slack-notify` 500s with `console.error` only — no self-alert, no dead-man's-switch. A misconfigured webhook silences **everything** silently. See backlog OBS-P0-1.
-- **6 legacy inline wrappers** (e.g. `mollie-webhook`, `verify-mollie-payment`, `create-mollie-payment`, `stripe-subscription-webhook`, `send-email`, `signup-user`) predate the helper and duplicate auth-header logic — drift risk. New alerts route through `edge-slack.ts`.
+- **8 legacy inline wrappers** (recounted 2026-08-08: `create-guest-cart-payment`, `create-guest-slot-payment`, `create-guest-cyclus-payment`, `create-invoice-payment`, `create-mollie-payment`, `stripe-subscription-webhook`, `mollie-webhook`, `verify-mollie-payment`) predate the helper and duplicate auth-header logic — drift risk. New alerts route through `edge-slack.ts`.
 
 ### Channel B — Cron alerting
 - `alertCronFailure` (`api/_lib/cron.ts:59`) fires only when a sub-job returns `ok:false`. Wired into `api/cron/daily-emails.ts` and `api/cron/daily-maintenance.ts` (schedules in `vercel.json`: `0 12 * * *` and `0 6 * * *`).
 - Many crons also self-alert internally (e.g. `invoice-health-check/index.ts:166`), closing the "HTTP 200 with partial failures inside" blind spot for wired jobs.
 - **Single-flight (CRON-SF-WEDGE is CLOSED — see below):** the session-scoped `try_lock_cron_job` / `unlock_cron_job` advisory pair was **retired in 10c-b** (`20261007100000_cron_durable_lease.sql` drops both). Three of the four workers rely on their existing atomic claim; `invoice-health-check` takes a **durable owner-token + `locked_until` lease** (`acquire_cron_lease` / `renew_cron_lease` / `release_cron_lease`).
-- **Gap:** Vercel does not page on a cron that *never fires* (missed schedule) — no heartbeat. See backlog OBS-P1-2.
+- ~~Gap: no heartbeat~~ **Resolved (2026-08-08):** `sendCronHeartbeat` pings daily from `daily-maintenance` (`api/cron/daily-maintenance.ts:53`) — a silent morning signals pipeline death (OBS-P1-2). Noticing the ABSENCE externally remains OBS-P0-1.
 
 ### ✅ CLOSED — session-scoped cron single-flight lock (CRON-SF-WEDGE)
 **The hazard.** `try_lock_cron_job` was a **session-level** `pg_try_advisory_lock`. It and its `unlock_cron_job` ran as **separate pooled PostgREST requests with no session affinity**, so the unlock could execute on a *different* backend than the one that acquired the lock — leaving the lock **held on the acquiring session until that pooled connection was recycled**. A healthy run could therefore wedge the job (every later tick saw `try_lock` return false and bailed) for an unbounded time.
@@ -60,15 +60,15 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 ## 2. Audit trails — the durable record
 
 ### Payment audit log (`payment_audit_log`)
-- **Table:** migration `20260324103326_*.sql`. Service-role only, `RLS = false`.
+- **Table:** migration `20260324103326_*.sql`. Service-role only — RLS **enabled** with a deny-all client policy (`FOR ALL USING (false)`); service_role reaches it via its RLS bypass (claim corrected 2026-08-08).
 - **Writer:** `supabase/functions/_shared/payment-audit.ts` — `writePaymentAuditLog(supabase, event)`. **Best-effort, never throws** (a failed audit insert must never break a money write).
 - **Vocabulary:** `PaymentAuditStatus` in the same file — the shared status enum producers + reconciliation agree on (`webhook_received`, `invoice_marked_paid`, `booking_marked_paid`, `duplicate_webhook_ignored`, `amount_mismatch_blocked`, `payment_for_cancelled_invoice`, `payment_for_cancelled_booking`, `payment_for_unknown_invoice`, `no_connected_mollie_account`, …).
-- **Why it exists:** every money-path outcome leaves a queryable trail that **survives a Slack outage**. This is the primary forensic surface when reconciling a payment dispute.
+- **Why it exists:** money-path outcomes leave a queryable trail that **survives a Slack outage** (paid-path terminal outcomes covered; unroutable-metadata and failed/canceled/expired deliveries write no terminal row yet — see `PAYMENT_INVARIANTS.md` #13, corrected 2026-08-08). This is the primary forensic surface when reconciling a payment dispute.
 - Full design: [`docs/payments/PAYMENT_OBSERVABILITY_AUDIT.md`](payments/PAYMENT_OBSERVABILITY_AUDIT.md).
 
 ### Email delivery tracking
 - **Tables:** migration `20260615110000_email_delivery_tables.sql`; write RPC `record_email_event` (`20260615110010_*.sql`); invoice-facing status RPCs (`20260615110030_invoice_delivery_status_rpcs.sql`).
-- **Ingestion point:** `supabase/functions/resend-webhook/` consumes Resend bounce/delivery events. **Warning:** its catch is silent (see backlog OBS-P1-3) — if this webhook fails, deliverability data goes stale with no signal.
+- **Ingestion point:** `supabase/functions/resend-webhook/` consumes Resend bounce/delivery events. Its formerly-silent catch is fixed (verified 2026-08-08: per-event alert callback + a top-level catch that logs and Slack-alerts — OBS-P1-4 resolved); a webhook failure now surfaces instead of silently going stale.
 - Data-integrity gate: `db:rehearse:email` / `db:rehearse:invoices-delivery`.
 
 ---
@@ -176,7 +176,7 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 | Trace one payment | query `payment_audit_log` by `invoice_id` / `mollie_payment_id` | forensic trail |
 | Invoice delivery status | `invoice_delivery_status` RPCs | per-invoice email state |
 | Manual invoice ops | `split-invoice`, `backfill-invoices`, `forward-invoice`, `bulk-update-vat` edge fns | **operator sees immediate result; no Slack on partial failure** (backlog) |
-| Account admin | `delete-user`, `update-user`, `impersonate-user`, `admin-reset-password` | security-sensitive; **currently log-drain only** (backlog OBS-P2-1) |
+| Account admin | `delete-user`, `update-user`, `impersonate-user`, `admin-reset-password` | security-sensitive; now Slack-alerted (OBS-P2-1 resolved 2026-08-08) |
 | Mollie Connect state | `check-mollie-connect-status`, `mollie-connect-*` | a broken connect token silently breaks an academy's payouts (backlog) |
 
 There is **no** in-app operator dashboard for these — they are invoked from admin UI actions or directly. Building a consolidated operator console is a known gap (`PAYMENT_OPERATOR_TOOL_GAPS.md`).
@@ -185,10 +185,10 @@ There is **no** in-app operator dashboard for these — they are invoked from ad
 
 ## 7. Structural gaps (strategic — see backlog)
 
-1. **No server-side error aggregator.** Edge errors have two sinks: explicit `slack-notify` calls (~22 fns) and the passive log drain. PostHog is browser-only. No Sentry/Logflare backstop for edge functions.
+1. **No server-side error aggregator.** Edge errors have two sinks: explicit `slack-notify` calls (41 of 108 entrypoints call the canonical helper directly, plus 8 inline wrappers — 2026-08-08 recount) and the passive log drain. PostHog is browser-only. No Sentry/Logflare backstop for edge functions.
 2. **Slack backbone has no dead-man's-switch** — an unset webhook silences all alerts with no signal.
 3. **No Slack rate-limit / dedup** — a hot failing path can flood and bury real alerts.
-4. **No missed-cron heartbeat** — a cron that never fires is invisible.
+4. ~~No missed-cron heartbeat~~ **Resolved (2026-08-08):** the daily `sendCronHeartbeat` ships; the remaining half is an external observer of its absence (OBS-P0-1).
 5. ~~Refund/chargeback reversals not recorded or alerted~~ **Resolved (noted 2026-08-07):** `detectPaymentReversal` (`_shared/mollie-webhook-reversal*`) + the webhook's reversal branch log/alert for manual reconciliation (alert-only by design — no state resurrection).
 
 These are ranked with file refs in [`technical-debt/OBSERVABILITY_BACKLOG.md`](technical-debt/OBSERVABILITY_BACKLOG.md).

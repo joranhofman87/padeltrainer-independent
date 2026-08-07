@@ -79,4 +79,5 @@ owner-gated contract programme. No rewrite or early table deletion is justified.
 Proceed with the blueprint as a sequence of bounded releases. The first implementation unit should be
 an additive identity/membership contract and inventory—not destructive contraction—and only after the
 ownership decisions that gate that unit are approved (OD-02/OD-03 suffice for the first additive slice;
-OD-07/OD-08 gate later units — see `FOUNDATION_EXECUTION_PLAN.md`).
+OD-07–OD-10 gate later units — see `FOUNDATION_EXECUTION_PLAN.md` and the open rows in
+`FOUNDATION_DECISIONS.md`).

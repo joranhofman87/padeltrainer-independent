@@ -18,7 +18,9 @@ Companion docs (do not duplicate — link):
 matrix), [`payments/PAYMENT_FLOW_MAP.md`](payments/PAYMENT_FLOW_MAP.md) (charge→confirm sequence),
 [`audits/CORE_BOOKING_DOMAIN_HARDENING_AUDIT.md`](audits/CORE_BOOKING_DOMAIN_HARDENING_AUDIT.md) (20-invariant
 scale audit), [`audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md`](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md)
-(current findings), [`DOMAIN_MODEL.md`](DOMAIN_MODEL.md), [`adr/`](adr/).
+(historical findings — the current audit of record is
+[`audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md`](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md)),
+[`DOMAIN_MODEL.md`](DOMAIN_MODEL.md), [`adr/`](adr/).
 
 Risk legend: **P0** = money lost / double-charged / cross-tenant leak · **P1** = stuck money or capacity
 needing manual recovery · **P2** = observability/UX degradation. Enforcement legend: 🟢 durable (DB/RPC/RLS)
@@ -97,12 +99,16 @@ holds** (`hold_expires_at > now()`) so abandoned checkouts self-heal; release cr
 
 **Tests:** `guestSlotBooking.pglite.test.ts` (expired holds don't occupy capacity), `cyclePayment.test.ts`.
 
-**Missing / open:** the **logged-in cyclus** insert is not routed through a per-slot capacity lock (the
-capacity trigger counts seats but has no advisory lock on the cyclus path) → concurrent cyclus bookings can
-overbook. Separately, the capacity trigger enforces *count*, not per-(slot, identity) uniqueness — I-3 covers
-the identity side. See backlog item B-1.
+**Missing / open (corrected 2026-08-08):** the authenticated path — including cyclus inserts — IS covered:
+the current `enforce_booking_slot_tier` revision (`20260715100000`) takes the slot advisory lock + seat
+count for every authenticated insert with a real `slot_id`, and the service-role booking RPCs repeat the
+guard internally. The trigger returns early for service-role writers, and the one service-role path with
+NO lock/recount is `finalize_cycle_proposals` (`20260701120000` inserts bookings directly) — that is the
+uncovered capacity path (supersedes the old "logged-in cyclus" wording). Separately, the capacity trigger
+enforces *count*, not per-(slot, identity) uniqueness — I-3 covers the identity side. See backlog item B-1.
 
-**Risk:** P1 (concurrency-only, needs simultaneous cyclus bookings on the last seat).
+**Risk:** P1 (service-role proposal-finalization path only; needs concurrent finalizes/bookings on the
+last seat).
 
 ## I-3 — No duplicate active booking per (player | guest, slot) 🟢 (P0)
 
@@ -209,7 +215,7 @@ alerts instead of resurrecting.
 `charged_back` and non-zero refunded/charged-back amounts; the webhook path alerts without resurrecting
 or downgrading state (deliberately alert-only; tested in `mollie-webhook-reversal.test.ts`).
 
-**Risk:** P0 for resurrection (guarded); P2 for the unhandled-reversal observability gap.
+**Risk:** P0 for resurrection (guarded); reversal detection/alerting is resolved (alert-only by design).
 
 ## I-8 — Payment amount == invoice / booking amount 🟡 (P0)
 
@@ -228,7 +234,7 @@ single-source-of-truth extras decision so charge total and invoice total agree.
 **Missing / open:** the webhook validates the *charge* sum, not the invoice *total*, on the fresh-creation path;
 the `0.01`×N tolerance is an undocumented magic number (P3-5). The former P2-6 recalc-overwrites-paid risk
 is now blocked at the DB layer (`protect_paid_invoice_integrity` freezes paid composition; recalc also
-filters out paid rows). See backlog B-4.
+filters out paid rows). See backlog B-9.
 
 **Risk:** P0; the systematic extras bug is fixed, residual gaps are P2/P3.
 
@@ -282,7 +288,7 @@ read) return trimmed field sets. Tokens are UUIDs (unguessable) — the URL *is*
 
 **Missing / open:** `get-public-invoice` relies on `decidePublicInvoiceAccess('paid')` to hide the pay UI
 rather than **hard-rejecting** a revoked-token read; no explicit "token X cannot read invoice Y" test. See
-backlog B-5.
+backlog B-8.
 
 **Risk:** P2 (tokens are unguessable UUIDs; the gap is a hard-reject + a negative test, not a live leak).
 
@@ -403,7 +409,13 @@ invoice-dedup recipient is guest-EXCLUSIVE (I-20). **Deliberate boundary:** rela
 helpers (`is_player_of_trainer` / `is_player_of_academy` — "does my person relate to this
 trainer/academy?") are **not** pure-profile-guarded: either key legitimately establishes the
 relationship. The guard belongs on *ownership* ("this row is mine to read/cancel/bill"), not on
-*visibility*.
+*visibility*. A second deliberate boundary is the invoice **addressee exemption** (3.1-r3, kept in 3.2 —
+`20260827100000_phase32_players_overview_person_dedup.sql:55-59`): an invoice *addressed* to a profile is
+legitimately that account's to see and pay, so `get_my_invoices`
+(`20260903100000_phase35a_player_invoice_visibility.sql:98`, split-freeze-gated outside the arms) and the
+`generate-invoice` authz helper (`_shared/invoice-player-authz.ts`, including its documented deliberate
+email fallback) keep a profile arm for guest-bearing invoices. Addressee-ship is payment authority, not
+seat ownership — FAM-02's pure-profile guard governs seat/booking ownership, not invoice addressing.
 
 **Tests:** `attendancePersonRls.pglite.test.ts`; the FAM-02 arms in
 `createInvoiceDeduped.pglite.test.ts`.

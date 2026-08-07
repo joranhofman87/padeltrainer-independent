@@ -24,7 +24,7 @@ test gap that should be closed.
 | 10 | Expired payment holds must release capacity | 🟢 |
 | 11 | Public tokens must not expose unrelated PII | 🟡 |
 | 12 | Every successful payment is visible in player + academy dashboards | 🟡 |
-| 13 | Every money-path failure is logged or alertable | 🔴 |
+| 13 | Every money-path failure is logged or alertable | 🟡 |
 | 14 | No live edge function requires an undeployed migration column | 🔴 (process) |
 | 15 | Payment webhooks are idempotent | 🟢 |
 
@@ -45,8 +45,10 @@ test gap that should be closed.
 `guestCyclusBooking.pglite.test.ts`, `mollieWebhookWriteback.pglite.test.ts` (duplicate paid → 0 rows).
 
 **Missing tests:** concurrent re-click **while the Mollie probe is in flight** (advisory lock is released
-before probing → two threads could each mint a Mollie payment for the same booking); no idempotency-key
-sent to Mollie, so a network timeout + client retry can create a second Mollie payment object.
+before probing → two threads could each mint a Mollie payment for the same booking). (Corrected
+2026-08-08: the Mollie idempotency-key NOW ships — `mollieIdempotencyKey`, `_shared/mollie-idempotency.ts`,
+G2 ✅ in `PAYMENT_TEST_GAPS.md` — closing the retry-mints-second-payment vector; the in-flight-probe race
+test is still owed.)
 
 **Recommended:** pass Mollie's `idempotencyKey` header on `POST /v2/payments` (deterministic per
 `booking_id`+amount); hold the advisory lock across the probe, or re-check inside the lock; add a
@@ -191,11 +193,13 @@ booking; cycle payment failure soft-cancels via `cancelBookingsAndSync` (A3).
 **Existing tests:** `guestSlotBooking.pglite.test.ts` (expired holds don't occupy capacity; sweep cancels
 only unpaid), `cyclePayment.test.ts` (rollback-on-failure).
 
-**Missing tests:** logged-in **cycle** overbook under concurrency (no per-slot advisory lock on the cycle
-insert — real risk).
+**Missing tests (corrected 2026-08-08):** the authenticated cycle insert IS advisory-locked + seat-counted
+by the current trigger (`20260715100000`); the remaining uncovered capacity path is service-role
+`finalize_cycle_proposals` (no lock/recount — backlog B-1). A concurrency test is owed when that RPC is
+hardened.
 
-**Recommended:** route the cycle insert through a capacity-locked RPC (as single-slot already is); add a
-concurrent-cycle-booking test.
+**Recommended:** add the lock/count contract inside `finalize_cycle_proposals` (path-appropriate) + a
+concurrent-finalize test.
 
 ## 10. Expired payment holds must release capacity 🟢 (P1)
 
@@ -244,23 +248,30 @@ and academy (roster/invoicing UIs, FAM-02 identity coalesce); guest data becomes
 **Recommended:** the reconciliation report should flag "paid booking with no visible invoice trail" and
 "guest paid invoice with no `guest_player_id`" (see `PAYMENT_RECONCILIATION_PLAN.md`).
 
-## 13. Every money-path failure is logged or alertable 🔴 (P2, real gap)
+## 13. Every money-path failure is logged or alertable 🟡 (P2, partial — corrected 2026-08-08)
 
 **Why:** silent failures = money problems discovered by angry customers, not by us.
 
-**Enforced today:** charge fns write `payment_audit_log` (blocked/no-account/mollie-error/success) and Slack;
-the webhook Slack-alerts amount-mismatch / cancelled-entity / no-account. **BUT** the **`mollie-webhook` does
-NOT write to `payment_audit_log`** — webhook outcomes exist only as console logs + best-effort Slack. If Slack
-is down, webhook failures are invisible; there is no durable per-payment audit trail spanning charge → confirm.
+**Enforced today (corrected 2026-08-08 — the old "webhook does NOT write payment_audit_log" claim was
+stale):** charge fns write `payment_audit_log` (blocked/no-account/mollie-error/success) and Slack; the
+**webhook now writes audit rows at 16 call sites** — `webhook_received` on entry (`mollie-webhook/index.ts:108`),
+`invoice_marked_paid`/`booking_marked_paid`, `duplicate_webhook_ignored`, `amount_mismatch_blocked`,
+`payment_for_unknown_invoice`, `payment_for_cancelled_invoice`/`_booking`, `no_connected_mollie_account`,
+`payment_refunded`/`payment_charged_back`, `paid_payment_no_bookings`, `paid_hold_over_capacity`, and the
+F05 group-settlement statuses.
 
-**Existing tests:** `create-invoice-payment` audit-log writes (partial).
+**Remaining gaps (the 🟡):** no terminal row for unroutable/missing metadata (`:227-230`; a missing
+`paymentId` returns before ANY row, `:101-105`), and NO terminal rows for `failed`/`canceled`/`expired`/
+`pending` outcomes — the booking-branch terminal write is paid-gated (`:1026`) and the status vocabulary
+has no failed/expired entries. A `webhook_received`-without-terminal-row reconciliation query therefore
+flags legitimate failed/cancelled/expired outcomes as stranded — account for that when querying.
 
-**Missing tests:** durable audit coverage of webhook outcomes; alert-fired assertions.
+**Existing tests:** `create-invoice-payment` audit-log writes (partial); `_shared/payment-audit.test.ts`.
 
-**Recommended (low-risk, Phase 4):** write structured `payment_audit_log` events from the webhook
-(`webhook_received`, `invoice_marked_paid`, `booking_marked_paid`, `duplicate_webhook_ignored`,
-`amount_mismatch_blocked`, `payment_for_cancelled_*`, `no_connected_mollie_account`). This is the single
-highest-value durability improvement and directly enables reconciliation (#5, #6, #12) and the recovery runbook.
+**Missing tests:** terminal-row coverage for non-paid outcomes; alert-fired assertions.
+
+**Recommended:** add terminal audit statuses for unroutable-metadata and failed/canceled/expired outcomes
+so the stranded-payment query stops mis-classifying them.
 
 ## 14. No live edge function requires an undeployed migration column 🔴 (process invariant, P0 if broken)
 
@@ -303,8 +314,10 @@ prove it. Enforcement is architecturally sound.
 
 ## Priority summary for the test + observability work (Phase 3/4)
 
-- **P0 test gaps to close first:** #1 concurrent-re-click / Mollie idempotency-key; #6 charge==confirm golden;
-  #7 adversarial cross-tenant; #15 concurrent duplicate webhook.
-- **P0 durability gap:** #13 — write `payment_audit_log` from the webhook (Phase 4). Enables #5/#6/#12 reconciliation.
-- **P1 correctness gaps:** #9 logged-in cycle capacity lock; F4 split-payment race (`PAYMENT_FLOW_MAP.md`).
+- **P0 test gaps to close first:** #6 charge==confirm golden; #7 adversarial cross-tenant; #15 concurrent
+  duplicate webhook. (#1's idempotency-key half SHIPPED — G2 ✅; the concurrent-probe race test is still owed.)
+- **P0 durability gap:** #13 — ~~write `payment_audit_log` from the webhook~~ SHIPPED (16 call sites);
+  remaining: terminal rows for non-paid/unroutable outcomes (see #13, corrected 2026-08-08).
+- **P1 correctness gaps:** #9 capacity — re-scoped to service-role `finalize_cycle_proposals` (backlog B-1);
+  F4 split divisor — ✅ frozen-at-charge by design (G5 Option A, decided + shipped).
 - **Process invariant:** #14 — enforce via the deploy checklist + a CI drift lint.

@@ -1,6 +1,6 @@
 # Foundation decisions
 
-**Status:** Decision ledger — OD-02–OD-06 accepted by the owner 2026-08-07; the D-01–D-13 product table is recorded owner direction (provenance per the note below the table — D-07–D-11 carry no dated record and must be reconfirmed before the first unit that depends on them); OD-07/OD-08 remain open and are explicitly not required for, and must not be decided in, slice U1a  
+**Status:** Decision ledger — OD-02–OD-06 accepted by the owner 2026-08-07; the D-01–D-13 product table is recorded owner direction (provenance per the note below the table — D-07–D-11 carry no dated record and must be reconfirmed before the first unit that depends on them); OD-07–OD-10 remain open (OD-07/08 gate U3/U7; OD-09 gates merge-semantics work from U2; OD-10 gates the first populated membership writer, not the empty U1a table) and none may be decided inside slice U1a  
 **Baseline:** `ea54f08b3a204a4ed29c3d37976d51ed2d841ad6`
 
 ## Product decisions recorded from owner direction (provenance note below)
@@ -27,15 +27,15 @@ owner-supplied direction during audit preparation but carry no dated record — 
 the first unit that depends on it (D-08/D-09/D-10 → U4/U5; D-11 → U6; D-07 → U2/U3). None of them
 gates U1a.
 
-**Shipped nonconformance — B2 auto-merge vs D-04 (recorded 2026-08-07):** the shipped
+**Recorded conflict — D-04 vs the shipped B2 auto-merge rule (2026-08-07):** the shipped
 person-unification backfill and live-mint triggers auto-merge a profile↔guest pair on a
-system-wide-unique exact-email match (rule B2, locked 2026-07-16 — `PERSON_UNIFICATION_PLAN.md`
-§2/§5, enforced in `20260826280000_persons_backfill.sql`). The 2026-08-07 rule "email or phone alone
-never authorizes an identity merge" **supersedes** that rule going forward: B2 and the live H1/H2
-auto-merge arms are recorded nonconformance to D-04, not an open question. Remediation (disabling
-the live auto-merge arms and/or re-reviewing past auto-merges) is its own owner-authorized unit —
-no later than U2, and explicitly not U1a, which merges nothing. The U1a inventory reports
-auto-merged pairs as their own class.
+system-wide-unique exact-email match (rule B2, locked by the owner 2026-07-16 —
+`PERSON_UNIFICATION_PLAN.md` §2/§5, enforced in `20260826280000_persons_backfill.sql`). Read
+strictly, the D-04 wording "email or phone alone never authorizes an identity merge" conflicts with
+B2. Whether D-04 supersedes B2 (a later remediation slice disables the live H1/H2 auto-merge arms)
+or B2 stands as an explicit, documented narrow exception is **owner decision OD-09 — OPEN, question
+presented 2026-08-08**. Until answered, canonical docs describe the shipped B2/H1/H2 behavior as-is;
+nothing in U1a merges identities, and the U1a inventory reports auto-merged pairs as their own class.
 
 ## Accepted architecture decisions from owner review — 2026-08-07
 
@@ -64,6 +64,8 @@ auto-merged pairs as their own class.
 |---|---|---|---|
 | OD-07 | Require AAL2/step-up for platform admins and money-moving/refund actions; phase academy-manager AAL2 after recovery UX is proven. | All privileged roles immediately (stronger, higher lockout/support risk), or risk-accept no application enforcement (weakest). | **Open** |
 | OD-08 | Retain financial/audit records under a pseudonymized Player after account deletion; publish explicit retention periods per record class. | Hard-delete where legally permitted (breaks audit/reconciliation), or indefinite identifiable retention (privacy risk). Exact periods need legal/owner input. | **Open** |
+| OD-09 | Disposition of the shipped B2 unique-email auto-merge vs D-04 ("email alone never merges"). Recommended: D-04 supersedes — disable the live H1/H2 auto-merge arms in a later authorized slice; past auto-merges stand but stay reviewable. | Keep B2 as an explicit documented exception (uniqueness = sufficient disambiguation; no code change), or supersede AND queue past auto-merges into `person_merge_review` (most work, most review load). | **Open — asked 2026-08-08** |
+| OD-10 | Membership-row lifecycle: behavior when a `persons` row is merged, collapsed, anonymized, or deleted, AND when an academy is deleted (the admin flow promises removal of the academy plus all associated data — `AdminAcademies.tsx:536` — while existing academy-owned tables CASCADE). Confirms the FK deletion actions in the U1a design review; gates the FIRST populated membership writer (U1c, or U2 if earlier), not the empty U1a table. Recommended: `RESTRICT`/`NO ACTION` FKs now + a membership-aware person-lifecycle slice (repoint with `(academy, person)` dedup; retain on anonymize) before population; academy-side behavior decided alongside. | `CASCADE` (membership evidence dies whenever a person row is collapsed/merged — collapse deletes the source person, so evidence loss is routine, not rare), or `SET NULL` (orphans the canonical key; incompatible with `person_id NOT NULL`). | **Open — asked 2026-08-08** |
 
 ## Previously resolved decisions retained for continuity
 

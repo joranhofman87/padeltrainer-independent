@@ -14,7 +14,7 @@ Status: canonical (source of truth) | last updated 2026-07-02
 | **PGlite integration** | `npm test` (same run; files `src/**/*.pglite.test.ts`) | The REAL money-path lib run against real Postgres-in-WASM via the [`pgliteSupabase`](../src/test/fixtures/pgliteSupabase.ts) adapter | in-process Postgres; `// @vitest-environment node` |
 | **deno _shared** | `npm run test:edge` (`deno test --allow-env --allow-net supabase/functions/_shared/`) | Edge-function SHARED helpers only (`supabase/functions/_shared/*.test.ts`) | Deno; CI runs it `--no-check` |
 | **db:rehearse** | `npm run db:rehearse:all` (individual: `db:rehearse:*`) | SQL migrations / RPC / RLS invariants replayed against a fresh DB (`scripts/db/*`) | needs local Supabase / PGlite per script |
-| **migrations validate** | `npm run db:reset` (`supabase db reset`) | Every migration in `supabase/migrations/` applies cleanly + generated-types drift | local Supabase |
+| **migrations validate** | `npm run db:reset` (`supabase db reset`) | Every migration in `supabase/migrations/` applies cleanly (generated-types drift is the separate `npm run db:types:check` / CI `types-drift` job) | local Supabase |
 | **playwright e2e** | `npm run test:e2e` (`playwright test`) | Full browser journeys in `e2e/*.spec.ts` + `tests/*.spec.ts` | `npm run dev` server, baseURL `http://localhost:8080` |
 
 > Root `tsc --noEmit` checks NOTHING (`files:[]`); `npm run typecheck` runs the app project unratcheted (informational). The real type gate is `npm run typecheck:baseline` (`tsc -p tsconfig.app.json` ratcheted vs `scripts/tsc-app.baseline.json`). Edge-function `index.ts` files ARE `deno check`ed in CI by the ratcheted `edge-typecheck` job (`check:edge-types`); `_shared/` is deno-tested (`--no-check` in CI). Per-function `index.test.ts` (7 exist) are manual integration tests, NOT in CI. (Corrected 2026-08-07.)
@@ -44,7 +44,7 @@ Money is the highest-risk surface. See [`payments/PAYMENT_INVARIANTS.md`](paymen
 - **PGlite integration (required):** capacity holds and per-slot atomicity — [`guestSlotBooking.pglite.test.ts`](../src/test/guestSlotBooking.pglite.test.ts), [`guestCyclusBooking.pglite.test.ts`](../src/test/guestCyclusBooking.pglite.test.ts), [`guestBookingToken.pglite.test.ts`](../src/test/guestBookingToken.pglite.test.ts), booking_ids stamping [`bookLessonPaymentBookingIds.test.ts`](../src/test/bookLessonPaymentBookingIds.test.ts).
 - **vitest unit (required):** slot-delete guard vs booking loss ([`slotDeleteGuard.test.ts`](../src/test/slotDeleteGuard.test.ts) + golden), financial guard ([`bookingFinancialGuard.test.ts`](../src/test/bookingFinancialGuard.test.ts)), the `bookings.ts` facade ([`src/lib/bookings.test.ts`](../src/lib/bookings.test.ts)).
 - **db:rehearse:** `rehearse-book-slot`, `rehearse-capacity-locks`, `rehearse-strict-hold-capacity`.
-- **Known gap:** logged-in cycle insert lacks a capacity lock (PAYMENT_TEST_GAPS G6) — a concurrent overbook test is owed if you touch `insertBookings`.
+- **Known gap (corrected 2026-08-08):** the authenticated cycle insert IS capacity-locked by the current trigger (`20260715100000`); the uncovered capacity path is service-role `finalize_cycle_proposals` (no lock/recount) — a concurrency test is owed when that RPC is hardened (backlog B-1, PAYMENT_TEST_GAPS G6).
 
 ### 3. Rebooking (priority claim / group captain)
 - **PGlite integration (required):** claim intent ([`priorityClaimIntent.pglite.test.ts`](../src/test/priorityClaimIntent.pglite.test.ts)), group capacity holds ([`rebookGroupCapacityHolds.pglite.test.ts`](../src/test/rebookGroupCapacityHolds.pglite.test.ts)), single-rebook invoice dedup ([`rebookSingleInvoiceDedup.pglite.test.ts`](../src/test/rebookSingleInvoiceDedup.pglite.test.ts)), public gather cross-tenant scope ([`rebookPublicGatherScope.pglite.test.ts`](../src/test/rebookPublicGatherScope.pglite.test.ts)), strict accept-payable ([`strictAcceptPayable.test.ts`](../src/test/strictAcceptPayable.test.ts)).
@@ -67,7 +67,7 @@ Money is the highest-risk surface. See [`payments/PAYMENT_INVARIANTS.md`](paymen
 - **deno _shared (required):** auth guards — [`auth.test.ts`](../supabase/functions/_shared/auth.test.ts), [`service-role-auth.test.ts`](../supabase/functions/_shared/service-role-auth.test.ts) (the fixed P0 forged-JWT regression), [`cycle-access.test.ts`](../supabase/functions/_shared/cycle-access.test.ts).
 - **vitest unit:** service-role/auth boundary ([`serviceRoleAuth.test.ts`](../src/test/serviceRoleAuth.test.ts)), mutation-boundary allowlist ([`mutationBoundary.test.ts`](../src/test/mutationBoundary.test.ts)), access checks (`invoiceAccess`, `manualPlayerAccess`, `clubTrainerAccess`).
 - **db:rehearse (required for RLS):** `rehearse-academy-tenant-isolation`, plus RLS migration tests ([`migrationsBookingsRls.test.ts`](../src/test/migrationsBookingsRls.test.ts), [`migrationsPlayerSecurityHardening.test.ts`](../src/test/migrationsPlayerSecurityHardening.test.ts)).
-- **e2e:** `e2e/rls-health.spec.ts`, `e2e/roles.spec.ts`. Every new edge fn MUST self-authenticate via `_shared/auth.ts` (verify_jwt=false is by design; `check:edge-config` enforces the drift).
+- **e2e:** `e2e/rls-health.spec.ts`, `e2e/roles.spec.ts`. Every new edge fn MUST self-authenticate via `_shared/auth.ts` (most fns run verify_jwt=false by design — 89 of 108; `check:edge-config` enforces a curated allowlist, so add new public/self-authenticating fns to it deliberately).
 
 ### 7. UI component
 - **vitest unit (RTL, required):** render + behavior in jsdom. Examples: [`cycleDetailView.test.tsx`](../src/test/cycleDetailView.test.tsx), [`slotEditForm.test.tsx`](../src/test/slotEditForm.test.tsx), [`slotGeneratorWizard.test.tsx`](../src/test/slotGeneratorWizard.test.tsx). Use `renderWithI18n` / `renderWithCycles` helpers.
@@ -96,7 +96,9 @@ npm test                                        # vitest + PGlite
 npm run db:rehearse:all                         # SQL invariants
 npm run i18n:check                              # en+nl parity
 npm run test:edge                               # deno _shared
+npm run check:edge-types                        # ratcheted deno check of edge entrypoints
 npm run db:reset                                # migrations (needs local supabase)
+npm run db:types:check                          # generated-types drift (after migrations)
 npm run test:e2e                                # playwright (needs dev server)
 ```
 Match the runner to your change type above; you do not need all gates for every change, but you MUST run the ones your change type lists as required.

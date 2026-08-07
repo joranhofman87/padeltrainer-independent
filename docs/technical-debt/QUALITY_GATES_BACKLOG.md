@@ -37,10 +37,14 @@ Priority = blast radius if the gap lets a bug through, not effort.
 
 ### P1-1 · No gate forbidding direct dangerous DB writes from UI
 
-> **RESOLVED (noted 2026-08-07):** shipped as the shrink-only static guard `src/test/mutationBoundary.test.ts`
-> + `src/test/fixtures/mutationBoundaryAllowlist.json` (34 writes / 25 files frozen) — a new direct dangerous
-> write in pages/components fails the required `test` job. Remaining debt: the allowlisted writes themselves
-> (`MUTATION_BOUNDARY_BACKLOG.md`). Original gap text retained below for history.
+> **LARGELY RESOLVED (noted 2026-08-07; precision 2026-08-08):** shipped as the static guard
+> `src/test/mutationBoundary.test.ts` + `src/test/fixtures/mutationBoundaryAllowlist.json` (34 writes /
+> 25 files frozen). It is a per-file COUNT ceiling: a dangerous write in any NEW file, or any count
+> increase in an allowlisted file, fails the required `test` job — but swapping an allowlisted write for a
+> different table/operation in the same file, or adding one where the live count sits below the frozen
+> ceiling, stays green ("shrink-only" is convention, not enforced). Signature-level enforcement remains
+> open. Remaining debt: the allowlisted writes themselves (`MUTATION_BOUNDARY_BACKLOG.md`). Original gap
+> text retained below for history.
 - **Gap:** nothing prevents a component from calling `supabase.from('bookings'|'invoices'|'availability_slots').insert/update/delete(...)` directly, bypassing the mutation-boundary libs (`src/lib/bookings.ts` `cancelBookingsAndSync`, `slotBookingWrite.ts`, `cycleWrites.ts`, invoice-sync helpers) documented in [../MUTATION_BOUNDARIES.md](../MUTATION_BOUNDARIES.md). A direct write skips invoice/split resync and capacity guards → silent money/data corruption. Lint, tsc and tests all pass.
 - **Recommended implementation:** an `eslint no-restricted-syntax` (or `no-restricted-properties`) rule flagging `.from('<sensitive table>').(insert|update|delete)` outside an allowlisted set of boundary modules (`src/lib/**` write facades + `src/integrations/**`). Baseline existing violations via `eslint-suppressions.json` (shrink-only), same ratchet as the role-isolation rule already in place. Pair with a short allowlist comment in `MUTATION_BOUNDARIES.md`. Low CI cost — runs inside the existing `lint` job.
 

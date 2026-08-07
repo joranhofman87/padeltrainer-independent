@@ -118,13 +118,16 @@ the divisor is frozen — the second booker's divisor is unchanged. Files: `crea
 
 ## G6 — Logged-in cycle capacity lock (P1, invariant #9)
 
-**Scenario:** the logged-in **cycle** booking inserts rows via a plain `insertBookings` facade with **no per-slot
-advisory lock** (unlike single-slot's `book_slot_for_payment`). Two concurrent cycle bookings on the same slot
-can overbook.
-**Why untested:** no concurrent-cycle-insert test; the gap is structural (missing lock).
-**Approach (recommended fix):** route the cycle insert through a capacity-locked RPC (mirror
-`book_slot_for_payment`); then a PGlite concurrency test. Files: `src/lib/bookings.ts` (`insertBookings`),
-`BookLesson.tsx:358-395`.
+**Scenario (corrected 2026-08-08):** ~~the logged-in cycle booking has no per-slot advisory lock~~ — the
+current `enforce_booking_slot_tier` (`20260715100000`) locks + seat-counts every authenticated insert, so
+the `insertBookings` path is covered. The remaining uncovered capacity path is service-role
+`finalize_cycle_proposals` (`20260701120000` inserts bookings; the trigger skips service role; no
+lock/recount) — two concurrent finalizes, or a finalize racing bookings, can overbook.
+**Why untested:** no concurrent-finalize test; the gap is structural (missing lock in the RPC).
+**Approach (recommended fix, re-scoped 2026-08-08):** add the lock/count contract inside
+`finalize_cycle_proposals` (path-appropriate), then a PGlite concurrency test. Files:
+`supabase/migrations/20260701120000_finalize_cycle_proposals_rpc.sql`,
+`supabase/functions/finalize-proposals/index.ts`.
 
 ## G7 — Adversarial cross-tenant suite (P0, invariant #7)
 
