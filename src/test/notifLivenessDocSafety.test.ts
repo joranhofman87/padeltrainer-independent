@@ -121,6 +121,73 @@ describe('the impossible stale-before-first-send requirement stays removed', () 
   });
 });
 
+describe('the endpoint check stays structural and provisioning stays non-destructive', () => {
+  const helper = () => read('scripts/rollout/notif-10cb/notif-liveness-secret.sh');
+  const checkEndpointFn = () => {
+    const src = helper();
+    const start = src.indexOf('cmd_check_endpoint()');
+    expect(start).toBeGreaterThan(-1);
+    return src.slice(start, src.indexOf('\nusage()', start));
+  };
+
+  it('validates the body with a parser, never by grepping for the state', () => {
+    // The substring match let an error envelope that merely ECHOED the requested state read as
+    // success — measured on {"ok":false,"state":"query_failed","echo":{"state":"cron_disarmed"}}.
+    const src = helper();
+    expect(src).toMatch(/--slurp/);
+    expect(src).toMatch(/--arg want/);
+    expect(src).not.toMatch(/grep -q "\\"state\\":/);
+  });
+
+  it('--slurp and the length check are both present (a stream hole reopens without them)', () => {
+    // jq reads a STREAM: a filter over `input` accepts {"state":"x"}{"state":"y"} and drops the
+    // tail, so `length == 1` over the slurped array is what rejects a trailing value.
+    expect(checkEndpointFn()).toMatch(/length == 1 and \(\.\[0\] \| type\) == "object"/);
+  });
+
+  it('preflights the parser BEFORE the keychain read and before any request', () => {
+    const fn = checkEndpointFn();
+    const jq = fn.indexOf('command -v "$JQ_BIN"');
+    const kc = fn.indexOf('keychain_read');
+    const curl = fn.indexOf('"$CURL_BIN"');
+    expect(jq).toBeGreaterThan(-1);
+    expect(kc).toBeGreaterThan(jq);
+    expect(curl).toBeGreaterThan(kc);
+  });
+
+  it('never prints the response body or the parser stderr on failure', () => {
+    const fn = checkEndpointFn();
+    for (const m of fn.match(/die "\$EXIT_(BODY_SHAPE|STATE)"[^\n]*/g) ?? []) {
+      expect(m).not.toMatch(/\$\(cat |\$\{?body|jq_err/);
+    }
+  });
+
+  it('the write is a CREATE unless --force explicitly asks for an update', () => {
+    const src = helper();
+    expect(src).toMatch(/if \[ "\$force" -eq 1 \]; then upd=" -U"; fi/);
+    // the original defect: -U baked into the add line as a constant
+    expect(src).not.toMatch(/add-generic-password -s %s -a %s -U -w/);
+    // and a duplicate must be its own outcome, not folded into a generic write failure
+    expect(src).toMatch(/"\$SEC_DUPLICATE"\)/);
+  });
+
+  it('a lookup failure that is not "not found" is refused rather than read as absence', () => {
+    const src = helper();
+    expect(src).toMatch(/EXIT_KC_LOOKUP/);
+    expect(src).toMatch(/"\$SEC_NOT_FOUND"\) KC_PRESENCE="absent"/);
+    // presence must not be decided by a bare `if find …; then`, which reads 36/51 as absent
+    expect(src).not.toMatch(/if "\$SECURITY_BIN" find-generic-password[^\n]*; then/);
+  });
+
+  it('the operations doc records the jq requirement and the create/force contract', () => {
+    const src = read('docs/NOTIFICATION_OPERATIONS.md');
+    expect(src).toMatch(/Requires `jq`/);
+    expect(src).toMatch(/structurally/i);
+    expect(src).toMatch(/errSecDuplicateItem/);
+    expect(src).toMatch(/refused rather than overwritten|refused rather than/i);
+  });
+});
+
 describe('the activation ordering is documented in execution order', () => {
   it('7a and 7b precede 7c in the canonical runbook', () => {
     const src = read('scripts/rollout/notif-10cb/README.md');

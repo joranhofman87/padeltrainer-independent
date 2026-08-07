@@ -121,3 +121,9 @@ jobs:
                    verify/repo-guard-test.sh; do
             bash -n "scripts/rollout/notif-10ca3/$f"
           done
+          # 10c-b was executed by the steps above but never syntax-checked, so a parse error in a
+          # branch no row reaches would only surface in front of an operator.
+          for f in run-enablement.sh notif-liveness-secret.sh \
+                   verify/enablement-selftest.sh verify/liveness-token-selftest.sh; do
+            bash -n "scripts/rollout/notif-10cb/$f"
+          done

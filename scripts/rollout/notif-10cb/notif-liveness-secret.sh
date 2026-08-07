@@ -37,6 +37,7 @@ case $- in *x*) printf 'notif-liveness-secret: refusing to run with xtrace enabl
 OPENSSL_BIN="${NOTIF_LIVENESS_OPENSSL:-/usr/bin/openssl}"
 SECURITY_BIN="${NOTIF_LIVENESS_SECURITY:-/usr/bin/security}"
 CURL_BIN="${NOTIF_LIVENESS_CURL:-curl}"
+JQ_BIN="${NOTIF_LIVENESS_JQ:-jq}"
 
 readonly EXIT_USAGE=1
 readonly EXIT_KC_WRITE=10
@@ -45,13 +46,22 @@ readonly EXIT_SHAPE=12
 readonly EXIT_DIFFER=13
 readonly EXIT_CMP_ERROR=14
 readonly EXIT_EXISTS=15
+readonly EXIT_KC_LOOKUP=16
 readonly EXIT_ENV_STAGE=20
 readonly EXIT_CURL_STAGE=21
 readonly EXIT_PLACEHOLDER=22
 readonly EXIT_TRANSPORT=30
 readonly EXIT_HTTP=31
 readonly EXIT_STATE=32
+readonly EXIT_NO_PARSER=33
+readonly EXIT_BODY_SHAPE=34
 readonly EXIT_CLEANUP_FAILED=90
+
+# `security` exit status is OSStatus & 0xFF, so it is LOSSY and codes collide (-25812, -25556,
+# -25300 and -25044 all surface as 44). Only these two are relied on, and only to choose between
+# "refuse" and "refuse with a better message" — never to decide that a write is safe:
+readonly SEC_NOT_FOUND=44        # errSecItemNotFound      (-25300)
+readonly SEC_DUPLICATE=45        # errSecDuplicateItem     (-25299)
 
 # 39 random bytes -> exactly 52 base64 chars, no padding, no wrapping. Plus one trailing newline the
 # keychain readback also produces: 53 bytes is the whole shape contract.
@@ -186,6 +196,28 @@ prove_identical() {
   esac
 }
 
+# ── existence, with lookup FAILURE kept distinct from ABSENCE ─────────────────────────────────
+# `find-generic-password` answers three different questions with the same status 44 — "no such
+# item", "no such keychain", "not a valid keychain file" — and answers a *locked* keychain with 0
+# and a full attribute dump, and a denied one with 36/51. A bare `if find …; then` therefore reads
+# EVERY failure as absence, including the cases where an item is sitting there unreadable. Verified:
+# a stubbed rc=36 made the helper generate a new token, overwrite the existing value with -U, and
+# exit 0 reporting "proven byte-for-byte" — true of the new value, silent about the destroyed one.
+#
+# This function never concludes that a write is SAFE; that belongs to the write itself (below).
+# Sets KC_PRESENCE rather than echoing: `die` inside a command substitution exits the SUBSHELL, so
+# a refusal would be swallowed and read as an empty answer.
+KC_PRESENCE=""
+keychain_presence() {
+  local rc=0
+  "$SECURITY_BIN" find-generic-password -s "$SERVICE" -a "$ACCOUNT" >/dev/null 2>&1 || rc=$?
+  case "$rc" in
+    0)                KC_PRESENCE="present" ;;
+    "$SEC_NOT_FOUND") KC_PRESENCE="absent"  ;;
+    *) die "$EXIT_KC_LOOKUP" "keychain lookup failed (rc=${rc}) — this is NOT 'item not found'. An item may exist and be unreadable (locked keychain, denied access). Refusing before generating or writing anything; nothing was changed." ;;
+  esac
+}
+
 keychain_read() {   # $1 = destination file
   local dest="$1" rc=0
   "$SECURITY_BIN" find-generic-password -s "$SERVICE" -a "$ACCOUNT" -w > "$dest" 2>/dev/null || rc=$?
@@ -206,10 +238,11 @@ cmd_provision() {
   done
   make_workdir
 
-  if [ "$force" -eq 0 ]; then
-    if "$SECURITY_BIN" find-generic-password -s "$SERVICE" -a "$ACCOUNT" >/dev/null 2>&1; then
-      die "$EXIT_EXISTS" "a keychain item '$SERVICE' already exists for '$ACCOUNT' — pass --force to replace it"
-    fi
+  # Classify the lookup BEFORE generating a token or touching anything — under --force too, because
+  # a keychain that cannot be read is not one to write blind.
+  keychain_presence
+  if [ "$KC_PRESENCE" = "present" ] && [ "$force" -eq 0 ]; then
+    die "$EXIT_EXISTS" "a keychain item '$SERVICE' already exists for '$ACCOUNT' — it was NOT modified and no token was generated; pass --force to replace it"
   fi
 
   local gen="$WORKDIR/gen.token" rc=0
@@ -217,13 +250,33 @@ cmd_provision() {
   [ "$rc" -eq 0 ] || die "$EXIT_USAGE" "token generation failed (rc=${rc})"
   validate_token_file "$gen" "generated token"
 
+  # WRITE SEMANTICS ARE CHOSEN EXPLICITLY, NOT LEFT TO A CONSTANT.
+  #   without --force -> CREATE. `add-generic-password` WITHOUT -U fails with 45 on an existing item
+  #                      and leaves the stored bytes byte-for-byte untouched (verified: value, sha1
+  #                      and mdat all unchanged). That is the only atomic check-and-set the keychain
+  #                      offers, and it is what closes the window between the lookup above and this
+  #                      line: an item that appears in between is refused BY THE KEYCHAIN, not
+  #                      overwritten by us. The lookup exists for the better message, not the safety.
+  #   with --force    -> UPDATE. -U replaces in place (cdat preserved, mdat bumped).
+  #
   # THE VALUE GOES IN ON STDIN, NEVER IN ARGV. `security -i` reads commands from stdin, so the only
   # process argv is `security -i`; `-w <value>` on the command line is visible in `ps` to every user
   # on the machine, and `security -h` says so itself.
+  #
+  # EXACTLY ONE SUBCOMMAND PER `security -i`. Verified: -i executes every line it is given and
+  # returns only the LAST one's status, so a refused create followed by any successful line would
+  # report 0. One line means the status is the answer.
+  local upd=""
+  if [ "$force" -eq 1 ]; then upd=" -U"; fi
   rc=0
-  printf 'add-generic-password -s %s -a %s -U -w %s\n' "$SERVICE" "$ACCOUNT" "$(cat "$gen")" \
+  printf 'add-generic-password -s %s -a %s%s -w %s\n' "$SERVICE" "$ACCOUNT" "$upd" "$(cat "$gen")" \
     | "$SECURITY_BIN" -i >/dev/null 2>&1 || rc=$?
-  [ "$rc" -eq 0 ] || die "$EXIT_KC_WRITE" "keychain write failed (rc=${rc}) — nothing was deployed"
+  case "$rc" in
+    0) : ;;
+    "$SEC_DUPLICATE")
+      die "$EXIT_EXISTS" "a keychain item '$SERVICE' appeared for '$ACCOUNT' between the check and the write — the keychain REFUSED the create, so the existing value is unchanged; pass --force to replace it" ;;
+    *) die "$EXIT_KC_WRITE" "keychain write failed (rc=${rc}) — nothing was deployed" ;;
+  esac
 
   local back="$WORKDIR/readback.token"
   keychain_read "$back"
@@ -329,6 +382,16 @@ cmd_check_endpoint() {
   [ -n "$url" ]           || die "$EXIT_USAGE" "check-endpoint: --url is required"
   [ -n "$expect_status" ] || die "$EXIT_USAGE" "check-endpoint: --expect-status is required"
   [ -n "$expect_state" ]  || die "$EXIT_USAGE" "check-endpoint: --expect-state is required"
+
+  # PREFLIGHT THE PARSER FIRST — before the keychain is read and before any credentialed request.
+  # Two distinct reasons, both measured:
+  #   * inside `if jq …; then`, a MISSING jq exits 127, which does NOT trip `set -e` in a condition;
+  #     the else branch runs and the operator is told the state was wrong when the truth is that jq
+  #     is not installed. The 2>/dev/null that keeps the body out of the terminal also swallows
+  #     bash's "command not found", so the only honest place to catch this is up front.
+  #   * failing here means no Keychain read and no network call happened at all.
+  command -v "$JQ_BIN" >/dev/null 2>&1 \
+    || die "$EXIT_NO_PARSER" "jq is required to validate the response structurally, and '${JQ_BIN}' was not found — no keychain read and no request were made"
   make_workdir
 
   local back="$WORKDIR/readback.token"
@@ -355,12 +418,38 @@ cmd_check_endpoint() {
 
   # String comparison: `[ "" -eq 503 ]` is an arithmetic error, not a false.
   [ "$code" = "$expect_status" ] || die "$EXIT_HTTP" "expected HTTP ${expect_status}, got '${code}'"
-  [ -f "$body" ] || die "$EXIT_STATE" "no response body"
-  if grep -q "\"state\":\"${expect_state}\"" "$body"; then
-    log "check-endpoint: ${expect_status} with state=${expect_state} — as required"
-  else
-    die "$EXIT_STATE" "expected state='${expect_state}'; body did not contain it"
+  [ -f "$body" ] || die "$EXIT_BODY_SHAPE" "no response body"
+
+  # STRUCTURAL VALIDATION, NOT TEXT MATCHING.
+  #
+  # The `grep '"state":"X"'` this replaces matched the target text ANYWHERE in the body, so an error
+  # envelope that merely ECHOES the requested state read as success. Both of these are valid JSON,
+  # both were measured passing, and in neither is the real top-level state the expected one:
+  #     {"ok":false,"state":"query_failed","echo":{"state":"cron_disarmed"}}
+  #     [{"state":"query_failed"},{"state":"cron_disarmed"}]
+  # It was fail-OPEN on nested objects, arrays, malformed bodies and concatenated JSON streams —
+  # and simultaneously fail-CLOSED on any serializer emitting `{"state": "cron_disarmed"}` with a
+  # space, so a pretty-printed body would have failed a healthy check.
+  #
+  # --slurp is load-bearing. jq reads a STREAM by default, so a filter over `input` accepts
+  # {"state":"cron_disarmed"}{"state":"anything"} and silently ignores the tail. Slurping makes the
+  # whole stream one array, and `length == 1` is what rejects trailing values.
+  #
+  # --arg, never interpolation: the expected state reaches the filter as DATA, so a value carrying a
+  # quote or backslash cannot rewrite the program.
+  #
+  # NEITHER THE BODY NOR jq's STDERR IS EVER SHOWN. The body is PII-free today and this must not
+  # depend on that staying true; jq's parse errors quote the input they choked on, which is the same
+  # leak by another route. The EXIT CODE carries the diagnosis instead — 34: not a single JSON
+  # object; 32: .state absent, null, non-string, or simply different.
+  if ! "$JQ_BIN" -e --slurp 'length == 1 and (.[0] | type) == "object"' "$body" >/dev/null 2>&1; then
+    die "$EXIT_BODY_SHAPE" "response body is not a single valid JSON object (body deliberately not shown)"
   fi
+  if ! "$JQ_BIN" -e --slurp --arg want "$expect_state" \
+         '(.[0].state | type) == "string" and .[0].state == $want' "$body" >/dev/null 2>&1; then
+    die "$EXIT_STATE" "response .state is absent, null, non-string, or not '${expect_state}' (body deliberately not shown)"
+  fi
+  log "check-endpoint: ${expect_status} with state=${expect_state} — as required"
 }
 
 usage() {

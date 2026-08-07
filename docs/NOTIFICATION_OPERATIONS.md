@@ -227,7 +227,9 @@ supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
 The helper exits non-zero on every failure and **never proceeds past one**: a failed Keychain write
 (10), read (11), a readback that is empty / truncated / multiline / hex (12), a value that differs
 from what was generated (13), or a `cmp` that could not run (14) all stop before anything is
-deployed. `with-env` returns the wrapped command's own status verbatim, so a failed
+deployed. An item that already exists is refused with 15, and a lookup that fails for any reason
+other than "not found" — a locked keychain, denied access — is refused with 16 **before a token is
+generated or anything is written**. `with-env` returns the wrapped command's own status verbatim, so a failed
 `secrets set` is reported as that failure and not masked. Cleanup failure is reported honestly and
 escalates a success to 90 — it never converts a failure into a success. INT/TERM/HUP clean up and
 exit 130/143/129, so Ctrl-C cannot leave the token on disk *or* let the next step run.
@@ -249,13 +251,30 @@ scripts/rollout/notif-10cb/notif-liveness-secret.sh check-endpoint \
   --expect-status 200 --expect-state inert
 ```
 
-It asserts curl's own transport status (30), then the HTTP code (31), then the state (32) — in that
-order, so a network failure can never be reported as a wrong state, and none of them can end in 0.
-It never uses `-f` (which would suppress the very body being checked) and never `-H` (argv).
+**Requires `jq`**, and checks for it *first* — before the Keychain is read and before any request is
+made (33 if absent). The state is then validated **structurally**, not by text matching: the body
+must parse as a single JSON object whose `.state` is a string exactly equal to the expectation.
+Matching text was fail-open in a way that mattered — an error envelope that merely echoed the
+requested state anywhere in the body read as success, so
+`{"ok":false,"state":"query_failed","echo":{"state":"cron_disarmed"}}` passed a check for
+`cron_disarmed`. It was fail-*closed* in the other direction too: a pretty-printed body, or one
+serialized with a space after the colon, failed a perfectly healthy check.
+
+The order is transport (30) → HTTP status (31) → body is a single JSON object (34) → `.state` is a
+string equal to the expectation (32), so a network failure can never be reported as a wrong state,
+and none of them can end in 0. Neither the response body nor `jq`'s stderr is ever printed — the
+exit code carries the diagnosis — because the body is PII-free *today* and the check should not
+depend on that staying true. It never uses `-f` (which would suppress the very body being checked)
+and never `-H` (argv).
 
 **Rotation / revocation.** `notif-liveness-secret.sh provision --force` regenerates and re-proves
 the Keychain item; re-run `with-env -- supabase secrets set --env-file {} …` and update the
-provider's stored secret. To revoke, `supabase secrets unset NOTIF_LIVENESS_TOKEN` — the endpoint
+provider's stored secret. Without `--force` an existing item is never touched: the write is a
+**create**, and the keychain itself refuses a duplicate (`errSecDuplicateItem`) with the stored
+bytes untouched. That, not the preceding lookup, is what makes it safe — an item created in the
+window between the two is refused rather than overwritten. `--force` is the only path that replaces
+a value, and it re-proves the round trip byte-for-byte afterwards. To revoke,
+`supabase secrets unset NOTIF_LIVENESS_TOKEN` — the endpoint
 then fails closed and authorizes nobody, which is the safe direction: the monitor goes dark loudly
 rather than the endpoint going open quietly.
 

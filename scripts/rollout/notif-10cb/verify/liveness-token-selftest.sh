@@ -35,6 +35,11 @@ mkdir -p "$BIN" "$CTL" "$SB"
 # A fixed, known token so the leak scan can grep for an exact string.
 FAKE_TOKEN="ZmFrZXRva2VuZm9ydGVzdGluZ29ubHkxMjM0NTY3ODkwYWJjZGVm"
 [ "${#FAKE_TOKEN}" -eq 52 ] || { echo "fixture token must be 52 chars"; exit 1; }
+# A DISTINCT well-formed value standing in for "what was already in the keychain". It must not equal
+# FAKE_TOKEN, or "preserved" and "overwritten" would look identical.
+PRIOR_TOKEN="cHJpb3JrZXljaGFpbnZhbHVlOTg3NjU0MzIxMHp5eHd2dXRzcnFw"
+[ "${#PRIOR_TOKEN}" -eq 52 ] || { echo "prior fixture token must be 52 chars"; exit 1; }
+[ "$PRIOR_TOKEN" != "$FAKE_TOKEN" ] || { echo "fixtures must differ"; exit 1; }
 
 # ── stubs ─────────────────────────────────────────────────────────────────────────────────────
 cat > "$BIN/openssl" <<'STUB'
@@ -53,13 +58,34 @@ if [ "${1:-}" = "-i" ]; then
   [ "${STUB_RC_SECURITY_ADD:-0}" = "0" ] || exit "${STUB_RC_SECURITY_ADD}"
   line="$(cat)"                                  # value arrives on STDIN, never argv
   printf '%s\n' "$line" >> "$CTL/stdin.log"
-  printf '%s' "${line##*-w }" > "$STORE"
+  # REAL KEYCHAIN SEMANTICS, measured on macOS 26.5 against a temp keychain:
+  #   add-generic-password WITHOUT -U on an existing item -> exit 45 (errSecDuplicateItem) and the
+  #                        stored bytes are UNTOUCHED (value, sha1 and mdat all verified unchanged);
+  #   WITH -U            -> exit 0, replaces in place.
+  # Modelling this is what makes the create-vs-update rows mean anything: a stub that always wrote
+  # would pass an unconditional -U just as happily.
+  case "$line" in
+    *" -U "*) printf '%s' "${line##*-w }" > "$STORE"; printf 'UPDATE\n' >> "$CTL/write.log"; exit 0 ;;
+  esac
+  if [ -s "$STORE" ]; then
+    printf 'security: SecKeychainItemCreateFromContent: The specified item already exists in the keychain.\n' >&2
+    printf 'REFUSED\n' >> "$CTL/write.log"
+    exit 45
+  fi
+  printf '%s' "${line##*-w }" > "$STORE"; printf 'CREATE\n' >> "$CTL/write.log"
   exit 0
 fi
 case "${1:-}" in
   find-generic-password)
     [ "${STUB_RC_SECURITY_FIND:-0}" = "0" ] || exit "${STUB_RC_SECURITY_FIND}"
-    case " $* " in *" -w "*) ;; *) [ -s "$STORE" ] && exit 0 || exit 44 ;; esac
+    # The PRESENCE probe (no -w) and the value READBACK (-w) are separate calls with separate
+    # outcomes. STUB_RC_FIND_PRESENCE bends ONLY the probe — which is what lets the race row answer
+    # "absent" to the lookup while the store is genuinely occupied by the time the write lands.
+    case " $* " in
+      *" -w "*) ;;
+      *) [ -n "${STUB_RC_FIND_PRESENCE:-}" ] && exit "${STUB_RC_FIND_PRESENCE}"
+         [ -s "$STORE" ] && exit 0 || exit 44 ;;
+    esac
     [ -s "$STORE" ] || exit 44
     # Signal rows: announce that we are running, then hold, so the harness can signal a helper that
     # is genuinely mid-flight rather than racing its startup.
@@ -99,7 +125,15 @@ printf '%s\n' "ARGV curl $*" >> "$STUB_LOG"
 out=""; prev=""
 for a in "$@"; do [ "$prev" = "-o" ] && out="$a"; prev="$a"; done
 if [ "${STUB_RC_CURL:-0}" != "0" ]; then printf '000'; exit "${STUB_RC_CURL}"; fi
-[ -n "$out" ] && printf '%s' "${STUB_CURL_BODY:-{\"state\":\"cron_disarmed\"}}" > "$out"
+# The default is assigned in a STATEMENT, never inline in a `${VAR:-…}` whose word contains braces.
+# It used to be `${STUB_CURL_BODY:-{\"state\":\"cron_disarmed\"}}`, and bash closes the expansion at
+# the FIRST `}` — so a literal `}` was appended to every explicitly-set body and the rows were
+# silently exercising malformed JSON. `grep` could not see it; a structural parser can.
+body="${STUB_CURL_BODY:-}"
+[ -z "$body" ] && body='{"state":"cron_disarmed"}'
+# …which leaves no way to ask for a genuinely EMPTY body, hence the sentinel.
+[ "$body" = "@EMPTY@" ] && body=''
+[ -n "$out" ] && printf '%s' "$body" > "$out"
 printf '%s' "${STUB_CURL_CODE:-503}"
 exit 0
 STUB
@@ -117,10 +151,14 @@ reset_state() {
   rm -rf "$SB"; mkdir -p "$SB"
   rm -f "$CTL/deploy.marker" "$CTL/pbcopy.marker" "$CTL/kcstore" "$CTL/seen.env" "$CTL/stdin.log"
   : > "$CTL/stub.log"
+  : > "$CTL/write.log"
   # `with-env` and `check-endpoint` READ an item that provisioning already created; seed it for
   # those rows. `provision` must NOT see one, or it refuses with 15 (already exists) — which is
   # itself correct behaviour and separately asserted.
-  [ "${SEED_KC:-0}" = "1" ] && printf '%s' "$FAKE_TOKEN" > "$CTL/kcstore"
+  # SEED_KC_VALUE lets a row seed a value DIFFERENT from the one openssl will generate, which is the
+  # only way "the pre-existing bytes survived a refusal" and "--force actually replaced them" are
+  # distinguishable at all.
+  [ "${SEED_KC:-0}" = "1" ] && printf '%s' "${SEED_KC_VALUE:-$FAKE_TOKEN}" > "$CTL/kcstore"
   return 0
 }
 
@@ -131,9 +169,11 @@ run_helper() {   # run_helper <outfile> -- args...
       NOTIF_LIVENESS_OPENSSL="$BIN/openssl" NOTIF_LIVENESS_SECURITY="$BIN/security" \
       NOTIF_LIVENESS_CURL="$BIN/curl" \
       STUB_RC_SECURITY_ADD="${STUB_RC_SECURITY_ADD:-0}" STUB_RC_SECURITY_FIND="${STUB_RC_SECURITY_FIND:-0}" \
+      STUB_RC_FIND_PRESENCE="${STUB_RC_FIND_PRESENCE:-}" \
       STUB_RC_SUPABASE="${STUB_RC_SUPABASE:-0}" STUB_RC_CURL="${STUB_RC_CURL:-0}" \
       STUB_KC_CORRUPT="${STUB_KC_CORRUPT:-none}" STUB_CURL_CODE="${STUB_CURL_CODE:-503}" \
       STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
+      NOTIF_LIVENESS_JQ="${NOTIF_LIVENESS_JQ:-jq}" \
       bash "$SCRIPT" "$@" > "$outfile" 2>&1
 }
 
@@ -165,6 +205,24 @@ no_token_leak() {
   [ "$hits" = "0" ] && ok "...the token appears in no output, no file and no argv" \
     || { bad "...the token appears in no output, no file and no argv ($hits)"; }
 }
+
+
+# ── assertions for the create/update contract ─────────────────────────────────────────────────
+# `store_is` is the one that matters: every no-force refusal must leave the PRE-EXISTING bytes in
+# place, and asserting the exit code alone would not notice a helper that refuses *after* writing.
+store_is() {   # store_is <expected-value> <label>
+  local want="$1" label="$2" got=""
+  [ -f "$CTL/kcstore" ] && got="$(cat "$CTL/kcstore")"
+  if [ "$got" = "$want" ]; then ok "$label"; else bad "$label (the stored value is not the expected one)"; fi
+}
+wrote_with() {  # wrote_with CREATE|UPDATE|REFUSED
+  if grep -qx "$1" "$CTL/write.log" 2>/dev/null; then ok "...the write used $1 semantics"; else
+    bad "...the write used $1 semantics (log: $(tr '\n' ',' < "$CTL/write.log" 2>/dev/null))"; fi
+}
+no_write()    { if [ ! -s "$CTL/write.log" ]; then ok "...no write was even attempted"; else bad "...no write was even attempted"; fi; }
+no_openssl()  { if grep -q 'ARGV openssl' "$CTL/stub.log"; then bad "...and no token was generated"; else ok "...and no token was generated"; fi; }
+no_curl()     { if grep -q 'ARGV curl' "$CTL/stub.log"; then bad "...and no request was made"; else ok "...and no request was made"; fi; }
+no_kc_access(){ if grep -q 'ARGV security' "$CTL/stub.log"; then bad "...and the keychain was never touched"; else ok "...and the keychain was never touched"; fi; }
 
 case "$-" in *m*) : ;; *) printf 'FATAL: job control (set -m) is not active; signal rows would be vacuous\n' >&2; exit 1 ;; esac
 
@@ -222,6 +280,75 @@ STUB_CURL_CODE=200 SEED_KC=1 expect_rc "the WRONG http status fails" 31 -- check
 STUB_CURL_BODY='{"state":"stale"}' SEED_KC=1 expect_rc "the RIGHT status with the WRONG state fails" 32 -- check-endpoint --url http://x --expect-status 503 --expect-state cron_disarmed --service svc --account acct
 STUB_CURL_CODE=401 STUB_CURL_BODY='{"ok":false,"state":"unauthorized"}' SEED_KC=1 expect_rc "a 401 never reads as success" 31 -- check-endpoint --url http://x --expect-status 503 --expect-state cron_disarmed --service svc --account acct
 no_residue
+
+# ── the state check is STRUCTURAL, not textual ────────────────────────────────────────────────
+# The `grep '"state":"X"'` these replace matched the target text ANYWHERE in the body. Rows (b) and
+# (c) are the fail-OPEN cases it let through — a real error envelope reading as success — and (k) is
+# the one that survives a naive jq port, because jq reads a STREAM and a filter over `input` accepts
+# a second concatenated value and ignores it. 34 = not a single JSON object; 32 = wrong .state.
+ck() {   # ck <label> <want-rc> <body>
+  STUB_CURL_BODY="$3" SEED_KC=1 expect_rc "$1" "$2" -- check-endpoint --url http://x \
+    --expect-status 503 --expect-state cron_disarmed --service svc --account acct
+}
+ck "(a) the exact expected object passes"                        0  '{"state":"cron_disarmed"}'
+ck "(j) extra sibling fields are fine"                           0  '{"ok":false,"state":"cron_disarmed","job_active":false}'
+ck "(w) a SPACE after the colon passes (grep failed this)"       0  '{"state": "cron_disarmed"}'
+ck "(b) a NESTED object echoing the state FAILS"                 32 '{"ok":false,"state":"query_failed","echo":{"state":"cron_disarmed"}}'
+# The literal review case. Kept for the record, but it is NOT discriminating and never was: JSON
+# escapes an embedded quote as \", so the bytes `"state":"cron_disarmed"` never appear and the old
+# grep rejected it too. (b) and (c) above are the vectors that actually got through.
+ck "(b') the review's escaped-detail case (passes either way)"    32 '{"state":"query_failed","detail":"expected \"state\":\"cron_disarmed\""}'
+ck "(c) an ARRAY containing the state FAILS"                     34 '[{"state":"query_failed"},{"state":"cron_disarmed"}]'
+ck "(d) malformed JSON FAILS"                                    34 '{"state":"cron_disarmed"'
+ck "(k) a CONCATENATED second value FAILS (--slurp earns its keep)" 34 '{"state":"cron_disarmed"}{"state":"whatever"}'
+ck "(h) a bare JSON string FAILS"                                34 '"cron_disarmed"'
+ck "(i) an EMPTY body FAILS"                                     34 '@EMPTY@'
+ck "(e) a MISSING state FAILS"                                   32 '{"ok":false}'
+ck "(f) a NULL state FAILS"                                      32 '{"state":null}'
+ck "(g) a NUMERIC state FAILS"                                   32 '{"state":123}'
+ck "(l) a PREFIX of the state FAILS"                             32 '{"state":"cron_disarmedX"}'
+# --arg, not interpolation. Splicing the expected value into the filter as "\($want)" would leave a
+# quote-bearing state unable to even COMPILE, so a body that genuinely matches would be reported as
+# a mismatch — the failure mode that makes an operator distrust a correct alert.
+STUB_CURL_BODY='{"state":"a\"b"}' SEED_KC=1 expect_rc "an expected state containing a QUOTE is compared as data" 0 -- check-endpoint --url http://x --expect-status 503 --expect-state 'a"b' --service svc --account acct
+no_residue
+
+# The parser is preflighted, so a missing jq is reported AS a missing jq (33) and neither the
+# keychain nor the network is touched. Without the preflight this returns 32 — "wrong state" — and
+# the 2>/dev/null that keeps the body off the terminal also hides bash's "command not found".
+NOTIF_LIVENESS_JQ="$ROOT/definitely-not-jq" SEED_KC=1 expect_rc "a MISSING parser fails closed as 33, not as a wrong state" 33 -- check-endpoint --url http://x --expect-status 503 --expect-state cron_disarmed --service svc --account acct
+no_curl; no_kc_access; no_residue
+
+# ── provision: create vs update must be ATOMIC and TRUTHFUL ───────────────────────────────────
+# Measured before the fix: a stubbed lookup rc=36 made the helper generate a token, write it with an
+# unconditional -U, destroy a pre-existing value with no --force, and exit 0 announcing "proven
+# byte-for-byte" — true of the new value, silent about the one it replaced.
+SEED_KC=1 SEED_KC_VALUE="$PRIOR_TOKEN" expect_rc "an EXISTING item without --force is refused" 15 -- provision --service svc --account acct
+store_is "$PRIOR_TOKEN" "...and the pre-existing bytes are untouched"
+no_write; no_openssl
+
+STUB_RC_FIND_PRESENCE=36 SEED_KC=1 SEED_KC_VALUE="$PRIOR_TOKEN" expect_rc "a lookup failure that is NOT 'not found' (36 denied) refuses" 16 -- provision --service svc --account acct
+store_is "$PRIOR_TOKEN" "...and the pre-existing bytes are untouched"
+no_write; no_openssl
+
+STUB_RC_FIND_PRESENCE=51 SEED_KC=1 SEED_KC_VALUE="$PRIOR_TOKEN" expect_rc "a lookup failure of 51 (auth failed) refuses too" 16 -- provision --service svc --account acct
+store_is "$PRIOR_TOKEN" "...and the pre-existing bytes are untouched"
+no_write; no_openssl
+
+# THE RACE. The lookup says 44/absent, but an item exists by the time the write lands. The create
+# carries no -U, so the KEYCHAIN refuses it (45) and the existing value survives. This is the row a
+# check-then-write can never pass, and it is why the lookup is for the message, not for the safety.
+STUB_RC_FIND_PRESENCE=44 SEED_KC=1 SEED_KC_VALUE="$PRIOR_TOKEN" expect_rc "an item appearing BETWEEN the check and the write is refused, not overwritten" 15 -- provision --service svc --account acct
+store_is "$PRIOR_TOKEN" "...and the pre-existing bytes survived the race"
+wrote_with REFUSED
+
+SEED_KC=1 SEED_KC_VALUE="$PRIOR_TOKEN" expect_rc "--force DOES replace, and re-proves the round trip" 0 -- provision --force --service svc --account acct
+store_is "$FAKE_TOKEN" "...and the stored value is now the newly generated one"
+wrote_with UPDATE; no_token_leak; no_residue
+
+# A fresh provision must still use CREATE semantics — the -U must not creep back in as a constant.
+expect_rc "a FIRST provision creates" 0 -- provision --service svc --account acct
+wrote_with CREATE; store_is "$FAKE_TOKEN" "...and the generated value is what landed"
 
 # ── SIGNALS: cleanup must run, the status must be non-zero, and nothing after may execute ─────
 # This is the case the prose got wrong: `trap 'rm …' INT` cleaned up and then let execution CONTINUE
