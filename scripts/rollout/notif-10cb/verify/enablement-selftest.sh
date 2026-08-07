@@ -1106,7 +1106,12 @@ else
   if [[ -z "$L_FLOOR_START" || -z "$L_FLOOR" ]]; then
     bad "...cannot check the floor's event scope: the floor anchors are missing (start=$L_FLOOR_START end=$L_FLOOR)"
   else
-    floor_events="$(code_count_between "event_type = 'open_slots_player'" "$L_FLOOR_START" "$L_FLOOR")"
+    # BOUNDARY-AWARE, for the same reason as every other anchor here: a bare
+    # `event_type = 'open_slots_player'` is a SUBSTRING of `dg.fake_event_type = 'open_slots_player'`,
+    # so both halves could be renamed to a column that does not exist and the count would still
+    # report 2. Requiring the alias dot before the name, and whitespace-or-EOL after the literal,
+    # keeps every legitimate alias working while rejecting a prefixed column.
+    floor_events="$(code_count_between "[.]event_type[[:space:]]*=[[:space:]]*'open_slots_player'([[:space:]]|\$)" "$L_FLOOR_START" "$L_FLOOR")"
     [[ "$floor_events" == "2" ]] \
       && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
       || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
