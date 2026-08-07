@@ -1,5 +1,5 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { createClient as createSanityClient } from "npm:@sanity/client@6";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
+import { createClient as createSanityClient } from "https://esm.sh/@sanity/client@6.29.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

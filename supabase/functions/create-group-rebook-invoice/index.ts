@@ -8,7 +8,7 @@
 // Token-gated (the claim_token is the capability) so it works for logged-OUT captains opening the
 // email link; everything DB-side runs as the service role after the token check.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { withTimeout } from "../_shared/edge-timeout.ts";
 

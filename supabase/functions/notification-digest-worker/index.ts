@@ -7,7 +7,7 @@
 // made ZERO database calls. Enabling is a 10c-b step (schedule cron + flip the switch + enable one
 // digest_engine_enabled event) behind a new review.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { requireServiceRole } from "../_shared/auth.ts";
 import { notifySlackEdge } from "../_shared/edge-slack.ts";
 import { sendResendEmailOnce } from "../_shared/resend-send-once.ts";

@@ -1,5 +1,5 @@
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { matchGuestByName, normalizeGuestName, resolveOrCreateGuestPlayer } from "./guest-players.ts";
 
 Deno.test("normalizeGuestName trims, lowercases, collapses whitespace", () => {

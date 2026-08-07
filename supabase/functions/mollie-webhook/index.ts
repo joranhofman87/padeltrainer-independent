@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { refreshTokenIfNeeded as sharedRefreshTokenIfNeeded, resolveAccessToken as sharedResolveAccessToken } from "../_shared/mollie-token-resolution.ts";
 import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
 import { evaluateForwardInvoiceWebhookResult } from "../_shared/forward-invoice-response.ts";

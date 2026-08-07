@@ -16,7 +16,7 @@
 //   - IDENTITY is always a guest_players row; metadata.booking_ids (NO invoice_id);
 //     mollie_payment_id + a stable public_token persisted; TTL sweep + best-effort
 //     soft-cancel backstop on failure.
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { applySplitPayment, computeCyclusTotalFromSlots, computeCyclusExtrasTotal, resolveSplitDivisorFromSlots, hasNonUniformCapacity, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";

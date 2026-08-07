@@ -19,7 +19,7 @@
 // number out — or, if verification were skipped, let an attacker learn which SIDs we hold.
 // Hence 403 before ANY parsing of the payload's meaning.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { verifyTwilioSignature, optOutNumberFromPayload } from "../_shared/twilio-signature.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 

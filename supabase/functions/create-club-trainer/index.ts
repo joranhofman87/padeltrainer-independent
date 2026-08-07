@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { evaluateClubTrainerAccess } from "../_shared/club-trainer-access.ts";
 import { PublicError, publicErrorMessage } from "../_shared/public-error.ts";
 

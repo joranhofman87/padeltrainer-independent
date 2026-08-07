@@ -25,7 +25,7 @@
 // mollie_payment_id is persisted so the webhook can also route by it. On any
 // post-hold failure the hold is best-effort soft-cancelled; the TTL sweep
 // (release_expired_guest_slot_holds) is the backstop.
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";

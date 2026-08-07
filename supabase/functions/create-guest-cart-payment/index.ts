@@ -22,7 +22,7 @@
 //   - IDENTITY is always a guest_players row; metadata.booking_ids (NO invoice_id);
 //     mollie_payment_id + a stable shared public_token persisted; TTL sweep +
 //     best-effort soft-cancel backstop on failure.
-import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import {
   type CartSlotRow,

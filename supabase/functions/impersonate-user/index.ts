@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { restrictedCors } from "../_shared/cors.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 

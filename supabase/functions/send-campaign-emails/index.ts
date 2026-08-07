@@ -1,5 +1,11 @@
-import { createClient } from "npm:@supabase/supabase-js@2";
-import { corsHeaders } from "npm:@supabase/supabase-js@2/cors";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
+// supabase-js publishes a `./cors` subpath from 2.95.0 (2026-02-05) onward, and this import was
+// written 2026-04-04 against the floating `@2`, so it has always resolved at deploy time. Keep it —
+// only the version is pinned. It is NOT interchangeable with `_shared/cors.ts`: upstream sends
+// `Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS`, which a browser preflight
+// needs to permit the cross-origin POST this function is invoked with, and `_shared/cors.ts` sends
+// no Allow-Methods at all. Swapping them would quietly narrow CORS here.
+import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.108.2/cors";
 import { isServiceRoleRequest } from "../_shared/service-role-auth.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {

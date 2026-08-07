@@ -7,7 +7,7 @@
 // commits the paid hold; this endpoint just reports state (the page polls while
 // pending). No side effects.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { corsHeadersFor } from "../_shared/cors.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

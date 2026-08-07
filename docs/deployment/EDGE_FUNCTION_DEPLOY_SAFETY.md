@@ -103,6 +103,92 @@ timeout. When deno.land is slow/down the deploy dies (`Failed to bundle... timed
 native **`Deno.serve`** have no such fetch and deploy fine. **Prefer `Deno.serve` in new edge functions;**
 if a deploy fails on a deno.land fetch, it's the network, not the code — retry or migrate that import.
 
+### 4e. A CDN import must name an EXACT version — the specifier IS the defect
+
+**Rule: no external import that can enter a deployment bundle may contain a version range.** `@2` is a
+range. `@2.0` is a range. `^2.57.2` is a range. `@2.57.2` is a version. Enforced by
+`npm run check:edge-pins` (see [QUALITY_GATES.md](../QUALITY_GATES.md)).
+
+**What happened (2026-08-06).** The N0–N7 inert deployment partially failed: 15 of 18 functions would
+not deploy. Nothing in our code had changed to cause it. `https://esm.sh/@supabase/supabase-js@2`
+resolved that hour to a build depending on `@supabase/postgrest-js@2.112.2` — a version npm had not
+published — so the bundle could not be built.
+
+**Why this is not "upstream was broken".** Three observations from the same run refute that reading:
+
+- `mollie-webhook` carries the *same* floating specifier and deployed **successfully** in that run.
+- The two functions that pin exactly (`notif-manage`, `notif-unsubscribe-one-click`) deployed cleanly.
+- Within hours, `postgrest-js@2.112.2` **was** published and became the `latest` tag — the same
+  specifier that failed the deploy would now succeed.
+
+So the build outcome was decided by what a third party's mutable pointer resolved to at that moment.
+A deploy that succeeds or fails according to a CDN's clock is not reproducible, and the failure lands
+at deploy time, on a release, with no local reproduction.
+
+**Why local checks could not have caught it — the important part.** `deno.lock` *did* pin the floating
+specifier, to `https://esm.sh/@supabase/supabase-js@2.108.2`. Local `deno check`, the edge tests and CI
+therefore all resolved 2.108.2, deterministically and successfully. **`supabase functions deploy`
+bundles server-side and never sees `deno.lock`.** That is the whole gap: the lockfile made every local
+surface reproducible and left the one surface that ships unpinned. A green CI proved nothing about the
+deploy, and could not have. Pinning in the source specifier is the only place the deploy bundler reads.
+
+**Which version, and why it is 2.108.2.** `deno.lock` had been resolving the floating specifier to
+`2.108.2`, so every local `deno check`, every edge test and every CI run in this repository has been
+validated against that version — it is the most exercised version we have, and it is one minor
+release from what the deploy was actually fetching. An earlier attempt pinned `2.57.2` (the version
+29 functions already named) and that was **wrong**, for a reason no type-check could see:
+`auth.getClaims()` in auth-js 2.71.1 THROWS on an expired or exp-less JWT, where 2.108.2 returns
+`{data: null, error}`. Seven functions destructure `{data, error}` and branch on `error`; six of them
+have `verify_jwt = false`, so `getClaims` is their only gate and every expired token — a routine
+client condition — would have become an uncaught 500. Verified by running both versions, not read
+off a changelog. **When choosing a pin, diff the RUNTIME behaviour of the APIs you actually call,
+not just the types.**
+
+**Use the `https://esm.sh/…` form, not `npm:`.** `scripts/check-edge-deno.mjs` runs
+`deno check --node-modules-dir=manual`, which resolves an `npm:` specifier against the
+`node_modules` that `npm ci` populated. So `npm:@supabase/supabase-js@2.57.2` cannot resolve when
+`package.json` installs `^2.90.1` — deno fails with `Could not find a matching package`, produces no
+`TS####` line, and the gate counted **zero errors** for that file. Fourteen entrypoints silently
+stopped being type-checked and the ratchet read it as an improvement. A URL specifier is resolved
+from the network/cache instead, so it is immune to that skew, and one form repo-wide also removes
+the two-module-identity problem below. The gate now fails closed on any non-type `deno` error.
+
+**Scope: `_shared/` counts.** A shared module is bundled into every function that imports it. Five of
+the fifteen failures had clean entrypoints and inherited the floating specifier transitively through
+`_shared/auth.ts`, `_shared/booking-access.ts`, `_shared/booking-confirmation-email.ts` and
+`_shared/mollie-booking-paid-side-effects.ts`. Pin the shared modules or the guard is theatre.
+
+**A `./cors` subpath DOES exist.** supabase-js publishes `./cors` from 2.95.0 (2026-02-05) onward.
+`send-campaign-emails` imports it and always has resolved at deploy time, because it named the
+floating `@2`. Do not "repair" it to `_shared/cors.ts`: upstream sends
+`Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS` and `_shared/cors.ts` sends no
+Allow-Methods at all, which a browser preflight needs to permit a cross-origin POST. Probing an old
+pinned version makes the subpath look nonexistent — check the version the deploy actually resolves.
+
+**One package, one specifier form.** `npm:@supabase/supabase-js@2.57.2` and
+`https://esm.sh/@supabase/supabase-js@2.57.2` are the *same library at the same version* but two
+distinct module identities to TypeScript, so a client created from one cannot be passed to a helper
+typed against the other. Prefer the `https://esm.sh/…` form used by the majority of this repo, and
+never mix forms across an entrypoint and the `_shared/` modules it calls.
+
+**A computed specifier is a violation too.** `import(`npm:pkg@${v}`)`, `import("npm:pkg@" + v)` and
+`import(spec)` cannot be exact pins by construction — there is no version in the source for anyone
+to check. The guard reports them in their own right.
+
+**Why the guard parses instead of grepping.** It originally used regexes, and three consecutive
+review rounds each found a fresh hole in the same place: an attributed dynamic import, a `;` inside
+a comment ending the import clause, a computed specifier, a call to a method named `import`, a
+comment-stripper that desynced on a regex literal containing a quote, `import(` matched inside a
+string. Each patch was locally correct and the family kept producing defects. Deciding what is code,
+what is a comment, what is a string and what is a regex literal *is* parsing, so the guard now uses
+the TypeScript parser and fails closed on any file it cannot parse. If you extend it, extend the AST
+walk — do not reintroduce a pattern.
+
+**Avoid `ReturnType<typeof createClient>` for a client parameter.** It instantiates the *default*
+generics, which differ between supabase-js versions, so it breaks on any version bump. Import the type
+instead: `import { createClient, type SupabaseClient } from "…"` and annotate the parameter
+`SupabaseClient`.
+
 ---
 
 ## 5. Deploy commands (copy-paste)

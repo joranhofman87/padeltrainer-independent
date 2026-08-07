@@ -13,8 +13,11 @@
  *
  *   - check each function's index.ts on its own (a single merged graph dies on the first npm:
  *     resolution quirk; per-file mirrors how each function actually deploys)
- *   - `--node-modules-dir=manual` so the 14 functions that import `npm:` specifiers resolve against
- *     the node_modules that `npm ci` populated (the deno-only edge-tests job can't do this)
+ *   - `--node-modules-dir=manual` so any `npm:` specifier resolves against the node_modules that
+ *     `npm ci` populated (the deno-only edge-tests job can't do this). NOTE that this is exactly why
+ *     edge specifiers use the `https://esm.sh/…` URL form: an `npm:` pin that disagrees with what
+ *     package.json installs is UNRESOLVABLE here, and an unresolvable file used to contribute zero
+ *     errors — see the CHECKED contract below, which now fails closed on it
  *   - signature each error as `file|code|message`, with abs paths + version-pinned dep segments
  *     normalized out so a signature is stable across machines/CI and across dependency bumps
  *   - count occurrences per signature; FAIL if any signature exceeds the committed baseline
@@ -23,6 +26,8 @@
  * Regenerate after intentionally changing the error set:  node scripts/check-edge-deno.mjs --update
  */
 import { execSync } from 'node:child_process';
+import * as fsMod from 'node:fs';
+import { tmpdir } from 'node:os';
 import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -61,10 +66,36 @@ function functionEntrypoints() {
     .sort();
 }
 
+// A `deno check` failure that is NOT a type error — an unresolvable specifier, a bundle error, a
+// missing `deno` binary — produces no `TS#### [ERROR]:` line at all. Counting only those lines
+// therefore reads such a file as having ZERO errors, and the ratchet (which fails only ABOVE the
+// baseline) stays green while the file is not being checked at all.
+//
+// That is not hypothetical. Pinning `npm:@supabase/supabase-js@2.57.2` while `package.json`
+// installs 2.90.1 made `deno check --node-modules-dir=manual` fail with
+// `error: Could not find a matching package …` for 14 entrypoints. The gate reported "no new type
+// errors" — a false green — and the count even went DOWN, which read as an improvement. This gate
+// exists to catch un-imported names shipping as runtime ReferenceErrors; failing open is the one
+// thing it must not do.
+// Keyed on the PROCESS STATUS, not on matching text. Text matching alone still failed open for
+// `deno: command not found` (exit 127, no `error:` line), a killed process, a future change to
+// Deno's diagnostic format, and a bare `error: Type checking failed.` with nothing parsable before
+// it. The invariant is simple and complete: a NON-ZERO exit is only acceptable when this entrypoint
+// produced at least one parsable `TS#### [ERROR]` diagnostic. Anything else means deno did not get
+// far enough to have an opinion, and must not read as zero errors.
+const HARD_FAIL_RE = /^error: (.+)$/;
+// `error: Type checking failed.` is deno's COMPLETION marker for a run that finished and found type
+// errors. (`Found N errors.` is printed only when N > 1 — verified on deno 2.8.3 — so it cannot be
+// the marker.) Its presence is what distinguishes "checked, and here are the errors" from "died
+// partway through". Without it, a deno killed after emitting ONE diagnostic would look checked.
+const COMPLETED_WITH_ERRORS_RE = /^error: Type checking failed\.$/;
+
 function collectErrorCounts() {
   const counts = {};
+  const hardFailures = [];
   for (const entry of functionEntrypoints()) {
     let out = '';
+    let exitStatus = 0;
     try {
       // deno check exits non-zero on type errors; diagnostics go to stdout/stderr.
       out = execSync(`deno check --node-modules-dir=manual "${entry}"`, {
@@ -76,8 +107,17 @@ function collectErrorCounts() {
       });
     } catch (e) {
       out = `${e.stdout || ''}${e.stderr || ''}`;
+      exitStatus = typeof e.status === 'number' ? e.status : 1;
     }
     const lines = out.split('\n');
+    let parsedHere = 0;
+    // Fail CLOSED on anything that stopped deno from type-checking this entrypoint.
+    for (const line of lines) {
+      const hard = HARD_FAIL_RE.exec(line.trim());
+      if (hard && !/^Type checking failed/.test(hard[1])) {
+        hardFailures.push(`${normalize(entry)}: ${hard[1]}`);
+      }
+    }
     for (let i = 0; i < lines.length; i++) {
       const m = ERR_RE.exec(lines[i]);
       if (!m) continue;
@@ -89,10 +129,113 @@ function collectErrorCounts() {
       }
       const sig = `${file}|${m[1]}|${normalize(m[2])}`;
       counts[sig] = (counts[sig] || 0) + 1;
+      parsedHere += 1;
     }
+    // An entrypoint counts as CHECKED in exactly two shapes, and nothing else:
+    //   * exit 0                                   — completed, no type errors;
+    //   * exit 1 + the completion marker + >=1 parsed diagnostic — completed, with type errors.
+    // Everything else (127 missing binary, 137 killed, a crash, a diagnostic-format change, or a
+    // run that emitted one error and then died) means deno never finished forming an opinion about
+    // this file, and must not be recorded as zero errors.
+    const completed = lines.some((l) => COMPLETED_WITH_ERRORS_RE.test(l.trim()));
+    const checked = exitStatus === 0 || (exitStatus === 1 && completed && parsedHere > 0);
+    if (!checked) {
+      hardFailures.push(
+        `${normalize(entry)}: deno exited ${exitStatus} without completing the check `
+        + `(${parsedHere} diagnostic(s) parsed, completion marker ${completed ? 'present' : 'ABSENT'})`,
+      );
+    }
+  }
+  if (hardFailures.length > 0) {
+    console.error(`\n❌ edge functions (deno check) — ${hardFailures.length} entrypoint(s) could not be CHECKED AT ALL:\n`);
+    for (const f of hardFailures) console.error(`  ${f}`);
+    console.error(`\nThese are not type errors — deno never got far enough to produce any. A file that`);
+    console.error(`cannot be checked silently contributes ZERO errors, so the ratchet would read this as`);
+    console.error(`an improvement. Fix the resolution failure; do not regenerate the baseline over it.`);
+    process.exit(1);
   }
   return counts;
 }
+
+// ── Self-test (`--self-test`): the CHECKED contract, executable ────────────────────────────────
+// The contract keys on deno's OUTPUT SHAPE, so it is coupled to the toolchain: CI installs
+// `deno-version: v2.x`, and a future 2.x could change the wording. That direction fails CLOSED
+// (a real check reported as unchecked), never open — but it would be a baffling CI failure. These
+// shims make the coupling explicit and self-describing, so an output change fails HERE, naming the
+// contract, instead of surfacing as "14 entrypoints could not be checked" on an unrelated PR.
+function selfTest() {
+  const { mkdtempSync, writeFileSync, chmodSync, rmSync } = require_fs();
+  const dir = mkdtempSync(join(tmpdir(), 'edge-deno-selftest-'));
+  const shim = (body) => {
+    writeFileSync(join(dir, 'deno'), `#!/bin/sh\n${body}\n`);
+    chmodSync(join(dir, 'deno'), 0o755);
+  };
+  const DIAG = "TS2304 [ERROR]: Cannot find name 'x'.\n    at file:///tmp/a.ts:1:1";
+  const cases = [
+    ['exit 0 (completed, no errors)',                    'exit 0',                                                        true],
+    ['exit 1 + diagnostic + completion marker',          `cat <<EOT >&2\n${DIAG}\n\nerror: Type checking failed.\nEOT\nexit 1`, true],
+    ['killed after one diagnostic, NO marker',           `cat <<EOT >&2\n${DIAG}\nEOT\nexit 137`,                        false],
+    ['unresolvable specifier',                           'echo "error: Could not find a matching package." >&2\nexit 1',  false],
+    ['missing binary / crash (no output)',               'exit 127',                                                      false],
+    ['marker but NO diagnostic (format drift)',          'echo "error: Type checking failed." >&2\nexit 1',               false],
+  ];
+  let failures = 0;
+  for (const [label, body, shouldBeChecked] of cases) {
+    shim(body);
+    let hard = false;
+    try {
+      execSync(`node "${join(ROOT, 'scripts', 'check-edge-deno.mjs')}"`, {
+        cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, NO_COLOR: '1' },
+      });
+    } catch (e) {
+      hard = /could not be CHECKED AT ALL/.test(`${e.stdout || ''}${e.stderr || ''}`);
+    }
+    const ok = hard === !shouldBeChecked;
+    if (!ok) failures += 1;
+    console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${label} -> ${hard ? 'hard failure' : 'accepted as checked'}`);
+  }
+
+  // The shims above pin the IMPLEMENTATION against a marker this file also defines — which proves
+  // the branching but would happily agree with itself if the real deno changed its wording. So
+  // exercise the INSTALLED toolchain too: one file, one genuine type error, and assert the real
+  // output still has the shape the contract keys on. THIS is the case that fails on a deno upgrade.
+  const probe = join(dir, 'marker-probe.ts');
+  writeFileSync(probe, 'const a: string = 1;\n');
+  let realOut = '';
+  let realStatus = 0;
+  try {
+    realOut = execSync(`deno check --no-lock "${probe}"`, {
+      cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, NO_COLOR: '1' },
+    });
+  } catch (e) {
+    realOut = `${e.stdout || ''}${e.stderr || ''}`;
+    realStatus = typeof e.status === 'number' ? e.status : 1;
+  }
+  const realLines = realOut.split('\n');
+  const realMarker = realLines.some((l) => COMPLETED_WITH_ERRORS_RE.test(l.trim()));
+  const realDiag = realLines.some((l) => ERR_RE.test(l.trim()));
+  const realOk = realStatus === 1 && realMarker && realDiag;
+  if (!realOk) failures += 1;
+  console.log(`  ${realOk ? 'PASS' : 'FAIL'}  REAL deno still emits the contract shape `
+    + `(exit ${realStatus}, marker ${realMarker ? 'present' : 'ABSENT'}, diagnostic ${realDiag ? 'present' : 'ABSENT'})`);
+
+  rmSync(dir, { recursive: true, force: true });
+  if (failures) {
+    console.error(`\n${failures} case(s) wrong. If you upgraded deno, its output shape may have changed:`);
+    console.error(`re-derive the completion marker (COMPLETED_WITH_ERRORS_RE) from a real run before relaxing anything.`);
+    process.exit(1);
+  }
+  console.log(`OK — deno CHECKED contract holds (${cases.length} shim cases + the real toolchain, ${denoVersion()}).`);
+  process.exit(0);
+}
+function require_fs() { return fsMod; }
+function denoVersion() {
+  try { return execSync('deno --version', { encoding: 'utf8' }).split('\n')[0]; } catch { return 'unknown'; }
+}
+
+if (process.argv.includes('--self-test')) selfTest();
 
 const sum = (o) => Object.values(o).reduce((a, b) => a + b, 0);
 const current = collectErrorCounts();

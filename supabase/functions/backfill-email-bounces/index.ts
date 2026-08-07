@@ -10,7 +10,7 @@
 // Admin-only: requires the service-role key as the bearer. Idempotent — safe to
 // re-run. Invoke once, then it can be removed.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 
 const log = (s: string, d?: Record<string, unknown>) =>
   console.log(`[BACKFILL-EMAIL-BOUNCES] ${s}`, d ? JSON.stringify(d) : "");

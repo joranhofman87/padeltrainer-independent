@@ -5,7 +5,6 @@
   "src/components/academy/SlotDetailDialog.tsx|TS2345|Argument of type 'unknown' is not assignable to parameter of type 'Error'.": 1,
   "src/components/booking/BookForPlayerDialog.tsx|TS2339|Property 'length' does not exist on type 'unknown'.": 2,
   "src/components/booking/BookForPlayerDialog.tsx|TS2345|Argument of type 'unknown' is not assignable to parameter of type '{ id: string; slot_id: string; guest_player_id: string; player_id: string; payment_amount: number; payment_status: string; paid_externally: boolean; }[]'.": 2,
-  "src/components/booking/BookForPlayerDialog.tsx|TS2488|Type 'unknown' must have a '[Symbol.iterator]()' method that returns an iterator.": 2,
   "src/components/booking/InlineBookPlayer.tsx|TS2339|Property 'length' does not exist on type 'unknown'.": 1,
   "src/components/booking/InlineBookPlayer.tsx|TS2345|Argument of type 'unknown' is not assignable to parameter of type '{ id: string; slot_id: string; guest_player_id: string; player_id: string; payment_amount: number; payment_status: string; paid_externally: boolean; }[]'.": 1,
   "src/components/club/ClubSidebar.test.tsx|TS2740|Type '{ readonly id: \"club-1\"; readonly logo_url: any; readonly is_verified: true; readonly location: { readonly name: \"Padel Club Amsterdam\"; }; }' is missing the following properties from type 'ClubWithLocation': role, location_id, description, contact_email, and 4 more.": 1,
@@ -19,7 +18,6 @@
   "src/components/trainer/TrainerPlayerRemoveCard.tsx|TS2322|Type 'Promise<{ removed_at: string; }>' is not assignable to type 'Promise<void>'.": 1,
   "src/lib/agendaSlots.ts|TS2322|Type 'Map<string, string>' is not assignable to type 'Record<string, string>'.": 1,
   "src/lib/cycles.test.ts|TS2365|Operator '+' cannot be applied to types 'unknown' and 'unknown'.": 1,
-  "src/lib/cycles.ts|TS2304|Cannot find name 'CycleSettings'.": 2,
   "src/lib/cycles.ts|TS2304|Cannot find name 'IntakeRequest'.": 5,
   "src/lib/cycles.ts|TS2304|Cannot find name 'IntakeRequestInput'.": 4,
   "src/lib/cycles.ts|TS2304|Cannot find name 'ScoringWeights'.": 3,
@@ -64,7 +62,7 @@
   "src/test/registrations.test.ts|TS2353|Object literal may only specify known properties, and 'x' does not exist in type 'ScoringWeights'.": 1,
   "src/test/serviceRoleAuth.test.ts|TS2578|Unused '@ts-expect-error' directive.": 1,
   "src/test/slotDeleteGuard.test.ts|TS2556|A spread argument must either have a tuple type or be passed to a rest parameter.": 1,
-  "supabase/functions/_shared/booking-confirmation-email.ts|TS2307|Cannot find module 'https://esm.sh/@supabase/supabase-js@2' or its corresponding type declarations.": 1,
-  "supabase/functions/_shared/mollie-booking-paid-side-effects.ts|TS2307|Cannot find module 'https://esm.sh/@supabase/supabase-js@2' or its corresponding type declarations.": 1,
+  "supabase/functions/_shared/booking-confirmation-email.ts|TS2307|Cannot find module 'https://esm.sh/@supabase/supabase-js@2.108.2' or its corresponding type declarations.": 1,
+  "supabase/functions/_shared/mollie-booking-paid-side-effects.ts|TS2307|Cannot find module 'https://esm.sh/@supabase/supabase-js@2.108.2' or its corresponding type declarations.": 1,
   "supabase/functions/_shared/service-role-auth.ts|TS2304|Cannot find name 'Deno'.": 1
 }

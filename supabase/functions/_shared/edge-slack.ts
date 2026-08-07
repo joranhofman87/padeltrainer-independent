@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 
 /** Invoke slack-notify with service role. Never throws. */
 export async function notifySlackEdge(

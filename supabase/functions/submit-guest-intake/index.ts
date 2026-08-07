@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
@@ -30,7 +30,7 @@ const invalidPayload = (message: string, corsHeaders: Record<string, string>) =>
  * hiccup never blocks a real registration.
  */
 async function throttle(
-  admin: ReturnType<typeof createClient>,
+  admin: SupabaseClient,
   identifier: string,
   max: number,
   windowMin: number,

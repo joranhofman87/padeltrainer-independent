@@ -15,7 +15,7 @@
 // verify_jwt = false (config.toml): Resend can't send a Supabase JWT; auth is the
 // Svix signature instead. Returns 5xx on transient failure so Resend retries.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { verifySvix } from "../_shared/svix-verify.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { handleResendCallback, parseResendEvent } from "../_shared/resend-webhook-events.ts";

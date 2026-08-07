@@ -46,6 +46,20 @@ jobs:
       - name: Legacy API-key consumer guard
         run: npm run check:legacy-key
 
+      # Proves the pin classifier discriminates: every range form (@2, @2.57, ^2.57.2, latest,
+      # no version) is rejected and every exact form accepted, on fixtures plus the real tree.
+      # Most importantly it catches a brace-blind extractor, which would report a clean repo while
+      # silently skipping every braced import.
+      - name: Edge import-pin guard self-test
+        run: npm run check:edge-pins:selftest
+
+      # Fails if any external import in the edge-function bundle graph names a version RANGE.
+      # A floating specifier makes deployability depend on what a CDN resolves that hour; it is
+      # what broke 15 of 18 function deploys on 2026-08-06. Covers entrypoints AND _shared/,
+      # because a shared module is bundled into every function that imports it.
+      - name: Edge import-pin guard
+        run: npm run check:edge-pins
+
   # The REAL type-check. Root `tsc` has files:[] and checks nothing; this runs
   # `tsc -p tsconfig.app.json` and — since that project is perma-red with known
   # pre-existing errors — ratchets on NEW errors only vs scripts/tsc-app.baseline.json
@@ -136,9 +150,12 @@ jobs:
   # edge-tests job above is deno-only and runs --no-check, so a mistyped / un-imported name in an
   # edge fn — incl. money-critical mollie-webhook — used to ship as a runtime ReferenceError with a
   # green build (e.g. backfill-invoices references undefined supabaseUrl/supabaseServiceKey). This
-  # job needs BOTH `npm ci` (so the 14 functions importing `npm:` specifiers resolve against
-  # node_modules) AND Deno; the script passes --node-modules-dir=manual. NEW errors fail; the known
-  # perma-red set does not block. Regenerate: npm run check:edge-types:update.
+  # job needs BOTH `npm ci` (the script imports typescript, and --node-modules-dir=manual resolves
+  # any surviving `npm:` specifier against node_modules) AND Deno. Every edge specifier is now the
+  # `https://esm.sh/…` URL form precisely BECAUSE `npm:` resolves against whatever package.json
+  # installs — a pin that disagreed with it made 14 entrypoints unresolvable, and the gate counted
+  # them as zero errors. It now fails CLOSED on any entrypoint deno could not finish checking.
+  # NEW errors fail; the known perma-red set does not block. Regenerate: npm run check:edge-types:update.
   edge-typecheck:
     runs-on: ubuntu-latest
     steps:
@@ -159,5 +176,13 @@ jobs:
         with:
           deno-version: v2.x
 
+      # Proves the CHECKED contract two ways. Six deno SHIMS pin the branching: a killed run, an
+      # unresolvable specifier, a missing binary and a format drift are hard failures, while a
+      # genuinely completed type-error run is not. Then one case runs the REAL installed deno on a
+      # file with a genuine type error and asserts its output still has the shape the contract keys
+      # on — shims alone would agree with a stale marker, so THAT is the case a `v2.x` wording
+      # change fails on, here, with an explanation, instead of as a mystery on someone's PR.
+      - name: Edge type-gate contract self-test
+        run: npm run check:edge-types:selftest
       - name: Edge-function type-check (ratcheted vs baseline)
         run: npm run check:edge-types
