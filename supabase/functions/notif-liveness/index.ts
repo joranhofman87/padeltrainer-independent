@@ -22,7 +22,7 @@ import {
 const JSON_HEADERS = { "Content-Type": "application/json", "Cache-Control": "no-store" };
 
 Deno.serve(async (req) => {
-  if (!isAuthorizedMonitor(req, Deno.env.get("NOTIF_LIVENESS_TOKEN"))) {
+  if (!await isAuthorizedMonitor(req, Deno.env.get("NOTIF_LIVENESS_TOKEN"))) {
     // No detail: an unauthenticated caller learns nothing about whether the endpoint is configured.
     return new Response(JSON.stringify({ ok: false, state: "unauthorized" }), { status: 401, headers: JSON_HEADERS });
   }
@@ -44,8 +44,14 @@ Deno.serve(async (req) => {
   } catch (e) {
     // "the status query itself fails" is one of the four states the monitor must catch, so it is a
     // 503 and never a 2xx — an outage that reads as healthy is worse than no monitor at all.
+    //
+    // The downstream message is LOGGED, not returned. A raw error string is arbitrary text from
+    // another system; it can quote a row, a column value or a connection string, and this response
+    // goes to a third-party uptime provider. The external body says only that the read failed —
+    // which is all a monitor needs to alert on.
+    console.error("notif-liveness: liveness read failed:", e instanceof Error ? e.message : String(e));
     return new Response(
-      JSON.stringify({ ok: false, state: "query_failed", detail: String(e instanceof Error ? e.message : e) }),
+      JSON.stringify({ ok: false, state: "query_failed", detail: "the liveness read failed; see function logs" }),
       { status: 503, headers: JSON_HEADERS },
     );
   }
@@ -54,6 +60,13 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({ ok: false, state: "query_failed", detail: "liveness returned no row" }), { status: 503, headers: JSON_HEADERS });
   }
 
-  const verdict = decideLiveness(row, Number.isFinite(staleAfter) && staleAfter > 0 ? staleAfter : DEFAULT_STALE_AFTER_SECONDS);
+  // The operator declares activation; the row cannot be asked, because a successful canary and a
+  // disarmed live cron look identical in it. Flipped as part of runbook step 7.
+  const expectArmed = (Deno.env.get("NOTIF_LIVENESS_EXPECT_ARMED") ?? "").toLowerCase() === "true";
+  const verdict = decideLiveness(
+    row,
+    Number.isFinite(staleAfter) && staleAfter > 0 ? staleAfter : DEFAULT_STALE_AFTER_SECONDS,
+    expectArmed,
+  );
   return new Response(JSON.stringify(livenessBody(row, verdict)), { status: verdict.httpStatus, headers: JSON_HEADERS });
 });

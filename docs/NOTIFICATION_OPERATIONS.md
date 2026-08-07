@@ -113,12 +113,29 @@ service's own notification channel is the alert.
 | 401 | `unauthorized` | missing/incorrect token (no detail is leaked) |
 | 503 | `cron_missing` | the job installed by migration is gone |
 | 503 | `never_invoked` | cron ARMED but the worker has never succeeded |
-| 503 | `cron_disarmed` | it succeeded before and the cron is now inactive |
+| 503 | `cron_disarmed` | activation is DECLARED and the cron is inactive |
+| 503 | `unexpectedly_armed` | the cron is active but activation was never declared — the two have drifted |
 | 503 | `stale` | last success older than the threshold (default 900s ≈ 3 missed ticks) |
 | 503 | `query_failed` / `misconfigured` | the liveness read itself failed — never reported as healthy |
 
 `inert` returning 200 is deliberate: a monitor that paged through the whole pre-activation period
 would be switched off long before it was ever needed.
+
+**`NOTIF_LIVENESS_EXPECT_ARMED` — why the operator states this, rather than the endpoint inferring
+it.** The runbook order is 3c wire monitor → **4 canary SUCCEEDS while the cron is still inactive** →
+5/6 reconcile and preflight → 7 arm. Between the canary and activation the liveness row reads
+`last_success_at != null` **and** `job_active = false` — byte-identical to "a live cron was
+disarmed". The six fields cannot tell those apart, and no grace window can, because steps 5 and 6
+are owner-paced and open-ended. An endpoint that guessed would page continuously through the exact
+window it was wired to watch. So the expectation is an explicit input, flipped as part of **step 7**:
+
+```bash
+# at activation (step 7), alongside arming the cron:
+supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
+```
+
+Before that it is absent/false: an inactive cron is correct, staleness does not apply (nothing is
+scheduled), and only `cron_missing`, `unexpectedly_armed` and read failures alert.
 
 **Credentials.** `NOTIF_LIVENESS_TOKEN` — a dedicated secret, **not** the service-role key. An uptime
 provider stores whatever you give it and displays it in their UI; if that provider is breached the

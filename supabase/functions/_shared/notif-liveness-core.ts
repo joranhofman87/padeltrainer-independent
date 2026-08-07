@@ -30,7 +30,7 @@ export type LivenessRow = {
 
 export type Verdict = {
   httpStatus: 200 | 503;
-  state: "live" | "inert" | "cron_missing" | "never_invoked" | "cron_disarmed" | "stale";
+  state: "live" | "inert" | "cron_missing" | "never_invoked" | "cron_disarmed" | "unexpectedly_armed" | "stale";
   detail: string;
 };
 
@@ -52,6 +52,7 @@ export const DEFAULT_STALE_AFTER_SECONDS = 900;
 export function decideLiveness(
   row: LivenessRow,
   staleAfterSeconds: number = DEFAULT_STALE_AFTER_SECONDS,
+  expectArmed: boolean = false,
 ): Verdict {
   // The job is installed by migration; its absence means something removed it.
   if (!row.job_present) {
@@ -60,25 +61,52 @@ export function decideLiveness(
 
   const neverSucceeded = row.last_success_at === null;
 
-  if (neverSucceeded && !row.job_active) {
-    // Pre-activation: exactly the reviewed inert state. Not an alert.
-    return { httpStatus: 200, state: "inert", detail: "cron present and inactive; worker not yet activated" };
+  // WHY THE EXPECTATION IS AN INPUT, and not inferred from the row.
+  //
+  // The reviewed order is: 3c wire this monitor -> 4 canary-invoke (SUCCEEDS, cron still INACTIVE)
+  // -> 5/6 reconcile and preflight -> 7 arm the cron. So between the canary and activation the row
+  // reads `last_success_at != null` AND `job_active = false` — which is byte-identical to "a live
+  // cron was disarmed". The six liveness fields cannot tell those apart, and no grace window can:
+  // the canary window is open-ended, since steps 5 and 6 are owner-paced.
+  //
+  // Inferring it wrongly is not a cosmetic error. It would page continuously through the canary —
+  // the exact window this monitor exists to watch — and a monitor that cries wolf during its first
+  // real use is a monitor that gets muted before it is ever needed.
+  //
+  // So the operator states the expectation, and flips it as part of arming (step 7). Before that,
+  // an inactive cron is CORRECT and is not an alert; after it, an inactive cron is the alert.
+  if (!expectArmed) {
+    if (row.job_active) {
+      // Armed while the operator has not declared activation: the two have drifted apart.
+      return { httpStatus: 503, state: "unexpectedly_armed", detail: "cron is ACTIVE but the monitor is not configured to expect activation (NOTIF_LIVENESS_EXPECT_ARMED)" };
+    }
+    return {
+      httpStatus: 200,
+      state: "inert",
+      detail: neverSucceeded
+        ? "cron present and inactive; worker not yet activated"
+        : "cron present and inactive; a successful run exists (canary) and activation is not yet expected",
+    };
   }
 
-  if (neverSucceeded && row.job_active) {
+  // From here the operator has declared the pipeline activated.
+  if (neverSucceeded) {
     // Armed without a reconciled canary behind it — off the documented path.
-    return { httpStatus: 503, state: "never_invoked", detail: "cron is ARMED but the worker has never succeeded" };
+    return { httpStatus: 503, state: "never_invoked", detail: "activation is expected but the worker has never succeeded" };
   }
 
-  if (!neverSucceeded && !row.job_active) {
-    // It ran before and the cron is now off: disarmed after activation, or the job was rewritten.
-    return { httpStatus: 503, state: "cron_disarmed", detail: "the worker has succeeded before but the cron is now INACTIVE" };
+  if (!row.job_active) {
+    // Activation was declared and the cron is off: disarmed, or the job was rewritten.
+    return { httpStatus: 503, state: "cron_disarmed", detail: "activation is expected but the cron is INACTIVE" };
   }
 
   // Armed and has succeeded: the only remaining question is whether it still is.
   const age = row.seconds_since_success;
-  if (age === null || !Number.isFinite(age)) {
-    return { httpStatus: 503, state: "stale", detail: "last success age is unavailable" };
+  // NEGATIVE is not "very fresh": it means a success timestamp in the future, i.e. clock skew or a
+  // malformed row. Passing Number.isFinite and comparing below the threshold would report `live` on
+  // corrupt data, which is the one direction a liveness check must never fail.
+  if (age === null || !Number.isFinite(age) || age < 0) {
+    return { httpStatus: 503, state: "stale", detail: "last success age is unavailable or not plausible" };
   }
   if (age > staleAfterSeconds) {
     return {
@@ -91,13 +119,22 @@ export function decideLiveness(
 }
 
 /**
- * Constant-time comparison. A length-varying early return leaks the token one character at a time
- * to anyone who can measure the response, which for an internet-facing endpoint is everyone.
+ * Fixed-width constant-time comparison over SHA-256 digests.
+ *
+ * The obvious `if (a.length !== b.length) return false` is NOT constant time and leaks the
+ * configured token's length to anyone who can measure the response. Hashing first makes both sides
+ * exactly 32 bytes whatever the inputs were, so the comparison is over a fixed width and the only
+ * thing the timing can reveal is that a comparison happened.
  */
-export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const [ha, hb] = await Promise.all([
+    crypto.subtle.digest("SHA-256", enc.encode(a)),
+    crypto.subtle.digest("SHA-256", enc.encode(b)),
+  ]);
+  const x = new Uint8Array(ha), y = new Uint8Array(hb);
   let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < x.length; i += 1) diff |= x[i] ^ y[i];
   return diff === 0;
 }
 
@@ -112,13 +149,14 @@ export function timingSafeEqual(a: string, b: string): boolean {
  * Fails CLOSED: with no token configured the endpoint authorizes nobody, so a half-finished setup
  * cannot leave an open surface.
  */
-export function isAuthorizedMonitor(req: Request, expectedToken: string | undefined): boolean {
+export async function isAuthorizedMonitor(req: Request, expectedToken: string | undefined): Promise<boolean> {
   if (!expectedToken) return false;
   const header = req.headers.get("authorization") ?? "";
   const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
   const alt = req.headers.get("x-monitor-token") ?? "";
-  return (bearer !== "" && timingSafeEqual(bearer, expectedToken))
-    || (alt !== "" && timingSafeEqual(alt, expectedToken));
+  if (bearer !== "" && await timingSafeEqual(bearer, expectedToken)) return true;
+  if (alt !== "" && await timingSafeEqual(alt, expectedToken)) return true;
+  return false;
 }
 
 /** The response body. Six operational fields and a verdict — nothing that identifies a person. */
