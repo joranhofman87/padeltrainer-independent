@@ -1086,10 +1086,18 @@ else
   # rollout must not conflate. An event-agnostic floor is satisfied by unrelated due work, mails a
   # real recipient who has nothing to do with the cutover, and still proves nothing.
   L_FLOOR_START="$(code_line_of 'CREATE TEMP TABLE _canary_floor')"
-  floor_events="$(code_count_between "event_type = 'open_slots_player'" "${L_FLOOR_START:-1}" "${L_FLOOR:-999999}")"
-  [[ "$floor_events" == "2" ]] \
-    && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
-    || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
+  # NO DEFAULTED BOUNDS. A `${L_FLOOR:-999999}` fallback would quietly count to EOF — the exact
+  # weakened behaviour the bound exists to prevent — and emit a PASS beside the anchor's own
+  # failure. The suite would still end non-zero, so it is not a hole; it is a line of output that
+  # says the opposite of what happened, which is worse than saying nothing.
+  if [[ -z "$L_FLOOR_START" || -z "$L_FLOOR" ]]; then
+    bad "...cannot check the floor's event scope: the floor anchors are missing (start=$L_FLOOR_START end=$L_FLOOR)"
+  else
+    floor_events="$(code_count_between "event_type = 'open_slots_player'" "$L_FLOOR_START" "$L_FLOOR")"
+    [[ "$floor_events" == "2" ]] \
+      && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
+      || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
+  fi
   # And the floor consults the OTHER door the claim goes through.
   if code_has "notif_channel_kill_gate('email')"; then
     ok "...the floor consults the channel kill gate (the claim's own first act)"
