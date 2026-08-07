@@ -36,14 +36,16 @@ describe('notif-liveness documentation cannot reintroduce a secret in argv', () 
     expect(src).not.toMatch(/-H\s+["']x-monitor-token/i);
   });
 
-  it('the operations doc documents the SAFE forms it is meant to steer people to', () => {
+  it('the operations doc DELEGATES credential handling to the tested helper', () => {
+    // The plumbing used to be prose, and prose cannot be fail-closed: the blocks had no strict
+    // mode, a `trap … INT` that did not terminate, and a printed token. It now lives in a script
+    // with an executable proof, and the doc's job is to call it.
     const src = read('docs/NOTIFICATION_OPERATIONS.md');
-    expect(src).toMatch(/secrets\s+set\s+--env-file/);      // env-file, not inline
-    expect(src).toMatch(/curl\s+-s\s+-w[^\n]*--config/);     // curl config, not -H
-    expect(src).toMatch(/umask\s+077/);                      // 0600 by construction
-    expect(src).toMatch(/trap\s+'rm -f/);                    // fail-closed cleanup
-    expect(src).toMatch(/security (add|find)-generic-password/); // named Keychain item
+    expect(src).toMatch(/notif-liveness-secret\.sh provision/);
+    expect(src).toMatch(/notif-liveness-secret\.sh with-env -- \\?\s*\n?\s*supabase secrets set --env-file \{\}/);
+    expect(src).toMatch(/notif-liveness-secret\.sh check-endpoint/);
     expect(src).toMatch(/secrets unset NOTIF_LIVENESS_TOKEN/);   // revocation
+    expect(src).toMatch(/pbcopy/);                                // says the clipboard is NOT used
   });
 });
 
@@ -64,46 +66,37 @@ describe('the endpoint proof must be able to succeed, and must assert both facts
     }
   });
 
-  it('asserts the STATUS as well as the state', () => {
+  it('the 7b proof asserts BOTH the status and the state', () => {
     // 503 alone is ambiguous (query_failed / misconfigured / stale share it) and the state alone
-    // does not prove the transport worked, so both are required.
-    expect(src()).toMatch(/%\{http_code\}/);
-    expect(src()).toMatch(/"\$CODE"\s*=\s*"503"/);
-    expect(src()).toMatch(/"state":"cron_disarmed"/);
+    // does not prove the transport worked, so the helper is invoked with both expectations.
+    expect(src()).toMatch(/--expect-status 503[\s\S]{0,80}--expect-state cron_disarmed/);
+    // and the pre-activation check uses the other pair
+    expect(src()).toMatch(/--expect-status 200[\s\S]{0,80}--expect-state inert/);
   });
 });
 
-describe('credential handling leaves nothing behind and nothing in argv', () => {
+describe('credential plumbing must not return to prose', () => {
   const src = () => read('docs/NOTIFICATION_OPERATIONS.md');
 
-  it('scopes cleanup to a subshell rather than an interactive EXIT trap', () => {
-    // A bare `trap … EXIT` typed into an interactive shell fires at LOGOUT, and a later trap on the
-    // same signal REPLACES it — so the temp file survives the session, or forever.
-    const all: string[] = src().match(/```bash\n([\s\S]*?)```/g) ?? [];
-    const blocks = all.filter((b) => b.includes('mktemp'));
-    expect(blocks.length).toBeGreaterThan(0);
-    for (const b of blocks) {
-      expect(b).toMatch(/^\(|\n\(/m);        // opens a subshell
-      expect(b).toMatch(/trap 'rm -f/);
-    }
+  it('no raw keychain / temp-file / curl-config plumbing in the doc', () => {
+    // Each of these was a defect when it was prose: an EXIT trap that fired at logout, a subshell
+    // that deleted the config the next step needed, a token echoed for pasting. The helper owns
+    // them now, under scripts/rollout/notif-10cb/verify/liveness-token-selftest.sh.
+    const s = src();
+    expect(s).not.toMatch(/add-generic-password/);
+    expect(s).not.toMatch(/mktemp -t notif-liveness/);
+    expect(s).not.toMatch(/trap 'rm -f/);
+    expect(s).not.toMatch(/--config "\$CURLRC"/);
   });
 
-  it('every block that USES $CURLRC also creates and removes it', () => {
-    // The setup block is a subshell, so its $CURLRC goes out of scope and its file is deleted at
-    // the closing paren. A later block that merely referenced it would be unexecutable — which is
-    // exactly how the 7b proof broke once already.
-    const all: string[] = src().match(/```bash\n([\s\S]*?)```/g) ?? [];
-    const users = all.filter((b) => b.includes('$CURLRC'));
-    expect(users.length).toBeGreaterThan(0);
-    for (const b of users) {
-      expect(b).toMatch(/CURLRC="\$\(mktemp/);          // creates its own
-      expect(b).toMatch(/trap 'rm -f "\$CURLRC"'/);      // and removes it
-    }
-  });
-
-  it('never passes the token as a value to security add-generic-password', () => {
-    // `-w "$token"` puts the secret in argv, observable via ps. `-w` with no value prompts.
-    expect(src()).not.toMatch(/add-generic-password[^\n]*-w\s+["'$]/);
+  it('the helper and its executable proof both exist and are wired into verify:rollout', () => {
+    const helper = 'scripts/rollout/notif-10cb/notif-liveness-secret.sh';
+    const proof  = 'scripts/rollout/notif-10cb/verify/liveness-token-selftest.sh';
+    expect(() => read(helper)).not.toThrow();
+    expect(() => read(proof)).not.toThrow();
+    expect(read(helper)).toMatch(/set -Eeuo pipefail/);
+    expect(read(helper)).toMatch(/on_signal/);
+    expect(read('package.json')).toContain('liveness-token-selftest.sh');
   });
 });
 

@@ -134,37 +134,16 @@ Function secret and a database cron row are changed by different systems; one of
 states is unavoidable for a few seconds. Take the one that fails safe:
 
 ```bash
-# ONE SUBSHELL for 7a and 7b. The curl config from the setup section is gone — that block is
-# itself a subshell, so its $CURLRC went out of scope and its file was deleted at the closing
-# paren. Anything that needs the token has to create, use and remove its own.
-(
-  umask 077
-  CURLRC="$(mktemp -t notif-liveness-curlrc)"
-  trap 'rm -f "$CURLRC"' EXIT INT TERM HUP
-  security find-generic-password -s padeltrainer-notif-liveness -a "$USER" -w \
-    | sed 's/^/header = "Authorization: Bearer /; s/$/"/' > "$CURLRC"
+# STEP 7a — declare the expectation FIRST. The endpoint then reports cron_disarmed (503), which is
+# TRUE: activation is expected and the cron is not yet armed. (The value is literally "true" and is
+# not a secret, so it may be set inline — unlike NOTIF_LIVENESS_TOKEN.)
+supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
 
-  # STEP 7a — declare the expectation FIRST. The endpoint then reports cron_disarmed (503),
-  # which is TRUE: activation is expected and the cron is not yet armed.
-  # (The VALUE here is literally "true" and is not a secret, so it may be set inline — unlike
-  # NOTIF_LIVENESS_TOKEN, which must never appear in argv or history.)
-  supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
-
-  # STEP 7b — PROVE the endpoint picked it up. Assert the STATUS and the STATE together:
-  #   * `curl -f` would suppress the 503 body and exit 22 — the expected answer here IS an error;
-  #   * 503 alone is ambiguous (query_failed, misconfigured and stale share it);
-  #   * the state alone does not prove the transport worked.
-  OUT="$(curl -s -w '\n%{http_code}' --config "$CURLRC" \
-          https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness)"
-  CODE="$(printf '%s' "$OUT" | tail -n1)"
-  JSON="$(printf '%s' "$OUT" | sed '$d')"
-  if [ "$CODE" = "503" ] && printf '%s' "$JSON" | grep -q '"state":"cron_disarmed"'; then
-    echo "expectation propagated (503 cron_disarmed) — safe to arm"
-  else
-    printf 'NOT propagated / unreachable / unhealthy — do NOT arm (status=%s body=%s)\n' "$CODE" "$JSON" >&2
-    exit 1
-  fi
-)   # <- CURLRC removed here, on success, failure or Ctrl-C
+# STEP 7b — PROVE it propagated. Asserts BOTH the status and the state; 503 alone is ambiguous,
+# since query_failed, misconfigured and stale share it. Non-zero on any failure.
+scripts/rollout/notif-10cb/notif-liveness-secret.sh check-endpoint \
+  --url https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness \
+  --expect-status 503 --expect-state cron_disarmed
 
 # STEP 7c — arm, via the reviewed tooling only. `activate` REFUSES without
 # --liveness-expectation-confirmed, so 7a and 7b cannot be skipped by accident.
@@ -231,30 +210,31 @@ is runbook step 3c and must happen **before** the canary, so it is watching from
 **Setup:**
 
 ```bash
-# NEVER `supabase secrets set NAME=<value>` — the value lands in argv, is visible in `ps` while the
-# command runs, and is written to shell history.
-#
-# RUN THIS AS A SUBSHELL, the surrounding ( … ). An `EXIT` trap fires when its shell exits; typed
-# straight into an interactive session that means "at logout", so the file would sit on disk for the
-# rest of the day — and a second `trap … EXIT` later would REPLACE this one, so it would never run
-# at all. A subshell exits at the closing paren, so the trap fires there.
-(
-  umask 077
-  ENVFILE="$(mktemp -t notif-liveness-env)"
-  trap 'rm -f "$ENVFILE"' EXIT INT TERM HUP
+# The credential never appears in argv, history, logs or the terminal — which is why this is a
+# script with tests rather than a snippet. See scripts/rollout/notif-10cb/notif-liveness-secret.sh.
+scripts/rollout/notif-10cb/notif-liveness-secret.sh provision
 
-  printf 'NOTIF_LIVENESS_TOKEN=%s\n' "$(openssl rand -base64 39 | tr -d '\n')" > "$ENVFILE"
+# `with-env` materialises a mode-0600 env file, RE-EXTRACTS the value from that finished file and
+# proves it byte-for-byte against the Keychain before the command runs, substitutes {} with its
+# path, then removes it and verifies its absence on every exit path — including Ctrl-C.
+scripts/rollout/notif-10cb/notif-liveness-secret.sh with-env -- \
+  supabase secrets set --env-file {} --project-ref ficwbdrzefmblkbkomzw
 
-  # Keep a copy in the login Keychain for rotation. `-w` with NO value makes `security` PROMPT and
-  # read the secret from the terminal — passing it as `-w "$token"` would put it straight into argv,
-  # which is the leak this whole block exists to avoid.
-  sed 's/^NOTIF_LIVENESS_TOKEN=//' "$ENVFILE"        # shown once, for you to paste at the prompt
-  security add-generic-password -s padeltrainer-notif-liveness -a "$USER" -U -w
-
-  supabase secrets set --env-file "$ENVFILE" --project-ref ficwbdrzefmblkbkomzw
-  supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
-)   # <- ENVFILE is removed here, whatever happened above
+# The deploy is an ordinary command; it needs no secret.
+supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
 ```
+
+The helper exits non-zero on every failure and **never proceeds past one**: a failed Keychain write
+(10), read (11), a readback that is empty / truncated / multiline / hex (12), a value that differs
+from what was generated (13), or a `cmp` that could not run (14) all stop before anything is
+deployed. `with-env` returns the wrapped command's own status verbatim, so a failed
+`secrets set` is reported as that failure and not masked. Cleanup failure is reported honestly and
+escalates a success to 90 — it never converts a failure into a success. INT/TERM/HUP clean up and
+exit 130/143/129, so Ctrl-C cannot leave the token on disk *or* let the next step run.
+
+**Clipboard: deliberately not used.** Clearing it afterwards does not undo the exposure — a clipboard
+manager or Universal Clipboard has already captured the value — and it exists only to serve a paste,
+which requires displaying the token. A test asserts `pbcopy` is never invoked.
 
 Point the uptime service at `GET https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness`
 with header `Authorization: Bearer <token>` (or `x-monitor-token`), interval 5m, alert on any
@@ -264,27 +244,18 @@ do not put it in a shell command.
 **Verifying the endpoint by hand** — same rule, the token must not reach argv or history:
 
 ```bash
-# The expected answer is an HTTP ERROR (503 with a body), so `curl -f` is exactly wrong here: it
-# suppresses the body and exits 22, and a `grep` for the state could never match. Capture the body
-# and the status, and assert BOTH.
-(
-  umask 077
-  CURLRC="$(mktemp -t notif-liveness-curlrc)"
-  trap 'rm -f "$CURLRC"' EXIT INT TERM HUP
-  security find-generic-password -s padeltrainer-notif-liveness -a "$USER" -w \
-    | sed 's/^/header = "Authorization: Bearer /; s/$/"/' > "$CURLRC"
-
-  BODY="$(curl -s -w '\n%{http_code}' --config "$CURLRC" \
-           https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness)"
-  CODE="$(printf '%s' "$BODY" | tail -n1)"
-  JSON="$(printf '%s' "$BODY" | sed '$d')"
-  printf 'status=%s body=%s\n' "$CODE" "$JSON"
-)
+scripts/rollout/notif-10cb/notif-liveness-secret.sh check-endpoint \
+  --url https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness \
+  --expect-status 200 --expect-state inert
 ```
 
-**Rotation / revocation.** Generate a new value into a fresh mode-0600 env file, `supabase secrets
-set --env-file`, update the provider's stored secret, then confirm the endpoint still answers and
-delete the file. To revoke entirely, `supabase secrets unset NOTIF_LIVENESS_TOKEN` — the endpoint
+It asserts curl's own transport status (30), then the HTTP code (31), then the state (32) — in that
+order, so a network failure can never be reported as a wrong state, and none of them can end in 0.
+It never uses `-f` (which would suppress the very body being checked) and never `-H` (argv).
+
+**Rotation / revocation.** `notif-liveness-secret.sh provision --force` regenerates and re-proves
+the Keychain item; re-run `with-env -- supabase secrets set --env-file {} …` and update the
+provider's stored secret. To revoke, `supabase secrets unset NOTIF_LIVENESS_TOKEN` — the endpoint
 then fails closed and authorizes nobody, which is the safe direction: the monitor goes dark loudly
 rather than the endpoint going open quietly.
 
