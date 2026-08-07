@@ -383,8 +383,9 @@ most 1 profile + N guests per person. The backfill
 (`supabase/migrations/20260826280000_persons_backfill.sql`) mints **deterministic ids** (a profile's
 person reuses the profile uuid; a guest-only person its guest uuid), hard-verifies (any invariant
 violation RAISES and rolls back the whole migration), and installs AFTER INSERT live-mint triggers
-so the map never decays on new signups. Auto-merge happens **only** on the shipped unambiguous rules —
-temporary behavior pending the OD-09 retirement slice (owner, 2026-08-08: D-04 supersedes B2; future
+so the map never decays on new signups. Auto-merge happens **only** on the shipped unambiguous rules
+(explicit twin stamp passing the trust rule — unaffected by OD-09 — and the unique-email B2 arm, which is
+temporary behavior pending the OD-09 retirement slice: owner 2026-08-08, D-04 supersedes B2, future
 writers must not extend email-based merging) —
 (explicit twin stamp passing the trust rule, or a system-wide-unique exact-email match — never
 inside a shared-email cluster); everything ambiguous queues in `person_merge_review` for owner
