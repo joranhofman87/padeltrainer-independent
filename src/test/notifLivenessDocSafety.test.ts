@@ -145,6 +145,13 @@ describe('the endpoint check stays structural and provisioning stays non-destruc
     expect(checkEndpointFn()).toMatch(/length == 1 and \(\.\[0\] \| type\) == "object"/);
   });
 
+  it('rejects a NUL byte, which jq treats as end-of-input', () => {
+    // jq stops at a NUL and ignores the rest, so {"state":"cron_disarmed"}\0{"state":"query_failed"}
+    // slurps to ONE clean object and `length == 1` is satisfied by the prefix alone. --slurp cannot
+    // close this one, because jq never sees the tail.
+    expect(checkEndpointFn()).toMatch(/tr -d '\\000'[\s\S]{0,60}cmp -s/);
+  });
+
   it('preflights the parser BEFORE the keychain read and before any request', () => {
     const fn = checkEndpointFn();
     const jq = fn.indexOf('command -v "$JQ_BIN"');

@@ -260,6 +260,10 @@ requested state anywhere in the body read as success, so
 `cron_disarmed`. It was fail-*closed* in the other direction too: a pretty-printed body, or one
 serialized with a space after the colon, failed a perfectly healthy check.
 
+A body containing a **NUL byte** is rejected outright (34): `jq` stops reading at a NUL and ignores
+everything after it, so a truncated or proxy-mangled response could otherwise present a healthy
+prefix and hide the rest.
+
 The order is transport (30) → HTTP status (31) → body is a single JSON object (34) → `.state` is a
 string equal to the expectation (32), so a network failure can never be reported as a wrong state,
 and none of them can end in 0. Neither the response body nor `jq`'s stderr is ever printed — the

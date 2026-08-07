@@ -442,6 +442,14 @@ cmd_check_endpoint() {
   # depend on that staying true; jq's parse errors quote the input they choked on, which is the same
   # leak by another route. The EXIT CODE carries the diagnosis instead — 34: not a single JSON
   # object; 32: .state absent, null, non-string, or simply different.
+  # A NUL BYTE IS ITS OWN TRAILING-VALUE HOLE. jq stops reading at a NUL and silently ignores
+  # everything after it, so `{"state":"cron_disarmed"}\0{"state":"query_failed"}` slurps to a single
+  # clean object and passes — measured. That is the same defect --slurp closes for concatenated JSON
+  # arriving by a different route, and `length == 1` cannot see it because jq never saw the tail.
+  # A JSON response has no business containing a NUL; a truncated or proxy-mangled one might.
+  if ! tr -d '\000' < "$body" | cmp -s - "$body"; then
+    die "$EXIT_BODY_SHAPE" "response body contains a NUL byte — jq would stop there and ignore the rest (body deliberately not shown)"
+  fi
   if ! "$JQ_BIN" -e --slurp 'length == 1 and (.[0] | type) == "object"' "$body" >/dev/null 2>&1; then
     die "$EXIT_BODY_SHAPE" "response body is not a single valid JSON object (body deliberately not shown)"
   fi

@@ -133,7 +133,16 @@ body="${STUB_CURL_BODY:-}"
 [ -z "$body" ] && body='{"state":"cron_disarmed"}'
 # …which leaves no way to ask for a genuinely EMPTY body, hence the sentinel.
 [ "$body" = "@EMPTY@" ] && body=''
-[ -n "$out" ] && printf '%s' "$body" > "$out"
+if [ -n "$out" ]; then
+  case "$body" in
+    # An environment variable cannot carry a NUL byte, and neither can `$(…)` — it strips them. So
+    # the marker is split and the NUL written straight to the file.
+    *@NUL@*) printf '%s' "${body%%@NUL@*}" > "$out"
+             printf '\000'                 >> "$out"
+             printf '%s' "${body#*@NUL@}"  >> "$out" ;;
+    *)       printf '%s' "$body"           > "$out" ;;
+  esac
+fi
 printf '%s' "${STUB_CURL_CODE:-503}"
 exit 0
 STUB
@@ -302,6 +311,11 @@ ck "(c) an ARRAY containing the state FAILS"                     34 '[{"state":"
 ck "(d) malformed JSON FAILS"                                    34 '{"state":"cron_disarmed"'
 ck "(k) a CONCATENATED second value FAILS (--slurp earns its keep)" 34 '{"state":"cron_disarmed"}{"state":"whatever"}'
 ck "(h) a bare JSON string FAILS"                                34 '"cron_disarmed"'
+# A NUL is a SECOND trailing-value hole that --slurp cannot close, because jq stops at the NUL and
+# never sees the tail — so `length == 1` is satisfied by the prefix alone. Measured fail-open before
+# the explicit NUL check was added; the independent reviewer asserted this case could not reach
+# success, and it could.
+ck "(n) a NUL byte hiding a trailing value FAILS"                34 '{"state":"cron_disarmed"}@NUL@{"state":"query_failed"}'
 ck "(i) an EMPTY body FAILS"                                     34 '@EMPTY@'
 ck "(e) a MISSING state FAILS"                                   32 '{"ok":false}'
 ck "(f) a NULL state FAILS"                                      32 '{"state":null}'
