@@ -216,10 +216,15 @@ prove_identical() {
 # every byte that can change the meaning of the stream — space, tab, CR, LF, quotes, backslash.
 # Leading '-' is refused separately because it would read as an OPTION in the argv paths too.
 readonly SAFE_NAME_DESC="A-Za-z0-9 and . _ @ - (no leading '-', 1..128 chars)"
+# THE SET IS ENUMERATED, NOT A RANGE. `[A-Za-z]` is a COLLATION range and its membership depends on
+# the caller's locale: under en_US.UTF-8, bash 3.2 accepts `é`, `ß` and full-width `Ｕ` as members,
+# while C and C.UTF-8 reject them — measured. An explicit character list has no collation to depend
+# on and gives the same answer in every locale, which is the only way the documented safe set above
+# is actually the set being enforced.
+readonly SAFE_NAME_CLASS='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._@-'
 validate_identifier() {   # $1 = value, $2 = what it is
   local v="$1" what="$2"
   [ -n "$v" ] || die "$EXIT_BAD_NAME" "$what is empty; must be ${SAFE_NAME_DESC}"
-  [ "${#v}" -le 128 ] || die "$EXIT_BAD_NAME" "$what is ${#v} characters; must be ${SAFE_NAME_DESC}"
   case "$v" in
     -*) die "$EXIT_BAD_NAME" "$what begins with '-', which would be read as an option; must be ${SAFE_NAME_DESC}" ;;
   esac
@@ -227,8 +232,16 @@ validate_identifier() {   # $1 = value, $2 = what it is
   # option text — verified, because "the glob probably handles newlines" is exactly the kind of
   # assumption this guard exists to not depend on.
   case "$v" in
-    *[!A-Za-z0-9._@-]*) die "$EXIT_BAD_NAME" "$what contains a character outside the safe set; must be ${SAFE_NAME_DESC}" ;;
+    *[!$SAFE_NAME_CLASS]*) die "$EXIT_BAD_NAME" "$what contains a character outside the safe set; must be ${SAFE_NAME_DESC}" ;;
   esac
+  # LENGTH IS CHECKED LAST so that its meaning is provable rather than incidental: `${#v}` counts
+  # CHARACTERS under a UTF-8 locale and BYTES under C, so a bound applied to arbitrary input means
+  # two different things. By here every character has been proven single-byte ASCII and the two
+  # agree. Honest note: this ordering is NOT observable — anything the charset check rejects is
+  # rejected under either order, so the two orders accept exactly the same set. A mutant that swaps
+  # them is equivalent and cannot be killed; that is recorded rather than papered over with a test
+  # that would only be exercising the harness.
+  [ "${#v}" -le 128 ] || die "$EXIT_BAD_NAME" "$what is ${#v} characters; must be ${SAFE_NAME_DESC}"
 }
 
 # Called by EVERY subcommand as its first act after argument parsing — before the work directory,

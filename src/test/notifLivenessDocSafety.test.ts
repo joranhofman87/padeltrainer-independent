@@ -191,7 +191,11 @@ describe('the endpoint check stays structural and provisioning stays non-destruc
     // emitted `add-generic-password -s svc -U -a acct …` — an update with no --force, exit 0.
     const src = helper();
     expect(src).toMatch(/validate_identifier\(\)/);
-    expect(src).toMatch(/\*\[!A-Za-z0-9\._@-\]\*\)/);          // the charset allow-list
+    expect(src).toMatch(/\*\[!\$SAFE_NAME_CLASS\]\*\)/);        // the charset allow-list
+    // ENUMERATED, never a range: `[A-Za-z]` is a COLLATION range, and under en_US.UTF-8 bash 3.2
+    // accepts é, ß and full-width Ｕ as members — so a range would not enforce the documented set.
+    expect(src).toMatch(/SAFE_NAME_CLASS='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789\._@-'/);
+    expect(src).not.toMatch(/SAFE_NAME_CLASS='[^']*A-Za-z/);
     expect(src).toMatch(/-\*\) die "\$EXIT_BAD_NAME"/);         // no leading '-'
     expect(src).toMatch(/EXIT_BAD_NAME=17/);
     // every subcommand validates, and provision does it before the workdir exists

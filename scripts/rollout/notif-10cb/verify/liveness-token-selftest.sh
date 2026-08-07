@@ -39,9 +39,28 @@ pick_utf8_locale() {
 UTF8_LOCALE="$(pick_utf8_locale || true)"
 [ -n "$UTF8_LOCALE" ] || { printf 'FATAL: no UTF-8 locale available; the byte-level rows would be vacuous\n' >&2; exit 1; }
 
-PASS=0; FAIL=0
-ok()  { printf 'PASS  %s\n' "$1"; PASS=$((PASS+1)); }
-bad() { printf 'FAIL  %s\n' "$1"; FAIL=$((FAIL+1)); }
+# A SEPARATE probe for a locale that actually COLLATES non-ASCII letters into [A-Za-z]. C.UTF-8 does
+# not, so a row run there could never tell an enumerated character class apart from a range — it
+# would pass either way. The probe therefore tests for the misbehaviour itself rather than assuming
+# a locale name implies it.
+pick_collating_utf8_locale() {
+  local c
+  for c in en_US.UTF-8 en_GB.UTF-8 de_DE.UTF-8 fr_FR.UTF-8 en_US.utf8; do
+    [ "$(LC_ALL="$c" locale charmap 2>/dev/null)" = "UTF-8" ] || continue
+    if LC_ALL="$c" bash -c 'case "é" in *[!A-Za-z0-9._@-]*) exit 1 ;; *) exit 0 ;; esac' 2>/dev/null; then
+      printf '%s' "$c"; return 0
+    fi
+  done
+  return 1
+}
+COLLATING_LOCALE="$(pick_collating_utf8_locale || true)"
+
+PASS=0; FAIL=0; SKIP=0
+ok()   { printf 'PASS  %s\n' "$1"; PASS=$((PASS+1)); }
+bad()  { printf 'FAIL  %s\n' "$1"; FAIL=$((FAIL+1)); }
+# A skipped row is REPORTED, never silently absorbed into the pass count — an environment that
+# cannot host a check must say so rather than look identical to one where the check passed.
+skip() { printf 'SKIP  %s\n' "$1"; SKIP=$((SKIP+1)); }
 
 ROOT="$(mktemp -d "${TMPDIR:-/tmp}/liveness-selftest.XXXXXX")"
 trap 'rm -rf "$ROOT"' EXIT
@@ -419,6 +438,14 @@ inj "a leading '-' would read as an option"            '-svc'                   
 inj "an empty --service"                               ''                             acct
 inj "an empty --account"                               svc                            ''
 inj "an over-long --service (129 safe chars)"          "$(printf 'a%.0s' $(seq 1 129))"  acct
+# THE COLLATION TRAP. `[A-Za-z]` is a locale range, not an ASCII set: under en_US.UTF-8 bash 3.2
+# accepts é, ß and full-width Ｕ as members, so the documented safe set was not the set enforced.
+# This row only means something in a locale that exhibits that, hence the dedicated probe.
+if [ -n "$COLLATING_LOCALE" ]; then
+  HELPER_LOCALE="$COLLATING_LOCALE" inj "a non-ASCII letter, in a COLLATING locale ($COLLATING_LOCALE)" 'svcé' acct
+else
+  skip "non-ASCII letter row — no collating UTF-8 locale on this host, so it could not discriminate"
+fi
 # …and the ordinary names still work, so the allow-list is not merely refusing everything.
 expect_rc "the REAL service/account names are accepted" 0 -- provision --service padeltrainer-notif-liveness --account tom.user_1@example.com
 wrote_with CREATE
@@ -457,5 +484,5 @@ signal_row "SIGINT aborts"  INT  130
 signal_row "SIGTERM aborts" TERM 143
 signal_row "SIGHUP aborts"  HUP  129
 
-printf '\n================  %s passed, %s failed  ================\n' "$PASS" "$FAIL"
+printf '\n================  %s passed, %s failed, %s skipped  ================\n' "$PASS" "$FAIL" "$SKIP"
 [ "$FAIL" = "0" ]
