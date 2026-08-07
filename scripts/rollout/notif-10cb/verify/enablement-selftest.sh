@@ -472,8 +472,12 @@ RBD="$HERE/../sql/rollback_disable.sql"
 grep -qF 'digest_engine_enabled = false' "$RBD" && ok "rollback disables the engine" || bad "rollback disables the engine"
 grep -qF 'active := false' "$RBD" && ok "rollback deactivates the cron" || bad "rollback deactivates the cron"
 # order: the switch first (stop creating work), then the cron (stop draining)
-if [[ "$(grep -n 'digest_engine_enabled = false' "$RBD" | cut -d: -f1 | head -1)" -lt \
-      "$(grep -n 'active := false' "$RBD" | cut -d: -f1 | head -1)" ]]; then
+# awk, not `grep | cut | head`: head closes the pipe on its first line and the producers can then
+# die on SIGPIPE under `pipefail` — the same defect that made the C-3 checks pass on BSD sed and
+# fail on GNU sed. One process, reads to its answer, nothing downstream to close on it.
+first_line_of() { pat="$1" awk 'BEGIN{p=ENVIRON["pat"]} index($0, p) { print NR; exit }' "$2"; }
+if [[ "$(first_line_of 'digest_engine_enabled = false' "$RBD")" -lt \
+      "$(first_line_of 'active := false' "$RBD")" ]]; then
   ok "rollback switches the engine off BEFORE the cron"
 else bad "rollback switches the engine off BEFORE the cron"; fi
 # ...and it must NOT be one transaction: if the engine goes off and the cron deactivation fails, a
@@ -574,7 +578,7 @@ logged 'run_id=11111111-1111-4111-8111-111111111111' && ok "...and the binding r
   || bad "...and the binding reaches psql"
 
 # ...and belt and braces on the two spellings of an inline statement, across line continuations.
-if strip_comments | tr '\n' ' ' | grep -qE 'psql_safe[^;|&]*(-c |--command)'; then
+if strip_comments | awk '{ line = line " " $0 } END { exit !(line ~ /psql_safe[^;|&]*(-c |--command)/) }'; then
   bad "the dispatcher sends an inline statement instead of a path-pinned artifact"
 else
   ok "no inline psql statement in any spelling (-c or --command), continuations included"
@@ -861,7 +865,7 @@ grep -qF 'UNKNOWN' "$TMP/out" && ok "...and says the send is UNKNOWN, not 'did n
 # COMMENTS STRIPPED FIRST. That artifact explains at length why it does NOT write the request out,
 # and naming http_post in prose is not transcribing it — the same vacuous-match trap this slice has
 # paid for repeatedly, in a new place.
-if sed 's/--.*$//' "$HERE/../sql/canary_invoke.sql" | grep -qE 'http_post|Authorization'; then
+if awk '{ sub(/--.*$/, "") } /http_post|Authorization/ { f = 1 } END { exit !f }' "$HERE/../sql/canary_invoke.sql"; then
   bad "canary_invoke.sql transcribes the request instead of executing the reviewed command"
 else
   ok "canary_invoke.sql never transcribes the request (it executes the hash-pinned stored command)"
@@ -1028,13 +1032,53 @@ CANARY_SQL="$HERE/../sql/canary_invoke.sql"
 if [[ ! -f "$CANARY_SQL" ]]; then
   bad "canary_invoke.sql is missing from the bundle"
 else
-  canary_code() { sed -e 's/--.*$//' "$CANARY_SQL"; }
-  line_of() { canary_code | grep -nF -- "$1" | head -1 | cut -d: -f1; }
-  L_CLOCK="$(line_of 'CREATE TEMP TABLE _canary_clock')"
-  L_CEIL="$(line_of 'FROM pg_temp._canary_radius));')"
-  L_FLOOR="$(line_of 'FROM pg_temp._canary_floor));')"
-  L_GATE="$(line_of '\i _invocation_gate_replay.sql')"
-  L_OPEN="$(line_of 'open_notification_worker_invocation(')"
+  # PIPE-FREE ON PURPOSE — every helper here is ONE awk process reading the file directly.
+  #
+  # The first version of this block piped `sed` into `grep -q` and into `head -1`. Both of those
+  # close the pipe as soon as they have their answer, which sends SIGPIPE upstream. BSD sed (macOS,
+  # where this was written) dies silently; GNU sed (Linux, where CI runs) reports
+  # "couldn't flush stdout: Broken pipe" and exits non-zero — and `set -Eeuo pipefail` at the top of
+  # this file turns that into the pipeline's status. So the kill-gate check FAILED on merged main
+  # while passing locally, on a file whose content was correct.
+  #
+  # The `head -1` variant is the same defect wearing a disguise: it only ever passed because grep
+  # usually finishes writing this small file before head exits. That is a race, not a result.
+  #
+  # One awk process, no pipe, no early-closing reader, identical on both seds. `sub(/--.*$/,"")`
+  # does the comment stripping inline, which is why the sed stage is gone entirely.
+  # THE PATTERN TRAVELS IN THE ENVIRONMENT, NOT IN -v. `awk -v pat='\i foo'` processes escape
+  # sequences in the assignment: gawk and BSD awk both turn `\i` into `i` (gawk warns), so the gate
+  # lookup would have matched a line MISSING its backslash — quietly weaker than the `grep -F` it
+  # replaced. ENVIRON does no escape processing on any implementation, so the pattern arrives byte
+  # for byte, which is what a fixed-string search has to mean.
+  # ANCHORS ARE REGEXES WITH BOUNDARIES, NOT SUBSTRINGS.
+  #
+  # `index()` matches anywhere, so every anchor was satisfiable by a RENAMED statement that merely
+  # contains it: `CREATE TEMP TABLE _canary_clock_RENAMED`, `_canary_floor_RENAMED`,
+  # `fake_open_notification_worker_invocation(`, `fake_notif_channel_kill_gate('email')`. Each of
+  # those moves the artifact while the check still resolves — a PASS about a file that no longer
+  # does the thing. (I found this by mutating `_canary_floor` to `_canary_floor_RENAMED` to prove
+  # the anchor-missing branch, and watching the check succeed instead.)
+  #
+  # The patterns below therefore pin what must FOLLOW the name — end of line, whitespace, an open
+  # paren, a schema qualifier — so a suffix rename stops matching. Still ENVIRON, so no escape
+  # processing; `~` with a dynamic regex is POSIX.
+  code_line_of_re() { re="$1" awk 'BEGIN{r=ENVIRON["re"]} { sub(/--.*$/, "") } $0 ~ r { print NR; exit }' "$CANARY_SQL"; }
+  code_has_re() { re="$1" awk 'BEGIN{r=ENVIRON["re"]} { sub(/--.*$/, "") } $0 ~ r { f = 1; exit } END { exit !f }' "$CANARY_SQL"; }
+  code_line_of() { code_line_of_re "$1"; }
+  # HALF-OPEN [from, to) — the upper bound is not decoration. The sed range it replaced was
+  # `${L_FLOOR}q;/CREATE TEMP TABLE _canary_floor/,$p`, which stops BEFORE the floor assertion's
+  # terminating line. Counting to EOF instead would let a mutant move a predicate out of
+  # `_canary_floor` and satisfy the count from anywhere later in the file.
+  code_count_between() {
+    re="$1" awk -v from="$2" -v to="$3" 'BEGIN{r=ENVIRON["re"]} { sub(/--.*$/, "") } NR >= from && NR < to && $0 ~ r { n++ } END { print n + 0 }' "$CANARY_SQL"
+  }
+  line_of() { code_line_of "$1"; }
+  L_CLOCK="$(code_line_of_re '^CREATE TEMP TABLE _canary_clock[[:space:]]')"
+  L_CEIL="$(code_line_of_re 'FROM pg_temp\._canary_radius\)\);')"
+  L_FLOOR="$(code_line_of_re 'FROM pg_temp\._canary_floor\)\);')"
+  L_GATE="$(code_line_of_re '^\\i _invocation_gate_replay\.sql[[:space:]]*$')"
+  L_OPEN="$(code_line_of_re 'public\.open_notification_worker_invocation\(')"
   if [[ -z "$L_CLOCK" || -z "$L_CEIL" || -z "$L_FLOOR" || -z "$L_GATE" || -z "$L_OPEN" ]]; then
     bad "canary_invoke.sql is missing a scope gate (clock=$L_CLOCK ceiling=$L_CEIL floor=$L_FLOOR gate=$L_GATE open=$L_OPEN)"
   else
@@ -1054,15 +1098,30 @@ else
   # The floor is EVENT-SCOPED (both halves) while the ceiling stays global — the two questions the
   # rollout must not conflate. An event-agnostic floor is satisfied by unrelated due work, mails a
   # real recipient who has nothing to do with the cutover, and still proves nothing.
-  floor_events="$(canary_code | sed -n "${L_FLOOR%%:*}q;/CREATE TEMP TABLE _canary_floor/,\$p" \
-                   | grep -c "event_type = 'open_slots_player'" || true)"
-  [[ "$floor_events" == "2" ]] \
-    && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
-    || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
+  L_FLOOR_START="$(code_line_of_re '^CREATE TEMP TABLE _canary_floor AS[[:space:]]*$')"
+  # NO DEFAULTED BOUNDS. A `${L_FLOOR:-999999}` fallback would quietly count to EOF — the exact
+  # weakened behaviour the bound exists to prevent — and emit a PASS beside the anchor's own
+  # failure. The suite would still end non-zero, so it is not a hole; it is a line of output that
+  # says the opposite of what happened, which is worse than saying nothing.
+  if [[ -z "$L_FLOOR_START" || -z "$L_FLOOR" ]]; then
+    bad "...cannot check the floor's event scope: the floor anchors are missing (start=$L_FLOOR_START end=$L_FLOOR)"
+  else
+    # BOUNDARY-AWARE, for the same reason as every other anchor here: a bare
+    # `event_type = 'open_slots_player'` is a SUBSTRING of `dg.fake_event_type = 'open_slots_player'`,
+    # so both halves could be renamed to a column that does not exist and the count would still
+    # report 2. Requiring the alias dot before the name, and whitespace-or-EOL after the literal,
+    # keeps every legitimate alias working while rejecting a prefixed column.
+    floor_events="$(code_count_between "[.]event_type[[:space:]]*=[[:space:]]*'open_slots_player'([[:space:]]|\$)" "$L_FLOOR_START" "$L_FLOOR")"
+    [[ "$floor_events" == "2" ]] \
+      && ok "...and BOTH halves of the floor are scoped to open_slots_player" \
+      || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
+  fi
   # And the floor consults the OTHER door the claim goes through.
-  canary_code | grep -qF "notif_channel_kill_gate('email')" \
-    && ok "...the floor consults the channel kill gate (the claim's own first act)" \
-    || bad "...the floor consults the channel kill gate (the claim's own first act)"
+  if code_has_re "NOT public\.notif_channel_kill_gate\('email'\)"; then
+    ok "...the floor consults the channel kill gate (the claim's own first act)"
+  else
+    bad "...the floor consults the channel kill gate (the claim's own first act)"
+  fi
 fi
 
 printf '\n================  %d passed, %d failed  ================\n' "$PASS" "$FAIL"
