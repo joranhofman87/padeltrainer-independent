@@ -1,6 +1,8 @@
 # Payment Flow Map
 
-End-to-end map of every money flow in padeltrainer. Grounded in the code (file:line refs). Companion
+End-to-end map of the money flows in padeltrainer (the guest-CART checkout has no dedicated flow section
+yet — its RPC, idempotency, and audit facts appear in the shared tables; flow write-up pending). Grounded
+in the code (file:line refs). Companion
 docs: [`PAYMENT_INVARIANTS.md`](PAYMENT_INVARIANTS.md) (the rules these flows must never break),
 [`PAYMENT_RECONCILIATION_PLAN.md`](PAYMENT_RECONCILIATION_PLAN.md) (detecting drift),
 [`PAYMENT_RECOVERY_RUNBOOK.md`](PAYMENT_RECOVERY_RUNBOOK.md) (fixing it),
@@ -129,7 +131,7 @@ All in `supabase/functions/mollie-webhook/index.ts`. **Actor:** Mollie webhook.
 ## 15. Academy Mollie missing / not-ready
 
 - **Where:** every charge fn calls `resolveSlotRecipient` / `getAcademyMolliePaymentReadiness` (`_shared/mollie-payment-ready.ts`). Readiness = `onboarding_complete AND charges_enabled AND access_token NOT NULL AND disconnected_at IS NULL` (+ org id not `pending_*`).
-- **Behavior (corrected 2026-08-08):** academy-scoped charge + academy Mollie not ready → **REFUSE (400)** — no trainer fallback (P1-9 fix, `_shared/guest-payment.ts:123`, `create-mollie-payment/index.ts:573`); the trainer-Mollie branch runs only for slots without `academy_profile_id`. No account resolves → `create-mollie-payment`/`create-invoice-payment` 400 `no_mollie_account` + audit + Slack, but the GUEST charge fns 400 with neither audit nor Slack (`create-guest-slot-payment:190`, `-cyclus-:139`, `-cart-:152` — invariant #13 gap); webhook → 200 + Slack refusal (M-25, never uses platform key). **Soft-disconnect (F06):** `mollie-disconnect-academy` never deletes the org row — it refuses while unpaid Mollie-linked invoices / live payment holds exist, then stamps `disconnected_at`; the row + tokens survive so late webhooks still settle, all NEW-charge paths refuse, and `mollie-callback` clears the stamp on reconnect.
+- **Behavior (corrected 2026-08-08):** academy-scoped charge + academy Mollie not ready → **REFUSE (400)** — no trainer fallback (P1-9 fix, `_shared/guest-payment.ts:123`, `create-mollie-payment/index.ts:573`); the trainer-Mollie branch runs only for slots without `academy_profile_id`. No account resolves → `create-mollie-payment` 400 + audit + Slack; `create-invoice-payment` 400 + audit only (no Slack); the GUEST charge fns 400 with neither audit nor Slack (`create-guest-slot-payment:190`, `-cyclus-:139`, `-cart-:152` — invariant #13 gap); webhook → 200 + Slack refusal (M-25, never uses platform key). **Soft-disconnect (F06):** `mollie-disconnect-academy` never deletes the org row — it refuses while unpaid Mollie-linked invoices / live payment holds exist, then stamps `disconnected_at`; the row + tokens survive so late webhooks still settle, all NEW-charge paths refuse, and `mollie-callback` clears the stamp on reconnect.
 - **Reason codes:** `no_row`, `onboarding_incomplete`, `charges_disabled`, `missing_access_token`, `disconnected` (F06 soft-disconnect). Mollie 422 → `mollie_not_ready`.
 - **Tests:** `mollie-payment-ready.test.ts` (all reason codes). **Gap:** no M-25 webhook-refusal regression test.
 

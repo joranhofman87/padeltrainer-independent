@@ -85,7 +85,7 @@ Ranked, incremental — each is a small follow-up:
    `payment_audit_log` inserts with their own shapes (e.g. `create-guest-slot-payment/index.ts:71` —
    corrected 2026-08-08: they are not audit-silent). Align them (and the rebook fns) on the shared helper +
    `payment_created`/`payment_create_failed` vocabulary. **Value: a uniform charge→confirm join.**
-2. **`no_connected_mollie_account` from the charge fns** — they Slack-alert + write some audit rows; align them
+2. **`no_connected_mollie_account` from the charge fns** — actual matrix (2026-08-08): `create-mollie-payment` audit + Slack, `create-invoice-payment` audit only, guest slot/cyclus/cart neither; align them
    on the shared `PaymentAuditStatus` vocabulary so reconciliation queries are uniform.
 3. **`hold_released` / `hold_expired`** — the release crons (`release_expired_guest_slot_holds`,
    `release_expired_rebook_holds`) are SQL cron jobs; emit a durable count (a `payment_audit_log` row or a

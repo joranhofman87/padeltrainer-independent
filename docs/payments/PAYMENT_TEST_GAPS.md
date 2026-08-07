@@ -50,11 +50,11 @@ reviewed (two rounds — the first caught the fresh-path 400, the second the raw
   only ever receives the retry's checkout; a 1-seat slot refuses the retry via `slot_full`), but a multi-seat
   retry can strand a `pending` booking row (no TTL sweep for logged-in pending rows). Follow-up: make
   `book_slot_for_payment` idempotent on (slot, player, recent unpaid pending) like the guest hold RPCs.
-- *Split-amount headcount drift* (`create-mollie-payment` existing-bookings + `create-guest-cyclus-payment`): if
-  a concurrent participant changes the split divisor between a timed-out attempt and its retry, the amount (hence
-  the body, hence the key) changes → a second payable checkout. Not a NEW double-charge (that window predates
-  G2); overlaps **G5** (split-cohort semantics — DECIDED: freeze-to-capacity, Option A ✅; the residual here
-  is the commitment-subsystem divisor exception, not an open product question).
+- *Split-amount body drift* (`create-mollie-payment` existing-bookings + `create-guest-cyclus-payment`): if
+  the charge AMOUNT legitimately changes between a timed-out attempt and its retry (a price edit, or the
+  commitment-subsystem divisor — the one non-frozen divisor), the body (hence the key) changes → a second
+  payable checkout. Not a NEW double-charge (that window predates G2). Direct auto-split divisors are
+  capacity-frozen (G5 ✅), so participant churn alone no longer drifts the body (corrected 2026-08-08).
 - *cip drift-cancel salt is best-effort:* the re-price-back-to-original salt works whenever the superseding
   payment persisted (the common case — we now keep the old id on the row across the POST). In the rare *compound*
   window (re-price → drift-cancel → the superseding POST's response is LOST so its id never persisted), a retry

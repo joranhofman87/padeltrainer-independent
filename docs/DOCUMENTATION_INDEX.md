@@ -31,8 +31,10 @@ If you are an AI agent (Claude / Codex) or a new human contributor, read these *
 Deferred documentation chores (2026-08-08, code-adjacent — outside the docs-only checkpoint):
 `supabase/functions/_shared/payment-audit.ts:2` header comment says "RLS = false" (actual: RLS enabled +
 deny-all policy); `.github/workflows/test.yml:139-158` comments carry the stale "~96" count and pre-edge-typecheck
-phrasing; `docs/adr/0007-edge-functions-as-backend-boundary.md:22,47-49` retains the old all-`verify_jwt=false`
-and no-entrypoint-typecheck claims (refresh during ADR maintenance).
+phrasing; `docs/adr/0007-edge-functions-as-backend-boundary.md:22,47-49` + `docs/adr/README.md:27` retain the old
+all-`verify_jwt=false` and no-entrypoint-typecheck claims (refresh during ADR maintenance);
+`scripts/check-edge-deno.mjs:6` comment retains the stale "~96" count;
+`docs/payments/PAYMENT_OBSERVABILITY_AUDIT.md:83` calls two local audit helpers a shared path.
 
 Supporting canonical directories:
 
