@@ -23,7 +23,10 @@ If you are an AI agent (Claude / Codex) or a new human contributor, read these *
 | 7 | [PERFORMANCE_QUERY_RULES.md](PERFORMANCE_QUERY_RULES.md) | Read/query rules for scale (paging, indexes, N+1). |
 | 8 | [OBSERVABILITY_AND_RECOVERY.md](OBSERVABILITY_AND_RECOVERY.md) | How failures surface (Slack alerts) and how to recover. |
 | 9 | [QUALITY_GATES.md](QUALITY_GATES.md) | The exact CI gates and what each one actually checks. |
-| 10 | [FOUNDATION_ROADMAP.md](FOUNDATION_ROADMAP.md) | The go-forward plan and what's still open. |
+| 10 | [FOUNDATION_ROADMAP.md](FOUNDATION_ROADMAP.md) | Historical programme roadmap (notification units); foundation work now proceeds via rows 11–13. |
+| 11 | [FOUNDATION_DECISIONS.md](FOUNDATION_DECISIONS.md) | Owner decision ledger — OD-02–OD-06 accepted 2026-08-07; D-01–D-13 recorded direction (provenance noted in-doc); OD-07/08 open. |
+| 12 | [FOUNDATION_ARCHITECTURE_BLUEPRINT.md](FOUNDATION_ARCHITECTURE_BLUEPRINT.md) | Target architecture contract for the 100k-Player foundation programme (grounded in [audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md)). |
+| 13 | [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) | Ordered bounded release units U0–U10; U1a is the first authorized slice. |
 
 Supporting canonical directories:
 
@@ -32,7 +35,7 @@ Supporting canonical directories:
 - [deployment/](deployment/) — how edge functions and migrations reach prod safely.
 - [technical-debt/](technical-debt/) — the prioritized backlogs feeding the roadmap.
 
-> **Naming note:** A few canonical docs are referenced above under target names that consolidate existing content: `AI_DEVELOPMENT_GUIDE` (extends [AGENTS.md](../AGENTS.md) + [EXTENDING_THE_DOMAIN.md](EXTENDING_THE_DOMAIN.md)), `ARCHITECTURE_BOUNDARIES` ([FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) + backend layering), and `FOUNDATION_ROADMAP`. Where a target file does not yet exist on disk, use the linked existing doc(s); sibling foundation work is consolidating these.
+> **Naming note:** A few canonical docs are referenced above under target names that consolidate existing content: `AI_DEVELOPMENT_GUIDE` (extends [AGENTS.md](../AGENTS.md) + [EXTENDING_THE_DOMAIN.md](EXTENDING_THE_DOMAIN.md)), `ARCHITECTURE_BOUNDARIES` ([FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) + backend layering). (`FOUNDATION_ROADMAP` is now a historical record — rows 11–13 are the active foundation docs.) Where a target file does not yet exist on disk, use the linked existing doc(s); sibling foundation work is consolidating these.
 
 ---
 
@@ -91,7 +94,7 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [CYCLE_SERIES_SPLIT_RUNBOOK.md](archive/CYCLE_SERIES_SPLIT_RUNBOOK.md) | OA | One-time mega-cycle split (APPLIED to prod 2026-06-29) | no | done | Archive |
 | [SCHEDULING_ARCHITECTURE.md](SCHEDULING_ARCHITECTURE.md) | UNU | Academy-first scheduling strategy note | yes | partial | Overlaps [DOMAIN_MODEL.md](DOMAIN_MODEL.md) |
 | [SHORT_LINKS.md](SHORT_LINKS.md) | CC | Branded `/s/<code>` short-link primitive (schema, worker, seams, invariants) | yes | yes | Distinct from `/t/` `/a/` profile slugs |
-| [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) | CC | **Person-unification program tracker** — one `persons` table over `profiles`+`guest_players` (`person_links` map, FAM-02, split-freeze), strangler-phased; phases 1–3.4 shipped, Phase 4 contract pending | yes | yes | Canonical model summarized in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §5 |
+| [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) | CC | **Person-unification program tracker** — one `persons` table over `profiles`+`guest_players` (`person_links` map, FAM-02, split-freeze), strangler-phased; phases 0–3.5d shipped, membership layer proceeds via [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) U1a (OD-03), Phase 4 contract pending | yes | yes | Canonical model summarized in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §5 |
 | [../src/lib/personIdentity.ts](../src/lib/personIdentity.ts) | CC | Code-as-doc: **the single TS home of the FAM-02 person rule** (person key, XOR ref, booking match scope, display name) — read it before touching any `player_id`/`guest_player_id` logic | yes | yes | SQL surfaces encode the same rule inline; keep in sync |
 | [COMPONENT_REUSE_AUDIT.md](COMPONENT_REUSE_AUDIT.md) | HAO | 2026-06-30 reuse audit + plan | ref | plan | [technical-debt/COMPONENT_REUSE_BACKLOG.md](technical-debt/COMPONENT_REUSE_BACKLOG.md) |
 | [EDGE_FUNCTIONS_FICWB_AUDIT.md](EDGE_FUNCTIONS_FICWB_AUDIT.md) | HAO | 2026-05-31 edge-fn deploy-status audit | ref | dated | — |

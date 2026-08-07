@@ -49,7 +49,7 @@ Full matrix in **[`TESTING_STRATEGY.md`](./TESTING_STRATEGY.md)**. Quick map:
 |---|---|
 | Money-path lib (bookings/cycles/invoices/registrations) | vitest unit + a `*.pglite.test.ts` integration against real Postgres-in-WASM ([`src/test/fixtures/pgliteSupabase.ts`](../src/test/fixtures/pgliteSupabase.ts)) |
 | New migration / RLS / RPC | add/extend a `scripts/db/rehearse-*` invariant; `npm run db:reset` must stay green |
-| Edge function logic | put testable logic in `supabase/functions/_shared/*` (only `_shared/` is in CI) + a deno test |
+| Edge function logic | put testable logic in `supabase/functions/_shared/*` (runtime tests run only for `_shared/`; entrypoints are `deno check`ed by the `edge-typecheck` ratchet) + a deno test |
 | Shared component | vitest `.tsx` render test; contract test before consolidating a money-flow component |
 | i18n keys | en/nl parity (`i18n:check`) |
 
@@ -57,13 +57,13 @@ Open coverage gaps are tracked in [`TEST_COVERAGE_GAPS.md`](./TEST_COVERAGE_GAPS
 
 ## 6. Common mistakes to avoid
 
-- **`npm run typecheck` / root `tsc` checks NOTHING** (`files:[]`). The real gate is `npm run typecheck:baseline` (`tsc -p tsconfig.app.json`, ratcheted vs `scripts/tsc-app.baseline.json`).
-- **Edge-function `index.ts` bodies are NOT type-checked or deno-checked in CI** — only `_shared/` is. A runtime `ReferenceError` in an edge fn will pass CI. Verify imports by hand.
+- **Bare root `tsc` checks NOTHING** (`files:[]`); `npm run typecheck` runs the app project unratcheted (shows pre-existing errors — informational). The real gate is `npm run typecheck:baseline` (`tsc -p tsconfig.app.json`, ratcheted vs `scripts/tsc-app.baseline.json`).
+- **Edge-function `index.ts` bodies ARE now `deno check`ed in CI** (ratcheted `edge-typecheck` job, `check:edge-types`); `_shared/` additionally has runtime tests (`edge-tests`). Per-function runtime behavior still has no CI test — verify manually.
 - **Un-paginated `select()`** silently truncates at 1000 rows — corrupts money aggregates. Always paginate.
 - **Registration price must equal the invoice price must equal the confirmation email** — the confirmation email is composed in **two** places (client `CycleApplicationForm` self-reg + `submit-guest-intake` edge fn). Change both.
 - **Don't downgrade a paid booking/invoice** and don't hard-delete — soft-cancel only ([`INVARIANTS.md`](./INVARIANTS.md)).
 - **Split divisor = group-per-slot.** Pass `splitAmongPlayers = N` or you N×-overcharge (or under-split).
-- **types-drift CI job is perma-red** on a line-10 CLI mismatch → merge with `--admin`; the real migration gate is `supabase db reset`.
+- **types-drift CI gate is green** (stale perma-red claim removed 2026-08-07) — ship regenerated `types.ts` with the migration or pull the CI `types-generated` artifact; never merge `--admin`. `supabase db reset` remains the schema-validity gate.
 - **Don't re-add academy Agenda nav** (deliberately removed; route still mounted as a deep-link). Trainer keeps Agenda.
 
 ## 7. Deployment caveats
@@ -123,13 +123,15 @@ npm run lint             # ratcheted; never add violations, prune when you fix o
 npm run typecheck:baseline   # the REAL type gate (root tsc is a no-op)
 npm test                 # vitest unit + PGlite integration
 npm run test:edge        # deno tests on _shared/
+npm run check:edge-types # ratcheted deno check of edge entrypoints (CI job: edge-typecheck)
 npm run db:rehearse:all  # data-integrity / RLS / list-partition invariants
 npm run i18n:check       # en/nl parity (if you touched i18n)
 npm run build            # Vite production build
 ```
 
-For a migration change also run `npm run db:reset` (the real migration gate). Report which gates you ran.
+For a migration change also run `npm run db:reset` (the real migration gate) and `npm run db:types:check`
+(generated-types drift — CI enforces both on migration-bearing PRs). Report which gates you ran.
 
 ### Current state (do NOT reopen — fixed & deployed 2026-07-02)
 
-The [fresh-eyes audit](./audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) is the audit of record. These are **fixed and deployed** — treat any older audit describing them as open as stale/historical: forged-JWT service-role bypass (P0); `swap_slots` ownership guard; `merge_guest_players` cascade; M-17 webhook `23505` tolerance; extras charge/invoice; `create_invoice_deduped` dedup RPC; invoice-sync paging (now via `src/lib/supabasePaging.ts`); academy-Mollie routing. Push/OneSignal is disabled (email-only). Still open: Mollie idempotency-key on retry (G2), capacity lock on logged-in cyclus (B-1), refund/chargeback webhooks not recorded (B-3), no `deno check` on edge-fn `index.ts` (CI gap). See [`technical-debt/`](./technical-debt/) for the ranked backlogs.
+The [fresh-eyes audit](./audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) is the audit of record. These are **fixed and deployed** — treat any older audit describing them as open as stale/historical: forged-JWT service-role bypass (P0); `swap_slots` ownership guard; `merge_guest_players` cascade; M-17 webhook `23505` tolerance; extras charge/invoice; `create_invoice_deduped` dedup RPC; invoice-sync paging (now via `src/lib/supabasePaging.ts`); academy-Mollie routing. Push/OneSignal is disabled (email-only). Still open: Mollie idempotency-key on retry (G2), capacity lock on logged-in cyclus (B-1). Since fixed (2026-08-07 correction): refund/chargeback reversal detection now alerts (`_shared/mollie-webhook-reversal*`), edge-fn `index.ts` files are `deno check`ed by the `edge-typecheck` ratchet, and paid invoices carry a DB-level delete/rewrite guard (`20260908100000_protect_paid_invoice_integrity.sql`). See [`technical-debt/`](./technical-debt/) for the ranked backlogs.

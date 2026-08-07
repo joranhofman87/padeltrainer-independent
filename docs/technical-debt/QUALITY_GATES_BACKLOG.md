@@ -13,6 +13,10 @@ Priority = blast radius if the gap lets a bug through, not effort.
 ## P0 — a money-critical path ships unchecked
 
 ### P0-1 · No type/`deno check` on any edge function `index.ts`
+
+> **RESOLVED (noted 2026-08-07):** shipped as the ratcheted `edge-typecheck` job in `test.yml`
+> (`check:edge-types` vs `scripts/edge-deno.baseline.json`), a required check. Remaining open here:
+> per-function runtime/integration tests. Original gap text retained below for history.
 - **Gap:** `edge-tests` in `test.yml` runs `deno test --no-check` on `supabase/functions/_shared/` **only**. The 96 function entrypoints — including the 813-line `mollie-webhook`, `create-mollie-payment`, `auto-create-invoice` — are never type-checked or `deno check`ed anywhere in CI. A mistyped field, un-imported symbol, or removed-field access (see audit P1-8 basil `invoice.subscription`) ships with a green build and fails at runtime, on the payment path, in prod. (Audit **P2-9**, CONFIRMED, `test.yml:119`.)
 - **Why it's P0 not P2:** the untyped surface is the money path. This class of bug (un-imported name → `ReferenceError`) is exactly what `typecheck:baseline` was added to catch for app code — edge fns have no equivalent.
 - **Recommended implementation (start narrow, ratchet like tsc):**
@@ -32,6 +36,11 @@ Priority = blast radius if the gap lets a bug through, not effort.
 ## P1 — an unsafe write can bypass the intended boundary
 
 ### P1-1 · No gate forbidding direct dangerous DB writes from UI
+
+> **RESOLVED (noted 2026-08-07):** shipped as the shrink-only static guard `src/test/mutationBoundary.test.ts`
+> + `src/test/fixtures/mutationBoundaryAllowlist.json` (34 writes / 25 files frozen) — a new direct dangerous
+> write in pages/components fails the required `test` job. Remaining debt: the allowlisted writes themselves
+> (`MUTATION_BOUNDARY_BACKLOG.md`). Original gap text retained below for history.
 - **Gap:** nothing prevents a component from calling `supabase.from('bookings'|'invoices'|'availability_slots').insert/update/delete(...)` directly, bypassing the mutation-boundary libs (`src/lib/bookings.ts` `cancelBookingsAndSync`, `slotBookingWrite.ts`, `cycleWrites.ts`, invoice-sync helpers) documented in [../MUTATION_BOUNDARIES.md](../MUTATION_BOUNDARIES.md). A direct write skips invoice/split resync and capacity guards → silent money/data corruption. Lint, tsc and tests all pass.
 - **Recommended implementation:** an `eslint no-restricted-syntax` (or `no-restricted-properties`) rule flagging `.from('<sensitive table>').(insert|update|delete)` outside an allowlisted set of boundary modules (`src/lib/**` write facades + `src/integrations/**`). Baseline existing violations via `eslint-suppressions.json` (shrink-only), same ratchet as the role-isolation rule already in place. Pair with a short allowlist comment in `MUTATION_BOUNDARIES.md`. Low CI cost — runs inside the existing `lint` job.
 
@@ -65,4 +74,4 @@ Priority = blast radius if the gap lets a bug through, not effort.
 
 - Heavy per-PR full E2E or full edge integration suites — cost/flake outweighs value; keep them scheduled.
 - Global coverage thresholds — get disabled the first time they flake; scope to money-path files only.
-- A gate that blocks on the known perma-red `types-drift` line-10 mismatch — that is a CLI-header artifact, not a real drift; document the `--admin` path instead (see QUALITY_GATES.md).
+- (historical) The types-drift gate was once perma-red on a CLI-header artifact; since the 2.107.0 CLI pin it is green — keep it green, never `--admin` past it (see QUALITY_GATES.md).

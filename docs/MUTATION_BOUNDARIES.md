@@ -2,7 +2,7 @@
 
 Purpose: the canonical map of every dangerous domain mutation — where it is *allowed* to happen, where it *actually* happens today (file:line), and what still writes the DB directly from the UI.
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-18
+Status: canonical (source of truth) | last updated 2026-08-07
 
 > Read this before touching any create/cancel/edit/delete path for bookings, slots, cycles,
 > invoices, priority claims, or player identity. If you are adding a new domain write, extend the
@@ -50,7 +50,7 @@ Source audits (do not re-derive — link): [`audits/MUTATION_BOUNDARY_AUDIT.md`]
 
 ## What changed since the source audits (current state, 2026-07-18)
 
-- **Boundary shrank from 92 writes / 34 files → 36 writes / 26 files** (`src/test/fixtures/mutationBoundaryAllowlist.json`). Since the June audits, invoice status/delete, slot create/visibility, and booking create/cancel are fully behind lib facades.
+- **Boundary shrank from 92 writes / 34 files → 34 writes / 25 files frozen (live scan 29 / 21, 2026-08-07)** (`src/test/fixtures/mutationBoundaryAllowlist.json`). Since the June audits, invoice status/delete, slot create/visibility, and booking create/cancel are fully behind lib facades.
 - **P1 E-005 closed**: `setBookingPaymentAndReconcile` (`src/lib/bookings.ts:194`) now reconciles the manual "mark booking paid" to its invoice; both call-sites route through it.
 - **TSO bespoke invoice writes moved**: `mergeNewBookingIdsIntoCycleInvoices` + `syncInvoicesAfterCycleEdit` live in `src/lib/cycleEditInvoiceSync.ts` and are called from `TrainerScheduleOverview.tsx:631,694` (was two untested in-page money writes — see TSO audit; the P0/P1 billing bugs it found are fixed via canonical delegation).
 - **Fresh-eyes P0 (forged-JWT service-role bypass) fixed + deployed**: `isServiceRoleRequest` now `timingSafeEqual`s the bearer/apikey against the real service-role key (`supabase/functions/_shared/service-role-auth.ts:84-96`) instead of trusting a decodable JWT claim. This is the durable backstop for every `requireUser`-gated edge fn in the table.

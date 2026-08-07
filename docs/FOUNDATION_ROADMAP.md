@@ -1,10 +1,19 @@
 # Foundation Roadmap — what to fix before scaling
 
-Purpose: the single clean, forward-looking priority list of foundation work — grouped by when it must land — so an AI agent or human can pick the next-highest-leverage item without re-reading every audit.
+Purpose (HISTORICAL): was the single clean, forward-looking priority list of foundation work. Forward planning now lives in [`FOUNDATION_EXECUTION_PLAN.md`](FOUNDATION_EXECUTION_PLAN.md) (2026-08-07); this file is retained as the record of pre-programme priorities and the N0–N7 notification units.
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-02
+Status: historical record — superseded 2026-08-07 for forward planning by [`FOUNDATION_EXECUTION_PLAN.md`](FOUNDATION_EXECUTION_PLAN.md); the notification-unit sections remain the N0–N7 record | last updated 2026-08-07
+
+> **2026-08-07:** foundation work now proceeds under the owner-approved programme docs:
+> [`audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md`](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md) (A1–A7 audit),
+> [`FOUNDATION_DECISIONS.md`](FOUNDATION_DECISIONS.md) (accepted OD-02–OD-06; OD-07/08 open),
+> [`FOUNDATION_ARCHITECTURE_BLUEPRINT.md`](FOUNDATION_ARCHITECTURE_BLUEPRINT.md), and
+> [`FOUNDATION_EXECUTION_PLAN.md`](FOUNDATION_EXECUTION_PLAN.md) (first authorized slice U1a).
 
 ## How to use this
+
+> **2026-08-07:** this document is a historical record — check `FOUNDATION_EXECUTION_PLAN.md` for the
+> active programme and `INVARIANTS.md`/`QUALITY_GATES.md` for current state before acting on anything below.
 
 - This is the **roadmap** (what/when/why). Each item links to the **detailed backlog** that owns the fix mechanics; do not duplicate that detail here. Backlogs live under [`technical-debt/`](technical-debt/); the grounding audit is [`audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md`](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) (its remediation Slices G–K map 1:1 onto the Tier-1 items below).
 - **Before touching money/scheduling code, read the contract:** [`DOMAIN_MODEL.md`](DOMAIN_MODEL.md) → [`MUTATION_BOUNDARIES.md`](MUTATION_BOUNDARIES.md) → [`INVARIANTS.md`](INVARIANTS.md) → the relevant [`adr/`](adr/README.md) (ADR 0009 makes this the contract). Never fix-as-you-go in a boundary move (ADR 0003): characterize behavior in a PGlite test, extract verbatim, then wire.
@@ -20,6 +29,8 @@ The 2026-07-02 fresh-eyes audit's P0 and 7 of its P1s are **fixed and live in pr
 ## Tier 1 — Critical before inviting many academies
 
 Silent money loss/corruption or a CI gap that lets money-path bugs ship green. These are the remaining P2 cluster from the fresh-eyes audit plus the two highest-leverage foundation gaps. Land these before onboarding materially more paying tenants or larger cycles.
+
+> **2026-08-07:** several items below have since shipped — T1-1 (Mollie reversal detection + alert-only handling, `_shared/mollie-webhook-reversal*`), the paid-invoice DB guard T1-2 pairs with (`20260908100000_protect_paid_invoice_integrity.sql`, which also freezes paid composition), and T1-4 (the ratcheted `edge-typecheck` CI job). Verify current state in `INVARIANTS.md` / `QUALITY_GATES.md` before working any item.
 
 ### T1-1 · Record refund / chargeback reversals (currently silent money loss)
 - **Problem:** `mollie-webhook` has no `charged_back` / `refunded` / `amountRefunded` case; the no-downgrade guard silences the reversal → a reversed payment stays paid/confirmed forever, seat stays occupied, **no `payment_audit_log` row, no alert**. A full refund is even logged as `duplicate_webhook_ignored`. (Audit P2-5, Slice H.)
@@ -178,6 +189,12 @@ No correctness/scale risk today; these lower the cost of every future change and
 > readiness or separate owner approval is recorded as `BLOCKED_OWNER_WHATSAPP` and must not block
 > email completion.
 
+> **SUPERSEDED 2026-08-07:** the owner subsequently authorized the A1–A7 foundation audit; it is
+> complete ([`audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md`](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md),
+> audited head `ea54f08b`), decisions OD-02–OD-06 are accepted, and implementation slice U1a is
+> authorized ([`FOUNDATION_EXECUTION_PLAN.md`](FOUNDATION_EXECUTION_PLAN.md)). The boundary text
+> above is retained as history.
+
 ### Completion contract (owner, 2026-08-05) — authoritative
 
 This section is the programme's single source of truth; the working memory notes point here rather
@@ -330,6 +347,11 @@ in production** with the exact disabled response and zero counter deltas — an 
 operation, still outstanding. It unblocks the SMOKE, not the send: Admin Notification Operations
 (below) still blocks every canary and activation.
 
+> **STATUS 2026-08-07:** N0–N7 are complete; the notification foundation is deployed fully inert and
+> FROZEN (owner decision D-13 reconfirmed 2026-08-07). The `email:digest` activation boundary has
+> never been opened; every remaining notification step is an owner gate (see the pre-launch RESUME
+> record). The "still outstanding" wording above is historical.
+
 **S4 landed first, out of numeric order, because S2b emits the route it mounts.**
 `/app/settings/notifications` is mounted OUTSIDE every role layout and RENDERS the settings page
 rather than forwarding to a role route. Forwarding was the first design; review killed it, because
@@ -351,7 +373,9 @@ re-check); S3 (campaign/onboarding suppression, footers, RFC 8058 headers); S5 (
 endpoint, the capability sweep, docs). The constraints S1 imposes on those slices, each naming the
 slice that must satisfy it, are in [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) §N2.
 
-**N3 (academy controls) and N4 (Admin Notification Operations) are not started.**
+**HISTORICAL (2026-08-02, superseded):** "N3 and N4 are not started" no longer holds — both were
+subsequently completed (N3 whole-unit sweep clear at `bd09d652`, N4 seam review clear at `382ec4e0`;
+see the unit table above).
 
 **One finding from outside these units, recorded rather than fixed:** CI surfaced a concurrent
 materializer race in 10c-a2 — `materialize_notification_digest_groups` racing itself, leaving a

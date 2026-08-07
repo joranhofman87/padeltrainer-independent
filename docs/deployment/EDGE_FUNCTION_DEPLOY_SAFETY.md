@@ -15,7 +15,7 @@ changes. Grounded in the real pipeline (see [[padeltrainer-deploy-pipeline]] ope
 | **Frontend (Vercel)** | ✅ **Yes** | Vercel production build on merge to `main` (project `padeltrainer-independent`). Reaches customers within minutes. |
 | **DB migrations** | ❌ **No** | CI (`.github/workflows/migrations.yml`) only **validates** via `supabase db reset` on a throwaway DB + `gen types`. It does **not** `db push` to prod. A committed migration sits **unapplied** until someone runs `supabase db push --linked`. |
 | **Edge functions** | ❌ **No** | Must be deployed manually with `supabase functions deploy <slug>`. CI's `test:edge` only runs the Deno tests in `supabase/functions/_shared/`. |
-| **`src/integrations/supabase/types.ts`** | ❌ **No** (and the `generated types drift` gate is a known **perma-red**) | Regenerate manually with `supabase gen types` after a schema change, OR merge `--admin` when types-drift is the sole red (the codebase uses `as never` casts to call not-yet-typed RPCs/columns, so functionality does not depend on regenerating). |
+| **`src/integrations/supabase/types.ts`** | ❌ **No** | Regenerate with `supabase gen types typescript --local` after a schema change (or pull the CI `types-generated` artifact). The types-drift gate is green since the 2.107.0 CLI pin — do **not** merge `--admin` (stale perma-red guidance removed 2026-08-07); `as never` casts remain only a stopgap for not-yet-typed RPCs/columns. |
 
 **Consequence:** merging a money-path PR makes the **frontend** live immediately but leaves **migrations
 and edge functions unapplied**. That gap is the #1 source of production payment breakage — see §4.
@@ -249,7 +249,7 @@ Run through this before considering a money-path change "done" (and record the a
 
 - [ ] **Migrations applied?** `supabase db push --dry-run --linked` → "Remote database is up to date."
 - [ ] **`supabase db reset` (CI) green?** — the real migration gate; a red here means the migration is broken.
-- [ ] **Supabase types regenerated (or accepted as perma-red drift)?** — new columns/RPCs used via `as never` need no regen, but note it.
+- [ ] **Supabase types regenerated?** — the types-drift gate is green (no perma-red exception); ship the regenerated `types.ts` with the migration.
 - [ ] **Every changed edge function deployed?** `functions list` shows a new version for each.
 - [ ] **`_shared/` change → all importers redeployed?**
 - [ ] **`mollie-webhook` deployed** if the confirm path or recipient resolution changed?

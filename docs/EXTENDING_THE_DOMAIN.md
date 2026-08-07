@@ -56,14 +56,14 @@ Copy into the PR description for any change touching scheduling/registration/boo
 
 | Surface | Command |
 |---|---|
-| Types | `npx tsc --noEmit` |
+| Types | `npm run typecheck:baseline` (bare root `tsc --noEmit` checks nothing) |
 | Lint (incl. role isolation) | `npx eslint <files>` |
 | i18n nl↔en parity | `npm run i18n:check` |
 | Client tests | `npx vitest run` |
 | Build | `npm run build` |
 | Edge fn types | `deno check supabase/functions/<fn>/index.ts` |
 | Edge `_shared` tests | `npm run test:edge` |
-| Migration (real gate) | `supabase db reset` (local Docker) — note: types-drift CI gate is perma-red, merge with `--admin` |
+| Migration (real gate) | `supabase db reset` (local Docker); types-drift CI gate is green — ship regenerated `types.ts` with the migration (or pull the CI `types-generated` artifact), never merge `--admin` |
 | DB RPC rehearsals | `npm run db:rehearse:all` (auto-discovers `scripts/db/rehearse-*`) |
 
 ## Test harnesses available

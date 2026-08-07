@@ -20,6 +20,10 @@ If `SLACK_WEBHOOK_URL` is unset/misconfigured, `slack-notify` 500s with `console
 - **Fix:** a periodic heartbeat ping (cron) whose *absence* pages via an independent channel (e.g. an external uptime monitor hitting a "last Slack OK" freshness endpoint). The webhook health must be observable from outside the webhook.
 
 ### OBS-P0-2 — Refund / chargeback reversals not recorded or alerted (FULL_AUDIT P2-5)
+
+> **RESOLVED (noted 2026-08-07):** shipped — `detectPaymentReversal` (`_shared/mollie-webhook-reversal*`,
+> tested) + the webhook's reversal branch logs and Slack-alerts for manual reconciliation without
+> resurrecting or downgrading state. Original gap text retained below for history.
 `mollie-webhook` has no case for `charged_back` / `refunded` / non-zero `amountRefunded`. A chargeback maps to default→pending, the `.neq('payment_status','paid')` no-downgrade guard blocks any change, and it returns 200 with **no `payment_audit_log` row and no Slack alert**. Money is gone; seat stays confirmed/paid forever; a full refund is logged as `duplicate_webhook_ignored`.
 - **Refs:** `supabase/functions/mollie-webhook/index.ts:616` (status switch); FULL_AUDIT P2-5 §270-279, Slice H §467.
 - **Fix:** explicit `charged_back` / `amountRefunded`/`amountChargedBack` handling — do **not** resurrect state; write a `payment_audit_log` row (`writePaymentAuditLog`) and fire `notifySlackEdge` for manual reconciliation, mirroring the existing cancelled-invoice/cancelled-booking alerts. Add a `reconcile_payments` check for reversed-but-still-paid.
@@ -30,6 +34,10 @@ If `SLACK_WEBHOOK_URL` is unset/misconfigured, `slack-notify` 500s with `console
 ## P1 — a real failure class reaches no proactive channel
 
 ### OBS-P1-1 — `finalize-proposals` booked-but-unbilled is silent (Tier-D #1, HIGH)
+
+> **RESOLVED (noted 2026-08-07):** shipped — `finalize-proposals/index.ts` now Slack-alerts per-player
+> reconcile failures, the aggregate booked-but-unbilled count, and the top-level catch
+> (`notifySlackEdgeError` at :218/:259/:282). Original gap text retained below for history.
 Per-player invoice-mint / paid-reconcile failures surface only in the 200 body to the academy UI; top-level catch is `console.error` only. Not cron-wrapped → no `alertCronFailure`. A player ends up booked-but-uninvoiced with zero ops signal.
 - **Refs:** `supabase/functions/finalize-proposals/index.ts:216/:235/:242/:265`.
 - **Fix:** `if (errors.length) notifySlackEdgeError(...)` after the loop + wrap the top-level catch.

@@ -240,8 +240,9 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 
 - Edge functions + migrations do **not** auto-deploy — owner applies manually (CI only validates). Frontend
   auto-deploys via Vercel on merge to main.
-- Real schema gate is `supabase db reset`; the generated-**types-drift CI gate is perma-red** (CLI-version line
-  mismatch) — migrations/inert-FE merge with `--admin`.
+- Real schema gate is `supabase db reset`; the generated-types-drift CI gate is **green** (stale perma-red
+  note corrected 2026-08-07, CLI pinned 2.107.0) — ship regenerated `types.ts` with the migration or pull
+  the CI `types-generated` artifact; do not merge `--admin`.
 - `intake_requests.status` CHECK is drifted (migration lacks `'booked'` that prod + `finalize-proposals` use).
 - Root `tsc --noEmit` checks **nothing** (`files:[]`); the real typecheck gate is `typecheck:baseline`
   (`tsc -p tsconfig.app.json` ratcheted vs `scripts/tsc-app.baseline.json`).

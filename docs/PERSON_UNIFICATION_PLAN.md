@@ -1,9 +1,11 @@
 # Person Unification Plan — one `persons` table, "has a login" as an attribute
 
-Status: **IN EXECUTION** (last updated 2026-07-18). Phases 0–3.4 are **shipped + deployed**
+Status: **IN EXECUTION** (last updated 2026-08-07). Phases 0–3.5d are **shipped + deployed**
 (`persons` + `person_links` live and backfilled, dual-write stamps on, person-keyed readers through
-the money-path dedup guard); Phase 3.5 slices a–e are in PR review (#578–#581); Phase 3.6 + Phase 4
-(CONTRACT) remain. This is the tracker for the largest migration in the codebase. Execute it as a
+the money-path dedup guard and the 3.5 reader slices — migrations `20260903100000`–`20260906100000`
+are in the tree). The membership layer now proceeds under the owner-approved foundation programme
+(`FOUNDATION_EXECUTION_PLAN.md`, first slice U1a, per OD-03); remaining 3.x slices + Phase 4
+(CONTRACT) stay owner-gated. This is the tracker for the largest migration in the codebase. Execute it as a
 **strangler / expand→migrate→contract** program of small, independently-shippable PRs — never a
 big-bang. You can stop between any two phases with a fully working app.
 
@@ -35,6 +37,12 @@ guest-keyed); families sharing an email get mis-attributed; "three ways to ident
 divergences. Each past fix patched one crack; this plan removes the seam.
 
 ## 2. Decisions locked (2026-07-16, owner)
+
+> **Supersession note (2026-08-07):** owner decision D-04 (`FOUNDATION_DECISIONS.md`) — email or
+> phone alone never authorizes an identity merge — supersedes auto-merge key (b) below going
+> forward. The shipped unique-email-pair rule (B2) and its live H1/H2 arms are recorded
+> nonconformance to D-04; remediation is a separately owner-authorized unit (no later than U2 of
+> `FOUNDATION_EXECUTION_PLAN.md`). The text below is the historical record of what shipped.
 
 1. **One table.** A single `persons` table holds identity **and** account fields. "Has a login
    account" is simply **`persons.user_id IS NOT NULL`**. `profiles` is absorbed; `guest_players` and
@@ -104,11 +112,14 @@ an account-less record — consistent with the Theme A "retain, don't destroy" r
 `guest_players` conflates the person with the person↔owner relationship. In the unified model the
 per-owner data (`trainer_id`, `academy_profile_id`, `notes`, `has_trained`, `source`,
 `preferred_location_id`, tags, per-academy rating) is a **membership** row, not a person column. A
-partial membership layer already exists (`academy_player_metadata`, `academy_player_locations`) —
-extend it rather than inventing a new table. **Open question P-A (decide at Phase 3):** confirm the
-membership shape and whether a person is GLOBAL (one row per human, linked to N academies via
-memberships — recommended) vs per-owner-scoped (today's guest behavior). Recommended: global person
-+ `person_academy_memberships(person_id, academy_profile_id, …)` / trainer memberships.
+partial membership layer already exists (`academy_player_metadata`, `academy_player_locations`).
+**P-A: RESOLVED by OD-03 (owner, 2026-08-07 — see `FOUNDATION_DECISIONS.md`):** the person is GLOBAL
+(one row per human), and academy-private Player data gets ONE canonical relationship per
+`(academy, person)` in a NEW additive table `academy_player_memberships` (default-deny RLS from
+creation; first slice U1a in `FOUNDATION_EXECUTION_PLAN.md`). `academy_player_metadata` /
+`academy_player_locations` migrate into it additively and remain as compatibility until
+reconciliation and owner-gated contraction — the earlier "extend metadata in place, don't invent a
+new table" recommendation is superseded.
 
 ### 4.3 The collapse: every `(player_id | guest_player_id)` → `person_id`
 
@@ -542,7 +553,8 @@ One domain per PR, each with tests + live-verify, in dependency order:
    reader must expose no ref/PII the caller couldn't already see in its scope, and identity NEVER
    comes from persons.* contact fields.
 
-2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
+2. **Membership layer** (P-A RESOLVED by OD-03, 2026-08-07 — the additive `academy_player_memberships`
+   foundation is slice U1a of `FOUNDATION_EXECUTION_PLAN.md`) → move per-owner metadata off guest_players.
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 
    **Progress — 3.3c BUILT (migration `20260830100000`):** the booking ELIGIBILITY gate is
@@ -567,8 +579,10 @@ One domain per PR, each with tests + live-verify, in dependency order:
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;
    golden + mock-Mollie e2e must stay green.
 5. **RLS + helpers** (`get_user_academy_ids`, `is_player_of_trainer`, the 8 guest policies, 48 fns) →
-   `person_id`, and add the missing "academy manager can view persons in their academy" policy that
-   PR #557 worked around.
+   `person_id`, and give academy managers the person visibility PR #557 worked around via a
+   narrowly-scoped SECURITY DEFINER reader — NOT a direct RLS policy on `persons` (I-19: the
+   zero-policy lock on `persons`/`person_links` stays; any broad read policy would be a cross-tenant
+   PII leak).
 6. Remaining single-key tables (followers, ratings, waitlist, notes).
 - Old columns stay dual-written throughout, so each PR is independently shippable and revertible.
 
@@ -576,6 +590,9 @@ One domain per PR, each with tests + live-verify, in dependency order:
 - Once nothing reads `player_id`/`guest_player_id`: drop the dual-write triggers, drop the columns,
   drop `guest_players` + `club_players`, retire `personIdentity.ts`'s dual-key branches.
 - Final pglite + full-suite + mock-Mollie e2e green; live-verify the money paths.
+- Executes as the separately owner-gated contraction units of the foundation programme (U8 evidence
+  window → U9 destructive steps, each its own reviewed release — `FOUNDATION_EXECUTION_PLAN.md`);
+  trigger drops, column drops, and table drops are never bundled into one release.
 
 ## 6. Risks & mitigations
 - **Money tables (bookings, invoices):** never migrate a reader without the golden/e2e money tests
@@ -589,8 +606,11 @@ One domain per PR, each with tests + live-verify, in dependency order:
   recurring lesson). No edge-fn deploy from an unmerged branch.
 
 ## 7. Open decisions (resolve at the phase noted)
-- **P-A (Phase 3.2):** global person + membership table vs per-owner person scope. Recommended:
-  global + memberships (reuse `academy_player_metadata`).
+- **P-A: RESOLVED — global + a NEW canonical membership table.** Owner (2026-08-07, OD-03 in
+  `FOUNDATION_DECISIONS.md`): global person; academy-private data moves to one canonical
+  `academy_player_memberships` row per `(academy, person)`; `academy_player_metadata` is migrated
+  additively and retained as compatibility until owner-gated contraction. The earlier reuse-metadata
+  recommendation is superseded. First slice: U1a (`FOUNDATION_EXECUTION_PLAN.md`).
 - **P-B (Phase 2):** disposition of the 76 no-email guests and 28 shared-email families after the
   review report — merge, keep, or manual case-by-case.
 - **P-C (Phase 3.4): RESOLVED — identity-only.** Owner chose "dedup/grouping only, amount math
@@ -599,6 +619,10 @@ One domain per PR, each with tests + live-verify, in dependency order:
   `cycle-commitment` `group.size`) are deferred to a future explicit money-amount phase.
 
 ## 8. First actionable step
+**SUPERSEDED 2026-08-07:** Phases 0–3.5d are shipped; the next actionable step is U1a of
+`FOUNDATION_EXECUTION_PLAN.md` (the additive `academy_player_memberships` foundation + read-only
+inventory). The original recommendation below is history.
+
 Phase 0 (consistent person provisioning on the roster/add paths) OR Phase 1 (Expand) — both are
 safe, additive, and independently valuable. Recommend Phase 0 first: it also delivers the
 "add a registered account as a cycle participant" capability the owner asked for, immediately.

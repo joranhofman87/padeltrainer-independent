@@ -17,11 +17,11 @@ Status: canonical (source of truth) | last updated 2026-07-02
 | **migrations validate** | `npm run db:reset` (`supabase db reset`) | Every migration in `supabase/migrations/` applies cleanly + generated-types drift | local Supabase |
 | **playwright e2e** | `npm run test:e2e` (`playwright test`) | Full browser journeys in `e2e/*.spec.ts` + `tests/*.spec.ts` | `npm run dev` server, baseURL `http://localhost:8080` |
 
-> Root `tsc --noEmit` checks NOTHING (`files:[]`). The real type gate is `npm run typecheck:baseline` (`tsc -p tsconfig.app.json` ratcheted vs `scripts/tsc-app.baseline.json`). Edge-function `index.ts` files are NOT type-checked or deno-checked in CI — only `_shared/` is deno-tested, `--no-check`. Per-function `index.test.ts` (7 exist) are manual integration tests, NOT in CI.
+> Root `tsc --noEmit` checks NOTHING (`files:[]`); `npm run typecheck` runs the app project unratcheted (informational). The real type gate is `npm run typecheck:baseline` (`tsc -p tsconfig.app.json` ratcheted vs `scripts/tsc-app.baseline.json`). Edge-function `index.ts` files ARE `deno check`ed in CI by the ratcheted `edge-typecheck` job (`check:edge-types`); `_shared/` is deno-tested (`--no-check` in CI). Per-function `index.test.ts` (7 exist) are manual integration tests, NOT in CI. (Corrected 2026-08-07.)
 
 ## CI gates (from `.github/workflows/`)
 
-- **test.yml** — `lint` (ratcheted eslint via `eslint-suppressions.json`, shrink-only) + `check:edge-config` (edge verify_jwt drift) | `typecheck:baseline` + `vite build` | `npm test` (vitest incl. PGlite) + `db:rehearse:all` + `i18n:check` (bun, en+nl parity) | `deno test --no-check` on `_shared/`.
+- **test.yml** (5 jobs) — `lint` (ratcheted eslint via `eslint-suppressions.json`, shrink-only, + `check:edge-config` + `check:legacy-key` + `check:edge-pins`) | `typecheck` (`typecheck:baseline` + `vite build`) | `test` (`npm test` vitest incl. PGlite + `db:rehearse:all` + `i18n:check` bun en+nl parity) | `edge-tests` (`deno test --no-check` on `_shared/`) | `edge-typecheck` (ratcheted `check:edge-types` deno check of the entrypoints).
 - **migrations.yml** — `supabase db reset` + generated-types drift.
 - **e2e.yml** — playwright: navigation/i18n/error-handling/accessibility/rls-health/invoice-health/performance, then roles/payments/booking. **seo-smoke.yml**, **sitemap.yml**.
 
@@ -77,13 +77,13 @@ Money is the highest-risk surface. See [`payments/PAYMENT_INVARIANTS.md`](paymen
 - **e2e (required):** `e2e/seo-smoke.spec.ts` + **seo-smoke.yml** / **sitemap.yml** CI. Public pages read via postgres-owned `_public`/`_safe` views — a live anon probe (publishable key) or [`invoiceHealthChecks.test.ts`](../src/test/invoiceHealthChecks.test.ts) style check confirms anon SELECT still works.
 
 ### 9. Edge function
-- **deno _shared (required):** if the change touches a `_shared/` helper it MUST have/keep a `_shared/*.test.ts` — that is the ONLY edge code in CI. Function `index.ts` is NOT type/deno-checked in CI; keep logic in testable `_shared/` helpers.
+- **deno _shared (required):** if the change touches a `_shared/` helper it MUST have/keep a `_shared/*.test.ts` — the only edge code with CI runtime tests. Function `index.ts` is `deno check`ed by the ratcheted `edge-typecheck` CI job but has no CI runtime tests; keep logic in testable `_shared/` helpers.
 - **check:edge-config (required):** new/changed function must satisfy the verify_jwt config gate (`npm run check:edge-config`).
 - Remember: edge functions do NOT auto-deploy — owner applies manually; tests are your only pre-deploy safety net.
 
 ### 10. Migration
 - **migrations validate (required):** `npm run db:reset` (`supabase db reset`) — the real gate; must apply cleanly + regenerate types with no drift.
-- **db:rehearse (required):** add/extend a `scripts/db/rehearse-*` that replays the new RPC/trigger/index and asserts the invariant (e.g. [`rehearse-recalc-split.mjs`](../scripts/db/rehearse-recalc-split.mjs), `rehearse-phase45-integrity`). Wire it into `db:rehearse:all` if it should gate.
+- **db:rehearse (required):** add/extend a `scripts/db/rehearse-*` that replays the new RPC/trigger/index and asserts the invariant (e.g. [`rehearse-recalc-split.mjs`](../scripts/db/rehearse-recalc-split.mjs), `rehearse-phase45-integrity`). `db:rehearse:all` auto-discovers every `scripts/db/rehearse-*.{mjs,ts}` — a new file gates automatically.
 - Migrations do NOT auto-deploy — the owner applies them by hand; the rehearsal is the proof-of-safety.
 
 ---

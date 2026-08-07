@@ -189,7 +189,7 @@ There is **no** in-app operator dashboard for these — they are invoked from ad
 2. **Slack backbone has no dead-man's-switch** — an unset webhook silences all alerts with no signal.
 3. **No Slack rate-limit / dedup** — a hot failing path can flood and bury real alerts.
 4. **No missed-cron heartbeat** — a cron that never fires is invisible.
-5. **Refund/chargeback reversals not recorded or alerted** (FULL_AUDIT P2-5, still open).
+5. ~~Refund/chargeback reversals not recorded or alerted~~ **Resolved (noted 2026-08-07):** `detectPaymentReversal` (`_shared/mollie-webhook-reversal*`) + the webhook's reversal branch log/alert for manual reconciliation (alert-only by design — no state resurrection).
 
 These are ranked with file refs in [`technical-debt/OBSERVABILITY_BACKLOG.md`](technical-debt/OBSERVABILITY_BACKLOG.md).
 
