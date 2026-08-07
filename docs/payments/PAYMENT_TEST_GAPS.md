@@ -29,8 +29,8 @@ retries `create-mollie-payment`/`create-guest-*-payment`/`create-invoice-payment
 payment object (the M-11/M-15 reuse only sees the prior `mollie_payment_id` if it was persisted, which the
 timeout case never does). Result: two Mollie payments, one charge orphaned = a double-charge vector.
 
-**Fix (shipped):** an `Idempotency-Key` header is now sent on every `POST /v2/payments`, in all four charge
-functions. Mollie's contract (docs.mollie.com/reference/api-idempotency): same key + IDENTICAL body within ~1h
+**Fix (shipped):** an `Idempotency-Key` header is now sent on every `POST /v2/payments`, in all five charge
+functions (incl. `create-guest-cart-payment/index.ts:361`). Mollie's contract (docs.mollie.com/reference/api-idempotency): same key + IDENTICAL body within ~1h
 → replays the original (`Idempotent-Replayed: true`), no duplicate; same key + DIFFERENT body → **400**. We
 therefore derive the key as a **faithful fingerprint of the exact request body** (`_shared/mollie-idempotency.ts`,
 `canonicalStringify` → SHA-256 → 40 hex, scoped per fn — object keys normalized, **array order preserved** so the
@@ -53,7 +53,8 @@ reviewed (two rounds — the first caught the fresh-path 400, the second the raw
 - *Split-amount headcount drift* (`create-mollie-payment` existing-bookings + `create-guest-cyclus-payment`): if
   a concurrent participant changes the split divisor between a timed-out attempt and its retry, the amount (hence
   the body, hence the key) changes → a second payable checkout. Not a NEW double-charge (that window predates
-  G2); overlaps **G5** (split-cohort semantics — freeze vs re-divide, product decision).
+  G2); overlaps **G5** (split-cohort semantics — DECIDED: freeze-to-capacity, Option A ✅; the residual here
+  is the commitment-subsystem divisor exception, not an open product question).
 - *cip drift-cancel salt is best-effort:* the re-price-back-to-original salt works whenever the superseding
   payment persisted (the common case — we now keep the old id on the row across the POST). In the rare *compound*
   window (re-price → drift-cancel → the superseding POST's response is LOST so its id never persisted), a retry
@@ -63,7 +64,7 @@ reviewed (two rounds — the first caught the fresh-path 400, the second the raw
 (same-key/different-body 400, replay-of-cancelled, body drift) are only reasoned about, not exercised against a
 Mollie mock. A mocked edge-level test would raise confidence.
 Files: `_shared/mollie-idempotency.ts`, `create-mollie-payment/index.ts`, `create-guest-slot-payment/index.ts`,
-`create-guest-cyclus-payment/index.ts`, `create-invoice-payment/index.ts`.
+`create-guest-cyclus-payment/index.ts`, `create-guest-cart-payment/index.ts`, `create-invoice-payment/index.ts`.
 
 ## G3 — `verify-mollie-payment` vs `mollie-webhook` race (P1/P0, invariant #3/#15, "M-26")
 
@@ -169,8 +170,8 @@ currently doesn't). Files: `mollie-webhook/index.ts`, `submit-guest-intake/index
 ## Suggested order for the follow-up test PRs
 
 1. **G4** (extract shared recipient predicate) — closes the top P0 with a small, high-value refactor.
-2. **G6** (cycle capacity lock) + **G5 product decision** — the two real correctness risks.
+2. **G6** (re-scoped 2026-08-08: `finalize_cycle_proposals` lock/count) — the real correctness risk. (G5 ✅ decided + shipped.)
 3. **G1 / G3 / G8** concurrency/idempotency PGlite tests — lock the guarantees that are architecturally sound but unproven.
 4. **G7** adversarial cross-tenant suite.
-5. ~~**G2** Mollie idempotency-key~~ — ✅ done (body-fingerprint key on all 4 charge fns); a mocked edge-level Mollie-contract test is the remaining coverage item.
+5. ~~**G2** Mollie idempotency-key~~ — ✅ done (body-fingerprint key on all 5 charge fns); a mocked edge-level Mollie-contract test is the remaining coverage item.
 6. **G9 / G10** — completeness.

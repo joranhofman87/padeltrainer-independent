@@ -46,10 +46,11 @@ Per-player invoice-mint / paid-reconcile failures surface only in the 200 body t
 
 ### OBS-P1-2 — No missed-cron heartbeat
 
-> **RESOLVED (verified 2026-08-08):** `sendCronHeartbeat('daily-maintenance', …)` fires on EVERY daily run
-> (`api/cron/daily-maintenance.ts:53` — "a silent morning means the cron/alerting pipeline itself is down");
-> `cron_heartbeat` is a configured `slack-notify` event. The external-observer half (someone/something that
-> notices the ABSENCE of the heartbeat) remains with OBS-P0-1. Original gap text retained below for history.
+> **PARTIAL (verified 2026-08-08):** `sendCronHeartbeat('daily-maintenance', …)` fires on EVERY daily
+> maintenance run (`api/cron/daily-maintenance.ts:53`); `cron_heartbeat` is a configured `slack-notify`
+> event. STILL OPEN: the separately scheduled `daily-emails` cron has failure-only alerting and NO
+> heartbeat (`api/cron/daily-emails.ts:39`), and the external-observer half (noticing the ABSENCE of a
+> heartbeat) remains with OBS-P0-1. Original gap text retained below for history.
 Vercel does not page on a cron that never fires. A silently-unscheduled daily-maintenance / daily-emails job (backup, invoice-health-check, commitment invoices) goes unnoticed.
 - **Refs:** `api/_lib/cron.ts:59` `alertCronFailure` (only fires on non-2xx *of a run that happened*); `vercel.json` schedules.
 - **Fix:** freshness check on each cron's last-success timestamp (a lightweight "last ran at" row + a daily check that pages if stale). The single-flight lock infra (`20260614190000_cron_single_flight_lock.sql`) already tracks job rows — extend it with a last-success column.
@@ -96,9 +97,11 @@ When an academy edits a session price, this mirrors it onto every booking's `pay
 
 ### OBS-P2-1 — Security-sensitive account + Mollie-Connect fns on log-drain only (Tier-D #10)
 
-> **RESOLVED (verified 2026-08-08):** the cited fns now alert — `delete-user` (3 `notifySlackEdge*` calls),
-> `impersonate-user` (4), `admin-reset-password` (4), `check-mollie-connect-status` (3),
-> `mollie-connect-academy` (2). Original gap text retained below for history.
+> **PARTIAL (verified 2026-08-08):** `delete-user`, `impersonate-user`, `admin-reset-password`,
+> `check-mollie-connect-status`, and `mollie-connect-academy` now carry `notifySlackEdge*` calls. STILL
+> OPEN: `check-mollie-connect-status` retains silent missing-credential/no-refresh-token returns and an
+> unalerted top-level catch (`index.ts:276`), and `update-user` has no Slack integration at all —
+> coverage is per-function AND per-branch. Original gap text retained below for history.
 `delete-user`, `admin-reset-password`, `impersonate-user`, and the Mollie-Connect status/refresh fns (`mollie-connect-*`, `check-mollie-connect-status`) emit only `console.*`. A broken connect token **silently breaks an academy's payouts**; account-admin actions leave no proactive audit.
 - **Fix:** promote just these to `notifySlackEdge`. Leave the cosmetic/SEO tail (`render-page`, `sitemap`, `geocode`, `scrape`) on the log drain.
 
@@ -113,9 +116,10 @@ Edge errors have only two sinks: explicit `slack-notify` (41 of 108 entrypoints 
 
 ### OBS-P2-4 — Bulk / batch money fns don't alert on partial failure (Tier-D #4/#5/#7/#9)
 
-> **LARGELY RESOLVED (verified 2026-08-08):** most listed fns now alert (`split-invoice` 3 calls,
-> `backfill-invoices` 3, `bulk-update-vat` 5, `recalculate-invoices` 2). STILL OPEN: `forward-invoice`
-> (0 alert calls). Original gap text retained below for history.
+> **LARGELY RESOLVED (verified 2026-08-08):** `split-invoice`, `backfill-invoices`, `bulk-update-vat`,
+> and `recalculate-invoices` now carry `notifySlackEdge*` calls. STILL OPEN: `forward-invoice` (no alert
+> calls), and `recalculate-invoices` records per-invoice update errors in a success-shaped response
+> without alerting (`index.ts:282`). Original gap text retained below for history.
 `send-schedule-notifications`, `recalculate-invoices`, `send-priority-claim-invitation`, `send-rebook-reminder`, `bulk-rebook-cycle`, `split-invoice`, `backfill-invoices`, `forward-invoice`, `bulk-update-vat` — operator-triggered, so the immediate result is visible, but at scale a partial failure the operator misses = unbilled bookings / undelivered emails.
 - **Fix:** aggregate `notifySlackEdgeError` when `errors.length` / partial-failure exceeds a threshold. Prioritize `bulk-rebook-cycle` (cohort engine) and `send-schedule-notifications` (post-finalize mass email).
 

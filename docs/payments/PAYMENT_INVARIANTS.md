@@ -45,14 +45,13 @@ test gap that should be closed.
 `guestCyclusBooking.pglite.test.ts`, `mollieWebhookWriteback.pglite.test.ts` (duplicate paid → 0 rows).
 
 **Missing tests:** concurrent re-click **while the Mollie probe is in flight** (advisory lock is released
-before probing → two threads could each mint a Mollie payment for the same booking). (Corrected
-2026-08-08: the Mollie idempotency-key NOW ships — `mollieIdempotencyKey`, `_shared/mollie-idempotency.ts`,
-G2 ✅ in `PAYMENT_TEST_GAPS.md` — closing the retry-mints-second-payment vector; the in-flight-probe race
-test is still owed.)
+before probing → two threads may race the probe — with the shipped deterministic idempotency key both now
+converge on ONE Mollie payment; the owed test asserts that convergence). (Corrected 2026-08-08: G2 ✅ —
+`mollieIdempotencyKey`, `_shared/mollie-idempotency.ts`.)
 
-**Recommended:** pass Mollie's `idempotencyKey` header on `POST /v2/payments` (deterministic per
-`booking_id`+amount); hold the advisory lock across the probe, or re-check inside the lock; add a
-concurrent-re-click test.
+**Shipped + remaining:** the deterministic `Idempotency-Key` on `POST /v2/payments` is SHIPPED (all five
+charge fns). Remaining hardening: hold the advisory lock across the probe or re-check inside it; add the
+concurrent-re-click convergence test.
 
 ## 2. An invoice cannot be paid twice 🟢 (P0)
 
@@ -264,7 +263,9 @@ F05 group-settlement statuses.
 `paymentId` returns before ANY row, `:101-105`), and NO terminal rows for `failed`/`canceled`/`expired`/
 `pending` outcomes — the booking-branch terminal write is paid-gated (`:1026`) and the status vocabulary
 has no failed/expired entries. A `webhook_received`-without-terminal-row reconciliation query therefore
-flags legitimate failed/cancelled/expired outcomes as stranded — account for that when querying.
+flags legitimate failed/cancelled/expired outcomes as stranded — account for that when querying. The
+GUEST charge fns' no-account refusals also return 400 with neither an audit row nor Slack
+(`create-guest-slot-payment:190`, `create-guest-cyclus-payment:139`, `create-guest-cart-payment:152`).
 
 **Existing tests:** `create-invoice-payment` audit-log writes (partial); `_shared/payment-audit.test.ts`.
 

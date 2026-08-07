@@ -35,7 +35,7 @@ The money spine in one line:
 
 ## 4. Where NOT to add code
 
-- **No business-critical mutations in UI components or pages.** Route dangerous actions through domain helpers / RPCs / edge functions ([ADR-0003](./adr/0003-mutation-boundary-facades.md)). The mutation-boundary guard (`src/test/mutationBoundary.test.ts`) is a per-file count ceiling — it fails on a new file or a count increase; a count-neutral swap stays green ("shrink-only" is convention, not enforced), so never rely on it as permission.
+- **No business-critical mutations in UI components or pages.** Route dangerous actions through domain helpers / RPCs / edge functions ([ADR-0003](./adr/0003-mutation-boundary-facades.md)). The mutation-boundary guard (`src/test/mutationBoundary.test.ts`) is a per-file count ceiling — it fails on a new file or a count ABOVE the stored ceiling; count-neutral swaps and stale-headroom additions stay green ("shrink-only" is convention, not enforced), so never rely on it as permission.
 - **No cross-role imports.** `components/<role>` and `pages/<role>` must not import another role's code (ESLint `no-restricted-imports`, baseline = 0). To share, lift to a neutral folder (`components/ui`, `components/slots`, `components/invoices`, `components/players`, `hooks/`, `lib/`). Note: `components/player` = the player role (private); `components/players` = shared.
 - **No new UI primitive when one exists.** Check the registry first (§10).
 - **No cycle-level price scalar.** Price lives on the slot ([ADR-0002](./adr/0002-slot-is-price-source-of-truth.md)).
@@ -75,7 +75,7 @@ Open coverage gaps are tracked in [`TEST_COVERAGE_GAPS.md`](./TEST_COVERAGE_GAPS
 
 ## 8. Supabase edge-function caveats
 
-- Most edge fns (89 of 108 config entries; corrected 2026-08-08) run with **`verify_jwt=false`** and **self-authenticate** via [`_shared/auth.ts`](../supabase/functions/_shared/auth.ts) (`requireUser` / service-role check); a couple keep gateway JWT verification (`config.toml` `verify_jwt = true`), and `check:edge-config` gates a curated `MUST_VERIFY_JWT_FALSE` allowlist, not the whole set. The SPA never holds a service-role key ([ADR-0007](./adr/README.md)).
+- Most edge fns run **`verify_jwt=false`** (88 of the 89 configured `config.toml` entries; the ~19 unconfigured entrypoints plus the configured-true ones keep GATEWAY JWT verification — roughly 20 of 108; inventory 2026-08-08). `false`-config functions authenticate in-function via [`_shared/auth.ts`](../supabase/functions/_shared/auth.ts) (`requireUser` / service-role check), provider signatures (webhooks), or are deliberately public/token-scoped. `check:edge-config` gates a curated `MUST_VERIFY_JWT_FALSE` allowlist, not the whole set. The SPA never holds a service-role key ([ADR-0007](./adr/README.md)).
 - Service-role bypass is a real timing-safe key compare ([`_shared/service-role-auth.ts`](../supabase/functions/_shared/service-role-auth.ts)) — do not weaken it to a claims-only check (that was the fixed P0).
 - The `check:edge-config` gate enforces a hand-maintained `verify_jwt` allowlist — a new public function must be added to it deliberately.
 - **Bundle shared logic in `_shared/`** so it is testable and CI-covered; keep `index.ts` thin.

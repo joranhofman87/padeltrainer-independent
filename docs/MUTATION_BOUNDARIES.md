@@ -7,9 +7,9 @@ Status: canonical (source of truth) | last updated 2026-08-07
 > Read this before touching any create/cancel/edit/delete path for bookings, slots, cycles,
 > invoices, priority claims, or player identity. If you are adding a new domain write, extend the
 > named facade / RPC in the "Allowed boundary" column — **do not** add a raw `supabase.from(...)`
-> mutation in a page or component (the `mutationBoundary.test.ts` count-ceiling guard fails on any new
-file or per-file count increase; a count-neutral swap inside an allowlisted file stays green — do not
-rely on the guard to catch that).
+> mutation in a page or component (the `mutationBoundary.test.ts` count-ceiling guard fails only on a new
+file or a count ABOVE the stored ceiling; count-neutral swaps and stale-headroom additions stay green —
+do not rely on the guard to catch those).
 
 ## Enforcement layers (most durable → least)
 

@@ -36,7 +36,8 @@ P1-7 `invoiceSync` paging (`src/lib/supabasePaging.ts`), P1-9 Mollie charge==con
 
 ## Notes for the implementer
 
-- **B-1** and **B-11** are the two capacity items — B-1 is a concurrency race (needs a new locked RPC), B-11 is
+- **B-1** and **B-11** are the two capacity items — B-1 is the `finalize_cycle_proposals` lock/count
+  hardening (fix INSIDE the existing RPC + a concurrency test — corrected 2026-08-08), B-11 is
   a partial-failure rollback in an existing edge fn (smaller). Do B-11 first (contained), B-1 as a focused RPC PR.
 - **B-2** and **B-3** (the two money-durability items) are RESOLVED — see their table rows (noted 2026-08-07).
 - **B-4/B-5** are RLS/RPC tenancy fixes — each is a migration touching a policy or SECURITY DEFINER function;

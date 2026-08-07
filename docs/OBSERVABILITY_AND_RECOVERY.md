@@ -32,7 +32,7 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 - `alertCronFailure` (`api/_lib/cron.ts:59`) fires only when a sub-job returns `ok:false`. Wired into `api/cron/daily-emails.ts` and `api/cron/daily-maintenance.ts` (schedules in `vercel.json`: `0 12 * * *` and `0 6 * * *`).
 - Many crons also self-alert internally (e.g. `invoice-health-check/index.ts:166`), closing the "HTTP 200 with partial failures inside" blind spot for wired jobs.
 - **Single-flight (CRON-SF-WEDGE is CLOSED — see below):** the session-scoped `try_lock_cron_job` / `unlock_cron_job` advisory pair was **retired in 10c-b** (`20261007100000_cron_durable_lease.sql` drops both). Three of the four workers rely on their existing atomic claim; `invoice-health-check` takes a **durable owner-token + `locked_until` lease** (`acquire_cron_lease` / `renew_cron_lease` / `release_cron_lease`).
-- ~~Gap: no heartbeat~~ **Resolved (2026-08-08):** `sendCronHeartbeat` pings daily from `daily-maintenance` (`api/cron/daily-maintenance.ts:53`) — a silent morning signals pipeline death (OBS-P1-2). Noticing the ABSENCE externally remains OBS-P0-1.
+- ~~Gap: no heartbeat~~ **Partial (2026-08-08):** `sendCronHeartbeat` pings daily from `daily-maintenance` (`api/cron/daily-maintenance.ts:53`); `daily-emails` still has failure-only alerting and no heartbeat, and noticing the ABSENCE externally remains OBS-P0-1 (OBS-P1-2 PARTIAL).
 
 ### ✅ CLOSED — session-scoped cron single-flight lock (CRON-SF-WEDGE)
 **The hazard.** `try_lock_cron_job` was a **session-level** `pg_try_advisory_lock`. It and its `unlock_cron_job` ran as **separate pooled PostgREST requests with no session affinity**, so the unlock could execute on a *different* backend than the one that acquired the lock — leaving the lock **held on the acquiring session until that pooled connection was recycled**. A healthy run could therefore wedge the job (every later tick saw `try_lock` return false and bailed) for an unbounded time.
@@ -175,9 +175,9 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 | Find money anomalies | `reconcile_payments()` RPC (§3) | read-only, admin-only |
 | Trace one payment | query `payment_audit_log` by `invoice_id` / `mollie_payment_id` | forensic trail |
 | Invoice delivery status | `invoice_delivery_status` RPCs | per-invoice email state |
-| Manual invoice ops | `split-invoice`, `backfill-invoices`, `forward-invoice`, `bulk-update-vat` edge fns | **operator sees immediate result; no Slack on partial failure** (backlog) |
-| Account admin | `delete-user`, `update-user`, `impersonate-user`, `admin-reset-password` | security-sensitive; now Slack-alerted (OBS-P2-1 resolved 2026-08-08) |
-| Mollie Connect state | `check-mollie-connect-status`, `mollie-connect-*` | a broken connect token silently breaks an academy's payouts (backlog) |
+| Manual invoice ops | `split-invoice`, `backfill-invoices`, `forward-invoice`, `bulk-update-vat` edge fns | split/backfill/bulk-VAT now Slack-alert (2026-08-08); `forward-invoice` and `recalculate-invoices` partial-error branches remain silent (OBS-P2-4) |
+| Account admin | `delete-user`, `update-user`, `impersonate-user`, `admin-reset-password` | security-sensitive; `delete-user`/`impersonate-user`/`admin-reset-password` Slack-alert (2026-08-08) — `update-user` does not (OBS-P2-1 PARTIAL) |
+| Mollie Connect state | `check-mollie-connect-status`, `mollie-connect-*` | partially alerted (2026-08-08); `check-mollie-connect-status` retains silent credential branches + an unalerted top-level catch (OBS-P2-1 PARTIAL) |
 
 There is **no** in-app operator dashboard for these — they are invoked from admin UI actions or directly. Building a consolidated operator console is a known gap (`PAYMENT_OPERATOR_TOOL_GAPS.md`).
 
@@ -188,7 +188,7 @@ There is **no** in-app operator dashboard for these — they are invoked from ad
 1. **No server-side error aggregator.** Edge errors have two sinks: explicit `slack-notify` calls (41 of 108 entrypoints call the canonical helper directly, plus 8 inline wrappers — 2026-08-08 recount) and the passive log drain. PostHog is browser-only. No Sentry/Logflare backstop for edge functions.
 2. **Slack backbone has no dead-man's-switch** — an unset webhook silences all alerts with no signal.
 3. **No Slack rate-limit / dedup** — a hot failing path can flood and bury real alerts.
-4. ~~No missed-cron heartbeat~~ **Resolved (2026-08-08):** the daily `sendCronHeartbeat` ships; the remaining half is an external observer of its absence (OBS-P0-1).
+4. ~~No missed-cron heartbeat~~ **Partial (2026-08-08):** the daily-maintenance `sendCronHeartbeat` ships; `daily-emails` has no heartbeat, and the external observer of absence remains open (OBS-P0-1/OBS-P1-2).
 5. ~~Refund/chargeback reversals not recorded or alerted~~ **Resolved (noted 2026-08-07):** `detectPaymentReversal` (`_shared/mollie-webhook-reversal*`) + the webhook's reversal branch log/alert for manual reconciliation (alert-only by design — no state resurrection).
 
 These are ranked with file refs in [`technical-debt/OBSERVABILITY_BACKLOG.md`](technical-debt/OBSERVABILITY_BACKLOG.md).

@@ -28,6 +28,12 @@ If you are an AI agent (Claude / Codex) or a new human contributor, read these *
 | 12 | [FOUNDATION_ARCHITECTURE_BLUEPRINT.md](FOUNDATION_ARCHITECTURE_BLUEPRINT.md) | Target architecture contract for the 100k-Player foundation programme (grounded in [audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md)). |
 | 13 | [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) | Ordered bounded release units U0–U10; U1a is the first authorized slice. |
 
+Deferred documentation chores (2026-08-08, code-adjacent — outside the docs-only checkpoint):
+`supabase/functions/_shared/payment-audit.ts:2` header comment says "RLS = false" (actual: RLS enabled +
+deny-all policy); `.github/workflows/test.yml:139-158` comments carry the stale "~96" count and pre-edge-typecheck
+phrasing; `docs/adr/0007-edge-functions-as-backend-boundary.md:22,47-49` retains the old all-`verify_jwt=false`
+and no-entrypoint-typecheck claims (refresh during ADR maintenance).
+
 Supporting canonical directories:
 
 - [adr/](adr/) — Architecture Decision Records (the "why" behind the core model).
