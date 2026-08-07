@@ -207,6 +207,15 @@ no_deploy; no_residue
 STUB_RC_SUPABASE=1 SEED_KC=1 expect_rc "with-env preserves the COMMAND's failing status" 1 -- with-env --service svc --account acct -- supabase secrets set --env-file '{}'
 did_deploy; no_residue; no_token_leak
 
+# ── with-env must refuse a command that would never receive the credential ─────────────────────
+# Without this the helper proves and stages the secret, runs a command that never sees it, and
+# returns that command's 0 — the operator is told the secret was delivered when nothing took it.
+SEED_KC=1 expect_rc "with-env REFUSES a command with NO {} placeholder" 22 -- with-env --service svc --account acct -- supabase secrets set --project-ref demo
+no_deploy; no_residue
+SEED_KC=1 expect_rc "with-env REFUSES more than one {} placeholder" 22 -- with-env --service svc --account acct -- supabase secrets set --env-file '{}' --other '{}'
+no_deploy; no_residue
+grep -q 'ARGV security' "$CTL/stub.log" && bad "...and refuses BEFORE reading the keychain" || ok "...and refuses BEFORE reading the keychain"
+
 # ── endpoint verification cannot end in 0 on failure ───────────────────────────────────────────
 STUB_RC_CURL=7 SEED_KC=1 expect_rc "a curl TRANSPORT failure is not 0" 30 -- check-endpoint --url http://x --expect-status 503 --expect-state cron_disarmed --service svc --account acct
 STUB_CURL_CODE=200 SEED_KC=1 expect_rc "the WRONG http status fails" 31 -- check-endpoint --url http://x --expect-status 503 --expect-state cron_disarmed --service svc --account acct

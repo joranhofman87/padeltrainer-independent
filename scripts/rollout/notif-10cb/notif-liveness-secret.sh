@@ -47,6 +47,7 @@ readonly EXIT_CMP_ERROR=14
 readonly EXIT_EXISTS=15
 readonly EXIT_ENV_STAGE=20
 readonly EXIT_CURL_STAGE=21
+readonly EXIT_PLACEHOLDER=22
 readonly EXIT_TRANSPORT=30
 readonly EXIT_HTTP=31
 readonly EXIT_STATE=32
@@ -234,6 +235,27 @@ cmd_with_env() {
     esac
   done
   [ $# -gt 0 ] || die "$EXIT_USAGE" "with-env: no command given after --"
+
+  # EXACTLY ONE {} — checked BEFORE any credential is read or staged.
+  #
+  # Without this, `with-env -- some-command` proves the credential, stages an env file, runs a
+  # command that never receives it, and returns that command's 0. The operator is then told the
+  # secret was delivered when nothing consumed it — the one failure this helper exists to prevent,
+  # arriving as a success. More than one is refused too: it is far more likely a mistake than an
+  # intent to hand the same path to two arguments, and guessing wrong here is not recoverable.
+  #
+  # Its own exit code, not EXIT_USAGE, because with-env returns the wrapped COMMAND's status
+  # verbatim — a 1 here would be indistinguishable from the command itself failing.
+  local placeholders=0 arg
+  for arg in "$@"; do
+    [ "$arg" = "{}" ] && placeholders=$((placeholders + 1))
+  done
+  case "$placeholders" in
+    1) : ;;
+    0) die "$EXIT_PLACEHOLDER" "with-env: the command contains no {} — it would run WITHOUT the credential and report success" ;;
+    *) die "$EXIT_PLACEHOLDER" "with-env: the command contains ${placeholders} {} placeholders; exactly one is required" ;;
+  esac
+
   make_workdir
 
   local back="$WORKDIR/readback.token"
