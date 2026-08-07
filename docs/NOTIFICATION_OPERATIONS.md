@@ -141,10 +141,16 @@ supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmb
 # STEP 7b — confirm the endpoint has picked it up before arming. Check the STATE, not the code:
 # query_failed, misconfigured, stale and cron_disarmed ALL return 503, so a status-only check
 # would let you arm on a broken endpoint believing the expectation had propagated.
-curl -s -H "Authorization: Bearer <token>" \
-  https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness | grep -q '"state":"cron_disarmed"' \
-  && echo "expectation propagated — safe to arm" \
-  || echo "NOT propagated (or the endpoint is unhealthy) — do NOT arm"
+# NOTE the shape: `grep … && echo ok || echo bad` would exit 0 on BOTH arms, because the final
+# echo succeeds — so a network failure or an unhealthy endpoint would look like a pass.
+if curl -sf -H "Authorization: Bearer <token>" \
+     https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness \
+     | grep -q '"state":"cron_disarmed"'; then
+  echo "expectation propagated — safe to arm"
+else
+  echo "NOT propagated, unreachable, or unhealthy — do NOT arm" >&2
+  exit 1
+fi
 
 # STEP 7c — arm the cron via the reviewed tooling (run-enablement.sh activate ...).
 ```
