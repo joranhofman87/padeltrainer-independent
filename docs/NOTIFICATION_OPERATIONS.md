@@ -123,11 +123,11 @@ would be switched off long before it was ever needed.
 
 **`NOTIF_LIVENESS_EXPECT_ARMED` — why the operator states this, rather than the endpoint inferring
 it.** The runbook order is 3c wire monitor → **4 canary SUCCEEDS while the cron is still inactive** →
-5/6 reconcile and preflight → 7 arm. Between the canary and activation the liveness row reads
+5/6 reconcile and preflight → 7a declare → 7b prove → 7c arm. Between the canary and activation the liveness row reads
 `last_success_at != null` **and** `job_active = false` — byte-identical to "a live cron was
 disarmed". The six fields cannot tell those apart, and no grace window can, because steps 5 and 6
 are owner-paced and open-ended. An endpoint that guessed would page continuously through the exact
-window it was wired to watch. So the expectation is an explicit input, flipped as part of **step 7**:
+window it was wired to watch. So the expectation is an explicit input, flipped at **step 7a** and PROVEN at **7b** before 7c arms anything:
 
 **The flip and the arming cannot be atomic**, so the order is part of the procedure. An Edge
 Function secret and a database cron row are changed by different systems; one of the two mismatch
@@ -136,14 +136,17 @@ states is unavoidable for a few seconds. Take the one that fails safe:
 ```bash
 # STEP 7a — declare the expectation FIRST. The endpoint briefly reports cron_disarmed (503),
 # which is true: activation is expected and the cron is not yet armed.
+# (The VALUE here is literally "true" and is not a secret, so it may be set inline — unlike
+# NOTIF_LIVENESS_TOKEN, which must never appear in argv or history.)
 supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
 
 # STEP 7b — confirm the endpoint has picked it up before arming. Check the STATE, not the code:
+# (CURLRC is the mode-0600 curl config from the setup section — the token must not reach argv.)
 # query_failed, misconfigured, stale and cron_disarmed ALL return 503, so a status-only check
 # would let you arm on a broken endpoint believing the expectation had propagated.
 # NOTE the shape: `grep … && echo ok || echo bad` would exit 0 on BOTH arms, because the final
 # echo succeeds — so a network failure or an unhealthy endpoint would look like a pass.
-if curl -sf -H "Authorization: Bearer <token>" \
+if curl -sf --config "$CURLRC" \
      https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness \
      | grep -q '"state":"cron_disarmed"'; then
   echo "expectation propagated — safe to arm"
@@ -152,7 +155,11 @@ else
   exit 1
 fi
 
-# STEP 7c — arm the cron via the reviewed tooling (run-enablement.sh activate ...).
+# STEP 7c — arm, via the reviewed tooling only. `activate` REFUSES without
+# --liveness-expectation-confirmed, so 7a and 7b cannot be skipped by accident.
+EXPECTED_REF=ficwbdrzefmblkbkomzw scripts/rollout/notif-10cb/run-enablement.sh activate \
+  --yes --monitor-confirmed --liveness-expectation-confirmed --admin-ops-confirmed \
+  "$DB_URL" "$CANARY_RUN_ID"
 ```
 
 Arming first would instead show `unexpectedly_armed` — a live cron that the monitor is not yet
@@ -181,19 +188,77 @@ nobody, so a half-finished setup cannot leave an open surface. Optional
 **Body is PII-free** — six operational fields plus a verdict; a test asserts the key set and that the
 serialized body contains no `@`, `email`, `recipient`, `user_id`, `profile` or `phone`.
 
+### Proving the alert works — the safe rehearsal (runbook step 3c)
+
+**Do not try to prove it with a stale `last_success_at`.** That field is deliberately about a
+SUCCEEDED run, so before the first send there is nothing to make stale. An instruction to "verify it
+alerts on a stale last_success_at" at step 3c is not merely awkward, it is impossible to satisfy —
+and an impossible precondition gets satisfied by ticking the box. Staleness is covered before
+activation by this module's own state-machine tests, and can only be observed end-to-end after a
+prior successful invocation.
+
+What IS provable now — safely, with the cron still inactive and nothing sent — is the thing that
+actually matters: that the provider notices and that recovery clears. Rehearse it:
+
+| | action | required result |
+|---|---|---|
+| a | confirm the cron is INACTIVE and every engine disabled (`assert-inert` exits 0) | precondition — this rehearsal must never arm anything |
+| b | set `NOTIF_LIVENESS_EXPECT_ARMED=true` | — |
+| c | poll the deployed endpoint | exactly `{"state":"cron_disarmed"}` with **HTTP 503** |
+| d | wait for the uptime service's own confirmation threshold | **the provider alerts through its own channel** |
+| e | unset `NOTIF_LIVENESS_EXPECT_ARMED` | — |
+| f | poll the endpoint again | exactly `{"state":"inert"}` with **HTTP 200** |
+| g | wait | **the provider reports recovery** |
+
+Nothing in this sequence arms the cron, enables an engine, or sends anything: it only changes what
+the monitor *expects*, and the endpoint reports the truth about a system that stays inert throughout.
+Record the provider's alert and recovery notifications as the step 3c evidence.
+
 **Operating ownership.** The owner wires and owns the uptime check and its alert channel. Wiring it
 is runbook step 3c and must happen **before** the canary, so it is watching from the first send.
 
 **Setup:**
 
 ```bash
-supabase secrets set NOTIF_LIVENESS_TOKEN=<generated> --project-ref ficwbdrzefmblkbkomzw
+# NEVER `supabase secrets set NAME=<value>` — the value lands in argv, in `ps` output while the
+# command runs, and in shell history. Use a mode-0600 env file and delete it on every exit path.
+umask 077
+ENVFILE="$(mktemp -t notif-liveness-env)"
+trap 'rm -f "$ENVFILE"' EXIT INT TERM HUP        # fail-closed cleanup, including on Ctrl-C
+printf 'NOTIF_LIVENESS_TOKEN=%s\n' "$(openssl rand -base64 39 | tr -d '\n')" > "$ENVFILE"
+chmod 600 "$ENVFILE"
+
+# keep a copy in the login Keychain so rotation does not depend on remembering the value
+security add-generic-password -s padeltrainer-notif-liveness -a "$USER" \
+  -w "$(sed 's/^NOTIF_LIVENESS_TOKEN=//' "$ENVFILE")" -U
+
+supabase secrets set --env-file "$ENVFILE" --project-ref ficwbdrzefmblkbkomzw
 supabase functions deploy notif-liveness --project-ref ficwbdrzefmblkbkomzw
-# then point the uptime service at:
-#   GET https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness
-#   header: Authorization: Bearer <token>      (or x-monitor-token: <token>)
-#   alert on: any non-2xx; interval 5m; confirm after 2 consecutive failures
+# the trap removes ENVFILE here
 ```
+
+Point the uptime service at `GET https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness`
+with header `Authorization: Bearer <token>` (or `x-monitor-token`), interval 5m, alert on any
+non-2xx, confirm after 2 consecutive failures. Paste the token into the provider's own secret field;
+do not put it in a shell command.
+
+**Verifying the endpoint by hand** — same rule, the token must not reach argv or history:
+
+```bash
+umask 077
+CURLRC="$(mktemp -t notif-liveness-curlrc)"
+trap 'rm -f "$CURLRC"' EXIT INT TERM HUP
+printf 'header = "Authorization: Bearer %s"\n' \
+  "$(security find-generic-password -s padeltrainer-notif-liveness -a "$USER" -w)" > "$CURLRC"
+chmod 600 "$CURLRC"
+curl -sf --config "$CURLRC" https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness
+```
+
+**Rotation / revocation.** Generate a new value into a fresh mode-0600 env file, `supabase secrets
+set --env-file`, update the provider's stored secret, then confirm the endpoint still answers and
+delete the file. To revoke entirely, `supabase secrets unset NOTIF_LIVENESS_TOKEN` — the endpoint
+then fails closed and authorizes nobody, which is the safe direction: the monitor goes dark loudly
+rather than the endpoint going open quietly.
 
 | Worker Slack alert | `digest_worker_alert` | a run finished unhealthy (group error, reconcile failure, orphan drain failure, correlation mismatch) | Not a page: the run is recorded either way |
 | `correlationMismatches > 0` | run summary / admin | the provider accepted a message the group is **not** bound to | Never a retry trigger — hold the channel and investigate |

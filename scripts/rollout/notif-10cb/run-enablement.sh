@@ -36,7 +36,7 @@
 #   5. canary --yes --admin-ops-confirmed
 #                          — reconcile THAT run id and verify it delivered. Invokes nothing.
 #   6. preflight           — read-only dry run of the activation gate. Arms nothing.
-#   7. activate --yes --monitor-confirmed --admin-ops-confirmed
+#   7c. activate --yes --monitor-confirmed --liveness-expectation-confirmed --admin-ops-confirmed
 #                          — arm the cron, but only after activation_preflight
 #                            passes. Enabling the cron BEFORE the switch would
 #                            schedule a worker that finds nothing and reports
@@ -122,11 +122,16 @@ usage: EXPECTED_REF=<ref> run-enablement.sh <subcommand> [--yes] <db_url>
                                   failure, re-run with --invocation-request-id=<that id>
   canary --yes --admin-ops-confirmed <db_url> <run_id>
                                   reconcile ONE canary's ACTUAL returned run id
-  activate --yes --monitor-confirmed --admin-ops-confirmed <db_url> <run_id>
+  activate --yes --monitor-confirmed --liveness-expectation-confirmed --admin-ops-confirmed <db_url> <run_id>
                                   verify FOR THAT CANARY RUN and arm the cron, in ONE transaction
                                   against the LOCKED job row. The run id is the one `canary` just
                                   verified — activation is never allowed to rest on some older
                                   rollout's evidence, nor on a job that changed after the check.
+                                  --liveness-expectation-confirmed asserts that NOTIF_LIVENESS_EXPECT_ARMED
+                                  is set AND the deployed endpoint was observed reporting exactly
+                                  state=cron_disarmed. A different fact from --monitor-confirmed:
+                                  that one says a monitor exists, this one says it is watching for
+                                  an ARMED system. Arming first leaves a live cron unwatched.
                                   --monitor-confirmed asserts the EXTERNAL cron/uptime monitor on
                                   notif_digest_worker_liveness() is live: no SQL can see it, and it
                                   is the only detector for "the worker was never invoked"
@@ -179,6 +184,7 @@ CONFIRMED=0
 SWITCH_OFF_CONFIRMED=0
 MONITOR_CONFIRMED=0
 ADMIN_OPS_CONFIRMED=0
+LIVENESS_EXPECTATION_CONFIRMED=0
 # The canary's ceiling on reachable recipients. ONE by default: a canary that can reach more than one
 # recipient is not a canary, and the whole sequence describes it as "one recipient".
 MAX_RECIPIENTS=1
@@ -188,6 +194,7 @@ for a in "$@"; do
   case "$a" in
     --yes)                   CONFIRMED=1 ;;
     --switch-off-confirmed)  SWITCH_OFF_CONFIRMED=1 ;;
+    --liveness-expectation-confirmed) LIVENESS_EXPECTATION_CONFIRMED=1 ;;
     --monitor-confirmed)     MONITOR_CONFIRMED=1 ;;
     --admin-ops-confirmed)   ADMIN_OPS_CONFIRMED=1 ;;
     --max-recipients=*)      MAX_RECIPIENTS="${a#*=}" ;;
@@ -244,6 +251,20 @@ require_admin_ops() {
 # straight past it. Shared by `canary-invoke` and `activate` so the two cannot drift: the runbook
 # puts it at step 3c precisely so it is already watching when the FIRST send happens, which is the
 # canary — requiring it only at activation would have it start watching one step too late.
+# TWO DIFFERENT FACTS, TWO DIFFERENT FLAGS. `--monitor-confirmed` asserts that an external monitor
+# EXISTS and alerts. This one asserts that the monitor has been told to EXPECT AN ARMED SYSTEM, and
+# that the endpoint has been observed reporting it.
+#
+# Overloading one flag to mean both would be worse than having neither: an operator who wired the
+# monitor weeks ago would keep passing --monitor-confirmed truthfully while the expectation had
+# never been flipped, and the gap the flag appears to close would be silently open. The window is
+# real — between the canary and arming, the liveness row is identical to a disarmed live cron, so
+# the monitor cannot infer activation and must be told.
+require_liveness_expectation() {
+  [[ "$LIVENESS_EXPECTATION_CONFIRMED" == "1" ]] || die \
+    "$1 requires --liveness-expectation-confirmed: set NOTIF_LIVENESS_EXPECT_ARMED=true on notif-liveness FIRST, then confirm the DEPLOYED endpoint reports exactly {\"state\":\"cron_disarmed\"} (503 alone is ambiguous — query_failed, misconfigured and stale share it). Arming before the monitor expects an armed system leaves the cron live and unwatched for staleness"
+}
+
 require_monitor() {
   [[ "$MONITOR_CONFIRMED" == "1" ]] || die \
     "$1 requires --monitor-confirmed: wire the EXTERNAL cron/uptime monitor on public.notif_digest_worker_liveness() FIRST and verify it alerts on a stale last_success_at (this script cannot see anything outside the database, and it is the only detector for a worker that is never invoked)"
@@ -692,6 +713,8 @@ case "$SUB" in
   activate)
     require_confirmed "arming the digest cron"
     require_admin_ops "arming the digest cron"
+    # Ordering gate: the monitor must already expect an armed system before one exists.
+    require_liveness_expectation "arming the digest cron"
     url="$(db_url)"
     # ACTIVATION IS BOUND TO ONE CANARY RUN — the one just verified, named explicitly.
     # Without this the preflight accepted ANY historical success: after an earlier rollout had

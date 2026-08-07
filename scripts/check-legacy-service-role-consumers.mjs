@@ -290,6 +290,10 @@ const MANAGED = {
     // service_role-granted notif_digest_worker_liveness() RPC; its own callers authenticate with
     // NOTIF_LIVENESS_TOKEN, so the service-role key never leaves the platform.
     'supabase/functions/notif-liveness/index.ts', // createClient(serviceKey) for the liveness RPC
+    // The handler factory + its tests NAME the env var (they read it through an injected
+    // `env()` and assert the misconfigured branch); neither holds or forwards a key.
+    'supabase/functions/_shared/notif-liveness-core.ts',
+    'supabase/functions/_shared/notif-liveness-core.test.ts',
     'supabase/functions/twilio-content-admin/index.ts',   // requireServiceRole
   ],
 };

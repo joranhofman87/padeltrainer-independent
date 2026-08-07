@@ -215,19 +215,34 @@ RUN_ID="11111111-1111-4111-8111-111111111111"
 # The EXTERNAL monitor is the only detector for a worker that is never invoked, and it lives
 # outside this database — so, like the edge kill switch, the operator asserts it. The docs called
 # it a precondition while the runbook walked straight past it.
-run "activate REFUSES until the external monitor is confirmed" 1 -- activate --yes --admin-ops-confirmed "$URL" "$RUN_ID"
+run "activate REFUSES until the external monitor is confirmed" 1 -- activate --yes --admin-ops-confirmed --liveness-expectation-confirmed "$URL" "$RUN_ID"
+
 [[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
 grep -qF 'monitor-confirmed' "$TMP/out" && ok "...and says how to satisfy it" || bad "...and says how to satisfy it"
+
+# ── THE ORDERING GATE: the monitor must expect an armed system BEFORE one exists ────────────────
+# Between the canary and arming, the liveness row reads last_success_at != null AND job_active =
+# false, which is identical to a disarmed live cron — so the monitor cannot INFER activation. It
+# has to be told, and the deployed endpoint has to be observed saying so, before a live cron
+# exists. Without this gate `activate` arms a cron that nothing is watching for staleness.
+#
+# A DIFFERENT flag from --monitor-confirmed on purpose: an operator who wired the monitor weeks ago
+# keeps passing that one truthfully while the expectation was never flipped, so overloading it
+# would leave exactly the gap it appears to close.
+run "activate REFUSES until the liveness expectation is confirmed" 1 -- activate --yes --monitor-confirmed --admin-ops-confirmed "$URL" "$RUN_ID"
+[[ ! -s "$PSQL_LOG" ]] && ok "...and refuses BEFORE reaching the database" || bad "...and refuses BEFORE reaching the database"
+grep -qF 'liveness-expectation-confirmed' "$TMP/out" && ok "...and says how to satisfy it" || bad "...and says how to satisfy it"
+grep -qF 'cron_disarmed' "$TMP/out" && ok "...and names the exact state to look for" || bad "...and names the exact state to look for"
 
 # The Admin Notification Operations release unit is a MANDATORY prerequisite for any canary or
 # activation and cannot be detected from here, so the operator asserts it — same posture as the
 # edge kill switch and the external monitor.
 run "canary REFUSES until admin notification operations is confirmed shipped" 1 -- canary --yes "$URL" "$RUN_ID"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database" || bad "...and reached no database"
-run "activate REFUSES until admin notification operations is confirmed shipped" 1 -- activate --yes --monitor-confirmed "$URL" "$RUN_ID"
+run "activate REFUSES until admin notification operations is confirmed shipped" 1 -- activate --yes --monitor-confirmed --liveness-expectation-confirmed "$URL" "$RUN_ID"
 [[ ! -s "$PSQL_LOG" ]] && ok "...and reached no database either" || bad "...and reached no database either"
 
-run "activate verifies and arms in ONE artifact" 0 -- activate --yes --monitor-confirmed --admin-ops-confirmed "$URL" "$RUN_ID"
+run "activate verifies and arms in ONE artifact" 0 -- activate --yes --monitor-confirmed --admin-ops-confirmed --liveness-expectation-confirmed "$URL" "$RUN_ID"
 logged "run_id=$RUN_ID" && ok "activate passes the canary run id INTO the gate" \
   || { bad "activate passes the canary run id INTO the gate"; cat "$PSQL_LOG"; }
 logged 'activate.sql' && ok "activate runs the transactional activate.sql" || bad "activate runs the transactional activate.sql"

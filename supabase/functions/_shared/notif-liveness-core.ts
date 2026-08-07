@@ -178,3 +178,84 @@ export function livenessBody(row: LivenessRow, verdict: Verdict): Record<string,
     last_status: row.last_status,
   };
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE HANDLER, as a factory over injected dependencies.
+//
+// The state machine above was testable and tested; everything AROUND it was not — auth, env
+// parsing, the RPC's result shape, error redaction, headers and status codes all lived inside a
+// `Deno.serve` callback that no test could reach. That is the half where an outage reads as healthy
+// or a downstream error string reaches a third party, so it is the half that most needs pinning.
+//
+// `index.ts` is now only the wiring: real `Deno.env.get`, a real supabase client, `Deno.serve`.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+export type LivenessDeps = {
+  /** Environment reader — injected so tests need no real process env. */
+  env: (name: string) => string | undefined;
+  /** Reads the liveness RPC. Resolves to the raw payload (row, array of rows, or null). */
+  readLiveness: () => Promise<unknown>;
+  /** Where a downstream error message goes. It must NOT reach the response. */
+  logError?: (message: string) => void;
+};
+
+export const JSON_HEADERS: Record<string, string> = {
+  "Content-Type": "application/json",
+  "Cache-Control": "no-store",
+};
+
+const json = (body: unknown, status: number) =>
+  new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
+
+/** Coerce the RPC payload to a single row, accepting either an object or a one-element array. */
+export function firstRow(payload: unknown): LivenessRow | null {
+  if (payload === null || payload === undefined) return null;
+  if (Array.isArray(payload)) return (payload.length > 0 ? payload[0] as LivenessRow : null);
+  if (typeof payload === "object") return payload as LivenessRow;
+  return null;
+}
+
+/** Parse the stale threshold, falling back on anything unusable rather than trusting it. */
+export function resolveStaleAfter(raw: string | undefined): number {
+  if (raw === undefined || raw === "") return DEFAULT_STALE_AFTER_SECONDS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_STALE_AFTER_SECONDS;
+}
+
+export function createLivenessHandler(deps: LivenessDeps): (req: Request) => Promise<Response> {
+  const log = deps.logError ?? ((m: string) => console.error("notif-liveness:", m));
+  return async (req: Request): Promise<Response> => {
+    if (!await isAuthorizedMonitor(req, deps.env("NOTIF_LIVENESS_TOKEN"))) {
+      // No detail: an unauthenticated caller learns nothing about whether this is configured.
+      return json({ ok: false, state: "unauthorized" }, 401);
+    }
+
+    if (!deps.env("SUPABASE_URL") || !deps.env("SUPABASE_SERVICE_ROLE_KEY")) {
+      // A misconfigured monitor must not read as healthy.
+      return json({ ok: false, state: "misconfigured", detail: "supabase env missing" }, 503);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await deps.readLiveness();
+    } catch (e) {
+      // The downstream message is LOGGED, never returned: it is arbitrary text from another system
+      // and can quote a row, a column value or a connection string, and this response goes to a
+      // third-party uptime provider. "The read failed" is all a monitor needs to alert on.
+      log(`liveness read failed: ${e instanceof Error ? e.message : String(e)}`);
+      return json({ ok: false, state: "query_failed", detail: "the liveness read failed; see function logs" }, 503);
+    }
+
+    const row = firstRow(payload);
+    if (!row) {
+      return json({ ok: false, state: "query_failed", detail: "liveness returned no row" }, 503);
+    }
+
+    // The operator declares activation; the row cannot be asked, because a successful canary and a
+    // disarmed live cron are indistinguishable in it. Flipped as part of runbook step 7a.
+    const expectArmed = (deps.env("NOTIF_LIVENESS_EXPECT_ARMED") ?? "").toLowerCase() === "true";
+    const verdict = decideLiveness(row, resolveStaleAfter(deps.env("NOTIF_LIVENESS_STALE_SECONDS")), expectArmed);
+    return json(livenessBody(row, verdict), verdict.httpStatus);
+  };
+}
