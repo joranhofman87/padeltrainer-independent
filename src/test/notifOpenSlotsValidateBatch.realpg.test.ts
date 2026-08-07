@@ -12,8 +12,9 @@
 //     DIFFERENT thing (missing / foreign / private), which is what lets the edge report honestly;
 //   * the aggregates see ONLY the trainer's own public rows, so a foreign or private slot can
 //     never widen the reported window while the counts still look plausible;
-//   * the date range is CALENDAR DATES in the trainer's timezone, taken as min/max over the
-//     CONVERTED dates — not over the instants, which differ across a DST fall-back;
+//   * the date range is CALENDAR DATES in the trainer's timezone, aggregated over the CONVERTED
+//     dates — a shape only a structural assertion can pin, since no data separates it from
+//     converting the aggregate (see that test for the survey and its limits);
 //   * the degenerate inputs (empty array, NULL array, NULL trainer) answer with one row rather
 //     than raising, because refusing an empty batch is the caller's decision to make;
 //   * the grants: service_role only. anon and authenticated have no business asking this question
@@ -230,11 +231,12 @@ describe('notif_open_slots_validate_batch — the date range is a CALENDAR range
     //
     // NOTE WHAT THIS DOES *NOT* PROVE, because an earlier version of this test claimed it did.
     // It does not separate `min((x AT TIME ZONE tz)::date)` from `(min(x) AT TIME ZONE tz)::date`.
-    // At TIMESTAMP granularity those differ — `AT TIME ZONE` really is non-monotonic here — but at
-    // DATE granularity they do not, for any real zone: the inversion is bounded by the one-hour
-    // shift and no tz-database transition puts the repeated hour across midnight. Surveyed at
-    // 10-minute resolution over 2000-2040 across ten DST-heavy zones: zero date inversions. So no
-    // fixture can make these two forms disagree, and a test that claimed to was proving nothing.
+    // At TIMESTAMP granularity those differ — `AT TIME ZONE` really is non-monotonic here — but no
+    // DATE-level divergence has been found: a 10-minute sweep of 2000-2040 across ten DST-heavy
+    // zones produced zero date inversions, and the historical outliers where a naive "bounded by an
+    // hour" argument fails outright (Pacific/Kwajalein's 23-hour 1969 jump, Pacific/Apia's repeated
+    // day in 1892) REPEAT a date rather than moving to an earlier one. So no fixture available to
+    // this suite can make the two forms disagree, and a test that claimed to was proving nothing.
     // The shape is pinned structurally instead, in the test below.
     await slot(ID(1), { startTime: '2026-10-25T00:30:00Z' });   // local 02:30 CEST, 25 Oct
     await slot(ID(2), { startTime: '2026-10-25T01:30:00Z' });   // local 02:30 CET,  25 Oct
@@ -261,13 +263,28 @@ describe('notif_open_slots_validate_batch — the date range is a CALENDAR range
       SELECT pg_get_functiondef(p.oid) AS src
         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'public' AND p.proname = 'notif_open_slots_validate_batch'`)).rows[0].src as string;
-    const code = def.split('\n').map((l) => { const i = l.indexOf('--'); return i === -1 ? l : l.slice(0, i); }).join('\n');
-    expect(code).toContain('min((s.start_time AT TIME ZONE');
-    expect(code).toContain('max((s.start_time AT TIME ZONE');
+    // Comments masked, then whitespace collapsed: the assertion is about the EXPRESSION, and a
+    // reformat that only moves line breaks must not fail it.
+    const code = def.split('\n')
+      .map((l) => { const i = l.indexOf('--'); return i === -1 ? l : l.slice(0, i); })
+      .join('\n').replace(/\s+/g, ' ');
+
+    // THE COMPLETE CANONICAL EXPRESSION, through `::date)` and into its FILTER. A prefix match on
+    // `min((s.start_time AT TIME ZONE` is NOT enough — it is satisfied by
+    //     (min((s.start_time AT TIME ZONE …)) FILTER (…))::date
+    // which aggregates LOCAL TIMESTAMPS and casts afterwards: the date conversion has moved back
+    // outside the aggregate while every prefix and every negative pattern still matches. Matching
+    // through the closing `::date)` is what actually pins the nesting.
+    const TZ_EXPR = "AT TIME ZONE coalesce(p_timezone, 'Europe/Amsterdam'))::date) FILTER (";
+    expect(code, 'min must aggregate DATES, not local timestamps')
+      .toContain(`min((s.start_time ${TZ_EXPR}`);
+    expect(code, 'max must aggregate DATES, not local timestamps')
+      .toContain(`max((s.start_time ${TZ_EXPR}`);
+    // ...and the shapes that move the conversion out, spelled out so the failure names itself.
     expect(code, 'converting the aggregate instead of aggregating the conversion')
-      .not.toMatch(/min\(s\.start_time\)\s*AT TIME ZONE/);
-    expect(code, 'converting the aggregate instead of aggregating the conversion')
-      .not.toMatch(/max\(s\.start_time\)\s*AT TIME ZONE/);
+      .not.toMatch(/(min|max)\(s\.start_time\)[^)]*AT TIME ZONE/);
+    expect(code, 'aggregating local timestamps and casting to date afterwards')
+      .not.toMatch(/\(\s*(min|max)\(\(s\.start_time AT TIME ZONE[^;]*?\)\s*\)\s*::date/);
     // ...and the occurrence is emphatically NOT date-truncated: it is an instant.
     expect(code).toContain('max(s.created_at)');
   });

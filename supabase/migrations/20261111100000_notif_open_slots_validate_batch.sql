@@ -67,19 +67,27 @@
 -- earliest calendar date this batch covers" — while the second is a different question that
 -- happens to share its answer.
 --
--- HOW MUCH THEY SHARE IT, stated honestly rather than overstated. `AT TIME ZONE` is genuinely
--- non-monotonic across a DST fall-back (01:00Z maps to local 03:00 while the LATER 01:30Z maps to
--- local 02:30), so at TIMESTAMP granularity the two forms differ. At DATE granularity they do not:
--- an inversion is bounded by the one-hour shift, and no transition in the tz database places the
--- repeated wall-clock hour across midnight, so the converted dates never go backwards. This was
--- checked rather than assumed — 21M instants at 10-minute resolution over 2000-2040 across
--- Amsterdam, Havana, Sao_Paulo, Santiago, Lord_Howe, Chatham, Asuncion, Beirut, Troll and
--- Scoresbysund produced zero date inversions.
+-- HOW MUCH THEY SHARE IT — scoped to what was actually checked, because an earlier draft of this
+-- comment generalised and the generalisation was false. `AT TIME ZONE` is genuinely non-monotonic
+-- across a backward transition (01:00Z maps to local 03:00 while the LATER 01:30Z maps to local
+-- 02:30), so at TIMESTAMP granularity the two forms differ.
 --
--- So this form is chosen because it says what it means, not because the other is known to break.
--- The distinction matters for a reader deciding whether it is safe to "simplify": it is, today,
--- for every real zone — and the aggregate-over-dates form is the one that stays correct without
--- depending on that survey.
+-- At DATE granularity no divergence has been found:
+--   * SURVEYED: 21,038,400 instants at 10-minute resolution over 2000-2040 across Europe/Amsterdam,
+--     America/Havana, America/Sao_Paulo, America/Santiago, Australia/Lord_Howe, Pacific/Chatham,
+--     America/Asuncion, Asia/Beirut, Antarctica/Troll and America/Scoresbysund — zero calendar-date
+--     inversions. That is a survey of a period and a set of zones, NOT a proof about tzdb.
+--   * SPOT-CHECKED beyond it, on the class where the one-hour reasoning breaks outright. Historical
+--     tzdb contains far larger backward jumps: Pacific/Kwajalein moved UTC+11 -> UTC-12 in 1969,
+--     repeating 23 hours, and Pacific/Apia repeated an entire calendar day in 1892. Those REPEAT a
+--     date rather than moving to an earlier one — 1969-09-30T12:30Z and 13:30Z are local 23:30 and
+--     01:30 of the SAME 30 September — so the dates still do not go backwards. Do not read the
+--     "bounded by an hour" argument into this comment; it is not the reason, and it is not true.
+--
+-- The honest summary: the two forms are not known to disagree on dates, and this form is chosen
+-- because it says what it means — "the earliest calendar date this batch covers" — rather than
+-- because the alternative is known to break. A reader tempted to "simplify" it should note that the
+-- simplification's correctness rests on a survey, while this one's does not.
 --
 -- A NULL p_timezone falls back to 'Europe/Amsterdam', the app-wide default that the column itself
 -- defaults to. An INVALID timezone name raises (invalid_parameter_value) rather than silently

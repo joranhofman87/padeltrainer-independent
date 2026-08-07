@@ -910,8 +910,8 @@ export function BulkCreateContent({
           // rather than agreeing for a reason someone has to re-derive. The edge refuses a range it
           // did not derive itself, so "the same function" is the whole requirement.
           //
-          // (For real timezones the extreme-of-instants form gives the same DATES — the one-hour
-          // DST inversion never spans midnight. This is not relying on that.)
+          // (No DATE-level divergence between the two forms has been found — see the migration
+          // header for the survey and its limits. This deliberately does not rely on that.)
           //
           // These are the LATEST/EARLIEST START. There is no end_time involved; the historical
           // name `latestEnd` said otherwise and is gone.
