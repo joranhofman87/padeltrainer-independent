@@ -141,12 +141,49 @@ export function parseLegacyDateRange(value: string): { from: string; to: string 
   return { from, to };
 }
 
+/**
+ * Upper bound on `slot_ids`. Deliberately generous for real UI batches (a 52-week cyclus is 52
+ * ids) but finite: the array rides EVERY continuation hop, and an unbounded array would grow the
+ * body up to MAX_CONTINUATION_DEPTH times. It is NOT a defence against PostgREST row caps — the
+ * aggregate RPC is, because a scalar result cannot be truncated.
+ */
+export const MAX_SLOT_IDS = 500;
+
+/**
+ * The canonical legacy display range, derived SERVER-SIDE from the structured ISO dates.
+ *
+ * Byte-identical to `legacyDateRange` in src/lib/notifyFollowers.ts, which is what
+ * `withLegacyCompatFields` sends. It is duplicated because the frontend bundle and the edge
+ * function do not share a module — and because they must not drift,
+ * src/test/legacyDateRangeParity.test.ts pins the two implementations byte-for-byte across
+ * same-year, cross-year and single-day ranges.
+ *
+ * This exists for ONE purpose: preserving the transitional legacy `notification_sends` dedup
+ * marker across the frontend/edge deploy overlap. It is never business truth — not membership,
+ * not occurrence, not the date range shown to anyone.
+ */
+export function canonicalLegacyDateRange(fromIso: string, toIso: string): string {
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const part = (iso: string) => {
+    const [y, m, d] = iso.split("-");
+    return { y, mon: MON[Number(m) - 1], d: String(Number(d)) };
+  };
+  const a = part(fromIso);
+  const b = part(toIso);
+  return a.y === b.y
+    ? `${a.mon} ${a.d} - ${b.mon} ${b.d}, ${b.y}`
+    : `${a.mon} ${a.d}, ${a.y} - ${b.mon} ${b.d}, ${b.y}`;
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 export type NotifyRequest =
   | {
     subtype: "new_availability";
     slotCount: number;
     dateFrom: string;
     dateTo: string;
+    /** The exact inserted PUBLIC slot ids. Shape-validated here; PROVEN server-side by the RPC. */
+    slotIds: string[];
     /**
      * The legacy display range EXACTLY as received, when the caller sent one. Used for one
      * thing only: reconstructing the pre-cutover dedup key during the deploy overlap. Keeping
@@ -212,17 +249,56 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
   // malformed or hostile value can never reach the renderer.
   //
   // REMOVE once no cached bundle sends date_range (one full frontend rollout + cache window).
-  if (b.date_from === undefined && b.date_to === undefined && typeof b.date_range === "string") {
-    const converted = parseLegacyDateRange(b.date_range);
-    if (!converted) {
-      return { ok: false, error: "date_range is no longer accepted; send ISO date_from and date_to" };
-    }
-    b.date_from = converted.from;
-    b.date_to = converted.to;
-  }
+  // The legacy `date_range` -> ISO conversion is GONE for new_availability. It existed to keep an
+  // older caller working, but slot_ids are now required, so such a caller cannot satisfy the
+  // request anyway — leaving the conversion would be dead compatibility that reads as support.
   if (!isIsoDate(b.date_from)) return { ok: false, error: "date_from must be an ISO date (YYYY-MM-DD)" };
   if (!isIsoDate(b.date_to)) return { ok: false, error: "date_to must be an ISO date (YYYY-MM-DD)" };
   if (b.date_to < b.date_from) return { ok: false, error: "date_to must not precede date_from" };
+
+  // EXACT PROVENANCE, REQUIRED. The occurrence used to come from a date-range lookup with
+  // offsetless literals against a timestamptz column — an off-by-one at day boundaries, and a
+  // query that could match slots this caller never created. These ids identify the exact rows.
+  //
+  // Nothing here is authority: the handler re-derives the trainer from the JWT and proves every id
+  // through an aggregate RPC. This is shape validation only, and it fails CLOSED.
+  const rawIds = b.slot_ids;
+  if (!Array.isArray(rawIds) || rawIds.length === 0) {
+    return { ok: false, error: "slot_ids must be a non-empty array of slot uuids" };
+  }
+  if (rawIds.length > MAX_SLOT_IDS) {
+    return { ok: false, error: `slot_ids must contain at most ${MAX_SLOT_IDS} ids` };
+  }
+  for (const id of rawIds) {
+    if (typeof id !== "string" || !UUID_RE.test(id)) {
+      return { ok: false, error: "slot_ids must contain only lowercase uuid strings" };
+    }
+  }
+  // DUPLICATES ARE REJECTED, NOT NORMALIZED. Silently de-duplicating would make the handler's
+  // "distinct count == submitted count" proof tautological, so a request repeating one id could
+  // claim to cover a batch it never identified.
+  const ids = rawIds as string[];
+  if (new Set(ids).size !== ids.length) {
+    return { ok: false, error: "slot_ids must not contain duplicates" };
+  }
+
+  // THE TRANSITIONAL LEGACY DEDUP MARKER, derived — never accepted.
+  //
+  // The pre-cutover handler keys `notification_sends` on a display range, so during the
+  // frontend/edge deploy overlap both versions must claim the SAME marker or a recipient can be
+  // sent to twice. The range is therefore derived here from the structured ISO dates with the same
+  // canonical formatter the client uses. A `date_range` in the request is accepted ONLY as a
+  // consistency assertion: it must match byte-for-byte, and a mismatch is refused rather than
+  // reconciled, because two disagreeing ranges mean the caller and the server disagree about which
+  // batch this is. A `date_range`-ONLY request is never converted — slot_ids are required above, so
+  // such a caller cannot identify a batch at all and fails closed with nothing enqueued.
+  const legacyRange = canonicalLegacyDateRange(b.date_from, b.date_to);
+  if (b.date_range !== undefined && b.date_range !== null) {
+    if (typeof b.date_range !== "string" || b.date_range !== legacyRange) {
+      return { ok: false, error: "date_range does not match the canonical range derived from date_from/date_to" };
+    }
+  }
+
   return {
     ok: true,
     req: {
@@ -230,7 +306,8 @@ export function parseNotifyRequest(raw: unknown): ParseResult {
       slotCount,
       dateFrom: b.date_from,
       dateTo: b.date_to,
-      ...(typeof b.date_range === "string" ? { legacyRange: b.date_range } : {}),
+      slotIds: ids,
+      legacyRange,
     },
   };
 }

@@ -32,11 +32,18 @@ export function shouldShowBulkPlayersAddedToast(
   return outcome === "success" && totalBookingsCreated > 0;
 }
 
-/** Whether generateBulkSlots should call notify-followers (trainer self-service only). */
+/**
+ * Whether generateBulkSlots should call notify-followers (trainer self-service only).
+ *
+ * `hasPublicSlots` is REQUIRED and has no default. It used to default to `true`, and the caller
+ * passed a hardcoded `true` besides — so a batch in which every entry was marked private still
+ * notified followers, and `slot_count` counted the private slots. A defaulted "assume public" is
+ * exactly the shape that let that survive review, so the parameter is now mandatory and the caller
+ * must derive it from the rows the DATABASE returned as public.
+ */
 export function shouldInvokeNotifyFollowersOnBulkGenerate(params: {
-  hasPublicSlots?: boolean;
+  hasPublicSlots: boolean;
   academyId?: string | null;
 }): boolean {
-  const hasPublicSlots = params.hasPublicSlots ?? true;
-  return hasPublicSlots && !shouldSkipNotifyFollowersInAcademyMode(params.academyId);
+  return params.hasPublicSlots && !shouldSkipNotifyFollowersInAcademyMode(params.academyId);
 }

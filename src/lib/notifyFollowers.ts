@@ -20,7 +20,18 @@
  */
 
 export type NotifyFollowersBody =
-  | { slot_count: number; date_from: string; date_to: string }
+  | {
+    slot_count: number;
+    date_from: string;
+    date_to: string;
+    /**
+     * The exact ids of the PUBLIC rows the INSERT returned. Required by the new handler: the
+     * occurrence is derived from these exact rows instead of a date-range rediscovery, which was
+     * both an off-by-one at day boundaries and a query able to match slots this caller never
+     * created. The handler proves every id through an aggregate RPC under the JWT-derived trainer.
+     */
+    slot_ids: string[];
+  }
   | { slot_count: number; single_slot: { date: string; time: string }; booking_id?: string };
 
 /**

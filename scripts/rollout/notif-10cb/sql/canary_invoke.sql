@@ -49,7 +49,9 @@ SET search_path = pg_catalog;
 -- and its own cleanup would otherwise make the next one fail on "relation already exists" — a
 -- confusing refusal that says nothing about the world it was asked to check.
 DROP TABLE IF EXISTS pg_temp._gate_job;
+DROP TABLE IF EXISTS pg_temp._canary_clock;
 DROP TABLE IF EXISTS pg_temp._canary_radius;
+DROP TABLE IF EXISTS pg_temp._canary_floor;
 DROP TABLE IF EXISTS pg_temp._canary_request;
 
 BEGIN;
@@ -129,22 +131,32 @@ SELECT pg_temp.assert_eq(
     WHERE url = 'https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notification-digest-worker'), 0,
   'no request to the digest worker is already queued (another canary invocation is in progress — wait for it to answer)');
 
--- N4 M1 (AC-6): the DURABLE half of the same guarantee, then OPEN this invocation's record in
--- THIS transaction — it exists from the instant the request can. :invocation_request_id is
--- generated once per operator command by run-enablement.sh, so an ambiguous-commit retry
--- recovers the SAME invocation instead of stacking a second. The gate is the REPLAY-AWARE one:
--- a retry carrying the same request id passes through to the idempotent open(); any OTHER
--- unresolved invocation still refuses.
-\i _invocation_gate_replay.sql
--- ...and PUBLISH its id into this transaction, which is what the reviewed command's body reads.
--- Transaction-local on purpose (round 6): a pg_cron execution runs in its OWN session and can
--- never see it, so a tick selected before this transaction and started after it still names
--- nothing. A database lookup could not give that guarantee — anything this transaction COMMITS is
--- something a late-starting tick can read too.
-SELECT pg_catalog.set_config(
-  'notif.dispatch_invocation',
-  public.open_notification_worker_invocation('canary', 'canary_invoke.sql', :'invocation_request_id'::pg_catalog.uuid)::pg_catalog.text,
-  true) AS invocation_id;
+-- ===========================================================================
+-- THE SCOPE GATES — CEILING then FLOOR — and they run BEFORE anything is opened or mutated.
+--
+-- ORDERING, STATED ONCE BECAUSE IT IS LOAD-BEARING. Both scope gates used to sit AFTER the replay
+-- gate and after open_notification_worker_invocation(). That was wrong in two directions at once.
+-- The replay gate takes two advisory locks and a transaction-local set_config, and open() writes a
+-- durable invocation row; performing either for a request already known to be meaningless makes
+-- the rollout's own bookkeeping the first casualty of a refusal — an operator who trips a scope
+-- gate should not have to reason about whether a row was left behind, and a lock should not be
+-- taken on behalf of a request that will never be sent. The scope of what this invocation would do
+-- is decidable from the world alone; decide it first, then commit to the invocation.
+-- src/test/notif10cbActivationPreflight.test.ts pins this order structurally, because a
+-- behavioural test cannot see it: the transaction rolls back either way.
+
+-- ONE CLOCK, CAPTURED ONCE, READ BY EVERY PREDICATE BELOW.
+--
+-- now() is fixed at BEGIN — and by this point the transaction has taken a table lock, a cron row
+-- lock (a real SPI update that can queue behind another cron writer), a catalog lock, and run five
+-- assertions. It can therefore be many seconds stale, and every "is this due yet" and "are quiet
+-- hours open" answer derived from it would be answering about a moment that has already passed.
+-- clock_timestamp() is the opposite failure: it advances DURING evaluation, so the group scan, the
+-- member scan and the quiet-hours margin would each be asked about a different instant and the
+-- floor would stop being one predicate about one world. statement_timestamp() is the honest middle
+-- — the instant this statement began — captured ONCE into a temp table and read by name from then
+-- on, so nothing below can silently pick up a second, different clock.
+CREATE TEMP TABLE _canary_clock AS SELECT pg_catalog.statement_timestamp() AS t;
 
 -- THE BLAST RADIUS. "Canary: one recipient" was a hope, not a fact: the worker sends to every group
 -- it can claim, plus everything materialization forms during the same run. If the engine has been on
@@ -167,6 +179,12 @@ SELECT pg_catalog.set_config(
 -- the outbox would stall live enqueues and still release at COMMIT. It is instead caught AFTER the
 -- fact by canary_scope_verify.sql, which counts the recipients the finished run actually reached and
 -- refuses to let the rollout continue on a canary that was not one.
+--
+-- AND IT IS DELIBERATELY EVENT-AGNOSTIC — the exact opposite choice from the FLOOR below, for the
+-- same reason read in the other direction. The worker claims whatever is DUE, not whatever this
+-- file had in mind, so an unrelated event's live digest work is still mail this invocation can
+-- send: it counts towards how far the canary reaches. Narrowing the ceiling to open_slots_player
+-- would let a backlog under any other key ride out on the canary, uncounted.
 CREATE TEMP TABLE _canary_radius AS
   SELECT (SELECT count(*)::int FROM public.notification_digest_groups
            WHERE channel = 'email' AND terminal_at IS NULL) AS non_terminal_groups,
@@ -180,6 +198,139 @@ SELECT pg_temp.assert(
      'the canary can reach at most %s recipient(s), within the ceiling of %s (%s non-terminal email digest group(s) + %s ungrouped pending digest outbox row(s); an over-estimate, since outbox rows collapse into one group per recipient)',
      non_terminal_groups + forming_members, :'max_recipients'::int, non_terminal_groups, forming_members)
    FROM pg_temp._canary_radius));
+
+-- THE DUE-WORK FLOOR — the other half of the blast radius, and the half that was missing.
+--
+-- WHAT WAS WRONG. The ceiling answers "could this invocation reach TOO MANY recipients". Nothing
+-- answered "could it reach ANY", and with zero due work the answer is no: the worker starts,
+-- materializes nothing, claims nothing, ends the run `succeeded`, and canary_verify then reads a
+-- run that sent to nobody. In the run ledger, in the response body, and in the operator's terminal
+-- that is INDISTINGUISHABLE from a working path — it is the very state the engine-on assertion
+-- above refuses to invoke into, arrived at by a different route. Worse, it is not free: the
+-- invocation record is consumed, canary_scope_verify passes trivially (zero recipients is within
+-- any ceiling), activation's provenance assertion is satisfied by a completed canary-provenance
+-- run, and the cron is then armed against the entire population on the strength of an empty run.
+-- The comment that used to sit here said as much and stopped there; this is the guard it described.
+--
+-- IT IS EVENT-SPECIFIC, AND THAT IS THE WHOLE POINT. open_slots_player is the cutover event. Due
+-- work under any OTHER event proves nothing about it — and, because the worker claims whatever is
+-- due, would be SENT. So an event-agnostic floor is worse than no floor at all: it would be
+-- satisfied by an unrelated due digest, mail a REAL recipient who has nothing to do with this
+-- rollout, and still leave the cutover path unproven, all while reporting a green canary. The
+-- ceiling stays global; the floor is narrow. They are not the same question.
+--
+-- >= 1, NOT = 1. Several forming members collapse into ONE group per recipient, and the ceiling
+-- already counts not-yet-due forming rows, so an exact-one floor would refuse worlds the ceiling
+-- has already declared safe. "At least one item will actually be sent" is what a canary needs;
+-- bounding how much is the ceiling's job, and it has already run.
+--
+-- THE PREDICATE IS THE CLAIM FUNCTION'S, DELIBERATELY. The group half mirrors
+-- public.claim_notification_digest_group and the forming half mirrors
+-- public.materialize_notification_digest_groups (both 20261104100000) — the two doors every digest
+-- send goes through. A looser "there is a pending group" test is what makes a floor a decoration:
+-- a group that is leased and not yet stale, sitting in quiet hours, past its uncertainty deadline,
+-- or holding a member from before the activation boundary is NOT claimable, and counting it would
+-- assert due work the worker will pass straight over — producing exactly the empty run this
+-- refuses. Drift is the standing risk here and it is accepted knowingly: this is a rollout
+-- artifact run once under supervision, not a second implementation of the claim.
+--
+-- THE UNCERTAINTY CLAUSE IS A CASE, NOT AN OR. `state <> 'sending' OR deadline(...)` reads more
+-- naturally and is a live hazard: SQL does not promise left-to-right evaluation of OR, and
+-- notif_digest_uncertainty_deadline RAISES on a NULL first_send_at — which every not-yet-sent
+-- group has. The planner is free to evaluate the function first and abort the whole invocation on
+-- a perfectly ordinary pending group. CASE is the one construct that guarantees only the taken arm
+-- is evaluated. Same predicate, no hazard.
+--
+-- THE QUIET-HOURS MARGIN. Eligibility is required at T *and* at T + 5 minutes. pg_net dispatches
+-- only after this transaction COMMITS; the worker then boots, materializes, and only then claims.
+-- A canary asserted valid at 19:59:30 local would reach the claim with the window already shut,
+-- be deferred, and produce precisely the empty run this guard exists to refuse. Five minutes is
+-- the operational slack between "this transaction commits" and "the worker claims", not a theory.
+--
+-- CIRCUIT: CLOSED **OR ABSENT**. There is no row until the breaker first trips, so absent IS the
+-- healthy state; requiring state = 'closed' would refuse every canary on a system that has never
+-- had a provider failure. `IS DISTINCT FROM 'closed'` inverted through NOT EXISTS states it once:
+-- no row, or a row that says closed. Anything else (open, half_open, a state added later) refuses.
+CREATE TEMP TABLE _canary_floor AS
+SELECT
+  (SELECT count(*)::int
+     FROM public.notification_digest_groups dg
+    WHERE dg.channel = 'email'
+      AND dg.event_type = 'open_slots_player'
+      AND dg.terminal_at IS NULL
+      AND ( (dg.state IN ('pending','request_ready') AND dg.locked_by IS NULL AND dg.available_at <= ck.t)
+         OR (dg.state = 'awaiting_evidence' AND dg.available_at <= ck.t)
+         OR (dg.state IN ('leased','prepared','request_ready','sending')
+             AND dg.locked_at IS NOT NULL AND dg.locked_at < ck.t - interval '15 minutes') )
+      AND NOT (dg.uncertain_since IS NOT NULL AND dg.uncertain_deadline_at IS NOT NULL
+               AND ck.t >= dg.uncertain_deadline_at)
+      AND (CASE WHEN dg.state = 'sending'
+                THEN ck.t < public.notif_digest_uncertainty_deadline(dg.first_send_at, dg.uncertain_deadline_at)
+                ELSE true END)
+      AND public.notif_digest_quiet_hours_bump(ck.t, dg.recipient_timezone) = ck.t
+      AND public.notif_digest_quiet_hours_bump(ck.t + interval '5 minutes', dg.recipient_timezone)
+            = ck.t + interval '5 minutes'
+      AND NOT EXISTS (SELECT 1 FROM public.notification_outbox o
+                       WHERE o.digest_group_id = dg.id
+                         AND (o.created_at < public.notif_activation_boundary('email:digest')
+                              OR o.occurred_at < public.notif_activation_min_occurred_at('email:digest')))
+  ) AS due_groups,
+  (SELECT count(*)::int
+     FROM public.notification_outbox o
+    WHERE o.channel = 'email'
+      AND o.event_type = 'open_slots_player'
+      AND o.delivery_mode = 'digest'
+      AND o.digest_group_id IS NULL
+      AND o.status = 'pending'
+      AND o.created_at >= public.notif_activation_boundary('email:digest')
+      AND o.occurred_at >= public.notif_activation_min_occurred_at('email:digest')
+      AND o.digest_boundary_at <= ck.t
+      AND coalesce(o.digest_item_bytes, 0) <= 92160
+      AND public.notif_digest_quiet_hours_bump(ck.t, coalesce(o.recipient_timezone, 'Europe/Amsterdam')) = ck.t
+      AND public.notif_digest_quiet_hours_bump(ck.t + interval '5 minutes',
+            coalesce(o.recipient_timezone, 'Europe/Amsterdam')) = ck.t + interval '5 minutes'
+  ) AS due_members,
+  NOT EXISTS (SELECT 1 FROM public.notification_provider_circuit c
+               WHERE c.channel = 'email' AND c.state IS DISTINCT FROM 'closed') AS circuit_ok
+FROM pg_temp._canary_clock ck;
+
+SELECT pg_temp.assert(
+  (SELECT circuit_ok AND (due_groups + due_members) >= 1 FROM pg_temp._canary_floor),
+  (SELECT pg_catalog.format(
+     'there is NO due, claimable open_slots_player email digest work for this invocation to send '
+     '(%s due digest group(s) + %s ungrouped due member(s); email circuit %s). Invoking now would '
+     'queue a request the worker answers with an EMPTY dispatch run — a 200, a `succeeded` status '
+     'and nothing sent, which proves NOTHING about the cutover path while consuming the one '
+     'controlled canary this rollout gets. Likely causes, in the order worth checking: the item''s '
+     'digest boundary has not passed yet (digest_boundary_at / available_at still in the future); '
+     'quiet hours are shut for the recipient timezone now or within the next 5 minutes; the email '
+     'provider circuit is not closed; the only candidate is leased by a worker and not yet stale '
+     '(15 minutes); or its group holds a member from before the email digest activation boundary. '
+     'Wait until real open_slots_player work is due and re-run — raising --max-recipients cannot '
+     'help, that is the ceiling and it cannot create work.',
+     due_groups, due_members, CASE WHEN circuit_ok THEN 'closed/absent' ELSE 'NOT closed' END)
+   FROM pg_temp._canary_floor));
+
+-- N4 M1 (AC-6): the DURABLE half of the same guarantee, then OPEN this invocation's record in
+-- THIS transaction — it exists from the instant the request can. :invocation_request_id is
+-- generated once per operator command by run-enablement.sh, so an ambiguous-commit retry
+-- recovers the SAME invocation instead of stacking a second. The gate is the REPLAY-AWARE one:
+-- a retry carrying the same request id passes through to the idempotent open(); any OTHER
+-- unresolved invocation still refuses.
+--
+-- IT RUNS AFTER BOTH SCOPE GATES, for the reason given at the top of this section: this include
+-- takes advisory locks and a set_config, and open() writes a durable row. Neither should happen
+-- on behalf of a request the world has already disqualified.
+\i _invocation_gate_replay.sql
+-- ...and PUBLISH its id into this transaction, which is what the reviewed command's body reads.
+-- Transaction-local on purpose (round 6): a pg_cron execution runs in its OWN session and can
+-- never see it, so a tick selected before this transaction and started after it still names
+-- nothing. A database lookup could not give that guarantee — anything this transaction COMMITS is
+-- something a late-starting tick can read too.
+SELECT pg_catalog.set_config(
+  'notif.dispatch_invocation',
+  public.open_notification_worker_invocation('canary', 'canary_invoke.sql', :'invocation_request_id'::pg_catalog.uuid)::pg_catalog.text,
+  true) AS invocation_id;
 
 -- ===========================================================================
 -- THE INVOCATION. Read the stored command from the LOCKED row and execute it.
@@ -240,7 +391,9 @@ SELECT public.record_invocation_net_request(
 SELECT format('CANARY_REQUEST_PROVISIONAL=%s', request_id) AS canary_marker FROM pg_temp._canary_request;
 
 DROP TABLE pg_temp._gate_job;
+DROP TABLE pg_temp._canary_clock;
 DROP TABLE pg_temp._canary_radius;
+DROP TABLE pg_temp._canary_floor;
 
 COMMIT;
 
