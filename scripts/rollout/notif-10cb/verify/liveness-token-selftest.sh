@@ -23,6 +23,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$HERE/../notif-liveness-secret.sh"
 [ -f "$SCRIPT" ] || { printf 'cannot find %s\n' "$SCRIPT" >&2; exit 1; }
 
+# THE SUITE RUNS UNDER A UTF-8 LOCALE BY DEFAULT, and that is a bug fix, not housekeeping.
+# It previously inherited the caller's locale. The agent that wrote it had LANG unset (LC_CTYPE=C)
+# and scored 104/104; an operator's Mac is C.UTF-8 and scored 102/104, because BSD `tr` rejects
+# invalid UTF-8 with "Illegal byte sequence" under a UTF-8 locale — so a body with a bad byte and no
+# NUL was refused as "contains a NUL byte". Pinning the realistic locale here is what stops a
+# byte-level guard from being validated in a character set it will never actually meet.
+pick_utf8_locale() {
+  local c
+  for c in C.UTF-8 en_US.UTF-8 en_GB.UTF-8 C.utf8; do
+    [ "$(LC_ALL="$c" locale charmap 2>/dev/null)" = "UTF-8" ] && { printf '%s' "$c"; return 0; }
+  done
+  return 1
+}
+UTF8_LOCALE="$(pick_utf8_locale || true)"
+[ -n "$UTF8_LOCALE" ] || { printf 'FATAL: no UTF-8 locale available; the byte-level rows would be vacuous\n' >&2; exit 1; }
+
 PASS=0; FAIL=0
 ok()  { printf 'PASS  %s\n' "$1"; PASS=$((PASS+1)); }
 bad() { printf 'FAIL  %s\n' "$1"; FAIL=$((FAIL+1)); }
@@ -183,6 +199,7 @@ run_helper() {   # run_helper <outfile> -- args...
       STUB_KC_CORRUPT="${STUB_KC_CORRUPT:-none}" STUB_CURL_CODE="${STUB_CURL_CODE:-503}" \
       STUB_CURL_BODY="${STUB_CURL_BODY:-}" \
       NOTIF_LIVENESS_JQ="${NOTIF_LIVENESS_JQ:-jq}" \
+      LC_ALL="${HELPER_LOCALE:-$UTF8_LOCALE}" \
       bash "$SCRIPT" "$@" > "$outfile" 2>&1
 }
 
@@ -326,6 +343,13 @@ ck "(n) a NUL byte hiding a trailing value FAILS"                34 '{"state":"c
 # `cron_disarmed`. That holds because the EXPECTATION is ASCII, not universally.
 ck "(u1) invalid UTF-8 in an unrelated field is accepted"        0  $'{"state":"cron_disarmed","x":"\xff"}'
 ck "(u2) invalid UTF-8 INSIDE .state cannot fake a match"        32 $'{"state":"cron_disarmed\xff"}'
+# THE SAME BYTES UNDER BOTH LOCALES. The rows above already run under UTF-8 (the harness default),
+# so these pin the C locale explicitly — a byte-level guard must give the SAME answer in both, and
+# the previous version gave 0/32 under C and 34/34 under UTF-8. Neither locale is left to the
+# caller's environment, because that is precisely how this was missed.
+HELPER_LOCALE=C  ck "(u1/C) same bytes, C locale, same verdict"  0  $'{"state":"cron_disarmed","x":"\xff"}'
+HELPER_LOCALE=C  ck "(u2/C) same bytes, C locale, same verdict"  32 $'{"state":"cron_disarmed\xff"}'
+HELPER_LOCALE=C  ck "(n/C)  the NUL guard still bites under C"   34 '{"state":"cron_disarmed"}@NUL@{"state":"query_failed"}'
 ck "(i) an EMPTY body FAILS"                                     34 '@EMPTY@'
 ck "(e) a MISSING state FAILS"                                   32 '{"ok":false}'
 ck "(f) a NULL state FAILS"                                      32 '{"state":null}'
@@ -373,6 +397,38 @@ wrote_with UPDATE; no_token_leak; no_residue
 # A fresh provision must still use CREATE semantics — the -U must not creep back in as a constant.
 expect_rc "a FIRST provision creates" 0 -- provision --service svc --account acct
 wrote_with CREATE; store_is "$FAKE_TOKEN" "...and the generated value is what landed"
+
+# ── the names are COMMAND TEXT inside `security -i`, so they are allow-listed ──────────────────
+# Measured before the guard: `--service 'svc -U'` produced
+#     add-generic-password -s svc -U -a acct -w <token>
+# which UPDATED a pre-existing value with no --force and exited 0 reporting success. A newline is
+# worse — it appends a SECOND subcommand, and `security -i` returns only the LAST one's status.
+# Every row asserts the refusal happens before openssl AND before any keychain call, and that the
+# pre-existing bytes are still there afterwards.
+inj() {   # inj <label> <service> <account>
+  SEED_KC=1 SEED_KC_VALUE="$PRIOR_TOKEN" expect_rc "$1" 17 -- provision --service "$2" --account "$3"
+  store_is "$PRIOR_TOKEN" "...pre-existing bytes untouched"
+  no_write; no_openssl; no_kc_access
+}
+inj "option injection via --service ('svc -U')"        'svc -U'                       acct
+inj "option injection via --account ('acct -U')"       svc                            'acct -U'
+inj "a NEWLINE in --service would add a subcommand"    $'svc\nadd-generic-password -s x -a y -w z'  acct
+inj "a CARRIAGE RETURN in --service"                   $'svc\rX'                      acct
+inj "plain whitespace in --service"                    'svc name'                     acct
+inj "a leading '-' would read as an option"            '-svc'                         acct
+inj "an empty --service"                               ''                             acct
+inj "an empty --account"                               svc                            ''
+inj "an over-long --service (129 safe chars)"          "$(printf 'a%.0s' $(seq 1 129))"  acct
+# …and the ordinary names still work, so the allow-list is not merely refusing everything.
+expect_rc "the REAL service/account names are accepted" 0 -- provision --service padeltrainer-notif-liveness --account tom.user_1@example.com
+wrote_with CREATE
+# Every subcommand validates, not just provision.
+SEED_KC=1 expect_rc "check-endpoint validates the names too" 17 -- check-endpoint --url http://x --expect-status 503 --expect-state cron_disarmed --service 'svc -U' --account acct
+no_curl; no_kc_access
+SEED_KC=1 expect_rc "with-env validates the names too" 17 -- with-env --service 'svc -U' --account acct -- supabase secrets set --env-file '{}'
+no_deploy; no_kc_access
+SEED_KC=1 expect_rc "verify-keychain validates the names too" 17 -- verify-keychain --service $'svc\nX' --account acct
+no_kc_access
 
 # ── SIGNALS: cleanup must run, the status must be non-zero, and nothing after may execute ─────
 # This is the case the prose got wrong: `trap 'rm …' INT` cleaned up and then let execution CONTINUE

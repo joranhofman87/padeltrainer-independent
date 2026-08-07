@@ -186,6 +186,38 @@ describe('the endpoint check stays structural and provisioning stays non-destruc
     expect(src).not.toMatch(/if "\$SECURITY_BIN" find-generic-password[^\n]*; then/);
   });
 
+  it('the service/account names are allow-listed, and validated before any side effect', () => {
+    // They are COMMAND TEXT inside `security -i`, not argv. Unvalidated, `--service 'svc -U'`
+    // emitted `add-generic-password -s svc -U -a acct …` — an update with no --force, exit 0.
+    const src = helper();
+    expect(src).toMatch(/validate_identifier\(\)/);
+    expect(src).toMatch(/\*\[!A-Za-z0-9\._@-\]\*\)/);          // the charset allow-list
+    expect(src).toMatch(/-\*\) die "\$EXIT_BAD_NAME"/);         // no leading '-'
+    expect(src).toMatch(/EXIT_BAD_NAME=17/);
+    // every subcommand validates, and provision does it before the workdir exists
+    expect((src.match(/^\s*validate_names$/gm) ?? []).length).toBeGreaterThanOrEqual(4);
+    const prov = src.slice(src.indexOf('cmd_provision()'));
+    expect(prov.indexOf('validate_names')).toBeLessThan(prov.indexOf('make_workdir'));
+    expect(prov.indexOf('validate_names')).toBeLessThan(prov.indexOf('$OPENSSL_BIN'));
+    expect(prov.indexOf('validate_names')).toBeLessThan(prov.indexOf('keychain_presence'));
+  });
+
+  it('the NUL scan is a BYTE operation, pinned to LC_ALL=C', () => {
+    // Under a UTF-8 locale BSD `tr` errors on invalid UTF-8, so the helper reported "contains a
+    // NUL byte" for a body with no NUL. 104/104 under C, 102/104 under C.UTF-8.
+    expect(checkEndpointFn()).toMatch(/LC_ALL=C tr -d '\\000'/);
+  });
+
+  it('the self-test runs under a UTF-8 locale rather than inheriting the caller shell', () => {
+    // The suite that missed the locale bug inherited LC_CTYPE=C. Pinning a realistic locale is
+    // what stops a byte-level guard from being validated in a character set it never meets.
+    const proof = read('scripts/rollout/notif-10cb/verify/liveness-token-selftest.sh');
+    expect(proof).toMatch(/pick_utf8_locale/);
+    expect(proof).toMatch(/LC_ALL="\$\{HELPER_LOCALE:-\$UTF8_LOCALE\}"/);
+    expect(proof).toMatch(/no UTF-8 locale available/);         // fails loudly rather than vacuously
+    expect(proof).toMatch(/HELPER_LOCALE=C/);                   // and the C side is pinned too
+  });
+
   it('the operations doc records the jq requirement and the create/force contract', () => {
     const src = read('docs/NOTIFICATION_OPERATIONS.md');
     expect(src).toMatch(/Requires `jq`/);

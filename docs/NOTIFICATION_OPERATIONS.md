@@ -229,7 +229,16 @@ The helper exits non-zero on every failure and **never proceeds past one**: a fa
 from what was generated (13), or a `cmp` that could not run (14) all stop before anything is
 deployed. An item that already exists is refused with 15, and a lookup that fails for any reason
 other than "not found" — a locked keychain, denied access — is refused with 16 **before a token is
-generated or anything is written**. `with-env` returns the wrapped command's own status verbatim, so a failed
+generated or anything is written**.
+
+`--service` and `--account` must match `A-Za-z0-9` plus `.` `_` `@` `-`, with no leading `-`, 1–128
+characters; anything else is refused with 17 before the work directory exists. This is an allow-list
+rather than escaping because those names are **command text**, not argv: `security -i` reads
+whitespace-separated subcommands from stdin, so a service name of `svc -U` smuggled a `-U` into the
+generated command and performed an **update with no `--force`** — verified, including that it exited
+0 reporting success. A newline appends a whole second subcommand, and `security -i` returns only the
+last one's status. There is no documented quoting form to escape against, so an allow-list is the
+only construct that fails closed. `with-env` returns the wrapped command's own status verbatim, so a failed
 `secrets set` is reported as that failure and not masked. Cleanup failure is reported honestly and
 escalates a success to 90 — it never converts a failure into a success. INT/TERM/HUP clean up and
 exit 130/143/129, so Ctrl-C cannot leave the token on disk *or* let the next step run.
@@ -262,7 +271,11 @@ serialized with a space after the colon, failed a perfectly healthy check.
 
 A body containing a **NUL byte** is rejected outright (34): `jq` stops reading at a NUL and ignores
 everything after it, so a truncated or proxy-mangled response could otherwise present a healthy
-prefix and hide the rest.
+prefix and hide the rest. That scan runs under `LC_ALL=C` because it is a **byte** operation — under
+a UTF-8 locale BSD `tr` rejects invalid UTF-8 with "Illegal byte sequence", which made the helper
+report "contains a NUL byte" for a body containing none. The self-test now runs under a UTF-8 locale
+by default *and* pins the same bytes under `C`, because that bug was invisible to a suite that
+inherited a C-locale shell.
 
 "Parses as a JSON object" means *as `jq` parses it*, and jq is deliberately lenient about one thing:
 invalid raw UTF-8 **inside a string** is replaced with U+FFFD rather than rejected. A body carrying

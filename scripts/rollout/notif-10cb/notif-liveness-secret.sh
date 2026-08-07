@@ -47,6 +47,7 @@ readonly EXIT_DIFFER=13
 readonly EXIT_CMP_ERROR=14
 readonly EXIT_EXISTS=15
 readonly EXIT_KC_LOOKUP=16
+readonly EXIT_BAD_NAME=17
 readonly EXIT_ENV_STAGE=20
 readonly EXIT_CURL_STAGE=21
 readonly EXIT_PLACEHOLDER=22
@@ -196,6 +197,47 @@ prove_identical() {
   esac
 }
 
+# ── the service/account names are part of a COMMAND STREAM, so they are validated, not escaped ──
+# `security -i` reads whitespace-separated subcommands from stdin, so SERVICE and ACCOUNT are not
+# argv here — they are program text. Unvalidated, `--service 'svc -U'` produced:
+#
+#     add-generic-password -s svc -U -a acct -w <token>
+#
+# which is UPDATE semantics with no --force: measured, it overwrote a pre-existing value and exited
+# 0 reporting success, defeating the entire non-destructive provisioning contract. A newline is
+# worse still — it appends a SECOND subcommand, and `security -i` returns only the LAST one's
+# status, so the injected command's failure would be invisible.
+#
+# ESCAPING IS THE WRONG TOOL. `security -i`'s tokenizer is undocumented and there is no quoting form
+# to target, so any escaping scheme would be a guess that fails open. An allow-list cannot.
+#
+# THE SAFE SET: A-Z a-z 0-9 and . _ @ - , never leading '-', never empty, at most 128 bytes. That
+# covers every name this rollout uses (`padeltrainer-notif-liveness`, a unix username) and excludes
+# every byte that can change the meaning of the stream — space, tab, CR, LF, quotes, backslash.
+# Leading '-' is refused separately because it would read as an OPTION in the argv paths too.
+readonly SAFE_NAME_DESC="A-Za-z0-9 and . _ @ - (no leading '-', 1..128 chars)"
+validate_identifier() {   # $1 = value, $2 = what it is
+  local v="$1" what="$2"
+  [ -n "$v" ] || die "$EXIT_BAD_NAME" "$what is empty; must be ${SAFE_NAME_DESC}"
+  [ "${#v}" -le 128 ] || die "$EXIT_BAD_NAME" "$what is ${#v} characters; must be ${SAFE_NAME_DESC}"
+  case "$v" in
+    -*) die "$EXIT_BAD_NAME" "$what begins with '-', which would be read as an option; must be ${SAFE_NAME_DESC}" ;;
+  esac
+  # A `[!…]` bracket match catches an embedded newline and carriage return as well as spaces and
+  # option text — verified, because "the glob probably handles newlines" is exactly the kind of
+  # assumption this guard exists to not depend on.
+  case "$v" in
+    *[!A-Za-z0-9._@-]*) die "$EXIT_BAD_NAME" "$what contains a character outside the safe set; must be ${SAFE_NAME_DESC}" ;;
+  esac
+}
+
+# Called by EVERY subcommand as its first act after argument parsing — before the work directory,
+# before openssl, before any keychain call, before the network.
+validate_names() {
+  validate_identifier "$SERVICE" "--service"
+  validate_identifier "$ACCOUNT" "--account"
+}
+
 # ── existence, with lookup FAILURE kept distinct from ABSENCE ─────────────────────────────────
 # `find-generic-password` answers three different questions with the same status 44 — "no such
 # item", "no such keychain", "not a valid keychain file" — and answers a *locked* keychain with 0
@@ -236,6 +278,9 @@ cmd_provision() {
       *) die "$EXIT_USAGE" "provision: unknown argument '$1'" ;;
     esac
   done
+  # FIRST, before the workdir, before openssl, before any keychain call: these names become command
+  # text inside `security -i`, and an unvalidated one can restore -U without --force.
+  validate_names
   make_workdir
 
   # Classify the lookup BEFORE generating a token or touching anything — under --force too, because
@@ -294,6 +339,7 @@ cmd_verify_keychain() {
       *) die "$EXIT_USAGE" "verify-keychain: unknown argument '$1'" ;;
     esac
   done
+  validate_names
   make_workdir
   local back="$WORKDIR/readback.token"
   keychain_read "$back"
@@ -311,6 +357,7 @@ cmd_with_env() {
     esac
   done
   [ $# -gt 0 ] || die "$EXIT_USAGE" "with-env: no command given after --"
+  validate_names
 
   # EXACTLY ONE {} — checked BEFORE any credential is read or staged.
   #
@@ -382,6 +429,7 @@ cmd_check_endpoint() {
   [ -n "$url" ]           || die "$EXIT_USAGE" "check-endpoint: --url is required"
   [ -n "$expect_status" ] || die "$EXIT_USAGE" "check-endpoint: --expect-status is required"
   [ -n "$expect_state" ]  || die "$EXIT_USAGE" "check-endpoint: --expect-state is required"
+  validate_names
 
   # PREFLIGHT THE PARSER FIRST — before the keychain is read and before any credentialed request.
   # Two distinct reasons, both measured:
@@ -447,7 +495,12 @@ cmd_check_endpoint() {
   # clean object and passes — measured. That is the same defect --slurp closes for concatenated JSON
   # arriving by a different route, and `length == 1` cannot see it because jq never saw the tail.
   # A JSON response has no business containing a NUL; a truncated or proxy-mangled one might.
-  if ! tr -d '\000' < "$body" | cmp -s - "$body"; then
+  # LC_ALL=C ON `tr` SPECIFICALLY. This is a BYTE operation, and under a UTF-8 locale BSD `tr`
+  # rejects invalid UTF-8 input with "Illegal byte sequence" — so a body carrying a bad byte and no
+  # NUL at all was reported as "contains a NUL byte" and refused. Measured: the self-test scored
+  # 104/104 under LC_ALL=C and 102/104 under C.UTF-8, which is the locale an operator actually has.
+  # The suite now runs under UTF-8 by default so this class cannot hide again.
+  if ! LC_ALL=C tr -d '\000' < "$body" | cmp -s - "$body"; then
     die "$EXIT_BODY_SHAPE" "response body contains a NUL byte — jq would stop there and ignore the rest (body deliberately not shown)"
   fi
   if ! "$JQ_BIN" -e --slurp 'length == 1 and (.[0] | type) == "object"' "$body" >/dev/null 2>&1; then
