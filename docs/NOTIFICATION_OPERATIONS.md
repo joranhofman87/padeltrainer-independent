@@ -194,10 +194,10 @@ actually matters: that the provider notices and that recovery clears. Rehearse i
 |---|---|---|
 | a | confirm the cron is INACTIVE and every engine disabled (`assert-inert` exits 0) | precondition — this rehearsal must never arm anything |
 | b | set `NOTIF_LIVENESS_EXPECT_ARMED=true` | — |
-| c | poll the deployed endpoint | exactly `{"state":"cron_disarmed"}` with **HTTP 503** |
+| c | poll the deployed endpoint | the exact state `cron_disarmed` with **HTTP 503** |
 | d | wait for the uptime service's own confirmation threshold | **the provider alerts through its own channel** |
 | e | unset `NOTIF_LIVENESS_EXPECT_ARMED` | — |
-| f | poll the endpoint again | exactly `{"state":"inert"}` with **HTTP 200** |
+| f | poll the endpoint again | the exact state `inert` with **HTTP 200** |
 | g | wait | **the provider reports recovery** |
 
 Nothing in this sequence arms the cron, enables an engine, or sends anything: it only changes what
