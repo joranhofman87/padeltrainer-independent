@@ -76,9 +76,10 @@ inventory deterministic and mutation-free; migration reset/types drift green. **
 additive objects. **Gate:** owner approves the production additive migration separately.
 
 **Status:** authorized 2026-08-07; documentation checkpoint REVIEW-CLEAR 2026-08-08 (11 independent Codex
-rounds — final verdict "no actionable findings beyond the recorded open owner decisions"; open: OD-09/OD-10
-plus the deferred code-adjacent chores in `DOCUMENTATION_INDEX.md`); implementation not started, awaiting
-the owner's answers to the U1a decision batch (OD-09, table shape, OD-10).
+rounds — final verdict "no actionable findings beyond the recorded open owner decisions"); the U1a decision
+batch was ANSWERED 2026-08-08 (OD-09, OD-03 shape confirmation, OD-10 — accepted and recorded in
+`FOUNDATION_DECISIONS.md`; only OD-07/OD-08 remain open); deferred code-adjacent chores listed in
+`DOCUMENTATION_INDEX.md`; implementation authorized and starting.
 
 #### U1b — legacy mapping + backfill rehearsal (NOT authorized)
 
@@ -126,8 +127,9 @@ flows through canonical person/membership writes while maintaining compatibility
 
 **Acceptance/tests:** same Player UUID before/after signup; replay stable; merge semantics conform to
 OD-09 (D-04 supersedes B2; until the separately authorized retirement slice ships, the shipped B2/H1/H2
-behavior remains live and documented as scheduled-for-retirement); the reviewed merge command remains the
-sole duplicate resolution; failure injection leaves no partial auth/person link; no notification backfill. **Rollback:** switch callers back while dual-write remains. **Gate:** owner approves auth-flow rollout.
+behavior remains live and documented as scheduled-for-retirement); the reviewed merge command is the sole
+duplicate resolution AFTER the retirement slice ships (until then B2/H1/H2 is the one live automatic
+path); failure injection leaves no partial auth/person link; no notification backfill. **Rollback:** switch callers back while dual-write remains. **Gate:** owner approves auth-flow rollout.
 
 ### U3 — Read migration and tenant/capability foundation
 

@@ -47,7 +47,10 @@ Proposed core relations:
 ```text
 persons(id, user_id?, player-owned identity/profile fields)   -- EXISTS today; a lifecycle-status column would be NEW
 academy_player_memberships(id, academy_profile_id, person_id, status, private notes,
-                            trainer assignment, settings, billing overrides, timestamps)  -- NEW (U1a adds the skeleton)
+                            trainer assignment, timestamps)   -- NEW (U1a adds the EMPTY skeleton; a focused
+                                                              --      relationship ROOT per OD-03 — no settings
+                                                              --      container; overrides/repeating data go to
+                                                              --      membership-linked child tables later)
 academy_player_membership_tags(membership_id, tag_id)         -- NEW; today `academy_player_tags` holds tag DEFINITIONS
                                                               --      and assignments live in academy_player_metadata.tag_ids
 player_billing_profiles(id, person_id, kind personal|company, details)  -- NEW

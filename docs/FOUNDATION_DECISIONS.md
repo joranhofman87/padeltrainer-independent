@@ -62,8 +62,9 @@ evolved in place; the legacy metadata/location/guest structures remain compatibi
 deterministic reconciliation, reader/writer migration, an observation period, and separately
 owner-approved contraction.
 
-**Phase separation (owner, 2026-08-08):** four distinct later stages, none implemented by U1a and none to
-be marked implemented until actually shipped: (1) the U1a EMPTY additive skeleton; (2) later membership
+**Phase separation (owner, 2026-08-08):** four distinct stages, none implemented yet and none to be
+marked implemented until actually shipped — U1a implements ONLY stage 1: (1) the U1a EMPTY additive
+skeleton; (2) later membership
 population (behind the proven OD-10 lifecycle command); (3) later B2/H1/H2 retirement (its own authorized
 slice); (4) later retention implementation (OD-08).
 

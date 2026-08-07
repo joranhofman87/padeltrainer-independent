@@ -83,7 +83,7 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | Doc | Class | Purpose | AI | Current? | Superseded / next step |
 |---|---|---|---|---|---|
 | **DOCUMENTATION_INDEX.md** (this file) | CC | The map + entry point | yes | yes | — |
-| [FOUNDATION_DECISIONS.md](FOUNDATION_DECISIONS.md) | CC | Owner decision ledger — accepted (OD-02–06), recorded direction (D-01–13, provenance noted), open (OD-07–10) | yes | yes | — |
+| [FOUNDATION_DECISIONS.md](FOUNDATION_DECISIONS.md) | CC | Owner decision ledger — accepted (OD-02–06, OD-09/10), recorded direction (D-01–13, provenance noted), open (OD-07/08) | yes | yes | — |
 | [FOUNDATION_ARCHITECTURE_BLUEPRINT.md](FOUNDATION_ARCHITECTURE_BLUEPRINT.md) | CC | Target architecture contract for the foundation programme (proposals marked vs current facts) | yes | yes | — |
 | [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) | CC | Bounded release units U0–U10; U1a authorized 2026-08-07 | yes | yes | — |
 | [FOUNDATION_ROADMAP.md](FOUNDATION_ROADMAP.md) | HAO | Historical pre-programme roadmap + the N0–N7 notification-unit record | ref | historical | Superseded for forward planning by FOUNDATION_EXECUTION_PLAN.md |
