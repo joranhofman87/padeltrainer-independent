@@ -1,6 +1,6 @@
 # Foundation architecture blueprint
 
-**Status:** OD-02–OD-06 accepted by the owner 2026-08-07 (`FOUNDATION_DECISIONS.md`; the broader product-direction table there is recorded direction pending per-unit reconfirmation — see its provenance note); OD-07–OD-10 open. Implementation only via the bounded units in `FOUNDATION_EXECUTION_PLAN.md` — currently U1a alone is authorized  
+**Status:** OD-02–OD-06 accepted 2026-08-07, OD-09/OD-10 accepted 2026-08-08 (`FOUNDATION_DECISIONS.md`; the broader product-direction table there is recorded direction pending per-unit reconfirmation — see its provenance note); OD-07/OD-08 open. Implementation only via the bounded units in `FOUNDATION_EXECUTION_PLAN.md` — currently U1a alone is authorized  
 **Evidence baseline:** `ea54f08b3a204a4ed29c3d37976d51ed2d841ad6`  
 **Target:** secure, maintainable operation at 100,000+ Players and high-volume academies
 
@@ -58,7 +58,7 @@ player_billing_profiles(id, person_id, kind personal|company, details)  -- NEW
 - Academy-private fields are readable only by authorized academy actors.
 - Player-owned fields are visible to the Player and disclosed to an academy only through a valid relationship/flow.
 - Academy fields are hidden from the Player unless an explicit sharing contract says otherwise (proposed `shared_at/shared_by` audit columns; today the only sharing mechanism is `session_player_notes.visibility = 'shared'`).
-- Duplicate resolution remains the reviewed merge command; whether the shipped unique-email B2 auto-merge stands as a documented narrow exception or retires is open owner decision OD-09 (email/phone signals otherwise never carry merge authority).
+- Duplicate resolution remains the reviewed merge command. Per OD-09 (2026-08-08) D-04 supersedes the shipped unique-email B2 auto-merge: its retirement is a later authorized slice; historical auto-merges stay intact and reviewable, never auto-unmerged; email/phone signals never carry merge authority going forward.
 - Account claim attaches `auth.users.id` to the existing Player in an idempotent, audited transaction.
 - `profiles`, `guest_players`, and old foreign keys remain compatibility internals until every read, write,
   historical row, policy, function, export, and reconciliation proves migration.
@@ -245,7 +245,8 @@ new model exists. Issued financial records retain immutable snapshots and mappin
 ## 10. Definition of architecture-ready
 
 The blueprint is implemented unit-by-unit: a unit may start when the decisions that gate that unit are
-owner-approved (OD-02/OD-03 suffice for U1a; OD-07–OD-10 gate later units), the four documents are
+owner-approved (OD-02/OD-03 suffice for U1a; open OD-07/OD-08 gate U3/U7, and decided OD-09/OD-10 impose
+later-slice prerequisites), the four documents are
 consistent, the independent review has no actionable finding for that checkpoint, and the owner approves
 the bounded release unit. Unit approval is not approval to merge, deploy, migrate production, or contract
 legacy data.

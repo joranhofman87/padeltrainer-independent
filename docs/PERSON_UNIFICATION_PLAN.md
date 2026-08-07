@@ -38,11 +38,13 @@ divergences. Each past fix patched one crack; this plan removes the seam.
 
 ## 2. Decisions locked (2026-07-16, owner)
 
-> **Conflict note (2026-08-07):** owner decision D-04 (`FOUNDATION_DECISIONS.md`) — email or phone
-> alone never authorizes an identity merge — conflicts, read strictly, with auto-merge key (b)
-> below. Disposition (D-04 supersedes + a remediation slice vs B2 kept as an explicit exception) is
-> **OPEN owner decision OD-09** in `FOUNDATION_DECISIONS.md`; until answered, the shipped B2/H1/H2
-> behavior stands exactly as documented below.
+> **Conflict note — RESOLVED by OD-09 (owner, 2026-08-08):** D-04 (`FOUNDATION_DECISIONS.md`) — email
+> or phone alone never authorizes an identity merge — SUPERSEDES auto-merge key (b) below. Future
+> B2/H1/H2 automatic email-based merging will be disabled in a later, separately authorized slice (not
+> U1a); until that slice ships the behavior below remains live. Historical auto-merges remain intact,
+> identifiable, and reviewable, and are never automatically unmerged — suspected mismatches go through
+> the reviewed manual duplicate-resolution process. The text below is the historical record of what
+> shipped.
 
 1. **One table.** A single `persons` table holds identity **and** account fields. "Has a login
    account" is simply **`persons.user_id IS NOT NULL`**. `profiles` is absorbed; `guest_players` and
@@ -119,9 +121,11 @@ partial membership layer already exists (`academy_player_metadata`, `academy_pla
 creation; first slice U1a in `FOUNDATION_EXECUTION_PLAN.md`). `academy_player_metadata` /
 `academy_player_locations` migrate into it additively and remain as compatibility until
 reconciliation and owner-gated contraction — the earlier "extend metadata in place, don't invent a
-new table" recommendation is superseded. OD-03 resolves the TOPOLOGY only: membership-row lifecycle
-on person merge/collapse/anonymize/delete (and academy deletion) is OPEN owner decision OD-10, which
-gates population — not the empty U1a skeleton.
+new table" recommendation is superseded. OD-03 resolves the TOPOLOGY; membership-row lifecycle is
+**OD-10 (accepted 2026-08-08)**: merge/collapse transactionally repoints memberships with
+never-silently-overwrite conflict semantics, anonymization retains the UUID + relationship, academy
+deletion removes its membership rows via the audited flow (never cascading into financial evidence) —
+the repoint command must be proven before population, not before the empty U1a skeleton.
 
 ### 4.3 The collapse: every `(player_id | guest_player_id)` → `person_id`
 
@@ -612,8 +616,9 @@ One domain per PR, each with tests + live-verify, in dependency order:
   `FOUNDATION_DECISIONS.md`): global person; academy-private data moves to one canonical
   `academy_player_memberships` row per `(academy, person)`; `academy_player_metadata` is migrated
   additively and retained as compatibility until owner-gated contraction. The earlier reuse-metadata
-  recommendation is superseded. First slice: U1a (`FOUNDATION_EXECUTION_PLAN.md`). Topology only —
-  membership lifecycle on merge/collapse/anonymize/delete is OPEN owner decision OD-10 (gates population).
+  recommendation is superseded. First slice: U1a (`FOUNDATION_EXECUTION_PLAN.md`). Membership lifecycle
+  is OD-10 (accepted 2026-08-08): transactional repoint with conflict-preview semantics, proven before
+  population (see `FOUNDATION_DECISIONS.md`).
 - **P-B (Phase 2):** disposition of the 76 no-email guests and 28 shared-email families after the
   review report — merge, keep, or manual case-by-case.
 - **P-C (Phase 3.4): RESOLVED — identity-only.** Owner chose "dedup/grouping only, amount math

@@ -24,7 +24,7 @@ If you are an AI agent (Claude / Codex) or a new human contributor, read these *
 | 8 | [OBSERVABILITY_AND_RECOVERY.md](OBSERVABILITY_AND_RECOVERY.md) | How failures surface (Slack alerts) and how to recover. |
 | 9 | [QUALITY_GATES.md](QUALITY_GATES.md) | The exact CI gates and what each one actually checks. |
 | 10 | [FOUNDATION_ROADMAP.md](FOUNDATION_ROADMAP.md) | Historical programme roadmap (notification units); foundation work now proceeds via rows 11–13. |
-| 11 | [FOUNDATION_DECISIONS.md](FOUNDATION_DECISIONS.md) | Owner decision ledger — OD-02–OD-06 accepted 2026-08-07; D-01–D-13 recorded direction (provenance noted in-doc); OD-07–10 open. |
+| 11 | [FOUNDATION_DECISIONS.md](FOUNDATION_DECISIONS.md) | Owner decision ledger — OD-02–OD-06 accepted 2026-08-07, OD-09/10 accepted 2026-08-08; D-01–D-13 recorded direction (provenance noted in-doc); OD-07/08 open. |
 | 12 | [FOUNDATION_ARCHITECTURE_BLUEPRINT.md](FOUNDATION_ARCHITECTURE_BLUEPRINT.md) | Target architecture contract for the 100k-Player foundation programme (grounded in [audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md)). |
 | 13 | [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) | Ordered bounded release units U0–U10; U1a is the first authorized slice. |
 
