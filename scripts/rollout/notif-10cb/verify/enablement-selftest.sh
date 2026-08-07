@@ -1051,21 +1051,34 @@ else
   # lookup would have matched a line MISSING its backslash — quietly weaker than the `grep -F` it
   # replaced. ENVIRON does no escape processing on any implementation, so the pattern arrives byte
   # for byte, which is what a fixed-string search has to mean.
-  code_line_of() { pat="$1" awk 'BEGIN{p=ENVIRON["pat"]} { sub(/--.*$/, "") } index($0, p) { print NR; exit }' "$CANARY_SQL"; }
-  code_has() { pat="$1" awk 'BEGIN{p=ENVIRON["pat"]} { sub(/--.*$/, "") } index($0, p) { f = 1; exit } END { exit !f }' "$CANARY_SQL"; }
+  # ANCHORS ARE REGEXES WITH BOUNDARIES, NOT SUBSTRINGS.
+  #
+  # `index()` matches anywhere, so every anchor was satisfiable by a RENAMED statement that merely
+  # contains it: `CREATE TEMP TABLE _canary_clock_RENAMED`, `_canary_floor_RENAMED`,
+  # `fake_open_notification_worker_invocation(`, `fake_notif_channel_kill_gate('email')`. Each of
+  # those moves the artifact while the check still resolves — a PASS about a file that no longer
+  # does the thing. (I found this by mutating `_canary_floor` to `_canary_floor_RENAMED` to prove
+  # the anchor-missing branch, and watching the check succeed instead.)
+  #
+  # The patterns below therefore pin what must FOLLOW the name — end of line, whitespace, an open
+  # paren, a schema qualifier — so a suffix rename stops matching. Still ENVIRON, so no escape
+  # processing; `~` with a dynamic regex is POSIX.
+  code_line_of_re() { re="$1" awk 'BEGIN{r=ENVIRON["re"]} { sub(/--.*$/, "") } $0 ~ r { print NR; exit }' "$CANARY_SQL"; }
+  code_has_re() { re="$1" awk 'BEGIN{r=ENVIRON["re"]} { sub(/--.*$/, "") } $0 ~ r { f = 1; exit } END { exit !f }' "$CANARY_SQL"; }
+  code_line_of() { code_line_of_re "$1"; }
   # HALF-OPEN [from, to) — the upper bound is not decoration. The sed range it replaced was
   # `${L_FLOOR}q;/CREATE TEMP TABLE _canary_floor/,$p`, which stops BEFORE the floor assertion's
   # terminating line. Counting to EOF instead would let a mutant move a predicate out of
   # `_canary_floor` and satisfy the count from anywhere later in the file.
   code_count_between() {
-    pat="$1" awk -v from="$2" -v to="$3" 'BEGIN{p=ENVIRON["pat"]} { sub(/--.*$/, "") } NR >= from && NR < to && index($0, p) { n++ } END { print n + 0 }' "$CANARY_SQL"
+    re="$1" awk -v from="$2" -v to="$3" 'BEGIN{r=ENVIRON["re"]} { sub(/--.*$/, "") } NR >= from && NR < to && $0 ~ r { n++ } END { print n + 0 }' "$CANARY_SQL"
   }
   line_of() { code_line_of "$1"; }
-  L_CLOCK="$(line_of 'CREATE TEMP TABLE _canary_clock')"
-  L_CEIL="$(line_of 'FROM pg_temp._canary_radius));')"
-  L_FLOOR="$(line_of 'FROM pg_temp._canary_floor));')"
-  L_GATE="$(line_of '\i _invocation_gate_replay.sql')"
-  L_OPEN="$(line_of 'open_notification_worker_invocation(')"
+  L_CLOCK="$(code_line_of_re '^CREATE TEMP TABLE _canary_clock[[:space:]]')"
+  L_CEIL="$(code_line_of_re 'FROM pg_temp\._canary_radius\)\);')"
+  L_FLOOR="$(code_line_of_re 'FROM pg_temp\._canary_floor\)\);')"
+  L_GATE="$(code_line_of_re '^\\i _invocation_gate_replay\.sql[[:space:]]*$')"
+  L_OPEN="$(code_line_of_re 'public\.open_notification_worker_invocation\(')"
   if [[ -z "$L_CLOCK" || -z "$L_CEIL" || -z "$L_FLOOR" || -z "$L_GATE" || -z "$L_OPEN" ]]; then
     bad "canary_invoke.sql is missing a scope gate (clock=$L_CLOCK ceiling=$L_CEIL floor=$L_FLOOR gate=$L_GATE open=$L_OPEN)"
   else
@@ -1085,7 +1098,7 @@ else
   # The floor is EVENT-SCOPED (both halves) while the ceiling stays global — the two questions the
   # rollout must not conflate. An event-agnostic floor is satisfied by unrelated due work, mails a
   # real recipient who has nothing to do with the cutover, and still proves nothing.
-  L_FLOOR_START="$(code_line_of 'CREATE TEMP TABLE _canary_floor')"
+  L_FLOOR_START="$(code_line_of_re '^CREATE TEMP TABLE _canary_floor AS[[:space:]]*$')"
   # NO DEFAULTED BOUNDS. A `${L_FLOOR:-999999}` fallback would quietly count to EOF — the exact
   # weakened behaviour the bound exists to prevent — and emit a PASS beside the anchor's own
   # failure. The suite would still end non-zero, so it is not a hole; it is a line of output that
@@ -1099,7 +1112,7 @@ else
       || bad "...and BOTH halves of the floor are scoped to open_slots_player (found $floor_events)"
   fi
   # And the floor consults the OTHER door the claim goes through.
-  if code_has "notif_channel_kill_gate('email')"; then
+  if code_has_re "NOT public\.notif_channel_kill_gate\('email'\)"; then
     ok "...the floor consults the channel kill gate (the claim's own first act)"
   else
     bad "...the floor consults the channel kill gate (the claim's own first act)"
