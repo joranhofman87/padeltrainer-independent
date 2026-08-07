@@ -138,10 +138,13 @@ states is unavoidable for a few seconds. Take the one that fails safe:
 # which is true: activation is expected and the cron is not yet armed.
 supabase secrets set NOTIF_LIVENESS_EXPECT_ARMED=true --project-ref ficwbdrzefmblkbkomzw
 
-# STEP 7b — confirm the endpoint has picked it up before arming (expect 503 cron_disarmed):
-curl -s -o /dev/null -w '%{http_code}\n' \
-  -H "Authorization: Bearer <token>" \
-  https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness
+# STEP 7b — confirm the endpoint has picked it up before arming. Check the STATE, not the code:
+# query_failed, misconfigured, stale and cron_disarmed ALL return 503, so a status-only check
+# would let you arm on a broken endpoint believing the expectation had propagated.
+curl -s -H "Authorization: Bearer <token>" \
+  https://ficwbdrzefmblkbkomzw.supabase.co/functions/v1/notif-liveness | grep -q '"state":"cron_disarmed"' \
+  && echo "expectation propagated — safe to arm" \
+  || echo "NOT propagated (or the endpoint is unhealthy) — do NOT arm"
 
 # STEP 7c — arm the cron via the reviewed tooling (run-enablement.sh activate ...).
 ```
