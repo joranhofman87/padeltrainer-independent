@@ -119,6 +119,23 @@ trap 'on_signal INT'  INT
 trap 'on_signal TERM' TERM
 trap 'on_signal HUP'  HUP
 
+# Portable file mode. The two `stat` dialects are not merely different flags — they are
+# INCOMPATIBLE in a way that fails open: on GNU, `stat -f FILE` means "report the FILE SYSTEM" and
+# exits 0 with unrelated output, so a `stat -f … || stat -c …` fallback never reaches the fallback
+# and the comparison silently fails. Try GNU first, then validate the result is octal digits before
+# believing it. (Found by CI: this passed on macOS and failed on ubuntu-latest.)
+file_mode() {
+  local f="$1" m=""
+  m="$(stat -c '%a' "$f" 2>/dev/null)" || m=""
+  case "$m" in
+    ''|*[!0-7]*) m="$(stat -f '%Lp' "$f" 2>/dev/null)" || m="" ;;
+  esac
+  case "$m" in
+    ''|*[!0-7]*) printf 'unknown' ;;
+    *) printf '%s' "$m" ;;
+  esac
+}
+
 make_workdir() {
   # An explicit template honours TMPDIR; the bare and -t forms escape a test sandbox.
   WORKDIR="$(mktemp -d "${TMPDIR:-/tmp}/notif-liveness.XXXXXX")" || die "$EXIT_USAGE" "mktemp failed"
@@ -265,8 +282,8 @@ cmd_with_env() {
   local envfile="$WORKDIR/liveness.env"
   printf 'NOTIF_LIVENESS_TOKEN=%s\n' "$(cat "$back")" > "$envfile" \
     || die "$EXIT_ENV_STAGE" "could not stage the env file"
-  [ "$(stat -f '%Lp' "$envfile" 2>/dev/null || stat -c '%a' "$envfile")" = "600" ] \
-    || die "$EXIT_ENV_STAGE" "env file is not mode 0600"
+  [ "$(file_mode "$envfile")" = "600" ] \
+    || die "$EXIT_ENV_STAGE" "env file is not mode 0600 (got $(file_mode "$envfile"))"
 
   # RE-EXTRACT FROM THE FINISHED ARTEFACT and compare against the keychain readback. Proving that
   # both were "built from the same variable" proves nothing about the file that will actually be
