@@ -902,16 +902,16 @@ export function BulkCreateContent({
       const hasPublicSlots = publicSlots.length > 0;
       if (shouldInvokeNotifyFollowersOnBulkGenerate({ hasPublicSlots, academyId })) {
         try {
-          // MIN/MAX OVER THE CALENDAR DATES, NOT OVER THE INSTANTS — and this is not pedantry.
-          // The edge derives the authoritative range in SQL as
-          // `min((start_time AT TIME ZONE <trainer tz>)::date)`, i.e. it converts first and takes
-          // the extreme of the DATES. Taking the extreme of the INSTANTS and converting afterwards
-          // is a different function, because `AT TIME ZONE` is not monotonic across a DST
-          // fall-back: 01:00Z maps to local 03:00 while the LATER 01:30Z maps to local 02:30. On
-          // that one hour a year the two orderings disagree, the client's range would not match
-          // the server's, and the request would be REFUSED. Converting first makes the two
-          // definitions the same function whenever this browser and the trainer's profile are in
-          // the same timezone — which is the case the compatibility assertion has to survive.
+          // MIN/MAX OVER THE CALENDAR DATES, NOT OVER THE INSTANTS — mirroring the edge exactly.
+          // The authoritative range is derived server-side as
+          // `min((start_time AT TIME ZONE <trainer tz>)::date)`: convert first, then take the
+          // extreme of the DATES. Computing it the same way here means the two are the same
+          // function by CONSTRUCTION whenever this browser and `trainer_profiles.timezone` agree,
+          // rather than agreeing for a reason someone has to re-derive. The edge refuses a range it
+          // did not derive itself, so "the same function" is the whole requirement.
+          //
+          // (For real timezones the extreme-of-instants form gives the same DATES — the one-hour
+          // DST inversion never spans midnight. This is not relying on that.)
           //
           // These are the LATEST/EARLIEST START. There is no end_time involved; the historical
           // name `latestEnd` said otherwise and is gone.

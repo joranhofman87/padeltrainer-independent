@@ -223,17 +223,19 @@ describe('notif_open_slots_validate_batch — the date range is a CALENDAR range
     await expect(validate([ID(1)], TRAINER, 'Mars/Olympus_Mons')).rejects.toThrow();
   });
 
-  it('min/max are taken over the CONVERTED DATES, which differ from the instants across a DST fall-back', async () => {
-    // Europe/Amsterdam falls back at 2026-10-25 03:00 CEST -> 02:00 CET.
-    //   A = 2026-10-25T00:59:00+02  (22:59Z on the 24th)  -> local 2026-10-25 00:59
-    //   B = 2026-10-24T23:30:00+02  (21:30Z on the 24th)  -> local 2026-10-24 23:30
-    // B is the EARLIER instant and also the earlier local date, so this pair alone does not
-    // separate the two definitions. The separating pair is inside the repeated hour:
-    //   C = 2026-10-25T02:30:00+02  (00:30Z) -> local 02:30 on the 25th
-    //   D = 2026-10-25T02:30:00+01  (01:30Z) -> local 02:30 on the 25th, one hour LATER in UTC
-    // Both land on the same local date, so `min(instant)` and `min(local date)` agree here too —
-    // which is the point worth pinning: the function must not be sensitive to WHICH of the two
-    // repeated wall-clock instants it saw. What it must get right is the DATE.
+  it('is unmoved by WHICH of the two repeated wall-clock instants a DST fall-back produced', async () => {
+    // Europe/Amsterdam falls back at 2026-10-25 03:00 CEST -> 02:00 CET, so 02:30 local happens
+    // twice: once at 00:30Z (CEST) and again at 01:30Z (CET). Both are the 25th. What this pins is
+    // that the function is not sensitive to which one it saw.
+    //
+    // NOTE WHAT THIS DOES *NOT* PROVE, because an earlier version of this test claimed it did.
+    // It does not separate `min((x AT TIME ZONE tz)::date)` from `(min(x) AT TIME ZONE tz)::date`.
+    // At TIMESTAMP granularity those differ — `AT TIME ZONE` really is non-monotonic here — but at
+    // DATE granularity they do not, for any real zone: the inversion is bounded by the one-hour
+    // shift and no tz-database transition puts the repeated hour across midnight. Surveyed at
+    // 10-minute resolution over 2000-2040 across ten DST-heavy zones: zero date inversions. So no
+    // fixture can make these two forms disagree, and a test that claimed to was proving nothing.
+    // The shape is pinned structurally instead, in the test below.
     await slot(ID(1), { startTime: '2026-10-25T00:30:00Z' });   // local 02:30 CEST, 25 Oct
     await slot(ID(2), { startTime: '2026-10-25T01:30:00Z' });   // local 02:30 CET,  25 Oct
     const r = await validate([ID(1), ID(2)]);
@@ -247,6 +249,27 @@ describe('notif_open_slots_validate_batch — the date range is a CALENDAR range
     const s = await validate([ID(3), ID(4)]);
     expect(asIso(s.min_start_date)).toBe('2026-10-24');
     expect(asIso(s.max_start_date)).toBe('2026-10-25');
+  });
+
+  it('CONVERTS INSIDE THE AGGREGATE — pinned on the applied definition, since no data can show it', async () => {
+    // The one honest way to hold this shape. `min((x AT TIME ZONE tz)::date)` is the direct
+    // expression of "the earliest calendar date this batch covers"; `(min(x) AT TIME ZONE tz)::date`
+    // is a different question that happens to share every answer. Because it shares every answer,
+    // a behavioural test cannot tell them apart — so this reads the function Postgres actually
+    // compiled and asserts the conversion is inside the aggregate, for both ends of the range.
+    const def = (await c.query(`
+      SELECT pg_get_functiondef(p.oid) AS src
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'notif_open_slots_validate_batch'`)).rows[0].src as string;
+    const code = def.split('\n').map((l) => { const i = l.indexOf('--'); return i === -1 ? l : l.slice(0, i); }).join('\n');
+    expect(code).toContain('min((s.start_time AT TIME ZONE');
+    expect(code).toContain('max((s.start_time AT TIME ZONE');
+    expect(code, 'converting the aggregate instead of aggregating the conversion')
+      .not.toMatch(/min\(s\.start_time\)\s*AT TIME ZONE/);
+    expect(code, 'converting the aggregate instead of aggregating the conversion')
+      .not.toMatch(/max\(s\.start_time\)\s*AT TIME ZONE/);
+    // ...and the occurrence is emphatically NOT date-truncated: it is an instant.
+    expect(code).toContain('max(s.created_at)');
   });
 });
 
