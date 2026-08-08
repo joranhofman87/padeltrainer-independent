@@ -8,3 +8,19 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role;
+
+-- ── Deny-list: tables that must stay default-deny even locally ────────────────────────────────
+-- The blanket grant above is deliberately broad, but `academy_player_memberships` is default-deny
+-- BY DESIGN (RLS on, zero policies, no named-role privileges — see
+-- 20261113100000_u1a_academy_player_memberships.sql). Without this REVOKE a plain `supabase db reset`
+-- silently hands service_role — which also carries BYPASSRLS — full access to it, so the default-deny
+-- property would hold only on a freshly-pushed database and never locally or in CI, where every test
+-- that asserts it runs. Re-revoke AFTER the grant, not before.
+-- Existence-guarded on purpose: the U1a rollback drops the table, and a bare REVOKE against a missing
+-- relation would break every later reset.
+DO $$
+BEGIN
+  IF to_regclass('public.academy_player_memberships') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON public.academy_player_memberships FROM PUBLIC, anon, authenticated, service_role';
+  END IF;
+END $$;
