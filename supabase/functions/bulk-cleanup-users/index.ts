@@ -14,7 +14,7 @@
 // admin gate, the {confirm:true} safety latch, the preserved-admins set, per-user error collection,
 // and the audit log entry.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
-import { deleteUserData } from "../_shared/delete-user-data.ts";
+import { deleteUserData, AccountHasMembershipsError } from "../_shared/delete-user-data.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,7 +114,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    const results: { deleted: string[]; errors: string[] } = { deleted: [], errors: [] };
+    // `skipped` is its own bucket, deliberately separate from `errors`: a membership-bearing account
+    // is not a failure to investigate, it is a decision the preflight made. Folding the two together
+    // would bury a routine skip in a list of things that went wrong — and, worse, make a run that
+    // skipped everything look like a run that broke.
+    const results: { deleted: string[]; errors: string[]; skipped: string[] } =
+      { deleted: [], errors: [], skipped: [] };
 
     for (const profile of allProfiles || []) {
       const userId = profile.user_id;
@@ -127,6 +132,15 @@ Deno.serve(async (req) => {
         results.deleted.push(`${profile.email} (${userId})`);
         console.log(`Deleted user: ${userId}`);
       } catch (error) {
+        if (error instanceof AccountHasMembershipsError) {
+          // SKIP and continue. The preflight refused before touching anything, so this user's auth
+          // account and every row it owns are untouched — nothing to clean up, nothing half-done.
+          console.log(`Skipped user ${userId}: ${error.code} (${error.membershipCount} membership(s))`);
+          results.skipped.push(
+            `${profile.email} (${userId}): ${error.code} — ${error.membershipCount} academy membership(s)`,
+          );
+          continue;
+        }
         console.error(`Error processing user ${userId}:`, error);
         results.errors.push(`${profile.email}: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
@@ -140,6 +154,7 @@ Deno.serve(async (req) => {
       details: {
         deleted_count: results.deleted.length,
         error_count: results.errors.length,
+        skipped_count: results.skipped.length,
         preserved_users: preservedUserIds,
       },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
@@ -150,9 +165,10 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Cleanup complete. Deleted ${results.deleted.length} users.`,
+        message: `Cleanup complete. Deleted ${results.deleted.length} users, skipped ${results.skipped.length}.`,
         deleted: results.deleted,
         errors: results.errors,
+        skipped: results.skipped,
         preserved: preservedUserIds,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }

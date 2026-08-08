@@ -15,7 +15,11 @@ type Row = Record<string, unknown>;
  * is deleted. Awaiting a Supabase builder never rejects — it resolves to `{ error }` — so a test
  * that only exercises the happy path proves nothing about the failure ordering.
  */
-function makeFakeAdmin(fail?: { table: string; op: "delete" | "update" | "select" }) {
+function makeFakeAdmin(
+  fail?: { table: string; op: "delete" | "update" | "select" },
+  // The U1c preflight probe. Default: no memberships, so every pre-existing test behaves as before.
+  preflight?: { has_memberships?: boolean; membership_count?: number; person_ids?: string[]; error?: unknown },
+) {
   const store: Record<string, Row[]> = {
     trainer_profiles: [{ id: "tp1", user_id: "u1" }],
     profiles: [], // no player profile
@@ -106,6 +110,21 @@ function makeFakeAdmin(fail?: { table: string; op: "delete" | "update" | "select
   const admin = {
     _store: store,
     _callOrder: callOrder,
+    // Recorded in callOrder like every other operation, so a test can assert the preflight ran FIRST
+    // rather than merely that it ran.
+    rpc: (fn: string, _args: Record<string, unknown>) => {
+      callOrder.push(`rpc:${fn}`);
+      if (preflight?.error) return Promise.resolve({ data: null, error: preflight.error });
+      return Promise.resolve({
+        data: {
+          user_id: "u1",
+          person_ids: preflight?.person_ids ?? [],
+          membership_count: preflight?.membership_count ?? 0,
+          has_memberships: preflight?.has_memberships ?? false,
+        },
+        error: null,
+      });
+    },
     _removedStoragePaths: removedStoragePaths,
     from(t: string) {
       return {
@@ -222,6 +241,9 @@ function makeOrgAdmin(orgType: "club" | "academy") {
         update: (_p: Row) => ({ eq: () => Promise.resolve({ data: null, error: null }), in: () => Promise.resolve({ data: null, error: null }) }),
       };
     },
+    // The U1c preflight probe: this fixture models an account with no memberships.
+    rpc: (_fn: string, _args: Record<string, unknown>) =>
+      Promise.resolve({ data: { has_memberships: false, membership_count: 0, person_ids: [] }, error: null }),
     auth: { admin: { deleteUser: (_id: string) => Promise.resolve({ error: null }) } },
   };
   return admin as unknown as SupabaseClient & { _store: Record<string, Row[]>; _callOrder: string[] };
@@ -283,4 +305,67 @@ Deno.test("the happy path still reaches the auth deletion, and reaches it LAST",
   const order = admin._callOrder;
   assertEquals(order.includes("auth:deleteUser"), true);
   assertEquals(order[order.length - 1], "auth:deleteUser");   // nothing runs after it
+});
+
+// ══ U1c prerequisite 2 — the account-deletion preflight ═══════════════════════════════════════════
+//
+// `academy_player_memberships.person_id` is ON DELETE RESTRICT, so deleting a person that holds a
+// membership aborts. deleteUserData is ~60 independently-committed calls, and TWO of them destroy
+// person sources: the trainer's guests (about two-thirds through) and the profile (last). An abort at
+// either leaves the account partially deleted. Hence a preflight — and hence these tests are mostly
+// about WHEN it runs, not merely that it does.
+
+Deno.test("the preflight runs BEFORE the first destructive operation, not merely before auth deletion", async () => {
+  const admin = makeFakeAdmin(undefined, { has_memberships: true, membership_count: 2, person_ids: ["p1"] });
+
+  const err = await assertRejects(() => deleteUserData(admin, "u1")) as { code?: string };
+  assertEquals(err.code, "ACCOUNT_HAS_MEMBERSHIPS");
+
+  // THE assertion. Not "auth:deleteUser is absent" — that would also hold if the check sat at the very
+  // end, which is exactly the placement this guard exists to rule out. Nothing but the probe ran.
+  assertEquals(admin._callOrder, ["rpc:account_membership_preflight"]);
+});
+
+Deno.test("a refused deletion leaves every row intact", async () => {
+  const admin = makeFakeAdmin(undefined, { has_memberships: true, membership_count: 1, person_ids: ["p1"] });
+  const before = JSON.stringify(admin._store);
+
+  await assertRejects(() => deleteUserData(admin, "u1"));
+
+  assertEquals(JSON.stringify(admin._store), before);
+  assertEquals(admin._removedStoragePaths, []);            // not even the avatar objects
+  assertEquals(admin._callOrder.includes("auth:deleteUser"), false);
+});
+
+Deno.test("the refusal carries a machine-readable code and the counts", async () => {
+  const admin = makeFakeAdmin(undefined, { has_memberships: true, membership_count: 3, person_ids: ["p1", "p2"] });
+  const err = await assertRejects(() => deleteUserData(admin, "u1")) as {
+    code?: string; membershipCount?: number; personIds?: string[];
+  };
+  // Callers branch on the code, never on message text: the bulk job has to tell "skip" from "broke".
+  assertEquals(err.code, "ACCOUNT_HAS_MEMBERSHIPS");
+  assertEquals(err.membershipCount, 3);
+  assertEquals(err.personIds, ["p1", "p2"]);
+});
+
+Deno.test("the preflight FAILS CLOSED when the probe itself errors", async () => {
+  // "We could not check" must never be treated as "there is nothing to find" — that is precisely how
+  // a partial deletion happens.
+  const admin = makeFakeAdmin(undefined, { error: { code: "42501", message: "permission denied" } });
+  await assertRejects(() => deleteUserData(admin, "u1"), Error, "preflight failed");
+  assertEquals(admin._callOrder, ["rpc:account_membership_preflight"]);
+});
+
+Deno.test("the preflight fails closed on an unusable probe result", async () => {
+  const admin = makeFakeAdmin();
+  (admin as unknown as { rpc: unknown }).rpc = (_fn: string) =>
+    Promise.resolve({ data: { nonsense: true }, error: null });
+  await assertRejects(() => deleteUserData(admin, "u1"), Error, "unusable result");
+});
+
+Deno.test("an account with NO memberships still deletes, and the probe ran first", async () => {
+  const admin = makeFakeAdmin();   // default: has_memberships false
+  await deleteUserData(admin, "u1");
+  assertEquals(admin._callOrder[0], "rpc:account_membership_preflight");
+  assertEquals(admin._callOrder.at(-1), "auth:deleteUser");
 });

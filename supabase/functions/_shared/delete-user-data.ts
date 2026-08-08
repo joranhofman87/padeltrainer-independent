@@ -76,11 +76,80 @@ function requireRead(error: unknown, label: string): void {
  * @param targetUserId - The auth.users UUID of the user to delete
  * @param _preserveClubsAndAcademies - If true, nullifies created_by instead of deleting org profiles
  */
+/**
+ * Thrown when an account cannot be deleted because a person it owns holds academy memberships.
+ *
+ * Carries a machine-readable `code` so callers branch on identity rather than on message text — the
+ * bulk job has to distinguish "skip this one" from "something broke", and a string match would make
+ * that decision fragile.
+ */
+export class AccountHasMembershipsError extends Error {
+  readonly code = "ACCOUNT_HAS_MEMBERSHIPS" as const;
+  readonly membershipCount: number;
+  readonly personIds: string[];
+
+  constructor(membershipCount: number, personIds: string[]) {
+    super(
+      `deleteUserData refused: the account owns ${membershipCount} academy membership(s) across ` +
+      `${personIds.length} person record(s). Deleting it would destroy a person that memberships ` +
+      `reference (ON DELETE RESTRICT), aborting mid-sequence and leaving the account partially deleted.`,
+    );
+    this.name = "AccountHasMembershipsError";
+    this.membershipCount = membershipCount;
+    this.personIds = personIds;
+  }
+}
+
+/**
+ * THE PREFLIGHT. Runs before the first destructive statement, and that placement is the whole point.
+ *
+ * `deleteUserData` is ~60 independently-committed PostgREST calls, not one transaction. Two of them
+ * destroy person sources: the trainer's guest players (roughly two-thirds of the way through) and the
+ * profile (last). Either fires `cleanup_orphan_person_on_source_delete`, which deletes the person —
+ * and `academy_player_memberships.person_id` is ON DELETE RESTRICT, so the call aborts. The error
+ * surfaces correctly and the auth account survives, but the ~40 deletes that already committed do not
+ * come back. Checking "before the auth deletion" would therefore be no protection at all; the check
+ * has to happen before ANY of it.
+ *
+ * INTERIM: OD-08's retain-and-scrub is the eventual design. Refusing is recoverable; a half-deleted
+ * account is not.
+ */
+export async function assertAccountHasNoMemberships(
+  supabaseAdmin: SupabaseClient,
+  targetUserId: string,
+): Promise<void> {
+  const { data, error } = await supabaseAdmin.rpc("account_membership_preflight", {
+    _user_id: targetUserId,
+  });
+
+  // Fail CLOSED. A probe that could not run tells us nothing, and "we could not check" must never be
+  // treated as "there is nothing to find" — that is precisely how the partial deletion happens.
+  if (error) {
+    throw new Error(
+      `deleteUserData preflight failed for ${targetUserId}: ${error.message ?? String(error)}. ` +
+      `No data was deleted.`,
+    );
+  }
+  const result = data as { has_memberships?: boolean; membership_count?: number; person_ids?: string[] } | null;
+  if (!result || typeof result.has_memberships !== "boolean") {
+    throw new Error(
+      `deleteUserData preflight returned an unusable result for ${targetUserId}. No data was deleted.`,
+    );
+  }
+
+  if (result.has_memberships) {
+    throw new AccountHasMembershipsError(result.membership_count ?? 0, result.person_ids ?? []);
+  }
+}
+
 export async function deleteUserData(
   supabaseAdmin: SupabaseClient,
   targetUserId: string,
   _preserveClubsAndAcademies: boolean = true
 ) {
+  // 0. PREFLIGHT — before anything is destroyed. See assertAccountHasNoMemberships.
+  await assertAccountHasNoMemberships(supabaseAdmin, targetUserId);
+
   // 1. Delete calendar events & calendar connections
   await runAll("calendar_events group", [
     ["calendar_events", supabaseAdmin.from("calendar_events").delete().eq("user_id", targetUserId)],
