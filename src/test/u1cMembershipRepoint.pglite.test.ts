@@ -364,14 +364,26 @@ describe('the coalescence is recorded on existing evidence, not just logged', ()
     });
   });
 
-  it('does not stamp a LATER review row with the same counts', async () => {
-    // The setting is consumed on first use: a second row in the same session must not inherit it.
-    await edb.query(
-      `INSERT INTO public.person_merge_review (kind, status, details)
-       VALUES ('auto_merged_email_pair', 'applied', jsonb_build_object('via', 'signup_pair'))`);
-    const { rows } = await edb.query<{ details: Record<string, unknown> }>(
-      `SELECT details FROM public.person_merge_review WHERE details->>'via' = 'signup_pair'`);
-    expect(rows[0].details).not.toHaveProperty('memberships_coalesced');
+  it('does not stamp a LATER review row in the SAME transaction', async () => {
+    // Both inserts must happen inside ONE transaction. Issuing them as two separate statements would
+    // prove nothing: the transaction-local setting is already gone by the second one, so the test
+    // would pass on the transaction boundary rather than on the trigger consuming the value.
+    await edb.exec(`
+      DO $$
+      BEGIN
+        PERFORM set_config('u1c.last_membership_repoint', '{"moved":0,"coalesced":7}', true);
+        INSERT INTO public.person_merge_review (kind, status, details)
+        VALUES ('auto_merged_twin_trust', 'applied', jsonb_build_object('via', 'first'));
+        INSERT INTO public.person_merge_review (kind, status, details)
+        VALUES ('auto_merged_email_pair', 'applied', jsonb_build_object('via', 'second'));
+      END $$;
+    `);
+    const { rows } = await edb.query<{ via: string; coalesced: number | null }>(
+      `SELECT details->>'via' AS via, (details->>'memberships_coalesced')::int AS coalesced
+       FROM public.person_merge_review WHERE details->>'via' IN ('first','second') ORDER BY 1`);
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.via === 'first')?.coalesced).toBe(7);   // consumed here
+    expect(rows.find((r) => r.via === 'second')?.coalesced).toBeNull(); // and gone for the next row
   });
 
   it('leaves a non-applied review row alone', async () => {
@@ -381,5 +393,108 @@ describe('the coalescence is recorded on existing evidence, not just logged', ()
     const { rows } = await edb.query<{ details: Record<string, unknown> }>(
       `SELECT details FROM public.person_merge_review WHERE kind = 'twin_trust_failure'`);
     expect(rows[0].details).not.toHaveProperty('memberships_moved');
+  });
+});
+
+/**
+ * merge_guest_players, driven for real.
+ *
+ * NOTE ON WHY THIS FILE EXISTS RATHER THAN AN ADDITION TO `mergeGuestPlayers.pglite.test.ts`: that
+ * suite defines its own INLINE copy of the function (line 96) instead of loading the migration, so it
+ * cannot detect a change to the shipped one. This block loads the real function out of the migration
+ * and exercises the membership path through it.
+ */
+describe('merge_guest_players is membership-aware', () => {
+  const SRC_G = 'dddd0001-0000-4000-8000-000000000000';
+  const TGT_G = 'dddd0002-0000-4000-8000-000000000000';
+  const MGR = 'eeee0001-0000-4000-8000-000000000000';
+  let mdb: PGlite;
+
+  beforeAll(async () => {
+    mdb = new PGlite();
+    await mdb.exec(`
+      CREATE SCHEMA IF NOT EXISTS auth;
+      CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS
+        $fn$ SELECT nullif(current_setting('test.uid', true), '')::uuid $fn$;
+
+      CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
+      CREATE TABLE public.persons (id uuid PRIMARY KEY, user_id uuid);
+      CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        person_id uuid NOT NULL, profile_id uuid UNIQUE, guest_player_id uuid UNIQUE);
+      CREATE TABLE public.guest_players (
+        id uuid PRIMARY KEY, full_name text, first_name text, last_name text, email text, phone text,
+        skill_rating numeric, rating_system text, birth_date date, notes text,
+        billing_business_name text, billing_address text, billing_btw_number text,
+        preferred_location_id uuid, source text, academy_profile_id uuid, trainer_id uuid,
+        has_trained boolean, linked_profile_id uuid, twin_of_profile_id uuid);
+      CREATE TABLE public.academy_trainers (academy_profile_id uuid, trainer_profile_id uuid, status text);
+      CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid,
+        guest_player_id uuid, player_id uuid, person_id uuid, status text, payment_status text,
+        paid_externally boolean DEFAULT false, is_captain boolean DEFAULT false,
+        paid_by_guest_player_id uuid, paid_by_person_id uuid, booked_by_guest_player_id uuid,
+        created_at timestamptz DEFAULT now());
+      CREATE TABLE public.invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid, person_id uuid);
+      CREATE TABLE public.intake_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        guest_player_id uuid, person_id uuid, cycle_id uuid, status text);
+      CREATE TABLE public.slot_priority_claims (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        slot_id uuid, guest_player_id uuid, person_id uuid,
+        booked_by_guest_player_id uuid, booked_by_person_id uuid);
+      CREATE TABLE public.session_player_notes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        subject_guest_player_id uuid, subject_person_id uuid);
+      CREATE TABLE public.academy_player_locations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        academy_profile_id uuid, guest_player_id uuid, profile_id uuid, person_id uuid,
+        location_id uuid, dismissed boolean DEFAULT false);
+      CREATE TABLE public.academy_player_metadata (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        academy_profile_id uuid, trainer_profile_id uuid, guest_player_id uuid, profile_id uuid,
+        person_id uuid, tag_ids uuid[] DEFAULT '{}', notes text, removed_at timestamptz);
+      CREATE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS
+        $$ BEGIN NEW.updated_at = now(); RETURN NEW; END $$;
+      CREATE FUNCTION public.is_academy_manager(_u uuid, _a uuid) RETURNS boolean
+        LANGUAGE sql STABLE AS $fn$ SELECT true $fn$;
+      -- the evidence trigger at the end of the migration attaches to this table
+      CREATE TABLE public.person_merge_review (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        kind text, status text, email text, guest_player_id uuid, profile_id uuid,
+        suggested_profile_id uuid, person_id uuid, details jsonb DEFAULT '{}'::jsonb);
+    `);
+    await mdb.exec(readFileSync(U1A, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
+
+    // The REAL migration, including the rewritten merge_guest_players — the point of this block.
+    await mdb.exec(readFileSync(REPOINT, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
+
+    await mdb.exec(`
+      INSERT INTO public.academy_profiles VALUES ('${A1}'), ('${A2}');
+      INSERT INTO public.persons (id) VALUES ('${P_SRC}'), ('${P_TGT}');
+      INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${SRC_G}','${A1}'), ('${TGT_G}','${A1}');
+      INSERT INTO public.person_links (person_id, guest_player_id)
+        VALUES ('${P_SRC}','${SRC_G}'), ('${P_TGT}','${TGT_G}');
+      SELECT set_config('test.uid', '${MGR}', false);
+    `);
+  });
+
+  afterAll(async () => { await mdb?.close(); });
+
+  it('repoints memberships, so the merge SUCCEEDS and reports the counts', async () => {
+    // A2 moves; A1 collides and coalesces to the earlier start. Without the repoint the source guest's
+    // delete cascades to a person delete that the RESTRICT FK refuses, and the whole merge fails.
+    await mdb.query(
+      `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id, created_at)
+       VALUES ($1,$2,$3::timestamptz), ($4,$5,$6::timestamptz), ($7,$8,$9::timestamptz)`,
+      [A1, P_SRC, EARLY, A1, P_TGT, LATE, A2, P_SRC, LATE]);
+
+    const { rows } = await mdb.query<{ r: Record<string, number> }>(
+      `SELECT public.merge_guest_players('academy', $1, $2, $3, '{}'::jsonb) AS r`,
+      [A1, SRC_G, TGT_G]);
+
+    expect(rows[0].r).toMatchObject({ memberships_moved: 1, memberships_coalesced: 1 });
+
+    const { rows: m } = await mdb.query<{ academy_profile_id: string; created_at: string }>(
+      `SELECT academy_profile_id, created_at FROM public.academy_player_memberships
+       WHERE person_id = $1 ORDER BY academy_profile_id`, [P_TGT]);
+    expect(m.map((r) => r.academy_profile_id)).toEqual([A1, A2]);
+    expect(new Date(m[0].created_at).toISOString()).toBe(new Date(EARLY).toISOString());
+
+    const { rows: orphan } = await mdb.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM public.academy_player_memberships WHERE person_id = $1', [P_SRC]);
+    expect(orphan[0].n).toBe(0);
   });
 });
