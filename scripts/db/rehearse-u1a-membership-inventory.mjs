@@ -49,12 +49,15 @@ const M = (n) => id('8888', n);     // metadata rows
 const L = (n) => id('9999', n);     // location rows
 
 await db.exec(`
+  -- Supabase roles, so the migration and the seed deny-list can run VERBATIM (no grant stripping).
+  CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;
   CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
   CREATE TABLE public.profiles (id uuid PRIMARY KEY);
   CREATE TABLE public.persons (id uuid PRIMARY KEY);
   CREATE TABLE public.guest_players (
     id uuid PRIMARY KEY, academy_profile_id uuid, trainer_id uuid,
-    twin_of_profile_id uuid, linked_profile_id uuid);
+    twin_of_profile_id uuid, linked_profile_id uuid,
+    notes text, preferred_location_id uuid);
   CREATE TABLE public.person_links (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), person_id uuid NOT NULL,
     profile_id uuid UNIQUE, guest_player_id uuid UNIQUE);
@@ -84,15 +87,14 @@ await db.exec(`
 `);
 
 // The REAL U1a migration — the inventory reads academy_player_memberships for its state probe.
-await db.exec(readFileSync('supabase/migrations/20261113100000_u1a_academy_player_memberships.sql', 'utf8')
-  .replace(/^(REVOKE|GRANT)[^;]*;$/gm, '')); // PGlite has no Supabase roles; ACL is proven in the pglite test
+await db.exec(readFileSync('supabase/migrations/20261113100000_u1a_academy_player_memberships.sql', 'utf8'));
 
 // ── fixtures: one per terminal disposition ────────────────────────────────────────────────────
 await db.exec(`
   INSERT INTO public.academy_profiles VALUES ('${A1}'), ('${A2}');
   INSERT INTO public.academy_trainers VALUES ('${A1}','${T1}','active'), ('${A1}','${T2}','active');
-  INSERT INTO public.profiles  SELECT * FROM (VALUES ${[5, 7, 11, 12].map((n) => `('${P(n)}'::uuid)`).join(',')}) v;
-  INSERT INTO public.persons   SELECT * FROM (VALUES ${[1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16].map((n) => `('${PE(n)}'::uuid)`).concat([`('${PE(55)}'::uuid)`, `('${PE(77)}'::uuid)`, `('${PE(99)}'::uuid)`]).join(',')}) v;
+  INSERT INTO public.profiles  SELECT * FROM (VALUES ${[5, 7, 11, 12, 31, 34].map((n) => `('${P(n)}'::uuid)`).join(',')}) v;
+  INSERT INTO public.persons   SELECT * FROM (VALUES ${[1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 30, 31, 32, 33, 34].map((n) => `('${PE(n)}'::uuid)`).concat([`('${PE(55)}'::uuid)`, `('${PE(77)}'::uuid)`, `('${PE(99)}'::uuid)`]).join(',')}) v;
 
   -- 1 eligible: academy-owned guest with one clean metadata row
   INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${G(1)}','${A1}');
@@ -194,6 +196,44 @@ await db.exec(`
   INSERT INTO public.intake_requests (id, cycle_id, guest_player_id, status)
     VALUES ('${B(16)}','${S(90)}','${G(16)}','confirmed');
 
+  -- 15 dismissed-only locations: its OWN disposition (a location the academy dismissed)
+  INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${G(17)}','${A1}');
+  INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(17)}','${G(17)}');
+  INSERT INTO public.academy_player_locations (id, academy_profile_id, guest_player_id, person_id, dismissed)
+    VALUES ('${L(17)}','${A1}','${G(17)}','${PE(17)}', true);
+
+  -- 16 SCOPE BOUNDARY: T1 has a direct A1 slot, but this slot is personal (no academy, no cycle).
+  --    The academy scope is by CYCLE, so G30 must NOT be attributed to A1 through it.
+  INSERT INTO public.guest_players (id) VALUES ('${G(30)}');
+  INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(30)}','${G(30)}');
+  INSERT INTO public.availability_slots (id, trainer_id) VALUES ('${S(30)}','${T1}');
+  INSERT INTO public.bookings (id, slot_id, guest_player_id, status)
+    VALUES ('${B(30)}','${S(30)}','${G(30)}','confirmed');
+
+  -- 17 divergent dual-key reachable ONLY through the academy's cycle scope (not a direct slot)
+  INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PE(31)}','${P(31)}');
+  INSERT INTO public.guest_players (id) VALUES ('${G(31)}');
+  INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(32)}','${G(31)}');
+  INSERT INTO public.bookings (id, slot_id, player_id, guest_player_id, status)
+    VALUES ('${B(31)}','${S(14)}','${P(31)}','${G(31)}','confirmed');
+
+  -- 18 two bookings with the SAME key pair → the divergent report is PER ROW, not per pair
+  INSERT INTO public.bookings (id, slot_id, player_id, guest_player_id, status)
+    VALUES ('${B(32)}','${S(14)}','${P(31)}','${G(31)}','pending');
+
+  -- 19 cross-source overlap: ONE person evidenced by BOTH a metadata row and a location row
+  INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${G(33)}','${A1}');
+  INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(33)}','${G(33)}');
+  INSERT INTO public.academy_player_metadata (id, academy_profile_id, guest_player_id, person_id, notes)
+    VALUES ('${M(33)}','${A1}','${G(33)}','${PE(33)}','both sources');
+  INSERT INTO public.academy_player_locations (id, academy_profile_id, guest_player_id, person_id)
+    VALUES ('${L(33)}','${A1}','${G(33)}','${PE(33)}');
+
+  -- 20 E9 guest BRIDGE: a profile made visible at A1 through a shared person with an academy guest
+  INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${G(34)}','${A1}');
+  INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(34)}','${G(34)}');
+  INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PE(34)}','${P(34)}');
+
   -- second academy relating to the SAME person as fixture 1 → tenant isolation, not a collision
   INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${G(20)}','${A2}');
   INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(1)}','${G(20)}');
@@ -243,8 +283,21 @@ ok('two runs over unchanged data are byte-identical', first.content_hash === sec
 const executedSql = Object.values(buildQueries(AS_OF))
   .map((q) => q.sql.replace(/--[^\n]*/g, ''))   // strip SQL line comments
   .join('\n');
-const wallClock = executedSql.match(/\b(now\(\)|current_date|current_timestamp|localtimestamp)\b/i);
-ok('executed inventory SQL contains no wall-clock call (asOf only)', wallClock === null, { wallClock });
+// NB: no trailing \b after `now()` — `)` is a non-word char, so /\bnow\(\)\b/ never matches a call
+// followed by a space. That defect made an earlier version of this guard silently vacuous.
+const WALL_CLOCK = /(now\s*\(|current_date|current_timestamp|localtimestamp|clock_timestamp\s*\(|statement_timestamp\s*\(|transaction_timestamp\s*\()/i;
+ok('executed inventory SQL contains no wall-clock call (asOf only)',
+  !WALL_CLOCK.test(executedSql), { match: executedSql.match(WALL_CLOCK)?.[0] });
+// mutation-check the guard itself: it must FAIL on SQL that does contain a wall-clock call
+ok('the wall-clock guard actually catches now()', WALL_CLOCK.test('SELECT now() AS x'));
+
+// `asOf` must be an absolute instant — 'now'/'today' are valid timestamptz inputs and would reintroduce
+// wall-clock behaviour through the parameter itself.
+for (const bad of ['now', 'today', 'yesterday', '', undefined]) {
+  let rejected = false;
+  try { await runMembershipInventory(query, { asOf: bad }); } catch { rejected = true; }
+  ok(`asOf rejects relative/empty input ${JSON.stringify(bad)}`, rejected);
+}
 
 // 4. MUTATION-FREE — fingerprints unchanged, and the read set really is read-only
 ok('source fingerprints identical before/after', first.mutation_free === true);
@@ -265,8 +318,48 @@ ok('auto-merged email pair is quarantined', dispOf('guest', G(9)) === 'unresolve
 ok('visibility-only profile is quarantined', dispOf('profile', P(11)) === 'unresolved_visibility_only', { got: dispOf('profile', P(11)) });
 
 // the divergent report records BOTH resolutions and picks neither
-const dk = first.report.divergent_dual_key[0];
+const dk = first.report.divergent_dual_key.find((r) => r.booking_id === B(6));
 ok('divergent report keeps both resolutions', dk && dk.overview_person_id === PE(55) && dk.fam02_person_id === PE(6), dk);
+
+// reachable only through the academy's CYCLE scope — must still be caught
+ok('cycle-only divergent dual-key is reported',
+  first.report.divergent_dual_key.some((r) => r.booking_id === B(31)),
+  first.report.divergent_dual_key.map((r) => r.booking_id));
+
+// PER ROW: two bookings sharing one key pair are two facts
+const samePair = first.report.divergent_dual_key.filter(
+  (r) => r.player_id === P(31) && r.guest_player_id === G(31));
+ok('divergent report is per-booking, not per key pair', samePair.length === 2, samePair);
+
+// SCOPE BOUNDARY: a trainer's personal slot must not pull a subject into the academy
+ok('a personal slot of an academy trainer does not create an academy candidate',
+  !first.report.dispositions.some((r) => r.subject_id === G(30) && r.academy_profile_id === A1),
+  first.report.dispositions.filter((r) => r.subject_id === G(30)));
+
+// E9 guest bridge establishes a PROFILE subject (not the guest)
+const bridged = first.report.dispositions.find((r) => r.subject_kind === 'profile' && r.subject_id === P(34));
+ok('E9 guest bridge surfaces the PROFILE at the academy',
+  bridged !== undefined && bridged.paths.includes('E9_visibility_helper'), bridged);
+
+// cross-source overlap requires BOTH legacy sources for the same canonical pair
+const overlap = first.report.duplicates_cross_source_overlap;
+ok('cross-source overlap lists a person evidenced by metadata AND locations',
+  overlap.some((r) => r.person_id === PE(33) && r.academy_profile_id === A1), overlap);
+ok('cross-source overlap excludes metadata-only persons',
+  !overlap.some((r) => r.person_id === PE(1)), overlap);
+
+// trainer-owned metadata is reported, never used to taint other academies' candidates
+ok('trainer-owned metadata has its own report', Array.isArray(first.report.trainer_owned_metadata_rows));
+
+// per-academy dispositions reconcile with the per-academy candidate totals
+const perAcademyTotals = {};
+for (const r of first.report.per_academy_dispositions) {
+  perAcademyTotals[r.academy_profile_id] = (perAcademyTotals[r.academy_profile_id] ?? 0) + r.n;
+}
+const reconciles = first.report.per_academy_reconciliation.every(
+  (r) => perAcademyTotals[r.academy_profile_id] === r.candidates);
+ok('per-academy dispositions reconcile with per-academy candidate counts', reconciles,
+  { perAcademyTotals, recon: first.report.per_academy_reconciliation });
 
 // two academies, one person, independent relationships — not a duplicate
 const collisions = first.report.duplicates_canonical_pair_collision;
@@ -300,6 +393,34 @@ ok('rollback leaves parents and the shared updated_at function intact',
 // re-running the rollback is a no-op, not an error (a reset after rollback must still work)
 await db.exec(ROLLBACK);
 ok('rollback is idempotent when the table is already absent', true);
+
+// The emptiness guard is only sound if the lock is taken BEFORE the count and held through the DROP;
+// otherwise a concurrent INSERT could land between them and be destroyed. PGlite is single-session so
+// the race cannot be driven here — pin the ordering statically instead.
+const lockAt = ROLLBACK.indexOf('LOCK TABLE public.academy_player_memberships IN ACCESS EXCLUSIVE MODE');
+const countAt = ROLLBACK.indexOf('SELECT count(*) FROM public.academy_player_memberships');
+ok('rollback locks ACCESS EXCLUSIVE before counting (no TOCTOU)',
+  lockAt !== -1 && countAt !== -1 && lockAt < countAt, { lockAt, countAt });
+
+// the seed's deny-list must survive the rolled-back schema (it is existence-guarded)
+const SEED = readFileSync('supabase/seed.sql', 'utf8');
+const SEED_DENYLIST = SEED.slice(SEED.indexOf('DO $$'));
+await db.exec(SEED_DENYLIST);
+ok('seed deny-list runs clean against the rolled-back (absent) table', true);
+
+// ROLL FORWARD: re-apply the migration, then the seed, and prove the shape is restored
+await db.exec(readFileSync('supabase/migrations/20261113100000_u1a_academy_player_memberships.sql', 'utf8'));
+await db.exec(SEED_DENYLIST);
+const restored = await db.query(`
+  SELECT (SELECT count(*)::int FROM information_schema.columns
+          WHERE table_name = 'academy_player_memberships') AS cols,
+         (SELECT count(*)::int FROM academy_player_memberships) AS rows,
+         (SELECT count(*)::int FROM pg_indexes
+          WHERE tablename = 'academy_player_memberships'
+            AND indexname = 'idx_academy_player_memberships_person') AS idx`);
+ok('roll-forward restores the exact empty shape',
+  restored.rows[0].cols === 5 && restored.rows[0].rows === 0 && restored.rows[0].idx === 1,
+  restored.rows[0]);
 
 console.log(fail === 0 ? '\n✅ U1a inventory + rollback rehearsal passed' : `\n❌ ${fail} check(s) failed`);
 process.exit(fail === 0 ? 0 : 1);

@@ -44,6 +44,11 @@ beforeAll(async () => {
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
   `);
 
+  // Probe: prove the default privileges REALLY grant here. Without this the ACL assertions could pass
+  // vacuously on an engine that silently ignored ALTER DEFAULT PRIVILEGES — i.e. the migration's
+  // REVOKE would look load-bearing while actually being untested.
+  await db.exec(`CREATE TABLE public._acl_probe (id int);`);
+
   // Parents + the shared timestamp function the migration depends on.
   await db.exec(`
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
@@ -115,6 +120,66 @@ describe('U1a — academy_player_memberships catalog shape', () => {
     expect(rows).toHaveLength(2);
   });
 
+  it('pins the primary key and the FK column mappings', async () => {
+    const pk = await db.query<{ conname: string; cols: string }>(
+      `SELECT c.conname,
+              (SELECT string_agg(a.attname, ',' ORDER BY k.ord)
+               FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ord)
+               JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum) AS cols
+       FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
+       WHERE t.relname = 'academy_player_memberships' AND c.contype = 'p'`,
+    );
+    expect(pk.rows).toHaveLength(1);
+    expect(pk.rows[0].cols).toBe('id');
+
+    const fks = await db.query<{ reftable: string; localcol: string; refcol: string }>(
+      `SELECT cl.relname AS reftable,
+              (SELECT a.attname FROM pg_attribute a
+               WHERE a.attrelid = c.conrelid AND a.attnum = c.conkey[1]) AS localcol,
+              (SELECT a.attname FROM pg_attribute a
+               WHERE a.attrelid = c.confrelid AND a.attnum = c.confkey[1]) AS refcol
+       FROM pg_constraint c
+       JOIN pg_class t ON t.oid = c.conrelid
+       JOIN pg_class cl ON cl.oid = c.confrelid
+       WHERE t.relname = 'academy_player_memberships' AND c.contype = 'f'
+       ORDER BY cl.relname`,
+    );
+    expect(fks.rows).toEqual([
+      { reftable: 'academy_profiles', localcol: 'academy_profile_id', refcol: 'id' },
+      { reftable: 'persons', localcol: 'person_id', refcol: 'id' },
+    ]);
+  });
+
+  it('pins the unique/index column ORDER and the trigger timing + function', async () => {
+    const uniq = await db.query<{ def: string }>(
+      `SELECT indexdef AS def FROM pg_indexes
+       WHERE tablename = 'academy_player_memberships'
+         AND indexname = 'academy_player_memberships_academy_person_key'`,
+    );
+    // academy-leading: the person-leading access path is the separate index below
+    expect(uniq.rows[0].def).toMatch(/\(academy_profile_id,\s*person_id\)/);
+
+    const idx = await db.query<{ def: string }>(
+      `SELECT indexdef AS def FROM pg_indexes
+       WHERE tablename = 'academy_player_memberships'
+         AND indexname = 'idx_academy_player_memberships_person'`,
+    );
+    expect(idx.rows[0].def).toMatch(/\(person_id\)/);
+
+    const trg = await db.query<{ timing: number; fname: string }>(
+      `SELECT tg.tgtype AS timing, p.proname AS fname
+       FROM pg_trigger tg
+       JOIN pg_class t ON t.oid = tg.tgrelid
+       JOIN pg_proc p ON p.oid = tg.tgfoid
+       WHERE t.relname = 'academy_player_memberships' AND NOT tg.tgisinternal`,
+    );
+    expect(trg.rows[0].fname).toBe('update_updated_at_column');
+    // tgtype bit 0 = ROW, bit 1 = BEFORE, bit 4 = UPDATE  → BEFORE UPDATE FOR EACH ROW
+    expect(trg.rows[0].timing & 1).toBe(1);
+    expect(trg.rows[0].timing & 2).toBe(2);
+    expect(trg.rows[0].timing & 16).toBe(16);
+  });
+
   it('carries the exact reviewed constraint, index and trigger names', async () => {
     const uniq = await db.query<{ conname: string }>(
       `SELECT conname FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid
@@ -143,6 +208,13 @@ describe('U1a — academy_player_memberships catalog shape', () => {
 });
 
 describe('U1a — default-deny access', () => {
+  it('the default-privilege auto-grant is REAL here (guards against a vacuous ACL proof)', async () => {
+    const { rows } = await db.query<{ ok: boolean }>(
+      `SELECT has_table_privilege('service_role', 'public._acl_probe', 'SELECT') AS ok`,
+    );
+    expect(rows[0].ok).toBe(true);
+  });
+
   it('has RLS enabled with ZERO policies (the absence IS the control)', async () => {
     const rls = await db.query<{ relrowsecurity: boolean }>(
       `SELECT relrowsecurity FROM pg_class WHERE relname = 'academy_player_memberships'`,

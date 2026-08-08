@@ -29,6 +29,12 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Take the lock BEFORE counting and hold it through the DROP (a DO block is one transaction).
+  -- Without it the guard is a TOCTOU: a concurrent INSERT could commit between `count(*)` and the
+  -- DROP's own lock acquisition, and the drop would destroy membership evidence the count never saw.
+  -- ACCESS EXCLUSIVE is what DROP TABLE takes anyway, so this only moves the wait earlier.
+  LOCK TABLE public.academy_player_memberships IN ACCESS EXCLUSIVE MODE;
+
   EXECUTE 'SELECT count(*) FROM public.academy_player_memberships' INTO v_rows;
 
   IF v_rows <> 0 THEN
