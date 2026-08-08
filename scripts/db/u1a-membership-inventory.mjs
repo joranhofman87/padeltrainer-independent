@@ -137,10 +137,13 @@ academy_cycles AS (
   FROM academy_slots sl
   WHERE sl.direct_academy_id IS NOT NULL AND sl.cyclus_id IS NOT NULL
 ),
-academy_cycle_slots AS (
-  SELECT ac.academy_profile_id, sl.slot_id
-  FROM academy_cycles ac
-  JOIN academy_slots sl ON sl.cyclus_id = ac.cycle_id
+-- The shipped booking CTE narrows further: its slot set is "sl.academy_profile_id = p_academy_id AND
+-- sl.cyclus_id IS NOT NULL" (20260827100000:746-748). So a personal or foreign-academy slot that merely
+-- SHARES a reached cycle is NOT academy booking evidence. Only E8 (intake) uses the broad cycle universe.
+academy_direct_cycle_slots AS (
+  SELECT sl.direct_academy_id AS academy_profile_id, sl.slot_id
+  FROM academy_slots sl
+  WHERE sl.direct_academy_id IS NOT NULL AND sl.cyclus_id IS NOT NULL
 ),
 
 -- ── raw source rows ─────────────────────────────────────────────────────────────────────────────
@@ -204,17 +207,17 @@ e6 AS (
   SELECT acs.academy_profile_id,
          CASE WHEN b.guest_player_id IS NOT NULL THEN 'guest' ELSE 'profile' END,
          COALESCE(b.guest_player_id, b.player_id)
-  FROM bookings b JOIN academy_cycle_slots acs ON acs.slot_id = b.slot_id
+  FROM bookings b JOIN academy_direct_cycle_slots acs ON acs.slot_id = b.slot_id
   WHERE b.guest_player_id IS NOT NULL OR b.player_id IS NOT NULL
 ),
 -- E7 — cycle-group bookings: confirmed|pending|pending_approval, profile arm only when guest IS NULL
 e7 AS (
   SELECT acs.academy_profile_id, 'guest'::text, b.guest_player_id
-  FROM bookings b JOIN academy_cycle_slots acs ON acs.slot_id = b.slot_id
+  FROM bookings b JOIN academy_direct_cycle_slots acs ON acs.slot_id = b.slot_id
   WHERE b.status IN ('confirmed','pending','pending_approval') AND b.guest_player_id IS NOT NULL
   UNION ALL
   SELECT acs.academy_profile_id, 'profile'::text, b.player_id
-  FROM bookings b JOIN academy_cycle_slots acs ON acs.slot_id = b.slot_id
+  FROM bookings b JOIN academy_direct_cycle_slots acs ON acs.slot_id = b.slot_id
   WHERE b.status IN ('confirmed','pending','pending_approval')
     AND b.player_id IS NOT NULL AND b.guest_player_id IS NULL
 ),
@@ -267,11 +270,22 @@ e9 AS (
 -- E10 — the players-overview guest scope: academy-owned OR owned by an ACTIVE academy trainer.
 --       Distinct from E3 (which is academy-direct only) and the reason a trainer-owned guest is
 --       visible at an academy at all — without it those guests would never be inventoried.
+-- ... minus the shipped removed_meta anti-join (20261006120000:103-109): a guest soft-removed AT THAT
+-- ACADEMY is suppressed from its overview scope. It may still be a candidate via its metadata row —
+-- that is S1's job, not E10's.
 e10 AS (
-  SELECT g.academy_profile_id, 'guest'::text, g.id FROM gp g WHERE g.academy_profile_id IS NOT NULL
-  UNION ALL
-  SELECT t.academy_profile_id, 'guest'::text, g.id
-  FROM gp g JOIN active_trainers t ON t.trainer_profile_id = g.trainer_id
+  SELECT x.academy_profile_id, 'guest'::text, x.gid FROM (
+    SELECT g.academy_profile_id, g.id AS gid FROM gp g WHERE g.academy_profile_id IS NOT NULL
+    UNION ALL
+    SELECT t.academy_profile_id, g.id
+    FROM gp g JOIN active_trainers t ON t.trainer_profile_id = g.trainer_id
+  ) x
+  WHERE NOT EXISTS (
+    SELECT 1 FROM meta rm
+    WHERE rm.removed_at IS NOT NULL
+      AND rm.academy_profile_id = x.academy_profile_id
+      AND rm.guest_player_id = x.gid
+  )
 ),
 -- source-table classes (the legacy overlay rows themselves are candidates too)
 s_meta AS (
@@ -337,7 +351,7 @@ conflict_values AS (
   FROM meta m
   CROSS JOIN LATERAL (VALUES
     ('notes', m.notes),
-    ('tag_ids', (SELECT COALESCE(string_agg(t::text, ',' ORDER BY t::text), '')
+    ('tag_ids', (SELECT COALESCE(string_agg(DISTINCT t::text, ',' ORDER BY t::text), '')
                  FROM unnest(COALESCE(m.tag_ids, '{}'::uuid[])) AS t)),
     ('billing_email', m.billing_email),
     ('removal_state', (m.removed_at IS NOT NULL)::text),
@@ -352,7 +366,10 @@ conflict_values AS (
   FROM gp g
   CROSS JOIN LATERAL (VALUES
     ('notes', g.notes),
-    ('preferred_location', g.preferred_location_id::text)
+    ('preferred_location', g.preferred_location_id::text),
+    -- the academy-scoped trainer relation actually lives here: metadata's trainer_profile_id is
+    -- unusable as an academy-scoped source because the owner CHECK is XOR
+    ('trainer_assignment', g.trainer_id::text)
   ) AS f(field, val)
   WHERE g.academy_profile_id IS NOT NULL AND f.val IS NOT NULL
 ),
@@ -419,7 +436,8 @@ facts AS (
         SELECT 1 FROM gp g
         WHERE g.id = r.subject_id AND g.trainer_id IS NOT NULL AND g.academy_profile_id IS NULL)
       AND NOT (r.paths && ARRAY['E2_direct_slot_academy','E3_guest_scope_any_status',
-                                'E4_academy_owned_cycle','S1_metadata_row','S2_location_row'])
+                                'E4_academy_owned_cycle','E8_intake_participant',
+                                'S1_metadata_row','S2_location_row'])
     ) AS trainer_only,
     -- location rows whose academy_profile_id does not name a real academy (WRONG-target FK: profiles)
     EXISTS (
@@ -455,25 +473,82 @@ facts AS (
 -- ── divergent dual-key: the overview reader resolves by player_id, FAM-02 stamps guest-first ─────
 -- PER ROW (booking_id retained — two bookings with the same key pair are two facts, not one) and over
 -- EVERY booking evidence path, so a booking visible only through the academy's cycle scope counts too.
+-- Derived from the booking-bearing evidence paths THEMSELVES (same predicates, same status filters),
+-- so a booking matching no shipped path can never quarantine an otherwise-eligible candidate.
 academy_bookings AS (
-  SELECT sa.academy_profile_id, b.id AS booking_id, b.player_id, b.guest_player_id
-  FROM bookings b JOIN slot_academy sa ON sa.slot_id = b.slot_id
-  UNION
-  SELECT acs.academy_profile_id, b.id, b.player_id, b.guest_player_id
-  FROM bookings b JOIN academy_cycle_slots acs ON acs.slot_id = b.slot_id
+  SELECT DISTINCT academy_profile_id, booking_id FROM (
+    -- E1
+    SELECT sa.academy_profile_id, b.id AS booking_id
+    FROM bookings b JOIN slot_academy sa ON sa.slot_id = b.slot_id AND sa.is_direct = false
+    WHERE b.player_id IS NOT NULL AND b.status IN ('confirmed','completed')
+    UNION ALL
+    -- E2
+    SELECT sa.academy_profile_id, b.id
+    FROM bookings b JOIN slot_academy sa ON sa.slot_id = b.slot_id AND sa.is_direct = true
+    WHERE b.guest_player_id IS NOT NULL OR b.player_id IS NOT NULL
+    UNION ALL
+    -- E4 / E5 (academy-owned cyclus cycles; E5 additionally excludes cancelled)
+    SELECT c.owner_id, b.id
+    FROM cycles c
+    JOIN academy_slots sl ON sl.cyclus_id = c.id
+    JOIN bookings b ON b.slot_id = sl.slot_id
+    WHERE c.owner_type = 'academy' AND c.type = 'cyclus'
+      AND (b.guest_player_id IS NOT NULL OR b.player_id IS NOT NULL)
+    UNION ALL
+    -- E6 / E7 (directly academy-stamped cycle slots)
+    SELECT acs.academy_profile_id, b.id
+    FROM bookings b JOIN academy_direct_cycle_slots acs ON acs.slot_id = b.slot_id
+    WHERE b.guest_player_id IS NOT NULL OR b.player_id IS NOT NULL
+    UNION ALL
+    -- E9 booking arm
+    SELECT t.academy_profile_id, b.id
+    FROM bookings b
+    JOIN academy_slots sl ON sl.slot_id = b.slot_id
+    JOIN active_trainers t ON t.trainer_profile_id = sl.trainer_id
+    WHERE b.player_id IS NOT NULL
+      AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled','cancelled_swap')
+  ) be
 ),
 dual_key AS (
-  SELECT ab.academy_profile_id, ab.booking_id, ab.player_id, ab.guest_player_id,
-         (SELECT pl.person_id FROM person_links pl WHERE pl.profile_id = ab.player_id) AS overview_person_id,
-         (SELECT pl.person_id FROM person_links pl WHERE pl.guest_player_id = ab.guest_player_id) AS fam02_person_id
+  SELECT ab.academy_profile_id, ab.booking_id, b.player_id, b.guest_player_id,
+         (SELECT pl.person_id FROM person_links pl WHERE pl.profile_id = b.player_id) AS overview_person_id,
+         (SELECT pl.person_id FROM person_links pl WHERE pl.guest_player_id = b.guest_player_id) AS fam02_person_id
   FROM academy_bookings ab
-  WHERE ab.player_id IS NOT NULL AND ab.guest_player_id IS NOT NULL
+  JOIN bookings b ON b.id = ab.booking_id
+  WHERE b.player_id IS NOT NULL AND b.guest_player_id IS NOT NULL
 ),
 divergent AS (
   SELECT * FROM dual_key
   WHERE overview_person_id IS DISTINCT FROM fam02_person_id
 )
 `;
+
+/**
+ * The disposition decision, defined ONCE. Three queries need it (the row list, the per-academy
+ * breakdown, the per-academy reconciliation); duplicating it invites exactly the report-vs-fact
+ * disagreement this inventory exists to prevent. Expects the `facts` CTE aliased as `f`.
+ */
+const DISPOSITION_CASE = /* sql */ `
+  CASE
+    WHEN f.wrong_target_academy_fk THEN 'unresolved_wrong_target_academy_fk'
+    WHEN NOT f.subject_exists OR NOT f.academy_exists THEN 'unresolved_orphan_reference'
+    WHEN f.person_id IS NULL THEN 'unresolved_missing_person_link'
+    WHEN f.split_frozen THEN 'unresolved_split_frozen'
+    WHEN EXISTS (SELECT 1 FROM divergent dv
+                 WHERE dv.academy_profile_id = f.academy_profile_id
+                   AND ((f.subject_kind = 'guest' AND dv.guest_player_id = f.subject_id)
+                     OR (f.subject_kind = 'profile' AND dv.player_id = f.subject_id)))
+      THEN 'unresolved_divergent_dual_key'
+    WHEN f.stale_person_stamp THEN 'unresolved_stale_person_stamp'
+    WHEN f.bridge_divergent THEN 'unresolved_bridge_divergent'
+    WHEN f.auto_merged_email_pair THEN 'unresolved_auto_merged_email_pair'
+    WHEN f.both_owner_guest THEN 'unresolved_both_owner_guest'
+    WHEN f.trainer_only THEN 'unresolved_trainer_only'
+    WHEN f.visibility_only THEN 'unresolved_visibility_only'
+    WHEN f.field_conflict THEN 'unresolved_field_conflict'
+    WHEN f.dismissed_only_locations THEN 'unresolved_dismissed_only_locations'
+    ELSE 'eligible'
+  END`;
 
 /**
  * Ordered, canonical query set. Every statement is a SELECT; the transaction is READ ONLY.
@@ -485,26 +560,7 @@ export function buildQueries(asOf) {
     dispositions: {
       sql: `${CANDIDATE_SQL}
         SELECT f.academy_profile_id, f.subject_kind, f.subject_id, f.person_id, f.paths,
-          CASE
-            WHEN f.wrong_target_academy_fk THEN 'unresolved_wrong_target_academy_fk'
-            WHEN NOT f.subject_exists OR NOT f.academy_exists THEN 'unresolved_orphan_reference'
-            WHEN f.person_id IS NULL THEN 'unresolved_missing_person_link'
-            WHEN f.split_frozen THEN 'unresolved_split_frozen'
-            WHEN EXISTS (SELECT 1 FROM divergent d
-                         WHERE d.academy_profile_id = f.academy_profile_id
-                           AND ((f.subject_kind = 'guest' AND d.guest_player_id = f.subject_id)
-                             OR (f.subject_kind = 'profile' AND d.player_id = f.subject_id)))
-              THEN 'unresolved_divergent_dual_key'
-            WHEN f.stale_person_stamp THEN 'unresolved_stale_person_stamp'
-            WHEN f.bridge_divergent THEN 'unresolved_bridge_divergent'
-            WHEN f.auto_merged_email_pair THEN 'unresolved_auto_merged_email_pair'
-            WHEN f.both_owner_guest THEN 'unresolved_both_owner_guest'
-            WHEN f.trainer_only THEN 'unresolved_trainer_only'
-            WHEN f.visibility_only THEN 'unresolved_visibility_only'
-            WHEN f.field_conflict THEN 'unresolved_field_conflict'
-            WHEN f.dismissed_only_locations THEN 'unresolved_dismissed_only_locations'
-            ELSE 'eligible'
-          END AS disposition
+               ${DISPOSITION_CASE} AS disposition
         FROM facts f
         ORDER BY f.academy_profile_id, f.subject_kind, f.subject_id`,
     },
@@ -575,32 +631,17 @@ export function buildQueries(asOf) {
         HAVING count(*) > 1
         ORDER BY f.academy_profile_id, f.person_id`,
     },
-    // Person-level: the partial unique indexes forbid two rows per (academy, same key), so a conflict
-    // is only ever between the guest-keyed and profile-keyed rows of ONE person at ONE academy.
+    // Derived from the SAME `conflict_values` CTE the disposition uses, so the report and the
+    // classification can never disagree (they did in an earlier draft).
     field_conflicts: {
       sql: `${CANDIDATE_SQL}
-        SELECT academy_profile_id, person_id, field, distinct_values
-        FROM (
-          SELECT m.academy_profile_id,
-                 COALESCE(
-                   (SELECT pl.person_id FROM person_links pl WHERE pl.guest_player_id = m.guest_player_id),
-                   (SELECT pl.person_id FROM person_links pl WHERE pl.profile_id = m.profile_id)
-                 ) AS person_id,
-                 f.field, count(DISTINCT f.val)::int AS distinct_values
-          FROM meta m
-          CROSS JOIN LATERAL (VALUES
-            ('notes', m.notes),
-            ('tag_ids', m.tag_ids::text),
-            ('billing_email', m.billing_email),
-            ('removal_state', (m.removed_at IS NOT NULL)::text),
-            ('trainer_assignment', m.trainer_profile_id::text),
-            ('preferred_location', m.preferred_location_id::text)
-          ) AS f(field, val)
-          WHERE m.academy_profile_id IS NOT NULL AND f.val IS NOT NULL
-          GROUP BY 1,2,3
-        ) x
-        WHERE distinct_values > 1 AND person_id IS NOT NULL
-        ORDER BY academy_profile_id, person_id, field`,
+        SELECT cv.academy_profile_id, cv.person_id, cv.field,
+               count(DISTINCT cv.val)::int AS distinct_values
+        FROM conflict_values cv
+        WHERE cv.person_id IS NOT NULL
+        GROUP BY cv.academy_profile_id, cv.person_id, cv.field
+        HAVING count(DISTINCT cv.val) > 1
+        ORDER BY cv.academy_profile_id, cv.person_id, cv.field`,
     },
     divergent_dual_key: {
       sql: `${CANDIDATE_SQL}
@@ -609,10 +650,19 @@ export function buildQueries(asOf) {
         FROM divergent
         ORDER BY academy_profile_id, booking_id`,
     },
+    // Trainer-owned metadata: reported with its resolved subject/person and an explicit
+    // classification. It is NOT academy-scopable (owner XOR ⇒ academy_profile_id IS NULL), so it must
+    // never influence any academy's candidate — this report is where it lives instead.
     trainer_owned_metadata_rows: {
       sql: `${CANDIDATE_SQL}
         SELECT m.id AS row_id, m.trainer_profile_id,
-               COALESCE(m.guest_player_id, m.profile_id) AS subject_id
+               CASE WHEN m.guest_player_id IS NOT NULL THEN 'guest' ELSE 'profile' END AS subject_kind,
+               COALESCE(m.guest_player_id, m.profile_id) AS subject_id,
+               COALESCE(
+                 (SELECT pl.person_id FROM person_links pl WHERE pl.guest_player_id = m.guest_player_id),
+                 (SELECT pl.person_id FROM person_links pl WHERE pl.profile_id = m.profile_id)
+               ) AS person_id,
+               'unresolved_trainer_owned_metadata'::text AS classification
         FROM meta m WHERE m.trainer_profile_id IS NOT NULL
         ORDER BY m.id`,
     },
@@ -660,13 +710,22 @@ export function buildQueries(asOf) {
         SELECT 'academy_player_locations', l.id FROM loc l WHERE l.person_id IS NULL
         ORDER BY 1, 2`,
     },
+    // `eligible_memberships` is the number of canonical rows a later backfill would INSERT for this
+    // academy — DISTINCT (academy, person) among eligible candidates. It is not the candidate count:
+    // several eligible subjects can resolve to one person, and `collision_delta` names that gap.
     per_academy_reconciliation: {
       sql: `${CANDIDATE_SQL}
         SELECT f.academy_profile_id,
                count(*)::int AS candidates,
                count(*) FILTER (WHERE f.person_id IS NOT NULL)::int AS with_person,
-               count(DISTINCT f.person_id)::int AS distinct_persons
+               count(DISTINCT f.person_id)::int AS distinct_persons,
+               count(DISTINCT f.person_id) FILTER (WHERE d.disposition = 'eligible')::int
+                 AS eligible_memberships,
+               (count(*) FILTER (WHERE d.disposition = 'eligible')
+                 - count(DISTINCT f.person_id) FILTER (WHERE d.disposition = 'eligible'))::int
+                 AS collision_delta
         FROM facts f
+        CROSS JOIN LATERAL (SELECT ${DISPOSITION_CASE} AS disposition) d
         GROUP BY f.academy_profile_id
         ORDER BY f.academy_profile_id`,
     },
@@ -676,27 +735,7 @@ export function buildQueries(asOf) {
       sql: `${CANDIDATE_SQL}
         SELECT f.academy_profile_id, d.disposition, count(*)::int AS n
         FROM facts f
-        CROSS JOIN LATERAL (SELECT
-          CASE
-            WHEN f.wrong_target_academy_fk THEN 'unresolved_wrong_target_academy_fk'
-            WHEN NOT f.subject_exists OR NOT f.academy_exists THEN 'unresolved_orphan_reference'
-            WHEN f.person_id IS NULL THEN 'unresolved_missing_person_link'
-            WHEN f.split_frozen THEN 'unresolved_split_frozen'
-            WHEN EXISTS (SELECT 1 FROM divergent dv
-                         WHERE dv.academy_profile_id = f.academy_profile_id
-                           AND ((f.subject_kind = 'guest' AND dv.guest_player_id = f.subject_id)
-                             OR (f.subject_kind = 'profile' AND dv.player_id = f.subject_id)))
-              THEN 'unresolved_divergent_dual_key'
-            WHEN f.stale_person_stamp THEN 'unresolved_stale_person_stamp'
-            WHEN f.bridge_divergent THEN 'unresolved_bridge_divergent'
-            WHEN f.auto_merged_email_pair THEN 'unresolved_auto_merged_email_pair'
-            WHEN f.both_owner_guest THEN 'unresolved_both_owner_guest'
-            WHEN f.trainer_only THEN 'unresolved_trainer_only'
-            WHEN f.visibility_only THEN 'unresolved_visibility_only'
-            WHEN f.field_conflict THEN 'unresolved_field_conflict'
-            WHEN f.dismissed_only_locations THEN 'unresolved_dismissed_only_locations'
-            ELSE 'eligible'
-          END AS disposition) d
+        CROSS JOIN LATERAL (SELECT ${DISPOSITION_CASE} AS disposition) d
         GROUP BY f.academy_profile_id, d.disposition
         ORDER BY f.academy_profile_id, d.disposition`,
     },
@@ -719,14 +758,26 @@ export function contentHash(value) {
   return createHash('sha256').update(canonicalize(value)).digest('hex');
 }
 
-/** Backend process id, used to prove every statement ran on ONE session. null if unavailable. */
-async function backendPid(query) {
+/**
+ * Session identity: backend pid AND the current transaction id. Sampled repeatedly through the run.
+ * Fails CLOSED — an executor whose identity cannot be read is exactly the executor whose snapshot
+ * guarantee cannot be trusted.
+ *
+ * `txid` is the stronger half: a pooled callback that scattered statements would land them in
+ * DIFFERENT transactions (or none), which changes the value even if the pool happened to hand back
+ * the same backend both times.
+ */
+async function sessionIdentity(query, phase) {
+  let rows;
   try {
-    const { rows } = await query('SELECT pg_backend_pid() AS pid');
-    return rows[0]?.pid ?? null;
-  } catch {
-    return null; // engines without pg_backend_pid: the check degrades, the run does not
+    ({ rows } = await query('SELECT pg_backend_pid() AS pid, txid_current() AS txid'));
+  } catch (err) {
+    throw new Error(
+      `runMembershipInventory: cannot read session identity at ${phase} (${err?.message ?? err}). ` +
+      'The inventory requires a session-pinned executor whose identity is verifiable.',
+    );
   }
+  return `${rows[0]?.pid}/${rows[0]?.txid}`;
 }
 
 /** md5 fingerprint per source table: row count + content digest, both order-independent. */
@@ -765,9 +816,20 @@ export async function runMembershipInventory(query, { asOf } = {}) {
     // The snapshot only exists if BEGIN, every read and COMMIT run on ONE backend. A pooled
     // `pool.query` would scatter them across connections and silently void both READ ONLY and
     // REPEATABLE READ, so pin the session identity and re-check it at the end.
-    const pidAtStart = await backendPid(query);
+    const session = await sessionIdentity(query, 'transaction start');
+    const assertSameSession = async (phase) => {
+      const seen = await sessionIdentity(query, phase);
+      if (seen !== session) {
+        throw new Error(
+          `runMembershipInventory: the executor is not session-pinned (${session} → ${seen} at ${phase}). ` +
+          'Pass a checked-out client or a transaction-scoped executor, never a pool: scattered ' +
+          'statements void both READ ONLY and the REPEATABLE READ snapshot.',
+        );
+      }
+    };
 
     const fingerprintBefore = await fingerprintSources(query);
+    await assertSameSession('after pre-fingerprint');
 
     const queries = buildQueries(asOf);
     const report = {};
@@ -775,17 +837,11 @@ export async function runMembershipInventory(query, { asOf } = {}) {
       const { sql, params } = queries[name];
       const { rows } = await query(sql, params ?? []);
       report[name] = rows;
+      await assertSameSession(`after read: ${name}`); // every read, not just the endpoints
     }
 
     const fingerprintAfter = await fingerprintSources(query);
-
-    const pidAtEnd = await backendPid(query);
-    if (pidAtStart !== null && pidAtStart !== pidAtEnd) {
-      throw new Error(
-        `runMembershipInventory: the query callback is not session-pinned (backend ${pidAtStart} → ${pidAtEnd}). ` +
-        'Pass a checked-out client, not a pool: a pooled callback voids the REPEATABLE READ snapshot.',
-      );
-    }
+    await assertSameSession('before commit');
 
     await query('COMMIT');
 
