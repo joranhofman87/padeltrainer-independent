@@ -12339,6 +12339,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      repoint_person_memberships: {
+        Args: { _from: string; _to: string }
+        Returns: Json
+      }
       reset_email_suppression: { Args: { p_email: string }; Returns: undefined }
       resolve_guest_member_contacts: {
         Args: { _guest_ids: string[] }
