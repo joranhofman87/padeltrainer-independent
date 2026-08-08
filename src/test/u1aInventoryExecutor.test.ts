@@ -37,6 +37,7 @@ function rowsFor(label: Label) {
 interface FakeOpts {
   failAtIndex?: number;         // 0-based index into the query sequence
   failRollback?: boolean;
+  rollbackRejectsWith?: unknown; // reject ROLLBACK with an arbitrary (possibly FALSY) value
   failRelease?: boolean;
   clientOverride?: unknown;     // return a deliberately malformed client
 }
@@ -61,6 +62,9 @@ function makeSource(opts: FakeOpts = {}) {
           const index = trace.length;
           trace.push(label);
           events.push(`query:${label}`);
+          if (label === 'ROLLBACK' && 'rollbackRejectsWith' in opts) {
+            throw opts.rollbackRejectsWith;   // deliberately a literal: drivers can reject with one
+          }
           if (label === 'ROLLBACK' && opts.failRollback) throw new Error('ROLLBACK_FAILED');
           if (opts.failAtIndex === index) throw injected;
           return { rows: rowsFor(label) };
@@ -213,12 +217,30 @@ describe('U1a executor — lifecycle', () => {
     expect(f.trace).not.toContain('ROLLBACK');
   });
 
-  it('propagates a rejected connect() without any query or release', async () => {
+  it('propagates a rejected connect() exactly once, with no query and no release', async () => {
     const boom = new Error('ACQUIRE_FAILED');
     let releases = 0;
-    const source = { connect: async () => { throw boom; }, release: () => { releases += 1; } };
+    let connects = 0;
+    const source = {
+      connect: async () => { connects += 1; throw boom; },
+      release: () => { releases += 1; },
+    };
     await expect(runMembershipInventory(source as never, { asOf: AS_OF })).rejects.toBe(boom);
+    expect(connects).toBe(1);     // a rejected acquisition is never retried
     expect(releases).toBe(0);
+  });
+
+  it('disposes the connection even when ROLLBACK rejects with a FALSY value', async () => {
+    // pg-pool and the PGlite adapter both dispose only on a TRUTHY release argument, so a driver
+    // rejecting with undefined would otherwise silently re-lease a session of unknown state.
+    for (const falsy of [undefined, null, false, 0, '']) {
+      const f = makeSource({ failAtIndex: 3, rollbackRejectsWith: falsy });
+      await expect(runMembershipInventory(f.source as never, { asOf: AS_OF }))
+        .rejects.toBe(f.injected);
+      expect(f.counts().releaseCalls).toBe(1);
+      expect(f.releaseArgs[0], `falsy rollback rejection ${String(falsy)}`).toBeTruthy();
+      expect(f.releaseArgs[0]).toBeInstanceOf(Error);
+    }
   });
 
   it('releases a malformed CALLABLE client (cleanup is independent of validity)', async () => {
@@ -289,11 +311,23 @@ describe('U1a executor — the PGlite single-session adapter', () => {
     await expect(sessions.connect()).rejects.toThrow(/poisoned/i);
   });
 
-  it('rejects a lease that was already queued when the session got poisoned', async () => {
+  it('rejects EVERY already-queued lease when the session gets poisoned', async () => {
+    // Two waiters, not one: with a single waiter, deleting the load-bearing unlock() in the poison
+    // branch still passes — it only strands the SECOND queued waiter. This is that regression.
     const sessions = await makeAdapter();
     const first = await sessions.connect();
-    const queued = sessions.connect();
+    const queuedA = sessions.connect();
+    const queuedB = sessions.connect();
     first.release(new Error('ROLLBACK_FAILED'));
-    await expect(queued).rejects.toThrow(/poisoned/i);
+
+    const settledWithin = async (p: Promise<unknown>) => {
+      const outcome = await Promise.race([
+        p.then(() => 'resolved', (e) => (/poisoned/i.test(String(e?.message ?? e)) ? 'rejected' : 'other')),
+        new Promise((r) => setTimeout(() => r('timeout'), 200)),
+      ]);
+      return outcome;
+    };
+    expect(await settledWithin(queuedA)).toBe('rejected');
+    expect(await settledWithin(queuedB)).toBe('rejected');   // not stranded
   });
 });

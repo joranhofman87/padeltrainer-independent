@@ -807,9 +807,12 @@ export class InventoryExecutorError extends Error {
  *   6. build and validate the COMPLETE result before COMMIT (never a partial report)
  *   7. COMMIT; on any failure after BEGIN was attempted and before COMMIT was confirmed, exactly one
  *      awaited ROLLBACK, then release — preserving the ORIGINAL error
- *   8. release exactly once on every path, marked before awaiting so a throwing release is not
- *      retried; a failed ROLLBACK passes the error to release() so a pool discards the poisoned
- *      connection; a release failure on an otherwise successful run rejects the run
+ *   8. release exactly once ONCE A CLIENT WITH A CALLABLE release() HAS BEEN ACQUIRED — and zero
+ *      times otherwise (a rejected connect(), or a client exposing no callable release, releases
+ *      nothing because there is nothing to release). It is marked before awaiting so a throwing
+ *      release is not retried; a failed ROLLBACK passes a TRUTHY Error to release() so a pool
+ *      discards the poisoned connection; a release failure on an otherwise successful run rejects
+ *      the run
  */
 
 function assertValidAsOf(asOf) {
@@ -960,7 +963,14 @@ export async function runMembershipInventory(sessionSource, { asOf } = {}) {
       } catch (rollbackErr) {
         // The connection may be poisoned: hand the error to release() so a pool discards it
         // (pg.PoolClient.release(err) semantics) instead of returning it to the pool.
-        try { await release(rollbackErr); } catch { /* preserve the original error */ }
+        //
+        // NORMALIZED to a truthy Error first: both pg-pool and the PGlite adapter dispose only on a
+        // TRUTHY argument, so a driver that rejected with undefined/null/false would otherwise
+        // re-lease a session whose transaction state is unknown.
+        const disposal = rollbackErr instanceof Error
+          ? rollbackErr
+          : new Error(`ROLLBACK failed: ${String(rollbackErr)}`);
+        try { await release(disposal); } catch { /* preserve the original error */ }
         throw err;
       }
     }
