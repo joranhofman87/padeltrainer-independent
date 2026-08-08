@@ -10036,6 +10036,10 @@ export type Database = {
         Returns: boolean
       }
       accept_rebook_rules: { Args: { _token: string }; Returns: undefined }
+      account_membership_preflight: {
+        Args: { _user_id: string }
+        Returns: Json
+      }
       acquire_cron_lease: {
         Args: { p_job_name: string; p_ttl_seconds?: number }
         Returns: string

@@ -1,5 +1,5 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
-import { deleteUserData } from "../_shared/delete-user-data.ts";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
+import { deleteUserData, AccountHasMembershipsError } from "../_shared/delete-user-data.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
@@ -7,7 +7,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-Deno.serve(async (req) => {
+/**
+ * The route body, exported so tests can drive the REAL contract — status codes, response shape and
+ * audit writes — instead of a copy of it. `deps.admin` is the only injection point: production passes
+ * nothing and the client is built from the environment exactly as before.
+ */
+export async function handleRequest(
+  req: Request,
+  deps: { admin?: SupabaseClient } = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,7 +24,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    const supabaseAdmin = deps.admin ?? createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
@@ -105,13 +113,33 @@ Deno.serve(async (req) => {
     try {
       await deleteUserData(supabaseAdmin, user.id);
     } catch (err) {
+      // A membership-bearing account is REFUSED, not failed-mid-way: the preflight runs before the
+      // first destructive statement, so nothing was deleted. The reason is prefixed with the machine
+      // -readable code so the audit can be filtered on it rather than on prose.
+      const refused = err instanceof AccountHasMembershipsError;
+      const reason = refused
+        ? `${err.code}: ${err.message}`
+        : String((err as Error)?.message ?? err);
+
       // the row stays as evidence, marked for what it is: a deletion that began and did not finish
       const { error: stampErr } = await supabaseAdmin.from("account_deletion_audit")
-        .update({ status: "failed", failure_reason: String((err as Error)?.message ?? err).slice(0, 500) })
+        .update({ status: "failed", failure_reason: reason.slice(0, 500) })
         .eq("id", auditRow.id);
       // a stamp that fails leaves the row at `started`, which the unfinished-deletions index
       // already surfaces — but say so loudly, because the two states mean different things
       if (stampErr) console.error("request-account-deletion: could not stamp the audit as failed", auditRow.id, stampErr);
+
+      if (refused) {
+        // 409: the account's current state prevents deletion — not a bug, and retrying unchanged will
+        // not help. The message is deliberately plain: a real person reads it.
+        return new Response(
+          JSON.stringify({
+            error: "Your account has player records that must be handled before it can be deleted. Please contact support.",
+            code: err.code,
+          }),
+          { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       throw err;
     }
     const { error: completeErr } = await supabaseAdmin.from("account_deletion_audit")
@@ -153,4 +181,8 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+// Only start the server when run as the entrypoint — importing the module (for tests) must not bind a port.
+if (import.meta.main) Deno.serve((req) => handleRequest(req));
+

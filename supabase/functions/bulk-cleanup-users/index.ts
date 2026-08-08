@@ -13,15 +13,24 @@
 // error surfacing are maintained in ONE place. This function keeps only what is bulk-specific: the
 // admin gate, the {confirm:true} safety latch, the preserved-admins set, per-user error collection,
 // and the audit log entry.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
-import { deleteUserData } from "../_shared/delete-user-data.ts";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
+import { deleteUserData, AccountHasMembershipsError } from "../_shared/delete-user-data.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-Deno.serve(async (req) => {
+/**
+ * The route body, exported so tests can drive the REAL contract — status codes, response shape and
+ * audit writes — instead of a copy of it. `deps.admin` is the only injection point: production passes
+ * nothing and the client is built from the environment exactly as before.
+ */
+export async function handleRequest(
+  req: Request,
+  deps: { admin?: SupabaseClient } = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -30,7 +39,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    const supabaseAdmin = deps.admin ?? createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
@@ -114,7 +123,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    const results: { deleted: string[]; errors: string[] } = { deleted: [], errors: [] };
+    // `skipped` is its own bucket, deliberately separate from `errors`: a membership-bearing account
+    // is not a failure to investigate, it is a decision the preflight made. Folding the two together
+    // would bury a routine skip in a list of things that went wrong — and, worse, make a run that
+    // skipped everything look like a run that broke.
+    // Skips are kept STRUCTURED, not as prose. The human-readable line is derived for the response;
+    // the durable audit record gets the machine-readable projection only — user id, code, count — so
+    // the operator can answer "which accounts were skipped and why" from the audit alone, without the
+    // audit accumulating email addresses it has no reason to retain.
+    const skipRecords: Array<{ user_id: string; code: string; membership_count: number }> = [];
+    const results: { deleted: string[]; errors: string[]; skipped: string[] } =
+      { deleted: [], errors: [], skipped: [] };
 
     for (const profile of allProfiles || []) {
       const userId = profile.user_id;
@@ -127,19 +146,41 @@ Deno.serve(async (req) => {
         results.deleted.push(`${profile.email} (${userId})`);
         console.log(`Deleted user: ${userId}`);
       } catch (error) {
+        if (error instanceof AccountHasMembershipsError) {
+          // SKIP and continue. The preflight refused before touching anything, so this user's auth
+          // account and every row it owns are untouched — nothing to clean up, nothing half-done.
+          console.log(`Skipped user ${userId}: ${error.code} (${error.membershipCount} membership(s))`);
+          skipRecords.push({
+            user_id: userId,
+            code: error.code,
+            membership_count: error.membershipCount,
+          });
+          results.skipped.push(
+            `${profile.email} (${userId}): ${error.code} — ${error.membershipCount} academy membership(s)`,
+          );
+          continue;
+        }
         console.error(`Error processing user ${userId}:`, error);
         results.errors.push(`${profile.email}: ${error instanceof Error ? error.message : "Unknown error"}`);
       }
     }
 
-    // Log the cleanup action
-    await supabaseAdmin.from("admin_impersonation_logs").insert({
+    // Log the cleanup action.
+    //
+    // The result is INSPECTED, not discarded. This row is now the only durable record of which
+    // accounts were skipped and why — a silently failed insert would mean the deletions happened, the
+    // skips are unrecorded, and the response still said everything was fine.
+    const { error: auditLogError } = await supabaseAdmin.from("admin_impersonation_logs").insert({
       admin_user_id: adminUser.id,
       target_user_id: adminUser.id,
       action: "bulk_cleanup_users",
       details: {
         deleted_count: results.deleted.length,
         error_count: results.errors.length,
+        skipped_count: results.skipped.length,
+        // Per-account and durable: a count alone cannot tell anyone WHICH accounts were left behind,
+        // which is the only thing that makes the skip actionable later.
+        skipped_details: skipRecords,
         preserved_users: preservedUserIds,
       },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
@@ -147,12 +188,27 @@ Deno.serve(async (req) => {
       expires_at: new Date().toISOString(),
     });
 
+    if (auditLogError) {
+      // The deletions ARE done and cannot be undone, so this is not an outright failure — but it must
+      // not be reported as a clean success either, because the skip record it was meant to persist is
+      // gone. Say so in the response and alert, mirroring how request-account-deletion handles an
+      // unstamped audit row.
+      console.error("bulk-cleanup-users: audit insert failed — skip records were NOT persisted", auditLogError);
+      await notifySlackEdgeError(
+        "bulk-cleanup-users",
+        `audit insert failed; ${skipRecords.length} skip record(s) not persisted`,
+        { skipped_count: skipRecords.length, deleted_count: results.deleted.length },
+      ).catch(() => {});
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Cleanup complete. Deleted ${results.deleted.length} users.`,
+        audit_incomplete: auditLogError ? true : undefined,
+        message: `Cleanup complete. Deleted ${results.deleted.length} users, skipped ${results.skipped.length}.`,
         deleted: results.deleted,
         errors: results.errors,
+        skipped: results.skipped,
         preserved: preservedUserIds,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -165,4 +221,8 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+// Only start the server when run as the entrypoint — importing the module (for tests) must not bind a port.
+if (import.meta.main) Deno.serve((req) => handleRequest(req));
+
