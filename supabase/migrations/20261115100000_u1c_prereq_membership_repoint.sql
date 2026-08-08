@@ -154,10 +154,10 @@ REVOKE ALL ON FUNCTION public.repoint_person_memberships(uuid, uuid) FROM PUBLIC
 -- the signature would break them. A coalescence is therefore surfaced with RAISE NOTICE rather than
 -- through a new return channel or a new audit table.
 
-CREATE OR REPLACE FUNCTION public.collapse_guest_person_into(
+CREATE OR REPLACE FUNCTION public.collapse_guest_person_into_reporting(
   _guest_id uuid, _guest_person uuid, _target_person uuid
 )
-RETURNS boolean
+RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
@@ -166,12 +166,12 @@ DECLARE
   v_memberships jsonb;
 BEGIN
   IF _guest_person = _target_person THEN
-    RETURN true;
+    RETURN jsonb_build_object('ok', true, 'moved', 0, 'coalesced', 0);
   END IF;
   IF EXISTS (SELECT 1 FROM public.person_links
              WHERE person_id = _guest_person AND guest_player_id IS DISTINCT FROM _guest_id)
      OR EXISTS (SELECT 1 FROM public.persons WHERE id = _guest_person AND user_id IS NOT NULL) THEN
-    RETURN false;
+    RETURN jsonb_build_object('ok', false, 'moved', 0, 'coalesced', 0);
   END IF;
   UPDATE public.person_links SET person_id = _target_person WHERE guest_player_id = _guest_id;
   PERFORM public.rederive_person(_target_person);  -- the merged guest now fills the target's gaps
@@ -198,15 +198,29 @@ BEGIN
   -- any of the updates above — and their FK is RESTRICT, so without this the DELETE below fails and
   -- the whole collapse aborts once the table is populated.
   v_memberships := public.repoint_person_memberships(_guest_person, _target_person);
-  -- Publish the counts transaction-locally. The caller's person_merge_review INSERT picks them up via
-  -- trg_stamp_membership_repoint_evidence, so the coalescence is recorded durably on the operation's
-  -- existing evidence instead of vanishing with the session log.
-  PERFORM set_config('u1c.last_membership_repoint', v_memberships::text, true);
 
   DELETE FROM public.persons WHERE id = _guest_person;
-  RETURN true;
+  RETURN jsonb_build_object(
+    'ok', true,
+    'moved',     coalesce((v_memberships->>'moved')::int, 0),
+    'coalesced', coalesce((v_memberships->>'coalesced')::int, 0));
 END;
 $$;
+
+-- The original boolean entry point, preserved EXACTLY, as a thin wrapper. Anything that still calls
+-- the three-argument boolean form — including code outside this programme — keeps working unchanged.
+CREATE OR REPLACE FUNCTION public.collapse_guest_person_into(
+  _guest_id uuid, _guest_person uuid, _target_person uuid
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+  SELECT (public.collapse_guest_person_into_reporting(_guest_id, _guest_person, _target_person)->>'ok')::boolean;
+$$;
+
+REVOKE ALL ON FUNCTION public.collapse_guest_person_into_reporting(uuid, uuid, uuid) FROM PUBLIC, anon, authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- Wiring 2/2 — merge_guest_players
@@ -254,6 +268,7 @@ DECLARE
   -- U1c prerequisite: memberships are keyed by PERSON, not by the guest row.
   v_src_person uuid;
   v_tgt_person uuid;
+  v_src_person_dies boolean := false;
   v_membership_repoint jsonb := '{}'::jsonb;
 BEGIN
   IF p_source_guest_id = p_target_guest_id THEN
@@ -470,15 +485,29 @@ BEGIN
   SELECT person_id INTO v_src_person FROM public.person_links WHERE guest_player_id = p_source_guest_id;
   SELECT person_id INTO v_tgt_person FROM public.person_links WHERE guest_player_id = p_target_guest_id;
 
-  IF v_tgt_person IS NULL
-     AND EXISTS (SELECT 1 FROM public.academy_player_memberships WHERE person_id = v_src_person) THEN
-    -- Refuse legibly instead of letting the FK produce an opaque error two statements later.
-    RAISE EXCEPTION 'cannot merge: the target player has no person link to receive % membership(s)',
-      (SELECT count(*) FROM public.academy_player_memberships WHERE person_id = v_src_person)
-      USING ERRCODE = 'foreign_key_violation';
-  END IF;
+  -- ONLY when this delete will actually destroy the source person. `cleanup_orphan_person_on_source_delete`
+  -- keeps a person that still has another link — the supported shape is one profile plus several
+  -- guests — and in that case the person lives on and its memberships belong to it, not to the target.
+  -- Repointing unconditionally would silently move a surviving human's academy relationships onto
+  -- someone else. This is the trigger's own predicate, verbatim: no link other than the dying guest's.
+  v_src_person_dies := v_src_person IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.person_links pl
+    WHERE pl.person_id = v_src_person
+      AND NOT (pl.guest_player_id IS NOT DISTINCT FROM p_source_guest_id)
+  );
 
-  v_membership_repoint := public.repoint_person_memberships(v_src_person, v_tgt_person);
+  IF v_src_person_dies THEN
+    IF v_tgt_person IS NULL
+       AND EXISTS (SELECT 1 FROM public.academy_player_memberships WHERE person_id = v_src_person) THEN
+      -- Refuse legibly instead of letting the FK produce an opaque error two statements later. Only
+      -- reachable when a repoint is genuinely required.
+      RAISE EXCEPTION 'cannot merge: the target player has no person link to receive % membership(s)',
+        (SELECT count(*) FROM public.academy_player_memberships WHERE person_id = v_src_person)
+        USING ERRCODE = 'foreign_key_violation';
+    END IF;
+
+    v_membership_repoint := public.repoint_person_memberships(v_src_person, v_tgt_person);
+  END IF;
 
   DELETE FROM public.guest_players WHERE id = p_source_guest_id;
 
@@ -538,47 +567,175 @@ END;
 $$;
 
 -- ---------------------------------------------------------------------------
--- Durable evidence for the COLLAPSE callers
--- ---------------------------------------------------------------------------
--- `merge_guest_players` records its counts in the jsonb it returns. `collapse_guest_person_into`
--- cannot: it returns boolean because the twin-claim and signup triggers call it with PERFORM/IF, and
--- changing that signature would break them.
---
--- Both of those callers already INSERT a `person_merge_review` row with status='applied' and a
--- `details` jsonb immediately after a successful collapse — that row IS the operation's existing
--- evidence. So rather than reproduce two large identity triggers just to edit one jsonb_build_object
--- in each (transcription risk for no behavioural gain), the collapse publishes its counts into a
--- TRANSACTION-LOCAL setting and a BEFORE INSERT trigger folds them into that row.
---
--- Transaction-local (`set_config(..., true)`) matters: the value cannot leak into another transaction
--- on a pooled connection. And the trigger CLEARS it once consumed, so a second review row inserted
--- later in the same transaction cannot be stamped with counts that belong to the first collapse.
 
-CREATE OR REPLACE FUNCTION public.stamp_membership_repoint_evidence()
+-- ---------------------------------------------------------------------------
+-- Durable evidence, written where the evidence row actually is
+-- ---------------------------------------------------------------------------
+-- An earlier attempt had collapse publish its counts through a transaction-local GUC for a trigger to
+-- pick up. That is INVALID: `collapse_guest_person_into` carries `SET search_path`, and PostgreSQL
+-- restores GUC state — including changes made by set_config(..., true) — when such a function exits.
+-- The value was therefore gone before the caller's INSERT ran. (PGlite does not implement that
+-- save/restore, so the test passed and proved nothing; the mechanism has been removed entirely.)
+--
+-- So the counts are recorded where the row is written. Both callers below are reproduced from
+-- 20260826280000_persons_backfill.sql (:514 and :695) programmatically, changing ONLY the collapse
+-- call site and the details payload; everything else is byte-identical to what shipped.
+
+CREATE OR REPLACE FUNCTION public.mint_person_for_profile()
 RETURNS trigger
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
 DECLARE
-  v_raw text := nullif(current_setting('u1c.last_membership_repoint', true), '');
+  v_collapse jsonb;
+  v_person uuid;
+  v_email text := nullif(btrim(NEW.email), '');
+  v_guest uuid;
+  v_guest_person uuid;
 BEGIN
-  IF v_raw IS NOT NULL AND NEW.status = 'applied' THEN
-    NEW.details := coalesce(NEW.details, '{}'::jsonb) || jsonb_build_object(
-      'memberships_moved',     coalesce((v_raw::jsonb->>'moved')::int, 0),
-      'memberships_coalesced', coalesce((v_raw::jsonb->>'coalesced')::int, 0)
-    );
-    -- Consume it: one repoint stamps exactly one applied review row.
-    PERFORM set_config('u1c.last_membership_repoint', '', true);
+  IF EXISTS (SELECT 1 FROM public.person_links WHERE profile_id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+  IF v_email IS NOT NULL THEN
+    PERFORM pg_advisory_xact_lock(hashtext('guest_email:' || lower(v_email)));
+  END IF;
+  INSERT INTO public.persons (
+    id, user_id, full_name, first_name, last_name, email, phone, birth_date,
+    skill_rating, rating_system, rating_member_id, avatar_url, bio, location,
+    preferred_language, billing_business_name, billing_address, billing_btw_number,
+    stripe_customer_id
+  ) VALUES (
+    NEW.id, NEW.user_id, NEW.full_name, NEW.first_name, NEW.last_name, NEW.email, NEW.phone, NEW.birth_date,
+    NEW.skill_rating, NEW.rating_system, NEW.rating_member_id, NEW.avatar_url, NEW.bio, NEW.location,
+    NEW.preferred_language, NEW.billing_business_name, NEW.billing_address, NEW.billing_btw_number,
+    NEW.stripe_customer_id
+  ) ON CONFLICT (id) DO NOTHING;
+  v_person := NEW.id;
+  INSERT INTO public.person_links (person_id, profile_id) VALUES (v_person, NEW.id);
+
+  -- Reverse unique email pair — the account-claim flow (guest existed first, the human signs up
+  -- with that email later; this shape produced 47 of the 81 pre-backfill matches). Locked rule
+  -- (b) evidence at signup time: collapse the guest's person into the new profile's when provably
+  -- safe; otherwise leave a pending review row. NEVER keyed on linked_profile_id.
+  IF v_email IS NOT NULL
+     AND (SELECT count(*) FROM public.profiles p
+          WHERE lower(btrim(p.email)) = lower(v_email)
+            AND nullif(btrim(p.email), '') IS NOT NULL) = 1
+     AND (SELECT count(*) FROM public.guest_players g
+          WHERE lower(btrim(g.email)) = lower(v_email)
+            AND nullif(btrim(g.email), '') IS NOT NULL) = 1 THEN
+    SELECT g.id INTO v_guest FROM public.guest_players g
+    WHERE lower(btrim(g.email)) = lower(v_email) AND nullif(btrim(g.email), '') IS NOT NULL;
+    SELECT person_id INTO v_guest_person FROM public.person_links WHERE guest_player_id = v_guest;
+    IF v_guest_person IS NOT NULL AND v_guest_person <> v_person THEN
+      v_collapse := public.collapse_guest_person_into_reporting(v_guest, v_guest_person, v_person);
+      IF (v_collapse->>'ok')::boolean THEN
+        INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, profile_id, person_id, details)
+        VALUES ('auto_merged_email_pair', 'applied', v_email, v_guest, NEW.id, v_person,
+                jsonb_build_object('via', 'signup_pair',
+                  'memberships_moved',     coalesce((v_collapse->>'moved')::int, 0),
+                  'memberships_coalesced', coalesce((v_collapse->>'coalesced')::int, 0)));
+      ELSE
+        INSERT INTO public.person_merge_review (kind, email, guest_player_id, profile_id, suggested_profile_id, details)
+        VALUES ('signup_pair_needs_review', v_email, v_guest, NEW.id, NEW.id,
+                jsonb_build_object('reason', 'unique email pair at signup but the guest person is not safely collapsible'));
+      END IF;
+    END IF;
   END IF;
   RETURN NEW;
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_stamp_membership_repoint_evidence ON public.person_merge_review;
-CREATE TRIGGER trg_stamp_membership_repoint_evidence
-  BEFORE INSERT ON public.person_merge_review
-  FOR EACH ROW EXECUTE FUNCTION public.stamp_membership_repoint_evidence();
+CREATE OR REPLACE FUNCTION public.relink_person_on_twin_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_collapse jsonb;
+  v_guest_person uuid;
+  v_profile_person uuid;
+  v_email text := nullif(btrim(NEW.email), '');
+  v_profile_email text;
+  v_trusted boolean := false;
+BEGIN
+  IF NEW.twin_of_profile_id IS NOT DISTINCT FROM OLD.twin_of_profile_id THEN
+    -- No stamp change — but an email move AWAY from the merged profile's email on a guest that
+    -- was LINK-merged withOUT a stamp (B2 / signup-pair) is the same repurpose signal the 0c
+    -- guard watches for twins: the row may now be a different human, yet its person_links row
+    -- keeps stamping the profile's person onto every new booking. Cannot auto-split (existing
+    -- rows legitimately belong to the old person) → pending review row.
+    IF NEW.twin_of_profile_id IS NULL
+       AND lower(btrim(coalesce(NEW.email, ''))) IS DISTINCT FROM lower(btrim(coalesce(OLD.email, '')))
+       AND btrim(coalesce(NEW.email, '')) <> '' THEN
+      SELECT pl.person_id INTO v_guest_person
+      FROM public.person_links pl WHERE pl.guest_player_id = NEW.id;
+      IF v_guest_person IS NOT NULL AND EXISTS (
+        SELECT 1
+        FROM public.person_links pl
+        JOIN public.profiles p ON p.id = pl.profile_id
+        WHERE pl.person_id = v_guest_person
+          AND nullif(btrim(p.email), '') IS NOT NULL
+          AND lower(btrim(p.email)) IS DISTINCT FROM lower(btrim(NEW.email))
+      ) AND NOT EXISTS (
+        SELECT 1 FROM public.person_merge_review r
+        WHERE r.guest_player_id = NEW.id
+          AND r.kind = 'merged_guest_email_moved' AND r.status = 'pending'
+      ) THEN
+        INSERT INTO public.person_merge_review (kind, email, guest_player_id, person_id, details)
+        VALUES ('merged_guest_email_moved', NEW.email, NEW.id, v_guest_person,
+                jsonb_build_object('guest_name', NEW.full_name, 'old_email', OLD.email,
+                                   'reason', 'email moved away from the merged profile''s — split may be needed'));
+      END IF;
+    END IF;
+    RETURN NEW;
+  END IF;
+  SELECT person_id INTO v_guest_person FROM public.person_links WHERE guest_player_id = NEW.id;
+  IF v_guest_person IS NULL THEN
+    RETURN NEW;  -- pre-backfill row without a link; the backfill owns it
+  END IF;
 
-COMMENT ON FUNCTION public.stamp_membership_repoint_evidence() IS
-  'U1c prerequisite: folds the membership repoint counts published by collapse_guest_person_into into the person_merge_review row its caller writes, so the coalescence is durably recorded on the operation''s EXISTING evidence rather than only in a log notice. Transaction-local and consumed once.';
+  IF NEW.twin_of_profile_id IS NOT NULL AND OLD.twin_of_profile_id IS DISTINCT FROM NEW.twin_of_profile_id THEN
+    SELECT person_id INTO v_profile_person FROM public.person_links WHERE profile_id = NEW.twin_of_profile_id;
+    IF v_profile_person IS NULL OR v_profile_person = v_guest_person THEN
+      RETURN NEW;
+    END IF;
+    SELECT nullif(btrim(p.email), '') INTO v_profile_email
+    FROM public.profiles p WHERE p.id = NEW.twin_of_profile_id;
+    v_trusted := (v_email IS NOT NULL AND v_profile_email IS NOT NULL
+                  AND lower(v_email) = lower(v_profile_email))
+                 OR (v_email IS NULL AND NEW.source = 'roster_registered_twin');
+    IF v_trusted THEN
+      v_collapse := public.collapse_guest_person_into_reporting(NEW.id, v_guest_person, v_profile_person);
+    ELSE
+      v_collapse := jsonb_build_object('ok', false);
+    END IF;
+    IF (v_collapse->>'ok')::boolean THEN
+      INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, profile_id, person_id, details)
+      VALUES ('auto_merged_twin_trust', 'applied', NEW.email, NEW.id, NEW.twin_of_profile_id, v_profile_person,
+              jsonb_build_object('guest_name', NEW.full_name, 'via', 'live_claim',
+                'memberships_moved',     coalesce((v_collapse->>'moved')::int, 0),
+                'memberships_coalesced', coalesce((v_collapse->>'coalesced')::int, 0)));
+    ELSE
+      INSERT INTO public.person_merge_review (kind, email, guest_player_id, profile_id, details)
+      VALUES (CASE WHEN v_trusted THEN 'twin_detached_needs_split' ELSE 'twin_trust_failure' END,
+              NEW.email, NEW.id, NEW.twin_of_profile_id,
+              jsonb_build_object('guest_name', NEW.full_name,
+                                 'reason', CASE WHEN v_trusted THEN 'guest person not safely collapsible' ELSE 'trust rule failed' END));
+    END IF;
+  ELSIF NEW.twin_of_profile_id IS NULL AND OLD.twin_of_profile_id IS NOT NULL THEN
+    -- stamp cleared (repurpose): if the guest shares a person with a profile, the split needs
+    -- human judgment — the rows already stamped carry the merged person.
+    IF EXISTS (SELECT 1 FROM public.person_links
+               WHERE person_id = v_guest_person AND profile_id IS NOT NULL) THEN
+      INSERT INTO public.person_merge_review (kind, email, guest_player_id, profile_id, person_id, details)
+      VALUES ('twin_detached_needs_split', NEW.email, NEW.id, OLD.twin_of_profile_id, v_guest_person,
+              jsonb_build_object('guest_name', NEW.full_name,
+                                 'reason', 'twin stamp cleared on a guest merged into a profile person'));
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;

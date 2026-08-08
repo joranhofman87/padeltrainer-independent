@@ -21,6 +21,7 @@ import { readFileSync } from 'node:fs';
 
 const U1A = 'supabase/migrations/20261113100000_u1a_academy_player_memberships.sql';
 const REPOINT = 'supabase/migrations/20261115100000_u1c_prereq_membership_repoint.sql';
+const BACKFILL = 'supabase/migrations/20260826280000_persons_backfill.sql';
 
 const A1 = '11111111-1111-4111-8111-111111111111';
 const A2 = '22222222-2222-4222-8222-222222222222';
@@ -290,20 +291,24 @@ describe('collapse_guest_person_into is membership-aware', () => {
  * BEFORE INSERT trigger folds them into the `person_merge_review` row its caller writes. That row is the
  * operation's existing evidence surface; nothing new was introduced to hold it.
  */
-describe('the coalescence is recorded on existing evidence, not just logged', () => {
+describe('the coalescence is recorded on the REAL callers\' evidence row', () => {
   const G2 = 'cccc0002-0000-4000-8000-000000000000';
+  const PROF = 'bbbb0001-0000-4000-8000-000000000000';
   let edb: PGlite;
 
   beforeAll(async () => {
     edb = new PGlite();
     await edb.exec(`
       CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
-      CREATE TABLE public.persons (id uuid PRIMARY KEY, user_id uuid);
+      CREATE TABLE public.persons (id uuid PRIMARY KEY, user_id uuid, email text, full_name text);
+      CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid, email text, full_name text);
       CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         person_id uuid NOT NULL, profile_id uuid UNIQUE, guest_player_id uuid UNIQUE);
       CREATE TABLE public.person_merge_review (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         kind text, status text, email text, guest_player_id uuid, profile_id uuid,
         suggested_profile_id uuid, person_id uuid, details jsonb DEFAULT '{}'::jsonb);
+      CREATE TABLE public.guest_players (id uuid PRIMARY KEY, email text, full_name text,
+        twin_of_profile_id uuid, linked_profile_id uuid, source text);
       CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid,
         person_id uuid, paid_by_guest_player_id uuid, paid_by_person_id uuid);
       CREATE TABLE public.invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid, person_id uuid);
@@ -321,89 +326,45 @@ describe('the coalescence is recorded on existing evidence, not just logged', ()
       CREATE FUNCTION public.rederive_person(_p uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
     `);
     await edb.exec(readFileSync(U1A, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
-    // Only the parts of the migration this scenario needs: the primitive, the collapse rewrite and the
-    // evidence trigger. merge_guest_players needs a dozen more tables and is covered by its own suite.
+    // Everything except merge_guest_players (which needs a dozen further tables and has its own block):
+    // the primitive, the collapse reporting variant + wrapper, and BOTH real callers.
     const full = readFileSync(REPOINT, 'utf8').replace(/^REVOKE ALL.*$/gm, '');
-    const beforeMerge = full.slice(0, full.indexOf('-- Wiring 2/2'));
-    const evidence = full.slice(full.indexOf('-- Durable evidence for the COLLAPSE callers'));
-    await edb.exec(beforeMerge);
-    await edb.exec(evidence);
-    await edb.exec(`
-      INSERT INTO public.academy_profiles VALUES ('${A1}');
-      INSERT INTO public.persons (id) VALUES ('${P_SRC}'), ('${P_TGT}');
-      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${P_SRC}', '${G2}');
-    `);
+    await edb.exec(full.slice(0, full.indexOf('-- Wiring 2/2')));
+    await edb.exec(full.slice(full.indexOf('-- Durable evidence, written where the evidence row actually is')));
   });
 
   afterAll(async () => { await edb?.close(); });
 
-  it('stamps the counts onto the applied person_merge_review row the caller writes', async () => {
+  it('the TWIN-CLAIM caller persists the counts in person_merge_review.details', async () => {
+    await edb.exec(`
+      INSERT INTO public.academy_profiles VALUES ('${A1}');
+      INSERT INTO public.persons (id, email) VALUES ('${P_SRC}', 'x@example.com'), ('${P_TGT}', 'x@example.com');
+      INSERT INTO public.profiles (id, email) VALUES ('${PROF}', 'x@example.com');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P_TGT}', '${PROF}');
+      INSERT INTO public.guest_players (id, email, source) VALUES ('${G2}', 'x@example.com', 'manual');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${P_SRC}', '${G2}');
+    `);
     await edb.query(
       `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id, created_at)
        VALUES ($1,$2,$3::timestamptz), ($4,$5,$6::timestamptz)`,
       [A1, P_SRC, EARLY, A1, P_TGT, LATE]);
 
-    // Exactly what the shipped signup/twin-claim callers do: collapse, then record the applied review.
+    // Fire the REAL trigger function the shipped code uses for a live twin claim.
     await edb.exec(`
-      DO $$
-      BEGIN
-        IF public.collapse_guest_person_into('${G2}', '${P_SRC}', '${P_TGT}') THEN
-          INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id, details)
-          VALUES ('auto_merged_twin_trust', 'applied', '${G2}', '${P_TGT}',
-                  jsonb_build_object('via', 'live_claim'));
-        END IF;
-      END $$;
+      CREATE TRIGGER trg_relink AFTER UPDATE ON public.guest_players
+        FOR EACH ROW EXECUTE FUNCTION public.relink_person_on_twin_change();
+      UPDATE public.guest_players SET twin_of_profile_id = '${PROF}' WHERE id = '${G2}';
     `);
 
     const { rows } = await edb.query<{ details: Record<string, unknown> }>(
-      `SELECT details FROM public.person_merge_review WHERE status = 'applied'`);
+      `SELECT details FROM public.person_merge_review WHERE kind = 'auto_merged_twin_trust'`);
     expect(rows).toHaveLength(1);
-    // the caller's own field survives, and the counts were folded in beside it
     expect(rows[0].details).toMatchObject({
       via: 'live_claim', memberships_moved: 0, memberships_coalesced: 1,
     });
   });
-
-  it('does not stamp a LATER review row in the SAME transaction', async () => {
-    // Both inserts must happen inside ONE transaction. Issuing them as two separate statements would
-    // prove nothing: the transaction-local setting is already gone by the second one, so the test
-    // would pass on the transaction boundary rather than on the trigger consuming the value.
-    await edb.exec(`
-      DO $$
-      BEGIN
-        PERFORM set_config('u1c.last_membership_repoint', '{"moved":0,"coalesced":7}', true);
-        INSERT INTO public.person_merge_review (kind, status, details)
-        VALUES ('auto_merged_twin_trust', 'applied', jsonb_build_object('via', 'first'));
-        INSERT INTO public.person_merge_review (kind, status, details)
-        VALUES ('auto_merged_email_pair', 'applied', jsonb_build_object('via', 'second'));
-      END $$;
-    `);
-    const { rows } = await edb.query<{ via: string; coalesced: number | null }>(
-      `SELECT details->>'via' AS via, (details->>'memberships_coalesced')::int AS coalesced
-       FROM public.person_merge_review WHERE details->>'via' IN ('first','second') ORDER BY 1`);
-    expect(rows).toHaveLength(2);
-    expect(rows.find((r) => r.via === 'first')?.coalesced).toBe(7);   // consumed here
-    expect(rows.find((r) => r.via === 'second')?.coalesced).toBeNull(); // and gone for the next row
-  });
-
-  it('leaves a non-applied review row alone', async () => {
-    await edb.query(
-      `INSERT INTO public.person_merge_review (kind, status, details)
-       VALUES ('twin_trust_failure', NULL, jsonb_build_object('reason', 'x'))`);
-    const { rows } = await edb.query<{ details: Record<string, unknown> }>(
-      `SELECT details FROM public.person_merge_review WHERE kind = 'twin_trust_failure'`);
-    expect(rows[0].details).not.toHaveProperty('memberships_moved');
-  });
 });
 
-/**
- * merge_guest_players, driven for real.
- *
- * NOTE ON WHY THIS FILE EXISTS RATHER THAN AN ADDITION TO `mergeGuestPlayers.pglite.test.ts`: that
- * suite defines its own INLINE copy of the function (line 96) instead of loading the migration, so it
- * cannot detect a change to the shipped one. This block loads the real function out of the migration
- * and exercises the membership path through it.
- */
 describe('merge_guest_players is membership-aware', () => {
   const SRC_G = 'dddd0001-0000-4000-8000-000000000000';
   const TGT_G = 'dddd0002-0000-4000-8000-000000000000';
@@ -449,8 +410,10 @@ describe('merge_guest_players is membership-aware', () => {
         person_id uuid, tag_ids uuid[] DEFAULT '{}', notes text, removed_at timestamptz);
       CREATE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS
         $$ BEGIN NEW.updated_at = now(); RETURN NEW; END $$;
+      CREATE FUNCTION public.rederive_person(_p uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
       CREATE FUNCTION public.is_academy_manager(_u uuid, _a uuid) RETURNS boolean
         LANGUAGE sql STABLE AS $fn$ SELECT true $fn$;
+      CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid, email text, full_name text);
       -- the evidence trigger at the end of the migration attaches to this table
       CREATE TABLE public.person_merge_review (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         kind text, status text, email text, guest_player_id uuid, profile_id uuid,
@@ -458,11 +421,23 @@ describe('merge_guest_players is membership-aware', () => {
     `);
     await mdb.exec(readFileSync(U1A, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
 
+    // The REAL cleanup trigger, straight out of the shipped migration. Without it the source guest's
+    // delete would leave its person alive and this block would never exercise the ON DELETE RESTRICT
+    // failure that the whole slice exists to prevent.
+    const backfill = readFileSync(BACKFILL, 'utf8');
+    const cleanupFn = backfill.slice(
+      backfill.indexOf('CREATE OR REPLACE FUNCTION public.cleanup_orphan_person_on_source_delete'));
+    await mdb.exec(cleanupFn.slice(0, cleanupFn.indexOf('$$;') + 3));
+    await mdb.exec(`
+      CREATE TRIGGER trg_cleanup_orphan_person BEFORE DELETE ON public.guest_players
+        FOR EACH ROW EXECUTE FUNCTION public.cleanup_orphan_person_on_source_delete();
+    `);
+
     // The REAL migration, including the rewritten merge_guest_players — the point of this block.
     await mdb.exec(readFileSync(REPOINT, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
 
     await mdb.exec(`
-      INSERT INTO public.academy_profiles VALUES ('${A1}'), ('${A2}');
+      INSERT INTO public.academy_profiles VALUES ('${A1}'), ('${A2}'), ('${A3}');
       INSERT INTO public.persons (id) VALUES ('${P_SRC}'), ('${P_TGT}');
       INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${SRC_G}','${A1}'), ('${TGT_G}','${A1}');
       INSERT INTO public.person_links (person_id, guest_player_id)
@@ -496,5 +471,47 @@ describe('merge_guest_players is membership-aware', () => {
     const { rows: orphan } = await mdb.query<{ n: number }>(
       'SELECT count(*)::int AS n FROM public.academy_player_memberships WHERE person_id = $1', [P_SRC]);
     expect(orphan[0].n).toBe(0);
+
+    // and the source PERSON is genuinely gone — the step the RESTRICT FK refuses without the repoint
+    const { rows: gone } = await mdb.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM public.persons WHERE id = $1', [P_SRC]);
+    expect(gone[0].n).toBe(0);
+  });
+
+  it('leaves memberships alone when the source person SURVIVES through another link', async () => {
+    // The supported shape is one profile plus several guests. Here a profile still links to the source
+    // person, so deleting the guest does NOT destroy it — and moving a living person's academy
+    // relationships onto someone else would be silent data corruption.
+    const SRC2 = 'dddd0003-0000-4000-8000-000000000000';
+    const TGT2 = 'dddd0004-0000-4000-8000-000000000000';
+    const P_LIVE = 'aaaa0009-0000-4000-8000-000000000000';
+    const P_T2 = 'aaaa0010-0000-4000-8000-000000000000';
+    const PROF2 = 'bbbb0009-0000-4000-8000-000000000000';
+
+    await mdb.exec(`
+      INSERT INTO public.persons (id) VALUES ('${P_LIVE}'), ('${P_T2}');
+      INSERT INTO public.profiles (id) VALUES ('${PROF2}');
+      INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${SRC2}','${A1}'), ('${TGT2}','${A1}');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${P_LIVE}','${SRC2}'), ('${P_T2}','${TGT2}');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P_LIVE}','${PROF2}');
+    `);
+    await mdb.query(
+      `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id) VALUES ($1,$2)`,
+      [A3, P_LIVE]);
+
+    const { rows } = await mdb.query<{ r: Record<string, number> }>(
+      `SELECT public.merge_guest_players('academy', $1, $2, $3, '{}'::jsonb) AS r`,
+      [A1, SRC2, TGT2]);
+
+    // no move is claimed...
+    expect(rows[0].r).toMatchObject({ memberships_moved: 0, memberships_coalesced: 0 });
+    // ...the person is still here...
+    const { rows: alive } = await mdb.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM public.persons WHERE id = $1', [P_LIVE]);
+    expect(alive[0].n).toBe(1);
+    // ...and its membership stayed with it rather than migrating to the target.
+    const { rows: still } = await mdb.query<{ person_id: string }>(
+      'SELECT person_id FROM public.academy_player_memberships WHERE academy_profile_id = $1', [A3]);
+    expect(still.map((r) => r.person_id)).toEqual([P_LIVE]);
   });
 });
