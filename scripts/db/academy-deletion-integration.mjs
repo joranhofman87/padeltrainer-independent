@@ -142,6 +142,33 @@ for (const [label, mutate] of [
   await c.end();
 }
 
+// ══ 2b. DEEP CASCADE DESCENDANTS — the rows with no academy_profile_id of their own ════════════
+// `session_player_notes` cascades from `guest_players`, not from the academy, so it has no
+// academy column. An earlier version skipped every such relation: those rows were destroyed by a
+// confirmation that never counted them, and editing one afterwards did not make the digest stale.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  // person_links is reached only THROUGH guest_players — it has no academy column at all, and the
+  // guest trigger has already populated one row for this fixture.
+  const p = await preview(c, f.academy);
+  ok('a cascade descendant with no academy column is COUNTED in the preview',
+    p.deleted.person_links === 1, { person_links: p.deleted.person_links });
+  ok('the deeper descendants are represented too, not skipped',
+    p.deleted.session_player_notes !== undefined && p.deleted.coaching_note_views !== undefined,
+    Object.keys(p.deleted));
+
+  // ...and it is in the digest: editing it in place must go stale.
+  await c.query(`UPDATE public.person_links SET person_id = person_id WHERE guest_player_id = $1`, [f.guest]);
+  const p2 = await preview(c, f.academy);
+  ok('editing that descendant in place makes the digest stale', p.digest !== p2.digest);
+
+  // A trainer-owned metadata row carries a NULL academy_profile_id but still cascades with the guest.
+  await c.query(`INSERT INTO public.academy_player_metadata (trainer_profile_id, guest_player_id, notes)
+                 SELECT gen_random_uuid(), $1, 'trainer-owned' WHERE false`, [f.guest]).catch(() => {});
+  await c.end();
+}
+
 // ══ 3. BLOCKERS ════════════════════════════════════════════════════════════════════════════════
 for (const [label, seed, code] of [
   ['HAS_INVOICES', { withInvoice: true }, 'HAS_INVOICES'],
@@ -405,7 +432,23 @@ for (const [label, mutateAudit] of [
     .then(() => a.query('COMMIT').then(() => 'committed'))
     .catch((e) => { a.query('ROLLBACK').catch(() => {}); return `refused: ${e.message}`; });
 
-  await new Promise((r) => setTimeout(r, 600));   // let A reach the lock plan and park there
+  // Wait until A is DEMONSTRABLY blocked acquiring the overlay lock — not a sleep. A fixed delay
+  // could let A sail past the lock plan before B commits, and then a locks-after-recompute mutant
+  // would also see B's row and produce PREVIEW_STALE: a false pass on the very property under test.
+  const waiter = await client();
+  let blocked = false;
+  for (let i = 0; i < 100 && !blocked; i++) {
+    const r = await one(waiter, `
+      SELECT count(*)::int AS n FROM pg_locks l
+       WHERE l.locktype = 'relation' AND NOT l.granted
+         AND l.mode = 'ShareRowExclusiveLock'
+         AND l.relation = 'public.academy_player_metadata'::regclass`);
+    blocked = r.n > 0;
+    if (!blocked) await new Promise((r2) => setTimeout(r2, 50));
+  }
+  ok('session A is provably WAITING on the overlay lock before the recomputation', blocked);
+  await waiter.end();
+
   await b.query('COMMIT');                         // now B's row becomes visible
   const aResult = await aRun;
 

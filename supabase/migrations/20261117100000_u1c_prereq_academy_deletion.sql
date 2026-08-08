@@ -96,6 +96,56 @@ AS $$
   SELECT DISTINCT cl.oid::regclass::text FROM closure cl ORDER BY 1;
 $$;
 
+-- HOW EACH CASCADE DESCENDANT IS SCOPED TO ONE ACADEMY.
+--
+-- The closure above says WHICH relations a deletion reaches. It does not say WHICH ROWS, and most
+-- descendants have no `academy_profile_id` of their own — `session_player_notes` hangs off
+-- `guest_players`, and notes hang off those. An earlier version simply skipped any relation without
+-- that column, so those rows were neither counted in the preview nor hashed into the digest: they
+-- would be destroyed by a confirmation that never mentioned them, and editing one afterwards would
+-- not make the digest stale. That is the exact failure this whole flow exists to prevent.
+--
+-- So the predicate is DERIVED by walking the FK graph, composing a nested IN for each hop. A
+-- relation reachable by several cascade paths gets the OR of them, because a row reached by any path
+-- is deleted. Anything that cannot be scoped — a composite FK, or a path deeper than the bound —
+-- returns NULL, and the caller fails closed rather than guessing.
+CREATE OR REPLACE FUNCTION public.academy_deletion_scope_predicate(_relname text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  WITH RECURSIVE g(rel, pred, depth) AS (
+    -- direct children of academy_profiles
+    SELECT c.conrelid,
+           quote_ident((SELECT a.attname FROM pg_attribute a
+                         WHERE a.attrelid = c.conrelid AND a.attnum = c.conkey[1])) || ' = $1',
+           1
+      FROM pg_constraint c
+     WHERE c.contype = 'f' AND c.confdeltype = 'c'
+       AND c.confrelid = 'public.academy_profiles'::regclass
+       AND array_length(c.conkey, 1) = 1          -- composite FK ⇒ not scoped ⇒ fail closed
+    UNION ALL
+    -- descendants: this relation's FK column must land in the parent's already-scoped rows
+    SELECT c.conrelid,
+           quote_ident((SELECT a.attname FROM pg_attribute a
+                         WHERE a.attrelid = c.conrelid AND a.attnum = c.conkey[1]))
+           || ' IN (SELECT ' || quote_ident((SELECT a.attname FROM pg_attribute a
+                                              WHERE a.attrelid = c.confrelid AND a.attnum = c.confkey[1]))
+           || ' FROM ' || c.confrelid::regclass::text || ' WHERE ' || g.pred || ')',
+           g.depth + 1
+      FROM pg_constraint c
+      JOIN g ON g.rel = c.confrelid
+     WHERE c.contype = 'f' AND c.confdeltype = 'c'
+       AND c.conrelid <> c.confrelid
+       AND array_length(c.conkey, 1) = 1
+       AND g.depth < 6                             -- bound: deeper ⇒ unscoped ⇒ fail closed
+  )
+  SELECT '(' || string_agg(pred, ' OR ' ORDER BY pred) || ')'
+    FROM (SELECT DISTINCT pred FROM g WHERE g.rel = to_regclass('public.' || _relname)) d;
+$$;
+
 -- The two overlays no cascade reaches (H3), plus the blocker inputs and the identity state the
 -- shared-person blocker reads. Kept here so the lock plan, the digest and the drift guard all read
 -- ONE definition of "what this flow depends on".
@@ -145,8 +195,23 @@ BEGIN
       FROM pg_constraint c
      WHERE c.contype = 'f' AND c.confrelid = 'public.academy_profiles'::regclass
     UNION ALL
-    -- the transitive cascade closure
+    -- the transitive cascade closure, as NODES...
     SELECT 'closure:' || cc.relname FROM public.academy_deletion_cascade_closure() cc
+    UNION ALL
+    -- ...and as EDGES. Membership alone is not enough: an FK added or re-pointed BETWEEN two
+    -- relations that are both already in the closure changes what the deletion reaches while leaving
+    -- the node set identical. Child, parent, key columns and delete action all participate.
+    SELECT 'edge:' || c.conrelid::regclass::text || '->' || c.confrelid::regclass::text
+        || ':' || c.confdeltype::text
+        || ':' || coalesce((SELECT string_agg(a.attname, ',' ORDER BY x.ord)
+                              FROM unnest(c.conkey) WITH ORDINALITY AS x(attnum, ord)
+                              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = x.attnum), '-')
+        || '>' || coalesce((SELECT string_agg(a.attname, ',' ORDER BY x.ord)
+                              FROM unnest(c.confkey) WITH ORDINALITY AS x(attnum, ord)
+                              JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = x.attnum), '-')
+      FROM pg_constraint c
+     WHERE c.contype = 'f'
+       AND c.conrelid IN (SELECT to_regclass('public.' || cc2.relname) FROM public.academy_deletion_cascade_closure() cc2)
     UNION ALL
     -- the extra relations this flow depends on, and the CURRENT target of the overlay FK (so
     -- repairing academy_player_locations.academy_profile_id is itself drift)
@@ -189,7 +254,7 @@ LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '099e8c10d630362749268a6dbe020c81854237c1bc8fec0766b4c34ca1cc8662'::text $$;
+AS $$ SELECT '28bf83d692bb2ec6c60a9de02aef240501e33cc2b21fb568c5e6fcb49c073320'::text $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical identity encoding
@@ -382,6 +447,7 @@ DECLARE
   v_count int;
   v_fragment text;
   v_academy_tok text;
+  v_scope text;
 BEGIN
   IF _academy_id IS NULL THEN
     RAISE EXCEPTION 'academy_deletion_preview: _academy_id is required'
@@ -404,13 +470,28 @@ BEGIN
     UNION SELECT er.relname FROM public.academy_deletion_extra_relations() er WHERE er.role = 'overlay'
     ORDER BY 1
   LOOP
-    CONTINUE WHEN NOT EXISTS (
-      SELECT 1 FROM pg_attribute a
-       WHERE a.attrelid = to_regclass('public.' || v_rel)
-         AND a.attname = 'academy_profile_id' AND a.attnum > 0 AND NOT a.attisdropped);
+    -- The overlays have no FK, so they are scoped by their academy_profile_id VALUE; everything else
+    -- is scoped through the cascade graph. A relation that cannot be scoped fails the whole preview
+    -- rather than being quietly omitted from what the operator is shown.
+    v_scope := public.academy_deletion_scope_predicate(v_rel);
+
+    IF EXISTS (SELECT 1 FROM public.academy_deletion_extra_relations() er
+                WHERE er.relname = v_rel AND er.role = 'overlay') THEN
+      -- The overlays are reached BOTH ways and the two sets are not the same: rows keyed by this
+      -- academy's id, AND rows keyed only to one of its guests (trainer-owned metadata carries a
+      -- NULL academy_profile_id but still cascades away with the guest). Scoping by either predicate
+      -- alone under-counts, so the scope is their union.
+      v_scope := CASE WHEN v_scope IS NULL THEN '(academy_profile_id = $1)'
+                      ELSE '(academy_profile_id = $1 OR ' || v_scope || ')' END;
+    END IF;
+
+    IF v_scope IS NULL THEN
+      RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: % is reached by the cascade but cannot be scoped to one academy', v_rel
+        USING ERRCODE = 'raise_exception';
+    END IF;
 
     SELECT d.row_count, d.fragment INTO v_count, v_fragment
-      FROM public.academy_deletion_relation_digest(v_rel, 'academy_profile_id = $1', _academy_id) d;
+      FROM public.academy_deletion_relation_digest(v_rel, v_scope, _academy_id) d;
 
     v_deleted := v_deleted || jsonb_build_object(v_rel, v_count);
     v_digest_input := v_digest_input || public.u1c_ns('D:' || v_rel) || public.u1c_ns(v_fragment);
@@ -597,6 +678,7 @@ $$;
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 REVOKE ALL ON FUNCTION public.academy_deletion_cascade_closure() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_extra_relations() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_scope_predicate(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_catalog_fingerprint() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_expected_fingerprint() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_relation_digest(text, text, uuid) FROM PUBLIC, anon, authenticated;

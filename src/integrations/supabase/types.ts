@@ -10117,6 +10117,10 @@ export type Database = {
           row_count: number
         }[]
       }
+      academy_deletion_scope_predicate: {
+        Args: { _relname: string }
+        Returns: string
+      }
       academy_has_managers: {
         Args: { _academy_profile_id: string }
         Returns: boolean
