@@ -24,3 +24,16 @@ BEGIN
     EXECUTE 'REVOKE ALL ON public.academy_player_memberships FROM PUBLIC, anon, authenticated, service_role';
   END IF;
 END $$;
+
+-- The same applies to the U1b backfill logbook (20261114100000_u1b_membership_backfill_manifest.sql).
+-- Kept as its OWN block rather than folded into the one above: U1a and U1b roll back independently,
+-- and a shared list would make removing one unit's entry an edit to the other's.
+DO $$
+BEGIN
+  IF to_regclass('public.membership_backfill_runs') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON public.membership_backfill_runs FROM PUBLIC, anon, authenticated, service_role';
+  END IF;
+  IF to_regclass('public.membership_backfill_items') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON public.membership_backfill_items FROM PUBLIC, anon, authenticated, service_role';
+  END IF;
+END $$;
