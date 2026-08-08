@@ -21,7 +21,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { canonicalize } from './u1a-membership-inventory.mjs';
 
@@ -149,7 +149,7 @@ export const REQUIRED_PAYLOADS = ['anomalies.json', 'drift.json', 'plan.json'];
  * @throws if the target exists — deliberately. Refusing is what makes "nothing prior is ever
  *         destroyed" true by construction rather than by careful sequencing.
  */
-export function writeArtifacts(dir, artifacts) {
+export function writeArtifacts(dir, artifacts, { writeFile = writeFileSync } = {}) {
   const files = {
     'plan.json': artifacts.plan,
     'drift.json': artifacts.drift,
@@ -180,10 +180,12 @@ export function writeArtifacts(dir, artifacts) {
   // race against.
   mkdirSync(dir, { recursive: false });
 
-  for (const name of Object.keys(payloads)) writeFileSync(join(dir, name), payloads[name]);
+  // `writeFile` is injectable ONLY so a test can fail at a chosen step and prove that no interruption
+  // point leaves a verifiable set. Production always uses writeFileSync.
+  for (const name of Object.keys(payloads)) writeFile(join(dir, name), payloads[name]);
   // Manifest last: an interrupted write leaves a directory with no manifest, which verifyArtifacts
   // rejects outright. There is no ordering that makes an incomplete set look complete.
-  writeFileSync(join(dir, 'manifest.json'), canonicalize(manifest));
+  writeFile(join(dir, 'manifest.json'), canonicalize(manifest));
 
   return manifest;
 }
@@ -211,6 +213,27 @@ export function verifyArtifacts(dir) {
   if (manifest.artifacts_version !== ARTIFACTS_VERSION) {
     problems.push(`artifacts_version ${JSON.stringify(manifest.artifacts_version)} != ${ARTIFACTS_VERSION}`);
   }
+  // The headline fields must be PRESENT, not merely consistent. Cross-checking alone is satisfied by
+  // a manifest and payloads that both omit a field — `undefined === undefined` — so a set carrying no
+  // identifying metadata at all would otherwise verify.
+  for (const field of ['plan_hash', 'inventory_content_hash', 'as_of']) {
+    if (typeof manifest[field] !== 'string' || manifest[field] === '') {
+      problems.push(`manifest.${field} is missing`);
+    }
+  }
+
+  // The DIRECTORY must hold exactly the set — nothing extra. An unlisted file beside a valid set is
+  // either a stray or a smuggled payload; either way the directory is not the thing the manifest
+  // describes, and "evidence plus something we did not account for" is not evidence.
+  try {
+    const onDisk = readdirSync(dir).sort();
+    const expected = ['manifest.json', ...REQUIRED_PAYLOADS].sort();
+    if (canonicalize(onDisk) !== canonicalize(expected)) {
+      problems.push(`directory holds ${JSON.stringify(onDisk)}, expected ${JSON.stringify(expected)}`);
+    }
+  } catch (err) {
+    problems.push(`directory unreadable: ${err.message}`);
+  }
   if (manifest.files === null || typeof manifest.files !== 'object' || Array.isArray(manifest.files)) {
     return { ok: false, problems: [...problems, 'manifest.files is missing'], manifest };
   }
@@ -237,7 +260,29 @@ export function verifyArtifacts(dir) {
     }
     const actual = createHash('sha256').update(bytes).digest('hex');
     if (actual !== entry.sha256) problems.push(`${name}: sha256 ${actual} != ${entry.sha256}`);
-    try { parsed[name] = JSON.parse(bytes); } catch { problems.push(`${name}: not JSON`); }
+    let value;
+    try { value = JSON.parse(bytes); } catch { problems.push(`${name}: not JSON`); continue; }
+    // Matching hashes prove the bytes are the bytes; they say nothing about the bytes being THIS
+    // KIND of document. Three unrelated JSON values, hashed honestly, would otherwise verify.
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+      problems.push(`${name}: not a JSON object`);
+      continue;
+    }
+    parsed[name] = value;
+  }
+
+  // Each payload must identify itself. `plan.json` is the plan; the two report payloads carry the
+  // artifacts version they were produced by.
+  if (parsed['plan.json']) {
+    const p = parsed['plan.json'];
+    if (typeof p.plan_hash !== 'string' || !Array.isArray(p.rows) || typeof p.reconciliation !== 'object') {
+      problems.push('plan.json is not a plan (needs plan_hash, rows[], reconciliation)');
+    }
+  }
+  for (const name of ['drift.json', 'anomalies.json']) {
+    if (parsed[name] && parsed[name].artifacts_version !== ARTIFACTS_VERSION) {
+      problems.push(`${name}: artifacts_version ${JSON.stringify(parsed[name].artifacts_version)} != ${ARTIFACTS_VERSION}`);
+    }
   }
 
   // Cross-check the headline metadata. Hashing the payloads proves the BYTES are intact; it says

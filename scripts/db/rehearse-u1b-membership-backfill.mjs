@@ -27,6 +27,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { pgliteSessionSource } from './u1a-pglite-session.mjs';
 import { runMembershipInventory } from './u1a-membership-inventory.mjs';
 import { SCHEMA_STUB_SQL, FIXTURE_SQL, AS_OF, A1, A2, G, PE } from './u1a-fixture-universe.mjs';
@@ -515,12 +516,108 @@ writeFileSync(join(dirV4, 'manifest.json'), 'not json at all');
 ok('a malformed manifest fails verification', verifyArtifacts(dirV4).ok === false,
   verifyArtifacts(dirV4).problems);
 
-// A5: a partial write — payloads present, manifest never reached — must not look complete.
-const dirV5 = freshArtifactDir();
-writeArtifacts(dirV5, buildArtifacts(inv1, plan1));
-rmSync(join(dirV5, 'manifest.json'));
-ok('a set whose manifest never landed fails verification', verifyArtifacts(dirV5).ok === false,
-  verifyArtifacts(dirV5).problems);
+// A5, proved properly: interrupt the write at EVERY step and assert none of them leaves a verifiable
+// set. Writing a complete set and then deleting the manifest would pass even if the manifest were
+// written first, so it proves nothing about ordering — this does.
+for (let failAfter = 0; failAfter < 4; failAfter++) {
+  const d = freshArtifactDir();
+  let writes = 0;
+  try {
+    writeArtifacts(d, buildArtifacts(inv1, plan1), {
+      writeFile: (p, bytes) => {
+        if (writes++ === failAfter) throw new Error('SIMULATED_DISK_FAILURE');
+        writeFileSync(p, bytes);
+      },
+    });
+  } catch { /* expected */ }
+  ok(`a write interrupted at step ${failAfter} leaves NO verifiable set`,
+    verifyArtifacts(d).ok === false, verifyArtifacts(d).problems);
+}
+
+// A4: an unlisted file beside a valid set means the directory is not the thing the manifest
+// describes. "Evidence plus something we did not account for" is not evidence.
+const dirVx = freshArtifactDir();
+writeArtifacts(dirVx, buildArtifacts(inv1, plan1));
+ok('control: that set verifies before the extra file', verifyArtifacts(dirVx).ok === true);
+writeFileSync(join(dirVx, 'extra.json'), '{}');
+ok('an EXTRA unlisted file on disk fails verification', verifyArtifacts(dirVx).ok === false,
+  verifyArtifacts(dirVx).problems);
+
+// A4: matching hashes prove the bytes are the bytes; they say nothing about the bytes being this KIND
+// of document. Three unrelated JSON objects, hashed honestly, must NOT verify.
+const dirVs = freshArtifactDir();
+mkdirSync(dirVs, { recursive: true });
+const bogus = {};
+const bogusBytes = JSON.stringify(bogus);
+const sha = (s) => createHash('sha256').update(s).digest('hex');
+for (const name of ['plan.json', 'drift.json', 'anomalies.json']) {
+  writeFileSync(join(dirVs, name), bogusBytes);
+}
+writeFileSync(join(dirVs, 'manifest.json'), JSON.stringify({
+  artifacts_version: 'u1b.artifacts.1',
+  files: Object.fromEntries(['anomalies.json', 'drift.json', 'plan.json'].map((n) => [
+    n, { sha256: sha(bogusBytes), bytes: Buffer.byteLength(bogusBytes) }])),
+}));
+ok('a hash-consistent but semantically unrelated set fails verification',
+  verifyArtifacts(dirVs).ok === false, verifyArtifacts(dirVs).problems);
+
+/**
+ * Rewrite a written set so it stays internally CONSISTENT — payload bytes and manifest hashes agree —
+ * while one specific property is broken. Without this every hostile fixture trips several checks at
+ * once, and then no individual guard is provably covered: removing it leaves another one firing and
+ * the mutant survives.
+ */
+const rewriteSet = (dir, { payloads = {}, manifest: manifestPatch = {}, dropManifestKeys = [] }) => {
+  const m = JSON.parse(readFile(join(dir, 'manifest.json')));
+  for (const [name, value] of Object.entries(payloads)) {
+    const bytes = JSON.stringify(value);
+    writeFileSync(join(dir, name), bytes);
+    m.files[name] = { sha256: sha(bytes), bytes: Buffer.byteLength(bytes) };
+  }
+  Object.assign(m, manifestPatch);
+  for (const k of dropManifestKeys) delete m[k];
+  writeFileSync(join(dir, 'manifest.json'), JSON.stringify(m));
+};
+
+// ISOLATED: only the "headline fields must be PRESENT" rule can fire. The field is dropped from the
+// manifest AND from the payloads, so the cross-check sees undefined === undefined and stays quiet —
+// which is precisely the hole that made presence-checking necessary in the first place.
+const dirH = freshArtifactDir();
+writeArtifacts(dirH, buildArtifacts(inv1, plan1));
+const artH = buildArtifacts(inv1, plan1);
+rewriteSet(dirH, {
+  payloads: {
+    'drift.json': { ...artH.drift, inventory_content_hash: undefined },
+    'anomalies.json': { ...artH.anomalies, inventory_content_hash: undefined },
+  },
+  dropManifestKeys: ['inventory_content_hash'],
+});
+ok('a manifest that OMITS a headline field fails (consistency alone is not enough)',
+  verifyArtifacts(dirH).ok === false, verifyArtifacts(dirH).problems);
+
+// ISOLATED: only the plan-shape rule can fire — plan_hash is present and agrees with the manifest.
+const dirP = freshArtifactDir();
+writeArtifacts(dirP, buildArtifacts(inv1, plan1));
+rewriteSet(dirP, { payloads: { 'plan.json': { plan_hash: plan1.plan_hash } } });
+ok('a plan.json that is not a plan fails verification', verifyArtifacts(dirP).ok === false,
+  verifyArtifacts(dirP).problems);
+
+// ISOLATED: only the "payload must be a JSON OBJECT" rule can fire. `null` is the case that matters —
+// every downstream shape check is guarded by `if (parsed[name])`, so a null payload would slip past
+// ALL of them. An array, by contrast, is caught by the shape checks anyway.
+const dirNull = freshArtifactDir();
+writeArtifacts(dirNull, buildArtifacts(inv1, plan1));
+rewriteSet(dirNull, { payloads: { 'plan.json': null, 'drift.json': null, 'anomalies.json': null } });
+ok('a null payload fails verification (it would slip past every shape check)',
+  verifyArtifacts(dirNull).ok === false, verifyArtifacts(dirNull).problems);
+
+// ISOLATED: only the payload artifacts_version rule can fire.
+const dirW = freshArtifactDir();
+writeArtifacts(dirW, buildArtifacts(inv1, plan1));
+const artW = buildArtifacts(inv1, plan1);
+rewriteSet(dirW, { payloads: { 'drift.json': { ...artW.drift, artifacts_version: 'u1b.artifacts.0' } } });
+ok('a payload declaring another artifacts version fails verification',
+  verifyArtifacts(dirW).ok === false, verifyArtifacts(dirW).problems);
 
 // Hashing proves the BYTES are intact; it says nothing about whether the manifest's own summary of
 // them is honest, and that summary is what a reader looks at first.
