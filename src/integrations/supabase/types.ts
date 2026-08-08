@@ -61,6 +61,51 @@ export type Database = {
         }
         Relationships: []
       }
+      academy_deletion_audit: {
+        Row: {
+          academy_profile_id: string
+          actor_user_id: string
+          blocker_codes: string[] | null
+          deleted_counts: Json | null
+          detached_counts: Json | null
+          digest: string
+          failure_reason: string | null
+          finished_at: string | null
+          id: string
+          preview_version: number
+          started_at: string
+          status: string
+        }
+        Insert: {
+          academy_profile_id: string
+          actor_user_id: string
+          blocker_codes?: string[] | null
+          deleted_counts?: Json | null
+          detached_counts?: Json | null
+          digest: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          preview_version: number
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          actor_user_id?: string
+          blocker_codes?: string[] | null
+          deleted_counts?: Json | null
+          detached_counts?: Json | null
+          digest?: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          preview_version?: number
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       academy_followers: {
         Row: {
           academy_profile_id: string
@@ -10031,6 +10076,47 @@ export type Database = {
         Args: { p_owner_id: string; p_owner_type: string }
         Returns: boolean
       }
+      academy_delete_confirmed: {
+        Args: {
+          _academy_id: string
+          _actor_user_id: string
+          _audit_id: string
+          _expected_digest: string
+          _preview_version: number
+        }
+        Returns: Json
+      }
+      academy_deletion_blockers: {
+        Args: { _academy_id: string }
+        Returns: Json
+      }
+      academy_deletion_cascade_closure: {
+        Args: never
+        Returns: {
+          relname: string
+        }[]
+      }
+      academy_deletion_catalog_fingerprint: { Args: never; Returns: string }
+      academy_deletion_expected_fingerprint: { Args: never; Returns: string }
+      academy_deletion_extra_relations: {
+        Args: never
+        Returns: {
+          relname: string
+          role: string
+        }[]
+      }
+      academy_deletion_lock_plan: {
+        Args: { _academy_id: string }
+        Returns: undefined
+      }
+      academy_deletion_preview: { Args: { _academy_id: string }; Returns: Json }
+      academy_deletion_relation_digest: {
+        Args: { _academy_id: string; _relname: string; _where: string }
+        Returns: {
+          fragment: string
+          row_count: number
+        }[]
+      }
       academy_has_managers: {
         Args: { _academy_profile_id: string }
         Returns: boolean
@@ -12099,6 +12185,10 @@ export type Database = {
         Args: { p_purpose: string; p_request_id: string; p_source: string }
         Returns: string
       }
+      owner_has_programs: {
+        Args: { _owner_id: string; _owner_type: string }
+        Returns: Json
+      }
       person_has_tenant_relationship: {
         Args: {
           p_academy_profile_id: string
@@ -12505,6 +12595,7 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: number
       }
+      u1c_ns: { Args: { _value: string }; Returns: string }
       unclaim_rebook_member_open_notice: {
         Args: { _cycle_id: string }
         Returns: undefined
