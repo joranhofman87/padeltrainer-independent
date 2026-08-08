@@ -32,7 +32,7 @@ import { pgliteSessionSource } from './u1a-pglite-session.mjs';
 import { runMembershipInventory } from './u1a-membership-inventory.mjs';
 import { SCHEMA_STUB_SQL, FIXTURE_SQL, AS_OF, A1, A2, PE } from './u1a-fixture-universe.mjs';
 import { buildBackfillPlan, ELIGIBLE_DISPOSITION } from './u1b-backfill-plan.mjs';
-import { applyBackfillPlan } from './u1b-backfill-apply.mjs';
+import { applyBackfillPlan, runMembershipBackfill } from './u1b-backfill-apply.mjs';
 import { buildArtifacts, writeArtifacts } from './u1b-artifacts.mjs';
 
 const U1A_MIGRATION = 'supabase/migrations/20261113100000_u1a_academy_player_memberships.sql';
@@ -355,6 +355,46 @@ ok('schema rollback drops both logbook tables once empty',
 ok('schema rollback leaves the U1a membership table alone', gone.rows[0].m !== null, gone.rows[0]);
 ok('schema rollback is idempotent when already absent',
   await db4.exec(readFileSync(ROLLBACK_SCHEMA, 'utf8')).then(() => true, () => false));
+
+// ══ 7b. THE ORDINARY ENTRY POINT + the batch-size contract ══════════════════════════════════════
+// `runMembershipBackfill` derives the plan from an inventory it runs itself, so the ordinary path
+// never accepts a caller-supplied plan object at all.
+const db6 = await freshDb();
+const whole = await runMembershipBackfill(pgliteSessionSource(db6), { asOf: AS_OF, batchSize: 3 });
+ok('the one-call entry point completes and returns its own plan',
+  whole.summary.status === 'completed' && whole.plan.plan_hash === plan1.plan_hash,
+  { status: whole.summary.status });
+const wholeRows = await db6.query(
+  'SELECT academy_profile_id, person_id FROM public.academy_player_memberships ORDER BY 1,2');
+ok('the one-call entry point writes exactly what the plan-driven path writes',
+  JSON.stringify(wholeRows.rows) === JSON.stringify(written.rows), { n: wholeRows.rows.length });
+
+// One run records ONE hop size, so a resume at a different size is refused rather than making the
+// stored value false for part of the run's own history.
+const db7 = await freshDb();
+const { plan: plan7 } = await planFor(db7);
+let sizeRunId = null;
+try {
+  await applyBackfillPlan(pgliteSessionSource(db7), {
+    plan: plan7,
+    batchSize: 2,
+    onBatchCommitted: async ({ batchSeq, runId }) => {
+      sizeRunId = runId;
+      if (batchSeq === 0) throw new Error('STOP');
+    },
+  });
+} catch { /* expected */ }
+let sizeRefusal = null;
+try {
+  await applyBackfillPlan(pgliteSessionSource(db7), {
+    plan: plan7, batchSize: 5, resumeRunId: sizeRunId,
+  });
+} catch (err) { sizeRefusal = err.code; }
+ok('resuming at a different batch size is REFUSED', sizeRefusal === 'BATCH_SIZE_CHANGED', { sizeRefusal });
+const sameSize = await applyBackfillPlan(pgliteSessionSource(db7), {
+  plan: plan7, batchSize: 2, resumeRunId: sizeRunId,
+});
+ok('resuming at the RECORDED batch size still works', sameSize.status === 'completed', sameSize);
 
 // ══ 8. LOCKDOWN — the seed re-grants; the deny-list must re-revoke ══════════════════════════════
 const db5 = await freshDb();

@@ -14,7 +14,7 @@ anywhere remote, and executing a real backfill, are separate owner gates (U1c).
 |---|---|
 | `supabase/migrations/20261114100000_u1b_membership_backfill_manifest.sql` | The logbook: `membership_backfill_runs` + `membership_backfill_items`. Empty, inert, default-deny. |
 | `scripts/db/u1b-backfill-plan.mjs` | Inventory result → deterministic plan + `plan_hash`. Pure; no I/O. |
-| `scripts/db/u1b-backfill-apply.mjs` | Batched, resumable applier. The only thing that writes. |
+| `scripts/db/u1b-backfill-apply.mjs` | `runMembershipBackfill` (the ordinary entry point) + the batched, resumable applier. The only thing that writes. |
 | `scripts/db/u1b-artifacts.mjs` | Durable, content-addressed drift/anomaly/plan artifacts. |
 | `scripts/db/session-lease.mjs` | Exclusive session acquisition with exactly-once release. |
 | `scripts/db/u1a-fixture-universe.mjs` | Shared fixtures — one per evidence path and per disposition. |
@@ -53,7 +53,21 @@ unless the hash still matches, so a run interrupted before a data change can nev
 against a different candidate set than it began with. A plan with **no** hash is refused too —
 treating absence as "nothing to check" would let a hand-built object reach the write path with no
 provenance at all. And the planner recomputes the *inventory's* own content hash rather than trusting
-it, so a plan cannot claim descent from an inventory run that never produced it.
+it, so an inventory object tampered with after the fact is rejected.
+
+**What hashes cannot do.** They are computed with a public function over public data, so they prove a
+plan is internally *consistent* — never that it came from a real inventory run. Use
+`runMembershipBackfill(sessionSource, { asOf, batchSize })`: it runs the inventory itself and applies
+what that implies, so the ordinary path never accepts a caller-supplied plan. `applyBackfillPlan`
+remains exported for two legitimate uses only — resuming a run whose plan must be re-supplied, and
+tests that drive a specific plan. Authenticating a plan artifact that must travel between processes
+needs a MAC over the inventory output with a server-held key; that requires a managed secret, so it
+belongs to the unit that gains one.
+
+A run records **one** hop size. Resuming at a different `batchSize` is refused rather than
+overwriting a value that was true for the checkpoints already committed — a different hop size means
+a new run, which is safe because the plan is deterministic and pairs already written come back as
+`already_present`.
 
 ## Rollback ownership
 

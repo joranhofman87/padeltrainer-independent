@@ -35,7 +35,8 @@
  */
 
 import { acquireLease } from './session-lease.mjs';
-import { planHashOf } from './u1b-backfill-plan.mjs';
+import { buildBackfillPlan, planHashOf } from './u1b-backfill-plan.mjs';
+import { runMembershipInventory } from './u1a-membership-inventory.mjs';
 
 export const APPLIER_VERSION = 'u1b.apply.1';
 
@@ -50,6 +51,32 @@ export class BackfillApplyError extends Error {
 }
 
 const pairKey = (r) => `${r.academy_profile_id}|${r.person_id}`;
+
+/**
+ * THE ORDINARY ENTRY POINT: read the inventory and apply what it implies, in one call.
+ *
+ * Prefer this over calling `applyBackfillPlan` with a plan you assembled yourself. The hashes in a
+ * plan are computed with a PUBLIC function over PUBLIC data, so they prove a plan is internally
+ * consistent — they cannot prove it came from a real inventory run. A caller could build an arbitrary
+ * eligible set and a hash that agrees with it. This function removes the opportunity: the plan comes
+ * from an inventory executed here, moments earlier, against the same database.
+ *
+ * (Cryptographically authenticating a plan artifact — a MAC over the inventory output with a
+ * server-held key — would close the remaining gap for a plan that must travel between processes. That
+ * needs a managed secret, so it is deliberately left to the unit that gains one; it is not something
+ * U1b can hold.)
+ *
+ * `applyBackfillPlan` stays exported for exactly two legitimate uses: resuming a run whose plan must
+ * be re-supplied, and tests that need to drive a specific plan.
+ */
+export async function runMembershipBackfill(sessionSource, { asOf, batchSize = DEFAULT_BATCH_SIZE } = {}) {
+  // The inventory takes its own READ ONLY snapshot and releases its lease before we write; it must,
+  // because a READ ONLY transaction cannot host the applier's INSERTs.
+  const inventory = await runMembershipInventory(sessionSource, { asOf });
+  const plan = buildBackfillPlan(inventory);
+  const summary = await applyBackfillPlan(sessionSource, { plan, batchSize });
+  return { inventory, plan, summary };
+}
 
 /**
  * Applies (or resumes) a plan.
@@ -138,7 +165,7 @@ export async function applyBackfillPlan(sessionSource, {
       runId = rows[0].id;
     } else {
       const { rows } = await lease.query(
-        `SELECT id, plan_hash, status, planned_row_count
+        `SELECT id, plan_hash, status, planned_row_count, batch_size
          FROM public.membership_backfill_runs WHERE id = $1`,
         [runId],
       );
@@ -161,13 +188,17 @@ export async function applyBackfillPlan(sessionSource, {
           + 'finishing this one against different data.',
         );
       }
-      // Record the batch size actually in use. Leaving the original value would make the logbook
-      // claim a hop size the resumed run never used.
-      await lease.query(
-        `UPDATE public.membership_backfill_runs SET batch_size = $2
-         WHERE id = $1 AND status = 'in_progress'`,
-        [runId, batchSize],
-      );
+      // The run records ONE hop size, so a resume at a different size would make that record false
+      // for part of the run's own history. Overwriting it is no better — earlier checkpoints were
+      // genuinely committed at the old size. So this refuses instead: a different hop size means a
+      // new run (the plan is deterministic, and pairs already written come back as already_present).
+      if (run.batch_size !== batchSize) {
+        throw new BackfillApplyError(
+          'BATCH_SIZE_CHANGED',
+          `applyBackfillPlan: run ${runId} recorded batch_size ${run.batch_size} but this resume asks `
+          + `for ${batchSize}. One run records one hop size; start a new run for a different size.`,
+        );
+      }
     }
 
     // Checkpoint numbering continues from what is already recorded. Restarting at 0 on every
