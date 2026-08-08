@@ -406,8 +406,9 @@ AS $$
      AND con.confdeltype IN ('r', 'a')
      AND array_length(con.conkey, 1) = 1
      AND pcl.relname IN (SELECT dp.relname FROM public.academy_deletion_deletion_parents() dp)
-     -- what this flow deletes itself cannot block it: the reference is gone before the parent is
-     AND public.academy_deletion_deleted_scope(cl.relname) IS NULL
+     -- NB: relations this flow partly deletes are NOT excluded here. A relation can be deleted for
+     -- THIS academy and still hold a row belonging to another that references a dying parent, and
+     -- that surviving row refuses just the same. The exclusion is a row predicate at the count site.
      -- invoices already have their own named blocker; two codes for one fact is not two facts
      AND con.conrelid <> 'public.invoices'::regclass
    ORDER BY 3, 4, 1;
@@ -901,9 +902,12 @@ BEGIN
   -- if left to be discovered by Postgres, so both are counted here and refused up front.
   v_blocking := 0;
   FOR v_rec IN SELECT * FROM public.academy_deletion_blocking_refs() LOOP
-    EXECUTE format('SELECT count(*)::int FROM public.%I WHERE %s', v_rec.relname,
+    -- the reference is dying AND this row is not one the flow deletes on its way past
+    EXECUTE format('SELECT count(*)::int FROM public.%I WHERE %s AND NOT coalesce(%s, false)',
+                   v_rec.relname,
                    public.academy_deletion_dying_pred(v_rec.parent, v_rec.parentcol,
-                     quote_ident(v_rec.colname)))
+                     quote_ident(v_rec.colname)),
+                   coalesce(public.academy_deletion_deleted_scope(v_rec.relname), 'false'))
       INTO v_n USING _academy_id;
     v_blocking := v_blocking + v_n;
   END LOOP;
@@ -1120,6 +1124,10 @@ BEGIN
     -- the SET NULL side: these are WRITTEN by the deletion (their reference is cleared), so a
     -- concurrent writer to one of them must wait exactly as it does for a row being destroyed
     UNION SELECT dt.relname FROM public.academy_deletion_detach_targets() dt
+    -- the blocker's INPUTS. `intake_requests` is protected today only because it happens to be a
+    -- detach target as well; a restrictive child with no SET NULL key of its own could take a
+    -- committed reference between the blocker recomputation and the delete, and refuse it.
+    UNION SELECT br.relname FROM public.academy_deletion_blocking_refs() br
     -- the root itself. It was missing: only its ROW was locked, so a concurrent CREATE TRIGGER on
     -- academy_profiles could take its lock AFTER the fingerprint was checked and fire during the
     -- delete. A table lock here closes that window for the same reason it does everywhere else —

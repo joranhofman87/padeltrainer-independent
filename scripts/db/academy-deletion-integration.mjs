@@ -726,41 +726,125 @@ for (const [label, seed, code] of [
 }
 
 // ══ 3n. A MULTI-COLUMN CHECK IS SIMULATED AS A WHOLE ═══════════════════════════════════════════
-// `slot_priority_claims` has TWO guest columns. A check that reads both is survivable when each is
-// simulated alone and broken when both are cleared — which is what actually happens. No shipped
-// check reads both today, so the case is staged: the constraint is created, the simulation
-// inspected, and its removal asserted to restore the fingerprint.
+// `slot_priority_claims` has TWO guest columns. A check reading both survives each one-at-a-time
+// simulation and breaks when both are cleared, which is what actually happens. No shipped check
+// reads both, so the constraint is staged — and the assertion is the BLOCKER, not the shape of the
+// generated SQL: a predicate can contain every CASE expression and still combine them wrongly.
 {
   const c = await client();
   const f = await seedAcademy(c);
+  const { id: twin } = await one(c,
+    `INSERT INTO public.guest_players (full_name, academy_profile_id) VALUES ('Captain', $1) RETURNING id`,
+    [f.academy]);
+  const { id: uid } = await one(c,
+    `INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+     VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+             'u1c-p3-claim-' || replace(gen_random_uuid()::text,'-','') || '@example.com', '', now(), now())
+     RETURNING id`);
+  const { id: profileId } = await one(c, `SELECT id FROM public.profiles WHERE user_id = $1`, [uid]);
+  const { id: trainer } = await one(c,
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [uid]);
+  const { id: slot } = await one(c,
+    `INSERT INTO public.availability_slots (trainer_id, start_time, end_time)
+     VALUES ($1, now() + interval '2 days', now() + interval '2 days 1 hour') RETURNING id`, [trainer]);
+  // player_id present, so the SHIPPED one-column check stays satisfied after its guest is cleared
+  await c.query(
+    `INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id, booked_by_guest_player_id)
+     VALUES ($1, $2, $3, $4)`, [slot, profileId, f.guest, twin]);
+
+  const before = await one(c, `SELECT public.academy_deletion_blockers($1) AS b`, [f.academy]);
+  ok('with only the shipped checks, this claim is not a blocker',
+    !before.b.some((x) => x.code === 'DETACH_BREAKS_CONSTRAINT'), before.b);
+
+  // a check that reads BOTH guest columns and neither survives
+  await c.query(`ALTER TABLE public.slot_priority_claims ADD CONSTRAINT u1c_p3_two_col_probe
+                 CHECK (guest_player_id IS NOT NULL OR booked_by_guest_player_id IS NOT NULL)`);
+  const after = await one(c, `SELECT public.academy_deletion_blockers($1) AS b`, [f.academy]);
+  ok('clearing BOTH guest columns breaks it, and the blocker says so',
+    after.b.some((x) => x.code === 'DETACH_BREAKS_CONSTRAINT' && x.count === 1), after.b);
+
+  // the checks are the blocker's INPUT, so changing one is drift
   const p = await preview(c, f.academy);
   const auditId = await startAudit(c, f.academy, ACTOR, p);
-
-  const single = await one(c, `SELECT public.academy_deletion_detach_check_pred('slot_priority_claims') AS p`);
-  ok('the shipped one-column check is simulated with one substitution',
-    (single.p.match(/CASE WHEN/g) ?? []).length === 1, { n: (single.p.match(/CASE WHEN/g) ?? []).length });
-
+  await c.query(`ALTER TABLE public.slot_priority_claims DROP CONSTRAINT u1c_p3_two_col_probe`);
   await c.query(`ALTER TABLE public.slot_priority_claims ADD CONSTRAINT u1c_p3_two_col_probe
-                 CHECK (guest_player_id IS NOT NULL OR booked_by_guest_player_id IS NOT NULL OR player_id IS NOT NULL)`);
-  const both = await one(c, `SELECT public.academy_deletion_detach_check_pred('slot_priority_claims') AS p`);
-  ok('a check reading BOTH guest columns is simulated with both cleared at once',
-    (both.p.match(/CASE WHEN/g) ?? []).length >= 3, { n: (both.p.match(/CASE WHEN/g) ?? []).length });
-  ok('...and each substitution is conditional on that column\'s own row dying, not a blanket NULL',
-    both.p.includes('THEN NULL ELSE'));
-
-  // the checks are themselves fingerprinted: they are the blocker's input, so changing one is drift
+                 CHECK (guest_player_id IS NOT NULL OR booked_by_guest_player_id IS NOT NULL)`);
   let refused = null;
   try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = e.message; }
-  ok('adding a CHECK to a detach target is ACADEMY_DELETION_CATALOG_DRIFT',
+  ok('a CHECK added to a detach target is ACADEMY_DELETION_CATALOG_DRIFT',
     refused !== null && refused.includes('ACADEMY_DELETION_CATALOG_DRIFT'), { refused });
 
   await c.query(`ALTER TABLE public.slot_priority_claims DROP CONSTRAINT u1c_p3_two_col_probe`);
   ok('dropping it restores the fingerprint',
     (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
 
-  const p2 = await preview(c, f.academy);
-  ok('an academy with no breaking rows is not blocked by the simulation',
-    !p2.blockers.some((b) => b.code === 'DETACH_BREAKS_CONSTRAINT'), p2.blockers);
+  await c.query(`DELETE FROM public.slot_priority_claims WHERE slot_id = $1`, [slot]);
+  await c.query(`DELETE FROM public.availability_slots WHERE id = $1`, [slot]);
+  await c.query(`DELETE FROM public.trainer_profiles WHERE id = $1`, [trainer]);
+  await c.query(`DELETE FROM public.profiles WHERE id = $1`, [profileId]);
+  await c.query(`DELETE FROM auth.users WHERE id = $1`, [uid]);
+  await c.end();
+}
+
+// ══ 3o. A PARTLY-DELETED RELATION CAN STILL REFUSE ═════════════════════════════════════════════
+// `academy_player_memberships` is deleted FOR THIS ACADEMY, so excluding the whole relation from the
+// blocker looked reasonable. It is not: another academy's membership row survives and its RESTRICT
+// reference to a dying person aborts the delete just the same. The exclusion has to be a row
+// predicate. (Test 3h is the other half: this academy's OWN membership must not block.)
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: otherAcademy } = await one(c,
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u1c-p3-restrict-holder', 'u1c-p3-rh-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  CREATED.push(otherAcademy);
+  await c.query(`INSERT INTO public.academy_player_memberships (academy_profile_id, person_id) VALUES ($1, $2)`,
+    [otherAcademy, f.person]);
+
+  const b = await one(c, `SELECT public.academy_deletion_blockers($1) AS b`, [f.academy]);
+  ok('a surviving row of a partly-deleted relation is counted as a blocking reference',
+    b.b.some((x) => x.code === 'BLOCKING_REFERENCES' && x.count === 1), b.b);
+
+  const p = await preview(c, f.academy);
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = `${e.code}:${e.message}`; }
+  ok('it refuses BLOCKED rather than aborting on the RESTRICT',
+    refused !== null && refused.includes('BLOCKED') && !refused.includes('23503'), { refused });
+
+  await c.query(`DELETE FROM public.academy_player_memberships WHERE academy_profile_id = $1`, [otherAcademy]);
+  await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [otherAcademy]);
+  await c.end();
+}
+
+// ══ 3p. THE BLOCKER'S INPUTS ARE LOCKED TOO ════════════════════════════════════════════════════
+// A restrictive child can take a committed reference between the blocker recomputation and the
+// delete, and refuse it. Both of today's blocking references are locked anyway — one is a cascade
+// descendant, the other is also a detach target — so a restrictive child that is NEITHER is staged
+// rather than waited for.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  await c.query(`ALTER TABLE public.trainer_profiles ADD COLUMN u1c_p3_probe_person_id uuid
+                 REFERENCES public.persons(id) ON DELETE RESTRICT`);
+  ok('the staged restrictive child is derived as a blocking reference',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_blocking_refs()
+                    WHERE relname = 'trainer_profiles'`)).n === 1);
+
+  await c.query('BEGIN');
+  await c.query(`SELECT public.academy_deletion_lock_plan($1)`, [f.academy]);
+  const unheld = await one(c, `
+    SELECT coalesce(string_agg(br.relname, ', '), '') AS missing
+      FROM public.academy_deletion_blocking_refs() br
+     WHERE NOT EXISTS (SELECT 1 FROM pg_locks l
+                        WHERE l.pid = pg_backend_pid() AND l.locktype = 'relation' AND l.granted
+                          AND l.relation = to_regclass('public.' || br.relname))`);
+  ok('every relation the blocker reads is held by the lock plan', unheld.missing === '', unheld);
+  await c.query('ROLLBACK');
+
+  await c.query(`ALTER TABLE public.trainer_profiles DROP COLUMN u1c_p3_probe_person_id`);
+  ok('dropping the probe restores the fingerprint',
+    (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
   await c.end();
 }
 
