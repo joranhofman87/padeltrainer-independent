@@ -215,16 +215,20 @@ ok('the manifest holds exactly one line per planned row after resume',
 
 // Checkpoint numbering must CONTINUE across the resume. Restarting at 0 would make two different
 // hops share a batch_seq, so the log would no longer record the order work actually happened in.
+const RESUME_BATCH = 2;
 const seqs = await db2.query(
   `SELECT batch_seq, count(*)::int AS n FROM public.membership_backfill_items
    WHERE run_id = $1 GROUP BY batch_seq ORDER BY batch_seq`, [killedRunId]);
 const seqList = seqs.rows.map((r) => r.batch_seq);
-ok('batch_seq continues across a resume instead of restarting at 0',
-  seqList.length === new Set(seqList).size
-  && seqList.every((s, i) => i === 0 || s === seqList[i - 1] + 1)
-  && seqList[0] === 0
-  && seqList.length > 2,
-  { seqList });
+// The load-bearing assertion is the per-seq COUNT, not the shape of the list: GROUP BY batch_seq
+// collapses reuse, so "contiguous and unique" stays true even when a resume restarts at 0. If it
+// restarted, the early seqs would hold rows from BOTH invocations and exceed the batch size.
+ok('no batch_seq holds more rows than one hop (i.e. it never restarted)',
+  seqs.rows.every((r) => r.n <= RESUME_BATCH), seqs.rows);
+ok('batch_seq covers every hop contiguously from 0',
+  seqList.length === Math.ceil(plan2.rows.length / RESUME_BATCH)
+  && seqList.every((s, i) => s === i),
+  { seqList, expectedHops: Math.ceil(plan2.rows.length / RESUME_BATCH) });
 
 // ── 5b. A RUN THAT WAS TERMINATED MID-FLIGHT MUST NOT BE WRITTEN INTO ───────────────────────────
 // The dangerous interleaving: an operator rolls the run back while a resume is already looping. The
