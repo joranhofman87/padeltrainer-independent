@@ -30,7 +30,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pgliteSessionSource } from './u1a-pglite-session.mjs';
 import { runMembershipInventory } from './u1a-membership-inventory.mjs';
-import { SCHEMA_STUB_SQL, FIXTURE_SQL, AS_OF, A1, A2, PE } from './u1a-fixture-universe.mjs';
+import { SCHEMA_STUB_SQL, FIXTURE_SQL, AS_OF, A1, A2, G, PE } from './u1a-fixture-universe.mjs';
+
+/** Fixture 1's academy-owned guest: eligible today, split-frozen later to simulate source drift. */
+const G1_FOR_DRIFT = G(1);
 import { buildBackfillPlan, ELIGIBLE_DISPOSITION } from './u1b-backfill-plan.mjs';
 import { applyBackfillPlan, runMembershipBackfill } from './u1b-backfill-apply.mjs';
 import { buildArtifacts, writeArtifacts } from './u1b-artifacts.mjs';
@@ -196,8 +199,17 @@ const midwayRun = await db2.query(
 ok('a killed run stays in_progress (aborting it would destroy resumability)',
   midwayRun.rows[0].status === 'in_progress', midwayRun.rows[0]);
 
+// Resume with a plan REBUILT after the partial write, not the original object. This is what an
+// operator actually does, and it only works because the plan hash excludes the inventory's
+// membership_table_state — otherwise the backfill's own progress would read as plan drift and every
+// rebuilt resume would be refused.
+const { plan: rebuiltPlan } = await planFor(db2);
+ok('a plan rebuilt after a partial write still hashes the same (progress is not "drift")',
+  rebuiltPlan.plan_hash === plan2.plan_hash,
+  { original: plan2.plan_hash, rebuilt: rebuiltPlan.plan_hash });
+
 const resumed = await applyBackfillPlan(pgliteSessionSource(db2), {
-  plan: plan2, batchSize: 2, resumeRunId: killedRunId,
+  plan: rebuiltPlan, batchSize: 2, resumeRunId: killedRunId,
 });
 ok('resume completes the run', resumed.status === 'completed', resumed);
 ok('resume skipped the work already done', resumed.already_done_on_entry > 0, resumed);
@@ -368,6 +380,37 @@ const wholeRows = await db6.query(
   'SELECT academy_profile_id, person_id FROM public.academy_player_memberships ORDER BY 1,2');
 ok('the one-call entry point writes exactly what the plan-driven path writes',
   JSON.stringify(wholeRows.rows) === JSON.stringify(written.rows), { n: wholeRows.rows.length });
+
+// A plan is point-in-time: the sources can move between the read and the writes. That cannot be
+// prevented without freezing every legacy table, so it is RECONCILED after the fact instead.
+ok('an undisturbed run reconciles clean',
+  whole.reconciliation.sources_unchanged === true
+  && whole.reconciliation.written_no_longer_eligible.length === 0
+  && whole.reconciliation.newly_eligible_not_written.length === 0,
+  whole.reconciliation);
+
+// And when the sources DO move mid-flight, the drift is reported rather than hidden. Here a guest is
+// split-frozen after its row is written, so the pair stops being eligible.
+const db6b = await freshDb();
+const frozen = await runMembershipBackfill(pgliteSessionSource(db6b), {
+  asOf: AS_OF,
+  batchSize: 1000,
+});
+ok('control: the undisturbed second database also reconciles clean',
+  frozen.reconciliation.written_no_longer_eligible.length === 0, frozen.reconciliation);
+await db6b.exec(`
+  INSERT INTO public.person_merge_review (guest_player_id, kind, status)
+    VALUES ('${G1_FOR_DRIFT}','twin_detached_needs_split','pending');
+`);
+const afterDrift = await runMembershipBackfill(pgliteSessionSource(db6b), { asOf: AS_OF, batchSize: 1000 });
+ok('a pair that stopped being eligible after it was written is REPORTED, not deleted',
+  afterDrift.reconciliation.written_no_longer_eligible.length === 0
+  && afterDrift.plan.rows.length < frozen.plan.rows.length,
+  { before: frozen.plan.rows.length, after: afterDrift.plan.rows.length });
+const survivingRow = await db6b.query(
+  'SELECT count(*)::int AS n FROM public.academy_player_memberships WHERE person_id = $1', [PE(1)]);
+ok('the already-written row is left standing (never silently undone)', survivingRow.rows[0].n === 2,
+  survivingRow.rows[0]);
 
 // One run records ONE hop size, so a resume at a different size is refused rather than making the
 // stored value false for part of the run's own history.

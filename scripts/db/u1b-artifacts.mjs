@@ -21,8 +21,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, writeFileSync, renameSync, rmSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { canonicalize } from './u1a-membership-inventory.mjs';
 
 export const ARTIFACTS_VERSION = 'u1b.artifacts.1';
@@ -120,10 +120,13 @@ export function buildArtifacts(inventory, plan) {
  *
  * Files are canonical JSON (sorted keys at every depth), so identical inputs produce identical BYTES,
  * not merely equivalent objects — that is what makes the hashes comparable across runs and machines.
+ *
+ * ATOMIC. Everything is written into a sibling staging directory and moved into place with a single
+ * `rename`. Writing the payloads in place and the manifest last would let an interrupted run leave
+ * new payloads beside an old manifest — a directory that still LOOKS like evidence but whose hashes
+ * describe different bytes. A partial write must leave the previous artifact set untouched instead.
  */
 export function writeArtifacts(dir, artifacts) {
-  mkdirSync(dir, { recursive: true });
-
   const files = {
     'plan.json': artifacts.plan,
     'drift.json': artifacts.drift,
@@ -131,9 +134,10 @@ export function writeArtifacts(dir, artifacts) {
   };
 
   const entries = {};
+  const payloads = {};
   for (const name of Object.keys(files).sort()) {
     const bytes = canonicalize(files[name]);
-    writeFileSync(join(dir, name), bytes);
+    payloads[name] = bytes;
     entries[name] = {
       sha256: createHash('sha256').update(bytes).digest('hex'),
       bytes: Buffer.byteLength(bytes),
@@ -147,7 +151,46 @@ export function writeArtifacts(dir, artifacts) {
     as_of: artifacts.drift.as_of,
     files: entries,
   };
-  writeFileSync(join(dir, 'manifest.json'), canonicalize(manifest));
+
+  // Staged beside the target, so the rename is same-filesystem and therefore atomic. The name is
+  // derived from the plan hash rather than a clock or a random value: repeated runs of the same plan
+  // reuse it deterministically instead of littering.
+  const staging = join(dirname(dir), `.${manifest.plan_hash.slice(0, 16)}.staging`);
+  rmSync(staging, { recursive: true, force: true });
+  mkdirSync(staging, { recursive: true });
+  try {
+    for (const name of Object.keys(payloads)) writeFileSync(join(staging, name), payloads[name]);
+    writeFileSync(join(staging, 'manifest.json'), canonicalize(manifest));
+
+    // `rename` cannot replace a non-empty directory, so any existing set is removed first. That is
+    // the only destructive moment, it is deliberate (the caller asked to write here), and it happens
+    // AFTER the new set is fully staged — so a failure while staging leaves the old set intact.
+    mkdirSync(dirname(dir), { recursive: true });
+    rmSync(dir, { recursive: true, force: true });
+    renameSync(staging, dir);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
 
   return manifest;
+}
+
+/**
+ * Re-reads an artifact directory and verifies every payload against the manifest's hashes.
+ *
+ * A manifest nobody ever checks is decoration. This is what makes the directory evidence: it proves
+ * the bytes on disk are the bytes that were hashed, and it is what a later unit should call before
+ * trusting an artifact set it did not produce.
+ */
+export function verifyArtifacts(dir) {
+  const readFile = (p) => readFileSync(p, 'utf8');
+  const manifest = JSON.parse(readFile(join(dir, 'manifest.json')));
+  const problems = [];
+  for (const [name, entry] of Object.entries(manifest.files)) {
+    let bytes;
+    try { bytes = readFile(join(dir, name)); } catch { problems.push(`${name}: missing`); continue; }
+    const actual = createHash('sha256').update(bytes).digest('hex');
+    if (actual !== entry.sha256) problems.push(`${name}: sha256 ${actual} != ${entry.sha256}`);
+  }
+  return { ok: problems.length === 0, problems, manifest };
 }

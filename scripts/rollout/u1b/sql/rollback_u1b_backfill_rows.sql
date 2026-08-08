@@ -29,6 +29,7 @@ DECLARE
   v_status text;
   v_owned bigint;
   v_deleted bigint;
+  v_dependents text;
 BEGIN
   IF v_raw IS NULL OR v_raw = '' THEN
     RAISE EXCEPTION
@@ -50,6 +51,30 @@ BEGIN
   -- concurrent resume of the same run could insert more owned rows between the count and the delete,
   -- so the reported number would understate what was removed.
   LOCK TABLE public.academy_player_memberships IN ACCESS EXCLUSIVE MODE;
+
+  -- CROSS-RUN DEPENDENCY. A later run that found these rows already there recorded them
+  -- 'already_present' — it did not create them, so it does not own them, but it DOES depend on them:
+  -- its manifest says those pairs are done. Deleting them here would leave that run marked
+  -- 'completed' while the memberships it accounted for are gone. Refuse and name the runs, so a human
+  -- decides which to unwind first, rather than silently breaking a completed run's reconciliation.
+  SELECT string_agg(DISTINCT other.run_id::text, ', ')
+    INTO v_dependents
+  FROM public.membership_backfill_items other
+  JOIN public.membership_backfill_items mine
+    ON mine.membership_id = other.membership_id
+  JOIN public.membership_backfill_runs r ON r.id = other.run_id
+  WHERE mine.run_id = v_run_id
+    AND mine.outcome = 'inserted'
+    AND other.run_id <> v_run_id
+    AND other.outcome = 'already_present'
+    AND r.status <> 'aborted';
+
+  IF v_dependents IS NOT NULL THEN
+    RAISE EXCEPTION
+      'REFUSING to roll back run %: run(s) % recorded some of its rows as already_present and are not aborted. Deleting those rows would leave a completed run accounting for memberships that no longer exist. Roll back or abort the dependent run(s) first.',
+      v_run_id, v_dependents
+      USING ERRCODE = 'check_violation';
+  END IF;
 
   SELECT count(*) INTO v_owned
   FROM public.membership_backfill_items

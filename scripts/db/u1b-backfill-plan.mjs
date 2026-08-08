@@ -224,7 +224,6 @@ export function buildBackfillPlan(inventory) {
   const body = {
     plan_version: PLAN_VERSION,
     inventory_version: inventoryVersion,
-    inventory_content_hash: inventoryContentHash,
     as_of: asOf,
     rows,
     reconciliation: {
@@ -240,19 +239,35 @@ export function buildBackfillPlan(inventory) {
     },
   };
 
-  return { ...body, planned_row_count: rows.length, plan_hash: contentHash(body) };
+  return {
+    ...body,
+    // Carried for provenance/reporting, but DELIBERATELY OUTSIDE the hashed body — see planHashOf.
+    inventory_content_hash: inventoryContentHash,
+    planned_row_count: rows.length,
+    plan_hash: contentHash(body),
+  };
 }
 
 /**
  * Recomputes the hash of a plan object as it would have been produced by buildBackfillPlan.
  * Used by the applier to re-verify a plan handed to it, and by the resume path to detect drift.
+ *
+ * WHY `inventory_content_hash` IS NOT IN HERE. The inventory's content hash covers its whole report,
+ * including `membership_table_state` — the row count of the very table this backfill writes into. So
+ * folding it in would make the plan hash change as a direct result of the backfill's own success:
+ * an operator who rebuilt a plan to resume a half-finished run would be told the plan had "drifted"
+ * every single time, and the drift refusal would become noise that has to be worked around.
+ *
+ * The hash must answer one question — has the CANDIDATE SET moved? — so it covers the eligible rows
+ * and the reconciliation derived from the legacy sources, and nothing that this unit itself mutates.
+ * Provenance is checked separately, at build time, by recomputing the inventory's own hash.
  */
 export function planHashOf(plan) {
   if (plan === null || typeof plan !== 'object') {
     throw new BackfillPlanError('INVALID_PLAN', 'planHashOf: plan must be an object.');
   }
-  const { plan_version, inventory_version, inventory_content_hash, as_of, rows, reconciliation } = plan;
-  return contentHash({ plan_version, inventory_version, inventory_content_hash, as_of, rows, reconciliation });
+  const { plan_version, inventory_version, as_of, rows, reconciliation } = plan;
+  return contentHash({ plan_version, inventory_version, as_of, rows, reconciliation });
 }
 
 /** Exported for tests that assert canonical serialization is shared with the inventory. */

@@ -69,6 +69,45 @@ overwriting a value that was true for the checkpoints already committed — a di
 a new run, which is safe because the plan is deterministic and pairs already written come back as
 `already_present`.
 
+The plan hash deliberately covers the eligible rows and the legacy-derived reconciliation, and
+**excludes** the inventory's `inventory_content_hash`. That hash spans the whole inventory report,
+including `membership_table_state` — the row count of the table this backfill writes into. Folding it
+in would make the plan hash change as a direct result of the backfill's own success, so an operator
+rebuilding a plan to resume a half-finished run would be told it had "drifted" every time and the
+refusal would become noise to work around. The hash answers one question: *has the candidate set
+moved?*
+
+## Point-in-time, and what is done about it
+
+A plan describes the sources as they were at `asOf`. Between the read and the writes the legacy
+sources can move, and a resumable multi-transaction backfill cannot promise otherwise without
+freezing every legacy table for its whole duration — not something a live system can offer. Plan
+pinning catches drift on **resume**; it cannot catch drift before a new run's first write.
+
+So `runMembershipBackfill` re-reads afterwards and **reports** it, in `reconciliation`:
+
+- `sources_unchanged` — the candidate set is identical before and after;
+- `written_no_longer_eligible` — pairs this run wrote that the sources no longer justify;
+- `newly_eligible_not_written` — pairs that became eligible after the plan was taken (a later run
+  picks them up, which is why this is reported rather than treated as a failure).
+
+Nothing is auto-corrected. Silently deleting a membership row because the sources moved is exactly
+the destruction this programme rules out; deciding what to do about a stale pair belongs to the
+owner-gated unit.
+
+## Cross-run dependencies
+
+Two runs can touch one pair: the first creates it (`inserted`, and therefore owns it), a later one
+finds it already there (`already_present`, and therefore depends on it). Rolling back the **owner**
+would delete a row the later run's manifest accounts for, leaving a `completed` run short of
+memberships. The data rollback refuses in that case and names the dependent runs, so a human decides
+which to unwind first.
+
+Artifacts are written atomically: everything is staged in a sibling directory and moved into place
+with a single `rename`, so an interrupted write leaves the previous set intact rather than new
+payloads beside a stale manifest. `verifyArtifacts(dir)` re-checks every payload against the
+manifest's hashes — a manifest nobody verifies is decoration.
+
 ## Rollback ownership
 
 `academy_player_memberships` may legitimately hold rows from several sources: this run, an earlier

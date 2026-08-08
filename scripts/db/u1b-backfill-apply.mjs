@@ -72,10 +72,37 @@ const pairKey = (r) => `${r.academy_profile_id}|${r.person_id}`;
 export async function runMembershipBackfill(sessionSource, { asOf, batchSize = DEFAULT_BATCH_SIZE } = {}) {
   // The inventory takes its own READ ONLY snapshot and releases its lease before we write; it must,
   // because a READ ONLY transaction cannot host the applier's INSERTs.
+  //
+  // POINT-IN-TIME. That means a plan describes the sources as they were at `asOf`, and the legacy
+  // sources can move between the read and the writes — a resumable, multi-transaction backfill cannot
+  // promise otherwise without freezing every legacy table for its whole duration, which is not
+  // something a live system can offer. Plan pinning catches drift on RESUME; it cannot catch drift
+  // before a new run's first write. So instead of pretending, the reconciliation below RE-READS after
+  // the fact and REPORTS any pair that is no longer eligible. Reported, never auto-corrected:
+  // silently deleting a membership row because the sources moved is exactly the destruction this
+  // programme rules out. Deciding what to do about a stale pair belongs to the owner-gated unit.
   const inventory = await runMembershipInventory(sessionSource, { asOf });
   const plan = buildBackfillPlan(inventory);
   const summary = await applyBackfillPlan(sessionSource, { plan, batchSize });
-  return { inventory, plan, summary };
+
+  const after = await runMembershipInventory(sessionSource, { asOf });
+  const afterPlan = buildBackfillPlan(after);
+  const stillEligible = new Set(afterPlan.rows.map(pairKey));
+  const wroteKeys = plan.rows.map(pairKey);
+
+  const reconciliation = {
+    plan_hash_before: plan.plan_hash,
+    plan_hash_after: afterPlan.plan_hash,
+    sources_unchanged: plan.plan_hash === afterPlan.plan_hash,
+    // Pairs this run wrote that the sources no longer justify. Non-empty means the legacy data moved
+    // mid-flight; the rows stand and are listed for review.
+    written_no_longer_eligible: wroteKeys.filter((k) => !stillEligible.has(k)),
+    // Pairs that became eligible after the plan was taken. They were NOT written — a later run picks
+    // them up, which is why this is reported rather than treated as a failure.
+    newly_eligible_not_written: afterPlan.rows.map(pairKey).filter((k) => !wroteKeys.includes(k)),
+  };
+
+  return { inventory, plan, summary, reconciliation };
 }
 
 /**
