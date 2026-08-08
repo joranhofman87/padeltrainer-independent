@@ -512,7 +512,13 @@ academy_bookings AS (
 dual_key AS (
   SELECT ab.academy_profile_id, ab.booking_id, b.player_id, b.guest_player_id,
          (SELECT pl.person_id FROM person_links pl WHERE pl.profile_id = b.player_id) AS overview_person_id,
-         (SELECT pl.person_id FROM person_links pl WHERE pl.guest_player_id = b.guest_player_id) AS fam02_person_id
+         -- EXACTLY the shipped stamp (persons_expand.sql:143-145): guest link FIRST, then the profile
+         -- link as fallback. Guest-only resolution would report a booking whose guest is simply
+         -- unlinked as "divergent" when the stamp itself falls back to the profile and agrees.
+         COALESCE(
+           (SELECT pl.person_id FROM person_links pl WHERE pl.guest_player_id = b.guest_player_id),
+           (SELECT pl.person_id FROM person_links pl WHERE pl.profile_id = b.player_id)
+         ) AS fam02_person_id
   FROM academy_bookings ab
   JOIN bookings b ON b.id = ab.booking_id
   WHERE b.player_id IS NOT NULL AND b.guest_player_id IS NOT NULL
@@ -759,32 +765,108 @@ export function contentHash(value) {
 }
 
 /**
- * Session identity: backend pid AND the current transaction id. Sampled repeatedly through the run.
- * Fails CLOSED — an executor whose identity cannot be read is exactly the executor whose snapshot
- * guarantee cannot be trusted.
- *
- * `txid` is the stronger half: a pooled callback that scattered statements would land them in
- * DIFFERENT transactions (or none), which changes the value even if the pool happened to hand back
- * the same backend both times.
+ * Executor errors carry a STABLE code so tests can assert the specific guard, not merely "it threw".
  */
-async function sessionIdentity(query, phase) {
-  let rows;
-  try {
-    ({ rows } = await query('SELECT pg_backend_pid() AS pid, txid_current() AS txid'));
-  } catch (err) {
-    throw new Error(
-      `runMembershipInventory: cannot read session identity at ${phase} (${err?.message ?? err}). ` +
-      'The inventory requires a session-pinned executor whose identity is verifiable.',
+export class InventoryExecutorError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.name = 'InventoryExecutorError';
+    this.code = code;
+  }
+}
+
+/**
+ * ── THE EXECUTOR CONTRACT ─────────────────────────────────────────────────────────────────────
+ *
+ * Session ownership is STRUCTURAL, not verified. An earlier design took a bare
+ * `(sql, params) => rows` callback and tried to PROVE pinning with pg_backend_pid()/txid_current()
+ * probes; three consecutive review rounds found holes, because a probe and a payload read are
+ * separate calls and a pool can route them differently. Verification cannot establish what the
+ * interface fails to own — so the interface now owns it.
+ *
+ * `sessionSource` MUST be an object exposing `connect()`:
+ *     SessionSource = { connect(): Promise<PinnedClient> }
+ *     PinnedClient  = { query(sql, params?): Promise<{rows}>, release(err?): void | Promise<void> }
+ *
+ * A bare callback and `pool.query` are FUNCTIONS, so they fail the object test structurally rather
+ * than by heuristic. A real `pg.Pool` satisfies the shape natively (`pool.connect()` hands back a
+ * dedicated client with `.query`/`.release`), so production needs no adapter; PGlite gets an
+ * explicit single-session adapter in the rehearsal.
+ *
+ * PROVIDER PRECONDITION (cannot be proven from inside, so it is stated): `connect()` must return an
+ * EXCLUSIVE, initially idle, non-multiplexed session lease that nothing else uses until release.
+ * A "client" whose `query` is really `pool.query.bind(pool)` satisfies the shape and violates the
+ * contract; that is the provider's bug, not something this engine can detect.
+ *
+ * Lifecycle — one path, no alternatives:
+ *   1. validate `asOf` and `sessionSource` BEFORE acquiring (invalid input ⇒ zero connect() calls)
+ *   2. connect() exactly once — never retried, never reconnected
+ *   3. validate the client; if invalid but it exposes release, release once, then reject
+ *   4. BEGIN ... ISOLATION LEVEL REPEATABLE READ READ ONLY, then ASSERT the mode actually took
+ *   5. both fingerprints and every report query, sequentially, through that one client
+ *   6. build and validate the COMPLETE result before COMMIT (never a partial report)
+ *   7. COMMIT; on any failure after BEGIN was attempted and before COMMIT was confirmed, exactly one
+ *      awaited ROLLBACK, then release — preserving the ORIGINAL error
+ *   8. release exactly once on every path, marked before awaiting so a throwing release is not
+ *      retried; a failed ROLLBACK passes the error to release() so a pool discards the poisoned
+ *      connection; a release failure on an otherwise successful run rejects the run
+ */
+
+function assertValidAsOf(asOf) {
+  // An ABSOLUTE instant only. PostgreSQL happily parses 'now', 'today' and 'yesterday' as
+  // timestamptz, which would smuggle wall-clock behaviour straight back into a "fixed" as_of.
+  if (typeof asOf !== 'string'
+      || !/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}(:?\d{2})?)$/.test(asOf)) {
+    throw new InventoryExecutorError(
+      'INVALID_AS_OF',
+      `runMembershipInventory: \`asOf\` must be an absolute ISO-8601 timestamp with offset (got ${JSON.stringify(asOf)}). `
+      + 'Relative inputs like "now"/"today" are rejected: they would break determinism.',
     );
   }
-  return `${rows[0]?.pid}/${rows[0]?.txid}`;
+}
+
+function assertValidSessionSource(sessionSource) {
+  // typeof check FIRST: a function decorated with a `.connect` property must still be rejected —
+  // that is the shape a "clever" caller would reach for to smuggle a bare callback back in.
+  if (typeof sessionSource !== 'object' || sessionSource === null || Array.isArray(sessionSource)) {
+    throw new InventoryExecutorError(
+      'INVALID_SESSION_SOURCE',
+      'runMembershipInventory: pass a session SOURCE object with a connect() method, not a query '
+      + 'callback or a pool. A bare callback cannot own a session, and pool.query scatters statements '
+      + 'across connections — which voids both READ ONLY and the REPEATABLE READ snapshot.',
+    );
+  }
+  if (typeof sessionSource.connect !== 'function') {
+    throw new InventoryExecutorError(
+      'INVALID_SESSION_SOURCE',
+      'runMembershipInventory: sessionSource.connect must be a function returning an exclusive '
+      + '{ query, release } client (a pg.Pool satisfies this natively).',
+    );
+  }
+}
+
+/** The transaction mode is asserted, not assumed: BEGIN can be silently overridden by a wrapper. */
+async function assertTransactionMode(client) {
+  const { rows } = await client.query(
+    `SELECT current_setting('transaction_isolation') AS isolation,
+            current_setting('transaction_read_only') AS read_only`,
+  );
+  const isolation = String(rows?.[0]?.isolation ?? '').toLowerCase();
+  const readOnly = String(rows?.[0]?.read_only ?? '').toLowerCase();
+  if (isolation !== 'repeatable read' || readOnly !== 'on') {
+    throw new InventoryExecutorError(
+      'TRANSACTION_MODE',
+      `runMembershipInventory: transaction is ${isolation}/read_only=${readOnly}, expected `
+      + 'repeatable read/read_only=on. The snapshot and the write-protection both depend on it.',
+    );
+  }
 }
 
 /** md5 fingerprint per source table: row count + content digest, both order-independent. */
-async function fingerprintSources(query) {
+async function fingerprintSources(client) {
   const out = {};
   for (const table of SOURCE_TABLES) {
-    const { rows } = await query(
+    const { rows } = await client.query(
       `SELECT count(*)::int AS n,
               COALESCE(md5(string_agg(t.digest, '' ORDER BY t.digest)), '') AS digest
        FROM (SELECT md5(x::text) AS digest FROM public.${table} x) t`,
@@ -795,56 +877,55 @@ async function fingerprintSources(query) {
 }
 
 /**
- * Run the inventory.
+ * Run the inventory. See THE EXECUTOR CONTRACT above.
  *
- * @param {(sql: string, params?: unknown[]) => Promise<{rows: any[]}>} query
- * @param {{ asOf: string }} options  `asOf` is REQUIRED and fixed by the caller — the inventory
+ * @param {{ connect(): Promise<{query: Function, release: Function}> }} sessionSource
+ * @param {{ asOf: string }} options `asOf` is REQUIRED and fixed by the caller — the inventory
  *        contains no now()/current_date, so two runs over unchanged data are byte-identical.
  */
-export async function runMembershipInventory(query, { asOf } = {}) {
-  // An ABSOLUTE instant only. PostgreSQL happily parses 'now', 'today' and 'yesterday' as
-  // timestamptz, which would smuggle wall-clock behaviour straight back into a "fixed" as_of.
-  if (typeof asOf !== 'string' || !/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}(:?\d{2})?)$/.test(asOf)) {
-    throw new Error(
-      `runMembershipInventory: \`asOf\` must be an absolute ISO-8601 timestamp with offset (got ${JSON.stringify(asOf)}). ` +
-      'Relative inputs like "now"/"today" are rejected: they would break determinism.',
+export async function runMembershipInventory(sessionSource, { asOf } = {}) {
+  assertValidAsOf(asOf);
+  assertValidSessionSource(sessionSource);
+
+  const client = await sessionSource.connect();
+
+  const canRelease = client !== null && typeof client === 'object' && typeof client.release === 'function';
+  if (!canRelease || typeof client.query !== 'function') {
+    if (canRelease) { try { await client.release(); } catch { /* already failing */ } }
+    throw new InventoryExecutorError(
+      'INVALID_CLIENT',
+      'runMembershipInventory: sessionSource.connect() must resolve to { query, release }.',
     );
   }
 
-  await query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
-  try {
-    // The snapshot only exists if BEGIN, every read and COMMIT run on ONE backend. A pooled
-    // `pool.query` would scatter them across connections and silently void both READ ONLY and
-    // REPEATABLE READ, so pin the session identity and re-check it at the end.
-    const session = await sessionIdentity(query, 'transaction start');
-    const assertSameSession = async (phase) => {
-      const seen = await sessionIdentity(query, phase);
-      if (seen !== session) {
-        throw new Error(
-          `runMembershipInventory: the executor is not session-pinned (${session} → ${seen} at ${phase}). ` +
-          'Pass a checked-out client or a transaction-scoped executor, never a pool: scattered ' +
-          'statements void both READ ONLY and the REPEATABLE READ snapshot.',
-        );
-      }
-    };
+  let released = false;
+  const release = async (err) => {
+    if (released) return;
+    released = true;            // marked BEFORE awaiting: a throwing release is never retried
+    await client.release(err);
+  };
 
-    const fingerprintBefore = await fingerprintSources(query);
-    await assertSameSession('after pre-fingerprint');
+  let beginAttempted = false;
+  let commitConfirmed = false;
+
+  try {
+    beginAttempted = true;
+    await client.query('BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    await assertTransactionMode(client);
+
+    const fingerprintBefore = await fingerprintSources(client);
 
     const queries = buildQueries(asOf);
     const report = {};
     for (const name of Object.keys(queries).sort()) {
       const { sql, params } = queries[name];
-      const { rows } = await query(sql, params ?? []);
+      const { rows } = await client.query(sql, params ?? []);
       report[name] = rows;
-      await assertSameSession(`after read: ${name}`); // every read, not just the endpoints
     }
 
-    const fingerprintAfter = await fingerprintSources(query);
-    await assertSameSession('before commit');
+    const fingerprintAfter = await fingerprintSources(client);
 
-    await query('COMMIT');
-
+    // The COMPLETE result is built and hashed BEFORE commit: a partial report is never returned.
     const dispositionCounts = {};
     for (const key of DISPOSITION_PRECEDENCE) dispositionCounts[key] = 0;
     for (const row of report.dispositions) dispositionCounts[row.disposition] += 1;
@@ -856,16 +937,31 @@ export async function runMembershipInventory(query, { asOf } = {}) {
       total_candidates: report.dispositions.length,
       report,
     };
-
-    return {
+    const result = {
       ...body,
       source_fingerprint_before: fingerprintBefore,
       source_fingerprint_after: fingerprintAfter,
       mutation_free: canonicalize(fingerprintBefore) === canonicalize(fingerprintAfter),
       content_hash: contentHash(body),
     };
+
+    await client.query('COMMIT');
+    commitConfirmed = true;
+
+    await release();            // a release failure here rejects the run — it is not "success"
+    return result;
   } catch (err) {
-    await query('ROLLBACK').catch(() => {});
+    if (beginAttempted && !commitConfirmed) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackErr) {
+        // The connection may be poisoned: hand the error to release() so a pool discards it
+        // (pg.PoolClient.release(err) semantics) instead of returning it to the pool.
+        try { await release(rollbackErr); } catch { /* preserve the original error */ }
+        throw err;
+      }
+    }
+    try { await release(); } catch { /* preserve the original error */ }
     throw err;
   }
 }

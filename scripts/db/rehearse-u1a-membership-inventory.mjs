@@ -17,6 +17,7 @@
  */
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
+import { pgliteSessionSource } from './u1a-pglite-session.mjs';
 import {
   runMembershipInventory,
   buildQueries,
@@ -31,7 +32,10 @@ const ok = (m, c, x) => {
   else { fail++; console.error('FAIL', m, JSON.stringify(x ?? '')); }
 };
 
+// The inventory owns its session through an explicit single-session adapter (executor contract);
+// `query` remains only for the rehearsal's own setup/assertion SQL, never for the inventory.
 const query = (sql, params = []) => db.query(sql, params);
+const sessions = pgliteSessionSource(db);
 
 // Fixed identifiers — deterministic fixtures, no random UUIDs.
 const id = (tag, n) => `${tag}${String(n).padStart(4, '0')}-0000-4000-8000-000000000000`.slice(0, 36);
@@ -94,8 +98,8 @@ await db.exec(readFileSync('supabase/migrations/20261113100000_u1a_academy_playe
 await db.exec(`
   INSERT INTO public.academy_profiles VALUES ('${A1}'), ('${A2}');
   INSERT INTO public.academy_trainers VALUES ('${A1}','${T1}','active'), ('${A1}','${T2}','active');
-  INSERT INTO public.profiles  SELECT * FROM (VALUES ${[5, 7, 11, 12, 31, 34].map((n) => `('${P(n)}'::uuid)`).join(',')}) v;
-  INSERT INTO public.persons   SELECT * FROM (VALUES ${[1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 30, 31, 32, 33, 34, 40].map((n) => `('${PE(n)}'::uuid)`).concat([`('${PE(55)}'::uuid)`, `('${PE(77)}'::uuid)`, `('${PE(99)}'::uuid)`]).join(',')}) v;
+  INSERT INTO public.profiles  SELECT * FROM (VALUES ${[5, 7, 11, 12, 31, 34, 60].map((n) => `('${P(n)}'::uuid)`).join(',')}) v;
+  INSERT INTO public.persons   SELECT * FROM (VALUES ${[1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 30, 31, 32, 33, 34, 40, 60, 61, 62].map((n) => `('${PE(n)}'::uuid)`).concat([`('${PE(55)}'::uuid)`, `('${PE(77)}'::uuid)`, `('${PE(99)}'::uuid)`]).join(',')}) v;
 
   -- 1 eligible: academy-owned guest with one clean metadata row
   INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${G(1)}','${A1}');
@@ -247,6 +251,28 @@ await db.exec(`
   INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(34)}','${G(34)}');
   INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PE(34)}','${P(34)}');
 
+  -- 20b FAM-02 fallback: a dual-key booking whose GUEST is unlinked but whose PROFILE is linked.
+  --     The shipped stamp COALESCEs guest→profile, so both resolutions agree and this must NOT be
+  --     reported divergent (guest-only resolution would have called it divergent).
+  INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PE(60)}','${P(60)}');
+  INSERT INTO public.guest_players (id) VALUES ('${G(60)}');   -- deliberately NOT in person_links
+  INSERT INTO public.bookings (id, slot_id, player_id, guest_player_id, status)
+    VALUES ('${B(60)}','${S(6)}','${P(60)}','${G(60)}','confirmed');
+
+  -- 20c E10 suppression: a guest soft-removed AT THIS ACADEMY drops out of the overview scope,
+  --     though its metadata row still makes it a candidate (via S1/E3).
+  INSERT INTO public.guest_players (id, academy_profile_id) VALUES ('${G(61)}','${A1}');
+  INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(61)}','${G(61)}');
+  INSERT INTO public.academy_player_metadata (id, academy_profile_id, guest_player_id, person_id, removed_at)
+    VALUES ('${M(61)}','${A1}','${G(61)}','${PE(61)}', timestamptz '2026-01-01');
+
+  -- 20d E8-only trainer-owned guest: owned by trainer T1 (no academy owner), but with a CONFIRMED
+  --     intake on the academy's cycle. E8 is direct academy evidence, so it must NOT be trainer-only.
+  INSERT INTO public.guest_players (id, trainer_id) VALUES ('${G(62)}','${T1}');
+  INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PE(62)}','${G(62)}');
+  INSERT INTO public.intake_requests (id, cycle_id, guest_player_id, status)
+    VALUES ('${B(62)}','${S(90)}','${G(62)}','confirmed');
+
   -- 21 raw multiplicity: two location rows for ONE (academy, subject) — expected, not a conflict
   INSERT INTO public.academy_player_locations (id, academy_profile_id, guest_player_id, person_id, location_id)
     VALUES ('${L(34)}','${A1}','${G(33)}','${PE(33)}','${S(80)}');
@@ -266,7 +292,7 @@ await db.exec(`
 const AS_OF = '2026-08-08T00:00:00Z';
 
 // ── run 1 ──────────────────────────────────────────────────────────────────────────────────────
-const first = await runMembershipInventory(query, { asOf: AS_OF });
+const first = await runMembershipInventory(sessions, { asOf: AS_OF });
 
 // 1. COMPLETE — every disposition reachable
 const missing = DISPOSITION_PRECEDENCE.filter((d) => (first.disposition_counts[d] ?? 0) === 0);
@@ -296,7 +322,7 @@ ok('every declared evidence path is exercised',
   { pathCounts });
 
 // 3. DETERMINISTIC — a second run is byte-identical
-const second = await runMembershipInventory(query, { asOf: AS_OF });
+const second = await runMembershipInventory(sessions, { asOf: AS_OF });
 ok('two runs over unchanged data are byte-identical', first.content_hash === second.content_hash,
   { first: first.content_hash, second: second.content_hash });
 
@@ -317,7 +343,7 @@ ok('the wall-clock guard actually catches now()', WALL_CLOCK.test('SELECT now() 
 // wall-clock behaviour through the parameter itself.
 for (const bad of ['now', 'today', 'yesterday', '', undefined]) {
   let rejected = false;
-  try { await runMembershipInventory(query, { asOf: bad }); } catch { rejected = true; }
+  try { await runMembershipInventory(sessions, { asOf: bad }); } catch { rejected = true; }
   ok(`asOf rejects relative/empty input ${JSON.stringify(bad)}`, rejected);
 }
 
@@ -357,12 +383,35 @@ ok('divergent report is per-booking, not per key pair', samePair.length === 2, s
 // NOT booking-participant evidence (E6/E7), which the shipped reader restricts to academy-stamped slots
 const cycleOnly = first.report.dispositions.find(
   (r) => r.subject_kind === 'guest' && r.subject_id === G(31) && r.academy_profile_id === A1);
-ok('a cycle-shared non-academy slot yields E4/E5 but never E6/E7',
+ok('a cycle-shared non-academy slot yields BOTH E4 and E5 but never E6/E7',
   cycleOnly !== undefined
     && cycleOnly.paths.includes('E4_academy_owned_cycle')
+    && cycleOnly.paths.includes('E5_cycle_label_booking')   // the booking is confirmed, not cancelled
     && !cycleOnly.paths.includes('E6_booking_participant')
     && !cycleOnly.paths.includes('E7_cycle_group_booking'),
   cycleOnly?.paths);
+
+// FAM-02 fallback: guest unlinked, profile linked → the shipped stamp COALESCEs to the profile, so
+// the two resolutions AGREE and the booking must be absent from the divergence report.
+ok('a dual-key booking with an unlinked guest is NOT reported divergent',
+  !first.report.divergent_dual_key.some((r) => r.booking_id === B(60)),
+  first.report.divergent_dual_key.map((r) => r.booking_id));
+
+// E10 suppression: soft-removed AT THIS ACADEMY drops the E10 path (the candidate survives via S1/E3)
+const removedGuest = first.report.dispositions.find(
+  (r) => r.subject_id === G(61) && r.academy_profile_id === A1);
+ok('soft-removed academy metadata suppresses the E10 path',
+  removedGuest !== undefined && !removedGuest.paths.includes('E10_overview_guest_scope'),
+  removedGuest?.paths);
+
+// E8 counts as DIRECT academy evidence: a trainer-owned guest with academy intake is not trainer-only
+const intakeGuest = first.report.dispositions.find(
+  (r) => r.subject_id === G(62) && r.academy_profile_id === A1);
+ok('an E8-only trainer-owned guest is not quarantined as trainer-only',
+  intakeGuest !== undefined
+    && intakeGuest.paths.includes('E8_intake_participant')
+    && intakeGuest.disposition !== 'unresolved_trainer_only',
+  intakeGuest);
 
 // SCOPE BOUNDARY: a trainer's personal slot must not pull a subject into the academy
 ok('a personal slot of an academy trainer does not create an academy candidate',
@@ -400,8 +449,11 @@ ok('duplicate measure 1/4 — raw per-source multiplicity',
   first.report.duplicates_raw_multiplicity.some(
     (r) => r.source === 'academy_player_locations' && r.subject_id === G(33) && r.row_count === 2),
   first.report.duplicates_raw_multiplicity);
-ok('duplicate measure 2/4 — normalized per-source evidence',
-  Array.isArray(first.report.duplicates_normalized_per_source));
+ok('duplicate measure 2/4 — normalized per-source evidence (exact row)',
+  first.report.duplicates_normalized_per_source.some(
+    (r) => r.source === 'academy_player_metadata' && r.academy_profile_id === A1
+      && r.person_id === PE(13) && r.subject_count === 2),
+  first.report.duplicates_normalized_per_source);
 ok('duplicate measure 3/4 — cross-source overlap', overlap.length > 0);
 ok('duplicate measure 4/4 — canonical pair collision',
   first.report.duplicates_canonical_pair_collision.length > 0);
