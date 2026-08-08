@@ -898,8 +898,17 @@ export async function runMembershipInventory(sessionSource, { asOf } = {}) {
   // Cleanup capability is determined INDEPENDENTLY of client validity: a malformed client that can
   // still be released must be released. Anything with a callable `release` qualifies, including a
   // callable client — otherwise a leaked lease would outlive the rejection.
-  const releaseFn = typeof client?.release === 'function' ? client.release.bind(client) : null;
-  if (releaseFn === null || typeof client?.query !== 'function') {
+  // Both capability reads are guarded: `query`/`release` may be accessors or proxy traps that THROW.
+  // An unguarded read would escape before cleanup and strand the lease we were still able to release.
+  let releaseFn = null;
+  try {
+    if (typeof client?.release === 'function') releaseFn = client.release.bind(client);
+  } catch { releaseFn = null; }        // a throwing accessor leaves nothing callable to release
+
+  let hasQuery = false;
+  try { hasQuery = typeof client?.query === 'function'; } catch { hasQuery = false; }
+
+  if (releaseFn === null || !hasQuery) {
     if (releaseFn !== null) { try { await releaseFn(); } catch { /* already failing */ } }
     throw new InventoryExecutorError(
       'INVALID_CLIENT',

@@ -252,6 +252,42 @@ describe('U1a executor — lifecycle', () => {
     expect(releases).toBe(1);
   });
 
+  it('releases a client whose query ACCESSOR throws, instead of leaking the lease', async () => {
+    // A getter/proxy trap that throws is still an acquired lease with a callable release.
+    let releases = 0;
+    const client = {
+      get query(): never { throw new Error('ACCESSOR_EXPLODED'); },
+      release: () => { releases += 1; },
+    };
+    await expect(runMembershipInventory({ connect: async () => client } as never, { asOf: AS_OF }))
+      .rejects.toMatchObject({ code: 'INVALID_CLIENT' });
+    expect(releases).toBe(1);
+  });
+
+  it('ACCEPTS a callable client that has both query and release (documented decision)', async () => {
+    // Pins the acceptance, not just the rejection: an object-only validity check would break this
+    // while the malformed-callable cleanup test above kept passing.
+    const trace: Label[] = [];
+    let releases = 0;
+    const callable = Object.assign(() => {}, {
+      async query(sql: string) {
+        const label = labelOf(sql);
+        trace.push(label);
+        return { rows: rowsFor(label) };
+      },
+      release: () => { releases += 1; },
+    });
+
+    const result = await runMembershipInventory(
+      { connect: async () => callable } as never, { asOf: AS_OF },
+    );
+    expect(result.as_of).toBe(AS_OF);
+    expect(trace[0]).toBe('BEGIN');
+    expect(trace).toContain('COMMIT');
+    expect(trace).not.toContain('ROLLBACK');
+    expect(releases).toBe(1);
+  });
+
   it('keeps the ORIGINAL error when release ALSO fails mid-run', async () => {
     const f = makeSource({ failAtIndex: 4, failRelease: true });
     await expect(runMembershipInventory(f.source as never, { asOf: AS_OF }))
