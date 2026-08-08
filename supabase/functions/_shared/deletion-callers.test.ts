@@ -34,8 +34,12 @@ function makeAdmin(opts: {
   membershipsFor?: Record<string, { count: number }>;
   profiles?: Row[];
   callerId?: string;
+  failAuditInsert?: boolean;
 }) {
-  const AUDIT_TABLES = new Set(["account_deletion_audit", "admin_impersonation_logs"]);
+  // Audit tables are exempt only for the operations the routes legitimately perform: INSERT (the
+  // record itself) and the status UPDATE. A DELETE of an audit row is destructive by any measure, and
+  // exempting it wholesale would let a mistaken erasure of the evidence pass the refusal assertions.
+  const AUDIT_UPDATE_EXEMPT = new Set(["account_deletion_audit"]);
   const destructiveOps: string[] = [];
   const inserted: Record<string, Row[]> = {};
   const updated: Record<string, Row[]> = {};
@@ -65,15 +69,17 @@ function makeAdmin(opts: {
       error: rows()[0] ? null : { code: "PGRST116", message: "no rows" },
     });
     api.insert = (payload: Row) => {
-      (inserted[t] ??= []).push(payload);
+      const failed = opts.failAuditInsert && t === "admin_impersonation_logs";
+      if (!failed) (inserted[t] ??= []).push(payload);
+      const err = failed ? { code: "42501", message: "injected audit insert failure" } : null;
       const ret: Record<string, unknown> = {};
       ret.select = () => ret;
-      ret.single = () => Promise.resolve({ data: { id: `${t}-row-1` }, error: null });
-      (ret as { then: unknown }).then = (res: (v: { error: unknown }) => void) => res({ error: null });
+      ret.single = () => Promise.resolve({ data: failed ? null : { id: `${t}-row-1` }, error: err });
+      (ret as { then: unknown }).then = (res: (v: { error: unknown }) => void) => res({ error: err });
       return ret;
     };
     api.update = (payload: Row) => {
-      if (!AUDIT_TABLES.has(t)) destructiveOps.push(`update:${t}`);
+      if (!AUDIT_UPDATE_EXEMPT.has(t)) destructiveOps.push(`update:${t}`);
       (updated[t] ??= []).push(payload);
       const u: Record<string, unknown> = {};
       u.eq = () => u;
@@ -81,7 +87,7 @@ function makeAdmin(opts: {
       return u;
     };
     api.delete = () => {
-      if (!AUDIT_TABLES.has(t)) destructiveOps.push(`delete:${t}`);
+      destructiveOps.push(`delete:${t}`);   // every delete counts, audit tables included
       const d: Record<string, unknown> = {};
       d.eq = () => d;
       d.in = () => d;
@@ -199,10 +205,30 @@ Deno.test("bulk cleanup: the skip is durable per account, processing continues, 
     { user_id: SUBJECT, code: "ACCOUNT_HAS_MEMBERSHIPS", membership_count: 3 },
   ]);
 
-  // ...and no email address rode along into the durable record.
-  assertEquals(JSON.stringify(details.skipped_details).includes("@"), false);
+  // ...and no email address rode along into the durable record — checked across the WHOLE details
+  // payload, not just the skip projection, so a future field cannot smuggle one in.
+  assertEquals(JSON.stringify(details).includes("@"), false);
 
   // the skipped user's auth account is untouched; the eligible one's is not
   assertEquals(admin._destructiveOps.includes(`auth:deleteUser:${SUBJECT}`), false);
   assertEquals(admin._destructiveOps.includes(`auth:deleteUser:${ELIGIBLE}`), true);
+});
+
+Deno.test("bulk cleanup: a FAILED audit insert is reported, not swallowed as clean success", async () => {
+  // The audit row is now the only durable record of which accounts were skipped. If the insert fails
+  // silently, the deletions still happened, the skips are unrecorded, and the caller is told all is
+  // well — which is exactly the shape of problem this whole slice exists to prevent.
+  const admin = makeAdmin({
+    callerId: ADMIN_USER,
+    membershipsFor: { [SUBJECT]: { count: 3 } },
+    profiles: [
+      { user_id: SUBJECT, email: "skipme@example.com" },
+      { user_id: ELIGIBLE, email: "deleteme@example.com" },
+    ],
+    failAuditInsert: true,
+  });
+
+  const res = await bulkCleanup(post({ confirm: true }), { admin });
+  const body = await res.json();
+  assertEquals(body.audit_incomplete, true);
 });

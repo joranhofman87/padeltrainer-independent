@@ -15,6 +15,7 @@
 // and the audit log entry.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { deleteUserData, AccountHasMembershipsError } from "../_shared/delete-user-data.ts";
+import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,8 +165,12 @@ export async function handleRequest(
       }
     }
 
-    // Log the cleanup action
-    await supabaseAdmin.from("admin_impersonation_logs").insert({
+    // Log the cleanup action.
+    //
+    // The result is INSPECTED, not discarded. This row is now the only durable record of which
+    // accounts were skipped and why — a silently failed insert would mean the deletions happened, the
+    // skips are unrecorded, and the response still said everything was fine.
+    const { error: auditLogError } = await supabaseAdmin.from("admin_impersonation_logs").insert({
       admin_user_id: adminUser.id,
       target_user_id: adminUser.id,
       action: "bulk_cleanup_users",
@@ -183,9 +188,23 @@ export async function handleRequest(
       expires_at: new Date().toISOString(),
     });
 
+    if (auditLogError) {
+      // The deletions ARE done and cannot be undone, so this is not an outright failure — but it must
+      // not be reported as a clean success either, because the skip record it was meant to persist is
+      // gone. Say so in the response and alert, mirroring how request-account-deletion handles an
+      // unstamped audit row.
+      console.error("bulk-cleanup-users: audit insert failed — skip records were NOT persisted", auditLogError);
+      await notifySlackEdgeError(
+        "bulk-cleanup-users",
+        `audit insert failed; ${skipRecords.length} skip record(s) not persisted`,
+        { skipped_count: skipRecords.length, deleted_count: results.deleted.length },
+      ).catch(() => {});
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
+        audit_incomplete: auditLogError ? true : undefined,
         message: `Cleanup complete. Deleted ${results.deleted.length} users, skipped ${results.skipped.length}.`,
         deleted: results.deleted,
         errors: results.errors,
