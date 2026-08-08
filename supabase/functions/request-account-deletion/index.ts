@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { deleteUserData, AccountHasMembershipsError } from "../_shared/delete-user-data.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
@@ -14,7 +14,7 @@ const corsHeaders = {
  */
 export async function handleRequest(
   req: Request,
-  deps: { admin?: ReturnType<typeof createClient> } = {},
+  deps: { admin?: SupabaseClient } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

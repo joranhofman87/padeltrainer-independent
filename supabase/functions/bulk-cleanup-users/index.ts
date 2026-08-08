@@ -13,7 +13,7 @@
 // error surfacing are maintained in ONE place. This function keeps only what is bulk-specific: the
 // admin gate, the {confirm:true} safety latch, the preserved-admins set, per-user error collection,
 // and the audit log entry.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { deleteUserData, AccountHasMembershipsError } from "../_shared/delete-user-data.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 
@@ -29,7 +29,7 @@ const corsHeaders = {
  */
 export async function handleRequest(
   req: Request,
-  deps: { admin?: ReturnType<typeof createClient> } = {},
+  deps: { admin?: SupabaseClient } = {},
 ): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
