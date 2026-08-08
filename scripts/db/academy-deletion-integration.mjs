@@ -551,9 +551,12 @@ for (const [label, seed, code] of [
   const p = await preview(c, f.academy);
   const auditId = await startAudit(c, f.academy, ACTOR, p);
 
-  ok('invoices is a trigger root because the flow writes to it',
-    (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_trigger_root_relations()
-                    WHERE oid = 'public.invoices'::regclass`)).n === 1);
+  // every relation this transaction WRITES to, not only the ones it deletes from
+  for (const rel of ['invoices', 'availability_slots', 'academy_deletion_audit', 'academy_player_metadata']) {
+    ok(`${rel} is a trigger root because the flow writes to it`,
+      (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_trigger_root_relations()
+                      WHERE oid = to_regclass('public.' || $1)`, [rel])).n === 1);
+  }
 
   await c.query(`CREATE OR REPLACE FUNCTION public.u1c_p3_probe_fn() RETURNS trigger
                  LANGUAGE plpgsql AS $fn$ BEGIN RETURN NEW; END $fn$`);
@@ -567,6 +570,17 @@ for (const [label, seed, code] of [
   await c.query(`DROP TRIGGER u1c_p3_probe ON public.invoices`);
   await c.query(`DROP FUNCTION public.u1c_p3_probe_fn()`);
   ok('removing it makes the fingerprint match again',
+    (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
+
+  // A REWRITE RULE adds statements to this transaction without touching a constraint, a trigger or
+  // a function body — the three things the rest of the fingerprint hashes.
+  await c.query(`CREATE RULE u1c_p3_rule AS ON UPDATE TO public.availability_slots DO ALSO NOTHING`);
+  let ruleRefused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { ruleRefused = e.message; }
+  ok('a rewrite RULE on a written relation is ACADEMY_DELETION_CATALOG_DRIFT too',
+    ruleRefused !== null && ruleRefused.includes('ACADEMY_DELETION_CATALOG_DRIFT'), { ruleRefused });
+  await c.query(`DROP RULE u1c_p3_rule ON public.availability_slots`);
+  ok('and dropping the rule restores the fingerprint',
     (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
   await c.end();
 }

@@ -367,8 +367,14 @@ AS $$
   UNION SELECT to_regclass('public.' || cc.relname)::oid FROM public.academy_deletion_cascade_closure() cc
   UNION SELECT to_regclass('public.' || pc.relname)::oid FROM public.academy_deletion_person_closure() pc
   UNION SELECT to_regclass('public.' || dt.relname)::oid FROM public.academy_deletion_person_detach_targets() dt
+  UNION SELECT to_regclass('public.' || er.relname)::oid FROM public.academy_deletion_extra_relations() er
   UNION SELECT 'public.persons'::regclass::oid
-  UNION SELECT 'public.guest_players'::regclass::oid;
+  UNION SELECT 'public.guest_players'::regclass::oid
+  -- the flow's OWN audit table: the completion stamp is a write like any other, and a trigger added
+  -- to it could act on data this preview never mentioned. It is deliberately not in the LOCK plan —
+  -- nothing destroys it, its own row is already locked FOR UPDATE, and locking the whole table would
+  -- serialise unrelated academies' audit rows for no correctness gain.
+  UNION SELECT 'public.academy_deletion_audit'::regclass::oid;
 $$;
 
 -- Everything the trigger bodies CALL, transitively.
@@ -482,6 +488,15 @@ BEGIN
        AND t.tgrelid IN (
              SELECT r.oid FROM public.academy_deletion_trigger_root_relations() r)
     UNION ALL
+    -- REWRITE RULES. A `DO ALSO` rule on a written relation adds statements to this transaction
+    -- without appearing in pg_constraint, pg_trigger, or any function body — the three things
+    -- hashed above. Rules are rare in this schema, which is exactly why their absence has to be
+    -- part of what was reviewed rather than an assumption.
+    SELECT 'rule:' || public.u1c_ns(r.ev_class::regclass::text) || public.u1c_ns(r.rulename)
+        || public.u1c_ns(pg_get_ruledef(r.oid))
+      FROM pg_rewrite r
+     WHERE r.ev_class IN (SELECT tr.oid FROM public.academy_deletion_trigger_root_relations() tr)
+    UNION ALL
     -- ...and everything those trigger bodies call, transitively — `rederive_person` above all.
     SELECT 'helper:' || public.u1c_ns(h.sig) || public.u1c_ns(h.def)
       FROM public.academy_deletion_trigger_helper_defs() h
@@ -527,7 +542,7 @@ LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '98e7fc8f05a956471c95424da4ee3707c968797b7c2ec95896164a4bbdc1b39f'::text $$;
+AS $$ SELECT '4410ce84076d4b3876906e9fd517b2c2cee0c45b8ec85855668001acd15066e8'::text $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical identity encoding
