@@ -10101,6 +10101,10 @@ export type Database = {
         }[]
       }
       academy_deletion_catalog_fingerprint: { Args: never; Returns: string }
+      academy_deletion_deleted_scope: {
+        Args: { _relname: string }
+        Returns: string
+      }
       academy_deletion_dying_persons_pred: {
         Args: { _col?: string }
         Returns: string
@@ -10148,6 +10152,12 @@ export type Database = {
         Returns: {
           def: string
           sig: string
+        }[]
+      }
+      academy_deletion_trigger_root_relations: {
+        Args: never
+        Returns: {
+          oid: unknown
         }[]
       }
       academy_has_managers: {

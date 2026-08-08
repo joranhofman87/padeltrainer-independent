@@ -276,11 +276,14 @@ AS $$
       || ')';
 $$;
 
--- A row is announced in exactly ONE category, by precedence deleted > mutated > detached: an
--- academy_player_metadata row that is both destroyed with the academy and referenced by a dying
--- person must read as deleted, not as both. This returns what a relation has ALREADY been counted
--- for, so the detach arm can subtract it.
-CREATE OR REPLACE FUNCTION public.academy_deletion_already_counted_pred(_relname text)
+-- WHAT THIS FLOW DELETES FROM ONE RELATION — the single definition of it.
+--
+-- The preview loop and the detach subtraction below both need this, and when they each had their
+-- own copy they disagreed: the subtraction knew only about the overlays' `academy_profile_id = $1`
+-- arm, so a TRAINER-owned overlay row (academy_profile_id NULL, reached through a cascading guest)
+-- was counted as deleted AND as detached. Two true statements about one row is still a wrong
+-- preview. One function, two callers, no way to drift.
+CREATE OR REPLACE FUNCTION public.academy_deletion_deleted_scope(_relname text)
 RETURNS text
 LANGUAGE plpgsql
 STABLE
@@ -289,29 +292,83 @@ SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_scope text;
+  v_person_scope text;
 BEGIN
-  -- The overlays are deleted by academy_profile_id VALUE (no usable FK), so that is their counted set.
-  IF _relname IN ('academy_player_metadata', 'academy_player_locations') THEN
-    RETURN 'academy_profile_id = $1';
+  -- `persons` is not reached by any FK from the academy: the trigger deletes it.
+  IF _relname = 'persons' THEN
+    RETURN public.academy_deletion_dying_persons_pred();
   END IF;
 
-  -- person_merge_review is counted whole — pending rows as deleted, applied rows as mutated.
-  IF _relname = 'person_merge_review' THEN
-    RETURN 'guest_player_id IN (SELECT g.id FROM public.guest_players g WHERE g.academy_profile_id = $1)';
+  v_scope := public.academy_deletion_scope_predicate(_relname);
+
+  -- ...and anything the dying persons take with them is scoped through that same root, OR-ed with
+  -- whatever the academy graph already reached.
+  v_person_scope := public.academy_deletion_scope_predicate(
+    _relname, 'persons', public.academy_deletion_dying_persons_pred());
+  IF v_person_scope IS NOT NULL THEN
+    v_scope := CASE WHEN v_scope IS NULL THEN v_person_scope
+                    ELSE '(' || v_scope || ' OR ' || v_person_scope || ')' END;
   END IF;
 
-  IF EXISTS (SELECT 1 FROM public.academy_deletion_cascade_closure() cc WHERE cc.relname = _relname) THEN
-    v_scope := public.academy_deletion_scope_predicate(_relname);
-    IF v_scope IS NULL THEN
-      -- In the closure, so its rows ARE deleted, but unscopable: refuse rather than double-count.
-      RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: % is deleted and person-keyed but cannot be scoped', _relname
-        USING ERRCODE = 'raise_exception';
-    END IF;
-    RETURN v_scope;
+  -- The overlays are reached BOTH ways and the two sets are not the same: rows keyed by this
+  -- academy's id, AND rows keyed only to one of its guests (trainer-owned metadata carries a NULL
+  -- academy_profile_id but still cascades away with the guest). Either predicate alone under-counts.
+  IF EXISTS (SELECT 1 FROM public.academy_deletion_extra_relations() er
+              WHERE er.relname = _relname AND er.role = 'overlay') THEN
+    v_scope := CASE WHEN v_scope IS NULL THEN '(academy_profile_id = $1)'
+                    ELSE '(academy_profile_id = $1 OR ' || v_scope || ')' END;
   END IF;
 
-  RETURN 'false';   -- nothing of this relation is deleted by this flow
+  -- In the delete set but unscopable: refuse rather than show the operator a partial truth.
+  IF v_scope IS NULL
+     AND (EXISTS (SELECT 1 FROM public.academy_deletion_cascade_closure() cc WHERE cc.relname = _relname)
+       OR EXISTS (SELECT 1 FROM public.academy_deletion_person_closure() pc WHERE pc.relname = _relname)) THEN
+    RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: % is reached by the cascade but cannot be scoped to one academy', _relname
+      USING ERRCODE = 'raise_exception';
+  END IF;
+
+  RETURN v_scope;   -- NULL ⇒ this flow deletes nothing from this relation
 END;
+$$;
+
+-- A row is announced in exactly ONE category, by precedence deleted > mutated > detached: an
+-- academy_player_metadata row that is both destroyed with the academy and referenced by a dying
+-- person must read as deleted, not as both. This returns what a relation has ALREADY been counted
+-- for, so the detach arm can subtract it.
+CREATE OR REPLACE FUNCTION public.academy_deletion_already_counted_pred(_relname text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  -- person_merge_review is counted whole by the trigger arms — pending as deleted, applied as
+  -- mutated — and no foreign key describes that, so it is the one case the scope walker cannot see.
+  SELECT CASE WHEN _relname = 'person_merge_review'
+         THEN 'guest_player_id IN (SELECT g.id FROM public.guest_players g WHERE g.academy_profile_id = $1)'
+         ELSE coalesce(public.academy_deletion_deleted_scope(_relname), 'false')
+         END;
+$$;
+
+-- EVERY relation this transaction writes to, as trigger roots.
+--
+-- Not only what it deletes: clearing a person reference is an UPDATE, and `invoices`, `bookings`,
+-- `intake_requests` and `slot_priority_claims` all carry triggers that fire on one. Leaving the
+-- detach targets out meant a trigger could be added to `invoices` — or `trg_stamp_person_id_invoices`
+-- rewritten — and change what this transaction does without registering as drift.
+CREATE OR REPLACE FUNCTION public.academy_deletion_trigger_root_relations()
+RETURNS TABLE (oid oid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT 'public.academy_profiles'::regclass::oid
+  UNION SELECT to_regclass('public.' || cc.relname)::oid FROM public.academy_deletion_cascade_closure() cc
+  UNION SELECT to_regclass('public.' || pc.relname)::oid FROM public.academy_deletion_person_closure() pc
+  UNION SELECT to_regclass('public.' || dt.relname)::oid FROM public.academy_deletion_person_detach_targets() dt
+  UNION SELECT 'public.persons'::regclass::oid
+  UNION SELECT 'public.guest_players'::regclass::oid;
 $$;
 
 -- Everything the trigger bodies CALL, transitively.
@@ -335,11 +392,7 @@ AS $$
       FROM pg_trigger t
      WHERE NOT t.tgisinternal
        AND t.tgrelid IN (
-             SELECT 'public.academy_profiles'::regclass
-             UNION SELECT to_regclass('public.' || cc.relname) FROM public.academy_deletion_cascade_closure() cc
-             UNION SELECT to_regclass('public.' || pc.relname) FROM public.academy_deletion_person_closure() pc
-             UNION SELECT 'public.persons'::regclass
-             UNION SELECT 'public.guest_players'::regclass)
+             SELECT r.oid FROM public.academy_deletion_trigger_root_relations() r)
   ), reach(oid) AS (
     SELECT oid FROM roots
     UNION
@@ -427,11 +480,7 @@ BEGIN
       FROM pg_trigger t
      WHERE NOT t.tgisinternal
        AND t.tgrelid IN (
-             SELECT 'public.academy_profiles'::regclass
-             UNION SELECT to_regclass('public.' || cc3.relname) FROM public.academy_deletion_cascade_closure() cc3
-             UNION SELECT to_regclass('public.' || pc2.relname) FROM public.academy_deletion_person_closure() pc2
-             UNION SELECT 'public.persons'::regclass
-             UNION SELECT 'public.guest_players'::regclass)
+             SELECT r.oid FROM public.academy_deletion_trigger_root_relations() r)
     UNION ALL
     -- ...and everything those trigger bodies call, transitively — `rederive_person` above all.
     SELECT 'helper:' || public.u1c_ns(h.sig) || public.u1c_ns(h.def)
@@ -478,7 +527,7 @@ LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '433b95d61e3c92f0b8ce87f2afdbd2182a6a1dfe319f916549fd6d845585ce0d'::text $$;
+AS $$ SELECT '98e7fc8f05a956471c95424da4ee3707c968797b7c2ec95896164a4bbdc1b39f'::text $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical identity encoding
@@ -703,38 +752,9 @@ BEGIN
     UNION SELECT pc.relname FROM public.academy_deletion_person_closure() pc
     ORDER BY 1
   LOOP
-    -- The overlays have no FK, so they are scoped by their academy_profile_id VALUE; everything else
-    -- is scoped through the cascade graph. A relation that cannot be scoped fails the whole preview
-    -- rather than being quietly omitted from what the operator is shown.
-    v_scope := public.academy_deletion_scope_predicate(v_rel);
-
-    -- `persons` is not reached by any FK from the academy: the trigger deletes it. Scope it by the
-    -- dying-persons predicate directly.
-    IF v_rel = 'persons' THEN
-      v_scope := public.academy_deletion_dying_persons_pred();
-    ELSE
-      -- ...and anything the dying persons take with them is scoped through that same root, OR-ed
-      -- with whatever the academy graph already reached.
-      v_person_scope := public.academy_deletion_scope_predicate(
-        v_rel, 'persons', public.academy_deletion_dying_persons_pred());
-      IF v_person_scope IS NOT NULL THEN
-        v_scope := CASE WHEN v_scope IS NULL THEN v_person_scope
-                        ELSE '(' || v_scope || ' OR ' || v_person_scope || ')' END;
-      END IF;
-    END IF;
-
-    IF EXISTS (SELECT 1 FROM public.academy_deletion_extra_relations() er
-                WHERE er.relname = v_rel AND er.role = 'overlay') THEN
-      -- The overlays are reached BOTH ways and the two sets are not the same: rows keyed by this
-      -- academy's id, AND rows keyed only to one of its guests (trainer-owned metadata carries a
-      -- NULL academy_profile_id but still cascades away with the guest). Scoping by either predicate
-      -- alone under-counts, so the scope is their union.
-      v_scope := CASE WHEN v_scope IS NULL THEN '(academy_profile_id = $1)'
-                      ELSE '(academy_profile_id = $1 OR ' || v_scope || ')' END;
-    END IF;
-
+    v_scope := public.academy_deletion_deleted_scope(v_rel);
     IF v_scope IS NULL THEN
-      RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: % is reached by the cascade but cannot be scoped to one academy', v_rel
+      RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: % is in the delete set but cannot be scoped', v_rel
         USING ERRCODE = 'raise_exception';
     END IF;
 
@@ -759,9 +779,13 @@ BEGIN
   FOR v_rel, v_col IN
     SELECT dt.relname, dt.colname FROM public.academy_deletion_person_detach_targets() dt ORDER BY 1, 2
   LOOP
+    -- coalesce, and not merely NOT: a trainer-owned overlay row has a NULL academy_profile_id, so
+    -- `NOT (academy_profile_id = $1)` is NULL rather than true and three-valued logic drops the row
+    -- from the detached set entirely — a row whose reference this transaction clears, announced
+    -- nowhere. Unknown means "not already counted", which is the only reading that is safe here.
     v_scope := quote_ident(v_col) || ' IN (SELECT p.id FROM public.persons p WHERE '
             || public.academy_deletion_dying_persons_pred('p.id') || ')'
-            || ' AND NOT (' || public.academy_deletion_already_counted_pred(v_rel) || ')';
+            || ' AND NOT coalesce(' || public.academy_deletion_already_counted_pred(v_rel) || ', false)';
 
     SELECT d.row_count, d.fragment INTO v_count, v_fragment
       FROM public.academy_deletion_relation_digest(v_rel, v_scope, _academy_id) d;
@@ -947,6 +971,16 @@ BEGIN
   DELETE FROM public.academy_player_metadata WHERE academy_profile_id = _academy_id;
   DELETE FROM public.academy_player_locations WHERE academy_profile_id = _academy_id;
 
+  -- This academy's OWN memberships, explicitly, before the academy goes.
+  -- `academy_player_memberships.person_id` is ON DELETE RESTRICT. Deleting the academy cascades
+  -- both `guest_players` and `academy_player_memberships`, and the order between two FK action
+  -- triggers is not a contract: if the guests go first, their cleanup trigger tries to delete a
+  -- person the membership row still references and RESTRICT aborts the whole transaction. An
+  -- academy with memberships for its own players — which after U1b is every academy — could not be
+  -- deleted at all. The preview already counts these as deleted; this only makes the execution
+  -- order match what was announced.
+  DELETE FROM public.academy_player_memberships WHERE academy_profile_id = _academy_id;
+
   -- 6. The academy: the cascade closure goes with it, academy_mollie_accounts among them — so
   --    payment credentials die only now, after every check has passed, inside this transaction.
   DELETE FROM public.academy_profiles WHERE id = _academy_id;
@@ -991,6 +1025,8 @@ REVOKE ALL ON FUNCTION public.academy_deletion_expected_fingerprint() FROM PUBLI
 REVOKE ALL ON FUNCTION public.academy_deletion_relation_digest(text, text, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_blockers(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_preview(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_deleted_scope(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_trigger_root_relations() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_person_detach_targets() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_surviving_persons_pred() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_already_counted_pred(text) FROM PUBLIC, anon, authenticated;
@@ -1001,6 +1037,8 @@ REVOKE ALL ON FUNCTION public.owner_has_programs(text, uuid) FROM PUBLIC, anon, 
 
 GRANT EXECUTE ON FUNCTION public.academy_deletion_preview(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_delete_confirmed(uuid, text, integer, uuid, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.academy_deletion_deleted_scope(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.academy_deletion_trigger_root_relations() TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_person_detach_targets() TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_surviving_persons_pred() TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_already_counted_pred(text) TO service_role;

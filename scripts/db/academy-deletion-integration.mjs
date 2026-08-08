@@ -447,6 +447,130 @@ for (const [label, seed, code] of [
   await c.end();
 }
 
+// ══ 3g. ONE ROW, ONE CATEGORY ══════════════════════════════════════════════════════════════════
+// An overlay row can be owned by a TRAINER (academy_profile_id NULL — the owner check forbids both)
+// or by ANOTHER academy, and still die with this academy because it hangs off one of its guests.
+// Such a row is deleted AND its person reference is a dying one, so while the deleted scope and the
+// detach subtraction had separate definitions it was announced under both. Two true statements
+// about one row is still a wrong preview.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: uid } = await one(c,
+    `INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+     VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+             'u1c-p3-trainer-' || replace(gen_random_uuid()::text,'-','') || '@example.com', '', now(), now())
+     RETURNING id`);
+  // the shipped signup trigger already made the profile — reading it beats a duplicate-key insert
+  const { id: profileId } = await one(c, `SELECT id FROM public.profiles WHERE user_id = $1`, [uid]);
+  const { id: trainer } = await one(c,
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [uid]);
+  await c.query(
+    `INSERT INTO public.academy_player_metadata (trainer_profile_id, guest_player_id, person_id, notes)
+     VALUES ($1, $2, $3, 'trainer-owned, dies with the guest')`, [trainer, f.guest, f.person]);
+
+  const p = await preview(c, f.academy);
+  ok('a trainer-owned overlay row dying with the guest is counted as deleted',
+    p.deleted.academy_player_metadata === 2, p.deleted.academy_player_metadata);
+  ok('...and NOT a second time as detached', p.detached['academy_player_metadata.person_id'] === 0,
+    p.detached['academy_player_metadata.person_id']);
+
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  await confirm(c, f.academy, p, auditId, ACTOR);
+  ok('every overlay row keyed to the dying guest is gone',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_player_metadata WHERE guest_player_id = $1`, [f.guest])).n === 0);
+
+  // THE CASE THAT ACTUALLY DOUBLE-COUNTED. Another academy's overlay row, keyed to one of THIS
+  // academy's guests: it dies with that guest, and `NOT (academy_profile_id = $1)` is plainly true
+  // for it, so a subtraction that knew only the academy-value arm announced it under both headings.
+  // (The trainer-owned row above conceals that bug rather than exposing it — its academy_profile_id
+  // is NULL, so the subtraction evaluates to NULL and three-valued logic quietly drops the row.
+  // That is why the subtraction coalesces to false rather than trusting NOT alone.)
+  //
+  // This preview is BLOCKED — another academy's overlay row is exactly what SHARED_PERSON_IDENTITY
+  // refuses — but a blocked preview is still shown to an operator, so its counts must still be true.
+  const f2 = await seedAcademy(c);
+  const { id: otherAcademy } = await one(c,
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u1c-p3-other-owner', 'u1c-p3-oo-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  CREATED.push(otherAcademy);
+  await c.query(
+    `INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, person_id, notes)
+     VALUES ($1, $2, $3, 'another academy, this academy''s guest')`, [otherAcademy, f2.guest, f2.person]);
+
+  const p2 = await preview(c, f2.academy);
+  ok('another academy holding an overlay for this person blocks',
+    p2.blockers.some((b) => b.code === 'SHARED_PERSON_IDENTITY'), p2.blockers);
+  ok('the foreign overlay row is counted as deleted — it dies with the guest',
+    p2.deleted.academy_player_metadata === 2, p2.deleted.academy_player_metadata);
+  ok('...and NOT also as detached: deleted outranks detached, whoever owns the row',
+    p2.detached['academy_player_metadata.person_id'] === 0, p2.detached['academy_player_metadata.person_id']);
+
+  await c.query(`DELETE FROM public.academy_player_metadata WHERE academy_profile_id = $1`, [otherAcademy]);
+  await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [otherAcademy]);
+  await c.query(`DELETE FROM public.trainer_profiles WHERE id = $1`, [trainer]);
+  await c.query(`DELETE FROM public.profiles WHERE id = $1`, [profileId]);
+  await c.query(`DELETE FROM auth.users WHERE id = $1`, [uid]);
+  await c.end();
+}
+
+// ══ 3h. AN ACADEMY'S OWN MEMBERSHIPS MUST NOT BLOCK ITS DELETION ═══════════════════════════════
+// `academy_player_memberships.person_id` is ON DELETE RESTRICT. Deleting the academy cascades both
+// the guests and the memberships, and the order between two FK action triggers is not a contract:
+// with the guests first, the cleanup trigger deletes a person the membership still references and
+// RESTRICT aborts everything with 23503. After U1b backfills memberships that is EVERY academy, so
+// the flow deletes its own memberships explicitly first.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  await c.query(
+    `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id) VALUES ($1, $2)`,
+    [f.academy, f.person]);
+
+  const p = await preview(c, f.academy);
+  ok('a membership in THIS academy is not a shared-identity blocker',
+    !p.blockers.some((b) => b.code === 'SHARED_PERSON_IDENTITY'), p.blockers);
+  ok('it is announced as deleted', p.deleted.academy_player_memberships === 1, p.deleted.academy_player_memberships);
+
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  let failure = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { failure = `${e.code}: ${e.message}`; }
+  ok('the deletion SUCCEEDS — a RESTRICT reference this flow owns is removed before the person',
+    failure === null, { failure });
+  ok('and the academy is really gone',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_profiles WHERE id = $1`, [f.academy])).n === 0);
+  await c.end();
+}
+
+// ══ 3i. THE DRIFT GUARD REACHES THE RELATIONS THIS FLOW ONLY *WRITES* ══════════════════════════
+// Clearing a person reference is an UPDATE, and the detach targets carry triggers that fire on one.
+// Fingerprinting only what the flow DELETES left those outside the guard.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const p = await preview(c, f.academy);
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+
+  ok('invoices is a trigger root because the flow writes to it',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_trigger_root_relations()
+                    WHERE oid = 'public.invoices'::regclass`)).n === 1);
+
+  await c.query(`CREATE OR REPLACE FUNCTION public.u1c_p3_probe_fn() RETURNS trigger
+                 LANGUAGE plpgsql AS $fn$ BEGIN RETURN NEW; END $fn$`);
+  await c.query(`CREATE TRIGGER u1c_p3_probe BEFORE UPDATE ON public.invoices
+                 FOR EACH ROW EXECUTE FUNCTION public.u1c_p3_probe_fn()`);
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = e.message; }
+  ok('a new trigger on a DETACH TARGET is ACADEMY_DELETION_CATALOG_DRIFT',
+    refused !== null && refused.includes('ACADEMY_DELETION_CATALOG_DRIFT'), { refused });
+
+  await c.query(`DROP TRIGGER u1c_p3_probe ON public.invoices`);
+  await c.query(`DROP FUNCTION public.u1c_p3_probe_fn()`);
+  ok('removing it makes the fingerprint match again',
+    (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
+  await c.end();
+}
+
 // ══ 4. HAPPY PATH + AUDIT ══════════════════════════════════════════════════════════════════════
 {
   const c = await client();
