@@ -10097,6 +10097,7 @@ export type Database = {
         }[]
       }
       academy_deletion_catalog_fingerprint: { Args: never; Returns: string }
+      academy_deletion_dying_persons_pred: { Args: never; Returns: string }
       academy_deletion_expected_fingerprint: { Args: never; Returns: string }
       academy_deletion_extra_relations: {
         Args: never
@@ -10109,6 +10110,12 @@ export type Database = {
         Args: { _academy_id: string }
         Returns: undefined
       }
+      academy_deletion_person_closure: {
+        Args: never
+        Returns: {
+          relname: string
+        }[]
+      }
       academy_deletion_preview: { Args: { _academy_id: string }; Returns: Json }
       academy_deletion_relation_digest: {
         Args: { _academy_id: string; _relname: string; _where: string }
@@ -10118,7 +10125,7 @@ export type Database = {
         }[]
       }
       academy_deletion_scope_predicate: {
-        Args: { _relname: string }
+        Args: { _relname: string; _root?: string; _root_pred?: string }
         Returns: string
       }
       academy_has_managers: {

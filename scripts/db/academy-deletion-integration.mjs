@@ -149,23 +149,34 @@ for (const [label, mutate] of [
 {
   const c = await client();
   const f = await seedAcademy(c);
-  // person_links is reached only THROUGH guest_players — it has no academy column at all, and the
-  // guest trigger has already populated one row for this fixture.
+  // THE TRIGGER-DRIVEN ROOT. `notification_contacts` hangs off `persons`, and a person is destroyed
+  // not by any foreign key from the academy but by the shipped guest-delete trigger when the dying
+  // guest was its last link. Nothing in the FK graph rooted at academy_profiles can see this row.
+  const { id: contact } = await one(c,
+    `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_scope)
+     VALUES ($1, 'email', 'deep@example.com', 'd***@example.com', 'global') RETURNING id`,
+    [f.person]);
+
   const p = await preview(c, f.academy);
   ok('a cascade descendant with no academy column is COUNTED in the preview',
     p.deleted.person_links === 1, { person_links: p.deleted.person_links });
-  ok('the deeper descendants are represented too, not skipped',
-    p.deleted.session_player_notes !== undefined && p.deleted.coaching_note_views !== undefined,
-    Object.keys(p.deleted));
+  ok('the person the guest-delete TRIGGER will destroy is counted', p.deleted.persons === 1, p.deleted.persons);
+  ok('a row reachable ONLY through that dying person is counted too',
+    p.deleted.notification_contacts === 1, p.deleted.notification_contacts);
 
   // ...and it is in the digest: editing it in place must go stale.
-  await c.query(`UPDATE public.person_links SET person_id = person_id WHERE guest_player_id = $1`, [f.guest]);
-  const p2 = await preview(c, f.academy);
-  ok('editing that descendant in place makes the digest stale', p.digest !== p2.digest);
+  await c.query(`UPDATE public.notification_contacts SET destination_redacted = 'x***@example.com' WHERE id = $1`, [contact]);
+  ok('editing that trigger-reachable row makes the digest stale',
+    p.digest !== (await preview(c, f.academy)).digest);
 
-  // A trainer-owned metadata row carries a NULL academy_profile_id but still cascades with the guest.
-  await c.query(`INSERT INTO public.academy_player_metadata (trainer_profile_id, guest_player_id, notes)
-                 SELECT gen_random_uuid(), $1, 'trainer-owned' WHERE false`, [f.guest]).catch(() => {});
+  // and it is genuinely destroyed by a successful confirmation
+  const p4 = await preview(c, f.academy);
+  const auditId = await startAudit(c, f.academy, ACTOR, p4);
+  await confirm(c, f.academy, p4, auditId, ACTOR);
+  const leftPerson = await one(c, `SELECT count(*)::int AS n FROM public.persons WHERE id = $1`, [f.person]);
+  const leftContact = await one(c, `SELECT count(*)::int AS n FROM public.notification_contacts WHERE id = $1`, [contact]);
+  ok('the trigger deleted the person, as previewed', leftPerson.n === 0);
+  ok('the row reachable only through it is gone, and it WAS previewed', leftContact.n === 0);
   await c.end();
 }
 
@@ -426,6 +437,7 @@ for (const [label, mutateAudit] of [
                  VALUES ($1, $2, 'unpreviewed')`, [academy, g]);   // held UNCOMMITTED
 
   const a = await client();
+  const { pg_backend_pid: aPid } = await one(a, `SELECT pg_backend_pid()`);
   const aRun = a.query('BEGIN')
     .then(() => a.query(`SELECT public.academy_delete_confirmed($1,$2,$3,$4,$5)`,
       [academy, p.digest, p.preview_version, auditId, ACTOR]))
@@ -438,11 +450,14 @@ for (const [label, mutateAudit] of [
   const waiter = await client();
   let blocked = false;
   for (let i = 0; i < 100 && !blocked; i++) {
+    // filtered to A's own backend: any ungranted lock would otherwise satisfy this, including one
+    // belonging to an unrelated session, which would prove nothing about A at all.
     const r = await one(waiter, `
       SELECT count(*)::int AS n FROM pg_locks l
        WHERE l.locktype = 'relation' AND NOT l.granted
          AND l.mode = 'ShareRowExclusiveLock'
-         AND l.relation = 'public.academy_player_metadata'::regclass`);
+         AND l.pid = $1
+         AND l.relation = 'public.academy_player_metadata'::regclass`, [aPid]);
     blocked = r.n > 0;
     if (!blocked) await new Promise((r2) => setTimeout(r2, 50));
   }

@@ -109,7 +109,9 @@ $$;
 -- relation reachable by several cascade paths gets the OR of them, because a row reached by any path
 -- is deleted. Anything that cannot be scoped — a composite FK, or a path deeper than the bound —
 -- returns NULL, and the caller fails closed rather than guessing.
-CREATE OR REPLACE FUNCTION public.academy_deletion_scope_predicate(_relname text)
+CREATE OR REPLACE FUNCTION public.academy_deletion_scope_predicate(
+  _relname text, _root text DEFAULT 'academy_profiles', _root_pred text DEFAULT 'id = $1'
+)
 RETURNS text
 LANGUAGE sql
 STABLE
@@ -117,14 +119,17 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
   WITH RECURSIVE g(rel, pred, depth) AS (
-    -- direct children of academy_profiles
+    -- direct children of the ROOT, scoped by the root's own predicate
     SELECT c.conrelid,
            quote_ident((SELECT a.attname FROM pg_attribute a
-                         WHERE a.attrelid = c.conrelid AND a.attnum = c.conkey[1])) || ' = $1',
+                         WHERE a.attrelid = c.conrelid AND a.attnum = c.conkey[1]))
+           || ' IN (SELECT ' || quote_ident((SELECT a.attname FROM pg_attribute a
+                                              WHERE a.attrelid = c.confrelid AND a.attnum = c.confkey[1]))
+           || ' FROM ' || c.confrelid::regclass::text || ' WHERE ' || _root_pred || ')',
            1
       FROM pg_constraint c
      WHERE c.contype = 'f' AND c.confdeltype = 'c'
-       AND c.confrelid = 'public.academy_profiles'::regclass
+       AND c.confrelid = to_regclass('public.' || _root)
        AND array_length(c.conkey, 1) = 1          -- composite FK ⇒ not scoped ⇒ fail closed
     UNION ALL
     -- descendants: this relation's FK column must land in the parent's already-scoped rows
@@ -167,6 +172,51 @@ AS $$
     ('persons',                      'identity'),
     ('academy_player_memberships',   'identity')
   ) AS t(relname, role);
+$$;
+
+
+-- THE SECOND DELETION ROOT — the one no foreign key describes.
+--
+-- Deleting an academy cascades its `guest_players`, and each of those fires the shipped
+-- `cleanup_orphan_person_on_source_delete` trigger (20260826280000), which DELETEs the person when
+-- the dying guest was its LAST link. That person then cascades away rows of its own —
+-- `notification_contacts` keyed by `person_id`, for instance — and NONE of that is visible in the
+-- foreign-key graph rooted at academy_profiles. An earlier version therefore neither counted nor
+-- hashed them: they were destroyed by a confirmation that never mentioned them, and editing one
+-- afterwards did not make the digest stale.
+--
+-- Persons reachable from ANOTHER academy are refused outright by SHARED_PERSON_IDENTITY. The ones
+-- left here are purely local, genuinely destroyed, and must be previewed like anything else.
+CREATE OR REPLACE FUNCTION public.academy_deletion_dying_persons_pred()
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT 'id IN (SELECT pl.person_id FROM public.person_links pl'
+      || ' JOIN public.guest_players g ON g.id = pl.guest_player_id'
+      || ' WHERE g.academy_profile_id = $1'
+      || '   AND NOT EXISTS (SELECT 1 FROM public.person_links o'
+      || '                    WHERE o.person_id = pl.person_id AND o.id <> pl.id))';
+$$;
+
+-- Everything the dying persons take with them, declaratively.
+CREATE OR REPLACE FUNCTION public.academy_deletion_person_closure()
+RETURNS TABLE (relname text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  WITH RECURSIVE closure(oid) AS (
+    SELECT c.conrelid FROM pg_constraint c
+     WHERE c.contype = 'f' AND c.confdeltype = 'c' AND c.confrelid = 'public.persons'::regclass
+    UNION
+    SELECT c.conrelid FROM pg_constraint c JOIN closure cl ON cl.oid = c.confrelid
+     WHERE c.contype = 'f' AND c.confdeltype = 'c' AND c.conrelid <> c.confrelid
+  )
+  SELECT DISTINCT cl.oid::regclass::text FROM closure cl ORDER BY 1;
 $$;
 
 -- FAIL-CLOSED DRIFT GUARD.
@@ -213,6 +263,16 @@ BEGIN
      WHERE c.contype = 'f'
        AND c.conrelid IN (SELECT to_regclass('public.' || cc2.relname) FROM public.academy_deletion_cascade_closure() cc2)
     UNION ALL
+    -- the trigger-driven root: which relations the dying persons take with them...
+    SELECT 'personclosure:' || pc.relname FROM public.academy_deletion_person_closure() pc
+    UNION ALL
+    -- ...and the TRIGGER itself. Its body decides whether a person dies at all, so a change to it
+    -- changes reachability without touching a single foreign key.
+    SELECT 'trigger:' || t.tgname || ':' || md5(pg_get_functiondef(t.tgfoid))
+      FROM pg_trigger t
+     WHERE NOT t.tgisinternal
+       AND t.tgrelid = 'public.guest_players'::regclass
+    UNION ALL
     -- the extra relations this flow depends on, and the CURRENT target of the overlay FK (so
     -- repairing academy_player_locations.academy_profile_id is itself drift)
     SELECT 'extra:' || er.relname || ':' || er.role
@@ -254,7 +314,7 @@ LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '28bf83d692bb2ec6c60a9de02aef240501e33cc2b21fb568c5e6fcb49c073320'::text $$;
+AS $$ SELECT '6bd876a7535b0150cea4a4fef5075bcdd6757821923782a04fb7c24fab28a0f3'::text $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical identity encoding
@@ -448,6 +508,7 @@ DECLARE
   v_fragment text;
   v_academy_tok text;
   v_scope text;
+  v_person_scope text;
 BEGIN
   IF _academy_id IS NULL THEN
     RAISE EXCEPTION 'academy_deletion_preview: _academy_id is required'
@@ -468,12 +529,29 @@ BEGIN
   FOR v_rel IN
     SELECT cc.relname FROM public.academy_deletion_cascade_closure() cc
     UNION SELECT er.relname FROM public.academy_deletion_extra_relations() er WHERE er.role = 'overlay'
+    UNION SELECT 'persons'                                     -- the trigger-driven root itself
+    UNION SELECT pc.relname FROM public.academy_deletion_person_closure() pc
     ORDER BY 1
   LOOP
     -- The overlays have no FK, so they are scoped by their academy_profile_id VALUE; everything else
     -- is scoped through the cascade graph. A relation that cannot be scoped fails the whole preview
     -- rather than being quietly omitted from what the operator is shown.
     v_scope := public.academy_deletion_scope_predicate(v_rel);
+
+    -- `persons` is not reached by any FK from the academy: the trigger deletes it. Scope it by the
+    -- dying-persons predicate directly.
+    IF v_rel = 'persons' THEN
+      v_scope := public.academy_deletion_dying_persons_pred();
+    ELSE
+      -- ...and anything the dying persons take with them is scoped through that same root, OR-ed
+      -- with whatever the academy graph already reached.
+      v_person_scope := public.academy_deletion_scope_predicate(
+        v_rel, 'persons', public.academy_deletion_dying_persons_pred());
+      IF v_person_scope IS NOT NULL THEN
+        v_scope := CASE WHEN v_scope IS NULL THEN v_person_scope
+                        ELSE '(' || v_scope || ' OR ' || v_person_scope || ')' END;
+      END IF;
+    END IF;
 
     IF EXISTS (SELECT 1 FROM public.academy_deletion_extra_relations() er
                 WHERE er.relname = v_rel AND er.role = 'overlay') THEN
@@ -566,6 +644,8 @@ BEGIN
   FOR v_rel IN
     SELECT cc.relname FROM public.academy_deletion_cascade_closure() cc
     UNION SELECT er.relname FROM public.academy_deletion_extra_relations() er
+    UNION SELECT 'persons'
+    UNION SELECT pc.relname FROM public.academy_deletion_person_closure() pc
     ORDER BY 1
   LOOP
     CONTINUE WHEN to_regclass('public.' || v_rel) IS NULL;
@@ -678,7 +758,9 @@ $$;
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 REVOKE ALL ON FUNCTION public.academy_deletion_cascade_closure() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_extra_relations() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.academy_deletion_scope_predicate(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_scope_predicate(text, text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_dying_persons_pred() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_person_closure() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_catalog_fingerprint() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_expected_fingerprint() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_relation_digest(text, text, uuid) FROM PUBLIC, anon, authenticated;
