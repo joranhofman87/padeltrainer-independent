@@ -212,4 +212,88 @@ describe('U1a executor — lifecycle', () => {
     await expect(runMembershipInventory(f.source as never, { asOf: AS_OF })).rejects.toThrow();
     expect(f.trace).not.toContain('ROLLBACK');
   });
+
+  it('propagates a rejected connect() without any query or release', async () => {
+    const boom = new Error('ACQUIRE_FAILED');
+    let releases = 0;
+    const source = { connect: async () => { throw boom; }, release: () => { releases += 1; } };
+    await expect(runMembershipInventory(source as never, { asOf: AS_OF })).rejects.toBe(boom);
+    expect(releases).toBe(0);
+  });
+
+  it('releases a malformed CALLABLE client (cleanup is independent of validity)', async () => {
+    let releases = 0;
+    const callableClient = Object.assign(() => {}, { release: () => { releases += 1; } }); // no query
+    const source = { connect: async () => callableClient };
+    await expect(runMembershipInventory(source as never, { asOf: AS_OF }))
+      .rejects.toMatchObject({ code: 'INVALID_CLIENT' });
+    expect(releases).toBe(1);
+  });
+
+  it('keeps the ORIGINAL error when release ALSO fails mid-run', async () => {
+    const f = makeSource({ failAtIndex: 4, failRelease: true });
+    await expect(runMembershipInventory(f.source as never, { asOf: AS_OF }))
+      .rejects.toBe(f.injected);                 // the injected failure wins over the release failure
+    expect(f.trace).toContain('ROLLBACK');
+    expect(f.counts()).toEqual({ connectCalls: 1, releaseCalls: 1 });
+  });
+});
+
+describe('U1a executor — the PGlite single-session adapter', () => {
+  // A no-op adapter would pass every other test in this file; these pin the lease itself.
+  async function makeAdapter() {
+    const { pgliteSessionSource } = await import('../../scripts/db/u1a-pglite-session.mjs');
+    const fakeDb = { query: async () => ({ rows: [] }) };
+    return pgliteSessionSource(fakeDb as never);
+  }
+
+  const settled = async (p: Promise<unknown>) => {
+    let done = false;
+    void p.then(() => { done = true; }, () => { done = true; });
+    await new Promise((r) => setTimeout(r, 10));
+    return done;
+  };
+
+  it('blocks a second lease until the first is released', async () => {
+    const sessions = await makeAdapter();
+    const first = await sessions.connect();
+    const second = sessions.connect();
+
+    expect(await settled(second)).toBe(false);   // still waiting
+    first.release();
+    expect(await settled(second)).toBe(true);
+    (await second).release();
+  });
+
+  it('a stale double-release cannot free somebody else\'s lease', async () => {
+    const sessions = await makeAdapter();
+    const first = await sessions.connect();
+    first.release();
+    const second = await sessions.connect();
+    const third = sessions.connect();
+
+    first.release();                             // stale: must NOT unblock `third`
+    expect(await settled(third)).toBe(false);
+    second.release();
+    expect(await settled(third)).toBe(true);
+    (await third).release();
+  });
+
+  it('poisons the session when release carries a rollback error', async () => {
+    const sessions = await makeAdapter();
+    const lease = await sessions.connect();
+    lease.release(new Error('ROLLBACK_FAILED'));
+
+    // PGlite cannot discard a connection the way a pool can, so it must refuse instead of
+    // handing the next caller a session that may still hold an aborted transaction.
+    await expect(sessions.connect()).rejects.toThrow(/poisoned/i);
+  });
+
+  it('rejects a lease that was already queued when the session got poisoned', async () => {
+    const sessions = await makeAdapter();
+    const first = await sessions.connect();
+    const queued = sessions.connect();
+    first.release(new Error('ROLLBACK_FAILED'));
+    await expect(queued).rejects.toThrow(/poisoned/i);
+  });
 });

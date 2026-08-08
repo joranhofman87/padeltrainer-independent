@@ -889,9 +889,12 @@ export async function runMembershipInventory(sessionSource, { asOf } = {}) {
 
   const client = await sessionSource.connect();
 
-  const canRelease = client !== null && typeof client === 'object' && typeof client.release === 'function';
-  if (!canRelease || typeof client.query !== 'function') {
-    if (canRelease) { try { await client.release(); } catch { /* already failing */ } }
+  // Cleanup capability is determined INDEPENDENTLY of client validity: a malformed client that can
+  // still be released must be released. Anything with a callable `release` qualifies, including a
+  // callable client — otherwise a leaked lease would outlive the rejection.
+  const releaseFn = typeof client?.release === 'function' ? client.release.bind(client) : null;
+  if (releaseFn === null || typeof client?.query !== 'function') {
+    if (releaseFn !== null) { try { await releaseFn(); } catch { /* already failing */ } }
     throw new InventoryExecutorError(
       'INVALID_CLIENT',
       'runMembershipInventory: sessionSource.connect() must resolve to { query, release }.',
@@ -902,7 +905,7 @@ export async function runMembershipInventory(sessionSource, { asOf } = {}) {
   const release = async (err) => {
     if (released) return;
     released = true;            // marked BEFORE awaiting: a throwing release is never retried
-    await client.release(err);
+    await releaseFn(err);
   };
 
   let beginAttempted = false;

@@ -400,8 +400,11 @@ ok('a dual-key booking with an unlinked guest is NOT reported divergent',
 // E10 suppression: soft-removed AT THIS ACADEMY drops the E10 path (the candidate survives via S1/E3)
 const removedGuest = first.report.dispositions.find(
   (r) => r.subject_id === G(61) && r.academy_profile_id === A1);
-ok('soft-removed academy metadata suppresses the E10 path',
-  removedGuest !== undefined && !removedGuest.paths.includes('E10_overview_guest_scope'),
+ok('soft-removed academy metadata suppresses the E10 path (S1/E3 still carry the candidate)',
+  removedGuest !== undefined
+    && !removedGuest.paths.includes('E10_overview_guest_scope')
+    && removedGuest.paths.includes('S1_metadata_row')
+    && removedGuest.paths.includes('E3_guest_scope_any_status'),
   removedGuest?.paths);
 
 // E8 counts as DIRECT academy evidence: a trainer-owned guest with academy intake is not trainer-only
