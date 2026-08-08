@@ -241,8 +241,11 @@ describe('collapse_guest_person_into is membership-aware', () => {
       CREATE FUNCTION public.rederive_person(_p uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
     `);
     await cdb.exec(readFileSync(U1A, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
-    // The WHOLE migration this time — primitive AND the collapse replacement.
-    await cdb.exec(readFileSync(REPOINT, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
+    // The primitive AND the collapse replacement — everything this path uses. Stopping before
+    // "Wiring 2/2" leaves out merge_guest_players, which needs a dozen further tables and has its own
+    // shipped suite; loading it here would only mean stubbing schema this scenario never exercises.
+    const repointFull = readFileSync(REPOINT, 'utf8').replace(/^REVOKE ALL.*$/gm, '');
+    await cdb.exec(repointFull.slice(0, repointFull.indexOf('-- Wiring 2/2')));
     await cdb.exec(`
       INSERT INTO public.academy_profiles VALUES ('${A1}'), ('${A2}');
       INSERT INTO public.persons (id) VALUES ('${P_SRC}'), ('${P_TGT}');
@@ -276,5 +279,107 @@ describe('collapse_guest_person_into is membership-aware', () => {
        WHERE person_id = $1 ORDER BY academy_profile_id`, [P_TGT]);
     expect(m.map((r) => r.academy_profile_id)).toEqual([A1, A2]);
     expect(new Date(m[0].created_at).toISOString()).toBe(new Date(EARLY).toISOString());
+  });
+});
+
+/**
+ * Durable evidence (slice 1b).
+ *
+ * `merge_guest_players` records its counts in the jsonb it already returns. `collapse_guest_person_into`
+ * cannot — it returns boolean to trigger callers — so it publishes the counts transaction-locally and a
+ * BEFORE INSERT trigger folds them into the `person_merge_review` row its caller writes. That row is the
+ * operation's existing evidence surface; nothing new was introduced to hold it.
+ */
+describe('the coalescence is recorded on existing evidence, not just logged', () => {
+  const G2 = 'cccc0002-0000-4000-8000-000000000000';
+  let edb: PGlite;
+
+  beforeAll(async () => {
+    edb = new PGlite();
+    await edb.exec(`
+      CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
+      CREATE TABLE public.persons (id uuid PRIMARY KEY, user_id uuid);
+      CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        person_id uuid NOT NULL, profile_id uuid UNIQUE, guest_player_id uuid UNIQUE);
+      CREATE TABLE public.person_merge_review (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        kind text, status text, email text, guest_player_id uuid, profile_id uuid,
+        suggested_profile_id uuid, person_id uuid, details jsonb DEFAULT '{}'::jsonb);
+      CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid,
+        person_id uuid, paid_by_guest_player_id uuid, paid_by_person_id uuid);
+      CREATE TABLE public.invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid, person_id uuid);
+      CREATE TABLE public.intake_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid, person_id uuid);
+      CREATE TABLE public.slot_priority_claims (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        guest_player_id uuid, person_id uuid, booked_by_guest_player_id uuid, booked_by_person_id uuid);
+      CREATE TABLE public.session_player_notes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        subject_guest_player_id uuid, subject_person_id uuid);
+      CREATE TABLE public.academy_player_locations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        academy_profile_id uuid, guest_player_id uuid, person_id uuid);
+      CREATE TABLE public.academy_player_metadata (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        academy_profile_id uuid, guest_player_id uuid, person_id uuid);
+      CREATE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS
+        $$ BEGIN NEW.updated_at = now(); RETURN NEW; END $$;
+      CREATE FUNCTION public.rederive_person(_p uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
+    `);
+    await edb.exec(readFileSync(U1A, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
+    // Only the parts of the migration this scenario needs: the primitive, the collapse rewrite and the
+    // evidence trigger. merge_guest_players needs a dozen more tables and is covered by its own suite.
+    const full = readFileSync(REPOINT, 'utf8').replace(/^REVOKE ALL.*$/gm, '');
+    const beforeMerge = full.slice(0, full.indexOf('-- Wiring 2/2'));
+    const evidence = full.slice(full.indexOf('-- Durable evidence for the COLLAPSE callers'));
+    await edb.exec(beforeMerge);
+    await edb.exec(evidence);
+    await edb.exec(`
+      INSERT INTO public.academy_profiles VALUES ('${A1}');
+      INSERT INTO public.persons (id) VALUES ('${P_SRC}'), ('${P_TGT}');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${P_SRC}', '${G2}');
+    `);
+  });
+
+  afterAll(async () => { await edb?.close(); });
+
+  it('stamps the counts onto the applied person_merge_review row the caller writes', async () => {
+    await edb.query(
+      `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id, created_at)
+       VALUES ($1,$2,$3::timestamptz), ($4,$5,$6::timestamptz)`,
+      [A1, P_SRC, EARLY, A1, P_TGT, LATE]);
+
+    // Exactly what the shipped signup/twin-claim callers do: collapse, then record the applied review.
+    await edb.exec(`
+      DO $$
+      BEGIN
+        IF public.collapse_guest_person_into('${G2}', '${P_SRC}', '${P_TGT}') THEN
+          INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id, details)
+          VALUES ('auto_merged_twin_trust', 'applied', '${G2}', '${P_TGT}',
+                  jsonb_build_object('via', 'live_claim'));
+        END IF;
+      END $$;
+    `);
+
+    const { rows } = await edb.query<{ details: Record<string, unknown> }>(
+      `SELECT details FROM public.person_merge_review WHERE status = 'applied'`);
+    expect(rows).toHaveLength(1);
+    // the caller's own field survives, and the counts were folded in beside it
+    expect(rows[0].details).toMatchObject({
+      via: 'live_claim', memberships_moved: 0, memberships_coalesced: 1,
+    });
+  });
+
+  it('does not stamp a LATER review row with the same counts', async () => {
+    // The setting is consumed on first use: a second row in the same session must not inherit it.
+    await edb.query(
+      `INSERT INTO public.person_merge_review (kind, status, details)
+       VALUES ('auto_merged_email_pair', 'applied', jsonb_build_object('via', 'signup_pair'))`);
+    const { rows } = await edb.query<{ details: Record<string, unknown> }>(
+      `SELECT details FROM public.person_merge_review WHERE details->>'via' = 'signup_pair'`);
+    expect(rows[0].details).not.toHaveProperty('memberships_coalesced');
+  });
+
+  it('leaves a non-applied review row alone', async () => {
+    await edb.query(
+      `INSERT INTO public.person_merge_review (kind, status, details)
+       VALUES ('twin_trust_failure', NULL, jsonb_build_object('reason', 'x'))`);
+    const { rows } = await edb.query<{ details: Record<string, unknown> }>(
+      `SELECT details FROM public.person_merge_review WHERE kind = 'twin_trust_failure'`);
+    expect(rows[0].details).not.toHaveProperty('memberships_moved');
   });
 });
