@@ -604,7 +604,17 @@ BEGIN
     INTO v_input
   FROM (
     -- every FK into academy_profiles, with its delete rule
-    SELECT 'fk:' || c.conrelid::regclass::text || ':' || c.confdeltype::text AS line
+    -- child, delete action AND the full key shape. Without the keys, repointing
+    -- `availability_slots.academy_profile_id` at a different unique column of academy_profiles
+    -- leaves this line identical while Postgres clears a different set of slots than the preview —
+    -- whose scope for that relation is the hard-coded `academy_profile_id = $1`.
+    SELECT 'fk:' || c.conrelid::regclass::text || ':' || c.confdeltype::text
+        || ':' || coalesce((SELECT string_agg(a.attname, ',' ORDER BY x.ord)
+                              FROM unnest(c.conkey) WITH ORDINALITY AS x(attnum, ord)
+                              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = x.attnum), '-')
+        || '>' || coalesce((SELECT string_agg(a.attname, ',' ORDER BY x.ord)
+                              FROM unnest(c.confkey) WITH ORDINALITY AS x(attnum, ord)
+                              JOIN pg_attribute a ON a.attrelid = c.confrelid AND a.attnum = x.attnum), '-') AS line
       FROM pg_constraint c
      WHERE c.contype = 'f' AND c.confrelid = 'public.academy_profiles'::regclass
     UNION ALL
@@ -721,7 +731,7 @@ LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '57344ff5d097cc12dd67dd6f7b6f1664f2d1c21ab7811d9a36b66cb86629eb09'::text $$;
+AS $$ SELECT '2238f9c213c1c87b3c6233d42148ee1be33c4173a50dc8ef9758f75d4997ba57'::text $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical identity encoding
@@ -1034,6 +1044,32 @@ BEGIN
   v_mutated := v_mutated || jsonb_build_object('persons', v_count);
   v_digest_input := v_digest_input || public.u1c_ns('M:persons') || public.u1c_ns(v_fragment);
 
+  -- ...and what rederiving one reaches. `rederive_person` names `user_id` in its SET list every
+  -- time, so `trg_notif_person_sync_effective_user` (AFTER UPDATE OF user_id) fires for every
+  -- surviving person and rewrites that person's notification contacts, which in turn recompute
+  -- their own effective_user_id. None of that is a foreign-key action and none of it was announced.
+  --
+  -- Derived from the person closure rather than named, and deliberately CONSERVATIVE: it announces
+  -- every row of those relations belonging to a surviving person, some of which the triggers will
+  -- leave untouched. Naming a row that turns out unchanged cannot mislead an operator about what
+  -- they are about to do; staying silent about one that changes can.
+  FOR v_rel IN
+    SELECT pc.relname FROM public.academy_deletion_person_closure() pc ORDER BY 1
+  LOOP
+    v_person_scope := public.academy_deletion_scope_predicate(
+      v_rel, 'persons', public.academy_deletion_surviving_persons_pred());
+    CONTINUE WHEN v_person_scope IS NULL;
+
+    SELECT d.row_count, d.fragment INTO v_count, v_fragment
+      FROM public.academy_deletion_relation_digest(v_rel, v_person_scope, _academy_id) d;
+
+    -- a row already counted as deleted (the dying link) is not also announced as mutated
+    IF v_count > 0 OR NOT (v_deleted ? v_rel) THEN
+      v_mutated := v_mutated || jsonb_build_object(v_rel, v_count);
+    END IF;
+    v_digest_input := v_digest_input || public.u1c_ns('M:' || v_rel) || public.u1c_ns(v_fragment);
+  END LOOP;
+
   -- Blocker inputs contribute identity+revision too, so swapping one invoice for another is stale.
   SELECT d.row_count, d.fragment INTO v_count, v_fragment
     FROM public.academy_deletion_relation_digest('invoices', 'academy_profile_id = $1', _academy_id) d;
@@ -1208,6 +1244,21 @@ BEGIN
   IF jsonb_array_length(v_blockers) > 0 THEN
     RAISE EXCEPTION 'BLOCKED: %', (SELECT string_agg(b->>'code', ', ' ORDER BY b->>'code')
                                      FROM jsonb_array_elements(v_blockers) b)
+      USING ERRCODE = 'raise_exception';
+  END IF;
+
+  -- 4b. The catalogue again, now that the locks are held and the recomputation is done.
+  --
+  -- The relation locks stop concurrent DDL on TABLES, but nothing locks a FUNCTION: a
+  -- `CREATE OR REPLACE FUNCTION` on `rederive_person` or any reached helper can commit between the
+  -- first check and here, and its new behaviour would run against a fingerprint nobody compared.
+  -- Re-reading it under the locks narrows that window to the statements below.
+  --
+  -- It does not CLOSE it, and cannot: closing it needs a schema-change exclusion protocol that
+  -- migrations also honour, which is a deployment-wide change and not this checkpoint's to make.
+  -- Recorded as an open item rather than papered over.
+  IF public.academy_deletion_catalog_fingerprint() IS DISTINCT FROM public.academy_deletion_expected_fingerprint() THEN
+    RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: the catalogue changed while this deletion was preparing'
       USING ERRCODE = 'raise_exception';
   END IF;
 

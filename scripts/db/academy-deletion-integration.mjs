@@ -786,6 +786,93 @@ for (const [label, seed, code] of [
   await c.end();
 }
 
+// ══ 3q. REDERIVING A SURVIVING PERSON REACHES FURTHER THAN THE PERSON ══════════════════════════
+// `rederive_person` names `user_id` in its SET list every time, so the AFTER UPDATE OF user_id
+// trigger on `persons` fires for every surviving person and rewrites that person's notification
+// contacts. No foreign key describes it and nothing announced it.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: outsideAcademy } = await one(c,
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u1c-p3-contact-home', 'u1c-p3-ch-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  CREATED.push(outsideAcademy);
+  const { id: outsideGuest } = await one(c,
+    `INSERT INTO public.guest_players (full_name, academy_profile_id) VALUES ('Elsewhere', $1) RETURNING id`,
+    [outsideAcademy]);
+  const { person_id: orphan } = await one(c,
+    `SELECT person_id FROM public.person_links WHERE guest_player_id = $1`, [outsideGuest]);
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE guest_player_id = $2`, [f.person, outsideGuest]);
+  await c.query(`DELETE FROM public.persons WHERE id = $1`, [orphan]);
+  const { id: contact } = await one(c,
+    `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_scope)
+     VALUES ($1, 'email', 'survivor@example.com', 's***@example.com', 'global') RETURNING id`, [f.person]);
+
+  const p = await preview(c, f.academy);
+  ok('the surviving person is announced as mutated', p.mutated.persons === 1, p.mutated);
+  ok('...and so is the contact its rederive will rewrite',
+    p.mutated.notification_contacts === 1, p.mutated);
+  ok('it is NOT announced as deleted — the person survives, so its contact does',
+    p.deleted.notification_contacts === 0, p.deleted.notification_contacts);
+
+  // it is hashed: editing it between preview and confirmation must be stale
+  await c.query(`UPDATE public.notification_contacts SET destination_redacted = 'z***@example.com' WHERE id = $1`, [contact]);
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = e.message; }
+  ok('editing that contact after the preview refuses PREVIEW_STALE',
+    refused !== null && refused.includes('PREVIEW_STALE'), { refused });
+
+  const p2 = await preview(c, f.academy);
+  const { rev: before } = await one(c, `SELECT xmin::text AS rev FROM public.notification_contacts WHERE id = $1`, [contact]);
+  const auditId2 = await startAudit(c, f.academy, ACTOR, p2);
+  await confirm(c, f.academy, p2, auditId2, ACTOR);
+  const after = await one(c,
+    `SELECT count(*)::int AS n, max(xmin::text) AS rev FROM public.notification_contacts WHERE id = $1`, [contact]);
+  ok('the contact survives the deletion', after.n === 1, after);
+  ok('...and it was genuinely rewritten, which is what "mutated" promised',
+    after.rev !== before, { before, after: after.rev });
+
+  await c.query(`DELETE FROM public.notification_contacts WHERE id = $1`, [contact]);
+  await c.query(`DELETE FROM public.guest_players WHERE id = $1`, [outsideGuest]);
+  await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [outsideAcademy]);
+  await c.end();
+}
+
+// ══ 3r. THE DIRECT ACADEMY KEYS ARE PART OF THE FINGERPRINT ════════════════════════════════════
+// `availability_slots` is the one relation whose detach scope is hard-coded to
+// `academy_profile_id = $1`. REPOINTING that foreign key at a different unique column of
+// academy_profiles keeps the child, the target relation and the delete action identical — so
+// without the key columns in the hash the line is unchanged, while Postgres clears a different set
+// of slots than the preview reported. Repointed, not merely added: adding a key changes the arm
+// either way and would prove nothing about the columns.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const p = await preview(c, f.academy);
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+
+  await c.query(`ALTER TABLE public.academy_profiles ADD COLUMN u1c_p3_alt_key uuid
+                 NOT NULL DEFAULT gen_random_uuid() UNIQUE`);
+  await c.query(`ALTER TABLE public.availability_slots DROP CONSTRAINT availability_slots_academy_profile_id_fkey`);
+  await c.query(`ALTER TABLE public.availability_slots ADD CONSTRAINT availability_slots_academy_profile_id_fkey
+                 FOREIGN KEY (academy_profile_id) REFERENCES public.academy_profiles(u1c_p3_alt_key)
+                 ON DELETE SET NULL NOT VALID`);
+
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = e.message; }
+  ok('repointing a direct academy key — same child, same action — is ACADEMY_DELETION_CATALOG_DRIFT',
+    refused !== null && refused.includes('ACADEMY_DELETION_CATALOG_DRIFT'), { refused });
+
+  await c.query(`ALTER TABLE public.availability_slots DROP CONSTRAINT availability_slots_academy_profile_id_fkey`);
+  await c.query(`ALTER TABLE public.availability_slots ADD CONSTRAINT availability_slots_academy_profile_id_fkey
+                 FOREIGN KEY (academy_profile_id) REFERENCES public.academy_profiles(id) ON DELETE SET NULL`);
+  await c.query(`ALTER TABLE public.academy_profiles DROP COLUMN u1c_p3_alt_key`);
+  ok('putting the key back restores the fingerprint',
+    (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
+  await c.end();
+}
+
 // ══ 3o. A PARTLY-DELETED RELATION CAN STILL REFUSE ═════════════════════════════════════════════
 // `academy_player_memberships` is deleted FOR THIS ACADEMY, so excluding the whole relation from the
 // blocker looked reasonable. It is not: another academy's membership row survives and its RESTRICT
