@@ -264,6 +264,25 @@ describe('U1a executor — lifecycle', () => {
     expect(releases).toBe(1);
   });
 
+  it('releases a lease whose release accessor throws on a SECOND read', async () => {
+    // Reading `release` twice (typeof, then .bind) would let this getter hand back a callable the
+    // first time and throw the second — losing a lease that was in fact releasable.
+    let reads = 0;
+    let releases = 0;
+    const releaseImpl = () => { releases += 1; };
+    const client = {
+      get release() {
+        reads += 1;
+        if (reads > 1) throw new Error('SECOND_READ_EXPLODED');
+        return releaseImpl;
+      },
+      // no `query` on purpose ⇒ INVALID_CLIENT, after cleanup
+    };
+    await expect(runMembershipInventory({ connect: async () => client } as never, { asOf: AS_OF }))
+      .rejects.toMatchObject({ code: 'INVALID_CLIENT' });
+    expect(releases).toBe(1);
+  });
+
   it('ACCEPTS a callable client that has both query and release (documented decision)', async () => {
     // Pins the acceptance, not just the rejection: an object-only validity check would break this
     // while the malformed-callable cleanup test above kept passing.

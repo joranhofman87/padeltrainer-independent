@@ -900,9 +900,13 @@ export async function runMembershipInventory(sessionSource, { asOf } = {}) {
   // callable client — otherwise a leaked lease would outlive the rejection.
   // Both capability reads are guarded: `query`/`release` may be accessors or proxy traps that THROW.
   // An unguarded read would escape before cleanup and strand the lease we were still able to release.
+  // `release` is read EXACTLY ONCE into a local: reading it twice (typeof, then .bind) lets a getter
+  // or proxy hand back a callable the first time and throw the second, losing a lease we could
+  // otherwise have released.
   let releaseFn = null;
   try {
-    if (typeof client?.release === 'function') releaseFn = client.release.bind(client);
+    const releaseCandidate = client?.release;
+    if (typeof releaseCandidate === 'function') releaseFn = releaseCandidate.bind(client);
   } catch { releaseFn = null; }        // a throwing accessor leaves nothing callable to release
 
   let hasQuery = false;
