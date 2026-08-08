@@ -7,7 +7,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-Deno.serve(async (req) => {
+/**
+ * The route body, exported so tests can drive the REAL contract — status codes, response shape and
+ * audit writes — instead of a copy of it. `deps.admin` is the only injection point: production passes
+ * nothing and the client is built from the environment exactly as before.
+ */
+export async function handleRequest(
+  req: Request,
+  deps: { admin?: ReturnType<typeof createClient> } = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -16,7 +24,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    const supabaseAdmin = deps.admin ?? createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
@@ -173,4 +181,8 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+// Only start the server when run as the entrypoint — importing the module (for tests) must not bind a port.
+if (import.meta.main) Deno.serve((req) => handleRequest(req));
+

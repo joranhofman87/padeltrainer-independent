@@ -21,7 +21,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-Deno.serve(async (req) => {
+/**
+ * The route body, exported so tests can drive the REAL contract — status codes, response shape and
+ * audit writes — instead of a copy of it. `deps.admin` is the only injection point: production passes
+ * nothing and the client is built from the environment exactly as before.
+ */
+export async function handleRequest(
+  req: Request,
+  deps: { admin?: ReturnType<typeof createClient> } = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -30,7 +38,7 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    const supabaseAdmin = deps.admin ?? createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
 
@@ -118,6 +126,11 @@ Deno.serve(async (req) => {
     // is not a failure to investigate, it is a decision the preflight made. Folding the two together
     // would bury a routine skip in a list of things that went wrong — and, worse, make a run that
     // skipped everything look like a run that broke.
+    // Skips are kept STRUCTURED, not as prose. The human-readable line is derived for the response;
+    // the durable audit record gets the machine-readable projection only — user id, code, count — so
+    // the operator can answer "which accounts were skipped and why" from the audit alone, without the
+    // audit accumulating email addresses it has no reason to retain.
+    const skipRecords: Array<{ user_id: string; code: string; membership_count: number }> = [];
     const results: { deleted: string[]; errors: string[]; skipped: string[] } =
       { deleted: [], errors: [], skipped: [] };
 
@@ -136,6 +149,11 @@ Deno.serve(async (req) => {
           // SKIP and continue. The preflight refused before touching anything, so this user's auth
           // account and every row it owns are untouched — nothing to clean up, nothing half-done.
           console.log(`Skipped user ${userId}: ${error.code} (${error.membershipCount} membership(s))`);
+          skipRecords.push({
+            user_id: userId,
+            code: error.code,
+            membership_count: error.membershipCount,
+          });
           results.skipped.push(
             `${profile.email} (${userId}): ${error.code} — ${error.membershipCount} academy membership(s)`,
           );
@@ -155,6 +173,9 @@ Deno.serve(async (req) => {
         deleted_count: results.deleted.length,
         error_count: results.errors.length,
         skipped_count: results.skipped.length,
+        // Per-account and durable: a count alone cannot tell anyone WHICH accounts were left behind,
+        // which is the only thing that makes the skip actionable later.
+        skipped_details: skipRecords,
         preserved_users: preservedUserIds,
       },
       ip_address: req.headers.get("x-forwarded-for") || req.headers.get("cf-connecting-ip"),
@@ -181,4 +202,8 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+// Only start the server when run as the entrypoint — importing the module (for tests) must not bind a port.
+if (import.meta.main) Deno.serve((req) => handleRequest(req));
+
