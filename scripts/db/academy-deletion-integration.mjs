@@ -685,6 +685,85 @@ for (const [label, seed, code] of [
   await c.end();
 }
 
+// ══ 3m. THE MODEL IS DERIVED OVER EVERY DELETION PARENT, NOT A LIST OF ROOTS ═══════════════════
+// Three named roots was one root too few, twice. Any relation this transaction deletes from is a
+// parent whose children feel it — including the overlays it deletes by value.
+{
+  const c = await client();
+  const parents = (await c.query(`SELECT relname FROM public.academy_deletion_deletion_parents() ORDER BY 1`)).rows.map((r) => r.relname);
+  for (const rel of ['academy_player_metadata', 'academy_player_locations', 'guest_players', 'persons',
+                     'person_links', 'session_player_notes']) {
+    ok(`${rel} is a deletion parent`, parents.includes(rel), parents.length);
+  }
+  ok('the preview loop and the derivation walk the SAME set',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_deletion_parents() dp
+                    WHERE public.academy_deletion_deleted_scope(dp.relname) IS NULL`)).n === 0);
+
+  // every detach target's parent is one of them — nothing is derived from a root that is not deleted
+  ok('every detach target hangs off a relation this flow actually deletes',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_detach_targets() dt
+                    WHERE dt.parent NOT IN (SELECT relname FROM public.academy_deletion_deletion_parents())`)).n === 0);
+
+  // Every SET NULL foreign key in the shipped schema happens to point at `persons` or
+  // `guest_players`, so a derivation narrowed to those two roots is indistinguishable today. It is
+  // not indistinguishable tomorrow: an overlay is deleted too, and a child of one detaches exactly
+  // the same way. Staged here rather than waited for.
+  await c.query(`ALTER TABLE public.invoices ADD COLUMN u1c_p3_probe_meta_id uuid
+                 REFERENCES public.academy_player_metadata(id) ON DELETE SET NULL`);
+  ok('a SET NULL child of a deleted OVERLAY is derived as a detach target',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_detach_targets()
+                    WHERE parent = 'academy_player_metadata' AND relname = 'invoices'
+                      AND colname = 'u1c_p3_probe_meta_id'`)).n === 1);
+  await c.query(`ALTER TABLE public.invoices DROP COLUMN u1c_p3_probe_meta_id`);
+  ok('dropping the probe restores the fingerprint',
+    (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
+
+  // a relation outside `public` must not be silently swallowed: `to_regclass` ERRORs on a dotted
+  // name rather than returning NULL, and WHERE-clause evaluation order is not a contract
+  ok('a schema-qualified name yields NULL rather than a cross-database error',
+    (await one(c, `SELECT public.academy_deletion_scope_predicate('storage.objects') IS NULL AS m`)).m === true);
+  await c.end();
+}
+
+// ══ 3n. A MULTI-COLUMN CHECK IS SIMULATED AS A WHOLE ═══════════════════════════════════════════
+// `slot_priority_claims` has TWO guest columns. A check that reads both is survivable when each is
+// simulated alone and broken when both are cleared — which is what actually happens. No shipped
+// check reads both today, so the case is staged: the constraint is created, the simulation
+// inspected, and its removal asserted to restore the fingerprint.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const p = await preview(c, f.academy);
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+
+  const single = await one(c, `SELECT public.academy_deletion_detach_check_pred('slot_priority_claims') AS p`);
+  ok('the shipped one-column check is simulated with one substitution',
+    (single.p.match(/CASE WHEN/g) ?? []).length === 1, { n: (single.p.match(/CASE WHEN/g) ?? []).length });
+
+  await c.query(`ALTER TABLE public.slot_priority_claims ADD CONSTRAINT u1c_p3_two_col_probe
+                 CHECK (guest_player_id IS NOT NULL OR booked_by_guest_player_id IS NOT NULL OR player_id IS NOT NULL)`);
+  const both = await one(c, `SELECT public.academy_deletion_detach_check_pred('slot_priority_claims') AS p`);
+  ok('a check reading BOTH guest columns is simulated with both cleared at once',
+    (both.p.match(/CASE WHEN/g) ?? []).length >= 3, { n: (both.p.match(/CASE WHEN/g) ?? []).length });
+  ok('...and each substitution is conditional on that column\'s own row dying, not a blanket NULL',
+    both.p.includes('THEN NULL ELSE'));
+
+  // the checks are themselves fingerprinted: they are the blocker's input, so changing one is drift
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = e.message; }
+  ok('adding a CHECK to a detach target is ACADEMY_DELETION_CATALOG_DRIFT',
+    refused !== null && refused.includes('ACADEMY_DELETION_CATALOG_DRIFT'), { refused });
+
+  await c.query(`ALTER TABLE public.slot_priority_claims DROP CONSTRAINT u1c_p3_two_col_probe`);
+  ok('dropping it restores the fingerprint',
+    (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
+
+  const p2 = await preview(c, f.academy);
+  ok('an academy with no breaking rows is not blocked by the simulation',
+    !p2.blockers.some((b) => b.code === 'DETACH_BREAKS_CONSTRAINT'), p2.blockers);
+  await c.end();
+}
+
 // ══ 3l. THE ROOT ITSELF IS LOCKED ══════════════════════════════════════════════════════════════
 // Only the academy's ROW was locked, so a concurrent CREATE TRIGGER on academy_profiles could take
 // its lock after the fingerprint was checked and fire during the delete.

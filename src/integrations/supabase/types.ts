@@ -10099,6 +10099,7 @@ export type Database = {
         Returns: {
           colname: string
           parent: string
+          parentcol: string
           relname: string
         }[]
       }
@@ -10113,8 +10114,14 @@ export type Database = {
         Args: { _relname: string }
         Returns: string
       }
+      academy_deletion_deletion_parents: {
+        Args: never
+        Returns: {
+          relname: string
+        }[]
+      }
       academy_deletion_detach_check_pred: {
-        Args: { _colname: string; _relname: string }
+        Args: { _relname: string }
         Returns: string
       }
       academy_deletion_detach_targets: {
@@ -10122,6 +10129,7 @@ export type Database = {
         Returns: {
           colname: string
           parent: string
+          parentcol: string
           relname: string
         }[]
       }
@@ -10130,7 +10138,7 @@ export type Database = {
         Returns: string
       }
       academy_deletion_dying_pred: {
-        Args: { _col: string; _parent: string }
+        Args: { _col: string; _parent: string; _parentcol: string }
         Returns: string
       }
       academy_deletion_expected_fingerprint: { Args: never; Returns: string }
