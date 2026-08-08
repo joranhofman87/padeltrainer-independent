@@ -240,6 +240,99 @@ for (const [label, seed, code] of [
   await c.end();
 }
 
+// ══ 3b. TWO GUESTS OF THE SAME ACADEMY, ONE PERSON ═════════════════════════════════════════════
+// The predicate that decides "this person dies" used to read "the person has exactly one link".
+// That is wrong whenever an academy holds two guests for the same human — a routine duplicate. The
+// person has two links, both dying, so it IS destroyed; the old test said one-link-only and so the
+// preview under-counted `persons` and everything hanging off it, and the confirmation then destroyed
+// rows it had never announced. The right question is whether EVERY current link belongs to a guest
+// of this academy.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: twin } = await one(c,
+    `INSERT INTO public.guest_players (full_name, academy_profile_id) VALUES ('Same Human, Again', $1) RETURNING id`,
+    [f.academy]);
+  // the mint trigger gave the twin its own person; point it at the first and drop the orphan
+  const { person_id: twinPerson } = await one(c,
+    `SELECT person_id FROM public.person_links WHERE guest_player_id = $1`, [twin]);
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE guest_player_id = $2`, [f.person, twin]);
+  await c.query(`DELETE FROM public.persons WHERE id = $1`, [twinPerson]);
+
+  // something reachable ONLY through that person, to prove the undercount is not merely cosmetic
+  const { id: contact } = await one(c,
+    `INSERT INTO public.notification_contacts (person_id, channel, destination_normalized, destination_redacted, consent_scope)
+     VALUES ($1, 'email', 'twin@example.com', 't***@example.com', 'global') RETURNING id`, [f.person]);
+
+  const p = await preview(c, f.academy);
+  ok('two links, both to guests of this academy: the person is counted as dying',
+    p.deleted.persons === 1, { persons: p.deleted.persons, person_links: p.deleted.person_links });
+  ok('both links are counted', p.deleted.person_links === 2, p.deleted.person_links);
+  ok('and what hangs off that person is counted with it',
+    p.deleted.notification_contacts === 1, p.deleted.notification_contacts);
+  ok('a person whose every link dies with the academy is NOT a shared-identity blocker',
+    !p.blockers.some((b) => b.code === 'SHARED_PERSON_IDENTITY'), p.blockers);
+
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  await confirm(c, f.academy, p, auditId, ACTOR);
+  const left = await one(c, `SELECT
+      (SELECT count(*)::int FROM public.persons WHERE id = $1) AS persons,
+      (SELECT count(*)::int FROM public.notification_contacts WHERE id = $2) AS contacts`, [f.person, contact]);
+  ok('confirmation destroyed exactly what the preview announced', left.persons === 0 && left.contacts === 0, left);
+  await c.end();
+}
+
+// ══ 3c. THE GUEST TRIGGER'S OTHER SIDE EFFECT — person_merge_review ════════════════════════════
+// Deleting a guest also drops that guest's PENDING review rows and scrubs the identifying payload
+// off its APPLIED ones. Neither is reachable by a foreign key from the academy, so both were
+// invisible: a pending review destroyed unannounced, an applied one materially altered.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: pending } = await one(c,
+    `INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, person_id, details)
+     VALUES ('no_email_guest', 'pending', 'p@example.com', $1, $2, '{"guest_name":"Fixture Guest"}'::jsonb)
+     RETURNING id`, [f.guest, f.person]);
+  const { id: applied } = await one(c,
+    `INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, person_id, details)
+     VALUES ('auto_merged_email_pair', 'applied', 'a@example.com', $1, $2, '{"guest_name":"Fixture Guest"}'::jsonb)
+     RETURNING id`, [f.guest, f.person]);
+
+  const p = await preview(c, f.academy);
+  ok('a PENDING review row is announced as deleted', p.deleted.person_merge_review === 1, p.deleted.person_merge_review);
+  ok('an APPLIED review row is announced as MUTATED — a scrub is not a deletion',
+    p.mutated.person_merge_review === 1, p.mutated);
+  ok('mutated is a category of its own, not folded into deleted or detached',
+    p.detached.person_merge_review === undefined);
+
+  // both arms are in the digest: editing either must invalidate the preview
+  await c.query(`UPDATE public.person_merge_review SET details = details || '{"note":"x"}'::jsonb WHERE id = $1`, [applied]);
+  ok('editing the applied (mutated) row makes the digest stale',
+    p.digest !== (await preview(c, f.academy)).digest);
+  await c.query(`UPDATE public.person_merge_review SET details = details || '{"note":"y"}'::jsonb WHERE id = $1`, [pending]);
+  const p2 = await preview(c, f.academy);
+
+  const auditId = await startAudit(c, f.academy, ACTOR, p2);
+  await confirm(c, f.academy, p2, auditId, ACTOR);
+  const after = await one(c, `SELECT
+      (SELECT count(*)::int FROM public.person_merge_review WHERE id = $1) AS pending_left,
+      (SELECT count(*)::int FROM public.person_merge_review WHERE id = $2) AS applied_left,
+      (SELECT email FROM public.person_merge_review WHERE id = $2) AS applied_email,
+      (SELECT details ? 'guest_name' FROM public.person_merge_review WHERE id = $2) AS applied_has_name`,
+    [pending, applied]);
+  ok('the pending review row is gone, exactly as previewed', after.pending_left === 0, after);
+  ok('the applied row SURVIVES — the merge fact is not a casualty of the deletion',
+    after.applied_left === 1, after);
+  ok('...but its identifying payload was scrubbed, which is what "mutated" promised',
+    after.applied_email === null && after.applied_has_name === false, after);
+
+  const audit = await one(c, `SELECT detached_counts FROM public.academy_deletion_audit WHERE id = $1`, [auditId]);
+  ok('the audit records the mutation too', audit.detached_counts?.mutated?.person_merge_review === 1, audit);
+
+  await c.query(`DELETE FROM public.person_merge_review WHERE id = $1`, [applied]);
+  await c.end();
+}
+
 // ══ 4. HAPPY PATH + AUDIT ══════════════════════════════════════════════════════════════════════
 {
   const c = await client();
@@ -321,10 +414,15 @@ for (const [label, mutateAudit] of [
 }
 
 // ══ 8. TWO-SESSION CONCURRENCY — the proof PGlite cannot give ══════════════════════════════════
+// Session A runs the REAL `academy_delete_confirmed`. It is parked mid-lock-plan by a third session
+// holding a conflicting lock on a relation that sorts LATE in the plan's fixed ascending order: by
+// the time A blocks there it has already taken every earlier relation lock, which is exactly the
+// state under test.
+//
+// (An earlier version parked A with a test-local trigger on academy_player_metadata. That is now
+// impossible — and rightly so: the catalogue fingerprint hashes every trigger on the closure, so
+// adding one is DRIFT and the confirmation refuses. The guard caught its own test harness.)
 {
-  // Session A runs the REAL `academy_delete_confirmed` and is held after its locks are acquired by a
-  // test-local trigger that waits on an advisory lock session C holds. No sleeps: B's writes are
-  // proven blocked by `lock_timeout` raising 55P03, which is deterministic.
   const setup = await client();
   const { rows: [{ id: academy }] } = await setup.query(
     `INSERT INTO public.academy_profiles (name, slug)
@@ -334,80 +432,66 @@ for (const [label, mutateAudit] of [
   await setup.query(
     `INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, notes)
      VALUES ($1, $2, 'hold')`, [academy, ccGuest]);
-  await setup.query(`
-    CREATE FUNCTION pg_temp_hold() RETURNS trigger LANGUAGE plpgsql AS
-      $fn$ BEGIN PERFORM pg_advisory_xact_lock(919191); RETURN OLD; END $fn$;
-    CREATE TRIGGER u1c_p3_hold BEFORE DELETE ON public.academy_player_metadata
-      FOR EACH ROW EXECUTE FUNCTION pg_temp_hold();`);
-
-  const holder = await client();
-  await holder.query(`SELECT pg_advisory_lock(919191)`);   // makes A wait inside its own transaction
 
   const p = await preview(setup, academy);
   const { rows: [{ id: auditId }] } = await setup.query(
     `INSERT INTO public.academy_deletion_audit (academy_profile_id, actor_user_id, preview_version, digest)
      VALUES ($1, $2, $3, $4) RETURNING id`, [academy, ACTOR, p.preview_version, p.digest]);
 
+  // The gatekeeper: `persons` sorts late, so A parks there holding everything before it.
+  const gate = await client();
+  await gate.query('BEGIN');
+  await gate.query(`LOCK TABLE public.persons IN ACCESS EXCLUSIVE MODE`);
+
   const a = await client();
+  const { pg_backend_pid: aPid } = await one(a, `SELECT pg_backend_pid()`);
   const aRun = a.query('BEGIN')
     .then(() => a.query(`SELECT public.academy_delete_confirmed($1,$2,$3,$4,$5)`,
       [academy, p.digest, p.preview_version, auditId, ACTOR]))
     .then(() => a.query('COMMIT').then(() => 'committed'))
     .catch((e) => { a.query('ROLLBACK').catch(() => {}); return `failed: ${e.message}`; });
 
-  // Give A time to reach the trigger and be parked there, holding its locks.
-  await new Promise((r) => setTimeout(r, 800));
+  // Wait until A is DEMONSTRABLY blocked on `persons` — not a sleep. As the lock plan grows, a fixed
+  // delay stops being long enough and B would run before A held anything (which happened once).
+  const probe = await client();
+  let parked = false;
+  for (let i = 0; i < 200 && !parked; i++) {
+    const r = await one(probe, `
+      SELECT count(*)::int AS n FROM pg_locks
+       WHERE pid = $1 AND NOT granted AND locktype = 'relation'
+         AND relation = 'public.persons'::regclass`, [aPid]);
+    parked = r.n > 0;
+    if (!parked) await new Promise((r2) => setTimeout(r2, 50));
+  }
+  ok('session A is blocked mid-lock-plan, holding every earlier relation lock', parked);
 
   const b = await client();
   await b.query(`SET lock_timeout = '600ms'`);
   let overlayErr = null, identityErr = null;
   try {
-    await b.query(`INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, notes)
-                   VALUES ($1, $2, 'racer')`, [academy, ccGuest]);
+    await b.query(`UPDATE public.academy_player_metadata SET notes = 'racer' WHERE academy_profile_id = $1`, [academy]);
   } catch (e) { overlayErr = e.code; }
   try {
-    await b.query(`INSERT INTO public.persons DEFAULT VALUES`);
+    await b.query(`UPDATE public.person_links SET person_id = person_id WHERE guest_player_id = $1`, [ccGuest]);
   } catch (e) { identityErr = e.code; }
 
   ok('a concurrent OVERLAY write blocks while the deletion holds its locks (55P03)', overlayErr === '55P03', { overlayErr });
   ok('a concurrent IDENTITY write blocks too (55P03)', identityErr === '55P03', { identityErr });
 
-  await holder.query(`SELECT pg_advisory_unlock(919191)`);
+  await gate.query('ROLLBACK');          // release the gate; A proceeds
   const aResult = await aRun;
   ok('the held deletion then resolves', typeof aResult === 'string', { aResult });
 
-  // After A resolves, a retried writer proceeds and observes the committed result.
-  await b.query(`SET lock_timeout = '5s'`);
+  await b.query(`SET lock_timeout = '10s'`);
   const after = await one(b, `SELECT count(*)::int AS n FROM public.academy_profiles WHERE id = $1`, [academy]);
   ok('a retried writer sees the committed outcome, not a half-state',
     (aResult === 'committed' && after.n === 0) || (aResult !== 'committed' && after.n === 1),
     { aResult, remaining: after.n });
 
-  // No unpreviewed row can have committed INTO the window: B's overlay insert never landed.
-  const leaked = await one(b, `SELECT count(*)::int AS n FROM public.academy_player_metadata WHERE academy_profile_id = $1 AND notes = 'racer'`, [academy]);
-  ok('no unpreviewed row committed into the deletion window', leaked.n === 0, leaked);
-
-  // cleanup — the fixture academy is committed, so remove whatever survived
   await b.query(`DELETE FROM public.academy_player_metadata WHERE academy_profile_id = $1`, [academy]);
-  await b.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [academy]).catch(() => {});
   await b.query(`DELETE FROM public.academy_deletion_audit WHERE academy_profile_id = $1`, [academy]);
-  await setup.query(`DROP TRIGGER IF EXISTS u1c_p3_hold ON public.academy_player_metadata`);
-  await setup.query(`DROP FUNCTION IF EXISTS pg_temp_hold()`);
-  await Promise.all([a.end(), b.end(), holder.end(), setup.end()]);
-}
-
-// ══ cleanup — every fixture this script committed ══════════════════════════════════════════════
-{
-  const c = await client();
-  for (const academy of CREATED) {
-    await c.query(`DELETE FROM public.academy_deletion_audit WHERE academy_profile_id = $1`, [academy]);
-    await c.query(`DELETE FROM public.academy_player_metadata WHERE academy_profile_id = $1`, [academy]);
-    await c.query(`DELETE FROM public.academy_player_locations WHERE academy_profile_id = $1`, [academy]);
-    await c.query(`DELETE FROM public.invoices WHERE academy_profile_id = $1`, [academy]);
-    await c.query(`DELETE FROM public.cycles WHERE owner_type='academy' AND owner_id = $1`, [academy]);
-    await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [academy]).catch(() => {});
-  }
-  await c.end();
+  await b.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [academy]).catch(() => {});
+  await Promise.all([a.end(), b.end(), gate.end(), probe.end(), setup.end()]);
 }
 
 // ══ 9. LOCK ORDERING — locks BEFORE the authoritative recomputation ════════════════════════════

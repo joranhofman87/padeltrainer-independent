@@ -170,7 +170,8 @@ AS $$
     ('registrations',                'blocker'),
     ('person_links',                 'identity'),
     ('persons',                      'identity'),
-    ('academy_player_memberships',   'identity')
+    ('academy_player_memberships',   'identity'),
+    ('person_merge_review',          'mutated')
   ) AS t(relname, role);
 $$;
 
@@ -194,11 +195,19 @@ IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
-  SELECT 'id IN (SELECT pl.person_id FROM public.person_links pl'
-      || ' JOIN public.guest_players g ON g.id = pl.guest_player_id'
-      || ' WHERE g.academy_profile_id = $1'
-      || '   AND NOT EXISTS (SELECT 1 FROM public.person_links o'
-      || '                    WHERE o.person_id = pl.person_id AND o.id <> pl.id))';
+  -- A person dies when the LAST of its links goes, and the trigger fires once PER GUEST, removing
+  -- one link each time. So "exactly one link today" is the wrong test: a person linked to TWO guests
+  -- of this academy has two links now, yet the first delete removes one and the second then finds
+  -- itself last and destroys the person. The right test is that EVERY current link belongs to a
+  -- guest of this academy — then nothing survives to keep the person alive.
+  SELECT 'id IN ('
+      || '  SELECT pl.person_id FROM public.person_links pl'
+      || '   WHERE pl.guest_player_id IN (SELECT g.id FROM public.guest_players g WHERE g.academy_profile_id = $1)'
+      || '  EXCEPT'
+      || '  SELECT pl2.person_id FROM public.person_links pl2'
+      || '   WHERE pl2.guest_player_id IS NULL'
+      || '      OR pl2.guest_player_id NOT IN (SELECT g2.id FROM public.guest_players g2 WHERE g2.academy_profile_id = $1)'
+      || ')';
 $$;
 
 -- Everything the dying persons take with them, declaratively.
@@ -268,10 +277,21 @@ BEGIN
     UNION ALL
     -- ...and the TRIGGER itself. Its body decides whether a person dies at all, so a change to it
     -- changes reachability without touching a single foreign key.
-    SELECT 'trigger:' || t.tgname || ':' || md5(pg_get_functiondef(t.tgfoid))
+    -- RAW definitions, length-delimited, for every non-internal trigger on the academy, on either
+    -- closure, and on the trigger roots. `pg_get_triggerdef` carries enablement, events, WHEN and
+    -- arguments — all of which change behaviour without touching the function body — and the body
+    -- itself decides whether a person dies at all. No md5 pre-hash: the outer SHA-256 hashes the
+    -- whole input, and pre-hashing would only add a collision surface.
+    SELECT 'trigger:' || public.u1c_ns(t.tgrelid::regclass::text) || public.u1c_ns(t.tgname)
+        || public.u1c_ns(pg_get_triggerdef(t.oid)) || public.u1c_ns(pg_get_functiondef(t.tgfoid))
       FROM pg_trigger t
      WHERE NOT t.tgisinternal
-       AND t.tgrelid = 'public.guest_players'::regclass
+       AND t.tgrelid IN (
+             SELECT 'public.academy_profiles'::regclass
+             UNION SELECT to_regclass('public.' || cc3.relname) FROM public.academy_deletion_cascade_closure() cc3
+             UNION SELECT to_regclass('public.' || pc2.relname) FROM public.academy_deletion_person_closure() pc2
+             UNION SELECT 'public.persons'::regclass
+             UNION SELECT 'public.guest_players'::regclass)
     UNION ALL
     -- the extra relations this flow depends on, and the CURRENT target of the overlay FK (so
     -- repairing academy_player_locations.academy_profile_id is itself drift)
@@ -314,7 +334,7 @@ LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '6bd876a7535b0150cea4a4fef5075bcdd6757821923782a04fb7c24fab28a0f3'::text $$;
+AS $$ SELECT '6f96dbe2aec8d3ae8fcc63e03c391cb0a9980550b30432aa67ea4731b184fefa'::text $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical identity encoding
@@ -457,14 +477,18 @@ BEGIN
   -- have that person destroyed by the cascade. If the person is also reachable from ANOTHER academy,
   -- deleting this one would destroy identity that is not ours to destroy — so we refuse rather than
   -- detach or delete it.
+  -- The SAME "will die" definition the preview uses: every current link belongs to a guest of this
+  -- academy. Two definitions of the same thing is how a preview and a deletion drift apart.
   SELECT count(*)::int INTO v_shared
-    FROM public.guest_players g
-    JOIN public.person_links pl ON pl.guest_player_id = g.id
-   WHERE g.academy_profile_id = _academy_id
-     AND NOT EXISTS (SELECT 1 FROM public.person_links other
-                      WHERE other.person_id = pl.person_id
-                        AND other.id <> pl.id)
-     AND (EXISTS (SELECT 1 FROM public.academy_player_memberships m
+    FROM (
+      SELECT pl.person_id FROM public.person_links pl
+       WHERE pl.guest_player_id IN (SELECT g.id FROM public.guest_players g WHERE g.academy_profile_id = _academy_id)
+      EXCEPT
+      SELECT pl2.person_id FROM public.person_links pl2
+       WHERE pl2.guest_player_id IS NULL
+          OR pl2.guest_player_id NOT IN (SELECT g2.id FROM public.guest_players g2 WHERE g2.academy_profile_id = _academy_id)
+    ) pl
+   WHERE (EXISTS (SELECT 1 FROM public.academy_player_memberships m
                    WHERE m.person_id = pl.person_id AND m.academy_profile_id <> _academy_id)
        OR EXISTS (SELECT 1 FROM public.academy_player_metadata am
                    WHERE am.person_id = pl.person_id
@@ -501,6 +525,7 @@ DECLARE
   PREVIEW_VERSION constant integer := 1;
   v_deleted jsonb := '{}'::jsonb;
   v_detached jsonb := '{}'::jsonb;
+  v_mutated jsonb := '{}'::jsonb;
   v_blockers jsonb;
   v_digest_input text := '';
   v_rel text;
@@ -601,6 +626,27 @@ BEGIN
       _academy_id) d;
   v_digest_input := v_digest_input || public.u1c_ns('B:person_links') || public.u1c_ns(v_fragment);
 
+  -- THE GUEST TRIGGER'S OTHER SIDE EFFECT. Deleting a guest does not only maybe-delete its person:
+  -- `cleanup_orphan_person_on_source_delete` also DELETEs that guest's PENDING person_merge_review
+  -- rows outright and SCRUBS the identifying payload off its APPLIED ones (the merge fact survives,
+  -- the who does not). Neither is reachable by any foreign key from the academy, so both were
+  -- invisible to the preview: a pending review would be destroyed unannounced, and an applied one
+  -- materially altered. Pending rows are counted as deleted; applied rows are announced as MUTATED,
+  -- a third category, because calling a scrub a deletion would be as misleading as saying nothing.
+  SELECT d.row_count, d.fragment INTO v_count, v_fragment
+    FROM public.academy_deletion_relation_digest('person_merge_review',
+      'status = ''pending'' AND guest_player_id IN (SELECT g.id FROM public.guest_players g WHERE g.academy_profile_id = $1)',
+      _academy_id) d;
+  v_deleted := v_deleted || jsonb_build_object('person_merge_review', v_count);
+  v_digest_input := v_digest_input || public.u1c_ns('D:person_merge_review') || public.u1c_ns(v_fragment);
+
+  SELECT d.row_count, d.fragment INTO v_count, v_fragment
+    FROM public.academy_deletion_relation_digest('person_merge_review',
+      'status IS DISTINCT FROM ''pending'' AND guest_player_id IN (SELECT g.id FROM public.guest_players g WHERE g.academy_profile_id = $1)',
+      _academy_id) d;
+  v_mutated := jsonb_build_object('person_merge_review', v_count);
+  v_digest_input := v_digest_input || public.u1c_ns('M:person_merge_review') || public.u1c_ns(v_fragment);
+
   v_blockers := public.academy_deletion_blockers(_academy_id);
 
   RETURN jsonb_build_object(
@@ -608,6 +654,7 @@ BEGIN
     'academy_profile_id', _academy_id,
     'deleted', v_deleted,
     'detached', v_detached,
+    'mutated', v_mutated,
     'blockers', v_blockers,
     'digest', encode(extensions.digest(
         public.u1c_ns('v' || PREVIEW_VERSION::text)
@@ -735,7 +782,8 @@ BEGIN
      SET status = 'completed',
          finished_at = now(),
          deleted_counts = v_preview->'deleted',
-         detached_counts = v_preview->'detached',
+         detached_counts = jsonb_build_object(
+           'detached', v_preview->'detached', 'mutated', v_preview->'mutated'),
          blocker_codes = '{}'::text[]
    WHERE id = _audit_id AND status = 'started'
   RETURNING id INTO v_stamped;
@@ -749,7 +797,8 @@ BEGIN
     'academy_profile_id', _academy_id,
     'audit_id', _audit_id,
     'deleted', v_preview->'deleted',
-    'detached', v_preview->'detached');
+    'detached', v_preview->'detached',
+    'mutated', v_preview->'mutated');
 END;
 $$;
 
