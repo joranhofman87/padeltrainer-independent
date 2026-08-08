@@ -202,3 +202,79 @@ describe('the OD-10 child-data guard arms itself', () => {
     expect((await membershipsOf(P_TGT)).map((r) => r.academy_profile_id)).toEqual([A2]);
   });
 });
+
+/**
+ * The collapse path itself, on its own database.
+ *
+ * The suite above deliberately loads only the primitive, so on its own it could not have caught a
+ * broken collapse rewrite — an earlier version of this file claimed the wiring was "exercised
+ * separately" when nothing exercised it at all. This block loads the WHOLE migration, including the
+ * replacement `collapse_guest_person_into`, and drives it end to end.
+ */
+describe('collapse_guest_person_into is membership-aware', () => {
+  const G = 'cccc0001-0000-4000-8000-000000000000';
+  let cdb: PGlite;
+
+  beforeAll(async () => {
+    cdb = new PGlite();
+    // The stamp tables collapse touches. Minimal shapes: this proves the membership wiring, while the
+    // identity behaviour itself stays covered by the shipped persons suites.
+    await cdb.exec(`
+      CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY);
+      CREATE TABLE public.persons (id uuid PRIMARY KEY, user_id uuid);
+      CREATE TABLE public.person_links (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        person_id uuid NOT NULL, profile_id uuid UNIQUE, guest_player_id uuid UNIQUE);
+      CREATE TABLE public.bookings (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid,
+        person_id uuid, paid_by_guest_player_id uuid, paid_by_person_id uuid);
+      CREATE TABLE public.invoices (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid, person_id uuid);
+      CREATE TABLE public.intake_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid, person_id uuid);
+      CREATE TABLE public.slot_priority_claims (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        guest_player_id uuid, person_id uuid, booked_by_guest_player_id uuid, booked_by_person_id uuid);
+      CREATE TABLE public.session_player_notes (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        subject_guest_player_id uuid, subject_person_id uuid);
+      CREATE TABLE public.academy_player_locations (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        academy_profile_id uuid, guest_player_id uuid, person_id uuid);
+      CREATE TABLE public.academy_player_metadata (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        academy_profile_id uuid, guest_player_id uuid, person_id uuid);
+      CREATE FUNCTION public.update_updated_at_column() RETURNS trigger LANGUAGE plpgsql AS
+        $$ BEGIN NEW.updated_at = now(); RETURN NEW; END $$;
+      CREATE FUNCTION public.rederive_person(_p uuid) RETURNS void LANGUAGE plpgsql AS $$ BEGIN END $$;
+    `);
+    await cdb.exec(readFileSync(U1A, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
+    // The WHOLE migration this time — primitive AND the collapse replacement.
+    await cdb.exec(readFileSync(REPOINT, 'utf8').replace(/^REVOKE ALL.*$/gm, ''));
+    await cdb.exec(`
+      INSERT INTO public.academy_profiles VALUES ('${A1}'), ('${A2}');
+      INSERT INTO public.persons (id) VALUES ('${P_SRC}'), ('${P_TGT}');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${P_SRC}', '${G}');
+    `);
+  });
+
+  afterAll(async () => { await cdb?.close(); });
+
+  it('repoints memberships and then succeeds in deleting the collapsed person', async () => {
+    await cdb.query(
+      `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id, created_at)
+       VALUES ($1,$2,$3::timestamptz), ($4,$5,$6::timestamptz)`,
+      [A1, P_SRC, EARLY, A1, P_TGT, LATE]);
+    await cdb.query(
+      `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id) VALUES ($1,$2)`,
+      [A2, P_SRC]);
+
+    const { rows } = await cdb.query<{ ok: boolean }>(
+      'SELECT public.collapse_guest_person_into($1,$2,$3) AS ok', [G, P_SRC, P_TGT]);
+    expect(rows[0].ok).toBe(true);
+
+    // the source person is GONE — which is exactly what the RESTRICT FK blocks without the repoint
+    const { rows: left } = await cdb.query<{ n: number }>(
+      'SELECT count(*)::int AS n FROM public.persons WHERE id = $1', [P_SRC]);
+    expect(left[0].n).toBe(0);
+
+    // one row per academy on the survivor, and the coalesced one kept the earlier start
+    const { rows: m } = await cdb.query<{ academy_profile_id: string; created_at: string }>(
+      `SELECT academy_profile_id, created_at FROM public.academy_player_memberships
+       WHERE person_id = $1 ORDER BY academy_profile_id`, [P_TGT]);
+    expect(m.map((r) => r.academy_profile_id)).toEqual([A1, A2]);
+    expect(new Date(m[0].created_at).toISOString()).toBe(new Date(EARLY).toISOString());
+  });
+});

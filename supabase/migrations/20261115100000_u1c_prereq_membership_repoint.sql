@@ -47,9 +47,22 @@ BEGIN
     RETURN jsonb_build_object('moved', 0, 'coalesced', 0, 'self_or_null', true);
   END IF;
 
-  -- Lock both persons' membership rows before deciding anything. Without this a concurrent writer
-  -- could insert a membership for `_to` at an academy between the conflict check and the UPDATE,
-  -- turning a "move" into a unique violation.
+  -- Lock the two PERSONS first, in UUID order.
+  --
+  -- Locking the membership rows alone is not enough, and was this function's first bug: FOR UPDATE
+  -- locks rows that EXIST, so a concurrent INSERT of a brand-new (academy, _to) pair sails past it and
+  -- can manufacture a collision after the conflict check has already run — turning a planned MOVE into
+  -- a unique violation, or letting the coalesce branch discard a row without the child-data guard
+  -- having been re-evaluated for it. Inserting a membership takes a KEY SHARE lock on its `persons`
+  -- parent, and FOR UPDATE conflicts with KEY SHARE, so taking the parents here serialises every such
+  -- insert against this repoint for its whole duration. The UUID ordering gives two concurrent
+  -- repoints a deterministic acquisition order instead of a deadlock.
+  PERFORM 1 FROM public.persons
+   WHERE id IN (_from, _to)
+   ORDER BY id
+   FOR UPDATE;
+
+  -- Then the membership rows themselves, so the rows about to move cannot be updated under us.
   PERFORM 1 FROM public.academy_player_memberships
    WHERE person_id IN (_from, _to)
    ORDER BY id
