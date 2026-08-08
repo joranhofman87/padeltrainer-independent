@@ -69,7 +69,13 @@ const pairKey = (r) => `${r.academy_profile_id}|${r.person_id}`;
  * `applyBackfillPlan` stays exported for exactly two legitimate uses: resuming a run whose plan must
  * be re-supplied, and tests that need to drive a specific plan.
  */
-export async function runMembershipBackfill(sessionSource, { asOf, batchSize = DEFAULT_BATCH_SIZE } = {}) {
+export async function runMembershipBackfill(sessionSource, {
+  asOf,
+  batchSize = DEFAULT_BATCH_SIZE,
+  // Test seam: fires AFTER the write phase and BEFORE the reconciliation re-read, which is the only
+  // window in which "the sources moved mid-flight" can actually be staged.
+  onBeforeReconcile = null,
+} = {}) {
   // The inventory takes its own READ ONLY snapshot and releases its lease before we write; it must,
   // because a READ ONLY transaction cannot host the applier's INSERTs.
   //
@@ -85,21 +91,40 @@ export async function runMembershipBackfill(sessionSource, { asOf, batchSize = D
   const plan = buildBackfillPlan(inventory);
   const summary = await applyBackfillPlan(sessionSource, { plan, batchSize });
 
+  // The pairs THIS RUN created, read from its own manifest. Using `plan.rows` here would be wrong:
+  // the plan also contains pairs some other writer already owned, which this run merely recorded as
+  // `already_present` — reporting those as "rows this run wrote" would attribute another run's rows
+  // to this one, and would make the drift list wrong in both directions.
+  const lease = await acquireLease(sessionSource);
+  let insertedPairs;
+  try {
+    const { rows } = await lease.query(
+      `SELECT academy_profile_id, person_id FROM public.membership_backfill_items
+       WHERE run_id = $1 AND outcome = 'inserted'`,
+      [summary.run_id],
+    );
+    insertedPairs = rows.map(pairKey);
+  } finally {
+    try { await lease.release(); } catch { /* the read is done; nothing to preserve */ }
+  }
+
+  if (onBeforeReconcile) await onBeforeReconcile({ runId: summary.run_id, insertedPairs });
+
   const after = await runMembershipInventory(sessionSource, { asOf });
   const afterPlan = buildBackfillPlan(after);
   const stillEligible = new Set(afterPlan.rows.map(pairKey));
-  const wroteKeys = plan.rows.map(pairKey);
+  const plannedKeys = new Set(plan.rows.map(pairKey));
 
   const reconciliation = {
     plan_hash_before: plan.plan_hash,
     plan_hash_after: afterPlan.plan_hash,
     sources_unchanged: plan.plan_hash === afterPlan.plan_hash,
-    // Pairs this run wrote that the sources no longer justify. Non-empty means the legacy data moved
-    // mid-flight; the rows stand and are listed for review.
-    written_no_longer_eligible: wroteKeys.filter((k) => !stillEligible.has(k)),
+    // Rows THIS RUN created that the sources no longer justify. Non-empty means the legacy data moved
+    // between the plan and now; the rows stand and are listed for review.
+    written_no_longer_eligible: insertedPairs.filter((k) => !stillEligible.has(k)),
     // Pairs that became eligible after the plan was taken. They were NOT written — a later run picks
     // them up, which is why this is reported rather than treated as a failure.
-    newly_eligible_not_written: afterPlan.rows.map(pairKey).filter((k) => !wroteKeys.includes(k)),
+    newly_eligible_not_written: [...stillEligible].filter((k) => !plannedKeys.has(k)).sort(),
   };
 
   return { inventory, plan, summary, reconciliation };

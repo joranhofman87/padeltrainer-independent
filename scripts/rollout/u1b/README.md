@@ -103,10 +103,34 @@ would delete a row the later run's manifest accounts for, leaving a `completed` 
 memberships. The data rollback refuses in that case and names the dependent runs, so a human decides
 which to unwind first.
 
-Artifacts are written atomically: everything is staged in a sibling directory and moved into place
-with a single `rename`, so an interrupted write leaves the previous set intact rather than new
-payloads beside a stale manifest. `verifyArtifacts(dir)` re-checks every payload against the
-manifest's hashes — a manifest nobody verifies is decoration.
+## Artifact sets are write-once
+
+An earlier version of this staged directories, swapped a pointer file and content-addressed sets so
+they could be republished in place. Three review rounds each found another hole in that protocol — a
+delete-then-rename window, a fail-open verifier, an unvalidated race winner. That pattern is the
+signal that the *model* was wrong, not that the patches were, and nothing in U1b ever needed
+republication or concurrent writers.
+
+So the protocol is gone, and with it the whole class of defect:
+
+- **A1** a set directory is written once and never modified;
+- **A2** `writeArtifacts` refuses if the target exists (`mkdir` with `recursive: false` — the OS
+  enforces it, so there is no check to race against). It never overwrites and never deletes, so no
+  prior evidence can be lost *by construction* rather than by careful ordering;
+- **A3** identical inputs produce byte-identical payloads;
+- **A4** `verifyArtifacts` fails **closed**;
+- **A5** a partial write leaves an incomplete directory, which A4 rejects — there is no state a reader
+  can mistake for a complete set. The manifest is written last for exactly that reason.
+
+"Which set is current?" is deliberately not answered here. That is a question about a *run*, and a
+run's identity lives in the database logbook.
+
+`verifyArtifacts(dir)` validates the manifest's shape and version, insists on exactly `plan.json`,
+`drift.json` and `anomalies.json` (the manifest does not get to decide what must be present — a
+stripped list would otherwise mean "nothing to verify" instead of "the set is incomplete"), checks
+every payload's sha256 *and* byte length, and cross-checks the manifest's headline metadata against
+the payloads it describes. Hashing proves the bytes are intact; it says nothing about whether the
+manifest's own summary of them is honest, and that summary is what a reader looks at first.
 
 ## Rollback ownership
 

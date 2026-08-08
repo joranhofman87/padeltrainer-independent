@@ -21,8 +21,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync, renameSync, rmSync, readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { canonicalize } from './u1a-membership-inventory.mjs';
 
 export const ARTIFACTS_VERSION = 'u1b.artifacts.1';
@@ -115,16 +115,39 @@ export function buildArtifacts(inventory, plan) {
   return { plan, drift, anomalies };
 }
 
+/** The payload files an artifact set must contain — exactly these, no more and no fewer. */
+export const REQUIRED_PAYLOADS = ['anomalies.json', 'drift.json', 'plan.json'];
+
 /**
- * Writes the artifacts and a manifest naming the sha256 of each file.
+ * ── WRITE-ONCE ARTIFACT SETS ───────────────────────────────────────────────────────────────────
  *
- * Files are canonical JSON (sorted keys at every depth), so identical inputs produce identical BYTES,
- * not merely equivalent objects — that is what makes the hashes comparable across runs and machines.
+ * This replaces an earlier design that staged directories, swapped a pointer file, and content-
+ * addressed sets so they could be republished in place. Three review rounds each found another hole
+ * in that protocol — a delete-then-rename window, a fail-open verifier, an unvalidated race winner —
+ * which is the signal that the model was wrong rather than that the patches were.
  *
- * ATOMIC. Everything is written into a sibling staging directory and moved into place with a single
- * `rename`. Writing the payloads in place and the manifest last would let an interrupted run leave
- * new payloads beside an old manifest — a directory that still LOOKS like evidence but whose hashes
- * describe different bytes. A partial write must leave the previous artifact set untouched instead.
+ * Nothing in U1b needs republication or concurrent writers. So the protocol is gone, and with it the
+ * whole class of defect:
+ *
+ *   A1  A set directory is written ONCE and never modified afterwards.
+ *   A2  `writeArtifacts` REFUSES if the target already exists. It never overwrites and never deletes,
+ *       so no prior evidence can be lost — by construction, not by careful ordering.
+ *   A3  Identical inputs produce byte-identical payloads (canonical JSON, sorted keys at every depth).
+ *   A4  `verifyArtifacts` fails CLOSED: wrong version, wrong file set, missing payload, hash or
+ *       byte-length mismatch, or manifest metadata disagreeing with the payloads it describes.
+ *   A5  A partial write leaves an incomplete directory, which A4 rejects. There is no state a reader
+ *       can mistake for a complete set.
+ *
+ * "Which set is current?" is deliberately not answered here. That is a question about a run, and the
+ * run's identity lives in the database logbook.
+ */
+
+/**
+ * Writes an artifact set into `dir`, which must NOT already exist.
+ *
+ * @returns the manifest that was written.
+ * @throws if the target exists — deliberately. Refusing is what makes "nothing prior is ever
+ *         destroyed" true by construction rather than by careful sequencing.
  */
 export function writeArtifacts(dir, artifacts) {
   const files = {
@@ -152,45 +175,84 @@ export function writeArtifacts(dir, artifacts) {
     files: entries,
   };
 
-  // Staged beside the target, so the rename is same-filesystem and therefore atomic. The name is
-  // derived from the plan hash rather than a clock or a random value: repeated runs of the same plan
-  // reuse it deterministically instead of littering.
-  const staging = join(dirname(dir), `.${manifest.plan_hash.slice(0, 16)}.staging`);
-  rmSync(staging, { recursive: true, force: true });
-  mkdirSync(staging, { recursive: true });
-  try {
-    for (const name of Object.keys(payloads)) writeFileSync(join(staging, name), payloads[name]);
-    writeFileSync(join(staging, 'manifest.json'), canonicalize(manifest));
+  // `recursive: false` — mkdir fails with EEXIST if anything is already there. That single flag is
+  // the whole write-once guarantee, and it is enforced by the OS rather than by a check we could
+  // race against.
+  mkdirSync(dir, { recursive: false });
 
-    // `rename` cannot replace a non-empty directory, so any existing set is removed first. That is
-    // the only destructive moment, it is deliberate (the caller asked to write here), and it happens
-    // AFTER the new set is fully staged — so a failure while staging leaves the old set intact.
-    mkdirSync(dirname(dir), { recursive: true });
-    rmSync(dir, { recursive: true, force: true });
-    renameSync(staging, dir);
-  } finally {
-    rmSync(staging, { recursive: true, force: true });
-  }
+  for (const name of Object.keys(payloads)) writeFileSync(join(dir, name), payloads[name]);
+  // Manifest last: an interrupted write leaves a directory with no manifest, which verifyArtifacts
+  // rejects outright. There is no ordering that makes an incomplete set look complete.
+  writeFileSync(join(dir, 'manifest.json'), canonicalize(manifest));
 
   return manifest;
 }
 
 /**
- * Re-reads an artifact directory and verifies every payload against the manifest's hashes.
+ * Verifies an artifact set. FAILS CLOSED.
  *
- * A manifest nobody ever checks is decoration. This is what makes the directory evidence: it proves
- * the bytes on disk are the bytes that were hashed, and it is what a later unit should call before
- * trusting an artifact set it did not produce.
+ * A manifest nobody checks is decoration, and a verifier that trusts the manifest's own file list is
+ * barely better — `{"files":{}}` would sail through with nothing checked. So the required payload set
+ * is fixed HERE, and the manifest's headline metadata is cross-checked against the payloads it claims
+ * to describe: a set whose manifest says one thing and whose plan says another is not evidence.
  */
 export function verifyArtifacts(dir) {
-  const readFile = (p) => readFileSync(p, 'utf8');
-  const manifest = JSON.parse(readFile(join(dir, 'manifest.json')));
   const problems = [];
-  for (const [name, entry] of Object.entries(manifest.files)) {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
+  } catch (err) {
+    return { ok: false, problems: [`manifest.json unreadable or not JSON: ${err.message}`], manifest: null };
+  }
+
+  if (manifest === null || typeof manifest !== 'object' || Array.isArray(manifest)) {
+    return { ok: false, problems: ['manifest.json is not an object'], manifest: null };
+  }
+  if (manifest.artifacts_version !== ARTIFACTS_VERSION) {
+    problems.push(`artifacts_version ${JSON.stringify(manifest.artifacts_version)} != ${ARTIFACTS_VERSION}`);
+  }
+  if (manifest.files === null || typeof manifest.files !== 'object' || Array.isArray(manifest.files)) {
+    return { ok: false, problems: [...problems, 'manifest.files is missing'], manifest };
+  }
+
+  // The manifest does not get to decide what must be present: a stripped list would otherwise mean
+  // "nothing to verify" instead of "the set is incomplete".
+  const listed = Object.keys(manifest.files).sort();
+  if (canonicalize(listed) !== canonicalize(REQUIRED_PAYLOADS)) {
+    problems.push(`manifest lists ${JSON.stringify(listed)}, required ${JSON.stringify(REQUIRED_PAYLOADS)}`);
+  }
+
+  const parsed = {};
+  for (const name of REQUIRED_PAYLOADS) {
+    const entry = manifest.files[name];
+    if (entry === null || typeof entry !== 'object'
+      || typeof entry.sha256 !== 'string' || typeof entry.bytes !== 'number') {
+      problems.push(`${name}: manifest entry malformed`);
+      continue;
+    }
     let bytes;
-    try { bytes = readFile(join(dir, name)); } catch { problems.push(`${name}: missing`); continue; }
+    try { bytes = readFileSync(join(dir, name), 'utf8'); } catch { problems.push(`${name}: missing`); continue; }
+    if (Buffer.byteLength(bytes) !== entry.bytes) {
+      problems.push(`${name}: ${Buffer.byteLength(bytes)} bytes, manifest says ${entry.bytes}`);
+    }
     const actual = createHash('sha256').update(bytes).digest('hex');
     if (actual !== entry.sha256) problems.push(`${name}: sha256 ${actual} != ${entry.sha256}`);
+    try { parsed[name] = JSON.parse(bytes); } catch { problems.push(`${name}: not JSON`); }
   }
+
+  // Cross-check the headline metadata. Hashing the payloads proves the BYTES are intact; it says
+  // nothing about whether the manifest's own summary of them is honest, and that summary is what a
+  // reader looks at first.
+  if (parsed['plan.json'] && manifest.plan_hash !== parsed['plan.json'].plan_hash) {
+    problems.push(`manifest.plan_hash ${manifest.plan_hash} != plan.json ${parsed['plan.json'].plan_hash}`);
+  }
+  for (const name of ['drift.json', 'anomalies.json']) {
+    if (!parsed[name]) continue;
+    if (manifest.inventory_content_hash !== parsed[name].inventory_content_hash) {
+      problems.push(`manifest.inventory_content_hash != ${name} inventory_content_hash`);
+    }
+    if (manifest.as_of !== parsed[name].as_of) problems.push(`manifest.as_of != ${name} as_of`);
+  }
+
   return { ok: problems.length === 0, problems, manifest };
 }

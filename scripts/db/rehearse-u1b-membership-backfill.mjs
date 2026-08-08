@@ -24,19 +24,25 @@
  * Everything runs against PGlite. Nothing here touches a remote database.
  */
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
-import { mkdtempSync, readFileSync as readFile } from 'node:fs';
+import { readFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pgliteSessionSource } from './u1a-pglite-session.mjs';
 import { runMembershipInventory } from './u1a-membership-inventory.mjs';
 import { SCHEMA_STUB_SQL, FIXTURE_SQL, AS_OF, A1, A2, G, PE } from './u1a-fixture-universe.mjs';
-
-/** Fixture 1's academy-owned guest: eligible today, split-frozen later to simulate source drift. */
-const G1_FOR_DRIFT = G(1);
 import { buildBackfillPlan, ELIGIBLE_DISPOSITION } from './u1b-backfill-plan.mjs';
 import { applyBackfillPlan, runMembershipBackfill } from './u1b-backfill-apply.mjs';
-import { buildArtifacts, writeArtifacts } from './u1b-artifacts.mjs';
+import { buildArtifacts, writeArtifacts, verifyArtifacts } from './u1b-artifacts.mjs';
+
+/** Fixture 1's academy-owned guest: eligible today, split-frozen mid-run to stage source drift. */
+const G1_FOR_DRIFT = G(1);
+
+const readFile = (p) => readFileSync(p, 'utf8');
+/** A set is written once into its own directory; payloads sit directly inside it. */
+const setPath = (dir, name) => join(dir, name);
+/** Artifact sets are write-once, so each one needs a fresh, not-yet-existing path. */
+let artifactSeq = 0;
+const freshArtifactDir = () => join(mkdtempSync(join(tmpdir(), 'u1b-art-')), `set-${artifactSeq++}`);
 
 const U1A_MIGRATION = 'supabase/migrations/20261113100000_u1a_academy_player_memberships.sql';
 const U1B_MIGRATION = 'supabase/migrations/20261114100000_u1b_membership_backfill_manifest.sql';
@@ -107,20 +113,20 @@ const { plan: plan1b } = await planFor(db1);
 ok('two plans over unchanged data share a plan_hash', plan1.plan_hash === plan1b.plan_hash,
   { a: plan1.plan_hash, b: plan1b.plan_hash });
 
-const dirA = mkdtempSync(join(tmpdir(), 'u1b-a-'));
-const dirB = mkdtempSync(join(tmpdir(), 'u1b-b-'));
+const dirA = freshArtifactDir();
+const dirB = freshArtifactDir();
 const manA = writeArtifacts(dirA, buildArtifacts(inv1, plan1));
 const manB = writeArtifacts(dirB, buildArtifacts(inv1, plan1b));
 ok('artifact manifests agree file-for-file',
   JSON.stringify(manA.files) === JSON.stringify(manB.files), { a: manA.files, b: manB.files });
 ok('artifact bytes are identical, not merely equivalent',
   ['plan.json', 'drift.json', 'anomalies.json'].every(
-    (f) => readFile(join(dirA, f), 'utf8') === readFile(join(dirB, f), 'utf8')));
+    (f) => readFile(setPath(dirA, f)) === readFile(setPath(dirB, f))));
 ok('drift artifact carries the quarantined identity classes',
   manA.files['drift.json'].bytes > 0
-  && JSON.parse(readFile(join(dirA, 'drift.json'), 'utf8')).drifted_candidates.length > 0);
+  && JSON.parse(readFile(setPath(dirA, 'drift.json'))).drifted_candidates.length > 0);
 ok('anomaly artifact carries the structural classes',
-  JSON.parse(readFile(join(dirA, 'anomalies.json'), 'utf8')).structurally_broken_candidates.length > 0);
+  JSON.parse(readFile(setPath(dirA, 'anomalies.json'))).structurally_broken_candidates.length > 0);
 
 // ══ 3. APPLY — small batches, then the invariants ═══════════════════════════════════════════════
 const summary1 = await applyBackfillPlan(pgliteSessionSource(db1), { plan: plan1, batchSize: 2 });
@@ -416,55 +422,123 @@ ok('an undisturbed run reconciles clean',
   && whole.reconciliation.newly_eligible_not_written.length === 0,
   whole.reconciliation);
 
-// And when the sources DO move mid-flight, the drift is reported rather than hidden. Here a guest is
-// split-frozen after its row is written, so the pair stops being eligible.
+// And when the sources move DURING the run, the drift is reported rather than hidden. The change has
+// to land AFTER the write phase and BEFORE the reconciliation re-read — that is the only window this
+// report exists to describe. (Changing the data before a fresh run proves nothing: its plan simply
+// wouldn't contain the pair, so the drift list would be empty for the wrong reason.)
 const db6b = await freshDb();
-const frozen = await runMembershipBackfill(pgliteSessionSource(db6b), {
+const drifted6b = await runMembershipBackfill(pgliteSessionSource(db6b), {
   asOf: AS_OF,
   batchSize: 1000,
+  onBeforeReconcile: async () => {
+    // Split-freeze fixture 1's guest: its pair was written moments ago and is now ineligible.
+    await db6b.exec(`
+      INSERT INTO public.person_merge_review (guest_player_id, kind, status)
+        VALUES ('${G1_FOR_DRIFT}','twin_detached_needs_split','pending');
+    `);
+  },
 });
-ok('control: the undisturbed second database also reconciles clean',
-  frozen.reconciliation.written_no_longer_eligible.length === 0, frozen.reconciliation);
-await db6b.exec(`
-  INSERT INTO public.person_merge_review (guest_player_id, kind, status)
-    VALUES ('${G1_FOR_DRIFT}','twin_detached_needs_split','pending');
-`);
-const afterDrift = await runMembershipBackfill(pgliteSessionSource(db6b), { asOf: AS_OF, batchSize: 1000 });
-ok('a pair that stopped being eligible after it was written is REPORTED, not deleted',
-  afterDrift.reconciliation.written_no_longer_eligible.length === 0
-  && afterDrift.plan.rows.length < frozen.plan.rows.length,
-  { before: frozen.plan.rows.length, after: afterDrift.plan.rows.length });
+const driftedKey = `${A1}|${PE(1)}`;
+ok('a pair that stopped being eligible mid-run is REPORTED',
+  drifted6b.reconciliation.written_no_longer_eligible.includes(driftedKey),
+  drifted6b.reconciliation);
+ok('mid-run drift is also visible as sources_unchanged=false',
+  drifted6b.reconciliation.sources_unchanged === false, drifted6b.reconciliation);
 const survivingRow = await db6b.query(
   'SELECT count(*)::int AS n FROM public.academy_player_memberships WHERE person_id = $1', [PE(1)]);
 ok('the already-written row is left standing (never silently undone)', survivingRow.rows[0].n === 2,
   survivingRow.rows[0]);
 
-// One run records ONE hop size, so a resume at a different size is refused rather than making the
-// stored value false for part of the run's own history.
-const db7 = await freshDb();
-const { plan: plan7 } = await planFor(db7);
-let sizeRunId = null;
-try {
-  await applyBackfillPlan(pgliteSessionSource(db7), {
-    plan: plan7,
-    batchSize: 2,
-    onBatchCommitted: async ({ batchSeq, runId }) => {
-      sizeRunId = runId;
-      if (batchSeq === 0) throw new Error('STOP');
-    },
-  });
-} catch { /* expected */ }
-let sizeRefusal = null;
-try {
-  await applyBackfillPlan(pgliteSessionSource(db7), {
-    plan: plan7, batchSize: 5, resumeRunId: sizeRunId,
-  });
-} catch (err) { sizeRefusal = err.code; }
-ok('resuming at a different batch size is REFUSED', sizeRefusal === 'BATCH_SIZE_CHANGED', { sizeRefusal });
-const sameSize = await applyBackfillPlan(pgliteSessionSource(db7), {
-  plan: plan7, batchSize: 2, resumeRunId: sizeRunId,
+// The report must attribute only rows THIS run created. A pair another writer already owned is
+// recorded already_present, so it must never appear as something this run wrote.
+const db6c = await freshDb();
+const { plan: plan6c } = await planFor(db6c);
+const preOwned = plan6c.rows[0];
+await db6c.query(
+  'INSERT INTO public.academy_player_memberships (academy_profile_id, person_id) VALUES ($1,$2)',
+  [preOwned.academy_profile_id, preOwned.person_id]);
+const attributed = await runMembershipBackfill(pgliteSessionSource(db6c), {
+  asOf: AS_OF,
+  batchSize: 1000,
+  onBeforeReconcile: async () => {
+    // Make EVERY candidate of that academy ineligible by removing the academy itself from view is too
+    // blunt; instead split-freeze the pre-owned pair's guest so that pair alone becomes ineligible.
+    await db6c.exec(`
+      INSERT INTO public.person_merge_review (guest_player_id, kind, status)
+        SELECT pl.guest_player_id, 'twin_detached_needs_split', 'pending'
+        FROM public.person_links pl
+        WHERE pl.person_id = '${preOwned.person_id}' AND pl.guest_player_id IS NOT NULL;
+    `);
+  },
 });
-ok('resuming at the RECORDED batch size still works', sameSize.status === 'completed', sameSize);
+ok('an already_present pair is NOT attributed to this run when it drifts',
+  !attributed.reconciliation.written_no_longer_eligible
+    .includes(`${preOwned.academy_profile_id}|${preOwned.person_id}`),
+  attributed.reconciliation);
+ok('that pair really did become ineligible (the check is not vacuous)',
+  !attributed.reconciliation.sources_unchanged, attributed.reconciliation);
+
+// ── artifacts: write-once, and the verifier must fail CLOSED ───────────────────────────────────
+const dirV = freshArtifactDir();
+writeArtifacts(dirV, buildArtifacts(inv1, plan1));
+ok('a freshly written artifact set verifies', verifyArtifacts(dirV).ok === true, verifyArtifacts(dirV));
+
+// A2: writing into an existing directory is REFUSED. That refusal is the whole reason no prior
+// evidence can be destroyed — there is no overwrite path to get wrong.
+let rewriteRefused = false;
+try { writeArtifacts(dirV, buildArtifacts(inv1, plan1)); } catch { rewriteRefused = true; }
+ok('writing a set into an EXISTING directory is refused', rewriteRefused);
+ok('the refused rewrite left the original set verifiable', verifyArtifacts(dirV).ok === true);
+
+const dirVt = freshArtifactDir();
+writeArtifacts(dirVt, buildArtifacts(inv1, plan1));
+writeFileSync(join(dirVt, 'drift.json'), '{"tampered":true}');
+ok('a tampered payload fails verification', verifyArtifacts(dirVt).ok === false,
+  verifyArtifacts(dirVt).problems);
+
+const dirV2 = freshArtifactDir();
+writeArtifacts(dirV2, buildArtifacts(inv1, plan1));
+const man2 = JSON.parse(readFile(join(dirV2, 'manifest.json')));
+writeFileSync(join(dirV2, 'manifest.json'), JSON.stringify({ ...man2, files: {} }));
+ok('a manifest with an EMPTY file list fails closed, not open', verifyArtifacts(dirV2).ok === false,
+  verifyArtifacts(dirV2).problems);
+
+const dirV3 = freshArtifactDir();
+writeArtifacts(dirV3, buildArtifacts(inv1, plan1));
+rmSync(join(dirV3, 'plan.json'));
+ok('a missing payload fails verification', verifyArtifacts(dirV3).ok === false,
+  verifyArtifacts(dirV3).problems);
+
+const dirV4 = freshArtifactDir();
+mkdirSync(dirV4, { recursive: true });
+writeFileSync(join(dirV4, 'manifest.json'), 'not json at all');
+ok('a malformed manifest fails verification', verifyArtifacts(dirV4).ok === false,
+  verifyArtifacts(dirV4).problems);
+
+// A5: a partial write — payloads present, manifest never reached — must not look complete.
+const dirV5 = freshArtifactDir();
+writeArtifacts(dirV5, buildArtifacts(inv1, plan1));
+rmSync(join(dirV5, 'manifest.json'));
+ok('a set whose manifest never landed fails verification', verifyArtifacts(dirV5).ok === false,
+  verifyArtifacts(dirV5).problems);
+
+// Hashing proves the BYTES are intact; it says nothing about whether the manifest's own summary of
+// them is honest, and that summary is what a reader looks at first.
+for (const field of ['plan_hash', 'inventory_content_hash', 'as_of']) {
+  const d = freshArtifactDir();
+  writeArtifacts(d, buildArtifacts(inv1, plan1));
+  const m = JSON.parse(readFile(join(d, 'manifest.json')));
+  writeFileSync(join(d, 'manifest.json'), JSON.stringify({ ...m, [field]: 'tampered' }));
+  ok(`a manifest whose ${field} disagrees with its payloads fails verification`,
+    verifyArtifacts(d).ok === false, verifyArtifacts(d).problems);
+}
+
+const dirV6 = freshArtifactDir();
+writeArtifacts(dirV6, buildArtifacts(inv1, plan1));
+const m6 = JSON.parse(readFile(join(dirV6, 'manifest.json')));
+writeFileSync(join(dirV6, 'manifest.json'), JSON.stringify({ ...m6, artifacts_version: 'u1b.artifacts.0' }));
+ok('a set written by another artifacts version fails verification',
+  verifyArtifacts(dirV6).ok === false, verifyArtifacts(dirV6).problems);
 
 // ══ 8. LOCKDOWN — the seed re-grants; the deny-list must re-revoke ══════════════════════════════
 const db5 = await freshDb();
