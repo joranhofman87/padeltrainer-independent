@@ -10094,6 +10094,14 @@ export type Database = {
         Args: { _academy_id: string }
         Returns: Json
       }
+      academy_deletion_blocking_refs: {
+        Args: never
+        Returns: {
+          colname: string
+          parent: string
+          relname: string
+        }[]
+      }
       academy_deletion_cascade_closure: {
         Args: never
         Returns: {
@@ -10105,8 +10113,24 @@ export type Database = {
         Args: { _relname: string }
         Returns: string
       }
+      academy_deletion_detach_check_pred: {
+        Args: { _colname: string; _relname: string }
+        Returns: string
+      }
+      academy_deletion_detach_targets: {
+        Args: never
+        Returns: {
+          colname: string
+          parent: string
+          relname: string
+        }[]
+      }
       academy_deletion_dying_persons_pred: {
         Args: { _col?: string }
+        Returns: string
+      }
+      academy_deletion_dying_pred: {
+        Args: { _col: string; _parent: string }
         Returns: string
       }
       academy_deletion_expected_fingerprint: { Args: never; Returns: string }
@@ -10124,13 +10148,6 @@ export type Database = {
       academy_deletion_person_closure: {
         Args: never
         Returns: {
-          relname: string
-        }[]
-      }
-      academy_deletion_person_detach_targets: {
-        Args: never
-        Returns: {
-          colname: string
           relname: string
         }[]
       }

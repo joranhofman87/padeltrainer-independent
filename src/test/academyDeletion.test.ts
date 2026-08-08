@@ -27,7 +27,7 @@ const previewFixture = (over: Partial<AcademyDeletionPreview> = {}): AcademyDele
   preview_version: 1,
   academy_profile_id: ACADEMY,
   deleted: { academy_trainers: 2, academy_player_metadata: 1, guest_players: 0 },
-  detached: { availability_slots: 3, 'invoices.person_id': 1 },
+  detached: { availability_slots: 3, 'invoices.person_id': 1, 'bookings.guest_player_id': 0 },
   mutated: { persons: 1, person_merge_review: 0 },
   blockers: [],
   digest: 'a'.repeat(64),
@@ -102,10 +102,15 @@ describe('preview display helpers', () => {
       .toEqual([['academy_player_metadata', 1], ['academy_trainers', 2]]);
   });
 
-  it('reports a blocked preview as blocked', () => {
+  it('reports a blocked preview as blocked, whatever the code', () => {
     expect(isPreviewBlocked(previewFixture())).toBe(false);
-    expect(isPreviewBlocked(previewFixture({ blockers: [{ code: 'HAS_INVOICES', count: 2 }] }))).toBe(true);
     expect(isPreviewBlocked(null)).toBe(false);
+    // the database derives blocker codes from the catalogue, so the client must not enumerate them
+    for (const code of ['HAS_INVOICES', 'HAS_PROGRAMS', 'SHARED_PERSON_IDENTITY',
+                        'BLOCKING_REFERENCES', 'DETACH_BREAKS_CONSTRAINT', 'A_CODE_ADDED_LATER']) {
+      expect(`${code}:${isPreviewBlocked(previewFixture({ blockers: [{ code, count: 1 }] }))}`)
+        .toBe(`${code}:true`);
+    }
   });
 });
 

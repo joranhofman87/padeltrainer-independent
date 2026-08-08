@@ -238,21 +238,38 @@ $$;
 -- A new person-keyed column added by a later migration lands in one of these by construction, and
 -- the fingerprint below hashes every such key, so one that lands nowhere is drift rather than a
 -- silent omission.
-CREATE OR REPLACE FUNCTION public.academy_deletion_person_detach_targets()
-RETURNS TABLE (relname text, colname text)
+CREATE OR REPLACE FUNCTION public.academy_deletion_detach_targets()
+RETURNS TABLE (parent text, relname text, colname text)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
-  SELECT con.conrelid::regclass::text, a.attname
+  SELECT con.confrelid::regclass::text, con.conrelid::regclass::text, a.attname
     FROM pg_constraint con
     JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
    WHERE con.contype = 'f'
-     AND con.confrelid = 'public.persons'::regclass
+     AND con.confrelid IN ('public.persons'::regclass, 'public.guest_players'::regclass)
      AND con.confdeltype = 'n'
-     AND array_length(con.conkey, 1) = 1     -- a composite person key would be drift; see the fingerprint
-   ORDER BY 1, 2;
+     AND array_length(con.conkey, 1) = 1     -- a composite key would be drift; see the fingerprint
+   ORDER BY 1, 2, 3;
+$$;
+
+-- The rows of a dying root, as a predicate on any column that references it.
+CREATE OR REPLACE FUNCTION public.academy_deletion_dying_pred(_parent text, _col text)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT CASE _parent
+    WHEN 'persons' THEN _col || ' IN (SELECT p.id FROM public.persons p WHERE '
+                        || public.academy_deletion_dying_persons_pred('p.id') || ')'
+    -- every guest of this academy dies with it, unconditionally: the FK cascades
+    WHEN 'guest_players' THEN _col || ' IN (SELECT g.id FROM public.guest_players g'
+                            || ' WHERE g.academy_profile_id = $1)'
+  END;
 $$;
 
 -- The persons that do NOT die: linked to a guest of this academy, but also to something outside it.
@@ -331,6 +348,73 @@ BEGIN
 END;
 $$;
 
+-- WHAT WOULD REFUSE, DERIVED. RESTRICT and NO ACTION references into a dying root abort the whole
+-- transaction — after a clean preview, which is the worst possible moment. `academy_player_memberships`
+-- was one (this flow deletes its own first, so it is excluded here); `intake_requests.guest_player_id`
+-- is another and nothing deletes those. Rather than discovering them one review at a time, they are
+-- read out of the catalogue and reported as blockers before anything is touched.
+CREATE OR REPLACE FUNCTION public.academy_deletion_blocking_refs()
+RETURNS TABLE (parent text, relname text, colname text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT con.confrelid::regclass::text, con.conrelid::regclass::text, a.attname
+    FROM pg_constraint con
+    JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = con.conkey[1]
+   WHERE con.contype = 'f'
+     AND con.confrelid IN ('public.persons'::regclass, 'public.guest_players'::regclass,
+                           'public.academy_profiles'::regclass)
+     AND con.confdeltype IN ('r', 'a')
+     AND array_length(con.conkey, 1) = 1
+     -- what this flow deletes itself cannot block it: the reference is gone before the parent is
+     AND public.academy_deletion_deleted_scope(con.conrelid::regclass::text) IS NULL
+     -- invoices already have their own named blocker; two codes for one fact is not two facts
+     AND con.conrelid <> 'public.invoices'::regclass
+   ORDER BY 1, 2, 3;
+$$;
+
+-- A SET NULL THAT WOULD NOT SURVIVE THE CHECK. `bookings` and `slot_priority_claims` both require an
+-- owner — "player_id IS NOT NULL OR guest_player_id IS NOT NULL" — and a guest-only row violates it
+-- the moment the FK clears its guest. The transaction aborts, again after a clean preview, and a
+-- guest-only booking is not an exotic state: it is how guests are booked. So the check expression is
+-- re-evaluated with the detached column forced to NULL, and any row that would fail becomes a
+-- blocker before anything is touched.
+CREATE OR REPLACE FUNCTION public.academy_deletion_detach_check_pred(_relname text, _colname text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_expr text;
+  v_nulled text;
+  v_out text := NULL;
+BEGIN
+  FOR v_expr IN
+    SELECT pg_get_expr(con.conbin, con.conrelid)
+      FROM pg_constraint con
+     WHERE con.contype = 'c' AND con.conrelid = to_regclass('public.' || _relname)
+       -- conkey names the columns the check reads: no parsing needed to find the relevant ones
+       AND (SELECT a.attnum FROM pg_attribute a
+             WHERE a.attrelid = con.conrelid AND a.attname = _colname) = ANY (con.conkey)
+     ORDER BY con.conname
+  LOOP
+    v_nulled := regexp_replace(v_expr, '\m' || _colname || '\M', 'NULL', 'g');
+    IF v_nulled ~ ('\m' || _colname || '\M') THEN
+      -- the substitution did not take: refuse rather than guess what the check would say
+      RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: cannot evaluate the check on %.% after detach', _relname, _colname
+        USING ERRCODE = 'raise_exception';
+    END IF;
+    v_out := CASE WHEN v_out IS NULL THEN 'NOT coalesce(' || v_nulled || ', true)'
+                  ELSE v_out || ' OR NOT coalesce(' || v_nulled || ', true)' END;
+  END LOOP;
+  RETURN v_out;   -- NULL ⇒ no check reads this column, so clearing it cannot violate one
+END;
+$$;
+
 -- A row is announced in exactly ONE category, by precedence deleted > mutated > detached: an
 -- academy_player_metadata row that is both destroyed with the academy and referenced by a dying
 -- person must read as deleted, not as both. This returns what a relation has ALREADY been counted
@@ -366,7 +450,7 @@ AS $$
   SELECT 'public.academy_profiles'::regclass::oid
   UNION SELECT to_regclass('public.' || cc.relname)::oid FROM public.academy_deletion_cascade_closure() cc
   UNION SELECT to_regclass('public.' || pc.relname)::oid FROM public.academy_deletion_person_closure() pc
-  UNION SELECT to_regclass('public.' || dt.relname)::oid FROM public.academy_deletion_person_detach_targets() dt
+  UNION SELECT to_regclass('public.' || dt.relname)::oid FROM public.academy_deletion_detach_targets() dt
   UNION SELECT to_regclass('public.' || er.relname)::oid FROM public.academy_deletion_extra_relations() er
   UNION SELECT 'public.persons'::regclass::oid
   UNION SELECT 'public.guest_players'::regclass::oid
@@ -466,13 +550,14 @@ BEGIN
     -- the derived effect model safe: a new person-keyed column, or one reclassified between CASCADE,
     -- SET NULL and RESTRICT, moves a relation between deleted / detached / refused. Hashing the keys
     -- themselves means such a change cannot pass as "already covered".
-    SELECT 'personfk:' || con.conrelid::regclass::text
+    SELECT 'rootfk:' || con.confrelid::regclass::text || ':' || con.conrelid::regclass::text
         || ':' || coalesce((SELECT string_agg(a.attname, ',' ORDER BY x.ord)
                               FROM unnest(con.conkey) WITH ORDINALITY AS x(attnum, ord)
                               JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = x.attnum), '-')
         || ':' || con.confdeltype::text
       FROM pg_constraint con
-     WHERE con.contype = 'f' AND con.confrelid = 'public.persons'::regclass
+     WHERE con.contype = 'f'
+       AND con.confrelid IN ('public.persons'::regclass, 'public.guest_players'::regclass)
     UNION ALL
     -- ...and the TRIGGER itself. Its body decides whether a person dies at all, so a change to it
     -- changes reachability without touching a single foreign key.
@@ -542,7 +627,7 @@ LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '4410ce84076d4b3876906e9fd517b2c2cee0c45b8ec85855668001acd15066e8'::text $$;
+AS $$ SELECT 'ed460531c04d19df7ebd7a8c910b209f3c2c1449dbfd9acee28a9c09158cb567'::text $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical identity encoding
@@ -675,6 +760,11 @@ DECLARE
   v_programs jsonb;
   v_shared int;
   v_out jsonb := '[]'::jsonb;
+  v_blocking int;
+  v_breaking int;
+  v_n int;
+  v_check text;
+  v_rec record;
 BEGIN
   SELECT count(*)::int INTO v_invoices
     FROM public.invoices WHERE academy_profile_id = _academy_id;
@@ -714,6 +804,32 @@ BEGIN
     v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'SHARED_PERSON_IDENTITY', 'count', v_shared));
   END IF;
 
+  -- References that would REFUSE, and detaches that would break a check. Both abort the transaction
+  -- if left to be discovered by Postgres, so both are counted here and refused up front.
+  v_blocking := 0;
+  FOR v_rec IN SELECT * FROM public.academy_deletion_blocking_refs() LOOP
+    EXECUTE format('SELECT count(*)::int FROM public.%I WHERE %s', v_rec.relname,
+                   public.academy_deletion_dying_pred(v_rec.parent, quote_ident(v_rec.colname)))
+      INTO v_n USING _academy_id;
+    v_blocking := v_blocking + v_n;
+  END LOOP;
+  IF v_blocking > 0 THEN
+    v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'BLOCKING_REFERENCES', 'count', v_blocking));
+  END IF;
+
+  v_breaking := 0;
+  FOR v_rec IN SELECT * FROM public.academy_deletion_detach_targets() LOOP
+    v_check := public.academy_deletion_detach_check_pred(v_rec.relname, v_rec.colname);
+    CONTINUE WHEN v_check IS NULL;
+    EXECUTE format('SELECT count(*)::int FROM public.%I WHERE (%s) AND (%s)', v_rec.relname,
+                   public.academy_deletion_dying_pred(v_rec.parent, quote_ident(v_rec.colname)), v_check)
+      INTO v_n USING _academy_id;
+    v_breaking := v_breaking + v_n;
+  END LOOP;
+  IF v_breaking > 0 THEN
+    v_out := v_out || jsonb_build_array(jsonb_build_object('code', 'DETACH_BREAKS_CONSTRAINT', 'count', v_breaking));
+  END IF;
+
   RETURN v_out;
 END;
 $$;
@@ -743,6 +859,7 @@ DECLARE
   v_scope text;
   v_person_scope text;
   v_col text;
+  v_parent text;
 BEGIN
   IF _academy_id IS NULL THEN
     RAISE EXCEPTION 'academy_deletion_preview: _academy_id is required'
@@ -791,21 +908,21 @@ BEGIN
   -- person this academy happens to own the only links to. Deleting that person clears the reference:
   -- the row survives, changed, and an operator who was never shown it has not been told the truth.
   -- Keyed by relation.column, because `bookings` has two such columns and they detach independently.
-  FOR v_rel, v_col IN
-    SELECT dt.relname, dt.colname FROM public.academy_deletion_person_detach_targets() dt ORDER BY 1, 2
+  FOR v_parent, v_rel, v_col IN
+    SELECT dt.parent, dt.relname, dt.colname FROM public.academy_deletion_detach_targets() dt ORDER BY 2, 3, 1
   LOOP
     -- coalesce, and not merely NOT: a trainer-owned overlay row has a NULL academy_profile_id, so
     -- `NOT (academy_profile_id = $1)` is NULL rather than true and three-valued logic drops the row
     -- from the detached set entirely — a row whose reference this transaction clears, announced
     -- nowhere. Unknown means "not already counted", which is the only reading that is safe here.
-    v_scope := quote_ident(v_col) || ' IN (SELECT p.id FROM public.persons p WHERE '
-            || public.academy_deletion_dying_persons_pred('p.id') || ')'
+    v_scope := public.academy_deletion_dying_pred(v_parent, quote_ident(v_col))
             || ' AND NOT coalesce(' || public.academy_deletion_already_counted_pred(v_rel) || ', false)';
 
     SELECT d.row_count, d.fragment INTO v_count, v_fragment
       FROM public.academy_deletion_relation_digest(v_rel, v_scope, _academy_id) d;
 
-    v_detached := v_detached || jsonb_build_object(v_rel || '.' || v_col, v_count);
+    v_detached := v_detached || jsonb_build_object(v_rel || '.' || v_col,
+      coalesce((v_detached->>(v_rel || '.' || v_col))::int, 0) + v_count);
     v_digest_input := v_digest_input || public.u1c_ns('N:' || v_rel || '.' || v_col) || public.u1c_ns(v_fragment);
   END LOOP;
 
@@ -907,12 +1024,22 @@ BEGIN
     UNION SELECT pc.relname FROM public.academy_deletion_person_closure() pc
     -- the SET NULL side: these are WRITTEN by the deletion (their reference is cleared), so a
     -- concurrent writer to one of them must wait exactly as it does for a row being destroyed
-    UNION SELECT dt.relname FROM public.academy_deletion_person_detach_targets() dt
+    UNION SELECT dt.relname FROM public.academy_deletion_detach_targets() dt
+    -- the root itself. It was missing: only its ROW was locked, so a concurrent CREATE TRIGGER on
+    -- academy_profiles could take its lock AFTER the fingerprint was checked and fire during the
+    -- delete. A table lock here closes that window for the same reason it does everywhere else —
+    -- CREATE TRIGGER takes SHARE ROW EXCLUSIVE, which this conflicts with.
+    UNION SELECT 'academy_profiles'
     ORDER BY 1
   LOOP
     CONTINUE WHEN to_regclass('public.' || v_rel) IS NULL;
     EXECUTE format('LOCK TABLE %I.%I IN SHARE ROW EXCLUSIVE MODE', 'public', v_rel);
   END LOOP;
+
+  -- The audit table gets the WEAKEST lock that still conflicts with trigger DDL. It is not being
+  -- destroyed and its own row is already held FOR UPDATE, so SHARE ROW EXCLUSIVE would only
+  -- serialise unrelated academies' audit writes; ROW EXCLUSIVE blocks the DDL and nothing else.
+  LOCK TABLE public.academy_deletion_audit IN ROW EXCLUSIVE MODE;
 END;
 $$;
 
@@ -1042,7 +1169,10 @@ REVOKE ALL ON FUNCTION public.academy_deletion_blockers(uuid) FROM PUBLIC, anon,
 REVOKE ALL ON FUNCTION public.academy_deletion_preview(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_deleted_scope(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_trigger_root_relations() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.academy_deletion_person_detach_targets() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_blocking_refs() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_detach_check_pred(text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_detach_targets() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_dying_pred(text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_surviving_persons_pred() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_already_counted_pred(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_trigger_helper_defs() FROM PUBLIC, anon, authenticated;
@@ -1054,7 +1184,10 @@ GRANT EXECUTE ON FUNCTION public.academy_deletion_preview(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_delete_confirmed(uuid, text, integer, uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_deleted_scope(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_trigger_root_relations() TO service_role;
-GRANT EXECUTE ON FUNCTION public.academy_deletion_person_detach_targets() TO service_role;
+GRANT EXECUTE ON FUNCTION public.academy_deletion_blocking_refs() TO service_role;
+GRANT EXECUTE ON FUNCTION public.academy_deletion_detach_check_pred(text, text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.academy_deletion_detach_targets() TO service_role;
+GRANT EXECUTE ON FUNCTION public.academy_deletion_dying_pred(text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_surviving_persons_pred() TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_already_counted_pred(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_trigger_helper_defs() TO service_role;

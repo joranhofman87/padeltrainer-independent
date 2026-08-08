@@ -585,6 +585,125 @@ for (const [label, seed, code] of [
   await c.end();
 }
 
+// ══ 3j. A DETACH THAT WOULD BREAK A CHECK IS A BLOCKER, NOT A CRASH ════════════════════════════
+// `bookings` requires an owner: player_id OR guest_player_id OR anonymized_at. Deleting the academy
+// cascades its guests, the FK clears `bookings.guest_player_id`, and a GUEST-ONLY booking then
+// violates that check — the transaction aborts, after a clean preview, and a guest-only booking is
+// not an exotic state: it is how guests are booked. So the check is re-evaluated with the column
+// forced to NULL and the row is refused up front instead.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: uid } = await one(c,
+    `INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+     VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+             'u1c-p3-slot-' || replace(gen_random_uuid()::text,'-','') || '@example.com', '', now(), now())
+     RETURNING id`);
+  const { id: profileId } = await one(c, `SELECT id FROM public.profiles WHERE user_id = $1`, [uid]);
+  const { id: trainer } = await one(c,
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [uid]);
+  const { id: slot } = await one(c,
+    `INSERT INTO public.availability_slots (trainer_id, start_time, end_time)
+     VALUES ($1, now() + interval '1 day', now() + interval '1 day 1 hour') RETURNING id`, [trainer]);
+  const { id: booking } = await one(c,
+    `INSERT INTO public.bookings (slot_id, guest_player_id) VALUES ($1, $2) RETURNING id`, [slot, f.guest]);
+
+  const p = await preview(c, f.academy);
+  ok('a guest-ONLY booking blocks: clearing its guest would violate booking_has_player',
+    p.blockers.some((b) => b.code === 'DETACH_BREAKS_CONSTRAINT'), p.blockers);
+
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = `${e.code}:${e.message}`; }
+  ok('...and it is refused as BLOCKED, not discovered as a constraint violation mid-delete',
+    refused !== null && refused.includes('BLOCKED') && !refused.includes('23514'), { refused });
+  ok('the academy survives the refusal intact',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_profiles WHERE id = $1`, [f.academy])).n === 1);
+
+  // give the booking a second owner: the check now survives the detach, so it is merely detached
+  await c.query(`UPDATE public.bookings SET player_id = $1 WHERE id = $2`, [profileId, booking]);
+  const p2 = await preview(c, f.academy);
+  ok('with another owner present the block clears',
+    !p2.blockers.some((b) => b.code === 'DETACH_BREAKS_CONSTRAINT'), p2.blockers);
+  ok('and the booking is announced as detached', p2.detached['bookings.guest_player_id'] === 1, p2.detached);
+
+  const auditId2 = await startAudit(c, f.academy, ACTOR, p2);
+  await confirm(c, f.academy, p2, auditId2, ACTOR);
+  const after = await one(c,
+    `SELECT count(*)::int AS n, bool_and(guest_player_id IS NULL) AS cleared FROM public.bookings WHERE id = $1`, [booking]);
+  ok('the booking survives with its guest reference cleared', after.n === 1 && after.cleared === true, after);
+
+  await c.query(`DELETE FROM public.bookings WHERE id = $1`, [booking]);
+  await c.query(`DELETE FROM public.availability_slots WHERE id = $1`, [slot]);
+  await c.query(`DELETE FROM public.trainer_profiles WHERE id = $1`, [trainer]);
+  await c.query(`DELETE FROM public.profiles WHERE id = $1`, [profileId]);
+  await c.query(`DELETE FROM auth.users WHERE id = $1`, [uid]);
+  await c.end();
+}
+
+// ══ 3k. A REFUSING REFERENCE IS A BLOCKER TOO ══════════════════════════════════════════════════
+// `intake_requests.guest_player_id` is NO ACTION and nothing in this flow deletes those rows, so the
+// guest cascade would abort the transaction. Read out of the catalogue rather than discovered.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  // a real trainer: registrations validate their owner, so a random uuid is refused
+  const { id: uid } = await one(c,
+    `INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+     VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+             'u1c-p3-intake-' || replace(gen_random_uuid()::text,'-','') || '@example.com', '', now(), now())
+     RETURNING id`);
+  const { id: profileId } = await one(c, `SELECT id FROM public.profiles WHERE user_id = $1`, [uid]);
+  const { id: trainer } = await one(c,
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [uid]);
+  const { id: reg } = await one(c,
+    `INSERT INTO public.registrations (owner_type, owner_id, name)
+     VALUES ('trainer', $1, 'u1c-p3 intake host') RETURNING id`, [trainer]);
+  await c.query(
+    `INSERT INTO public.intake_requests
+       (registration_id, guest_player_id, full_name, email, lesson_type, preferred_days, preferred_time_windows)
+     VALUES ($1, $2, 'Intake', 'intake@example.com', ARRAY['group'], ARRAY['mon'], '[]'::jsonb)`,
+    [reg, f.guest]);
+
+  const p = await preview(c, f.academy);
+  ok('a NO ACTION reference to a dying guest is reported as BLOCKING_REFERENCES',
+    p.blockers.some((b) => b.code === 'BLOCKING_REFERENCES'), p.blockers);
+  ok('a trainer-owned registration is NOT this academy\'s programme',
+    !p.blockers.some((b) => b.code === 'HAS_PROGRAMS'), p.blockers);
+
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = `${e.code}:${e.message}`; }
+  ok('it refuses BLOCKED rather than aborting on the foreign key',
+    refused !== null && refused.includes('BLOCKED') && !refused.includes('23503'), { refused });
+
+  await c.query(`DELETE FROM public.intake_requests WHERE guest_player_id = $1`, [f.guest]);
+  await c.query(`DELETE FROM public.registrations WHERE id = $1`, [reg]);
+  await c.query(`DELETE FROM public.trainer_profiles WHERE id = $1`, [trainer]);
+  await c.query(`DELETE FROM public.profiles WHERE id = $1`, [profileId]);
+  await c.query(`DELETE FROM auth.users WHERE id = $1`, [uid]);
+  await c.end();
+}
+
+// ══ 3l. THE ROOT ITSELF IS LOCKED ══════════════════════════════════════════════════════════════
+// Only the academy's ROW was locked, so a concurrent CREATE TRIGGER on academy_profiles could take
+// its lock after the fingerprint was checked and fire during the delete.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  await c.query('BEGIN');
+  await c.query(`SELECT public.academy_deletion_lock_plan($1)`, [f.academy]);
+  const held = await one(c, `
+    SELECT bool_or(l.relation = 'public.academy_profiles'::regclass AND l.mode = 'ShareRowExclusiveLock') AS root,
+           bool_or(l.relation = 'public.academy_deletion_audit'::regclass AND l.mode = 'RowExclusiveLock') AS audit
+      FROM pg_locks l WHERE l.pid = pg_backend_pid() AND l.locktype = 'relation' AND l.granted`);
+  ok('the lock plan holds academy_profiles itself, not merely its row', held.root === true, held);
+  ok('...and the audit table at the weakest mode that still conflicts with trigger DDL',
+    held.audit === true, held);
+  await c.query('ROLLBACK');
+  await c.end();
+}
+
 // ══ 4. HAPPY PATH + AUDIT ══════════════════════════════════════════════════════════════════════
 {
   const c = await client();
