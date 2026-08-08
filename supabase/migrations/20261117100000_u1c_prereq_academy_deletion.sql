@@ -535,10 +535,10 @@ BEGIN
 END;
 $$;
 
--- A row is announced in exactly ONE category, by precedence deleted > mutated > detached: an
--- academy_player_metadata row that is both destroyed with the academy and referenced by a dying
--- person must read as deleted, not as both. This returns what a relation has ALREADY been counted
--- for, so the detach arm can subtract it.
+-- A row is announced in exactly ONE category, by precedence deleted > detached > mutated — ordered
+-- by SPECIFICITY, as the detached-scope function above explains. An academy_player_metadata row that
+-- is both destroyed with the academy and referenced by a dying person must read as deleted, not as
+-- both. This returns what a relation has ALREADY been counted for, so the later arms can subtract it.
 CREATE OR REPLACE FUNCTION public.academy_deletion_already_counted_pred(_relname text)
 RETURNS text
 LANGUAGE sql
