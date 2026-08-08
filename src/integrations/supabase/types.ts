@@ -572,6 +572,66 @@ export type Database = {
           },
         ]
       }
+      academy_player_memberships: {
+        Row: {
+          academy_profile_id: string
+          created_at: string
+          id: string
+          person_id: string
+          updated_at: string
+        }
+        Insert: {
+          academy_profile_id: string
+          created_at?: string
+          id?: string
+          person_id: string
+          updated_at?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          created_at?: string
+          id?: string
+          person_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academy_player_memberships_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_memberships_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_memberships_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_memberships_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "academy_player_memberships_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       academy_player_metadata: {
         Row: {
           academy_profile_id: string | null
