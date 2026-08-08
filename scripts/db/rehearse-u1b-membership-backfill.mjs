@@ -31,9 +31,9 @@ import { createHash } from 'node:crypto';
 import { pgliteSessionSource } from './u1a-pglite-session.mjs';
 import { runMembershipInventory } from './u1a-membership-inventory.mjs';
 import { SCHEMA_STUB_SQL, FIXTURE_SQL, AS_OF, A1, A2, G, PE } from './u1a-fixture-universe.mjs';
-import { buildBackfillPlan, ELIGIBLE_DISPOSITION } from './u1b-backfill-plan.mjs';
+import { buildBackfillPlan, ELIGIBLE_DISPOSITION, canonicalize } from './u1b-backfill-plan.mjs';
 import { applyBackfillPlan, runMembershipBackfill } from './u1b-backfill-apply.mjs';
-import { buildArtifacts, writeArtifacts, verifyArtifacts } from './u1b-artifacts.mjs';
+import { buildArtifacts, writeArtifacts, verifyArtifacts, REQUIRED_PAYLOADS } from './u1b-artifacts.mjs';
 
 /** Fixture 1's academy-owned guest: eligible today, split-frozen mid-run to stage source drift. */
 const G1_FOR_DRIFT = G(1);
@@ -524,15 +524,23 @@ for (let failAfter = 0; failAfter < 4; failAfter++) {
   let writes = 0;
   try {
     writeArtifacts(d, buildArtifacts(inv1, plan1), {
-      writeFile: (p, bytes) => {
-        if (writes++ === failAfter) throw new Error('SIMULATED_DISK_FAILURE');
-        writeFileSync(p, bytes);
-      },
+      beforeWrite: () => { if (writes++ === failAfter) throw new Error('SIMULATED_DISK_FAILURE'); },
     });
   } catch { /* expected */ }
   ok(`a write interrupted at step ${failAfter} leaves NO verifiable set`,
     verifyArtifacts(d).ok === false, verifyArtifacts(d).problems);
 }
+
+// …and the ORDER itself, asserted directly. The interruption loop above would pass even if the
+// manifest were written FIRST — every interrupted state still lacks a payload, which the verifier
+// rejects for its own reasons. Only recording the sequence proves manifest-last.
+const writeOrder = [];
+const dirOrder = freshArtifactDir();
+writeArtifacts(dirOrder, buildArtifacts(inv1, plan1), { beforeWrite: (n) => writeOrder.push(n) });
+ok('the manifest is written LAST, after every payload',
+  writeOrder.length === 4 && writeOrder[3] === 'manifest.json'
+  && canonicalize(writeOrder.slice(0, 3).sort()) === canonicalize([...REQUIRED_PAYLOADS].sort()),
+  { writeOrder });
 
 // A4: an unlisted file beside a valid set means the directory is not the thing the manifest
 // describes. "Evidence plus something we did not account for" is not evidence.
@@ -601,6 +609,18 @@ writeArtifacts(dirP, buildArtifacts(inv1, plan1));
 rewriteSet(dirP, { payloads: { 'plan.json': { plan_hash: plan1.plan_hash } } });
 ok('a plan.json that is not a plan fails verification', verifyArtifacts(dirP).ok === false,
   verifyArtifacts(dirP).problems);
+
+// ISOLATED: `typeof null === 'object'` and so does an array, so the envelope check has to say what it
+// means. Everything else about this plan is well-formed.
+for (const bad of [null, [], 'nope']) {
+  const d = freshArtifactDir();
+  writeArtifacts(d, buildArtifacts(inv1, plan1));
+  rewriteSet(d, {
+    payloads: { 'plan.json': { plan_hash: plan1.plan_hash, rows: [], reconciliation: bad } },
+  });
+  ok(`a plan whose reconciliation is ${JSON.stringify(bad)} fails verification`,
+    verifyArtifacts(d).ok === false, verifyArtifacts(d).problems);
+}
 
 // ISOLATED: only the "payload must be a JSON OBJECT" rule can fire. `null` is the case that matters —
 // every downstream shape check is guarded by `if (parsed[name])`, so a null payload would slip past

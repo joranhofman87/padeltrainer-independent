@@ -149,7 +149,7 @@ export const REQUIRED_PAYLOADS = ['anomalies.json', 'drift.json', 'plan.json'];
  * @throws if the target exists — deliberately. Refusing is what makes "nothing prior is ever
  *         destroyed" true by construction rather than by careful sequencing.
  */
-export function writeArtifacts(dir, artifacts, { writeFile = writeFileSync } = {}) {
+export function writeArtifacts(dir, artifacts, { beforeWrite = null } = {}) {
   const files = {
     'plan.json': artifacts.plan,
     'drift.json': artifacts.drift,
@@ -180,12 +180,20 @@ export function writeArtifacts(dir, artifacts, { writeFile = writeFileSync } = {
   // race against.
   mkdirSync(dir, { recursive: false });
 
-  // `writeFile` is injectable ONLY so a test can fail at a chosen step and prove that no interruption
-  // point leaves a verifiable set. Production always uses writeFileSync.
-  for (const name of Object.keys(payloads)) writeFile(join(dir, name), payloads[name]);
+  // `beforeWrite` is a NOTIFICATION, not a replacement writer. An injectable writer could be async
+  // and would then not be awaited here, letting writes finish out of order and the function return
+  // early — a test seam that quietly weakens the synchronous model it exists to verify. This hook
+  // cannot: the physical write is always writeFileSync. A test throws from it to simulate a failure
+  // at a chosen step, and records the order to prove the manifest really is last.
+  const write = (name, bytes) => {
+    if (beforeWrite) beforeWrite(name);
+    writeFileSync(join(dir, name), bytes);
+  };
+
+  for (const name of Object.keys(payloads)) write(name, payloads[name]);
   // Manifest last: an interrupted write leaves a directory with no manifest, which verifyArtifacts
   // rejects outright. There is no ordering that makes an incomplete set look complete.
-  writeFile(join(dir, 'manifest.json'), canonicalize(manifest));
+  write('manifest.json', canonicalize(manifest));
 
   return manifest;
 }
@@ -275,8 +283,11 @@ export function verifyArtifacts(dir) {
   // artifacts version they were produced by.
   if (parsed['plan.json']) {
     const p = parsed['plan.json'];
-    if (typeof p.plan_hash !== 'string' || !Array.isArray(p.rows) || typeof p.reconciliation !== 'object') {
-      problems.push('plan.json is not a plan (needs plan_hash, rows[], reconciliation)');
+    // `typeof null === 'object'` and so does an array, so the envelope check has to say what it means.
+    const recOk = p.reconciliation !== null && typeof p.reconciliation === 'object'
+      && !Array.isArray(p.reconciliation);
+    if (typeof p.plan_hash !== 'string' || !Array.isArray(p.rows) || !recOk) {
+      problems.push('plan.json is not a plan (needs plan_hash, rows[], reconciliation{})');
     }
   }
   for (const name of ['drift.json', 'anomalies.json']) {
