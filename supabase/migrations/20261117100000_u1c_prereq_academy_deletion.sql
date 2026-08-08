@@ -1060,10 +1060,16 @@ BEGIN
       v_rel, 'persons', public.academy_deletion_surviving_persons_pred());
     CONTINUE WHEN v_person_scope IS NULL;
 
+    -- minus what is already announced as deleted, by the same discipline the detach arm uses. A
+    -- surviving person keeps links on both sides: the one to this academy's guest dies and is
+    -- counted, and only the rest are in the blast radius. Without this subtraction the dying link
+    -- appears under deleted AND mutated, and one row in two categories is not two rows.
+    v_person_scope := v_person_scope || ' AND NOT coalesce('
+                   || public.academy_deletion_already_counted_pred(v_rel) || ', false)';
+
     SELECT d.row_count, d.fragment INTO v_count, v_fragment
       FROM public.academy_deletion_relation_digest(v_rel, v_person_scope, _academy_id) d;
 
-    -- a row already counted as deleted (the dying link) is not also announced as mutated
     IF v_count > 0 OR NOT (v_deleted ? v_rel) THEN
       v_mutated := v_mutated || jsonb_build_object(v_rel, v_count);
     END IF;

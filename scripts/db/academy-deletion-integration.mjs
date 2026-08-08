@@ -815,6 +815,12 @@ for (const [label, seed, code] of [
   ok('it is NOT announced as deleted — the person survives, so its contact does',
     p.deleted.notification_contacts === 0, p.deleted.notification_contacts);
 
+  // the survivor holds a link on each side: the one to THIS academy's guest dies, the other does
+  // not. One row must not appear under both headings.
+  ok('the dying link is counted as deleted', p.deleted.person_links === 1, p.deleted.person_links);
+  ok('...and only the OTHER link is in the blast radius, not both',
+    p.mutated.person_links === 1, p.mutated.person_links);
+
   // it is hashed: editing it between preview and confirmation must be stale
   await c.query(`UPDATE public.notification_contacts SET destination_redacted = 'z***@example.com' WHERE id = $1`, [contact]);
   const auditId = await startAudit(c, f.academy, ACTOR, p);
