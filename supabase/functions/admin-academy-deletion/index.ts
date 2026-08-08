@@ -126,10 +126,29 @@ export async function handleRequest(
       const code = refusalCodeOf(deleteError.message);
       const reason = `${code ?? "ERROR"}: ${deleteError.message}`.slice(0, 500);
 
-      const { error: stampErr } = await supabaseAdmin
+      // ONLY over a row still reading `started`. A lost or failed RESPONSE to a transaction that
+      // actually committed arrives here indistinguishable from a refusal — and without this filter
+      // the handler would stamp `failed` over the `completed` row the database wrote inside that
+      // commit, leaving durable evidence that the deletion did not happen when the academy is gone.
+      // The status guard makes the winner the transaction, not the transport.
+      const { data: stamped, error: stampErr } = await supabaseAdmin
         .from("academy_deletion_audit")
         .update({ status: "failed", finished_at: new Date().toISOString(), failure_reason: reason })
-        .eq("id", auditRow.id);
+        .eq("id", auditRow.id)
+        .eq("status", "started")
+        .select("id");
+
+      if (!stampErr && (stamped?.length ?? 0) === 0) {
+        // Nothing was `started` to stamp: the row reached a terminal state without us. Report the
+        // outcome as indeterminate rather than asserting either one.
+        console.error("admin-academy-deletion: audit row is already terminal, not stamping", auditRow.id);
+        await notifySlackEdgeError(
+          "admin-academy-deletion",
+          "the RPC reported an error but its audit row is already terminal — the transaction may have committed",
+          { audit_id: auditRow.id, refusal_code: code ?? "ERROR" },
+        ).catch(() => {});
+        return json({ error: "Deletion outcome is indeterminate.", code, audit_incomplete: true }, 409);
+      }
 
       if (stampErr) {
         // Never report a clean refusal over a row still reading `started` — that row means "began

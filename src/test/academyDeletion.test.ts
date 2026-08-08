@@ -17,7 +17,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
   fetchAcademyDeletionPreview, confirmAcademyDeletion, isPreviewBlocked, isStalePreview,
-  nonZeroEntries, totalDeleted, totalDetached, AcademyDeletionError,
+  nonZeroEntries, totalDeleted, totalDetached, totalMutated, AcademyDeletionError,
   type AcademyDeletionPreview,
 } from '../lib/academyDeletion';
 
@@ -27,7 +27,8 @@ const previewFixture = (over: Partial<AcademyDeletionPreview> = {}): AcademyDele
   preview_version: 1,
   academy_profile_id: ACADEMY,
   deleted: { academy_trainers: 2, academy_player_metadata: 1, guest_players: 0 },
-  detached: { availability_slots: 3 },
+  detached: { availability_slots: 3, 'invoices.person_id': 1 },
+  mutated: { persons: 1, person_merge_review: 0 },
   blockers: [],
   digest: 'a'.repeat(64),
   ...over,
@@ -71,6 +72,15 @@ describe('the legacy client-side delete sequence is gone', () => {
     expect(page).toContain('confirmAcademyDeletion');
   });
 
+  it('all three destructive categories are rendered, not just deleted', () => {
+    // an operator shown only "deleted" is not being told that someone else's invoice loses its
+    // person reference, or that a shared person gets rewritten
+    for (const id of ['preview-deleted', 'preview-detached', 'preview-mutated']) {
+      expect(`${id}:${page.includes(`data-testid="${id}"`)}`).toBe(`${id}:true`);
+    }
+    expect(page).toContain('totalMutated(preview)');
+  });
+
   it('the confirm button is gated on the preview', () => {
     expect(page).toContain('confirmDisabled={!preview || isPreviewing || isPreviewBlocked(preview)}');
   });
@@ -80,7 +90,9 @@ describe('preview display helpers', () => {
   it('separates what is deleted from what is merely detached', () => {
     const p = previewFixture();
     expect(totalDeleted(p)).toBe(3);
-    expect(totalDetached(p)).toBe(3);
+    expect(totalDetached(p)).toBe(4);
+    // a scrubbed audit row and a rewritten shared person are neither destroyed nor untouched
+    expect(totalMutated(p)).toBe(1);
     // availability_slots is detached — it must never be presented as deleted
     expect(Object.keys(p.deleted)).not.toContain('availability_slots');
   });

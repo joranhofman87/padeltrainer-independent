@@ -333,6 +333,120 @@ for (const [label, seed, code] of [
   await c.end();
 }
 
+// ══ 3d. THE SET NULL SIDE OF KILLING A PERSON ══════════════════════════════════════════════════
+// A person can be referenced by rows this academy does not own. `invoices.person_id` is ON DELETE
+// SET NULL, so destroying the person CHANGES a trainer's invoice — it survives with its reference
+// cleared. That is not a deletion and not nothing, and the operator has to be shown it. (The
+// HAS_INVOICES blocker does not cover this: it scopes to invoices OF this academy, and this one
+// belongs to someone else.)
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: outsideInvoice } = await one(c,
+    `INSERT INTO public.invoices (invoice_number, due_date, player_name, status, person_id)
+     VALUES ('U1C-P3-OUT-' || substr(gen_random_uuid()::text,1,8), current_date, 'Someone Else', 'sent', $1)
+     RETURNING id`, [f.person]);
+
+  const p = await preview(c, f.academy);
+  ok('a foreign row whose person reference will be CLEARED is announced as detached',
+    p.detached['invoices.person_id'] === 1, p.detached);
+  ok('...and never as deleted — the invoice is not being destroyed',
+    p.deleted.invoices === undefined && !p.blockers.some((b) => b.code === 'HAS_INVOICES'), p.blockers);
+  ok('each person-keyed COLUMN is reported separately (bookings has two)',
+    p.detached['bookings.person_id'] === 0 && p.detached['bookings.paid_by_person_id'] === 0, p.detached);
+
+  // in the digest: editing the row that is about to be detached must invalidate the preview
+  await c.query(`UPDATE public.invoices SET player_name = 'Renamed' WHERE id = $1`, [outsideInvoice]);
+  ok('editing a to-be-detached row makes the digest stale',
+    p.digest !== (await preview(c, f.academy)).digest);
+
+  const p2 = await preview(c, f.academy);
+  const auditId = await startAudit(c, f.academy, ACTOR, p2);
+  await confirm(c, f.academy, p2, auditId, ACTOR);
+  const after = await one(c,
+    `SELECT count(*)::int AS n, bool_and(person_id IS NULL) AS cleared FROM public.invoices WHERE id = $1`,
+    [outsideInvoice]);
+  ok('the invoice SURVIVES the deletion, with its person reference cleared', after.n === 1 && after.cleared === true, after);
+
+  await c.query(`DELETE FROM public.invoices WHERE id = $1`, [outsideInvoice]);
+  await c.end();
+}
+
+// ══ 3e. THE PERSON THAT DOES NOT DIE IS STILL CHANGED ══════════════════════════════════════════
+// When a link survives elsewhere the trigger takes the ELSE branch: it drops the dying link and
+// calls `rederive_person`, which recomputes the surviving row's identity fields from the sources
+// that remain. The person belongs to someone else and is not destroyed — but it IS altered, so it
+// is announced as mutated and hashed like everything else.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const { id: outsideAcademy } = await one(c,
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u1c-p3-survivor-home', 'u1c-p3-sv-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  CREATED.push(outsideAcademy);
+  const { id: outsideGuest } = await one(c,
+    `INSERT INTO public.guest_players (full_name, academy_profile_id) VALUES ('Elsewhere', $1) RETURNING id`,
+    [outsideAcademy]);
+  const { person_id: orphan } = await one(c,
+    `SELECT person_id FROM public.person_links WHERE guest_player_id = $1`, [outsideGuest]);
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE guest_player_id = $2`, [f.person, outsideGuest]);
+  await c.query(`DELETE FROM public.persons WHERE id = $1`, [orphan]);
+
+  const p = await preview(c, f.academy);
+  ok('a person that survives is NOT counted as deleted', p.deleted.persons === 0, p.deleted.persons);
+  ok('...but IS announced as mutated — rederive_person will rewrite it', p.mutated.persons === 1, p.mutated);
+  ok('only the dying link is counted as deleted, not the surviving one',
+    p.deleted.person_links === 1, p.deleted.person_links);
+
+  // the surviving person is in the digest: editing it must go stale
+  await c.query(`UPDATE public.persons SET full_name = 'Edited Elsewhere' WHERE id = $1`, [f.person]);
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = e.message; }
+  ok('editing the surviving person after the preview refuses PREVIEW_STALE',
+    refused !== null && refused.includes('PREVIEW_STALE'), { refused });
+
+  const p2 = await preview(c, f.academy);
+  const { xmin: before } = await one(c, `SELECT xmin::text FROM public.persons WHERE id = $1`, [f.person]);
+  const auditId2 = await startAudit(c, f.academy, ACTOR, p2);
+  await confirm(c, f.academy, p2, auditId2, ACTOR);
+  const survivor = await one(c,
+    `SELECT count(*)::int AS n, max(xmin::text) AS rev FROM public.persons WHERE id = $1`, [f.person]);
+  ok('the surviving person is still there', survivor.n === 1, survivor);
+  ok('...and it was genuinely rewritten, exactly as "mutated" promised', survivor.rev !== before, { before, after: survivor.rev });
+
+  await c.query(`DELETE FROM public.guest_players WHERE id = $1`, [outsideGuest]);
+  await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [outsideAcademy]);
+  await c.end();
+}
+
+// ══ 3f. THE DRIFT GUARD REACHES THE TRIGGER'S HELPERS ══════════════════════════════════════════
+// Hashing a trigger's own body is not enough: what happens to a surviving person is decided by
+// `rederive_person`, which the trigger merely CALLS. A migration could change it without touching a
+// trigger definition, and this flow would go on claiming a coverage it no longer has.
+{
+  const c = await client();
+  const f = await seedAcademy(c);
+  const p = await preview(c, f.academy);
+  const auditId = await startAudit(c, f.academy, ACTOR, p);
+  const { d: original } = await one(c,
+    `SELECT pg_get_functiondef('public.rederive_person(uuid)'::regprocedure) AS d`);
+  ok('rederive_person is inside the fingerprinted helper closure',
+    (await one(c, `SELECT count(*)::int AS n FROM public.academy_deletion_trigger_helper_defs()
+                    WHERE sig LIKE 'rederive_person(%'`)).n === 1);
+
+  await c.query(original.replace('$function$', '$function$ -- drift probe'));
+  let refused = null;
+  try { await confirm(c, f.academy, p, auditId, ACTOR); } catch (e) { refused = e.message; }
+  ok('changing a helper the trigger calls is ACADEMY_DELETION_CATALOG_DRIFT',
+    refused !== null && refused.includes('ACADEMY_DELETION_CATALOG_DRIFT'), { refused });
+
+  await c.query(original);   // restore, or every later run fires on a phantom
+  ok('restoring it makes the fingerprint match again',
+    (await one(c, `SELECT public.academy_deletion_catalog_fingerprint() = public.academy_deletion_expected_fingerprint() AS m`)).m === true);
+  await c.end();
+}
+
 // ══ 4. HAPPY PATH + AUDIT ══════════════════════════════════════════════════════════════════════
 {
   const c = await client();

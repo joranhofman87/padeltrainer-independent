@@ -22,6 +22,8 @@ export interface AcademyDeletionPreview {
   deleted: Record<string, number>;
   /** Relation → row count that will be DETACHED, not deleted. */
   detached: Record<string, number>;
+  /** Relation → row count that survives but is CHANGED (a scrub, a rederive). */
+  mutated: Record<string, number>;
   blockers: Array<{ code: string; count: number }>;
   digest: string;
 }
@@ -58,6 +60,16 @@ export function totalDeleted(preview: AcademyDeletionPreview): number {
 
 export function totalDetached(preview: AcademyDeletionPreview): number {
   return Object.values(preview.detached).reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Rows that survive the deletion in a changed form. Neither destroyed nor merely unlinked: a
+ * `person_merge_review` audit row scrubbed of who it was about, a shared person rewritten from the
+ * sources that remain. Showing these as "deleted" would overstate the damage and showing nothing
+ * would hide it, so they get their own line.
+ */
+export function totalMutated(preview: AcademyDeletionPreview): number {
+  return Object.values(preview.mutated ?? {}).reduce((a, b) => a + b, 0);
 }
 
 /** Only relations with something in them — a wall of zeros hides the rows that matter. */

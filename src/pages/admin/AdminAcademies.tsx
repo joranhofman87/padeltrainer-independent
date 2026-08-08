@@ -4,7 +4,7 @@ import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } f
 import { logger } from '@/lib/logger';
 import {
   fetchAcademyDeletionPreview, confirmAcademyDeletion, isPreviewBlocked, isStalePreview,
-  nonZeroEntries, totalDeleted, totalDetached, type AcademyDeletionPreview,
+  nonZeroEntries, totalDeleted, totalDetached, totalMutated, type AcademyDeletionPreview,
 } from '@/lib/academyDeletion';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -546,6 +546,15 @@ export default function AdminAcademies() {
                     ))}
                   </ul>
                 </div>
+                <div data-testid="preview-mutated">
+                  <p className="font-medium">Will be changed, not deleted ({totalMutated(preview)}):</p>
+                  <ul className="ml-4 list-disc">
+                    {nonZeroEntries(preview.mutated ?? {}).map(([rel, n]) => (
+                      <li key={rel}>{rel}: {n}</li>
+                    ))}
+                  </ul>
+                </div>
+
                 <div data-testid="preview-detached">
                   <p className="font-medium">Will be detached, not deleted ({totalDetached(preview)}):</p>
                   <ul className="list-disc pl-5">
