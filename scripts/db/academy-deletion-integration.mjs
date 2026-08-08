@@ -815,6 +815,32 @@ for (const [label, seed, code] of [
   ok('it is NOT announced as deleted — the person survives, so its contact does',
     p.deleted.notification_contacts === 0, p.deleted.notification_contacts);
 
+  // A TENANT-scoped contact for the dying academy, plus an outbox row that points at BOTH the
+  // surviving person (blast radius) and that dying contact (a precise SET NULL detach). Before the
+  // tiers were ordered, the same row was announced under both.
+  const { id: tenantContact } = await one(c,
+    `INSERT INTO public.notification_contacts
+       (person_id, channel, destination_normalized, destination_redacted, consent_scope, consent_academy_profile_id)
+     VALUES ($1, 'email', 'tenant@example.com', 't***@example.com', 'tenant', $2) RETURNING id`,
+    [f.person, f.academy]);
+  const { id: outbox } = await one(c,
+    `INSERT INTO public.notification_outbox
+       (event_type, channel, recipient_person_id, contact_id, idempotency_key, occurred_at)
+     VALUES ('account_email_changed', 'email', $1, $2,
+             'u1c-p3-' || replace(gen_random_uuid()::text,'-',''), now())
+     RETURNING id`, [f.person, tenantContact]);
+
+  const pt = await preview(c, f.academy);
+  ok('the tenant contact dies with the academy that holds its consent',
+    pt.deleted.notification_contacts === 1, pt.deleted.notification_contacts);
+  ok('the outbox row is announced as DETACHED — the precise tier, naming the column',
+    pt.detached['notification_outbox.contact_id'] === 1, pt.detached['notification_outbox.contact_id']);
+  ok('...and NOT also as mutated: the conservative tier yields to the precise one',
+    (pt.mutated.notification_outbox ?? 0) === 0, pt.mutated);
+
+  await c.query(`DELETE FROM public.notification_outbox WHERE id = $1`, [outbox]);
+  await c.query(`DELETE FROM public.notification_contacts WHERE id = $1`, [tenantContact]);
+
   // the survivor holds a link on each side: the one to THIS academy's guest dies, the other does
   // not. One row must not appear under both headings.
   ok('the dying link is counted as deleted', p.deleted.person_links === 1, p.deleted.person_links);

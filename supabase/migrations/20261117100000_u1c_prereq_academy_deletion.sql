@@ -498,6 +498,43 @@ BEGIN
 END;
 $$;
 
+-- WHAT IS DETACHED FROM ONE RELATION, as a single predicate over all of its detach columns.
+--
+-- The mutation tier needs this to subtract it. `notification_outbox` is the case: a row can point at
+-- a SURVIVING person (so the conservative blast radius claims it) and at a contact that dies with
+-- the academy's tenant-scoped consent (so the detach arm claims it too). Both statements are true,
+-- and announcing the row twice is still a wrong preview.
+--
+-- The tiers are ordered by SPECIFICITY, not by severity: deleted is certain, detached is certain and
+-- names the exact column being cleared, and mutated is a conservative "a trigger may rewrite this".
+-- So the precise tier wins and the conservative one yields — the reverse would replace a fact with a
+-- maybe.
+CREATE OR REPLACE FUNCTION public.academy_deletion_detached_scope(_relname text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_rec record;
+  v_any text := NULL;
+BEGIN
+  FOR v_rec IN
+    SELECT dt.parent, dt.parentcol, dt.colname FROM public.academy_deletion_detach_targets() dt
+     WHERE dt.relname = _relname ORDER BY dt.colname
+  LOOP
+    v_any := coalesce(v_any || ' OR ', '')
+          || public.academy_deletion_dying_pred(v_rec.parent, v_rec.parentcol, quote_ident(v_rec.colname));
+  END LOOP;
+  IF v_any IS NULL THEN
+    RETURN NULL;
+  END IF;
+  RETURN '(' || v_any || ') AND NOT coalesce('
+      || public.academy_deletion_already_counted_pred(_relname) || ', false)';
+END;
+$$;
+
 -- A row is announced in exactly ONE category, by precedence deleted > mutated > detached: an
 -- academy_player_metadata row that is both destroyed with the academy and referenced by a dying
 -- person must read as deleted, not as both. This returns what a relation has ALREADY been counted
@@ -1064,8 +1101,13 @@ BEGIN
     -- surviving person keeps links on both sides: the one to this academy's guest dies and is
     -- counted, and only the rest are in the blast radius. Without this subtraction the dying link
     -- appears under deleted AND mutated, and one row in two categories is not two rows.
-    v_person_scope := v_person_scope || ' AND NOT coalesce('
-                   || public.academy_deletion_already_counted_pred(v_rel) || ', false)';
+    -- minus BOTH more specific tiers: what is already deleted, and what the detach arm has already
+    -- named precisely. A `notification_outbox` row can point at a surviving person and at a contact
+    -- dying with this academy's tenant consent; it is detached, and saying so beats saying "may be
+    -- rewritten".
+    v_person_scope := v_person_scope
+                   || ' AND NOT coalesce(' || public.academy_deletion_already_counted_pred(v_rel) || ', false)'
+                   || ' AND NOT coalesce(' || coalesce(public.academy_deletion_detached_scope(v_rel), 'false') || ', false)';
 
     SELECT d.row_count, d.fragment INTO v_count, v_fragment
       FROM public.academy_deletion_relation_digest(v_rel, v_person_scope, _academy_id) d;
@@ -1328,6 +1370,7 @@ REVOKE ALL ON FUNCTION public.academy_deletion_relation_digest(text, text, uuid)
 REVOKE ALL ON FUNCTION public.academy_deletion_blockers(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_preview(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_deleted_scope(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.academy_deletion_detached_scope(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_trigger_root_relations() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_deletion_parents() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.academy_deletion_blocking_refs() FROM PUBLIC, anon, authenticated;
@@ -1344,6 +1387,7 @@ REVOKE ALL ON FUNCTION public.owner_has_programs(text, uuid) FROM PUBLIC, anon, 
 GRANT EXECUTE ON FUNCTION public.academy_deletion_preview(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_delete_confirmed(uuid, text, integer, uuid, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_deleted_scope(text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.academy_deletion_detached_scope(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_trigger_root_relations() TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_deletion_parents() TO service_role;
 GRANT EXECUTE ON FUNCTION public.academy_deletion_blocking_refs() TO service_role;

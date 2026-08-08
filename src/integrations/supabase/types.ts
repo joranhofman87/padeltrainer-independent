@@ -10133,6 +10133,10 @@ export type Database = {
           relname: string
         }[]
       }
+      academy_deletion_detached_scope: {
+        Args: { _relname: string }
+        Returns: string
+      }
       academy_deletion_dying_persons_pred: {
         Args: { _col?: string }
         Returns: string
