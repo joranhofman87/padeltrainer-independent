@@ -326,15 +326,19 @@ Deno.test("the preflight runs BEFORE the first destructive operation, not merely
   assertEquals(admin._callOrder, ["rpc:account_membership_preflight"]);
 });
 
-Deno.test("a refused deletion leaves every row intact", async () => {
+Deno.test("a refused deletion issues no operation other than the probe (fixture-state integrity)", async () => {
+  // Deliberately NOT titled "leaves every row intact": this fake is a partial plain-object store and
+  // cannot speak for real trigger or cascade behaviour. What it CAN prove — and what actually matters
+  // — is that nothing was issued at all, so there is nothing for a trigger to have reacted to.
   const admin = makeFakeAdmin(undefined, { has_memberships: true, membership_count: 1, person_ids: ["p1"] });
   const before = JSON.stringify(admin._store);
 
   await assertRejects(() => deleteUserData(admin, "u1"));
 
+  // the load-bearing assertion, self-contained rather than relying on the companion test
+  assertEquals(admin._callOrder, ["rpc:account_membership_preflight"]);
   assertEquals(JSON.stringify(admin._store), before);
   assertEquals(admin._removedStoragePaths, []);            // not even the avatar objects
-  assertEquals(admin._callOrder.includes("auth:deleteUser"), false);
 });
 
 Deno.test("the refusal carries a machine-readable code and the counts", async () => {

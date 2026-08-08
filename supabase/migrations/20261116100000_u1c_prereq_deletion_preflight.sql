@@ -19,6 +19,16 @@
 --      dangerous one: those guests are deleted roughly two-thirds of the way through the sequence,
 --      long after ~40 other deletes have already committed.
 -- Both are checked here, before anything is touched.
+--
+-- THE LIMIT OF THIS GUARD — read this before granting anything a write on memberships.
+-- A preflight over ~60 independently-committed calls is inherently TOCTOU: a membership created after
+-- this probe but before a later delete would still hit the RESTRICT FK, and the deletes that already
+-- committed would still be gone. That window is unreachable TODAY only because NOTHING can write a
+-- membership — the table is empty and revoked from every application role, service_role included.
+-- The moment a writer exists (a backfill, an admin surface, a server command), this guard stops being
+-- sufficient on its own and the deletion needs an atomic DB-side veto, a transactional path, or
+-- OD-08 retain-and-scrub. `src/test/u1cDeletionPreflight.pglite.test.ts` asserts the no-writer premise
+-- so that day fails a test rather than passing silently.
 
 CREATE OR REPLACE FUNCTION public.account_membership_preflight(_user_id uuid)
 RETURNS jsonb

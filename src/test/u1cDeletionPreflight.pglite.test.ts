@@ -31,10 +31,23 @@ const P_UNRELATED = 'aaaa0003-0000-4000-8000-000000000000';
 
 let db: PGlite;
 
+/**
+ * Invoke the probe AS service_role — the role the edge functions actually run as.
+ *
+ * Running it on the migration-owning connection would prove nothing about SECURITY DEFINER: that
+ * connection owns the protected table and can read it anyway, so a mutant dropping SECURITY DEFINER
+ * would sail through. Under service_role the definer escalation is the ONLY thing that makes the read
+ * possible, which is the property worth testing.
+ */
 const preflight = async (userId: string) => {
-  const { rows } = await db.query<{ r: { has_memberships: boolean; membership_count: number; person_ids: string[] } }>(
-    'SELECT public.account_membership_preflight($1) AS r', [userId]);
-  return rows[0].r;
+  await db.exec('SET ROLE service_role;');
+  try {
+    const { rows } = await db.query<{ r: { has_memberships: boolean; membership_count: number; person_ids: string[] } }>(
+      'SELECT public.account_membership_preflight($1) AS r', [userId]);
+    return rows[0].r;
+  } finally {
+    await db.exec('RESET ROLE;');
+  }
 };
 
 beforeAll(async () => {
@@ -137,5 +150,39 @@ describe('account_membership_preflight — it must not become a client-callable 
     const { rows } = await db.query<{ ok: boolean }>(
       `SELECT has_table_privilege('service_role', 'public.academy_player_memberships', 'SELECT') AS ok`);
     expect(rows[0].ok).toBe(false);
+  });
+
+  it('the definer escalation is what makes the probe work — the direct read really fails', async () => {
+    await db.exec('SET ROLE service_role;');
+    try {
+      // same role, same session: the probe succeeds, the direct read does not.
+      await expect(db.query('SELECT public.account_membership_preflight($1)', [USER])).resolves.toBeTruthy();
+      await expect(db.query('SELECT count(*) FROM public.academy_player_memberships')).rejects.toThrow();
+    } finally {
+      await db.exec('RESET ROLE;');
+    }
+  });
+});
+
+/**
+ * P1 PREMISE, pinned executably.
+ *
+ * A preflight over ~60 independently-committed calls is inherently TOCTOU: a membership created after
+ * the probe but before a later delete would still hit the RESTRICT FK. That window is unreachable
+ * TODAY only because nothing can write a membership — the table is empty and revoked from every
+ * application role. This slice's safety rests on that premise, so the premise is asserted rather than
+ * assumed: the day a writer is granted, this test fails and whoever granted it has to confront the
+ * TOCTOU question (atomic DB-side veto, transactional deletion, or shipping retain-and-scrub) instead
+ * of inheriting a guard that quietly stopped being sufficient.
+ */
+describe('the preflight is only sufficient while memberships have no application writer', () => {
+  it('no application role can write academy_player_memberships', async () => {
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      for (const priv of ['INSERT', 'UPDATE', 'DELETE']) {
+        const { rows } = await db.query<{ ok: boolean }>(
+          `SELECT has_table_privilege($1, 'public.academy_player_memberships', $2) AS ok`, [role, priv]);
+        expect(`${role}:${priv}=${rows[0].ok}`).toBe(`${role}:${priv}=false`);
+      }
+    }
   });
 });
