@@ -4499,6 +4499,89 @@ export type Database = {
           },
         ]
       }
+      membership_backfill_items: {
+        Row: {
+          academy_profile_id: string
+          batch_seq: number
+          created_at: string
+          id: string
+          membership_id: string | null
+          outcome: string
+          person_id: string
+          run_id: string
+        }
+        Insert: {
+          academy_profile_id: string
+          batch_seq: number
+          created_at?: string
+          id?: string
+          membership_id?: string | null
+          outcome: string
+          person_id: string
+          run_id: string
+        }
+        Update: {
+          academy_profile_id?: string
+          batch_seq?: number
+          created_at?: string
+          id?: string
+          membership_id?: string | null
+          outcome?: string
+          person_id?: string
+          run_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "membership_backfill_items_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "membership_backfill_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      membership_backfill_runs: {
+        Row: {
+          as_of: string
+          batch_size: number
+          completed_at: string | null
+          created_at: string
+          id: string
+          inventory_version: string
+          plan_hash: string
+          planned_row_count: number
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          as_of: string
+          batch_size: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          inventory_version: string
+          plan_hash: string
+          planned_row_count: number
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          as_of?: string
+          batch_size?: number
+          completed_at?: string | null
+          created_at?: string
+          id?: string
+          inventory_version?: string
+          plan_hash?: string
+          planned_row_count?: number
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       mollie_oauth_states: {
         Row: {
           created_at: string

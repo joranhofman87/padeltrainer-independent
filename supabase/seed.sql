@@ -18,9 +18,21 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO service_role
 -- that asserts it runs. Re-revoke AFTER the grant, not before.
 -- Existence-guarded on purpose: the U1a rollback drops the table, and a bare REVOKE against a missing
 -- relation would break every later reset.
+-- The same applies to the U1b backfill logbook (20261114100000_u1b_membership_backfill_manifest.sql):
+-- both tables are default-deny by design and inert outside the local rehearsal, so the blanket grant
+-- above must be undone for them too, on every reset, or the ACL tests would only be meaningful on a
+-- freshly-pushed database.
 DO $$
+DECLARE
+  t text;
 BEGIN
-  IF to_regclass('public.academy_player_memberships') IS NOT NULL THEN
-    EXECUTE 'REVOKE ALL ON public.academy_player_memberships FROM PUBLIC, anon, authenticated, service_role';
-  END IF;
+  FOREACH t IN ARRAY ARRAY[
+    'public.academy_player_memberships',
+    'public.membership_backfill_runs',
+    'public.membership_backfill_items'
+  ] LOOP
+    IF to_regclass(t) IS NOT NULL THEN
+      EXECUTE format('REVOKE ALL ON %s FROM PUBLIC, anon, authenticated, service_role', t);
+    END IF;
+  END LOOP;
 END $$;
