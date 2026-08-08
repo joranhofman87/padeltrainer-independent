@@ -4505,7 +4505,7 @@ export type Database = {
           batch_seq: number
           created_at: string
           id: string
-          membership_id: string | null
+          membership_id: string
           outcome: string
           person_id: string
           run_id: string
@@ -4515,7 +4515,7 @@ export type Database = {
           batch_seq: number
           created_at?: string
           id?: string
-          membership_id?: string | null
+          membership_id: string
           outcome: string
           person_id: string
           run_id: string
@@ -4525,7 +4525,7 @@ export type Database = {
           batch_seq?: number
           created_at?: string
           id?: string
-          membership_id?: string | null
+          membership_id?: string
           outcome?: string
           person_id?: string
           run_id?: string

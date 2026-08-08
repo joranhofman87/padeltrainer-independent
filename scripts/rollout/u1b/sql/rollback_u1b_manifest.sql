@@ -6,10 +6,11 @@
 -- precisely what a later rollback needs in order to delete its rows and nothing else. Hence the
 -- emptiness guard: this script REFUSES rather than deletes.
 --
--- ORDER MATTERS. `membership_backfill_items` is dropped first because it references
+-- DROP ORDER MATTERS. `membership_backfill_items` is dropped first because it references
 -- `membership_backfill_runs`; dropping the parent first would need CASCADE, and CASCADE is exactly
 -- the silent destruction this programme rules out. If some later slice added a dependency, the drop
--- must fail loudly so a human decides.
+-- must fail loudly so a human decides. (The LOCK order below is the opposite — runs first — to match
+-- the data rollback and avoid a deadlock; locking and dropping are separate concerns.)
 --
 -- Both counts are taken under ACCESS EXCLUSIVE, held to the end of the block, so the guard cannot be
 -- defeated by a concurrent INSERT landing between the count and the drop.
@@ -35,13 +36,17 @@ BEGIN
   -- Lock both BEFORE counting either, and hold to the end of the block (a DO block is one
   -- transaction). Counting one table while the other is still writable would leave the same TOCTOU
   -- window the guard exists to close.
-  IF v_items_present THEN
-    LOCK TABLE public.membership_backfill_items IN ACCESS EXCLUSIVE MODE;
-    EXECUTE 'SELECT count(*) FROM public.membership_backfill_items' INTO v_items;
-  END IF;
+  --
+  -- LOCK ORDER: runs, THEN items — the same order `rollback_u1b_backfill_rows.sql` uses (it locks the
+  -- run row first, then reads items). Taking them the other way round here would give two concurrent
+  -- rollbacks a lock cycle and a deadlock.
   IF v_runs_present THEN
     LOCK TABLE public.membership_backfill_runs IN ACCESS EXCLUSIVE MODE;
     EXECUTE 'SELECT count(*) FROM public.membership_backfill_runs' INTO v_runs;
+  END IF;
+  IF v_items_present THEN
+    LOCK TABLE public.membership_backfill_items IN ACCESS EXCLUSIVE MODE;
+    EXECUTE 'SELECT count(*) FROM public.membership_backfill_items' INTO v_items;
   END IF;
 
   IF v_runs <> 0 OR v_items <> 0 THEN

@@ -69,6 +69,12 @@ const newRun = async (planHash = 'hash-a', planned = 1) => {
   return rows[0].id;
 };
 
+/** Tear down a fixture run. Items first — the FK is RESTRICT, deliberately. */
+const dropRun = async (...ids: string[]) => {
+  await db.query(`DELETE FROM ${ITEMS} WHERE run_id = ANY($1)`, [ids]);
+  await db.query(`DELETE FROM ${RUNS} WHERE id = ANY($1)`, [ids]);
+};
+
 describe('U1b backfill logbook — the ACL probe is real', () => {
   it('default privileges genuinely grant on this engine', async () => {
     const { rows } = await db.query<{ granted: boolean }>(
@@ -104,13 +110,23 @@ describe('U1b backfill logbook — catalog shape', () => {
     ]);
   });
 
-  it('items cascades from its run and NOWHERE else', async () => {
-    // The log must outlive the membership rows it describes — a FK to academy_player_memberships
-    // would cascade the evidence away exactly when a rollback needs it.
+  it('items references its run with RESTRICT and has no other FK', async () => {
+    // Exactly one FK, and it must be RESTRICT ('r'), not CASCADE: cascading would let a single
+    // `DELETE FROM membership_backfill_runs` erase the provenance of membership rows that still
+    // exist. And there must be NO FK to academy_player_memberships — the log has to outlive the rows
+    // it describes, which is the whole point of a rollback record.
     const { rows } = await db.query<{ confrelid: string; confdeltype: string }>(
       `SELECT confrelid::regclass::text AS confrelid, confdeltype
        FROM pg_constraint WHERE conrelid = '${ITEMS}'::regclass AND contype = 'f'`);
-    expect(rows).toEqual([{ confrelid: 'membership_backfill_runs', confdeltype: 'c' }]);
+    expect(rows).toEqual([{ confrelid: 'membership_backfill_runs', confdeltype: 'r' }]);
+  });
+
+  it('membership_id is NOT NULL, so no line can claim a pair is done without naming its row', async () => {
+    const { rows } = await db.query<{ is_nullable: string }>(
+      `SELECT is_nullable FROM information_schema.columns
+       WHERE table_schema='public' AND table_name='membership_backfill_items'
+         AND column_name='membership_id'`);
+    expect(rows[0].is_nullable).toBe('NO');
   });
 
   it('the run keeps updated_at current through the shared trigger', async () => {
@@ -133,7 +149,7 @@ describe('U1b backfill logbook — the guards the applier depends on', () => {
       [runId, ACADEMY, PERSON]);
     await ins();
     await expect(ins()).rejects.toThrow();
-    await db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId]);
+    await dropRun(runId);
   });
 
   it('allows the SAME pair under a different run', async () => {
@@ -146,19 +162,20 @@ describe('U1b backfill logbook — the guards the applier depends on', () => {
     await expect(db.query(
       `INSERT INTO ${ITEMS} (run_id, academy_profile_id, person_id, membership_id, batch_seq, outcome)
        VALUES ($1,$2,$3, gen_random_uuid(), 0, 'already_present')`, [b, ACADEMY, PERSON])).resolves.toBeTruthy();
-    await db.query(`DELETE FROM ${RUNS} WHERE id = ANY($1)`, [[a, b]]);
+    await dropRun(a, b);
   });
 
-  it("rejects an 'inserted' item with no membership_id (rollback would lose the row)", async () => {
+  it('rejects an item with no membership_id, whichever outcome it claims', async () => {
+    // BOTH directions. An 'already_present' line with nothing to point at is just as damaging as an
+    // 'inserted' one: the pair leaves the remaining set, so it is never retried, and no membership row
+    // exists. That is the one way this design can lose a planned row.
     const runId = await newRun('hash-noid');
-    await expect(db.query(
-      `INSERT INTO ${ITEMS} (run_id, academy_profile_id, person_id, membership_id, batch_seq, outcome)
-       VALUES ($1,$2,$3, NULL, 0, 'inserted')`, [runId, ACADEMY, PERSON])).rejects.toThrow();
-    // the already_present direction is deliberately unconstrained
-    await expect(db.query(
-      `INSERT INTO ${ITEMS} (run_id, academy_profile_id, person_id, membership_id, batch_seq, outcome)
-       VALUES ($1,$2,$3, NULL, 0, 'already_present')`, [runId, ACADEMY, PERSON])).resolves.toBeTruthy();
-    await db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId]);
+    for (const outcome of ['inserted', 'already_present']) {
+      await expect(db.query(
+        `INSERT INTO ${ITEMS} (run_id, academy_profile_id, person_id, membership_id, batch_seq, outcome)
+         VALUES ($1,$2,$3, NULL, 0, $4)`, [runId, ACADEMY, PERSON, outcome])).rejects.toThrow();
+    }
+    await dropRun(runId);
   });
 
   it('rejects an unknown outcome and an unknown status', async () => {
@@ -167,7 +184,7 @@ describe('U1b backfill logbook — the guards the applier depends on', () => {
       `INSERT INTO ${ITEMS} (run_id, academy_profile_id, person_id, membership_id, batch_seq, outcome)
        VALUES ($1,$2,$3, gen_random_uuid(), 0, 'maybe')`, [runId, ACADEMY, PERSON])).rejects.toThrow();
     await expect(db.query(`UPDATE ${RUNS} SET status='finished' WHERE id=$1`, [runId])).rejects.toThrow();
-    await db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId]);
+    await dropRun(runId);
   });
 
   it('refuses a terminal run with no completed_at, and a live run that has one', async () => {
@@ -176,18 +193,20 @@ describe('U1b backfill logbook — the guards the applier depends on', () => {
     await expect(db.query(`UPDATE ${RUNS} SET completed_at=now() WHERE id=$1`, [runId])).rejects.toThrow();
     await expect(db.query(
       `UPDATE ${RUNS} SET status='completed', completed_at=now() WHERE id=$1`, [runId])).resolves.toBeTruthy();
-    await db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId]);
+    await dropRun(runId);
   });
 
-  it('deleting a run takes its items with it', async () => {
-    const runId = await newRun('hash-cascade');
+  it('REFUSES to delete a run while its evidence lines exist', async () => {
+    // Deleting a run must not be a way to quietly erase the provenance of membership rows that are
+    // still in the table. Discarding evidence has to be explicit: items first, deliberately.
+    const runId = await newRun('hash-restrict');
     await db.query(
       `INSERT INTO ${ITEMS} (run_id, academy_profile_id, person_id, membership_id, batch_seq, outcome)
        VALUES ($1,$2,$3, gen_random_uuid(), 0, 'inserted')`, [runId, ACADEMY, PERSON]);
-    await db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId]);
-    const { rows } = await db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM ${ITEMS} WHERE run_id=$1`, [runId]);
-    expect(rows[0].n).toBe(0);
+    await expect(db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId])).rejects.toThrow();
+
+    await db.query(`DELETE FROM ${ITEMS} WHERE run_id=$1`, [runId]);
+    await expect(db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId])).resolves.toBeTruthy();
   });
 
   it('an item survives the membership row it names (the log outlives the row)', async () => {
@@ -202,7 +221,7 @@ describe('U1b backfill logbook — the guards the applier depends on', () => {
     const { rows } = await db.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM ${ITEMS} WHERE membership_id=$1`, [m[0].id]);
     expect(rows[0].n).toBe(1);
-    await db.query(`DELETE FROM ${RUNS} WHERE id=$1`, [runId]);
+    await dropRun(runId);
   });
 });
 

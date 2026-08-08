@@ -81,8 +81,18 @@ export async function applyBackfillPlan(sessionSource, {
 
   // The hash travels with the plan, but is RECOMPUTED here: a caller that hand-edited `rows` after
   // the plan was built would otherwise pin the run to a hash its own contents no longer produce.
+  //
+  // A MISSING hash is rejected too, not waved through. Treating absence as "nothing to check" is a
+  // fail-open: it let a hand-built object reach the write path with no provenance at all.
   const recomputed = planHashOf(plan);
-  if (typeof plan.plan_hash === 'string' && plan.plan_hash !== recomputed) {
+  if (typeof plan.plan_hash !== 'string' || plan.plan_hash === '') {
+    throw new BackfillApplyError(
+      'PLAN_HASH_MISSING',
+      'applyBackfillPlan: the plan carries no plan_hash. Build it with buildBackfillPlan() — an '
+      + 'unhashed object has no provenance and must not reach the write path.',
+    );
+  }
+  if (plan.plan_hash !== recomputed) {
     throw new BackfillApplyError(
       'PLAN_HASH_MISMATCH',
       `applyBackfillPlan: the plan's stored hash (${plan.plan_hash}) does not match its contents `
@@ -151,7 +161,24 @@ export async function applyBackfillPlan(sessionSource, {
           + 'finishing this one against different data.',
         );
       }
+      // Record the batch size actually in use. Leaving the original value would make the logbook
+      // claim a hop size the resumed run never used.
+      await lease.query(
+        `UPDATE public.membership_backfill_runs SET batch_size = $2
+         WHERE id = $1 AND status = 'in_progress'`,
+        [runId, batchSize],
+      );
     }
+
+    // Checkpoint numbering continues from what is already recorded. Restarting at 0 on every
+    // invocation would make several hops share a batch_seq, so the log would no longer say in which
+    // order the work actually happened.
+    const { rows: seqRows } = await lease.query(
+      `SELECT COALESCE(max(batch_seq) + 1, 0)::int AS next_seq
+       FROM public.membership_backfill_items WHERE run_id = $1`,
+      [runId],
+    );
+    const firstBatchSeq = seqRows[0].next_seq;
 
     // ── remaining = plan − items(run) ────────────────────────────────────────────────────────
     const { rows: doneRows } = await lease.query(
@@ -195,11 +222,39 @@ export async function applyBackfillPlan(sessionSource, {
       }
 
       const batch = remaining.slice(0, batchSize);
-      const batchSeq = summary.batches;
+      const batchSeq = firstBatchSeq + summary.batches;
       const before = remaining.length;
 
       await lease.query('BEGIN');
       try {
+        // RE-ASSERT the run INSIDE the batch transaction, holding a row lock.
+        //
+        // The pre-loop check is not enough on its own: a data rollback can mark this run 'aborted'
+        // and delete its rows while we are mid-loop, and without this we would happily insert the
+        // tail back in afterwards and report success. Taking the run row FOR UPDATE also serialises
+        // us against the rollback script, which locks the same row first.
+        const { rows: guard } = await lease.query(
+          `SELECT status, plan_hash FROM public.membership_backfill_runs
+           WHERE id = $1 FOR UPDATE`,
+          [runId],
+        );
+        if (guard.length === 0) {
+          throw new BackfillApplyError('UNKNOWN_RUN', `applyBackfillPlan: run ${runId} vanished mid-run.`);
+        }
+        if (guard[0].status !== 'in_progress') {
+          throw new BackfillApplyError(
+            'RUN_NO_LONGER_IN_PROGRESS',
+            `applyBackfillPlan: run ${runId} became '${guard[0].status}' while it was executing `
+            + '(most likely a rollback). Refusing to write any further rows into it.',
+          );
+        }
+        if (guard[0].plan_hash !== recomputed) {
+          throw new BackfillApplyError(
+            'PLAN_DRIFT',
+            `applyBackfillPlan: run ${runId} was re-pinned to ${guard[0].plan_hash} mid-run.`,
+          );
+        }
+
         const academyIds = batch.map((r) => r.academy_profile_id);
         const personIds = batch.map((r) => r.person_id);
 
@@ -215,11 +270,20 @@ export async function applyBackfillPlan(sessionSource, {
         const insertedById = new Map(insertedRows.map((r) => [pairKey(r), r.id]));
 
         // Whatever did not come back already existed; fetch its id so the log names a real row.
+        //
+        // FOR KEY SHARE, not a bare SELECT. `ON CONFLICT DO NOTHING` above only tells us a row was
+        // there at that instant; under READ COMMITTED this statement takes a NEW snapshot, so a
+        // concurrent committed DELETE in between would make the row disappear and we would record
+        // the pair as "done" with nothing to point at — the pair would then never be retried and no
+        // membership row would exist. The lock pins every row we resolve for the rest of the
+        // transaction, and the completeness check below turns any remaining gap into a failed batch
+        // (which rolls back and leaves the pair as work) rather than a silent hole.
         const { rows: existingRows } = await lease.query(
           `SELECT m.id, m.academy_profile_id, m.person_id
            FROM public.academy_player_memberships m
            JOIN unnest($1::uuid[], $2::uuid[]) AS w(academy_profile_id, person_id)
-             ON w.academy_profile_id = m.academy_profile_id AND w.person_id = m.person_id`,
+             ON w.academy_profile_id = m.academy_profile_id AND w.person_id = m.person_id
+           FOR KEY SHARE OF m`,
           [academyIds, personIds],
         );
         const existingById = new Map(existingRows.map((r) => [pairKey(r), r.id]));
@@ -238,12 +302,16 @@ export async function applyBackfillPlan(sessionSource, {
 
           if (wasInserted) insertedInBatch += 1; else presentInBatch += 1;
 
-          // An 'inserted' line without a membership id would break rollback ownership, and the table
-          // CHECK enforces it — fail here with a legible message instead of a constraint code.
-          if (wasInserted && membershipId === null) {
+          // EVERY line must name a real membership row, whichever outcome it records. A "done" line
+          // with nothing to point at is the one way this design can lose a planned row: the pair
+          // leaves the remaining set and no row exists. The column is NOT NULL for the same reason —
+          // this check just turns the constraint into a legible failure.
+          if (membershipId === null || membershipId === undefined) {
             throw new BackfillApplyError(
-              'MISSING_MEMBERSHIP_ID',
-              `applyBackfillPlan: inserted ${k} but no id came back.`,
+              'MEMBERSHIP_UNRESOLVED',
+              `applyBackfillPlan: could not resolve a membership row for ${k} `
+              + `(outcome would have been ${wasInserted ? 'inserted' : 'already_present'}). Most `
+              + 'likely it was deleted concurrently; the batch is rolled back so the pair stays work.',
             );
           }
 
@@ -296,28 +364,57 @@ export async function applyBackfillPlan(sessionSource, {
     }
 
     // ── completion ──────────────────────────────────────────────────────────────────────────
-    // Guarded by status so a concurrent completer cannot double-write, and reconciled before we
-    // claim success: the manifest must account for exactly the planned rows.
-    const { rows: finalCounts } = await lease.query(
-      `SELECT count(*)::int AS items,
-              count(*) FILTER (WHERE outcome = 'inserted')::int AS inserted
-       FROM public.membership_backfill_items WHERE run_id = $1`,
-      [runId],
-    );
-    if (finalCounts[0].items !== plan.rows.length) {
-      throw new BackfillApplyError(
-        'RECONCILIATION_FAILED',
-        `applyBackfillPlan: run ${runId} recorded ${finalCounts[0].items} manifest lines for a plan of `
-        + `${plan.rows.length} rows.`,
-      );
-    }
+    // One transaction, run row locked: reconcile and flip to 'completed' atomically. Doing the count
+    // outside a lock would let a rollback land between the two and leave us asserting a state that no
+    // longer holds.
+    let finalCounts;
+    await lease.query('BEGIN');
+    try {
+      const { rows: guard } = await lease.query(
+        `SELECT status FROM public.membership_backfill_runs WHERE id = $1 FOR UPDATE`, [runId]);
+      if (guard.length === 0 || guard[0].status !== 'in_progress') {
+        throw new BackfillApplyError(
+          'RUN_NO_LONGER_IN_PROGRESS',
+          `applyBackfillPlan: run ${runId} is '${guard[0]?.status ?? 'gone'}' at completion; refusing `
+          + 'to report success for a run something else has already terminated.',
+        );
+      }
 
-    await lease.query(
-      `UPDATE public.membership_backfill_runs
-       SET status = 'completed', completed_at = now()
-       WHERE id = $1 AND status = 'in_progress'`,
-      [runId],
-    );
+      const counted = await lease.query(
+        `SELECT count(*)::int AS items,
+                count(*) FILTER (WHERE outcome = 'inserted')::int AS inserted
+         FROM public.membership_backfill_items WHERE run_id = $1`,
+        [runId],
+      );
+      finalCounts = counted.rows;
+      if (finalCounts[0].items !== plan.rows.length) {
+        throw new BackfillApplyError(
+          'RECONCILIATION_FAILED',
+          `applyBackfillPlan: run ${runId} recorded ${finalCounts[0].items} manifest lines for a plan `
+          + `of ${plan.rows.length} rows.`,
+        );
+      }
+
+      // RETURNING, and the result is checked: a guarded UPDATE that matches nothing used to leave the
+      // run untouched while this function still reported 'completed'.
+      const { rows: done } = await lease.query(
+        `UPDATE public.membership_backfill_runs
+         SET status = 'completed', completed_at = now()
+         WHERE id = $1 AND status = 'in_progress'
+         RETURNING id`,
+        [runId],
+      );
+      if (done.length !== 1) {
+        throw new BackfillApplyError(
+          'RUN_NOT_COMPLETABLE',
+          `applyBackfillPlan: run ${runId} could not be marked completed.`,
+        );
+      }
+      await lease.query('COMMIT');
+    } catch (err) {
+      try { await lease.query('ROLLBACK'); } catch { /* connection may be gone */ }
+      throw err;
+    }
 
     summary.manifest_lines = finalCounts[0].items;
     summary.manifest_inserted = finalCounts[0].inserted;

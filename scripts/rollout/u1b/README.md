@@ -37,9 +37,23 @@ That single property is what delivers the rest:
 - **monotonic progress** — a batch that fails to shrink the remaining set aborts the run rather than
   spinning.
 
+Two things make "done = manifest" true rather than merely intended:
+
+- Every manifest line **must** name a real membership row (`membership_id` is `NOT NULL`). A line
+  recording a pair as done with nothing to point at is the one way this design could lose a planned
+  row — the pair leaves the remaining set and no row exists. The applier therefore resolves ids under
+  `FOR KEY SHARE`, because `ON CONFLICT DO NOTHING` only proves a row existed *at that instant* and
+  the follow-up lookup takes a new snapshot under READ COMMITTED.
+- Every batch **re-asserts the run** inside its own transaction, holding the run row `FOR UPDATE`.
+  The pre-loop check is not enough: an operator can roll the run back while a resume is mid-loop, and
+  without the re-assert the tail would be written straight back in and reported as success.
+
 A run also stores the `plan_hash` it started from. Resuming recomputes the plan and **refuses**
 unless the hash still matches, so a run interrupted before a data change can never quietly finish
-against a different candidate set than it began with.
+against a different candidate set than it began with. A plan with **no** hash is refused too —
+treating absence as "nothing to check" would let a hand-built object reach the write path with no
+provenance at all. And the planner recomputes the *inventory's* own content hash rather than trusting
+it, so a plan cannot claim descent from an inventory run that never produced it.
 
 ## Rollback ownership
 
@@ -49,7 +63,14 @@ run, or a later unit. So the data rollback deletes exactly the rows whose manife
 `TRUNCATE`. Pairs recorded `already_present` were put there by someone else and are left alone.
 
 The manifest lines are **retained** after a data rollback and the run is marked `aborted`. The
-logbook's value is that it records what happened, including what was undone.
+logbook's value is that it records what happened, including what was undone. For the same reason
+`membership_backfill_items.run_id` is `ON DELETE RESTRICT`, not `CASCADE`: deleting a run must not be
+a quiet way to erase the provenance of membership rows that still exist, so discarding a run's
+evidence has to be explicit — items first, deliberately.
+
+Both rollback scripts lock `membership_backfill_runs` **before** `membership_backfill_items`. The
+schema rollback still *drops* items first (it is the referencing table), but locking in the opposite
+order from the data rollback would give two concurrent rollbacks a lock cycle.
 
 ```bash
 # data rollback (psql, local only)

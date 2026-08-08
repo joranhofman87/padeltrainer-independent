@@ -27,7 +27,7 @@
  * This module performs no I/O and touches no database.
  */
 
-import { canonicalize, contentHash } from './u1a-membership-inventory.mjs';
+import { canonicalize, contentHash, INVENTORY_VERSION } from './u1a-membership-inventory.mjs';
 
 /** Bump when the PLAN's shape changes; comparing hashes across shapes is meaningless. */
 export const PLAN_VERSION = 'u1b.1';
@@ -110,6 +110,51 @@ export function buildBackfillPlan(inventory) {
       'PARTITION_VIOLATION',
       `buildBackfillPlan: disposition counts sum to ${countSum} but there are ${totalCandidates} `
       + 'candidates — the terminal dispositions do not partition the candidate universe.',
+    );
+  }
+
+  // The histogram must match the rows CLASS BY CLASS, not merely in total. A correct sum is easy to
+  // achieve while individual classes are wrong (one stolen from `eligible`, one added elsewhere), and
+  // `eligible` is the class this module then acts on.
+  const recountedByClass = {};
+  for (const row of dispositions) {
+    if (row === null || typeof row !== 'object' || typeof row.disposition !== 'string') continue;
+    recountedByClass[row.disposition] = (recountedByClass[row.disposition] ?? 0) + 1;
+  }
+  if (canonicalize(recountedByClass) !== canonicalize(dispositionCounts)) {
+    throw new BackfillPlanError(
+      'PARTITION_VIOLATION',
+      'buildBackfillPlan: disposition_counts disagrees with the disposition rows class by class '
+      + `(rows: ${canonicalize(recountedByClass)}; reported: ${canonicalize(dispositionCounts)}).`,
+    );
+  }
+
+  // ── Provenance (I: the plan came from a real inventory run) ─────────────────────────────────
+  // `content_hash` is RECOMPUTED from the inventory's own body rather than trusted. Without this a
+  // hand-assembled object could hand over an arbitrary eligible set together with a hash that merely
+  // agrees with itself, and every downstream check — including the applier's plan pinning — would
+  // pass while the plan had no relationship to anything the inventory actually saw.
+  const recomputedInventoryHash = contentHash({
+    inventory_version: inventoryVersion,
+    as_of: asOf,
+    disposition_counts: dispositionCounts,
+    total_candidates: totalCandidates,
+    report,
+  });
+  if (recomputedInventoryHash !== inventoryContentHash) {
+    throw new BackfillPlanError(
+      'INVENTORY_HASH_MISMATCH',
+      `buildBackfillPlan: the inventory's content_hash (${inventoryContentHash}) does not match its `
+      + `contents (${recomputedInventoryHash}) — it was modified after the inventory produced it.`,
+    );
+  }
+  // A shape this planner has never seen cannot be reasoned about: the disposition semantics it maps
+  // are those of the inventory version it was written against.
+  if (inventoryVersion !== INVENTORY_VERSION) {
+    throw new BackfillPlanError(
+      'INVENTORY_VERSION_UNSUPPORTED',
+      `buildBackfillPlan: inventory_version '${inventoryVersion}' is not the supported `
+      + `'${INVENTORY_VERSION}'. Output shapes are not comparable across versions.`,
     );
   }
 

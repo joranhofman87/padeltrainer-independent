@@ -53,16 +53,25 @@ CREATE TABLE public.membership_backfill_runs (
 CREATE TABLE public.membership_backfill_items (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
+  -- RESTRICT, not CASCADE. Cascading would let `DELETE FROM membership_backfill_runs WHERE id = …`
+  -- silently erase the provenance of membership rows that still exist — the exact "silent
+  -- destruction" this programme rules out, and the same reasoning that made U1a's person FK RESTRICT.
+  -- Discarding a run's evidence must therefore be explicit: delete the items first, deliberately.
   run_id uuid NOT NULL
-    REFERENCES public.membership_backfill_runs(id) ON DELETE CASCADE,
+    REFERENCES public.membership_backfill_runs(id) ON DELETE RESTRICT,
 
   -- The canonical pair, recorded as plain columns. Deliberately NO foreign keys to academy_profiles /
   -- persons / academy_player_memberships: this is a LOG, and a log that cascades away with the row it
   -- describes cannot serve as the rollback record. `membership_id` is likewise an unenforced pointer —
   -- after a rollback deletes the membership row, the line documenting that it existed must survive.
+  --
+  -- NOT NULL for BOTH outcomes. A line that records a pair as done without naming the row it refers
+  -- to breaks the "done = manifest" invariant the resume model rests on: the pair would never be
+  -- retried and no membership row would exist. The applier locks the row it resolves, so it always
+  -- has an id to write.
   academy_profile_id uuid NOT NULL,
   person_id uuid NOT NULL,
-  membership_id uuid,
+  membership_id uuid NOT NULL,
 
   batch_seq integer NOT NULL CHECK (batch_seq >= 0),
 
@@ -76,12 +85,7 @@ CREATE TABLE public.membership_backfill_items (
   -- Exactly-once per run: the applier's insert of the item is what makes a pair "done", so this
   -- constraint is the double-processing guard, not merely a tidiness rule.
   CONSTRAINT membership_backfill_items_run_pair_key
-    UNIQUE (run_id, academy_profile_id, person_id),
-
-  -- An inserted row must say WHICH row it inserted, or rollback cannot find it. An already-present
-  -- line may also carry the id it found, so only the 'inserted' direction is constrained.
-  CONSTRAINT membership_backfill_items_inserted_has_membership
-    CHECK (outcome <> 'inserted' OR membership_id IS NOT NULL)
+    UNIQUE (run_id, academy_profile_id, person_id)
 );
 
 -- Resume reads "every item of this run" on every hop; without this it degrades to a full scan of the

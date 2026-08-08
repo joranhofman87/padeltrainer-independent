@@ -213,6 +213,48 @@ const itemCount = await db2.query(
 ok('the manifest holds exactly one line per planned row after resume',
   itemCount.rows[0].n === plan2.rows.length, itemCount.rows[0]);
 
+// Checkpoint numbering must CONTINUE across the resume. Restarting at 0 would make two different
+// hops share a batch_seq, so the log would no longer record the order work actually happened in.
+const seqs = await db2.query(
+  `SELECT batch_seq, count(*)::int AS n FROM public.membership_backfill_items
+   WHERE run_id = $1 GROUP BY batch_seq ORDER BY batch_seq`, [killedRunId]);
+const seqList = seqs.rows.map((r) => r.batch_seq);
+ok('batch_seq continues across a resume instead of restarting at 0',
+  seqList.length === new Set(seqList).size
+  && seqList.every((s, i) => i === 0 || s === seqList[i - 1] + 1)
+  && seqList[0] === 0
+  && seqList.length > 2,
+  { seqList });
+
+// ── 5b. A RUN THAT WAS TERMINATED MID-FLIGHT MUST NOT BE WRITTEN INTO ───────────────────────────
+// The dangerous interleaving: an operator rolls the run back while a resume is already looping. The
+// pre-loop status check has long since passed, so only a re-assert INSIDE each batch transaction can
+// stop the tail being written back in after the rollback.
+const db2b = await freshDb();
+const { plan: plan2b } = await planFor(db2b);
+let midRunRefusal = null;
+try {
+  await applyBackfillPlan(pgliteSessionSource(db2b), {
+    plan: plan2b,
+    batchSize: 1,
+    onBatchCommitted: async ({ batchSeq, runId }) => {
+      // Simulate the concurrent rollback: terminate the run between two batches.
+      if (batchSeq === 0) {
+        await db2b.query(
+          `UPDATE public.membership_backfill_runs SET status='aborted', completed_at=now() WHERE id=$1`,
+          [runId]);
+      }
+    },
+  });
+} catch (err) { midRunRefusal = err.code; }
+ok('a run terminated mid-flight is refused rather than written into',
+  midRunRefusal === 'RUN_NO_LONGER_IN_PROGRESS', { midRunRefusal });
+const partialAfterAbort = await db2b.query(
+  'SELECT count(*)::int AS n FROM public.academy_player_memberships');
+ok('the mid-flight refusal stopped early (it did not finish the plan)',
+  partialAfterAbort.rows[0].n < plan2b.rows.length && partialAfterAbort.rows[0].n > 0,
+  partialAfterAbort.rows[0]);
+
 // ══ 6. DRIFT REFUSAL ════════════════════════════════════════════════════════════════════════════
 const db3 = await freshDb();
 const { plan: plan3 } = await planFor(db3);
@@ -285,11 +327,20 @@ try {
 } catch (err) { resumeAborted = err.code; }
 ok('an aborted run cannot be resumed', resumeAborted === 'RUN_NOT_RESUMABLE', { resumeAborted });
 
+// The log is durable: a run cannot be deleted out from under its own evidence, because that would
+// erase the provenance of membership rows that may still exist.
+let runDeleteRefused = false;
+try {
+  await db4.query('DELETE FROM public.membership_backfill_runs WHERE id = $1', [summary4.run_id]);
+} catch { runDeleteRefused = true; }
+ok('deleting a run is REFUSED while its evidence lines exist', runDeleteRefused);
+
 // schema rollback must REFUSE while the logbook holds anything
 let refused = false;
 try { await db4.exec(readFileSync(ROLLBACK_SCHEMA, 'utf8')); } catch { refused = true; }
 ok('schema rollback REFUSES while the logbook is populated', refused);
 
+// items BEFORE runs — the FK is RESTRICT on purpose, so discarding evidence has to be deliberate.
 await db4.exec('DELETE FROM public.membership_backfill_items; DELETE FROM public.membership_backfill_runs;');
 await db4.exec(readFileSync(ROLLBACK_SCHEMA, 'utf8'));
 const gone = await db4.query(`SELECT to_regclass('public.membership_backfill_runs') AS r,

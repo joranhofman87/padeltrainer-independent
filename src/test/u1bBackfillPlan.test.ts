@@ -14,7 +14,7 @@
  * classified.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { buildBackfillPlan, planHashOf, PLAN_VERSION } from '../../scripts/db/u1b-backfill-plan.mjs';
+import { buildBackfillPlan, planHashOf, PLAN_VERSION, contentHash } from '../../scripts/db/u1b-backfill-plan.mjs';
 import { applyBackfillPlan } from '../../scripts/db/u1b-backfill-apply.mjs';
 import { acquireLease } from '../../scripts/db/session-lease.mjs';
 
@@ -24,20 +24,23 @@ const ACADEMY2 = '22222222-2222-4222-8222-222222222222';
 const PERSON = '33333333-3333-4333-8333-333333333333';
 const PERSON2 = '44444444-4444-4444-8444-444444444444';
 
-/** A minimal, well-formed inventory result. */
-const inventoryOf = (dispositions: Array<Record<string, unknown>>, overrides = {}) => {
+/**
+ * A minimal, well-formed inventory result — including a REAL content_hash, computed the same way the
+ * inventory computes it. The planner recomputes and verifies that hash, so a fixture with a made-up
+ * one would be rejected as tampered (which is the point).
+ */
+const inventoryOf = (dispositions: Array<Record<string, unknown>>, overrides: Record<string, unknown> = {}) => {
   const counts: Record<string, number> = {};
   for (const d of dispositions) counts[d.disposition as string] = (counts[d.disposition as string] ?? 0) + 1;
-  return {
+  const body = {
     inventory_version: 'u1a.1',
     as_of: AS_OF,
-    content_hash: 'deadbeef',
-    total_candidates: dispositions.length,
     disposition_counts: counts,
-    mutation_free: true,
+    total_candidates: dispositions.length,
     report: { dispositions },
     ...overrides,
   };
+  return { ...body, content_hash: contentHash(body), mutation_free: true, ...overrides };
 };
 
 const eligible = (academy: string, person: string, subject = 'g1') => ({
@@ -115,10 +118,39 @@ describe('buildBackfillPlan — contract violations are refused, never planned a
     expect(() => buildBackfillPlan(inv)).toThrow(/partition/i);
   });
 
+  it('refuses a histogram that sums correctly but lies class by class', () => {
+    // The dangerous shape: totals agree, so a sum-only check passes, while `eligible` — the one class
+    // this module acts on — has been inflated at another class's expense.
+    const inv = inventoryOf([
+      eligible(ACADEMY, PERSON),
+      { ...eligible(ACADEMY2, PERSON2, 'g2'), disposition: 'unresolved_split_frozen' },
+    ]);
+    inv.disposition_counts = { eligible: 2 };
+    inv.content_hash = contentHash({
+      inventory_version: inv.inventory_version, as_of: inv.as_of,
+      disposition_counts: inv.disposition_counts, total_candidates: inv.total_candidates,
+      report: inv.report,
+    });
+    expect(() => buildBackfillPlan(inv)).toThrow(/class by class/i);
+  });
+
   it('refuses when total_candidates disagrees with the row list', () => {
     const inv = inventoryOf([eligible(ACADEMY, PERSON)]);
     inv.total_candidates = 2;
     expect(() => buildBackfillPlan(inv)).toThrow(/does not match/i);
+  });
+
+  it("refuses an inventory whose content_hash does not match its own contents", () => {
+    // Provenance, not self-consistency: without recomputing this hash a hand-assembled object could
+    // hand over an arbitrary eligible set and every downstream check would still agree with itself.
+    const inv = inventoryOf([eligible(ACADEMY, PERSON)]);
+    inv.content_hash = 'deadbeef';
+    expect(() => buildBackfillPlan(inv)).toThrow(/content_hash/i);
+  });
+
+  it('refuses an inventory shape it was not written against', () => {
+    const inv = inventoryOf([eligible(ACADEMY, PERSON)], { inventory_version: 'u1a.99' });
+    expect(() => buildBackfillPlan(inv)).toThrow(/not the supported/i);
   });
 
   it('refuses an eligible candidate with no person (it should have been quarantined)', () => {
@@ -155,18 +187,30 @@ describe('applyBackfillPlan — refuses before it touches the database', () => {
       .rejects.toMatchObject({ code: 'PLAN_HASH_MISMATCH' });
   });
 
+  it('refuses a plan with no hash at all instead of waving it through', async () => {
+    // Absence used to mean "nothing to check" — a fail-open that let an unhashed, provenance-free
+    // object reach the write path.
+    const plan = buildBackfillPlan(inventoryOf([eligible(ACADEMY, PERSON)]));
+    delete (plan as { plan_hash?: string }).plan_hash;
+    await expect(applyBackfillPlan(forbidden as never, { plan }))
+      .rejects.toMatchObject({ code: 'PLAN_HASH_MISSING' });
+  });
+
   it('refuses a plan containing the same pair twice', async () => {
     const plan = buildBackfillPlan(inventoryOf([eligible(ACADEMY, PERSON)]));
     plan.rows.push({ academy_profile_id: ACADEMY, person_id: PERSON });
-    delete (plan as { plan_hash?: string }).plan_hash;      // skip the hash check to reach this one
+    plan.plan_hash = planHashOf(plan);     // re-pin, so the duplicate check is what fires
     await expect(applyBackfillPlan(forbidden as never, { plan }))
       .rejects.toMatchObject({ code: 'DUPLICATE_PLAN_ROW' });
   });
 
   it('refuses a malformed plan row', async () => {
-    await expect(applyBackfillPlan(forbidden as never, {
-      plan: { rows: [{ academy_profile_id: ACADEMY }] },
-    })).rejects.toMatchObject({ code: 'INVALID_PLAN' });
+    // Re-pinned after the corruption, so the hash checks pass and the row validation is what fires.
+    const plan = buildBackfillPlan(inventoryOf([eligible(ACADEMY, PERSON)]));
+    plan.rows = [{ academy_profile_id: ACADEMY }] as never;
+    plan.plan_hash = planHashOf(plan);
+    await expect(applyBackfillPlan(forbidden as never, { plan }))
+      .rejects.toMatchObject({ code: 'INVALID_PLAN' });
   });
 
   it('refuses a non-positive or non-integer batch size', async () => {
