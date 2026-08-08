@@ -169,6 +169,33 @@ const afterSecond = await db1.query('SELECT count(*)::int AS n FROM public.acade
 ok('a second run leaves the row count unchanged', afterSecond.rows[0].n === plan1.rows.length,
   afterSecond.rows[0]);
 
+// ── 4b. CROSS-RUN DEPENDENCY ────────────────────────────────────────────────────────────────────
+// db1 now holds exactly the dangerous shape: run 1 OWNS every row ('inserted'), run 2 DEPENDS on them
+// ('already_present') and is 'completed'. Rolling back run 1 would delete rows run 2's manifest
+// accounts for, leaving a completed run short of memberships. It must refuse and name run 2.
+await db1.exec(`SET u1b.run_id = '${summary1.run_id}'`);
+let crossRun = false;
+let crossRunMsg = '';
+try {
+  await db1.exec(readFileSync(ROLLBACK_ROWS, 'utf8'));
+} catch (err) { crossRun = true; crossRunMsg = String(err.message ?? err); }
+ok('rolling back a run another COMPLETED run depends on is REFUSED', crossRun, { crossRunMsg });
+ok('the refusal names the dependent run', crossRunMsg.includes(summary2.run_id), { crossRunMsg });
+const untouchedAfterRefusal = await db1.query(
+  'SELECT count(*)::int AS n FROM public.academy_player_memberships');
+ok('the refused rollback changed nothing', untouchedAfterRefusal.rows[0].n === plan1.rows.length,
+  untouchedAfterRefusal.rows[0]);
+
+// Once the dependent run is aborted, the same rollback is allowed: the dependency is what blocked it.
+await db1.query(
+  `UPDATE public.membership_backfill_runs SET status='aborted', completed_at=now() WHERE id=$1`,
+  [summary2.run_id]);
+await db1.exec(readFileSync(ROLLBACK_ROWS, 'utf8'));
+const afterOwnerRollback = await db1.query(
+  'SELECT count(*)::int AS n FROM public.academy_player_memberships');
+ok('with the dependent run aborted, the owner rollback proceeds',
+  afterOwnerRollback.rows[0].n === 0, afterOwnerRollback.rows[0]);
+
 // ══ 5. RESUME — kill at a batch boundary, resume, compare with the uninterrupted run ════════════
 const db2 = await freshDb();
 const { plan: plan2 } = await planFor(db2);
