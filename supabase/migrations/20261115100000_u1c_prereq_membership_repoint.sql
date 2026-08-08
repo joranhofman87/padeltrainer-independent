@@ -485,6 +485,16 @@ BEGIN
   SELECT person_id INTO v_src_person FROM public.person_links WHERE guest_player_id = p_source_guest_id;
   SELECT person_id INTO v_tgt_person FROM public.person_links WHERE guest_player_id = p_target_guest_id;
 
+  -- Lock the persons BEFORE deciding, exactly as the cleanup trigger does before evaluating the same
+  -- predicate. Without this the decision races a concurrent person_links insert: the link lands after
+  -- the predicate says "dies", the memberships move, and then the trigger sees the new link and RETAINS
+  -- the source person — leaving a living person whose academy relationships were given away. The
+  -- repoint below takes the same locks, which is re-entrant within one transaction.
+  PERFORM 1 FROM public.persons
+   WHERE id IN (v_src_person, v_tgt_person) AND id IS NOT NULL
+   ORDER BY id
+   FOR UPDATE;
+
   -- ONLY when this delete will actually destroy the source person. `cleanup_orphan_person_on_source_delete`
   -- keeps a person that still has another link — the supported shape is one profile plus several
   -- guests — and in that case the person lives on and its memberships belong to it, not to the target.

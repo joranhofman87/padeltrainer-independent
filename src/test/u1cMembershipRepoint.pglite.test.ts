@@ -363,6 +363,46 @@ describe('the coalescence is recorded on the REAL callers\' evidence row', () =>
       via: 'live_claim', memberships_moved: 0, memberships_coalesced: 1,
     });
   });
+
+  it('an UNTRUSTED twin claim collapses nothing and moves no membership', async () => {
+    // The rewrite had to compute v_collapse before the IF, because the counts are needed inside the
+    // INSERT. That restructuring must not cost the short-circuit: an untrusted claim must never reach
+    // the collapse at all. Without this case, hoisting the call out of the guard would still pass.
+    const G3 = 'cccc0003-0000-4000-8000-000000000000';
+    const P3 = 'aaaa0011-0000-4000-8000-000000000000';
+    const PROF3 = 'bbbb0011-0000-4000-8000-000000000000';
+    await edb.exec(`
+      INSERT INTO public.persons (id, email) VALUES ('${P3}', 'mismatch@example.com');
+      -- a DIFFERENT email on the profile ⇒ not trusted
+      INSERT INTO public.profiles (id, email) VALUES ('${PROF3}', 'other@example.com');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P3}', '${PROF3}');
+      INSERT INTO public.guest_players (id, email, source)
+        VALUES ('${G3}', 'mismatch@example.com', 'manual');
+      INSERT INTO public.persons (id) VALUES ('aaaa0012-0000-4000-8000-000000000000');
+      INSERT INTO public.person_links (person_id, guest_player_id)
+        VALUES ('aaaa0012-0000-4000-8000-000000000000', '${G3}');
+    `);
+    await edb.query(
+      `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id) VALUES ($1,$2)`,
+      [A1, 'aaaa0012-0000-4000-8000-000000000000']);
+
+    await edb.exec(`UPDATE public.guest_players SET twin_of_profile_id = '${PROF3}' WHERE id = '${G3}';`);
+
+    // no auto-merge review row for this guest, and the membership never moved
+    const { rows: applied } = await edb.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM public.person_merge_review
+       WHERE guest_player_id = $1 AND kind = 'auto_merged_twin_trust'`, [G3]);
+    expect(applied[0].n).toBe(0);
+
+    const { rows: still } = await edb.query<{ person_id: string }>(
+      `SELECT person_id FROM public.academy_player_memberships
+       WHERE person_id = 'aaaa0012-0000-4000-8000-000000000000'`);
+    expect(still).toHaveLength(1);
+
+    const { rows: alive } = await edb.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM public.persons WHERE id = 'aaaa0012-0000-4000-8000-000000000000'`);
+    expect(alive[0].n).toBe(1);
+  });
 });
 
 describe('merge_guest_players is membership-aware', () => {
