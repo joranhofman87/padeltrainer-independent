@@ -10646,6 +10646,14 @@ export type Database = {
         }
         Returns: boolean
       }
+      collapse_guest_person_into_reporting: {
+        Args: {
+          _guest_id: string
+          _guest_person: string
+          _target_person: string
+        }
+        Returns: Json
+      }
       consume_rate_limit: {
         Args: {
           _endpoint: string
