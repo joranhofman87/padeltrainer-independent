@@ -834,16 +834,19 @@ function assertValidSessionSource(sessionSource) {
   if (typeof sessionSource !== 'object' || sessionSource === null || Array.isArray(sessionSource)) {
     throw new InventoryExecutorError(
       'INVALID_SESSION_SOURCE',
-      'runMembershipInventory: pass a session SOURCE object with a connect() method, not a query '
-      + 'callback or a pool. A bare callback cannot own a session, and pool.query scatters statements '
-      + 'across connections — which voids both READ ONLY and the REPEATABLE READ snapshot.',
+      'runMembershipInventory: pass a session SOURCE object exposing connect() — a real pg.Pool '
+      + 'qualifies, because pool.connect() hands back one dedicated client. What is rejected is a '
+      + 'bare query callback or pool.query itself: neither can own a session, and pool.query '
+      + 'scatters statements across connections, which voids both READ ONLY and the REPEATABLE '
+      + 'READ snapshot.',
     );
   }
   if (typeof sessionSource.connect !== 'function') {
     throw new InventoryExecutorError(
       'INVALID_SESSION_SOURCE',
-      'runMembershipInventory: sessionSource.connect must be a function returning an exclusive '
-      + '{ query, release } client (a pg.Pool satisfies this natively).',
+      'runMembershipInventory: sessionSource.connect must be a function resolving to an exclusive '
+      + '{ query, release } client. A real pg.Pool satisfies this natively; pass the pool itself, '
+      + 'not pool.query.',
     );
   }
 }
