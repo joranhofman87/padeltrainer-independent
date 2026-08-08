@@ -906,7 +906,12 @@ export async function runMembershipInventory(sessionSource, { asOf } = {}) {
   let releaseFn = null;
   try {
     const releaseCandidate = client?.release;
-    if (typeof releaseCandidate === 'function') releaseFn = releaseCandidate.bind(client);
+    if (typeof releaseCandidate === 'function') {
+      // Reflect.apply, not .bind: `.bind` is itself a property read on the callable, so a proxied
+      // release function can throw on that access and cost us a lease we were able to release. This
+      // invokes the captured function directly and reads nothing further off it.
+      releaseFn = (...args) => Reflect.apply(releaseCandidate, client, args);
+    }
   } catch { releaseFn = null; }        // a throwing accessor leaves nothing callable to release
 
   let hasQuery = false;

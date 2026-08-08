@@ -283,6 +283,23 @@ describe('U1a executor — lifecycle', () => {
     expect(releases).toBe(1);
   });
 
+  it('releases a lease whose release function is a proxy with a throwing bind', async () => {
+    // `.bind` is a property read on the callable itself; a proxy can trap it. Capturing via
+    // Reflect.apply reads nothing off the function, so the lease is still releasable.
+    let releases = 0;
+    const proxiedRelease = new Proxy(() => { releases += 1; }, {
+      get(target, prop, receiver) {
+        if (prop === 'bind') throw new Error('BIND_TRAP_EXPLODED');
+        return Reflect.get(target, prop, receiver);
+      },
+    });
+    const client = { release: proxiedRelease };   // no `query` ⇒ INVALID_CLIENT, after cleanup
+
+    await expect(runMembershipInventory({ connect: async () => client } as never, { asOf: AS_OF }))
+      .rejects.toMatchObject({ code: 'INVALID_CLIENT' });
+    expect(releases).toBe(1);
+  });
+
   it('ACCEPTS a callable client that has both query and release (documented decision)', async () => {
     // Pins the acceptance, not just the rejection: an object-only validity check would break this
     // while the malformed-callable cleanup test above kept passing.
