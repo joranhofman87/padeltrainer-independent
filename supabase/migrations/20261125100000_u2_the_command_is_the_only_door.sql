@@ -37,23 +37,32 @@ COMMENT ON TABLE public.guest_players IS
 -- uuid they could name, and the relink trigger would collapse the two people. That is the same
 -- capability the command refuses, reachable by editing a row instead of creating one.
 --
--- A trigger rather than a column privilege, because the rule is about the TRANSITION (a client may
--- not introduce or change an assertion) rather than about the column being writable at all: the
--- definer paths that legitimately set it — the create mechanism, the merge command's survivor
--- hygiene, the operator-authorized claim RPC — run with no `auth.uid()` claim of their own or as
--- their own owner, and are unaffected.
+-- A trigger rather than a column privilege, because the rule is about the TRANSITION: a CLIENT may
+-- not introduce or change an assertion, while several authorized paths must.
+--
+-- The discriminator is `current_user`, and getting this wrong broke a real flow. The first version
+-- keyed on `auth.role()` — but JWT claims are request-local and a SECURITY DEFINER function does not
+-- clear them, which this repo documents elsewhere in as many words. So the guard also fired inside
+-- `merge_guest_players`, whose survivor hygiene carries a source twin stamp onto an unstamped
+-- target: an operator merging two players in the UI got a rolled-back transaction and no
+-- explanation. `current_user` is the EFFECTIVE role, so it is `authenticated` for a PostgREST write
+-- and the function owner inside any definer path — which is exactly the distinction being drawn.
+-- SECURITY INVOKER, and that is load-bearing rather than incidental: inside a DEFINER function
+-- `current_user` is the function's OWNER whoever called it, so a definer guard would read
+-- `postgres` for a client write and never fire at all. It needs no privileges of its own — it reads
+-- NEW and OLD and raises — so running as the caller costs nothing and is the only way it can see
+-- who the caller is.
 CREATE OR REPLACE FUNCTION public.guard_guest_twin_assertion()
 RETURNS trigger
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
 BEGIN
-  -- Only a signed-in CLIENT is constrained. A SECURITY DEFINER function running as its own owner
-  -- reaches this with the caller's JWT still set, so the check is on the ROLE rather than on the
-  -- claim: `authenticated` and `anon` are clients, everything else has already been authorized.
+  -- `current_user`, never `auth.role()`: the claim survives into a definer function and would make
+  -- this fire inside the merge command, which legitimately carries a stamp onto the survivor.
   IF NEW.twin_of_profile_id IS DISTINCT FROM OLD.twin_of_profile_id
-     AND auth.role() IN ('authenticated', 'anon') THEN
+     AND current_user IN ('authenticated', 'anon') THEN
     RAISE EXCEPTION 'guest_twin_assertion_not_yours'
       USING ERRCODE = 'insufficient_privilege',
             HINT = 'A twin stamp says this Player IS that account holder, and it authorizes a merge. It is made by the create command or the claim RPC, both of which check that the scope may speak for that account.';

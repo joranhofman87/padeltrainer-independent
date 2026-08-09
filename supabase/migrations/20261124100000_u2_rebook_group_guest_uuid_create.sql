@@ -67,6 +67,11 @@ BEGIN
   -- replays made the retry this function now promises impossible for a group at the cap: a
   -- ten-member group whose apply failed came back as attempt eleven and was refused before the
   -- mechanism could replay a single member.
+  -- Under the SAME lock the mechanism takes, so two simultaneous submissions of one attempt cannot
+  -- both see no command row: one creates it, the other waits and then finds it. Without the lock the
+  -- loser is counted against a limit it should never have touched, and near the cap is refused a
+  -- replay it was promised.
+  PERFORM pg_advisory_xact_lock(hashtext('player_create:' || _creation_request_id::text));
   IF NOT EXISTS (SELECT 1 FROM public.player_create_commands
                   WHERE creation_request_id = _creation_request_id) THEN
   INSERT INTO public.rate_limits AS rl (identifier, endpoint, request_count, window_start)

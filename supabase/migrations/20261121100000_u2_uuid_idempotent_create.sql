@@ -164,10 +164,27 @@ AS $$
                                      WHERE at.academy_profile_id = _owner_id
                                        AND at.trainer_profile_id = g.trainer_id
                                        AND at.status = 'active')))
+      -- ...or a registered player who has BOOKED with one of this academy's trainers. The overview
+      -- admits them on exactly that basis (its `registered` arm: a confirmed or completed booking on
+      -- an in-scope slot), and a predicate that refused someone the picker had just offered would
+      -- fail the roster add with PERSON_NOT_YOURS on a player the operator can plainly see.
+      OR EXISTS (SELECT 1 FROM public.bookings b
+                   JOIN public.availability_slots s ON s.id = b.slot_id
+                   JOIN public.academy_trainers at ON at.trainer_profile_id = s.trainer_id
+                   JOIN public.person_links pl ON pl.profile_id = b.player_id
+                  WHERE at.academy_profile_id = _owner_id AND at.status = 'active'
+                    AND b.status IN ('confirmed', 'completed')
+                    AND pl.person_id = _person_id)
     WHEN 'trainer' THEN
       EXISTS (SELECT 1 FROM public.person_links pl
                 JOIN public.guest_players g ON g.id = pl.guest_player_id
                WHERE pl.person_id = _person_id AND g.trainer_id = _owner_id)
+      OR EXISTS (SELECT 1 FROM public.bookings b
+                   JOIN public.availability_slots s ON s.id = b.slot_id
+                   JOIN public.person_links pl ON pl.profile_id = b.player_id
+                  WHERE s.trainer_id = _owner_id
+                    AND b.status IN ('confirmed', 'completed')
+                    AND pl.person_id = _person_id)
     ELSE false     -- an unknown scope owns nothing and may select nobody
   END;
 $$;

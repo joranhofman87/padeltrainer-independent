@@ -1109,30 +1109,27 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   ok('the retired claim RPC is reachable from no client role', claimGrants.length === 0, claimGrants);
 
   // ── the trigger: a client may not assert who an existing Player IS ──
-  // The guard reads `auth.role()`, which comes from the request's JWT claims — so a client can be
-  // simulated exactly, without needing the table privileges this database does not hand out.
-  await c.query('SAVEPOINT asclient');
-  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ sub: mgr, role: 'authenticated' })]);
-  let stampError = null;
-  try {
-    await c.query(`UPDATE public.guest_players SET twin_of_profile_id = $1 WHERE id = $2`,
-      [profileId, existing]);
-  } catch (e) { stampError = e.message; }
-  await c.query('ROLLBACK TO SAVEPOINT asclient');
+  // The guard keys on `current_user`, so the caller has to genuinely BE the client role — a JWT
+  // claim alone would not do it, and keying on the claim is what broke the merge command, which
+  // runs as its own owner while the caller's claim is still set. The table grant is staged because
+  // a migration-built database gives `authenticated` none.
+  // A deployed project grants `authenticated` ordinary DML; a migration-built one grants none, so
+  // the privileges are staged to match. SELECT goes to every table because the UPDATE policy reads
+  // several others (academy_trainers, trainer_locations, ...) and a privilege error there would
+  // masquerade as the guard firing. Transactional, so it rolls back with the fixture.
+  await c.query(`GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated`);
+  await c.query(`GRANT UPDATE ON public.guest_players TO authenticated`);
+  const stamp = await asUser(mgr, async () => (await c.query(
+    `UPDATE public.guest_players SET twin_of_profile_id = $1 WHERE id = $2`,
+    [profileId, existing])).rowCount);
   ok('a client cannot assert who an existing Player IS by editing the row',
-    /guest_twin_assertion_not_yours/.test(stampError ?? ''), { stampError });
+    !stamp.ok && /guest_twin_assertion_not_yours/.test(stamp.message ?? ''), stamp);
 
   // ...an ordinary edit by the same client is untouched: the guard is about the assertion, not the
   // table. Without this the trigger could refuse everything and still look correct above.
-  await c.query('SAVEPOINT ordinary');
-  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ sub: mgr, role: 'authenticated' })]);
-  const ordinary = await c.query(
-    `UPDATE public.guest_players SET phone = '0612345678' WHERE id = $1`, [existing]);
-  await c.query(`SELECT set_config('request.jwt.claims', NULL, true)`);
-  ok('...while an ordinary edit still works', ordinary.rowCount === 1);
-  await c.query('RELEASE SAVEPOINT ordinary');
+  const ordinary = await asUser(mgr, async () => (await c.query(
+    `UPDATE public.guest_players SET phone = '0612345678' WHERE id = $1`, [existing])).rowCount);
+  ok('...while an ordinary edit still works', ordinary.ok && ordinary.value === 1, ordinary);
 
   // ...and the sanctioned path is unaffected: closing the client door must not close the front one.
   const throughTheDoor = await one(
@@ -1152,6 +1149,71 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     [await newUuid(), academy, mgr, profileId]);
   ok('...including one that carries a twin assertion',
     stampedByCommand.r.guest_player_id !== null, stampedByCommand.r);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-10. THE GUARDS MUST NOT BREAK THE FLOWS THEY SIT IN ════════════════════════════════════
+// Both of these are regressions the restrictive half of this change introduced, and neither was
+// caught by anything: the twin guard fired inside the operator merge command, and the twin
+// authorization refused a registered player the roster picker had just offered.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 notbroken', 'u2nb-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgr]).catch(() => {});
+  const { profileId } = await makeAccount(EMAIL());
+
+  // A merge whose SOURCE carries a twin stamp and whose target does not: the survivor hygiene
+  // carries the stamp across, which is a change to `twin_of_profile_id` made while the caller's
+  // JWT says `authenticated`. Keyed on the claim, the guard rolled this whole merge back.
+  const { id: source } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id, twin_of_profile_id)
+     VALUES ('Stamped Source', $1, $2, $3) RETURNING id`, [EMAIL(), academy, profileId]);
+  const { id: target } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Plain Target', $1, $2) RETURNING id`, [EMAIL(), academy]);
+
+  const merged = await asUser(mgr, async () => (await one(
+    `SELECT public.merge_guest_players('academy', $1, $2, $3, '{}'::jsonb) AS r`,
+    [academy, source, target])).r);
+  ok('an operator merge that carries a twin stamp onto the survivor still works', merged.ok, merged);
+  ok('...and the stamp really did move, so the guard was not simply skipped',
+    (await one(`SELECT twin_of_profile_id FROM public.guest_players WHERE id = $1`, [target]))
+      .twin_of_profile_id === profileId);
+
+  // A registered player the picker offers on the strength of a BOOKING with one of the academy's
+  // trainers, and nothing else — no membership, no guest row in scope. The overview admits them;
+  // the twin authorization refused them, so adding them to a roster failed on a player the operator
+  // could plainly see.
+  const { uid: trainerUid } = await makeAccount(EMAIL());
+  const { id: trainer } = await one(
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [trainerUid]);
+  await c.query(`INSERT INTO public.academy_trainers (academy_profile_id, trainer_profile_id, status)
+                 VALUES ($1, $2, 'active')`, [academy, trainer]);
+  const { id: slot } = await one(
+    `INSERT INTO public.availability_slots (trainer_id, start_time, end_time)
+     VALUES ($1, now() + interval '3 days', now() + interval '3 days 1 hour') RETURNING id`, [trainer]);
+  const { profileId: bookerProfile, uid: bookerUid } = await makeAccount(EMAIL());
+  await c.query(
+    `INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1, $2, 'confirmed')`,
+    [slot, bookerProfile]);
+  const bookerPerson = (await personOfProfile(bookerProfile)).person_id;
+  ok('the fixture really is picker-visible and nothing else',
+    (await one(`SELECT count(*)::int AS n FROM public.person_links pl
+                  JOIN public.guest_players g ON g.id = pl.guest_player_id
+                 WHERE pl.person_id = $1 AND g.academy_profile_id = $2`, [bookerPerson, academy])).n === 0,
+    { bookerUid });
+
+  const rosterTwin = await asUser(mgr, async () => (await one(
+    `SELECT public.player_create_command(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _full_name => 'Booked With Us', _source => 'roster_registered_twin',
+       _twin_of_profile_id => $3) AS r`,
+    [await newUuid(), academy, bookerProfile])).r);
+  ok('a player the academy has only ever BOOKED can still be added to a roster', rosterTwin.ok, rosterTwin);
   await c.query('ROLLBACK');
 }
 
