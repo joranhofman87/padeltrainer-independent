@@ -301,17 +301,39 @@ BEGIN
   -- about to die, the source person. Deleting the guest below fires the last-source cleanup trigger,
   -- whose DELETE on `persons` reaches the command record through ON DELETE SET NULL — so a finished
   -- command whose Player was merged into another would answer its next retry with RESULT_GONE for a
-  -- Player that is alive under the target's id. Repointed here, where both successors are known
-  -- exactly, and only when the source person actually dies: a source person that survives the merge
-  -- keeps its own commands.
-  UPDATE public.player_create_commands
-     SET guest_player_id = p_target_guest_id
-   WHERE guest_player_id = p_source_guest_id;
+  -- Player that is alive under the target's id.
+  --
+  -- THE INVARIANT, because the first version of this broke it. `guest_player_id` used to be
+  -- repointed to the target UNCONDITIONALLY while `person_id` moved only when the source person
+  -- died — so a source person that SURVIVES (it has a profile, or another guest) ended up named
+  -- alongside the target's guest row, which belongs to somebody else. A replay then answered with a
+  -- person and a guest that were two different people, and said nothing was wrong.
+  --
+  -- The rule is now one sentence: a command's `guest_player_id` must name a guest of that command's
+  -- OWN `person_id`, or nothing at all. It is expressed as one recomputation rather than a set of
+  -- cases, so there is no case left to get wrong.
+
+  -- 1. The canonical answer follows the person, but only when this merge is what destroys it.
   IF v_src_person_dies AND v_tgt_person IS NOT NULL THEN
     UPDATE public.player_create_commands
        SET person_id = v_tgt_person
      WHERE person_id = v_src_person;
   END IF;
+
+  -- 2. The compatibility column is then recomputed from the person each row actually names. Runs
+  --    BEFORE the source guest is deleted, so its own link is still visible and is excluded by id.
+  --    A person with no other guest source gets NULL, which is truthful: `person_id` is the answer
+  --    that matters and NULL here has always meant "no source row to key on".
+  UPDATE public.player_create_commands c
+     SET guest_player_id = (
+       SELECT pl.guest_player_id
+         FROM public.person_links pl
+        WHERE pl.person_id = c.person_id
+          AND pl.guest_player_id IS NOT NULL
+          AND pl.guest_player_id <> p_source_guest_id
+        ORDER BY pl.guest_player_id
+        LIMIT 1)
+   WHERE c.guest_player_id = p_source_guest_id;
 
   DELETE FROM public.guest_players WHERE id = p_source_guest_id;
 

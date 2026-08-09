@@ -1217,6 +1217,142 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   await c.query('ROLLBACK');
 }
 
+// ══ 5d-11. THE CLUB STUDENT LIST IS KEYED ON THE PLAYER, NOT ON THEIR ADDRESS ══════════════════
+// It selected `club_players` by (club, email) and returned on a hit, so two people sharing an
+// address produced ONE roster row and the second registrant was never added at all.
+{
+  await c.query('BEGIN');
+  // club_profiles has no name of its own — it hangs off a location, and each club needs its own
+  const mkClub = async (label) => {
+    const { id: loc } = await one(
+      `INSERT INTO public.locations (name, city, slug)
+       VALUES ($1, 'Amsterdam', 'u2c-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`,
+      [label]);
+    return (await one(
+      `INSERT INTO public.club_profiles (location_id) VALUES ($1) RETURNING id`, [loc])).id;
+  };
+  const club = await mkClub('U2 Club');
+  const otherClub = await mkClub('U2 Other Club');
+  const mkReg = async (owner, type = 'club') => (await one(
+    `INSERT INTO public.registrations (name, owner_type, owner_id, format, status)
+     VALUES ('Najaar', $1, $2, 'registration', 'open') RETURNING id`, [type, owner])).id;
+  const registration = await mkReg(club);
+
+  // two DIFFERENT people on ONE address — the shape the old lookup collapsed
+  const shared = EMAIL();
+  const { uid: parentUid, profileId: parentProfile } = await makeAccount(shared);
+  const { uid: childUid, profileId: childProfile } = await makeAccount(shared, { distinctAuthEmail: true });
+
+  const add = (uid, reg, profile) => asUser(uid, async () =>
+    (await one(`SELECT public.club_student_list_add($1, $2) AS id`, [reg, profile])).id);
+
+  const first = await add(parentUid, registration, parentProfile);
+  ok('a signed-in registrant is added to the club student list', first.ok && first.value !== null, first);
+
+  const retry = await add(parentUid, registration, parentProfile);
+  ok('...and retrying returns THE SAME row, not a second one',
+    retry.ok && retry.value === first.value, retry);
+  ok('...one row, counted', (await one(
+    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 1);
+
+  const sibling = await add(childUid, registration, childProfile);
+  ok('a DIFFERENT Player on the same address gets their OWN row',
+    sibling.ok && sibling.value !== first.value, sibling);
+  ok('...so the club list has both of them', (await one(
+    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 2);
+
+  // authorization: a uuid names a subject, it does not grant permission
+  const impersonation = await add(childUid, registration, parentProfile);
+  ok('a caller cannot add somebody ELSE by knowing their profile uuid',
+    !impersonation.ok && /NOT_YOUR_PLAYER/.test(impersonation.message ?? ''), impersonation);
+
+  // the club comes from the registration, so a sign-up cannot be redirected
+  const otherReg = await mkReg(otherClub);
+  const redirected = await add(parentUid, otherReg, parentProfile);
+  ok('registering on one club\'s form cannot write into another club... it writes into ITS club',
+    redirected.ok && (await one(
+      `SELECT club_profile_id FROM public.club_players WHERE id = $1`, [redirected.value]))
+      .club_profile_id === otherClub, redirected);
+  ok('...and the first club is untouched by it', (await one(
+    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 2);
+
+  const academyReg = await mkReg((await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 not a club', 'u2nc-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`)).id,
+    'academy');
+  const notAClub = await add(parentUid, academyReg, parentProfile);
+  ok('a registration that is not a club\'s writes no club row',
+    !notAClub.ok && /NOT_A_CLUB_REGISTRATION/.test(notAClub.message ?? ''), notAClub);
+
+  const anon = await add(null, registration, parentProfile);
+  ok('an unauthenticated caller is refused as unauthenticated',
+    !anon.ok && /NOT_AUTHENTICATED/.test(anon.message ?? ''), anon);
+
+  // no PII decides reuse: the SAME person under a CHANGED address still replays to their row
+  await c.query(`UPDATE public.profiles SET email = $1 WHERE id = $2`, [EMAIL(), parentProfile]);
+  const afterEmailChange = await add(parentUid, registration, parentProfile);
+  ok('changing the address does not make them a new club student — identity is the person',
+    afterEmailChange.ok && afterEmailChange.value === first.value, afterEmailChange);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-12. TWO CONCURRENT ADDS OF ONE PLAYER PRODUCE ONE ROW ═══════════════════════════════════
+// There is deliberately no unique index on (club, person) — it could not be proven safe against
+// production rows that all carry a NULL person_id — so the advisory lock is the whole guarantee and
+// it is worth staging a real race for.
+{
+  await c.query('BEGIN');
+  const { id: location } = await one(
+    `INSERT INTO public.locations (name, city, slug)
+     VALUES ('U2 Race Hal', 'Utrecht', 'u2race-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { id: club } = await one(
+    `INSERT INTO public.club_profiles (location_id) VALUES ($1) RETURNING id`, [location]);
+  const { id: registration } = await one(
+    `INSERT INTO public.registrations (name, owner_type, owner_id, format, status)
+     VALUES ('Race', 'club', $1, 'registration', 'open') RETURNING id`, [club]);
+  const { uid, profileId } = await makeAccount(EMAIL());
+  await c.query('COMMIT');                      // the other sessions have to see the fixture
+
+  const sessions = [new pg.Client({ connectionString: CONN }), new pg.Client({ connectionString: CONN })];
+  await Promise.all(sessions.map((s) => s.connect()));
+  const asPlayer = async (s) => {
+    await s.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ sub: uid, role: 'authenticated' })]);
+    await s.query(`SET LOCAL ROLE authenticated`);
+  };
+
+  await sessions[0].query('BEGIN'); await asPlayer(sessions[0]);
+  const firstId = (await sessions[0].query(
+    `SELECT public.club_student_list_add($1, $2) AS id`, [registration, profileId])).rows[0].id;
+
+  await sessions[1].query(`SET lock_timeout = '800ms'`);
+  await sessions[1].query('BEGIN'); await asPlayer(sessions[1]);
+  let blocked = null;
+  try {
+    await sessions[1].query(`SELECT public.club_student_list_add($1, $2)`, [registration, profileId]);
+  } catch (e) { blocked = e.code; }
+  await sessions[1].query('ROLLBACK');
+  ok('a concurrent add of the same Player waits for the first to finish', blocked === '55P03', { blocked });
+
+  await sessions[0].query('COMMIT');
+  await sessions[1].query('BEGIN'); await asPlayer(sessions[1]);
+  const secondId = (await sessions[1].query(
+    `SELECT public.club_student_list_add($1, $2) AS id`, [registration, profileId])).rows[0].id;
+  await sessions[1].query('COMMIT');
+
+  ok('...and once it has, the second call returns the SAME row', secondId === firstId,
+    { firstId, secondId });
+  ok('...so the club has exactly one row for them', (await one(
+    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 1);
+
+  await Promise.all(sessions.map((s) => s.end()));
+  await c.query(`DELETE FROM public.club_players WHERE club_profile_id = $1`, [club]);
+  await c.query(`DELETE FROM public.registrations WHERE id = $1`, [registration]);
+  await c.query(`DELETE FROM public.club_profiles WHERE id = $1`, [club]);
+  await c.query(`DELETE FROM public.locations WHERE id = $1`, [location]);
+  await c.query(`DELETE FROM auth.users WHERE id = $1`, [uid]);
+}
+
 // ══ 5e. THE COMMAND RECORD FOLLOWS THE PLAYER IT MADE ══════════════════════════════════════════
 // A guest source disappears — claimed, merged, anonymized, deleted. If the record died with it, the
 // next retry of a long-finished attempt would quietly make a second Player. Where a successor

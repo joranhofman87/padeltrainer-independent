@@ -120,7 +120,12 @@ export function parseImportedPlayersCsv(
   content: string,
   newRequestId: () => string = () => crypto.randomUUID(),
 ): ParseImportedPlayersResult {
-  const lines = content.split(/\r?\n/).filter((line) => line.trim());
+  // ONE leading byte-order mark, stripped before anything reads the header. Excel writes a BOM by
+  // default, and with it attached the first header cell is `\uFEFFfirst_name` — which matches no
+  // name column, so the whole file was refused for having no name. Only the leading one goes: a
+  // U+FEFF anywhere else is content, and this is not the place to decide it is not.
+  const text = content.startsWith('\uFEFF') ? content.slice(1) : content;
+  const lines = text.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return { ok: false, reason: 'no_data_rows' };
 
   const delimiter = detectCsvDelimiter(lines[0]);

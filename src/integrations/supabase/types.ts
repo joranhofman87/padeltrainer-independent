@@ -2237,12 +2237,13 @@ export type Database = {
         Row: {
           club_profile_id: string
           created_at: string
-          email: string
+          email: string | null
           full_name: string
           has_trained: boolean
           id: string
           linked_profile_id: string | null
           notes: string | null
+          person_id: string | null
           phone: string | null
           rating_system: string
           skill_rating: number | null
@@ -2252,12 +2253,13 @@ export type Database = {
         Insert: {
           club_profile_id: string
           created_at?: string
-          email: string
+          email?: string | null
           full_name: string
           has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
+          person_id?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
@@ -2267,12 +2269,13 @@ export type Database = {
         Update: {
           club_profile_id?: string
           created_at?: string
-          email?: string
+          email?: string | null
           full_name?: string
           has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
+          person_id?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
@@ -2334,6 +2337,13 @@ export type Database = {
             columns: ["linked_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_players_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
         ]
@@ -10695,6 +10705,10 @@ export type Database = {
       club_has_managers: {
         Args: { _club_profile_id: string }
         Returns: boolean
+      }
+      club_student_list_add: {
+        Args: { _profile_id: string; _registration_id: string }
+        Returns: string
       }
       collapse_guest_person_into: {
         Args: {

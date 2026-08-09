@@ -498,15 +498,8 @@ async function autoFollowOwner(
 // overloaded linked_profile_id is exactly what the old players-overview de-dup had to collapse.
 // Only the club vertical still keeps a club_players roster row (separate table + overview).
 //
-// club_players NEVER upserts: its unique email index is PARTIAL (WHERE email IS NOT NULL AND
-// email != '', migration 20260126164841) and PostgREST upserts cannot target partial indexes
-// (Postgres 42P10). Use select-then-insert; a 23505 on insert means the row already exists.
-//
-// RLS note (club): a logged-in player self-registering can INSERT the club_players row because
-// migration 20260126164841's INSERT policy requires linked_profile_id = their own profile id AND
-// source = 'cycle_registration' (both set in addToClubStudentList). Players have no SELECT/UPDATE
-// on the table, so a pre-existing same-email row makes the dedup select miss and the insert hits
-// the unique index (23505) — acceptable, the player is already listed.
+// club_players is written through `club_student_list_add`, never directly: the roster row is keyed
+// on the canonical Player, and the email column is contact information that decides nothing.
 async function addToStudentList(
   ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string,
@@ -514,7 +507,7 @@ async function addToStudentList(
 ): Promise<void> {
   try {
     if (ownerType === 'club') {
-      await addToClubStudentList(ownerId, input);
+      await addToClubStudentList(input);
     }
   } catch (error) {
     logger.error(
@@ -525,43 +518,26 @@ async function addToStudentList(
   }
 }
 
-// club_players variant: select-by-email-then-insert (unique_club_player_email is
-// also a PARTIAL index — WHERE email IS NOT NULL AND email != '' — so upsert
-// with onConflict fails with 42P10 exactly like guest_players did).
-async function addToClubStudentList(
-  clubProfileId: string,
-  input: IntakeRequestInput
-): Promise<void> {
-  const email = input.email.trim();
+// The club student list is keyed on the PLAYER, not on their address.
+//
+// What stood here selected `club_players` by (club, email) and returned on a hit, so two people
+// sharing an address produced one roster row and the second registrant was never added at all.
+// That is deduplicating a person by an attribute, which U2 forbids (owner, 2026-08-09) — and the
+// client was in no position to do it correctly anyway: it supplied the Player uuid, supplied the
+// club, and raced its own existence check.
+//
+// `club_student_list_add` decides all three server-side: the Player must be the caller's own
+// profile, the club comes from the registration being signed up to, and the (club, person) pair is
+// serialized under an advisory lock. Nothing here reads an email.
+async function addToClubStudentList(input: IntakeRequestInput): Promise<void> {
+  if (!input.player_id) return; // an anonymous submission never reaches this path
 
-  if (email) {
-    const { data: existing } = await supabase
-      .from('club_players')
-      .select('id')
-      .eq('club_profile_id', clubProfileId)
-      .eq('email', email)
-      .limit(1)
-      .maybeSingle();
-    if (existing?.id) return;
-  }
-
-  const { error } = await supabase.from('club_players').insert({
-    club_profile_id: clubProfileId,
-    full_name: input.full_name,
-    email, // NOT NULL column on club_players
-    phone: input.phone || null,
-    skill_rating: input.rating ?? null,
-    rating_system: input.rating_system || 'knltb',
-    linked_profile_id: input.player_id,
-    source: 'cycle_registration',
-    has_trained: false,
+  const { error } = await supabase.rpc('club_student_list_add', {
+    _registration_id: input.cycle_id, // the FORM's id — the RPC derives the club from it
+    _profile_id: input.player_id,
   });
-
-  // 23505 = a concurrent writer (or an RLS-invisible row) already holds this
-  // email for the club — the player exists in the list, nothing to do.
-  if (error && error.code !== '23505') {
+  if (error) {
     logger.error('Add to club student list failed (non-blocking)', new Error(error.message), {
-      clubProfileId,
       cycleId: input.cycle_id,
       errorCode: error.code,
     });

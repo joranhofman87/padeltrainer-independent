@@ -27,7 +27,7 @@ function extractMerge(file: string): string {
 
 /** Everything U2 added, anchored on its own comment and the statement it precedes. */
 const INSERTED =
-  /\n {2}-- U2\. The durable create-command record[\s\S]*?\n {2}END IF;\n\n(?= {2}DELETE FROM public\.guest_players WHERE id = p_source_guest_id;)/;
+  /\n {2}-- U2\. The durable create-command record[\s\S]*?\n {8}LIMIT 1\)\n {3}WHERE c\.guest_player_id = p_source_guest_id;\n\n(?= {2}DELETE FROM public\.guest_players WHERE id = p_source_guest_id;)/;
 
 describe('the reproduced merge_guest_players differs from the shipped one only by the U2 insert', () => {
   it('strips back to a byte-identical body', () => {
@@ -38,19 +38,21 @@ describe('the reproduced merge_guest_players differs from the shipped one only b
     expect(reproduced.replace(INSERTED, '\n')).toBe(shipped);
   });
 
-  it('the insert actually repoints both columns of the command record', () => {
+  it('the insert keeps the two columns of the command record consistent', () => {
     const reproduced = extractMerge(REPRODUCED);
     const inserted = reproduced.match(INSERTED)?.[0] ?? '';
 
-    // guest column: unconditional, the source guest always dies in a merge
-    expect(inserted).toMatch(
-      /UPDATE public\.player_create_commands\n\s+SET guest_player_id = p_target_guest_id\n\s+WHERE guest_player_id = p_source_guest_id;/,
-    );
     // person column: ONLY when the source person actually dies, and only onto a real successor.
     // Repointing unconditionally would hand a surviving person's commands to somebody else.
     expect(inserted).toMatch(
       /IF v_src_person_dies AND v_tgt_person IS NOT NULL THEN\n\s+UPDATE public\.player_create_commands\n\s+SET person_id = v_tgt_person\n\s+WHERE person_id = v_src_person;\n\s+END IF;/,
     );
+    // guest column: RECOMPUTED from the person each row names, never set to the merge target
+    // outright — the target's guest belongs to the target's person, which a surviving source
+    // person is not.
+    expect(inserted).toMatch(/SET guest_player_id = \(\n\s+SELECT pl\.guest_player_id/);
+    expect(inserted).toMatch(/WHERE pl\.person_id = c\.person_id/);
+    expect(inserted).not.toMatch(/SET guest_player_id = p_target_guest_id/);
   });
 
   it('the strip is a real check — a body with one statement removed does NOT pass it', () => {

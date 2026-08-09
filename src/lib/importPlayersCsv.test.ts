@@ -319,3 +319,52 @@ describe('the import copy says what the parser actually does', () => {
     }
   });
 });
+
+// ── byte-order marks ───────────────────────────────────────────────────────────────────────────
+// Excel writes a BOM by default, so this is the commonest real file there is. With it attached the
+// first header cell reads `\uFEFFfirst_name`, which matches no name column — the file was refused
+// for having no name in it.
+describe('a UTF-8 BOM does not hide the header', () => {
+  const BOM = '\uFEFF';
+
+  it.each([
+    [',', 'first name,last name,email,phone', 'Anna,de Vries,anna@example.com,06'],
+    [';', 'first name;last name;email;phone', 'Anna;de Vries;anna@example.com;06'],
+  ])('parses a BOM-prefixed %s file', (_d, header, row) => {
+    const r = parseImportedPlayersCsv(BOM + [header, row].join('\n'), ids());
+    expect(r.ok).toBe(true);
+    expect(r.players![0]).toMatchObject({ full_name: 'Anna de Vries', isValid: true });
+  });
+
+  it.each([
+    [',', 'first name,last name,notes', 'Anna,de Vries,"backhand; then serve"', 'backhand; then serve'],
+    [';', 'first name;last name;notes', 'Anna;de Vries;"backhand, then serve"', 'backhand, then serve'],
+  ])('a BOM-prefixed %s file with CRLF and quoted fields still parses', (_d, header, row, notes) => {
+    const r = parseImportedPlayersCsv(BOM + [header, row].join('\r\n'), ids());
+    expect(r.ok).toBe(true);
+    expect(r.players![0].notes).toBe(notes);
+    expect(r.players![0].isValid).toBe(true);
+  });
+
+  it('the BOM does not vote on the delimiter', () => {
+    expect(detectCsvDelimiter(BOM + 'a;b;c')).toBe(';');
+    expect(detectCsvDelimiter(BOM + 'a,b,c')).toBe(',');
+  });
+
+  it('only ONE leading mark is stripped — a U+FEFF elsewhere is content', () => {
+    const r = parseImportedPlayersCsv(
+      BOM + ['first name,last name,notes', `Anna,de Vries,keeps${BOM}going`].join('\n'),
+      ids(),
+    );
+    expect(r.players![0].notes).toBe(`keeps${BOM}going`);
+  });
+
+  it('a BOM-prefixed no-email file still yields a NULL address', () => {
+    const r = parseImportedPlayersCsv(
+      BOM + ['first name;last name;phone', 'Anna;de Vries;06'].join('\r\n'),
+      ids(),
+    );
+    expect(r.players![0].email).toBeNull();
+    expect(r.players![0].isValid).toBe(true);
+  });
+});

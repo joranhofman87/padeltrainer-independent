@@ -16,10 +16,28 @@
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
+import { stripComments } from '@/lib/stripComments';
+
+/**
+ * Every detector below reads EXECUTABLE code. A guard that matches prose is worse than no guard:
+ * a file can describe the rule perfectly and break it one line down, and a comment quoting
+ * `.eq('email'` can make a detector fire on a file that does nothing of the kind. `code()` is what
+ * the assertions see; `prose()` is used only where the claim genuinely is about documentation.
+ */
+const code = (file: string) =>
+  stripComments(readFileSync(file, 'utf8'), file.endsWith('.sql') ? 'sql' : 'ts');
+const prose = (file: string) => readFileSync(file, 'utf8');
 
 /**
  * Sites that look a person-shaped row up by email AND could influence identity. Each is read line by
  * line; `must` pins the property that keeps it honest, so the entry cannot rot into a bare name.
+ */
+/**
+ * Sites that look a person up by email AND could influence identity, kept safe by a property
+ * rather than by removal. EMPTY, and that is the finding rather than an oversight: every such
+ * writer was deleted rather than guarded, because a guarded lookup is one edit away from being an
+ * unguarded one. The list stays so a future exemption has somewhere to go — and a test below
+ * asserts it is empty, so adding one has to be a deliberate act somebody reviews.
  */
 const SITES: Array<{ file: string; why: string; must: RegExp[] }> = [];
 
@@ -165,7 +183,8 @@ const CONTACT_REQUIRED: Array<{ file: string; why: string }> = [
 
 describe('requiring an address to REACH someone is not resolving who they are', () => {
   it.each(CONTACT_REQUIRED)('$file says which invariant its guard serves', ({ file }) => {
-    const src = readFileSync(file, 'utf8');
+    // the ONE claim here that is genuinely about documentation, and labelled as such
+    const src = prose(file);
     // the words a future reviewer needs to find, not a paraphrase they have to reconstruct
     expect(`${file} names the distinction: ${/CONTACT[, ]/i.test(src) && /identity/i.test(src)}`)
       .toBe(`${file} names the distinction: true`);
@@ -179,7 +198,7 @@ describe('requiring an address to REACH someone is not resolving who they are', 
     // notify them and counts recent intakes on the submitted address to suppress a double-click.
     // Those are enumerated with reasons in NOT_IDENTITY above.)
     for (const { file } of CONTACT_REQUIRED) {
-      const src = readFileSync(file, 'utf8');
+      const src = code(file);
       // ...directly, or through `_shared/guest-players.ts`, which is itself a RETIRED entry above
       // and asserted there to call the command and to query nothing.
       const createsThroughTheCommand =
@@ -203,14 +222,18 @@ describe('requiring an address to REACH someone is not resolving who they are', 
 
 describe('no source site resolves a person from an address', () => {
   it.each([...RETIRED, ...SQL_RETIRED])('$file no longer looks anybody up', ({ file, absent }) => {
-    const src = readFileSync(file, 'utf8');
+    const src = code(file);
     for (const re of absent) {
       expect(`${file} still matches ${re}: ${re.test(src)}`).toBe(`${file} still matches ${re}: false`);
     }
   });
 
+  it('no site is exempted as "matches but is safe" — they were removed, not guarded', () => {
+    expect(SITES).toEqual([]);
+  });
+
   it.each(SITES)('$file keeps the property that makes it safe', ({ file, must }) => {
-    const src = readFileSync(file, 'utf8');
+    const src = code(file);
     for (const re of must) {
       expect(`${file} ${re}: ${re.test(src)}`).toBe(`${file} ${re}: true`);
     }
@@ -226,11 +249,76 @@ describe('no source site resolves a person from an address', () => {
       'src/components/players/ImportPlayersDialog.tsx',
       'src/lib/playerResolve.ts',
     ]) {
-      const src = readFileSync(file, 'utf8');
+      const src = code(file);
       expect(`${file}: ${src.includes('player_create_command')}`).toBe(`${file}: true`);
       // ...and carries an attempt id, without which a retry makes a second Player
       expect(`${file}: ${src.includes('_creation_request_id')}`).toBe(`${file}: true`);
     }
+  });
+
+  // ── the guard has to be able to FAIL ────────────────────────────────────────────────────────
+  // Every assertion above is a negative: "this pattern is absent". A negative that can never fire
+  // looks exactly like a codebase that is clean, which is how the rebook RPC deduplicated on
+  // `lower(email)` through four review rounds. So the detectors are run against code that DOES
+  // reintroduce each violation, and are required to catch it.
+  describe('the detectors catch what they are for', () => {
+    /** The two shapes U2 exists to prevent, injected into real stripped source. */
+    const emailReuseTs = `
+      const { data } = await supabase.from('guest_players').select('id').eq('email', typed).single();
+      if (data) return data.id;`;
+    const emailReuseSql = `
+      SELECT id INTO v_id FROM public.guest_players WHERE lower(email) = v_email LIMIT 1;`;
+    const directWriteTs = `
+      await supabase.from("guest_players").insert({ full_name: name, academy_profile_id: id });`;
+
+    it('a TypeScript site that starts reusing by email is caught', () => {
+      const mutated = code('src/lib/invoiceCustomerInsert.ts') + emailReuseTs;
+      const looksUp = /from\((["'`])(profiles|guest_players|persons|club_players|intake_requests)\1\)/.test(mutated)
+        && /\.(eq|ilike)\((["'`])email\2/.test(mutated);
+      expect(looksUp).toBe(true);
+      // ...and the RETIRED contract for that file rejects it too
+      expect(/\.from\(/.test(mutated)).toBe(true);
+    });
+
+    it('a SQL site that starts reusing by email is caught', () => {
+      const mutated = code('supabase/migrations/20261124100000_u2_rebook_group_guest_uuid_create.sql')
+        + emailReuseSql;
+      expect(/lower\(email\)\s*=/.test(mutated)).toBe(true);
+      expect(/INSERT INTO public\.guest_players/.test(mutated)).toBe(false);
+    });
+
+    it('a site that starts writing an identity row directly is caught', () => {
+      const mutated = code('src/components/players/AddPlayerForm.tsx') + directWriteTs;
+      expect(/from\((["'`])guest_players\1\)[\s\S]{0,80}?\.insert\(/.test(mutated)).toBe(true);
+    });
+
+    it('...and none of those patterns fires on the REAL sources, so the catches above mean something', () => {
+      for (const file of [
+        'src/lib/invoiceCustomerInsert.ts',
+        'src/components/players/AddPlayerForm.tsx',
+        'src/components/players/ImportPlayersDialog.tsx',
+        'supabase/functions/_shared/guest-players.ts',
+        'src/lib/cycles.ts',
+      ]) {
+        const src = code(file);
+        expect(`${file} direct write: ${/from\((["'`])guest_players\1\)[\s\S]{0,80}?\.insert\(/.test(src)}`)
+          .toBe(`${file} direct write: false`);
+      }
+      expect(/lower\(email\)\s*=/.test(
+        code('supabase/migrations/20261124100000_u2_rebook_group_guest_uuid_create.sql'),
+      )).toBe(false);
+    });
+
+    it('comments cannot make a detector fire, and cannot hide a violation either', () => {
+      // the exact confusion this guard used to be open to
+      const commentOnly = stripComments(
+        `// we no longer do .eq('email', x) on from('guest_players')\nconst x = 1;`, 'ts');
+      expect(/\.(eq|ilike)\((["'`])email\2/.test(commentOnly)).toBe(false);
+
+      const hidden = stripComments(
+        `/* explanation */ await supabase.from('guest_players').select('id').eq('email', e);`, 'ts');
+      expect(/\.(eq|ilike)\((["'`])email\2/.test(hidden)).toBe(true);
+    });
   });
 
   it('every listed site carries a written reason', () => {
@@ -257,7 +345,7 @@ describe('no source site resolves a person from an address', () => {
         const full = `${dir}/${entry.name}`;
         if (entry.isDirectory()) { walk(full); continue; }
         if (!/\.tsx?$/.test(entry.name) || /\.test\./.test(entry.name)) continue;
-        const src = readFileSync(full, 'utf8');
+        const src = code(full);
         // a person-shaped table queried by an email column
         const looksUp = /from\((["'`])(profiles|guest_players|persons|club_players|intake_requests)\1\)/.test(src)
           && /\.(eq|ilike)\((["'`])email\2/.test(src);
