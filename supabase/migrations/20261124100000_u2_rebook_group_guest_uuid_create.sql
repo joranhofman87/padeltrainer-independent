@@ -12,6 +12,13 @@
 -- validation, the rate-limit block — is byte-identical, and
 -- `src/test/rebookGroupGuestReproduction.test.ts` checks that mechanically.
 --
+-- THE FOUR CONTACT GUARDS STAY, and they are not in tension with U2. Slice C (20260705110000,
+-- owner decision #4) requires a new group member to be fully reachable — first name, last name,
+-- email and phone — because the captain is adding somebody who will be sent a confirmation. That is
+-- the address as CONTACT INFORMATION, a required input of this workflow. It is a different thing
+-- from the address as IDENTITY, which is what the lookup below used to do and what is now gone: the
+-- Player is created on the caller's request uuid, and nothing about them is matched against anyone.
+--
 -- WHY `player_create_execute` AND NOT `player_create_command`: the caller is anonymous. Nothing
 -- about their session authorizes anything; the TOKEN does, and only this function can validate it.
 -- The command's job is the scope check, which is the wrong question here. So authorization stays

@@ -207,10 +207,13 @@ export function ImportPlayersDialog({
   };
 
   const downloadTemplate = () => {
+    // Comma-delimited; a semicolon file is read just as happily (the header decides). The third row
+    // deliberately has NO email: a player does not need one, and a template that never shows that
+    // is how "email is required" survives in everyone's head after the code stopped saying it.
     const template = `first_name,last_name,email,phone,skill_rating,notes
 Jan,Jansen,jan@example.com,+31612345678,7.5,Beginner player
-Maria de Vries,maria@example.com,+31687654321,5.0,
-Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
+Maria,de Vries,maria@example.com,+31687654321,5.0,
+Piet,Pietersen,,+31698765432,,No email — that is fine`;
     
     const blob = new Blob([template], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -301,6 +304,7 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
               </ul>
               <p className="font-medium mt-2">{t("players.import.optionalColumns")}:</p>
               <ul className="list-disc list-inside ml-2">
+                <li>email / e-mail</li>
                 <li>phone / telefoon</li>
                 <li>skill_rating / rating / niveau (1-10)</li>
                 <li>notes / notitie / opmerking</li>

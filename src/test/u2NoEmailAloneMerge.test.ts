@@ -128,6 +128,79 @@ const SQL_RETIRED: Array<{ file: string; why: string; absent: RegExp[] }> = [
   },
 ];
 
+/**
+ * The five flows that REQUIRE an address, and why that is not a U2 violation.
+ *
+ * Two reviews in a row read "a Player may have no email" as "no flow may ask for one" and filed it
+ * as a defect. They are different invariants: the PLAYER ENTITY has an optional address, while a
+ * WORKFLOW THAT DELIVERS SOMETHING — a pay link, a confirmation — may require one as input. The
+ * owner settled this on 2026-08-09 and the rebook requirement is older still (20260705110000,
+ * Slice C, owner decision #4).
+ *
+ * Each site therefore has to carry the distinction in writing, next to its guard, so the next
+ * reader can tell which of the two they have found without re-litigating it.
+ */
+const CONTACT_REQUIRED: Array<{ file: string; why: string }> = [
+  {
+    file: 'supabase/functions/create-guest-slot-payment/index.ts',
+    why: 'anonymous single-slot checkout — the Mollie pay link and the booking confirmation are sent to this address',
+  },
+  {
+    file: 'supabase/functions/create-guest-cart-payment/index.ts',
+    why: 'anonymous cart checkout — same delivery, for several sessions at once',
+  },
+  {
+    file: 'supabase/functions/create-guest-cyclus-payment/index.ts',
+    why: 'anonymous whole-series checkout — same delivery, for a cyclus',
+  },
+  {
+    file: 'supabase/functions/submit-guest-intake/index.ts',
+    why: 'public self-service registration — the confirmation, and for a paid form the pay link, go to this address',
+  },
+  {
+    file: 'supabase/migrations/20261124100000_u2_rebook_group_guest_uuid_create.sql',
+    why: 'rebook-group add — Slice C requires a new member to be fully reachable, an owner decision that predates U2',
+  },
+];
+
+describe('requiring an address to REACH someone is not resolving who they are', () => {
+  it.each(CONTACT_REQUIRED)('$file says which invariant its guard serves', ({ file }) => {
+    const src = readFileSync(file, 'utf8');
+    // the words a future reviewer needs to find, not a paraphrase they have to reconstruct
+    expect(`${file} names the distinction: ${/CONTACT[, ]/i.test(src) && /identity/i.test(src)}`)
+      .toBe(`${file} names the distinction: true`);
+  });
+
+  it('...and every one CREATES its Player rather than resolving one', () => {
+    // The precise property, not a scan: a flow that requires an address for delivery must still
+    // reach a Player the same way as everything else — through the UUID command, on the caller's
+    // attempt id. (A file-level "does it read an email anywhere" heuristic is the wrong tool here
+    // and gives false positives: `submit-guest-intake` legitimately reads manager addresses to
+    // notify them and counts recent intakes on the submitted address to suppress a double-click.
+    // Those are enumerated with reasons in NOT_IDENTITY above.)
+    for (const { file } of CONTACT_REQUIRED) {
+      const src = readFileSync(file, 'utf8');
+      // ...directly, or through `_shared/guest-players.ts`, which is itself a RETIRED entry above
+      // and asserted there to call the command and to query nothing.
+      const createsThroughTheCommand =
+        src.includes('player_create_command')
+        || src.includes('player_create_execute')
+        || src.includes('resolveOrCreateGuestPlayer');
+      expect(`${file} creates through the command: ${createsThroughTheCommand}`)
+        .toBe(`${file} creates through the command: true`);
+      // and carries the caller's attempt id, without which a retry makes a second Player
+      expect(`${file} carries an attempt id: ${/creation_?[rR]equest_?[iI]d/.test(src)}`)
+        .toBe(`${file} carries an attempt id: true`);
+    }
+  });
+
+  it('every one carries a written reason', () => {
+    for (const { file, why } of CONTACT_REQUIRED) {
+      expect(`${file}: ${why.length >= 40}`).toBe(`${file}: true`);
+    }
+  });
+});
+
 describe('no source site resolves a person from an address', () => {
   it.each([...RETIRED, ...SQL_RETIRED])('$file no longer looks anybody up', ({ file, absent }) => {
     const src = readFileSync(file, 'utf8');

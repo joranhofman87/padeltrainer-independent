@@ -157,6 +157,10 @@ export async function handleRequest(
       fullName,
     });
 
+    // CONTACT, not identity (U2, owner 2026-08-09). A registration confirmation and, for a paid
+    // form, a pay link both go to this address, so the FLOW requires one. The PLAYER may still have
+    // none — the create command below takes NULL — and no address selects, merges or reuses an
+    // identity here: this endpoint resolves nobody, it creates.
     if (!email || !cycleId || !nameFields.full_name) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),

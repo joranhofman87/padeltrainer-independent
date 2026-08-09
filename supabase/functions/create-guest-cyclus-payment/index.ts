@@ -89,6 +89,10 @@ Deno.serve(async (req) => {
     const name = resolveRegistrationNameFields({ firstName: body?.firstName, lastName: body?.lastName, fullName: body?.fullName });
 
     if (!cyclusId) return json({ error: "cyclus_required" }, 400);
+    // CONTACT, not identity (U2, owner 2026-08-09). This flow has to reach the registrant — a
+    // pay link or a confirmation goes to this address — so it requires one as workflow input.
+    // The PLAYER may still have none: the create command takes NULL, and no address ever
+    // selects, merges or reuses an identity here or anywhere.
     if (!EMAIL_RE.test(email)) return json({ error: "invalid_email" }, 400);
     if (!phone) return json({ error: "phone_required" }, 400);
     if (!name.full_name) return json({ error: "name_required" }, 400);

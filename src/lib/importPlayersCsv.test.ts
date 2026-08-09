@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { parseImportedPlayersCsv, isValidImportEmail } from './importPlayersCsv';
+import { parseImportedPlayersCsv, isValidImportEmail, detectCsvDelimiter } from './importPlayersCsv';
 
 const HEADER_WITH_EMAIL = 'first name,last name,email,phone';
 const HEADER_NO_EMAIL = 'first name,last name,phone';
@@ -192,5 +192,130 @@ describe('a no-email row reaches the command as a real create', () => {
       _email: null,
       _source: 'csv_import',
     });
+  });
+});
+
+// ── delimiters ─────────────────────────────────────────────────────────────────────────────────
+// The original split on `,` AND `;` at once, which quietly corrupts whichever file it is not: a
+// semicolon file whose notes contain a comma silently gains a field and every column after it
+// shifts. Extracting the parser dropped `;` entirely, which broke semicolon files outright. The
+// header now decides once, and the whole file is read that way.
+describe('the header decides the delimiter, and it is used consistently', () => {
+  it('detects each one, and defaults to comma when there is nothing to go on', () => {
+    expect(detectCsvDelimiter('first name,last name,email')).toBe(',');
+    expect(detectCsvDelimiter('first name;last name;email')).toBe(';');
+    expect(detectCsvDelimiter('naam')).toBe(',');
+    // quoted separators do not vote — a header column literally named "last, first" is one column
+    expect(detectCsvDelimiter('"last, first";email;phone')).toBe(';');
+  });
+
+  it('parses a COMMA file', () => {
+    const r = parseImportedPlayersCsv(
+      ['first name,last name,email,phone', 'Anna,de Vries,anna@example.com,0612345678'].join('\n'),
+      ids(),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.players![0]).toMatchObject({
+      full_name: 'Anna de Vries', email: 'anna@example.com', phone: '0612345678', isValid: true,
+    });
+  });
+
+  it('parses a SEMICOLON file — the regression this restores', () => {
+    const r = parseImportedPlayersCsv(
+      ['first name;last name;email;phone', 'Anna;de Vries;anna@example.com;0612345678'].join('\n'),
+      ids(),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.players![0]).toMatchObject({
+      full_name: 'Anna de Vries', email: 'anna@example.com', phone: '0612345678', isValid: true,
+    });
+  });
+
+  it('a quoted COMMA inside a semicolon file stays inside its field', () => {
+    const r = parseImportedPlayersCsv(
+      ['first name;last name;notes', 'Anna;de Vries;"backhand, then serve"'].join('\n'),
+      ids(),
+    );
+    expect(r.players![0].notes).toBe('backhand, then serve');
+    expect(r.players![0].isValid).toBe(true);
+  });
+
+  it('a quoted SEMICOLON inside a comma file stays inside its field', () => {
+    const r = parseImportedPlayersCsv(
+      ['first name,last name,notes', 'Anna,de Vries,"backhand; then serve"'].join('\n'),
+      ids(),
+    );
+    expect(r.players![0].notes).toBe('backhand; then serve');
+    expect(r.players![0].isValid).toBe(true);
+  });
+
+  it('an UNquoted comma in a semicolon file does NOT split the field', () => {
+    // the precise failure the old both-at-once parser had: the notes column ate the next column
+    const r = parseImportedPlayersCsv(
+      ['first name;last name;notes;phone', 'Anna;de Vries;backhand, then serve;0612345678'].join('\n'),
+      ids(),
+    );
+    expect(r.players![0].notes).toBe('backhand, then serve');
+    expect(r.players![0].phone).toBe('0612345678');
+  });
+
+  it('no-email rows work under BOTH delimiters', () => {
+    for (const [d, header, row] of [
+      [',', 'first name,last name,phone', 'Anna,de Vries,06'],
+      [';', 'first name;last name;phone', 'Anna;de Vries;06'],
+    ] as const) {
+      const r = parseImportedPlayersCsv([header, row].join('\n'), ids());
+      expect(`${d}: ${r.ok}`).toBe(`${d}: true`);
+      expect(`${d}: ${r.players![0].email}`).toBe(`${d}: null`);
+      expect(`${d}: ${r.players![0].isValid}`).toBe(`${d}: true`);
+    }
+  });
+
+  it('...and a blank email CELL works under both too', () => {
+    for (const [d, header, row] of [
+      [',', 'first name,last name,email,phone', 'Anna,de Vries,,06'],
+      [';', 'first name;last name;email;phone', 'Anna;de Vries;;06'],
+    ] as const) {
+      const r = parseImportedPlayersCsv([header, row].join('\n'), ids());
+      expect(`${d}: ${r.players![0].email}`).toBe(`${d}: null`);
+      expect(`${d}: ${r.players![0].isValid}`).toBe(`${d}: true`);
+    }
+  });
+});
+
+// ── what the operator is TOLD ──────────────────────────────────────────────────────────────────
+describe('the import copy says what the parser actually does', () => {
+  const locale = (lang: string) =>
+    JSON.parse(readFileSync(`src/i18n/locales/${lang}/trainer.json`, 'utf8')).players.import;
+
+  it.each(['en', 'nl'])('%s no longer claims an email column is required', (lang) => {
+    const copy = locale(lang);
+    // the fatal message the parser can actually produce names ONE missing thing: a name
+    expect(copy.missingColumns.toLowerCase()).not.toMatch(/e-?mail/);
+    // ...and the required-columns hint must not list it either
+    expect(copy.preferredColumns.toLowerCase()).not.toMatch(/e-?mail/);
+  });
+
+  it.each(['en', 'nl'])('%s says plainly that email is optional', (lang) => {
+    expect(locale(lang).optionalColumns.toLowerCase()).toMatch(/e-?mail/);
+  });
+
+  it.each(['en', 'nl'])('%s has no orphaned "email is required" error left', (lang) => {
+    // the parser has no such outcome any more; a string for it is stale copy waiting to resurface
+    expect(Object.keys(locale(lang).errors)).not.toContain('emailMissing');
+  });
+
+  it('every error code the parser can emit has copy in BOTH languages', () => {
+    // the inverse failure: deleting a key the parser still uses would render `undefined` at the user
+    const codes = ['name_missing', 'email_invalid', 'skill_out_of_range'];
+    const keyFor: Record<string, string> = {
+      name_missing: 'nameMissing', email_invalid: 'emailInvalid', skill_out_of_range: 'skillOutOfRange',
+    };
+    for (const lang of ['en', 'nl']) {
+      for (const code of codes) {
+        expect(`${lang}.${code}: ${typeof locale(lang).errors[keyFor[code]]}`)
+          .toBe(`${lang}.${code}: string`);
+      }
+    }
   });
 });

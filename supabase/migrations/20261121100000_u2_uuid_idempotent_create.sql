@@ -17,6 +17,24 @@
 -- idempotency record means a retry after any of those silently creates a second Player. The record
 -- is its own row, and it is repointed rather than removed when the person it names is merged away.
 --
+-- TWO INVARIANTS THAT KEEP BEING COLLAPSED INTO ONE (owner, 2026-08-09). Review has now twice read
+-- "a Player may have no email" as "no flow may ask for one", so it is written down here, next to the
+-- rule it is confused with:
+--
+--   1. THE PLAYER ENTITY — email is OPTIONAL. `guest_players.email` is nullable, the command takes
+--      NULL, and every creation route accepts a Player without one. No attribute of a person may
+--      select, merge, deduplicate or reuse an identity, ever, on any route.
+--   2. A WORKFLOW THAT DELIVERS SOMETHING — email may be a REQUIRED INPUT. The public booking and
+--      payment endpoints, the public self-service intake form, and the rebook-group add each need
+--      somewhere to send a pay link or a confirmation, so they require an address as CONTACT
+--      INFORMATION. (The rebook requirement is older than U2: 20260705110000, Slice C, owner
+--      decision #4 — a new group member must be reachable.)
+--
+-- These are compatible, and the line between them is what the address is being used FOR. Requiring
+-- contact details to complete a transaction says nothing about who somebody is. Using them to
+-- decide which existing human this is, is the thing U2 removed. A future review finding "email is
+-- required here" should check which of the two it has found before calling it a defect.
+--
 -- WHAT PII MATCHING MAY STILL DO. Propose. A create that looks like an existing Player in the same
 -- scope files a PENDING `possible_duplicate_player` review row and still creates the Player it was
 -- asked for. Matching proposes; only a human decides. That is the rule slice 1 established, applied

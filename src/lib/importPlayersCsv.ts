@@ -10,6 +10,20 @@ import { csvHasGuestNameColumn, guestNameFieldsFromCsvRow } from '@/lib/guestPla
  *
  * Errors are CODES, not sentences. The component translates them; a test can assert on them without
  * pinning a translation, and adding a language cannot change what the parser decided.
+ *
+ * WHICH INVARIANT THIS FILE SERVES. There are two, and review keeps collapsing them into one:
+ *
+ *   1. THE PLAYER ENTITY — email is OPTIONAL. A Player may exist with no address, and no attribute
+ *      of a person may ever select, merge, deduplicate or reuse an identity (U2, owner 2026-08-09).
+ *      An import is a creation route, so it obeys this: a file with no email column is valid, and a
+ *      blank cell is an absent address rather than an error.
+ *   2. A WORKFLOW THAT DELIVERS SOMETHING — email may be a REQUIRED INPUT. The public booking,
+ *      payment and self-service intake flows, and the rebook-group add, each need somewhere to send
+ *      a confirmation or a pay link, so they require an address as contact information (owner,
+ *      2026-08-09; the rebook requirement is older still — 20260705110000, Slice C).
+ *
+ * The two are compatible: requiring contact details to complete a transaction says nothing about
+ * who somebody IS. What is forbidden in both is using the address to answer that question.
  */
 
 /** Fatal, file-level reasons the import cannot start at all. */
@@ -49,7 +63,35 @@ export function isValidImportEmail(email: string): boolean {
   return EMAIL_RE.test(email.trim());
 }
 
-export function parseCSVLine(line: string): string[] {
+export type CsvDelimiter = ',' | ';';
+
+/**
+ * Which character separates fields, decided ONCE from the header and then used for every row.
+ *
+ * Treating both as separators simultaneously — which is what the original did — quietly corrupts
+ * the other one's data: a semicolon file whose notes column contains a comma silently gains a
+ * field, and every column after it shifts. So the header votes, outside quotes, and the winner is
+ * the delimiter for the whole file. A tie or neither means a single-column file, where comma is the
+ * conventional answer and nothing depends on it.
+ */
+export function detectCsvDelimiter(headerLine: string): CsvDelimiter {
+  let commas = 0;
+  let semicolons = 0;
+  let inQuotes = false;
+  for (let i = 0; i < headerLine.length; i++) {
+    const char = headerLine[i];
+    if (char === '"') {
+      if (inQuotes && headerLine[i + 1] === '"') i++;
+      else inQuotes = !inQuotes;
+    } else if (!inQuotes) {
+      if (char === ',') commas++;
+      else if (char === ';') semicolons++;
+    }
+  }
+  return semicolons > commas ? ';' : ',';
+}
+
+export function parseCSVLine(line: string, delimiter: CsvDelimiter = ','): string[] {
   const result: string[] = [];
   let current = '';
   let inQuotes = false;
@@ -63,7 +105,7 @@ export function parseCSVLine(line: string): string[] {
       } else {
         inQuotes = !inQuotes;
       }
-    } else if (char === ',' && !inQuotes) {
+    } else if (char === delimiter && !inQuotes) {
       result.push(current);
       current = '';
     } else {
@@ -81,7 +123,8 @@ export function parseImportedPlayersCsv(
   const lines = content.split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return { ok: false, reason: 'no_data_rows' };
 
-  const headers = parseCSVLine(lines[0].toLowerCase());
+  const delimiter = detectCsvDelimiter(lines[0]);
+  const headers = parseCSVLine(lines[0].toLowerCase(), delimiter);
   // A NAME is the only column the file must have. An email column is optional, exactly as an email
   // is: children, walk-ins and people who decline to give an address are ordinary players, and a
   // roster exported without an address column used to be rejected outright.
@@ -101,7 +144,7 @@ export function parseImportedPlayersCsv(
   const players: ParsedImportPlayer[] = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const values = parseCSVLine(lines[i]);
+    const values = parseCSVLine(lines[i], delimiter);
     const errors: CsvRowError[] = [];
 
     const { fields: nameFields, missingName } = guestNameFieldsFromCsvRow(headers, values);
