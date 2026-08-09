@@ -211,63 +211,79 @@ else pass('the backup can execute all three');
   ok_(!direct.ok && direct.code === '42501',
     'a DIRECT read of academy_player_memberships as service_role is denied', direct);
 
-  const viaCount = await probe(`SELECT public.backup_export_count('academy_player_memberships') AS n`);
-  const viaPage = await probe(`SELECT public.backup_export_page('academy_player_memberships', NULL, 10)`);
-  ok_(viaCount.ok && viaPage.ok,
-    'the same read THROUGH backup_export_* succeeds as service_role', { viaCount, viaPage });
+  const viaFn = await probe(`SELECT public.backup_export_table('academy_player_memberships') AS r`);
+  ok_(viaFn.ok, 'the same read THROUGH backup_export_table succeeds as service_role', viaFn);
 
-  // and it refuses anything not on the list, rather than exporting whatever it is handed. Two
-  // shapes: a real table the backup has no business reading, and a catalogue relation.
+  // it refuses anything not on the list rather than exporting whatever it is handed. Three shapes:
+  // a real table the backup has no business reading, a catalogue relation, and a migration table.
   for (const rel of ['user_sessions', 'pg_shadow', 'schema_migrations']) {
-    const r = await probe(`SELECT public.backup_export_page($1, NULL, 10)`, [rel]);
+    const r = await probe(`SELECT public.backup_export_table($1)`, [rel]);
     ok_(!r.ok && String(r.message).includes('BACKUP_EXPORT_NOT_ALLOWED'),
       `an unlisted relation (${rel}) is refused, not exported`, r);
   }
 
-  const badLimit = await probe(`SELECT public.backup_export_page('persons', NULL, 100000)`);
-  ok_(!badLimit.ok && String(badLimit.message).includes('BACKUP_EXPORT_BAD_LIMIT'),
-    'an unbounded page size is refused', badLimit);
+  await c.query('ROLLBACK');
+}
+
+// ── THE EXPORT ITSELF, against real Postgres ───────────────────────────────────────────────────
+// The Deno tests stub the export, and a stub cannot notice the real function breaking its own
+// promises. This runs it: rows inserted out of id order, in a transaction that is rolled back.
+{
+  await c.query('BEGIN');
+  const N = 250;
+  await c.query(`
+    INSERT INTO public.persons (id, full_name)
+    SELECT gen_random_uuid(), 'u1c-p4-export-' || g FROM generate_series(1, $1) g`, [N]);
+
+  const { rows: [{ r }] } = await c.query(`SELECT public.backup_export_table('persons') AS r`);
+  const { rows: [{ n }] } = await c.query(`SELECT count(*)::int AS n FROM public.persons`);
+
+  ok_(r.rows.length === Number(n) && r.row_count === Number(n),
+    'the export returns every row, and its own count agrees',
+    { rows: r.rows.length, row_count: r.row_count, inTable: Number(n) });
+
+  // rows and row_count come from the SAME scan, so this is an invariant rather than a race
+  ok_(r.rows.length === r.row_count, 'rows and row_count come from one scan and cannot disagree',
+    { rows: r.rows.length, row_count: r.row_count });
+
+  const ids = r.rows.map((x) => x.id);
+  const sorted = [...ids].sort();
+  ok_(ids.every((v, i2) => v === sorted[i2]),
+    'the export is ordered by id, so two exports of an unchanged table are byte-identical');
+  ok_(new Set(ids).size === ids.length, 'no row appears twice');
+
+  // an empty table exports as an empty array, not null — a restore must not have to special-case it
+  const { rows: [{ e }] } = await c.query(`SELECT public.backup_export_table('academy_player_tags') AS e`);
+  ok_(Array.isArray(e.rows) && e.rows.length === 0 && e.row_count === 0,
+    'an empty table exports as [] with a zero count, not null', e);
 
   await c.query('ROLLBACK');
 }
 
-// ── THE PAGE WALK ITSELF, against real Postgres ────────────────────────────────────────────────
-// The Deno tests stub the export, and a stub that sorts because the real function promises to sort
-// cannot notice the promise being broken. Dropping `ORDER BY t.id` from `backup_export_page` passed
-// every one of them. PostgREST and Postgres guarantee no row order without an explicit sort, and a
-// keyset walk over unordered pages silently skips rows — so the walk is exercised here, on rows
-// deliberately inserted out of id order, in a transaction that is rolled back.
+// The size bound is refused rather than attempted: a jsonb aggregate that cannot fit should fail
+// with a sentence an operator can act on, not as an out-of-memory in the middle of the night.
+// Exercised by LOWERING the bound rather than by making a table enormous — function DDL is
+// transactional in Postgres, so the real bound is restored by the rollback.
 {
+  const { rows: [{ m }] } = await c.query(`SELECT public.backup_export_max_rows() AS m`);
+  ok_(Number(m) > 0 && Number(m) <= 5_000_000, 'the export declares a row bound', { max: Number(m) });
+
   await c.query('BEGIN');
-  const N = 250, PAGE = 40;
   await c.query(`
-    INSERT INTO public.persons (id, full_name)
-    SELECT gen_random_uuid(), 'u1c-p4-walk-' || g FROM generate_series(1, $1) g`, [N]);
-
-  const seen = [];
-  let after = null, pages = 0;
-  for (;;) {
-    const { rows } = await c.query(
-      `SELECT (r->>'id') AS id FROM public.backup_export_page('persons', $1::uuid, $2) r`,
-      [after, PAGE]);
-    pages++;
-    seen.push(...rows.map((r) => r.id));
-    if (rows.length < PAGE) break;
-    after = rows[rows.length - 1].id;
-    if (pages > 100) break;      // a walk that will not terminate must not hang the guard
-  }
-
-  const { rows: [{ n }] } = await c.query(`SELECT count(*)::int AS n FROM public.persons`);
-  ok_(seen.length === Number(n), 'the real page walk returns every row exactly once',
-    { walked: seen.length, inTable: Number(n), pages });
-  ok_(new Set(seen).size === seen.length, 'the real page walk returns no row twice',
-    { walked: seen.length, distinct: new Set(seen).size });
-
-  const sorted = [...seen].sort();
-  ok_(seen.every((v, i) => v === sorted[i]),
-    'the real page walk returns rows in id order, which is what makes the cursor sound');
-
+    CREATE OR REPLACE FUNCTION public.backup_export_max_rows() RETURNS bigint
+    LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
+    AS $fn$ SELECT 1::bigint $fn$`);
+  await c.query(`INSERT INTO public.persons (id, full_name)
+                 SELECT gen_random_uuid(), 'u1c-p4-bound-' || g FROM generate_series(1, 3) g`);
+  let bounded = null;
+  try { await c.query(`SELECT public.backup_export_table('persons')`); }
+  catch (e) { bounded = e.message; }
+  ok_(bounded !== null && bounded.includes('BACKUP_EXPORT_TOO_LARGE'),
+    'a table above the bound is refused with a reason, not attempted', { bounded });
   await c.query('ROLLBACK');
+
+  const { rows: [{ m2 }] } = await c.query(`SELECT public.backup_export_max_rows() AS m2`);
+  ok_(Number(m2) === Number(m), 'the real bound survives the probe', { before: Number(m), after: Number(m2) });
 }
 
 await c.end();

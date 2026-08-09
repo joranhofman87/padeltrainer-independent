@@ -1,82 +1,52 @@
 /**
  * `backup-database` — the two properties that make it a backup rather than a report.
  *
- * The failure this replaces cannot be caught by testing against a real local database, because it
- * only appears when the table is larger than PostgREST's `max_rows` — so the stub here BEHAVES like
- * a capped backend: it refuses to return more than `cap` rows per request and, like the real thing,
- * gives no indication that it truncated. Under that stub the old single-`select("*")` shape silently
- * returns one page and calls it a complete backup; the paged shape walks the key.
- *
- * The fixtures are SHUFFLED, and the stub sorts only because `backup_export_page` promises to. An
- * earlier version of this file pre-sorted its rows and let the stub ignore ordering entirely, so
- * dropping the ORDER BY from the real query passed every pagination assertion — the walk was
- * correct only because the fixture happened to be.
+ * What is tested HERE is the handler's own decisions: that a payload disagreeing with its count is
+ * refused, that a partial backup never authorises retention, and that the tables a U1c rollback
+ * needs are actually in the list. The export's behaviour — one snapshot, allow-listing, ordering,
+ * the size bound — is tested against real Postgres in `scripts/db/backup-coverage.mjs`, because a
+ * stub cannot notice the real function breaking its own promises.
  *
  * Lives in `_shared/` because that is the directory `npm run test:edge` runs.
  */
 import { assertEquals, assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  fetchWholeTable,
-  handleRequest,
-  PAGE_SIZE,
-  READ_ATTEMPTS,
-  TABLES_TO_BACKUP,
-} from "../backup-database/index.ts";
+import { fetchWholeTable, handleRequest, TABLES_TO_BACKUP } from "../backup-database/index.ts";
 
-/**
- * Rows with sortable ids, deliberately OUT of id order — a keyset walk that relies on the backend's
- * ORDER BY must still be correct, and one that does not must visibly fail.
- */
-const makeRows = (n: number) => {
-  const rows = Array.from({ length: n }, (_, i) => ({ id: `id-${String(i).padStart(6, "0")}`, v: i }));
-  // deterministic shuffle — no Math.random, so a failure is reproducible
-  for (let i = rows.length - 1; i > 0; i--) {
-    const j = (i * 7919 + 13) % (i + 1);
-    [rows[i], rows[j]] = [rows[j], rows[i]];
-  }
-  return rows;
-};
+const makeRows = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({ id: `id-${String(i).padStart(6, "0")}`, v: i }));
 
 interface StubOptions {
   rows: Record<string, Array<{ id: string; v: number }>>;
-  /** Max rows any single request may return — PostgREST's `max_rows`, silently applied. */
-  cap?: number;
-  /** Report a count that disagrees with what the pages return, i.e. rows written mid-backup. */
+  /** A row_count that disagrees with the rows in the same payload — a payload this code misread. */
   countOverride?: Record<string, number>;
+  /** Tables whose export raises, e.g. the size bound or a permission. */
+  exportFails?: Record<string, string>;
   uploadFails?: Set<string>;
   /** Existing backup folders, so retention has something it could delete. */
   folders?: string[];
 }
 
 function makeSupabase(opts: StubOptions) {
-  const {
-    rows, cap = PAGE_SIZE, countOverride = {}, uploadFails = new Set<string>(),
-    folders = [],
-  } = opts;
+  const { rows, countOverride = {}, exportFails = {}, uploadFails = new Set<string>(), folders = [] } = opts;
   const uploaded: string[] = [];
   const removed: string[] = [];
   let requests = 0;
 
-  /** `backup_export_count` / `backup_export_page`, with the ordering the SQL function promises. */
+  /** `backup_export_table`: rows and their count, together, as the SQL function returns them. */
   const rpc = (fn: string, args: Record<string, unknown>) => {
     const table = String(args._relname);
-    const all = rows[table] ?? [];
-
-    if (fn === "backup_export_count") {
-      return Promise.resolve({ data: countOverride[table] ?? all.length, error: null });
-    }
-    if (fn !== "backup_export_page") {
+    if (fn !== "backup_export_table") {
       return Promise.resolve({ data: null, error: { message: `unknown function ${fn}` } });
     }
-
+    if (exportFails[table]) {
+      return Promise.resolve({ data: null, error: { message: exportFails[table] } });
+    }
     requests++;
-    const after = args._after === null || args._after === undefined ? null : String(args._after);
-    const limit = Math.min(Number(args._limit), cap);   // the cap, applied silently
-    const page = [...all]
-      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))   // ORDER BY t.id
-      .filter((r) => after === null || r.id > after)
-      .slice(0, limit);
-    return Promise.resolve({ data: page, error: null });
+    const all = rows[table] ?? [];
+    return Promise.resolve({
+      data: { row_count: countOverride[table] ?? all.length, rows: all },
+      error: null,
+    });
   };
 
   const supabase = {
@@ -115,34 +85,38 @@ const allRows = (n: number) => {
   return r;
 };
 
-Deno.test("a table larger than the row cap is read WHOLE, not one page", async () => {
-  const rows = { persons: makeRows(1234) };
-  const { supabase } = makeSupabase({ rows, cap: PAGE_SIZE });
-
+Deno.test("the rows and the count the database reported are both carried through", async () => {
+  const { supabase } = makeSupabase({ rows: { persons: makeRows(1234) } });
   const out = await fetchWholeTable(supabase, "persons");
-
   assertEquals(out.rows.length, 1234);
   assertEquals(out.expected, 1234);
-  // proof it actually paged rather than getting lucky with one big response
-  assertEquals(out.pages, Math.ceil(1234 / PAGE_SIZE));
-  // and no row was fetched twice — the keyset walk must not overlap
-  assertEquals(new Set((out.rows as Array<{ id: string }>).map((r) => r.id)).size, 1234);
 });
 
-Deno.test("the page walk is keyset, so the last page ends the walk", async () => {
-  // exactly one full page then nothing: a `.length < PAGE_SIZE` terminator would loop forever
-  // without the id advancing, so this pins the exact-multiple boundary
-  const { supabase } = makeSupabase({ rows: { persons: makeRows(PAGE_SIZE) } });
-  const out = await fetchWholeTable(supabase, "persons");
-  assertEquals(out.rows.length, PAGE_SIZE);
-  assertEquals(out.pages, 2);   // the full page, then the empty one that proves the end
+Deno.test("an export payload that is not {rows, row_count} is refused, not half-read", async () => {
+  // a null `rows`, or a missing count, must not be read as "zero rows, backed up fine"
+  for (const bad of [{}, { rows: null, row_count: 0 }, { rows: [] }, { row_count: 3 }]) {
+    const supabase = {
+      rpc: () => Promise.resolve({ data: bad, error: null }),
+    } as never;
+    let threw = false;
+    try { await fetchWholeTable(supabase, "persons"); } catch { threw = true; }
+    assertEquals(`${JSON.stringify(bad)}:${threw}`, `${JSON.stringify(bad)}:true`);
+  }
 });
 
-Deno.test("an empty table is one request and no rows", async () => {
-  const { supabase } = makeSupabase({ rows: { persons: [] } });
-  const out = await fetchWholeTable(supabase, "persons");
-  assertEquals(out.rows.length, 0);
-  assertEquals(out.pages, 1);
+Deno.test("an export that raises fails its table rather than writing an empty file", async () => {
+  const rows = allRows(1);
+  const { supabase, uploaded } = makeSupabase({
+    rows,
+    exportFails: { invoices: "BACKUP_EXPORT_TOO_LARGE: invoices has 900000 rows" },
+  });
+  const res = await handleRequest(req(), { auth: auth(supabase), now: NOW });
+  const body = await res.json();
+
+  assertEquals(res.status, 500);
+  assertEquals(body.failedQueries, ["invoices"]);
+  // and nothing was uploaded for it — an empty invoices.json would look like a restorable backup
+  assertEquals(uploaded.some((p: string) => p.endsWith("/invoices.json")), false);
 });
 
 Deno.test("a read that does not match the table's own count FAILS the backup", async () => {
@@ -160,9 +134,8 @@ Deno.test("a read that does not match the table's own count FAILS the backup", a
   assertEquals(res.status, 500);
   assertEquals(body.ok, false);
   assertEquals(body.incomplete, ["persons"]);
-  // a SYSTEMATIC disagreement reproduces, so the re-reads do not launder it into a pass
-  const personsAttempts = body.tables.find((t: { name: string }) => t.name === "persons");
-  assertEquals(personsAttempts.row_count, 800);
+  // rows and row_count come from one scan in the database, so a disagreement here means this code
+  // misread the payload — which is exactly what must not pass silently
   const persons = body.tables.find((t: { name: string }) => t.name === "persons");
   assertNotEquals(persons.row_count, persons.expected_rows);
   // and the partial backup must not have been used as licence to delete older ones — the folder
@@ -173,7 +146,7 @@ Deno.test("a read that does not match the table's own count FAILS the backup", a
 
 Deno.test("a complete backup covers every declared table and reports ok", async () => {
   const rows = allRows(3);
-  rows.academy_player_memberships = makeRows(1100);   // over the cap on purpose
+  rows.academy_player_memberships = makeRows(1100);
 
   const { supabase, uploaded, removed } = makeSupabase({ rows, folders: [OLD_FOLDER] });
   const res = await handleRequest(req(), { auth: auth(supabase), now: NOW });
@@ -191,36 +164,6 @@ Deno.test("a complete backup covers every declared table and reports ok", async 
   // decision and not simply a retention path that never runs
   assertEquals(body.deleted_old_backups, 1);
   assertEquals(removed, [`${OLD_FOLDER}/persons.json`]);
-});
-
-Deno.test("a count that disagrees only ONCE is a concurrent write, not a bad backup", async () => {
-  // The count is taken before the walk, so an insert during it makes them differ. Failing the
-  // night's backup over that teaches people to ignore backup failures — so it is re-read, and only
-  // a disagreement that KEEPS happening fails.
-  const rows = allRows(0);
-  rows.persons = makeRows(10);
-  let call = 0;
-  const { supabase } = makeSupabase({ rows });
-  const inner = (supabase as unknown as { rpc: (f: string, a: Record<string, unknown>) => unknown }).rpc;
-  (supabase as unknown as { rpc: unknown }).rpc = (f: string, a: Record<string, unknown>) => {
-    if (f === "backup_export_count" && a._relname === "persons" && call++ === 0) {
-      return Promise.resolve({ data: 11, error: null });   // wrong on the FIRST attempt only
-    }
-    return inner(f, a);
-  };
-
-  const out = await fetchWholeTable(supabase, "persons");
-  assertEquals(out.rows.length, 10);
-  assertEquals(out.expected, 10);
-  assertEquals(out.attempts, 2);            // it took a second read, and the second agreed
-});
-
-Deno.test("a count that NEVER agrees is not retried into success", async () => {
-  const { supabase } = makeSupabase({ rows: { persons: makeRows(10) }, countOverride: { persons: 11 } });
-  const out = await fetchWholeTable(supabase, "persons");
-  assertEquals(out.attempts, READ_ATTEMPTS);
-  assertEquals(out.rows.length, 10);
-  assertEquals(out.expected, 11);           // still reported as a disagreement, so the backup fails
 });
 
 Deno.test("the membership tables a U1c rollback needs are in the list", () => {

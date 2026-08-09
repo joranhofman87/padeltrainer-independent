@@ -7,16 +7,14 @@
  *    request at `max_rows` (1000 on a default Supabase project), and the response carries no signal
  *    that more rows existed — so the backup wrote the first page, reported `row_count` as the number
  *    of rows it happened to receive, and returned a green "backup complete". Every table larger than
- *    the cap has been backed up partially, and nothing said so. Pages are keyset-walked on the
- *    primary key now, and the row count is checked against an exact `count` taken from the same
- *    table: a mismatch fails the backup rather than shipping a partial one.
+ *    the cap has been backed up partially, and nothing said so.
  *
- *    The walk goes through `backup_export_page`, not PostgREST directly, for two reasons. The
- *    membership tables REVOKE ALL from `service_role` — deliberately, they are owner-only until the
- *    backfill is authorized — so a direct read of them is permission denied, and the alternative was
- *    granting every service-role caller SELECT on them. And ORDER lives in the function: PostgREST
- *    guarantees no row order without an explicit sort, and a keyset walk over unordered pages skips
- *    rows in silence.
+ *    A table is now read by `backup_export_table`, which returns its rows AND their count from ONE
+ *    scan of ONE snapshot. That is stronger than the paging this replaces: a count in one request
+ *    and pages in later ones can agree while representing no instant that ever existed, and no
+ *    amount of retrying fixes it. Same statement, same snapshot, cannot disagree. The function also
+ *    exists because the membership tables REVOKE ALL from `service_role` — they are owner-only until
+ *    the backfill is authorized — so the backup cannot read them directly at all.
  *
  * 2. **Coverage.** `academy_player_memberships` — the canonical academy↔Player relation U1a
  *    introduced, and the only thing a U1c backfill rollback can be reconstructed from — was not in
@@ -75,88 +73,34 @@ export const TABLES_TO_BACKUP = [
   "notification_contacts",
 ] as const;
 
-/** Below PostgREST's default cap, so a page is never itself truncated. */
-export const PAGE_SIZE = 500;
-
 export interface TableResult {
   name: string;
   row_count: number;
   size_bytes: number;
-  /** Rows the database says exist. A backup whose page walk disagrees with this is not a backup. */
+  /** Rows the database counted in the same scan. A backup that disagrees with this is not a backup. */
   expected_rows: number;
-  pages: number;
 }
 
 /**
- * Read a whole table by walking its primary key, then prove the walk was complete.
+ * Read a whole table, and check what came back against what the database said it held.
  *
- * Keyset, not `.range()`: an offset walk re-reads by position, so a row inserted or deleted between
- * pages shifts every later page and silently drops or duplicates rows. Keyset reads by value.
- */
-async function readOnce(
-  supabase: SupabaseClient,
-  table: string,
-): Promise<{ rows: unknown[]; expected: number; pages: number }> {
-  const { data: count, error: countError } = await supabase.rpc("backup_export_count", {
-    _relname: table,
-  });
-  if (countError) throw new Error(`count failed: ${countError.message}`);
-
-  const rows: unknown[] = [];
-  let after: string | null = null;
-  let pages = 0;
-
-  for (;;) {
-    const { data, error } = await supabase.rpc("backup_export_page", {
-      _relname: table,
-      _after: after,
-      _limit: PAGE_SIZE,
-    });
-    if (error) throw new Error(`page ${pages} failed: ${error.message}`);
-
-    const page = (data ?? []) as Array<Record<string, unknown>>;
-    pages++;
-    rows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-
-    const last = String(page[page.length - 1].id);
-    // A full page whose last id does not advance would loop forever. `id` is a unique key and the
-    // function orders by it, so it cannot happen — but a backup is not the place to find out.
-    if (after !== null && last <= after) {
-      throw new Error(`page walk for ${table} did not advance past ${after}`);
-    }
-    after = last;
-  }
-
-  return { rows, expected: Number(count ?? rows.length), pages };
-}
-
-/** How many times a table may be re-read when its row count moved underneath the walk. */
-export const READ_ATTEMPTS = 3;
-
-/**
- * Read a whole table, and prove the read was complete.
- *
- * The count is taken before the walk, so a row inserted or deleted while it runs makes them
- * disagree. That is not a truncated read and failing the night's backup over it would teach people
- * to ignore backup failures — so the table is re-read. What it is NOT is a retry-until-green: a
- * systematic disagreement (a paging defect, a permission that hides rows) reproduces on every
- * attempt and still fails. Only a disagreement that stops happening is accepted, which is exactly
- * the signature of a concurrent write.
+ * Both numbers come from the same scan inside `backup_export_table`, so a disagreement is not a
+ * race — it is this code mis-reading the payload. It stays checked because a backup that trusts its
+ * own deserialisation is how the previous version reported partial data as complete.
  */
 export async function fetchWholeTable(
   supabase: SupabaseClient,
   table: string,
-): Promise<{ rows: unknown[]; expected: number; pages: number; attempts: number }> {
-  let last!: { rows: unknown[]; expected: number; pages: number };
-  for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt++) {
-    last = await readOnce(supabase, table);
-    if (last.rows.length === last.expected) return { ...last, attempts: attempt };
-    console.warn(
-      `Re-reading ${table}: walked ${last.rows.length} rows, count said ${last.expected} (attempt ${attempt})`,
-    );
+): Promise<{ rows: unknown[]; expected: number }> {
+  const { data, error } = await supabase.rpc("backup_export_table", { _relname: table });
+  if (error) throw new Error(`export failed: ${error.message}`);
+
+  const payload = (data ?? {}) as { rows?: unknown[]; row_count?: number };
+  const rows = Array.isArray(payload.rows) ? payload.rows : null;
+  if (rows === null || typeof payload.row_count !== "number") {
+    throw new Error(`export of ${table} returned an unusable payload`);
   }
-  return { ...last, attempts: READ_ATTEMPTS };
+  return { rows, expected: payload.row_count };
 }
 
 export async function handleRequest(
@@ -184,23 +128,19 @@ export async function handleRequest(
     for (const table of TABLES_TO_BACKUP) {
       let rows: unknown[];
       let expected: number;
-      let pages: number;
-      let attempts: number;
       try {
-        ({ rows, expected, pages, attempts } = await fetchWholeTable(supabase, table));
+        ({ rows, expected } = await fetchWholeTable(supabase, table));
       } catch (err) {
         console.error(`Error querying ${table}:`, err instanceof Error ? err.message : err);
         failedQueries.push(table);
-        results.push({ name: table, row_count: 0, size_bytes: 0, expected_rows: 0, pages: 0 });
+        results.push({ name: table, row_count: 0, size_bytes: 0, expected_rows: 0 });
         continue;
       }
 
       // THE CHECK THAT MAKES THIS A BACKUP. Reading fewer rows than the table holds is the failure
       // the old code could not see, so it is named and it is fatal — never a green partial.
       if (rows.length !== expected) {
-        console.error(
-          `Incomplete read of ${table} after ${attempts} attempts: got ${rows.length}, expected ${expected}`,
-        );
+        console.error(`Incomplete read of ${table}: got ${rows.length}, the scan counted ${expected}`);
         incomplete.push(table);
       }
 
@@ -222,7 +162,6 @@ export async function handleRequest(
         row_count: rows.length,
         size_bytes: bytes.length,
         expected_rows: expected,
-        pages,
       });
     }
 

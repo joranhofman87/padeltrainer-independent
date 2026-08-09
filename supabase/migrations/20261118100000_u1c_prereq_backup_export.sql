@@ -1,30 +1,39 @@
--- U1c PREREQUISITE 4 — a deliberately privileged export path for the nightly backup.
+-- U1c PREREQUISITE 4 — a deliberately privileged, internally consistent export for the backup.
 --
 -- THE PROBLEM. `academy_player_memberships`, `membership_backfill_runs` and
 -- `membership_backfill_items` are the only things a U1c backfill rollback can be reconstructed from,
 -- and all three `REVOKE ALL ... FROM service_role` — deliberately, because they are inert and
 -- owner-only until the backfill is authorized. The nightly backup runs as `service_role`, and
--- BYPASSRLS does not bypass table privileges. So adding them to the backup's table list makes every
+-- BYPASSRLS does not bypass table privileges, so simply adding them to the backup's list makes every
 -- nightly run fail with permission denied.
 --
--- Granting `service_role` SELECT on them would fix the backup by widening what all forty-odd
--- service-role edge functions can read — paying for one caller with a privilege for every caller.
--- Instead there is ONE function, owned by the definer, allow-listed to exactly the tables the backup
--- exports, granted to `service_role` alone, and read-only by construction (it returns `SETOF jsonb`
--- and contains no writing statement).
+-- WHY ONE STATEMENT PER TABLE. The first version of this paged: count, then walk. Counting in one
+-- request and reading pages in later ones cannot produce a consistent export — a row deleted behind
+-- the cursor and another inserted ahead of it leaves the count matching while the export represents
+-- no instant that ever existed. Retrying does not fix that; it only hides the cases where the count
+-- happens to disagree. So a table is read by ONE statement, which sees ONE snapshot, and that
+-- statement returns the rows AND their count together. They cannot disagree, because they are the
+-- same scan. (Cross-TABLE consistency is still not provided — that would need an exported snapshot
+-- held across the whole run, which PostgREST has no way to express. Recorded, not pretended.)
 --
--- The backup routes EVERY table through it, not just the closed ones. A two-path backup — PostgREST
--- for open tables, RPC for closed ones — is two paging implementations, two failure modes, and one
--- of them exercised only by the tables nobody looks at.
+-- The paging it replaces existed to dodge PostgREST's `max_rows` cap. A function returning a single
+-- `jsonb` returns one row, so the cap has nothing to truncate; and the backup already materialised
+-- every table in memory to JSON-encode it, so this is not new memory pressure.
+--
+-- WHO MAY CALL IT. `service_role`, which is the same principal every other edge function uses. This
+-- is a real widening: any service-role caller can now read the membership tables through this
+-- function, where before none could read them at all. It is the price of having them in the nightly
+-- backup, and the alternative — a dedicated database principal with its own credential for the
+-- backup worker — is a deployment change and an owner decision. Written down rather than implied.
 --
 -- SECURITY. SECURITY DEFINER with `search_path = pg_catalog, public, pg_temp`: pg_catalog first so a
 -- built-in cannot be shadowed, pg_temp last so a temporary object can never win resolution. The
--- relation name is validated against a pinned allow-list before it reaches dynamic SQL, and is then
--- passed through `quote_ident` regardless — an allow-list is the guard, quoting is the belt.
+-- relation name is checked against a pinned allow-list BEFORE it reaches dynamic SQL, and is passed
+-- through `quote_ident` regardless — the allow-list is the guard, the quoting is the belt.
 
 -- The tables the export may read. This is the SOURCE OF TRUTH for backup coverage:
--- `scripts/db/backup-coverage.mjs` asserts it agrees with the edge function's TABLES_TO_BACKUP and
--- covers the derived identity family, so the list here and the list there cannot drift apart.
+-- `scripts/db/backup-coverage.mjs` asserts it agrees with the edge function's TABLES_TO_BACKUP in
+-- both directions, so the list here and the list there cannot drift apart.
 CREATE OR REPLACE FUNCTION public.backup_export_tables()
 RETURNS TABLE (relname text)
 LANGUAGE sql
@@ -44,63 +53,68 @@ AS $$
   ) AS t(relname);
 $$;
 
--- How many rows the table holds, for the completeness check the backup makes against its page walk.
-CREATE OR REPLACE FUNCTION public.backup_export_count(_relname text)
+/**
+ * Above this many rows the aggregate is refused rather than attempted.
+ *
+ * A whole table becomes one jsonb value, and jsonb tops out around 1GB — but long before that the
+ * honest answer is that a JSON-blob backup is the wrong mechanism and the export should move to
+ * pg_dump or a streaming path. Refusing loudly at a known bound beats discovering it as an
+ * out-of-memory in the middle of the night, which looks like an outage rather than a design limit.
+ */
+CREATE OR REPLACE FUNCTION public.backup_export_max_rows()
 RETURNS bigint
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$ SELECT 500000::bigint $$;
+
+-- One table, one snapshot, rows and count from the same scan.
+CREATE OR REPLACE FUNCTION public.backup_export_table(_relname text)
+RETURNS jsonb
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
+  v_out jsonb;
   v_n bigint;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.backup_export_tables() t WHERE t.relname = _relname) THEN
     RAISE EXCEPTION 'BACKUP_EXPORT_NOT_ALLOWED: % is not an exportable relation', _relname
       USING ERRCODE = 'insufficient_privilege';
   END IF;
+
+  -- Checked first and separately: the bound exists to avoid attempting an aggregate that cannot
+  -- succeed, so it has to be answered before the aggregate is attempted.
   EXECUTE format('SELECT count(*) FROM public.%I', _relname) INTO v_n;
-  RETURN v_n;
-END;
-$$;
-
--- One page of a table, keyset-walked on its `id` primary key.
---
--- Ordered and bounded HERE rather than by the caller: PostgREST guarantees no row order without an
--- explicit sort, and a keyset walk over unordered pages skips rows silently. `_after IS NULL` starts
--- the walk; `id > _after` continues it. The single-column uuid `id` this depends on is asserted for
--- every listed table by `scripts/db/backup-coverage.mjs`.
-CREATE OR REPLACE FUNCTION public.backup_export_page(_relname text, _after uuid, _limit int)
-RETURNS SETOF jsonb
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = pg_catalog, public, pg_temp
-AS $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.backup_export_tables() t WHERE t.relname = _relname) THEN
-    RAISE EXCEPTION 'BACKUP_EXPORT_NOT_ALLOWED: % is not an exportable relation', _relname
-      USING ERRCODE = 'insufficient_privilege';
-  END IF;
-  IF _limit IS NULL OR _limit < 1 OR _limit > 5000 THEN
-    RAISE EXCEPTION 'BACKUP_EXPORT_BAD_LIMIT: % is not a usable page size', _limit
-      USING ERRCODE = 'invalid_parameter_value';
+  IF v_n > public.backup_export_max_rows() THEN
+    RAISE EXCEPTION 'BACKUP_EXPORT_TOO_LARGE: % has % rows, above the % this export can hold in one value',
+      _relname, v_n, public.backup_export_max_rows()
+      USING ERRCODE = 'program_limit_exceeded';
   END IF;
 
-  RETURN QUERY EXECUTE format(
-    'SELECT to_jsonb(t) FROM public.%I t WHERE ($1 IS NULL OR t.id > $1) ORDER BY t.id LIMIT $2',
-    _relname
-  ) USING _after, _limit;
+  -- ORDER BY id: not needed for correctness now that there is no cursor, but it makes two exports of
+  -- an unchanged table byte-identical, which is what lets anyone diff them.
+  EXECUTE format(
+    'SELECT jsonb_build_object(
+        ''row_count'', count(*),
+        ''rows'', coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.id), ''[]''::jsonb))
+       FROM public.%I t', _relname
+  ) INTO v_out;
+
+  RETURN v_out;
 END;
 $$;
 
 REVOKE ALL ON FUNCTION public.backup_export_tables() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.backup_export_count(text) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.backup_export_page(text, uuid, int) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.backup_export_max_rows() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.backup_export_table(text) FROM PUBLIC, anon, authenticated;
 
 GRANT EXECUTE ON FUNCTION public.backup_export_tables() TO service_role;
-GRANT EXECUTE ON FUNCTION public.backup_export_count(text) TO service_role;
-GRANT EXECUTE ON FUNCTION public.backup_export_page(text, uuid, int) TO service_role;
+GRANT EXECUTE ON FUNCTION public.backup_export_max_rows() TO service_role;
+GRANT EXECUTE ON FUNCTION public.backup_export_table(text) TO service_role;
 
-COMMENT ON FUNCTION public.backup_export_page(text, uuid, int) IS
-  'Read-only keyset page of an allow-listed table, for the nightly backup. SECURITY DEFINER so the backup can read membership tables that revoke service_role, without granting every service-role caller SELECT on them. Ordering lives here because PostgREST guarantees none.';
+COMMENT ON FUNCTION public.backup_export_table(text) IS
+  'Read-only export of one allow-listed table as {row_count, rows}, from a single scan so the two cannot disagree. SECURITY DEFINER so the nightly backup can read the membership tables that revoke service_role. NOTE: EXECUTE is granted to the shared service_role, so any service-role caller can read those tables through this function — a dedicated backup principal is the alternative, and an owner decision.';
