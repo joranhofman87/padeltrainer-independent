@@ -12224,6 +12224,7 @@ export type Database = {
           _phone: string
           _select_person_id: string
           _source?: string
+          _twin_of_profile_id?: string
         }
         Returns: string
       }

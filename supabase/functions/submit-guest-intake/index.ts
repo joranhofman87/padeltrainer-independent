@@ -174,7 +174,15 @@ export async function handleRequest(
     // The submitter's own id for THIS attempt, and the only thing that can make the Player create
     // idempotent. Required rather than minted here — see the create call below.
     if (typeof creationRequestId !== "string" || !UUID_RE.test(creationRequestId)) {
-      return invalidPayload("Field 'creationRequestId' must be a uuid", corsHeaders);
+      // A page loaded before this shipped will not send one. Say what fixes it, rather than
+      // "invalid payload" — the registrant did nothing wrong and a refresh is the whole remedy.
+      return new Response(
+        JSON.stringify({
+          error: "stale_client",
+          message: "Ververs de pagina en probeer het opnieuw.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     const adminClient = deps.adminClient ?? createClient(supabaseUrl, supabaseServiceKey);

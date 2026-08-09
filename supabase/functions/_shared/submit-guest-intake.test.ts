@@ -195,7 +195,11 @@ Deno.test("a submission with no attempt id is refused, not given a fresh one", a
     else (payload as Record<string, unknown>).creationRequestId = bad;
     const res = await handleRequest(req(payload), { adminClient });
 
+    const parsed = await res.json();
     assertEquals(`${String(bad)}:${res.status}`, `${String(bad)}:400`);
+    // ...and it says what fixes it: a page cached from before this shipped sends no id, and the
+    // registrant did nothing wrong.
+    assertEquals(parsed.error, "stale_client");
     assertEquals(createCall(rec), undefined, `it created a Player for ${String(bad)}`);
   }
 });

@@ -890,6 +890,26 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   const { profileId } = await makeAccount(EMAIL());
   const profilePerson = (await personOfProfile(profileId)).person_id;
 
+  // A STRANGER first: an account this academy has no relationship with at all. The earlier version
+  // of this section created exactly that and then asserted the stamp SUCCEEDED — enshrining the
+  // hole. Knowing a profile uuid must not let a manager attach seats and invoices to that account.
+  const strangerStamp = await asUser(mgr, async () => (await one(
+    `SELECT public.player_create_command(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _full_name => 'Stranger Twin', _source => 'roster_registered_twin',
+       _twin_of_profile_id => $3) AS r`,
+    [await newUuid(), academy, profileId])).r);
+  ok('an account this academy has no relationship with cannot be asserted',
+    !strangerStamp.ok && /PERSON_NOT_YOURS/.test(strangerStamp.message ?? ''), strangerStamp);
+
+  // ...now give the academy the relationship its own picker would have shown: a guest of this
+  // academy already linked to that person.
+  const { id: relatedGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Known Here', $1) RETURNING id`, [academy]);
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE guest_player_id = $2`,
+    [profilePerson, relatedGuest]);
+
   // The roster bridge's exact shape: no address, source `roster_registered_twin`, which is the
   // arm of B1 that accepts a stamp without an email to verify it against.
   const mintReq = await newUuid();
@@ -916,6 +936,23 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     [stampReq, academy, existingPerson, profileId])).r);
   ok('a Player that already exists cannot be stamped — there is nothing being created to assert',
     !stampExisting.ok && /BAD_SCOPE/.test(stampExisting.message ?? ''), stampExisting);
+
+  // ...and the assertion is MATERIAL to the attempt: retrying one request id under a different
+  // asserted account must be refused, not answered with the first account's Player.
+  const { profileId: otherProfile } = await makeAccount(EMAIL());
+  const { id: otherGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Also Known Here', $1) RETURNING id`, [academy]);
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE guest_player_id = $2`,
+    [(await personOfProfile(otherProfile)).person_id, otherGuest]);
+  const swapped = await asUser(mgr, async () => (await one(
+    `SELECT public.player_create_command(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _full_name => 'Roster Twin', _source => 'roster_registered_twin',
+       _twin_of_profile_id => $3) AS r`,
+    [mintReq, academy, otherProfile])).r);
+  ok('replaying an attempt under a DIFFERENT asserted account is refused',
+    !swapped.ok && /IDEMPOTENCY_CONFLICT/.test(swapped.message ?? ''), swapped);
 
   const publicReq = await newUuid();
   const selfSignupStamp = await asService(async () => (await one(
@@ -974,13 +1011,42 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   ok('...and the household member was not overwritten',
     (await one(`SELECT full_name FROM public.guest_players WHERE id = $1`, [household])).full_name
       === 'Ouder Van Der Berg');
-  ok('...with the duplicate proposed for a human to judge',
+  // A DIFFERENT name on the shared address is not a duplicate, so nothing is proposed for the child
+  // — but a member added under the SAME name as the household member is, and that is the assertion
+  // worth making. (`n >= 0` was the previous version of this line, which is true of every integer.)
+  const twinReq = await newUuid();
+  const sameName = await addMember(twinReq, 'Ouder', 'Van Der Berg', shared);
+  ok('a member added under an existing name is created, not merged into them',
+    sameName.ok && sameName.value !== household, sameName);
+  ok('...and proposed for a human to judge',
     (await one(`SELECT count(*)::int AS n FROM public.person_merge_review
-                 WHERE kind = 'possible_duplicate_player' AND guest_player_id = $1`, [child.value])).n >= 0);
+                 WHERE kind = 'possible_duplicate_player' AND guest_player_id = $1`,
+      [sameName.value])).n === 1);
 
   const replay = await addMember(reqA, 'Kind', 'Van Der Berg', shared);
   ok('resubmitting the group replays the same member instead of minting a second',
     replay.ok && replay.value === child.value, replay);
+
+  // The limit bounds distinct-guest CREATION from one capability. A group at the cap that has to
+  // retry must still be able to: eleven replays of ten members create nobody.
+  // two members exist already (the child and the same-name one), so eight more reach the cap of ten
+  const capMembers = [];
+  for (let i = 0; i < 8; i++) capMembers.push({ req: await newUuid(), email: EMAIL(), name: `Lid${i}` });
+  for (const [i, m] of capMembers.entries()) {
+    const r = await addMember(m.req, m.name, 'Van Der Berg', m.email);
+    ok(`member ${i + 3} of a full group is added`, r.ok && r.value !== null, r);
+    m.id = r.value;
+  }
+  const overCap = await addMember(await newUuid(), 'Elfde', 'Lid', EMAIL());
+  ok('a genuinely new member beyond the cap is refused',
+    !overCap.ok && /rate_limit_exceeded/.test(overCap.message ?? ''), overCap);
+
+  // ...and the SAME attempt, identical in every respect, still replays: the group whose apply
+  // failed can be resubmitted, which is the whole promise of keying on the request.
+  const first = capMembers[0];
+  const replayAtCap = await addMember(first.req, first.name, 'Van Der Berg', first.email);
+  ok('...but the group can still be RETRIED — a replay is not a new guest',
+    replayAtCap.ok && replayAtCap.value === first.id, replayAtCap);
 
   const noReq = await asUser(null, async () => (await one(
     `SELECT public.create_rebook_group_guest($1, 'Zonder', 'Id', $2, '0612345678', NULL) AS id`,
@@ -993,6 +1059,99 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     [EMAIL(), await newUuid()])).id);
   ok('and the token is still what authorizes the add',
     !badToken.ok && /invalid_token/.test(badToken.message ?? ''), badToken);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-9. THE COMMAND IS THE ONLY DOOR, AND THE DATABASE IS WHAT SAYS SO ═══════════════════════
+// Every writer going through the command is a property of the CALLERS, and callers change. These
+// are properties of the SCHEMA, which is what makes the invariant survive the next feature.
+//
+// HOW THESE ARE ASSERTED, and why not by "try it as a manager and watch it fail". A migration-built
+// local database gives `authenticated` no table privileges at all (the ACL is `Dxtm`, no `arwd`),
+// so every write attempted as that role fails with a bare "permission denied" whatever the policies
+// say — an earlier version of this section asserted three refusals that would have passed with the
+// migration under test DELETED. Staging the grant only moves the problem to the next relation the
+// policies touch. So the closure is asserted where it actually lives: in the catalogue. The one
+// guard that CAN be exercised behaviourally is the twin trigger, because it keys on the JWT claim
+// rather than on the database role — and it is, in both directions.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 onlydoor', 'u2od-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgr]).catch(() => {});
+  const { id: existing } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Already Here', $1) RETURNING id`, [academy]);
+  const { profileId } = await makeAccount(EMAIL());
+
+  // ── the catalogue: no client may insert a Player ──
+  const insertPolicies = await all(
+    `SELECT polname FROM pg_policy
+      WHERE polrelid = 'public.guest_players'::regclass AND polcmd = 'a'`);
+  ok('no INSERT policy remains on guest_players', insertPolicies.length === 0, insertPolicies);
+
+  const clientInsert = await all(
+    `SELECT grantee FROM information_schema.role_table_grants
+      WHERE table_schema = 'public' AND table_name = 'guest_players'
+        AND privilege_type = 'INSERT' AND grantee IN ('anon', 'authenticated', 'PUBLIC')`);
+  ok('...and INSERT is granted to no client role either', clientInsert.length === 0, clientInsert);
+
+  ok('RLS is on, so a missing policy is a refusal rather than a free pass',
+    (await one(`SELECT relrowsecurity AS on FROM pg_class WHERE oid = 'public.guest_players'::regclass`)).on === true);
+
+  const claimGrants = await all(
+    `SELECT grantee FROM information_schema.role_routine_grants
+      WHERE routine_schema = 'public' AND routine_name = 'claim_guest_twin_for_academy'
+        AND grantee IN ('anon', 'authenticated', 'service_role', 'PUBLIC')`);
+  ok('the retired claim RPC is reachable from no client role', claimGrants.length === 0, claimGrants);
+
+  // ── the trigger: a client may not assert who an existing Player IS ──
+  // The guard reads `auth.role()`, which comes from the request's JWT claims — so a client can be
+  // simulated exactly, without needing the table privileges this database does not hand out.
+  await c.query('SAVEPOINT asclient');
+  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ sub: mgr, role: 'authenticated' })]);
+  let stampError = null;
+  try {
+    await c.query(`UPDATE public.guest_players SET twin_of_profile_id = $1 WHERE id = $2`,
+      [profileId, existing]);
+  } catch (e) { stampError = e.message; }
+  await c.query('ROLLBACK TO SAVEPOINT asclient');
+  ok('a client cannot assert who an existing Player IS by editing the row',
+    /guest_twin_assertion_not_yours/.test(stampError ?? ''), { stampError });
+
+  // ...an ordinary edit by the same client is untouched: the guard is about the assertion, not the
+  // table. Without this the trigger could refuse everything and still look correct above.
+  await c.query('SAVEPOINT ordinary');
+  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ sub: mgr, role: 'authenticated' })]);
+  const ordinary = await c.query(
+    `UPDATE public.guest_players SET phone = '0612345678' WHERE id = $1`, [existing]);
+  await c.query(`SELECT set_config('request.jwt.claims', NULL, true)`);
+  ok('...while an ordinary edit still works', ordinary.rowCount === 1);
+  await c.query('RELEASE SAVEPOINT ordinary');
+
+  // ...and the sanctioned path is unaffected: closing the client door must not close the front one.
+  const throughTheDoor = await one(
+    `SELECT public.player_create_execute(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _origin => 'operator', _actor_user_id => $3, _full_name => 'Front Door') AS r`,
+    [await newUuid(), academy, mgr]);
+  ok('the command still creates Players, which is the point of shutting the other doors',
+    throughTheDoor.r.created === true && throughTheDoor.r.guest_player_id !== null, throughTheDoor.r);
+
+  // and the mechanism's own stamp is not blocked by the guard it installed
+  const stampedByCommand = await one(
+    `SELECT public.player_create_execute(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _origin => 'operator', _actor_user_id => $3, _full_name => 'Front Door Twin',
+       _twin_of_profile_id => $4) AS r`,
+    [await newUuid(), academy, mgr, profileId]);
+  ok('...including one that carries a twin assertion',
+    stampedByCommand.r.guest_player_id !== null, stampedByCommand.r);
   await c.query('ROLLBACK');
 }
 

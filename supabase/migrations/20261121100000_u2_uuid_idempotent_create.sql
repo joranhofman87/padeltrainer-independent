@@ -111,7 +111,8 @@ AS $$ SELECT nullif(lower(btrim(regexp_replace(coalesce(_v, ''), '\s+', ' ', 'g'
 -- secret, and it is not pretending to: replaying one still requires the whole identity payload to
 -- match, which is the same knowledge the attribute lookup this replaced gave away for nothing.
 CREATE OR REPLACE FUNCTION public.player_create_fingerprint(
-  _full_name text, _email text, _phone text, _select_person_id uuid, _source text DEFAULT NULL
+  _full_name text, _email text, _phone text, _select_person_id uuid, _source text DEFAULT NULL,
+  _twin_of_profile_id uuid DEFAULT NULL
 )
 RETURNS text
 LANGUAGE sql
@@ -123,7 +124,11 @@ AS $$
     || public.u2_ns(public.u2_norm(_email))
     || public.u2_ns(public.u2_norm(_phone))
     || public.u2_ns(_select_person_id::text)
-    || public.u2_ns(public.u2_norm(_source)), 'sha256'), 'hex');
+    || public.u2_ns(public.u2_norm(_source))
+    -- The twin assertion is MATERIAL: it is the claim that this Player is a particular account
+    -- holder, and B1 acts on it. Left out, a retry of one request id under a DIFFERENT asserted
+    -- profile would be answered with the first profile's Player instead of refused.
+    || public.u2_ns(_twin_of_profile_id::text), 'sha256'), 'hex');
 $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -149,7 +154,16 @@ AS $$
                WHERE m.academy_profile_id = _owner_id AND m.person_id = _person_id)
       OR EXISTS (SELECT 1 FROM public.person_links pl
                    JOIN public.guest_players g ON g.id = pl.guest_player_id
-                  WHERE pl.person_id = _person_id AND g.academy_profile_id = _owner_id)
+                  WHERE pl.person_id = _person_id
+                    AND (g.academy_profile_id = _owner_id
+                         -- ...or a guest of one of the academy's ACTIVE trainers. This mirrors how
+                         -- `get_players_overview` populates the picker the operator chose from, so
+                         -- the two agree about who this academy's players are. A predicate that
+                         -- disagreed with the picker would refuse people the UI had just offered.
+                         OR EXISTS (SELECT 1 FROM public.academy_trainers at
+                                     WHERE at.academy_profile_id = _owner_id
+                                       AND at.trainer_profile_id = g.trainer_id
+                                       AND at.status = 'active')))
     WHEN 'trainer' THEN
       EXISTS (SELECT 1 FROM public.person_links pl
                 JOIN public.guest_players g ON g.id = pl.guest_player_id
@@ -211,6 +225,7 @@ DROP FUNCTION IF EXISTS public.academy_may_select_person(uuid, uuid);
 -- end up with an OVERLOAD: PostgREST would then resolve a call by argument names, and two functions
 -- that differ by one optional parameter are exactly the pair it can pick the wrong member of.
 DROP FUNCTION IF EXISTS public.player_create_fingerprint(text, text, text, uuid);
+DROP FUNCTION IF EXISTS public.player_create_fingerprint(text, text, text, uuid, text);
 DROP FUNCTION IF EXISTS public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text);
 DROP FUNCTION IF EXISTS public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text);
 
@@ -252,7 +267,7 @@ BEGIN
   -- produce one Player; two different attempts are free to run at the same time.
   PERFORM pg_advisory_xact_lock(hashtext('player_create:' || _creation_request_id::text));
 
-  v_fp := public.player_create_fingerprint(_full_name, _email, _phone, _select_person_id, _source);
+  v_fp := public.player_create_fingerprint(_full_name, _email, _phone, _select_person_id, _source, _twin_of_profile_id);
 
   SELECT * INTO v_cmd FROM public.player_create_commands
    WHERE creation_request_id = _creation_request_id FOR UPDATE;
@@ -466,12 +481,29 @@ BEGIN
       USING ERRCODE = 'invalid_parameter_value';
   END IF;
 
-  -- The one authorization this function owes the mechanism: naming an existing Player.
+  -- The authorizations this function owes the mechanism. Both are about naming somebody who
+  -- already exists, and both answer the same question: does this scope have a recorded
+  -- relationship with that person, or is it merely in possession of their uuid?
   IF _select_person_id IS NOT NULL
      AND NOT public.player_owner_may_select_person(_owner_type, _owner_id, _select_person_id) THEN
     -- knowing the uuid is not the same as being allowed to use it
     RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that Player is not one this scope can select'
       USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  -- A twin stamp is not a label. `mint_person_for_guest` treats it as the explicit assertion that
+  -- authorizes joining this new Player to that account holder's person (rule B1) — so an
+  -- unauthorized stamp is a way to attach seats and invoices to somebody else's account by knowing
+  -- their profile uuid. The account holder must be someone this scope already speaks for.
+  IF _twin_of_profile_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.person_links pl
+       WHERE pl.profile_id = _twin_of_profile_id
+         AND public.player_owner_may_select_person(_owner_type, _owner_id, pl.person_id)
+    ) THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that account is not one this scope can speak for'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
   END IF;
 
   RETURN public.player_create_execute(
@@ -556,7 +588,7 @@ $$;
 
 REVOKE ALL ON FUNCTION public.u2_ns(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.u2_norm(text) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.player_create_fingerprint(text, text, text, uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.player_create_fingerprint(text, text, text, uuid, text, uuid) FROM PUBLIC, anon, authenticated;
 -- The mechanism is reachable ONLY from a SECURITY DEFINER function owned by this role. Granting it
 -- to nobody is what lets it skip the permission question: there is no caller that has not answered
 -- it. `service_role` is revoked too — the edge functions go through `player_create_command`.

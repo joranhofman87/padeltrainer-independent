@@ -31,9 +31,17 @@ const EDITS: Array<[RegExp, string]> = [
   ],
   // 2. the declaration gains one variable
   [/\n {2}v_result jsonb;/, ''],
-  // 3. the lookup-then-insert becomes one call to the shared mechanism
+  // 3. the attempt id is required, checked next to the token and scope validation
+  [/\n {2}IF _creation_request_id IS NULL THEN RAISE EXCEPTION 'creation_request_id_required'; END IF;/, ''],
+  // 4. only a genuinely NEW attempt is rate-limited (a replay creates nobody)
   [
-    /\n\n {2}IF _creation_request_id IS NULL THEN[\s\S]*?\n {2}RETURN v_id;/,
+    /\n {2}-- Only a genuinely NEW attempt is counted[\s\S]*?\n {2}IF NOT EXISTS \(SELECT 1 FROM public\.player_create_commands\n\s+WHERE creation_request_id = _creation_request_id\) THEN\n/,
+    '\n',
+  ],
+  [/\n {2}END IF;\n\n {2}v_full :=/, '\n\n  v_full :='],
+  // 5. the lookup-then-insert becomes one call to the shared mechanism
+  [
+    /\n\n {2}-- The Player is CREATED, through the one mechanism[\s\S]*?\n {2}RETURN v_id;/,
     `
 
   -- Dedup by email within the same owner scope (mirrors resolveOrCreateGuestPlayer's core).

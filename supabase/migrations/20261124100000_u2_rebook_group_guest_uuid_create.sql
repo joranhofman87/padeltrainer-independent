@@ -56,11 +56,19 @@ BEGIN
   IF c.id IS NULL OR c.rebook_group_id IS NULL THEN RAISE EXCEPTION 'invalid_token'; END IF;
   SELECT * INTO s FROM public.availability_slots WHERE id = c.slot_id;
   IF s.academy_profile_id IS NULL AND s.trainer_id IS NULL THEN RAISE EXCEPTION 'slot_unscoped'; END IF;
+  IF _creation_request_id IS NULL THEN RAISE EXCEPTION 'creation_request_id_required'; END IF;
 
   -- Rate limit: at most 10 mint attempts per token per 15-minute window. Bounds distinct-guest
   -- creation (and thus welcome emails) from a single capability. UPSERT resets the window once it
   -- has elapsed (<= so the window closes exactly at the cap edge); the UNIQUE(identifier, endpoint)
   -- row is reused. SECURITY DEFINER bypasses rate_limits' RLS.
+  -- Only a genuinely NEW attempt is counted. The limit exists to bound distinct-guest creation from
+  -- one capability (and thus the welcome emails it drives); a replay creates nobody. Counting
+  -- replays made the retry this function now promises impossible for a group at the cap: a
+  -- ten-member group whose apply failed came back as attempt eleven and was refused before the
+  -- mechanism could replay a single member.
+  IF NOT EXISTS (SELECT 1 FROM public.player_create_commands
+                  WHERE creation_request_id = _creation_request_id) THEN
   INSERT INTO public.rate_limits AS rl (identifier, endpoint, request_count, window_start)
   VALUES ('rbg:' || md5(_token), 'create_rebook_group_guest', 1, now())
   ON CONFLICT (identifier, endpoint) DO UPDATE
@@ -72,12 +80,9 @@ BEGIN
   IF v_rl_count > 10 THEN
     RAISE EXCEPTION 'rate_limit_exceeded';
   END IF;
+  END IF;
 
   v_full := btrim(concat_ws(' ', v_first, v_last));
-
-  IF _creation_request_id IS NULL THEN
-    RAISE EXCEPTION 'creation_request_id_required';
-  END IF;
 
   -- The Player is CREATED, through the one mechanism. What stood here instead was a lookup on
   -- `lower(email)` alone — no name, LIMIT 1 — that returned whatever guest happened to share the
