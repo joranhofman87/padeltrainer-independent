@@ -64,7 +64,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Loader2, UserPlus, Clock, Calendar, Repeat, X, Check, Users, Percent, ChevronDown, Euro } from "lucide-react";
-import { AddPlayerDialog, GuestPlayer } from "@/components/players/AddPlayerDialog";
+import { AddPlayerDialog, type CreatedPlayer, GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { Badge } from "@/components/ui/badge";
 import { BookedPlayer } from "@/lib/slotTypes";
 import { cn } from "@/lib/utils";
@@ -84,6 +84,8 @@ import { enqueueConfirmationsPerRecipient } from '@/lib/bookingNotifications';
  */
 type BookableGuestPlayer = GuestPlayer & {
   billing_business_name?: string | null;
+  /** Canonical Player identity — how a freshly created Player is located in this list (U2). */
+  person_id?: string | null;
 };
 
 interface Slot {
@@ -366,18 +368,37 @@ export function BookForPlayerDialog({
     }
   };
 
-  const handlePlayerCreated = (player: GuestPlayer) => {
-    setPlayers([...players, player].sort((a, b) =>
-      a.full_name.localeCompare(b.full_name)
-    ));
-    // Add to first empty slot
-    const firstEmptyIndex = selectedPlayerIds.findIndex(id => !id);
-    if (firstEmptyIndex !== -1) {
-      const newIds = [...selectedPlayerIds];
-      newIds[firstEmptyIndex] = player.id;
-      syncPayerAfterSelectionChange(newIds);
-    }
+  const handlePlayerCreated = async (player: CreatedPlayer) => {
+    // The create flow answers with the canonical person and nothing else (U2, owner correction
+    // 2026-08-09). Re-read this dialog's own list and locate the new Player by person_id — the
+    // slot then holds the LIST's key, which never travelled through the create contract.
     setShowAddPlayer(false);
+    try {
+      const data = (await fetchBookableGuestPlayers(
+        academyProfileId
+          ? { kind: 'academy', id: academyProfileId }
+          : { kind: 'trainer', id: trainerId },
+      )) as BookableGuestPlayer[];
+      setPlayers(data);
+      const created = data.find((p) => p.person_id === player.personId);
+      if (!created) {
+        logger.error("Created player not found in the refreshed booking list", undefined, {
+          component: "BookForPlayerDialog",
+        });
+        return;
+      }
+      // Add to first empty slot
+      const firstEmptyIndex = selectedPlayerIds.findIndex(id => !id);
+      if (firstEmptyIndex !== -1) {
+        const newIds = [...selectedPlayerIds];
+        newIds[firstEmptyIndex] = created.id;
+        syncPayerAfterSelectionChange(newIds);
+      }
+    } catch (error) {
+      logger.error("Failed to refresh players after a create", error as Error, {
+        component: "BookForPlayerDialog",
+      });
+    }
   };
 
   const syncPayerAfterSelectionChange = (newIds: string[]) => {

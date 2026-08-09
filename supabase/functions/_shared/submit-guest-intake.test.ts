@@ -72,10 +72,21 @@ function makeAdmin(ownerType: "academy" | "trainer" | "club") {
     from,
     rpc: (fn: string, args: Record<string, unknown> = {}) => {
       rec.calls.push({ fn, args });
-      return Promise.resolve({
-        data: { person_id: "the-person", guest_player_id: "the-guest", created: true, replayed: false },
-        error: null,
-      });
+      // Per-function answers, matching the real contracts: the create command is canonical-only,
+      // and the legacy reference exists ONLY in the service adapter's answer.
+      if (fn === "player_create_command") {
+        return Promise.resolve({
+          data: { person_id: "the-person", created: true, replayed: false },
+          error: null,
+        });
+      }
+      if (fn === "player_legacy_ref") {
+        return Promise.resolve({
+          data: { player_id: null, guest_player_id: "the-guest" },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
     },
     functions: { invoke: () => Promise.resolve({ data: null, error: null }) },
   } as never;
@@ -134,6 +145,30 @@ Deno.test("the intake row carries the created Player and never an account", asyn
   assertEquals(rec.intakeInserts.length, 1);
   assertEquals(rec.intakeInserts[0].guest_player_id, "the-guest");
   assertEquals(rec.intakeInserts[0].player_id, null);
+});
+
+Deno.test("the legacy column is DERIVED from the person by the service adapter — not returned by the create", async () => {
+  // The command answers canonically; the guest id the intake row still physically needs comes from
+  // `player_legacy_ref`, called with the person and the FORM's owner scope, and dies in this
+  // process (owner correction, 2026-08-09).
+  const { adminClient, rec } = makeAdmin("academy");
+  await handleRequest(req(body()), { adminClient });
+
+  const refCall = rec.calls.find((c) => c.fn === "player_legacy_ref");
+  assertEquals(Boolean(refCall), true, "the adapter was never asked");
+  assertEquals(refCall?.args._person_id, "the-person");
+  assertEquals(refCall?.args._owner_type, "academy");
+  assertEquals(refCall?.args._owner_id, ACADEMY);
+});
+
+Deno.test("the HTTP response carries no legacy id — the derived reference dies inside the function", async () => {
+  const { adminClient } = makeAdmin("academy");
+  const res = await handleRequest(req(body()), { adminClient });
+  const text = await res.text();
+
+  assertEquals(res.status, 200);
+  assertEquals(text.includes("the-guest"), false, "the derived guest id leaked into the response");
+  assertEquals(/guest_?player_?id/i.test(text), false, "the response names a legacy id field");
 });
 
 Deno.test("a signed-in submitter's token does not divert the attribution", async () => {

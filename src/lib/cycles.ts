@@ -498,8 +498,10 @@ async function autoFollowOwner(
 // overloaded linked_profile_id is exactly what the old players-overview de-dup had to collapse.
 // Only the club vertical still keeps a club_players roster row (separate table + overview).
 //
-// club_players is written through `club_student_list_add`, never directly: the roster row is keyed
-// on the canonical Player, and the email column is contact information that decides nothing.
+// club_players NEVER upserts: its unique email index is PARTIAL (WHERE email IS NOT NULL AND
+// email != '', migration 20260126164841) and PostgREST upserts cannot target partial indexes
+// on the table, so a pre-existing same-email row makes the dedup select miss and the insert hits
+// the unique index (23505) — acceptable, the player is already listed.
 async function addToStudentList(
   ownerType: 'trainer' | 'club' | 'academy',
   ownerId: string,
@@ -507,7 +509,7 @@ async function addToStudentList(
 ): Promise<void> {
   try {
     if (ownerType === 'club') {
-      await addToClubStudentList(input);
+      await addToClubStudentList(ownerId, input);
     }
   } catch (error) {
     logger.error(
@@ -518,28 +520,56 @@ async function addToStudentList(
   }
 }
 
-// The club student list is keyed on the PLAYER, not on their address.
+// club_players variant: select-by-email-then-insert (unique_club_player_email is
+// also a PARTIAL index — WHERE email IS NOT NULL AND email != '' — so upsert
+// with onConflict fails with 42P10 exactly like guest_players did).
 //
-// What stood here selected `club_players` by (club, email) and returned on a hit, so two people
-// sharing an address produced one roster row and the second registrant was never added at all.
-// That is deduplicating a person by an attribute, which U2 forbids (owner, 2026-08-09) — and the
-// client was in no position to do it correctly anyway: it supplied the Player uuid, supplied the
-// club, and raced its own existence check.
+// REVERTED to the pre-round-9 behaviour, deliberately (owner, architecture correction). A server
+// command keyed on the canonical person was built here and is withdrawn: `club_players` is a legacy
+// model that the person-unification plan RETIRES, and building permanent identity infrastructure
+// around it now is the opposite of the direction. Club ownership is an owner decision that has not
+// been made.
 //
-// `club_student_list_add` decides all three server-side: the Player must be the caller's own
-// profile, the club comes from the registration being signed up to, and the (club, person) pair is
-// serialized under an advisory lock. Nothing here reads an email.
-async function addToClubStudentList(input: IntakeRequestInput): Promise<void> {
-  if (!input.player_id) return; // an anonymous submission never reaches this path
+// KNOWN, RECORDED, NOT FIXED HERE: this deduplicates a club roster entry by (club, email), so two
+// people who share an address produce one row and the second registrant is never added. It is
+// PRE-EXISTING (it is on origin/main untouched) and it is a real instance of an attribute
+// deduplicating a person. It is carried as a club-architecture dependency rather than patched into
+// a table that is on its way out — see the U2 handoff.
+async function addToClubStudentList(
+  clubProfileId: string,
+  input: IntakeRequestInput
+): Promise<void> {
+  const email = (input.email ?? '').trim();
 
-  const { error } = await supabase.rpc('club_student_list_add', {
-    _registration_id: input.cycle_id, // the FORM's id — the RPC derives the club from it
-    _profile_id: input.player_id,
+  if (email) {
+    const { data: existing } = await supabase
+      .from('club_players')
+      .select('id')
+      .eq('club_profile_id', clubProfileId)
+      .eq('email', email)
+      .limit(1)
+      .maybeSingle();
+    if (existing?.id) return;
+  }
+
+  const { error } = await supabase.from('club_players').insert({
+    club_profile_id: clubProfileId,
+    full_name: input.full_name,
+    email, // NOT NULL column on club_players
+    phone: input.phone || null,
+    skill_rating: input.rating ?? null,
+    rating_system: input.rating_system || 'knltb',
+    linked_profile_id: input.player_id,
+    source: 'cycle_registration',
+    has_trained: false,
   });
-  if (error) {
+
+  // 23505 = a concurrent writer (or an RLS-invisible row) already holds this
+  // email for the club — the player exists in the list, nothing to do.
+  if (error && error.code !== '23505') {
     logger.error('Add to club student list failed (non-blocking)', new Error(error.message), {
+      clubProfileId,
       cycleId: input.cycle_id,
-      errorCode: error.code,
     });
   }
 }
@@ -1063,43 +1093,41 @@ export async function unlinkPlayer(intakeRequestId: string): Promise<void> {
   }
 }
 
-// Create a manual intake request (for club managers to add registrations)
+// Create a manual intake request (the staff add-a-registration dialog).
+//
+// The caller supplies the CANONICAL person_id the create command answered with; the server command
+// authorizes against the registration's owner, derives the temporary legacy link columns from the
+// person internally, and writes the row in one transaction. No legacy id enters or leaves this
+// function (U2, owner correction 2026-08-09) — the direct `.from('intake_requests').insert` that
+// stood here carried a guest id through browser state, which is the leak the command closes.
 export async function createManualIntakeRequest(
-  input: IntakeRequestInput & { player_id?: string | null; guest_player_id?: string | null }
-): Promise<IntakeRequest> {
-  const insertData: Record<string, unknown> = {
-    // input.cycle_id is the FORM's id (registration.id); a manually-added applicant links to the form
-    // and is not yet planned into a training cycle (cycle_id NULL).
-    registration_id: input.cycle_id,
-    cycle_id: null,
-    player_id: input.player_id || null,
-    guest_player_id: (input as any).guest_player_id || null,
-    full_name: input.full_name,
+  input: IntakeRequestInput & { person_id: string }
+): Promise<{ intakeRequestId: string }> {
+  const { data, error } = await supabase.rpc('intake_request_create_for_person', {
+    // input.cycle_id is the FORM's id (registration.id); a manually-added applicant links to the
+    // form and is not yet planned into a training cycle (the command writes cycle_id NULL).
+    _registration_id: input.cycle_id,
+    _person_id: input.person_id,
+    _full_name: input.full_name,
     // NULL, not '': an applicant with no address has no address. An empty string is a value, and a
     // value is something a matcher will happily match on.
-    email: input.email?.trim() || null,
-    phone: input.phone || null,
-    rating: input.rating || null,
-    rating_system: input.rating_system || 'knltb',
-    lesson_type: input.lesson_types,
-    preferred_days: input.preferred_days,
-    preferred_time_windows: input.preferred_time_windows as unknown as Json,
-    preferred_duration_minutes: input.preferred_duration_minutes || 60,
-    sessions_per_week: input.sessions_per_week || 1,
-    preferred_trainer_ids: input.preferred_trainer_ids || [],
-    location_id: input.location_id || null,
-    notes: input.notes || null,
-    consent_given: true,
-    status: 'new' as const,
-  };
-
-  const { data, error } = await supabase
-    .from('intake_requests')
-    .insert(insertData as any)
-    .select()
-    .single();
+    _email: input.email?.trim() || null,
+    _phone: input.phone || null,
+    _rating: input.rating || null,
+    _rating_system: input.rating_system || 'knltb',
+    _lesson_types: input.lesson_types,
+    _preferred_days: input.preferred_days,
+    _preferred_time_windows: input.preferred_time_windows as unknown as Json,
+    _preferred_duration_minutes: input.preferred_duration_minutes || 60,
+    _sessions_per_week: input.sessions_per_week || 1,
+    _preferred_trainer_ids: input.preferred_trainer_ids || [],
+    _location_id: input.location_id || null,
+    _notes: input.notes || null,
+  });
 
   if (error) throw error;
-  return toIntakeRequest(data);
+  const result = data as { intake_request_id: string | null } | null;
+  if (!result?.intake_request_id) throw new Error('intake_create_no_result');
+  return { intakeRequestId: result.intake_request_id };
 }
 

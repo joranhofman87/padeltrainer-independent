@@ -39,7 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { cn } from "@/lib/utils";
-import { AddPlayerDialog, GuestPlayer } from "@/components/players/AddPlayerDialog";
+import { AddPlayerDialog, type CreatedPlayer, GuestPlayer } from "@/components/players/AddPlayerDialog";
 import { invalidateAllPlayerData } from "@/lib/playerQueryKeys";
 import { GuestPlayerSlotCombobox } from "@/components/players/GuestPlayerSlotCombobox";
 import { BookedPlayer } from "@/lib/slotTypes";
@@ -184,15 +184,36 @@ export function InlineBookPlayer({
     }
   };
 
-  const handlePlayerCreated = (player: GuestPlayer) => {
-    setPlayers(prev => [...prev, player].sort((a, b) => a.full_name.localeCompare(b.full_name)));
-    const firstEmptyIndex = selectedPlayerIds.findIndex(id => !id);
-    if (firstEmptyIndex !== -1) {
-      const newIds = [...selectedPlayerIds];
-      newIds[firstEmptyIndex] = player.id;
-      setSelectedPlayerIds(newIds);
-    }
+  const handlePlayerCreated = async (player: CreatedPlayer) => {
+    // The create flow answers with the canonical person and nothing else (U2, owner correction
+    // 2026-08-09). Re-read this widget's own list and locate the new Player by person_id — the
+    // slot then holds the LIST's key, which never travelled through the create contract.
     setShowAddPlayer(false);
+    try {
+      const data = await fetchBookableGuestPlayers(
+        academyProfileId
+          ? { kind: 'academy', id: academyProfileId }
+          : { kind: 'trainer', id: trainerId },
+      );
+      setPlayers(data as GuestPlayer[]);
+      const created = data.find((p) => p.person_id === player.personId);
+      if (!created) {
+        logger.error("Created player not found in the refreshed list", undefined, {
+          component: "InlineBookPlayer",
+        });
+        return;
+      }
+      const firstEmptyIndex = selectedPlayerIds.findIndex(id => !id);
+      if (firstEmptyIndex !== -1) {
+        const newIds = [...selectedPlayerIds];
+        newIds[firstEmptyIndex] = created.id;
+        setSelectedPlayerIds(newIds);
+      }
+    } catch (error) {
+      logger.error("Failed to refresh players after a create", error as Error, {
+        component: "InlineBookPlayer",
+      });
+    }
   };
 
   const handlePlayerSelect = (index: number, playerId: string) => {

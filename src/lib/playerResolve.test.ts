@@ -1,72 +1,60 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { resolveOrCreateGuestTwinForRegisteredPlayer } from './playerResolve';
+import { ensureRosterTwinForRegisteredPlayer } from './playerResolve';
 
 /**
- * The roster twin bridge, after U2.
+ * The roster twin bridge, after the U2 canonical-identity correction.
  *
- * The tests this replaces described a resolve-or-create: an email lookup, a name gate, a claim of
- * the matched row, an insert if nothing matched. That whole shape is gone. It was not merely a
- * lookup — the claim STAMPED the matched row with `twin_of_profile_id`, and `mint_person_for_guest`
- * treats that stamp as the explicit operator assertion that authorizes joining the guest's person
- * to the profile's. So an address plus a name became an authorized merge, with no human choosing
- * anything: the roster UI supplies a profile id and nothing else.
+ * Two generations of behaviour are asserted ABSENT here. The first was the resolve-or-create by
+ * address: an email lookup, a name gate, a claim that stamped the matched row — an attribute match
+ * laundered into an authorized merge. The second was subtler: the bridge answered with the twin's
+ * GUEST id, read out of the create command's result, and patched `has_trained` from the browser —
+ * which made a temporary legacy reference part of a client contract.
  *
- * What is asserted now is that the bridge answers from the profile UUID or creates, and that it
- * never reads an address to decide.
+ * What is asserted now: the bridge creates through the command, answers with CANONICAL identity
+ * only, moves the has_trained write server-side, and never reads an address, a table, or a legacy
+ * id to decide anything.
  */
 const rpcMock = vi.fn();
-const fromMock = vi.fn();
-const updateEq = vi.fn().mockResolvedValue({ error: null });
+const fromMock = vi.fn(() => {
+  throw new Error('the twin bridge must not query tables directly');
+});
 
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
     rpc: (...args: unknown[]) => rpcMock(...(args as [string, Record<string, unknown>])),
-    from: (...args: unknown[]) => fromMock(...(args as [string])),
+    from: (...args: unknown[]) => fromMock(...(args as [])),
   },
 }));
 
 const ACADEMY = 'a1';
 const PROFILE = 'p1';
+const PERSON = 'person-1';
 
-/** The twin lookup answers with this; `undefined` means the bridge RPC itself is unreachable. */
-let twinByProfile: string | null | undefined = null;
 /** What the create command answers with, or an error to raise. */
-let createResult: { guest_player_id: string | null } | null = { guest_player_id: 'twin-new' };
+let createResult: { person_id: string | null } | null = { person_id: PERSON };
 let createError: { code: string; message: string } | null = null;
 
 beforeEach(() => {
   vi.clearAllMocks();
-  twinByProfile = null;
-  createResult = { guest_player_id: 'twin-new' };
+  createResult = { person_id: PERSON };
   createError = null;
 
   rpcMock.mockImplementation((fn: string) => {
-    if (fn === 'find_guest_twin_for_academy') {
+    if (fn === 'player_create_command') {
       return Promise.resolve(
-        twinByProfile === undefined
-          ? { data: null, error: { message: 'not deployed' } }
-          : { data: twinByProfile, error: null },
+        createError ? { data: null, error: createError } : { data: createResult, error: null },
       );
     }
-    if (fn === 'player_create_command') {
-      return Promise.resolve(createError ? { data: null, error: createError } : { data: createResult, error: null });
+    if (fn === 'person_mark_has_trained') {
+      return Promise.resolve({ data: true, error: null });
     }
     return Promise.resolve({ data: null, error: null });
-  });
-
-  fromMock.mockImplementation(() => {
-    const chain: Record<string, unknown> = {};
-    for (const m of ['select', 'eq', 'ilike', 'in', 'order', 'limit']) chain[m] = () => chain;
-    chain.maybeSingle = () => Promise.resolve({ data: null, error: null });
-    chain.update = () => ({ eq: updateEq });
-    chain.then = (res: (v: { data: unknown; error: null }) => unknown) =>
-      Promise.resolve(res({ data: [], error: null }));
-    return chain;
   });
 });
 
 const snapshot = (over: Record<string, unknown> = {}) => ({
   profileId: PROFILE,
+  personId: PERSON,
   fullName: 'Mark Jan Alewijn',
   email: '  MarkJan@Test.COM ',
   ...over,
@@ -74,24 +62,16 @@ const snapshot = (over: Record<string, unknown> = {}) => ({
 
 const createCall = () =>
   rpcMock.mock.calls.find((c) => c[0] === 'player_create_command')?.[1] as Record<string, unknown> | undefined;
+const flagCall = () =>
+  rpcMock.mock.calls.find((c) => c[0] === 'person_mark_has_trained')?.[1] as Record<string, unknown> | undefined;
 
-describe('the twin is found by profile id, or created — never matched on an address', () => {
-  it('an existing explicit twin short-circuits: no create, no lookup by anything else', async () => {
-    twinByProfile = 'stamped-twin';
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: ACADEMY },
-      snapshot(),
-    );
-    expect(id).toBe('stamped-twin');
-    expect(createCall()).toBeUndefined();
-  });
-
-  it('no twin yet: one is CREATED through the command, stamped with the profile id', async () => {
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+describe('the twin is created through the command, and the answer is canonical identity only', () => {
+  it('creates, stamped with the profile id, and answers with the person', async () => {
+    const out = await ensureRosterTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: ACADEMY },
       snapshot({ phone: '06', skillRating: 3, ratingSystem: 'NGR', birthDate: '2000-01-01' }),
     );
-    expect(id).toBe('twin-new');
+    expect(out).toEqual({ personId: PERSON });
     expect(createCall()).toMatchObject({
       _owner_type: 'academy',
       _owner_id: ACADEMY,
@@ -103,8 +83,43 @@ describe('the twin is found by profile id, or created — never matched on an ad
     expect(typeof createCall()?._creation_request_id).toBe('string');
   });
 
+  it('the answer carries NO legacy id — a caller cannot even reach for one', async () => {
+    const out = await ensureRosterTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: ACADEMY },
+      snapshot(),
+    );
+    expect(Object.keys(out ?? {})).toEqual(['personId']);
+  });
+
+  it('has_trained moves server-side: person in, no table touched from the browser', async () => {
+    await ensureRosterTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: ACADEMY },
+      snapshot(),
+    );
+    expect(flagCall()).toMatchObject({
+      _person_id: PERSON,
+      _owner_type: 'academy',
+      _owner_id: ACADEMY,
+    });
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('a failed flag write does not lose the seat', async () => {
+    rpcMock.mockImplementation((fn: string) => {
+      if (fn === 'player_create_command') {
+        return Promise.resolve({ data: createResult, error: null });
+      }
+      return Promise.resolve({ data: null, error: { code: '42501', message: 'nope' } });
+    });
+    const out = await ensureRosterTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: ACADEMY },
+      snapshot(),
+    );
+    expect(out).toEqual({ personId: PERSON });
+  });
+
   it('it can never SELECT an existing Player — the argument that would do that is not sent', async () => {
-    await resolveOrCreateGuestTwinForRegisteredPlayer(
+    await ensureRosterTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: ACADEMY },
       snapshot(),
     );
@@ -114,77 +129,77 @@ describe('the twin is found by profile id, or created — never matched on an ad
   it('a household address matching an existing guest does NOT claim it', async () => {
     // The removed arm: the matched row would have been stamped as this profile's twin, which is an
     // authorized merge of two people on the strength of a shared address and a name.
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+    const out = await ensureRosterTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: ACADEMY },
       snapshot({ fullName: 'Mark Jan Alewijn' }),
     );
-    expect(id).toBe('twin-new');
+    expect(out).toEqual({ personId: PERSON });
     expect(rpcMock.mock.calls.some((c) => c[0] === 'claim_guest_twin_for_academy')).toBe(false);
+    expect(rpcMock.mock.calls.some((c) => c[0] === 'find_guest_twin_for_academy')).toBe(false);
   });
 
   it('a player with NO address still gets a twin', async () => {
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+    const out = await ensureRosterTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: ACADEMY },
       snapshot({ email: null }),
     );
-    expect(id).toBe('twin-new');
+    expect(out).toEqual({ personId: PERSON });
     expect(createCall()?._email).toBeNull();
   });
 });
 
 describe('when it cannot answer, it refuses rather than guesses', () => {
-  it('an unreachable twin bridge aborts — the caller must not seat the wrong human', async () => {
-    twinByProfile = undefined;
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: ACADEMY },
-      snapshot(),
-    );
-    expect(id).toBeNull();
-    expect(createCall()).toBeUndefined();
-  });
-
   it('an unsupported scope aborts instead of falling back to matching', async () => {
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+    const out = await ensureRosterTwinForRegisteredPlayer(
       { kind: 'trainer', trainerId: 't1' },
       snapshot(),
     );
-    expect(id).toBeNull();
+    expect(out).toBeNull();
     expect(createCall()).toBeUndefined();
   });
 
   it('a player with no name is nothing to create', async () => {
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+    const out = await ensureRosterTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: ACADEMY },
       snapshot({ fullName: '   ' }),
     );
-    expect(id).toBeNull();
+    expect(out).toBeNull();
     expect(createCall()).toBeUndefined();
   });
 
   it('a refused create is a null, not a silently different Player', async () => {
     createError = { code: '42501', message: 'PLAYER_CREATE_FORBIDDEN' };
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+    const out = await ensureRosterTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: ACADEMY },
       snapshot(),
     );
-    expect(id).toBeNull();
+    expect(out).toBeNull();
   });
 
-  it('losing a mint race converges on the winner by PROFILE ID, never by address', async () => {
-    createError = { code: '23505', message: 'duplicate key value violates uniq_guest_twin_per_academy' };
-    let call = 0;
-    rpcMock.mockImplementation((fn: string) => {
-      if (fn === 'find_guest_twin_for_academy') {
-        // the winner's twin is only visible on the re-read, after the race is lost
-        return Promise.resolve({ data: call++ === 0 ? null : 'winners-twin', error: null });
-      }
-      return Promise.resolve({ data: null, error: createError });
-    });
-
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+  it('a command that answers without a person is a refusal, not a fabricated id', async () => {
+    createResult = { person_id: null };
+    const out = await ensureRosterTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: ACADEMY },
       snapshot(),
     );
-    expect(id).toBe('winners-twin');
+    expect(out).toBeNull();
+  });
+
+  it('losing a mint race converges on the person the caller already holds — by B1 the winner merged onto it', async () => {
+    createError = { code: '23505', message: 'duplicate key value violates uniq_guest_twin_per_academy' };
+    const out = await ensureRosterTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: ACADEMY },
+      snapshot(),
+    );
+    expect(out).toEqual({ personId: PERSON });
+  });
+
+  it('...and with no person on the picker row, a lost race refuses rather than guessing', async () => {
+    createError = { code: '23505', message: 'duplicate key value violates uniq_guest_twin_per_academy' };
+    const out = await ensureRosterTwinForRegisteredPlayer(
+      { kind: 'academy', academyProfileId: ACADEMY },
+      snapshot({ personId: null }),
+    );
+    expect(out).toBeNull();
   });
 });

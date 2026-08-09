@@ -2237,13 +2237,12 @@ export type Database = {
         Row: {
           club_profile_id: string
           created_at: string
-          email: string | null
+          email: string
           full_name: string
           has_trained: boolean
           id: string
           linked_profile_id: string | null
           notes: string | null
-          person_id: string | null
           phone: string | null
           rating_system: string
           skill_rating: number | null
@@ -2253,13 +2252,12 @@ export type Database = {
         Insert: {
           club_profile_id: string
           created_at?: string
-          email?: string | null
+          email: string
           full_name: string
           has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
-          person_id?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
@@ -2269,13 +2267,12 @@ export type Database = {
         Update: {
           club_profile_id?: string
           created_at?: string
-          email?: string | null
+          email?: string
           full_name?: string
           has_trained?: boolean
           id?: string
           linked_profile_id?: string | null
           notes?: string | null
-          person_id?: string | null
           phone?: string | null
           rating_system?: string
           skill_rating?: number | null
@@ -2337,13 +2334,6 @@ export type Database = {
             columns: ["linked_profile_id"]
             isOneToOne: false
             referencedRelation: "profiles_safe"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "club_players_person_id_fkey"
-            columns: ["person_id"]
-            isOneToOne: false
-            referencedRelation: "persons"
             referencedColumns: ["id"]
           },
         ]
@@ -6620,7 +6610,6 @@ export type Database = {
           actor_user_id: string | null
           created_at: string
           creation_request_id: string
-          guest_player_id: string | null
           id: string
           origin: string
           owner_id: string
@@ -6632,7 +6621,6 @@ export type Database = {
           actor_user_id?: string | null
           created_at?: string
           creation_request_id: string
-          guest_player_id?: string | null
           id?: string
           origin: string
           owner_id: string
@@ -6644,7 +6632,6 @@ export type Database = {
           actor_user_id?: string | null
           created_at?: string
           creation_request_id?: string
-          guest_player_id?: string | null
           id?: string
           origin?: string
           owner_id?: string
@@ -6653,13 +6640,6 @@ export type Database = {
           person_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "player_create_commands_guest_player_id_fkey"
-            columns: ["guest_player_id"]
-            isOneToOne: false
-            referencedRelation: "guest_players"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "player_create_commands_person_id_fkey"
             columns: ["person_id"]
@@ -10706,10 +10686,6 @@ export type Database = {
         Args: { _club_profile_id: string }
         Returns: boolean
       }
-      club_student_list_add: {
-        Args: { _profile_id: string; _registration_id: string }
-        Returns: string
-      }
       collapse_guest_person_into: {
         Args: {
           _guest_id: string
@@ -11708,7 +11684,50 @@ export type Database = {
         Args: { _trainer_profile_id: string }
         Returns: boolean
       }
+      intake_request_create_for_person: {
+        Args: {
+          _email?: string
+          _full_name: string
+          _lesson_types?: string[]
+          _location_id?: string
+          _notes?: string
+          _person_id: string
+          _phone?: string
+          _preferred_days?: string[]
+          _preferred_duration_minutes?: number
+          _preferred_time_windows?: Json
+          _preferred_trainer_ids?: string[]
+          _rating?: number
+          _rating_system?: string
+          _registration_id: string
+          _sessions_per_week?: number
+        }
+        Returns: Json
+      }
       invoice_booking_set_key: { Args: { _ids: string[] }; Returns: string }
+      invoice_create_for_person: {
+        Args: {
+          _due_date: string
+          _invoice_date: string
+          _invoice_number: string
+          _line_items?: Json
+          _notes?: string
+          _owner_id: string
+          _owner_type: string
+          _person_id: string
+          _player_address?: string
+          _player_btw_number?: string
+          _player_business_name?: string
+          _player_name: string
+          _prices_include_vat?: boolean
+          _subtotal?: number
+          _total?: number
+          _vat_amount?: number
+          _vat_breakdown?: Json
+          _vat_rate?: number
+        }
+        Returns: Json
+      }
       invoice_gc_list_objects: {
         Args: { _after?: string; _limit?: number }
         Returns: {
@@ -12179,12 +12198,38 @@ export type Database = {
         }[]
       }
       person_claim_confirm: { Args: { _review_id: string }; Returns: Json }
+      person_display_for_owner: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
+        Returns: {
+          created_at: string
+          email: string
+          first_name: string
+          full_name: string
+          last_name: string
+          notes: string
+          person_id: string
+          phone: string
+          rating_system: string
+          skill_rating: number
+        }[]
+      }
       person_has_tenant_relationship: {
         Args: {
           p_academy_profile_id: string
           p_person_id: string
           p_trainer_id: string
         }
+        Returns: boolean
+      }
+      person_legacy_source: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
+        Returns: {
+          guest_player_id: string
+          profile_id: string
+        }[]
+      }
+      person_mark_has_trained: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
         Returns: boolean
       }
       player_create_command: {
@@ -12245,6 +12290,10 @@ export type Database = {
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
         Returns: boolean
+      }
+      player_legacy_ref: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
+        Returns: Json
       }
       player_owner_may_create: {
         Args: { _owner_id: string; _owner_type: string; _user_id: string }

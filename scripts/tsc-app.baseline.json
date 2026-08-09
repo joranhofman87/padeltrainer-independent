@@ -18,7 +18,7 @@
   "src/components/trainer/TrainerPlayerRemoveCard.tsx|TS2322|Type 'Promise<{ removed_at: string; }>' is not assignable to type 'Promise<void>'.": 1,
   "src/lib/agendaSlots.ts|TS2322|Type 'Map<string, string>' is not assignable to type 'Record<string, string>'.": 1,
   "src/lib/cycles.test.ts|TS2365|Operator '+' cannot be applied to types 'unknown' and 'unknown'.": 1,
-  "src/lib/cycles.ts|TS2304|Cannot find name 'IntakeRequest'.": 5,
+  "src/lib/cycles.ts|TS2304|Cannot find name 'IntakeRequest'.": 4,
   "src/lib/cycles.ts|TS2304|Cannot find name 'IntakeRequestInput'.": 4,
   "src/lib/cycles.ts|TS2304|Cannot find name 'ScoringWeights'.": 3,
   "src/lib/cycles.ts|TS2304|Cannot find name 'SlotWithOccupancy'.": 3,

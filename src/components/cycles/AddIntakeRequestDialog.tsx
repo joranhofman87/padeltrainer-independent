@@ -301,15 +301,19 @@ export default function AddIntakeRequestDialog({
         throw new Error(playerData.error);
       }
 
-      // Step 2: the intake request carries the Player the command answered with — by id. It is no
-      // longer possible for this step to be handed a profile the previous one guessed from an
-      // address, because that guess no longer happens anywhere.
+      // Step 2: the intake request carries the Player the command answered with — by CANONICAL id.
+      // It is no longer possible for this step to be handed a profile the previous one guessed from
+      // an address, because that guess no longer happens anywhere; and it is no longer possible for
+      // a legacy guest id to pass through here, because the endpoint stopped returning one (U2,
+      // owner correction 2026-08-09) — the server command derives the legacy columns itself.
+      if (!playerData?.personId) {
+        throw new Error('player_create_no_person');
+      }
       const preferredDays = [...new Set(timeWindows.map((tw) => tw.day!))];
 
       await createManualIntakeRequest({
         cycle_id: data.cycle_id,
-        player_id: null,
-        guest_player_id: playerData.guestPlayerId || null,
+        person_id: playerData.personId,
         full_name: buildGuestPlayerDbFields(data.first_name, data.last_name).full_name,
         email: data.email,
         phone: data.phone || undefined,

@@ -253,12 +253,7 @@ export async function handleRequest(
       return commandFailure(rpcError);
     }
 
-    const result = viaRpc as {
-      person_id: string;
-      guest_player_id: string | null;
-      created: boolean;
-      replayed: boolean;
-    };
+    const result = viaRpc as { person_id: string; created: boolean; replayed: boolean };
 
     // Send confirmation email to the player — when there is somewhere to send it. A Player with no
     // address is a supported Player, not a failed one.
@@ -280,11 +275,12 @@ export async function handleRequest(
       }
     }
 
+    // ONE id, and it is canonical. This response used to also carry `guestPlayerId`, which made a
+    // temporary legacy reference part of a public contract and gave every client a reason to depend
+    // on a table the person-unification plan retires. A caller that must write a legacy column
+    // derives it from the person through `player_legacy_ref`.
     return json({
-      // the canonical Player identity — the answer callers should key on. `guestPlayerId` stays
-      // for the readers that still key on the source row.
       personId: result.person_id,
-      guestPlayerId: result.guest_player_id,
       created: result.created,
       replayed: result.replayed,
       isNewUser: result.created,

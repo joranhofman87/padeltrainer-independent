@@ -15,7 +15,8 @@ import { formatCurrency } from '@/lib/format';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { allocateInvoiceNumber, isInvoiceNumberCollision } from '@/lib/invoiceNumber';
-import { invoiceRecipientKey, resolveOrCreateAcademyInvoiceGuest } from '@/lib/invoiceCustomerInsert';
+import { createDraftInvoiceForPerson, invoiceRecipientKey, resolveOrCreateAcademyInvoicePerson } from '@/lib/invoiceCustomerInsert';
+import type { Json } from '@/integrations/supabase/types';
 import {
   clearCreationAttempt,
   creationRequestIdFor,
@@ -171,8 +172,9 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
       // Always create a Player so every invoice recipient appears in the academy players list —
       // even without an email. It is a NEW Player: a recipient typed by hand is not matched against
       // the existing ones by name or address (U2), and a create that looks like an existing Player
-      // files a proposal for a human instead of billing them.
-      const guestPlayerId = await resolveOrCreateAcademyInvoiceGuest(
+      // files a proposal for a human instead of billing them. The command answers with the
+      // canonical person id; the legacy invoice link columns are derived server-side from it.
+      const personId = await resolveOrCreateAcademyInvoicePerson(
         playerName,
         playerEmail,
         academyProfileId,
@@ -181,8 +183,8 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
           invoiceRecipientKey({ playerName, playerEmail, scope: 'academy', ownerId: academyProfileId }),
         ),
       );
-      if (!guestPlayerId) {
-        logger.error('Guest player resolve/create failed for invoice', undefined, { playerName });
+      if (!personId) {
+        logger.error('Player resolve/create failed for invoice', undefined, { playerName });
       }
 
       const primaryVatRate = lineItems[0]?.vat_rate ?? 21;
@@ -204,32 +206,31 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
         });
         invoiceNumber = allocation.invoiceNumber;
 
-        const { error: insertError } = await supabase
-          .from('invoices')
-          .insert({
-            invoice_number: invoiceNumber,
-            invoice_date: format(new Date(), 'yyyy-MM-dd'),
-            due_date: format(dueDate, 'yyyy-MM-dd'),
-            player_name: playerName.trim(),
-            player_business_name: playerBusinessName.trim() || null,
-            player_address: [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()].filter(Boolean).join('\n') || null,
-            player_btw_number: playerBtwNumber.trim() || null,
-            guest_player_id: guestPlayerId,
-            academy_profile_id: academyProfileId,
-            trainer_id: null,
-            line_items: updatedItems,
+        try {
+          await createDraftInvoiceForPerson({
+            scope: 'academy',
+            ownerId: academyProfileId,
+            personId,
+            invoiceNumber,
+            invoiceDate: format(new Date(), 'yyyy-MM-dd'),
+            dueDate: format(dueDate, 'yyyy-MM-dd'),
+            playerName: playerName.trim(),
+            playerBusinessName: playerBusinessName.trim() || null,
+            playerAddress: [playerStreet.trim(), playerZipCode.trim(), playerCity.trim()].filter(Boolean).join('\n') || null,
+            playerBtwNumber: playerBtwNumber.trim() || null,
+            lineItems: updatedItems as unknown as Json,
             subtotal,
-            vat_rate: primaryVatRate,
-            vat_amount: vatAmount,
-            vat_breakdown: vatBreakdown || null,
+            vatRate: primaryVatRate,
+            vatAmount,
+            vatBreakdown: (vatBreakdown || null) as Json | null,
             total,
-            status: 'draft',
-            prices_include_vat: pricesIncludeVat,
+            pricesIncludeVat,
             notes: notes.trim() || null,
           });
-
-        if (!insertError) break;
-        if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
+          break;
+        } catch (insertError) {
+          if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
+        }
       }
 
       // the attempt is finished: the next invoice is a new one, not a retry of this

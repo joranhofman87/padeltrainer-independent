@@ -16,6 +16,7 @@ import { format, addDays } from 'date-fns';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { allocateInvoiceNumber, isInvoiceNumberCollision } from '@/lib/invoiceNumber';
+import type { Json } from '@/integrations/supabase/types';
 import { invalidateAllPlayerData, playerKeys } from '@/lib/playerQueryKeys';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard';
@@ -32,8 +33,9 @@ import {
 } from '@/lib/invoiceCustomer';
 import {
   buildInvoicePlayerAddress,
+  createDraftInvoiceForPerson,
   invoiceRecipientKey,
-  resolveInvoiceGuestPlayerId,
+  resolveInvoicePersonId,
 } from '@/lib/invoiceCustomerInsert';
 import {
   clearCreationAttempt,
@@ -67,6 +69,7 @@ export default function TrainerCreateInvoice() {
   const [playerLink, setPlayerLink] = useState<InvoicePlayerLink>({
     profileId: null,
     guestPlayerId: null,
+    personId: null,
     linkedDisplayName: null,
   });
   const [oneTimeMode, setOneTimeMode] = useState(false);
@@ -121,6 +124,7 @@ export default function TrainerCreateInvoice() {
       setPlayerLink({
         profileId: player.profileId,
         guestPlayerId: player.guestPlayerId,
+        personId: player.personId,
         linkedDisplayName: player.full_name,
       });
       setReceiver(billingToReceiverFields(player));
@@ -162,10 +166,10 @@ export default function TrainerCreateInvoice() {
       const includeYear = (trainerProfile as any)?.invoice_include_year ?? true;
 
       const effectiveLink = oneTimeMode
-        ? { profileId: null, guestPlayerId: null, linkedDisplayName: null }
+        ? { profileId: null, guestPlayerId: null, personId: null, linkedDisplayName: null }
         : playerLink;
 
-      const guestPlayerId = await resolveInvoiceGuestPlayerId({
+      const personId = await resolveInvoicePersonId({
         playerLink: effectiveLink,
         oneTimeMode,
         receiver,
@@ -188,7 +192,9 @@ export default function TrainerCreateInvoice() {
       const updatedItems = lineItems.map(li => ({ ...li, amount: Math.round(li.quantity * li.unit_price * 100) / 100 }));
 
       // M-10: allocate the number atomically via the DB (no read-increment-write),
-      // and retry on the rare collision with a concurrent creator.
+      // and retry on the rare collision with a concurrent creator. The INSERT itself happens
+      // server-side in `invoice_create_for_person`, which derives the legacy link columns from the
+      // person — no legacy id passes through here (U2, owner correction 2026-08-09).
       let invoiceNumber = '';
       for (let attempt = 0; ; attempt++) {
         const allocation = await allocateInvoiceNumber({
@@ -199,31 +205,31 @@ export default function TrainerCreateInvoice() {
         });
         invoiceNumber = allocation.invoiceNumber;
 
-        const { error: insertError } = await supabase.from('invoices').insert({
-          invoice_number: invoiceNumber,
-          invoice_date: format(new Date(), 'yyyy-MM-dd'),
-          due_date: format(dueDate, 'yyyy-MM-dd'),
-          player_name: receiver.playerName.trim(),
-          player_business_name: receiver.playerBusinessName.trim() || null,
-          player_address: buildInvoicePlayerAddress(receiver),
-          player_btw_number: receiver.playerBtwNumber.trim() || null,
-          player_id: oneTimeMode ? null : playerLink.profileId,
-          guest_player_id: guestPlayerId,
-          trainer_id: trainerId,
-          academy_profile_id: null,
-          line_items: updatedItems,
-          subtotal,
-          vat_rate: primaryVatRate,
-          vat_amount: vatAmount,
-          vat_breakdown: vatBreakdown || null,
-          total,
-          status: 'draft',
-          prices_include_vat: pricesIncludeVat,
-          notes: notes.trim() || null,
-        });
-
-        if (!insertError) break;
-        if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
+        try {
+          await createDraftInvoiceForPerson({
+            scope: 'trainer',
+            ownerId: trainerId,
+            personId,
+            invoiceNumber,
+            invoiceDate: format(new Date(), 'yyyy-MM-dd'),
+            dueDate: format(dueDate, 'yyyy-MM-dd'),
+            playerName: receiver.playerName.trim(),
+            playerBusinessName: receiver.playerBusinessName.trim() || null,
+            playerAddress: buildInvoicePlayerAddress(receiver),
+            playerBtwNumber: receiver.playerBtwNumber.trim() || null,
+            lineItems: updatedItems as unknown as Json,
+            subtotal,
+            vatRate: primaryVatRate,
+            vatAmount,
+            vatBreakdown: (vatBreakdown || null) as Json | null,
+            total,
+            pricesIncludeVat,
+            notes: notes.trim() || null,
+          });
+          break;
+        } catch (insertError) {
+          if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
+        }
       }
 
       // the attempt is finished: the next invoice is a new one, not a retry of this

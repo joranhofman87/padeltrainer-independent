@@ -373,7 +373,24 @@ export async function handleRequest(
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      guestPlayerId = (created as { guest_player_id: string | null }).guest_player_id;
+      // The command answers with a canonical person. `intake_requests` still physically carries the
+      // legacy columns, so the row this endpoint writes derives them from that person through the
+      // authorized adapter — the only place in this function where a legacy id exists.
+      const personId = (created as { person_id: string | null }).person_id;
+      const { data: legacyRef, error: refError } = await adminClient.rpc("player_legacy_ref", {
+        _person_id: personId,
+        _owner_type: ownerType,
+        _owner_id: regRow.owner_id,
+      });
+      if (refError) {
+        console.error("Error deriving the legacy player reference:", refError.code, refError.message);
+        return new Response(
+          JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const ref = legacyRef as { player_id: string | null; guest_player_id: string | null } | null;
+      guestPlayerId = ref?.guest_player_id ?? null;
     }
 
     // Resolve effective location: prefer explicit form value, fall back to the form's location,
@@ -660,8 +677,12 @@ export async function handleRequest(
       // Non-blocking
     }
 
+    // A SAFE projection, not the row. Echoing `intakeData` handed an anonymous caller the whole
+    // inserted record — `guest_player_id`, `player_id` and the metadata (client IP included). The
+    // form reads `payment.payUrl` and nothing else; the id is kept for support correlation. No
+    // legacy id may appear in an HTTP response (U2, owner correction 2026-08-09).
     return new Response(
-      JSON.stringify({ success: true, intakeRequest: intakeData, payment: paymentInfo }),
+      JSON.stringify({ success: true, intakeRequestId: intakeData.id, payment: paymentInfo }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

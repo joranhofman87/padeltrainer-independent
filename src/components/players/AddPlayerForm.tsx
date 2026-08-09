@@ -19,12 +19,26 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, PartyPopper } from "lucide-react";
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratingSystems";
-import type { GuestPlayer } from "./AddPlayerDialog";
+import type { CreatedPlayer } from "@/components/players/guestPlayer";
+
+/** The row shape `person_display_for_owner` answers with — attributes only, no legacy id. */
+type CreatedPlayerRow = {
+  person_id: string;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  skill_rating: number | null;
+  rating_system: string | null;
+  notes: string | null;
+  created_at: string;
+};
 
 interface AddPlayerFormProps {
   trainerId?: string;
   academyId?: string;
-  onPlayerCreated?: (player: GuestPlayer) => void;
+  onPlayerCreated?: (player: CreatedPlayer) => void;
   /** If true, show Cancel button */
   showCancel?: boolean;
   onCancel?: () => void;
@@ -174,21 +188,37 @@ export function AddPlayerForm({
       });
       if (error) throw error;
 
-      const guestPlayerId = (created as { guest_player_id: string | null } | null)?.guest_player_id;
-      if (!guestPlayerId) throw new Error("player_create_no_player");
-      // Re-read the row the command wrote: callers render it, and the command answers with ids.
-      const { data, error: readError } = await supabase
-        .from("guest_players")
-        .select("*")
-        .eq("id", guestPlayerId)
-        .single();
+      const personId = (created as { person_id: string | null } | null)?.person_id;
+      if (!personId) throw new Error("player_create_no_person");
+      // The command answers with the canonical id; what callers RENDER comes from the person-keyed
+      // display projection. The guest re-read that stood here handed every caller a legacy id — the
+      // projection carries none, so a consumer that must find this Player in a still-legacy list
+      // matches that list's own rows on personId (U2, owner correction 2026-08-09).
+      const { data: display, error: readError } = await supabase.rpc("person_display_for_owner", {
+        _person_id: personId,
+        _owner_type: academyId ? "academy" : "trainer",
+        _owner_id: academyId || trainerId || null,
+      });
       if (readError) throw readError;
+      const row = (display as CreatedPlayerRow[] | null)?.[0];
+      if (!row) throw new Error("player_display_unavailable");
 
       clearCreationAttempt(attemptRef);
       setLastCreatedName(nameFields.full_name);
       setShowSuccess(true);
       resetForm();
-      onPlayerCreated?.(data as GuestPlayer);
+      onPlayerCreated?.({
+        personId: row.person_id,
+        full_name: row.full_name ?? nameFields.full_name,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        email: row.email ?? "",
+        phone: row.phone ?? "",
+        skill_rating: row.skill_rating,
+        rating_system: row.rating_system ?? ratingSystem,
+        notes: row.notes,
+        created_at: row.created_at,
+      });
     } catch (error: any) {
       logger.error('Error creating player', error as Error, { component: 'AddPlayerForm' });
       toast({
@@ -369,29 +399,4 @@ export function AddPlayerForm({
     </form>
     </>
   );
-}
-
-/** Build guest_players insert payload (exported for tests). */
-export function buildAddPlayerInsertPayload(args: {
-  firstName: string;
-  lastName: string;
-  trainerId?: string;
-  academyId?: string;
-  email?: string;
-  phone?: string;
-  skillRating?: string;
-  ratingSystem?: string;
-  notes?: string;
-}) {
-  const nameFields = buildGuestPlayerDbFields(args.firstName, args.lastName);
-  return {
-    trainer_id: args.trainerId || null,
-    academy_profile_id: args.academyId || null,
-    ...nameFields,
-    email: args.email?.trim().toLowerCase() || null,
-    phone: args.phone?.trim() || null,
-    skill_rating: args.skillRating ? parseFloat(args.skillRating) : null,
-    rating_system: args.ratingSystem ?? "knltb",
-    notes: args.notes?.trim() || null,
-  };
 }

@@ -31,7 +31,7 @@ import {
   priceCartItems,
   validateCartSlots,
 } from "../_shared/cart-payment.ts";
-import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
+import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -190,7 +190,12 @@ Deno.serve(async (req) => {
 
 
     const owner = academyProfileId ? { academyProfileId } : { trainerId };
-    const { guestPlayerId } = await resolveOrCreateGuestPlayer(supabase, { email, name, phone, owner, source: "public_booking", creationRequestId });
+    // The checkout resolves a CANONICAL Player. The legacy column `bookings` still requires is derived
+    // from it by the authorized adapter, and exists only for the length of this insert.
+    const { personId } = await resolvePlayerForCheckout(supabase, {
+      email, name, phone, owner, source: "public_booking", creationRequestId,
+    });
+    const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
     // Tenant comes from the SLOT above, never from the client — the client sends a boolean and

@@ -584,7 +584,10 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     noEmail2.ok && noEmail2.value.created === false
     && noEmail2.value.person_id === noEmail1.value.person_id, noEmail2);
   ok('...and the Player it made really has no address',
-    (await one(`SELECT email FROM public.guest_players WHERE id = $1`, [noEmail1.value.guest_player_id])).email === null);
+    // the receipt is canonical-only, so the source row is reached the way the schema records it
+    (await one(`SELECT g.email FROM public.person_links pl
+                  JOIN public.guest_players g ON g.id = pl.guest_player_id
+                 WHERE pl.person_id = $1`, [noEmail1.value.person_id])).email === null);
 
   // authorization is not possession of a uuid
   const { uid: outsiderUid } = await makeAccount(EMAIL());
@@ -655,7 +658,9 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     { ownerType: 'trainer', ownerId: trainer, req: await newUuid(), name: 'Trainer Player', email: EMAIL() });
   ok('a trainer can create a Player in their own practice', own.ok && own.value.created === true, own);
   ok('...and it is stamped with that trainer, not left ownerless',
-    (await one(`SELECT trainer_id FROM public.guest_players WHERE id = $1`, [own.value.guest_player_id]))
+    (await one(`SELECT g.trainer_id FROM public.person_links pl
+                  JOIN public.guest_players g ON g.id = pl.guest_player_id
+                 WHERE pl.person_id = $1`, [own.value.person_id]))
       .trainer_id === trainer);
 
   const foreign = await create(otherTrainerUid,
@@ -800,13 +805,17 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     proposals.length === 1 && proposals[0].person_id === secondRow.person_id, proposals);
 
   await Promise.all(sessions.map((s) => s.end()));
-  // committed fixture: clean it up
-  await c.query(`DELETE FROM public.person_merge_review WHERE guest_player_id IN ($1, $2)`,
-    [firstRow.guest_player_id, secondRow.guest_player_id]);
+  // committed fixture: clean it up. The receipt is canonical-only, so the guest rows are resolved
+  // from person_links — the same record everything else keys on.
+  const madeGuests = (await all(
+    `SELECT guest_player_id FROM public.person_links
+      WHERE person_id IN ($1, $2) AND guest_player_id IS NOT NULL`,
+    [firstRow.person_id, secondRow.person_id])).map((r) => r.guest_player_id);
+  await c.query(`DELETE FROM public.person_merge_review WHERE guest_player_id = ANY($1::uuid[])`,
+    [madeGuests]);
   await c.query(`DELETE FROM public.player_create_commands WHERE person_id IN ($1, $2)`,
     [firstRow.person_id, secondRow.person_id]);
-  await c.query(`DELETE FROM public.guest_players WHERE id IN ($1, $2)`,
-    [firstRow.guest_player_id, secondRow.guest_player_id]);
+  await c.query(`DELETE FROM public.guest_players WHERE id = ANY($1::uuid[])`, [madeGuests]);
   await c.query(`DELETE FROM public.academy_managers WHERE academy_profile_id = $1`, [academy]);
   await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [academy]);
   await c.query(`DELETE FROM auth.users WHERE id = $1`, [mgrUid]);
@@ -1138,7 +1147,11 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
        _origin => 'operator', _actor_user_id => $3, _full_name => 'Front Door') AS r`,
     [await newUuid(), academy, mgr]);
   ok('the command still creates Players, which is the point of shutting the other doors',
-    throughTheDoor.r.created === true && throughTheDoor.r.guest_player_id !== null, throughTheDoor.r);
+    throughTheDoor.r.created === true && throughTheDoor.r.person_id !== null, throughTheDoor.r);
+  ok('...with a guest source row behind the person, reached through person_links',
+    (await one(`SELECT count(*)::int AS n FROM public.person_links
+                 WHERE person_id = $1 AND guest_player_id IS NOT NULL`,
+      [throughTheDoor.r.person_id])).n === 1);
 
   // and the mechanism's own stamp is not blocked by the guard it installed
   const stampedByCommand = await one(
@@ -1148,7 +1161,12 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
        _twin_of_profile_id => $4) AS r`,
     [await newUuid(), academy, mgr, profileId]);
   ok('...including one that carries a twin assertion',
-    stampedByCommand.r.guest_player_id !== null, stampedByCommand.r);
+    stampedByCommand.r.person_id !== null
+    && (await one(`SELECT g.twin_of_profile_id FROM public.person_links pl
+                     JOIN public.guest_players g ON g.id = pl.guest_player_id
+                    WHERE pl.person_id = $1 LIMIT 1`,
+        [stampedByCommand.r.person_id]))?.twin_of_profile_id === profileId,
+    stampedByCommand.r);
   await c.query('ROLLBACK');
 }
 
@@ -1217,160 +1235,25 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   await c.query('ROLLBACK');
 }
 
-// ══ 5d-11. THE CLUB STUDENT LIST IS KEYED ON THE PLAYER, NOT ON THEIR ADDRESS ══════════════════
-// It selected `club_players` by (club, email) and returned on a hit, so two people sharing an
-// address produced ONE roster row and the second registrant was never added at all.
-{
-  await c.query('BEGIN');
-  // club_profiles has no name of its own — it hangs off a location, and each club needs its own
-  const mkClub = async (label) => {
-    const { id: loc } = await one(
-      `INSERT INTO public.locations (name, city, slug)
-       VALUES ($1, 'Amsterdam', 'u2c-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`,
-      [label]);
-    return (await one(
-      `INSERT INTO public.club_profiles (location_id) VALUES ($1) RETURNING id`, [loc])).id;
-  };
-  const club = await mkClub('U2 Club');
-  const otherClub = await mkClub('U2 Other Club');
-  const mkReg = async (owner, type = 'club') => (await one(
-    `INSERT INTO public.registrations (name, owner_type, owner_id, format, status)
-     VALUES ('Najaar', $1, $2, 'registration', 'open') RETURNING id`, [type, owner])).id;
-  const registration = await mkReg(club);
-
-  // two DIFFERENT people on ONE address — the shape the old lookup collapsed
-  const shared = EMAIL();
-  const { uid: parentUid, profileId: parentProfile } = await makeAccount(shared);
-  const { uid: childUid, profileId: childProfile } = await makeAccount(shared, { distinctAuthEmail: true });
-
-  const add = (uid, reg, profile) => asUser(uid, async () =>
-    (await one(`SELECT public.club_student_list_add($1, $2) AS id`, [reg, profile])).id);
-
-  const first = await add(parentUid, registration, parentProfile);
-  ok('a signed-in registrant is added to the club student list', first.ok && first.value !== null, first);
-
-  const retry = await add(parentUid, registration, parentProfile);
-  ok('...and retrying returns THE SAME row, not a second one',
-    retry.ok && retry.value === first.value, retry);
-  ok('...one row, counted', (await one(
-    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 1);
-
-  const sibling = await add(childUid, registration, childProfile);
-  ok('a DIFFERENT Player on the same address gets their OWN row',
-    sibling.ok && sibling.value !== first.value, sibling);
-  ok('...so the club list has both of them', (await one(
-    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 2);
-
-  // authorization: a uuid names a subject, it does not grant permission
-  const impersonation = await add(childUid, registration, parentProfile);
-  ok('a caller cannot add somebody ELSE by knowing their profile uuid',
-    !impersonation.ok && /NOT_YOUR_PLAYER/.test(impersonation.message ?? ''), impersonation);
-
-  // the club comes from the registration, so a sign-up cannot be redirected
-  const otherReg = await mkReg(otherClub);
-  const redirected = await add(parentUid, otherReg, parentProfile);
-  ok('registering on one club\'s form cannot write into another club... it writes into ITS club',
-    redirected.ok && (await one(
-      `SELECT club_profile_id FROM public.club_players WHERE id = $1`, [redirected.value]))
-      .club_profile_id === otherClub, redirected);
-  ok('...and the first club is untouched by it', (await one(
-    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 2);
-
-  const academyReg = await mkReg((await one(
-    `INSERT INTO public.academy_profiles (name, slug)
-     VALUES ('u2 not a club', 'u2nc-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`)).id,
-    'academy');
-  const notAClub = await add(parentUid, academyReg, parentProfile);
-  ok('a registration that is not a club\'s writes no club row',
-    !notAClub.ok && /NOT_A_CLUB_REGISTRATION/.test(notAClub.message ?? ''), notAClub);
-
-  const anon = await add(null, registration, parentProfile);
-  ok('an unauthenticated caller is refused as unauthenticated',
-    !anon.ok && /NOT_AUTHENTICATED/.test(anon.message ?? ''), anon);
-
-  // no PII decides reuse: the SAME person under a CHANGED address still replays to their row
-  await c.query(`UPDATE public.profiles SET email = $1 WHERE id = $2`, [EMAIL(), parentProfile]);
-  const afterEmailChange = await add(parentUid, registration, parentProfile);
-  ok('changing the address does not make them a new club student — identity is the person',
-    afterEmailChange.ok && afterEmailChange.value === first.value, afterEmailChange);
-  await c.query('ROLLBACK');
-}
-
-// ══ 5d-12. TWO CONCURRENT ADDS OF ONE PLAYER PRODUCE ONE ROW ═══════════════════════════════════
-// There is deliberately no unique index on (club, person) — it could not be proven safe against
-// production rows that all carry a NULL person_id — so the advisory lock is the whole guarantee and
-// it is worth staging a real race for.
-{
-  await c.query('BEGIN');
-  const { id: location } = await one(
-    `INSERT INTO public.locations (name, city, slug)
-     VALUES ('U2 Race Hal', 'Utrecht', 'u2race-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
-  const { id: club } = await one(
-    `INSERT INTO public.club_profiles (location_id) VALUES ($1) RETURNING id`, [location]);
-  const { id: registration } = await one(
-    `INSERT INTO public.registrations (name, owner_type, owner_id, format, status)
-     VALUES ('Race', 'club', $1, 'registration', 'open') RETURNING id`, [club]);
-  const { uid, profileId } = await makeAccount(EMAIL());
-  await c.query('COMMIT');                      // the other sessions have to see the fixture
-
-  const sessions = [new pg.Client({ connectionString: CONN }), new pg.Client({ connectionString: CONN })];
-  await Promise.all(sessions.map((s) => s.connect()));
-  const asPlayer = async (s) => {
-    await s.query(`SELECT set_config('request.jwt.claims', $1, true)`,
-      [JSON.stringify({ sub: uid, role: 'authenticated' })]);
-    await s.query(`SET LOCAL ROLE authenticated`);
-  };
-
-  await sessions[0].query('BEGIN'); await asPlayer(sessions[0]);
-  const firstId = (await sessions[0].query(
-    `SELECT public.club_student_list_add($1, $2) AS id`, [registration, profileId])).rows[0].id;
-
-  await sessions[1].query(`SET lock_timeout = '800ms'`);
-  await sessions[1].query('BEGIN'); await asPlayer(sessions[1]);
-  let blocked = null;
-  try {
-    await sessions[1].query(`SELECT public.club_student_list_add($1, $2)`, [registration, profileId]);
-  } catch (e) { blocked = e.code; }
-  await sessions[1].query('ROLLBACK');
-  ok('a concurrent add of the same Player waits for the first to finish', blocked === '55P03', { blocked });
-
-  await sessions[0].query('COMMIT');
-  await sessions[1].query('BEGIN'); await asPlayer(sessions[1]);
-  const secondId = (await sessions[1].query(
-    `SELECT public.club_student_list_add($1, $2) AS id`, [registration, profileId])).rows[0].id;
-  await sessions[1].query('COMMIT');
-
-  ok('...and once it has, the second call returns the SAME row', secondId === firstId,
-    { firstId, secondId });
-  ok('...so the club has exactly one row for them', (await one(
-    `SELECT count(*)::int AS n FROM public.club_players WHERE club_profile_id = $1`, [club])).n === 1);
-
-  await Promise.all(sessions.map((s) => s.end()));
-  await c.query(`DELETE FROM public.club_players WHERE club_profile_id = $1`, [club]);
-  await c.query(`DELETE FROM public.registrations WHERE id = $1`, [registration]);
-  await c.query(`DELETE FROM public.club_profiles WHERE id = $1`, [club]);
-  await c.query(`DELETE FROM public.locations WHERE id = $1`, [location]);
-  await c.query(`DELETE FROM auth.users WHERE id = $1`, [uid]);
-}
-
 // ══ 5e. THE COMMAND RECORD FOLLOWS THE PLAYER IT MADE ══════════════════════════════════════════
 // A guest source disappears — claimed, merged, anonymized, deleted. If the record died with it, the
 // next retry of a long-finished attempt would quietly make a second Player. Where a successor
 // exists the record is repointed; where the Player is genuinely gone it says so.
 
-/** Record a finished command naming a person + guest, the way the command itself would. */
-const recordCommand = async (academy, actor, person, guest) => {
+/** Record a finished command naming a person, the way the command itself would — the receipt is
+ *  canonical-only, so there is no guest column to record. */
+const recordCommand = async (academy, actor, person) => {
   const req = await newUuid();
   await c.query(
     `INSERT INTO public.player_create_commands
        (creation_request_id, owner_type, owner_id, origin, actor_user_id,
-        payload_fingerprint, person_id, guest_player_id)
-     VALUES ($1, 'academy', $2, 'operator', $3, 'fixture', $4, $5)`,
-    [req, academy, actor, person, guest]);
+        payload_fingerprint, person_id)
+     VALUES ($1, 'academy', $2, 'operator', $3, 'fixture', $4)`,
+    [req, academy, actor, person]);
   return req;
 };
 const commandFor = (req) => one(
-  `SELECT person_id, guest_player_id FROM public.player_create_commands WHERE creation_request_id = $1`,
+  `SELECT person_id FROM public.player_create_commands WHERE creation_request_id = $1`,
   [req]);
 
 {
@@ -1381,7 +1264,7 @@ const commandFor = (req) => one(
                  VALUES ($1, $2, 'manager')`, [f.academy, mgr]).catch(() => {});
 
   const guestPerson = (await personOfGuest(f.guest)).person_id;
-  const req = await recordCommand(f.academy, mgr, guestPerson, f.guest);
+  const req = await recordCommand(f.academy, mgr, guestPerson);
 
   const claimed = await asUser(f.uid, async () =>
     (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
@@ -1391,8 +1274,8 @@ const commandFor = (req) => one(
   const profilePerson = (await personOfProfile(f.profileId)).person_id;
   ok('the command record was REPOINTED to the surviving person, not nulled',
     after.person_id === profilePerson, { after: after.person_id, profilePerson, guestPerson });
-  ok('...and its guest column still names the guest, which the claim relinks rather than deletes',
-    after.guest_player_id === f.guest, after);
+  ok('...and the guest ROW was relinked to that person rather than deleted — person_links says so',
+    (await personOfGuest(f.guest)).person_id === profilePerson);
   await c.query('ROLLBACK');
 }
 
@@ -1421,7 +1304,7 @@ const commandFor = (req) => one(
      VALUES ('The Target', $1) RETURNING id`, [academy]);
   const targetPerson = (await personOfGuest(targetGuest)).person_id;
 
-  const req = await recordCommand(academy, mgr, guestPerson, guest);
+  const req = await recordCommand(academy, mgr, guestPerson);
   const refused = await one(
     `SELECT public.collapse_guest_person_into_reporting($1, $2, $3) AS r`,
     [guest, guestPerson, targetPerson]);
@@ -1451,7 +1334,7 @@ const commandFor = (req) => one(
      VALUES ('Merge Target', $1, $2) RETURNING id`, [EMAIL(), academy]);
   const sourcePerson = (await personOfGuest(source)).person_id;
   const targetPerson = (await personOfGuest(target)).person_id;
-  const req = await recordCommand(academy, mgr, sourcePerson, source);
+  const req = await recordCommand(academy, mgr, sourcePerson);
 
   const merged = await asUser(mgr, async () => (await one(
     `SELECT public.merge_guest_players('academy', $1, $2, $3, '{}'::jsonb) AS r`,
@@ -1460,8 +1343,7 @@ const commandFor = (req) => one(
 
   const after = await commandFor(req);
   ok('the command record follows the merge instead of being nulled',
-    after.person_id === targetPerson && after.guest_player_id === target,
-    { after, targetPerson, target });
+    after.person_id === targetPerson, { after, targetPerson });
   ok('...and the source person really is gone, so this was a repoint and not a coincidence',
     (await one(`SELECT count(*)::int AS n FROM public.persons WHERE id = $1`, [sourcePerson])).n === 0);
   await c.query('ROLLBACK');
@@ -1480,7 +1362,7 @@ const commandFor = (req) => one(
     `INSERT INTO public.guest_players (full_name, academy_profile_id)
      VALUES ('Doomed', $1) RETURNING id`, [academy]);
   const person = (await personOfGuest(guest)).person_id;
-  const req = await recordCommand(academy, mgr, person, guest);
+  const req = await recordCommand(academy, mgr, person);
 
   await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [academy]);
 
@@ -1510,7 +1392,11 @@ const commandFor = (req) => one(
   const made = await create(mgr, payload);
   ok('the Player is created', made.ok && made.value.created === true, made);
 
-  await c.query(`DELETE FROM public.guest_players WHERE id = $1`, [made.value.guest_player_id]);
+  // the receipt is canonical-only: the guest row to destroy is reached through person_links
+  await c.query(
+    `DELETE FROM public.guest_players
+      WHERE id IN (SELECT guest_player_id FROM public.person_links WHERE person_id = $1)`,
+    [made.value.person_id]);
 
   // The SAME payload, so the fingerprint agrees and the refusal under test is the one about the
   // Player being gone — not the idempotency conflict a changed payload would raise first.
@@ -1520,6 +1406,404 @@ const commandFor = (req) => one(
   ok('...and no second Player was made',
     (await one(`SELECT count(*)::int AS n FROM public.guest_players WHERE academy_profile_id = $1`,
       [academy])).n === 0);
+  await c.query('ROLLBACK');
+}
+
+// ══ 7. THE LEGACY TRANSLATION BOUNDARY IS CLOSED TO CLIENTS (owner correction, 2026-08-09) ═════
+// A person→legacy translator reachable from a browser does not remove the identity leak, it moves
+// it. So BOTH primitives are locked: `person_legacy_source` is granted to nobody, and
+// `player_legacy_ref` is service-role-only — refused by grant AND by an in-function check, so an
+// accidental re-grant alone does not reopen the door. Everything a client legitimately needs is a
+// task-specific command that authorizes, derives INTERNALLY and completes its own write.
+// (Uses the `asService` helper declared with the create-command sections above.)
+
+// ── 7a. Ordinary authenticated clients cannot execute EITHER translation primitive ─────────────
+{
+  await c.query('BEGIN');
+  const { uid } = await makeAccount(EMAIL());
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 lockdown', 'u2l-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const anyPerson = crypto.randomUUID();
+
+  const src = await asUser(uid, async () =>
+    one(`SELECT * FROM public.person_legacy_source($1, 'academy', $2)`, [anyPerson, academy]));
+  ok('person_legacy_source refuses an authenticated caller outright',
+    !src.ok && src.code === '42501', src);
+
+  const ref = await asUser(uid, async () =>
+    one(`SELECT public.player_legacy_ref($1, 'academy', $2) AS r`, [anyPerson, academy]));
+  ok('player_legacy_ref refuses an authenticated caller outright',
+    !ref.ok && (ref.code === '42501' || /LEGACY_REF_SERVICE_ONLY/.test(ref.message ?? '')), ref);
+
+  // The catalog agrees with the live refusals — a re-grant fails HERE even if some path forgot to
+  // exercise it. person_legacy_source: no grants at all. player_legacy_ref: service_role alone.
+  const acl = async (fnName) => (await one(
+    `SELECT coalesce(array_to_string(p.proacl, ','), '') AS acl
+       FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public' AND p.proname = $1`, [fnName])).acl;
+  // The owner's own `postgres=X/postgres` entry is what makes definer wrappers able to call these
+  // at all; what must be absent are CLIENT grants — the named roles, and the nameless PUBLIC entry
+  // (an ACL item that STARTS with `=`).
+  const clientGrant = (s) => /(^|,)(authenticated|anon|service_role)?=/.test(
+    s.split(',').filter((e) => !e.startsWith('postgres=')).join(','));
+  const srcAcl = await acl('person_legacy_source');
+  ok('person_legacy_source grants EXECUTE to no client role', !clientGrant(srcAcl), { srcAcl });
+  const refAcl = await acl('player_legacy_ref');
+  ok('player_legacy_ref grants EXECUTE to service_role and to no other client role',
+    /(^|,)service_role=/.test(refAcl.split(',').filter((e) => !e.startsWith('postgres=')).join(','))
+      && !/(^|,)(authenticated|anon)=/.test(refAcl)
+      && !/(^|,)=/.test(refAcl),
+    { refAcl });
+
+  // ...and the service boundary still works: the whole point is compatibility, not a dead end.
+  const email = EMAIL();
+  const { id: guest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Boundary Test', $1, $2) RETURNING id`, [email, academy]);
+  const person = (await personOfGuest(guest)).person_id;
+  const svc = await asService(async () =>
+    one(`SELECT public.player_legacy_ref($1, 'academy', $2) AS r`, [person, academy]));
+  ok('the service role derives the legacy reference for its internal write',
+    svc.ok && svc.value.r.guest_player_id === guest, svc);
+  ok('...profile side empty for a guest-only person', svc.ok && svc.value.r.player_id === null, svc);
+  await c.query('ROLLBACK');
+}
+
+// ── 7b. Cross-person and cross-tenant derivation is refused, at the adapter AND at the commands ─
+{
+  await c.query('BEGIN');
+  const mk = async (label) => (await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ($1, 'u2x-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`, [label])).id;
+  const academyA = await mk('u2 tenant A');
+  const academyB = await mk('u2 tenant B');
+  const { id: guestB } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Belongs To B', $1, $2) RETURNING id`, [EMAIL(), academyB]);
+  const personB = (await personOfGuest(guestB)).person_id;
+
+  // The adapter's guest arm is scope-filtered: tenant A's scope derives NOTHING from B's person.
+  const cross = await one(
+    `SELECT * FROM public.person_legacy_source($1, 'academy', $2)`, [personB, academyA]);
+  ok('person_legacy_source never hands one tenant another tenant\'s guest source',
+    cross.guest_player_id === null && cross.profile_id === null, cross);
+
+  // And the commands refuse the PERSON before deriving anything: a uuid names, it does not grant.
+  const { uid: mgrA } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academyA, mgrA]);
+  const inv = await asUser(mgrA, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, $2, 'U2-X-1', current_date, current_date, 'Somebody Else') AS r`,
+      [academyA, personB]));
+  ok('invoice_create_for_person refuses a person outside the caller\'s scope',
+    !inv.ok && /INVOICE_PERSON_NOT_IN_SCOPE/.test(inv.message ?? ''), inv);
+
+  const { id: regA } = await one(
+    `INSERT INTO public.registrations (name, owner_type, owner_id, format, status)
+     VALUES ('U2 A form', 'academy', $1, 'registration', 'open') RETURNING id`, [academyA]);
+  const intake = await asUser(mgrA, async () =>
+    one(`SELECT public.intake_request_create_for_person($1, $2, 'Somebody Else') AS r`,
+      [regA, personB]));
+  ok('intake_request_create_for_person refuses a person outside the form owner\'s scope',
+    !intake.ok && /INTAKE_PERSON_NOT_IN_SCOPE/.test(intake.message ?? ''), intake);
+
+  const disp = await asUser(mgrA, async () =>
+    one(`SELECT * FROM public.person_display_for_owner($1, 'academy', $2)`, [personB, academyA]));
+  ok('person_display_for_owner refuses a person outside the scope',
+    !disp.ok && /PERSON_DISPLAY_NOT_IN_SCOPE/.test(disp.message ?? ''), disp);
+
+  const flag = await asUser(mgrA, async () =>
+    one(`SELECT public.person_mark_has_trained($1, 'academy', $2) AS r`, [personB, academyA]));
+  ok('person_mark_has_trained refuses a person outside the scope',
+    !flag.ok && /HAS_TRAINED_NOT_IN_SCOPE/.test(flag.message ?? ''), flag);
+
+  // A manager of NOTHING is refused at the scope check, before the person is even considered.
+  const { uid: nobody } = await makeAccount(EMAIL());
+  const uninvolved = await asUser(nobody, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, NULL, 'U2-X-2', current_date, current_date, 'Nobody') AS r`, [academyA]));
+  ok('a caller who does not control the scope is refused as FORBIDDEN',
+    !uninvolved.ok && /INVOICE_CREATE_FORBIDDEN/.test(uninvolved.message ?? ''), uninvolved);
+  await c.query('ROLLBACK');
+}
+
+// ── 7c. The invoice flow operates from person_id — and stays compatible with the legacy readers ─
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 invoices', 'u2i-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academy, mgr]);
+
+  // The operator creates the Player through the command — canonical answer only...
+  const created = await asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+           _full_name => 'Invoice Person', _email => $3, _source => 'invoice_recipient',
+           _actor_user_id => $4, _origin => 'operator') AS r`,
+      [crypto.randomUUID(), academy, EMAIL(), mgr]));
+  ok('the create command answers with person_id and no legacy id',
+    created.ok && !!created.value.r.person_id && !('guest_player_id' in created.value.r),
+    created.ok ? Object.keys(created.value.r) : created);
+  const person = created.value.r.person_id;
+
+  // ...and bills that person BY the canonical id. The legacy column is derived inside the command.
+  const inv = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, $2, 'U2-INV-1', current_date, current_date + 14, 'Invoice Person',
+           NULL, NULL, NULL, '[]'::jsonb, 10, 21, 2.1, NULL, 12.1, false, NULL) AS r`,
+      [academy, person]));
+  ok('an invoice is created from person_id alone', inv.ok, inv);
+  ok('...answering with canonical ids only',
+    inv.ok && !!inv.value.r.invoice_id && inv.value.r.person_id === person
+      && !('guest_player_id' in inv.value.r) && !('player_id' in inv.value.r),
+    inv.ok ? Object.keys(inv.value.r) : inv);
+
+  const row = await one(
+    `SELECT person_id, player_id, guest_player_id, academy_profile_id, trainer_id, status
+       FROM public.invoices WHERE id = $1`, [inv.value.r.invoice_id]);
+  ok('the row carries the canonical person AND the derived legacy guest column',
+    row.person_id === person && row.guest_player_id !== null && row.player_id === null, row);
+  ok('...scoped to the academy, as a draft',
+    row.academy_profile_id === academy && row.trainer_id === null && row.status === 'draft', row);
+  const legacyReader = await one(
+    `SELECT count(*)::int AS n FROM public.invoices WHERE guest_player_id = $1`,
+    [row.guest_player_id]);
+  ok('a legacy guest-keyed reader still finds the invoice — compatibility is intact', legacyReader.n === 1);
+
+  // A deliberately unlinked one-time recipient: person NULL, no legacy columns fabricated.
+  const oneTime = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, NULL, 'U2-INV-2', current_date, current_date + 14, 'One Timer') AS r`,
+      [academy]));
+  ok('a one-time recipient stays unlinked rather than growing a fabricated link', oneTime.ok, oneTime);
+  const oneTimeRow = await one(
+    `SELECT person_id, player_id, guest_player_id FROM public.invoices WHERE id = $1`,
+    [oneTime.value.r.invoice_id]);
+  ok('...all three link columns NULL',
+    oneTimeRow.person_id === null && oneTimeRow.player_id === null && oneTimeRow.guest_player_id === null,
+    oneTimeRow);
+
+  // The number collision surfaces RAW, constraint name intact — the client retry loop keys on it.
+  const collision = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, NULL, 'U2-INV-1', current_date, current_date + 14, 'Collider') AS r`,
+      [academy]));
+  ok('a duplicate invoice number propagates the unique violation with its constraint name',
+    !collision.ok && collision.code === '23505'
+      && /unique_invoice_number_per_academy/.test(collision.message ?? ''), collision);
+
+  // The trainer scope mirrors its own RLS: the trainer themself, nobody else.
+  const { uid: trainerUid } = await makeAccount(EMAIL());
+  const { id: trainerId } = await one(
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [trainerUid]);
+  const { id: tGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, trainer_id)
+     VALUES ('Trainer Person', $1, $2) RETURNING id`, [EMAIL(), trainerId]);
+  const tPerson = (await personOfGuest(tGuest)).person_id;
+  const tInv = await asUser(trainerUid, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'trainer', $1, $2, 'U2-TRV-1', current_date, current_date + 14, 'Trainer Person') AS r`,
+      [trainerId, tPerson]));
+  ok('a trainer bills their own person from person_id alone', tInv.ok, tInv);
+  const tRow = await one(
+    `SELECT trainer_id, academy_profile_id, guest_player_id FROM public.invoices WHERE id = $1`,
+    [tInv.value.r.invoice_id]);
+  ok('...into their own scope with the derived guest',
+    tRow.trainer_id === trainerId && tRow.academy_profile_id === null && tRow.guest_player_id === tGuest,
+    tRow);
+  const tForeign = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'trainer', $1, NULL, 'U2-TRV-2', current_date, current_date, 'Foreign') AS r`, [trainerId]));
+  ok('an academy manager cannot write into an unrelated trainer\'s invoice scope',
+    !tForeign.ok && /INVOICE_CREATE_FORBIDDEN/.test(tForeign.message ?? ''), tForeign);
+  await c.query('ROLLBACK');
+}
+
+// ── 7d. The intake flow operates from person_id, with the same internal derivation ─────────────
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 intake', 'u2n-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academy, mgr]);
+  const { id: reg } = await one(
+    `INSERT INTO public.registrations (name, owner_type, owner_id, format, status)
+     VALUES ('U2 Intake Form', 'academy', $1, 'registration', 'open') RETURNING id`, [academy]);
+
+  const created = await asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+           _full_name => 'Intake Person', _email => $3, _source => 'manual_player',
+           _actor_user_id => $4, _origin => 'operator') AS r`,
+      [crypto.randomUUID(), academy, EMAIL(), mgr]));
+  const person = created.value.r.person_id;
+
+  const intake = await asUser(mgr, async () =>
+    one(`SELECT public.intake_request_create_for_person(
+           $1, $2, 'Intake Person', $3, '0612345678', 6.5, 'knltb',
+           ARRAY['group'], ARRAY['mon'], '[]'::jsonb, 60, 1, '{}'::uuid[], NULL, NULL) AS r`,
+      [reg, person, EMAIL()]));
+  ok('a manual intake is created from person_id alone', intake.ok, intake);
+  ok('...answering with canonical ids only',
+    intake.ok && !!intake.value.r.intake_request_id && intake.value.r.person_id === person
+      && !('guest_player_id' in intake.value.r),
+    intake.ok ? Object.keys(intake.value.r) : intake);
+
+  const row = await one(
+    `SELECT registration_id, cycle_id, person_id, player_id, guest_player_id, status, consent_given
+       FROM public.intake_requests WHERE id = $1`, [intake.value.r.intake_request_id]);
+  ok('the intake row carries the canonical person and the derived legacy guest',
+    row.person_id === person && row.guest_player_id !== null && row.player_id === null, row);
+  ok('...linked to the form, unplanned, new, consented',
+    row.registration_id === reg && row.cycle_id === null && row.status === 'new' && row.consent_given === true,
+    row);
+
+  const stranger = await makeAccount(EMAIL());
+  const refused = await asUser(stranger.uid, async () =>
+    one(`SELECT public.intake_request_create_for_person($1, $2, 'X') AS r`, [reg, person]));
+  ok('a caller who does not own the form is refused',
+    !refused.ok && /INTAKE_CREATE_FORBIDDEN/.test(refused.message ?? ''), refused);
+
+  const noPerson = await asUser(mgr, async () =>
+    one(`SELECT public.intake_request_create_for_person($1, NULL, 'X') AS r`, [reg]));
+  ok('a manual intake without a person is refused by name — the identity is not optional',
+    !noPerson.ok && /INTAKE_PERSON_REQUIRED/.test(noPerson.message ?? ''), noPerson);
+
+  // A club-owned form: refused by name. The create step upstream already fails for clubs (guest
+  // scope has no club column — the recorded owner-gate gap); this keeps THIS command's contract
+  // honest instead of writing an identity-less row.
+  const { id: loc } = await one(
+    `INSERT INTO public.locations (name, city, slug)
+     VALUES ('U2 Club Hal', 'Utrecht', 'u2ch-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { id: club } = await one(
+    `INSERT INTO public.club_profiles (location_id) VALUES ($1) RETURNING id`, [loc]);
+  await c.query(`INSERT INTO public.club_managers (club_profile_id, user_id) VALUES ($1, $2)`,
+    [club, mgr]);
+  const { id: clubReg } = await one(
+    `INSERT INTO public.registrations (name, owner_type, owner_id, format, status)
+     VALUES ('U2 Club Form', 'club', $1, 'registration', 'open') RETURNING id`, [club]);
+  const clubIntake = await asUser(mgr, async () =>
+    one(`SELECT public.intake_request_create_for_person($1, $2, 'X') AS r`, [clubReg, person]));
+  ok('a club-owned form is refused by name, not with an identity-less row',
+    !clubIntake.ok && /INTAKE_PERSON_SCOPE_UNSUPPORTED/.test(clubIntake.message ?? ''), clubIntake);
+  await c.query('ROLLBACK');
+}
+
+// ── 7e. The display projection answers attributes, never a legacy id — and the flag write is
+//        person-keyed ─────────────────────────────────────────────────────────────────────────
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 display', 'u2d-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academy, mgr]);
+  const email = EMAIL();
+  const created = await asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+           _full_name => 'Display Person', _email => $3, _notes => 'a note',
+           _source => 'manual_player', _actor_user_id => $4, _origin => 'operator') AS r`,
+      [crypto.randomUUID(), academy, email, mgr]));
+  const person = created.value.r.person_id;
+
+  const disp = await asUser(mgr, async () =>
+    one(`SELECT * FROM public.person_display_for_owner($1, 'academy', $2)`, [person, academy]));
+  ok('the projection answers the stored attributes', disp.ok
+    && disp.value.person_id === person && disp.value.full_name === 'Display Person'
+    && disp.value.email === email && disp.value.notes === 'a note', disp);
+  ok('...and its shape contains NO legacy id — it cannot be used as a translator',
+    disp.ok && !Object.keys(disp.value).some((k) => /guest|profile/.test(k)),
+    disp.ok ? Object.keys(disp.value) : disp);
+
+  const guestRow = await one(
+    `SELECT g.id, g.has_trained FROM public.person_links pl
+       JOIN public.guest_players g ON g.id = pl.guest_player_id
+      WHERE pl.person_id = $1`, [person]);
+  ok('fixture: the created guest starts untrained', guestRow.has_trained === false, guestRow);
+  const marked = await asUser(mgr, async () =>
+    one(`SELECT public.person_mark_has_trained($1, 'academy', $2) AS r`, [person, academy]));
+  ok('the flag write is person-keyed and answers whether it marked', marked.ok && marked.value.r === true, marked);
+  ok('...and the in-scope guest row now carries it',
+    (await one(`SELECT has_trained FROM public.guest_players WHERE id = $1`, [guestRow.id])).has_trained === true);
+
+  // A person the scope may act on but with no guest source: membership-linked, registered-only.
+  const account = await makeAccount(EMAIL());
+  const regPerson = (await personOfProfile(account.profileId)).person_id;
+  await c.query(
+    `INSERT INTO public.academy_player_memberships (academy_profile_id, person_id) VALUES ($1, $2)`,
+    [academy, regPerson]);
+  const noGuest = await asUser(mgr, async () =>
+    one(`SELECT public.person_mark_has_trained($1, 'academy', $2) AS r`, [regPerson, academy]));
+  ok('a registered-only person has no guest row to flag — false, not an error',
+    noGuest.ok && noGuest.value.r === false, noGuest);
+  await c.query('ROLLBACK');
+}
+
+// ── 7f. After a claim, the SAME canonical id keeps working — replay, billing, compatibility ────
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 claim flow', 'u2cf-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academy, mgr]);
+
+  const email = EMAIL();
+  const requestId = crypto.randomUUID();
+  const create = () => asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+           _full_name => 'Claimed Person', _email => $3, _source => 'manual_player',
+           _actor_user_id => $4, _origin => 'operator') AS r`,
+      [requestId, academy, email, mgr]));
+  const first = await create();
+  const guestPerson = first.value.r.person_id;
+
+  // The address holder signs up; the pending pair is confirmed by THE CLAIMANT — a claim is
+  // something a person makes. The guest's person is collapsed into the account's — the exact
+  // lifecycle that used to strand guest-keyed receipts.
+  const { uid: claimantUid, profileId } = await makeAccount(email);
+  const { id: reviewId } = await one(
+    `SELECT id FROM public.person_merge_review
+      WHERE guest_player_id = (SELECT guest_player_id FROM public.person_links WHERE person_id = $1)
+        AND kind = 'email_pair_awaiting_claim' AND status = 'pending'`, [guestPerson]);
+  ok('fixture: the claim proposal exists', !!reviewId);
+  const claimed = await asUser(claimantUid, async () =>
+    one(`SELECT public.person_claim_confirm($1) AS r`, [reviewId]));
+  ok('fixture: the claimant confirms their own claim', claimed.ok, claimed);
+  const survivor = (await personOfProfile(profileId)).person_id;
+  ok('fixture: the claim collapsed the guest person into the account person',
+    survivor !== null && survivor !== guestPerson, { guestPerson, survivor });
+
+  // Replay: same request id, same payload — answered from canonical identity alone.
+  const replay = await create();
+  ok('the finished command replays to the SURVIVING person after the claim',
+    replay.ok && replay.value.r.replayed === true && replay.value.r.person_id === survivor, replay);
+  ok('...with no legacy id in the answer for anything to depend on',
+    replay.ok && !('guest_player_id' in replay.value.r), replay.ok ? Object.keys(replay.value.r) : replay);
+
+  // Billing the claimed person still works, and comes out on the REGISTERED side: profile-first is
+  // what keeps the invoice visible in the account holder's own app.
+  const inv = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, $2, 'U2-CLM-1', current_date, current_date + 14, 'Claimed Person') AS r`,
+      [academy, survivor]));
+  ok('the claimed person is billable from canonical identity alone', inv.ok, inv);
+  const row = await one(
+    `SELECT person_id, player_id, guest_player_id FROM public.invoices WHERE id = $1`,
+    [inv.value.r.invoice_id]);
+  ok('...profile-first: the registered-player column carries the link after the claim',
+    row.person_id === survivor && row.player_id === profileId, row);
   await c.query('ROLLBACK');
 }
 

@@ -34,7 +34,7 @@ import { TableToolbar } from '@/components/ui/table-toolbar';
 import { flushOnMobileCardClass } from '@/components/ui/surface';
 import { EmptyState } from '@/components/ui/empty-state';
 import { AddPlayerDialog } from '@/components/players/AddPlayerDialog';
-import type { GuestPlayer } from '@/components/players/guestPlayer';
+import type { CreatedPlayer } from '@/components/players/guestPlayer';
 import { AddPlayerForm } from '@/components/players/AddPlayerForm';
 import { ImportPlayersDialog } from '@/components/players/ImportPlayersDialog';
 import { useSearchParams, Link } from 'react-router-dom';
@@ -320,12 +320,12 @@ export default function AcademyPlayers() {
   };
 
 
-  const handlePlayerCreated = (_player: GuestPlayer) => {
+  const handlePlayerCreated = (_player: CreatedPlayer) => {
     handlePlayerDataChanged();
     setShowAddPlayer(false);
   };
 
-  const handlePlayersImported = (_importedPlayers: GuestPlayer[]) => {
+  const handlePlayersImported = (_imported: Array<{ personId: string }>) => {
     handlePlayerDataChanged();
   };
 

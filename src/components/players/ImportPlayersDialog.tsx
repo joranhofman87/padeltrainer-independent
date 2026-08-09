@@ -37,7 +37,6 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import { GuestPlayer } from "./AddPlayerDialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 interface ImportPlayersDialogProps {
@@ -45,7 +44,9 @@ interface ImportPlayersDialogProps {
   onOpenChange: (open: boolean) => void;
   trainerId?: string;
   academyId?: string;
-  onPlayersImported: (players: GuestPlayer[]) => void;
+  /** Canonical ids of the Players created (or replayed) by this import — no legacy ids (U2). The
+   * dialog shows counts; callers refetch their lists rather than splicing rows in. */
+  onPlayersImported: (imported: Array<{ personId: string }>) => void;
 }
 
 type ImportStep = "upload" | "preview" | "importing" | "complete";
@@ -152,8 +153,8 @@ export function ImportPlayersDialog({
 
     setStep("importing");
     setImportProgress(0);
-    
-    const imported: GuestPlayer[] = [];
+
+    const imported: Array<{ personId: string }> = [];
     let failed = 0;
 
     for (let i = 0; i < validPlayers.length; i++) {
@@ -180,15 +181,13 @@ export function ImportPlayersDialog({
         });
         if (error) throw error;
 
-        const guestPlayerId = (created as { guest_player_id: string | null } | null)?.guest_player_id;
-        if (!guestPlayerId) throw new Error("player_create_no_player");
-        const { data, error: readError } = await supabase
-          .from("guest_players")
-          .select("*")
-          .eq("id", guestPlayerId)
-          .single();
-        if (readError) throw readError;
-        imported.push(data as GuestPlayer);
+        // The command answers with the canonical id, which is all this dialog needs: the preview
+        // table shows the PARSED rows, the completion screen shows counts, and the callers refetch
+        // their lists. The per-row guest_players re-read that stood here existed only to hand the
+        // caller a legacy row (U2, owner correction 2026-08-09).
+        const personId = (created as { person_id: string | null } | null)?.person_id;
+        if (!personId) throw new Error("player_create_no_person");
+        imported.push({ personId });
       } catch (error) {
         logger.error("Failed to import player", error instanceof Error ? error : new Error(String(error)), { component: 'ImportPlayersDialog', email: player.email });
         failed++;

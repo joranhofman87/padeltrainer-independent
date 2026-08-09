@@ -238,18 +238,21 @@ Deno.test("a create with NO request id is refused before anything is written —
   }
 });
 
-Deno.test("the canonical person_id comes back to the caller", async () => {
+Deno.test("the canonical person_id comes back — and NO legacy id does, even when the command leaks one", async () => {
+  // The rpc result deliberately smuggles a guest id: the HTTP contract must not repeat it. A
+  // response field is browser state the moment it lands, which is exactly the leak the owner
+  // correction (2026-08-09) closes.
   const { userClient, adminClient } = makeClients(
     { manages: [ACADEMY] },
-    { person_id: "the-person", guest_player_id: "the-guest", created: true, replayed: false },
+    { person_id: "the-person", guest_player_id: "smuggled", created: true, replayed: false },
   );
   const res = await handleRequest(req(academyBody()), { userClient, adminClient });
   const body = await res.json();
 
   assertEquals(res.status < 400, true);
-  // `person_id` is the identity; `guestPlayerId` remains only for readers that key on the source row
   assertEquals(body.personId, "the-person");
-  assertEquals(body.guestPlayerId, "the-guest");
+  assertEquals("guestPlayerId" in body, false, "the response carries a legacy guest id");
+  assertEquals(JSON.stringify(body).includes("smuggled"), false);
   // and NOT a profile: this handler no longer resolves accounts, so it cannot answer with one
   assertEquals(body.profileId, undefined);
 });

@@ -53,6 +53,7 @@ DECLARE
   v_id uuid;
   v_rl_count integer;
   v_result jsonb;
+  v_person uuid;
 BEGIN
   -- A new group member must be fully reachable: all four contact fields are required.
   IF v_first IS NULL THEN RAISE EXCEPTION 'first_name_required'; END IF;
@@ -120,9 +121,25 @@ BEGIN
     _last_name            => v_last,
     _source               => 'rebook_group');
 
-  v_id := (v_result->>'guest_player_id')::uuid;
+  -- The command answers with a canonical person. This function's SIGNATURE still returns the legacy
+  -- guest id, because its one caller feeds `rebook_group_apply(_new_guest_ids)` — a shipped RPC
+  -- whose parameter is guest-keyed and which this slice does not rewrite. So the translation happens
+  -- HERE, at the boundary, through the adapter: the legacy id is derived from the person rather than
+  -- returned by the create, and it never appears in the create's contract.
+  v_person := (v_result->>'person_id')::uuid;
+  IF v_person IS NULL THEN
+    RAISE EXCEPTION 'player_create_failed';
+  END IF;
+
+  SELECT ls.guest_player_id INTO v_id
+    FROM public.person_legacy_source(
+           v_person,
+           CASE WHEN s.academy_profile_id IS NOT NULL THEN 'academy' ELSE 'trainer' END,
+           coalesce(s.academy_profile_id, s.trainer_id)) AS ls
+   LIMIT 1;
+
   IF v_id IS NULL THEN
-    RAISE EXCEPTION 'guest_player_create_failed';
+    RAISE EXCEPTION 'guest_source_unavailable';
   END IF;
 
   RETURN v_id;

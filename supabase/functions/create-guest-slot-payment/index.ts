@@ -29,7 +29,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
-import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
+import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -217,9 +217,12 @@ Deno.serve(async (req) => {
     const owner = slot.academy_profile_id
       ? { academyProfileId: slot.academy_profile_id as string }
       : { trainerId: slot.trainer_id as string };
-    const { guestPlayerId } = await resolveOrCreateGuestPlayer(supabase, {
+    // The checkout resolves a CANONICAL Player. The legacy column `bookings` still requires is derived
+    // from it by the authorized adapter, and exists only for the length of this insert.
+    const { personId } = await resolvePlayerForCheckout(supabase, {
       email, name, phone, owner, source: "public_booking", creationRequestId,
     });
+    const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
     // Tenant comes from the SLOT above, never from the client — the client sends a boolean and

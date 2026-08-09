@@ -51,10 +51,10 @@
 -- digest — no name, address or phone number — so it survives a deletion without carrying PII
 -- through it.
 --
--- `person_id` and `guest_player_id` DO carry FKs, and deliberately: ON DELETE SET NULL there is a
--- fact rather than a loss. A NULL `person_id` says "the Player this command produced no longer
--- exists", and the command answers a retry with PLAYER_CREATE_RESULT_GONE instead of quietly making
--- a second one. Where a successor person exists, the merge paths repoint the row before the delete.
+-- `person_id` DOES carry an FK, and deliberately: ON DELETE SET NULL there is a fact rather than a
+-- loss. A NULL says "the Player this command produced no longer exists", and the command answers a
+-- retry with PLAYER_CREATE_RESULT_GONE instead of quietly making a second one. Where a successor
+-- person exists, the merge paths repoint the row before the delete.
 CREATE TABLE IF NOT EXISTS public.player_create_commands (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   -- GLOBALLY unique, not unique per scope: reusing one request id against a different owner is a
@@ -73,10 +73,12 @@ CREATE TABLE IF NOT EXISTS public.player_create_commands (
   -- request id with DIFFERENT material facts is refused rather than silently answered with the old
   -- result.
   payload_fingerprint text NOT NULL,
+  -- THE result. There is deliberately no legacy source column beside it: a receipt that also stored
+  -- `guest_player_id` made a temporary compatibility reference part of the durable identity record,
+  -- and every caller that read it inherited a dependency on a table this migration exists to
+  -- retire. It also made replay fragile in a way `person_id` never is — the guest row is claimed,
+  -- merged and deleted in ordinary use, while the person survives all three.
   person_id           uuid REFERENCES public.persons(id) ON DELETE SET NULL,
-  -- Compatibility only: the source row today's readers still key on. It may go NULL under the same
-  -- lifecycle events; `person_id` is the answer that matters.
-  guest_player_id     uuid REFERENCES public.guest_players(id) ON DELETE SET NULL,
   created_at          timestamptz NOT NULL DEFAULT now(),
   -- An operator create must name its operator. Only the public form may have none.
   CONSTRAINT chk_player_create_commands_actor
@@ -95,7 +97,7 @@ ALTER TABLE public.player_create_commands ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.player_create_commands FROM PUBLIC, anon, authenticated, service_role;
 
 COMMENT ON TABLE public.player_create_commands IS
-  'One row per Player-create command, keyed on the caller''s creation_request_id. The durable idempotency record: it survives the claim, merge, anonymization or deletion of the guest source, and is repointed when the person it names is merged away. Owner-scope ids are FK-free so the evidence outlives its academy or trainer, exactly like academy_deletion_audit. Owner-only — reachable solely through player_create_command.';
+  'One row per Player-create command, keyed on the caller''s creation_request_id. Its answer is the canonical person_id and nothing else — no legacy source reference is stored, so the receipt cannot make a caller depend on guest_players. Survives the claim, merge, anonymization or deletion of the source row, and is repointed when the person it names is merged away. Owner-scope ids are FK-free so the evidence outlives its academy or trainer. Owner-only — reachable solely through player_create_command.';
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical payload encoding
@@ -327,7 +329,6 @@ BEGIN
 
     RETURN jsonb_build_object(
       'person_id', v_cmd.person_id,
-      'guest_player_id', v_cmd.guest_player_id,
       'created', false,
       'replayed', true,
       'creation_request_id', _creation_request_id);
@@ -335,15 +336,10 @@ BEGIN
 
   -- ── a genuinely new attempt ──────────────────────────────────────────────────────────────────
   IF _select_person_id IS NOT NULL THEN
+    -- Naming an existing Player answers with that Player. There is no legacy source to look up
+    -- here any more: a caller that needs one derives it from the person through the adapter, which
+    -- is the only place a guest id is allowed to exist.
     v_person := _select_person_id;
-    SELECT pl.guest_player_id INTO v_guest
-      FROM public.person_links pl
-      JOIN public.guest_players g ON g.id = pl.guest_player_id
-     WHERE pl.person_id = v_person
-       AND ((_owner_type = 'academy' AND g.academy_profile_id = _owner_id)
-            OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
-     ORDER BY g.created_at
-     LIMIT 1;
   ELSE
     -- Serialize the PROPOSAL, not the identity. Two operators submitting the same human under two
     -- different request ids must both get their own Player — that is the whole point of keying on
@@ -399,13 +395,11 @@ BEGIN
   END IF;
 
   INSERT INTO public.player_create_commands
-    (creation_request_id, owner_type, owner_id, origin, actor_user_id,
-     payload_fingerprint, person_id, guest_player_id)
-  VALUES (_creation_request_id, _owner_type, _owner_id, _origin, _actor_user_id, v_fp, v_person, v_guest);
+    (creation_request_id, owner_type, owner_id, origin, actor_user_id, payload_fingerprint, person_id)
+  VALUES (_creation_request_id, _owner_type, _owner_id, _origin, _actor_user_id, v_fp, v_person);
 
   RETURN jsonb_build_object(
     'person_id', v_person,
-    'guest_player_id', v_guest,
     'created', _select_person_id IS NULL,
     'replayed', false,
     'creation_request_id', _creation_request_id);
@@ -549,6 +543,109 @@ END;
 $$;
 
 
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- The legacy compatibility boundary
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- Bookings, invoices, intake requests and priority claims still physically carry `player_id` (a
+-- profile) or `guest_player_id` (a guest row). Those columns are legacy and the person-unification
+-- plan retires them; until it does, something has to turn a canonical `person_id` into whichever
+-- of them a given table can actually store.
+--
+-- That translation lives HERE and nowhere else. A caller passes the person and the scope it is
+-- authorized for; it never passes a legacy id, and it never receives one it did not have to have.
+-- Nothing about this function decides identity: it reads `person_links`, which is the record of
+-- which sources belong to which person, and returns what that record says.
+--
+-- PROFILE FIRST, deliberately. After a guest is claimed or merged into an account the person has
+-- both kinds of source, and the registered-player path is the compatible one — it is what the
+-- money-path dedup guard and the player-side readers key on. Falling back to the guest there would
+-- write a row the account holder cannot see in their own app.
+--
+-- EXECUTE is granted to NOBODY. It is reachable only from a SECURITY DEFINER function owned by the
+-- same role — i.e. only from a wrapper that has already answered "may this caller act in this
+-- scope?". A client that could call it directly would be able to enumerate the legacy sources of
+-- any person whose uuid it could guess.
+CREATE OR REPLACE FUNCTION public.person_legacy_source(
+  _person_id uuid, _owner_type text, _owner_id uuid
+)
+RETURNS TABLE (profile_id uuid, guest_player_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT
+    (SELECT pl.profile_id FROM public.person_links pl
+      WHERE pl.person_id = _person_id AND pl.profile_id IS NOT NULL
+      LIMIT 1),
+    -- the guest source must belong to the SAME person AND to the scope the caller is acting in;
+    -- a guest of another academy is not a legacy source this caller may write.
+    (SELECT pl.guest_player_id
+       FROM public.person_links pl
+       JOIN public.guest_players g ON g.id = pl.guest_player_id
+      WHERE pl.person_id = _person_id
+        AND ((_owner_type = 'academy' AND g.academy_profile_id = _owner_id)
+             OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
+      ORDER BY g.created_at
+      LIMIT 1);
+$$;
+
+REVOKE ALL ON FUNCTION public.person_legacy_source(uuid, text, uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION public.person_legacy_source(uuid, text, uuid) IS
+  'Translates a canonical person_id into the legacy profile/guest columns an unmigrated table still requires, within one authorized scope. Profile first — after a claim or merge the registered-player path is the compatible one. Granted to nobody: reachable only from a wrapper that has already authorized the caller. Decides no identity; it reports what person_links records.';
+
+-- The service-boundary wrapper, and DELIBERATELY nothing more (owner correction, 2026-08-09).
+--
+-- The first version of this granted EXECUTE to `authenticated` so browser callers could translate
+-- the person they had just created into the legacy column they still had to write. That was wrong,
+-- and the reason is worth keeping: an RPC that turns `person_id` back into `guest_player_id` for a
+-- client does not REMOVE the identity leak, it RELOCATES it — every caller, log line and piece of
+-- browser state downstream of the call still carries the legacy id. Clients now hand their
+-- `person_id` to a task-specific command (invoice_create_for_person, intake_request_create_for_
+-- person, ...) that authorizes, translates INTERNALLY and completes the write in one transaction.
+--
+-- What remains is the SERVICE boundary: an edge function holding the service key may derive a
+-- legacy reference internally when it must call or write an unmigrated relation (`bookings`,
+-- `intake_requests`), and the reference must die inside that function — never in its HTTP
+-- response, its logs, or any client-visible state. Anything that is not the service role is
+-- refused here IN ADDITION to holding no EXECUTE grant, so re-granting by accident does not
+-- quietly reopen the door.
+CREATE OR REPLACE FUNCTION public.player_legacy_ref(
+  _person_id uuid, _owner_type text, _owner_id uuid
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_profile uuid;
+  v_guest uuid;
+BEGIN
+  IF auth.role() IS DISTINCT FROM 'service_role' THEN
+    RAISE EXCEPTION 'LEGACY_REF_SERVICE_ONLY: legacy references are derived server-side, inside task-specific commands'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  SELECT s.profile_id, s.guest_player_id INTO v_profile, v_guest
+    FROM public.person_legacy_source(_person_id, _owner_type, _owner_id) s;
+
+  RETURN jsonb_build_object('player_id', v_profile, 'guest_player_id', v_guest);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.player_legacy_ref(uuid, text, uuid)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.player_legacy_ref(uuid, text, uuid) TO service_role;
+
+COMMENT ON FUNCTION public.player_legacy_ref(uuid, text, uuid) IS
+  'Service-role-only wrapper over person_legacy_source, for edge functions that must write an unmigrated relation: the derived legacy reference exists only inside that function and never reaches a client. Ordinary authenticated callers are refused twice over — no EXECUTE grant, and an explicit in-function check — because a client-callable person→legacy translator would merely relocate the identity leak it exists to close. Browser flows use the task-specific person-keyed commands instead.';
+
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Lifecycle: the record follows the person it names
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -602,8 +699,8 @@ BEGIN
   UPDATE public.academy_player_metadata SET person_id = _target_person
     WHERE guest_player_id = _guest_id AND person_id = _guest_person;
 
-  -- U2: the durable create-command record names this person. Its guest column needs no repoint —
-  -- the collapse relinks the guest ROW rather than deleting it, so `guest_player_id` stays valid.
+  -- U2: the durable create-command record names this person, and only the person — there is no
+  -- legacy source column on it to keep in step.
   UPDATE public.player_create_commands
      SET person_id = _target_person
    WHERE person_id = _guest_person;

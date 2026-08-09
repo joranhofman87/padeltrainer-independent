@@ -338,9 +338,6 @@
     },
     "react-hooks/exhaustive-deps": {
       "count": 1
-    },
-    "react-refresh/only-export-components": {
-      "count": 1
     }
   },
   "src/components/players/EmailCampaignTab.tsx": {
@@ -614,11 +611,6 @@
   "src/lib/cycleProposalSlots.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 1
-    }
-  },
-  "src/lib/cycles.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
     }
   },
   "src/lib/email.ts": {

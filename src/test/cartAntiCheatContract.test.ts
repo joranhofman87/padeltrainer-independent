@@ -81,9 +81,10 @@ describe('create-guest-cart-payment — client trust surface', () => {
   });
 
   it('guest identity is server-resolved and the Mollie metadata uses the RPC-returned ids', () => {
-    expect(fnSource).toContain('resolveOrCreateGuestPlayer(');
-    // ...and "server-resolved" now means CREATED through the one command, not matched on the
-    // address and name the client typed (U2, owner 2026-08-09).
+    expect(fnSource).toContain('resolvePlayerForCheckout(');
+    // ...and "server-resolved" now means CREATED through the one command, answering with the
+    // canonical person only — the legacy booking column is derived by the service adapter inside
+    // this process (U2, owner correction 2026-08-09).
     expect(readFileSync(
       join(process.cwd(), 'supabase', 'functions', '_shared', 'guest-players.ts'), 'utf8',
     )).toContain('player_create_command');
