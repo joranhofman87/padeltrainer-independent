@@ -10738,6 +10738,7 @@ export type Database = {
       create_invoice_deduped: { Args: { _payload: Json }; Returns: Json }
       create_rebook_group_guest: {
         Args: {
+          _creation_request_id?: string
           _email?: string
           _first_name: string
           _last_name?: string
@@ -12190,6 +12191,29 @@ export type Database = {
           _select_person_id?: string
           _skill_rating?: number
           _source?: string
+          _twin_of_profile_id?: string
+        }
+        Returns: Json
+      }
+      player_create_execute: {
+        Args: {
+          _actor_user_id: string
+          _birth_date?: string
+          _creation_request_id: string
+          _email?: string
+          _first_name?: string
+          _full_name?: string
+          _last_name?: string
+          _notes?: string
+          _origin: string
+          _owner_id: string
+          _owner_type: string
+          _phone?: string
+          _rating_system?: string
+          _select_person_id?: string
+          _skill_rating?: number
+          _source?: string
+          _twin_of_profile_id?: string
         }
         Returns: Json
       }
@@ -12199,6 +12223,7 @@ export type Database = {
           _full_name: string
           _phone: string
           _select_person_id: string
+          _source?: string
         }
         Returns: string
       }

@@ -747,6 +747,13 @@ export async function fetchRebookGroupByToken(token: string): Promise<RebookGrou
  *  guest_players directly). Returns the guest_players.id to pass to applyRebookGroup. */
 export async function createRebookGroupGuest(token: string, input: {
   firstName: string; lastName: string; email: string; phone: string;
+  /**
+   * The captain's own id for THIS add-a-member attempt. Since U2 the member is CREATED rather than
+   * looked up by address, so this is the only thing that keeps a resubmitted group from minting the
+   * same person twice — and it must be minted ONCE per member, not once per submit, or a retry
+   * after a partial failure makes duplicates of everyone who already landed.
+   */
+  creationRequestId: string;
 }): Promise<string> {
   const { data, error } = await supabase.rpc('create_rebook_group_guest', {
     _token: token,
@@ -754,6 +761,7 @@ export async function createRebookGroupGuest(token: string, input: {
     _last_name: input.lastName,
     _email: input.email,
     _phone: input.phone,
+    _creation_request_id: input.creationRequestId,
   });
   if (error) throw error;
   return data as string;

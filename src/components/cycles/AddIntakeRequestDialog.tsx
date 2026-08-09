@@ -1,4 +1,9 @@
-import { useState, useEffect, useRef} from 'react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -68,8 +73,13 @@ export default function AddIntakeRequestDialog({
 }: AddIntakeRequestDialogProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  /** The id of the create attempt currently in flight. Cleared on success, kept across retries. */
-  const creationRequestIdRef = useRef<string | null>(null);
+  /**
+   * The create attempt currently in flight, KEYED on the identity fields the server fingerprints.
+   * A raw id held across every failure was wrong in one direction: correcting a typo in the name or
+   * the address and saving again reused the old id, and the command answers a changed payload with
+   * PLAYER_CREATE_IDEMPOTENCY_CONFLICT — so the correction could not be saved at all.
+   */
+  const creationAttemptRef = useRef<CreationAttempt>(null);
   const [ratingSystems, setRatingSystems] = useState<Array<{
     code: string;
     name: string;
@@ -247,10 +257,14 @@ export default function AddIntakeRequestDialog({
     }
 
     setIsSubmitting(true);
-    // One id for this create ATTEMPT, minted once and reused by every retry of it — a double
-    // submit, a network retry, a second click. It is regenerated only after the attempt succeeds,
-    // so the next player the operator adds is a genuinely new attempt.
-    if (!creationRequestIdRef.current) creationRequestIdRef.current = crypto.randomUUID();
+    const nameForCreate = buildGuestPlayerDbFields(data.first_name, data.last_name).full_name;
+    // One id for this create ATTEMPT, reused by every retry of it — a double submit, a network
+    // retry, a second click — and minted afresh the moment the operator changes who they are
+    // adding, because that is a different attempt.
+    const creationRequestId = creationRequestIdFor(
+      creationAttemptRef,
+      JSON.stringify([data.cycle_id, nameForCreate, data.email.trim().toLowerCase(), (data.phone ?? '').trim()]),
+    );
     try {
       // Step 1: Create or find the player account
       const { data: playerData, error: playerError } = await supabase.functions.invoke(
@@ -265,7 +279,7 @@ export default function AddIntakeRequestDialog({
             ratingSystem: data.rating_system,
             rating: data.rating,
             cycleName: cycles.find(c => c.id === data.cycle_id)?.name || '',
-            creationRequestId: creationRequestIdRef.current,
+            creationRequestId,
             // The owner the cycle already names. Without it the player is created ownerless — it
             // never appears in the academy's players list, and it misses the scoped, idempotent
             // create path entirely (U2).
@@ -321,7 +335,7 @@ export default function AddIntakeRequestDialog({
       form.reset();
       setDayAvailability({});
       // the attempt is finished: the next player is a NEW attempt with a new id
-      creationRequestIdRef.current = null;
+      clearCreationAttempt(creationAttemptRef);
       onSuccess();
     } catch (error: any) {
       logger.error('Error creating intake request', error as Error, { component: 'AddIntakeRequestDialog' });

@@ -1,4 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -299,12 +304,13 @@ export default function CycleApplicationForm({
   }, [form, applyDraftKey, selectedPaymentMethod, selectedDurationWeeks, selectedCyclusOption]);
 
   /**
-   * The id of the submission ATTEMPT currently in flight. Minted once and reused by every retry of
-   * it — a double submit, a network replay, a second tap — and regenerated only after the attempt
-   * succeeds. It is what makes the server-side create idempotent, since no attribute of the person
-   * registering may be used to recognise a repeat (U2).
+   * The submission ATTEMPT currently in flight, KEYED on the identity fields the server
+   * fingerprints. Reused by every retry of the same attempt — a double submit, a network replay, a
+   * second tap — and minted afresh when the registrant edits who they are, because a raw id held
+   * across an edit is answered with PLAYER_CREATE_IDEMPOTENCY_CONFLICT and the corrected form can
+   * never be submitted (U2).
    */
-  const creationRequestIdRef = useRef<string | null>(null);
+  const creationAttemptRef = useRef<CreationAttempt>(null);
 
   const onSubmit = async (values: FormValues) => {
     if (isSubmitting) return;
@@ -316,7 +322,6 @@ export default function CycleApplicationForm({
       return;
     }
     setIsSubmitting(true);
-    if (!creationRequestIdRef.current) creationRequestIdRef.current = crypto.randomUUID();
     const nameFields = buildGuestPlayerDbFields(values.first_name, values.last_name);
     const fullName = nameFields.full_name;
     try {
@@ -377,7 +382,10 @@ export default function CycleApplicationForm({
             consentGiven: values.consent,
             language: i18n.language,
             paymentMethod: selectedPaymentMethod,
-            creationRequestId: creationRequestIdRef.current,
+            creationRequestId: creationRequestIdFor(
+              creationAttemptRef,
+              JSON.stringify([cycle.id, fullName, values.email.trim().toLowerCase(), values.phone.trim()]),
+            ),
             metadata: {
               ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),
               ...(selectedDurationWeeks ? { preferred_number_of_weeks: selectedDurationWeeks } : {}),
@@ -388,7 +396,7 @@ export default function CycleApplicationForm({
         if (fnError) throw fnError;
         if (result?.error) throw new Error(result.error);
         // the attempt is finished: anything after this is a NEW registration, not a retry
-        creationRequestIdRef.current = null;
+        clearCreationAttempt(creationAttemptRef);
         redirectPayUrl = result?.payment?.payUrl ?? null;
       } else {
         // Logged-in user flow

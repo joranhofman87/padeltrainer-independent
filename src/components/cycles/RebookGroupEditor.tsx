@@ -40,7 +40,13 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
   const [keep, setKeep] = useState<Set<string>>(
     () => new Set(group.members.filter((m) => m.status !== 'declined').map((m) => m.key)),
   );
-  const [newMembers, setNewMembers] = useState<NewGroupMember[]>([]);
+  /**
+   * Each new member carries the id of the attempt that will create them, stamped when the captain
+   * ADDS them rather than when the group is submitted. A submit that fails halfway — a capacity
+   * refusal, a dropped connection — is retried with the same ids, so the members who already landed
+   * replay instead of being minted a second time (U2: the address no longer recognises a repeat).
+   */
+  const [newMembers, setNewMembers] = useState<Array<NewGroupMember & { creationRequestId: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const sessions = group.sessions || 1;
@@ -166,7 +172,7 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
         </div>
       )}
 
-      <AddGroupMemberFields disabled={submitting} onAdd={(m) => setNewMembers((prev) => [...prev, m])} />
+      <AddGroupMemberFields disabled={submitting} onAdd={(m) => setNewMembers((prev) => [...prev, { ...m, creationRequestId: crypto.randomUUID() }])} />
 
       {/* Price preview */}
       {pricePer > 0 && (

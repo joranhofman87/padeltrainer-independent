@@ -99,11 +99,19 @@ IMMUTABLE
 SET search_path = pg_catalog, public, pg_temp
 AS $$ SELECT nullif(lower(btrim(regexp_replace(coalesce(_v, ''), '\s+', ' ', 'g'))), '') $$;
 
--- Covers the IDENTITY payload only. First/last name, rating, birth date and source are descriptive
--- attributes of one create: correcting a typo in them on a retry must not turn the retry into a
--- conflict, because none of them can change WHICH Player the command answers with.
+-- Covers the IDENTITY payload, plus the FLOW the attempt was made in. First/last name, rating and
+-- birth date are descriptive attributes of one create: correcting a typo in them on a retry must
+-- not turn the retry into a conflict, because none of them can change WHICH Player the command
+-- answers with.
+--
+-- `_source` is in here for a different reason. On the anonymous flows the request id is supplied by
+-- the client, and a replay hands back the Player that id created — so the id should not be usable
+-- outside the flow that minted it. Binding the source means an attempt made at the registration
+-- form cannot be replayed at the booking checkout, and vice versa. It does not make the id a
+-- secret, and it is not pretending to: replaying one still requires the whole identity payload to
+-- match, which is the same knowledge the attribute lookup this replaced gave away for nothing.
 CREATE OR REPLACE FUNCTION public.player_create_fingerprint(
-  _full_name text, _email text, _phone text, _select_person_id uuid
+  _full_name text, _email text, _phone text, _select_person_id uuid, _source text DEFAULT NULL
 )
 RETURNS text
 LANGUAGE sql
@@ -114,7 +122,8 @@ AS $$
     public.u2_ns(public.u2_norm(_full_name))
     || public.u2_ns(public.u2_norm(_email))
     || public.u2_ns(public.u2_norm(_phone))
-    || public.u2_ns(_select_person_id::text), 'sha256'), 'hex');
+    || public.u2_ns(_select_person_id::text)
+    || public.u2_ns(public.u2_norm(_source)), 'sha256'), 'hex');
 $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -180,31 +189,50 @@ AS $$
 $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
--- The command
+-- The command, and the mechanism underneath it
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- WHY THESE ARE TWO FUNCTIONS. "Who may create a Player here" and "what creating one does" are
+-- different questions with different answers per caller. A signed-in operator is authorized by the
+-- scope they control. The public registration form is authorized by its own endpoint's gates. The
+-- rebook-group flow is authorized by a capability token an anonymous member holds, which only that
+-- flow can validate. Folding all three into one function means either one of them is refused, or
+-- the check that admits it admits everybody.
+--
+-- So `player_create_execute` is the MECHANISM — idempotency, creation, the duplicate proposal, the
+-- durable record — and it decides nothing about permission. EXECUTE on it is granted to NOBODY,
+-- which is what makes that safe: it is reachable only from a SECURITY DEFINER function owned by the
+-- same role, i.e. only from a function that has already answered the permission question. That is a
+-- real boundary rather than a convention — an anon or authenticated caller cannot reach it at all.
 DROP FUNCTION IF EXISTS public.academy_create_player(uuid, text, text, text, uuid);
 DROP FUNCTION IF EXISTS public.academy_create_player(uuid, uuid, text, text, text, uuid, uuid);
 DROP FUNCTION IF EXISTS public.academy_may_select_person(uuid, uuid);
+-- Earlier shapes of this same unit, dropped by signature so a partially-applied environment cannot
+-- end up with an OVERLOAD: PostgREST would then resolve a call by argument names, and two functions
+-- that differ by one optional parameter are exactly the pair it can pick the wrong member of.
+DROP FUNCTION IF EXISTS public.player_create_fingerprint(text, text, text, uuid);
+DROP FUNCTION IF EXISTS public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text);
+DROP FUNCTION IF EXISTS public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text);
 
-CREATE OR REPLACE FUNCTION public.player_create_command(
-  _creation_request_id uuid,
-  _owner_type          text,
-  _owner_id            uuid    DEFAULT NULL,
-  _full_name           text    DEFAULT NULL,
-  _email               text    DEFAULT NULL,
-  _phone               text    DEFAULT NULL,
-  _first_name          text    DEFAULT NULL,
-  _last_name           text    DEFAULT NULL,
-  _skill_rating        numeric DEFAULT NULL,
-  _rating_system       text    DEFAULT NULL,
-  _birth_date          date    DEFAULT NULL,
-  _notes               text    DEFAULT NULL,
-  _source              text    DEFAULT NULL,
-  -- "this is an existing Player", by canonical id. Authorized, never assumed from possession.
-  _select_person_id    uuid    DEFAULT NULL,
-  -- Service-role callers (the edge functions) name the acting user; a signed-in caller cannot.
-  _actor_user_id       uuid    DEFAULT NULL,
-  _origin              text    DEFAULT 'operator'
+CREATE OR REPLACE FUNCTION public.player_create_execute(
+  _creation_request_id  uuid,
+  _owner_type           text,
+  _owner_id             uuid,
+  _origin               text,
+  _actor_user_id        uuid,
+  _full_name            text    DEFAULT NULL,
+  _email                text    DEFAULT NULL,
+  _phone                text    DEFAULT NULL,
+  _first_name           text    DEFAULT NULL,
+  _last_name            text    DEFAULT NULL,
+  _skill_rating         numeric DEFAULT NULL,
+  _rating_system        text    DEFAULT NULL,
+  _birth_date           date    DEFAULT NULL,
+  _notes                text    DEFAULT NULL,
+  _source               text    DEFAULT NULL,
+  -- Already authorized by the caller. This function does NOT re-check it.
+  _select_person_id     uuid    DEFAULT NULL,
+  _twin_of_profile_id   uuid    DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -212,10 +240,6 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
-  -- the REQUEST's role, from the JWT. PostgREST connects as `authenticator` and switches role from
-  -- the token, so `session_user` is `authenticator` for a service-key call too and would never match.
-  v_is_service boolean := (auth.role() = 'service_role');
-  v_uid uuid;
   v_name text := public.u2_norm(_full_name);
   v_email text := public.u2_norm(_email);
   v_fp text;
@@ -224,70 +248,11 @@ DECLARE
   v_guest uuid;
   v_dupe uuid;
 BEGIN
-  IF _creation_request_id IS NULL THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_REQUEST_ID_REQUIRED: a create command must say which attempt it is'
-      USING ERRCODE = 'invalid_parameter_value';
-  END IF;
-  -- Every Player belongs to an academy or a trainer. That is not this command's rule — it is the
-  -- `guest_players_owner_check` constraint the table has carried since 2026-02, and a create with no
-  -- scope has always ended in an opaque check violation several statements later. It is refused
-  -- here, legibly, before anything is written.
-  IF _owner_type IS NULL OR _owner_type NOT IN ('academy', 'trainer') THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_BAD_SCOPE: a Player belongs to an academy or a trainer'
-      USING ERRCODE = 'invalid_parameter_value';
-  END IF;
-  IF _owner_id IS NULL THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_BAD_SCOPE: the % scope needs an owner id', _owner_type
-      USING ERRCODE = 'invalid_parameter_value';
-  END IF;
-  IF _origin IS NULL OR _origin NOT IN ('operator', 'self_signup') THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_BAD_ORIGIN: origin must be operator or self_signup'
-      USING ERRCODE = 'invalid_parameter_value';
-  END IF;
-
-  IF _origin = 'self_signup' THEN
-    -- The public registration form reaches this through its own service-key edge function, which is
-    -- where the form-is-open check, the CORS allow-list and the rate limits live. A signed-in client
-    -- may not declare itself a self-signup: that would be a create with no operator and no gate.
-    IF NOT v_is_service THEN
-      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: only the public registration endpoint may create a self-signup Player'
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
-    -- A registrant identifies themselves by signing in, and a signed-in registrant is an existing
-    -- Player who travels by their own id — they never reach a CREATE at all. So there is no
-    -- selection arm here, and no way to name one.
-    IF _select_person_id IS NOT NULL THEN
-      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: a self-signup cannot select an existing Player'
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
-    -- ...and for the same reason there is nobody to record as the actor. Accepting one would put an
-    -- unverified user id into the durable evidence, which is worse than recording none.
-    IF _actor_user_id IS NOT NULL THEN
-      RAISE EXCEPTION 'PLAYER_CREATE_BAD_ORIGIN: a self-signup has no operator to name'
-        USING ERRCODE = 'invalid_parameter_value';
-    END IF;
-    v_uid := NULL;   -- the public form has no signed-in operator
-  ELSE
-    v_uid := CASE WHEN v_is_service THEN coalesce(_actor_user_id, auth.uid()) ELSE auth.uid() END;
-    IF v_uid IS NULL THEN
-      RAISE EXCEPTION 'PLAYER_CREATE_NOT_AUTHENTICATED' USING ERRCODE = 'insufficient_privilege';
-    END IF;
-    IF NOT public.player_owner_may_create(_owner_type, _owner_id, v_uid) THEN
-      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: you do not control that academy or trainer'
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
-  END IF;
-
-  IF v_name IS NULL AND _select_person_id IS NULL THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_NAME_REQUIRED: a new Player needs a name'
-      USING ERRCODE = 'invalid_parameter_value';
-  END IF;
-
   -- Serialize on the REQUEST, not on the address. Two concurrent submissions of one attempt must
   -- produce one Player; two different attempts are free to run at the same time.
   PERFORM pg_advisory_xact_lock(hashtext('player_create:' || _creation_request_id::text));
 
-  v_fp := public.player_create_fingerprint(_full_name, _email, _phone, _select_person_id);
+  v_fp := public.player_create_fingerprint(_full_name, _email, _phone, _select_person_id, _source);
 
   SELECT * INTO v_cmd FROM public.player_create_commands
    WHERE creation_request_id = _creation_request_id FOR UPDATE;
@@ -295,12 +260,11 @@ BEGIN
   IF FOUND THEN
     -- Same attempt. It must be the SAME attempt in every material respect, or the caller has reused
     -- an id and is owed an error rather than somebody else's answer. IS DISTINCT FROM throughout:
-    -- an anonymous self-signup has a NULL actor and an ownerless create has a NULL owner, and `<>`
-    -- would answer NULL — never true — for both.
+    -- an anonymous self-signup has a NULL actor, and `<>` would answer NULL — never true — for it.
     IF v_cmd.owner_type <> _owner_type
        OR v_cmd.owner_id IS DISTINCT FROM _owner_id
        OR v_cmd.origin <> _origin
-       OR v_cmd.actor_user_id IS DISTINCT FROM v_uid
+       OR v_cmd.actor_user_id IS DISTINCT FROM _actor_user_id
        OR v_cmd.payload_fingerprint <> v_fp THEN
       RAISE EXCEPTION 'PLAYER_CREATE_IDEMPOTENCY_CONFLICT: request % was already used for a different create',
         _creation_request_id USING ERRCODE = 'unique_violation';
@@ -321,11 +285,6 @@ BEGIN
 
   -- ── a genuinely new attempt ──────────────────────────────────────────────────────────────────
   IF _select_person_id IS NOT NULL THEN
-    IF NOT public.player_owner_may_select_person(_owner_type, _owner_id, _select_person_id) THEN
-      -- knowing the uuid is not the same as being allowed to use it
-      RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that Player is not one this scope can select'
-        USING ERRCODE = 'insufficient_privilege';
-    END IF;
     v_person := _select_person_id;
     SELECT pl.guest_player_id INTO v_guest
       FROM public.person_links pl
@@ -342,12 +301,12 @@ BEGIN
     -- makes the second one see the first one's row. Taken AFTER the request lock and released with
     -- the transaction, so the acquisition order is the same everywhere and cannot deadlock.
     PERFORM pg_advisory_xact_lock(hashtext(
-      'player_identity:' || _owner_type || ':' || coalesce(_owner_id::text, '-')
+      'player_identity:' || _owner_type || ':' || _owner_id::text
       || ':' || coalesce(v_name, '') || ':' || coalesce(v_email, '')));
 
     INSERT INTO public.guest_players (
       full_name, first_name, last_name, email, phone, skill_rating, rating_system, birth_date,
-      notes, academy_profile_id, trainer_id, source
+      notes, academy_profile_id, trainer_id, twin_of_profile_id, source
     ) VALUES (
       btrim(_full_name), nullif(btrim(_first_name), ''), nullif(btrim(_last_name), ''),
       v_email, nullif(btrim(_phone), ''), _skill_rating,
@@ -355,6 +314,7 @@ BEGIN
       nullif(btrim(_notes), ''),
       CASE WHEN _owner_type = 'academy' THEN _owner_id END,
       CASE WHEN _owner_type = 'trainer' THEN _owner_id END,   -- exactly one, per the table's CHECK
+      _twin_of_profile_id,
       coalesce(nullif(btrim(_source), ''), 'player_create_command')
     )
     RETURNING id INTO v_guest;
@@ -391,7 +351,7 @@ BEGIN
   INSERT INTO public.player_create_commands
     (creation_request_id, owner_type, owner_id, origin, actor_user_id,
      payload_fingerprint, person_id, guest_player_id)
-  VALUES (_creation_request_id, _owner_type, _owner_id, _origin, v_uid, v_fp, v_person, v_guest);
+  VALUES (_creation_request_id, _owner_type, _owner_id, _origin, _actor_user_id, v_fp, v_person, v_guest);
 
   RETURN jsonb_build_object(
     'person_id', v_person,
@@ -401,6 +361,126 @@ BEGIN
     'creation_request_id', _creation_request_id);
 END;
 $$;
+
+-- The entry point for callers who are authorized by a SCOPE they control: an operator through their
+-- own session, or an edge function naming the operator it verified.
+CREATE OR REPLACE FUNCTION public.player_create_command(
+  _creation_request_id uuid,
+  _owner_type          text,
+  _owner_id            uuid    DEFAULT NULL,
+  _full_name           text    DEFAULT NULL,
+  _email               text    DEFAULT NULL,
+  _phone               text    DEFAULT NULL,
+  _first_name          text    DEFAULT NULL,
+  _last_name           text    DEFAULT NULL,
+  _skill_rating        numeric DEFAULT NULL,
+  _rating_system       text    DEFAULT NULL,
+  _birth_date          date    DEFAULT NULL,
+  _notes               text    DEFAULT NULL,
+  _source              text    DEFAULT NULL,
+  -- "this is an existing Player", by canonical id. Authorized, never assumed from possession.
+  _select_person_id    uuid    DEFAULT NULL,
+  -- Service-role callers (the edge functions) name the acting user; a signed-in caller cannot.
+  _actor_user_id       uuid    DEFAULT NULL,
+  _origin              text    DEFAULT 'operator',
+  -- The explicit "this new Player IS that account holder" assertion (rule B1). Only ever on a
+  -- CREATE: stamping a Player that already exists is how an attribute-matched row gets laundered
+  -- into an authorized merge, which is exactly what U2 removed from the roster bridge.
+  _twin_of_profile_id  uuid    DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  -- the REQUEST's role, from the JWT. PostgREST connects as `authenticator` and switches role from
+  -- the token, so `session_user` is `authenticator` for a service-key call too and would never match.
+  v_is_service boolean := (auth.role() = 'service_role');
+  v_uid uuid;
+BEGIN
+  IF _creation_request_id IS NULL THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_REQUEST_ID_REQUIRED: a create command must say which attempt it is'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  -- Every Player belongs to an academy or a trainer. That is not this command's rule — it is the
+  -- `guest_players_owner_check` constraint the table has carried since 2026-02, and a create with no
+  -- scope has always ended in an opaque check violation several statements later. It is refused
+  -- here, legibly, before anything is written.
+  IF _owner_type IS NULL OR _owner_type NOT IN ('academy', 'trainer') THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_BAD_SCOPE: a Player belongs to an academy or a trainer'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF _owner_id IS NULL THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_BAD_SCOPE: the % scope needs an owner id', _owner_type
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF _origin IS NULL OR _origin NOT IN ('operator', 'self_signup') THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_BAD_ORIGIN: origin must be operator or self_signup'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  IF _origin = 'self_signup' THEN
+    -- The public registration form reaches this through its own service-key edge function, which is
+    -- where the form-is-open check, the CORS allow-list and the rate limits live. A signed-in client
+    -- may not declare itself a self-signup: that would be a create with no operator and no gate.
+    IF NOT v_is_service THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: only a public endpoint may create a self-signup Player'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    -- A registrant identifies themselves by signing in, and a signed-in registrant is an existing
+    -- Player who travels by their own id — they never reach a CREATE at all. So there is no
+    -- selection arm here, and no way to name one.
+    IF _select_person_id IS NOT NULL THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: a self-signup cannot select an existing Player'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    -- ...and for the same reason there is nobody to record as the actor, and nobody to assert a
+    -- twin. Accepting either would put an unverified claim into the durable evidence.
+    IF _actor_user_id IS NOT NULL THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_BAD_ORIGIN: a self-signup has no operator to name'
+        USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    IF _twin_of_profile_id IS NOT NULL THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: a self-signup cannot assert who somebody is'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    v_uid := NULL;   -- the public form has no signed-in operator
+  ELSE
+    v_uid := CASE WHEN v_is_service THEN coalesce(_actor_user_id, auth.uid()) ELSE auth.uid() END;
+    IF v_uid IS NULL THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_NOT_AUTHENTICATED' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NOT public.player_owner_may_create(_owner_type, _owner_id, v_uid) THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: you do not control that academy or trainer'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+
+  IF public.u2_norm(_full_name) IS NULL AND _select_person_id IS NULL THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_NAME_REQUIRED: a new Player needs a name'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF _select_person_id IS NOT NULL AND _twin_of_profile_id IS NOT NULL THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_BAD_SCOPE: a Player that already exists is not being created, so there is nothing to stamp'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  -- The one authorization this function owes the mechanism: naming an existing Player.
+  IF _select_person_id IS NOT NULL
+     AND NOT public.player_owner_may_select_person(_owner_type, _owner_id, _select_person_id) THEN
+    -- knowing the uuid is not the same as being allowed to use it
+    RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that Player is not one this scope can select'
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  RETURN public.player_create_execute(
+    _creation_request_id, _owner_type, _owner_id, _origin, v_uid,
+    _full_name, _email, _phone, _first_name, _last_name, _skill_rating, _rating_system,
+    _birth_date, _notes, _source, _select_person_id, _twin_of_profile_id);
+END;
+$$;
+
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Lifecycle: the record follows the person it names
@@ -476,17 +556,22 @@ $$;
 
 REVOKE ALL ON FUNCTION public.u2_ns(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.u2_norm(text) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.player_create_fingerprint(text, text, text, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.player_create_fingerprint(text, text, text, uuid, text) FROM PUBLIC, anon, authenticated;
+-- The mechanism is reachable ONLY from a SECURITY DEFINER function owned by this role. Granting it
+-- to nobody is what lets it skip the permission question: there is no caller that has not answered
+-- it. `service_role` is revoked too — the edge functions go through `player_create_command`.
+REVOKE ALL ON FUNCTION public.player_create_execute(uuid, text, uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
 REVOKE ALL ON FUNCTION public.player_owner_may_select_person(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.player_owner_may_create(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text)
+REVOKE ALL ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text, uuid)
   FROM PUBLIC, anon, authenticated, service_role;
 
-GRANT EXECUTE ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text)
+GRANT EXECUTE ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text, uuid)
   TO authenticated, service_role;
 
-COMMENT ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text) IS
-  'The one Player-create command. Idempotent on the caller''s creation_request_id — never on a name, address or phone number, which may only PROPOSE a duplicate for review. An existing Player is named by person_id and must already belong to the scope; possession of a uuid authorizes nothing. Scope is the academy or trainer the Player belongs to (U2, owner 2026-08-09).';
+COMMENT ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text, uuid) IS
+  'The scope-authorized entry point to Player creation. Idempotent on the caller''s creation_request_id — never on a name, address or phone number, which may only PROPOSE a duplicate for review. An existing Player is named by person_id and must already belong to the scope; possession of a uuid authorizes nothing. Scope is the academy or trainer the Player belongs to (U2, owner 2026-08-09).';
 
 COMMENT ON FUNCTION public.player_owner_may_select_person(text, uuid, uuid) IS
   'Whether a scope may name an existing person_id in a create command: it must already have a membership or a guest of its own linked to that person. UUIDs travel; permission does not.';

@@ -102,7 +102,10 @@ export function CartCheckoutDialog({
           whatsappOptIn,
           creationRequestId: creationRequestIdFor(
             attemptRef,
-            JSON.stringify([email.trim().toLowerCase(), firstName.trim(), lastName.trim()]),
+            // EVERY field the server fingerprints — name, address AND phone. A key that omits one
+            // reuses the id after the booker corrects it, and the command answers a changed payload
+            // with PLAYER_CREATE_IDEMPOTENCY_CONFLICT: the correction becomes unsavable.
+            JSON.stringify([email.trim().toLowerCase(), firstName.trim(), lastName.trim(), phone.trim()]),
           ),
         },
       });

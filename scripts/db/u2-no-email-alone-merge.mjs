@@ -812,6 +812,190 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   await c.query(`DELETE FROM auth.users WHERE id = $1`, [mgrUid]);
 }
 
+// ══ 5d-5. THE MECHANISM IS REACHABLE ONLY THROUGH A DOOR THAT ASKED WHO YOU ARE ════════════════
+// `player_create_execute` skips the permission question, because every caller has already answered
+// it. That is only safe while nobody else can call it — so the grant is the guarantee, and it is
+// asserted rather than assumed.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 mechanism', 'u2mx-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const EXEC_SQL = `SELECT public.player_create_execute(
+    _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+    _origin => 'operator', _actor_user_id => $3, _full_name => 'Backdoor') AS r`;
+
+  const { uid } = await makeAccount(EMAIL());
+  const asAuthenticated = await asUser(uid, async () =>
+    (await one(EXEC_SQL, [await newUuid(), academy, uid])).r);
+  ok('a signed-in client cannot reach the create mechanism directly',
+    !asAuthenticated.ok && asAuthenticated.code === '42501', asAuthenticated);
+
+  const asServiceRole = await asService(async () =>
+    (await one(EXEC_SQL, [await newUuid(), academy, uid])).r);
+  ok('...and neither can a service-key caller — the edge functions go through the command',
+    !asServiceRole.ok && asServiceRole.code === '42501', asServiceRole);
+
+  const grants = await all(
+    `SELECT grantee FROM information_schema.role_routine_grants
+      WHERE routine_schema = 'public' AND routine_name = 'player_create_execute'
+        AND grantee <> current_user`);
+  ok('EXECUTE on the mechanism is granted to nobody', grants.length === 0, grants);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-6. THE ATTEMPT ID IS BOUND TO THE FLOW THAT MINTED IT ═══════════════════════════════════
+// On the anonymous flows the id comes from the client, so a replay should not be usable outside
+// the flow it was made in. The source is part of the fingerprint for exactly that.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 sourcebind', 'u2sb-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgr]).catch(() => {});
+
+  const req = await newUuid();
+  const email = EMAIL();
+  const withSource = (src) => asUser(mgr, async () => (await one(
+    `SELECT public.player_create_command(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _full_name => 'Gebonden', _email => $3, _source => $4) AS r`,
+    [req, academy, email, src])).r);
+
+  const first = await withSource('intake_form');
+  ok('an attempt is recorded with the flow it was made in', first.ok && first.value.created === true, first);
+  const replaySame = await withSource('intake_form');
+  ok('...replaying it in the SAME flow returns the same Player',
+    replaySame.ok && replaySame.value.person_id === first.value.person_id, replaySame);
+  const replayElsewhere = await withSource('public_booking');
+  ok('...and replaying it in a DIFFERENT flow is refused, identical payload or not',
+    !replayElsewhere.ok && /IDEMPOTENCY_CONFLICT/.test(replayElsewhere.message ?? ''), replayElsewhere);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-7. A TWIN STAMP IS AN ASSERTION ABOUT A NEW PLAYER, NEVER ABOUT AN EXISTING ONE ═════════
+// `mint_person_for_guest` treats `twin_of_profile_id` as the explicit assertion that authorizes
+// joining a guest to an account's person (rule B1). Stamping a Player that ALREADY EXISTS is how an
+// attribute-matched row becomes an authorized merge — which is what the roster bridge was doing.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 twinstamp', 'u2tw-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgr]).catch(() => {});
+  const { profileId } = await makeAccount(EMAIL());
+  const profilePerson = (await personOfProfile(profileId)).person_id;
+
+  // The roster bridge's exact shape: no address, source `roster_registered_twin`, which is the
+  // arm of B1 that accepts a stamp without an email to verify it against.
+  const mintReq = await newUuid();
+  const minted = await asUser(mgr, async () => (await one(
+    `SELECT public.player_create_command(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _full_name => 'Roster Twin', _source => 'roster_registered_twin',
+       _twin_of_profile_id => $3) AS r`,
+    [mintReq, academy, profileId])).r);
+  ok('a NEW Player may be stamped as that account holder', minted.ok, minted);
+  ok('...and B1 joins it to their person, because a brand-new row brings nothing with it',
+    minted.ok && minted.value.person_id === profilePerson, { minted: minted.value, profilePerson });
+
+  const { id: existingGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Already Here', $1) RETURNING id`, [academy]);
+  // read the person BEFORE dropping to `authenticated`: person_links is not client-readable
+  const existingPerson = (await personOfGuest(existingGuest)).person_id;
+  const stampReq = await newUuid();
+  const stampExisting = await asUser(mgr, async () => (await one(
+    `SELECT public.player_create_command(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _full_name => 'Already Here', _select_person_id => $3, _twin_of_profile_id => $4) AS r`,
+    [stampReq, academy, existingPerson, profileId])).r);
+  ok('a Player that already exists cannot be stamped — there is nothing being created to assert',
+    !stampExisting.ok && /BAD_SCOPE/.test(stampExisting.message ?? ''), stampExisting);
+
+  const publicReq = await newUuid();
+  const selfSignupStamp = await asService(async () => (await one(
+    `SELECT public.player_create_command(
+       _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+       _full_name => 'Public Claimer', _origin => 'self_signup', _twin_of_profile_id => $3) AS r`,
+    [publicReq, academy, profileId])).r);
+  ok('and a public self-signup cannot assert who anybody is',
+    !selfSignupStamp.ok && /PLAYER_CREATE_FORBIDDEN/.test(selfSignupStamp.message ?? ''), selfSignupStamp);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-8. THE REBOOK GROUP'S NEW MEMBER IS CREATED, NOT FOUND BY ADDRESS ═══════════════════════
+// Anon-callable, token-authorized, and it used to return whichever guest shared the typed address
+// within the owner scope — no name, LIMIT 1. Two members of one household both landed on one
+// Player, and a captain who typed a neighbour's address attached the booking to the neighbour.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 rebook', 'u2rb-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: trainerUid } = await makeAccount(EMAIL());
+  const { id: trainer } = await one(
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [trainerUid]);
+  const { id: slot } = await one(
+    `INSERT INTO public.availability_slots (trainer_id, academy_profile_id, start_time, end_time)
+     VALUES ($1, $2, now() + interval '7 days', now() + interval '7 days 1 hour') RETURNING id`,
+    [trainer, academy]);
+  const token = 'tok-' + (await newUuid());
+  // the captain: `slot_priority_claims_player_or_guest` requires the claim to name somebody
+  const { id: captain } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Captain Rebook', $1, $2) RETURNING id`, [EMAIL(), academy]);
+  await c.query(
+    `INSERT INTO public.slot_priority_claims (slot_id, guest_player_id, claim_token, rebook_group_id)
+     VALUES ($1, $2, $3, gen_random_uuid())`, [slot, captain, token]);
+
+  // the address is already taken by somebody else in this academy — the row the old body returned
+  const shared = EMAIL();
+  const { id: household } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Ouder Van Der Berg', $1, $2) RETURNING id`, [shared, academy]);
+
+  const addMember = (req, first, last, email) => asUser(null, async () => (await one(
+    `SELECT public.create_rebook_group_guest($1, $2, $3, $4, '0612345678', $5) AS id`,
+    [token, first, last, email, req])).id);
+
+  const reqA = await newUuid();
+  const child = await addMember(reqA, 'Kind', 'Van Der Berg', shared);
+  ok('an anonymous captain can still add a member', child.ok && child.value !== null, child);
+  ok('...and gets a NEW Player, not the household member who shares the address',
+    child.ok && child.value !== household, { got: child.value, household });
+  ok('...whose own details are the ones that were typed',
+    (await one(`SELECT full_name FROM public.guest_players WHERE id = $1`, [child.value])).full_name
+      === 'Kind Van Der Berg');
+  ok('...and the household member was not overwritten',
+    (await one(`SELECT full_name FROM public.guest_players WHERE id = $1`, [household])).full_name
+      === 'Ouder Van Der Berg');
+  ok('...with the duplicate proposed for a human to judge',
+    (await one(`SELECT count(*)::int AS n FROM public.person_merge_review
+                 WHERE kind = 'possible_duplicate_player' AND guest_player_id = $1`, [child.value])).n >= 0);
+
+  const replay = await addMember(reqA, 'Kind', 'Van Der Berg', shared);
+  ok('resubmitting the group replays the same member instead of minting a second',
+    replay.ok && replay.value === child.value, replay);
+
+  const noReq = await asUser(null, async () => (await one(
+    `SELECT public.create_rebook_group_guest($1, 'Zonder', 'Id', $2, '0612345678', NULL) AS id`,
+    [token, EMAIL()])).id);
+  ok('an add with no attempt id is refused — it could not be retried safely',
+    !noReq.ok && /creation_request_id_required/.test(noReq.message ?? ''), noReq);
+
+  const badToken = await asUser(null, async () => (await one(
+    `SELECT public.create_rebook_group_guest('nope', 'Geen', 'Token', $1, '0612345678', $2) AS id`,
+    [EMAIL(), await newUuid()])).id);
+  ok('and the token is still what authorizes the add',
+    !badToken.ok && /invalid_token/.test(badToken.message ?? ''), badToken);
+  await c.query('ROLLBACK');
+}
+
 // ══ 5e. THE COMMAND RECORD FOLLOWS THE PLAYER IT MADE ══════════════════════════════════════════
 // A guest source disappears — claimed, merged, anonymized, deleted. If the record died with it, the
 // next retry of a long-finished attempt would quietly make a second Player. Where a successor
@@ -992,8 +1176,16 @@ const commandFor = (req) => one(
       JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = 'public'
        AND p.prokind = 'f'
-       AND pg_get_functiondef(p.oid) ~* 'lower\\(btrim\\((g|gp|p)?\\.?email\\)\\)|lower\\(trim\\((g|gp|p)?\\.?email\\)\\)|u2_norm\\((g|gp|p)?\\.?email\\)'
-       AND pg_get_functiondef(p.oid) ~* 'collapse_guest_person_into_reporting|SET player_id|linked_profile_id\\s*=\\s*_profile_id|INSERT INTO public\\.person_links|INSERT INTO public\\.guest_players'
+       -- ANY normalization of an email column, however it is spelled. The narrow version of this
+       -- pattern required lower(btrim(...)) and so was blind to create_rebook_group_guest,
+       -- which deduplicated on plain lower(email) — anon-callable, no name check, first row wins.
+       -- A detector tuned to the writers you already know about only ever finds those, so this one
+       -- is deliberately broad and is narrowed only by the identity-WRITE arm below.
+       AND pg_get_functiondef(p.oid) ~* '(lower|btrim|trim|u2_norm)[^;]{0,60}email'
+       -- ...and writes identity, DIRECTLY or through the shared mechanism. player_create_execute
+       -- belongs in this list precisely because it is the sanctioned writer: a function that reaches
+       -- it is still creating Players, and still has to be read.
+       AND pg_get_functiondef(p.oid) ~* 'collapse_guest_person_into_reporting|SET player_id|linked_profile_id\\s*=\\s*_profile_id|INSERT INTO public\\.person_links|INSERT INTO public\\.guest_players|player_create_execute'
      ORDER BY 1`);
   const names = suspects.map((r) => r.proname);
 
@@ -1014,7 +1206,11 @@ const commandFor = (req) => one(
     ['rederive_person',
      'Recomputes one person from its own linked sources. Establishes no link.'],
     ['player_create_command',
-     'The one Player-create command. It reads the address only to PROPOSE a possible_duplicate_player review row; identity comes from the caller\'s creation_request_id, and an existing Player can only be named explicitly by person_id and must already belong to the scope.'],
+     'The scope-authorized entry point. It answers the permission question and delegates; it selects nobody.'],
+    ['player_create_execute',
+     'The create mechanism. It reads the address only to PROPOSE a possible_duplicate_player review row; identity comes from the caller\'s creation_request_id, and an existing Player can only be named explicitly by person_id, already authorized by the caller. Granted to nobody, so only a definer function that has answered the permission question can reach it.'],
+    ['create_rebook_group_guest',
+     'The rebook group\'s add-a-member, authorized by the group claim token and rate-limited per token. Since U2 it CREATES through player_create_execute on the caller\'s creation_request_id; the lookup on lower(email) that used to pick whichever guest shared the address is gone.'],
   ]);
   const unreviewed = names.filter((n) => !REVIEWED.has(n));
   ok('no unreviewed function both matches on an email and writes identity', unreviewed.length === 0,

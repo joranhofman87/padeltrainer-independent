@@ -221,8 +221,11 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             whatsappOptIn,
             creationRequestId: creationRequestIdFor(
               attemptRef,
+              // EVERY field the server fingerprints — name, address AND phone. A key that omits one
+              // reuses the id after the booker corrects it, and the command answers a changed
+              // payload with PLAYER_CREATE_IDEMPOTENCY_CONFLICT: the correction becomes unsavable.
               JSON.stringify([bookCyclus ? cyclusId : slot.id, email.trim().toLowerCase(),
-                firstName.trim(), lastName.trim()]),
+                firstName.trim(), lastName.trim(), phone.trim()]),
             ),
           },
         },

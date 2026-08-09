@@ -21,16 +21,7 @@ import { readFileSync, readdirSync } from 'node:fs';
  * Sites that look a person-shaped row up by email AND could influence identity. Each is read line by
  * line; `must` pins the property that keeps it honest, so the entry cannot rot into a bare name.
  */
-const SITES: Array<{ file: string; why: string; must: RegExp[] }> = [
-  {
-    file: 'src/lib/playerResolve.ts',
-    why:
-      'the registered-player TWIN bridge. It resolves by profile id first and only then considers an ' +
-      'address, and a lone household-email match is reused only when the name matches exactly — the ' +
-      'B1 arm slice 1 deliberately kept, because a twin stamp is an explicit operator assertion.',
-    must: [/requireNameMatch\s*=\s*false/, /requireNameMatch:\s*true/, /findGuestTwinByProfileId/],
-  },
-];
+const SITES: Array<{ file: string; why: string; must: RegExp[] }> = [];
 
 /**
  * Sites that look a person up by email but do NOT attach a player identity. Each was read; the
@@ -111,10 +102,34 @@ const RETIRED: Array<{ file: string; why: string; absent: RegExp[] }> = [
     why: 'CSV import — the same direct insert per row, so re-running a half-failed import duplicated everyone who had already landed',
     absent: [/from\("guest_players"\)\s*\n?\s*\.insert/],
   },
+  {
+    file: 'src/lib/playerResolve.ts',
+    why:
+      'the roster TWIN bridge. It claimed a guest found by address and exact name, and STAMPED it ' +
+      'with twin_of_profile_id — which mint_person_for_guest treats as the operator assertion that ' +
+      'authorizes joining that guest to the profile. An attribute match laundered into a merge, with ' +
+      'no human in the loop: the roster UI supplies a profile id and nothing else. The whole lookup ' +
+      'machinery is deleted, not guarded',
+    absent: [/findExistingGuestPlayerIdByEmail/, /requireNameMatch/, /claim_guest_twin_for_academy/, /\.ilike\(/],
+  },
+];
+
+/**
+ * SQL sites, because the TypeScript sweep is structurally blind to them — and that blindness is
+ * exactly what let `create_rebook_group_guest` keep deduplicating on `lower(email)`, anon-callable,
+ * for the whole of this unit. The real-Postgres suite sweeps `pg_proc` for the same property
+ * against the LIVE schema; this catches it in review, before anything is applied.
+ */
+const SQL_RETIRED: Array<{ file: string; why: string; absent: RegExp[] }> = [
+  {
+    file: 'supabase/migrations/20261124100000_u2_rebook_group_guest_uuid_create.sql',
+    why: 'the rebook group add-a-member: dedup on lower(email) alone, no name, LIMIT 1, reachable by anon holding a group token',
+    absent: [/lower\(email\)\s*=/, /INSERT INTO public\.guest_players/],
+  },
 ];
 
 describe('no source site resolves a person from an address', () => {
-  it.each(RETIRED)('$file no longer looks anybody up', ({ file, absent }) => {
+  it.each([...RETIRED, ...SQL_RETIRED])('$file no longer looks anybody up', ({ file, absent }) => {
     const src = readFileSync(file, 'utf8');
     for (const re of absent) {
       expect(`${file} still matches ${re}: ${re.test(src)}`).toBe(`${file} still matches ${re}: false`);
@@ -136,6 +151,7 @@ describe('no source site resolves a person from an address', () => {
       'src/lib/invoiceCustomerInsert.ts',
       'src/components/players/AddPlayerForm.tsx',
       'src/components/players/ImportPlayersDialog.tsx',
+      'src/lib/playerResolve.ts',
     ]) {
       const src = readFileSync(file, 'utf8');
       expect(`${file}: ${src.includes('player_create_command')}`).toBe(`${file}: true`);
@@ -145,7 +161,7 @@ describe('no source site resolves a person from an address', () => {
   });
 
   it('every listed site carries a written reason', () => {
-    for (const { file, why } of [...SITES, ...RETIRED]) {
+    for (const { file, why } of [...SITES, ...RETIRED, ...SQL_RETIRED]) {
       expect(`${file}: ${why.length >= 40}`).toBe(`${file}: true`);
     }
   });
