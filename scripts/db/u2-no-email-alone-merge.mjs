@@ -291,6 +291,181 @@ const EMAIL = () => `u2-${Math.abs(Date.now() % 1e9)}-${Math.floor(process.hrtim
   await c.query('ROLLBACK');
 }
 
+// ══ 5b. THE CLAIM — the only route from a proposal to one person ═══════════════════════════════
+// Slice 1 left two Player records where there used to be one merged pair. This is what joins them,
+// and the whole point is WHO may run it: the proposal is made by matching, the claim by the human.
+//
+// `auth.uid()` is read from the JWT, so these run as `authenticated` with a request-local claim set,
+// exactly as PostgREST does it — a claim tested as the superuser would prove nothing about who may
+// make one.
+const asUser = async (uid, fn) => {
+  await c.query('SAVEPOINT au');
+  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ sub: uid, role: 'authenticated' })]);
+  await c.query(`SET LOCAL ROLE authenticated`);
+  try {
+    const r = await fn();
+    await c.query(`RESET ROLE`);
+    await c.query(`SELECT set_config('request.jwt.claims', NULL, true)`);
+    return { ok: true, value: r };
+  } catch (e) {
+    await c.query('ROLLBACK TO SAVEPOINT au');
+    await c.query(`RESET ROLE`);
+    return { ok: false, code: e.code, message: e.message };
+  }
+};
+
+/** guest + later account on one address = one pending proposal, per slice 1. */
+async function proposedPair() {
+  const email = EMAIL();
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 claim', 'u2c-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { id: guest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Anna Claimant', $1, $2) RETURNING id`, [email, academy]);
+  const { id: invoice } = await one(
+    `INSERT INTO public.invoices (invoice_number, due_date, player_name, status, guest_player_id)
+     VALUES ('U2C-' || substr(gen_random_uuid()::text,1,8), current_date, 'Anna', 'sent', $1)
+     RETURNING id`, [guest]);
+  const { uid, profileId } = await makeAccount(email);
+  const { id: reviewId } = await one(
+    `SELECT id FROM public.person_merge_review
+      WHERE kind = 'email_pair_awaiting_claim' AND guest_player_id = $1`, [guest]);
+  return { email, academy, guest, invoice, uid, profileId, reviewId };
+}
+
+{
+  await c.query('BEGIN');
+  const f = await proposedPair();
+  const guestPerson = (await personOfGuest(f.guest)).person_id;
+  const profilePerson = (await personOfProfile(f.profileId)).person_id;
+  ok('the pair starts as two people', guestPerson !== profilePerson);
+
+  const seen = await asUser(f.uid, async () =>
+    (await c.query(`SELECT * FROM public.person_claim_candidates()`)).rows);
+  ok('the claimant is offered their own proposal',
+    seen.ok && seen.value.length === 1 && seen.value[0].guest_player_id === f.guest, seen);
+  ok('...with the name they need to answer "is this you?", and nothing else',
+    seen.ok && seen.value[0].guest_name === 'Anna Claimant'
+    && !Object.keys(seen.value[0]).some((k) => /email|phone/.test(k)), Object.keys(seen.value?.[0] ?? {}));
+
+  const done = await asUser(f.uid, async () =>
+    (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
+  ok('the claim succeeds', done.ok && done.value.ok === true, done);
+
+  const after = (await personOfGuest(f.guest)).person_id;
+  ok('the two are now ONE person', after === profilePerson, { after, profilePerson });
+  ok('the money the guest owed follows the account',
+    (await one(`SELECT player_id FROM public.invoices WHERE id = $1`, [f.invoice])).player_id === f.profileId);
+  const r = await one(`SELECT status, details FROM public.person_merge_review WHERE id = $1`, [f.reviewId]);
+  ok('the proposal is applied and says WHO claimed it',
+    r.status === 'applied' && r.details.resolved_by === 'user_claim' && r.details.claimed_by_user === f.uid, r);
+
+  // idempotent: the second click changes nothing and does not fail
+  const again = await asUser(f.uid, async () =>
+    (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
+  ok('claiming twice is a no-op, not an error',
+    again.ok && again.value.ok === true && again.value.already_applied === true, again);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5c. A CLAIM IS NOT A ROUTE AROUND THE RULE ═════════════════════════════════════════════════
+{
+  await c.query('BEGIN');
+  const f = await proposedPair();
+  const { uid: strangerUid } = await makeAccount(EMAIL());
+
+  const stolen = await asUser(strangerUid, async () =>
+    (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
+  ok('someone else cannot claim your pair', !stolen.ok && /CLAIM_NOT_YOURS/.test(stolen.message ?? ''), stolen);
+
+  const hidden = await asUser(strangerUid, async () =>
+    (await c.query(`SELECT * FROM public.person_claim_candidates()`)).rows);
+  ok('...and cannot even see it offered', hidden.ok && hidden.value.length === 0, hidden);
+
+  const anon = await asUser(null, async () =>
+    (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
+  // the SPECIFIC refusal: without the auth check the ownership check would also refuse (a NULL uid
+  // matches no profile), so asserting "it failed" would pass with the guard removed
+  ok('an unauthenticated caller is refused AS unauthenticated',
+    !anon.ok && /CLAIM_NOT_AUTHENTICATED/.test(anon.message ?? ''), anon);
+
+  const stillTwo = (await personOfGuest(f.guest)).person_id;
+  ok('after all of that the pair is still two people',
+    stillTwo !== (await personOfProfile(f.profileId)).person_id);
+  await c.query('ROLLBACK');
+}
+
+{
+  // the claim executes a PROPOSAL — it cannot be pointed at an arbitrary pair
+  await c.query('BEGIN');
+  const f = await proposedPair();
+  await c.query(`UPDATE public.person_merge_review SET kind = 'shared_email_cluster' WHERE id = $1`,
+    [f.reviewId]);
+  const wrongKind = await asUser(f.uid, async () =>
+    (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
+  ok('a row that is not a claim proposal cannot be claimed',
+    !wrongKind.ok && /CLAIM_NOT_YOURS/.test(wrongKind.message ?? ''), wrongKind);
+  await c.query('ROLLBACK');
+}
+
+{
+  // a guest already linked to a DIFFERENT account is not available, proposal or no proposal
+  await c.query('BEGIN');
+  const f = await proposedPair();
+  const { profileId: other } = await makeAccount(EMAIL());
+  await c.query(`UPDATE public.guest_players SET linked_profile_id = $1 WHERE id = $2`, [other, f.guest]);
+  const taken = await asUser(f.uid, async () =>
+    (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
+  ok('a player already linked elsewhere cannot be claimed',
+    !taken.ok && /CLAIM_TAKEN/.test(taken.message ?? ''), taken);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d. THE IDEMPOTENT CREATE ══════════════════════════════════════════════════════════════════
+{
+  await c.query('BEGIN');
+  const email = EMAIL();
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 create', 'u2cr-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: managerUid, profileId: managerProfile } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'owner')`, [academy, managerUid]).catch(async () => {
+    await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id)
+                   VALUES ($1, $2)`, [academy, managerUid]);
+  });
+
+  const first = await asUser(managerUid, async () =>
+    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Nieuwe Speler', email])).r);
+  ok('an academy manager can create a player', first.ok && first.value.created === true, first);
+
+  const second = await asUser(managerUid, async () =>
+    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Nieuwe Speler', email])).r);
+  ok('creating the same player twice returns the SAME one — idempotent',
+    second.ok && second.value.created === false
+    && second.value.guest_player_id === first.value.guest_player_id, second);
+
+  const sibling = await asUser(managerUid, async () =>
+    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Broertje Speler', email])).r);
+  ok('a DIFFERENT name on the same address is a different player, not a reuse',
+    sibling.ok && sibling.value.created === true
+    && sibling.value.guest_player_id !== first.value.guest_player_id, sibling);
+
+  const { uid: outsiderUid } = await makeAccount(EMAIL());
+  const refused = await asUser(outsiderUid, async () =>
+    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Sneaky', EMAIL()])).r);
+  ok('someone who does not manage the academy cannot create players there',
+    !refused.ok && /PLAYER_CREATE_FORBIDDEN/.test(refused.message ?? ''), refused);
+
+  const nameless = await asUser(managerUid, async () =>
+    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, '   ', email])).r);
+  ok('a player with no name is refused — nothing could deduplicate it',
+    !nameless.ok && /NAME_REQUIRED/.test(nameless.message ?? ''), nameless);
+  await c.query('ROLLBACK');
+}
+
 // ══ 6. NOTHING IN THE SCHEMA STILL PERFORMS AN EMAIL-ALONE MERGE ═══════════════════════════════
 // The decision is "no auto-merge on email", not "no auto-merge on email in the two places we looked".
 // So the whole shipped function set is searched for one that both reads an email and collapses.

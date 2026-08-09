@@ -10031,6 +10031,15 @@ export type Database = {
         Args: { p_owner_id: string; p_owner_type: string }
         Returns: boolean
       }
+      academy_create_player: {
+        Args: {
+          _academy_profile_id: string
+          _email?: string
+          _full_name: string
+          _phone?: string
+        }
+        Returns: Json
+      }
       academy_has_managers: {
         Args: { _academy_profile_id: string }
         Returns: boolean
@@ -12099,6 +12108,17 @@ export type Database = {
         Args: { p_purpose: string; p_request_id: string; p_source: string }
         Returns: string
       }
+      person_claim_candidates: {
+        Args: never
+        Returns: {
+          academy_name: string
+          guest_name: string
+          guest_player_id: string
+          proposed_at: string
+          review_id: string
+        }[]
+      }
+      person_claim_confirm: { Args: { _review_id: string }; Returns: Json }
       person_has_tenant_relationship: {
         Args: {
           p_academy_profile_id: string
