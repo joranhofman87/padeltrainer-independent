@@ -1752,13 +1752,22 @@ export function BulkCreateContent({
                   })
                 );
               } else if (!created) {
+                // The create SUCCEEDED — say that the slot fill did not (Codex r1 f9).
                 logger.error("Created player not found in the refreshed list", undefined, {
                   component: "BulkCreateContent",
+                });
+                toast({
+                  title: t("players.createdNotSelected", "Player created — select them manually"),
+                  description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
                 });
               }
             } catch (error) {
               logger.error("Failed to refresh players after a create", error as Error, {
                 component: "BulkCreateContent",
+              });
+              toast({
+                title: t("players.createdNotSelected", "Player created — select them manually"),
+                description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
               });
             } finally {
               setAddPlayerContext(null);

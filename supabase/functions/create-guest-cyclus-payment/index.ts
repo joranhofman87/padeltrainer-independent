@@ -384,7 +384,9 @@ Deno.serve(async (req) => {
       profileId: mollieProfileId,
       metadata: {
         booking_ids: bookingIds, // tells mollie-webhook to commit ALL holds (NO invoice_id)
-        guest_player_id: guestPlayerId,
+        // canonical correlation only: the derived guest reference dies inside this process (U2,
+        // owner correction 2026-08-09) — nothing reads a guest id back out of Mollie metadata.
+        person_id: personId,
         recipient_type: recipientType,
         cyclus_id: cyclusId,
       },

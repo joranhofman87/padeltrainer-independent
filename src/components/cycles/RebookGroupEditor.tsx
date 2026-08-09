@@ -72,16 +72,18 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      // Mint each new member server-side (token-gated), collecting their guest ids.
-      const newGuestIds: string[] = [];
+      // Mint each new member server-side (token-gated), collecting their CANONICAL person ids —
+      // the only identity this browser ever holds (U2). The legacy booking keys are derived
+      // inside the apply/manage definers.
+      const newPersonIds: string[] = [];
       for (const m of newMembers) {
         const id = await createRebookGroupGuest(token, m);
-        newGuestIds.push(id);
+        newPersonIds.push(id);
       }
       const keepKeys = group.members.filter((m) => keep.has(m.key) && !m.is_self).map((m) => m.key);
       const res = mode === 'manage'
-        ? await manageRebookGroup(token, { keepKeys, newGuestIds, invoiceId })
-        : await applyRebookGroup(token, { keepKeys, newGuestIds });
+        ? await manageRebookGroup(token, { keepKeys, newPersonIds, invoiceId })
+        : await applyRebookGroup(token, { keepKeys, newPersonIds });
       if (!res.ok) {
         if (res.reason === 'window_expired') {
           toast.error(t('rebooking.errorExpired', 'The reservation period has expired.'));

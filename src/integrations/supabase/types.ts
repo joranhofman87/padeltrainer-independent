@@ -12192,7 +12192,6 @@ export type Database = {
         Returns: {
           academy_name: string
           guest_name: string
-          guest_player_id: string
           proposed_at: string
           review_id: string
         }[]
@@ -12368,14 +12367,14 @@ export type Database = {
         }[]
       }
       rebook_group_apply: {
-        Args: { _keep_keys?: Json; _new_guest_ids?: string[]; _token: string }
+        Args: { _keep_keys?: Json; _new_person_ids?: string[]; _token: string }
         Returns: Json
       }
       rebook_group_manage: {
         Args: {
           _invoice_id?: string
           _keep_keys?: Json
-          _new_guest_ids?: string[]
+          _new_person_ids?: string[]
           _token: string
         }
         Returns: Json

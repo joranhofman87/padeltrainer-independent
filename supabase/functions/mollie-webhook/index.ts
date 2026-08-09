@@ -215,9 +215,20 @@ serve(async (req) => {
     }
 
     const payment = await mollieResponse.json();
-    logStep("Payment fetched", { 
-      status: payment.status, 
-      metadata: payment.metadata 
+    // Whitelisted keys only, never the metadata object wholesale: payments created before the U2
+    // correction still carry a guest_player_id in their metadata, and a derived legacy id must not
+    // reappear in the logs on its way back through (owner correction 2026-08-09).
+    logStep("Payment fetched", {
+      status: payment.status,
+      metadata: {
+        booking_id: payment.metadata?.booking_id,
+        booking_ids: payment.metadata?.booking_ids,
+        invoice_id: payment.metadata?.invoice_id,
+        person_id: payment.metadata?.person_id,
+        recipient_type: payment.metadata?.recipient_type,
+        cart: payment.metadata?.cart,
+        cyclus_id: payment.metadata?.cyclus_id,
+      },
     });
 
     const { invoiceId: invoiceIdFromMetadata, bookingIds } = parseMolliePaymentMetadata(

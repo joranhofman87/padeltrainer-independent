@@ -256,7 +256,7 @@ Deno.serve(async (req) => {
       .limit(1)
       .maybeSingle();
     if (existingPaid) {
-      logStep("Guest already has a paid booking on this slot", { slotId, guestPlayerId });
+      logStep("Guest already has a paid booking on this slot", { slotId, personId });
       return json({ error: "already_booked", message: "Je hebt deze training al geboekt.", token: existingPaid.public_token }, 409);
     }
 
@@ -415,7 +415,9 @@ Deno.serve(async (req) => {
       metadata: {
         booking_id: bookingId,
         booking_ids: [bookingId], // tells mollie-webhook to commit the hold (NO invoice_id)
-        guest_player_id: guestPlayerId,
+        // canonical correlation only: the derived guest reference dies inside this process (U2,
+        // owner correction 2026-08-09) — nothing reads a guest id back out of Mollie metadata.
+        person_id: personId,
         recipient_type: recipientType,
       },
     };

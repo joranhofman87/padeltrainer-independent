@@ -198,9 +198,15 @@ export function InlineBookPlayer({
       setPlayers(data as GuestPlayer[]);
       const created = data.find((p) => p.person_id === player.personId);
       if (!created) {
+        // The create SUCCEEDED — say that the selection did not (Codex r1 f9), or the next click
+        // quietly mints a second attempt for a player who already exists.
         logger.error("Created player not found in the refreshed list", undefined, {
           component: "InlineBookPlayer",
         });
+      toast({
+        title: t("players.createdNotSelected", "Player created — select them manually"),
+        description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
+      });
         return;
       }
       const firstEmptyIndex = selectedPlayerIds.findIndex(id => !id);
@@ -212,6 +218,10 @@ export function InlineBookPlayer({
     } catch (error) {
       logger.error("Failed to refresh players after a create", error as Error, {
         component: "InlineBookPlayer",
+      });
+      toast({
+        title: t("players.createdNotSelected", "Player created — select them manually"),
+        description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
       });
     }
   };

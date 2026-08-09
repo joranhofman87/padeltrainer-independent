@@ -350,10 +350,11 @@ async function proposedPair() {
   const seen = await asUser(f.uid, async () =>
     (await c.query(`SELECT * FROM public.person_claim_candidates()`)).rows);
   ok('the claimant is offered their own proposal',
-    seen.ok && seen.value.length === 1 && seen.value[0].guest_player_id === f.guest, seen);
-  ok('...with the name they need to answer "is this you?", and nothing else',
+    seen.ok && seen.value.length === 1 && seen.value[0].review_id === f.reviewId, seen);
+  ok('...with the name they need to answer "is this you?", and NO legacy id — confirmation is by review_id',
     seen.ok && seen.value[0].guest_name === 'Anna Claimant'
-    && !Object.keys(seen.value[0]).some((k) => /email|phone/.test(k)), Object.keys(seen.value?.[0] ?? {}));
+    && !Object.keys(seen.value[0]).some((k) => /email|phone|guest_player_id|profile_id/.test(k)),
+    Object.keys(seen.value?.[0] ?? {}));
 
   const done = await asUser(f.uid, async () =>
     (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
@@ -1012,10 +1013,21 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   const reqA = await newUuid();
   const child = await addMember(reqA, 'Kind', 'Van Der Berg', shared);
   ok('an anonymous captain can still add a member', child.ok && child.value !== null, child);
-  ok('...and gets a NEW Player, not the household member who shares the address',
-    child.ok && child.value !== household, { got: child.value, household });
+  // The answer is the CANONICAL person (owner correction 2026-08-09) — asserted through
+  // person_links, never through the fresh-mint id equality, which is a coincidence of the mint
+  // and not a contract.
+  ok('...and the answer is a person with a linked guest source, not a bare guest id',
+    child.ok && (await one(`SELECT count(*)::int AS n FROM public.persons WHERE id = $1`,
+      [child.value])).n === 1
+    && (await one(`SELECT count(*)::int AS n FROM public.person_links
+                    WHERE person_id = $1 AND guest_player_id IS NOT NULL`, [child.value])).n === 1);
+  const householdPerson = (await personOfGuest(household)).person_id;
+  ok('...and it is a NEW Player, not the household member who shares the address',
+    child.ok && child.value !== householdPerson, { got: child.value, householdPerson });
   ok('...whose own details are the ones that were typed',
-    (await one(`SELECT full_name FROM public.guest_players WHERE id = $1`, [child.value])).full_name
+    (await one(`SELECT g.full_name FROM public.person_links pl
+                  JOIN public.guest_players g ON g.id = pl.guest_player_id
+                 WHERE pl.person_id = $1`, [child.value])).full_name
       === 'Kind Van Der Berg');
   ok('...and the household member was not overwritten',
     (await one(`SELECT full_name FROM public.guest_players WHERE id = $1`, [household])).full_name
@@ -1029,7 +1041,7 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     sameName.ok && sameName.value !== household, sameName);
   ok('...and proposed for a human to judge',
     (await one(`SELECT count(*)::int AS n FROM public.person_merge_review
-                 WHERE kind = 'possible_duplicate_player' AND guest_player_id = $1`,
+                 WHERE kind = 'possible_duplicate_player' AND person_id = $1`,
       [sameName.value])).n === 1);
 
   const replay = await addMember(reqA, 'Kind', 'Van Der Berg', shared);
@@ -1068,6 +1080,43 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     [EMAIL(), await newUuid()])).id);
   ok('and the token is still what authorizes the add',
     !badToken.ok && /invalid_token/.test(badToken.message ?? ''), badToken);
+
+  // ── the APPLY takes person ids and derives the booking keys INSIDE the definer ──────────────
+  // (owner correction 2026-08-09; Codex r1 f2). The captain's browser never held a guest id, and
+  // the derived key lands in the booking row without ever leaving the database.
+  //
+  // The refusal is staged FIRST, while the captain's claim is still pending: a person outside the
+  // slot's scope aborts the whole apply by name — which also closes the pre-existing hole where
+  // any guest uuid a token-holder possessed was booked without an ownership check.
+  const { id: otherAcademy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 other rb', 'u2orb-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { id: foreignGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Foreign Member', $1, $2) RETURNING id`, [EMAIL(), otherAcademy]);
+  const foreignPerson = (await personOfGuest(foreignGuest)).person_id;
+  const foreignApply = await asUser(null, async () => (await one(
+    `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
+    [token, foreignPerson])).r);
+  ok('a person outside the slot scope is refused by name, never booked',
+    !foreignApply.ok && /person_not_in_scope/.test(foreignApply.message ?? ''), foreignApply);
+  ok('...and no booking was written for the foreign guest',
+    (await one(`SELECT count(*)::int AS n FROM public.bookings
+                 WHERE slot_id = $1 AND guest_player_id = $2`, [slot, foreignGuest])).n === 0);
+  ok('...and the refusal rolled back whole: the captain\'s claim is still pending',
+    (await one(`SELECT status FROM public.slot_priority_claims WHERE claim_token = $1`, [token]))
+      .status === 'pending');
+
+  const applied = await asUser(null, async () => (await one(
+    `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
+    [token, child.value])).r);
+  ok('the group apply books a member handed over as a canonical person', applied.ok
+    && applied.value.ok === true && applied.value.added >= 1, applied);
+  const childGuest = (await one(`SELECT guest_player_id FROM public.person_links
+                                  WHERE person_id = $1`, [child.value])).guest_player_id;
+  ok('...and the booking row carries the guest key the definer derived',
+    (await one(`SELECT count(*)::int AS n FROM public.bookings
+                 WHERE slot_id = $1 AND guest_player_id = $2`, [slot, childGuest])).n === 1);
   await c.query('ROLLBACK');
 }
 
@@ -1804,6 +1853,119 @@ const commandFor = (req) => one(
     [inv.value.r.invoice_id]);
   ok('...profile-first: the registered-player column carries the link after the claim',
     row.person_id === survivor && row.player_id === profileId, row);
+  await c.query('ROLLBACK');
+}
+
+// ── 7g. Round-1 corrections hold: active links only, picker-consistent derivation, replay wins ─
+{
+  await c.query('BEGIN');
+  // F1 — an INACTIVE academy–trainer link authorizes nothing (mirrors the INSERT policy the
+  // command replaced; mutation check: drop the status filter from player_owner_may_create and the
+  // first assertion goes green for the wrong caller).
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 links', 'u2lk-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academy, mgr]);
+  const { uid: trainerUid } = await makeAccount(EMAIL());
+  const { id: trainer } = await one(
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [trainerUid]);
+  await c.query(
+    `INSERT INTO public.academy_trainers (academy_profile_id, trainer_profile_id, status)
+     VALUES ($1, $2, 'invited')`, [academy, trainer]);
+
+  const viaInactive = await asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'trainer', _owner_id => $2,
+           _full_name => 'Sneaky Via Invite', _actor_user_id => $3, _origin => 'operator') AS r`,
+      [crypto.randomUUID(), trainer, mgr]));
+  ok('an INVITED (not active) academy link does not authorize creating in the trainer scope',
+    !viaInactive.ok && /PLAYER_CREATE_FORBIDDEN/.test(viaInactive.message ?? ''), viaInactive);
+
+  await c.query(`UPDATE public.academy_trainers SET status = 'active'
+                  WHERE academy_profile_id = $1 AND trainer_profile_id = $2`, [academy, trainer]);
+  const viaActive = await asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'trainer', _owner_id => $2,
+           _full_name => 'Via Active Link', _actor_user_id => $3, _origin => 'operator') AS r`,
+      [crypto.randomUUID(), trainer, mgr]));
+  ok('...and the ACTIVE link authorizes it, as before', viaActive.ok, viaActive);
+
+  // F6 — the derivation agrees with the picker: a guest owned by an ACTIVE academy trainer is an
+  // academy-scope legacy source, so billing them does not silently unlink the invoice.
+  const trainerGuestPerson = viaActive.value.r.person_id;
+  const derived = await one(
+    `SELECT * FROM public.person_legacy_source($1, 'academy', $2)`, [trainerGuestPerson, academy]);
+  ok('an active trainer\'s guest derives as an academy legacy source (picker-consistent)',
+    derived.guest_player_id !== null, derived);
+  const inv = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, $2, 'U2-TG-1', current_date, current_date + 14, 'Via Active Link') AS r`,
+      [academy, trainerGuestPerson]));
+  ok('...so the academy invoice for them keeps its legacy link', inv.ok
+    && (await one(`SELECT guest_player_id FROM public.invoices WHERE id = $1`,
+        [inv.value.r.invoice_id])).guest_player_id !== null, inv);
+
+  // ...but an ENDED link stops the derivation with the authorization, the same day
+  await c.query(`UPDATE public.academy_trainers SET status = 'inactive'
+                  WHERE academy_profile_id = $1 AND trainer_profile_id = $2`, [academy, trainer]);
+  const derivedAfterEnd = await one(
+    `SELECT * FROM public.person_legacy_source($1, 'academy', $2)`, [trainerGuestPerson, academy]);
+  ok('an ended link derives nothing — scope and derivation move together',
+    derivedAfterEnd.guest_player_id === null, derivedAfterEnd);
+
+  // F8 — a REPLAY outlives the person it selected. The receipt was repointed by the merge; the
+  // retry is answered from it, not refused by a re-authorization of a person that no longer
+  // exists. (Mutation check: drop the receipt-existence exemption in player_create_command and
+  // the replay assertion fails as PERSON_NOT_YOURS.)
+  const { id: srcGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Select Source', $1, $2) RETURNING id`, [EMAIL(), academy]);
+  const { id: tgtGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Select Target', $1, $2) RETURNING id`, [EMAIL(), academy]);
+  const srcPerson = (await personOfGuest(srcGuest)).person_id;
+  const tgtPerson = (await personOfGuest(tgtGuest)).person_id;
+
+  const selReq = crypto.randomUUID();
+  const select = () => asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+           _full_name => 'Select Source', _select_person_id => $3,
+           _actor_user_id => $4, _origin => 'operator') AS r`,
+      [selReq, academy, srcPerson, mgr]));
+  const first = await select();
+  ok('fixture: selecting an existing person is recorded', first.ok
+    && first.value.r.person_id === srcPerson, first);
+
+  const merged = await asUser(mgr, async () => (await one(
+    `SELECT public.merge_guest_players('academy', $1, $2, $3, '{}'::jsonb) AS r`,
+    [academy, srcGuest, tgtGuest])).r);
+  ok('fixture: the selected person is merged away', merged.ok
+    && (await one(`SELECT count(*)::int AS n FROM public.persons WHERE id = $1`, [srcPerson])).n === 0);
+
+  const replayAfterMerge = await select();
+  ok('the finished select-command REPLAYS to the survivor after the merge',
+    replayAfterMerge.ok && replayAfterMerge.value.r.replayed === true
+    && replayAfterMerge.value.r.person_id === tgtPerson, replayAfterMerge);
+
+  // ...and the exemption is replay-only: a FRESH attempt naming a foreign person is still refused
+  const { id: foreignAcademy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 foreign lk', 'u2flk-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { id: foreignGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Foreign Person', $1, $2) RETURNING id`, [EMAIL(), foreignAcademy]);
+  const foreignPerson = (await personOfGuest(foreignGuest)).person_id;
+  const freshForeign = await asUser(mgr, async () =>
+    one(`SELECT public.player_create_command(
+           _creation_request_id => $1, _owner_type => 'academy', _owner_id => $2,
+           _full_name => 'Foreign Person', _select_person_id => $3,
+           _actor_user_id => $4, _origin => 'operator') AS r`,
+      [crypto.randomUUID(), academy, foreignPerson, mgr]));
+  ok('...while a FRESH select of a foreign person is refused exactly as before',
+    !freshForeign.ok && /PERSON_NOT_YOURS/.test(freshForeign.message ?? ''), freshForeign);
   await c.query('ROLLBACK');
 }
 

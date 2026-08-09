@@ -133,9 +133,14 @@ export async function legacyBookingRef(
  *
  * `bookings.guest_player_id` is NOT NULL-able in practice for this path, so a missing source is a
  * broken invariant rather than a case to handle: a self-signup checkout creates a brand-new Player,
- * which by construction has a guest source in this scope and no account. If a PROFILE source turns
- * up, this path is the wrong one — an account holder books through the authenticated flow, and
- * silently writing them in as a guest is how a booking becomes invisible in their own app.
+ * which by construction has a guest source in this scope and no account.
+ *
+ * A person with BOTH sources is a legitimate case here, not a wrong turn (Codex r1 f7): the create
+ * REPLAYS — a retry of a checkout attempt made before the person claimed their account still owes
+ * the caller its booking, and the in-scope guest row is still the compatible key for it. The
+ * booking stays visible to the account holder because `stamp_person_id_bookings` keys the row on
+ * the person. Only a person with a profile and NO in-scope guest source is refused: that is an
+ * account holder this flow never created, and the authenticated path is theirs.
  */
 export async function legacyGuestRefForCheckout(
   admin: SupabaseClient,
@@ -143,7 +148,7 @@ export async function legacyGuestRefForCheckout(
   owner: GuestOwner,
 ): Promise<string> {
   const { playerId, guestPlayerId } = await legacyBookingRef(admin, personId, owner);
+  if (guestPlayerId) return guestPlayerId;
   if (playerId) throw new Error("legacy_ref_failed:registered_player_path_required");
-  if (!guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
-  return guestPlayerId;
+  throw new Error("legacy_ref_failed:no_guest_source");
 }

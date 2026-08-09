@@ -382,9 +382,15 @@ export function BookForPlayerDialog({
       setPlayers(data);
       const created = data.find((p) => p.person_id === player.personId);
       if (!created) {
+        // The create SUCCEEDED — the operator must hear that the selection did not (Codex r1 f9),
+        // or the next click quietly mints a second attempt for a player who already exists.
         logger.error("Created player not found in the refreshed booking list", undefined, {
           component: "BookForPlayerDialog",
         });
+      toast({
+        title: t("players.createdNotSelected", "Player created — select them manually"),
+        description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
+      });
         return;
       }
       // Add to first empty slot
@@ -397,6 +403,10 @@ export function BookForPlayerDialog({
     } catch (error) {
       logger.error("Failed to refresh players after a create", error as Error, {
         component: "BookForPlayerDialog",
+      });
+      toast({
+        title: t("players.createdNotSelected", "Player created — select them manually"),
+        description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
       });
     }
   };

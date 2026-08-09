@@ -44,6 +44,11 @@ run "deno (edge)"                 deno test --no-check --allow-env --allow-net s
 
 if [[ $WITH_DB == 1 ]]; then
   # ── test.yml: PGlite rehearsals, and migrations.yml against real local Postgres ──────────────
+  # RESET FIRST, like migrations.yml does. Without it these gates test whatever schema happens to
+  # be installed: a function-body edit keeps the generated type shapes, so "types drift" and the
+  # real-pg suite can both pass against stale bodies — which is exactly how a broken 5e section
+  # stayed green for a whole session (2026-08-10, and Codex r1 f11 named the same trap).
+  run "local db reset (migrations)" supabase db reset
   run "db rehearsals (PGlite)"    npm run --silent db:rehearse:all
   run "generated types drift"     npm run --silent db:types:check
 

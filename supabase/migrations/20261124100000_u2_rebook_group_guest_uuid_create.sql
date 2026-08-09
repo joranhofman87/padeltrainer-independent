@@ -53,7 +53,6 @@ DECLARE
   v_id uuid;
   v_rl_count integer;
   v_result jsonb;
-  v_person uuid;
 BEGIN
   -- A new group member must be fully reachable: all four contact fields are required.
   IF v_first IS NULL THEN RAISE EXCEPTION 'first_name_required'; END IF;
@@ -121,25 +120,15 @@ BEGIN
     _last_name            => v_last,
     _source               => 'rebook_group');
 
-  -- The command answers with a canonical person. This function's SIGNATURE still returns the legacy
-  -- guest id, because its one caller feeds `rebook_group_apply(_new_guest_ids)` — a shipped RPC
-  -- whose parameter is guest-keyed and which this slice does not rewrite. So the translation happens
-  -- HERE, at the boundary, through the adapter: the legacy id is derived from the person rather than
-  -- returned by the create, and it never appears in the create's contract.
-  v_person := (v_result->>'person_id')::uuid;
-  IF v_person IS NULL THEN
-    RAISE EXCEPTION 'player_create_failed';
-  END IF;
-
-  SELECT ls.guest_player_id INTO v_id
-    FROM public.person_legacy_source(
-           v_person,
-           CASE WHEN s.academy_profile_id IS NOT NULL THEN 'academy' ELSE 'trainer' END,
-           coalesce(s.academy_profile_id, s.trainer_id)) AS ls
-   LIMIT 1;
-
+  -- The command answers with a canonical person, and so does this function (owner correction,
+  -- 2026-08-09; Codex r1 f2). The first version of this boundary translated the person back into a
+  -- guest id "because rebook_group_apply is guest-keyed" — which handed an anonymous browser a
+  -- legacy id to carry around and post back: the exact inversion the correction forbids.
+  -- `rebook_group_apply` / `rebook_group_manage` now take `_new_person_ids` and derive the guest
+  -- ids inside the definer (20261128100000), so no legacy id ever leaves the database.
+  v_id := (v_result->>'person_id')::uuid;
   IF v_id IS NULL THEN
-    RAISE EXCEPTION 'guest_source_unavailable';
+    RAISE EXCEPTION 'player_create_failed';
   END IF;
 
   RETURN v_id;
@@ -150,4 +139,4 @@ REVOKE ALL ON FUNCTION public.create_rebook_group_guest(text, text, text, text, 
 GRANT EXECUTE ON FUNCTION public.create_rebook_group_guest(text, text, text, text, text, uuid) TO anon, authenticated;
 
 COMMENT ON FUNCTION public.create_rebook_group_guest(text, text, text, text, text, uuid) IS
-  'Adds a new member to a rebook group, authorized by the group claim token and rate-limited per token. Since U2 the member is CREATED through player_create_execute on the caller''s creation_request_id — never resolved from the typed address, which decides nothing about who anybody is.';
+  'Adds a new member to a rebook group, authorized by the group claim token and rate-limited per token. Since U2 the member is CREATED through player_create_execute on the caller''s creation_request_id — never resolved from the typed address, which decides nothing about who anybody is. Answers with the CANONICAL person_id: the legacy guest ids the booking rows still need are derived inside rebook_group_apply/rebook_group_manage, never in a browser (owner correction 2026-08-09).';

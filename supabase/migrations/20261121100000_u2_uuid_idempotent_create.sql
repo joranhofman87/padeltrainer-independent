@@ -228,11 +228,14 @@ AS $$
     WHEN _owner_type = 'trainer' THEN
       EXISTS (SELECT 1 FROM public.trainer_profiles tp
                WHERE tp.id = _owner_id AND tp.user_id = _user_id)
-      -- or the caller runs an academy this trainer works for: the academy back-office creates
-      -- players against its trainers, and refusing that would make the trainer scope unreachable
-      -- for the role that actually uses it.
+      -- or the caller runs an academy this trainer ACTIVELY works for: the academy back-office
+      -- creates players against its trainers, and refusing that would make the trainer scope
+      -- unreachable for the role that actually uses it. `status = 'active'` mirrors the INSERT
+      -- policy this command replaced (20260224171306) — an invited or ended relationship is not
+      -- authority over the trainer's practice (Codex r1 f1).
       OR EXISTS (SELECT 1 FROM public.academy_trainers at
                   WHERE at.trainer_profile_id = _owner_id
+                    AND at.status = 'active'
                     AND (public.is_academy_manager(_user_id, at.academy_profile_id)
                          OR public.is_academy_owner(_user_id, at.academy_profile_id)))
     ELSE false
@@ -513,25 +516,37 @@ BEGIN
   -- The authorizations this function owes the mechanism. Both are about naming somebody who
   -- already exists, and both answer the same question: does this scope have a recorded
   -- relationship with that person, or is it merely in possession of their uuid?
-  IF _select_person_id IS NOT NULL
-     AND NOT public.player_owner_may_select_person(_owner_type, _owner_id, _select_person_id) THEN
-    -- knowing the uuid is not the same as being allowed to use it
-    RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that Player is not one this scope can select'
-      USING ERRCODE = 'insufficient_privilege';
-  END IF;
-
-  -- A twin stamp is not a label. `mint_person_for_guest` treats it as the explicit assertion that
-  -- authorizes joining this new Player to that account holder's person (rule B1) — so an
-  -- unauthorized stamp is a way to attach seats and invoices to somebody else's account by knowing
-  -- their profile uuid. The account holder must be someone this scope already speaks for.
-  IF _twin_of_profile_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM public.person_links pl
-       WHERE pl.profile_id = _twin_of_profile_id
-         AND public.player_owner_may_select_person(_owner_type, _owner_id, pl.person_id)
-    ) THEN
-      RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that account is not one this scope can speak for'
+  --
+  -- A REPLAY is exempt from both, deliberately (Codex r1 f8). If a receipt already exists for this
+  -- request id, the attempt was authorized when it ran; the mechanism will answer it ONLY when the
+  -- full fingerprint (which binds _select_person_id and _twin_of_profile_id), owner, origin and
+  -- actor all match, and refuse anything else as an idempotency conflict. Re-running the person
+  -- check here instead would break the retry of a finished command whose selected person was since
+  -- merged away — may_select answers false for a person that no longer exists, while the receipt
+  -- has already been repointed to the survivor the caller is owed. The exemption can never
+  -- authorize a NEW create: a receipt-less request falls through to the full checks.
+  IF NOT EXISTS (SELECT 1 FROM public.player_create_commands c
+                  WHERE c.creation_request_id = _creation_request_id) THEN
+    IF _select_person_id IS NOT NULL
+       AND NOT public.player_owner_may_select_person(_owner_type, _owner_id, _select_person_id) THEN
+      -- knowing the uuid is not the same as being allowed to use it
+      RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that Player is not one this scope can select'
         USING ERRCODE = 'insufficient_privilege';
+    END IF;
+
+    -- A twin stamp is not a label. `mint_person_for_guest` treats it as the explicit assertion that
+    -- authorizes joining this new Player to that account holder's person (rule B1) — so an
+    -- unauthorized stamp is a way to attach seats and invoices to somebody else's account by knowing
+    -- their profile uuid. The account holder must be someone this scope already speaks for.
+    IF _twin_of_profile_id IS NOT NULL THEN
+      IF NOT EXISTS (
+        SELECT 1 FROM public.person_links pl
+         WHERE pl.profile_id = _twin_of_profile_id
+           AND public.player_owner_may_select_person(_owner_type, _owner_id, pl.person_id)
+      ) THEN
+        RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that account is not one this scope can speak for'
+          USING ERRCODE = 'insufficient_privilege';
+      END IF;
     END IF;
   END IF;
 
@@ -581,12 +596,21 @@ AS $$
       WHERE pl.person_id = _person_id AND pl.profile_id IS NOT NULL
       LIMIT 1),
     -- the guest source must belong to the SAME person AND to the scope the caller is acting in;
-    -- a guest of another academy is not a legacy source this caller may write.
+    -- a guest of another academy is not a legacy source this caller may write. The academy arm
+    -- includes guests owned by the academy's ACTIVE trainers — the same membership
+    -- `player_owner_may_select_person` and the players overview use, so a person the picker
+    -- offered and the predicate admitted cannot then derive to NOTHING and silently unlink the
+    -- write (Codex r1 f6).
     (SELECT pl.guest_player_id
        FROM public.person_links pl
        JOIN public.guest_players g ON g.id = pl.guest_player_id
       WHERE pl.person_id = _person_id
-        AND ((_owner_type = 'academy' AND g.academy_profile_id = _owner_id)
+        AND ((_owner_type = 'academy'
+              AND (g.academy_profile_id = _owner_id
+                   OR EXISTS (SELECT 1 FROM public.academy_trainers at
+                               WHERE at.academy_profile_id = _owner_id
+                                 AND at.trainer_profile_id = g.trainer_id
+                                 AND at.status = 'active')))
              OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
       ORDER BY g.created_at
       LIMIT 1);

@@ -182,11 +182,22 @@ Deno.test("an anonymous checkout takes the guest reference — and only inside t
   assertEquals(guestId, "the-guest");
 });
 
-Deno.test("a person with a PROFILE source is the wrong person for the anonymous path — loud, not silent", async () => {
-  // Silently writing an account holder in as a guest is how a booking becomes invisible in their
-  // own app. The registered-player path exists; this one refuses.
+Deno.test("a person who CLAIMED their account after the attempt still replays — both sources, guest key answers", async () => {
+  // The retry of a pre-claim checkout must not strand: the receipt replays to the surviving
+  // person, and the in-scope guest row is still the compatible booking key. Visibility for the
+  // account holder rides on bookings.person_id, not on which legacy column carried the row.
   const { admin } = makeAdmin({
     player_legacy_ref: { player_id: "their-profile", guest_player_id: "the-guest" },
+  });
+  const guestId = await legacyGuestRefForCheckout(admin, "the-person", { academyProfileId: ACADEMY });
+  assertEquals(guestId, "the-guest");
+});
+
+Deno.test("a person with ONLY a profile source is the wrong person for the anonymous path — loud, not silent", async () => {
+  // An account holder this flow never created books through the authenticated path; silently
+  // writing them in as a guest is how a booking becomes untraceable to its origin.
+  const { admin } = makeAdmin({
+    player_legacy_ref: { player_id: "their-profile", guest_player_id: null },
   });
   await assertRejects(
     () => legacyGuestRefForCheckout(admin, "the-person", { academyProfileId: ACADEMY }),

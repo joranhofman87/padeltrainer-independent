@@ -29,10 +29,8 @@ const EDITS: Array<[RegExp, string]> = [
     /,\n {2}-- The captain's own id for THIS add-a-member attempt[\s\S]*?\n {2}_creation_request_id uuid DEFAULT NULL\n\)/,
     '\n)',
   ],
-  // 2. the declaration gains two variables — the command's jsonb answer, and the canonical person
-  //    the boundary derivation starts from (owner correction, 2026-08-09)
+  // 2. the declaration gains one variable — the command's jsonb answer
   [/\n {2}v_result jsonb;/, ''],
-  [/\n {2}v_person uuid;/, ''],
   // 3. the attempt id is required, checked next to the token and scope validation
   [/\n {2}IF _creation_request_id IS NULL THEN RAISE EXCEPTION 'creation_request_id_required'; END IF;/, ''],
   // 4. only a genuinely NEW attempt is rate-limited (a replay creates nobody)

@@ -743,8 +743,9 @@ export async function fetchRebookGroupByToken(token: string): Promise<RebookGrou
   return (data as RebookGroup | null) ?? null;
 }
 
-/** Token-gated mint of a new guest player for the group (the anon captain can't write
- *  guest_players directly). Returns the guest_players.id to pass to applyRebookGroup. */
+/** Token-gated mint of a new group member (the anon captain can't write player rows directly).
+ *  Returns the member's CANONICAL person id — the only identity a browser holds (U2, owner
+ *  correction 2026-08-09). The legacy booking keys are derived inside rebook_group_apply/_manage. */
 export async function createRebookGroupGuest(token: string, input: {
   firstName: string; lastName: string; email: string; phone: string;
   /**
@@ -768,14 +769,14 @@ export async function createRebookGroupGuest(token: string, input: {
 }
 
 /** Re-book the whole group: keep the listed members, decline the rest (pending only), and add
- *  the given new guest ids — all capacity-guarded + atomic. */
+ *  the given new members BY PERSON ID — all capacity-guarded + atomic. */
 export async function applyRebookGroup(token: string, args: {
-  keepKeys: string[]; newGuestIds?: string[];
+  keepKeys: string[]; newPersonIds?: string[];
 }): Promise<RebookGroupApplyResult> {
   const { data, error } = await supabase.rpc('rebook_group_apply', {
     _token: token,
     _keep_keys: args.keepKeys,
-    _new_guest_ids: args.newGuestIds ?? [],
+    _new_person_ids: args.newPersonIds ?? [],
   });
   if (error) throw error;
   return (data as RebookGroupApplyResult) ?? { ok: false };
@@ -806,12 +807,12 @@ export async function createGroupRebookInvoice(token: string): Promise<GroupRebo
 /** UPFRONT post-payment roster management: assign/change players who are COVERED by the
  *  captain's group payment (booked already-paid, paid_by the captain). */
 export async function manageRebookGroup(token: string, args: {
-  keepKeys: string[]; newGuestIds?: string[]; invoiceId?: string;
+  keepKeys: string[]; newPersonIds?: string[]; invoiceId?: string;
 }): Promise<RebookGroupApplyResult> {
   const { data, error } = await supabase.rpc('rebook_group_manage', {
     _token: token,
     _keep_keys: args.keepKeys,
-    _new_guest_ids: args.newGuestIds ?? [],
+    _new_person_ids: args.newPersonIds ?? [],
     _invoice_id: args.invoiceId ?? null,
   });
   if (error) throw error;

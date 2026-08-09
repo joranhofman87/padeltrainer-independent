@@ -24,11 +24,12 @@
 -- Only proposals naming THEIR profile, only while pending, and only the guest's name plus where it
 -- came from — enough to answer "is this you?" and nothing else. The guest is on their own address by
 -- construction (that is why it was proposed), so the name is the one fact they need and the one they
--- can already infer.
+-- can already infer. Deliberately NO legacy id in the shape: confirmation is by review_id, so a
+-- browser has no reason to hold a guest_player_id, and an authenticated RPC may not hand one out
+-- (owner correction 2026-08-09; Codex r1 f5).
 CREATE OR REPLACE FUNCTION public.person_claim_candidates()
 RETURNS TABLE (
   review_id       uuid,
-  guest_player_id uuid,
   guest_name      text,
   academy_name    text,
   proposed_at     timestamptz
@@ -38,7 +39,7 @@ STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
-  SELECT r.id, r.guest_player_id, g.full_name, a.name, r.created_at
+  SELECT r.id, g.full_name, a.name, r.created_at
     FROM public.person_merge_review r
     JOIN public.profiles p        ON p.id = r.suggested_profile_id
     JOIN public.guest_players g   ON g.id = r.guest_player_id
@@ -99,7 +100,12 @@ BEGIN
   END IF;
 
   IF v_review.status = 'applied' THEN
-    RETURN jsonb_build_object('ok', true, 'already_applied', true, 'review_id', _review_id);
+    -- The idempotent replay answers with the same canonical id the first run did (Codex r1 f10):
+    -- a caller retrying after a lost response must be able to learn WHO they now are. The claimant
+    -- owns the profile, so their profile person is theirs to see.
+    SELECT person_id INTO v_profile_person FROM public.person_links WHERE profile_id = v_profile_id;
+    RETURN jsonb_build_object('ok', true, 'already_applied', true, 'review_id', _review_id,
+                              'person_id', v_profile_person);
   END IF;
   IF v_review.status <> 'pending' THEN
     RAISE EXCEPTION 'CLAIM_NOT_PENDING: this claim was already resolved as %', v_review.status
@@ -122,7 +128,8 @@ BEGIN
            details = coalesce(details, '{}'::jsonb)
                      || jsonb_build_object('resolved_by', 'already_one_person')
      WHERE id = _review_id;
-    RETURN jsonb_build_object('ok', true, 'already_applied', true, 'review_id', _review_id);
+    RETURN jsonb_build_object('ok', true, 'already_applied', true, 'review_id', _review_id,
+                              'person_id', v_profile_person);
   END IF;
 
   -- The guest must still be unclaimed — and it must STAY unclaimed while this decides. Reading the
