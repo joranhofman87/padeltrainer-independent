@@ -12,7 +12,7 @@
  * must not be reused.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 
 const selectResult: { rows: Array<{ id: string; full_name: string | null }> } = { rows: [] };
 const inserted: Array<Record<string, unknown>> = [];
@@ -106,21 +106,111 @@ describe('an invoice recipient is not resolved by email alone', () => {
   });
 });
 
-describe('the name gate is switched on at the call site', () => {
-  // The behaviour above is what matters, but the flag is the thing a future edit would drop, and a
-  // behavioural test with a stubbed client cannot say WHICH call site set it.
-  it('resolveOrCreateInvoiceGuest passes requireNameMatch', () => {
-    const src = readFileSync('src/lib/invoiceCustomerInsert.ts', 'utf8');
-    expect(src).toContain('requireNameMatch: true');
+describe('every identity writer that matches on an email also checks the name', () => {
+  // The real-Postgres suite sweeps `pg_proc`, so it is structurally blind to TypeScript. Two of the
+  // four email-alone writers in this change were found by review rather than by a guard, which is
+  // the gap this closes: every SOURCE site that looks a person up by email is enumerated, and each
+  // one must either gate on the name or be listed with a reason.
+  const SITES: Array<{ file: string; why: string; must: RegExp[] }> = [
+    {
+      file: 'src/lib/invoiceCustomerInsert.ts',
+      why: 'invoice recipient resolution — reused a lone email match, so an invoice could be billed to a household member',
+      must: [/requireNameMatch:\s*true/],
+    },
+    {
+      file: 'src/lib/playerResolve.ts',
+      why: 'the shared resolver; its twin path must keep asking for the name',
+      must: [/requireNameMatch\s*=\s*false/, /requireNameMatch:\s*true/],
+    },
+    {
+      file: 'supabase/functions/create-manual-player/index.ts',
+      why: 'staff intake — attached the player to an existing ACCOUNT, and overwrote an existing guest, on the address alone',
+      must: [/profileNameAgrees/, /normalizeName\(existingProfile\?\.full_name\) !== ""/, /named\.length === 1/],
+    },
+    {
+      file: 'supabase/functions/submit-guest-intake/index.ts',
+      why: 'public intake — its name guard treated a NAMELESS profile as a match, and profiles.full_name is nullable',
+      must: [/normalizeName\(existingProfile\?\.full_name\) !== ""/],
+    },
+    {
+      file: 'supabase/functions/_shared/guest-players.ts',
+      why: 'the public-booking resolver; already name-gated via matchGuestByName before U2',
+      must: [/matchGuestByName/],
+    },
+  ];
+
+  /**
+   * Sites that look a person up by email but do NOT attach a player identity. Each was read; the
+   * reason says what it does instead. Listing beats narrowing the detector: a heuristic tuned until
+   * it stops complaining is a heuristic that has stopped working.
+   */
+  const NOT_IDENTITY: Array<{ file: string; why: string }> = [
+    {
+      file: 'src/lib/academy.ts',
+      why: 'invites a TRAINER by an address the inviting operator typed deliberately. It grants a staff role to an existing account; it does not attach a player to a person or merge two of them.',
+    },
+    {
+      file: 'src/lib/club.ts',
+      why: 'the same invite-a-trainer/manager-by-address flow for clubs. A role grant on an address the operator chose, not an identity decision about a player.',
+    },
+    {
+      file: 'src/lib/cycles.ts',
+      why: 'two reads: a rate limit counting recent intake_requests per address, and a club_players existence check that only avoids inserting the same club row twice. Neither resolves WHO a player is.',
+    },
+    {
+      file: 'supabase/functions/reditus-referral-webhook/index.ts',
+      why: 'attributes a marketing referral to an account by address. It writes no person link and no player id; the worst case is a referral credited to the wrong household member.',
+    },
+    {
+      file: 'supabase/functions/send-auth-email/index.ts',
+      why: 'reads a name to greet the recipient of an email already being sent to that exact address. It writes nothing at all, and the address is the destination rather than a guess about who someone is.',
+    },
+    {
+      file: 'supabase/functions/send-email/index.ts',
+      why: 'resolves whether the destination address belongs to an account, to choose between the account and guest unsubscribe link. Fails CLOSED on a lookup error, writes no identity, and again the address is the destination.',
+    },
+  ];
+
+  it.each(SITES)('$file gates on the name', ({ file, must }) => {
+    const src = readFileSync(file, 'utf8');
+    for (const re of must) {
+      expect(`${file} ${re}: ${re.test(src)}`).toBe(`${file} ${re}: true`);
+    }
   });
 
-  it('no client resolve path reuses a lone email match without a name', () => {
-    // Every caller of resolveOrCreateGuestPlayer in src/ must either set the gate or be listed here
-    // with a reason. `pickGuestIdByName`'s default is permissive, so silence is not safety.
-    const resolve = readFileSync('src/lib/playerResolve.ts', 'utf8');
-    // the twin path and the invoice path are the two that resolve by email in src/
-    expect(resolve).toContain('requireNameMatch');
-    const invoice = readFileSync('src/lib/invoiceCustomerInsert.ts', 'utf8');
-    expect(invoice.includes('requireNameMatch: true')).toBe(true);
+  it('every listed site carries a written reason', () => {
+    for (const { file, why } of SITES) {
+      expect(`${file}: ${why.length >= 40}`).toBe(`${file}: true`);
+    }
+  });
+
+  it('every non-identity site carries a written reason too', () => {
+    for (const { file, why } of NOT_IDENTITY) {
+      expect(`${file}: ${why.length >= 60}`).toBe(`${file}: true`);
+    }
+  });
+
+  it('no OTHER source file looks a person up by email without appearing here', () => {
+    // A crude scan on purpose: it is meant to be noisy when something new starts matching on an
+    // address, because silence is what let two of these ship.
+    const roots = ['src/lib', 'supabase/functions'];
+    const listed = new Set([...SITES, ...NOT_IDENTITY].map((s) => s.file));
+    const offenders: string[] = [];
+
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = `${dir}/${entry.name}`;
+        if (entry.isDirectory()) { walk(full); continue; }
+        if (!/\.tsx?$/.test(entry.name) || /\.test\./.test(entry.name)) continue;
+        const src = readFileSync(full, 'utf8');
+        // a person-shaped table queried by an email column
+        const looksUp = /from\((["'`])(profiles|guest_players|persons|club_players|intake_requests)\1\)/.test(src)
+          && /\.(eq|ilike)\((["'`])email\2/.test(src);
+        if (looksUp && !listed.has(full)) offenders.push(full);
+      }
+    };
+    for (const r of roots) walk(r);
+
+    expect(offenders).toEqual([]);
   });
 });

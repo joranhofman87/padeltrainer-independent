@@ -266,9 +266,12 @@ Deno.serve(async (req) => {
     // person and gets their own guest record instead.
     const normalizeName = (s: string | null | undefined) =>
       (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-    const matchesExistingProfile = existingProfile &&
-      (!existingProfile.full_name ||
-        normalizeName(existingProfile.full_name) === normalizeName(nameFields.full_name));
+    // A profile with NO name is not a name match. `profiles.full_name` is nullable, so treating an
+    // absent name as agreement made the whole guard bypassable by a valid row — attribution on the
+    // address alone, which is what U2 removed (owner, 2026-08-09).
+    const matchesExistingProfile = Boolean(existingProfile) &&
+      normalizeName(existingProfile?.full_name) !== "" &&
+      normalizeName(existingProfile?.full_name) === normalizeName(nameFields.full_name);
 
     if (existingProfile && matchesExistingProfile) {
       // Existing user with profile — use their profile ID

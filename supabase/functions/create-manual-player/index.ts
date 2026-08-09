@@ -143,19 +143,30 @@ serve(async (req) => {
       );
     }
 
-    // Check if a profile already exists with this email
+    // The family rule: an address can be shared — a parent registering a child uses their own.
+    // Attributing this player to an existing account because the addresses match is an identity
+    // decision made on an email alone, which U2 removed (owner, 2026-08-09). The name has to agree,
+    // and a profile with NO name agrees with nothing: `profiles.full_name` is nullable, so treating
+    // an absent name as a match would make the guard bypassable by a valid row.
+    const normalizeName = (s: string | null | undefined) =>
+      (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+
     const { data: existingProfile } = await supabaseAdmin
       .from("profiles")
-      .select("id")
+      .select("id, full_name")
       .eq("email", email.toLowerCase())
       .maybeSingle();
+
+    const profileNameAgrees = Boolean(existingProfile) &&
+      normalizeName(existingProfile?.full_name) !== "" &&
+      normalizeName(existingProfile?.full_name) === normalizeName(nameFields.full_name);
 
     let profileId: string | null = null;
     let guestPlayerId: string | null = null;
     let isNewUser = false;
 
-    if (existingProfile) {
-      // User already has an account
+    if (existingProfile && profileNameAgrees) {
+      // User already has an account, and it is the same human by name as well as address
       profileId = existingProfile.id;
     } else {
       // Create a guest player record instead of an auth user
@@ -179,24 +190,28 @@ serve(async (req) => {
         guestData.trainer_id = trainerProfileId;
       }
 
-      // Check for existing guest with same email + context
-      let existingGuest = null;
-      if (academyProfileId) {
-        const { data } = await supabaseAdmin
-          .from("guest_players")
-          .select("id")
-          .eq("email", email.toLowerCase())
-          .eq("academy_profile_id", academyProfileId)
-          .maybeSingle();
-        existingGuest = data;
-      } else if (trainerProfileId) {
-        const { data } = await supabaseAdmin
-          .from("guest_players")
-          .select("id")
-          .eq("email", email.toLowerCase())
-          .eq("trainer_id", trainerProfileId)
-          .maybeSingle();
-        existingGuest = data;
+      // Same rule for the guest side, and the same reason. `.maybeSingle()` was also wrong here:
+      // the email index is deliberately non-unique (households), so two matches made it throw
+      // PGRST116, the error was discarded, and a THIRD duplicate was inserted. Select the
+      // candidates and pick by name — or by nobody.
+      let existingGuest: { id: string } | null = null;
+      let guestQuery = supabaseAdmin
+        .from("guest_players")
+        .select("id, full_name")
+        .eq("email", email.toLowerCase());
+      if (academyProfileId) guestQuery = guestQuery.eq("academy_profile_id", academyProfileId);
+      else if (trainerProfileId) guestQuery = guestQuery.eq("trainer_id", trainerProfileId);
+      else guestQuery = null as never;
+
+      if (guestQuery) {
+        const { data: candidates } = await guestQuery;
+        const named = (candidates ?? []).filter(
+          (g: { full_name: string | null }) =>
+            normalizeName(g.full_name) === normalizeName(nameFields.full_name),
+        );
+        // exactly one name match, or nobody: several same-name rows on one address give no signal
+        // that distinguishes them, and picking the first is a guess
+        existingGuest = named.length === 1 ? { id: (named[0] as { id: string }).id } : null;
       }
 
       if (existingGuest) {
