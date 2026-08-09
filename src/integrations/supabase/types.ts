@@ -10605,6 +10605,15 @@ export type Database = {
           updated_count: number
         }[]
       }
+      backup_export_group: { Args: { _group: string }; Returns: Json }
+      backup_export_groups: {
+        Args: never
+        Returns: {
+          group_name: string
+          relname: string
+        }[]
+      }
+      backup_export_max_bytes: { Args: never; Returns: number }
       backup_export_max_rows: { Args: never; Returns: number }
       backup_export_table: { Args: { _relname: string }; Returns: Json }
       backup_export_tables: {

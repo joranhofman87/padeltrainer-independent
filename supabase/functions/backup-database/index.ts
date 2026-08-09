@@ -9,12 +9,14 @@
  *    of rows it happened to receive, and returned a green "backup complete". Every table larger than
  *    the cap has been backed up partially, and nothing said so.
  *
- *    A table is now read by `backup_export_table`, which returns its rows AND their count from ONE
- *    scan of ONE snapshot. That is stronger than the paging this replaces: a count in one request
- *    and pages in later ones can agree while representing no instant that ever existed, and no
- *    amount of retrying fixes it. Same statement, same snapshot, cannot disagree. The function also
- *    exists because the membership tables REVOKE ALL from `service_role` — they are owner-only until
- *    the backfill is authorized — so the backup cannot read them directly at all.
+ *    A table is now read by `backup_export_group`, which returns rows AND their count from ONE
+ *    statement, and returns EVERY table in a consistency group together. That is stronger than the
+ *    paging this replaces twice over: a count in one request and pages in later ones can agree while
+ *    representing no instant that ever existed, and a `membership_backfill_items` row exported after
+ *    a backfill commit can name a membership the backup does not contain. Same statement, same
+ *    snapshot, for the whole group. The function also exists because the membership tables REVOKE
+ *    ALL from `service_role` — they are owner-only until the backfill is authorized — so the backup
+ *    cannot read them directly at all.
  *
  * 2. **Coverage.** `academy_player_memberships` — the canonical academy↔Player relation U1a
  *    introduced, and the only thing a U1c backfill rollback can be reconstructed from — was not in
@@ -88,19 +90,28 @@ export interface TableResult {
  * race — it is this code mis-reading the payload. It stays checked because a backup that trusts its
  * own deserialisation is how the previous version reported partial data as complete.
  */
-export async function fetchWholeTable(
+export async function fetchGroup(
   supabase: SupabaseClient,
-  table: string,
-): Promise<{ rows: unknown[]; expected: number }> {
-  const { data, error } = await supabase.rpc("backup_export_table", { _relname: table });
+  group: string,
+): Promise<Record<string, { rows: unknown[]; expected: number }>> {
+  const { data, error } = await supabase.rpc("backup_export_group", { _group: group });
   if (error) throw new Error(`export failed: ${error.message}`);
 
-  const payload = (data ?? {}) as { rows?: unknown[]; row_count?: number };
-  const rows = Array.isArray(payload.rows) ? payload.rows : null;
-  if (rows === null || typeof payload.row_count !== "number") {
-    throw new Error(`export of ${table} returned an unusable payload`);
+  const payload = (data ?? {}) as Record<string, { rows?: unknown[]; row_count?: number }>;
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    throw new Error(`export of group ${group} returned an unusable payload`);
   }
-  return { rows, expected: payload.row_count };
+
+  const out: Record<string, { rows: unknown[]; expected: number }> = {};
+  for (const [table, v] of Object.entries(payload)) {
+    const rows = Array.isArray(v?.rows) ? v.rows : null;
+    if (rows === null || typeof v?.row_count !== "number") {
+      throw new Error(`export of ${table} returned an unusable payload`);
+    }
+    out[table] = { rows, expected: v.row_count };
+  }
+  if (Object.keys(out).length === 0) throw new Error(`export of group ${group} returned no tables`);
+  return out;
 }
 
 export async function handleRequest(
@@ -125,45 +136,63 @@ export async function handleRequest(
     /** Tables whose page walk disagreed with the database's own count. */
     const incomplete: string[] = [];
 
-    for (const table of TABLES_TO_BACKUP) {
-      let rows: unknown[];
-      let expected: number;
+    // Grouped, so the tables that have to agree with each other come from one snapshot. Everything
+    // else is a group of one, which is the same as before.
+    const { data: groupRows, error: groupError } = await supabase.rpc("backup_export_groups");
+    if (groupError) throw new Error(`could not read export groups: ${groupError.message}`);
+    const groups = [
+      ...new Set(((groupRows ?? []) as Array<{ group_name: string }>).map((g) => g.group_name)),
+    ].sort();
+    if (groups.length === 0) throw new Error("no export groups are declared");
+
+    for (const group of groups) {
+      let exported: Record<string, { rows: unknown[]; expected: number }>;
       try {
-        ({ rows, expected } = await fetchWholeTable(supabase, table));
+        exported = await fetchGroup(supabase, group);
       } catch (err) {
-        console.error(`Error querying ${table}:`, err instanceof Error ? err.message : err);
-        failedQueries.push(table);
-        results.push({ name: table, row_count: 0, size_bytes: 0, expected_rows: 0 });
+        console.error(`Error exporting group ${group}:`, err instanceof Error ? err.message : err);
+        // every table in a failed group is a failed table — a group that half-uploads is the
+        // inconsistency this design exists to prevent
+        for (const t of ((groupRows ?? []) as Array<{ group_name: string; relname: string }>)
+          .filter((g) => g.group_name === group)
+          .map((g) => g.relname)) {
+          failedQueries.push(t);
+          results.push({ name: t, row_count: 0, size_bytes: 0, expected_rows: 0 });
+        }
         continue;
       }
 
-      // THE CHECK THAT MAKES THIS A BACKUP. Reading fewer rows than the table holds is the failure
-      // the old code could not see, so it is named and it is fatal — never a green partial.
-      if (rows.length !== expected) {
-        console.error(`Incomplete read of ${table}: got ${rows.length}, the scan counted ${expected}`);
-        incomplete.push(table);
-      }
+      for (const [table, { rows, expected }] of Object.entries(exported)) {
+        // THE CHECK THAT MAKES THIS A BACKUP. Rows and row_count come from one scan, so a
+        // disagreement here means this code misread the payload — never a silent partial.
+        if (rows.length !== expected) {
+          console.error(`Incomplete read of ${table}: got ${rows.length}, the scan counted ${expected}`);
+          incomplete.push(table);
+        }
 
-      const bytes = new TextEncoder().encode(JSON.stringify(rows, null, 2));
+        const bytes = new TextEncoder().encode(JSON.stringify(rows, null, 2));
 
-      const { error: uploadError } = await supabase.storage
-        .from("backups")
-        .upload(`${timestamp}/${table}.json`, bytes, {
-          contentType: "application/json",
-          upsert: false,
+        const { error: uploadError } = await supabase.storage
+          .from("backups")
+          .upload(`${timestamp}/${table}.json`, bytes, {
+            contentType: "application/json",
+            upsert: false,
+          });
+        if (uploadError) {
+          console.error(`Error uploading ${table}:`, uploadError.message);
+          failedUploads.push(table);
+        }
+
+        results.push({
+          name: table,
+          row_count: rows.length,
+          size_bytes: bytes.length,
+          expected_rows: expected,
         });
-      if (uploadError) {
-        console.error(`Error uploading ${table}:`, uploadError.message);
-        failedUploads.push(table);
       }
-
-      results.push({
-        name: table,
-        row_count: rows.length,
-        size_bytes: bytes.length,
-        expected_rows: expected,
-      });
     }
+
+    results.sort((a, b) => a.name.localeCompare(b.name));
 
     const summary = {
       timestamp,

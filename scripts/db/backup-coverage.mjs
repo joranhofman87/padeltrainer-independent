@@ -137,6 +137,32 @@ if (badType.length) {
 const { rows: allowed } = await c.query(`SELECT relname FROM public.backup_export_tables() ORDER BY 1`);
 const allowedSet = new Set(allowed.map((r) => r.relname));
 
+// ── GROUPS ─────────────────────────────────────────────────────────────────────────────────────
+const { rows: groupRows } = await c.query(`SELECT group_name, relname FROM public.backup_export_groups()`);
+const grouped = groupRows.map((r) => r.relname);
+const groupOf = new Map(groupRows.map((r) => [r.relname, r.group_name]));
+
+if (grouped.length !== new Set(grouped).size) {
+  fail('a table is in more than one export group — it would be backed up twice',
+    grouped.filter((t, i) => grouped.indexOf(t) !== i));
+} else {
+  pass('every table is in exactly one export group');
+}
+
+const ungrouped = declared.filter((t) => !groupOf.has(t));
+if (ungrouped.length) fail('backed-up tables that belong to no export group — they would never be exported', ungrouped);
+else pass('every backed-up table belongs to an export group');
+
+// the reason groups exist at all: the U1c rollback record must come from one snapshot
+const rollbackFamily = ['academy_player_memberships', 'membership_backfill_runs', 'membership_backfill_items'];
+const families = new Set(rollbackFamily.map((t) => groupOf.get(t)));
+if (families.size !== 1 || families.has(undefined)) {
+  fail('the U1c rollback tables are not in ONE group — an item could name a membership the backup lacks',
+    rollbackFamily.map((t) => `${t}:${groupOf.get(t)}`));
+} else {
+  pass('the U1c rollback tables share one export group, so they come from one snapshot');
+}
+
 const notAllowed = declared.filter((t) => !allowedSet.has(t));
 if (notAllowed.length) {
   fail('tables the backup exports that backup_export_tables() will refuse — permission denied every night', notAllowed);
@@ -161,8 +187,23 @@ const { rows: grants } = await c.query(`
    WHERE n.nspname = 'public' AND p.proname LIKE 'backup_export%'
    ORDER BY 1`);
 
-if (grants.length !== 3) fail('expected three backup_export functions', grants.map((g) => g.proname));
-else pass('all three backup_export functions exist');
+if (grants.length !== 6) fail('expected six backup_export functions', grants.map((g) => g.proname));
+else pass('all six backup_export functions exist');
+
+// STABLE is load-bearing on the exports: a VOLATILE function takes a FRESH snapshot per query in
+// READ COMMITTED, which would put a group's tables back on different snapshots and undo the only
+// reason groups exist.
+const { rows: vol } = await c.query(`
+  SELECT p.proname, p.provolatile
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname IN ('backup_export_group', 'backup_export_table')`);
+const notStable = vol.filter((v) => v.provolatile !== 's');
+if (notStable.length) {
+  fail('the export functions must be STABLE or a group shares no snapshot',
+    notStable.map((v) => `${v.proname}:${v.provolatile}`));
+} else {
+  pass('both export functions are STABLE, so every query inside them uses one snapshot');
+}
 
 const leaked = grants.filter((g) => g.anon || g.authenticated);
 if (leaked.length) fail('backup_export functions reachable by anon/authenticated', leaked.map((g) => g.proname));
@@ -214,6 +255,15 @@ else pass('the backup can execute all three');
   const viaFn = await probe(`SELECT public.backup_export_table('academy_player_memberships') AS r`);
   ok_(viaFn.ok, 'the same read THROUGH backup_export_table succeeds as service_role', viaFn);
 
+  const viaGroup = await probe(`SELECT public.backup_export_group('u1c_membership') AS r`);
+  ok_(viaGroup.ok && Object.keys(viaGroup.rows?.[0]?.r ?? {}).length === 3,
+    'the whole U1c rollback group exports in ONE call as service_role',
+    { ok: viaGroup.ok, tables: Object.keys(viaGroup.rows?.[0]?.r ?? {}) });
+
+  const badGroup = await probe(`SELECT public.backup_export_group('not_a_group')`);
+  ok_(!badGroup.ok && String(badGroup.message).includes('BACKUP_EXPORT_NOT_ALLOWED'),
+    'an unknown group is refused, not silently empty', badGroup);
+
   // it refuses anything not on the list rather than exporting whatever it is handed. Three shapes:
   // a real table the backup has no business reading, a catalogue relation, and a migration table.
   for (const rel of ['user_sessions', 'pg_shadow', 'schema_migrations']) {
@@ -241,10 +291,6 @@ else pass('the backup can execute all three');
   ok_(r.rows.length === Number(n) && r.row_count === Number(n),
     'the export returns every row, and its own count agrees',
     { rows: r.rows.length, row_count: r.row_count, inTable: Number(n) });
-
-  // rows and row_count come from the SAME scan, so this is an invariant rather than a race
-  ok_(r.rows.length === r.row_count, 'rows and row_count come from one scan and cannot disagree',
-    { rows: r.rows.length, row_count: r.row_count });
 
   const ids = r.rows.map((x) => x.id);
   const sorted = [...ids].sort();
@@ -283,7 +329,29 @@ else pass('the backup can execute all three');
   await c.query('ROLLBACK');
 
   const { rows: [{ m2 }] } = await c.query(`SELECT public.backup_export_max_rows() AS m2`);
-  ok_(Number(m2) === Number(m), 'the real bound survives the probe', { before: Number(m), after: Number(m2) });
+  ok_(Number(m2) === Number(m), 'the real row bound survives the probe', { before: Number(m), after: Number(m2) });
+
+  // and the BYTE bound, which is the one that matters: these tables carry unbounded text and jsonb,
+  // so a row count cannot tell you whether the aggregate will fit
+  const { rows: [{ b }] } = await c.query(`SELECT public.backup_export_max_bytes() AS b`);
+  ok_(Number(b) > 0, 'the export declares a byte bound', { max: Number(b) });
+
+  await c.query('BEGIN');
+  await c.query(`
+    CREATE OR REPLACE FUNCTION public.backup_export_max_bytes() RETURNS bigint
+    LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
+    AS $fn$ SELECT 1::bigint $fn$`);
+  await c.query(`INSERT INTO public.persons (id, full_name)
+                 SELECT gen_random_uuid(), 'u1c-p4-bytes-' || g FROM generate_series(1, 3) g`);
+  let byBytes = null;
+  try { await c.query(`SELECT public.backup_export_table('persons')`); }
+  catch (e) { byBytes = e.message; }
+  ok_(byBytes !== null && byBytes.includes('BACKUP_EXPORT_TOO_LARGE') && byBytes.includes('bytes'),
+    'a table above the BYTE bound is refused with a reason, not attempted', { byBytes });
+  await c.query('ROLLBACK');
+
+  const { rows: [{ b2 }] } = await c.query(`SELECT public.backup_export_max_bytes() AS b2`);
+  ok_(Number(b2) === Number(b), 'the real byte bound survives the probe', { before: Number(b), after: Number(b2) });
 }
 
 await c.end();

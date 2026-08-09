@@ -10,10 +10,13 @@
  * Lives in `_shared/` because that is the directory `npm run test:edge` runs.
  */
 import { assertEquals, assertNotEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { fetchWholeTable, handleRequest, TABLES_TO_BACKUP } from "../backup-database/index.ts";
+import { fetchGroup, handleRequest, TABLES_TO_BACKUP } from "../backup-database/index.ts";
 
 const makeRows = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ id: `id-${String(i).padStart(6, "0")}`, v: i }));
+
+/** The one consistency group: the tables a U1c rollback has to read together. */
+const GROUPED = ["academy_player_memberships", "membership_backfill_runs", "membership_backfill_items"];
 
 interface StubOptions {
   rows: Record<string, Array<{ id: string; v: number }>>;
@@ -32,21 +35,30 @@ function makeSupabase(opts: StubOptions) {
   const removed: string[] = [];
   let requests = 0;
 
-  /** `backup_export_table`: rows and their count, together, as the SQL function returns them. */
-  const rpc = (fn: string, args: Record<string, unknown>) => {
-    const table = String(args._relname);
-    if (fn !== "backup_export_table") {
+  /** The group declaration and the group export, as the SQL functions return them. */
+  const groupOf = (t: string) => (GROUPED.includes(t) ? "u1c_membership" : t);
+  const rpc = (fn: string, args?: Record<string, unknown>) => {
+    if (fn === "backup_export_groups") {
+      return Promise.resolve({
+        data: TABLES_TO_BACKUP.map((t) => ({ group_name: groupOf(t), relname: t })),
+        error: null,
+      });
+    }
+    if (fn !== "backup_export_group") {
       return Promise.resolve({ data: null, error: { message: `unknown function ${fn}` } });
     }
-    if (exportFails[table]) {
-      return Promise.resolve({ data: null, error: { message: exportFails[table] } });
-    }
+    const group = String(args?._group);
+    const tables = TABLES_TO_BACKUP.filter((t) => groupOf(t) === group);
+    const failing = tables.find((t) => exportFails[t]);
+    if (failing) return Promise.resolve({ data: null, error: { message: exportFails[failing] } });
+
     requests++;
-    const all = rows[table] ?? [];
-    return Promise.resolve({
-      data: { row_count: countOverride[table] ?? all.length, rows: all },
-      error: null,
-    });
+    const out: Record<string, unknown> = {};
+    for (const t of tables) {
+      const all = rows[t] ?? [];
+      out[t] = { row_count: countOverride[t] ?? all.length, rows: all };
+    }
+    return Promise.resolve({ data: out, error: null });
   };
 
   const supabase = {
@@ -87,20 +99,42 @@ const allRows = (n: number) => {
 
 Deno.test("the rows and the count the database reported are both carried through", async () => {
   const { supabase } = makeSupabase({ rows: { persons: makeRows(1234) } });
-  const out = await fetchWholeTable(supabase, "persons");
-  assertEquals(out.rows.length, 1234);
-  assertEquals(out.expected, 1234);
+  const out = await fetchGroup(supabase, "persons");
+  assertEquals(out.persons.rows.length, 1234);
+  assertEquals(out.persons.expected, 1234);
+});
+
+Deno.test("a group comes back whole — all three rollback tables from one call", async () => {
+  const rows = allRows(2);
+  const { supabase, requests } = makeSupabase({ rows });
+  const out = await fetchGroup(supabase, "u1c_membership");
+  assertEquals(Object.keys(out).sort(), [...GROUPED].sort());
+  assertEquals(requests(), 1);      // ONE call: that is what makes them one snapshot
 });
 
 Deno.test("an export payload that is not {rows, row_count} is refused, not half-read", async () => {
   // a null `rows`, or a missing count, must not be read as "zero rows, backed up fine"
-  for (const bad of [{}, { rows: null, row_count: 0 }, { rows: [] }, { row_count: 3 }]) {
-    const supabase = {
-      rpc: () => Promise.resolve({ data: bad, error: null }),
-    } as never;
+  for (const bad of [{}, { p: { rows: null, row_count: 0 } }, { p: { rows: [] } }, { p: { row_count: 3 } }]) {
+    const supabase = { rpc: () => Promise.resolve({ data: bad, error: null }) } as never;
     let threw = false;
-    try { await fetchWholeTable(supabase, "persons"); } catch { threw = true; }
+    try { await fetchGroup(supabase, "persons"); } catch { threw = true; }
     assertEquals(`${JSON.stringify(bad)}:${threw}`, `${JSON.stringify(bad)}:true`);
+  }
+});
+
+Deno.test("a group that fails fails ALL of its tables, never half of them", async () => {
+  // half a group uploaded is exactly the cross-table inconsistency groups exist to prevent
+  const { supabase, uploaded } = makeSupabase({
+    rows: allRows(1),
+    exportFails: { membership_backfill_items: "BACKUP_EXPORT_TOO_LARGE: too big" },
+  });
+  const res = await handleRequest(req(), { auth: auth(supabase), now: NOW });
+  const body = await res.json();
+
+  assertEquals(res.status, 500);
+  assertEquals([...body.failedQueries].sort(), [...GROUPED].sort());
+  for (const t of GROUPED) {
+    assertEquals(`${t}:${uploaded.some((p: string) => p.endsWith(`/${t}.json`))}`, `${t}:false`);
   }
 });
 
