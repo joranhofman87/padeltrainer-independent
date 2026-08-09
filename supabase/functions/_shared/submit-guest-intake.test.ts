@@ -185,15 +185,29 @@ Deno.test("a CLUB-owned form is refused legibly instead of failing at the constr
   assertEquals(rec.intakeInserts.length, 0, "it wrote an intake row for a Player that was never made");
 });
 
-Deno.test("an older client that sends no request id still registers", async () => {
-  const { adminClient, rec } = makeAdmin("academy");
-  const payload = body();
-  delete (payload as Record<string, unknown>).creationRequestId;
-  const res = await handleRequest(req(payload), { adminClient });
+Deno.test("a submission with no attempt id is refused, not given a fresh one", async () => {
+  // Minting one here would make every retry a NEW attempt: the first request creates the Player,
+  // its response is lost, and the resubmission creates a second one.
+  for (const bad of [undefined, "", "not-a-uuid", 12345]) {
+    const { adminClient, rec } = makeAdmin("academy");
+    const payload = body();
+    if (bad === undefined) delete (payload as Record<string, unknown>).creationRequestId;
+    else (payload as Record<string, unknown>).creationRequestId = bad;
+    const res = await handleRequest(req(payload), { adminClient });
 
-  assertEquals(res.status, 200);
-  // one is minted server-side rather than refusing a real registration on a cached bundle
-  assertEquals(typeof createCall(rec)?.args._creation_request_id, "string");
+    assertEquals(`${String(bad)}:${res.status}`, `${String(bad)}:400`);
+    assertEquals(createCall(rec), undefined, `it created a Player for ${String(bad)}`);
+  }
+});
+
+Deno.test("a retry carrying the same attempt id is the same create", async () => {
+  const seen: unknown[] = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const { adminClient, rec } = makeAdmin("academy");
+    await handleRequest(req(body()), { adminClient });
+    seen.push(createCall(rec)?.args._creation_request_id);
+  }
+  assertEquals(seen, ["55555555-5555-4555-8555-555555555555", "55555555-5555-4555-8555-555555555555"]);
 });
 
 Deno.test("the address is normalized once, on the way in", async () => {

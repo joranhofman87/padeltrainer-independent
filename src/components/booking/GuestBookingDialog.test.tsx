@@ -80,6 +80,14 @@ const fillValid = () => {
 };
 
 const cyclusSlot: PublicSlot = { ...slot, cyclus_id: 'cyc-1', cyclus_name: 'Beginners A' };
+/**
+ * The booker's own id for the checkout ATTEMPT (U2). Asserted as a shape rather than a value: it
+ * is minted per attempt, so pinning a literal would only prove the test knows what crypto returns.
+ * `expect.any(String)` would pass for an empty string, which the edge function refuses — so the
+ * shape asserted is the one the server actually accepts.
+ */
+const UUID = expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+
 const twoSessions = [
   { id: 's1', start_time: '2026-09-01T10:00:00Z', end_time: '2026-09-01T11:00:00Z', price_per_session: 20 },
   { id: 's2', start_time: '2026-09-08T10:00:00Z', end_time: '2026-09-08T11:00:00Z', price_per_session: 20 },
@@ -123,7 +131,7 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false, creationRequestId: UUID },
     });
     await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/checkout/abc'));
     expect(toastErrorMock).not.toHaveBeenCalled();
@@ -143,7 +151,7 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
-      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
+      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false, creationRequestId: UUID },
     });
     await waitFor(() => expect(hrefSetter).toHaveBeenCalledWith('https://mollie.test/c/xyz'));
   });
@@ -160,7 +168,7 @@ describe('GuestBookingDialog', () => {
 
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false, creationRequestId: UUID },
     });
   });
 
@@ -184,7 +192,7 @@ describe('GuestBookingDialog', () => {
     fireEvent.click(payBtn);
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-cyclus-payment', {
-      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
+      body: { cyclusId: 'cyc-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false, creationRequestId: UUID },
     });
   });
 
@@ -223,7 +231,7 @@ describe('GuestBookingDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
     await waitFor(() => expect(invokeMock).toHaveBeenCalledTimes(1));
     expect(invokeMock).toHaveBeenCalledWith('create-guest-slot-payment', {
-      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false },
+      body: { slotId: 'slot-1', firstName: 'Jan', lastName: 'de Vries', email: 'jan@x.nl', phone: '0612345678', notes: undefined, whatsappOptIn: false, creationRequestId: UUID },
     });
   });
 

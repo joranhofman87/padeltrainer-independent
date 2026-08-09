@@ -30,14 +30,6 @@ const SITES: Array<{ file: string; why: string; must: RegExp[] }> = [
       'B1 arm slice 1 deliberately kept, because a twin stamp is an explicit operator assertion.',
     must: [/requireNameMatch\s*=\s*false/, /requireNameMatch:\s*true/, /findGuestTwinByProfileId/],
   },
-  {
-    file: 'supabase/functions/_shared/guest-players.ts',
-    why:
-      'the public booking/payment resolver (create-guest-{cart,slot,cyclus}-payment). Name-gated via ' +
-      'matchGuestByName since before U2. DEFERRED, explicitly: routing three anonymous payment flows ' +
-      'through the UUID command is its own slice, and it is recorded as such rather than half-done here.',
-    must: [/matchGuestByName/],
-  },
 ];
 
 /**
@@ -97,6 +89,28 @@ const RETIRED: Array<{ file: string; why: string; absent: RegExp[] }> = [
     why: 'public intake — did the same against profiles, and then reused and OVERWROTE a guest row it found by address',
     absent: [/from\("profiles"\)/, /from\("guest_players"\)/],
   },
+  {
+    file: 'supabase/functions/_shared/guest-players.ts',
+    why:
+      'the anonymous booking/payment resolver behind create-guest-{slot,cart,cyclus}-payment. It ' +
+      'looked the typed address up, took the name match, overwrote that row with what had just been ' +
+      'typed, and booked against it — an identity chosen from two attributes by a stranger',
+    absent: [/\.from\(/, /matchGuestByName/],
+  },
+  {
+    file: 'src/components/players/AddPlayerForm.tsx',
+    why:
+      'staff add-a-player — a direct guest_players insert, so a retried save made a second Player ' +
+      'and nothing proposed the duplicate. It still READS the address, to ask the operator whether ' +
+      'the new player is a family member of the ones already on it; that is a proposal made to a ' +
+      'human, which is exactly what attributes are allowed to do',
+    absent: [/from\("guest_players"\)\s*\n?\s*\.insert/],
+  },
+  {
+    file: 'src/components/players/ImportPlayersDialog.tsx',
+    why: 'CSV import — the same direct insert per row, so re-running a half-failed import duplicated everyone who had already landed',
+    absent: [/from\("guest_players"\)\s*\n?\s*\.insert/],
+  },
 ];
 
 describe('no source site resolves a person from an address', () => {
@@ -118,7 +132,10 @@ describe('no source site resolves a person from an address', () => {
     for (const file of [
       'supabase/functions/create-manual-player/index.ts',
       'supabase/functions/submit-guest-intake/index.ts',
+      'supabase/functions/_shared/guest-players.ts',
       'src/lib/invoiceCustomerInsert.ts',
+      'src/components/players/AddPlayerForm.tsx',
+      'src/components/players/ImportPlayersDialog.tsx',
     ]) {
       const src = readFileSync(file, 'utf8');
       expect(`${file}: ${src.includes('player_create_command')}`).toBe(`${file}: true`);
@@ -142,7 +159,7 @@ describe('no source site resolves a person from an address', () => {
   it('no OTHER source file looks a person up by email without appearing here', () => {
     // A crude scan on purpose: it is meant to be noisy when something new starts matching on an
     // address, because silence is what let two of these ship.
-    const roots = ['src/lib', 'supabase/functions'];
+    const roots = ['src/lib', 'src/components', 'supabase/functions'];
     const listed = new Set([...SITES, ...NOT_IDENTITY, ...RETIRED].map((s) => s.file));
     const offenders: string[] = [];
 
@@ -155,7 +172,10 @@ describe('no source site resolves a person from an address', () => {
         // a person-shaped table queried by an email column
         const looksUp = /from\((["'`])(profiles|guest_players|persons|club_players|intake_requests)\1\)/.test(src)
           && /\.(eq|ilike)\((["'`])email\2/.test(src);
-        if (looksUp && !listed.has(full)) offenders.push(full);
+        // ...or a Player minted OUTSIDE the command, which is the other way the rule gets bypassed:
+        // two of the sites above were direct inserts that no email-shaped detector could see.
+        const mints = /from\((["'`])guest_players\1\)[\s\S]{0,80}?\.insert\(/.test(src);
+        if ((looksUp || mints) && !listed.has(full)) offenders.push(full);
       }
     };
     for (const r of roots) walk(r);

@@ -53,6 +53,13 @@ interface ParsedPlayer {
   notes: string | null;
   isValid: boolean;
   errors: string[];
+  /**
+   * The id of the create attempt for THIS row, minted once when the file is parsed. Re-running an
+   * import that half-failed replays the rows that already landed instead of duplicating them, and
+   * no attribute of the person is used to recognise them (U2). Picking a new file parses again and
+   * mints new ids, which is correct: that is a different import.
+   */
+  creationRequestId: string;
 }
 
 type ImportStep = "upload" | "preview" | "importing" | "complete";
@@ -178,6 +185,7 @@ export function ImportPlayersDialog({
         notes,
         isValid: errors.length === 0,
         errors,
+        creationRequestId: crypto.randomUUID(),
       });
     }
 
@@ -256,29 +264,32 @@ export function ImportPlayersDialog({
       const player = validPlayers[i];
       
       try {
-        const { data, error } = await supabase
-          .from("guest_players")
-          .insert({
-            trainer_id: trainerId || null,
-            academy_profile_id: academyId || null,
-            first_name: player.first_name,
-            last_name: player.last_name,
-            full_name: player.full_name,
-            email: player.email.toLowerCase(),
-            phone: player.phone,
-            skill_rating: player.skill_rating,
-            notes: player.notes,
-          } as any)
-          .select()
-          .single();
+        // Through the one create command, not a direct insert: each row is idempotent on its own
+        // attempt id, the scope is authorized in one place, and a row that looks like a Player the
+        // academy already has files a proposal for a human instead of silently doubling them.
+        const { data: created, error } = await supabase.rpc("player_create_command", {
+          _creation_request_id: player.creationRequestId,
+          _owner_type: academyId ? "academy" : "trainer",
+          _owner_id: academyId || trainerId || null,
+          _full_name: player.full_name,
+          _email: player.email.toLowerCase() || null,
+          _phone: player.phone || null,
+          _first_name: player.first_name,
+          _last_name: player.last_name,
+          _skill_rating: player.skill_rating,
+          _notes: player.notes,
+          _source: "csv_import",
+        });
+        if (error) throw error;
 
-        if (error) {
-          // Handle unique constraint violation (duplicate email)
-          if (error.code === "23505") {
-            logger.warn("Duplicate email skipped", { component: 'ImportPlayersDialog', email: player.email });
-          }
-          throw error;
-        }
+        const guestPlayerId = (created as { guest_player_id: string | null } | null)?.guest_player_id;
+        if (!guestPlayerId) throw new Error("player_create_no_player");
+        const { data, error: readError } = await supabase
+          .from("guest_players")
+          .select("*")
+          .eq("id", guestPlayerId)
+          .single();
+        if (readError) throw readError;
         imported.push(data as GuestPlayer);
       } catch (error) {
         logger.error("Failed to import player", error instanceof Error ? error : new Error(String(error)), { component: 'ImportPlayersDialog', email: player.email });

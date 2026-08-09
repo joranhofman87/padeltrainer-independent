@@ -198,6 +198,7 @@ CREATE OR REPLACE FUNCTION public.player_create_command(
   _skill_rating        numeric DEFAULT NULL,
   _rating_system       text    DEFAULT NULL,
   _birth_date          date    DEFAULT NULL,
+  _notes               text    DEFAULT NULL,
   _source              text    DEFAULT NULL,
   -- "this is an existing Player", by canonical id. Authorized, never assumed from possession.
   _select_person_id    uuid    DEFAULT NULL,
@@ -346,11 +347,12 @@ BEGIN
 
     INSERT INTO public.guest_players (
       full_name, first_name, last_name, email, phone, skill_rating, rating_system, birth_date,
-      academy_profile_id, trainer_id, source
+      notes, academy_profile_id, trainer_id, source
     ) VALUES (
       btrim(_full_name), nullif(btrim(_first_name), ''), nullif(btrim(_last_name), ''),
-      v_email, public.u2_norm(_phone), _skill_rating,
+      v_email, nullif(btrim(_phone), ''), _skill_rating,
       coalesce(nullif(btrim(_rating_system), ''), 'knltb'), _birth_date,
+      nullif(btrim(_notes), ''),
       CASE WHEN _owner_type = 'academy' THEN _owner_id END,
       CASE WHEN _owner_type = 'trainer' THEN _owner_id END,   -- exactly one, per the table's CHECK
       coalesce(nullif(btrim(_source), ''), 'player_create_command')
@@ -477,13 +479,13 @@ REVOKE ALL ON FUNCTION public.u2_norm(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.player_create_fingerprint(text, text, text, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.player_owner_may_select_person(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.player_owner_may_create(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text)
+REVOKE ALL ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text)
   FROM PUBLIC, anon, authenticated, service_role;
 
-GRANT EXECUTE ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text)
+GRANT EXECUTE ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text)
   TO authenticated, service_role;
 
-COMMENT ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text) IS
+COMMENT ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, text, uuid, uuid, text) IS
   'The one Player-create command. Idempotent on the caller''s creation_request_id — never on a name, address or phone number, which may only PROPOSE a duplicate for review. An existing Player is named by person_id and must already belong to the scope; possession of a uuid authorizes nothing. Scope is the academy or trainer the Player belongs to (U2, owner 2026-08-09).';
 
 COMMENT ON FUNCTION public.player_owner_may_select_person(text, uuid, uuid) IS

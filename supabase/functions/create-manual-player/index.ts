@@ -8,6 +8,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -111,21 +113,28 @@ export async function handleRequest(
     }
 
     // Non-string name/email fields would reach .trim()/.toLowerCase() and throw a raw 500.
-    const stringFields: Record<string, unknown> = { email, firstName, lastName, fullName };
+    const stringFields: Record<string, unknown> = { email, firstName, lastName, fullName, birthDate };
     for (const [field, value] of Object.entries(stringFields)) {
       if (value != null && typeof value !== "string") {
         return json({ error: `Field '${field}' must be a string` }, 400);
       }
     }
+    if (rating != null && typeof rating !== "number") {
+      return json({ error: "Field 'rating' must be a number" }, 400);
+    }
 
     // Every create is idempotent on the caller's own id for THIS attempt. Without one a retry —
     // a double click, a network replay, a lost response — makes a second Player, and no attribute
-    // of a person may be used to notice that. So there is no path without it.
-    if (!creationRequestId) {
+    // of a person may be used to notice that. So there is no path without it. Shape-checked here
+    // rather than left to the uuid cast, so a malformed id is a refusal and not a 500.
+    if (typeof creationRequestId !== "string" || !UUID_RE.test(creationRequestId)) {
       return json(
-        { error: "creationRequestId is required so a retry does not create a second player" },
+        { error: "creationRequestId must be a uuid, so a retry does not create a second player" },
         400,
       );
+    }
+    if (selectPersonId != null && (typeof selectPersonId !== "string" || !UUID_RE.test(selectPersonId))) {
+      return json({ error: "selectPersonId must be a uuid" }, 400);
     }
 
     if (academyProfileId && trainerProfileId) {

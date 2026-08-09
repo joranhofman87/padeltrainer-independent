@@ -1,4 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
@@ -54,6 +59,12 @@ export function CartCheckoutDialog({
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * The id of THIS checkout attempt. Every retry of it carries the same one, so a double tap or a
+   * replayed request books against the SAME Player — where before the address and the name were
+   * used to recognise a repeat. Editing who is booking mints a new one: that is a different attempt.
+   */
+  const attemptRef = useRef<CreationAttempt>(null);
 
   useEffect(() => {
     if (open) {
@@ -89,11 +100,17 @@ export function CartCheckoutDialog({
           phone: phone.trim(),
           notes: notes.trim() || undefined,
           whatsappOptIn,
+          creationRequestId: creationRequestIdFor(
+            attemptRef,
+            JSON.stringify([email.trim().toLowerCase(), firstName.trim(), lastName.trim()]),
+          ),
         },
       });
 
       const result = data as { checkoutUrl?: string; token?: string } | null;
       if (result?.checkoutUrl) {
+        // the Player for this attempt exists; a later checkout is a new one, not a retry
+        clearCreationAttempt(attemptRef);
         window.location.href = result.checkoutUrl;
         return;
       }

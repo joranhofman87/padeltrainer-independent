@@ -24,7 +24,6 @@
   "src/lib/cycles.ts|TS2304|Cannot find name 'SlotWithOccupancy'.": 3,
   "src/lib/cycles.ts|TS2304|Cannot find name 'TimeWindow'.": 1,
   "src/lib/guestPlayers.ts|TS2589|Type instantiation is excessively deep and possibly infinite.": 1,
-  "src/lib/invoiceCustomerInsert.test.ts|TS2556|A spread argument must either have a tuple type or be passed to a rest parameter.": 1,
   "src/lib/invoiceSync.ts|TS2353|Object literal may only specify known properties, and 'split_count' does not exist in type 'InvoiceUpdatePayload'.": 1,
   "src/lib/playerRemovalVisibility.ts|TS2345|Argument of type 'PlayerMetadata' is not assignable to parameter of type 'AcademyPlayerMetadataRemoval'.": 1,
   "src/lib/priorityClaims.ts|TS2352|Conversion of type 'string | number | boolean | { [key: string]: Json; } | Json[]' to type 'RebookGroup' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.": 1,

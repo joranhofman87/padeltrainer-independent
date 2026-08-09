@@ -1,4 +1,5 @@
 import { test, expect, request as pwRequest } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
 
 /**
@@ -44,7 +45,12 @@ test('public guest booking → Mollie (mock) → webhook → seat + amount PAID'
   // 1) Anonymous guest books + pays → a hold + a (mock) Mollie payment.
   const create = await ctx.post(`${SB}/functions/v1/create-guest-slot-payment`, {
     headers: { Authorization: `Bearer ${ANON}`, apikey: ANON, 'Content-Type': 'application/json' },
-    data: { slotId: slot!.id, email: 'e2e.public@local.test', phone: '+31612345678', fullName: 'E2E Public Guest' },
+    // U2: the booker's own id for this checkout attempt — required, because the Player create is
+    // idempotent on it and on nothing else (an address or a name may not stand in for it).
+    data: {
+      slotId: slot!.id, email: 'e2e.public@local.test', phone: '+31612345678',
+      fullName: 'E2E Public Guest', creationRequestId: randomUUID(),
+    },
   });
   const cbody = await create.json();
   expect(cbody.checkoutUrl, `create-guest-slot-payment: ${JSON.stringify(cbody)}`).toBeTruthy();

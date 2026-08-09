@@ -1,4 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock, Loader2, MapPin, ShoppingCart } from 'lucide-react';
@@ -69,6 +74,12 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * The id of THIS checkout attempt. Every retry of it carries the same one, so a double tap or a
+   * replayed request books against the SAME Player — where before the address and the name were
+   * used to recognise a repeat. Editing who is booking mints a new one: that is a different attempt.
+   */
+  const attemptRef = useRef<CreationAttempt>(null);
   // Default to the WHOLE cyclus (only relevant when the slot is part of one) — nudges the fuller
   // booking; the visitor can toggle down to a single session.
   const [mode, setMode] = useState<'single' | 'cyclus'>('cyclus');
@@ -208,12 +219,19 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             phone: phone.trim(),
             notes: notes.trim() || undefined,
             whatsappOptIn,
+            creationRequestId: creationRequestIdFor(
+              attemptRef,
+              JSON.stringify([bookCyclus ? cyclusId : slot.id, email.trim().toLowerCase(),
+                firstName.trim(), lastName.trim()]),
+            ),
           },
         },
       );
 
       const result = data as { checkoutUrl?: string; token?: string } | null;
       if (result?.checkoutUrl) {
+        // the Player for this attempt exists; a later booking is a new one, not a retry
+        clearCreationAttempt(attemptRef);
         window.location.href = result.checkoutUrl;
         return;
       }

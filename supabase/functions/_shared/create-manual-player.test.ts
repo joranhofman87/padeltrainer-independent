@@ -201,6 +201,24 @@ Deno.test("a retry carries the SAME request id, so the command can recognise it"
   assertEquals(seen, [id, id]);
 });
 
+Deno.test("a malformed request id or selected person is refused, not passed to the database", async () => {
+  // Left to the uuid cast these answer 500 rather than 400, and the request id is the one field
+  // the whole create is keyed on.
+  const cases: Array<Record<string, unknown>> = [
+    { creationRequestId: "not-a-uuid" },
+    { creationRequestId: 12345 },
+    { selectPersonId: "nope" },
+    { birthDate: 19900101 },
+    { rating: "four" },
+  ];
+  for (const over of cases) {
+    const { userClient, adminClient, rec } = makeClients({ manages: [ACADEMY] });
+    const res = await handleRequest(req(academyBody(over)), { userClient, adminClient });
+    assertEquals(`${JSON.stringify(over)}:${res.status}`, `${JSON.stringify(over)}:400`);
+    assertEquals(createCall(rec), undefined);
+  }
+});
+
 Deno.test("a create with NO request id is refused before anything is written — in EVERY scope", async () => {
   const scopes: Array<Record<string, unknown>> = [
     { academyProfileId: ACADEMY },

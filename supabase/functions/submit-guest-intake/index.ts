@@ -16,6 +16,7 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const MAX_SHORT_FIELD_LENGTH = 320;
 const MAX_ARRAY_ITEMS = 50;
 const MAX_NOTES_METADATA_BYTES = 10 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const invalidPayload = (message: string, corsHeaders: Record<string, string>) =>
   new Response(
@@ -170,6 +171,12 @@ export async function handleRequest(
       return invalidPayload("Field 'phone' is required", corsHeaders);
     }
 
+    // The submitter's own id for THIS attempt, and the only thing that can make the Player create
+    // idempotent. Required rather than minted here — see the create call below.
+    if (typeof creationRequestId !== "string" || !UUID_RE.test(creationRequestId)) {
+      return invalidPayload("Field 'creationRequestId' must be a uuid", corsHeaders);
+    }
+
     const adminClient = deps.adminClient ?? createClient(supabaseUrl, supabaseServiceKey);
 
     // Resolve the FORM (registrations is standalone post-decouple). `cycleId` is the registration's
@@ -320,11 +327,13 @@ export async function handleRequest(
       }
 
       const { data: created, error: createError } = await adminClient.rpc("player_create_command", {
-        // The client mints one id per submission attempt so a retry is the SAME attempt. An older
-        // cached bundle will not send one; minting it here keeps that submission working, and it is
-        // no less idempotent than the shipped endpoint was — the 60-second duplicate window above is
-        // what protects a double-click either way.
-        _creation_request_id: creationRequestId ?? crypto.randomUUID(),
+        // The client mints one id per submission attempt, so a retry is the SAME attempt. Minting
+        // one here instead would make every retry a NEW attempt — the first request creates the
+        // Player, its response is lost, and the resubmission creates a second one. The 60-second
+        // duplicate window above is keyed on the address, which is exactly the kind of key U2 says
+        // may not stand in for identity or for idempotency; it suppresses a double-click and
+        // nothing beyond its window.
+        _creation_request_id: creationRequestId,
         _owner_type: ownerType,
         _owner_id: regRow.owner_id,
         _full_name: nameFields.full_name,

@@ -37,6 +37,7 @@ import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
 
 type Supa = SupabaseClient;
 const ENDPOINT = "create-guest-slot-payment";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // Prod default unchanged; a local mock (scripts/db/mock-mollie.mjs) sets MOLLIE_API_BASE
 // so the pay→webhook money path can run end-to-end with no real gateway.
 const MOLLIE_API_BASE = Deno.env.get("MOLLIE_API_BASE") ?? "https://api.mollie.com";
@@ -98,6 +99,14 @@ Deno.serve(async (req) => {
     // Strict === true: a missing or truthy-ish value must never read as consent.
     const whatsappOptIn = body?.whatsappOptIn === true;
     const notes = typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
+    // U2: the booker's own id for THIS checkout attempt. It is what makes the Player create
+    // idempotent — a double tap, a network replay or a returning Mollie redirect carries the same
+    // id and gets the same Player, where before the address and the name were used to recognise a
+    // repeat. Required, because an attribute may not stand in for it.
+    const creationRequestId = typeof body?.creationRequestId === "string" ? body.creationRequestId.trim() : "";
+    if (!UUID_RE.test(creationRequestId)) {
+      return json({ error: "invalid_creation_request_id", message: "Vernieuw de pagina en probeer opnieuw." }, 400);
+    }
     const name = resolveRegistrationNameFields({
       firstName: body?.firstName, lastName: body?.lastName, fullName: body?.fullName,
     });
@@ -205,7 +214,7 @@ Deno.serve(async (req) => {
       ? { academyProfileId: slot.academy_profile_id as string }
       : { trainerId: slot.trainer_id as string };
     const { guestPlayerId } = await resolveOrCreateGuestPlayer(supabase, {
-      email, name, phone, owner, source: "public_booking",
+      email, name, phone, owner, source: "public_booking", creationRequestId,
     });
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.

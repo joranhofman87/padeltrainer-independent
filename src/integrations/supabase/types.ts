@@ -6613,7 +6613,7 @@ export type Database = {
           guest_player_id: string | null
           id: string
           origin: string
-          owner_id: string | null
+          owner_id: string
           owner_type: string
           payload_fingerprint: string
           person_id: string | null
@@ -6625,7 +6625,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           origin: string
-          owner_id?: string | null
+          owner_id: string
           owner_type: string
           payload_fingerprint: string
           person_id?: string | null
@@ -6637,7 +6637,7 @@ export type Database = {
           guest_player_id?: string | null
           id?: string
           origin?: string
-          owner_id?: string | null
+          owner_id?: string
           owner_type?: string
           payload_fingerprint?: string
           person_id?: string | null
@@ -12181,6 +12181,7 @@ export type Database = {
           _first_name?: string
           _full_name?: string
           _last_name?: string
+          _notes?: string
           _origin?: string
           _owner_id?: string
           _owner_type: string

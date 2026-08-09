@@ -1,139 +1,128 @@
-import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+/**
+ * The anonymous booking flows' guest identity.
+ *
+ * The tests this replaces asserted the family rule: a same-name row on the address was reused, a
+ * sibling's was not, and a booking that omitted a phone number did not null out one captured
+ * earlier. All of that described a lookup that decided WHO was booking from two attributes an
+ * unauthenticated stranger had typed — the decision U2 removed. So what is asserted now is the
+ * opposite: that no lookup happens, and that the create carries the booker's own attempt id.
+ */
+import { assertEquals, assertRejects } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
-import { matchGuestByName, normalizeGuestName, resolveOrCreateGuestPlayer } from "./guest-players.ts";
+import { resolveOrCreateGuestPlayer } from "./guest-players.ts";
 
-Deno.test("normalizeGuestName trims, lowercases, collapses whitespace", () => {
-  assertEquals(normalizeGuestName("  Jan   de  Vries "), "jan de vries");
-  assertEquals(normalizeGuestName("JAN"), "jan");
-  assertEquals(normalizeGuestName(null), "");
-  assertEquals(normalizeGuestName(undefined), "");
-});
+const ACADEMY = "11111111-1111-4111-8111-111111111111";
+const TRAINER = "22222222-2222-4222-8222-222222222222";
+const REQ = "33333333-3333-4333-8333-333333333333";
 
-Deno.test("matchGuestByName reuses the same-name row (family rule)", () => {
-  const rows = [
-    { id: "g1", full_name: "Jan de Vries" },
-    { id: "g2", full_name: "Piet de Vries" },
-  ];
-  assertEquals(matchGuestByName(rows, "jan de vries")?.id, "g1");
-  assertEquals(matchGuestByName(rows, "  PIET   DE VRIES ")?.id, "g2");
-});
+type Recorded = { rpc: Array<{ fn: string; args: Record<string, unknown> }>; tables: string[] };
 
-Deno.test("matchGuestByName returns null for a different name (sibling gets own row)", () => {
-  const rows = [{ id: "g1", full_name: "Jan de Vries" }];
-  assertEquals(matchGuestByName(rows, "Sanne de Vries"), null);
-  assertEquals(matchGuestByName([], "Jan"), null);
-  assertEquals(matchGuestByName(null, "Jan"), null);
-});
-
-// --- resolveOrCreateGuestPlayer against a tiny in-memory fake admin client ---
-
-type Row = Record<string, unknown>;
-
-function fakeAdmin(seed: Row[]) {
-  const table = [...seed];
-  const inserted: Row[] = [];
-  const updated: Row[] = [];
-  const makeQuery = () => {
-    const filters: Array<(r: Row) => boolean> = [];
-    const q: Record<string, unknown> = {};
-    q.select = () => q;
-    q.eq = (col: string, val: unknown) => {
-      filters.push((r) => r[col] === val);
-      return q;
-    };
-    q.is = (col: string, val: unknown) => {
-      filters.push((r) => (r[col] ?? null) === val);
-      return q;
-    };
-    // Awaiting the builder resolves the filtered rows.
-    q.then = (resolve: (v: { data: Row[] }) => void) =>
-      resolve({ data: table.filter((r) => filters.every((f) => f(r))) });
-    return q;
-  };
-  return {
-    _inserted: inserted,
-    _updated: updated,
-    from(_t: string) {
-      return {
-        select: () => makeQuery(),
-        eq: (col: string, val: unknown) => {
-          const query = makeQuery();
-          return (query.eq as (c: string, v: unknown) => unknown)(col, val);
-        },
-        update(patch: Row) {
-          return {
-            eq: (_c: string, id: unknown) => {
-              updated.push({ id, ...patch });
-              return Promise.resolve({ data: null, error: null });
-            },
-          };
-        },
-        insert(row: Row) {
-          const created = { id: `new-${inserted.length + 1}`, ...row };
-          inserted.push(created);
-          return {
-            select: () => ({
-              single: () => Promise.resolve({ data: { id: created.id }, error: null }),
-            }),
-          };
-        },
-      };
+function makeAdmin(
+  result: unknown = { person_id: "the-person", guest_player_id: "the-guest" },
+  error: { code: string; message: string } | null = null,
+) {
+  const rec: Recorded = { rpc: [], tables: [] };
+  const admin = {
+    from: (name: string) => {
+      rec.tables.push(name);
+      throw new Error("guest identity must not be resolved by querying tables");
     },
-  };
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      rec.rpc.push({ fn, args });
+      return Promise.resolve(error ? { data: null, error } : { data: result, error: null });
+    },
+  } as unknown as SupabaseClient;
+  return { admin, rec };
 }
 
-Deno.test("resolveOrCreateGuestPlayer reuses a same-name guest in owner scope", async () => {
-  const admin = fakeAdmin([
-    { id: "g1", email: "fam@x.nl", full_name: "Jan de Vries", academy_profile_id: "aca1" },
-  ]);
-  const res = await resolveOrCreateGuestPlayer(admin as unknown as SupabaseClient, {
-    email: "Fam@x.nl",
-    name: { first_name: "Jan", last_name: "de Vries", full_name: "Jan de Vries" },
-    owner: { academyProfileId: "aca1" },
-  });
-  assertEquals(res.guestPlayerId, "g1");
-  assertEquals(admin._inserted.length, 0);
-  assertEquals(admin._updated.length, 1);
-});
+const name = { first_name: "Anna", last_name: "de Vries", full_name: "Anna de Vries" };
 
-Deno.test("resolveOrCreateGuestPlayer does NOT overwrite phone when the booking omits it", async () => {
-  const admin = fakeAdmin([
-    { id: "g1", email: "fam@x.nl", full_name: "Jan de Vries", phone: "0612345678", academy_profile_id: "aca1" },
-  ]);
-  await resolveOrCreateGuestPlayer(admin as unknown as SupabaseClient, {
-    email: "fam@x.nl",
-    name: { first_name: "Jan", last_name: "de Vries", full_name: "Jan de Vries" },
-    owner: { academyProfileId: "aca1" }, // no phone supplied
-  });
-  assertEquals(admin._updated.length, 1);
-  assertEquals("phone" in admin._updated[0], false); // stored phone left intact
-});
-
-Deno.test("resolveOrCreateGuestPlayer DOES update phone when the booking supplies it", async () => {
-  const admin = fakeAdmin([
-    { id: "g1", email: "fam@x.nl", full_name: "Jan de Vries", phone: "0611111111", academy_profile_id: "aca1" },
-  ]);
-  await resolveOrCreateGuestPlayer(admin as unknown as SupabaseClient, {
-    email: "fam@x.nl",
-    name: { first_name: "Jan", last_name: "de Vries", full_name: "Jan de Vries" },
-    phone: "0622222222",
-    owner: { academyProfileId: "aca1" },
-  });
-  assertEquals(admin._updated[0].phone, "0622222222");
-});
-
-Deno.test("resolveOrCreateGuestPlayer creates a new row for a sibling (same email, different name)", async () => {
-  const admin = fakeAdmin([
-    { id: "g1", email: "fam@x.nl", full_name: "Jan de Vries", academy_profile_id: "aca1" },
-  ]);
-  const res = await resolveOrCreateGuestPlayer(admin as unknown as SupabaseClient, {
-    email: "fam@x.nl",
-    name: { first_name: "Sanne", last_name: "de Vries", full_name: "Sanne de Vries" },
-    owner: { academyProfileId: "aca1" },
+Deno.test("a booking creates its Player through the command, carrying the attempt id", async () => {
+  const { admin, rec } = makeAdmin();
+  const out = await resolveOrCreateGuestPlayer(admin, {
+    email: "Anna@Example.com",
+    name,
+    phone: "0612345678",
+    owner: { academyProfileId: ACADEMY },
     source: "public_booking",
+    creationRequestId: REQ,
   });
-  assertEquals(res.guestPlayerId, "new-1");
-  assertEquals(admin._inserted.length, 1);
-  assertEquals(admin._inserted[0].academy_profile_id, "aca1");
-  assertEquals(admin._inserted[0].source, "public_booking");
+
+  assertEquals(out, { guestPlayerId: "the-guest", personId: "the-person" });
+  assertEquals(rec.tables, [], "it queried a table");
+  assertEquals(rec.rpc[0].fn, "player_create_command");
+  assertEquals(rec.rpc[0].args._creation_request_id, REQ);
+  assertEquals(rec.rpc[0].args._owner_type, "academy");
+  assertEquals(rec.rpc[0].args._owner_id, ACADEMY);
+  assertEquals(rec.rpc[0].args._email, "anna@example.com");
+  assertEquals(rec.rpc[0].args._origin, "self_signup");
+});
+
+Deno.test("a trainer-owned slot books against the trainer scope", async () => {
+  const { admin, rec } = makeAdmin();
+  await resolveOrCreateGuestPlayer(admin, {
+    email: "a@b.com", name, owner: { trainerId: TRAINER }, creationRequestId: REQ,
+  });
+  assertEquals(rec.rpc[0].args._owner_type, "trainer");
+  assertEquals(rec.rpc[0].args._owner_id, TRAINER);
+});
+
+Deno.test("two bookers on ONE address are two creates — the address selects nobody", async () => {
+  // The family case the old family rule existed for. It is no longer a rule about reuse: both
+  // bookers create, each under their own attempt id, and the command proposes the duplicate.
+  const parent = makeAdmin({ person_id: "p-parent", guest_player_id: "g-parent" });
+  const child = makeAdmin({ person_id: "p-child", guest_player_id: "g-child" });
+
+  const a = await resolveOrCreateGuestPlayer(parent.admin, {
+    email: "family@example.com",
+    name: { first_name: "Marieke", last_name: "de Vries", full_name: "Marieke de Vries" },
+    owner: { academyProfileId: ACADEMY },
+    creationRequestId: "44444444-4444-4444-8444-444444444444",
+  });
+  const b = await resolveOrCreateGuestPlayer(child.admin, {
+    email: "family@example.com",
+    name,
+    owner: { academyProfileId: ACADEMY },
+    creationRequestId: "55555555-5555-4555-8555-555555555555",
+  });
+
+  assertEquals(a.guestPlayerId !== b.guestPlayerId, true);
+  assertEquals(parent.rec.rpc[0].args._creation_request_id !== child.rec.rpc[0].args._creation_request_id, true);
+});
+
+Deno.test("no attempt id is a refusal, not a fresh Player", async () => {
+  const { admin, rec } = makeAdmin();
+  await assertRejects(
+    () => resolveOrCreateGuestPlayer(admin, {
+      email: "a@b.com", name, owner: { academyProfileId: ACADEMY }, creationRequestId: "",
+    }),
+    Error,
+    "missing_creation_request_id",
+  );
+  assertEquals(rec.rpc.length, 0, "it created a Player anyway");
+});
+
+Deno.test("a booking with no owner scope is refused before the constraint sees it", async () => {
+  // `guest_players` requires a trainer or an academy, so this was always an opaque 500.
+  const { admin, rec } = makeAdmin();
+  await assertRejects(
+    () => resolveOrCreateGuestPlayer(admin, {
+      email: "a@b.com", name, owner: {}, creationRequestId: REQ,
+    }),
+    Error,
+    "no_owner_scope",
+  );
+  assertEquals(rec.rpc.length, 0);
+});
+
+Deno.test("a refused command throws the CODE, never the message that may carry the address", async () => {
+  const { admin } = makeAdmin(null, { code: "42501", message: "PLAYER_CREATE_FORBIDDEN for anna@example.com" });
+  const err = await assertRejects(
+    () => resolveOrCreateGuestPlayer(admin, {
+      email: "anna@example.com", name, owner: { academyProfileId: ACADEMY }, creationRequestId: REQ,
+    }),
+    Error,
+  );
+  assertEquals(err.message, "guest_player_create_failed:42501");
+  assertEquals(err.message.includes("anna@example.com"), false);
 });

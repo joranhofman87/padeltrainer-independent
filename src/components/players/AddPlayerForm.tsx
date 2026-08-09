@@ -1,4 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from "@/lib/creationRequestId";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
@@ -36,6 +41,12 @@ export function AddPlayerForm({
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
+  /**
+   * The id of THIS create attempt. A double-click, or a save retried after a network hiccup,
+   * carries the same one and yields the same Player — no attribute of the person may be used to
+   * recognise a repeat (U2). Editing the fields makes it honestly a different attempt.
+   */
+  const attemptRef = useRef<CreationAttempt>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -138,36 +149,42 @@ export function AddPlayerForm({
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase
+      // Through the one create command, not a direct insert: that is what makes this retryable
+      // without producing a second Player, authorizes the scope in one place, and files a
+      // possible_duplicate_player proposal when the new Player looks like one already here.
+      const { data: created, error } = await supabase.rpc("player_create_command", {
+        _creation_request_id: creationRequestIdFor(
+          attemptRef,
+          JSON.stringify([
+            academyId ?? trainerId ?? null, nameFields.full_name,
+            email.trim().toLowerCase(), phone.trim(),
+          ]),
+        ),
+        _owner_type: academyId ? "academy" : "trainer",
+        _owner_id: academyId || trainerId || null,
+        _full_name: nameFields.full_name,
+        _email: email.trim().toLowerCase() || null,
+        _phone: phone.trim() || null,
+        _first_name: nameFields.first_name ?? null,
+        _last_name: nameFields.last_name ?? null,
+        _skill_rating: skillRating ? parseFloat(skillRating) : null,
+        _rating_system: ratingSystem,
+        _notes: notes.trim() || null,
+        _source: "manual_player",
+      });
+      if (error) throw error;
+
+      const guestPlayerId = (created as { guest_player_id: string | null } | null)?.guest_player_id;
+      if (!guestPlayerId) throw new Error("player_create_no_player");
+      // Re-read the row the command wrote: callers render it, and the command answers with ids.
+      const { data, error: readError } = await supabase
         .from("guest_players")
-        .insert({
-          trainer_id: trainerId || null,
-          academy_profile_id: academyId || null,
-          ...nameFields,
-          email: email.trim().toLowerCase() || null,
-          phone: phone.trim() || null,
-          skill_rating: skillRating ? parseFloat(skillRating) : null,
-          rating_system: ratingSystem,
-          notes: notes.trim() || null,
-        } as any)
-        .select()
+        .select("*")
+        .eq("id", guestPlayerId)
         .single();
+      if (readError) throw readError;
 
-      if (error) {
-        // Harmless fallback: the unique email indexes were dropped (shared
-        // emails are allowed), so 23505 only fires on environments that have
-        // not run that migration yet.
-        if (error.code === "23505") {
-          toast({
-            title: t("players.duplicateEmail"),
-            description: t("players.duplicateEmailDescription"),
-            variant: "destructive",
-          });
-          return;
-        }
-        throw error;
-      }
-
+      clearCreationAttempt(attemptRef);
       setLastCreatedName(nameFields.full_name);
       setShowSuccess(true);
       resetForm();
