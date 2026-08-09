@@ -10605,6 +10605,17 @@ export type Database = {
           updated_count: number
         }[]
       }
+      backup_export_count: { Args: { _relname: string }; Returns: number }
+      backup_export_page: {
+        Args: { _after: string; _limit: number; _relname: string }
+        Returns: Json[]
+      }
+      backup_export_tables: {
+        Args: never
+        Returns: {
+          relname: string
+        }[]
+      }
       begin_notification_digest_attempt: {
         Args: {
           p_day_cap?: number

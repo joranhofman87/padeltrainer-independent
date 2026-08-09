@@ -3,9 +3,14 @@
  *
  * The failure this replaces cannot be caught by testing against a real local database, because it
  * only appears when the table is larger than PostgREST's `max_rows` — so the stub here BEHAVES like
- * a capped PostgREST: it refuses to return more than `cap` rows per request and, like the real
- * thing, gives no indication that it truncated. Under that stub the old single-`select("*")` shape
- * silently returns one page and calls it a complete backup; the paged shape walks the key.
+ * a capped backend: it refuses to return more than `cap` rows per request and, like the real thing,
+ * gives no indication that it truncated. Under that stub the old single-`select("*")` shape silently
+ * returns one page and calls it a complete backup; the paged shape walks the key.
+ *
+ * The fixtures are SHUFFLED, and the stub sorts only because `backup_export_page` promises to. An
+ * earlier version of this file pre-sorted its rows and let the stub ignore ordering entirely, so
+ * dropping the ORDER BY from the real query passed every pagination assertion — the walk was
+ * correct only because the fixture happened to be.
  *
  * Lives in `_shared/` because that is the directory `npm run test:edge` runs.
  */
@@ -14,12 +19,23 @@ import {
   fetchWholeTable,
   handleRequest,
   PAGE_SIZE,
+  READ_ATTEMPTS,
   TABLES_TO_BACKUP,
 } from "../backup-database/index.ts";
 
-/** Rows with sortable uuid-ish ids, so keyset ordering is meaningful. */
-const makeRows = (n: number) =>
-  Array.from({ length: n }, (_, i) => ({ id: `id-${String(i).padStart(6, "0")}`, v: i }));
+/**
+ * Rows with sortable ids, deliberately OUT of id order — a keyset walk that relies on the backend's
+ * ORDER BY must still be correct, and one that does not must visibly fail.
+ */
+const makeRows = (n: number) => {
+  const rows = Array.from({ length: n }, (_, i) => ({ id: `id-${String(i).padStart(6, "0")}`, v: i }));
+  // deterministic shuffle — no Math.random, so a failure is reproducible
+  for (let i = rows.length - 1; i > 0; i--) {
+    const j = (i * 7919 + 13) % (i + 1);
+    [rows[i], rows[j]] = [rows[j], rows[i]];
+  }
+  return rows;
+};
 
 interface StubOptions {
   rows: Record<string, Array<{ id: string; v: number }>>;
@@ -41,34 +57,30 @@ function makeSupabase(opts: StubOptions) {
   const removed: string[] = [];
   let requests = 0;
 
-  const from = (table: string) => {
+  /** `backup_export_count` / `backup_export_page`, with the ordering the SQL function promises. */
+  const rpc = (fn: string, args: Record<string, unknown>) => {
+    const table = String(args._relname);
     const all = rows[table] ?? [];
-    const state = { head: false, limit: Infinity, gt: null as string | null };
-    const chain = {
-      select: (_cols: string, o?: { count?: string; head?: boolean }) => {
-        state.head = o?.head === true;
-        if (state.head) {
-          return Promise.resolve({ count: countOverride[table] ?? all.length, error: null });
-        }
-        return chain;
-      },
-      order: () => chain,
-      limit: (n: number) => { state.limit = n; return chain; },
-      gt: (_col: string, v: string) => { state.gt = v; return chain; },
-      then: (res: (x: { data: unknown; error: null }) => unknown) => {
-        requests++;
-        const after = state.gt;
-        const page = all
-          .filter((r) => after === null || r.id > after)
-          .slice(0, Math.min(state.limit, cap));   // the cap, applied silently
-        return Promise.resolve(res({ data: page, error: null }));
-      },
-    };
-    return chain;
+
+    if (fn === "backup_export_count") {
+      return Promise.resolve({ data: countOverride[table] ?? all.length, error: null });
+    }
+    if (fn !== "backup_export_page") {
+      return Promise.resolve({ data: null, error: { message: `unknown function ${fn}` } });
+    }
+
+    requests++;
+    const after = args._after === null || args._after === undefined ? null : String(args._after);
+    const limit = Math.min(Number(args._limit), cap);   // the cap, applied silently
+    const page = [...all]
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))   // ORDER BY t.id
+      .filter((r) => after === null || r.id > after)
+      .slice(0, limit);
+    return Promise.resolve({ data: page, error: null });
   };
 
   const supabase = {
-    from,
+    rpc,
     storage: {
       from: () => ({
         upload: (path: string) => {
@@ -148,6 +160,9 @@ Deno.test("a read that does not match the table's own count FAILS the backup", a
   assertEquals(res.status, 500);
   assertEquals(body.ok, false);
   assertEquals(body.incomplete, ["persons"]);
+  // a SYSTEMATIC disagreement reproduces, so the re-reads do not launder it into a pass
+  const personsAttempts = body.tables.find((t: { name: string }) => t.name === "persons");
+  assertEquals(personsAttempts.row_count, 800);
   const persons = body.tables.find((t: { name: string }) => t.name === "persons");
   assertNotEquals(persons.row_count, persons.expected_rows);
   // and the partial backup must not have been used as licence to delete older ones — the folder
@@ -178,11 +193,42 @@ Deno.test("a complete backup covers every declared table and reports ok", async 
   assertEquals(removed, [`${OLD_FOLDER}/persons.json`]);
 });
 
+Deno.test("a count that disagrees only ONCE is a concurrent write, not a bad backup", async () => {
+  // The count is taken before the walk, so an insert during it makes them differ. Failing the
+  // night's backup over that teaches people to ignore backup failures — so it is re-read, and only
+  // a disagreement that KEEPS happening fails.
+  const rows = allRows(0);
+  rows.persons = makeRows(10);
+  let call = 0;
+  const { supabase } = makeSupabase({ rows });
+  const inner = (supabase as unknown as { rpc: (f: string, a: Record<string, unknown>) => unknown }).rpc;
+  (supabase as unknown as { rpc: unknown }).rpc = (f: string, a: Record<string, unknown>) => {
+    if (f === "backup_export_count" && a._relname === "persons" && call++ === 0) {
+      return Promise.resolve({ data: 11, error: null });   // wrong on the FIRST attempt only
+    }
+    return inner(f, a);
+  };
+
+  const out = await fetchWholeTable(supabase, "persons");
+  assertEquals(out.rows.length, 10);
+  assertEquals(out.expected, 10);
+  assertEquals(out.attempts, 2);            // it took a second read, and the second agreed
+});
+
+Deno.test("a count that NEVER agrees is not retried into success", async () => {
+  const { supabase } = makeSupabase({ rows: { persons: makeRows(10) }, countOverride: { persons: 11 } });
+  const out = await fetchWholeTable(supabase, "persons");
+  assertEquals(out.attempts, READ_ATTEMPTS);
+  assertEquals(out.rows.length, 10);
+  assertEquals(out.expected, 11);           // still reported as a disagreement, so the backup fails
+});
+
 Deno.test("the membership tables a U1c rollback needs are in the list", () => {
   // U1c's stated rollback is "delete only the backfilled membership rows" — which is not something
   // you can do from a backup that never contained them.
   for (const t of [
     "academy_player_memberships",
+    "membership_backfill_runs",
     "membership_backfill_items",
     "academy_player_metadata",
     "academy_player_locations",
