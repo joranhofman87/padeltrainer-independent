@@ -39,6 +39,9 @@ const EXCLUDED = new Map([
   ['notification_outbox', 'transient queue state: rows are re-derivable from their source events, and a restored outbox would re-send. Consent lives in notification_contacts, which IS backed up.'],
 ]);
 
+/** The tables a U1c backfill rollback has to read together, or it is reading a contradiction. */
+const ROLLBACK_FAMILY = ['academy_player_memberships', 'membership_backfill_runs', 'membership_backfill_items'];
+
 let failures = 0;
 const fail = (msg, detail) => { failures++; console.error('FAIL', msg, detail ?? ''); };
 const pass = (msg) => console.log('PASS', msg);
@@ -75,6 +78,9 @@ const { rows: family } = await c.query(`
        EXISTS (SELECT 1 FROM pg_attribute a
                 WHERE a.attrelid = c.oid AND NOT a.attisdropped AND a.attname LIKE '%person_id')
        OR c.relname LIKE 'academy_player%'
+       -- a new manifest table can name a run and a membership without ever naming a person, so the
+       -- person-column rule alone would let it escape a backup-or-exclusion decision
+       OR c.relname LIKE 'membership_backfill%'
        -- both halves of the U1b manifest: items reference a run, and the run carries the plan hash
        -- and completion state that says whether a backfill may be resumed or must be abandoned
        OR c.relname IN ('persons', 'profiles', 'guest_players', 'person_links',
@@ -92,10 +98,47 @@ if (missing.length) {
   pass(`every one of the ${family.length} identity/Player tables is backed up or excluded with a reason`);
 }
 
+// A NEW manifest table must land in the family by itself. The person-column and academy_player
+// rules would not catch one that only names a run and a membership, so the pattern is staged here
+// rather than waited for — in a transaction, so nothing survives the probe.
+{
+  await c.query('BEGIN');
+  await c.query(`CREATE TABLE public.membership_backfill_probe (
+                   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), run_id uuid)`);
+  const { rows: probed } = await c.query(`
+    SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relkind = 'r'
+       AND (EXISTS (SELECT 1 FROM pg_attribute a
+                     WHERE a.attrelid = c.oid AND NOT a.attisdropped AND a.attname LIKE '%person_id')
+            OR c.relname LIKE 'academy_player%'
+            OR c.relname LIKE 'membership_backfill%'
+            OR c.relname IN ('persons', 'profiles', 'guest_players', 'person_links',
+                             'membership_backfill_runs', 'membership_backfill_items'))
+       AND c.relname = 'membership_backfill_probe'`);
+  ok_(probed.length === 1,
+    'a new manifest table with no person column is still caught by the derivation', probed);
+  await c.query('ROLLBACK');
+}
+
 // An exclusion for a table that no longer exists is a stale exemption pretending to be a decision.
 const gone = [...EXCLUDED.keys()].filter((t) => !family.some((r) => r.relname === t));
 if (gone.length) fail('EXCLUDED names tables that are not in the identity family any more', gone);
 else pass('every exclusion still refers to a real identity-family table');
+
+// ...and one with no reason is not a decision either, it is a hole with a name.
+const hasReason = (why) => typeof why === 'string' && why.trim().length >= 30;
+
+const reasonless = [...EXCLUDED.entries()].filter(([, why]) => !hasReason(why)).map(([t]) => t);
+if (reasonless.length) {
+  fail('EXCLUDED entries without a reason that says why losing them is recoverable', reasonless);
+} else {
+  pass('every exclusion carries a written reason');
+}
+
+// The check above passes trivially while every current reason is written, so the predicate itself is
+// exercised — otherwise it is a guard that has never once been asked a question it could fail.
+ok_(!hasReason('') && !hasReason(undefined) && !hasReason('too short') && hasReason('x'.repeat(30)),
+  'the written-reason rule actually rejects an unwritten reason');
 
 // ── PAGINATION PRECONDITION ────────────────────────────────────────────────────────────────────
 const { rows: keys } = await c.query(`
@@ -154,7 +197,7 @@ if (ungrouped.length) fail('backed-up tables that belong to no export group — 
 else pass('every backed-up table belongs to an export group');
 
 // the reason groups exist at all: the U1c rollback record must come from one snapshot
-const rollbackFamily = ['academy_player_memberships', 'membership_backfill_runs', 'membership_backfill_items'];
+const rollbackFamily = ROLLBACK_FAMILY;
 const families = new Set(rollbackFamily.map((t) => groupOf.get(t)));
 if (families.size !== 1 || families.has(undefined)) {
   fail('the U1c rollback tables are not in ONE group — an item could name a membership the backup lacks',
@@ -256,9 +299,10 @@ else pass('the backup can execute all three');
   ok_(viaFn.ok, 'the same read THROUGH backup_export_table succeeds as service_role', viaFn);
 
   const viaGroup = await probe(`SELECT public.backup_export_group('u1c_membership') AS r`);
-  ok_(viaGroup.ok && Object.keys(viaGroup.rows?.[0]?.r ?? {}).length === 3,
-    'the whole U1c rollback group exports in ONE call as service_role',
-    { ok: viaGroup.ok, tables: Object.keys(viaGroup.rows?.[0]?.r ?? {}) });
+  const gotTables = Object.keys(viaGroup.rows?.[0]?.r ?? {}).sort();
+  ok_(viaGroup.ok && JSON.stringify(gotTables) === JSON.stringify([...ROLLBACK_FAMILY].sort()),
+    'the U1c rollback group exports EXACTLY its three tables in one call, as service_role',
+    { ok: viaGroup.ok, tables: gotTables });
 
   const badGroup = await probe(`SELECT public.backup_export_group('not_a_group')`);
   ok_(!badGroup.ok && String(badGroup.message).includes('BACKUP_EXPORT_NOT_ALLOWED'),
@@ -321,11 +365,12 @@ else pass('the backup can execute all three');
     AS $fn$ SELECT 1::bigint $fn$`);
   await c.query(`INSERT INTO public.persons (id, full_name)
                  SELECT gen_random_uuid(), 'u1c-p4-bound-' || g FROM generate_series(1, 3) g`);
+  await c.query('SAVEPOINT rb');
   let bounded = null;
   try { await c.query(`SELECT public.backup_export_table('persons')`); }
-  catch (e) { bounded = e.message; }
+  catch (e) { bounded = e.message; await c.query('ROLLBACK TO SAVEPOINT rb'); }
   ok_(bounded !== null && bounded.includes('BACKUP_EXPORT_TOO_LARGE'),
-    'a table above the bound is refused with a reason, not attempted', { bounded });
+    'a table above the row bound is refused with a reason, not attempted', { bounded });
   await c.query('ROLLBACK');
 
   const { rows: [{ m2 }] } = await c.query(`SELECT public.backup_export_max_rows() AS m2`);
@@ -343,15 +388,46 @@ else pass('the backup can execute all three');
     AS $fn$ SELECT 1::bigint $fn$`);
   await c.query(`INSERT INTO public.persons (id, full_name)
                  SELECT gen_random_uuid(), 'u1c-p4-bytes-' || g FROM generate_series(1, 3) g`);
-  let byBytes = null;
-  try { await c.query(`SELECT public.backup_export_table('persons')`); }
-  catch (e) { byBytes = e.message; }
+  // each expected failure gets a savepoint, or the first one aborts the transaction and every
+  // later probe reports that abort instead of its own result
+  const fails = async (sql) => {
+    await c.query('SAVEPOINT bp');
+    try { await c.query(sql); await c.query('RELEASE SAVEPOINT bp'); return null; }
+    catch (e) { await c.query('ROLLBACK TO SAVEPOINT bp'); return e.message; }
+  };
+
+  const byBytes = await fails(`SELECT public.backup_export_table('persons')`);
   ok_(byBytes !== null && byBytes.includes('BACKUP_EXPORT_TOO_LARGE') && byBytes.includes('bytes'),
     'a table above the BYTE bound is refused with a reason, not attempted', { byBytes });
+
+  // precedence: with BOTH bounds tripped the BYTE one must answer, because it is the one that can
+  // predict the aggregate and because count(*) on a table too large to export is a pointless scan
+  await c.query(`
+    CREATE OR REPLACE FUNCTION public.backup_export_max_rows() RETURNS bigint
+    LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
+    AS $fn$ SELECT 1::bigint $fn$`);
+  const both = await fails(`SELECT public.backup_export_table('persons')`);
+  ok_(both !== null && both.includes('bytes'),
+    'with both bounds tripped the BYTE bound answers first', { both });
   await c.query('ROLLBACK');
 
   const { rows: [{ b2 }] } = await c.query(`SELECT public.backup_export_max_bytes() AS b2`);
   ok_(Number(b2) === Number(b), 'the real byte bound survives the probe', { before: Number(b), after: Number(b2) });
+
+  // A GROUP is one jsonb value, so three tables that each pass the per-table bound can still exceed
+  // it together. The group preflight is what catches that, and it is not the per-table one.
+  await c.query('BEGIN');
+  await c.query(`
+    CREATE OR REPLACE FUNCTION public.backup_export_max_bytes() RETURNS bigint
+    LANGUAGE sql IMMUTABLE SECURITY DEFINER SET search_path = pg_catalog, public, pg_temp
+    AS $fn$ SELECT 1::bigint $fn$`);
+  await c.query('SAVEPOINT gb');
+  let byGroup = null;
+  try { await c.query(`SELECT public.backup_export_group('u1c_membership')`); }
+  catch (e) { byGroup = e.message; await c.query('ROLLBACK TO SAVEPOINT gb'); }
+  ok_(byGroup !== null && byGroup.includes('group u1c_membership') && byGroup.includes('bytes'),
+    'a GROUP above the byte bound is refused as a group, before any table is aggregated', { byGroup });
+  await c.query('ROLLBACK');
 }
 
 await c.end();

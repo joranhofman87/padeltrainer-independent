@@ -99,17 +99,72 @@ const allRows = (n: number) => {
 
 Deno.test("the rows and the count the database reported are both carried through", async () => {
   const { supabase } = makeSupabase({ rows: { persons: makeRows(1234) } });
-  const out = await fetchGroup(supabase, "persons");
+  const out = await fetchGroup(supabase, "persons", ["persons"]);
   assertEquals(out.persons.rows.length, 1234);
   assertEquals(out.persons.expected, 1234);
 });
 
 Deno.test("a group comes back whole — all three rollback tables from one call", async () => {
-  const rows = allRows(2);
-  const { supabase, requests } = makeSupabase({ rows });
-  const out = await fetchGroup(supabase, "u1c_membership");
+  const { supabase, requests } = makeSupabase({ rows: allRows(2) });
+  const out = await fetchGroup(supabase, "u1c_membership", GROUPED);
   assertEquals(Object.keys(out).sort(), [...GROUPED].sort());
   assertEquals(requests(), 1);      // ONE call: that is what makes them one snapshot
+});
+
+Deno.test("a group that comes back MISSING a table is refused, not partly uploaded", async () => {
+  // the front-door version of the same cross-table hole: a successful response that quietly omits
+  // one member would otherwise upload the rest and report ok
+  // every group answers correctly EXCEPT the membership one, which quietly omits a member
+  const rows = allRows(2);
+  const base = makeSupabase({ rows });
+  const inner = (base.supabase as unknown as { rpc: (f: string, a?: Record<string, unknown>) => unknown }).rpc;
+  (base.supabase as unknown as { rpc: unknown }).rpc = (f: string, a?: Record<string, unknown>) => {
+    if (f === "backup_export_group" && a?._group === "u1c_membership") {
+      return Promise.resolve({
+        data: {
+          academy_player_memberships: { rows: rows.academy_player_memberships, row_count: 2 },
+          membership_backfill_runs: { rows: rows.membership_backfill_runs, row_count: 2 },
+          // membership_backfill_items silently absent
+        },
+        error: null,
+      });
+    }
+    return inner(f, a);
+  };
+  const supabase = base.supabase;
+
+  let threw = false;
+  try { await fetchGroup(supabase, "u1c_membership", GROUPED); } catch { threw = true; }
+  assertEquals(threw, true);
+
+  // and through the handler: every member of the group fails, none of them uploads
+  const res = await handleRequest(req(), { auth: auth(supabase), now: NOW });
+  const body = await res.json();
+  assertEquals(res.status, 500);
+  assertEquals([...body.failedQueries].sort(), [...GROUPED].sort());
+  // and nothing from that group was uploaded, while the other groups were unaffected
+  for (const t of GROUPED) {
+    assertEquals(`${t}:${base.uploaded.some((p: string) => p.endsWith(`/${t}.json`))}`, `${t}:false`);
+  }
+  assertEquals(base.uploaded.some((p: string) => p.endsWith("/persons.json")), true);
+});
+
+Deno.test("a group with an EXTRA table is refused too", async () => {
+  const supabase = {
+    rpc: (fn: string) =>
+      fn === "backup_export_groups"
+        ? Promise.resolve({ data: [{ group_name: "persons", relname: "persons" }], error: null })
+        : Promise.resolve({
+            data: {
+              persons: { rows: [], row_count: 0 },
+              user_roles: { rows: [], row_count: 0 },   // never asked for
+            },
+            error: null,
+          }),
+  } as never;
+  let threw = false;
+  try { await fetchGroup(supabase, "persons", ["persons"]); } catch { threw = true; }
+  assertEquals(threw, true);
 });
 
 Deno.test("an export payload that is not {rows, row_count} is refused, not half-read", async () => {
@@ -117,7 +172,7 @@ Deno.test("an export payload that is not {rows, row_count} is refused, not half-
   for (const bad of [{}, { p: { rows: null, row_count: 0 } }, { p: { rows: [] } }, { p: { row_count: 3 } }]) {
     const supabase = { rpc: () => Promise.resolve({ data: bad, error: null }) } as never;
     let threw = false;
-    try { await fetchGroup(supabase, "persons"); } catch { threw = true; }
+    try { await fetchGroup(supabase, "persons", ["p"]); } catch { threw = true; }
     assertEquals(`${JSON.stringify(bad)}:${threw}`, `${JSON.stringify(bad)}:true`);
   }
 });

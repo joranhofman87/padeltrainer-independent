@@ -129,19 +129,20 @@ BEGIN
       USING ERRCODE = 'insufficient_privilege';
   END IF;
 
-  -- Checked first and separately: the bounds exist to avoid attempting an aggregate that cannot
-  -- succeed, so they have to be answered before the aggregate is attempted.
-  EXECUTE format('SELECT count(*) FROM public.%I', _relname) INTO v_n;
-  IF v_n > public.backup_export_max_rows() THEN
-    RAISE EXCEPTION 'BACKUP_EXPORT_TOO_LARGE: % has % rows, above the % this export can hold in one value',
-      _relname, v_n, public.backup_export_max_rows()
-      USING ERRCODE = 'program_limit_exceeded';
-  END IF;
-
+  -- Checked before the aggregate, and BYTES FIRST: the byte bound is the one that can actually
+  -- predict the aggregate, and `count(*)` on a table too large to export is itself a scan nobody
+  -- needs. The row count stays as the cheap second opinion.
   v_bytes := pg_table_size(to_regclass('public.' || quote_ident(_relname)));
   IF v_bytes > public.backup_export_max_bytes() THEN
     RAISE EXCEPTION 'BACKUP_EXPORT_TOO_LARGE: % holds % bytes, above the % this export can hold in one value',
       _relname, v_bytes, public.backup_export_max_bytes()
+      USING ERRCODE = 'program_limit_exceeded';
+  END IF;
+
+  EXECUTE format('SELECT count(*) FROM public.%I', _relname) INTO v_n;
+  IF v_n > public.backup_export_max_rows() THEN
+    RAISE EXCEPTION 'BACKUP_EXPORT_TOO_LARGE: % has % rows, above the % this export can hold in one value',
+      _relname, v_n, public.backup_export_max_rows()
       USING ERRCODE = 'program_limit_exceeded';
   END IF;
 
@@ -174,7 +175,27 @@ DECLARE
   v_rel text;
   v_out jsonb := '{}'::jsonb;
   v_any boolean := false;
+  v_bytes bigint;
 BEGIN
+  IF NOT EXISTS (SELECT 1 FROM public.backup_export_groups() g WHERE g.group_name = _group) THEN
+    RAISE EXCEPTION 'BACKUP_EXPORT_NOT_ALLOWED: % is not an export group', _group
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  -- The bound belongs HERE as well as per table: a group is ONE jsonb value, so three tables that
+  -- each pass the per-table bound can still exceed it together. Checked before any aggregation, so
+  -- the refusal arrives instead of the memory pressure.
+  SELECT coalesce(sum(pg_table_size(to_regclass('public.' || quote_ident(g.relname)))), 0)
+    INTO v_bytes
+    FROM public.backup_export_groups() g
+   WHERE g.group_name = _group;
+
+  IF v_bytes > public.backup_export_max_bytes() THEN
+    RAISE EXCEPTION 'BACKUP_EXPORT_TOO_LARGE: group % holds % bytes, above the % this export can hold in one value',
+      _group, v_bytes, public.backup_export_max_bytes()
+      USING ERRCODE = 'program_limit_exceeded';
+  END IF;
+
   FOR v_rel IN
     SELECT g.relname FROM public.backup_export_groups() g WHERE g.group_name = _group ORDER BY 1
   LOOP

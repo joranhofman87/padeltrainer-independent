@@ -93,6 +93,7 @@ export interface TableResult {
 export async function fetchGroup(
   supabase: SupabaseClient,
   group: string,
+  expected: readonly string[],
 ): Promise<Record<string, { rows: unknown[]; expected: number }>> {
   const { data, error } = await supabase.rpc("backup_export_group", { _group: group });
   if (error) throw new Error(`export failed: ${error.message}`);
@@ -110,7 +111,16 @@ export async function fetchGroup(
     }
     out[table] = { rows, expected: v.row_count };
   }
-  if (Object.keys(out).length === 0) throw new Error(`export of group ${group} returned no tables`);
+  // EXACTLY the declared members, no more and no fewer. A group export that quietly omits one table
+  // would otherwise upload the rest and report ok — which is the same cross-table hole groups exist
+  // to close, arriving through the front door.
+  const got = Object.keys(out).sort();
+  const want = [...expected].sort();
+  if (got.length !== want.length || got.some((t, i) => t !== want[i])) {
+    throw new Error(
+      `export of group ${group} returned [${got.join(", ")}], expected [${want.join(", ")}]`,
+    );
+  }
   return out;
 }
 
@@ -146,16 +156,18 @@ export async function handleRequest(
     if (groups.length === 0) throw new Error("no export groups are declared");
 
     for (const group of groups) {
+      const members = ((groupRows ?? []) as Array<{ group_name: string; relname: string }>)
+        .filter((g) => g.group_name === group)
+        .map((g) => g.relname);
+
       let exported: Record<string, { rows: unknown[]; expected: number }>;
       try {
-        exported = await fetchGroup(supabase, group);
+        exported = await fetchGroup(supabase, group, members);
       } catch (err) {
         console.error(`Error exporting group ${group}:`, err instanceof Error ? err.message : err);
         // every table in a failed group is a failed table — a group that half-uploads is the
         // inconsistency this design exists to prevent
-        for (const t of ((groupRows ?? []) as Array<{ group_name: string; relname: string }>)
-          .filter((g) => g.group_name === group)
-          .map((g) => g.relname)) {
+        for (const t of members) {
           failedQueries.push(t);
           results.push({ name: t, row_count: 0, size_bytes: 0, expected_rows: 0 });
         }
