@@ -28,14 +28,21 @@ await c.connect();
 const one = async (sql, params = []) => (await c.query(sql, params)).rows[0];
 const all = async (sql, params = []) => (await c.query(sql, params)).rows;
 
-/** A real account: auth user → the signup trigger makes the profile, which mints the person. */
-async function makeAccount(email) {
+/**
+ * A real account: auth user → the signup trigger makes the profile, which mints the person.
+ *
+ * `auth.users.email` is UNIQUE but `profiles.email` is not, which is the whole reason H1 checks the
+ * profile count. So the auth address is always distinct and the PROFILE address is the one under
+ * test — two accounts really can carry one address in this schema.
+ */
+async function makeAccount(profileEmail, { distinctAuthEmail = false } = {}) {
+  const authEmail = distinctAuthEmail ? `auth-${crypto.randomUUID()}@example.com` : profileEmail;
   const { id: uid } = await one(
     `INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
      VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-             $1, '', now(), now()) RETURNING id`, [email]);
+             $1, '', now(), now()) RETURNING id`, [authEmail]);
   const { id: profileId } = await one(`SELECT id FROM public.profiles WHERE user_id = $1`, [uid]);
-  await c.query(`UPDATE public.profiles SET email = $1 WHERE id = $2`, [email, profileId]);
+  await c.query(`UPDATE public.profiles SET email = $1 WHERE id = $2`, [profileEmail, profileId]);
   return { uid, profileId };
 }
 
@@ -182,6 +189,71 @@ const EMAIL = () => `u2-${Math.abs(Date.now() % 1e9)}-${Math.floor(process.hrtim
   ok('an ambiguous address proposes nothing — there is no candidate to propose',
     !r.some((x) => x.kind === 'email_pair_awaiting_claim'), r);
   await c.query('ROLLBACK');
+}
+
+// ══ 4b. AMBIGUITY IS NOT A CANDIDATE ═══════════════════════════════════════════════════════════
+// The proposal needs BOTH counts to be one. The earlier fixtures could not tell either guard from
+// its absence: test 1 had a single profile, and the family test inserted both guests before any
+// account existed.
+{
+  await c.query('BEGIN');
+  const email = EMAIL();
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 ambiguous', 'u2a-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+
+  // TWO accounts carrying one address. `auth.users.email` is unique and `profiles.email` is not,
+  // so the second account signs up under its own address and its profile is then moved onto the
+  // shared one — which is exactly how two profiles come to share an address in this schema.
+  await makeAccount(email);
+  await makeAccount(email, { distinctAuthEmail: true });
+
+  const { id: guest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Ambiguous Guest', $1, $2) RETURNING id`, [email, academy]);
+
+  const r = await reviews(email);
+  ok('a guest on an address TWO accounts share proposes no claim — there is no single candidate',
+    !r.some((x) => x.kind === 'email_pair_awaiting_claim' && x.guest_player_id === guest), r);
+  ok('...and the ambiguity is RECORDED rather than passed over',
+    r.some((x) => x.kind === 'multi_profile_email' && x.guest_player_id === guest), r);
+  await c.query('ROLLBACK');
+}
+
+{
+  await c.query('BEGIN');
+  const email = EMAIL();
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 second guest', 'u2s-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  await makeAccount(email);                                   // one account exists
+  const { id: first } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('First Sibling', $1, $2) RETURNING id`, [email, academy]);
+  const before = await reviews(email);
+  ok('the FIRST guest on an address with one account IS proposed',
+    before.some((x) => x.kind === 'email_pair_awaiting_claim' && x.guest_player_id === first), before);
+
+  const { id: second } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Second Sibling', $1, $2) RETURNING id`, [email, academy]);
+  const after = await reviews(email);
+  ok('a SECOND guest on that address is not — the address stopped being unambiguous',
+    !after.some((x) => x.kind === 'email_pair_awaiting_claim' && x.guest_player_id === second), after);
+  ok('...and the cluster is recorded instead',
+    after.some((x) => x.kind === 'shared_email_cluster' && x.guest_player_id === second), after);
+  await c.query('ROLLBACK');
+}
+
+// H1's profile-count guard has no reachable fixture: `handle_new_user` copies the UNIQUE auth email
+// into the profile, so two profiles cannot be INSERTED carrying one address through the shipped
+// signup path. It is fidelity with the body this replaces and defence for any other insert path, so
+// it is asserted where it can be — in the shipped definition.
+{
+  const { d } = await one(
+    `SELECT pg_get_functiondef('public.mint_person_for_profile()'::regprocedure) AS d`);
+  const guarded = /count\(\*\)\s*FROM public\.profiles p/.test(d) && /=\s*1/.test(d);
+  ok('H1 still requires exactly ONE profile on the address before proposing', guarded);
 }
 
 // ══ 5. B1 IS KEPT — an explicit, verified assertion is a second signal ═════════════════════════

@@ -143,8 +143,10 @@ describe('resolveInvoiceGuestPlayerId', () => {
     expect(fromMock).not.toHaveBeenCalled();
   });
 
-  it('reuses existing guest by email instead of inserting duplicate', async () => {
-    guestLookupResult = { id: 'existing-by-email' };
+  it('reuses an existing guest when the email AND the name agree', async () => {
+    // U2 (owner, 2026-08-09): an email match alone is not proof of same-person — households share
+    // addresses — so the name has to agree too. The row therefore carries the name now.
+    guestLookupResult = { id: 'existing-by-email', full_name: 'Sponsor' };
     const id = await resolveInvoiceGuestPlayerId({
       playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
       oneTimeMode: true,
@@ -253,8 +255,8 @@ describe('resolveOrCreateInvoiceGuest', () => {
     expect(insertArg.email).toBeUndefined();
   });
 
-  it('dedupes by email within academy scope', async () => {
-    guestLookupResult = { id: 'existing-by-email' };
+  it('dedupes by email within academy scope when the name agrees', async () => {
+    guestLookupResult = { id: 'existing-by-email', full_name: 'Jan' };
     const id = await resolveOrCreateInvoiceGuest({
       playerName: 'Jan',
       playerEmail: 'jan@test.com',
@@ -263,6 +265,19 @@ describe('resolveOrCreateInvoiceGuest', () => {
     });
     expect(id).toBe('existing-by-email');
     expect(insertMock).not.toHaveBeenCalled();
+  });
+
+  it('does NOT reuse a lone email match under a different name — it creates a new player', async () => {
+    // the household case: the invoice is for the child, the address is on the parent's record
+    guestLookupResult = { id: 'the-parent', full_name: 'Marieke de Vries' };
+    const id = await resolveOrCreateInvoiceGuest({
+      playerName: 'Anna de Vries',
+      playerEmail: 'family@test.com',
+      scope: 'academy',
+      academyProfileId: 'a1',
+    });
+    expect(id).not.toBe('the-parent');
+    expect(insertMock).toHaveBeenCalledTimes(1);
   });
 
   it('returns null when the scope owner id is missing', async () => {
@@ -293,8 +308,8 @@ describe('resolveOrCreateAcademyInvoiceGuest', () => {
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('dedupes by email within academy scope instead of inserting', async () => {
-    guestLookupResult = { id: 'existing-by-email' };
+  it('dedupes by email within academy scope instead of inserting, when the name agrees', async () => {
+    guestLookupResult = { id: 'existing-by-email', full_name: 'Jan' };
     const id = await resolveOrCreateAcademyInvoiceGuest('Jan', 'jan@test.com', 'a1');
     expect(id).toBe('existing-by-email');
     expect(insertMock).not.toHaveBeenCalled();

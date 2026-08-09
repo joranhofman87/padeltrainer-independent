@@ -73,7 +73,13 @@ BEGIN
   -- The account-claim shape: a guest existed first and the human has now signed up with that
   -- address. This used to collapse. It now PROPOSES — the row is pending, nothing is merged, and the
   -- two persons stay separate until someone claims one into the other.
+  -- BOTH counts, as the shipped body required. Profile emails are not unique in this schema, so
+  -- dropping the profile-count check would propose a claim on an address several accounts share —
+  -- each new account naming itself as the candidate. Ambiguity is not a candidate.
   IF v_email IS NOT NULL
+     AND (SELECT count(*) FROM public.profiles p
+          WHERE lower(btrim(p.email)) = lower(v_email)
+            AND nullif(btrim(p.email), '') IS NOT NULL) = 1
      AND (SELECT count(*) FROM public.guest_players g
           WHERE lower(btrim(g.email)) = lower(v_email)
             AND nullif(btrim(g.email), '') IS NOT NULL) = 1 THEN
@@ -191,6 +197,20 @@ BEGIN
     INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, profile_id, person_id, details)
     VALUES (v_merged_kind, 'applied', NEW.email, NEW.id, v_merged_profile, v_person,
             jsonb_build_object('guest_name', NEW.full_name, 'via', 'live_insert'));
+  END IF;
+
+  -- The ambiguity records the shipped body wrote. Retiring B2 removes a MERGE; it does not make an
+  -- ambiguous address less worth recording. Dropping these would have quietly reduced what the
+  -- review queue knows.
+  IF v_email IS NOT NULL AND v_guest_count > 1 AND v_merged_kind IS NULL THEN
+    INSERT INTO public.person_merge_review (kind, email, guest_player_id, details)
+    VALUES ('shared_email_cluster', NEW.email, NEW.id,
+            jsonb_build_object('guest_name', NEW.full_name, 'cluster_size', v_guest_count, 'via', 'live_insert'));
+  END IF;
+  IF v_email IS NOT NULL AND v_profile_count > 1 AND v_merged_kind IS NULL THEN
+    INSERT INTO public.person_merge_review (kind, email, guest_player_id, details)
+    VALUES ('multi_profile_email', NEW.email, NEW.id,
+            jsonb_build_object('guest_name', NEW.full_name, 'profile_count', v_profile_count, 'via', 'live_insert'));
   END IF;
 
   RETURN NEW;

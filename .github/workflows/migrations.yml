@@ -39,6 +39,20 @@ jobs:
       - name: Reset database from migrations
         run: supabase db reset --yes
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Fails if any shipped function still merges identity on an email match alone, or if a new
+      # identity writer appears that nobody has reviewed. Runs in THIS job because it needs the
+      # database the reset above just built.
+      - name: U2 — email alone never merges (local Postgres)
+        run: node scripts/db/u2-no-email-alone-merge.mjs
+
   types-drift:
     name: generated types drift
     runs-on: ubuntu-latest
@@ -61,10 +75,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Fails if any shipped function still merges identity on an email match alone, or if a new
-      # identity writer appears that nobody has reviewed.
-      - name: U2 — email alone never merges (local Postgres)
-        run: node scripts/db/u2-no-email-alone-merge.mjs
 
       - name: Start Supabase and check types drift
         # The script prefers the setup-cli `supabase` binary on PATH (no platform

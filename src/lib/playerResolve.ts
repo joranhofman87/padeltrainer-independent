@@ -22,7 +22,9 @@ function pickGuestIdByName(
    * When true, even a SINGLE email match must also match the name before it is reused. Household
    * emails are shared (a parent registered-account and a child guest can carry the same address),
    * so a lone match is NOT proof of same-person — reusing it blindly seats/invoices the WRONG human
-   * (audit #1). The registered-player twin path sets this; name-less invoice dedup keeps the shortcut.
+   * (audit #1). The registered-player twin path sets this, and so does invoice recipient resolution
+   * since U2: an invoice attached to a household member on the strength of an address is the same
+   * email-alone identity decision the database no longer makes (owner, 2026-08-09).
    */
   requireNameMatch = false,
 ): string | null {

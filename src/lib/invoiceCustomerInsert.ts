@@ -66,6 +66,11 @@ export async function resolveOrCreateInvoiceGuest(
     scope: resolveScope,
     fullName: args.playerName,
     email: args.playerEmail,
+    // An email that matches ONE existing player is not proof it is the same human — households
+    // share addresses. Attaching an invoice to that player on the strength of the address alone is
+    // the same email-alone identity decision U2 removed from the database; the name has to agree
+    // too. When it does not, a new player is created rather than the wrong one billed.
+    requireNameMatch: true,
   });
 }
 
