@@ -188,6 +188,20 @@ describe('every identity writer that matches on an email also checks the name', 
     }
   });
 
+  it('the intake dialog names the owner the cycle already knows', () => {
+    // Without it the player is created ownerless: invisible in the academy's players list, and it
+    // never reaches the scoped idempotent create path at all.
+    const src = readFileSync('src/components/cycles/AddIntakeRequestDialog.tsx', 'utf8');
+    expect(src).toMatch(/owner_type === 'academy'\) return \{ academyProfileId: c\.owner_id \}/);
+    expect(src).toMatch(/owner_type === 'trainer'\) return \{ trainerProfileId: c\.owner_id \}/);
+  });
+
+  it('the academy branch of create-manual-player goes through the one command', () => {
+    const src = readFileSync('supabase/functions/create-manual-player/index.ts', 'utf8');
+    expect(src).toContain('academy_create_player');
+    expect(src).toContain('_actor_user_id: userId');
+  });
+
   it('every listed site carries a written reason', () => {
     for (const { file, why } of SITES) {
       expect(`${file}: ${why.length >= 40}`).toBe(`${file}: true`);

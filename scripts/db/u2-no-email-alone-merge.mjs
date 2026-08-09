@@ -525,6 +525,51 @@ async function proposedPair() {
   ok('a signed-in caller cannot borrow a manager by naming them as the actor',
     !impersonated.ok && /PLAYER_CREATE_FORBIDDEN/.test(impersonated.message ?? ''), impersonated);
 
+  // THE PATH PRODUCTION USES. The edge function calls this with the service key, so the request's
+  // JWT role is `service_role` and the acting user is named explicitly. Tested as PostgREST does it
+  // — a role claim, not `session_user`, which is `authenticator` for a service call too and made an
+  // earlier version of this gate never fire at all.
+  await c.query('SAVEPOINT svc');
+  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ role: 'service_role' })]);
+  const viaService = await one(`SELECT public.academy_create_player($1, $2, $3, NULL, $4) AS r`,
+    [academy, 'Nieuwe Speler', email, managerUid]);
+  ok('a service-role call acting AS the manager resolves to the same player',
+    viaService.r.created === false && viaService.r.guest_player_id === first.value.guest_player_id,
+    viaService.r);
+
+  await c.query('SAVEPOINT svc2');
+  const svcNoActor = await c.query(`SELECT public.academy_create_player($1, $2, $3) AS r`,
+    [academy, 'Nieuwe Speler', email]).then(() => null)
+    .catch(async (e) => { await c.query('ROLLBACK TO SAVEPOINT svc2'); return e.message; });
+  ok('a service-role call naming NO actor is still refused — the key is not an identity',
+    svcNoActor !== null && /NOT_AUTHENTICATED/.test(svcNoActor), { svcNoActor });
+
+  await c.query('SAVEPOINT svc3');
+  const svcOutsider = await c.query(`SELECT public.academy_create_player($1, $2, $3, NULL, $4) AS r`,
+    [academy, 'Nieuwe Speler', email, outsiderUid]).then(() => null)
+    .catch(async (e) => { await c.query('ROLLBACK TO SAVEPOINT svc3'); return e.message; });
+  ok('...and the named actor still has to manage the academy',
+    svcOutsider !== null && /FORBIDDEN/.test(svcOutsider), { svcOutsider });
+
+  // ...and pin WHICH role it reads. This harness connects as a superuser, so `session_user` is
+  // neither `authenticator` nor `service_role` and a behavioural test cannot tell the two
+  // implementations apart. PostgREST connects as `authenticator` and switches role from the token,
+  // so `session_user` would be `authenticator` even for a service-key call and the override would
+  // never fire — the bug this replaced.
+  const { d: createDef } = await one(
+    `SELECT pg_get_functiondef('public.academy_create_player(uuid,text,text,text,uuid)'::regprocedure) AS d`);
+  // the ASSIGNMENT, not the whole body — the comment above it names session_user precisely to say
+  // why it is wrong, and a body-wide search would fail on the explanation
+  const svcAssign = createDef.match(/v_is_service\s+boolean\s*:=\s*([^;]+);/);
+  ok('the service check reads the REQUEST role, not the connected role',
+    Boolean(svcAssign) && /auth\.role\(\)\s*=\s*'service_role'/.test(svcAssign[1])
+      && !/session_user|current_user/.test(svcAssign[1]),
+    { assignment: svcAssign?.[1]?.trim() });
+
+  await c.query('ROLLBACK TO SAVEPOINT svc');
+  await c.query(`SELECT set_config('request.jwt.claims', NULL, true)`);
+
   const nameless = await asUser(managerUid, async () =>
     (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, '   ', email])).r);
   ok('a player with no name is refused — nothing could deduplicate it',

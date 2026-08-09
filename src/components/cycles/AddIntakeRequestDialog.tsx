@@ -254,6 +254,15 @@ export default function AddIntakeRequestDialog({
             ratingSystem: data.rating_system,
             rating: data.rating,
             cycleName: cycles.find(c => c.id === data.cycle_id)?.name || '',
+            // The owner the cycle already names. Without it the player is created ownerless — it
+            // never appears in the academy's players list, and it misses the scoped, idempotent
+            // create path entirely (U2).
+            ...(() => {
+              const c = cycles.find((x) => x.id === data.cycle_id);
+              if (c?.owner_type === 'academy') return { academyProfileId: c.owner_id };
+              if (c?.owner_type === 'trainer') return { trainerProfileId: c.owner_id };
+              return {};
+            })(),
           },
         }
       );

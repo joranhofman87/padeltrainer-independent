@@ -231,10 +231,11 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
-  -- `session_user` is the role that connected — `service_role` for an edge function using the
-  -- service key, `authenticator` for a PostgREST request. A signed-in caller therefore cannot reach
-  -- the `_actor_user_id` branch, so the parameter cannot be used to act as somebody else.
-  v_is_service boolean := (SELECT session_user = 'service_role');
+  -- The REQUEST's role, from the JWT — not `session_user`. PostgREST connects as `authenticator`
+  -- and switches role from the token, so `session_user` is `authenticator` for a service-key call
+  -- too and the override would never fire. `auth.role()` reads the claim, which only a holder of
+  -- the service key can set to `service_role`; a signed-in caller's token says `authenticated`.
+  v_is_service boolean := (auth.role() = 'service_role');
   v_uid uuid;
   v_name text := nullif(btrim(_full_name), '');
   v_email text := lower(nullif(btrim(_email), ''));
