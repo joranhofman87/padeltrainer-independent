@@ -6605,6 +6605,82 @@ export type Database = {
         }
         Relationships: []
       }
+      player_create_commands: {
+        Row: {
+          academy_profile_id: string
+          actor_user_id: string
+          created_at: string
+          creation_request_id: string
+          guest_player_id: string | null
+          id: string
+          payload_fingerprint: string
+          person_id: string | null
+        }
+        Insert: {
+          academy_profile_id: string
+          actor_user_id: string
+          created_at?: string
+          creation_request_id: string
+          guest_player_id?: string | null
+          id?: string
+          payload_fingerprint: string
+          person_id?: string | null
+        }
+        Update: {
+          academy_profile_id?: string
+          actor_user_id?: string
+          created_at?: string
+          creation_request_id?: string
+          guest_player_id?: string | null
+          id?: string
+          payload_fingerprint?: string
+          person_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_owner"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
+            columns: ["academy_profile_id"]
+            isOneToOne: false
+            referencedRelation: "academy_profiles_safe"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_create_commands_guest_player_id_fkey"
+            columns: ["guest_player_id"]
+            isOneToOne: false
+            referencedRelation: "guest_players"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "player_create_commands_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_links: {
         Row: {
           created_at: string
@@ -10035,14 +10111,20 @@ export type Database = {
         Args: {
           _academy_profile_id: string
           _actor_user_id?: string
+          _creation_request_id: string
           _email?: string
           _full_name: string
           _phone?: string
+          _select_person_id?: string
         }
         Returns: Json
       }
       academy_has_managers: {
         Args: { _academy_profile_id: string }
+        Returns: boolean
+      }
+      academy_may_select_person: {
+        Args: { _academy_profile_id: string; _person_id: string }
         Returns: boolean
       }
       accept_rebook_rules: { Args: { _token: string }; Returns: undefined }
@@ -12128,6 +12210,15 @@ export type Database = {
         }
         Returns: boolean
       }
+      player_create_fingerprint: {
+        Args: {
+          _email: string
+          _full_name: string
+          _phone: string
+          _select_person_id: string
+        }
+        Returns: string
+      }
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
         Returns: boolean
@@ -12526,6 +12617,8 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: number
       }
+      u2_norm: { Args: { _v: string }; Returns: string }
+      u2_ns: { Args: { _v: string }; Returns: string }
       unclaim_rebook_member_open_notice: {
         Args: { _cycle_id: string }
         Returns: undefined

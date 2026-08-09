@@ -475,16 +475,16 @@ async function proposedPair() {
   await c.query(`DELETE FROM auth.users WHERE id = $1`, [f.uid]);
 }
 
-// ══ 5d. THE IDEMPOTENT CREATE ══════════════════════════════════════════════════════════════════
+// ══ 5d. CREATION IS IDEMPOTENT ON A REQUEST UUID, NOT ON A PERSON'S ATTRIBUTES ═════════════════
+// `person_id` is the canonical Player identity; a separate stable UUID identifies the create
+// COMMAND. Email, phone and name are mutable attributes and matching signals — never identity, never
+// idempotency keys — and knowing a UUID never grants authorization (owner, 2026-08-09).
 {
   await c.query('BEGIN');
-  const email = EMAIL();
   const { id: academy } = await one(
     `INSERT INTO public.academy_profiles (name, slug)
      VALUES ('u2 create', 'u2cr-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
-  const { uid: managerUid, profileId: managerProfile } = await makeAccount(EMAIL());
-  // a MANAGER, deliberately not an owner: `is_academy_manager` accepts any academy_managers row, so
-  // seeding an owner would pass even if ordinary managers were excluded
+  const { uid: managerUid } = await makeAccount(EMAIL());
   await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
                  VALUES ($1, $2, 'manager')`, [academy, managerUid]).catch(async () => {
     await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id)
@@ -495,85 +495,127 @@ async function proposedPair() {
     [academy, managerUid]);
   ok('the create fixture seeds a MANAGER, not an owner', (seededRole?.role ?? 'manager') !== 'owner', seededRole);
 
-  const first = await asUser(managerUid, async () =>
-    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Nieuwe Speler', email])).r);
+  const create = (uid, req, name, email, extra = 'NULL, NULL') =>
+    asUser(uid, async () => (await one(
+      `SELECT public.academy_create_player($1, $2, $3, $4, ${extra}) AS r`,
+      [academy, req, name, email])).r);
+
+  const email = EMAIL();
+  const reqA = (await one(`SELECT gen_random_uuid() AS id`)).id;
+
+  const first = await create(managerUid, reqA, 'Nieuwe Speler', email);
   ok('an academy manager can create a player', first.ok && first.value.created === true, first);
+  ok('the answer is the canonical person_id', first.ok && first.value.person_id !== null, first.value);
 
-  const second = await asUser(managerUid, async () =>
-    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Nieuwe Speler', email])).r);
-  ok('creating the same player twice returns the SAME one — idempotent',
-    second.ok && second.value.created === false
-    && second.value.guest_player_id === first.value.guest_player_id, second);
+  const replay = await create(managerUid, reqA, 'Nieuwe Speler', email);
+  ok('the SAME request id replays — same Player, nothing created',
+    replay.ok && replay.value.created === false && replay.value.replayed === true
+    && replay.value.person_id === first.value.person_id, replay);
 
-  const sibling = await asUser(managerUid, async () =>
-    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Broertje Speler', email])).r);
-  ok('a DIFFERENT name on the same address is a different player, not a reuse',
-    sibling.ok && sibling.value.created === true
-    && sibling.value.guest_player_id !== first.value.guest_player_id, sibling);
+  // a DIFFERENT attempt for the same human is a different Player, and only a proposal
+  const reqB = (await one(`SELECT gen_random_uuid() AS id`)).id;
+  const twin = await create(managerUid, reqB, 'Nieuwe Speler', email);
+  ok('a different request id with IDENTICAL name and email is NOT silently the same Player',
+    twin.ok && twin.value.person_id !== first.value.person_id, twin);
+  ok('...it is proposed for review instead',
+    (await one(`SELECT count(*)::int AS n FROM public.person_merge_review
+                 WHERE kind = 'possible_duplicate_player' AND person_id = $1`, [twin.value.person_id])).n === 1);
 
+  // reusing an id with different material facts is a caller bug and is told so
+  const conflict = await create(managerUid, reqA, 'Andere Naam', email);
+  ok('reusing a request id with a CHANGED payload is refused',
+    !conflict.ok && /IDEMPOTENCY_CONFLICT/.test(conflict.message ?? ''), conflict);
+
+  const { id: academy2 } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 other', 'u2o-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy2, managerUid]).catch(() => {});
+  const crossAcademy = await asUser(managerUid, async () => (await one(
+    `SELECT public.academy_create_player($1, $2, $3, $4, NULL, NULL) AS r`,
+    [academy2, reqA, 'Nieuwe Speler', email])).r);
+  ok('reusing a request id against a DIFFERENT academy is refused',
+    !crossAcademy.ok && /IDEMPOTENCY_CONFLICT/.test(crossAcademy.message ?? ''), crossAcademy);
+
+  // email is optional at the architectural level, and still retryable
+  const reqC = (await one(`SELECT gen_random_uuid() AS id`)).id;
+  const noEmail1 = await create(managerUid, reqC, 'Zonder Email', null);
+  const noEmail2 = await create(managerUid, reqC, 'Zonder Email', null);
+  ok('a Player with NO email is creatable', noEmail1.ok && noEmail1.value.created === true, noEmail1);
+  ok('...and retrying it is idempotent, with no email to key on',
+    noEmail2.ok && noEmail2.value.created === false
+    && noEmail2.value.person_id === noEmail1.value.person_id, noEmail2);
+
+  // authorization is not possession of a uuid
   const { uid: outsiderUid } = await makeAccount(EMAIL());
-  const refused = await asUser(outsiderUid, async () =>
-    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Sneaky', EMAIL()])).r);
+  const refused = await asUser(outsiderUid, async () => (await one(
+    `SELECT public.academy_create_player($1, $2, $3, $4, NULL, NULL) AS r`,
+    [academy, (await one(`SELECT gen_random_uuid() AS id`)).id, 'Sneaky', EMAIL()])).r);
   ok('someone who does not manage the academy cannot create players there',
     !refused.ok && /PLAYER_CREATE_FORBIDDEN/.test(refused.message ?? ''), refused);
 
-  // the actor override is for SERVICE-ROLE callers only. A signed-in caller naming somebody else
-  // would otherwise be an impersonation switch with a friendly parameter name.
-  const impersonated = await asUser(outsiderUid, async () =>
-    (await one(`SELECT public.academy_create_player($1, $2, $3, NULL, $4) AS r`,
-      [academy, 'Impersonated', EMAIL(), managerUid])).r);
-  ok('a signed-in caller cannot borrow a manager by naming them as the actor',
-    !impersonated.ok && /PLAYER_CREATE_FORBIDDEN/.test(impersonated.message ?? ''), impersonated);
+  const missingReq = await asUser(managerUid, async () => (await one(
+    `SELECT public.academy_create_player($1, NULL, $2, $3, NULL, NULL) AS r`,
+    [academy, 'No Request Id', EMAIL()])).r);
+  ok('a create with no request id is refused — it could not be retried safely',
+    !missingReq.ok && /REQUEST_ID_REQUIRED/.test(missingReq.message ?? ''), missingReq);
 
-  // THE PATH PRODUCTION USES. The edge function calls this with the service key, so the request's
-  // JWT role is `service_role` and the acting user is named explicitly. Tested as PostgREST does it
-  // — a role claim, not `session_user`, which is `authenticator` for a service call too and made an
-  // earlier version of this gate never fire at all.
-  await c.query('SAVEPOINT svc');
-  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
-    [JSON.stringify({ role: 'service_role' })]);
-  const viaService = await one(`SELECT public.academy_create_player($1, $2, $3, NULL, $4) AS r`,
-    [academy, 'Nieuwe Speler', email, managerUid]);
-  ok('a service-role call acting AS the manager resolves to the same player',
-    viaService.r.created === false && viaService.r.guest_player_id === first.value.guest_player_id,
-    viaService.r);
+  // selecting an existing Player needs a person this academy may speak for
+  const { id: strangerAcademy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 stranger', 'u2st-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { id: strangerGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Someone Elses Player', $1, $2) RETURNING id`, [EMAIL(), strangerAcademy]);
+  const strangerPerson = (await personOfGuest(strangerGuest)).person_id;
 
-  await c.query('SAVEPOINT svc2');
-  const svcNoActor = await c.query(`SELECT public.academy_create_player($1, $2, $3) AS r`,
-    [academy, 'Nieuwe Speler', email]).then(() => null)
-    .catch(async (e) => { await c.query('ROLLBACK TO SAVEPOINT svc2'); return e.message; });
-  ok('a service-role call naming NO actor is still refused — the key is not an identity',
-    svcNoActor !== null && /NOT_AUTHENTICATED/.test(svcNoActor), { svcNoActor });
+  const stolen = await asUser(managerUid, async () => (await one(
+    `SELECT public.academy_create_player($1, $2, $3, NULL, NULL, $4) AS r`,
+    [academy, (await one(`SELECT gen_random_uuid() AS id`)).id, 'Whoever', strangerPerson])).r);
+  ok('knowing a person_id does not let an academy select it',
+    !stolen.ok && /PERSON_NOT_YOURS/.test(stolen.message ?? ''), stolen);
 
-  await c.query('SAVEPOINT svc3');
-  const svcOutsider = await c.query(`SELECT public.academy_create_player($1, $2, $3, NULL, $4) AS r`,
-    [academy, 'Nieuwe Speler', email, outsiderUid]).then(() => null)
-    .catch(async (e) => { await c.query('ROLLBACK TO SAVEPOINT svc3'); return e.message; });
-  ok('...and the named actor still has to manage the academy',
-    svcOutsider !== null && /FORBIDDEN/.test(svcOutsider), { svcOutsider });
+  const mine = await asUser(managerUid, async () => (await one(
+    `SELECT public.academy_create_player($1, $2, $3, NULL, NULL, $4) AS r`,
+    [academy, (await one(`SELECT gen_random_uuid() AS id`)).id, 'Whoever', first.value.person_id])).r);
+  ok('...but a Player the academy already has can be selected',
+    mine.ok && mine.value.person_id === first.value.person_id && mine.value.created === false, mine);
 
-  // ...and pin WHICH role it reads. This harness connects as a superuser, so `session_user` is
-  // neither `authenticator` nor `service_role` and a behavioural test cannot tell the two
-  // implementations apart. PostgREST connects as `authenticator` and switches role from the token,
-  // so `session_user` would be `authenticator` even for a service-key call and the override would
-  // never fire — the bug this replaced.
-  const { d: createDef } = await one(
-    `SELECT pg_get_functiondef('public.academy_create_player(uuid,text,text,text,uuid)'::regprocedure) AS d`);
-  // the ASSIGNMENT, not the whole body — the comment above it names session_user precisely to say
-  // why it is wrong, and a body-wide search would fail on the explanation
-  const svcAssign = createDef.match(/v_is_service\s+boolean\s*:=\s*([^;]+);/);
-  ok('the service check reads the REQUEST role, not the connected role',
-    Boolean(svcAssign) && /auth\.role\(\)\s*=\s*'service_role'/.test(svcAssign[1])
-      && !/session_user|current_user/.test(svcAssign[1]),
-    { assignment: svcAssign?.[1]?.trim() });
+  // the durable record is owner-only
+  const peek = await asUser(managerUid, async () =>
+    (await c.query(`SELECT count(*) FROM public.player_create_commands`)).rows);
+  ok('the command record is not readable by an ordinary client', !peek.ok, peek);
 
-  await c.query('ROLLBACK TO SAVEPOINT svc');
-  await c.query(`SELECT set_config('request.jwt.claims', NULL, true)`);
+  await c.query('ROLLBACK');
+}
 
-  const nameless = await asUser(managerUid, async () =>
-    (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, '   ', email])).r);
-  ok('a player with no name is refused — nothing could deduplicate it',
-    !nameless.ok && /NAME_REQUIRED/.test(nameless.message ?? ''), nameless);
+// ══ 5e. THE COMMAND RECORD SURVIVES THE PLAYER BEING CLAIMED ═══════════════════════════════════
+// A guest source disappears — claimed, merged, anonymized, deleted. If the record died with it, the
+// next retry of a long-finished attempt would quietly make a second Player.
+{
+  await c.query('BEGIN');
+  const f = await proposedPair();
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [f.academy, mgr]).catch(() => {});
+
+  // record a command whose answer is the guest's person, then let the human claim it away
+  const req = (await one(`SELECT gen_random_uuid() AS id`)).id;
+  const guestPerson = (await personOfGuest(f.guest)).person_id;
+  await c.query(
+    `INSERT INTO public.player_create_commands
+       (creation_request_id, academy_profile_id, actor_user_id, payload_fingerprint, person_id, guest_player_id)
+     VALUES ($1, $2, $3, 'fixture', $4, $5)`, [req, f.academy, mgr, guestPerson, f.guest]);
+
+  const claimed = await asUser(f.uid, async () =>
+    (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
+  ok('the claim still succeeds with a command record pointing at the guest person', claimed.ok, claimed);
+
+  const after = await one(
+    `SELECT person_id FROM public.player_create_commands WHERE creation_request_id = $1`, [req]);
+  const profilePerson = (await personOfProfile(f.profileId)).person_id;
+  ok('the command record was REPOINTED to the surviving person, not nulled',
+    after.person_id === profilePerson, { after: after.person_id, profilePerson, guestPerson });
   await c.query('ROLLBACK');
 }
 

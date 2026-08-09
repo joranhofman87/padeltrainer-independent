@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef} from 'react';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -68,6 +68,8 @@ export default function AddIntakeRequestDialog({
 }: AddIntakeRequestDialogProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /** The id of the create attempt currently in flight. Cleared on success, kept across retries. */
+  const creationRequestIdRef = useRef<string | null>(null);
   const [ratingSystems, setRatingSystems] = useState<Array<{
     code: string;
     name: string;
@@ -240,6 +242,10 @@ export default function AddIntakeRequestDialog({
     }
 
     setIsSubmitting(true);
+    // One id for this create ATTEMPT, minted once and reused by every retry of it — a double
+    // submit, a network retry, a second click. It is regenerated only after the attempt succeeds,
+    // so the next player the operator adds is a genuinely new attempt.
+    if (!creationRequestIdRef.current) creationRequestIdRef.current = crypto.randomUUID();
     try {
       // Step 1: Create or find the player account
       const { data: playerData, error: playerError } = await supabase.functions.invoke(
@@ -254,6 +260,7 @@ export default function AddIntakeRequestDialog({
             ratingSystem: data.rating_system,
             rating: data.rating,
             cycleName: cycles.find(c => c.id === data.cycle_id)?.name || '',
+            creationRequestId: creationRequestIdRef.current,
             // The owner the cycle already names. Without it the player is created ownerless — it
             // never appears in the academy's players list, and it misses the scoped, idempotent
             // create path entirely (U2).
@@ -306,6 +313,8 @@ export default function AddIntakeRequestDialog({
       
       form.reset();
       setDayAvailability({});
+      // the attempt is finished: the next player is a NEW attempt with a new id
+      creationRequestIdRef.current = null;
       onSuccess();
     } catch (error: any) {
       logger.error('Error creating intake request', error as Error, { component: 'AddIntakeRequestDialog' });

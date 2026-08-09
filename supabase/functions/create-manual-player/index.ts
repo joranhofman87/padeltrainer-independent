@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
+import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { evaluateManualPlayerAccess } from "../_shared/manual-player-access.ts";
 
@@ -8,15 +8,23 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-serve(async (req) => {
+/**
+ * Exported so the authorization and routing decisions can be driven by tests against the REAL
+ * handler. A source-grep proved nothing: it passed while an academy manager was refused at the gate
+ * and never reached the RPC at all.
+ */
+export async function handleRequest(
+  req: Request,
+  deps: { userClient?: SupabaseClient; adminClient?: SupabaseClient } = {},
+): Promise<Response> {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "http://localhost";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "anon";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "service";
 
     // Verify caller is authenticated
     const authHeader = req.headers.get("Authorization");
@@ -27,7 +35,7 @@ serve(async (req) => {
       );
     }
 
-    const supabaseUser = createClient(supabaseUrl, supabaseAnonKey, {
+    const supabaseUser = deps.userClient ?? createClient(supabaseUrl, supabaseAnonKey, {
       global: { headers: { Authorization: authHeader } },
     });
 
@@ -42,17 +50,6 @@ serve(async (req) => {
 
     const userId = claimsData.claims.sub;
 
-    // Verify caller is a club manager or trainer
-    const { data: isClubManager } = await supabaseUser.rpc("is_any_club_manager", { _user_id: userId });
-    const { data: isTrainer } = await supabaseUser.rpc("is_trainer", { _user_id: userId });
-
-    if (!isClubManager && !isTrainer) {
-      return new Response(
-        JSON.stringify({ error: "Only club managers or trainers can create manual player registrations" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const {
       email,
       firstName,
@@ -64,7 +61,35 @@ serve(async (req) => {
       cycleName,
       academyProfileId,
       trainerProfileId,
+      creationRequestId,
     } = await req.json();
+
+    // Who may be here at all. An academy manager who manages no club and is not a trainer was
+    // refused outright — which made the academy path this function now routes through unreachable
+    // for exactly the role it exists for. Supplying an academy scope admits them to the gate; it
+    // does NOT admit them to that academy, which the per-academy check below still decides.
+    const { data: isClubManager } = await supabaseUser.rpc("is_any_club_manager", { _user_id: userId });
+    const { data: isTrainer } = await supabaseUser.rpc("is_trainer", { _user_id: userId });
+
+    let gateAcademyManager = false;
+    if (academyProfileId) {
+      const { data: mgr } = await supabaseUser.rpc("is_academy_manager", {
+        _user_id: userId,
+        _academy_profile_id: academyProfileId,
+      });
+      const { data: own } = await supabaseUser.rpc("is_academy_owner", {
+        _user_id: userId,
+        _academy_profile_id: academyProfileId,
+      });
+      gateAcademyManager = !!mgr || !!own;
+    }
+
+    if (!isClubManager && !isTrainer && !gateAcademyManager) {
+      return new Response(
+        JSON.stringify({ error: "Only club managers, trainers or academy managers can create manual player registrations" }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // Non-string name/email fields would reach .trim()/.toLowerCase() and throw a raw 500.
     const stringFields: Record<string, unknown> = { email, firstName, lastName, fullName };
@@ -77,6 +102,13 @@ serve(async (req) => {
       }
     }
 
+    if (academyProfileId && !creationRequestId) {
+      return new Response(
+        JSON.stringify({ error: "creationRequestId is required so a retry does not create a second player" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const nameFields = resolveRegistrationNameFields({ firstName, lastName, fullName });
 
     if (!email || !nameFields.full_name) {
@@ -86,20 +118,16 @@ serve(async (req) => {
       );
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAdmin = deps.adminClient ?? createClient(supabaseUrl, supabaseServiceKey);
 
     // Authorization: if the caller attaches the player to a specific academy or
     // trainer, verify they control that context. Without this, any trainer or
     // club manager could inject guest-player rows into academies/trainers they
     // do not own. (The normal intake flow passes neither id.)
-    let managesAcademy = false;
-    if (academyProfileId) {
-      const { data } = await supabaseUser.rpc("is_academy_manager", {
-        _user_id: userId,
-        _academy_profile_id: academyProfileId,
-      });
-      managesAcademy = !!data;
-    }
+    // Manager OR owner, matching what `academy_create_player` itself accepts. Asking only about
+    // managers here while the command accepts owners would refuse a caller the command would have
+    // served — two authorities disagreeing about one question.
+    const managesAcademy = academyProfileId ? gateAcademyManager : false;
 
     let controlsTrainer = false;
     if (trainerProfileId) {
@@ -163,6 +191,8 @@ serve(async (req) => {
 
     let profileId: string | null = null;
     let guestPlayerId: string | null = null;
+    // the canonical Player identity — what the command actually answers with
+    let personId: string | null = null;
     let isNewUser = false;
 
     if (existingProfile && profileNameAgrees) {
@@ -198,8 +228,11 @@ serve(async (req) => {
       if (academyProfileId) {
         const { data: viaRpc, error: rpcError } = await supabaseAdmin.rpc("academy_create_player", {
           _academy_profile_id: academyProfileId,
+          // the caller's own id for THIS create attempt, forwarded unchanged: a retry carries the
+          // same one and gets the same Player back rather than a second one
+          _creation_request_id: creationRequestId,
           _full_name: nameFields.full_name,
-          _email: email.toLowerCase(),
+          _email: email ? email.toLowerCase() : null,
           _phone: phone || null,
           _actor_user_id: userId,
         });
@@ -210,7 +243,9 @@ serve(async (req) => {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
         }
-        guestPlayerId = (viaRpc as { guest_player_id: string }).guest_player_id;
+        const rpcResult = viaRpc as { person_id: string; guest_player_id: string | null };
+        guestPlayerId = rpcResult.guest_player_id;
+        personId = rpcResult.person_id;
       } else if (trainerProfileId) {
         // Trainer scope keeps the local path for now — same family rule, no RPC yet.
         const { data: candidates } = await supabaseAdmin
@@ -280,6 +315,9 @@ serve(async (req) => {
       JSON.stringify({
         profileId,
         guestPlayerId,
+        // the canonical Player identity — the answer callers should key on. `guestPlayerId` stays
+        // for the readers that still key on the source row.
+        personId,
         isNewUser,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -292,4 +330,8 @@ serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+// Only bind a port when run as the entrypoint — importing for tests must not serve.
+if (import.meta.main) serve((req) => handleRequest(req));
+
