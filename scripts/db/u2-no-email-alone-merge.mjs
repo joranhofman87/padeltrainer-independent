@@ -252,8 +252,13 @@ const EMAIL = () => `u2-${Math.abs(Date.now() % 1e9)}-${Math.floor(process.hrtim
 {
   const { d } = await one(
     `SELECT pg_get_functiondef('public.mint_person_for_profile()'::regprocedure) AS d`);
-  const guarded = /count\(\*\)\s*FROM public\.profiles p/.test(d) && /=\s*1/.test(d);
-  ok('H1 still requires exactly ONE profile on the address before proposing', guarded);
+  // pin the profile clause ITSELF: searching the whole body for `= 1` passes while the profile
+  // condition says `> 0`, because the guest condition still says `= 1`
+  const profileClause = d.match(
+    /\(SELECT count\(\*\) FROM public\.profiles p[\s\S]{0,200}?\)\s*(=|>|>=|<)\s*(\d+)/);
+  ok('H1 still requires exactly ONE profile on the address before proposing',
+    Boolean(profileClause) && profileClause[1] === '=' && profileClause[2] === '1',
+    { operator: profileClause?.[1], value: profileClause?.[2] });
 }
 
 // ══ 5. B1 IS KEPT — an explicit, verified assertion is a second signal ═════════════════════════
@@ -423,6 +428,53 @@ async function proposedPair() {
   await c.query('ROLLBACK');
 }
 
+// ══ 5c-2. THE CLAIM LOCKS THE GUEST ROW, NOT JUST THE PROPOSAL ═════════════════════════════════
+// Reading `linked_profile_id` and then writing it is a window: an operator links the guest to
+// account B in between, and the claimant overwrites it with A and collapses on top. Locking the
+// PROPOSAL does not lock the guest. Proven by holding the guest row from another session — if the
+// claim did not lock it, it would sail past and succeed.
+{
+  await c.query('BEGIN');
+  const f = await proposedPair();
+  await c.query('COMMIT');                      // the holder needs to see it
+
+  const holder = new pg.Client({ connectionString: CONN });
+  await holder.connect();
+  await holder.query('BEGIN');
+  await holder.query(`SELECT linked_profile_id FROM public.guest_players WHERE id = $1 FOR UPDATE`,
+    [f.guest]);
+
+  const claimer = new pg.Client({ connectionString: CONN });
+  await claimer.connect();
+  await claimer.query(`SET lock_timeout = '800ms'`);
+  await claimer.query('BEGIN');
+  await claimer.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ sub: f.uid, role: 'authenticated' })]);
+  await claimer.query(`SET LOCAL ROLE authenticated`);
+  let blocked = null;
+  try { await claimer.query(`SELECT public.person_claim_confirm($1)`, [f.reviewId]); }
+  catch (e) { blocked = e.code; }
+  await claimer.query('ROLLBACK').catch(() => {});
+  await holder.query('ROLLBACK');
+
+  // HONEST SCOPE: this proves the claim cannot proceed while another session holds the guest row.
+  // It does NOT discriminate the `FOR UPDATE` on the read — without it the later UPDATE blocks on
+  // the same lock and times out identically. The interleaving that separates them (a commit landing
+  // between the read and the write) is not something this harness can stage, so the guarantee does
+  // not rest on the lock alone: the claim re-reads `linked_profile_id` after writing it and refuses
+  // if it is not ours, which is asserted by the CLAIM_TAKEN case above.
+  ok('a claim cannot proceed while another session holds the guest row',
+    blocked === '55P03', { blocked });
+
+  await Promise.all([holder.end(), claimer.end()]);
+  // committed fixture: clean it up
+  await c.query(`DELETE FROM public.person_merge_review WHERE id = $1`, [f.reviewId]);
+  await c.query(`DELETE FROM public.invoices WHERE id = $1`, [f.invoice]);
+  await c.query(`DELETE FROM public.guest_players WHERE id = $1`, [f.guest]);
+  await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [f.academy]);
+  await c.query(`DELETE FROM auth.users WHERE id = $1`, [f.uid]);
+}
+
 // ══ 5d. THE IDEMPOTENT CREATE ══════════════════════════════════════════════════════════════════
 {
   await c.query('BEGIN');
@@ -431,11 +483,17 @@ async function proposedPair() {
     `INSERT INTO public.academy_profiles (name, slug)
      VALUES ('u2 create', 'u2cr-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
   const { uid: managerUid, profileId: managerProfile } = await makeAccount(EMAIL());
+  // a MANAGER, deliberately not an owner: `is_academy_manager` accepts any academy_managers row, so
+  // seeding an owner would pass even if ordinary managers were excluded
   await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
-                 VALUES ($1, $2, 'owner')`, [academy, managerUid]).catch(async () => {
+                 VALUES ($1, $2, 'manager')`, [academy, managerUid]).catch(async () => {
     await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id)
                    VALUES ($1, $2)`, [academy, managerUid]);
   });
+  const seededRole = await one(
+    `SELECT role FROM public.academy_managers WHERE academy_profile_id = $1 AND user_id = $2`,
+    [academy, managerUid]);
+  ok('the create fixture seeds a MANAGER, not an owner', (seededRole?.role ?? 'manager') !== 'owner', seededRole);
 
   const first = await asUser(managerUid, async () =>
     (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Nieuwe Speler', email])).r);
@@ -458,6 +516,14 @@ async function proposedPair() {
     (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, 'Sneaky', EMAIL()])).r);
   ok('someone who does not manage the academy cannot create players there',
     !refused.ok && /PLAYER_CREATE_FORBIDDEN/.test(refused.message ?? ''), refused);
+
+  // the actor override is for SERVICE-ROLE callers only. A signed-in caller naming somebody else
+  // would otherwise be an impersonation switch with a friendly parameter name.
+  const impersonated = await asUser(outsiderUid, async () =>
+    (await one(`SELECT public.academy_create_player($1, $2, $3, NULL, $4) AS r`,
+      [academy, 'Impersonated', EMAIL(), managerUid])).r);
+  ok('a signed-in caller cannot borrow a manager by naming them as the actor',
+    !impersonated.ok && /PLAYER_CREATE_FORBIDDEN/.test(impersonated.message ?? ''), impersonated);
 
   const nameless = await asUser(managerUid, async () =>
     (await one(`SELECT public.academy_create_player($1, $2, $3) AS r`, [academy, '   ', email])).r);

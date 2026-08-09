@@ -190,31 +190,44 @@ serve(async (req) => {
         guestData.trainer_id = trainerProfileId;
       }
 
-      // Same rule for the guest side, and the same reason. `.maybeSingle()` was also wrong here:
-      // the email index is deliberately non-unique (households), so two matches made it throw
-      // PGRST116, the error was discarded, and a THIRD duplicate was inserted. Select the
-      // candidates and pick by name — or by nobody.
+      // The academy path goes through `academy_create_player`: one implementation of the family
+      // rule, with an advisory lock on the address so two operators submitting the same player
+      // cannot both insert. This edge function's own lookup-then-insert had that race, and a rule
+      // that lives in two places is a rule that will disagree with itself.
       let existingGuest: { id: string } | null = null;
-      let guestQuery = supabaseAdmin
-        .from("guest_players")
-        .select("id, full_name")
-        .eq("email", email.toLowerCase());
-      if (academyProfileId) guestQuery = guestQuery.eq("academy_profile_id", academyProfileId);
-      else if (trainerProfileId) guestQuery = guestQuery.eq("trainer_id", trainerProfileId);
-      else guestQuery = null as never;
-
-      if (guestQuery) {
-        const { data: candidates } = await guestQuery;
+      if (academyProfileId) {
+        const { data: viaRpc, error: rpcError } = await supabaseAdmin.rpc("academy_create_player", {
+          _academy_profile_id: academyProfileId,
+          _full_name: nameFields.full_name,
+          _email: email.toLowerCase(),
+          _phone: phone || null,
+          _actor_user_id: userId,
+        });
+        if (rpcError) {
+          console.error("create-manual-player: academy_create_player failed", rpcError.message);
+          return new Response(JSON.stringify({ error: "Could not create the player" }), {
+            status: 500,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        }
+        guestPlayerId = (viaRpc as { guest_player_id: string }).guest_player_id;
+      } else if (trainerProfileId) {
+        // Trainer scope keeps the local path for now — same family rule, no RPC yet.
+        const { data: candidates } = await supabaseAdmin
+          .from("guest_players")
+          .select("id, full_name")
+          .eq("email", email.toLowerCase())
+          .eq("trainer_id", trainerProfileId);
         const named = (candidates ?? []).filter(
           (g: { full_name: string | null }) =>
             normalizeName(g.full_name) === normalizeName(nameFields.full_name),
         );
-        // exactly one name match, or nobody: several same-name rows on one address give no signal
-        // that distinguishes them, and picking the first is a guess
         existingGuest = named.length === 1 ? { id: (named[0] as { id: string }).id } : null;
       }
 
-      if (existingGuest) {
+      if (guestPlayerId) {
+        // already resolved by the RPC above; nothing further to do here
+      } else if (existingGuest) {
         guestPlayerId = existingGuest.id;
         // Update with latest info
         await supabaseAdmin

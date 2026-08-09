@@ -71,6 +71,7 @@ DECLARE
   v_profile_person uuid;
   v_collapse jsonb;
   v_linked jsonb;
+  v_linked_profile uuid;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'CLAIM_NOT_AUTHENTICATED: a claim is something a person makes'
@@ -124,21 +125,38 @@ BEGIN
     RETURN jsonb_build_object('ok', true, 'already_applied', true, 'review_id', _review_id);
   END IF;
 
-  -- The guest must still be unclaimed. A guest linked to a DIFFERENT account is somebody else's,
-  -- and a proposal is not a reservation.
-  IF EXISTS (SELECT 1 FROM public.guest_players g
-              WHERE g.id = v_review.guest_player_id
-                AND g.linked_profile_id IS NOT NULL
-                AND g.linked_profile_id <> v_profile_id) THEN
+  -- The guest must still be unclaimed — and it must STAY unclaimed while this decides. Reading the
+  -- link and then writing it is a window an operator can walk through: they link the guest to
+  -- account B, and the claimant overwrites it with A and collapses on top. Locking the proposal does
+  -- not lock the guest, so the guest is locked here, before the value is read.
+  SELECT g.linked_profile_id INTO v_linked_profile
+    FROM public.guest_players g
+   WHERE g.id = v_review.guest_player_id
+     FOR UPDATE;
+
+  IF v_linked_profile IS NOT NULL AND v_linked_profile <> v_profile_id THEN
     RAISE EXCEPTION 'CLAIM_TAKEN: that player is already linked to another account'
       USING ERRCODE = 'raise_exception';
   END IF;
 
   -- 1. Establish the association. This is the decision; everything after it executes the decision.
+  -- The predicate repeats the check the lock now protects: belt, and a braces that costs nothing.
   UPDATE public.guest_players
      SET linked_profile_id = v_profile_id
    WHERE id = v_review.guest_player_id
-     AND linked_profile_id IS DISTINCT FROM v_profile_id;
+     AND linked_profile_id IS DISTINCT FROM v_profile_id
+     AND linked_profile_id IS NULL;
+
+  -- Then verify it, rather than assume it. The lock above should make this impossible, and that is
+  -- exactly why it is worth asserting: if the lock is ever weakened or removed, the collapse must
+  -- not run against a guest that ended up belonging to somebody else. Correctness stops depending
+  -- on the lock and starts depending on the state.
+  SELECT g.linked_profile_id INTO v_linked_profile
+    FROM public.guest_players g WHERE g.id = v_review.guest_player_id;
+  IF v_linked_profile IS DISTINCT FROM v_profile_id THEN
+    RAISE EXCEPTION 'CLAIM_TAKEN: that player is already linked to another account'
+      USING ERRCODE = 'raise_exception';
+  END IF;
 
   -- 2. One person. The reviewed, membership-aware collapse — not a second implementation of it.
   v_collapse := public.collapse_guest_person_into_reporting(
@@ -201,7 +219,11 @@ CREATE OR REPLACE FUNCTION public.academy_create_player(
   _academy_profile_id uuid,
   _full_name text,
   _email text DEFAULT NULL,
-  _phone text DEFAULT NULL
+  _phone text DEFAULT NULL,
+  -- Service-role callers (the `create-manual-player` edge function) have no `auth.uid()`, so they
+  -- name the acting user explicitly. A signed-in caller may NOT: the parameter is ignored unless the
+  -- caller is service_role, or it would be an impersonation switch with a friendly name.
+  _actor_user_id uuid DEFAULT NULL
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -209,12 +231,18 @@ SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
-  v_uid uuid := auth.uid();
+  -- `session_user` is the role that connected — `service_role` for an edge function using the
+  -- service key, `authenticator` for a PostgREST request. A signed-in caller therefore cannot reach
+  -- the `_actor_user_id` branch, so the parameter cannot be used to act as somebody else.
+  v_is_service boolean := (SELECT session_user = 'service_role');
+  v_uid uuid;
   v_name text := nullif(btrim(_full_name), '');
   v_email text := lower(nullif(btrim(_email), ''));
   v_existing uuid;
   v_created boolean := false;
 BEGIN
+  v_uid := CASE WHEN v_is_service THEN coalesce(_actor_user_id, auth.uid()) ELSE auth.uid() END;
+
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'PLAYER_CREATE_NOT_AUTHENTICATED' USING ERRCODE = 'insufficient_privilege';
   END IF;
@@ -265,16 +293,17 @@ $$;
 
 REVOKE ALL ON FUNCTION public.person_claim_candidates() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.person_claim_confirm(uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.academy_create_player(uuid, text, text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.person_claim_candidates() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.person_claim_confirm(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.academy_create_player(uuid, text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) TO service_role;
 
 COMMENT ON FUNCTION public.person_claim_confirm(uuid) IS
   'Executes a PENDING email_pair_awaiting_claim proposal that names the caller''s own profile. The only route from a proposed pair to one person, and it runs only when a person asks for it (U2, owner 2026-08-09). Idempotent: re-running an applied claim changes nothing.';
 
-COMMENT ON FUNCTION public.academy_create_player(uuid, text, text, text) IS
+COMMENT ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) IS
   'Idempotent academy-side player creation. Deduplicates on address AND name within the academy — never an address alone — and serializes on the address so two operators cannot both insert.';
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════

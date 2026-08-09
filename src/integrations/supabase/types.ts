@@ -10034,6 +10034,7 @@ export type Database = {
       academy_create_player: {
         Args: {
           _academy_profile_id: string
+          _actor_user_id?: string
           _email?: string
           _full_name: string
           _phone?: string

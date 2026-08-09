@@ -125,12 +125,22 @@ describe('every identity writer that matches on an email also checks the name', 
     {
       file: 'supabase/functions/create-manual-player/index.ts',
       why: 'staff intake — attached the player to an existing ACCOUNT, and overwrote an existing guest, on the address alone',
-      must: [/profileNameAgrees/, /normalizeName\(existingProfile\?\.full_name\) !== ""/, /named\.length === 1/],
+      // the CONDITIONAL, not just the variable: computing `profileNameAgrees` and then writing
+      // `if (existingProfile)` would leave every one of these strings in place while restoring an
+      // email-alone link
+      must: [
+        /if \(existingProfile && profileNameAgrees\)/,
+        /normalizeName\(existingProfile\?\.full_name\) !== ""/,
+        /academy_create_player/,
+      ],
     },
     {
       file: 'supabase/functions/submit-guest-intake/index.ts',
       why: 'public intake — its name guard treated a NAMELESS profile as a match, and profiles.full_name is nullable',
-      must: [/normalizeName\(existingProfile\?\.full_name\) !== ""/],
+      must: [
+        /normalizeName\(existingProfile\?\.full_name\) !== ""/,
+        /if \(existingProfile && matchesExistingProfile\)/,
+      ],
     },
     {
       file: 'supabase/functions/_shared/guest-players.ts',
