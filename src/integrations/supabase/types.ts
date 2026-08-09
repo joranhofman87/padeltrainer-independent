@@ -3717,7 +3717,7 @@ export type Database = {
           consent_given: boolean
           created_at: string
           cycle_id: string | null
-          email: string
+          email: string | null
           full_name: string
           guest_player_id: string | null
           id: string
@@ -3747,7 +3747,7 @@ export type Database = {
           consent_given?: boolean
           created_at?: string
           cycle_id?: string | null
-          email: string
+          email?: string | null
           full_name: string
           guest_player_id?: string | null
           id?: string
@@ -3777,7 +3777,7 @@ export type Database = {
           consent_given?: boolean
           created_at?: string
           cycle_id?: string | null
-          email?: string
+          email?: string | null
           full_name?: string
           guest_player_id?: string | null
           id?: string
@@ -6607,64 +6607,42 @@ export type Database = {
       }
       player_create_commands: {
         Row: {
-          academy_profile_id: string
-          actor_user_id: string
+          actor_user_id: string | null
           created_at: string
           creation_request_id: string
           guest_player_id: string | null
           id: string
+          origin: string
+          owner_id: string | null
+          owner_type: string
           payload_fingerprint: string
           person_id: string | null
         }
         Insert: {
-          academy_profile_id: string
-          actor_user_id: string
+          actor_user_id?: string | null
           created_at?: string
           creation_request_id: string
           guest_player_id?: string | null
           id?: string
+          origin: string
+          owner_id?: string | null
+          owner_type: string
           payload_fingerprint: string
           person_id?: string | null
         }
         Update: {
-          academy_profile_id?: string
-          actor_user_id?: string
+          actor_user_id?: string | null
           created_at?: string
           creation_request_id?: string
           guest_player_id?: string | null
           id?: string
+          origin?: string
+          owner_id?: string | null
+          owner_type?: string
           payload_fingerprint?: string
           person_id?: string | null
         }
         Relationships: [
-          {
-            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
-            columns: ["academy_profile_id"]
-            isOneToOne: false
-            referencedRelation: "academy_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
-            columns: ["academy_profile_id"]
-            isOneToOne: false
-            referencedRelation: "academy_profiles_owner"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
-            columns: ["academy_profile_id"]
-            isOneToOne: false
-            referencedRelation: "academy_profiles_public"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "player_create_commands_academy_profile_id_fkey"
-            columns: ["academy_profile_id"]
-            isOneToOne: false
-            referencedRelation: "academy_profiles_safe"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "player_create_commands_guest_player_id_fkey"
             columns: ["guest_player_id"]
@@ -10107,24 +10085,8 @@ export type Database = {
         Args: { p_owner_id: string; p_owner_type: string }
         Returns: boolean
       }
-      academy_create_player: {
-        Args: {
-          _academy_profile_id: string
-          _actor_user_id?: string
-          _creation_request_id: string
-          _email?: string
-          _full_name: string
-          _phone?: string
-          _select_person_id?: string
-        }
-        Returns: Json
-      }
       academy_has_managers: {
         Args: { _academy_profile_id: string }
-        Returns: boolean
-      }
-      academy_may_select_person: {
-        Args: { _academy_profile_id: string; _person_id: string }
         Returns: boolean
       }
       accept_rebook_rules: { Args: { _token: string }; Returns: undefined }
@@ -12210,6 +12172,26 @@ export type Database = {
         }
         Returns: boolean
       }
+      player_create_command: {
+        Args: {
+          _actor_user_id?: string
+          _birth_date?: string
+          _creation_request_id: string
+          _email?: string
+          _first_name?: string
+          _full_name?: string
+          _last_name?: string
+          _origin?: string
+          _owner_id?: string
+          _owner_type: string
+          _phone?: string
+          _rating_system?: string
+          _select_person_id?: string
+          _skill_rating?: number
+          _source?: string
+        }
+        Returns: Json
+      }
       player_create_fingerprint: {
         Args: {
           _email: string
@@ -12221,6 +12203,14 @@ export type Database = {
       }
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
+        Returns: boolean
+      }
+      player_owner_may_create: {
+        Args: { _owner_id: string; _owner_type: string; _user_id: string }
+        Returns: boolean
+      }
+      player_owner_may_select_person: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
         Returns: boolean
       }
       prepare_notification_digest_group: {

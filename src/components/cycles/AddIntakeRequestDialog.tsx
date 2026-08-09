@@ -86,7 +86,12 @@ export default function AddIntakeRequestDialog({
     cycle_id: z.string().min(1, 'Please select a cycle'),
     first_name: z.string().trim().min(1, 'First name is required').max(50),
     last_name: z.string().trim().max(50).optional().default(''),
-    email: z.string().trim().email('Invalid email').max(255),
+    // OPTIONAL. Children, walk-ins and people who decline to give an address are real players, and
+    // requiring one here is what pushed staff into typing placeholder addresses that then look, to
+    // every matcher downstream, like a shared household email (U2, owner 2026-08-09).
+    email: z.union([z.literal(''), z.string().trim().email('Invalid email').max(255)])
+      .optional()
+      .default(''),
     phone: createOptionalPhoneSchema(t('application.form.validation.phoneInvalid')),
     rating_system: z.string().default('knltb'),
     rating: z.coerce.number().optional(),
@@ -282,12 +287,14 @@ export default function AddIntakeRequestDialog({
         throw new Error(playerData.error);
       }
 
-      // Step 2: Create the intake request with the real player_id
+      // Step 2: the intake request carries the Player the command answered with — by id. It is no
+      // longer possible for this step to be handed a profile the previous one guessed from an
+      // address, because that guess no longer happens anywhere.
       const preferredDays = [...new Set(timeWindows.map((tw) => tw.day!))];
 
       await createManualIntakeRequest({
         cycle_id: data.cycle_id,
-        player_id: playerData.profileId || null,
+        player_id: null,
         guest_player_id: playerData.guestPlayerId || null,
         full_name: buildGuestPlayerDbFields(data.first_name, data.last_name).full_name,
         email: data.email,

@@ -162,7 +162,8 @@ export interface IntakeRequest {
   cycle_id: string | null;
   player_id: string;
   full_name: string;
-  email: string;
+  /** NULL for a manually added applicant with no address (U2). */
+  email: string | null;
   phone: string | null;
   rating: number | null;
   rating_system: string;
@@ -247,7 +248,7 @@ export interface IntakeRequestInput {
   cycle_id: string;
   player_id: string;
   full_name: string;
-  email: string;
+  email?: string | null;
   phone?: string;
   birth_date?: string;
   rating?: number;

@@ -1,67 +1,53 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   buildInvoicePlayerAddress,
-  findExistingGuestPlayerIdForInvoice,
+  invoiceRecipientKey,
   resolveInvoiceGuestPlayerId,
   resolveOrCreateAcademyInvoiceGuest,
   resolveOrCreateInvoiceGuest,
 } from './invoiceCustomerInsert';
+import { creationRequestIdFor, clearCreationAttempt, type CreationAttempt } from './creationRequestId';
 
-const insertMock = vi.fn();
-let guestLookupResult: { id: string; full_name?: string | null } | null = null;
-
-// The email lookup selects 'id, full_name' as a LIST (shared emails allowed).
-function chainable(resolved?: unknown) {
-  const value =
-    resolved ?? { data: guestLookupResult ? [guestLookupResult] : [], error: null };
-  const builder: Record<string, unknown> = {
-    select: () => builder,
-    eq: () => builder,
-    ilike: () => builder,
-    or: () => builder,
-    in: () => builder,
-    limit: () => builder,
-    order: () => builder,
-    maybeSingle: () => Promise.resolve(value),
-    single: () => Promise.resolve(value),
-    then: (
-      onFulfilled: (v: { data: unknown; error: null }) => unknown,
-      onRejected?: (e: unknown) => unknown,
-    ) => Promise.resolve(value).then(onFulfilled, onRejected),
-  };
-  return builder;
-}
-
-const fromMock = vi.fn((table: string) => {
-  if (table === 'guest_players') {
-    return {
-      ...chainable(),
-      insert: insertMock,
-    };
-  }
-  if (table === 'academy_trainers') {
-    return chainable({ data: [], error: null });
-  }
-  return chainable();
-});
-
-// P2-2: the academy email-dedup branch now routes through the SECURITY DEFINER RPC
-// find_guest_players_by_email_for_academy (so dedup still sees trainer-owned candidates
-// even though the direct academy SELECT is now relationship-scoped). Return the same
-// candidate list the direct email query would, driven by guestLookupResult.
-const rpcMock = vi.fn((fn: string) => {
-  if (fn === 'find_guest_players_by_email_for_academy') {
-    return Promise.resolve({ data: guestLookupResult ? [guestLookupResult] : [], error: null });
-  }
-  return Promise.resolve({ data: null, error: null });
+/**
+ * The invoice recipient no longer has a lookup to test. It has a COMMAND, and what matters is which
+ * arguments reach it: an operator-picked Player must arrive as an id and never be re-derived, a
+ * hand-typed one must arrive as a create carrying the caller's attempt id, and no call may ever
+ * pass a name or an address as something to search by.
+ */
+const rpcMock = vi.fn();
+const fromMock = vi.fn(() => {
+  throw new Error('invoice recipient resolution must not query tables directly');
 });
 
 vi.mock('@/lib/supabaseClient', () => ({
   supabase: {
-    from: (...args: unknown[]) => fromMock(...args),
-    rpc: (...args: unknown[]) => rpcMock(...(args as [string])),
+    from: (...args: unknown[]) => fromMock(...(args as [])),
+    rpc: (...args: unknown[]) => rpcMock(...(args as [string, Record<string, unknown>])),
   },
 }));
+
+const REQ = '11111111-1111-4111-8111-111111111111';
+
+const receiver = (over: Partial<Record<string, string>> = {}) => ({
+  playerName: 'Sponsor',
+  playerEmail: 'sponsor@corp.com',
+  playerBusinessName: '',
+  playerStreet: '',
+  playerZipCode: '',
+  playerCity: '',
+  playerBtwNumber: '',
+  ...over,
+});
+
+const lastCommand = () =>
+  rpcMock.mock.calls.filter((c) => c[0] === 'player_create_command').at(-1)?.[1] as
+    | Record<string, unknown>
+    | undefined;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  rpcMock.mockResolvedValue({ data: { person_id: 'the-person', guest_player_id: 'new-guest' }, error: null });
+});
 
 describe('buildInvoicePlayerAddress', () => {
   it('joins street zip and city', () => {
@@ -79,205 +65,97 @@ describe('buildInvoicePlayerAddress', () => {
   });
 });
 
-describe('findExistingGuestPlayerIdForInvoice', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    guestLookupResult = { id: 'existing-by-email' };
-  });
-
-  it('reuses trainer-scoped guest by email', async () => {
-    const id = await findExistingGuestPlayerIdForInvoice('dup@test.com', 'trainer', undefined, 't1');
-    expect(id).toBe('existing-by-email');
-    expect(insertMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('resolveInvoiceGuestPlayerId', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    guestLookupResult = null;
-    insertMock.mockReturnValue({
-      select: () => ({
-        single: () => Promise.resolve({ data: { id: 'new-guest' }, error: null }),
-      }),
-    });
-  });
-
-  it('returns linked guest id without insert', async () => {
+describe('a Player the operator picked travels by id', () => {
+  it('returns the linked guest id and asks the database nothing', async () => {
     const id = await resolveInvoiceGuestPlayerId({
       playerLink: { profileId: null, guestPlayerId: 'g1', linkedDisplayName: 'G' },
       oneTimeMode: false,
-      receiver: {
-        playerName: 'G',
-        playerEmail: 'g@test.com',
-        playerBusinessName: '',
-        playerStreet: '',
-        playerZipCode: '',
-        playerCity: '',
-        playerBtwNumber: '',
-      },
+      receiver: receiver({ playerName: 'G', playerEmail: 'g@test.com' }),
       scope: 'trainer',
       trainerId: 't1',
+      creationRequestId: REQ,
     });
     expect(id).toBe('g1');
-    expect(fromMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('returns null for registered profile link', async () => {
+  it('a picked ACCOUNT resolves to no guest row and creates nothing', async () => {
     const id = await resolveInvoiceGuestPlayerId({
       playerLink: { profileId: 'p1', guestPlayerId: null, linkedDisplayName: 'P' },
       oneTimeMode: false,
-      receiver: {
-        playerName: 'P',
-        playerEmail: 'p@test.com',
-        playerBusinessName: '',
-        playerStreet: '',
-        playerZipCode: '',
-        playerCity: '',
-        playerBtwNumber: '',
-      },
+      receiver: receiver({ playerName: 'P', playerEmail: 'p@test.com' }),
       scope: 'academy',
       academyProfileId: 'a1',
+      creationRequestId: REQ,
     });
     expect(id).toBeNull();
-    expect(fromMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
-  it('reuses an existing guest when the email AND the name agree', async () => {
-    // U2 (owner, 2026-08-09): an email match alone is not proof of same-person — households share
-    // addresses — so the name has to agree too. The row therefore carries the name now.
-    guestLookupResult = { id: 'existing-by-email', full_name: 'Sponsor' };
+  it('the picked id WINS over a receiver naming somebody else entirely', async () => {
+    // The regression this guards: re-deriving the recipient from the typed fields, which are stale
+    // or belong to a different human whenever the operator edited them after picking.
     const id = await resolveInvoiceGuestPlayerId({
-      playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
-      oneTimeMode: true,
-      receiver: {
-        playerName: 'Sponsor',
-        playerEmail: 'sponsor@corp.com',
-        playerBusinessName: '',
-        playerStreet: '',
-        playerZipCode: '',
-        playerCity: '',
-        playerBtwNumber: '',
-      },
-      scope: 'trainer',
-      trainerId: 't1',
+      playerLink: { profileId: null, guestPlayerId: 'the-picked-one', linkedDisplayName: 'Picked' },
+      oneTimeMode: false,
+      receiver: receiver({ playerName: 'Somebody Else', playerEmail: 'else@test.com' }),
+      scope: 'academy',
+      academyProfileId: 'a1',
+      creationRequestId: REQ,
     });
-    expect(id).toBe('existing-by-email');
-    expect(insertMock).not.toHaveBeenCalled();
-  });
-
-  it('creates guest for one-time customer with email when none exists', async () => {
-    const id = await resolveInvoiceGuestPlayerId({
-      playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
-      oneTimeMode: true,
-      receiver: {
-        playerName: 'Sponsor',
-        playerEmail: 'sponsor@corp.com',
-        playerBusinessName: 'Corp',
-        playerStreet: '',
-        playerZipCode: '',
-        playerCity: '',
-        playerBtwNumber: '',
-      },
-      scope: 'trainer',
-      trainerId: 't1',
-    });
-    expect(id).toBe('new-guest');
-    expect(fromMock).toHaveBeenCalledWith('guest_players');
-  });
-
-  it('creates an emailless guest for a manual recipient with a name', async () => {
-    const id = await resolveInvoiceGuestPlayerId({
-      playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
-      oneTimeMode: true,
-      receiver: {
-        playerName: 'Walk-in',
-        playerEmail: '',
-        playerBusinessName: '',
-        playerStreet: '',
-        playerZipCode: '',
-        playerCity: '',
-        playerBtwNumber: '',
-      },
-      scope: 'trainer',
-      trainerId: 't1',
-    });
-    expect(id).toBe('new-guest');
-    expect(insertMock).toHaveBeenCalledTimes(1);
-    const insertArg = insertMock.mock.calls[0][0];
-    expect(insertArg.trainer_id).toBe('t1');
-    expect(insertArg.full_name).toBe('Walk-in');
-    expect(insertArg.email).toBeUndefined();
-  });
-
-  it('returns null when name and email are both empty', async () => {
-    const id = await resolveInvoiceGuestPlayerId({
-      playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
-      oneTimeMode: true,
-      receiver: {
-        playerName: '   ',
-        playerEmail: '',
-        playerBusinessName: '',
-        playerStreet: '',
-        playerZipCode: '',
-        playerCity: '',
-        playerBtwNumber: '',
-      },
-      scope: 'trainer',
-      trainerId: 't1',
-    });
-    expect(id).toBeNull();
-    expect(insertMock).not.toHaveBeenCalled();
+    expect(id).toBe('the-picked-one');
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 });
 
-describe('resolveOrCreateInvoiceGuest', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    guestLookupResult = null;
-    insertMock.mockReturnValue({
-      select: () => ({
-        single: () => Promise.resolve({ data: { id: 'new-guest' }, error: null }),
-      }),
-    });
-  });
-
-  it('creates an emailless trainer-scoped guest', async () => {
-    const id = await resolveOrCreateInvoiceGuest({
-      playerName: 'Cash Customer',
-      playerEmail: '',
+describe('a hand-typed recipient is CREATED, never matched', () => {
+  it('goes through the command with the caller-supplied attempt id', async () => {
+    const id = await resolveInvoiceGuestPlayerId({
+      playerLink: { profileId: null, guestPlayerId: null, linkedDisplayName: null },
+      oneTimeMode: true,
+      receiver: receiver(),
       scope: 'trainer',
       trainerId: 't1',
+      creationRequestId: REQ,
     });
     expect(id).toBe('new-guest');
-    const insertArg = insertMock.mock.calls[0][0];
-    expect(insertArg.trainer_id).toBe('t1');
-    expect(insertArg.email).toBeUndefined();
+    expect(lastCommand()).toMatchObject({
+      _creation_request_id: REQ,
+      _owner_type: 'trainer',
+      _owner_id: 't1',
+      _full_name: 'Sponsor',
+      _email: 'sponsor@corp.com',
+      _origin: 'operator',
+    });
   });
 
-  it('dedupes by email within academy scope when the name agrees', async () => {
-    guestLookupResult = { id: 'existing-by-email', full_name: 'Jan' };
-    const id = await resolveOrCreateInvoiceGuest({
+  it('never passes anything that could SELECT an existing person', async () => {
+    await resolveOrCreateInvoiceGuest({
       playerName: 'Jan',
       playerEmail: 'jan@test.com',
       scope: 'academy',
       academyProfileId: 'a1',
+      creationRequestId: REQ,
     });
-    expect(id).toBe('existing-by-email');
-    expect(insertMock).not.toHaveBeenCalled();
+    // `_select_person_id` is the only argument that can name an existing Player, and a typed
+    // recipient is by definition not one the operator identified.
+    expect(lastCommand()?._select_person_id).toBeUndefined();
   });
 
-  it('does NOT reuse a lone email match under a different name — it creates a new player', async () => {
-    // the household case: the invoice is for the child, the address is on the parent's record
-    guestLookupResult = { id: 'the-parent', full_name: 'Marieke de Vries' };
-    const id = await resolveOrCreateInvoiceGuest({
-      playerName: 'Anna de Vries',
-      playerEmail: 'family@test.com',
-      scope: 'academy',
-      academyProfileId: 'a1',
+  it('creates an emailless Player so invoice-only people appear in the list', async () => {
+    const id = await resolveOrCreateAcademyInvoiceGuest('Walk-in Wendy', '', 'a1', REQ);
+    expect(id).toBe('new-guest');
+    expect(lastCommand()).toMatchObject({
+      _owner_type: 'academy',
+      _owner_id: 'a1',
+      _full_name: 'Walk-in Wendy',
+      _email: null,
     });
-    expect(id).not.toBe('the-parent');
-    expect(insertMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null without a name — there is nothing to create', async () => {
+    expect(await resolveOrCreateAcademyInvoiceGuest('   ', 'x@test.com', 'a1', REQ)).toBeNull();
+    expect(rpcMock).not.toHaveBeenCalled();
   });
 
   it('returns null when the scope owner id is missing', async () => {
@@ -285,50 +163,45 @@ describe('resolveOrCreateInvoiceGuest', () => {
       playerName: 'Jan',
       playerEmail: 'jan@test.com',
       scope: 'trainer',
+      creationRequestId: REQ,
     });
     expect(id).toBeNull();
-    expect(insertMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+
+  it('a refused command is non-blocking: null, and the invoice is still the operator\'s to save', async () => {
+    rpcMock.mockResolvedValue({ data: null, error: { message: 'PLAYER_CREATE_FORBIDDEN', code: '42501' } });
+    const id = await resolveOrCreateAcademyInvoiceGuest('Jan', 'jan@test.com', 'a1', REQ);
+    expect(id).toBeNull();
   });
 });
 
-describe('resolveOrCreateAcademyInvoiceGuest', () => {
+describe('the attempt id is stable across a retry and fresh across an edit', () => {
+  const ref: { current: CreationAttempt } = { current: null };
+  const keyFor = (playerName: string, playerEmail: string) =>
+    invoiceRecipientKey({ playerName, playerEmail, scope: 'academy', ownerId: 'a1' });
+
   beforeEach(() => {
-    vi.clearAllMocks();
-    guestLookupResult = null;
-    insertMock.mockReturnValue({
-      select: () => ({
-        single: () => Promise.resolve({ data: { id: 'new-guest' }, error: null }),
-      }),
-    });
+    ref.current = null;
   });
 
-  it('returns null when no name is given (nothing to create)', async () => {
-    const id = await resolveOrCreateAcademyInvoiceGuest('   ', 'x@test.com', 'a1');
-    expect(id).toBeNull();
-    expect(insertMock).not.toHaveBeenCalled();
+  it('the same recipient saved twice replays ONE attempt', () => {
+    const first = creationRequestIdFor(ref, keyFor('Jan', 'jan@test.com'));
+    const retry = creationRequestIdFor(ref, keyFor('Jan', 'jan@test.com'));
+    expect(retry).toBe(first);
   });
 
-  it('dedupes by email within academy scope instead of inserting, when the name agrees', async () => {
-    guestLookupResult = { id: 'existing-by-email', full_name: 'Jan' };
-    const id = await resolveOrCreateAcademyInvoiceGuest('Jan', 'jan@test.com', 'a1');
-    expect(id).toBe('existing-by-email');
-    expect(insertMock).not.toHaveBeenCalled();
+  it('editing the recipient makes it honestly a different attempt', () => {
+    // Otherwise a corrected typo re-submits under an id the server has already bound to the old
+    // payload, and the command refuses the save as an idempotency conflict.
+    const first = creationRequestIdFor(ref, keyFor('Jan', 'jan@test.com'));
+    const edited = creationRequestIdFor(ref, keyFor('Jan Jansen', 'jan@test.com'));
+    expect(edited).not.toBe(first);
   });
 
-  it('creates an academy guest with email when none exists', async () => {
-    guestLookupResult = null;
-    const id = await resolveOrCreateAcademyInvoiceGuest('Jan', 'jan@test.com', 'a1');
-    expect(id).toBe('new-guest');
-    expect(insertMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('still creates an emailless player so invoice-only people appear in the list', async () => {
-    const id = await resolveOrCreateAcademyInvoiceGuest('Walk-in Wendy', '', 'a1');
-    expect(id).toBe('new-guest');
-    expect(insertMock).toHaveBeenCalledTimes(1);
-    const insertArg = insertMock.mock.calls[0][0];
-    expect(insertArg.academy_profile_id).toBe('a1');
-    expect(insertArg.full_name).toBe('Walk-in Wendy');
-    expect(insertArg.email).toBeUndefined();
+  it('after a successful save the next invoice is a new attempt', () => {
+    const first = creationRequestIdFor(ref, keyFor('Jan', 'jan@test.com'));
+    clearCreationAttempt(ref);
+    expect(creationRequestIdFor(ref, keyFor('Jan', 'jan@test.com'))).not.toBe(first);
   });
 });

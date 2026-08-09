@@ -2,52 +2,73 @@
 --
 -- THE DECISION (owner, 2026-08-09). `person_id` is the canonical Player identity. A separate stable
 -- UUID identifies each CREATE COMMAND. Email, phone and names are mutable attributes and possible
--- matching signals; they are neither identity nor idempotency keys. Knowing a UUID never grants
--- authorization.
+-- matching signals; they are neither identity nor idempotency keys. They may PROPOSE a candidate;
+-- they may never select, merge or reuse one. Knowing a UUID never grants authorization.
 --
--- WHAT THIS REPLACES. The previous `academy_create_player` deduplicated on email AND name. That is
--- better than email alone, but it is still identity inferred from attributes: two people who share a
--- household address and a name collapse into one, and a person who corrects their own name stops
--- being idempotent with themselves. The caller now says which create attempt this is, once, and says
--- it again on every retry.
+-- WHAT THIS REPLACES. Every writer that used to answer "who is this?" by looking a name and an
+-- address up in a table. There was one such rule per writer — the edge function had its own, the
+-- invoice form had its own, the public intake form had a third — so the system could and did
+-- disagree with itself about one human. There is now ONE create command, and every writer goes
+-- through it. It is scope-aware rather than academy-only for exactly that reason: a rule that exists
+-- for academies and not for trainers is a rule with a hole in it.
 --
 -- WHY A DURABLE TABLE AND NOT THE GUEST ROW. A guest row disappears — claimed into an account,
 -- merged by an operator, anonymized, deleted with its academy. Using its existence as the
 -- idempotency record means a retry after any of those silently creates a second Player. The record
 -- is its own row, and it is repointed rather than removed when the person it names is merged away.
 --
--- WHAT PII MATCHING MAY STILL DO. Propose. A create whose name and address match an existing Player
--- files a PENDING `possible_duplicate_player` review row and still creates the Player it was asked
--- for. Matching proposes; only a human decides. That is the same rule slice 1 established, applied
+-- WHAT PII MATCHING MAY STILL DO. Propose. A create that looks like an existing Player in the same
+-- scope files a PENDING `possible_duplicate_player` review row and still creates the Player it was
+-- asked for. Matching proposes; only a human decides. That is the rule slice 1 established, applied
 -- to creation.
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- The durable command record
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- RETENTION. The owner-scope columns carry NO foreign key, exactly like `academy_deletion_audit`
+-- and `account_deletion_audit`: this row is the evidence that a create happened, and evidence that
+-- cascades away with its subject is not evidence. Deleting an academy must not silently make every
+-- finished create command retryable again. The row holds ids, a scope, an actor and a one-way
+-- digest — no name, address or phone number — so it survives a deletion without carrying PII
+-- through it.
+--
+-- `person_id` and `guest_player_id` DO carry FKs, and deliberately: ON DELETE SET NULL there is a
+-- fact rather than a loss. A NULL `person_id` says "the Player this command produced no longer
+-- exists", and the command answers a retry with PLAYER_CREATE_RESULT_GONE instead of quietly making
+-- a second one. Where a successor person exists, the merge paths repoint the row before the delete.
 CREATE TABLE IF NOT EXISTS public.player_create_commands (
   id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  -- GLOBALLY unique, not unique per academy: reusing one request id against a different academy is
-  -- a caller bug, and it has to be detectable as one rather than quietly making a second Player.
+  -- GLOBALLY unique, not unique per scope: reusing one request id against a different owner is a
+  -- caller bug, and it has to be detectable as one rather than quietly making a second Player.
   creation_request_id uuid NOT NULL UNIQUE,
-  academy_profile_id  uuid NOT NULL REFERENCES public.academy_profiles(id) ON DELETE CASCADE,
-  actor_user_id       uuid NOT NULL,
-  -- sha256 over the normalized payload. Not an identity key — it exists so that reusing a request
-  -- id with DIFFERENT material facts is refused rather than silently answered with the old result.
+  -- `guest_players` carries a CHECK requiring a trainer or an academy, so there is no such thing as
+  -- an ownerless Player in this schema and this column has no third value to offer.
+  owner_type          text NOT NULL CHECK (owner_type IN ('academy', 'trainer')),
+  owner_id            uuid NOT NULL,
+  -- WHO the create came from. 'operator' is a signed-in human acting on a scope they control;
+  -- 'self_signup' is the public registration form, where the registrant is the only party present
+  -- and there is no operator to name.
+  origin              text NOT NULL CHECK (origin IN ('operator', 'self_signup')),
+  actor_user_id       uuid,
+  -- sha256 over the normalized identity payload. Not an identity key — it exists so that reusing a
+  -- request id with DIFFERENT material facts is refused rather than silently answered with the old
+  -- result.
   payload_fingerprint text NOT NULL,
-  -- The canonical answer. ON DELETE SET NULL rather than CASCADE: the command record must outlive
-  -- the Player it made, or a retry after a deletion would quietly make another one. A NULL here is
-  -- a fact ("the Player this produced is gone"), and the command refuses rather than re-creating.
   person_id           uuid REFERENCES public.persons(id) ON DELETE SET NULL,
   -- Compatibility only: the source row today's readers still key on. It may go NULL under the same
   -- lifecycle events; `person_id` is the answer that matters.
   guest_player_id     uuid REFERENCES public.guest_players(id) ON DELETE SET NULL,
-  created_at          timestamptz NOT NULL DEFAULT now()
+  created_at          timestamptz NOT NULL DEFAULT now(),
+  -- An operator create must name its operator. Only the public form may have none.
+  CONSTRAINT chk_player_create_commands_actor
+    CHECK (origin = 'self_signup' OR actor_user_id IS NOT NULL)
 );
 
 CREATE INDEX IF NOT EXISTS idx_player_create_commands_person
   ON public.player_create_commands (person_id);
-CREATE INDEX IF NOT EXISTS idx_player_create_commands_academy
-  ON public.player_create_commands (academy_profile_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_player_create_commands_owner
+  ON public.player_create_commands (owner_type, owner_id, created_at);
 
 -- Default-deny: RLS on with NO policies, and the named roles revoked as well — this project's
 -- ALTER DEFAULT PRIVILEGES grants new objects to anon/authenticated, so revoking PUBLIC alone
@@ -56,7 +77,7 @@ ALTER TABLE public.player_create_commands ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.player_create_commands FROM PUBLIC, anon, authenticated, service_role;
 
 COMMENT ON TABLE public.player_create_commands IS
-  'One row per Player-create command, keyed on the caller''s creation_request_id. The durable idempotency record: it survives the claim, merge, anonymization or deletion of the guest source, and is repointed when the person it names is merged away. Owner-only — reachable solely through academy_create_player.';
+  'One row per Player-create command, keyed on the caller''s creation_request_id. The durable idempotency record: it survives the claim, merge, anonymization or deletion of the guest source, and is repointed when the person it names is merged away. Owner-scope ids are FK-free so the evidence outlives its academy or trainer, exactly like academy_deletion_audit. Owner-only — reachable solely through player_create_command.';
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Canonical payload encoding
@@ -78,6 +99,9 @@ IMMUTABLE
 SET search_path = pg_catalog, public, pg_temp
 AS $$ SELECT nullif(lower(btrim(regexp_replace(coalesce(_v, ''), '\s+', ' ', 'g'))), '') $$;
 
+-- Covers the IDENTITY payload only. First/last name, rating, birth date and source are descriptive
+-- attributes of one create: correcting a typo in them on a retry must not turn the retry into a
+-- conflict, because none of them can change WHICH Player the command answers with.
 CREATE OR REPLACE FUNCTION public.player_create_fingerprint(
   _full_name text, _email text, _phone text, _select_person_id uuid
 )
@@ -94,41 +118,92 @@ AS $$
 $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
--- Is this Player already this academy's to speak for?
+-- Is this Player already this scope's to speak for?
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 --
--- For `_select_person_id`. Knowing a person's UUID is not permission to attach it to your academy —
--- UUIDs travel. The academy must already have a relationship with that Player: a membership, or a
--- guest of its own that links to them.
-CREATE OR REPLACE FUNCTION public.academy_may_select_person(_academy_profile_id uuid, _person_id uuid)
+-- For `_select_person_id`. Knowing a person's UUID is not permission to attach it to your academy or
+-- your trainer practice — UUIDs travel. The scope must already have a relationship with that Player:
+-- a membership, or a guest of its own that links to them. An ownerless create has no scope and
+-- therefore no relationships, so it can select nobody.
+CREATE OR REPLACE FUNCTION public.player_owner_may_select_person(
+  _owner_type text, _owner_id uuid, _person_id uuid
+)
 RETURNS boolean
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
-  SELECT EXISTS (SELECT 1 FROM public.academy_player_memberships m
-                  WHERE m.academy_profile_id = _academy_profile_id AND m.person_id = _person_id)
+  SELECT CASE _owner_type
+    WHEN 'academy' THEN
+      EXISTS (SELECT 1 FROM public.academy_player_memberships m
+               WHERE m.academy_profile_id = _owner_id AND m.person_id = _person_id)
       OR EXISTS (SELECT 1 FROM public.person_links pl
-                  JOIN public.guest_players g ON g.id = pl.guest_player_id
-                 WHERE pl.person_id = _person_id AND g.academy_profile_id = _academy_profile_id);
+                   JOIN public.guest_players g ON g.id = pl.guest_player_id
+                  WHERE pl.person_id = _person_id AND g.academy_profile_id = _owner_id)
+    WHEN 'trainer' THEN
+      EXISTS (SELECT 1 FROM public.person_links pl
+                JOIN public.guest_players g ON g.id = pl.guest_player_id
+               WHERE pl.person_id = _person_id AND g.trainer_id = _owner_id)
+    ELSE false     -- an unknown scope owns nothing and may select nobody
+  END;
+$$;
+
+-- Who may create a Player in a scope. Written once here so the edge functions and the command
+-- cannot answer it differently; the edge gate asks the same questions before spending a round trip,
+-- and this is the authority.
+CREATE OR REPLACE FUNCTION public.player_owner_may_create(
+  _owner_type text, _owner_id uuid, _user_id uuid
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT CASE
+    WHEN _user_id IS NULL THEN false
+    WHEN _owner_type = 'academy' THEN
+      public.is_academy_manager(_user_id, _owner_id) OR public.is_academy_owner(_user_id, _owner_id)
+    WHEN _owner_type = 'trainer' THEN
+      EXISTS (SELECT 1 FROM public.trainer_profiles tp
+               WHERE tp.id = _owner_id AND tp.user_id = _user_id)
+      -- or the caller runs an academy this trainer works for: the academy back-office creates
+      -- players against its trainers, and refusing that would make the trainer scope unreachable
+      -- for the role that actually uses it.
+      OR EXISTS (SELECT 1 FROM public.academy_trainers at
+                  WHERE at.trainer_profile_id = _owner_id
+                    AND (public.is_academy_manager(_user_id, at.academy_profile_id)
+                         OR public.is_academy_owner(_user_id, at.academy_profile_id)))
+    ELSE false
+  END;
 $$;
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- The command
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 DROP FUNCTION IF EXISTS public.academy_create_player(uuid, text, text, text, uuid);
+DROP FUNCTION IF EXISTS public.academy_create_player(uuid, uuid, text, text, text, uuid, uuid);
+DROP FUNCTION IF EXISTS public.academy_may_select_person(uuid, uuid);
 
-CREATE OR REPLACE FUNCTION public.academy_create_player(
-  _academy_profile_id  uuid,
+CREATE OR REPLACE FUNCTION public.player_create_command(
   _creation_request_id uuid,
-  _full_name           text,
-  _email               text DEFAULT NULL,
-  _phone               text DEFAULT NULL,
+  _owner_type          text,
+  _owner_id            uuid    DEFAULT NULL,
+  _full_name           text    DEFAULT NULL,
+  _email               text    DEFAULT NULL,
+  _phone               text    DEFAULT NULL,
+  _first_name          text    DEFAULT NULL,
+  _last_name           text    DEFAULT NULL,
+  _skill_rating        numeric DEFAULT NULL,
+  _rating_system       text    DEFAULT NULL,
+  _birth_date          date    DEFAULT NULL,
+  _source              text    DEFAULT NULL,
   -- "this is an existing Player", by canonical id. Authorized, never assumed from possession.
-  _select_person_id    uuid DEFAULT NULL,
-  -- Service-role callers (the edge function) name the acting user; a signed-in caller cannot.
-  _actor_user_id       uuid DEFAULT NULL
+  _select_person_id    uuid    DEFAULT NULL,
+  -- Service-role callers (the edge functions) name the acting user; a signed-in caller cannot.
+  _actor_user_id       uuid    DEFAULT NULL,
+  _origin              text    DEFAULT 'operator'
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -148,23 +223,63 @@ DECLARE
   v_guest uuid;
   v_dupe uuid;
 BEGIN
-  v_uid := CASE WHEN v_is_service THEN coalesce(_actor_user_id, auth.uid()) ELSE auth.uid() END;
-
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_NOT_AUTHENTICATED' USING ERRCODE = 'insufficient_privilege';
-  END IF;
   IF _creation_request_id IS NULL THEN
     RAISE EXCEPTION 'PLAYER_CREATE_REQUEST_ID_REQUIRED: a create command must say which attempt it is'
       USING ERRCODE = 'invalid_parameter_value';
   END IF;
+  -- Every Player belongs to an academy or a trainer. That is not this command's rule — it is the
+  -- `guest_players_owner_check` constraint the table has carried since 2026-02, and a create with no
+  -- scope has always ended in an opaque check violation several statements later. It is refused
+  -- here, legibly, before anything is written.
+  IF _owner_type IS NULL OR _owner_type NOT IN ('academy', 'trainer') THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_BAD_SCOPE: a Player belongs to an academy or a trainer'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF _owner_id IS NULL THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_BAD_SCOPE: the % scope needs an owner id', _owner_type
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF _origin IS NULL OR _origin NOT IN ('operator', 'self_signup') THEN
+    RAISE EXCEPTION 'PLAYER_CREATE_BAD_ORIGIN: origin must be operator or self_signup'
+      USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  IF _origin = 'self_signup' THEN
+    -- The public registration form reaches this through its own service-key edge function, which is
+    -- where the form-is-open check, the CORS allow-list and the rate limits live. A signed-in client
+    -- may not declare itself a self-signup: that would be a create with no operator and no gate.
+    IF NOT v_is_service THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: only the public registration endpoint may create a self-signup Player'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    -- A registrant identifies themselves by signing in, and a signed-in registrant is an existing
+    -- Player who travels by their own id — they never reach a CREATE at all. So there is no
+    -- selection arm here, and no way to name one.
+    IF _select_person_id IS NOT NULL THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: a self-signup cannot select an existing Player'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    -- ...and for the same reason there is nobody to record as the actor. Accepting one would put an
+    -- unverified user id into the durable evidence, which is worse than recording none.
+    IF _actor_user_id IS NOT NULL THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_BAD_ORIGIN: a self-signup has no operator to name'
+        USING ERRCODE = 'invalid_parameter_value';
+    END IF;
+    v_uid := NULL;   -- the public form has no signed-in operator
+  ELSE
+    v_uid := CASE WHEN v_is_service THEN coalesce(_actor_user_id, auth.uid()) ELSE auth.uid() END;
+    IF v_uid IS NULL THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_NOT_AUTHENTICATED' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF NOT public.player_owner_may_create(_owner_type, _owner_id, v_uid) THEN
+      RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: you do not control that academy or trainer'
+        USING ERRCODE = 'insufficient_privilege';
+    END IF;
+  END IF;
+
   IF v_name IS NULL AND _select_person_id IS NULL THEN
     RAISE EXCEPTION 'PLAYER_CREATE_NAME_REQUIRED: a new Player needs a name'
       USING ERRCODE = 'invalid_parameter_value';
-  END IF;
-  IF NOT (public.is_academy_manager(v_uid, _academy_profile_id)
-          OR public.is_academy_owner(v_uid, _academy_profile_id)) THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: you do not manage that academy'
-      USING ERRCODE = 'insufficient_privilege';
   END IF;
 
   -- Serialize on the REQUEST, not on the address. Two concurrent submissions of one attempt must
@@ -178,9 +293,13 @@ BEGIN
 
   IF FOUND THEN
     -- Same attempt. It must be the SAME attempt in every material respect, or the caller has reused
-    -- an id and is owed an error rather than somebody else's answer.
-    IF v_cmd.academy_profile_id <> _academy_profile_id
-       OR v_cmd.actor_user_id <> v_uid
+    -- an id and is owed an error rather than somebody else's answer. IS DISTINCT FROM throughout:
+    -- an anonymous self-signup has a NULL actor and an ownerless create has a NULL owner, and `<>`
+    -- would answer NULL — never true — for both.
+    IF v_cmd.owner_type <> _owner_type
+       OR v_cmd.owner_id IS DISTINCT FROM _owner_id
+       OR v_cmd.origin <> _origin
+       OR v_cmd.actor_user_id IS DISTINCT FROM v_uid
        OR v_cmd.payload_fingerprint <> v_fp THEN
       RAISE EXCEPTION 'PLAYER_CREATE_IDEMPOTENCY_CONFLICT: request % was already used for a different create',
         _creation_request_id USING ERRCODE = 'unique_violation';
@@ -201,20 +320,41 @@ BEGIN
 
   -- ── a genuinely new attempt ──────────────────────────────────────────────────────────────────
   IF _select_person_id IS NOT NULL THEN
-    IF NOT public.academy_may_select_person(_academy_profile_id, _select_person_id) THEN
+    IF NOT public.player_owner_may_select_person(_owner_type, _owner_id, _select_person_id) THEN
       -- knowing the uuid is not the same as being allowed to use it
-      RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that Player is not one this academy can select'
+      RAISE EXCEPTION 'PLAYER_CREATE_PERSON_NOT_YOURS: that Player is not one this scope can select'
         USING ERRCODE = 'insufficient_privilege';
     END IF;
     v_person := _select_person_id;
     SELECT pl.guest_player_id INTO v_guest
       FROM public.person_links pl
       JOIN public.guest_players g ON g.id = pl.guest_player_id
-     WHERE pl.person_id = v_person AND g.academy_profile_id = _academy_profile_id
+     WHERE pl.person_id = v_person
+       AND ((_owner_type = 'academy' AND g.academy_profile_id = _owner_id)
+            OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
+     ORDER BY g.created_at
      LIMIT 1;
   ELSE
-    INSERT INTO public.guest_players (full_name, email, phone, academy_profile_id, source)
-    VALUES (btrim(_full_name), v_email, public.u2_norm(_phone), _academy_profile_id, 'academy_created')
+    -- Serialize the PROPOSAL, not the identity. Two operators submitting the same human under two
+    -- different request ids must both get their own Player — that is the whole point of keying on
+    -- the request — but they must not both look, both see nothing, and both file nothing. This lock
+    -- makes the second one see the first one's row. Taken AFTER the request lock and released with
+    -- the transaction, so the acquisition order is the same everywhere and cannot deadlock.
+    PERFORM pg_advisory_xact_lock(hashtext(
+      'player_identity:' || _owner_type || ':' || coalesce(_owner_id::text, '-')
+      || ':' || coalesce(v_name, '') || ':' || coalesce(v_email, '')));
+
+    INSERT INTO public.guest_players (
+      full_name, first_name, last_name, email, phone, skill_rating, rating_system, birth_date,
+      academy_profile_id, trainer_id, source
+    ) VALUES (
+      btrim(_full_name), nullif(btrim(_first_name), ''), nullif(btrim(_last_name), ''),
+      v_email, public.u2_norm(_phone), _skill_rating,
+      coalesce(nullif(btrim(_rating_system), ''), 'knltb'), _birth_date,
+      CASE WHEN _owner_type = 'academy' THEN _owner_id END,
+      CASE WHEN _owner_type = 'trainer' THEN _owner_id END,   -- exactly one, per the table's CHECK
+      coalesce(nullif(btrim(_source), ''), 'player_create_command')
+    )
     RETURNING id INTO v_guest;
 
     SELECT person_id INTO v_person FROM public.person_links WHERE guest_player_id = v_guest;
@@ -224,29 +364,32 @@ BEGIN
     END IF;
 
     -- PII may PROPOSE. A different create attempt that looks like this one is a candidate for a
-    -- human to judge, not a reason to hand back somebody else's Player.
-    IF v_email IS NOT NULL THEN
-      SELECT g.id INTO v_dupe
-        FROM public.guest_players g
-       WHERE g.academy_profile_id = _academy_profile_id
-         AND g.id <> v_guest
-         AND public.u2_norm(g.email) = v_email
-         AND public.u2_norm(g.full_name) = v_name
-       LIMIT 1;
+    -- human to judge, not a reason to hand back somebody else's Player. The name must agree; the
+    -- addresses must not DISAGREE — a Player entered once without an address and once with one is
+    -- the commonest real duplicate there is, and requiring an email match would miss exactly it.
+    SELECT g.id INTO v_dupe
+      FROM public.guest_players g
+     WHERE g.id <> v_guest
+       AND ((_owner_type = 'academy' AND g.academy_profile_id = _owner_id)
+            OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
+       AND public.u2_norm(g.full_name) = v_name
+       AND (v_email IS NULL OR public.u2_norm(g.email) IS NULL OR public.u2_norm(g.email) = v_email)
+     ORDER BY g.created_at
+     LIMIT 1;
 
-      IF v_dupe IS NOT NULL THEN
-        INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, person_id, details)
-        VALUES ('possible_duplicate_player', 'pending', v_email, v_guest, v_person,
-                jsonb_build_object('via', 'academy_create_player',
-                                   'looks_like_guest_player_id', v_dupe,
-                                   'note', 'proposed only — matching attributes do not decide identity'));
-      END IF;
+    IF v_dupe IS NOT NULL THEN
+      INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, person_id, details)
+      VALUES ('possible_duplicate_player', 'pending', v_email, v_guest, v_person,
+              jsonb_build_object('via', 'player_create_command',
+                                 'looks_like_guest_player_id', v_dupe,
+                                 'note', 'proposed only — matching attributes do not decide identity'));
     END IF;
   END IF;
 
   INSERT INTO public.player_create_commands
-    (creation_request_id, academy_profile_id, actor_user_id, payload_fingerprint, person_id, guest_player_id)
-  VALUES (_creation_request_id, _academy_profile_id, v_uid, v_fp, v_person, v_guest);
+    (creation_request_id, owner_type, owner_id, origin, actor_user_id,
+     payload_fingerprint, person_id, guest_player_id)
+  VALUES (_creation_request_id, _owner_type, _owner_id, _origin, v_uid, v_fp, v_person, v_guest);
 
   RETURN jsonb_build_object(
     'person_id', v_person,
@@ -261,9 +404,15 @@ $$;
 -- Lifecycle: the record follows the person it names
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 --
--- The collapse repoints every column that names the dying person and then deletes it. Without this
--- line the FK would null the command's answer during a perfectly ordinary claim, and the next retry
--- would refuse with RESULT_GONE for a Player that is alive and well under a different id.
+-- The collapse repoints every column that names the dying person and then deletes it. Without a line
+-- for the command record the FK would null the command's answer during a perfectly ordinary claim,
+-- and the next retry would refuse with RESULT_GONE for a Player that is alive and well under a
+-- different id.
+--
+-- The repoint sits with the other repoints, AFTER the two arms that decline to collapse. It used to
+-- run first, as the very first statement: a refused collapse then left the command pointing at a
+-- target it was never merged into, while the person it actually made carried on living. The record
+-- must move only when the thing it records actually moved.
 CREATE OR REPLACE FUNCTION public.collapse_guest_person_into_reporting(
   _guest_id uuid, _guest_person uuid, _target_person uuid
 )
@@ -275,14 +424,6 @@ AS $$
 DECLARE
   v_memberships jsonb;
 BEGIN
-  -- U2: the durable create-command record names this person. Repointed FIRST, because the body
-  -- below ends by DELETING the source person and the record's ON DELETE SET NULL would fire before
-  -- anything else could — losing a finished command's answer during an ordinary claim, and making
-  -- the next retry refuse for a Player that is alive under a different id.
-  UPDATE public.player_create_commands
-     SET person_id = _target_person
-   WHERE person_id = _guest_person;
-
   IF _guest_person = _target_person THEN
     RETURN jsonb_build_object('ok', true, 'moved', 0, 'coalesced', 0);
   END IF;
@@ -312,9 +453,15 @@ BEGIN
   UPDATE public.academy_player_metadata SET person_id = _target_person
     WHERE guest_player_id = _guest_id AND person_id = _guest_person;
 
-  -- THE ADDITION. Memberships are keyed by PERSON, not by the guest row, so they are not covered by
-  -- any of the updates above — and their FK is RESTRICT, so without this the DELETE below fails and
-  -- the whole collapse aborts once the table is populated.
+  -- U2: the durable create-command record names this person. Its guest column needs no repoint —
+  -- the collapse relinks the guest ROW rather than deleting it, so `guest_player_id` stays valid.
+  UPDATE public.player_create_commands
+     SET person_id = _target_person
+   WHERE person_id = _guest_person;
+
+  -- Memberships are keyed by PERSON, not by the guest row, so they are not covered by any of the
+  -- updates above — and their FK is RESTRICT, so without this the DELETE below fails and the whole
+  -- collapse aborts once the table is populated.
   v_memberships := public.repoint_person_memberships(_guest_person, _target_person);
 
   DELETE FROM public.persons WHERE id = _guest_person;
@@ -328,12 +475,22 @@ $$;
 REVOKE ALL ON FUNCTION public.u2_ns(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.u2_norm(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.player_create_fingerprint(text, text, text, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.academy_may_select_person(uuid, uuid) FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.academy_create_player(uuid, uuid, text, text, text, uuid, uuid)
+REVOKE ALL ON FUNCTION public.player_owner_may_select_person(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.player_owner_may_create(text, uuid, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text)
   FROM PUBLIC, anon, authenticated, service_role;
 
-GRANT EXECUTE ON FUNCTION public.academy_create_player(uuid, uuid, text, text, text, uuid, uuid)
+GRANT EXECUTE ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text)
   TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.player_create_command(uuid, text, uuid, text, text, text, text, text, numeric, text, date, text, uuid, uuid, text) IS
+  'The one Player-create command. Idempotent on the caller''s creation_request_id — never on a name, address or phone number, which may only PROPOSE a duplicate for review. An existing Player is named by person_id and must already belong to the scope; possession of a uuid authorizes nothing. Scope is the academy or trainer the Player belongs to (U2, owner 2026-08-09).';
+
+COMMENT ON FUNCTION public.player_owner_may_select_person(text, uuid, uuid) IS
+  'Whether a scope may name an existing person_id in a create command: it must already have a membership or a guest of its own linked to that person. UUIDs travel; permission does not.';
+
+COMMENT ON FUNCTION public.player_owner_may_create(text, uuid, uuid) IS
+  'Whether a user may create a Player in a scope. The single authority — the edge gates ask the same questions to fail fast, but this decides.';
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- Round-5 finding 2: the money-stamping linker was anonymously callable

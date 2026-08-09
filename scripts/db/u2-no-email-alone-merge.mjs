@@ -479,6 +479,38 @@ async function proposedPair() {
 // `person_id` is the canonical Player identity; a separate stable UUID identifies the create
 // COMMAND. Email, phone and name are mutable attributes and matching signals — never identity, never
 // idempotency keys — and knowing a UUID never grants authorization (owner, 2026-08-09).
+
+/** Run as `service_role`, the way an edge function's service key reaches PostgREST. */
+const asService = async (fn) => {
+  await c.query('SAVEPOINT sv');
+  await c.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+    [JSON.stringify({ role: 'service_role' })]);
+  await c.query(`SET LOCAL ROLE service_role`);
+  try {
+    const r = await fn();
+    await c.query(`RESET ROLE`);
+    await c.query(`SELECT set_config('request.jwt.claims', NULL, true)`);
+    return { ok: true, value: r };
+  } catch (e) {
+    await c.query('ROLLBACK TO SAVEPOINT sv');
+    await c.query(`RESET ROLE`);
+    return { ok: false, code: e.code, message: e.message };
+  }
+};
+
+const CREATE_SQL = `SELECT public.player_create_command(
+  _creation_request_id => $1, _owner_type => $2, _owner_id => $3,
+  _full_name => $4, _email => $5, _phone => $6,
+  _select_person_id => $7, _actor_user_id => $8, _origin => $9) AS r`;
+
+/** The command as a signed-in operator. Every argument spelled out, so no default hides a change. */
+const runCreate = (client, args) => client.query(CREATE_SQL, [
+  args.req, args.ownerType, args.ownerId ?? null, args.name ?? null, args.email ?? null,
+  args.phone ?? null, args.selectPerson ?? null, args.actor ?? null, args.origin ?? 'operator',
+]);
+const create = (uid, args) => asUser(uid, async () => (await runCreate(c, args)).rows[0].r);
+const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
+
 {
   await c.query('BEGIN');
   const { id: academy } = await one(
@@ -495,34 +527,41 @@ async function proposedPair() {
     [academy, managerUid]);
   ok('the create fixture seeds a MANAGER, not an owner', (seededRole?.role ?? 'manager') !== 'owner', seededRole);
 
-  const create = (uid, req, name, email, extra = 'NULL, NULL') =>
-    asUser(uid, async () => (await one(
-      `SELECT public.academy_create_player($1, $2, $3, $4, ${extra}) AS r`,
-      [academy, req, name, email])).r);
-
   const email = EMAIL();
-  const reqA = (await one(`SELECT gen_random_uuid() AS id`)).id;
+  const reqA = await newUuid();
+  const base = { ownerType: 'academy', ownerId: academy };
 
-  const first = await create(managerUid, reqA, 'Nieuwe Speler', email);
+  const first = await create(managerUid, { ...base, req: reqA, name: 'Nieuwe Speler', email });
   ok('an academy manager can create a player', first.ok && first.value.created === true, first);
   ok('the answer is the canonical person_id', first.ok && first.value.person_id !== null, first.value);
 
-  const replay = await create(managerUid, reqA, 'Nieuwe Speler', email);
+  const replay = await create(managerUid, { ...base, req: reqA, name: 'Nieuwe Speler', email });
   ok('the SAME request id replays — same Player, nothing created',
     replay.ok && replay.value.created === false && replay.value.replayed === true
     && replay.value.person_id === first.value.person_id, replay);
 
   // a DIFFERENT attempt for the same human is a different Player, and only a proposal
-  const reqB = (await one(`SELECT gen_random_uuid() AS id`)).id;
-  const twin = await create(managerUid, reqB, 'Nieuwe Speler', email);
+  const reqB = await newUuid();
+  const twin = await create(managerUid, { ...base, req: reqB, name: 'Nieuwe Speler', email });
   ok('a different request id with IDENTICAL name and email is NOT silently the same Player',
     twin.ok && twin.value.person_id !== first.value.person_id, twin);
   ok('...it is proposed for review instead',
     (await one(`SELECT count(*)::int AS n FROM public.person_merge_review
                  WHERE kind = 'possible_duplicate_player' AND person_id = $1`, [twin.value.person_id])).n === 1);
 
+  // ...and the proposal does not need the addresses to agree. A player entered once WITHOUT an
+  // address and once with one is the commonest real duplicate there is, and an email-equality
+  // requirement would miss exactly it.
+  const reqNoAddr = await newUuid();
+  const sameNameNoEmail = await create(managerUid, { ...base, req: reqNoAddr, name: 'Nieuwe Speler' });
+  ok('a same-name Player with NO address is proposed against the one that has one',
+    sameNameNoEmail.ok &&
+    (await one(`SELECT count(*)::int AS n FROM public.person_merge_review
+                 WHERE kind = 'possible_duplicate_player' AND person_id = $1`,
+      [sameNameNoEmail.value.person_id])).n === 1, sameNameNoEmail);
+
   // reusing an id with different material facts is a caller bug and is told so
-  const conflict = await create(managerUid, reqA, 'Andere Naam', email);
+  const conflict = await create(managerUid, { ...base, req: reqA, name: 'Andere Naam', email });
   ok('reusing a request id with a CHANGED payload is refused',
     !conflict.ok && /IDEMPOTENCY_CONFLICT/.test(conflict.message ?? ''), conflict);
 
@@ -531,36 +570,45 @@ async function proposedPair() {
      VALUES ('u2 other', 'u2o-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
   await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
                  VALUES ($1, $2, 'manager')`, [academy2, managerUid]).catch(() => {});
-  const crossAcademy = await asUser(managerUid, async () => (await one(
-    `SELECT public.academy_create_player($1, $2, $3, $4, NULL, NULL) AS r`,
-    [academy2, reqA, 'Nieuwe Speler', email])).r);
+  const crossAcademy = await create(managerUid,
+    { ownerType: 'academy', ownerId: academy2, req: reqA, name: 'Nieuwe Speler', email });
   ok('reusing a request id against a DIFFERENT academy is refused',
     !crossAcademy.ok && /IDEMPOTENCY_CONFLICT/.test(crossAcademy.message ?? ''), crossAcademy);
 
   // email is optional at the architectural level, and still retryable
-  const reqC = (await one(`SELECT gen_random_uuid() AS id`)).id;
-  const noEmail1 = await create(managerUid, reqC, 'Zonder Email', null);
-  const noEmail2 = await create(managerUid, reqC, 'Zonder Email', null);
+  const reqC = await newUuid();
+  const noEmail1 = await create(managerUid, { ...base, req: reqC, name: 'Zonder Email' });
+  const noEmail2 = await create(managerUid, { ...base, req: reqC, name: 'Zonder Email' });
   ok('a Player with NO email is creatable', noEmail1.ok && noEmail1.value.created === true, noEmail1);
   ok('...and retrying it is idempotent, with no email to key on',
     noEmail2.ok && noEmail2.value.created === false
     && noEmail2.value.person_id === noEmail1.value.person_id, noEmail2);
+  ok('...and the Player it made really has no address',
+    (await one(`SELECT email FROM public.guest_players WHERE id = $1`, [noEmail1.value.guest_player_id])).email === null);
 
   // authorization is not possession of a uuid
   const { uid: outsiderUid } = await makeAccount(EMAIL());
-  const refused = await asUser(outsiderUid, async () => (await one(
-    `SELECT public.academy_create_player($1, $2, $3, $4, NULL, NULL) AS r`,
-    [academy, (await one(`SELECT gen_random_uuid() AS id`)).id, 'Sneaky', EMAIL()])).r);
+  const refused = await create(outsiderUid, { ...base, req: await newUuid(), name: 'Sneaky', email: EMAIL() });
   ok('someone who does not manage the academy cannot create players there',
     !refused.ok && /PLAYER_CREATE_FORBIDDEN/.test(refused.message ?? ''), refused);
 
-  const missingReq = await asUser(managerUid, async () => (await one(
-    `SELECT public.academy_create_player($1, NULL, $2, $3, NULL, NULL) AS r`,
-    [academy, 'No Request Id', EMAIL()])).r);
+  const missingReq = await create(managerUid, { ...base, req: null, name: 'No Request Id', email: EMAIL() });
   ok('a create with no request id is refused — it could not be retried safely',
     !missingReq.ok && /REQUEST_ID_REQUIRED/.test(missingReq.message ?? ''), missingReq);
 
-  // selecting an existing Player needs a person this academy may speak for
+  // Every Player belongs to an academy or a trainer — `guest_players_owner_check` has said so since
+  // 2026-02, and a create with no scope used to reach the INSERT and come back as an opaque check
+  // violation. Refused up front now, by name.
+  const noScope = await create(managerUid,
+    { ownerType: 'academy', ownerId: null, req: await newUuid(), name: 'No Scope' });
+  ok('a create with no owner id is refused legibly, not at the constraint',
+    !noScope.ok && /BAD_SCOPE/.test(noScope.message ?? ''), noScope);
+  const badScope = await create(managerUid,
+    { ownerType: 'none', ownerId: academy, req: await newUuid(), name: 'Scope Mismatch' });
+  ok('...and so is a scope this schema has no column for',
+    !badScope.ok && /BAD_SCOPE/.test(badScope.message ?? ''), badScope);
+
+  // selecting an existing Player needs a person this scope may speak for
   const { id: strangerAcademy } = await one(
     `INSERT INTO public.academy_profiles (name, slug)
      VALUES ('u2 stranger', 'u2st-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
@@ -569,15 +617,13 @@ async function proposedPair() {
      VALUES ('Someone Elses Player', $1, $2) RETURNING id`, [EMAIL(), strangerAcademy]);
   const strangerPerson = (await personOfGuest(strangerGuest)).person_id;
 
-  const stolen = await asUser(managerUid, async () => (await one(
-    `SELECT public.academy_create_player($1, $2, $3, NULL, NULL, $4) AS r`,
-    [academy, (await one(`SELECT gen_random_uuid() AS id`)).id, 'Whoever', strangerPerson])).r);
-  ok('knowing a person_id does not let an academy select it',
+  const stolen = await create(managerUid,
+    { ...base, req: await newUuid(), name: 'Whoever', selectPerson: strangerPerson });
+  ok('knowing a person_id does not let a scope select it',
     !stolen.ok && /PERSON_NOT_YOURS/.test(stolen.message ?? ''), stolen);
 
-  const mine = await asUser(managerUid, async () => (await one(
-    `SELECT public.academy_create_player($1, $2, $3, NULL, NULL, $4) AS r`,
-    [academy, (await one(`SELECT gen_random_uuid() AS id`)).id, 'Whoever', first.value.person_id])).r);
+  const mine = await create(managerUid,
+    { ...base, req: await newUuid(), name: 'Whoever', selectPerson: first.value.person_id });
   ok('...but a Player the academy already has can be selected',
     mine.ok && mine.value.person_id === first.value.person_id && mine.value.created === false, mine);
 
@@ -589,9 +635,203 @@ async function proposedPair() {
   await c.query('ROLLBACK');
 }
 
-// ══ 5e. THE COMMAND RECORD SURVIVES THE PLAYER BEING CLAIMED ═══════════════════════════════════
+// ══ 5d-2. THE SAME RULE FOR A TRAINER, AND FOR NO SCOPE AT ALL ═════════════════════════════════
+// A rule that exists for academies and not for trainers is a rule with a hole in it: the staff
+// intake function accepts a trainer scope, and before this it kept its own email-and-name match for
+// exactly that branch.
+{
+  await c.query('BEGIN');
+  const { uid: trainerUid } = await makeAccount(EMAIL());
+  const { id: trainer } = await one(
+    `INSERT INTO public.trainer_profiles (user_id) VALUES ($1) RETURNING id`, [trainerUid]);
+  // `is_trainer` reads user_roles, not trainer_profiles — the two answer different questions, and
+  // the ownerless arm below asks the first one.
+  await c.query(`INSERT INTO public.user_roles (user_id, role) VALUES ($1, 'trainer')
+                 ON CONFLICT DO NOTHING`, [trainerUid]);
+  const { uid: otherTrainerUid } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.trainer_profiles (user_id) VALUES ($1)`, [otherTrainerUid]);
+
+  const own = await create(trainerUid,
+    { ownerType: 'trainer', ownerId: trainer, req: await newUuid(), name: 'Trainer Player', email: EMAIL() });
+  ok('a trainer can create a Player in their own practice', own.ok && own.value.created === true, own);
+  ok('...and it is stamped with that trainer, not left ownerless',
+    (await one(`SELECT trainer_id FROM public.guest_players WHERE id = $1`, [own.value.guest_player_id]))
+      .trainer_id === trainer);
+
+  const foreign = await create(otherTrainerUid,
+    { ownerType: 'trainer', ownerId: trainer, req: await newUuid(), name: 'Not Yours', email: EMAIL() });
+  ok('another trainer cannot create Players in it',
+    !foreign.ok && /PLAYER_CREATE_FORBIDDEN/.test(foreign.message ?? ''), foreign);
+
+  // the academy back-office creating against its own trainer must still work, or the trainer scope
+  // is unreachable for the role that uses it most
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 trainer scope', 'u2ts-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  await c.query(`INSERT INTO public.academy_trainers (academy_profile_id, trainer_profile_id, status)
+                 VALUES ($1, $2, 'active')`, [academy, trainer]);
+  const { uid: mgrUid } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgrUid]).catch(() => {});
+  const viaAcademy = await create(mgrUid,
+    { ownerType: 'trainer', ownerId: trainer, req: await newUuid(), name: 'Academy Made', email: EMAIL() });
+  ok('an academy manager can create against a trainer the academy works with', viaAcademy.ok, viaAcademy);
+
+  // a person from the trainer's scope is selectable there; one from the academy's is not
+  const crossScope = await create(trainerUid, {
+    ownerType: 'trainer', ownerId: trainer, req: await newUuid(),
+    name: 'Whoever', selectPerson: (await personOfGuest(
+      (await one(`INSERT INTO public.guest_players (full_name, academy_profile_id)
+                  VALUES ('Academy Only', $1) RETURNING id`, [academy])).id)).person_id,
+  });
+  ok('a person that belongs to the ACADEMY is not selectable in the TRAINER scope',
+    !crossScope.ok && /PERSON_NOT_YOURS/.test(crossScope.message ?? ''), crossScope);
+
+  // ...and an ordinary player controls no scope at all
+  const { uid: playerUid } = await makeAccount(EMAIL());
+  const notStaff = await create(playerUid,
+    { ownerType: 'trainer', ownerId: trainer, req: await newUuid(), name: 'By A Player', email: EMAIL() });
+  ok('an ordinary player cannot create Players anywhere',
+    !notStaff.ok && /PLAYER_CREATE_FORBIDDEN/.test(notStaff.message ?? ''), notStaff);
+
+  // The schema's own answer to "what about a club?": there is no column for one. The constraint
+  // that says so is asserted directly, because the command's refusal is only correct while it holds.
+  const ownerlessInsert = await asService(async () => (await c.query(
+    `INSERT INTO public.guest_players (full_name) VALUES ('Ownerless') RETURNING id`)).rows[0]);
+  ok('the schema itself refuses a Player belonging to nobody',
+    !ownerlessInsert.ok && ownerlessInsert.code === '23514', ownerlessInsert);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-3. THE PUBLIC FORM'S CREATE, AND WHAT IT MAY NOT DO ═════════════════════════════════════
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 selfsignup', 'u2ss-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const base = { ownerType: 'academy', ownerId: academy, origin: 'self_signup' };
+
+  const selfSignup = await asService(async () => (await runCreate(c,
+    { ...base, req: await newUuid(), name: 'Publieke Aanmelding', email: EMAIL() })).rows[0].r);
+  ok('the public endpoint can create a Player with no operator at all',
+    selfSignup.ok && selfSignup.value.created === true, selfSignup);
+  ok('...recorded as having none, rather than as somebody unverified',
+    (await one(`SELECT actor_user_id, origin FROM public.player_create_commands
+                 WHERE person_id = $1`, [selfSignup.value.person_id])).actor_user_id === null);
+
+  const { uid: someoneUid } = await makeAccount(EMAIL());
+  const impersonated = await create(someoneUid,
+    { ...base, req: await newUuid(), name: 'Faked Origin', email: EMAIL() });
+  ok('a signed-in client cannot declare itself a self-signup',
+    !impersonated.ok && /PLAYER_CREATE_FORBIDDEN/.test(impersonated.message ?? ''), impersonated);
+
+  const withActor = await asService(async () => (await runCreate(c,
+    { ...base, req: await newUuid(), name: 'Claimed Actor', email: EMAIL(), actor: someoneUid })).rows[0].r);
+  ok('a self-signup that names an operator is refused — the id could not be verified',
+    !withActor.ok && /BAD_ORIGIN/.test(withActor.message ?? ''), withActor);
+
+  const { id: someGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Existing One', $1) RETURNING id`, [academy]);
+  const selecting = await asService(async () => (await runCreate(c, {
+    ...base, req: await newUuid(), name: 'Selector',
+    selectPerson: (await personOfGuest(someGuest)).person_id,
+  })).rows[0].r);
+  ok('a self-signup cannot select an existing Player',
+    !selecting.ok && /PLAYER_CREATE_FORBIDDEN/.test(selecting.message ?? ''), selecting);
+  await c.query('ROLLBACK');
+}
+
+// ══ 5d-4. TWO OPERATORS AT ONCE: TWO PLAYERS, AND A PROPOSAL ═══════════════════════════════════
+// Keying on the request means two different attempts for one human legitimately make two Players.
+// What must NOT happen is that they both look, both see nothing, and neither files the proposal
+// that tells a human to look. Proven with real concurrency: the second create BLOCKS while the
+// first holds the identity lock, and once the first commits the second sees it.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 concurrent', 'u2cc-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgrUid } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgrUid]).catch(() => {});
+  await c.query('COMMIT');                       // the other sessions have to see the fixture
+
+  const email = EMAIL();
+  const sessions = [new pg.Client({ connectionString: CONN }), new pg.Client({ connectionString: CONN })];
+  await Promise.all(sessions.map((s) => s.connect()));
+  const asManager = async (s) => {
+    await s.query(`SELECT set_config('request.jwt.claims', $1, true)`,
+      [JSON.stringify({ sub: mgrUid, role: 'authenticated' })]);
+    await s.query(`SET LOCAL ROLE authenticated`);
+  };
+
+  await sessions[0].query('BEGIN');
+  await asManager(sessions[0]);
+  const firstRow = (await runCreate(sessions[0],
+    { ownerType: 'academy', ownerId: academy, req: await newUuid(), name: 'Gelijktijdig', email })).rows[0].r;
+
+  await sessions[1].query(`SET lock_timeout = '800ms'`);
+  await sessions[1].query('BEGIN');
+  await asManager(sessions[1]);
+  let blocked = null;
+  try {
+    await runCreate(sessions[1],
+      { ownerType: 'academy', ownerId: academy, req: await newUuid(), name: 'Gelijktijdig', email });
+  } catch (e) { blocked = e.code; }
+  await sessions[1].query('ROLLBACK');
+  ok('a concurrent create of the same person waits for the first to finish', blocked === '55P03', { blocked });
+
+  await sessions[0].query('COMMIT');
+
+  await sessions[1].query('BEGIN');
+  await asManager(sessions[1]);
+  const secondRow = (await runCreate(sessions[1],
+    { ownerType: 'academy', ownerId: academy, req: await newUuid(), name: 'Gelijktijdig', email })).rows[0].r;
+  await sessions[1].query('COMMIT');
+
+  ok('both attempts get their OWN Player — the request id is the key, not the person',
+    firstRow.person_id !== secondRow.person_id, { firstRow, secondRow });
+  const proposals = await all(
+    `SELECT person_id FROM public.person_merge_review
+      WHERE kind = 'possible_duplicate_player' AND person_id IN ($1, $2)`,
+    [firstRow.person_id, secondRow.person_id]);
+  ok('...and the second one is proposed for review, so a human is told',
+    proposals.length === 1 && proposals[0].person_id === secondRow.person_id, proposals);
+
+  await Promise.all(sessions.map((s) => s.end()));
+  // committed fixture: clean it up
+  await c.query(`DELETE FROM public.person_merge_review WHERE guest_player_id IN ($1, $2)`,
+    [firstRow.guest_player_id, secondRow.guest_player_id]);
+  await c.query(`DELETE FROM public.player_create_commands WHERE person_id IN ($1, $2)`,
+    [firstRow.person_id, secondRow.person_id]);
+  await c.query(`DELETE FROM public.guest_players WHERE id IN ($1, $2)`,
+    [firstRow.guest_player_id, secondRow.guest_player_id]);
+  await c.query(`DELETE FROM public.academy_managers WHERE academy_profile_id = $1`, [academy]);
+  await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [academy]);
+  await c.query(`DELETE FROM auth.users WHERE id = $1`, [mgrUid]);
+}
+
+// ══ 5e. THE COMMAND RECORD FOLLOWS THE PLAYER IT MADE ══════════════════════════════════════════
 // A guest source disappears — claimed, merged, anonymized, deleted. If the record died with it, the
-// next retry of a long-finished attempt would quietly make a second Player.
+// next retry of a long-finished attempt would quietly make a second Player. Where a successor
+// exists the record is repointed; where the Player is genuinely gone it says so.
+
+/** Record a finished command naming a person + guest, the way the command itself would. */
+const recordCommand = async (academy, actor, person, guest) => {
+  const req = await newUuid();
+  await c.query(
+    `INSERT INTO public.player_create_commands
+       (creation_request_id, owner_type, owner_id, origin, actor_user_id,
+        payload_fingerprint, person_id, guest_player_id)
+     VALUES ($1, 'academy', $2, 'operator', $3, 'fixture', $4, $5)`,
+    [req, academy, actor, person, guest]);
+  return req;
+};
+const commandFor = (req) => one(
+  `SELECT person_id, guest_player_id FROM public.player_create_commands WHERE creation_request_id = $1`,
+  [req]);
+
 {
   await c.query('BEGIN');
   const f = await proposedPair();
@@ -599,23 +839,146 @@ async function proposedPair() {
   await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
                  VALUES ($1, $2, 'manager')`, [f.academy, mgr]).catch(() => {});
 
-  // record a command whose answer is the guest's person, then let the human claim it away
-  const req = (await one(`SELECT gen_random_uuid() AS id`)).id;
   const guestPerson = (await personOfGuest(f.guest)).person_id;
-  await c.query(
-    `INSERT INTO public.player_create_commands
-       (creation_request_id, academy_profile_id, actor_user_id, payload_fingerprint, person_id, guest_player_id)
-     VALUES ($1, $2, $3, 'fixture', $4, $5)`, [req, f.academy, mgr, guestPerson, f.guest]);
+  const req = await recordCommand(f.academy, mgr, guestPerson, f.guest);
 
   const claimed = await asUser(f.uid, async () =>
     (await one(`SELECT public.person_claim_confirm($1) AS r`, [f.reviewId])).r);
   ok('the claim still succeeds with a command record pointing at the guest person', claimed.ok, claimed);
 
-  const after = await one(
-    `SELECT person_id FROM public.player_create_commands WHERE creation_request_id = $1`, [req]);
+  const after = await commandFor(req);
   const profilePerson = (await personOfProfile(f.profileId)).person_id;
   ok('the command record was REPOINTED to the surviving person, not nulled',
     after.person_id === profilePerson, { after: after.person_id, profilePerson, guestPerson });
+  ok('...and its guest column still names the guest, which the claim relinks rather than deletes',
+    after.guest_player_id === f.guest, after);
+  await c.query('ROLLBACK');
+}
+
+{
+  // A REFUSED collapse must not move the record. The collapse declines when the guest's person has
+  // another source, and the record then names a person that is still alive under its own id — so
+  // repointing it would make the next retry answer with somebody else's Player.
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 refuse', 'u2rf-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  const { id: guest } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Not Collapsible', $1) RETURNING id`, [academy]);
+  const guestPerson = (await personOfGuest(guest)).person_id;
+  // a SECOND source on the same person: exactly the shape the collapse refuses
+  const { id: sibling } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Second Source', $1) RETURNING id`, [academy]);
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE guest_player_id = $2`,
+    [guestPerson, sibling]);
+
+  const { id: targetGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('The Target', $1) RETURNING id`, [academy]);
+  const targetPerson = (await personOfGuest(targetGuest)).person_id;
+
+  const req = await recordCommand(academy, mgr, guestPerson, guest);
+  const refused = await one(
+    `SELECT public.collapse_guest_person_into_reporting($1, $2, $3) AS r`,
+    [guest, guestPerson, targetPerson]);
+  ok('the collapse refuses a person that still has another source', refused.r.ok === false, refused.r);
+
+  const after = await commandFor(req);
+  ok('a REFUSED collapse leaves the command record exactly where it was',
+    after.person_id === guestPerson, { after: after.person_id, guestPerson, targetPerson });
+  await c.query('ROLLBACK');
+}
+
+{
+  // The operator merge deletes the source guest, which lets the orphan cleanup destroy its person.
+  // Both of the record's answers point at things that are about to stop existing.
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 merge', 'u2mg-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgr]).catch(() => {});
+  const { id: source } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Merge Source', $1, $2) RETURNING id`, [EMAIL(), academy]);
+  const { id: target } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Merge Target', $1, $2) RETURNING id`, [EMAIL(), academy]);
+  const sourcePerson = (await personOfGuest(source)).person_id;
+  const targetPerson = (await personOfGuest(target)).person_id;
+  const req = await recordCommand(academy, mgr, sourcePerson, source);
+
+  const merged = await asUser(mgr, async () => (await one(
+    `SELECT public.merge_guest_players('academy', $1, $2, $3, '{}'::jsonb) AS r`,
+    [academy, source, target])).r);
+  ok('the operator merge succeeds', merged.ok, merged);
+
+  const after = await commandFor(req);
+  ok('the command record follows the merge instead of being nulled',
+    after.person_id === targetPerson && after.guest_player_id === target,
+    { after, targetPerson, target });
+  ok('...and the source person really is gone, so this was a repoint and not a coincidence',
+    (await one(`SELECT count(*)::int AS n FROM public.persons WHERE id = $1`, [sourcePerson])).n === 0);
+  await c.query('ROLLBACK');
+}
+
+{
+  // RETENTION. The evidence has to outlive its academy — an audit that cascades away with its
+  // subject is not an audit. What the Player-shaped columns do is different and deliberate: they go
+  // NULL, and a NULL is the record saying the Player it made no longer exists.
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 retention', 'u2rt-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  const { id: guest } = await one(
+    `INSERT INTO public.guest_players (full_name, academy_profile_id)
+     VALUES ('Doomed', $1) RETURNING id`, [academy]);
+  const person = (await personOfGuest(guest)).person_id;
+  const req = await recordCommand(academy, mgr, person, guest);
+
+  await c.query(`DELETE FROM public.academy_profiles WHERE id = $1`, [academy]);
+
+  const after = await commandFor(req);
+  ok('deleting the academy does NOT delete the command record', after !== undefined, after);
+  ok('...it still names the academy it was made for', after !== undefined
+    && (await one(`SELECT owner_id FROM public.player_create_commands WHERE creation_request_id = $1`,
+      [req])).owner_id === academy);
+  ok('...and its answer is NULL, which is how a retry learns the Player is gone',
+    after?.person_id === null, after);
+  await c.query('ROLLBACK');
+}
+
+{
+  // The whole point of the record surviving: a retry after the Player is gone REFUSES rather than
+  // quietly making a second one.
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 gone', 'u2gn-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id, role)
+                 VALUES ($1, $2, 'manager')`, [academy, mgr]).catch(() => {});
+  const req = await newUuid();
+  const email = EMAIL();
+  const payload = { ownerType: 'academy', ownerId: academy, req, name: 'Vanishing', email };
+  const made = await create(mgr, payload);
+  ok('the Player is created', made.ok && made.value.created === true, made);
+
+  await c.query(`DELETE FROM public.guest_players WHERE id = $1`, [made.value.guest_player_id]);
+
+  // The SAME payload, so the fingerprint agrees and the refusal under test is the one about the
+  // Player being gone — not the idempotency conflict a changed payload would raise first.
+  const retry = await create(mgr, payload);
+  ok('retrying a command whose Player was deleted refuses as RESULT_GONE',
+    !retry.ok && /RESULT_GONE/.test(retry.message ?? ''), retry);
+  ok('...and no second Player was made',
+    (await one(`SELECT count(*)::int AS n FROM public.guest_players WHERE academy_profile_id = $1`,
+      [academy])).n === 0);
   await c.query('ROLLBACK');
 }
 
@@ -629,8 +992,8 @@ async function proposedPair() {
       JOIN pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname = 'public'
        AND p.prokind = 'f'
-       AND pg_get_functiondef(p.oid) ~* 'lower\\(btrim\\((g|gp|p)?\\.?email\\)\\)|lower\\(trim\\((g|gp|p)?\\.?email\\)\\)'
-       AND pg_get_functiondef(p.oid) ~* 'collapse_guest_person_into_reporting|SET player_id|linked_profile_id\\s*=\\s*_profile_id|INSERT INTO public\\.person_links'
+       AND pg_get_functiondef(p.oid) ~* 'lower\\(btrim\\((g|gp|p)?\\.?email\\)\\)|lower\\(trim\\((g|gp|p)?\\.?email\\)\\)|u2_norm\\((g|gp|p)?\\.?email\\)'
+       AND pg_get_functiondef(p.oid) ~* 'collapse_guest_person_into_reporting|SET player_id|linked_profile_id\\s*=\\s*_profile_id|INSERT INTO public\\.person_links|INSERT INTO public\\.guest_players'
      ORDER BY 1`);
   const names = suspects.map((r) => r.proname);
 
@@ -650,6 +1013,8 @@ async function proposedPair() {
      'The mechanism the above call; it decides nothing on its own.'],
     ['rederive_person',
      'Recomputes one person from its own linked sources. Establishes no link.'],
+    ['player_create_command',
+     'The one Player-create command. It reads the address only to PROPOSE a possible_duplicate_player review row; identity comes from the caller\'s creation_request_id, and an existing Player can only be named explicitly by person_id and must already belong to the scope.'],
   ]);
   const unreviewed = names.filter((n) => !REVIEWED.has(n));
   ok('no unreviewed function both matches on an email and writes identity', unreviewed.length === 0,

@@ -204,108 +204,19 @@ BEGIN
 END;
 $$;
 
--- ═══════════════════════════════════════════════════════════════════════════════════════════════
--- The idempotent academy-created Player
--- ═══════════════════════════════════════════════════════════════════════════════════════════════
---
--- The other half of U2's work: one server command instead of a client-side lookup-then-insert. The
--- client version raced (two operators adding the same player both saw no match), and it made the
--- match rule a caller's choice. Here the rule is the function's, and it is the family rule slice 1
--- settled on: an address plus a NAME. Never an address alone.
---
--- Idempotent by that rule, not by a token: called twice with the same name and address in the same
--- scope, it returns the same player the second time.
-CREATE OR REPLACE FUNCTION public.academy_create_player(
-  _academy_profile_id uuid,
-  _full_name text,
-  _email text DEFAULT NULL,
-  _phone text DEFAULT NULL,
-  -- Service-role callers (the `create-manual-player` edge function) have no `auth.uid()`, so they
-  -- name the acting user explicitly. A signed-in caller may NOT: the parameter is ignored unless the
-  -- caller is service_role, or it would be an impersonation switch with a friendly name.
-  _actor_user_id uuid DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = pg_catalog, public, pg_temp
-AS $$
-DECLARE
-  -- The REQUEST's role, from the JWT — not `session_user`. PostgREST connects as `authenticator`
-  -- and switches role from the token, so `session_user` is `authenticator` for a service-key call
-  -- too and the override would never fire. `auth.role()` reads the claim, which only a holder of
-  -- the service key can set to `service_role`; a signed-in caller's token says `authenticated`.
-  v_is_service boolean := (auth.role() = 'service_role');
-  v_uid uuid;
-  v_name text := nullif(btrim(_full_name), '');
-  v_email text := lower(nullif(btrim(_email), ''));
-  v_existing uuid;
-  v_created boolean := false;
-BEGIN
-  v_uid := CASE WHEN v_is_service THEN coalesce(_actor_user_id, auth.uid()) ELSE auth.uid() END;
-
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_NOT_AUTHENTICATED' USING ERRCODE = 'insufficient_privilege';
-  END IF;
-  IF v_name IS NULL THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_NAME_REQUIRED: a player without a name cannot be deduplicated'
-      USING ERRCODE = 'invalid_parameter_value';
-  END IF;
-  IF NOT (public.is_academy_manager(v_uid, _academy_profile_id)
-          OR public.is_academy_owner(v_uid, _academy_profile_id)) THEN
-    RAISE EXCEPTION 'PLAYER_CREATE_FORBIDDEN: you do not manage that academy'
-      USING ERRCODE = 'insufficient_privilege';
-  END IF;
-
-  IF v_email IS NOT NULL THEN
-    -- Serialize on the address: without this, two operators adding the same player concurrently
-    -- both find nothing and both insert. The client version had exactly that race.
-    PERFORM pg_advisory_xact_lock(hashtext('guest_email:' || v_email));
-
-    -- The family rule. EXACTLY one name match, or nobody: several same-name rows on one address
-    -- give no signal that distinguishes them, and picking one is a guess.
-    SELECT g.id INTO v_existing
-      FROM public.guest_players g
-     WHERE g.academy_profile_id = _academy_profile_id
-       AND lower(btrim(g.email)) = v_email
-       AND lower(btrim(regexp_replace(coalesce(g.full_name, ''), '\s+', ' ', 'g')))
-           = lower(btrim(regexp_replace(v_name, '\s+', ' ', 'g')))
-     LIMIT 2;
-
-    IF (SELECT count(*) FROM public.guest_players g
-         WHERE g.academy_profile_id = _academy_profile_id
-           AND lower(btrim(g.email)) = v_email
-           AND lower(btrim(regexp_replace(coalesce(g.full_name, ''), '\s+', ' ', 'g')))
-               = lower(btrim(regexp_replace(v_name, '\s+', ' ', 'g')))) > 1 THEN
-      v_existing := NULL;   -- ambiguous: create a new one rather than guess
-    END IF;
-  END IF;
-
-  IF v_existing IS NULL THEN
-    INSERT INTO public.guest_players (full_name, email, phone, academy_profile_id, source)
-    VALUES (v_name, v_email, nullif(btrim(_phone), ''), _academy_profile_id, 'academy_created')
-    RETURNING id INTO v_existing;
-    v_created := true;
-  END IF;
-
-  RETURN jsonb_build_object('guest_player_id', v_existing, 'created', v_created);
-END;
-$$;
+-- The idempotent server-side create that slice 2 first drafted here deduplicated on address AND
+-- name. That is still identity inferred from attributes, and the owner's decision on 2026-08-09
+-- retired it before it ever ran anywhere: creation is keyed on a request UUID instead. The command
+-- lives in 20261121100000, which is where the whole of it can be read at once.
 
 REVOKE ALL ON FUNCTION public.person_claim_candidates() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.person_claim_confirm(uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) FROM PUBLIC, anon;
 
 GRANT EXECUTE ON FUNCTION public.person_claim_candidates() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.person_claim_confirm(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) TO service_role;
 
 COMMENT ON FUNCTION public.person_claim_confirm(uuid) IS
   'Executes a PENDING email_pair_awaiting_claim proposal that names the caller''s own profile. The only route from a proposed pair to one person, and it runs only when a person asks for it (U2, owner 2026-08-09). Idempotent: re-running an applied claim changes nothing.';
-
-COMMENT ON FUNCTION public.academy_create_player(uuid, text, text, text, uuid) IS
-  'Idempotent academy-side player creation. Deduplicates on address AND name within the academy — never an address alone — and serializes on the address so two operators cannot both insert.';
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- The one guard the claim trips, and the narrowest carve-out that lets it through

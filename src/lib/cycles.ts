@@ -382,16 +382,24 @@ export async function findSlotsAfterDate(cyclusId: string, endDate: string): Pro
 // Intake Requests CRUD
 
 export async function submitIntakeRequest(input: IntakeRequestInput): Promise<IntakeRequest> {
-  // Rate limiting: Check for recent submissions from same email (max 3 per hour)
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count } = await supabase
-    .from('intake_requests')
-    .select('*', { count: 'exact', head: true })
-    .eq('email', input.email)
-    .gte('created_at', oneHourAgo);
+  // Rate limiting: Check for recent submissions from same email (max 3 per hour). The address is
+  // optional since U2, and `.eq('email', undefined)` is a query with no predicate rather than one
+  // that matches nothing — so an addressless submission skips the per-address limit instead of
+  // silently counting every intake ever made. This path is signed-in and player-keyed; the public,
+  // unauthenticated one is `submit-guest-intake`, which still requires an address and keeps its own
+  // per-IP and per-recipient throttles.
+  const submitterEmail = input.email?.trim() || null;
+  if (submitterEmail) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from('intake_requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('email', submitterEmail)
+      .gte('created_at', oneHourAgo);
 
-  if (count && count >= 3) {
-    throw new Error('Too many applications submitted. Please try again later.');
+    if (count && count >= 3) {
+      throw new Error('Too many applications submitted. Please try again later.');
+    }
   }
 
   // input.cycle_id is the FORM's id (registrationToCycle exposes registration.id). Intakes link to
@@ -409,7 +417,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     cycle_id: null,
     player_id: input.player_id,
     full_name: input.full_name,
-    email: input.email,
+    email: submitterEmail,
     phone: input.phone || null,
     birth_date: input.birth_date || null,
     rating: input.rating || null,
@@ -1091,7 +1099,9 @@ export async function createManualIntakeRequest(
     player_id: input.player_id || null,
     guest_player_id: (input as any).guest_player_id || null,
     full_name: input.full_name,
-    email: input.email,
+    // NULL, not '': an applicant with no address has no address. An empty string is a value, and a
+    // value is something a matcher will happily match on.
+    email: input.email?.trim() || null,
     phone: input.phone || null,
     rating: input.rating || null,
     rating_system: input.rating_system || 'knltb',

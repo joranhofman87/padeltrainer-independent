@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -15,7 +15,12 @@ import { formatCurrency } from '@/lib/format';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { allocateInvoiceNumber, isInvoiceNumberCollision } from '@/lib/invoiceNumber';
-import { resolveOrCreateAcademyInvoiceGuest } from '@/lib/invoiceCustomerInsert';
+import { invoiceRecipientKey, resolveOrCreateAcademyInvoiceGuest } from '@/lib/invoiceCustomerInsert';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { ExtraCostPresetPicker } from '@/components/settings/ExtraCostPresetPicker';
 
@@ -45,6 +50,8 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
   const [playerCity, setPlayerCity] = useState('');
   const [playerBtwNumber, setPlayerBtwNumber] = useState('');
   const [playerEmail, setPlayerEmail] = useState('');
+  /** The create attempt for the typed recipient, so a retried save does not make a second Player. */
+  const recipientAttemptRef = useRef<CreationAttempt>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 21 },
   ]);
@@ -161,14 +168,18 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
       const prefix = academy.invoice_prefix ?? '';
       const includeYear = (academy as any).invoice_include_year ?? true;
 
-      // Always create/link a player so every invoice recipient appears in the
-      // academy players list — even without an email. Dedupes by email so we
-      // don't create a second player for someone already known. The players
-      // table stays the single source of truth.
+      // Always create a Player so every invoice recipient appears in the academy players list —
+      // even without an email. It is a NEW Player: a recipient typed by hand is not matched against
+      // the existing ones by name or address (U2), and a create that looks like an existing Player
+      // files a proposal for a human instead of billing them.
       const guestPlayerId = await resolveOrCreateAcademyInvoiceGuest(
         playerName,
         playerEmail,
         academyProfileId,
+        creationRequestIdFor(
+          recipientAttemptRef,
+          invoiceRecipientKey({ playerName, playerEmail, scope: 'academy', ownerId: academyProfileId }),
+        ),
       );
       if (!guestPlayerId) {
         logger.error('Guest player resolve/create failed for invoice', undefined, { playerName });
@@ -221,6 +232,8 @@ export function CreateCustomInvoiceDialog({ open, onClose, academyProfileId, onC
         if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
       }
 
+      // the attempt is finished: the next invoice is a new one, not a retry of this
+      clearCreationAttempt(recipientAttemptRef);
       toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
       invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyProfileId });
       resetForm();

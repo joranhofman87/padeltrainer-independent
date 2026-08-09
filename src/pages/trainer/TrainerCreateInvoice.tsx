@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -32,8 +32,14 @@ import {
 } from '@/lib/invoiceCustomer';
 import {
   buildInvoicePlayerAddress,
+  invoiceRecipientKey,
   resolveInvoiceGuestPlayerId,
 } from '@/lib/invoiceCustomerInsert';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import {
   fetchInvoicePlayerForPrefill,
   searchInvoiceSelectablePlayers,
@@ -56,6 +62,8 @@ export default function TrainerCreateInvoice() {
   const queryClient = useQueryClient();
 
   const [receiver, setReceiver] = useState<InvoiceReceiverFormFields>(emptyReceiver);
+  /** The create attempt for the typed recipient, so a retried save does not make a second Player. */
+  const recipientAttemptRef = useRef<CreationAttempt>(null);
   const [playerLink, setPlayerLink] = useState<InvoicePlayerLink>({
     profileId: null,
     guestPlayerId: null,
@@ -163,6 +171,17 @@ export default function TrainerCreateInvoice() {
         receiver,
         scope: 'trainer',
         trainerId,
+        // One id for this save ATTEMPT: a retry with the same recipient replays into the same
+        // Player, while editing the recipient is honestly a different attempt (U2).
+        creationRequestId: creationRequestIdFor(
+          recipientAttemptRef,
+          invoiceRecipientKey({
+            playerName: receiver.playerName,
+            playerEmail: receiver.playerEmail,
+            scope: 'trainer',
+            ownerId: trainerId,
+          }),
+        ),
       });
 
       const primaryVatRate = lineItems[0]?.vat_rate ?? 21;
@@ -207,6 +226,8 @@ export default function TrainerCreateInvoice() {
         if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
       }
 
+      // the attempt is finished: the next invoice is a new one, not a retry of this
+      clearCreationAttempt(recipientAttemptRef);
       toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
       queryClient.invalidateQueries({ queryKey: ['trainer-invoices'] });
       invalidateAllPlayerData(queryClient, { kind: 'trainer', id: trainerId });
