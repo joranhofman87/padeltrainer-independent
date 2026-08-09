@@ -69,7 +69,11 @@ await c.connect();
 // ── COVERAGE ───────────────────────────────────────────────────────────────────────────────────
 // The identity family, derived: anything that names a person, plus the academy-private Player
 // tables, plus the identity roots themselves.
-const { rows: family } = await c.query(`
+//
+// ONE query, referenced by both the real check and the probe below. An earlier version had the probe
+// repeat this predicate, so removing a branch from the real derivation left the probe green — a test
+// of a copy is not a test of the thing.
+const FAMILY_SQL = `
   SELECT c.relname
     FROM pg_class c
     JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -86,7 +90,9 @@ const { rows: family } = await c.query(`
        OR c.relname IN ('persons', 'profiles', 'guest_players', 'person_links',
                         'membership_backfill_runs', 'membership_backfill_items')
      )
-   ORDER BY 1`);
+   ORDER BY 1`;
+
+const { rows: family } = await c.query(FAMILY_SQL);
 
 const missing = family.map((r) => r.relname)
   .filter((t) => !declaredSet.has(t) && !EXCLUDED.has(t));
@@ -105,18 +111,11 @@ if (missing.length) {
   await c.query('BEGIN');
   await c.query(`CREATE TABLE public.membership_backfill_probe (
                    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), run_id uuid)`);
-  const { rows: probed } = await c.query(`
-    SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = 'public' AND c.relkind = 'r'
-       AND (EXISTS (SELECT 1 FROM pg_attribute a
-                     WHERE a.attrelid = c.oid AND NOT a.attisdropped AND a.attname LIKE '%person_id')
-            OR c.relname LIKE 'academy_player%'
-            OR c.relname LIKE 'membership_backfill%'
-            OR c.relname IN ('persons', 'profiles', 'guest_players', 'person_links',
-                             'membership_backfill_runs', 'membership_backfill_items'))
-       AND c.relname = 'membership_backfill_probe'`);
-  ok_(probed.length === 1,
-    'a new manifest table with no person column is still caught by the derivation', probed);
+  // the REAL derivation, re-run against a schema that now contains the probe
+  const { rows: probed } = await c.query(FAMILY_SQL);
+  ok_(probed.some((r) => r.relname === 'membership_backfill_probe'),
+    'a new manifest table with no person column is still caught by the derivation',
+    { found: probed.map((r) => r.relname).filter((t) => t.startsWith('membership_backfill')) });
   await c.query('ROLLBACK');
 }
 
