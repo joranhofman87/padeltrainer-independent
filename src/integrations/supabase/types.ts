@@ -7096,6 +7096,32 @@ export type Database = {
         }
         Relationships: []
       }
+      rebook_member_attempts: {
+        Row: {
+          created_at: string
+          creation_request_id: string
+          rebook_group_id: string
+        }
+        Insert: {
+          created_at?: string
+          creation_request_id: string
+          rebook_group_id: string
+        }
+        Update: {
+          created_at?: string
+          creation_request_id?: string
+          rebook_group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rebook_member_attempts_creation_request_id_fkey"
+            columns: ["creation_request_id"]
+            isOneToOne: true
+            referencedRelation: "player_create_commands"
+            referencedColumns: ["creation_request_id"]
+          },
+        ]
+      }
       registrations: {
         Row: {
           created_at: string

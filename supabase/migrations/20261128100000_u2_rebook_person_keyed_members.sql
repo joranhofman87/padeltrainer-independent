@@ -1,27 +1,21 @@
--- U2 — the rebook group's new members travel as the captain's own CREATE-ATTEMPT ids (owner
--- correction, 2026-08-09; Codex round 1 finding 2 and round 2 findings 1/4/9).
+-- U2 — the rebook group's new members travel as the captain's own CREATE-ATTEMPT ids, and each
+-- attempt is BOUND to the group that minted it (owner correction, 2026-08-09; Codex r1 f2,
+-- r2 f1/f4/f9, r3 f2).
 --
--- WHAT WAS WRONG, in two layers. First (r1 f2): `create_rebook_group_guest` answered the anonymous
--- captain with a DERIVED guest_player_id, which the browser collected and posted back into
--- `rebook_group_apply` / `rebook_group_manage` — the compatibility inversion by the book. Second
--- (r2 f4): replacing that with bare person ids would still leave a canonical-ID selection API on an
--- anon surface — any same-scope person uuid a token-holder possessed would become a bookable
--- member, and the shipped `_new_guest_ids` loop had validated even less (ANY guest uuid, any
--- scope).
---
--- THE CONTRACT NOW. The captain hands over the `creation_request_id`s of the add-member attempts
--- they themselves minted — capabilities of THIS flow, not identities. Each id must name a finished
--- create RECEIPT whose owner is the slot's owner; the member's person comes from that receipt, and
--- the legacy guest key is derived INTERNALLY through `person_legacy_source`. Possession of a
--- request id ≈ being the party that minted the attempt: nothing about any human travels through
--- the browser, and no foreign identity can be named into a group by uuid.
---
--- Unique-violation details from the guest-keyed indexes are sanitized (r2 f9): the raw 23505
--- carries the DERIVED key in its detail, and an anonymous caller must not receive it even as an
--- error. The whole new-member section re-raises as `member_already_booked`.
+-- THE CONTRACT. The captain hands over the `creation_request_id`s of the add-member attempts they
+-- minted through `create_rebook_group_guest`. Each id must be STAGED for this exact group in
+-- `rebook_member_attempts` (stamped by the create, first-writer-wins) — a receipt alone is not a
+-- capability, because attempt ids from OTHER flows are not secrets (public-checkout ids travel
+-- through Mollie metadata and logs). The member's person comes from the receipt; the legacy guest
+-- key is derived INTERNALLY through `person_legacy_source`, scoped to the slot's owner. Every
+-- admission failure — no staging row, another group's row, an owner mismatch — answers ONE
+-- indistinguishable refusal (`unknown_member_attempt`), so the errors are no oracle over ids a
+-- caller happens to know. `member_not_in_scope` remains only for a group-bound attempt whose
+-- person has no in-scope guest source (a genuinely internal inconsistency), and unique-violation
+-- details never leave: the whole section re-raises as `member_already_booked` (r2 f9).
 --
 -- MECHANICALLY REPRODUCED from the shipped definitions (apply: 20260804100000; manage:
--- 20260706170000), changed ONLY in: the signature parameter, the receipt-bound derivation
+-- 20260706170000), changed ONLY in: the signature parameter, the staged-attempt derivation
 -- preamble, the sanitizing wrapper, and the two references that now read the derived array.
 -- `src/test/rebookGroupPersonKeyedReproduction.test.ts` strips exactly those edits and
 -- byte-compares the remainder against the shipped bodies.
@@ -69,6 +63,7 @@ DECLARE
   rec record;
   gid uuid;
   rid uuid;
+  v_m_group uuid;
   v_m_person uuid;
   v_m_owner_type text;
   v_m_owner_id uuid;
@@ -187,23 +182,23 @@ BEGIN
 
   -- 3) Add new guests: one claim + booking per distinct slot in the group, capacity-guarded.
   --    Skip a slot for a guest who already has a claim there (treated by the keep/remove logic).
-  -- U2: resolve each member ATTEMPT to its receipt, bind the receipt to the slot's owner, and
-  -- derive the legacy guest key inside the definer. An unknown attempt id cannot have come from
-  -- this flow; a receipt owned elsewhere is another tenant's member; a person with no in-scope
-  -- guest source has nothing to book. All three refuse by name rather than skip.
+  -- U2: admit each member ATTEMPT only when it was staged for THIS group by the token-gated
+  -- create, then derive the legacy guest key inside the definer. One refusal name for every
+  -- admission failure — staging absent, another group's staging, owner mismatch — so nothing here
+  -- is an oracle over attempt ids a caller happens to possess (Codex r3 f2).
   IF array_length(_new_creation_request_ids, 1) IS NOT NULL THEN
     FOREACH rid IN ARRAY _new_creation_request_ids LOOP
       IF rid IS NULL THEN CONTINUE; END IF;
-      SELECT pcc.person_id, pcc.owner_type, pcc.owner_id
-        INTO v_m_person, v_m_owner_type, v_m_owner_id
-        FROM public.player_create_commands pcc
-       WHERE pcc.creation_request_id = rid;
-      IF v_m_person IS NULL THEN
-        RAISE EXCEPTION 'unknown_member_attempt';
-      END IF;
-      IF v_m_owner_type <> (CASE WHEN s.academy_profile_id IS NOT NULL THEN 'academy' ELSE 'trainer' END)
+      SELECT rma.rebook_group_id, pcc.person_id, pcc.owner_type, pcc.owner_id
+        INTO v_m_group, v_m_person, v_m_owner_type, v_m_owner_id
+        FROM public.rebook_member_attempts rma
+        JOIN public.player_create_commands pcc USING (creation_request_id)
+       WHERE rma.creation_request_id = rid;
+      IF v_m_person IS NULL
+         OR v_m_group IS DISTINCT FROM v_group
+         OR v_m_owner_type <> (CASE WHEN s.academy_profile_id IS NOT NULL THEN 'academy' ELSE 'trainer' END)
          OR v_m_owner_id <> coalesce(s.academy_profile_id, s.trainer_id) THEN
-        RAISE EXCEPTION 'member_not_in_scope';
+        RAISE EXCEPTION 'unknown_member_attempt';
       END IF;
       SELECT ls.guest_player_id INTO gid
         FROM public.person_legacy_source(v_m_person, v_m_owner_type, v_m_owner_id) ls;
@@ -310,6 +305,7 @@ DECLARE
   rec record;
   gid uuid;
   rid uuid;
+  v_m_group uuid;
   v_m_person uuid;
   v_m_owner_type text;
   v_m_owner_id uuid;
@@ -405,27 +401,27 @@ BEGIN
   END LOOP;
 
   -- 3) Add new guests as COVERED bookings, one per slot, capacity-guarded.
-  -- The claim's slot names the owner scope the receipts are bound to.
+  -- The claim's slot names the owner scope the staged attempts are bound to.
   SELECT av.academy_profile_id, av.trainer_id INTO v_scope_academy, v_scope_trainer
     FROM public.availability_slots av WHERE av.id = c.slot_id;
 
-  -- U2: resolve each member ATTEMPT to its receipt, bind the receipt to the slot's owner, and
-  -- derive the legacy guest key inside the definer. An unknown attempt id cannot have come from
-  -- this flow; a receipt owned elsewhere is another tenant's member; a person with no in-scope
-  -- guest source has nothing to book. All three refuse by name rather than skip.
+  -- U2: admit each member ATTEMPT only when it was staged for THIS group by the token-gated
+  -- create, then derive the legacy guest key inside the definer. One refusal name for every
+  -- admission failure — staging absent, another group's staging, owner mismatch — so nothing here
+  -- is an oracle over attempt ids a caller happens to possess (Codex r3 f2).
   IF array_length(_new_creation_request_ids, 1) IS NOT NULL THEN
     FOREACH rid IN ARRAY _new_creation_request_ids LOOP
       IF rid IS NULL THEN CONTINUE; END IF;
-      SELECT pcc.person_id, pcc.owner_type, pcc.owner_id
-        INTO v_m_person, v_m_owner_type, v_m_owner_id
-        FROM public.player_create_commands pcc
-       WHERE pcc.creation_request_id = rid;
-      IF v_m_person IS NULL THEN
-        RAISE EXCEPTION 'unknown_member_attempt';
-      END IF;
-      IF v_m_owner_type <> (CASE WHEN v_scope_academy IS NOT NULL THEN 'academy' ELSE 'trainer' END)
+      SELECT rma.rebook_group_id, pcc.person_id, pcc.owner_type, pcc.owner_id
+        INTO v_m_group, v_m_person, v_m_owner_type, v_m_owner_id
+        FROM public.rebook_member_attempts rma
+        JOIN public.player_create_commands pcc USING (creation_request_id)
+       WHERE rma.creation_request_id = rid;
+      IF v_m_person IS NULL
+         OR v_m_group IS DISTINCT FROM v_group
+         OR v_m_owner_type <> (CASE WHEN v_scope_academy IS NOT NULL THEN 'academy' ELSE 'trainer' END)
          OR v_m_owner_id <> coalesce(v_scope_academy, v_scope_trainer) THEN
-        RAISE EXCEPTION 'member_not_in_scope';
+        RAISE EXCEPTION 'unknown_member_attempt';
       END IF;
       SELECT ls.guest_player_id INTO gid
         FROM public.person_legacy_source(v_m_person, v_m_owner_type, v_m_owner_id) ls;

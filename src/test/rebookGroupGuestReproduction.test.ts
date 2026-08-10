@@ -39,7 +39,12 @@ const EDITS: Array<[RegExp, string]> = [
     '\n',
   ],
   [/\n {2}END IF;\n\n {2}v_full :=/, '\n\n  v_full :='],
-  // 5. the lookup-then-insert becomes one call to the shared mechanism
+  // 5. the attempt is BOUND to the group that minted it (Codex r3 f2)
+  [
+    /\n\n {2}-- Bind the attempt to THIS group \(first-writer-wins on replays\)[\s\S]*?ON CONFLICT \(creation_request_id\) DO NOTHING;\n/,
+    '\n',
+  ],
+  // 6. the lookup-then-insert becomes one call to the shared mechanism
   [
     /\n\n {2}-- The Player is CREATED, through the one mechanism[\s\S]*?\n {2}RETURN v_id;/,
     `

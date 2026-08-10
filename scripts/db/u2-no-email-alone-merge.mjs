@@ -1112,8 +1112,43 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   const foreignApply = await asUser(null, async () => (await one(
     `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
     [token, foreignReq])).r);
-  ok('an attempt whose receipt belongs to another tenant is refused by name, never booked',
-    !foreignApply.ok && /member_not_in_scope/.test(foreignApply.message ?? ''), foreignApply);
+  ok('an attempt whose receipt belongs to another tenant refuses INDISTINGUISHABLY from unknown',
+    !foreignApply.ok && /unknown_member_attempt/.test(foreignApply.message ?? ''), foreignApply);
+
+  // a SAME-OWNER receipt from another flow (a public checkout, a manual add) is not a rebook
+  // capability: its id travels through Mollie metadata and logs, so it is not a secret — and it
+  // was never staged for any group (Codex r3 f2)
+  const { id: sameOwnerGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Checkout Person', $1, $2) RETURNING id`, [EMAIL(), academy]);
+  const sameOwnerPerson = (await personOfGuest(sameOwnerGuest)).person_id;
+  const sameOwnerReq = await newUuid();
+  await c.query(
+    `INSERT INTO public.player_create_commands
+       (creation_request_id, owner_type, owner_id, origin, payload_fingerprint, person_id)
+     VALUES ($1, 'academy', $2, 'self_signup', 'fixture-checkout', $3)`,
+    [sameOwnerReq, academy, sameOwnerPerson]);
+  const sameOwnerApply = await asUser(null, async () => (await one(
+    `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
+    [token, sameOwnerReq])).r);
+  ok('a same-owner receipt from ANOTHER flow refuses identically — a receipt alone is no capability',
+    !sameOwnerApply.ok && /unknown_member_attempt/.test(sameOwnerApply.message ?? ''), sameOwnerApply);
+
+  // ...and an attempt staged for a DIFFERENT group refuses with the same single name
+  const otherGroupReq = await newUuid();
+  await c.query(
+    `INSERT INTO public.player_create_commands
+       (creation_request_id, owner_type, owner_id, origin, payload_fingerprint, person_id)
+     VALUES ($1, 'academy', $2, 'self_signup', 'fixture-other-group', $3)`,
+    [otherGroupReq, academy, sameOwnerPerson]);
+  await c.query(
+    `INSERT INTO public.rebook_member_attempts (creation_request_id, rebook_group_id)
+     VALUES ($1, gen_random_uuid())`, [otherGroupReq]);
+  const otherGroupApply = await asUser(null, async () => (await one(
+    `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
+    [token, otherGroupReq])).r);
+  ok('an attempt staged for a DIFFERENT group refuses with the same single name',
+    !otherGroupApply.ok && /unknown_member_attempt/.test(otherGroupApply.message ?? ''), otherGroupApply);
   ok('...and no booking was written for the foreign guest',
     (await one(`SELECT count(*)::int AS n FROM public.bookings
                  WHERE slot_id = $1 AND guest_player_id = $2`, [slot, foreignGuest])).n === 0);
@@ -2065,29 +2100,29 @@ const commandFor = (req) => one(
   ok('billing the LINKED person on the strength of a disputed link is refused outright',
     !inv.ok && /INVOICE_PERSON_NOT_IN_SCOPE/.test(inv.message ?? ''), inv);
 
-  // ...and the OTHER direction: the frozen guest is its own person, exactly as the picker keys it
+  // ...and the OTHER direction fails closed too: a guest uuid is NOT a persons.id (after a claim
+  // the guest's original person row is gone), so the canonical commands refuse it outright rather
+  // than let a legacy id impersonate a person — the round-2 attempt at a "frozen guest as its own
+  // person" arm did exactly that, and the stamp triggers attributed the write to the DISPUTED
+  // linked person underneath while the response echoed a guest uuid as person_id (Codex r3 f1).
   const selfSelectable = await one(
     `SELECT public.player_owner_may_select_person('academy', $1, $2) AS r`, [academy, guest]);
-  ok('the frozen guest is selectable AS ITS OWN PERSON — the freeze-aware picker\'s key works',
-    selfSelectable.r === true);
+  ok('a frozen guest\'s own uuid is NOT selectable as a person — a legacy id impersonates nobody',
+    selfSelectable.r === false);
   const selfDerived = await one(`SELECT * FROM public.person_legacy_source($1, 'academy', $2)`,
     [guest, academy]);
-  ok('...and derives ITSELF, with no profile attached',
-    selfDerived.guest_player_id === guest && selfDerived.profile_id === null, selfDerived);
+  ok('...and derives nothing', selfDerived.guest_player_id === null && selfDerived.profile_id === null,
+    selfDerived);
   const selfDisplay = await asUser(mgr, async () =>
     one(`SELECT * FROM public.person_display_for_owner($1, 'academy', $2)`, [guest, academy]));
-  ok('...and the display projection answers the guest row\'s own attributes',
-    selfDisplay.ok && selfDisplay.value.full_name === 'Disputed Guest', selfDisplay);
+  ok('...and the display projection refuses it',
+    !selfDisplay.ok && /PERSON_DISPLAY_NOT_IN_SCOPE/.test(selfDisplay.message ?? ''), selfDisplay);
   const selfInvoice = await asUser(mgr, async () =>
     one(`SELECT public.invoice_create_for_person(
            'academy', $1, $2, 'U2-FRZ-2', current_date, current_date + 14, 'Disputed Guest') AS r`,
       [academy, guest]));
-  ok('...and billing the frozen guest AS ITS OWN PERSON works, guest-keyed and profile-free',
-    selfInvoice.ok
-    && (await one(`SELECT guest_player_id, player_id FROM public.invoices WHERE id = $1`,
-        [selfInvoice.value.r.invoice_id])).guest_player_id === guest
-    && (await one(`SELECT player_id FROM public.invoices WHERE id = $1`,
-        [selfInvoice.value.r.invoice_id])).player_id === null, selfInvoice);
+  ok('...and billing it refuses — during a dispute the pair is untouchable from BOTH directions',
+    !selfInvoice.ok && /INVOICE_PERSON_NOT_IN_SCOPE/.test(selfInvoice.message ?? ''), selfInvoice);
 
   // resolution unfreezes: the review closes, the link derives again
   await c.query(`UPDATE public.person_merge_review SET status = 'applied'

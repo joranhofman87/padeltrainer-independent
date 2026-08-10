@@ -32,10 +32,10 @@ const COMMON_EDITS: Array<[RegExp, string]> = [
   // 1. the signature parameter
   [/_new_creation_request_ids uuid\[\] DEFAULT '\{\}'::uuid\[\]/, "_new_guest_ids uuid[] DEFAULT '{}'::uuid[]"],
   // 2. the declarations the derivation needs
-  [/\n(\s*)rid uuid;\n\s*v_m_person uuid;\n\s*v_m_owner_type text;\n\s*v_m_owner_id uuid;\n\s*v_new_guest_ids uuid\[\] := '\{\}';/, ''],
-  // 3. the receipt-bound derivation preamble (comment + loop), up to and including its END IF
+  [/\n(\s*)rid uuid;\n\s*v_m_group uuid;\n\s*v_m_person uuid;\n\s*v_m_owner_type text;\n\s*v_m_owner_id uuid;\n\s*v_new_guest_ids uuid\[\] := '\{\}';/, ''],
+  // 3. the staged-attempt derivation preamble (comment + loop), up to and including its END IF
   [
-    /\n {2}-- U2: resolve each member ATTEMPT[\s\S]*?\n {2}END IF;\n(?=\n)/,
+    /\n {2}-- U2: admit each member ATTEMPT[\s\S]*?\n {2}END IF;\n(?=\n)/,
     '',
   ],
   // 4. the sanitizer wrapper opens...
@@ -56,7 +56,7 @@ const MANAGE_ONLY_EDITS: Array<[RegExp, string]> = [
   // manage additionally loads the slot's owner scope (apply already has the slot row `s`)
   [/\n\s*v_scope_academy uuid;\n\s*v_scope_trainer uuid;/, ''],
   [
-    /\n {2}-- The claim's slot names the owner scope the receipts are bound to\.\n {2}SELECT av\.academy_profile_id, av\.trainer_id INTO v_scope_academy, v_scope_trainer\n {4}FROM public\.availability_slots av WHERE av\.id = c\.slot_id;\n/,
+    /\n {2}-- The claim's slot names the owner scope the staged attempts are bound to\.\n {2}SELECT av\.academy_profile_id, av\.trainer_id INTO v_scope_academy, v_scope_trainer\n {4}FROM public\.availability_slots av WHERE av\.id = c\.slot_id;\n/,
     '',
   ],
 ];
@@ -85,9 +85,12 @@ describe('the person-keyed rebook functions keep every shipped guard byte for by
         .toBe(`${fn} takes attempt ids: true`);
       expect(`${fn} still takes guest ids: ${/(^|[^A-Za-z0-9_])_new_guest_ids/.test(src)}`)
         .toBe(`${fn} still takes guest ids: false`);
-      // the receipt is the authorization: unknown attempts and foreign owners refuse by name
-      expect(src).toContain('player_create_commands');
+      // the STAGED attempt is the authorization: the group binding is required, and every
+      // admission failure answers one indistinguishable refusal (no oracle over known ids)
+      expect(src).toContain('rebook_member_attempts');
+      expect(src).toContain('v_m_group IS DISTINCT FROM v_group');
       expect(src).toContain(`RAISE EXCEPTION 'unknown_member_attempt'`);
+      expect((src.match(/RAISE EXCEPTION 'unknown_member_attempt'/g) ?? []).length).toBe(1);
       expect(src).toContain(`RAISE EXCEPTION 'member_not_in_scope'`);
       // the derivation is internal, and its unique-violation detail never reaches the caller
       expect(src).toContain('person_legacy_source');

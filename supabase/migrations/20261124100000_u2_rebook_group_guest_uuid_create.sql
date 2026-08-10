@@ -25,6 +25,34 @@
 -- where the evidence for it is, and the mechanism — idempotency, the duplicate proposal, the
 -- durable record — is shared rather than reimplemented.
 
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- Which GROUP an add-member attempt belongs to
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- The create receipt is an IDENTITY artifact — it deliberately records no workflow state, and its
+-- `_source` exists only inside an irreversible fingerprint. But the rebook apply/manage commands
+-- need PROVENANCE: "this attempt was minted through THIS group's token-gated create", or any
+-- same-owner receipt a caller happened to hold (public-checkout attempt ids travel through Mollie
+-- metadata and webhook logs, so they are NOT secrets) would select its person into the group
+-- (Codex r3 f2). So the binding lives here, in a workflow table the create stamps and the
+-- apply/manage commands require — never in the receipt.
+--
+-- First-writer-wins: a replayed create through ANOTHER group's token keeps the original binding,
+-- so an attempt can seat its member in exactly the group that minted it. Client-invisible; the
+-- definers are the only readers and writers.
+CREATE TABLE IF NOT EXISTS public.rebook_member_attempts (
+  creation_request_id uuid PRIMARY KEY
+    REFERENCES public.player_create_commands(creation_request_id) ON DELETE CASCADE,
+  rebook_group_id     uuid NOT NULL,
+  created_at          timestamptz NOT NULL DEFAULT now()
+);
+
+ALTER TABLE public.rebook_member_attempts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.rebook_member_attempts FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON TABLE public.rebook_member_attempts IS
+  'Binds a rebook add-member CREATE attempt to the group whose token minted it. Workflow provenance, kept out of the identity receipt on purpose: apply/manage admit an attempt only when this row names their group, so a same-owner receipt from any other flow (whose id is not a secret) selects nobody. Definer-only.';
+
 DROP FUNCTION IF EXISTS public.create_rebook_group_guest(text, text, text, text, text);
 
 CREATE OR REPLACE FUNCTION public.create_rebook_group_guest(
@@ -130,6 +158,12 @@ BEGIN
   IF v_id IS NULL THEN
     RAISE EXCEPTION 'player_create_failed';
   END IF;
+
+  -- Bind the attempt to THIS group (first-writer-wins on replays): apply/manage admit members by
+  -- this row, so possession of some other flow's attempt id selects nobody (Codex r3 f2).
+  INSERT INTO public.rebook_member_attempts (creation_request_id, rebook_group_id)
+  VALUES (_creation_request_id, c.rebook_group_id)
+  ON CONFLICT (creation_request_id) DO NOTHING;
 
   RETURN v_id;
 END;
