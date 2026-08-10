@@ -19,10 +19,18 @@ payload lacks `subject`/`html` (`_shared/instant-send-gate.ts:82-89`).
 
 `identity_challenge_enqueue` writes exactly such a row (payload = `{challenge_id, workflow}`).
 
-> **Therefore migration `20261129100000` must NOT reach production before the identity sender exists
-> AND the generic worker is taught to skip `identity_verification_requested`.** Otherwise every
-> verification challenge is claimed within two minutes and terminally failed: no email, burned row,
-> and a returning anonymous booker stuck forever on "check your email".
+> **The invariant, stated precisely: no caller that can ENQUEUE a challenge may be live in
+> production before the generic worker skips `identity_verification_requested` and the identity
+> sender is deployed.** Otherwise every verification challenge is claimed within two minutes and
+> terminally failed: no email, burned row, and a returning anonymous booker stuck forever on
+> "check your email".
+
+The constraint binds on the **callers**, not on the schema. `identity_challenge_enqueue` runs only
+when a guest entrypoint calls the resolver, so the migration alone enqueues nothing; the four
+challenge-producing entrypoints (`create-guest-{slot,cart,cyclus}-payment`, `submit-guest-intake`)
+are what must come last. The procedure in §6 therefore deploys the worker fix first, applies
+migrations, deploys the sender and `verify-identity`, and only then the callers — which satisfies
+this invariant with margin even if a step is retried out of order.
 
 This is a hard ordering constraint, not a preference. It is the reason activation slice A is a
 blocker rather than a follow-up.
@@ -280,6 +288,49 @@ path.
 | **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **not started** |
 | **B — retain-and-scrub (OD-08)** | replace the interim membership refusal; detach auth transactionally, preserve `persons.id` + memberships + financial/audit evidence, pseudonymize the rest, idempotent, auditable, single safe server command | **not started** |
 | **C — observability** | non-blocking non-PII identity-funnel telemetry + funnel/dashboard + alert thresholds | **not started** |
+
+### Open: challenge rows outlive their owner (retention gap, both halves)
+
+A challenge belongs to its owner through `owner_type`/`owner_id`, a polymorphic pair with **no
+foreign key**, so nothing cascades from it. A challenge whose `selected_person_id` is NULL — every
+unconsumed one, and every consumed "someone new" — survives the deletion of the academy or trainer
+that collected it, still carrying `contact_normalized`, an email address.
+
+Both halves are the same problem and should be fixed once:
+
+- **academy:** `academy_delete_confirmed` executes a fixed statement list (two overlays, this
+  academy's memberships, the academy root). Nothing deletes an owner-scoped challenge.
+- **trainer:** `delete-user-data.ts` removes a trainer's guests and anonymises the trainer shell
+  without touching trainer-owned challenges.
+
+An interim attempt to close the academy half by adding an `owner_scoped` predicate to
+`academy_deletion_deleted_scope()` was **withdrawn**: that predicate feeds the preview and the audit,
+which is stamped from `v_preview->'deleted'`, so it would have made the flow report rows as deleted
+while they were still present. A count that lies is worse than a count that is merely incomplete.
+Preview, execution and audit now agree, which is the honest state. Closing it properly is surgery on
+the execution path plus the trainer flow, and belongs in its own reviewed slice — a natural companion
+to slice B (OD-08), which is already about scrubbing identity data on deletion.
+
+### Open backup findings, recorded rather than half-fixed
+
+Both came out of the Codex integration review and are real. Neither is a reason to hold the cutover
+by itself, but both should land before the backup is ever relied on for a restore:
+
+1. **`player_create_commands` is not snapshot-atomic with `persons`.** Export groups are written
+   sequentially and each is its own snapshot, so a create committed between the `persons` snapshot
+   and the `player_create_commands` snapshot yields a backup whose receipt references a person the
+   backup does not contain — on restore, either an FK failure or the loss of the very mapping that
+   prevents duplicate Players. Note this is a **property of the existing group design**, not
+   something this change introduced: `persons` and `person_links` already have the same split. The
+   fix is a declared identity export group (`persons` + `person_links` + `player_create_commands`),
+   which must be weighed against the group byte bound, so it belongs in its own reviewed slice
+   rather than in an integration checkpoint.
+2. **`rebook_member_attempts` is not backed up.** It is the first-writer-wins binding that stops a
+   known create receipt being replayed into a different rebook group. After a restore the receipt
+   survives but the binding does not, so a replay through another same-owner group would insert a
+   fresh binding and be trusted. The coverage derivation misses it because it has no `person_id`
+   column, and it cannot simply be added: its primary key is `creation_request_id`, not the single
+   `id` the exporter orders on, and the exporter hardcodes `ORDER BY t.id`, so it needs exporter or schema work.
 
 Slice A additionally requires a **new SECURITY DEFINER RPC** exposing `contact_normalized`,
 `owner_type`, `owner_id` and `key_version` for a challenge: the challenge table is `REVOKE`d even
