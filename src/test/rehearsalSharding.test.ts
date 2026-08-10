@@ -445,19 +445,25 @@ describe('the gate program itself (executed against a result truth table)', () =
     const table = aggregatorTruthTable(workflow());
     const failures = table.filter((row) => !row.ok).map((row) => `${row.label}: ${row.detail}`);
     expect(failures, failures.join('\n')).toEqual([]);
-    // 1 all-success case + 5 prerequisites x (4 bad results + 1 missing) + empty needs.
-    expect(table).toHaveLength(1 + 5 * 5 + 1);
+    // 1 all-success + every non-empty failing SUBSET (2^5-1) + 5 x {cancelled,
+    // skipped, empty} + 5 missing-from-needs + empty needs.
+    expect(table).toHaveLength(1 + (2 ** 5 - 1) + 5 * 3 + 5 + 1);
   });
 
   it('covers every prerequisite and every non-success GitHub result', () => {
     const labels = aggregatorTruthTable(workflow()).map((row) => row.label);
     for (const job of Object.keys(PREREQUISITE_RUNS)) {
-      for (const bad of ['failure', 'cancelled', 'skipped', '<empty>']) {
+      for (const bad of ['cancelled', 'skipped', '<empty>']) {
         expect(labels, `${job} = ${bad}`).toContain(`${job} = ${bad}`);
       }
+      expect(labels).toContain(`${job} failed`);
       expect(labels).toContain(`${job} missing from needs`);
     }
     expect(labels).toContain('needs is empty');
+    // Simultaneous failures are covered, not just one axis at a time — an
+    // aggregator failing only on an ODD count would pass every single-failure
+    // case. Verified by mutation: a `failures % 2` program is caught here only.
+    expect(labels).toContain('unit-tests + db-tests failed');
   });
 });
 
@@ -564,6 +570,11 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
       }],
+      ['ANY install hook, even a harmless-looking one', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'husky'; })],
+      ['a postinstall that writes npm user config outside the repo', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'cp ci/npmrc "$HOME/.npmrc"'; })],
+      ['an extra step in a gated job that touches $HOME config', /not in APPROVED_JOB_RUNS/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Prep\n        run: cp ci/npmrc "$HOME/.npmrc"\n\n      - name: Run unit tests\n'))],
+      ['an extra step in the lint job', /not in APPROVED_JOB_RUNS/, (r) => editWorkflow(r, (s) => s.replace('      - name: Lint (ratcheted)\n', '      - name: Extra\n        run: echo something\n\n      - name: Lint (ratcheted)\n'))],
+      ['the aggregator loses its NEEDS env (unbound under set -u)', /expected the gate to SUCCEED/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS: ${{ toJSON(needs) }}\n', ''))],
       ['an unknown .npmrc key', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nsome-future-npm-option=whatever\n')],
       ['an approved key with a CHANGED value', /the approved value is/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=64\n')],
       ['a duplicate key (npm applies the last)', /more than once/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=1\nmaxsockets=64\n')],
@@ -599,9 +610,9 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['.npmrc key inside a [section]', /\[some-scope\] section/, (r) => writeFileSync(join(r, '.npmrc'), '[some-scope]\n"node-options"=--import=x\n')],
       ['.npmrc globalconfig redirection', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'globalconfig=/tmp/evil.npmrc\n')],
       ['NPM_CONFIG_GLOBALCONFIG at container scope', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    container:\n      image: node:24\n      env:\n        NPM_CONFIG_GLOBALCONFIG: /tmp/evil.npmrc\n'))],
-      ['a preprepare hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).preprepare = 'npm run test:db'; })],
-      ['a dependencies hook (arborist reification) running the suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).dependencies = 'vitest run --project db'; })],
-      ['a postdependencies hook running the suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postdependencies = 'npm t'; })],
+      ['a preprepare hook running the db suite', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).preprepare = 'npm run test:db'; })],
+      ['a dependencies hook (arborist reification) running the suite', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).dependencies = 'vitest run --project db'; })],
+      ['a postdependencies hook running the suite', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postdependencies = 'npm t'; })],
       ['an extra `npm t` step (alias)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm t\n\n      - name: Run unit tests\n'))],
       ['an extra `npm tst` step (alias)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm tst\n\n      - name: Run unit tests\n'))],
       ['a backslash-continued `npm \\<newline> test`', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: |\n          npm \\\n            test\n\n      - name: Run unit tests\n'))],
@@ -613,8 +624,8 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['the lint copy of the checker is made non-fatal', /step sets `continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n', '      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        continue-on-error: true\n'))],
       ['the lint copy of the checker is made conditional', /step has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n', '      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        if: github.event_name == \'push\'\n'))],
       ['the whole lint job is made non-fatal', /job sets `continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('  lint:\n    runs-on: ubuntu-latest\n', '  lint:\n    runs-on: ubuntu-latest\n    continue-on-error: true\n'))],
-      ['a postprepare hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postprepare = 'vitest run --project db'; })],
-      ['a prepublish hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepublish = 'npm run test:db'; })],
+      ['a postprepare hook running the db suite', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postprepare = 'vitest run --project db'; })],
+      ['a prepublish hook running the db suite', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepublish = 'npm run test:db'; })],
       ['an extra `npm --silent test` step (no run token)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm --silent test\n\n      - name: Run unit tests\n'))],
       ['job-level concurrency serialises the shard matrix', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-tests-${{ github.ref }}\n'))],
       ['SHELLOPTS=noexec neuters every bash step', /make a gated step exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  SHELLOPTS: noexec\n\njobs:\n'))],
@@ -624,7 +635,7 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['a prerequisite waits on another (re-serialised)', /must not declare `needs`/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    needs: [unit-tests]\n'))],
       ['max-parallel re-serialises the shards', /max-parallel/, (r) => editWorkflow(r, (s) => s.replace('      fail-fast: false\n', '      fail-fast: false\n      max-parallel: 1\n'))],
       ['an extra `npm run --silent test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm run --silent test\n\n      - name: Run unit tests\n'))],
-      ['a postinstall hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'vitest run --project db'; })],
+      ['a postinstall hook running the db suite', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'vitest run --project db'; })],
       ['a custom vitest sequencer takes over the split', /custom sequence\.sequencer/, (r) => {
         const p = join(r, 'vitest.config.ts');
         writeFileSync(p, readFileSync(p, 'utf8').replace('fileParallelism: false', 'fileParallelism: false, sequence: { sequencer: class {} }'));
@@ -672,12 +683,13 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['the repository\'s exact approved .npmrc', (r) => cpSync(resolve(dbDir, '../../.npmrc'), join(r, '.npmrc'))],
       ['an .npmrc with a subset of the approved settings', (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nmaxsockets=1\nprefer-offline=true\n')],
       ['an approved key written with quotes and spacing', (r) => writeFileSync(join(r, '.npmrc'), '"fetch-retries" = 10\n')],
-      ['a postinstall hook that is not a suite (e.g. husky)', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'husky'; })],
-      ['a prepare hook building types', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepare = 'tsc -p tsconfig.build.json'; })],
+
       ['a job concurrency group that really varies per shard', (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ github.run_id }}-${{ matrix.shard }}\n'))],
       ["a shard group using bracket syntax matrix['shard'], run-isolated", (r) => editWorkflow(r, (s) => s.replace('  db-rehearsals:\n    runs-on: ubuntu-latest\n', "  db-rehearsals:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: reh-${{ github.run_id }}-${{ matrix['shard'] }}\n"))],
-      ['a step that merely MENTIONS npm test in an echo', (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Friendly notice\n        run: echo npm test is sharded in CI\n\n      - name: Run unit tests\n'))],
-      ['an unrelated npm step whose script merely contains "selftest"', (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Some guard\n        run: npm run check:something:selftest\n\n      - name: Run unit tests\n'))],
+      // In a NON-gated job (typecheck), where the run allowlist does not apply:
+      // this proves the tokenizer does not mistake a mention for an invocation.
+      ['a non-gated step that merely MENTIONS npm test', (r) => editWorkflow(r, (s) => s.replace('      - name: Production build\n', '      - name: Friendly notice\n        run: echo npm test is sharded in CI\n\n      - name: Production build\n'))],
+      ['a non-gated npm step whose script merely contains "selftest"', (r) => editWorkflow(r, (s) => s.replace('      - name: Production build\n', '      - name: Some guard\n        run: npm run check:something:selftest\n\n      - name: Production build\n'))],
     ];
     for (const [label, mutate] of allowed) {
       const root = makeFixture();

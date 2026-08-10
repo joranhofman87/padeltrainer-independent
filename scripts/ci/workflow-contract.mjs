@@ -64,6 +64,48 @@ export const PREREQUISITE_RUNS = {
   'workflow-contract': 'node scripts/ci/workflow-contract.mjs',
 };
 
+/**
+ * Exactly what each gated job may RUN. A positive list, because the previous
+ * rule ("no step may run a gated suite twice") let arbitrary OTHER commands in
+ * — and a step as ordinary as `cp ci/npmrc "$HOME/.npmrc"` writes npm's user
+ * config after npm loaded its own, so every later `npm run` in that job can be
+ * neutered without touching a repository .npmrc, an npm_config_* variable, or
+ * a working directory. Config layers outside the repo cannot be validated from
+ * inside it; what CAN be bounded is the set of commands that run before a
+ * suite, so that is bounded here. Adding a step is a reviewed edit.
+ *
+ * Only gated jobs are listed: every GitHub job gets its own runner, so a write
+ * to $HOME elsewhere cannot reach the runner a suite executes on.
+ */
+export const APPROVED_JOB_RUNS = {
+  lint: [
+    'npm ci',
+    'npm run lint',
+    'npm run check:edge-config',
+    'npm run check:legacy-key:selftest',
+    'npm run check:legacy-key',
+    'npm run check:edge-pins:selftest',
+    'npm run check:edge-pins',
+    'node scripts/ci/workflow-contract.mjs',
+  ],
+  'unit-tests': ['npm ci', 'npm run test:unit'],
+  'db-tests': ['npm ci', 'npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}'],
+  'db-rehearsals': ['npm ci', 'npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}'],
+  i18n: ['bun scripts/check-i18n-parity.ts'],
+  'workflow-contract': ['npm ci', 'node scripts/ci/workflow-contract.mjs'],
+};
+
+/**
+ * Install lifecycle hooks the repository is allowed to define: none.
+ *
+ * Previously a hook was only rejected when it ran a gated suite, which left
+ * `postinstall: cp ci/npmrc "$HOME/.npmrc"` — arbitrary code on every runner,
+ * before every suite — perfectly acceptable. The repository defines no install
+ * hooks today, so an empty allowlist costs nothing and makes adding one a
+ * reviewed decision rather than a silent one.
+ */
+export const APPROVED_INSTALL_HOOKS = new Set();
+
 /** Jobs whose suite is split by a `shard` matrix. */
 export const SHARDED_JOBS = ['db-tests', 'db-rehearsals'];
 
@@ -128,6 +170,12 @@ const NPM_CONFIG_SUBCOMMANDS = new Set(['config', 'c', 'con', 'conf', 'confi', '
  */
 export function isNpmConfigMutation(run) {
   for (const args of npmInvocations(run)) {
+    // `npm run <script>` takes arbitrary script names — `npm run set` is a
+    // script called "set", not a config command — so a run invocation is never
+    // a config one. Otherwise any bare word may be the subcommand, because a
+    // flag with a separate operand (`npm --loglevel silent config set`) shifts
+    // its position.
+    if (args[0] === 'run' || args[0] === 'run-script') continue;
     if (args.some((a) => NPM_CONFIG_SUBCOMMANDS.has(a.toLowerCase()))) return true;
   }
   return false;
@@ -468,12 +516,25 @@ export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PRERE
   const program = extractAggregatorProgram(workflow);
   if (!program) return [{ label: 'aggregator step', ok: false, detail: 'the `test` job has no run step to execute' }];
 
-  const cases = [{ label: 'every prerequisite succeeded', results: Object.fromEntries(prerequisites.map((j) => [j, 'success'])), expectSuccess: true }];
+  const allSuccess = () => Object.fromEntries(prerequisites.map((j) => [j, 'success']));
+  const cases = [{ label: 'every prerequisite succeeded', results: allSuccess(), expectSuccess: true }];
+  // EVERY non-empty subset can fail together — parallel jobs really do. One
+  // failure at a time is an axis test, and an aggregator that (say) exited
+  // `failures % 2` would pass every axis while letting two simultaneous
+  // failures through.
+  for (let mask = 1; mask < 2 ** prerequisites.length; mask++) {
+    const failing = prerequisites.filter((_, i) => (mask >> i) & 1);
+    cases.push({
+      label: `${failing.join(' + ')} failed`,
+      results: { ...allSuccess(), ...Object.fromEntries(failing.map((j) => [j, 'failure'])) },
+      expectSuccess: false,
+    });
+  }
   for (const job of prerequisites) {
-    for (const bad of ['failure', 'cancelled', 'skipped', '']) {
+    for (const bad of ['cancelled', 'skipped', '']) {
       cases.push({
         label: `${job} = ${bad || '<empty>'}`,
-        results: { ...Object.fromEntries(prerequisites.map((j) => [j, 'success'])), [job]: bad },
+        results: { ...allSuccess(), [job]: bad },
         expectSuccess: false,
       });
     }
@@ -488,12 +549,27 @@ export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PRERE
       /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
       (_m, sep) => Object.values(results).join(sep),
     );
-    const env = { NEEDS: JSON.stringify(Object.fromEntries(Object.entries(results).map(([j, r]) => [j, { result: r }]))) };
+    // ONLY what the step actually declares: synthesising an env var the
+    // workflow does not define would model a passing gate where the real
+    // runner, under `set -u`, dies on an unbound variable.
+    const env = {};
+    let unresolved = null;
     for (const [key, expression] of Object.entries(program.env)) {
-      const match = /needs\.([A-Za-z0-9_-]+)\.result/.exec(String(expression));
-      // A job dropped from `needs` expands to the empty string, exactly as here.
-      if (match) env[key] = results[match[1]] ?? '';
-      else if (!String(expression).includes('${{')) env[key] = String(expression);
+      const text = String(expression);
+      const match = /needs\.([A-Za-z0-9_-]+)\.result/.exec(text);
+      if (match) {
+        // A job dropped from `needs` expands to the empty string, exactly as here.
+        env[key] = results[match[1]] ?? '';
+      } else if (/toJSON\(\s*needs\s*\)/.test(text)) {
+        env[key] = JSON.stringify(Object.fromEntries(Object.entries(results).map(([j, r]) => [j, { result: r }])));
+      } else if (!text.includes('${{')) {
+        env[key] = text;
+      } else {
+        unresolved = `${key}: ${text}`;
+      }
+    }
+    if (unresolved) {
+      return { label, ok: false, detail: `env ${unresolved} uses an expression this verification cannot resolve, so the gate's behaviour is unverified` };
     }
     if (script.includes('${{')) {
       return { label, ok: false, detail: `the program still contains an unresolved \`\${{ … }}\` expression, so its behaviour cannot be verified here` };
@@ -614,8 +690,8 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   // `postpack` are pack/publish-time only and are deliberately absent.
   for (const hook of NPM_INSTALL_LIFECYCLE_HOOKS) {
     const command = pkgScripts[hook];
-    if (typeof command === 'string' && isSuiteInvocation(command)) {
-      violations.push(`package.json scripts.${hook} runs a gated suite (\`${command}\`) — install hooks run outside the sharded invocation, on every installing job`);
+    if (typeof command === 'string' && !APPROVED_INSTALL_HOOKS.has(hook)) {
+      violations.push(`package.json scripts.${hook} exists (\`${command}\`) — npm runs install hooks on every runner before every gated command, so they are refused unless added to APPROVED_INSTALL_HOOKS`);
     }
   }
 
@@ -671,6 +747,16 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     const group = jobs[name]?.concurrency?.group ?? jobs[name]?.concurrency;
     if (group !== undefined && !shardConcurrencyIsSafe(group)) {
       violations.push(`${name}: job-level concurrency \`${group}\` must interpolate matrix.shard directly AND github.run_id, or the matrix children queue behind each other (groups are repository-wide)`);
+    }
+  }
+
+  // ── Only approved commands run in a gated job ──
+  for (const [jobName, approved] of Object.entries(APPROVED_JOB_RUNS)) {
+    for (const step of jobs[jobName]?.steps ?? []) {
+      if (step.run === undefined) continue;
+      if (!approved.includes(String(step.run).trim())) {
+        violations.push(`${jobName}: runs \`${String(step.run).trim().split('\n')[0]}\`, which is not in APPROVED_JOB_RUNS — a gated job runs only its suite and its setup, because anything else executes on the same runner before that suite`);
+      }
     }
   }
 
