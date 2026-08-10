@@ -227,6 +227,12 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
   // runner and partition module are copied byte-for-byte at test time (never
   // hand-inlined — an inline copy tests the copy, not the code) into a temp dir
   // whose only rehearse-* files are fakes that append their name to a marker.
+  // 120s, not the unit project's 15s default: this drives ~7 runner invocations
+  // that spawn ~30 child processes between them, several of which are cold
+  // `npx tsx` starts. Isolated it finishes in ~5s; sharing eight parallel
+  // workers with 378 other files it exceeded 15s and failed the full run. Same
+  // headroom rationale as vitest.config.ts's own timeout comments — the
+  // assertions are untouched, only the patience is.
   it('runs each fake rehearsal exactly once across both shards, and a failing one fails only its shard', () => {
     const tmp = mkdtempSync(join(tmpdir(), 'rehearsal-shards-e2e-'));
     try {
@@ -291,7 +297,7 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
-  });
+  }, 120_000);
 });
 
 describe("vitest's own shard split, over the real db inventory", () => {
@@ -483,6 +489,8 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     writeFileSync(p, JSON.stringify(o, null, 2));
   };
 
+  // Same reason: this builds a fresh fixture repo per case and runs vite's
+  // config loader against each, which is well past 15s under parallel load.
   it('reports nothing for a faithful fixture, and one violation per weakening', async () => {
     const root = makeFixture();
     try {
@@ -586,7 +594,7 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
         rmSync(root, { recursive: true, force: true });
       }
     }
-  });
+  }, 180_000);
 
   it('the CLI exits 1 and prints the violations for a broken fixture', () => {
     const root = makeFixture();
