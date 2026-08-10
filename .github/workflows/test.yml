@@ -231,12 +231,22 @@ jobs:
       # expanded by the Actions expression engine before the shell ever runs,
       # and the shell does a positive every-result-is-"success" check under
       # `set -euo pipefail` (an empty expansion fails the [ -n ] guard).
+      # The four-name loop makes the gate self-verifying: a prerequisite
+      # DROPPED from `needs:` simply vanishes from the needs context, and the
+      # surviving results would all be green — so the gate re-asserts, at
+      # runtime, that every job it exists to wait for is actually present.
       - name: Verify every test prerequisite succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
           echo "$NEEDS"
+          for job in unit-tests db-tests db-rehearsals i18n; do
+            case "$NEEDS" in
+              *"\"$job\""*) ;;
+              *) echo "::error::prerequisite '$job' is missing from the test gate's needs"; exit 1 ;;
+            esac
+          done
           results="${{ join(needs.*.result, ' ') }}"
           [ -n "$results" ]
           for r in $results; do

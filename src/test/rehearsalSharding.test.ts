@@ -24,6 +24,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import {
   REHEARSAL_PATTERN,
   UsageError,
@@ -241,12 +242,22 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
       const ran = readFileSync(marker, 'utf8').split('\n').filter(Boolean).sort();
       expect(ran).toEqual([...names].sort()); // every fake exactly once ACROSS the shard set
 
-      // Failure propagation: add a failing fake; exactly one shard must exit 1.
+      // Failure propagation, .mjs branch: exactly the shard containing the
+      // failing file exits 1 and the other exits 0 — [2,1] or [null,1] would
+      // mean a crash we mistook for a pass.
       writeFileSync(join(tmp, 'rehearse-e2e-f.mjs'), 'process.exit(1);\n');
       const s3 = run('--shard=1/2');
       const s4 = run('--shard=2/2');
-      expect([s3.status, s4.status].filter((c) => c === 1)).toHaveLength(1);
+      expect([s3.status, s4.status].sort(), 'one failing .mjs rehearsal').toEqual([0, 1]);
       expect(`${s3.stdout}${s3.stderr}${s4.stdout}${s4.stderr}`).toContain('rehearse-e2e-f.mjs (');
+
+      // Failure propagation, npx-tsx branch: a nonzero exit from a .ts
+      // rehearsal must fail its shard exactly the same way.
+      rmSync(join(tmp, 'rehearse-e2e-f.mjs'));
+      writeFileSync(join(tmp, 'rehearse-e2e-t.ts'), 'process.exit(1);\n');
+      const s5 = run('--shard=1/2');
+      const s6 = run('--shard=2/2');
+      expect([s5.status, s6.status].sort(), 'one failing .ts rehearsal').toEqual([0, 1]);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -257,37 +268,48 @@ describe('workflow ↔ runner coupling (.github/workflows/test.yml)', () => {
   // The partition is only exactly-once if the workflow feeds coherent
   // index/count pairs. These are drift alarms binding the two: a second matrix
   // dimension (which would multiply strategy.job-total), a shard list that is
-  // not exactly 1..N, or a run line that stops deriving count from job-total
-  // all fail here, loudly, instead of silently running files twice or never.
-  const workflowSrc = () =>
-    readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8');
+  // not exactly 1..N, a run line that stops forwarding the shard, or a widened
+  // gate condition all fail here, loudly, instead of silently running files
+  // twice or never. The EFFECTIVE YAML is parsed — regexes over raw text were
+  // fooled by blank lines and comments (Codex r2), a parser is not.
+  const workflow = () =>
+    parseYaml(readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8'));
 
-  it('both sharded jobs use a single-dimension shard matrix of exactly 1..N', () => {
-    const src = workflowSrc();
-    // `matrix:` immediately followed by its ONLY key, `shard: [...]` — the
-    // negative lookahead rejects any sibling key at the same indent.
-    const blocks = [...src.matchAll(/matrix:\n(\s+)shard: \[([^\]\n]+)\]\n(?!\1\S)/g)];
-    expect(blocks, 'expected exactly the db-tests and db-rehearsals shard matrices').toHaveLength(2);
-    for (const block of blocks) {
-      const shards = block[2].split(',').map((s) => Number(s.trim()));
-      expect(shards).toEqual(Array.from({ length: shards.length }, (_, i) => i + 1));
+  const SHARDED_JOBS: Record<string, string> = {
+    'db-tests': 'npm run test:db',
+    'db-rehearsals': 'npm run db:rehearse:all',
+  };
+
+  it('each sharded job has a single-dimension shard matrix of exactly 1..N', () => {
+    const jobs = workflow().jobs;
+    for (const name of Object.keys(SHARDED_JOBS)) {
+      const matrix = jobs[name]?.strategy?.matrix;
+      expect(matrix, `${name} must define strategy.matrix`).toBeTruthy();
+      // ONLY `shard` — any sibling dimension (or include/exclude) multiplies
+      // strategy.job-total and breaks every index/count pair.
+      expect(Object.keys(matrix), name).toEqual(['shard']);
+      const shards = matrix.shard;
+      expect(shards.length, name).toBeGreaterThanOrEqual(1);
+      expect(shards, name).toEqual(Array.from({ length: shards.length }, (_, i) => i + 1));
     }
   });
 
-  it('both sharded run lines derive the count from strategy.job-total', () => {
-    const src = workflowSrc();
-    const runLines = src.match(/--shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/g) ?? [];
-    expect(runLines).toHaveLength(2);
+  it('each sharded job has exactly one step whose entire run is the sharded invocation', () => {
+    const jobs = workflow().jobs;
+    for (const [name, script] of Object.entries(SHARDED_JOBS)) {
+      const runs = (jobs[name].steps ?? []).map((s: { run?: string }) => (s.run ?? '').trim());
+      const expected = `${script} -- --shard=\${{ matrix.shard }}/\${{ strategy.job-total }}`;
+      // Full-string equality on the parsed value: the token buried in an echo,
+      // an env value, or behind a YAML comment does not count as forwarding.
+      expect(runs.filter((r) => r === expected), name).toHaveLength(1);
+    }
   });
 
-  it('the required `test` gate needs every split job and runs under if: always()', () => {
-    const src = workflowSrc();
-    const gateStart = src.indexOf('\n  test:\n');
-    expect(gateStart).toBeGreaterThan(-1);
-    const rest = src.slice(gateStart + 1);
-    const nextJob = rest.slice(1).search(/\n {2}[a-z0-9-]+:\n/);
-    const gate = nextJob === -1 ? rest : rest.slice(0, nextJob + 2);
-    expect(gate).toContain('needs: [unit-tests, db-tests, db-rehearsals, i18n]');
-    expect(gate).toContain('if: always()');
+  it('the required `test` gate needs exactly the split jobs, under a bare always()', () => {
+    const gate = workflow().jobs.test;
+    expect(gate.needs).toEqual(['unit-tests', 'db-tests', 'db-rehearsals', 'i18n']);
+    // Exact: `always() && <anything>` can evaluate false and SKIP the required
+    // gate — a skipped required check blocks nothing in some tooling.
+    expect(gate.if).toBe('always()');
   });
 });
