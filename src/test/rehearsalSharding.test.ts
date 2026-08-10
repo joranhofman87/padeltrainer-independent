@@ -396,11 +396,11 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       join(root, 'vitest.config.ts'),
       `export default {\n  test: {\n    projects: [\n` +
         `      { test: { name: 'unit', include: ['src/**/*.{test,spec}.{ts,tsx}'],\n` +
-        `        exclude: ['**/*.realpg.test.ts', '**/*.pglite.test.ts', 'src/test/special.integration.test.ts'] } },\n` +
-        `      { test: { name: 'db', include: ['src/**/*.realpg.test.ts', 'src/**/*.pglite.test.ts', 'src/test/special.integration.test.ts'],\n` +
+        `        exclude: ['**/*.realpg.test.ts', '**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts'] } },\n` +
+        `      { test: { name: 'db', include: ['src/**/*.realpg.test.ts', 'src/**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts'],\n` +
         `        fileParallelism: false } },\n    ],\n  },\n};\n`,
     );
-    for (const f of ['src/plain.test.ts', 'src/test/thing.pglite.test.ts', 'src/test/other.realpg.test.ts', 'src/test/special.integration.test.ts']) {
+    for (const f of ['src/plain.test.ts', 'src/test/thing.pglite.test.ts', 'src/test/other.realpg.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']) {
       writeFileSync(join(root, f), '// fixture\n');
     }
     return root;
@@ -464,9 +464,21 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
         const p = join(r, 'vitest.config.ts');
         writeFileSync(p, readFileSync(p, 'utf8').replace("include: ['src/**/*.{test,spec}.{ts,tsx}']", "include: ['src/test/nothing.test.ts']"));
       }],
+      ['contract step loses its explicit bash', /must pin `shell: bash`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract\n        shell: bash\n', '      - name: Verify the CI gate contract\n'))],
+      ['gate step loses its explicit bash', /must pin `shell: bash`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify every test prerequisite succeeded\n        shell: bash\n', '      - name: Verify every test prerequisite succeeded\n'))],
+      ['gate step set to sh (dash rejects set -o pipefail)', /overrides `shell|must pin `shell: bash`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify every test prerequisite succeeded\n        shell: bash', '      - name: Verify every test prerequisite succeeded\n        shell: sh'))],
+      ['workflow-level env redirects script-shell', /npm_config_script_shell|NPM_CONFIG/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  npm_config_script_shell: /bin/true\n\njobs:\n'))],
+      ['hyphenated NPM_CONFIG_SCRIPT-SHELL spelling', /SCRIPT-SHELL|script_shell/i, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_SCRIPT-SHELL: /bin/true\n'))],
+      ['extra full-suite `npm test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky full gate\n        run: npm test\n\n      - name: Run unit tests\n'))],
+      ['the real-pg integration file drifts into unit', /not owned by the db project/, (r) => {
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8')
+          .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
+          .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
+      }],
       ['a file selected by both projects', /run twice/, (r) => {
         const p = join(r, 'vitest.config.ts');
-        writeFileSync(p, readFileSync(p, 'utf8').replace("exclude: ['**/*.realpg.test.ts', '**/*.pglite.test.ts', 'src/test/special.integration.test.ts']", "exclude: []"));
+        writeFileSync(p, readFileSync(p, 'utf8').replace("exclude: ['**/*.realpg.test.ts', '**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "exclude: []"));
       }],
     ];
 

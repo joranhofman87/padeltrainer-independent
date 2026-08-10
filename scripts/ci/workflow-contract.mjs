@@ -29,7 +29,7 @@
  * locally. Same code both ways — a contract checked only where it might be
  * disabled is not checked.
  */
-import { readFileSync, readdirSync, globSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, globSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -55,7 +55,7 @@ export const SHARDED_JOBS = ['db-tests', 'db-rehearsals'];
  * marker, so an allow-list of exact commands is the only shape that cannot be
  * walked around.
  */
-const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db/;
+const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|\bnpm (run )?test\b/;
 
 /** The exact concurrency contract (see the workflow's own comment for why). */
 const EXPECTED_CONCURRENCY = {
@@ -83,8 +83,24 @@ const FORBIDDEN_LIFECYCLE_HOOKS = [
   'predb:rehearse:all', 'postdb:rehearse:all',
 ];
 
-/** `bash -n` syntax-checks instead of running; anything but a real shell is a bypass. */
-const ALLOWED_STEP_SHELLS = ['bash', 'sh'];
+/**
+ * bash only. `bash -n {0}` syntax-checks instead of running, and `sh` on the
+ * runner is dash — which rejects the gate's `set -euo pipefail` and would fail
+ * the required check even when every prerequisite passed.
+ */
+const ALLOWED_STEP_SHELLS = ['bash'];
+
+/**
+ * Steps that must pin `shell: bash` EXPLICITLY. A workflow-level
+ * `defaults.run.shell: bash -n {0}` would otherwise neuter every run step at
+ * once — including this checker, so it could not report its own disabling.
+ * An explicit shell on these two makes them immune to that default, and the
+ * checker then flags the default itself.
+ */
+const MUST_PIN_BASH = { 'workflow-contract': 'the contract checker', test: 'the aggregator gate' };
+
+/** npm reads `script-shell` from any of these spellings. */
+const isScriptShellVar = (key) => key.toLowerCase().replace(/-/g, '_') === 'npm_config_script_shell';
 
 function checkStepIsUnweakened(step, where, violations) {
   if (step.if !== undefined) violations.push(`${where}: step has an \`if:\` — it can silently skip its suite`);
@@ -127,8 +143,20 @@ function walkSrc(repoRoot, pattern) {
   return out.sort();
 }
 
-/** Files the `db` vitest project must own — the database naming convention. */
-const databaseTestFilesOnDisk = (repoRoot) => walkSrc(repoRoot, /\.(pglite|realpg)\.test\.ts$/);
+/**
+ * Files the db project must own by NAME, beyond the *.pglite/*.realpg
+ * convention: this one boots a real embedded Postgres but is named like an
+ * ordinary integration test, so only an explicit entry keeps it from drifting
+ * into the parallel unit project.
+ */
+const DB_OWNED_BY_NAME = ['src/test/notificationDigestRealPg.integration.test.ts'];
+
+/** Files the `db` vitest project must own — convention plus the named exceptions. */
+const databaseTestFilesOnDisk = (repoRoot) => {
+  const byConvention = walkSrc(repoRoot, /\.(pglite|realpg)\.test\.ts$/);
+  const named = DB_OWNED_BY_NAME.filter((f) => existsSync(join(repoRoot, f)));
+  return [...new Set([...byConvention, ...named])].sort();
+};
 
 /** The whole test inventory: what SOME project must select, exactly once. */
 const testFilesOnDisk = (repoRoot) => walkSrc(repoRoot, /\.(test|spec)\.tsx?$/);
@@ -213,13 +241,32 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   if (/^\s*script-shell\s*=/m.test(npmrc)) {
     violations.push('.npmrc sets script-shell — every `npm run` in CI would use it instead of a real shell');
   }
-  for (const [jobName, job] of Object.entries(jobs)) {
-    for (const env of [job.env ?? {}, ...(job.steps ?? []).map((s) => s.env ?? {})]) {
-      for (const key of Object.keys(env)) {
-        if (/^npm_config_script_shell$/i.test(key)) {
-          violations.push(`${jobName}: sets ${key} — it would replace the shell npm scripts run in`);
-        }
+  const envScopes = [
+    ['workflow', workflow.env ?? {}],
+    ...Object.entries(jobs).flatMap(([jobName, job]) => [
+      [jobName, job.env ?? {}],
+      [`${jobName}.container`, job.container?.env ?? {}],
+      ...(job.steps ?? []).map((s) => [jobName, s.env ?? {}]),
+    ]),
+  ];
+  for (const [scope, env] of envScopes) {
+    for (const key of Object.keys(env)) {
+      if (isScriptShellVar(key)) {
+        violations.push(`${scope}: sets ${key} — it would replace the shell npm scripts run in`);
       }
+    }
+  }
+
+  // The two steps that must survive a hostile workflow default. (Their setup
+  // steps need no pin: a neutered `npm ci` leaves no node_modules, so the
+  // pinned step below then fails to import — fail-closed either way.)
+  for (const [jobName, description] of Object.entries(MUST_PIN_BASH)) {
+    const steps = (jobs[jobName]?.steps ?? []).filter((s) => s.run !== undefined);
+    const critical = jobName === 'test'
+      ? steps
+      : steps.filter((s) => (s.run ?? '').trim() === PREREQUISITE_RUNS[jobName]);
+    if (critical.length === 0 || critical.some((s) => s.shell !== 'bash')) {
+      violations.push(`${jobName}: ${description} must pin \`shell: bash\` explicitly, or a workflow-level defaults.run.shell could neuter it`);
     }
   }
 

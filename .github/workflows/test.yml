@@ -221,7 +221,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Explicit shell so a workflow-level defaults.run.shell cannot neuter the
+      # one job whose purpose is to notice that.
       - name: Verify the CI gate contract
+        shell: bash
         run: node scripts/ci/workflow-contract.mjs
 
   # check-i18n-parity.ts imports only node: builtins and runs under bun, so this
@@ -264,6 +267,7 @@ jobs:
       # The join() loop then covers any FUTURE prerequisite added to needs:
       # without a matching RESULT_* line — every listed result must be success.
       - name: Verify every test prerequisite succeeded
+        shell: bash
         env:
           NEEDS: ${{ toJSON(needs) }}
           RESULT_UNIT_TESTS: ${{ needs.unit-tests.result }}
