@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { supabase } from '@/lib/supabaseClient';
@@ -27,7 +27,20 @@ type Phase = 'loading' | 'choose' | 'done' | 'already_done' | 'generic_error' | 
 export default function VerifyIdentity() {
   const { t } = useTranslation('common');
   const [params] = useSearchParams();
-  const token = params.get('token');
+  // Read the capability token ONCE into a ref and strip it from the URL immediately, so a replayable
+  // 30-minute capability does not linger in browser history, screenshots or same-origin referrers
+  // (Codex r3 f8 — mirrors ManageEmail). Everything after uses tokenRef, not the query string.
+  const tokenRef = useRef<string | null>(params.get('token'));
+  useEffect(() => {
+    if (tokenRef.current && typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('token')) {
+        url.searchParams.delete('token');
+        window.history.replaceState({}, '', url.pathname + url.search + url.hash);
+      }
+    }
+  }, []);
+  const token = tokenRef.current;
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [candidates, setCandidates] = useState<Candidate[]>([]);

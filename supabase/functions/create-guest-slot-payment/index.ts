@@ -31,6 +31,7 @@ import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { legacyBookingRef, legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
+import { buildIntentKey } from "../_shared/identity-intent.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -211,9 +212,11 @@ Deno.serve(async (req) => {
 
     const identity = await resolveAnonymousIdentity(supabase, {
       creationRequestId, owner, workflow: "slot", email,
-      // the material intent: THIS slot + the submitted contact facts, so a verified selection can be
-      // reused only for this exact booking (Codex r2 f2).
-      payloadKey: JSON.stringify(["slot", slotId, email, name.full_name, phone]),
+      // the COMPLETE material intent, so a verified selection binds to every field written after it
+      // (Codex r3 f1): target + contact + notes + consent.
+      payloadKey: buildIntentKey("slot", {
+        slotId, email, name: name.full_name, phone, notes, whatsappOptIn: whatsappOptIn === true,
+      }),
     });
     if (identity.status === "verify_required") {
       // Generic, leak-free: no candidate identity, name, count or existence — and NOTHING created,

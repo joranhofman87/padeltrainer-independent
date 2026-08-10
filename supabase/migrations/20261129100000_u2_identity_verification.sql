@@ -101,7 +101,12 @@ CREATE TABLE public.identity_verification_challenges (
   -- selection was made (single-use). selected_person_id NULL with consumed_at set = "someone new".
   verified_at timestamptz,
   consumed_at timestamptz,
-  selected_person_id uuid REFERENCES public.persons(id) ON DELETE SET NULL,
+  -- ON DELETE CASCADE, not SET NULL (Codex r3 f6): the canonical-collapse lifecycle DELETEs a
+  -- merged-away person. SET NULL would leave a consumed challenge answering proceed_person with a
+  -- NULL person while its unique index blocked re-verification — a permanent dead end. CASCADE
+  -- instead removes the stale consumed row, so a booking resumed after a mid-flow merge simply
+  -- re-resolves against the surviving person (which still owns the guest, hence re-challenges).
+  selected_person_id uuid REFERENCES public.persons(id) ON DELETE CASCADE,
   chose_someone_new boolean NOT NULL DEFAULT false,
 
   created_at timestamptz NOT NULL DEFAULT now()
@@ -175,7 +180,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
-  SELECT DISTINCT pl.person_id,
+  -- DISTINCT ON (person_id): EXACTLY one row per canonical person (Codex r3 f5). A person with two
+  -- in-scope matching guests (different phones) must not appear twice — that would duplicate the
+  -- person in the set, double-count the fingerprint and collide React keys. The oldest guest wins
+  -- the hint deterministically.
+  SELECT DISTINCT ON (pl.person_id)
+         pl.person_id,
          coalesce(nullif(btrim(pr.full_name), ''), 'Player'),
          -- a privacy-minimal disambiguator for same-name household members (Codex r2 f7): the last
          -- two digits of the phone, masked. Disclosed only post-verification (control of the shared
@@ -207,7 +217,7 @@ AS $$
       -- "has an exact in-scope guest source at this address", so a returning player who later
       -- claimed an account is still reconnected rather than duplicated; the entrypoints book them
       -- via legacyBookingRef's guest key (person_id is stamped, so it stays visible to them).
-    ORDER BY pl.person_id;
+    ORDER BY pl.person_id, g.created_at;   -- DISTINCT ON tiebreak: the oldest in-scope guest's hint
 $$;
 
 REVOKE ALL ON FUNCTION public.identity_candidate_persons(text, uuid, text)
@@ -285,11 +295,15 @@ BEGIN
                      || ':' || v_ch.contact_normalized, 0));
 
   -- Count DELIVERED messages (outbox rows), not challenge rows: a challenge whose enqueue was
-  -- capped must not itself count toward the cap, or one burst would wedge the address forever.
+  -- capped must not itself count toward the cap, or one burst would wedge the address forever. Keyed
+  -- to the SAME (owner, address) the lock serializes (Codex r3 f3) — an owner-less count would let
+  -- unrelated tenants suppress each other while their distinct locks fail to serialize the counter.
   SELECT count(*) INTO v_recent
     FROM public.notification_outbox o
    WHERE o.event_type = 'identity_verification_requested'
      AND o.destination_normalized = v_ch.contact_normalized
+     AND ((v_ch.owner_type = 'academy' AND o.tenant_academy_profile_id = v_ch.owner_id)
+          OR (v_ch.owner_type = 'trainer' AND o.tenant_trainer_id = v_ch.owner_id))
      AND o.created_at > now() - interval '1 hour';
   IF v_recent >= v_hourly_email_cap THEN
     RETURN;  -- address hit its hourly cap: cap the EMAIL, not the (uniform) response
@@ -473,6 +487,16 @@ BEGIN
      WHERE creation_request_id = _creation_request_id AND consumed_at IS NULL AND expires_at > now()
      LIMIT 1;
     IF NOT FOUND THEN RAISE; END IF;
+    -- The winner must be THIS request's challenge, not merely one sharing the creation_request_id
+    -- (Codex r3 f7): two concurrent submissions that differ in workflow/owner/contact/candidate set/
+    -- payload must fail closed here rather than silently adopt the other's challenge and become
+    -- permanently scope-mismatched at resume.
+    IF v_ch.workflow <> _workflow OR v_ch.owner_type <> _owner_type OR v_ch.owner_id <> _owner_id
+       OR v_ch.contact_normalized IS DISTINCT FROM v_email_norm
+       OR v_ch.candidate_set_fingerprint IS DISTINCT FROM v_fp
+       OR v_ch.payload_fingerprint IS DISTINCT FROM v_payload_fp THEN
+      RAISE EXCEPTION 'IDENTITY_CONCURRENT_ATTEMPT_MISMATCH' USING ERRCODE = 'serialization_failure';
+    END IF;
   END;
 
   PERFORM public.identity_challenge_enqueue(v_ch.id);

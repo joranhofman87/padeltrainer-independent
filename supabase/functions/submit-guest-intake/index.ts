@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
+import { buildIntentKey } from "../_shared/identity-intent.ts";
 import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {
@@ -351,8 +352,31 @@ export async function handleRequest(
           : { trainerId: regRow.owner_id },
         workflow: "intake",
         email: email.toLowerCase(),
-        // the material intent: THIS registration + the submitted contact facts (Codex r2 f2).
-        payloadKey: JSON.stringify(["intake", registrationId, email.toLowerCase(), nameFields.full_name, phone || ""]),
+        // the COMPLETE material intent (Codex r3 f1): intake carries far more than contact — birth
+        // date, rating, lesson/day/time/duration/frequency preferences, trainer/location, notes,
+        // consent, payment method and price-driving metadata are all written or invoiced after the
+        // selection, so all are bound. A verified selection cannot be reused with a changed
+        // application under a kept creation_request_id.
+        payloadKey: buildIntentKey("intake", {
+          registrationId,
+          email: email.toLowerCase(),
+          name: nameFields.full_name,
+          phone: phone || "",
+          birthDate: birthDate || null,
+          rating: rating ?? null,
+          ratingSystem: ratingSystem || null,
+          lessonTypes: lessonTypes || [],
+          preferredDays: preferredDays || [],
+          preferredTimeWindows: preferredTimeWindows || [],
+          preferredDurationMinutes: preferredDurationMinutes || null,
+          sessionsPerWeek: sessionsPerWeek || null,
+          preferredTrainerIds: preferredTrainerIds || [],
+          locationId: locationId || null,
+          notes: notes || null,
+          consentGiven: consentGiven ?? null,
+          paymentMethod: paymentMethod || null,
+          metadata: metadata || null,
+        }),
       });
       if (identity.status === "verify_required") {
         return new Response(
@@ -468,36 +492,27 @@ export async function handleRequest(
       .select()
       .single();
 
-    // A unique-violation on (registration_id, creation_request_id) is a REPLAY of this exact
-    // attempt (Codex r1 f9). Rather than either duplicating OR returning a bare success that skips a
-    // never-minted invoice (Codex r2 f6), load the existing intake and CONTINUE the normal flow —
-    // the invoice mint and confirmation are idempotent, so a first run that committed the intake but
-    // died before minting is completed on the retry.
-    let intakeData = insertedIntake;
+    const intakeData = insertedIntake;
     if (intakeError) {
+      // A unique-violation on (registration_id, creation_request_id) is a REPLAY of this exact
+      // attempt (Codex r1 f9). Answer idempotently and DO NOTHING ELSE — the run that won the intake
+      // index is the one that mints the invoice and sends the confirmation, exactly once. A previous
+      // revision "continued" here to complete a missing invoice, but that let a CONCURRENT loser
+      // reach invoice minting and produce a SECOND payable invoice (Codex r3 f2). Completing an
+      // invoice that failed to mint on a partial first run is the pre-existing best-effort
+      // invoice-repair concern, not this endpoint's job, and is out of scope here.
       if (intakeError.code === "23505") {
-        const { data: existing, error: fetchErr } = await adminClient
-          .from("intake_requests")
-          .select("*")
-          .eq("registration_id", registrationId)
-          .eq("creation_request_id", creationRequestId)
-          .maybeSingle();
-        if (fetchErr || !existing) {
-          console.error("Intake replay fetch failed:", fetchErr?.code);
-          return new Response(
-            JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-        intakeData = existing;
-      } else {
-        // PII hygiene (E-22): same as above — never log Postgres error `details`.
-        console.error("Intake insert error:", intakeError.code, intakeError.message);
         return new Response(
-          JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ success: true, already_submitted: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      // PII hygiene (E-22): same as above — never log Postgres error `details`.
+      console.error("Intake insert error:", intakeError.code, intakeError.message);
+      return new Response(
+        JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // Auto-follow (only for existing users with a profile). Owner comes from the form. cycleData

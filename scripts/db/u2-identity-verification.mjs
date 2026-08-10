@@ -493,6 +493,30 @@ const outboxFor = (challengeId) => all(
   await c.query('ROLLBACK');
 }
 
+// ══ 21. A consumed selection follows a canonical-person merge via CASCADE (Codex r3 f6) ════════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('merge-cascade');
+  const email = EMAIL();
+  const { person } = await mkGuest(academy, email, 'Merge Me');
+  const req = await newUuid();
+  const ch = (await resolve(req, academy, 'slot', email)).r.challenge_id;
+  await one(`SELECT public.identity_verification_list($1) AS r`, [ch]);
+  await one(`SELECT public.identity_verification_select($1,$2,false) AS r`, [ch, person]);
+  ok('fixture: the challenge is consumed with a selected person',
+    (await one(`SELECT selected_person_id FROM public.identity_verification_challenges WHERE id = $1`, [ch]))
+      .selected_person_id === person);
+  // the selected person is merged away (its row deleted by the collapse lifecycle)
+  await c.query(`DELETE FROM public.persons WHERE id = $1`, [person]);
+  ok('deleting the selected person CASCADEs the stale consumed challenge away (no dead end)',
+    (await one(`SELECT count(*)::int AS n FROM public.identity_verification_challenges WHERE id = $1`, [ch])).n === 0);
+  // ...so the attempt can resolve again rather than being stuck behind a null-person consumed row
+  const again = (await resolve(req, academy, 'slot', email)).r;
+  ok('...and the resumed attempt re-resolves (proceed_new: the merged-away guest is gone)',
+    again.status === 'proceed_new', again);
+  await c.query('ROLLBACK');
+}
+
 await c.end();
 if (failures > 0) { console.error(`\n❌ u2 identity-verification FAILED (${failures})`); process.exit(1); }
 console.log('\n✅ u2 identity-verification passed');

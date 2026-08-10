@@ -23,6 +23,7 @@ import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { isCyclusBookingAllowed } from "../_shared/cyclus-booking.ts";
 import { legacyBookingRef, legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
+import { buildIntentKey } from "../_shared/identity-intent.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -147,34 +148,13 @@ Deno.serve(async (req) => {
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
     }
 
-    // 4. Identity — FIRST, before any Mollie credential work (resolveSlotRecipient refreshes/writes
-    //    OAuth tokens), so a verify_required request causes no external or credential mutation
-    //    (Codex r1 f7). Only a proven, explicitly chosen person (or "someone new") carries on.
     const owner = slots[0].academy_profile_id
       ? { academyProfileId: slots[0].academy_profile_id as string }
       : { trainerId };
-    const identity = await resolveAnonymousIdentity(supabase, {
-      creationRequestId, owner, workflow: "cyclus", email,
-      // the material intent: THIS cyclus + the submitted contact facts.
-      payloadKey: JSON.stringify(["cyclus", cyclusId, email, name.full_name, phone]),
-    });
-    if (identity.status === "verify_required") {
-      return json({ status: "verification_required" }, 200);
-    }
 
-    // 5. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
-    //    share one academy, so slots[0].academy_profile_id disambiguates a multi-academy trainer
-    //    (Codex F3); the webhook resolves the same academy off any of these slots.
-    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
-      supabase,
-      trainerId,
-      slots[0].academy_profile_id as string | null,
-    );
-    if (!accessToken || !recipientType) {
-      return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
-    }
-
-    // 5. Server-authoritative total + optional split.
+    // 4. Pure-read bookability/pricing guards run BEFORE identity (Codex r3 f4), so a disabled or
+    //    zero-price cyclus is refused without ever minting a challenge or emailing a candidate.
+    // Server-authoritative total + optional split.
     let hourlyRate: number | null = null;
     const { data: tp } = await supabase.from("trainer_profiles").select("hourly_rate").eq("id", trainerId).maybeSingle();
     hourlyRate = tp?.hourly_rate != null ? Number(tp.hourly_rate) : null;
@@ -192,10 +172,36 @@ Deno.serve(async (req) => {
     const settings = (cycle?.settings as Record<string, unknown>) || {};
     const splitPayment = settings.split_payment === true;
 
-    // Only now — recipient valid, cyclus bookable, price authoritative — create/derive the Player,
-    // so a disabled/zero-price/payment-unavailable cyclus never leaves an orphan Player (Codex r2
-    // f5). A verified returning Player is booked via the guest key legacyBookingRef derives
-    // (person_id stamped); a first-timer is created via the command.
+    // 5. Identity — after the pure-read guards, before any Mollie credential work
+    //    (resolveSlotRecipient refreshes/writes OAuth tokens), so verify_required touches no
+    //    credential (Codex r1 f7). Only a proven, explicitly chosen person carries on.
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "cyclus", email,
+      // the COMPLETE material intent (Codex r3 f1): cyclus + contact + notes + consent.
+      payloadKey: buildIntentKey("cyclus", {
+        cyclusId, email, name: name.full_name, phone, notes, whatsappOptIn: whatsappOptIn === true,
+      }),
+    });
+    if (identity.status === "verify_required") {
+      return json({ status: "verification_required" }, 200);
+    }
+
+    // 6. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
+    //    share one academy, so slots[0].academy_profile_id disambiguates a multi-academy trainer
+    //    (Codex F3); the webhook resolves the same academy off any of these slots.
+    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
+      supabase,
+      trainerId,
+      slots[0].academy_profile_id as string | null,
+    );
+    if (!accessToken || !recipientType) {
+      return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
+    }
+
+    // 7. Only now — recipient valid, cyclus bookable, price authoritative — create/derive the
+    //    Player, so a disabled/zero-price/payment-unavailable cyclus never leaves an orphan Player
+    //    (Codex r2 f5). A verified returning Player is booked via the guest key legacyBookingRef
+    //    derives (person_id stamped); a first-timer is created via the command.
     let personId: string;
     let guestPlayerId: string;
     if (identity.status === "proceed_person") {

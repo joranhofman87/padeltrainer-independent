@@ -33,6 +33,7 @@ import {
 } from "../_shared/cart-payment.ts";
 import { legacyBookingRef, legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
+import { buildIntentKey } from "../_shared/identity-intent.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -162,15 +163,35 @@ Deno.serve(async (req) => {
     // the recipient; its trainer doubles as the membership check inside resolveSlotRecipient.
     const trainerId = slots[0].trainer_id as string;
     const academyProfileId = slots[0].academy_profile_id ?? null;
-
-    // Identity — FIRST, before any Mollie credential work (resolveSlotRecipient refreshes/writes
-    // OAuth tokens), so a verify_required request causes no external or credential mutation
-    // (Codex r1 f7). Only a proven, explicitly chosen person (or "someone new") carries on.
     const owner = academyProfileId ? { academyProfileId } : { trainerId };
+
+    // Pure-read bookability/pricing guards run BEFORE identity (Codex r3 f4), so a zero-price cart
+    // is refused without ever minting a challenge or emailing a candidate. Only the credential-
+    // refreshing recipient resolution must wait until after verify_required.
+    // Server-authoritative pricing: Σ per-item single-slot price + extras. NO split. Hourly
+    // fallback rates are PER TRAINER — an academy cart may mix its trainers.
+    const cartTrainerIds = [...new Set(slots.map((s) => s.trainer_id).filter(Boolean))] as string[];
+    const { data: tps } = await supabase
+      .from("trainer_profiles")
+      .select("id, hourly_rate")
+      .in("id", cartTrainerIds);
+    const hourlyRateByTrainer: Record<string, number | null> = {};
+    (tps ?? []).forEach((tp: { id: string; hourly_rate: number | null }) => {
+      hourlyRateByTrainer[tp.id] = tp.hourly_rate != null ? Number(tp.hourly_rate) : null;
+    });
+    const { itemAmounts, total: expectedAmount } = priceCartItems(slotIds, slots, hourlyRateByTrainer);
+    if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
+
+    // Identity — after the pure-read guards, before any Mollie credential work (resolveSlotRecipient
+    // refreshes/writes OAuth tokens), so a verify_required request causes no external or credential
+    // mutation (Codex r1 f7). Only a proven, explicitly chosen person (or "someone new") carries on.
     const identity = await resolveAnonymousIdentity(supabase, {
       creationRequestId, owner, workflow: "cart", email,
-      // the material intent: the exact cart (sorted slot ids) + the submitted contact facts.
-      payloadKey: JSON.stringify(["cart", [...slotIds].sort(), email, name.full_name, phone]),
+      // the COMPLETE material intent (Codex r3 f1): the exact cart (order-insensitive → sorted) +
+      // contact + notes + consent.
+      payloadKey: buildIntentKey("cart", {
+        slotIds: [...slotIds].sort(), email, name: name.full_name, phone, notes, whatsappOptIn: whatsappOptIn === true,
+      }),
     });
     if (identity.status === "verify_required") {
       return json({ status: "verification_required" }, 200);
@@ -185,20 +206,6 @@ Deno.serve(async (req) => {
     if (!accessToken || !recipientType) {
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze sessies." }, 400);
     }
-
-    // 5. Server-authoritative pricing: Σ per-item single-slot price + extras. NO split.
-    // Hourly fallback rates are PER TRAINER — an academy cart may mix its trainers.
-    const cartTrainerIds = [...new Set(slots.map((s) => s.trainer_id).filter(Boolean))] as string[];
-    const { data: tps } = await supabase
-      .from("trainer_profiles")
-      .select("id, hourly_rate")
-      .in("id", cartTrainerIds);
-    const hourlyRateByTrainer: Record<string, number | null> = {};
-    (tps ?? []).forEach((tp: { id: string; hourly_rate: number | null }) => {
-      hourlyRateByTrainer[tp.id] = tp.hourly_rate != null ? Number(tp.hourly_rate) : null;
-    });
-    const { itemAmounts, total: expectedAmount } = priceCartItems(slotIds, slots, hourlyRateByTrainer);
-    if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
 
     // Only now — recipient valid, price authoritative — create/derive the Player, so a
     // payment-unavailable or zero-price cart never leaves an orphan Player (Codex r2 f5). A verified
