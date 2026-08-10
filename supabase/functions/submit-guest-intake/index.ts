@@ -351,6 +351,8 @@ export async function handleRequest(
           : { trainerId: regRow.owner_id },
         workflow: "intake",
         email: email.toLowerCase(),
+        // the material intent: THIS registration + the submitted contact facts (Codex r2 f2).
+        payloadKey: JSON.stringify(["intake", registrationId, email.toLowerCase(), nameFields.full_name, phone || ""]),
       });
       if (identity.status === "verify_required") {
         return new Response(
@@ -433,7 +435,7 @@ export async function handleRequest(
     }
 
     // Insert intake request
-    const { data: intakeData, error: intakeError } = await adminClient
+    const { data: insertedIntake, error: intakeError } = await adminClient
       .from("intake_requests")
       .insert({
         registration_id: registrationId,
@@ -466,22 +468,36 @@ export async function handleRequest(
       .select()
       .single();
 
+    // A unique-violation on (registration_id, creation_request_id) is a REPLAY of this exact
+    // attempt (Codex r1 f9). Rather than either duplicating OR returning a bare success that skips a
+    // never-minted invoice (Codex r2 f6), load the existing intake and CONTINUE the normal flow —
+    // the invoice mint and confirmation are idempotent, so a first run that committed the intake but
+    // died before minting is completed on the retry.
+    let intakeData = insertedIntake;
     if (intakeError) {
-      // A unique-violation on (registration_id, creation_request_id) is a REPLAY of this exact
-      // attempt — the first submission already created the intake (and any invoice). Answer
-      // idempotently rather than duplicating (Codex r1 f9).
       if (intakeError.code === "23505") {
+        const { data: existing, error: fetchErr } = await adminClient
+          .from("intake_requests")
+          .select("*")
+          .eq("registration_id", registrationId)
+          .eq("creation_request_id", creationRequestId)
+          .maybeSingle();
+        if (fetchErr || !existing) {
+          console.error("Intake replay fetch failed:", fetchErr?.code);
+          return new Response(
+            JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        intakeData = existing;
+      } else {
+        // PII hygiene (E-22): same as above — never log Postgres error `details`.
+        console.error("Intake insert error:", intakeError.code, intakeError.message);
         return new Response(
-          JSON.stringify({ success: true, already_submitted: true }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // PII hygiene (E-22): same as above — never log Postgres error `details`.
-      console.error("Intake insert error:", intakeError.code, intakeError.message);
-      return new Response(
-        JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
     }
 
     // Auto-follow (only for existing users with a profile). Owner comes from the form. cycleData

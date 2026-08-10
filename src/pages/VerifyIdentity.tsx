@@ -21,7 +21,7 @@ import { Loader2 } from 'lucide-react';
  * this slice confirms the selection and tells them to return to their booking to finish. Email
  * delivery itself is inert here (owner-gated), so this page is exercised by tests, not live mail.
  */
-type Candidate = { person_id: string; name: string };
+type Candidate = { person_id: string; name: string; phone_hint?: string | null };
 type Phase = 'loading' | 'choose' | 'done' | 'already_done' | 'generic_error' | 'unavailable';
 
 export default function VerifyIdentity() {
@@ -117,6 +117,9 @@ export default function VerifyIdentity() {
                     onClick={() => choose(c.person_id)}
                   >
                     {c.name}
+                    {c.phone_hint && (
+                      <span className="ml-2 text-xs text-muted-foreground">{c.phone_hint}</span>
+                    )}
                   </Button>
                 ))}
                 <Button

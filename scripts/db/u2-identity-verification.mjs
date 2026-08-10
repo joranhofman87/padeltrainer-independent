@@ -49,8 +49,11 @@ const mkGuest = async (academy, email, name = 'Guest') => {
      VALUES ($1, $2, $3) RETURNING id`, [name, email, academy]);
   return { guest: id, person: (await one(`SELECT person_id FROM public.person_links WHERE guest_player_id = $1`, [id])).person_id };
 };
-const resolve = (req, academy, workflow, email, authed = null) =>
-  one(`SELECT public.identity_resolve_or_challenge($1,'academy',$2,$3,$4,$5) AS r`, [req, academy, workflow, email, authed]);
+// payloadKey defaults to a stable per-(workflow,email) intent so tests that don't care about intent
+// binding behave as one attempt; tests 13b/17 pass explicit keys to exercise the binding.
+const resolve = (req, academy, workflow, email, authed = null, payloadKey = null) =>
+  one(`SELECT public.identity_resolve_or_challenge($1,'academy',$2,$3,$4,$5,30,$6) AS r`,
+    [req, academy, workflow, email, authed, payloadKey ?? `${workflow}:${email}`]);
 const outboxFor = (challengeId) => all(
   `SELECT recipient_person_id, payload, event_type FROM public.notification_outbox
     WHERE idempotency_key LIKE '%identity_verify:' || $1 || '%'`, [challengeId]);
@@ -423,7 +426,49 @@ const outboxFor = (challengeId) => all(
     `SELECT count(*)::int AS n FROM public.notification_outbox
       WHERE event_type = 'identity_verification_requested'
         AND destination_normalized = $1`, [email])).n;
-  ok('rotating request ids cannot exceed the per-address hourly email cap', outboxCount <= 6, { outboxCount });
+  ok('rotating request ids cannot exceed the per-address hourly email cap', outboxCount <= 5, { outboxCount });
+  await c.query('ROLLBACK');
+}
+
+// ══ 19. A verified selection cannot be reused for a DIFFERENT booking intent (Codex r2 f2) ═════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('intent-bind');
+  const email = EMAIL();
+  const { person } = await mkGuest(academy, email, 'Intent Ivy');
+  const req = await newUuid();
+  const keyX = JSON.stringify(['slot', 'slot-X', email]);
+  const ch = (await resolve(req, academy, 'slot', email, null, keyX)).r.challenge_id;
+  await one(`SELECT public.identity_verification_list($1) AS r`, [ch]);
+  await one(`SELECT public.identity_verification_select($1,$2,false) AS r`, [ch, person]);
+  // resume for the SAME intent → proceeds
+  const same = (await resolve(req, academy, 'slot', email, null, keyX)).r;
+  ok('a resume for the same booking intent proceeds as the chosen person', same.status === 'proceed_person', same);
+  // resume for a DIFFERENT target under the same request id/email → refused
+  let diff = null;
+  try { await resolve(req, academy, 'slot', email, null, JSON.stringify(['slot', 'slot-Y', email])); }
+  catch (e) { diff = e.message; }
+  ok('a resume for a DIFFERENT target/payload is refused (selection bound to the intent)',
+    diff !== null && /SELECTION_SCOPE_MISMATCH/.test(diff), { diff });
+  await c.query('ROLLBACK');
+}
+
+// ══ 20. The candidate list carries a privacy-minimal phone hint (Codex r2 f7) ══════════════════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('phone-hint');
+  const email = EMAIL();
+  await c.query(
+    `INSERT INTO public.guest_players (full_name, email, phone, academy_profile_id)
+     VALUES ('Same Name', $1, '0612345678', $2), ('Same Name', $1, '0698765432', $2)`, [email, academy]);
+  const ch = (await resolve(await newUuid(), academy, 'slot', email)).r.challenge_id;
+  const list = (await one(`SELECT public.identity_verification_list($1) AS r`, [ch])).r;
+  ok('two same-name members are distinguishable by a masked phone hint',
+    list.candidates.length === 2
+    && list.candidates.every((x) => /^••\d{2}$/.test(x.phone_hint))
+    && new Set(list.candidates.map((x) => x.phone_hint)).size === 2, list);
+  ok('...and the hint never exposes the full number',
+    list.candidates.every((x) => !/\d{4,}/.test(x.phone_hint)), list);
   await c.query('ROLLBACK');
 }
 

@@ -70,10 +70,15 @@ REUSED, verbatim pattern (not a new framework):
   `key_unavailable`); constant-time compare; domain-separated signed string.
 - **Key rotation floor** — a `*_key_state` single-row monotonic table + guard trigger, mirroring
   `notification_manage_key_state`.
-- **Idempotent enqueue + inert outbox** — `enqueue_notification`; the token rides in the
-  service-role-only `payload`, never `public_summary`. A new INERT `identity_verification_requested`
-  event type (required_delivery, no active channel/worker) — enqueue-only, real send is the
-  owner gate.
+- **Idempotent enqueue + inert outbox** — `enqueue_notification`; the payload carries the
+  `challenge_id` and workflow only, **never the HMAC token** (the token is derived from
+  (challenge_id, key) at the owner-gated send, exactly as the manage-link worker derives its own —
+  the database stores no HMAC). A new INERT `identity_verification_requested` event type
+  (required_delivery, footer `none`, no active channel/worker) — enqueue-only, real send is the
+  owner gate. **ACTIVATION PREREQUISITE (Codex r2 f3):** a real send MUST target the challenged
+  address (`contact_normalized`), not the recipient person's resolved notification-contact, which
+  for a claimed candidate can differ; and consent-suppression of this required challenge must be
+  handled at the sender. Delivery stays inert until that address-bound sender exists.
 - **Anonymous rate limit** — `throttleGuestPayment`/`rate_limits` as a secondary cap.
 - **Explicit selection shape** — modeled on `person_claim_confirm` (idempotent, row-locked,
   person-keyed), but anonymous and capability-gated instead of `auth.uid()`-gated.
@@ -140,8 +145,11 @@ backfill; email delivery + notification activation remain owner gates (enqueue o
 
 Reconnaissance surfaced no new product/retention/permission/billing/production-data decision beyond
 what the owner already specified. Two things were CONSIDERED and resolved within the mandate: (a)
-the existing rate-limiter fails open — neutralized by making the per-creation_request_id challenge
-uniqueness the primary, fail-closed cap; (b) enqueueing requires a notification event type, and the
+the existing rate-limiter fails open — neutralized by a PER-ADDRESS hourly email cap enforced under
+an advisory lock in `identity_challenge_enqueue` (the per-creation_request_id uniqueness is NOT an
+abuse cap — a caller rotates request ids — Codex r1 f5 / r2 f3); the residual owner-scoped
+proceed_new-vs-verify_required existence signal is inherent to gating returning bookers and is
+rate-limited, not eliminated; (b) enqueueing requires a notification event type, and the
 catalog is frozen — the new type is INERT (no channel/worker), which matches the frozen-inactive
 posture and the owner's "enqueue, do not send" instruction. Neither is a new decision requiring an
 owner stop.

@@ -3726,6 +3726,7 @@ export type Database = {
           key_version: number
           owner_id: string
           owner_type: string
+          payload_fingerprint: string
           selected_person_id: string | null
           verified_at: string | null
           workflow: string
@@ -3744,6 +3745,7 @@ export type Database = {
           key_version: number
           owner_id: string
           owner_type: string
+          payload_fingerprint?: string
           selected_person_id?: string | null
           verified_at?: string | null
           workflow: string
@@ -3762,6 +3764,7 @@ export type Database = {
           key_version?: number
           owner_id?: string
           owner_type?: string
+          payload_fingerprint?: string
           selected_person_id?: string | null
           verified_at?: string | null
           workflow?: string
@@ -11811,6 +11814,7 @@ export type Database = {
         Returns: {
           display_name: string
           person_id: string
+          phone_hint: string
         }[]
       }
       identity_challenge_enqueue: {
@@ -11828,6 +11832,7 @@ export type Database = {
           _email: string
           _owner_id: string
           _owner_type: string
+          _payload_key?: string
           _ttl_minutes?: number
           _workflow: string
         }

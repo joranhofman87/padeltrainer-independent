@@ -531,6 +531,11 @@ export default function CycleApplicationForm({
               {t('application.verify.body',
                 'Als dit e-mailadres al bij ons bekend is, hebben we je een link gestuurd om te bevestigen dat jij het bent. Volg die link om je inschrijving af te ronden.')}
             </p>
+            {/* Same-device resume: bring the (still-filled) form back so the confirmed registrant can
+                re-submit — the kept attempt id resolves to the chosen person and proceeds. */}
+            <Button variant="outline" onClick={() => setVerificationRequired(false)}>
+              {t('application.verify.continue', 'Ik heb bevestigd — ga verder')}
+            </Button>
           </div>
         </CardContent>
       </Card>

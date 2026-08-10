@@ -24,16 +24,14 @@ type Stub = {
 function makeAdmin(stub: Stub) {
   const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
   const admin = {
+    // only the key-state read is a direct table SELECT (that table IS granted to service_role);
+    // the challenge row lookup goes through the definer RPC below (Codex r1 f1).
     from: (table: string) => ({
       select: () => ({
         eq: () => ({
           maybeSingle: () => {
             if (table === "identity_verify_key_state") {
               return Promise.resolve({ data: stub.keyState === undefined ? { current_version: 1, min_mintable_version: 1 } : stub.keyState, error: null });
-            }
-            if (table === "identity_verification_challenges") {
-              if (stub.rowError) return Promise.resolve({ data: null, error: { message: "boom" } });
-              return Promise.resolve({ data: stub.row === undefined ? { key_version: 1 } : stub.row, error: null });
             }
             return Promise.resolve({ data: null, error: null });
           },
@@ -42,6 +40,11 @@ function makeAdmin(stub: Stub) {
     }),
     rpc: (fn: string, args: Record<string, unknown>) => {
       calls.push({ fn, args });
+      if (fn === "identity_challenge_key_version") {
+        if (stub.rowError) return Promise.resolve({ data: null, error: { message: "boom" } });
+        const row = stub.row === undefined ? { key_version: 1 } : stub.row;
+        return Promise.resolve({ data: row === null ? null : (row as { key_version: number }).key_version, error: null });
+      }
       if (stub.rpcError) return Promise.resolve({ data: null, error: { message: "db" } });
       if (fn === "identity_verification_list") return Promise.resolve({ data: stub.listResult ?? { status: "ok", candidates: [] }, error: null });
       if (fn === "identity_verification_select") return Promise.resolve({ data: stub.selectResult ?? { status: "ok" }, error: null });
@@ -79,15 +82,17 @@ Deno.test("a valid token lists candidates via the RPC (post-verification disclos
   const res = await handleRequest(req({ token: await goodToken(), action: "list" }), { adminClient: admin });
   assertEquals(res.status, 200);
   assertEquals(await res.json(), { status: "ok", candidates: [{ person_id: "p1", name: "A" }] });
-  assertEquals(calls[0].fn, "identity_verification_list");
-  assertEquals(calls[0].args._challenge_id, CH);
+  const listCall = calls.find((c) => c.fn === "identity_verification_list");
+  assertEquals(listCall?.args._challenge_id, CH);
 });
 
 Deno.test("a generation mismatch between token and row collapses to the uniform answer", async () => {
   const { admin, calls } = makeAdmin({ row: { key_version: 2 } });  // token signed under v1
   const res = await handleRequest(req({ token: await goodToken(), action: "list" }), { adminClient: admin });
   assertEquals(await res.json(), { status: "invalid" });
-  assertEquals(calls.length, 0, "a mismatched generation must not reach the RPC");
+  // the key_version lookup runs (that IS the binding check); no list/select may follow it
+  assertEquals(calls.some((c) => c.fn === "identity_verification_list" || c.fn === "identity_verification_select"), false,
+    "a mismatched generation must not reach list/select");
 });
 
 Deno.test("a row-lookup fault is retryable (503), not a fabricated invalid", async () => {
@@ -103,8 +108,8 @@ Deno.test("select passes the choice through and returns the canonical answer", a
     { adminClient: admin },
   );
   assertEquals(await res.json(), { status: "ok", person_id: "p9" });
-  assertEquals(calls[0].fn, "identity_verification_select");
-  assertEquals(calls[0].args._choose_someone_new, false);
+  const selCall = calls.find((c) => c.fn === "identity_verification_select");
+  assertEquals(selCall?.args._choose_someone_new, false);
 });
 
 Deno.test("select 'someone new' needs no person id", async () => {
@@ -114,15 +119,16 @@ Deno.test("select 'someone new' needs no person id", async () => {
     { adminClient: admin },
   );
   assertEquals((await res.json()).someone_new, true);
-  assertEquals(calls[0].args._choose_someone_new, true);
-  assertEquals(calls[0].args._person_id, null);
+  const newCall = calls.find((c) => c.fn === "identity_verification_select");
+  assertEquals(newCall?.args._choose_someone_new, true);
+  assertEquals(newCall?.args._person_id, null);
 });
 
 Deno.test("select without a candidate or someone-new is refused before the RPC", async () => {
   const { admin, calls } = makeAdmin({});
   const res = await handleRequest(req({ token: await goodToken(), action: "select" }), { adminClient: admin });
   assertEquals(await res.json(), { status: "not_a_candidate" });
-  assertEquals(calls.length, 0);
+  assertEquals(calls.some((c) => c.fn === "identity_verification_select"), false);
 });
 
 Deno.test("an RPC fault is retryable (503), never echoed", async () => {

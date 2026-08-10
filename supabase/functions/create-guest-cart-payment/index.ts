@@ -169,24 +169,11 @@ Deno.serve(async (req) => {
     const owner = academyProfileId ? { academyProfileId } : { trainerId };
     const identity = await resolveAnonymousIdentity(supabase, {
       creationRequestId, owner, workflow: "cart", email,
+      // the material intent: the exact cart (sorted slot ids) + the submitted contact facts.
+      payloadKey: JSON.stringify(["cart", [...slotIds].sort(), email, name.full_name, phone]),
     });
     if (identity.status === "verify_required") {
       return json({ status: "verification_required" }, 200);
-    }
-    // A verified returning Player is booked via the guest key legacyBookingRef derives (person_id is
-    // stamped, so a claimed account holder still sees it); a first-timer is created via the command.
-    let personId: string;
-    let guestPlayerId: string;
-    if (identity.status === "proceed_person") {
-      personId = identity.personId;
-      const ref = await legacyBookingRef(supabase, personId, owner);
-      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
-      guestPlayerId = ref.guestPlayerId;
-    } else {
-      personId = (await resolvePlayerForCheckout(supabase, {
-        email, name, phone, owner, source: "public_booking", creationRequestId,
-      })).personId;
-      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
     }
 
     // Recipient — same predicate as mollie-webhook will use to CONFIRM (charge==confirm).
@@ -212,6 +199,24 @@ Deno.serve(async (req) => {
     });
     const { itemAmounts, total: expectedAmount } = priceCartItems(slotIds, slots, hourlyRateByTrainer);
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
+
+    // Only now — recipient valid, price authoritative — create/derive the Player, so a
+    // payment-unavailable or zero-price cart never leaves an orphan Player (Codex r2 f5). A verified
+    // returning Player is booked via the guest key legacyBookingRef derives (person_id stamped); a
+    // first-timer is created via the command.
+    let personId: string;
+    let guestPlayerId: string;
+    if (identity.status === "proceed_person") {
+      personId = identity.personId;
+      const ref = await legacyBookingRef(supabase, personId, owner);
+      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
+      guestPlayerId = ref.guestPlayerId;
+    } else {
+      personId = (await resolvePlayerForCheckout(supabase, {
+        email, name, phone, owner, source: "public_booking", creationRequestId,
+      })).personId;
+      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
+    }
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
     // Tenant comes from the SLOT above, never from the client — the client sends a boolean and

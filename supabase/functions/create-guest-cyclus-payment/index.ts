@@ -155,24 +155,11 @@ Deno.serve(async (req) => {
       : { trainerId };
     const identity = await resolveAnonymousIdentity(supabase, {
       creationRequestId, owner, workflow: "cyclus", email,
+      // the material intent: THIS cyclus + the submitted contact facts.
+      payloadKey: JSON.stringify(["cyclus", cyclusId, email, name.full_name, phone]),
     });
     if (identity.status === "verify_required") {
       return json({ status: "verification_required" }, 200);
-    }
-    // A verified returning Player is booked via the guest key legacyBookingRef derives (person_id is
-    // stamped, so a claimed account holder still sees it); a first-timer is created via the command.
-    let personId: string;
-    let guestPlayerId: string;
-    if (identity.status === "proceed_person") {
-      personId = identity.personId;
-      const ref = await legacyBookingRef(supabase, personId, owner);
-      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
-      guestPlayerId = ref.guestPlayerId;
-    } else {
-      personId = (await resolvePlayerForCheckout(supabase, {
-        email, name, phone, owner, source: "public_booking", creationRequestId,
-      })).personId;
-      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
     }
 
     // 5. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
@@ -204,6 +191,24 @@ Deno.serve(async (req) => {
     }
     const settings = (cycle?.settings as Record<string, unknown>) || {};
     const splitPayment = settings.split_payment === true;
+
+    // Only now — recipient valid, cyclus bookable, price authoritative — create/derive the Player,
+    // so a disabled/zero-price/payment-unavailable cyclus never leaves an orphan Player (Codex r2
+    // f5). A verified returning Player is booked via the guest key legacyBookingRef derives
+    // (person_id stamped); a first-timer is created via the command.
+    let personId: string;
+    let guestPlayerId: string;
+    if (identity.status === "proceed_person") {
+      personId = identity.personId;
+      const ref = await legacyBookingRef(supabase, personId, owner);
+      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
+      guestPlayerId = ref.guestPlayerId;
+    } else {
+      personId = (await resolvePlayerForCheckout(supabase, {
+        email, name, phone, owner, source: "public_booking", creationRequestId,
+      })).personId;
+      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
+    }
 
     // Fold extras into the charge so it collects what the invoice bills (one_time once, per_session
     // per session, each ÷ split). Same extras source as auto-create-invoice: cycle settings, else

@@ -86,6 +86,14 @@ CREATE TABLE public.identity_verification_challenges (
   candidate_set_fingerprint text NOT NULL,
   candidate_set_size int NOT NULL CHECK (candidate_set_size >= 1),
 
+  -- the MATERIAL BOOKING INTENT at mint time — a hash of the exact target (slot/cart/cyclus/
+  -- registration) plus the submitted name/phone (Codex r2 f2). A consumed selection is bound to
+  -- THIS intent, so a caller who keeps the creation_request_id cannot reuse a verified person's
+  -- selection for a different target or payload. Client-supplied, but the entrypoints build it from
+  -- their own validated values, and it only ever RESTRICTS what a consumed selection may be reused
+  -- for — it never grants anything.
+  payload_fingerprint text NOT NULL DEFAULT '',
+
   key_version int NOT NULL CHECK (key_version >= 1),
   expires_at timestamptz NOT NULL,
 
@@ -135,6 +143,7 @@ BEGIN
      OR NEW.contact_fingerprint IS DISTINCT FROM OLD.contact_fingerprint
      OR NEW.candidate_set_fingerprint IS DISTINCT FROM OLD.candidate_set_fingerprint
      OR NEW.candidate_set_size IS DISTINCT FROM OLD.candidate_set_size
+     OR NEW.payload_fingerprint IS DISTINCT FROM OLD.payload_fingerprint
      OR NEW.key_version IS DISTINCT FROM OLD.key_version
      OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
@@ -160,14 +169,20 @@ CREATE TRIGGER trg_identity_challenge_guard_immutable
 CREATE OR REPLACE FUNCTION public.identity_candidate_persons(
   _owner_type text, _owner_id uuid, _email_norm text
 )
-RETURNS TABLE (person_id uuid, display_name text)
+RETURNS TABLE (person_id uuid, display_name text, phone_hint text)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
 AS $$
   SELECT DISTINCT pl.person_id,
-         coalesce(nullif(btrim(pr.full_name), ''), 'Player')
+         coalesce(nullif(btrim(pr.full_name), ''), 'Player'),
+         -- a privacy-minimal disambiguator for same-name household members (Codex r2 f7): the last
+         -- two digits of the phone, masked. Disclosed only post-verification (control of the shared
+         -- address is already proven), and never the full number.
+         CASE WHEN length(regexp_replace(coalesce(g.phone, ''), '\D', '', 'g')) >= 2
+              THEN '••' || right(regexp_replace(g.phone, '\D', '', 'g'), 2)
+              ELSE NULL END
     FROM public.person_links pl
     JOIN public.persons pr ON pr.id = pl.person_id
     JOIN public.guest_players g ON g.id = pl.guest_player_id
@@ -262,12 +277,21 @@ BEGIN
     RETURN;  -- nothing to notify about
   END IF;
 
+  -- Serialize the count+enqueue per (contact, owner): without the lock, concurrent transactions do
+  -- not see each other's uncommitted challenge rows, so many could each count below the cap and all
+  -- enqueue (Codex r2 f3). The xact lock holds to commit, making the cap fail-closed under a burst.
+  PERFORM pg_advisory_xact_lock(
+    hashtextextended('identity_email_cap:' || v_ch.owner_type || ':' || v_ch.owner_id::text
+                     || ':' || v_ch.contact_normalized, 0));
+
+  -- Count DELIVERED messages (outbox rows), not challenge rows: a challenge whose enqueue was
+  -- capped must not itself count toward the cap, or one burst would wedge the address forever.
   SELECT count(*) INTO v_recent
-    FROM public.identity_verification_challenges ch
-   WHERE ch.contact_normalized = v_ch.contact_normalized
-     AND ch.owner_type = v_ch.owner_type AND ch.owner_id = v_ch.owner_id
-     AND ch.created_at > now() - interval '1 hour';
-  IF v_recent > v_hourly_email_cap THEN
+    FROM public.notification_outbox o
+   WHERE o.event_type = 'identity_verification_requested'
+     AND o.destination_normalized = v_ch.contact_normalized
+     AND o.created_at > now() - interval '1 hour';
+  IF v_recent >= v_hourly_email_cap THEN
     RETURN;  -- address hit its hourly cap: cap the EMAIL, not the (uniform) response
   END IF;
 
@@ -314,7 +338,8 @@ CREATE OR REPLACE FUNCTION public.identity_resolve_or_challenge(
   _workflow text,
   _email text,
   _authed_person_id uuid DEFAULT NULL,
-  _ttl_minutes int DEFAULT 30
+  _ttl_minutes int DEFAULT 30,
+  _payload_key text DEFAULT ''
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -323,6 +348,9 @@ SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_email_norm text := lower(btrim(coalesce(_email, '')));
+  -- the material-intent fingerprint: a consumed selection is reusable only for the SAME target +
+  -- payload (Codex r2 f2). md5 is binding, not secrecy.
+  v_payload_fp text := md5(coalesce(_payload_key, ''));
   v_existing public.identity_verification_challenges%ROWTYPE;
   v_fp text;
   v_n int;
@@ -356,7 +384,10 @@ BEGIN
     -- the address), so a mismatch here is never a normal flow: fail closed.
     IF v_existing.workflow <> _workflow
        OR v_existing.owner_type <> _owner_type OR v_existing.owner_id <> _owner_id
-       OR v_existing.contact_normalized IS DISTINCT FROM v_email_norm THEN
+       OR v_existing.contact_normalized IS DISTINCT FROM v_email_norm
+       -- ...AND the same material booking intent: a verified selection may not be reused for a
+       -- different target/payload under a kept creation_request_id (Codex r2 f2).
+       OR v_existing.payload_fingerprint IS DISTINCT FROM v_payload_fp THEN
       RAISE EXCEPTION 'IDENTITY_SELECTION_SCOPE_MISMATCH' USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF v_existing.chose_someone_new THEN
@@ -393,7 +424,10 @@ BEGIN
      AND consumed_at IS NULL AND expires_at > now()
    LIMIT 1;
   IF FOUND THEN
-    IF v_existing.candidate_set_fingerprint = v_fp THEN
+    -- Reuse only if BOTH the candidate set and the material intent are unchanged. A drift in either
+    -- (Codex r1 f10 for the set; r2 f2 for the payload) retires the stale one and re-mints below.
+    IF v_existing.candidate_set_fingerprint = v_fp
+       AND v_existing.payload_fingerprint = v_payload_fp THEN
       -- Re-enqueue is safe: enqueue_notification is idempotent on (event, subject, recipient), so a
       -- resubmitted attempt produces no second message — "at most one" holds structurally.
       PERFORM public.identity_challenge_enqueue(v_existing.id);
@@ -403,7 +437,6 @@ BEGIN
         'key_version', v_existing.key_version,
         'expires_at', v_existing.expires_at);
     END IF;
-    -- drifted: retire the stale one so the mint below (a fresh proof over the new set) can proceed.
     DELETE FROM public.identity_verification_challenges WHERE id = v_existing.id;
   END IF;
 
@@ -419,18 +452,28 @@ BEGIN
   DELETE FROM public.identity_verification_challenges
    WHERE creation_request_id = _creation_request_id AND consumed_at IS NULL AND expires_at <= now();
 
-  INSERT INTO public.identity_verification_challenges (
-    workflow, owner_type, owner_id, creation_request_id,
-    contact_normalized, contact_fingerprint,
-    candidate_set_fingerprint, candidate_set_size,
-    key_version, expires_at
-  ) VALUES (
-    _workflow, _owner_type, _owner_id, _creation_request_id,
-    v_email_norm, md5(v_email_norm),
-    v_fp, v_n,
-    v_key_version, now() + make_interval(mins => greatest(1, _ttl_minutes))
-  )
-  RETURNING * INTO v_ch;
+  -- Two concurrent FIRST submissions of one attempt can both reach here and race the partial
+  -- unique index; the loser catches the violation and returns the winner's live challenge, so both
+  -- get the same idempotent verify_required rather than a 500 (Codex r2 f9).
+  BEGIN
+    INSERT INTO public.identity_verification_challenges (
+      workflow, owner_type, owner_id, creation_request_id,
+      contact_normalized, contact_fingerprint,
+      candidate_set_fingerprint, candidate_set_size, payload_fingerprint,
+      key_version, expires_at
+    ) VALUES (
+      _workflow, _owner_type, _owner_id, _creation_request_id,
+      v_email_norm, md5(v_email_norm),
+      v_fp, v_n, v_payload_fp,
+      v_key_version, now() + make_interval(mins => greatest(1, _ttl_minutes))
+    )
+    RETURNING * INTO v_ch;
+  EXCEPTION WHEN unique_violation THEN
+    SELECT * INTO v_ch FROM public.identity_verification_challenges
+     WHERE creation_request_id = _creation_request_id AND consumed_at IS NULL AND expires_at > now()
+     LIMIT 1;
+    IF NOT FOUND THEN RAISE; END IF;
+  END;
 
   PERFORM public.identity_challenge_enqueue(v_ch.id);
 
@@ -442,12 +485,12 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int)
+REVOKE ALL ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int, text)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int)
+GRANT EXECUTE ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int, text)
   TO service_role;
 
-COMMENT ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int) IS
+COMMENT ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int, text) IS
   'The one resolver every anonymous entrypoint calls before any side effect. Returns proceed_new / proceed_person / verify_required. verify_required leaks no candidate identity, name, count or existence — identical for one match or many. Service-role only (the guest edge functions).';
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
@@ -489,8 +532,9 @@ BEGIN
     UPDATE public.identity_verification_challenges SET verified_at = now() WHERE id = _challenge_id;
   END IF;
 
-  SELECT jsonb_agg(jsonb_build_object('person_id', c.person_id, 'name', c.display_name)
-                   ORDER BY c.display_name)
+  SELECT jsonb_agg(jsonb_build_object(
+             'person_id', c.person_id, 'name', c.display_name, 'phone_hint', c.phone_hint)
+                   ORDER BY c.display_name, c.person_id)
     INTO v_candidates
     FROM public.identity_candidate_persons(v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized) c;
 

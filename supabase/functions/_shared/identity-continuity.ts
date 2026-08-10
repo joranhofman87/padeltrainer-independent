@@ -30,8 +30,20 @@ export type ResolveAnonymousParams = {
   owner: IdentityOwner;
   workflow: AnonymousWorkflow;
   email: string;
-  /** An authenticated caller's canonical person, when the entrypoint has one (rare on the guest
-   *  endpoints). Trusted only when the owner may act on that person — checked server-side. */
+  /** The material booking intent this attempt is for — the exact target (slot/cart/cyclus/
+   *  registration ids) plus the submitted name/phone, as a canonical string. Bound into the
+   *  challenge so a verified selection can be reused ONLY for the same target+payload (a caller who
+   *  keeps the creation_request_id cannot resume it for a different booking). Built from the
+   *  entrypoint's OWN validated values. */
+  payloadKey: string;
+  /** An authenticated caller's canonical person. MUST be derived from a SERVER-VALIDATED JWT, never
+   *  echoed from the client: the resolver only checks the owner MAY act on the person, not that the
+   *  caller IS them, so a client-supplied value would let anyone book as any in-scope person
+   *  (Codex r2 f8). The public guest endpoints (verify_jwt=false) never validate a token, so they
+   *  leave this null and treat every caller as anonymous — a logged-in player books through the
+   *  authenticated surfaces, which resolve their person and never reach these endpoints. Wiring
+   *  optional JWT validation into the public endpoints is future work; until then login-bypass here
+   *  is deliberately absent rather than unsafely client-trusted. */
   authedPersonId?: string | null;
 };
 
@@ -64,6 +76,7 @@ export async function resolveAnonymousIdentity(
     _workflow: params.workflow,
     _email: params.email ?? "",
     _authed_person_id: params.authedPersonId ?? null,
+    _payload_key: params.payloadKey ?? "",
   });
   if (error) {
     // Code only — Postgres error detail can embed the address (PII hygiene, same as the checkout).

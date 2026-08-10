@@ -211,6 +211,9 @@ Deno.serve(async (req) => {
 
     const identity = await resolveAnonymousIdentity(supabase, {
       creationRequestId, owner, workflow: "slot", email,
+      // the material intent: THIS slot + the submitted contact facts, so a verified selection can be
+      // reused only for this exact booking (Codex r2 f2).
+      payloadKey: JSON.stringify(["slot", slotId, email, name.full_name, phone]),
     });
     if (identity.status === "verify_required") {
       // Generic, leak-free: no candidate identity, name, count or existence — and NOTHING created,
@@ -218,9 +221,23 @@ Deno.serve(async (req) => {
       return json({ status: "verification_required" }, 200);
     }
 
-    // A verified returning Player carries only their canonical person_id (booked via the guest key
-    // legacyBookingRef derives — person_id is stamped, so it stays visible to a claimed account
-    // holder); a first-timer is created through the one command.
+    // 5. Recipient — resolved the SAME way mollie-webhook will later CONFIRM the paid hold, so the
+    // charging org always equals the confirming org. Runs BEFORE any Player is created/derived so a
+    // payment-unavailable target never leaves an orphan Player (Codex r2 f5); it is still AFTER the
+    // verify_required return, so no credential is touched pre-verification (r1 f7).
+    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
+      supabase,
+      slot.trainer_id as string,
+      slot.academy_profile_id as string | null,
+    );
+    if (!accessToken || !recipientType) {
+      logStep("Refused — no connected Mollie account", { slotId });
+      return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze training." }, 400);
+    }
+
+    // 6. Only now — target valid and payable — create/derive the Player. A verified returning Player
+    // is booked via the guest key legacyBookingRef derives (person_id is stamped, so it stays
+    // visible to a claimed account holder); a first-timer is created through the one command.
     let personId: string;
     let guestPlayerId: string;
     if (identity.status === "proceed_person") {
@@ -233,19 +250,6 @@ Deno.serve(async (req) => {
         email, name, phone, owner, source: "public_booking", creationRequestId,
       })).personId;
       guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
-    }
-
-    // 5. Recipient — resolved the SAME way mollie-webhook will later CONFIRM the
-    // paid hold (trainer → active-academy → academy Mollie, else trainer Mollie),
-    // so the charging org always equals the confirming org.
-    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
-      supabase,
-      slot.trainer_id as string,
-      slot.academy_profile_id as string | null,
-    );
-    if (!accessToken || !recipientType) {
-      logStep("Refused — no connected Mollie account", { slotId });
-      return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze training." }, 400);
     }
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.

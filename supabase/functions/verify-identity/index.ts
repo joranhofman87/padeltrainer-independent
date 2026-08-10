@@ -37,14 +37,13 @@ async function readKeyState(admin: SupabaseClient): Promise<IdentityKeyState | n
 }
 
 async function rowLookup(admin: SupabaseClient, challengeId: string): Promise<IdentityRowLookup> {
-  const { data, error } = await admin
-    .from("identity_verification_challenges")
-    .select("key_version")
-    .eq("id", challengeId)
-    .maybeSingle();
+  // Via a definer RPC, NOT a direct table read: the challenge table is granted to nobody (it holds
+  // the contact address) and BYPASSRLS does not bypass a table ACL, so a service-role SELECT would
+  // fail (Codex r1 f1). The RPC returns the key_version alone.
+  const { data, error } = await admin.rpc("identity_challenge_key_version", { _challenge_id: challengeId });
   if (error) return { unavailable: true };
-  if (!data) return { found: false };
-  return { found: true, keyVersion: (data as { key_version: number }).key_version };
+  if (data === null || data === undefined) return { found: false };
+  return { found: true, keyVersion: data as number };
 }
 
 export async function handleRequest(
