@@ -148,13 +148,17 @@ export async function runIdentityWorker(deps: {
     let suppressed: boolean | null = null;
     if (target?.contact_normalized) {
       const s = await supabase.rpc("is_email_suppressed", { p_email: target.contact_normalized });
-      if (s.error) {
+      // The contract is a non-null boolean. An error OR anything else — null, undefined, a shape
+      // change — is "we do not know", which must be RETRYABLE. Only a genuine `true` may reach the
+      // gate's terminal undeliverable arm; letting an unknown through would let a schema drift
+      // permanently strand real customers. (Round 2, P2.)
+      if (s.error || typeof s.data !== "boolean") {
         failed++;
         await record(row.outbox_id, "failed", { error: "identity_send_suppression_unreadable" });
         log("suppression_unreadable", { outbox_id: row.outbox_id });
         continue;
       }
-      suppressed = s.data as boolean | null;
+      suppressed = s.data;
     }
 
     const verdict = evaluateIdentitySendGate({ target, now: now(), suppressed });

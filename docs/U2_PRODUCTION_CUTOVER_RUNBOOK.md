@@ -1,10 +1,15 @@
 # U2 canonical-Player identity — production cutover runbook
 
 **Status: PREPARED, NOT EXECUTED.** Every production write in this document is owner-gated. Nothing
-here has been run against production. The preflight that produced these numbers was read-only.
+here has been run against production.
 
-Target project: **`ficwbdrzefmblkbkomzw` — "Padeltrainer-production"** (eu-central-1, Postgres
-17.6.1.127, ACTIVE_HEALTHY). A second project `krnhyizxthxwpdfzguri` ("rallyo-events") exists in the
+**Production contact is currently PAUSED at the owner's instruction** — including read-only access.
+The figures below came from a read-only preflight taken BEFORE the 2026-08-10 infrastructure upgrade,
+so treat every count, version and migration list as *stale until re-verified*. Re-running the
+read-only preflight is itself a separate explicit owner gate.
+
+Target project: **`ficwbdrzefmblkbkomzw` — "Padeltrainer-production"** (eu-central-1, **Postgres
+17.6.1.155, Small compute, permanent 7-day PITR** — upgraded by the owner 2026-08-10; see §0b). A second project `krnhyizxthxwpdfzguri` ("rallyo-events") exists in the
 same organisation and is **not** the target — re-assert the ref before every operation.
 
 ---
@@ -53,19 +58,77 @@ blocker rather than a follow-up.
 
 ---
 
+## 0b. Postgres 17 compatibility
+
+Production was upgraded (owner-performed, 2026-08-10) to **Postgres 17.6.1.155**, **Small** compute,
+with **permanent 7-day PITR** enabled and a valid recovery window. That changes the release target,
+and the answer is better than it might have been: **this release has been validated on Postgres 17
+from the start.**
+
+| Item | Local / CI | Production | Verdict |
+|---|---|---|---|
+| Postgres major | **17** (`public.ecr.aws/supabase/postgres:17.6.1.127`) | **17** (17.6.1.155) | **same major** |
+| Patch | 17.6.1.127 | 17.6.1.155 | patch-level delta only, no API surface change |
+| Compute | n/a | Small | PITR prerequisite satisfied |
+| PITR | n/a | 7-day, permanent, valid window | rollback story below is upgraded — see §1 |
+
+Every gate in `scripts/ci-equivalent.sh --db` — the complete migration chain from empty via
+`supabase db reset`, the PGlite rehearsals, all five real-Postgres suites and the U2 tests — runs on
+that Postgres 17 image. There is no Postgres 15 or 16 in the loop to re-validate against.
+
+**The one residual:** local is 127, production is 155. Same major, patch apart. To close it exactly,
+bump the Supabase CLI (2.107 → 2.113 is available) so it pulls the newer image, then re-run the full
+gate. This is worth doing once before the window, and is a local change with no production contact.
+
+### Extension inventory (static, whole repo)
+
+| Extension | Used by | PG17 status |
+|---|---|---|
+| `pg_cron` | `cron.schedule` / `cron.job` / `cron.alter_job` — the worker crons, incl. the inert identity sender | supported |
+| `pg_net` | `net.http_post` in every cron command | supported |
+| Vault / pgsodium | `vault.decrypted_secrets` — the cron bearer, read at tick time | supported |
+| `pgcrypto` | `extensions.digest` — fingerprints in the U2 identity SQL | supported |
+| GraphQL (`pg_graphql`) | not referenced by any migration or edge function in this repo | n/a |
+
+**Removed/deprecated extensions — none present.** A repo-wide grep over `supabase/migrations/` and
+`supabase/functions/` for `pgjwt`, `plv8`, `timescaledb`, `plcoffee` and `plls` returns **zero
+matches**, so no U2 SQL (and no pre-existing SQL) depends on anything PG17 dropped. The repo also
+issues no `CREATE EXTENSION` of its own — extensions are platform-managed — so there is no
+extension-creation step that could fail mid-migration.
+
+**Still owed before release-ready:** re-run the complete gate on an image matching production's patch
+level, and re-confirm the extension list against the live database during the read-only preflight —
+which remains a **separate explicit owner gate** and has not been run since the upgrade.
+
+---
+
 ## 1. Restore point and rollback capability
 
-| Item | Value |
-|---|---|
-| `walg_enabled` | `true` (daily physical backups) |
-| **`pitr_enabled`** | **`false`** |
-| Latest usable restore point | **2026-08-10 03:15:16 UTC**, `COMPLETED`, id `1333259935` |
-| Retained backups | 7 (2026-08-03 → 2026-08-10) |
+**SUPERSEDED 2026-08-10 — PITR is now enabled.** The table below records the pre-upgrade state and
+the reasoning it forced, because the change materially improves the rollback story and the contrast
+is the point.
 
-**Consequence:** there is no arbitrary-timestamp restore. A restore-based rollback discards every
-booking, payment and invoice written since the daily backup. Rollback must therefore be
-**forward-only** (compensating migration + previous edge-function versions), with restore reserved
-as a true last resort. Enabling PITR before the window is an owner decision (see §9).
+| Item | Before the upgrade | **Now** |
+|---|---|---|
+| `walg_enabled` | `true` (daily physical backups) | `true` |
+| `pitr_enabled` | **`false`** | **`true`, permanent, 7-day window** |
+| Best restore granularity | the 03:15 UTC daily backup | **any second within 7 days** |
+| Worst-case data loss on restore | up to ~24h of bookings, payments, invoices | **seconds** |
+
+**Consequence, restated.** Before, a restore-based rollback discarded up to a day of real revenue, so
+rollback had to be forward-only with restore as a last resort. With PITR that constraint is gone:
+restoring to the instant before the first migration is now a *survivable* option rather than a
+catastrophic one.
+
+**It is still not the preferred path.** Forward-only rollback (compensating migration + redeploy of
+the recorded previous edge-function versions, §3) stays first choice, because a PITR restore also
+discards every legitimate booking and payment taken during the window, and the window is when
+traffic is paused rather than absent — Mollie webhooks keep processing per §6 step 2. PITR is the
+answer to "the migration corrupted something we cannot compensate", not to "a function misbehaved".
+
+**Record the exact recovery-window start immediately before step 6**, and write the rollback-decision
+deadline next to it. Verifying the window is live is the first step of the window (§6 step 1), not an
+assumption — "enabled" is not the same as "recoverable".
 
 ---
 
@@ -75,8 +138,10 @@ Verified two independent ways (`supabase migration list --linked` and `db push -
 **607 applied, `remote-only = 0`** — production carries no history the repo does not know about, so
 there is nothing to repair and no `migration repair` step in this runbook.
 
-Pending on the integrated #647 head (**17**, in apply order — this is the literal
-`supabase db push --dry-run --linked` output, re-verify it immediately before applying):
+Pending on the integrated #647 head (**19**, in apply order). The first 17 were confirmed against a
+literal `supabase db push --dry-run --linked`; entries 18–19 were added by slice A and are listed
+from the repository, because production access is paused. **Re-run the dry run and reconcile it with
+this table before applying anything** — if it disagrees, stop.
 
 | # | Migration | Origin |
 |---|---|---|
@@ -97,12 +162,14 @@ Pending on the integrated #647 head (**17**, in apply order — this is the lite
 | 15 | `20261128100000_u2_rebook_person_keyed_members` | U2 (#647) |
 | 16 | `20261129100000_u2_identity_verification` | U2 (#647) |
 | 17 | `20261130100000_u2_integration_catalog_and_backup` | U2×U1c integration (#647) |
+| 18 | `20261201100000_u2_identity_worker_routing` | U2 slice A (#647) |
+| 19 | `20261202100000_u2_identity_worker_cron_inert` | U2 slice A (#647), installs the sender cron INACTIVE |
 
-An earlier draft of this table said 15 and claimed #645 shipped no dated migration. That was wrong —
-`20261117100000` is #645's, and `20261130100000` is the integration fix — and because step 5 of §6
-refuses to proceed unless the dry run matches this list exactly, the error would have stopped a
-correct deployment. Codex round 1 caught it. Numbers 1–6 are already merged to `main`; 7–17 arrive
-with #647.
+This table has been wrong twice, both times caught by review, and both times it would have HALTED a
+correct deployment because step 6 refuses to proceed unless the dry run matches exactly. First it
+said 15 and claimed #645 shipped no dated migration (it is `20261117100000`). Then it said 17 after
+slice A added two more. Treat the number as a live fact to re-derive, not a constant. Numbers 1–6 are
+already merged to `main`; 7–19 arrive with #647.
 
 **Never** use `supabase db reset --linked`, `--include-seed`, a blind `db push`, or hand-edited
 production SQL. No contraction, no legacy-column drop: `guest_player_id` stays private and intact.
@@ -207,7 +274,9 @@ through `person_links`** — never by email or phone, matching the owner's ident
 2. **Keep payment/webhook processing available** — `mollie-webhook`, `mollie-callback`,
    `verify-mollie-payment`, `resend-webhook`, `stripe-subscription-webhook` must keep accepting
    provider callbacks. Dropping a Mollie callback loses a payment result. Do not pause those.
-3. **Take a fresh backup and record its id + timestamp.** Write down the rollback-decision deadline
+3. **Verify the PITR recovery window is live and record its start**, then take a fresh backup and
+   record its id + timestamp. "Enabled" is not "recoverable" — confirm the window covers now before
+   trusting it. Write down the rollback-decision deadline
    (recommend: decide within 30 minutes of the first smoke failure).
 4. **Capture the "before" baseline** (§4) and store it.
 5. **Apply the routing migration FIRST — before the worker redeploy.**
@@ -224,15 +293,17 @@ through `person_links`** — never by email or phone, matching the owner's ident
    in step 7c, not on the migration itself. Deploying the worker fix first removes the race entirely
    and makes the ordering robust even if a step is retried out of sequence.)*
 6. **Apply the remaining migrations** — `supabase db push --linked` after a final `--dry-run` whose
-   list matches §2 exactly (the routing migration is the last entry in that list, so in practice
-   steps 5 and 6 are one `db push`). If the list differs in any way: **stop**, do not repair,
+   list matches §2 exactly (the routing migration is entry 18 and the inert sender cron is
+   entry 19, so in practice steps 5 and 6 are a single `db push` that ends with both). If the list differs in any way: **stop**, do not repair,
    escalate.
-7. **Deploy the remaining edge functions** from clean updated `main`, in this order:
-   a. the identity sender;
-   b. `verify-identity` (the link target must exist before any link can be sent);
-   c. **only then** the challenge-producing callers — the three guest payment entrypoints and
+7. **Deploy the edge functions** from clean updated `main`, in this order:
+   a. **`notification-email-worker`** — the redeploy §0 promises. It is safe only AFTER step 6,
+      because this build passes `p_worker_kind`, which the pre-migration function does not accept;
+   b. the identity sender (`notification-identity-worker`);
+   c. `verify-identity` (the link target must exist before any link can be sent);
+   d. **only then** the challenge-producing callers — the three guest payment entrypoints and
       `submit-guest-intake` — plus `create-manual-player` and `mollie-webhook`;
-   d. `admin-academy-deletion`.
+   e. `admin-academy-deletion`.
 8. **Confirm the frontend** (Vercel) is serving the build that matches the deployed backend.
 9. **Set secrets / config** (§8) — owner-performed.
 10. **Activate the sender** — owner-performed, last.

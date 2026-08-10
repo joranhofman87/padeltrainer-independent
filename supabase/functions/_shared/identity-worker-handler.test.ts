@@ -28,7 +28,8 @@ interface Call { name: string; args: Record<string, unknown> }
 
 function makeSupabase(over: {
   target?: Record<string, unknown> | null;
-  suppressed?: boolean;
+  suppressed?: boolean | null;
+  suppressionError?: boolean;
   keyState?: { current_version: number; min_mintable_version: number } | null;
   payload?: Record<string, unknown>;
   killed?: boolean;
@@ -63,7 +64,13 @@ function makeSupabase(over: {
         return Promise.resolve({ data: target ? [target] : [], error: null });
       }
       if (name === "is_email_suppressed") {
-        return Promise.resolve({ data: over.suppressed ?? false, error: null });
+        if (over.suppressionError) {
+          return Promise.resolve({ data: null, error: { message: "boom" } });
+        }
+        return Promise.resolve({
+          data: over.suppressed === undefined ? false : over.suppressed,
+          error: null,
+        });
       }
       if (name === "record_notification_send_result") {
         return Promise.resolve({ data: "sent", error: null });
@@ -281,5 +288,37 @@ Deno.test("a channel KILL stops the batch before any capability email leaves", a
     // and nothing was finalised, so the rows stay reclaimable rather than being burned
     assert(!calls.some((c) => c.name === "record_notification_send_result"),
       "a kill must not terminally finalise the claimed rows");
+  });
+});
+
+Deno.test("an ERRORING suppression check is retryable, not a permanent hard bounce", async () => {
+  await withKey(async () => {
+    const { supabase, calls } = makeSupabase({ suppressionError: true });
+    const { send, sends } = recordingSend();
+    const r = await runIdentityWorker({
+      supabase, resendKey: "re_test", siteUrl: "https://x.test", fromAddress: "n@x.test", send,
+    });
+    assertEquals(sends.length, 0, "nothing is sent when deliverability is unknown");
+    assertEquals(r.failed, 1);
+    const rec = calls.find((c) => c.name === "record_notification_send_result");
+    assertEquals(rec!.args.p_error, "identity_send_suppression_unreadable");
+    assert(rec!.args.p_terminal !== true, "an unreadable check must NOT burn the row");
+  });
+});
+
+Deno.test("a NULL suppression answer is also 'unknown', never 'undeliverable'", async () => {
+  // The SQL contract is a non-null boolean; a null would mean the contract drifted. Treating that as
+  // a hard bounce would permanently strand real customers on a schema change.
+  await withKey(async () => {
+    const { supabase, calls } = makeSupabase({ suppressed: null });
+    const { send, sends } = recordingSend();
+    const r = await runIdentityWorker({
+      supabase, resendKey: "re_test", siteUrl: "https://x.test", fromAddress: "n@x.test", send,
+    });
+    assertEquals(sends.length, 0);
+    assertEquals(r.failed, 1);
+    const rec = calls.find((c) => c.name === "record_notification_send_result");
+    assertEquals(rec!.args.p_error, "identity_send_suppression_unreadable");
+    assert(rec!.args.p_terminal !== true);
   });
 });

@@ -314,6 +314,8 @@ const MANAGED_SQL = {
     { status: 'active', note: 'Vault-based notification-email-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260919110000_notification_whatsapp_worker_cron.sql':
     { status: 'active', note: 'Vault-based notification-whatsapp-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
+  'supabase/migrations/20261202100000_u2_identity_worker_cron_inert.sql':
+    { status: 'active', note: 'Vault-based notification-identity-worker cron (U2 slice A), INSTALLED INACTIVE — activation is an owner gate. Reads the Vault service_role_key secret at tick time, so Path B must see it', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20261012100000_notif_10cb_digest_cron_inert.sql':
     { status: 'active', note: 'Vault-based notification-digest-worker cron, INSTALLED INACTIVE (10c-b F) — activation is an owner gate, and a re-run never re-arms or disarms an existing job. N4 later re-points this job\'s COMMAND twice (20261026100000 then 20261027100000) via cron.alter_job, which does not restate the job name — so those are registered active beside this one rather than superseding it, and all three carry a Vault read Path B must see', replacement: '(Path B) future sb_secret_ cutover migration' },
   // N4's two re-points of THAT SAME digest-worker job. Each rewrites the cron command (and therefore
