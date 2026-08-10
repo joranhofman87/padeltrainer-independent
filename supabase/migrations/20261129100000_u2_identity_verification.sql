@@ -650,6 +650,19 @@ BEGIN
     RETURN jsonb_build_object('status', 'ok', 'someone_new', true);
   END IF;
 
+  -- Re-enforce the ambiguity fail-closed HERE, not only in the list (Codex r5): the UI hides the
+  -- blind-guess pair, but a valid-token caller could POST a known candidate uuid directly to select.
+  -- If the set is ambiguous (two candidates sharing display name + phone hint), refuse a named
+  -- selection WITHOUT consuming — only "someone new" is safe. Candidate-uuid secrecy is not an
+  -- authorization control.
+  IF EXISTS (
+    SELECT 1 FROM public.identity_candidate_persons(v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized) c
+    GROUP BY c.display_name, coalesce(c.phone_hint, '')
+    HAVING count(*) > 1
+  ) THEN
+    RETURN jsonb_build_object('status', 'ambiguous');
+  END IF;
+
   -- A named candidate must be IN the current set (which player_owner_may_select_person underpins),
   -- so a token cannot select a person outside its owner scope or outside what was disclosed.
   IF _person_id IS NULL

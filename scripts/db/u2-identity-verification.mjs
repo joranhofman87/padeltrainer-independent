@@ -530,6 +530,18 @@ const outboxFor = (challengeId) => all(
   const list = (await one(`SELECT public.identity_verification_list($1) AS r`, [ch])).r;
   ok('two identical-looking candidates make the list AMBIGUOUS — no candidates offered',
     list.status === 'ambiguous' && !('candidates' in list), list);
+  // a direct named select of a known candidate uuid (bypassing the UI) is ALSO refused, unconsumed
+  const knownPerson = (await one(
+    `SELECT person_id FROM public.person_links pl JOIN public.guest_players g ON g.id = pl.guest_player_id
+      WHERE g.email = $1 ORDER BY pl.person_id LIMIT 1`, [email])).person_id;
+  const directSel = (await one(`SELECT public.identity_verification_select($1,$2,false) AS r`, [ch, knownPerson])).r;
+  ok('a DIRECT named select of an ambiguous candidate is refused (server enforces, not just the UI)',
+    directSel.status === 'ambiguous', directSel);
+  ok('...and the challenge is left UNCONSUMED so nothing was bound', (await one(
+    `SELECT consumed_at FROM public.identity_verification_challenges WHERE id = $1`, [ch])).consumed_at === null);
+  // "someone new" remains available even when the set is ambiguous
+  const newOk = (await one(`SELECT public.identity_verification_select($1,NULL,true) AS r`, [ch])).r;
+  ok('...but "someone new" is still allowed', newOk.status === 'ok' && newOk.someone_new === true, newOk);
 
   // ...but a distinguishing phone digit restores a normal, safe choice
   await c.query('ROLLBACK');
