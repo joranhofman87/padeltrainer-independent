@@ -5319,6 +5319,7 @@ export type Database = {
           category: string
           collapse_window_minutes: number
           created_at: string
+          dedicated_worker: string | null
           default_email_frequency: string
           default_push_frequency: string
           default_whatsapp_frequency: string
@@ -5347,6 +5348,7 @@ export type Database = {
           category: string
           collapse_window_minutes?: number
           created_at?: string
+          dedicated_worker?: string | null
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
@@ -5375,6 +5377,7 @@ export type Database = {
           category?: string
           collapse_window_minutes?: number
           created_at?: string
+          dedicated_worker?: string | null
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
@@ -10912,6 +10915,7 @@ export type Database = {
           p_limit?: number
           p_stale_after_minutes?: number
           p_worker: string
+          p_worker_kind?: string
         }
         Returns: {
           attempts: number
@@ -12000,6 +12004,17 @@ export type Database = {
         Args: { _challenge_id: string }
         Returns: number
       }
+      identity_challenge_send_target: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          already_consumed: boolean
+          contact_normalized: string
+          expires_at: string
+          key_mintable: boolean
+          key_version: number
+          workflow: string
+        }[]
+      }
       identity_resolve_or_challenge: {
         Args: {
           _authed_person_id?: string
@@ -12475,6 +12490,10 @@ export type Database = {
         }[]
       }
       notif_error_class: { Args: { p_error: string }; Returns: string }
+      notif_event_dedicated_worker: {
+        Args: { p_event_type: string }
+        Returns: string
+      }
       notif_frequency_rank: { Args: { p_freq: string }; Returns: number }
       notif_my_academy_ids: { Args: never; Returns: string[] }
       notif_open_slots_escape_html: {

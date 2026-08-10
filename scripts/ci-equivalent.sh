@@ -58,7 +58,8 @@ if [[ $WITH_DB == 1 ]]; then
   for suite in scripts/db/academy-deletion-integration.mjs \
                scripts/db/backup-coverage.mjs \
                scripts/db/u2-no-email-alone-merge.mjs \
-               scripts/db/u2-identity-verification.mjs; do
+               scripts/db/u2-identity-verification.mjs \
+               scripts/db/u2-identity-worker-routing.mjs; do
     [[ -f "$suite" ]] && run "$(basename "$suite" .mjs) (real pg)" node "$suite"
   done
 else

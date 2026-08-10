@@ -25,6 +25,19 @@ payload lacks `subject`/`html` (`_shared/instant-send-gate.ts:82-89`).
 > terminally failed: no email, burned row, and a returning anonymous booker stuck forever on
 > "check your email".
 
+**UPDATE (slice A part 1, migration `20261201100000`): the hazard is now closed in the schema, not
+by ordering.** Event ownership moved into the catalogue as
+`notification_event_types.dedicated_worker`, and `claim_notification_outbox_batch` gained
+`p_worker_kind text DEFAULT NULL` which must match it — on the claim, the tenant-restriction skip and
+the stale reap alike. Because the parameter is **defaulted** and the deployed worker calls the RPC
+with three **named** arguments, the already-running production worker resolves to the new function,
+receives `p_worker_kind = NULL`, and stops seeing identity rows **the moment the migration applies —
+without being redeployed**. The old 4-argument overload is dropped in the same migration, because two
+overloads differing only by a defaulted trailing parameter would make that 3-argument call ambiguous.
+
+The residual risk is therefore no longer "challenges get burned" but "challenges sit `pending` until
+the dedicated sender is deployed" — a visible stalled queue instead of silent terminal failures.
+
 The constraint binds on the **callers**, not on the schema. `identity_challenge_enqueue` runs only
 when a guest entrypoint calls the resolver, so the migration alone enqueues nothing; the four
 challenge-producing entrypoints (`create-guest-{slot,cart,cyclus}-payment`, `submit-guest-intake`)

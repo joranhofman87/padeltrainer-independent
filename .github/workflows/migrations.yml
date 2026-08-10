@@ -74,6 +74,11 @@ jobs:
       - name: U2 — identity verification continuity (local Postgres)
         run: node scripts/db/u2-identity-verification.mjs
 
+      # Slice A: the generic email worker and the dedicated identity sender must claim DISJOINT
+      # rows. Real Postgres because the claim is a concurrency boundary, not a predicate.
+      - name: U2 — identity worker routing partition (local Postgres)
+        run: node scripts/db/u2-identity-worker-routing.mjs
+
   types-drift:
     name: generated types drift
     runs-on: ubuntu-latest
