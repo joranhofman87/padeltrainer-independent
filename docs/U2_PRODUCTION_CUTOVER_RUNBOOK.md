@@ -443,8 +443,10 @@ safe check is that it claims nothing and exits cleanly:
    `{"claimed":0,"sent":0,"refused":0,"failed":0}`. That proves it deployed, it authenticated as
    service_role, and the new 5-argument RPC signature resolved. It does **not** prove the partition
    predicate works — with zero eligible rows there is nothing to partition. The partition evidence is
-   `scripts/db/u2-identity-worker-routing.mjs` in CI, which claims against real rows and asserts the
-   two worker kinds take disjoint sets.
+   `scripts/db/u2-identity-worker-routing.mjs` in CI, which runs the DEDICATED worker first against a
+   still-pending, still-due generic row and asserts it is refused rather than merely locked — the
+   only ordering that can tell a partition apart from a lock — then runs the generic worker and
+   asserts the complement. Mutation-checked: deleting the routing predicate fails it.
 2. Confirm the generic worker is unaffected — its next scheduled run should log its usual counts.
 3. Only then deploy the challenge-producing entrypoints.
 

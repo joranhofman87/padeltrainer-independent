@@ -64,14 +64,17 @@ describe('slice A — the identity cron is inert by construction', () => {
     // appears in the activation comment at the top, so a whole-file `toContain` stayed green with
     // the real predicate deleted — the exact failure mode this file exists to prevent, found in this
     // file. Comments are stripped first, then the SELECT itself is matched.
-    const executable = cron
-      .split('\n')
-      .filter((l) => !l.trimStart().startsWith('--'))
-      .join('\n');
-    expect(executable).toMatch(
-      /SELECT\s+jobid\s+INTO\s+v_jobid[\s\S]{0,200}?FROM\s+cron\.job[\s\S]{0,200}?username\s*=\s*current_user/i,
-    );
-    expect(executable).toMatch(/IF v_jobid IS NOT NULL THEN[\s\S]*?RETURN;/);
+    // Strip INLINE comments as well as whole-line ones. A trailing `-- username = current_user`
+    // after a weakened predicate is valid SQL and would otherwise satisfy this assertion — the same
+    // false-green this test already had once, one layer down.
+    const stripped = cron.replace(/--[^\n]*/g, '');
+    // ...then scope to the ONE executable statement, so a match somewhere else in the file cannot
+    // stand in for it.
+    const lookup = stripped.match(/SELECT\s+jobid\s+INTO\s+v_jobid[\s\S]*?;/i)?.[0] ?? '';
+    expect(lookup, 'the owner-scoped lookup statement must exist').not.toBe('');
+    expect(lookup).toMatch(/FROM\s+cron\.job/i);
+    expect(lookup).toMatch(/username\s*=\s*current_user/i);
+    expect(stripped).toMatch(/IF v_jobid IS NOT NULL THEN[\s\S]*?RETURN;/);
   });
 
   it('serializes check-then-create against a concurrent apply', () => {
@@ -95,7 +98,20 @@ describe('slice A — the identity cron is inert by construction', () => {
   });
 
   it('installs even when the Vault secret is absent, because the command reads Vault at tick time', () => {
-    // an apply-time guard would record the migration as applied while creating no job at all
+    // An apply-time guard would record the migration as applied while creating no job at all. The
+    // NOTICE text alone does not protect that: inserting `RETURN;` straight after it restores the
+    // skip and leaves a text assertion green. So this pins the CONTROL FLOW — between the empty-key
+    // branch and the cron.schedule call there must be no RETURN.
+    const stripped = cron.replace(/--[^\n]*/g, '');
+    const emptyKeyBranch = stripped.indexOf('IF sr_key IS NULL OR sr_key');
+    const scheduleCall = stripped.indexOf('v_jobid := cron.schedule(');
+    expect(emptyKeyBranch, 'the empty-key branch must exist').toBeGreaterThan(-1);
+    expect(scheduleCall).toBeGreaterThan(emptyKeyBranch);
+    const between = stripped.slice(emptyKeyBranch, scheduleCall);
+    // the only RETURN allowed between them is the already-scheduled early exit, which is guarded by
+    // `IF v_jobid IS NOT NULL` — an unguarded RETURN here would re-create the apply-time skip
+    const returnsBefore = between.slice(0, between.indexOf('IF v_jobid IS NOT NULL THEN'));
+    expect(returnsBefore).not.toMatch(/\bRETURN\s*;/i);
     expect(cron).toContain('installing notification-identity-worker INACTIVE anyway');
   });
 });

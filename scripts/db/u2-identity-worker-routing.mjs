@@ -74,6 +74,31 @@ const genericEvent = await one(`SELECT key, COALESCE(template_email, key) AS tpl
 const otherRow = await mkRow(genericEvent.key, genericEvent.tpl);
 
 // ── THE PARTITION ──────────────────────────────────────────────────────────────────────────────
+// ORDER MATTERS, and getting it wrong makes this whole file lie. If the GENERIC worker claims the
+// ordinary row first, that row is 'processing' by the time the dedicated worker runs — so "the
+// dedicated worker did not take it" would hold even if every worker kind were allowed to claim
+// everything. The dedicated worker therefore goes FIRST, against a row that is still pending and
+// due, which is the only arrangement that can distinguish a partition from a lock.
+const identityFirst = await all(
+  `SELECT outbox_id FROM public.claim_notification_outbox_batch(
+      p_channel => 'email', p_worker => 'identity-first', p_limit => 50,
+      p_worker_kind => 'identity_verify')`);
+const identityFirstIds = identityFirst.map((r) => r.outbox_id);
+const otherStillDue = await one(
+  `SELECT status FROM public.notification_outbox WHERE id = $1`, [otherRow]);
+
+ok('the dedicated worker, run FIRST, does not claim a still-PENDING generic row',
+   !identityFirstIds.includes(otherRow), { otherRow, identityFirstIds });
+ok('...and that generic row is still pending afterwards, so it was refused rather than locked',
+   otherStillDue.status === 'pending', otherStillDue);
+ok('...while the dedicated worker did take the identity row', identityFirstIds.includes(idRow),
+   { idRow, identityFirstIds });
+
+// hand the identity row back so the assertions below start from a clean state
+await c.query(`UPDATE public.notification_outbox
+                  SET status='pending', locked_by=NULL, locked_at=NULL, attempts=0
+                WHERE id = $1`, [idRow]);
+
 // The generic worker, called EXACTLY as the deployed one calls it: three named arguments.
 const genericClaim = await all(
   `SELECT outbox_id FROM public.claim_notification_outbox_batch(
