@@ -41,9 +41,10 @@ Before you change code, know which gate will catch a mistake — and which gates
   - `db-tests` ×2 shards: `vitest run --project db --shard=i/2` (exact partition; `fileParallelism: false` per runner)
   - `db-rehearsals` ×2 shards: `db:rehearse:all -- --shard=i/2` (round-robin over the discovered inventory)
   - `i18n`: bun en/nl parity
+  - `workflow-contract`: `node scripts/ci/workflow-contract.mjs` — the split gate's own contract (every prerequisite really runs its suite once and unweakened; shard matrices stay single-dimension 1..N; the required check keeps the id `test`; npm aliases and the db-project inventory are intact)
   - `edge-tests`: `deno test --no-check` on `_shared/`
   - `edge-typecheck`: `check:edge-types`(+selftest), ratcheted real `deno check`
-  - `test`: the aggregator branch protection requires — `if: always()`, succeeds only when `unit-tests`, both `db-tests` shards, both `db-rehearsals` shards and `i18n` all succeeded
+  - `test`: the aggregator branch protection requires — `if: always()`, succeeds only when `unit-tests`, both `db-tests` shards, both `db-rehearsals` shards, `i18n` and `workflow-contract` all succeeded
 - **`migrations.yml`** (PRs touching migrations/types only): `supabase db reset` + generated-types drift.
 - **`e2e.yml`**, **`seo-smoke.yml`**, **`sitemap.yml`**: scheduled/manual, not per-PR.
 

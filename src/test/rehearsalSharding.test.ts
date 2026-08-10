@@ -25,11 +25,12 @@
  *      cannot drift from the runner.
  */
 import { describe, it, expect } from 'vitest';
-import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import { checkWorkflowContract, PREREQUISITE_RUNS } from '../../scripts/ci/workflow-contract.mjs';
 import {
   REHEARSAL_PATTERN,
@@ -42,6 +43,7 @@ import {
 
 const dbDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../scripts/db');
 const runnerPath = join(dbDir, 'run-all-rehearsals.mjs');
+const contractCli = resolve(dbDir, '../ci/workflow-contract.mjs');
 
 /** Multiset-safe partition check: union of shards 1..count === inventory, each exactly once. */
 function expectExactPartition(inventory: string[], count: number) {
@@ -278,6 +280,13 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
       const s5 = run('--shard=1/2');
       const s6 = run('--shard=2/2');
       expect([s5.status, s6.status].sort(), 'one failing .ts rehearsal').toEqual([0, 1]);
+
+      // …and the no-argument path propagates failure too: `npm run
+      // db:rehearse:all` exiting 0 after a failed rehearsal is the exact shape
+      // of a gate reporting green while an invariant is broken.
+      const noArgs = run();
+      expect(noArgs.status, 'no-arg run with a failing rehearsal').toBe(1);
+      expect(`${noArgs.stdout}${noArgs.stderr}`).toContain('FAILED');
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -304,8 +313,185 @@ describe('the CI gate contract (scripts/ci/workflow-contract.mjs)', () => {
   it('the CLI its CI job runs exits 0 and says so', () => {
     // The workflow calls the CLI, not the module: a checker that computed
     // violations but never exited nonzero would gate nothing.
-    const res = spawnSync(process.execPath, [resolve(dbDir, '../ci/workflow-contract.mjs')], { encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [contractCli], { encoding: 'utf8' });
     expect(res.status, res.stderr).toBe(0);
     expect(res.stdout).toContain('CI gate contract holds.');
+  });
+});
+
+describe('the gate program itself (executed against a result truth table)', () => {
+  // Pinning tokens in the gate's script proves nothing about CONTROL FLOW: an
+  // `exit 0` inserted after `set -euo pipefail` leaves every token in place.
+  // So the actual script is extracted from the workflow, the Actions
+  // expressions are substituted, and it is RUN under bash for each combination
+  // of prerequisite results that CI can produce.
+  const gateProgram = () => {
+    const workflow = parseYaml(readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8')) as {
+      jobs: Record<string, { steps: Array<{ run?: string; env?: Record<string, string> }> }>;
+    };
+    return workflow.jobs.test.steps[0];
+  };
+
+  /** Runs the gate's real script with the given per-job results; returns its exit code. */
+  const runGate = (results: Record<string, string>) => {
+    const step = gateProgram();
+    const env: Record<string, string> = { NEEDS: JSON.stringify(results) };
+    // The `env:` block maps RESULT_* names to ${{ needs.<id>.result }}; resolve
+    // each through the results table (a job missing from needs → empty string,
+    // exactly as the expression engine would expand it).
+    for (const [key, expr] of Object.entries(step.env ?? {})) {
+      const match = /needs\.([a-z0-9-]+)\.result/.exec(expr);
+      if (match) env[key] = results[match[1]] ?? '';
+    }
+    const script = (step.run ?? '').replace(
+      /\$\{\{ join\(needs\.\*\.result, ' '\) \}\}/g,
+      Object.values(results).join(' '),
+    );
+    const res = spawnSync('bash', ['-c', script], { encoding: 'utf8', env: { ...process.env, ...env } });
+    return res.status;
+  };
+
+  const ALL = ['unit-tests', 'db-tests', 'db-rehearsals', 'i18n', 'workflow-contract'];
+  const allSuccess = () => Object.fromEntries(ALL.map((j) => [j, 'success']));
+
+  it('succeeds only when every prerequisite succeeded', () => {
+    expect(runGate(allSuccess())).toBe(0);
+  });
+
+  it('fails on any non-success result, for every prerequisite', () => {
+    for (const job of ALL) {
+      for (const bad of ['failure', 'cancelled', 'skipped', '']) {
+        expect(runGate({ ...allSuccess(), [job]: bad }), `${job}=${bad || '<empty>'}`).toBe(1);
+      }
+    }
+  });
+
+  it('fails when a prerequisite is missing from needs entirely', () => {
+    for (const job of ALL) {
+      const partial = allSuccess();
+      delete partial[job];
+      expect(runGate(partial), `${job} dropped`).toBe(1);
+    }
+  });
+
+  it('fails when needs is empty', () => {
+    expect(runGate({})).toBe(1);
+  });
+});
+
+describe('the contract checker detects each weakening (fixture repos)', () => {
+  // Committed negative tests: without them, deleting a detector — or the CLI's
+  // process.exit(1) — leaves everything green and only a human's memory of a
+  // manual mutation run stands between the gate and a silent hole.
+  const makeFixture = () => {
+    const root = mkdtempSync(join(tmpdir(), 'gate-contract-fixture-'));
+    mkdirSync(join(root, '.github/workflows'), { recursive: true });
+    mkdirSync(join(root, 'src/test'), { recursive: true });
+    copyFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), join(root, '.github/workflows/test.yml'));
+    const realPkg = JSON.parse(readFileSync(resolve(dbDir, '../../package.json'), 'utf8'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: realPkg.scripts }, null, 2));
+    // A minimal config with the same project shape and no imports, so vite can
+    // load it from a temp dir with no node_modules.
+    writeFileSync(
+      join(root, 'vitest.config.ts'),
+      `export default {\n  test: {\n    projects: [\n` +
+        `      { test: { name: 'unit', include: ['src/**/*.{test,spec}.{ts,tsx}'],\n` +
+        `        exclude: ['**/*.realpg.test.ts', '**/*.pglite.test.ts', 'src/test/special.integration.test.ts'] } },\n` +
+        `      { test: { name: 'db', include: ['src/**/*.realpg.test.ts', 'src/**/*.pglite.test.ts', 'src/test/special.integration.test.ts'],\n` +
+        `        fileParallelism: false } },\n    ],\n  },\n};\n`,
+    );
+    for (const f of ['src/plain.test.ts', 'src/test/thing.pglite.test.ts', 'src/test/other.realpg.test.ts', 'src/test/special.integration.test.ts']) {
+      writeFileSync(join(root, f), '// fixture\n');
+    }
+    return root;
+  };
+
+  const editWorkflow = (root: string, edit: (src: string) => string) => {
+    const p = join(root, '.github/workflows/test.yml');
+    writeFileSync(p, edit(readFileSync(p, 'utf8')));
+  };
+  const editJson = (root: string, file: string, edit: (o: Record<string, unknown>) => void) => {
+    const p = join(root, file);
+    const o = JSON.parse(readFileSync(p, 'utf8'));
+    edit(o);
+    writeFileSync(p, JSON.stringify(o, null, 2));
+  };
+
+  it('reports nothing for a faithful fixture, and one violation per weakening', async () => {
+    const root = makeFixture();
+    try {
+      // The fixture must be CLEAN first — otherwise every case below would
+      // "pass" on a pre-existing violation rather than the one it introduces.
+      expect(await checkWorkflowContract({ repoRoot: root })).toEqual([]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+
+    const cases: Array<[string, RegExp, (root: string) => void]> = [
+      ['gate renamed', /must not set `name:`/, (r) => editWorkflow(r, (s) => s.replace('  test:\n    runs-on:', '  test:\n    name: Aggregate\n    runs-on:'))],
+      ['gate need dropped', /needs must be exactly/, (r) => editWorkflow(r, (s) => s.replace(', i18n, workflow-contract]', ', workflow-contract]'))],
+      ['gate condition widened', /`if` must be exactly always\(\)/, (r) => editWorkflow(r, (s) => s.replace('    if: always()', "    if: always() && github.event_name == 'push'"))],
+      ['gate stops reading a result', /must read \$\{\{ needs\.i18n\.result \}\}/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', ''))],
+      ['second matrix dimension', /single dimension/, (r) => editWorkflow(r, (s) => s.replace('        shard: [1, 2]\n', '        shard: [1, 2]\n\n        os: [ubuntu-latest]\n'))],
+      ['shard list not 1..N', /shard list must be exactly/, (r) => editWorkflow(r, (s) => s.replace('        shard: [1, 2]', '        shard: [1, 1]'))],
+      ['fail-fast dropped', /fail-fast must be false/, (r) => editWorkflow(r, (s) => s.replace('      fail-fast: false\n', ''))],
+      ['suite step made conditional', /step has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('        run: npm run test:unit', '        if: github.event_name == \'push\'\n        run: npm run test:unit'))],
+      ['suite step continue-on-error', /continue-on-error/, (r) => editWorkflow(r, (s) => s.replace('        run: npm run test:unit', '        continue-on-error: true\n        run: npm run test:unit'))],
+      ['suite step shell bypass', /overrides `shell/, (r) => editWorkflow(r, (s) => s.replace('        run: npm run test:unit', '        shell: bash -n {0}\n        run: npm run test:unit'))],
+      ['job defaults shell bypass', /defaults\.run\.shell/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: ubuntu-latest\n    defaults:\n      run:\n        shell: bash -n {0}'))],
+      ['workflow defaults shell bypass', /workflow defaults\.run\.shell/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\ndefaults:\n  run:\n    shell: bash -n {0}\n\njobs:\n'))],
+      ['shard forwarding dropped', /must run in exactly 1 step|unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('        run: npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}', '        run: npm run test:db'))],
+      ['direct unsharded invocation added', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npx vitest run --project db\n\n      - name: Run unit tests\n'))],
+      ['concurrency branches swapped', /concurrency\.group must be exactly/, (r) => editWorkflow(r, (s) => s.replace("github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id", "github.event_name == 'pull_request' && github.run_id || format('pr-{0}', github.event.pull_request.number)"))],
+      ['cancellation widened to pushes', /cancel-in-progress must be exactly/, (r) => editWorkflow(r, (s) => s.replace("  cancel-in-progress: ${{ github.event_name == 'pull_request' }}", '  cancel-in-progress: true'))],
+      ['npm alias neutered', /scripts\.test:db must be/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>)['test:db'] = ':'; })],
+      ['npm lifecycle hook added', /scripts\.pretest:db exists/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>)['pretest:db'] = 'vitest run --project db'; })],
+      ['npmrc redirects script-shell', /\.npmrc sets script-shell/, (r) => writeFileSync(join(r, '.npmrc'), 'script-shell=/bin/true\n')],
+      ['step env redirects script-shell', /npm_config_script_shell/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          npm_config_script_shell: /bin/true\n'))],
+      ['db loses fileParallelism false', /fileParallelism: false/, (r) => editJson(r, 'package.json', () => {
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8').replace('fileParallelism: false', 'fileParallelism: true'));
+      })],
+      ['db include narrowed', /selected by NO project|not owned by the db project/, (r) => {
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8').replace(", 'src/**/*.pglite.test.ts'", ''));
+      }],
+      ['db exclude added', /selected by NO project|not owned by the db project/, (r) => {
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8').replace('fileParallelism: false', "exclude: ['**/*.pglite.test.ts'], fileParallelism: false"));
+      }],
+      ['unit include narrowed', /selected by NO project/, (r) => {
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8').replace("include: ['src/**/*.{test,spec}.{ts,tsx}']", "include: ['src/test/nothing.test.ts']"));
+      }],
+      ['a file selected by both projects', /run twice/, (r) => {
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8').replace("exclude: ['**/*.realpg.test.ts', '**/*.pglite.test.ts', 'src/test/special.integration.test.ts']", "exclude: []"));
+      }],
+    ];
+
+    for (const [label, pattern, mutate] of cases) {
+      const root = makeFixture();
+      try {
+        mutate(root);
+        const violations = await checkWorkflowContract({ repoRoot: root });
+        expect(violations.join('\n'), `${label}: expected a violation matching ${pattern}`).toMatch(pattern);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('the CLI exits 1 and prints the violations for a broken fixture', () => {
+    const root = makeFixture();
+    try {
+      editWorkflow(root, (s) => s.replace('    if: always()', '    if: success()'));
+      const res = spawnSync(process.execPath, [contractCli, root], { encoding: 'utf8' });
+      expect(res.status).toBe(1);
+      expect(res.stderr).toContain('CI gate contract violated');
+      expect(res.stderr).toMatch(/always\(\)/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

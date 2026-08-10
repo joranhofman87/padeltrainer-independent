@@ -48,14 +48,21 @@ export const PREREQUISITE_RUNS = {
 /** Jobs whose suite is split by a `shard` matrix. */
 export const SHARDED_JOBS = ['db-tests', 'db-rehearsals'];
 
-/** Every gated suite command must appear in exactly ONE step of the workflow. */
-const SUITE_MARKERS = [
-  'npm run test:unit',
-  'npm run test:db',
-  'npm run db:rehearse:all',
-  'check-i18n-parity',
-  'workflow-contract.mjs',
-];
+/**
+ * Any step that looks like it runs a gated suite — by alias OR directly
+ * (`npx vitest run --project db`, `node scripts/db/run-all-rehearsals.mjs`) —
+ * must be one of the pinned invocations above. A direct call matches no alias
+ * marker, so an allow-list of exact commands is the only shape that cannot be
+ * walked around.
+ */
+const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db/;
+
+/** The exact concurrency contract (see the workflow's own comment for why). */
+const EXPECTED_CONCURRENCY = {
+  group:
+    "${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}",
+  'cancel-in-progress': "${{ github.event_name == 'pull_request' }}",
+};
 
 /** npm scripts the workflow invokes, and the exact command each must be. */
 const PINNED_SCRIPTS = {
@@ -106,19 +113,25 @@ function checkJobIsUnweakened(job, where, violations, { allowIf = false } = {}) 
   return true;
 }
 
-/** Files the `db` vitest project must own: the naming convention, derived independently. */
-function databaseTestFilesOnDisk(repoRoot) {
+/** Every file under src/ matching `pattern`, walked independently of any config. */
+function walkSrc(repoRoot, pattern) {
   const out = [];
   const walk = (rel) => {
     for (const entry of readdirSync(join(repoRoot, rel), { withFileTypes: true })) {
       const next = `${rel}/${entry.name}`;
       if (entry.isDirectory()) walk(next);
-      else if (/\.(pglite|realpg)\.test\.ts$/.test(entry.name)) out.push(next);
+      else if (pattern.test(entry.name)) out.push(next);
     }
   };
   walk('src');
   return out.sort();
 }
+
+/** Files the `db` vitest project must own — the database naming convention. */
+const databaseTestFilesOnDisk = (repoRoot) => walkSrc(repoRoot, /\.(pglite|realpg)\.test\.ts$/);
+
+/** The whole test inventory: what SOME project must select, exactly once. */
+const testFilesOnDisk = (repoRoot) => walkSrc(repoRoot, /\.(test|spec)\.tsx?$/);
 
 // `**/*.pglite.test.ts` is unanchored, so without the exclude it walks
 // node_modules on every call — seconds per pattern.
@@ -137,14 +150,20 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   const jobs = workflow.jobs ?? {};
 
   // ── 1. Concurrency: PR runs cancel only their own PR; pushes never cancel ──
-  const group = workflow.concurrency?.group ?? '';
-  if (!group.includes('github.event.pull_request.number') || !group.includes('github.run_id')) {
-    violations.push(
-      'concurrency.group must key PRs by pull_request.number and pushes by run_id — a branch-name key collides across forks and can cancel another run',
-    );
+  // Exact equality, not "contains the right tokens": an expression can hold
+  // both tokens with the branches SWAPPED (pushes sharing one group, PRs
+  // unique per run) — the precise inversion of the intended behavior.
+  for (const [key, expected] of Object.entries(EXPECTED_CONCURRENCY)) {
+    const actual = workflow.concurrency?.[key];
+    if (actual !== expected) {
+      violations.push(`concurrency.${key} must be exactly \`${expected}\`, found \`${actual}\``);
+    }
   }
-  if (workflow.concurrency?.['cancel-in-progress'] !== "${{ github.event_name == 'pull_request' }}") {
-    violations.push('concurrency.cancel-in-progress must be PR-only — a push run must never be cancelled');
+
+  // A workflow-level shell default neuters EVERY run step at once, including
+  // this checker's own job and the aggregator.
+  if (workflow.defaults?.run?.shell !== undefined && !ALLOWED_STEP_SHELLS.includes(workflow.defaults.run.shell)) {
+    violations.push(`workflow defaults.run.shell: ${workflow.defaults.run.shell} — no run step would really execute`);
   }
 
   // ── 2. Each prerequisite job runs its real suite, exactly once, unweakened ──
@@ -160,13 +179,47 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     checkStepIsUnweakened(matches[0], name, violations);
   }
 
-  // ── 3. No second invocation of a gated suite anywhere in the workflow ──
-  for (const marker of SUITE_MARKERS) {
-    const found = Object.entries(jobs).flatMap(([jobName, job]) =>
-      (job.steps ?? []).filter((s) => (s.run ?? '').includes(marker)).map(() => jobName),
-    );
-    if (found.length !== 1) {
-      violations.push(`suite command \`${marker}\` must run in exactly 1 step, found ${found.length} (${found.join(', ') || 'none'})`);
+  // ── 3. Every suite-like step in the workflow is one of the pinned ones ──
+  const expectedRuns = Object.values(PREREQUISITE_RUNS);
+  const suiteLikeSteps = Object.entries(jobs).flatMap(([jobName, job]) =>
+    // The gate job is exempt: it names its prerequisites in its own script, and
+    // it is separately pinned to exactly one (non-suite) verification step.
+    (jobName === 'test' ? [] : job.steps ?? [])
+      .map((s) => (s.run ?? '').trim())
+      .filter((run) => SUITE_LIKE.test(run))
+      .map((run) => ({ jobName, run })),
+  );
+  for (const { jobName, run } of suiteLikeSteps) {
+    if (!expectedRuns.includes(run)) {
+      violations.push(`${jobName}: unexpected suite invocation \`${run}\` — a second (or direct, un-sharded) run duplicates work and hides shard imbalance`);
+    }
+  }
+  for (const expected of expectedRuns) {
+    const count = suiteLikeSteps.filter((s) => s.run === expected).length;
+    if (count !== 1) {
+      violations.push(`suite command \`${expected}\` must run in exactly 1 step, found ${count}`);
+    }
+  }
+
+  // npm's script-shell can be redirected repo-wide (.npmrc) or per step
+  // (npm_config_script_shell), making every `npm run …` exit 0 without running
+  // anything — while this checker, a direct node call, stays green.
+  let npmrc = '';
+  try {
+    npmrc = readFileSync(join(repoRoot, '.npmrc'), 'utf8');
+  } catch {
+    npmrc = '';
+  }
+  if (/^\s*script-shell\s*=/m.test(npmrc)) {
+    violations.push('.npmrc sets script-shell — every `npm run` in CI would use it instead of a real shell');
+  }
+  for (const [jobName, job] of Object.entries(jobs)) {
+    for (const env of [job.env ?? {}, ...(job.steps ?? []).map((s) => s.env ?? {})]) {
+      for (const key of Object.keys(env)) {
+        if (/^npm_config_script_shell$/i.test(key)) {
+          violations.push(`${jobName}: sets ${key} — it would replace the shell npm scripts run in`);
+        }
+      }
     }
   }
 
@@ -270,24 +323,51 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   if (db.fileParallelism !== false) {
     violations.push('vitest.config.ts: the db project must keep fileParallelism: false — one database at a time is the determinism safeguard sharding must not undo');
   }
-  const onDisk = databaseTestFilesOnDisk(repoRoot);
-  const selected = globFiles(db.include, repoRoot);
-  const missing = onDisk.filter((f) => !selected.includes(f));
-  if (missing.length > 0) {
-    violations.push(`vitest.config.ts: ${missing.length} database test file(s) match no db-project include and would run NOWHERE, e.g. ${missing.slice(0, 3).join(', ')}`);
+  // EFFECTIVE selection per project: include minus the project's own exclude
+  // and any inherited root-level exclude. An exclude added to the db project
+  // would otherwise be invisible here while removing files from the run.
+  const rootExcluded = globFiles(config.test?.exclude, repoRoot);
+  const effective = (project) => {
+    const excluded = new Set([...globFiles(project.exclude, repoRoot), ...rootExcluded]);
+    return globFiles(project.include, repoRoot).filter((f) => !excluded.has(f));
+  };
+  const dbSelected = effective(db);
+  const unitSelected = effective(unit);
+
+  // Independent inventory: EVERY test file under src/, derived from the naming
+  // convention by its own walk — not from the config being checked. Comparing
+  // against the union catches a narrowed include on EITHER project (files that
+  // would run nowhere), and the intersection catches files that would run twice.
+  const inventory = testFilesOnDisk(repoRoot);
+  const selectedOnce = new Set([...dbSelected, ...unitSelected]);
+  const nowhere = inventory.filter((f) => !selectedOnce.has(f));
+  if (nowhere.length > 0) {
+    violations.push(`vitest.config.ts: ${nowhere.length} test file(s) are selected by NO project and would run nowhere, e.g. ${nowhere.slice(0, 3).join(', ')}`);
   }
-  const unitExcluded = new Set(globFiles(unit.exclude, repoRoot));
-  const unitSelected = new Set(globFiles(unit.include, repoRoot).filter((f) => !unitExcluded.has(f)));
-  const both = selected.filter((f) => unitSelected.has(f));
+  const unitSet = new Set(unitSelected);
+  const both = dbSelected.filter((f) => unitSet.has(f));
   if (both.length > 0) {
     violations.push(`vitest.config.ts: ${both.length} file(s) are selected by BOTH projects and would run twice, e.g. ${both.slice(0, 3).join(', ')}`);
+  }
+  const unexpected = [...selectedOnce].filter((f) => !inventory.includes(f));
+  if (unexpected.length > 0) {
+    violations.push(`vitest.config.ts: ${unexpected.length} selected file(s) are outside the src test inventory, e.g. ${unexpected.slice(0, 3).join(', ')}`);
+  }
+  // The database naming convention must land in the db project specifically —
+  // where fileParallelism: false (one database at a time) actually applies.
+  const misfiled = databaseTestFilesOnDisk(repoRoot).filter((f) => unitSet.has(f) || !dbSelected.includes(f));
+  if (misfiled.length > 0) {
+    violations.push(`vitest.config.ts: ${misfiled.length} database test file(s) are not owned by the db project, e.g. ${misfiled.slice(0, 3).join(', ')}`);
   }
 
   return violations;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
-  const violations = await checkWorkflowContract();
+  // Optional repo root: CI passes none (this repo); the tests point it at
+  // deliberately-broken fixture trees to prove the exit-1 path is wired.
+  const repoRoot = process.argv[2] ? resolve(process.argv[2]) : REPO_ROOT;
+  const violations = await checkWorkflowContract({ repoRoot });
   if (violations.length > 0) {
     console.error(`CI gate contract violated (${violations.length}):`);
     for (const v of violations) console.error(`  ✗ ${v}`);
