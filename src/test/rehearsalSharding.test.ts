@@ -403,6 +403,10 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     for (const f of ['src/plain.test.ts', 'src/test/thing.pglite.test.ts', 'src/test/other.realpg.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']) {
       writeFileSync(join(root, f), '// fixture\n');
     }
+    mkdirSync(join(root, 'scripts/db'), { recursive: true });
+    for (const f of ['scripts/db/rehearse-alpha.mjs', 'scripts/db/rehearse-beta.ts']) {
+      writeFileSync(join(root, f), '// fixture rehearsal\n');
+    }
     return root;
   };
 
@@ -475,6 +479,13 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
         writeFileSync(p, readFileSync(p, 'utf8')
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
+      }],
+      ['a rehearsal hidden in a subdirectory', /run zero times/, (r) => {
+        mkdirSync(join(r, 'scripts/db/nested'), { recursive: true });
+        writeFileSync(join(r, 'scripts/db/nested/rehearse-buried.mjs'), '// unreachable\n');
+      }],
+      ['a database test named .tsx (would land in the parallel unit project)', /not owned by the db project/, (r) => {
+        writeFileSync(join(r, 'src/test/widget.pglite.test.tsx'), '// fixture\n');
       }],
       ['a file selected by both projects', /run twice/, (r) => {
         const p = join(r, 'vitest.config.ts');

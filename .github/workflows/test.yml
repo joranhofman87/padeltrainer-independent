@@ -106,9 +106,14 @@ jobs:
   # of every PR). The pieces share nothing — different pools, different databases,
   # different runtimes — so they now run as separate jobs, and the `test` job at
   # the bottom aggregates them into the single required check branch protection
-  # already knows. Total compute goes up (each job pays checkout + npm ci ≈ 1 min);
-  # wall-clock roughly halves. Locally nothing changes: `npm test` and
-  # `npm run db:rehearse:all` still run everything unsharded.
+  # already knows.
+  #
+  # MEASURED on the first run of this split (baseline: the old `test` job took
+  # 801s and 758s on two recent successful main runs): wall-clock 801s → 344s
+  # (2.3x), total compute 801s → ~1103s. The extra ~300s is five more `npm ci`
+  # cycles, a second cold start of the db vitest project, and the new
+  # workflow-contract check — not one of those alone. Locally nothing changes:
+  # `npm test` and `npm run db:rehearse:all` still run everything unsharded.
 
   unit-tests:
     runs-on: ubuntu-latest

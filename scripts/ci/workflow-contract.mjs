@@ -153,7 +153,12 @@ const DB_OWNED_BY_NAME = ['src/test/notificationDigestRealPg.integration.test.ts
 
 /** Files the `db` vitest project must own — convention plus the named exceptions. */
 const databaseTestFilesOnDisk = (repoRoot) => {
-  const byConvention = walkSrc(repoRoot, /\.(pglite|realpg)\.test\.ts$/);
+  // `.tsx?`, deliberately wider than vitest.config.ts's `.ts`-only include: a
+  // database test named *.pglite.test.tsx would be selected by the UNIT project
+  // (jsdom, fileParallelism ON) — the exact contention the project split exists
+  // to prevent. Catching it here turns that into a contract failure telling the
+  // author to widen the include, instead of a silently mis-scheduled database.
+  const byConvention = walkSrc(repoRoot, /\.(pglite|realpg)\.test\.tsx?$/);
   const named = DB_OWNED_BY_NAME.filter((f) => existsSync(join(repoRoot, f)));
   return [...new Set([...byConvention, ...named])].sort();
 };
@@ -332,6 +337,26 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     }
     if (!script.includes('join(needs.*.result')) {
       violations.push('test: verification step must also check join(needs.*.result) so a future prerequisite cannot be added unchecked');
+    }
+  }
+
+  // ── 5b. No rehearsal hidden in a subdirectory ──
+  // The runner discovers with a NON-recursive readdir, and the exactly-once test
+  // compares the shard union against that same function — self-consistent, so a
+  // rehearsal moved into scripts/db/<subdir>/ would run zero times with every
+  // check green. Fail closed on the placement instead.
+  const rehearsalDir = join(repoRoot, 'scripts/db');
+  if (existsSync(rehearsalDir)) {
+    const strays = [];
+    const walkForStrays = (rel) => {
+      for (const entry of readdirSync(join(rehearsalDir, rel), { withFileTypes: true })) {
+        if (entry.isDirectory()) walkForStrays(join(rel, entry.name));
+        else if (rel !== '.' && /^rehearse-.*\.(mjs|ts)$/.test(entry.name)) strays.push(join(rel, entry.name));
+      }
+    };
+    walkForStrays('.');
+    if (strays.length > 0) {
+      violations.push(`scripts/db: rehearsal(s) in a subdirectory would be discovered by nothing and run zero times: ${strays.join(', ')}`);
     }
   }
 
