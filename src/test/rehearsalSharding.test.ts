@@ -31,7 +31,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { checkWorkflowContract, PREREQUISITE_RUNS } from '../../scripts/ci/workflow-contract.mjs';
+import { BaseSequencer } from 'vitest/node';
+import { checkWorkflowContract, PREREQUISITE_RUNS, CONTRACT_JOBS } from '../../scripts/ci/workflow-contract.mjs';
 import {
   REHEARSAL_PATTERN,
   UsageError,
@@ -293,6 +294,60 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
   });
 });
 
+describe("vitest's own shard split, over the real db inventory", () => {
+  // The db half of the partition is DELEGATED to vitest — the workflow only
+  // passes --shard=i/2. Everything else here would still pass if that delegated
+  // half broke (a vitest upgrade changing the algorithm, or a custom sequencer),
+  // so this drives vitest's REAL BaseSequencer — imported, never re-implemented,
+  // because a hand-copied algorithm tests the copy — over the actual 142 files.
+  const repoRoot = resolve(dbDir, '../..');
+
+  /** The db project's inventory, derived independently of vitest.config.ts. */
+  const dbInventory = () => {
+    const out: string[] = [];
+    const walk = (rel: string) => {
+      for (const entry of readdirSync(join(repoRoot, rel), { withFileTypes: true })) {
+        const next = `${rel}/${entry.name}`;
+        if (entry.isDirectory()) walk(next);
+        else if (/\.(pglite|realpg)\.test\.tsx?$/.test(entry.name)) out.push(next);
+      }
+    };
+    walk('src');
+    out.push('src/test/notificationDigestRealPg.integration.test.ts');
+    return [...new Set(out)].sort();
+  };
+
+  const shardWith = async (files: string[], index: number, count: number) => {
+    const specs = files.map((f) => ({ moduleId: join(repoRoot, f) }));
+    const sequencer = new BaseSequencer({ config: { root: repoRoot, shard: { index, count } } } as never);
+    const out = (await sequencer.shard(specs as never)) as Array<{ moduleId: string }>;
+    return out.map((s) => s.moduleId.slice(repoRoot.length + 1));
+  };
+
+  it('splits the real 142-file inventory into an exact, disjoint partition', async () => {
+    const inventory = dbInventory();
+    expect(inventory.length, 'db inventory size').toBe(142);
+    const s1 = await shardWith(inventory, 1, 2);
+    const s2 = await shardWith(inventory, 2, 2);
+    expect([...s1, ...s2].sort()).toEqual(inventory); // complete AND duplicate-free
+    expect(s1.filter((f) => s2.includes(f))).toEqual([]);
+    expect(Math.abs(s1.length - s2.length)).toBeLessThanOrEqual(1);
+  });
+
+  it('stays an exact partition at other shard counts, and is deterministic', async () => {
+    const inventory = dbInventory();
+    for (const count of [1, 3, 4]) {
+      const shards = [];
+      for (let index = 1; index <= count; index++) shards.push(await shardWith(inventory, index, count));
+      expect(shards.flat().sort(), `count=${count}`).toEqual(inventory);
+      const sizes = shards.map((s) => s.length);
+      expect(Math.max(...sizes) - Math.min(...sizes), `count=${count} balance`).toBeLessThanOrEqual(1);
+    }
+    // Same input, same output — the split must not depend on machine or order.
+    expect(await shardWith(inventory, 1, 2)).toEqual(await shardWith([...inventory].reverse(), 1, 2));
+  });
+});
+
 describe('the CI gate contract (scripts/ci/workflow-contract.mjs)', () => {
   // The partition is only exactly-once if the workflow feeds coherent
   // index/count pairs — and only meaningful if each job really runs its suite.
@@ -302,6 +357,13 @@ describe('the CI gate contract (scripts/ci/workflow-contract.mjs)', () => {
   it('holds for the current workflow, package.json and vitest config', async () => {
     const violations = await checkWorkflowContract();
     expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('runs the contract in an independently required job, not only its own', () => {
+    // If it only ran in `workflow-contract`, a `continue-on-error: true` on the
+    // aggregator's step would make `test` tolerate its own failed verification.
+    expect(CONTRACT_JOBS).toContain('lint');
+    expect(CONTRACT_JOBS).toContain('workflow-contract');
   });
 
   it('lists the gate prerequisites the aggregator waits for', () => {
@@ -479,6 +541,24 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
         writeFileSync(p, readFileSync(p, 'utf8')
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
+      }],
+      ['SHELLOPTS=noexec neuters every bash step', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  SHELLOPTS: noexec\n\njobs:\n'))],
+      ['BASH_ENV sourced before each step', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          BASH_ENV: /tmp/exit0.sh\n'))],
+      ['NODE_OPTIONS preloads a module', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    env:\n      NODE_OPTIONS: --require /tmp/exit0.js\n'))],
+      ['contract no longer runs in the required lint job', /contract checker must run in exactly/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        run: node scripts/ci/workflow-contract.mjs\n', ''))],
+      ['a prerequisite waits on another (re-serialised)', /must not declare `needs`/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    needs: [unit-tests]\n'))],
+      ['max-parallel re-serialises the shards', /max-parallel/, (r) => editWorkflow(r, (s) => s.replace('      fail-fast: false\n', '      fail-fast: false\n      max-parallel: 1\n'))],
+      ['an extra `npm run --silent test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm run --silent test\n\n      - name: Run unit tests\n'))],
+      ['a postinstall hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'vitest run --project db'; })],
+      ['a custom vitest sequencer takes over the split', /custom sequence\.sequencer/, (r) => {
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8').replace('fileParallelism: false', 'fileParallelism: false, sequence: { sequencer: class {} }'));
+      }],
+      ['the named real-pg exception is renamed away', /no longer exist/, (r) => {
+        rmSync(join(r, 'src/test/notificationDigestRealPg.integration.test.ts'));
+        writeFileSync(join(r, 'src/test/renamedDigest.integration.test.ts'), '// fixture\n');
+        const p = join(r, 'vitest.config.ts');
+        writeFileSync(p, readFileSync(p, 'utf8').split('notificationDigestRealPg.integration.test.ts').join('renamedDigest.integration.test.ts'));
       }],
       ['workflow token widened beyond read', /permissions must be exactly/, (r) => editWorkflow(r, (s) => s.replace('permissions:\n  contents: read', 'permissions:\n  contents: write'))],
       ['permissions block removed entirely', /permissions must be exactly/, (r) => editWorkflow(r, (s) => s.replace('permissions:\n  contents: read\n\n', ''))],

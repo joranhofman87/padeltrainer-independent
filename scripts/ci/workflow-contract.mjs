@@ -49,13 +49,26 @@ export const PREREQUISITE_RUNS = {
 export const SHARDED_JOBS = ['db-tests', 'db-rehearsals'];
 
 /**
+ * This checker's own command, and every job that must run it.
+ *
+ * `workflow-contract` alone is NOT enough: it is a prerequisite of `test`, and
+ * a `continue-on-error: true` on the aggregator's step makes `test` tolerate
+ * its own failed verification — so the checker would correctly detect the
+ * weakening, fail its job, and be ignored. `lint` is an independently REQUIRED
+ * branch-protection context that nothing aggregates, so a copy there turns any
+ * such edit into a red required check that no aggregator can swallow.
+ */
+export const CONTRACT_CMD = 'node scripts/ci/workflow-contract.mjs';
+export const CONTRACT_JOBS = ['lint', 'workflow-contract'];
+
+/**
  * Any step that looks like it runs a gated suite — by alias OR directly
  * (`npx vitest run --project db`, `node scripts/db/run-all-rehearsals.mjs`) —
  * must be one of the pinned invocations above. A direct call matches no alias
  * marker, so an allow-list of exact commands is the only shape that cannot be
  * walked around.
  */
-const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|\bnpm (run )?test\b/;
+const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|i18n:check|\bnpm run\b.*\btest\b|\bnpm test\b/;
 
 /** The exact concurrency contract (see the workflow's own comment for why). */
 const EXPECTED_CONCURRENCY = {
@@ -97,10 +110,22 @@ const ALLOWED_STEP_SHELLS = ['bash'];
  * An explicit shell on these two makes them immune to that default, and the
  * checker then flags the default itself.
  */
-const MUST_PIN_BASH = { 'workflow-contract': 'the contract checker', test: 'the aggregator gate' };
+const MUST_PIN_BASH = { 'workflow-contract': 'the contract checker', lint: 'the contract checker copy', test: 'the aggregator gate' };
 
-/** npm reads `script-shell` from any of these spellings. */
-const isScriptShellVar = (key) => key.toLowerCase().replace(/-/g, '_') === 'npm_config_script_shell';
+/**
+ * Environment variables that turn a real command into a no-op, in any scope.
+ * `SHELLOPTS=noexec` makes bash PARSE every gated step and execute nothing,
+ * exiting 0; `BASH_ENV` is sourced by non-interactive bash (which is what
+ * `shell: bash` runs) so it can `exit 0` before the step body; NODE_OPTIONS
+ * can `--require` a module that does the same to the node-based steps; and
+ * npm's `script-shell` replaces the shell every `npm run` uses. Pinning
+ * `shell: bash` does not defend against any of them — they act inside it.
+ */
+const NEUTERING_ENV_VARS = ['npm_config_script_shell', 'shellopts', 'bash_env', 'node_options'];
+const neuteringEnvVar = (key) => {
+  const normalized = key.toLowerCase().replace(/-/g, '_');
+  return NEUTERING_ENV_VARS.find((v) => v === normalized);
+};
 
 function checkStepIsUnweakened(step, where, violations) {
   if (step.if !== undefined) violations.push(`${where}: step has an \`if:\` — it can silently skip its suite`);
@@ -159,9 +184,16 @@ const databaseTestFilesOnDisk = (repoRoot) => {
   // to prevent. Catching it here turns that into a contract failure telling the
   // author to widen the include, instead of a silently mis-scheduled database.
   const byConvention = walkSrc(repoRoot, /\.(pglite|realpg)\.test\.tsx?$/);
-  const named = DB_OWNED_BY_NAME.filter((f) => existsSync(join(repoRoot, f)));
-  return [...new Set([...byConvention, ...named])].sort();
+  return [...new Set([...byConvention, ...DB_OWNED_BY_NAME])].sort();
 };
+
+/**
+ * Named exceptions that no longer exist. Filtering them out silently was the
+ * hole: renaming notificationDigestRealPg.integration.test.ts to any other
+ * ordinary `.integration.test.ts` name moves a real-Postgres test into the
+ * PARALLEL unit project, and an existence filter would call that fine.
+ */
+const missingNamedDbFiles = (repoRoot) => DB_OWNED_BY_NAME.filter((f) => !existsSync(join(repoRoot, f)));
 
 /** The whole test inventory: what SOME project must select, exactly once. */
 const testFilesOnDisk = (repoRoot) => walkSrc(repoRoot, /\.(test|spec)\.tsx?$/);
@@ -181,6 +213,8 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   const violations = [];
   const workflow = parseYaml(readFileSync(join(repoRoot, '.github/workflows/test.yml'), 'utf8'));
   const jobs = workflow.jobs ?? {};
+  const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
+  const pkgScripts = pkg.scripts ?? {};
 
   // ── 1. Concurrency: PR runs cancel only their own PR; pushes never cancel ──
   // Exact equality, not "contains the right tokens": an expression can hold
@@ -243,9 +277,26 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     }
   }
   for (const expected of expectedRuns) {
-    const count = suiteLikeSteps.filter((s) => s.run === expected).length;
-    if (count !== 1) {
-      violations.push(`suite command \`${expected}\` must run in exactly 1 step, found ${count}`);
+    const runningJobs = suiteLikeSteps.filter((s) => s.run === expected).map((s) => s.jobName).sort();
+    // Every suite runs in exactly one job — except this checker, which must run
+    // in both its own job and the independently-required `lint` job.
+    const wanted = expected === CONTRACT_CMD ? [...CONTRACT_JOBS].sort() : null;
+    if (wanted) {
+      if (JSON.stringify(runningJobs) !== JSON.stringify(wanted)) {
+        violations.push(`the contract checker must run in exactly [${wanted.join(', ')}], found [${runningJobs.join(', ') || 'none'}] — a copy in an independently required job is what stops the aggregator from swallowing its own failed verification`);
+      }
+    } else if (runningJobs.length !== 1) {
+      violations.push(`suite command \`${expected}\` must run in exactly 1 step, found ${runningJobs.length}`);
+    }
+  }
+
+  // Install lifecycle hooks run OUTSIDE any gated command, in every job that
+  // installs — a `postinstall` running the db project would execute the whole
+  // unsharded suite on every runner without touching a single pinned step.
+  for (const hook of ['preinstall', 'install', 'postinstall', 'prepare', 'prepack', 'postpack']) {
+    const command = pkgScripts[hook];
+    if (typeof command === 'string' && SUITE_LIKE.test(command)) {
+      violations.push(`package.json scripts.${hook} runs a gated suite (\`${command}\`) — install hooks run outside the sharded invocation, on every installing job`);
     }
   }
 
@@ -271,9 +322,23 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   ];
   for (const [scope, env] of envScopes) {
     for (const key of Object.keys(env)) {
-      if (isScriptShellVar(key)) {
-        violations.push(`${scope}: sets ${key} — it would replace the shell npm scripts run in`);
+      const neutering = neuteringEnvVar(key);
+      if (neutering) {
+        violations.push(`${scope}: sets ${key} — it can make gated steps exit 0 without running (see NEUTERING_ENV_VARS)`);
       }
+    }
+  }
+
+  // A prerequisite that waits on another prerequisite, or a matrix capped to
+  // one runner at a time, silently rebuilds the serial job this PR replaced —
+  // green, correct, and slow again.
+  for (const name of Object.keys(PREREQUISITE_RUNS)) {
+    const job = jobs[name];
+    if (job?.needs !== undefined) {
+      violations.push(`${name}: prerequisite jobs must not declare \`needs\` (found ${JSON.stringify(job.needs)}) — they must all start at once`);
+    }
+    if (job?.strategy?.['max-parallel'] !== undefined) {
+      violations.push(`${name}: strategy.max-parallel re-serialises the shards`);
     }
   }
 
@@ -284,7 +349,7 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     const steps = (jobs[jobName]?.steps ?? []).filter((s) => s.run !== undefined);
     const critical = jobName === 'test'
       ? steps
-      : steps.filter((s) => (s.run ?? '').trim() === PREREQUISITE_RUNS[jobName]);
+      : steps.filter((s) => (s.run ?? '').trim() === CONTRACT_CMD);
     if (critical.length === 0 || critical.some((s) => s.shell !== 'bash')) {
       violations.push(`${jobName}: ${description} must pin \`shell: bash\` explicitly, or a workflow-level defaults.run.shell could neuter it`);
     }
@@ -376,14 +441,13 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   }
 
   // ── 6. npm aliases still point at the real suites, with no lifecycle hooks ──
-  const pkg = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
   for (const [name, command] of Object.entries(PINNED_SCRIPTS)) {
-    if (pkg.scripts?.[name] !== command) {
-      violations.push(`package.json scripts.${name} must be \`${command}\`, found \`${pkg.scripts?.[name]}\``);
+    if (pkgScripts[name] !== command) {
+      violations.push(`package.json scripts.${name} must be \`${command}\`, found \`${pkgScripts[name]}\``);
     }
   }
   for (const hook of FORBIDDEN_LIFECYCLE_HOOKS) {
-    if (pkg.scripts?.[hook] !== undefined) {
+    if (pkgScripts[hook] !== undefined) {
       violations.push(`package.json scripts.${hook} exists — an npm lifecycle hook runs OUTSIDE the sharded invocation, re-running the full suite on every shard`);
     }
   }
@@ -406,6 +470,15 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   if (!db || !unit) {
     violations.push('vitest.config.ts must define both the `unit` and `db` projects');
     return violations;
+  }
+  // A custom sequencer replaces the audited BaseSequencer.shard() — the one
+  // piece of the partition this repo delegates rather than implements. One that
+  // returned the same half for both indices would run 71 files twice and 71
+  // never, with every other check still green.
+  for (const [label, cfg] of [['root', config.test], ['unit', unit], ['db', db]]) {
+    if (cfg?.sequence?.sequencer !== undefined) {
+      violations.push(`vitest.config.ts: ${label} defines a custom sequence.sequencer — the shard partition depends on vitest's own BaseSequencer (pinned by src/test/rehearsalSharding.test.ts)`);
+    }
   }
   if (db.fileParallelism !== false) {
     violations.push('vitest.config.ts: the db project must keep fileParallelism: false — one database at a time is the determinism safeguard sharding must not undo');
@@ -442,6 +515,10 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   }
   // The database naming convention must land in the db project specifically —
   // where fileParallelism: false (one database at a time) actually applies.
+  const missingNamed = missingNamedDbFiles(repoRoot);
+  if (missingNamed.length > 0) {
+    violations.push(`DB_OWNED_BY_NAME lists file(s) that no longer exist (${missingNamed.join(', ')}) — if one was renamed it has silently moved into the parallel unit project; update BOTH the vitest include and that list`);
+  }
   const misfiled = databaseTestFilesOnDisk(repoRoot).filter((f) => unitSet.has(f) || !dbSelected.includes(f));
   if (misfiled.length > 0) {
     violations.push(`vitest.config.ts: ${misfiled.length} database test file(s) are not owned by the db project, e.g. ${misfiled.slice(0, 3).join(', ')}`);

@@ -84,6 +84,15 @@ jobs:
       - name: Edge import-pin guard
         run: npm run check:edge-pins
 
+      # The SAME contract the `workflow-contract` job runs, deliberately duplicated here.
+      # `lint` is an independently required branch-protection context that nothing
+      # aggregates, so a weakening the aggregator could swallow — e.g. a
+      # `continue-on-error: true` on its own verification step, which makes `test`
+      # tolerate its own failed check — still turns a required check red here.
+      - name: Verify the CI gate contract (independently required copy)
+        shell: bash
+        run: node scripts/ci/workflow-contract.mjs
+
   # The REAL type-check. Root `tsc` has files:[] and checks nothing; this runs
   # `tsc -p tsconfig.app.json` and — since that project is perma-red with known
   # pre-existing errors — ratchets on NEW errors only vs scripts/tsc-app.baseline.json
