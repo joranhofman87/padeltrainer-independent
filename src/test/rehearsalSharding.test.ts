@@ -35,6 +35,8 @@ import { BaseSequencer } from 'vitest/node';
 import {
   checkWorkflowContract,
   aggregatorTruthTable,
+  aggregatorCases,
+  RESULT_STATES,
   parseNpmrcEntries,
   isNpmConfigMutation,
   PREREQUISITE_RUNS,
@@ -445,25 +447,28 @@ describe('the gate program itself (executed against a result truth table)', () =
     const table = aggregatorTruthTable(workflow());
     const failures = table.filter((row) => !row.ok).map((row) => `${row.label}: ${row.detail}`);
     expect(failures, failures.join('\n')).toEqual([]);
-    // 1 all-success + every non-empty failing SUBSET (2^5-1) + 5 x {cancelled,
-    // skipped, empty} + 5 missing-from-needs + empty needs.
-    expect(table).toHaveLength(1 + (2 ** 5 - 1) + 5 * 3 + 5 + 1);
+    // Bounded product: all-success, every subset per non-success state, and
+    // every mixed ordered pair — exhaustive for 1- and 2-way interactions.
+    expect(table.length).toBeGreaterThan(300);
+    expect(table).toHaveLength(aggregatorCases(Object.keys(PREREQUISITE_RUNS)).length);
   });
 
   it('covers every prerequisite and every non-success GitHub result', () => {
     const labels = aggregatorTruthTable(workflow()).map((row) => row.label);
-    for (const job of Object.keys(PREREQUISITE_RUNS)) {
-      for (const bad of ['cancelled', 'skipped', '<empty>']) {
-        expect(labels, `${job} = ${bad}`).toContain(`${job} = ${bad}`);
+    const jobs = Object.keys(PREREQUISITE_RUNS);
+    // Every prerequisite, in every state GitHub can report.
+    for (const job of jobs) {
+      for (const state of RESULT_STATES.filter((r) => r !== 'success')) {
+        expect(labels, `${job}=${state}`).toContain(`${job}=${state}`);
       }
-      expect(labels).toContain(`${job} failed`);
-      expect(labels).toContain(`${job} missing from needs`);
     }
-    expect(labels).toContain('needs is empty');
-    // Simultaneous failures are covered, not just one axis at a time — an
-    // aggregator failing only on an ODD count would pass every single-failure
-    // case. Verified by mutation: a `failures % 2` program is caught here only.
-    expect(labels).toContain('unit-tests + db-tests failed');
+    expect(labels).toContain('all success');
+    // And COMBINATIONS, which is what discriminates an aggregator that handles
+    // one bad result but not two. Each of these is a mutation I ran.
+    expect(labels).toContain('unit-tests=cancelled, db-tests=cancelled');
+    expect(labels).toContain('unit-tests=failure, db-tests=skipped');
+    expect(labels).toContain('unit-tests=missing, db-tests=missing, db-rehearsals=missing');
+    expect(labels).toContain('unit-tests=empty, db-tests=empty');
   });
 });
 
@@ -502,6 +507,15 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     const p = join(root, '.github/workflows/test.yml');
     writeFileSync(p, edit(readFileSync(p, 'utf8')));
   };
+  /** Replaces the aggregator's whole run block, for behavioural fixtures. */
+  const swapAggregator = (root: string, program: string) =>
+    editWorkflow(root, (src) => {
+      const start = src.indexOf('          set -euo pipefail');
+      const marker = '          exit "$status"';
+      const end = src.indexOf(marker) + marker.length;
+      return src.slice(0, start) + program + src.slice(end);
+    });
+
   const editJson = (root: string, file: string, edit: (o: Record<string, unknown>) => void) => {
     const p = join(root, file);
     const o = JSON.parse(readFileSync(p, 'utf8'));
@@ -570,6 +584,29 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
       }],
+      // ── the `uses:` boundary: a step that runs nothing still decides WHAT is tested
+      ['checkout pinned to main instead of the PR head', /unapproved input `ref:/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n          ref: main\n'))],
+      ['checkout pinned to an arbitrary SHA', /unapproved input `ref:/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n          ref: 0123456789abcdef0123456789abcdef01234567\n'))],
+      ['checkout losing persist-credentials: false', /persist-credentials/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n'))],
+      ['persist-credentials flipped to true', /persist-credentials|approved value is false/, (r) => editWorkflow(r, (s) => s.replace('          persist-credentials: false\n', '          persist-credentials: true\n'))],
+      ['an unknown action in a gated job', /not in APPROVED_JOB_USES/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Cache\n        uses: actions/cache@v4\n\n      - name: Run unit tests\n'))],
+      ['an approved action with an extra unapproved input', /unapproved input `registry-url:/, (r) => editWorkflow(r, (s) => s.replace("          node-version: '24'\n          cache: 'npm'\n", "          node-version: '24'\n          cache: 'npm'\n          registry-url: https://example.invalid\n"))],
+      ['a changed action version', /not in APPROVED_JOB_USES/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n', '        uses: actions/checkout@v3\n'))],
+      // ── the hosted-runner boundary
+      ['a gated job moved to self-hosted', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: self-hosted'))],
+      ['runs-on as an array containing self-hosted', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: [self-hosted, linux]'))],
+      ['a custom runner label', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: our-big-box'))],
+      ['runs-on chosen by an expression', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: ${{ github.event_name == \'push\' && \'self-hosted\' || \'ubuntu-latest\' }}'))],
+      // ── the expression grammar: containing the text is not being the text
+      ['a compound && expression in the gate env', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ needs.i18n.result && 'success' }}\n"))],
+      ['a compound || expression in the gate env', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ needs.i18n.result || 'success' }}\n"))],
+      ['a comparison wrapped around the result', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ needs.i18n.result == 'failure' }}\n"))],
+      ['text surrounding the expression', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', '          RESULT_I18N: prefix-${{ needs.i18n.result }}\n'))],
+      ['an unrelated expression that merely contains the text', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ format('needs.i18n.result') }}\n"))],
+      // ── the aggregator must fail for COMBINATIONS, not just one bad result
+      ['an aggregator that tolerates two cancelled', /cancelled.*cancelled/, (r) => swapAggregator(r, `          set -euo pipefail\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          [ -n "$results" ]\n          cancelled=0; bad=0\n          for r in $results; do\n            if [ "$r" = "cancelled" ]; then cancelled=$((cancelled+1));\n            elif [ "$r" != "success" ]; then bad=1; fi\n          done\n          if [ "$cancelled" -eq 1 ]; then bad=1; fi\n          exit "$bad"`)],
+      ['an aggregator that tolerates failure + skipped together', /failure.*skipped|skipped.*failure/, (r) => swapAggregator(r, `          set -euo pipefail\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          [ -n "$results" ]\n          f=0; k=0; other=0\n          for r in $results; do\n            case "$r" in success) ;; failure) f=1 ;; skipped) k=1 ;; *) other=1 ;; esac\n          done\n          if [ "$f" = 1 ] && [ "$k" = 1 ]; then exit 0; fi\n          if [ "$f" = 1 ] || [ "$k" = 1 ] || [ "$other" = 1 ]; then exit 1; fi\n          exit 0`)],
+      ['an aggregator that tolerates several missing prerequisites', /missing.*missing/, (r) => swapAggregator(r, `          set -euo pipefail\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          n=0\n          for r in $results; do n=$((n+1)); if [ "$r" != "success" ] && [ -n "$r" ]; then exit 1; fi; done\n          if [ "$n" -le 3 ]; then exit 0; fi\n          if [ "$n" -lt 5 ]; then exit 1; fi\n          exit 0`)],
       ['ANY install hook, even a harmless-looking one', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'husky'; })],
       ['a postinstall that writes npm user config outside the repo', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'cp ci/npmrc "$HOME/.npmrc"'; })],
       ['an extra step in a gated job that touches $HOME config', /not in APPROVED_JOB_RUNS/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Prep\n        run: cp ci/npmrc "$HOME/.npmrc"\n\n      - name: Run unit tests\n'))],

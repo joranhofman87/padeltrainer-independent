@@ -46,7 +46,8 @@
  * weakening, configuration drift, suite omissions, shard mistakes, and
  * ordinary dependency or tooling changes.
  */
-import { existsSync, readFileSync, readdirSync, globSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, globSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -94,6 +95,40 @@ export const APPROVED_JOB_RUNS = {
   i18n: ['bun scripts/check-i18n-parity.ts'],
   'workflow-contract': ['npm ci', 'node scripts/ci/workflow-contract.mjs'],
 };
+
+/**
+ * Exactly which actions each gated job may USE, and with exactly which inputs.
+ *
+ * Pinning the `run:` commands was only half the boundary: a step that runs
+ * nothing can still decide WHAT gets tested. `actions/checkout` with
+ * `ref: main` makes a pull request check out and test main — every command
+ * unchanged, every check green, and the PR's own head never exercised. So the
+ * action identity AND its inputs are pinned: an unknown action, an unapproved
+ * input, a changed value, or a missing one (notably
+ * `persist-credentials: false`) is a violation.
+ */
+const CHECKOUT_STEP = { uses: 'actions/checkout@v4', with: { 'persist-credentials': false } };
+const SETUP_NODE_STEP = { uses: 'actions/setup-node@v4', with: { 'node-version': '24', cache: 'npm' } };
+export const APPROVED_JOB_USES = {
+  lint: [CHECKOUT_STEP, SETUP_NODE_STEP],
+  'unit-tests': [CHECKOUT_STEP, SETUP_NODE_STEP],
+  'db-tests': [CHECKOUT_STEP, SETUP_NODE_STEP],
+  'db-rehearsals': [CHECKOUT_STEP, SETUP_NODE_STEP],
+  i18n: [CHECKOUT_STEP, { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } }],
+  'workflow-contract': [CHECKOUT_STEP, SETUP_NODE_STEP],
+  test: [],
+};
+
+/**
+ * The runner every gated job must use.
+ *
+ * `APPROVED_JOB_RUNS` is only safe because each GitHub-hosted job gets a fresh,
+ * isolated machine — that is what makes a $HOME write in one job unable to
+ * reach another's suite. A self-hosted or custom-labelled runner can be
+ * persistent and shared, which would quietly invalidate that reasoning, so the
+ * isolation model is asserted rather than assumed.
+ */
+const APPROVED_RUNNER = 'ubuntu-latest';
 
 /**
  * Install lifecycle hooks the repository is allowed to define: none.
@@ -512,81 +547,184 @@ export function extractAggregatorProgram(workflow) {
  * Returns one row per case so the checker and the tests share this executor
  * rather than each growing their own.
  */
+/** The result states GitHub can hand an aggregator for a prerequisite. */
+export const RESULT_STATES = ['success', 'failure', 'cancelled', 'skipped', 'empty', 'missing'];
+
+/** The only expression forms the behavioural model understands, anchored whole. */
+const EXACT_NEEDS_RESULT = /^needs\.([A-Za-z0-9_-]+)\.result$/;
+const EXACT_TOJSON_NEEDS = /^toJSON\(\s*needs\s*\)$/;
+const WHOLE_EXPRESSION = /^\$\{\{\s*([\s\S]*?)\s*\}\}$/;
+
+/**
+ * Resolves one `env:` value the way GitHub would, or reports that it cannot.
+ *
+ * Anchored, not substring-matched: `${{ needs.x.result && 'success' }}` and
+ * `${{ needs.x.result == 'failure' }}` both CONTAIN `needs.x.result` while
+ * evaluating to something else entirely, so modelling them as the bare result
+ * would verify a program that does not exist. Anything outside the two exact
+ * forms fails closed.
+ */
+function resolveAggregatorEnv(text, results) {
+  const raw = String(text);
+  if (!raw.includes('${{')) return { value: raw };
+  const whole = WHOLE_EXPRESSION.exec(raw);
+  if (!whole) return { unresolved: raw };
+  const body = whole[1];
+  const needsResult = EXACT_NEEDS_RESULT.exec(body);
+  // A job dropped from `needs` expands to the empty string, exactly as here.
+  if (needsResult) return { value: results[needsResult[1]] ?? '' };
+  if (EXACT_TOJSON_NEEDS.test(body)) {
+    return { value: JSON.stringify(Object.fromEntries(Object.entries(results).map(([j, r]) => [j, { result: r }]))) };
+  }
+  return { unresolved: raw };
+}
+
+/**
+ * The result vectors to execute: bounded, deterministic, and exhaustive over
+ * every multi-job interaction that matters.
+ *
+ * The full product is 6^5 = 7776 vectors, which costs more runtime than it buys
+ * — the defects it finds are interactions between at most two positions, plus
+ * whole-vector uniformity. So this enumerates, exactly:
+ *   - all-success;
+ *   - every non-empty SUBSET of jobs set to each non-success state (so two
+ *     cancelled, three missing, all skipped … are all present);
+ *   - every ORDERED PAIR of distinct jobs crossed with every pair of
+ *     non-success states (so failure+skipped, cancelled+missing, and every
+ *     other mixed pair are present).
+ * That is exhaustive for 1- and 2-way interactions and for uniform vectors,
+ * which is what discriminates an aggregator that handles one bad result but
+ * not two.
+ */
+export function aggregatorCases(prerequisites) {
+  const badStates = RESULT_STATES.filter((state) => state !== 'success');
+  const seen = new Set();
+  const cases = [];
+  const add = (vector) => {
+    const key = vector.join('|');
+    if (seen.has(key)) return;
+    seen.add(key);
+    const label =
+      prerequisites.map((job, i) => `${job}=${vector[i]}`).filter((_, i) => vector[i] !== 'success').join(', ') ||
+      'all success';
+    cases.push({
+      label,
+      results: Object.fromEntries(
+        prerequisites.map((job, i) => [job, vector[i] === 'empty' ? '' : vector[i]]).filter((_, i) => vector[i] !== 'missing'),
+      ),
+      emptyJobs: prerequisites.filter((_, i) => vector[i] === 'empty'),
+      expectSuccess: vector.every((state) => state === 'success'),
+    });
+  };
+
+  add(prerequisites.map(() => 'success'));
+  // Every subset, one state at a time — covers "two cancelled", "all missing".
+  for (const state of badStates) {
+    for (let mask = 1; mask < 2 ** prerequisites.length; mask++) {
+      add(prerequisites.map((_, i) => ((mask >> i) & 1 ? state : 'success')));
+    }
+  }
+  // Every mixed pair — covers "failure + skipped", "cancelled + missing".
+  for (let a = 0; a < prerequisites.length; a++) {
+    for (let b = 0; b < prerequisites.length; b++) {
+      if (a === b) continue;
+      for (const stateA of badStates) {
+        for (const stateB of badStates) {
+          add(prerequisites.map((_, i) => (i === a ? stateA : i === b ? stateB : 'success')));
+        }
+      }
+    }
+  }
+  return cases;
+}
+
+/**
+ * EXECUTES the aggregator's real program across every result vector and reports
+ * what it did.
+ *
+ * Token assertions cannot see behaviour: changing `exit "$status"` to `exit 0`
+ * leaves every pinned token in place, and a workflow-level test would run
+ * inside `unit-tests` — whose failure the now-broken aggregator converts back
+ * to green. Running the program here means the independently required `lint`
+ * job enforces it, where no aggregator can swallow the result.
+ *
+ * One bash process runs the whole table: the program is written once with its
+ * `join()` interpolation lifted into an environment variable, and a driver
+ * loops the vectors. 7776 cases cost about a second instead of two minutes.
+ */
 export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PREREQUISITE_RUNS)) {
   const program = extractAggregatorProgram(workflow);
   if (!program) return [{ label: 'aggregator step', ok: false, detail: 'the `test` job has no run step to execute' }];
 
-  const allSuccess = () => Object.fromEntries(prerequisites.map((j) => [j, 'success']));
-  const cases = [{ label: 'every prerequisite succeeded', results: allSuccess(), expectSuccess: true }];
-  // EVERY non-empty subset can fail together — parallel jobs really do. One
-  // failure at a time is an axis test, and an aggregator that (say) exited
-  // `failures % 2` would pass every axis while letting two simultaneous
-  // failures through.
-  for (let mask = 1; mask < 2 ** prerequisites.length; mask++) {
-    const failing = prerequisites.filter((_, i) => (mask >> i) & 1);
-    cases.push({
-      label: `${failing.join(' + ')} failed`,
-      results: { ...allSuccess(), ...Object.fromEntries(failing.map((j) => [j, 'failure'])) },
-      expectSuccess: false,
-    });
+  // Lift the one interpolation the script body may contain out into $__JOIN, so
+  // the program text is identical for every case and can be run from a file.
+  let joinSeparator = null;
+  const script = program.script.replace(
+    /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
+    (_m, sep) => {
+      joinSeparator = sep;
+      return '$__JOIN';
+    },
+  );
+  if (script.includes('${{')) {
+    return [{ label: 'aggregator program', ok: false, detail: 'it contains an expression this verification cannot resolve, so its behaviour is unverified' }];
   }
-  for (const job of prerequisites) {
-    for (const bad of ['cancelled', 'skipped', '']) {
-      cases.push({
-        label: `${job} = ${bad || '<empty>'}`,
-        results: { ...allSuccess(), [job]: bad },
-        expectSuccess: false,
-      });
-    }
-    const missing = Object.fromEntries(prerequisites.filter((j) => j !== job).map((j) => [j, 'success']));
-    cases.push({ label: `${job} missing from needs`, results: missing, expectSuccess: false });
-  }
-  cases.push({ label: 'needs is empty', results: {}, expectSuccess: false });
 
-  return cases.map(({ label, results, expectSuccess }) => {
-    // Resolve the expressions GitHub would resolve before the shell sees them.
-    let script = program.script.replace(
-      /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
-      (_m, sep) => Object.values(results).join(sep),
-    );
-    // ONLY what the step actually declares: synthesising an env var the
-    // workflow does not define would model a passing gate where the real
-    // runner, under `set -u`, dies on an unbound variable.
-    const env = {};
-    let unresolved = null;
-    for (const [key, expression] of Object.entries(program.env)) {
-      const text = String(expression);
-      const match = /needs\.([A-Za-z0-9_-]+)\.result/.exec(text);
-      if (match) {
-        // A job dropped from `needs` expands to the empty string, exactly as here.
-        env[key] = results[match[1]] ?? '';
-      } else if (/toJSON\(\s*needs\s*\)/.test(text)) {
-        env[key] = JSON.stringify(Object.fromEntries(Object.entries(results).map(([j, r]) => [j, { result: r }])));
-      } else if (!text.includes('${{')) {
-        env[key] = text;
-      } else {
-        unresolved = `${key}: ${text}`;
+  const cases = aggregatorCases(prerequisites);
+  const dir = mkdtempSync(join(tmpdir(), 'aggregator-truth-table-'));
+  try {
+    const programPath = join(dir, 'aggregator.sh');
+    writeFileSync(programPath, script);
+    const payload = cases.map((c) => {
+      const env = {};
+      for (const [key, expression] of Object.entries(program.env)) {
+        const resolved = resolveAggregatorEnv(expression, c.results);
+        if (resolved.unresolved !== undefined) return { unresolved: `${key}: ${resolved.unresolved}` };
+        env[key] = resolved.value;
       }
-    }
-    if (unresolved) {
-      return { label, ok: false, detail: `env ${unresolved} uses an expression this verification cannot resolve, so the gate's behaviour is unverified` };
-    }
-    if (script.includes('${{')) {
-      return { label, ok: false, detail: `the program still contains an unresolved \`\${{ … }}\` expression, so its behaviour cannot be verified here` };
-    }
-    // GitHub runs `shell: bash` as `bash --noprofile --norc -eo pipefail`.
-    const res = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
-      encoding: 'utf8',
-      env: { ...process.env, ...env },
+      // `empty` jobs are present in needs with an empty result, so join() emits
+      // an empty field for them; `missing` jobs are absent from join entirely.
+      const joinValues = Object.entries(c.results).map(([job, state]) => (c.emptyJobs.includes(job) ? '' : state));
+      env.__JOIN = joinSeparator === null ? '' : joinValues.join(joinSeparator);
+      return { env };
     });
-    const succeeded = res.status === 0;
-    const ok = succeeded === expectSuccess;
-    return {
-      label,
-      ok,
-      detail: ok ? '' : `expected the gate to ${expectSuccess ? 'SUCCEED' : 'FAIL'}, but it exited ${res.status}`,
-    };
-  });
+    const unresolved = payload.find((p) => p.unresolved);
+    if (unresolved) {
+      return [{ label: 'aggregator env', ok: false, detail: `env ${unresolved.unresolved} uses an expression this verification cannot resolve, so the gate's behaviour is unverified` }];
+    }
+    // One bash process for the whole table: each line is an assignment list,
+    // evaluated under `set -a` inside a subshell so the program sees exactly
+    // that case's environment and nothing leaks between cases.
+    const shellQuote = (v) => `'${String(v).split("'").join("'\\''")}'`;
+    const envLines = payload
+      .map((p) => Object.entries(p.env).map(([k, v]) => `${k}=${shellQuote(v)}`).join(' '))
+      .join('\n');
+    const linesPath = join(dir, 'env.lines');
+    writeFileSync(linesPath, `${envLines}\n`);
+    const driver = [
+      'set -a',
+      `while IFS= read -r line; do`,
+      `  ( eval "$line"; bash --noprofile --norc -eo pipefail ${JSON.stringify(programPath)} ) >/dev/null 2>&1`,
+      `  printf '%s\\n' "$?"`,
+      `done < ${JSON.stringify(linesPath)}`,
+    ].join('\n');
+    const res = spawnSync('bash', ['--noprofile', '--norc', '-c', driver], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const codes = res.stdout.split('\n').filter((l) => l.trim() !== '').map(Number);
+    if (codes.length !== cases.length) {
+      return [{ label: 'aggregator harness', ok: false, detail: `expected ${cases.length} results from the batched run, got ${codes.length} (${res.stderr.trim().slice(0, 200)})` }];
+    }
+    return cases.map((c, i) => {
+      const succeeded = codes[i] === 0;
+      const ok = succeeded === c.expectSuccess;
+      return {
+        label: c.label,
+        ok,
+        detail: ok ? '' : `expected the gate to ${c.expectSuccess ? 'SUCCEED' : 'FAIL'}, but it exited ${codes[i]}`,
+      };
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /**
@@ -747,6 +885,41 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     const group = jobs[name]?.concurrency?.group ?? jobs[name]?.concurrency;
     if (group !== undefined && !shardConcurrencyIsSafe(group)) {
       violations.push(`${name}: job-level concurrency \`${group}\` must interpolate matrix.shard directly AND github.run_id, or the matrix children queue behind each other (groups are repository-wide)`);
+    }
+  }
+
+  // ── Only approved actions, with approved inputs, in a gated job ──
+  for (const [jobName, approvedSteps] of Object.entries(APPROVED_JOB_USES)) {
+    for (const step of jobs[jobName]?.steps ?? []) {
+      if (step.uses === undefined) continue;
+      const approved = approvedSteps.find((a) => a.uses === step.uses);
+      if (!approved) {
+        violations.push(`${jobName}: uses \`${step.uses}\`, which is not in APPROVED_JOB_USES — a gated job's actions decide what gets tested, so each is pinned by identity and version`);
+        continue;
+      }
+      const actual = step.with ?? {};
+      const wanted = approved.with ?? {};
+      for (const [key, value] of Object.entries(wanted)) {
+        if (!(key in actual)) {
+          violations.push(`${jobName}: \`${step.uses}\` is missing the required input \`${key}: ${JSON.stringify(value)}\``);
+        } else if (JSON.stringify(actual[key]) !== JSON.stringify(value)) {
+          violations.push(`${jobName}: \`${step.uses}\` sets \`${key}: ${JSON.stringify(actual[key])}\`, but the approved value is ${JSON.stringify(value)}`);
+        }
+      }
+      for (const key of Object.keys(actual)) {
+        if (!(key in wanted)) {
+          violations.push(`${jobName}: \`${step.uses}\` sets the unapproved input \`${key}: ${JSON.stringify(actual[key])}\` — \`ref\` in particular would make this job test something other than the pull request's own head`);
+        }
+      }
+    }
+  }
+
+  // ── Gated jobs run on isolated, GitHub-hosted runners ──
+  for (const jobName of Object.keys(APPROVED_JOB_USES)) {
+    const runsOn = jobs[jobName]?.['runs-on'];
+    if (runsOn === undefined) continue;
+    if (runsOn !== APPROVED_RUNNER) {
+      violations.push(`${jobName}: runs-on is ${JSON.stringify(runsOn)}, not "${APPROVED_RUNNER}" — a self-hosted, custom-labelled or expression-selected runner may be persistent and shared, which is what the per-job isolation argument rests on`);
     }
   }
 
