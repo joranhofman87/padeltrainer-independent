@@ -88,8 +88,18 @@ export const CONTRACT_JOBS = ['lint', 'workflow-contract'];
  */
 const SUITE_MARKERS = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|i18n:check/;
 
-/** npm's documented aliases for `npm test`. */
-const NPM_TEST_ALIASES = new Set(['test', 't', 'tst']);
+/**
+ * Every npm subcommand that runs the root test script, read out of this repo's
+ * npm 11.12.1 `lib/utils/cmd-list.js` (aliases + the abbrev table): `test` with
+ * aliases t/tst/ts/tes, and the install-then-test commands with theirs.
+ * Exotic unique-prefix abbreviations (`npm install-ci-t`) are not enumerated —
+ * npm's abbrev table is version-specific, and no realistic step spells it that
+ * way; every documented spelling is covered.
+ */
+const NPM_TEST_SUBCOMMANDS = new Set([
+  'test', 't', 'tes', 'tst', 'ts',
+  'it', 'install-test', 'cit', 'install-ci-test', 'sit', 'si', 'clean-install-test',
+]);
 
 /** A script name that names a test target: `test`, `test:db`, `x-tst`, but NOT `selftest`. */
 const NAMES_A_TEST_TARGET = /(^|[-:_.])(t|tst|test)($|[-:_.])/i;
@@ -108,18 +118,22 @@ export function isSuiteInvocation(run) {
   // A backslash-newline is a line continuation — one command, not two.
   const normalized = String(run ?? '').replace(/\\\r?\n/g, ' ');
   if (SUITE_MARKERS.test(normalized)) return true;
+  const unquote = (t) => t.replace(/^["']|["']$/g, '');
   for (const segment of normalized.split(/[\n;&|]+/)) {
-    const tokens = segment.trim().split(/\s+/).filter(Boolean);
-    const npmAt = tokens.findIndex((t) => t === 'npm' || t.endsWith('/npm'));
-    if (npmAt === -1) continue;
-    // Flags carry no meaning here; the first bare word is the subcommand.
-    const args = tokens.slice(npmAt + 1).filter((t) => !t.startsWith('-'));
-    const [subcommand, script] = args;
-    if (subcommand === undefined) continue;
-    if (NPM_TEST_ALIASES.has(subcommand)) return true;
-    if ((subcommand === 'run' || subcommand === 'run-script') && script && NAMES_A_TEST_TARGET.test(script)) {
-      return true;
-    }
+    let tokens = segment.trim().split(/\s+/).filter(Boolean).map(unquote);
+    // `FOO=bar npm test` is still an npm invocation; `echo npm test` is not.
+    while (tokens.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens = tokens.slice(1);
+    const command = tokens[0];
+    if (command !== 'npm' && !(command ?? '').endsWith('/npm')) continue;
+    const args = tokens.slice(1).filter((t) => !t.startsWith('-'));
+    // Any bare word that IS a test subcommand — which also survives a flag
+    // taking a separate operand, as in `npm --prefix . test`, where the
+    // operand would otherwise be mistaken for the subcommand.
+    if (args.some((a) => NPM_TEST_SUBCOMMANDS.has(a.toLowerCase()))) return true;
+    // `npm run <script>` counts only when a whole segment of the script name is
+    // a test target, so `check:edge-types:selftest` stays out.
+    const runAt = args.findIndex((a) => a === 'run' || a === 'run-script');
+    if (runAt !== -1 && args[runAt + 1] && NAMES_A_TEST_TARGET.test(args[runAt + 1])) return true;
   }
   return false;
 }
@@ -170,8 +184,16 @@ export const NPM_INSTALL_LIFECYCLE_HOOKS = [
   'predependencies', 'dependencies', 'postdependencies',
 ];
 
-/** npm config keys that can make a suite succeed without running. */
-const FORBIDDEN_NPMRC_KEYS = new Set(['script-shell', 'node-options', 'userconfig', 'globalconfig']);
+/**
+ * npm config keys that can make a suite succeed without running.
+ *
+ * Matched case-insensitively and inside `[section]`s on purpose, which is
+ * STRICTER than npm: npm would treat `NODE-OPTIONS=` or a sectioned key as an
+ * unknown config and ignore it. Neither spelling has a legitimate use here —
+ * it is either a mistake or an attempt — so this reports them rather than
+ * relying on a reader to know npm's case rules.
+ */
+const FORBIDDEN_NPMRC_KEYS = new Set(['script-shell', 'node-options', 'userconfig', 'globalconfig', 'prefix']);
 
 /** Every key in an .npmrc, including inside `[section]`s, as [key, displayPath]. */
 function npmrcKeys(source) {
@@ -193,7 +215,17 @@ function npmrcKeys(source) {
  * contains the words and still gives both children one group — the substring
  * test this replaces accepted exactly that.
  */
-const SHARD_EXPRESSION = /\$\{\{[^}]*\bmatrix\s*(?:\.\s*shard\b|\[\s*(['"])shard\1\s*\])[^}]*\}\}/;
+function shardConcurrencyIsSafe(group) {
+  const bodies = [...String(group).matchAll(/\$\{\{([^}]*)\}\}/g)].map((m) => m[1].trim());
+  // A DIRECT reference, not merely a mention: `${{ 'matrix.shard' }}` is a
+  // string literal and `${{ matrix.shard && github.workflow }}` collapses to
+  // the same value for every shard — both would serialise the children.
+  const variesByShard = bodies.some((b) => /^matrix\s*(?:\.\s*shard|\[\s*(['"])shard\1\s*\])$/.test(b));
+  // Job concurrency groups are repository-wide, so without run identity a
+  // second PR's shard queues behind (or replaces) this one's.
+  const isolatesRuns = bodies.some((b) => /\bgithub\s*\.\s*run_id\b/.test(b));
+  return variesByShard && isolatesRuns;
+}
 
 const ALLOWED_STEP_SHELLS = ['bash'];
 
@@ -225,6 +257,10 @@ const NEUTERING_ENV_VARS = [
   // script-shell or node-options, bypassing the .npmrc scan below.
   'npm_config_userconfig',
   'npm_config_globalconfig',
+  // npm derives globalconfig from prefix (`<prefix>/etc/npmrc`), so setting
+  // prefix at a path that contains a tracked etc/npmrc redirects npm's config
+  // just as surely as pointing globalconfig at it.
+  'npm_config_prefix',
   'shellopts',
   'bash_env',
   'node_options',
@@ -471,8 +507,8 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     // one behind the other — the serial suite again, with every check green.
     // A group that varies per shard is fine, so require matrix.shard in it.
     const group = jobs[name]?.concurrency?.group ?? jobs[name]?.concurrency;
-    if (group !== undefined && !SHARD_EXPRESSION.test(String(group))) {
-      violations.push(`${name}: job-level concurrency \`${group}\` is shared by every shard — the matrix children would run one at a time`);
+    if (group !== undefined && !shardConcurrencyIsSafe(group)) {
+      violations.push(`${name}: job-level concurrency \`${group}\` must interpolate matrix.shard directly AND github.run_id, or the matrix children queue behind each other (groups are repository-wide)`);
     }
   }
 

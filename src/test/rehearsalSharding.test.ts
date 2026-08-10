@@ -556,6 +556,17 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
       }],
+      ['NPM_CONFIG_PREFIX redirects npm at a tracked etc/npmrc', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_PREFIX: ${{ github.workspace }}\n\njobs:\n'))],
+      ['.npmrc sets prefix (globalconfig is derived from it)', /\.npmrc sets prefix/, (r) => writeFileSync(join(r, '.npmrc'), 'prefix=.\n')],
+      ['an `npm install-ci-test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm install-ci-test\n\n      - name: Run unit tests\n'))],
+      ['an `npm cit` step (install-ci-test alias)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm cit\n\n      - name: Run unit tests\n'))],
+      ['a flag with a separate operand: `npm --prefix . test`', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm --prefix . test\n\n      - name: Run unit tests\n'))],
+      ['`npm --workspace web run test`', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm --workspace web run test\n\n      - name: Run unit tests\n'))],
+      ['the `npm tes` abbreviation', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm tes\n\n      - name: Run unit tests\n'))],
+      ['a quoted script name: `npm run "test"`', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm run "test"\n\n      - name: Run unit tests\n'))],
+      ['concurrency whose shard reference is a string literal', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', "  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ 'matrix.shard' }}-${{ github.run_id }}\n"))],
+      ['concurrency whose shard reference collapses in a boolean', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ matrix.shard && github.workflow }}-${{ github.run_id }}\n'))],
+      ['concurrency that varies by shard but not by run', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ matrix.shard }}\n'))],
       ['.npmrc QUOTED node-options (double quotes)', /\.npmrc sets node-options/, (r) => writeFileSync(join(r, '.npmrc'), '"node-options"=--import=data:text/javascript,process.exit(0)\n')],
       ['.npmrc QUOTED script-shell (single quotes, spaced)', /\.npmrc sets script-shell/, (r) => writeFileSync(join(r, '.npmrc'), "  'script-shell'  =  /bin/true  \n")],
       ['.npmrc UPPERCASE key', /\.npmrc sets NODE-OPTIONS/, (r) => writeFileSync(join(r, '.npmrc'), 'NODE-OPTIONS=--import=x\n')],
@@ -637,7 +648,8 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['a postinstall hook that is not a suite (e.g. husky)', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'husky'; })],
       ['a prepare hook building types', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepare = 'tsc -p tsconfig.build.json'; })],
       ['a job concurrency group that really varies per shard', (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ github.run_id }}-${{ matrix.shard }}\n'))],
-      ["a shard group using bracket syntax matrix['shard']", (r) => editWorkflow(r, (s) => s.replace('  db-rehearsals:\n    runs-on: ubuntu-latest\n', "  db-rehearsals:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: reh-${{ matrix['shard'] }}\n"))],
+      ["a shard group using bracket syntax matrix['shard'], run-isolated", (r) => editWorkflow(r, (s) => s.replace('  db-rehearsals:\n    runs-on: ubuntu-latest\n', "  db-rehearsals:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: reh-${{ github.run_id }}-${{ matrix['shard'] }}\n"))],
+      ['a step that merely MENTIONS npm test in an echo', (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Friendly notice\n        run: echo npm test is sharded in CI\n\n      - name: Run unit tests\n'))],
       ['an unrelated npm step whose script merely contains "selftest"', (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Some guard\n        run: npm run check:something:selftest\n\n      - name: Run unit tests\n'))],
     ];
     for (const [label, mutate] of allowed) {
