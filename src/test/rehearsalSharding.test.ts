@@ -227,10 +227,14 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
       // One .ts fake so the `npx tsx` branch runs for real too.
       const names = ['rehearse-e2e-a.mjs', 'rehearse-e2e-b.mjs', 'rehearse-e2e-c.ts', 'rehearse-e2e-d.mjs', 'rehearse-e2e-e.mjs'];
       for (const name of names) {
-        writeFileSync(
-          join(tmp, name),
-          `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(marker)}, ${JSON.stringify(`${name}\n`)});\n`,
-        );
+        // The .ts fixture uses an ENUM — non-erasable TypeScript. Node ≥23.6
+        // strips plain annotations natively, so only non-erasable syntax
+        // proves the runner really routed .ts through tsx: rerouting it
+        // through plain `node` makes this file refuse to run.
+        const body = name.endsWith('.ts')
+          ? `import { appendFileSync } from 'node:fs';\nenum Times { Once = 1 }\nconst line: string = ${JSON.stringify(`${name}\n`)};\nappendFileSync(${JSON.stringify(marker)}, line.repeat(Times.Once));\n`
+          : `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(marker)}, ${JSON.stringify(`${name}\n`)});\n`;
+        writeFileSync(join(tmp, name), body);
       }
       const run = (...args: string[]) =>
         spawnSync(process.execPath, [join(tmp, 'run-all-rehearsals.mjs'), ...args], { encoding: 'utf8' });
@@ -252,9 +256,10 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
       expect(`${s3.stdout}${s3.stderr}${s4.stdout}${s4.stderr}`).toContain('rehearse-e2e-f.mjs (');
 
       // Failure propagation, npx-tsx branch: a nonzero exit from a .ts
-      // rehearsal must fail its shard exactly the same way.
+      // rehearsal must fail its shard exactly the same way (enum again — a
+      // node-routed run would fail for the wrong reason and still be caught).
       rmSync(join(tmp, 'rehearse-e2e-f.mjs'));
-      writeFileSync(join(tmp, 'rehearse-e2e-t.ts'), 'process.exit(1);\n');
+      writeFileSync(join(tmp, 'rehearse-e2e-t.ts'), 'enum Code { Fail = 1 }\nprocess.exit(Code.Fail);\n');
       const s5 = run('--shard=1/2');
       const s6 = run('--shard=2/2');
       expect([s5.status, s6.status].sort(), 'one failing .ts rehearsal').toEqual([0, 1]);
@@ -280,6 +285,16 @@ describe('workflow ↔ runner coupling (.github/workflows/test.yml)', () => {
     'db-rehearsals': 'npm run db:rehearse:all',
   };
 
+  // Every prerequisite of the `test` gate and the exact command that must run
+  // it. A prerequisite job that stops running its suite — or runs it weakened —
+  // makes the gate vouch for nothing.
+  const PREREQ_RUNS: Record<string, string> = {
+    'unit-tests': 'npm run test:unit',
+    'db-tests': 'npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}',
+    'db-rehearsals': 'npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}',
+    i18n: 'bun scripts/check-i18n-parity.ts',
+  };
+
   it('each sharded job has a single-dimension shard matrix of exactly 1..N', () => {
     const jobs = workflow().jobs;
     for (const name of Object.keys(SHARDED_JOBS)) {
@@ -294,15 +309,53 @@ describe('workflow ↔ runner coupling (.github/workflows/test.yml)', () => {
     }
   });
 
-  it('each sharded job has exactly one step whose entire run is the sharded invocation', () => {
+  it('each prerequisite job runs exactly its suite command, unconditionally', () => {
     const jobs = workflow().jobs;
-    for (const [name, script] of Object.entries(SHARDED_JOBS)) {
-      const runs = (jobs[name].steps ?? []).map((s: { run?: string }) => (s.run ?? '').trim());
-      const expected = `${script} -- --shard=\${{ matrix.shard }}/\${{ strategy.job-total }}`;
+    for (const [name, expected] of Object.entries(PREREQ_RUNS)) {
+      const job = jobs[name];
+      // Job-level weakening: `if:` can skip the whole job (result "skipped"
+      // fails the gate, fine) but `continue-on-error: true` converts a FAILED
+      // suite into a green need — the one hole the gate cannot see.
+      expect(job['continue-on-error'], `${name} job continue-on-error`).toBeUndefined();
+      expect(job.if, `${name} job if`).toBeUndefined();
+      const steps = (job.steps ?? []) as Array<{ run?: string; if?: unknown; 'continue-on-error'?: unknown }>;
       // Full-string equality on the parsed value: the token buried in an echo,
-      // an env value, or behind a YAML comment does not count as forwarding.
-      expect(runs.filter((r) => r === expected), name).toHaveLength(1);
+      // an env value, or behind a YAML comment does not count as running it.
+      const matches = steps.filter((s) => (s.run ?? '').trim() === expected);
+      expect(matches, `${name} must run \`${expected}\``).toHaveLength(1);
+      // Step-level weakening: `if: matrix.shard == 1` would silently skip a
+      // shard's entire suite while the step (and job, and gate) stay green.
+      expect(matches[0].if, `${name} suite step if`).toBeUndefined();
+      expect(matches[0]['continue-on-error'], `${name} suite step continue-on-error`).toBeUndefined();
     }
+  });
+
+  it('no other step anywhere invokes a gated suite command', () => {
+    // A SECOND invocation — e.g. an unsharded `npm run test:db` added to some
+    // job — would re-run files that already ran in a shard, quietly doubling
+    // cost and masking shard imbalance.
+    const jobs = workflow().jobs;
+    const suiteMarkers = ['npm run test:unit', 'npm run test:db', 'npm run db:rehearse:all', 'check-i18n-parity'];
+    for (const marker of suiteMarkers) {
+      const invocations = Object.entries(jobs).flatMap(([jobName, job]) =>
+        ((job as { steps?: Array<{ run?: string }> }).steps ?? [])
+          .filter((s) => (s.run ?? '').includes(marker))
+          .map((s) => `${jobName}: ${(s.run ?? '').trim()}`),
+      );
+      expect(invocations, marker).toHaveLength(1);
+    }
+  });
+
+  it('the npm aliases the workflow calls still point at the real suites', () => {
+    // The workflow pins stop at the alias; a script rewritten to `:` or
+    // `echo skipped` would leave every workflow assertion green while running
+    // nothing. Exact strings, same file the workflow resolves against.
+    const pkg = JSON.parse(readFileSync(resolve(dbDir, '../../package.json'), 'utf8'));
+    expect(pkg.scripts['test:unit']).toBe('vitest run --project unit');
+    expect(pkg.scripts['test:db']).toBe('vitest run --project db');
+    expect(pkg.scripts['db:rehearse:all']).toBe('node scripts/db/run-all-rehearsals.mjs');
+    // The local full gate (ci-equivalent.sh relies on it) stays unsharded.
+    expect(pkg.scripts.test).toBe('vitest run --project unit && vitest run --project db');
   });
 
   it('the required `test` gate needs exactly the split jobs, under a bare always()', () => {
@@ -311,5 +364,6 @@ describe('workflow ↔ runner coupling (.github/workflows/test.yml)', () => {
     // Exact: `always() && <anything>` can evaluate false and SKIP the required
     // gate — a skipped required check blocks nothing in some tooling.
     expect(gate.if).toBe('always()');
+    expect(gate['continue-on-error']).toBeUndefined();
   });
 });

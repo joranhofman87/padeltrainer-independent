@@ -227,35 +227,45 @@ jobs:
     if: always()
     steps:
       # No external binaries (jq et al.): a REQUIRED gate must not be able to
-      # fail open because a tool was missing or errored — the results are
+      # fail open because a tool was missing or errored — every value below is
       # expanded by the Actions expression engine before the shell ever runs,
-      # and the shell does a positive every-result-is-"success" check under
-      # `set -euo pipefail` (an empty expansion fails the [ -n ] guard).
-      # The four-name loop makes the gate self-verifying: a prerequisite
-      # DROPPED from `needs:` simply vanishes from the needs context, and the
-      # surviving results would all be green — so the gate re-asserts, at
-      # runtime, that every job it exists to wait for is actually present.
+      # and the shell only compares words under `set -euo pipefail`.
+      # The per-job RESULT_* envs make the gate self-verifying: a prerequisite
+      # DROPPED from `needs:` vanishes from the needs context, so its
+      # expression expands to the EMPTY string — which is not "success" and
+      # fails the gate. (A substring scan over toJSON(needs) was rejected in
+      # review: a surviving job's output could contain the missing job's name.)
+      # The join() loop then covers any FUTURE prerequisite added to needs:
+      # without a matching RESULT_* line — every listed result must be success.
       - name: Verify every test prerequisite succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
+          RESULT_UNIT_TESTS: ${{ needs.unit-tests.result }}
+          RESULT_DB_TESTS: ${{ needs.db-tests.result }}
+          RESULT_DB_REHEARSALS: ${{ needs.db-rehearsals.result }}
+          RESULT_I18N: ${{ needs.i18n.result }}
         run: |
           set -euo pipefail
           echo "$NEEDS"
-          for job in unit-tests db-tests db-rehearsals i18n; do
-            case "$NEEDS" in
-              *"\"$job\""*) ;;
-              *) echo "::error::prerequisite '$job' is missing from the test gate's needs"; exit 1 ;;
-            esac
+          status=0
+          for pair in "unit-tests=${RESULT_UNIT_TESTS}" "db-tests=${RESULT_DB_TESTS}" \
+                      "db-rehearsals=${RESULT_DB_REHEARSALS}" "i18n=${RESULT_I18N}"; do
+            job="${pair%%=*}"; result="${pair#*=}"
+            if [ "$result" != "success" ]; then
+              echo "::error::prerequisite '$job' result is '${result:-<missing from needs>}'"
+              status=1
+            fi
           done
           results="${{ join(needs.*.result, ' ') }}"
           [ -n "$results" ]
           for r in $results; do
             if [ "$r" != "success" ]; then
               echo "::error::a test prerequisite finished with result '$r'"
-              exit 1
+              status=1
             fi
           done
-          echo "All test prerequisites succeeded."
+          [ "$status" -eq 0 ] && echo "All test prerequisites succeeded."
+          exit "$status"
 
   # Pure unit tests for the Deno edge functions (auth gates, Mollie payment-ready, guest-name
   # resolution). These previously ran in NO CI (pre-scale audit P0 #3). The function-dir
