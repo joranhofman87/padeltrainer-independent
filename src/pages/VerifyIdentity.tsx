@@ -22,7 +22,7 @@ import { Loader2 } from 'lucide-react';
  * delivery itself is inert here (owner-gated), so this page is exercised by tests, not live mail.
  */
 type Candidate = { person_id: string; name: string; phone_hint?: string | null };
-type Phase = 'loading' | 'choose' | 'done' | 'already_done' | 'generic_error' | 'unavailable';
+type Phase = 'loading' | 'choose' | 'ambiguous' | 'done' | 'already_done' | 'generic_error' | 'unavailable';
 
 export default function VerifyIdentity() {
   const { t } = useTranslation('common');
@@ -60,6 +60,10 @@ export default function VerifyIdentity() {
         if (result?.status === 'ok') {
           setCandidates(result.candidates ?? []);
           setPhase('choose');
+        } else if (result?.status === 'ambiguous') {
+          // the server refused to offer an unguessable choice (same name + phone); only "someone
+          // new" is safe here.
+          setPhase('ambiguous');
         } else if (result?.status === 'unavailable') {
           setPhase('unavailable');
         } else {
@@ -144,6 +148,18 @@ export default function VerifyIdentity() {
                   {t('verifyIdentity.someoneNew', 'Iemand anders / nieuwe speler')}
                 </Button>
               </div>
+            </>
+          )}
+
+          {phase === 'ambiguous' && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {t('verifyIdentity.ambiguous',
+                  'We kunnen niet met zekerheid zien wie van jullie dit is. Ga verder als nieuwe speler, of neem contact op met de club.')}
+              </p>
+              <Button variant="secondary" className="w-full" disabled={busy} onClick={() => choose(null)}>
+                {t('verifyIdentity.someoneNew', 'Iemand anders / nieuwe speler')}
+              </Button>
             </>
           )}
 

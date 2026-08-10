@@ -217,7 +217,9 @@ AS $$
       -- "has an exact in-scope guest source at this address", so a returning player who later
       -- claimed an account is still reconnected rather than duplicated; the entrypoints book them
       -- via legacyBookingRef's guest key (person_id is stamped, so it stays visible to them).
-    ORDER BY pl.person_id, g.created_at;   -- DISTINCT ON tiebreak: the oldest in-scope guest's hint
+    -- DISTINCT ON tiebreak: oldest in-scope guest, then g.id so a shared created_at (common in one
+    -- INSERT) still picks the SAME hint deterministically across executions (Codex r4).
+    ORDER BY pl.person_id, g.created_at, g.id;
 $$;
 
 REVOKE ALL ON FUNCTION public.identity_candidate_persons(text, uuid, text)
@@ -438,9 +440,15 @@ BEGIN
      AND consumed_at IS NULL AND expires_at > now()
    LIMIT 1;
   IF FOUND THEN
-    -- Reuse only if BOTH the candidate set and the material intent are unchanged. A drift in either
-    -- (Codex r1 f10 for the set; r2 f2 for the payload) retires the stale one and re-mints below.
-    IF v_existing.candidate_set_fingerprint = v_fp
+    -- Reuse only if the WHOLE tuple is unchanged — workflow, owner and contact as well as the
+    -- candidate set and material intent (Codex r4: the payload does not carry owner scope, so a
+    -- same-creation_request_id reused across owners with a coincidentally equal candidate set could
+    -- otherwise re-enqueue the wrong owner's challenge). Any drift retires the stale one and re-mints
+    -- (Codex r1 f10 / r2 f2).
+    IF v_existing.workflow = _workflow
+       AND v_existing.owner_type = _owner_type AND v_existing.owner_id = _owner_id
+       AND v_existing.contact_normalized = v_email_norm
+       AND v_existing.candidate_set_fingerprint = v_fp
        AND v_existing.payload_fingerprint = v_payload_fp THEN
       -- Re-enqueue is safe: enqueue_notification is idempotent on (event, subject, recipient), so a
       -- resubmitted attempt produces no second message — "at most one" holds structurally.
@@ -554,6 +562,20 @@ BEGIN
 
   IF v_ch.verified_at IS NULL THEN
     UPDATE public.identity_verification_challenges SET verified_at = now() WHERE id = _challenge_id;
+  END IF;
+
+  -- "Support multiple candidates WITHOUT guessing" (owner rule): if two candidates would render
+  -- identically — same display name AND same phone hint (two same-named household members sharing a
+  -- phone, or two with no phone) — the choice would be a blind positional guess that could attribute
+  -- the booking to the wrong Player. Fail CLOSED rather than offer it (Codex r4): the caller shows a
+  -- "we can't safely tell these apart — continue as someone new or contact the academy" message.
+  -- The common shared-family case (distinct names or distinct phones) is unaffected.
+  IF EXISTS (
+    SELECT 1 FROM public.identity_candidate_persons(v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized) c
+    GROUP BY c.display_name, coalesce(c.phone_hint, '')
+    HAVING count(*) > 1
+  ) THEN
+    RETURN jsonb_build_object('status', 'ambiguous');
   END IF;
 
   SELECT jsonb_agg(jsonb_build_object(

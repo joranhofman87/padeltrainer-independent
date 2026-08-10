@@ -106,10 +106,12 @@ export function CartCheckoutDialog({
           whatsappOptIn,
           creationRequestId: creationRequestIdFor(
             attemptRef,
-            // EVERY field the server fingerprints — name, address AND phone. A key that omits one
-            // reuses the id after the booker corrects it, and the command answers a changed payload
-            // with PLAYER_CREATE_IDEMPOTENCY_CONFLICT: the correction becomes unsavable.
-            JSON.stringify([email.trim().toLowerCase(), firstName.trim(), lastName.trim(), phone.trim()]),
+            // Must cover AT LEAST every field the server binds into buildIntentKey (Codex r4): the
+            // exact cart (sorted slot ids — previously MISSING), contact, notes and WhatsApp
+            // consent. Otherwise editing the cart/notes/consent reuses the id and the resume is
+            // refused as IDENTITY_SELECTION_SCOPE_MISMATCH.
+            JSON.stringify([[...items.map((i) => i.id)].sort(), email.trim().toLowerCase(),
+              firstName.trim(), lastName.trim(), phone.trim(), notes.trim(), whatsappOptIn === true]),
           ),
         },
       });

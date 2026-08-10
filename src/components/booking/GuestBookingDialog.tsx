@@ -227,11 +227,12 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             whatsappOptIn,
             creationRequestId: creationRequestIdFor(
               attemptRef,
-              // EVERY field the server fingerprints — name, address AND phone. A key that omits one
-              // reuses the id after the booker corrects it, and the command answers a changed
-              // payload with PLAYER_CREATE_IDEMPOTENCY_CONFLICT: the correction becomes unsavable.
+              // Must cover AT LEAST every field the server binds into buildIntentKey (Codex r4):
+              // otherwise editing notes/consent after a challenge reuses the id, and the resume is
+              // refused as IDENTITY_SELECTION_SCOPE_MISMATCH instead of starting a fresh challenge.
+              // Target + contact + notes + WhatsApp consent.
               JSON.stringify([bookCyclus ? cyclusId : slot.id, email.trim().toLowerCase(),
-                firstName.trim(), lastName.trim(), phone.trim()]),
+                firstName.trim(), lastName.trim(), phone.trim(), notes.trim(), whatsappOptIn === true]),
             ),
           },
         },

@@ -517,6 +517,35 @@ const outboxFor = (challengeId) => all(
   await c.query('ROLLBACK');
 }
 
+// ══ 22. Indistinguishable shared-address candidates FAIL CLOSED, not a blind guess (Codex r4) ══
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('ambiguous');
+  const email = EMAIL();
+  // two DISTINCT people, identical name AND identical phone → no safe way to tell them apart
+  await c.query(
+    `INSERT INTO public.guest_players (full_name, email, phone, academy_profile_id)
+     VALUES ('Same Name', $1, '0612345678', $2), ('Same Name', $1, '0612345678', $2)`, [email, academy]);
+  const ch = (await resolve(await newUuid(), academy, 'slot', email)).r.challenge_id;
+  const list = (await one(`SELECT public.identity_verification_list($1) AS r`, [ch])).r;
+  ok('two identical-looking candidates make the list AMBIGUOUS — no candidates offered',
+    list.status === 'ambiguous' && !('candidates' in list), list);
+
+  // ...but a distinguishing phone digit restores a normal, safe choice
+  await c.query('ROLLBACK');
+  await c.query('BEGIN');
+  const academy2 = await mkAcademy('ambiguous-ok');
+  const email2 = EMAIL();
+  await c.query(
+    `INSERT INTO public.guest_players (full_name, email, phone, academy_profile_id)
+     VALUES ('Same Name', $1, '0612345611', $2), ('Same Name', $1, '0612345699', $2)`, [email2, academy2]);
+  const ch2 = (await resolve(await newUuid(), academy2, 'slot', email2)).r.challenge_id;
+  const list2 = (await one(`SELECT public.identity_verification_list($1) AS r`, [ch2])).r;
+  ok('...same names but distinct phone hints are offered normally',
+    list2.status === 'ok' && list2.candidates.length === 2, list2);
+  await c.query('ROLLBACK');
+}
+
 await c.end();
 if (failures > 0) { console.error(`\n❌ u2 identity-verification FAILED (${failures})`); process.exit(1); }
 console.log('\n✅ u2 identity-verification passed');

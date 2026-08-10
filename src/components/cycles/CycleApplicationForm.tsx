@@ -387,7 +387,18 @@ export default function CycleApplicationForm({
             paymentMethod: selectedPaymentMethod,
             creationRequestId: creationRequestIdFor(
               creationAttemptRef,
-              JSON.stringify([cycle.id, fullName, values.email.trim().toLowerCase(), values.phone.trim()]),
+              // Must cover AT LEAST every field the server binds into buildIntentKey for intake
+              // (Codex r4) — intake binds the WHOLE application, so editing any of it after a
+              // challenge must start a fresh attempt rather than be refused on resume.
+              JSON.stringify([
+                cycle.id, fullName, values.email.trim().toLowerCase(), values.phone.trim(),
+                values.birth_date || null, values.rating ?? null, values.rating_system || null,
+                values.lesson_types || [], preferredDays, timeWindows,
+                values.preferred_duration_minutes ?? null, values.sessions_per_week ?? null,
+                values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
+                values.location_id || null, notesWithFlag || null, values.consent ?? null,
+                selectedPaymentMethod || null, selectedCyclusOption ?? null, selectedDurationWeeks ?? null,
+              ]),
             ),
             metadata: {
               ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),

@@ -232,7 +232,27 @@ export async function handleRequest(
     }
     const registrationId = regRow.id;
 
-    // Duplicate check: reject same email + form within 60 seconds (prevents double-clicks)
+    // An EXACT-attempt replay (same creation_request_id already recorded an intake) is idempotent,
+    // not abuse — answer already_submitted and bypass the address heuristic below (Codex r4 f5),
+    // which would otherwise return 429 for a legitimate lost-response retry and make replay look
+    // like a failure.
+    if (creationRequestId) {
+      const { data: priorAttempt } = await adminClient
+        .from("intake_requests")
+        .select("id")
+        .eq("registration_id", registrationId)
+        .eq("creation_request_id", creationRequestId)
+        .maybeSingle();
+      if (priorAttempt) {
+        return new Response(
+          JSON.stringify({ success: true, already_submitted: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Duplicate check: reject same email + form within 60 seconds (prevents double-clicks). A
+    // DIFFERENT-attempt rapid resubmission (different creation_request_id) is still throttled.
     const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
     const { count: dupeCount } = await adminClient
       .from("intake_requests")
