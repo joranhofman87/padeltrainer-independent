@@ -58,9 +58,20 @@ describe('slice A — the identity cron is inert by construction', () => {
   });
 
   it('scopes the existing-job lookup to the current owner, and leaves it untouched', () => {
-    // pg_cron uniqueness is (jobname, username): a bare lookup can act on another role's job
-    expect(cron).toContain("username = current_user");
-    expect(cron).toMatch(/IF v_jobid IS NOT NULL THEN[\s\S]*?RETURN;/);
+    // pg_cron uniqueness is (jobname, username): a bare lookup can act on another role's job.
+    //
+    // This must assert on the EXECUTABLE lookup, not on the file. `username = current_user` also
+    // appears in the activation comment at the top, so a whole-file `toContain` stayed green with
+    // the real predicate deleted — the exact failure mode this file exists to prevent, found in this
+    // file. Comments are stripped first, then the SELECT itself is matched.
+    const executable = cron
+      .split('\n')
+      .filter((l) => !l.trimStart().startsWith('--'))
+      .join('\n');
+    expect(executable).toMatch(
+      /SELECT\s+jobid\s+INTO\s+v_jobid[\s\S]{0,200}?FROM\s+cron\.job[\s\S]{0,200}?username\s*=\s*current_user/i,
+    );
+    expect(executable).toMatch(/IF v_jobid IS NOT NULL THEN[\s\S]*?RETURN;/);
   });
 
   it('serializes check-then-create against a concurrent apply', () => {

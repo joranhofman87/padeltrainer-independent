@@ -333,10 +333,11 @@ through `person_links`** — never by email or phone, matching the owner's ident
    c. `verify-identity` (the link target must exist before any link can be sent);
    c2. **Run the non-side-effecting sender verification now** (§10, slice A): invoke
       `notification-identity-worker` once and require
-      `{"claimed":0,"sent":0,"refused":0,"failed":0}`. It proves the function deployed,
-      authenticated as service_role, resolved the new RPC signature, and that the worker-kind
-      partition is live — before anything can enqueue a challenge. Do not continue on any other
-      result;
+      `{"claimed":0,"sent":0,"refused":0,"failed":0}`. Be precise about what this proves: the
+      function deployed, it authenticated as service_role, and it resolved the new 5-argument RPC
+      signature. With no eligible rows it canNOT prove the partition predicate works — that evidence
+      comes from `scripts/db/u2-identity-worker-routing.mjs`, which exercises the claim against real
+      rows in CI. Do not continue on any other result;
    d. **only then** the challenge-producing callers — the three guest payment entrypoints and
       `submit-guest-intake` — plus `create-manual-player` and `mollie-webhook`;
    e. `admin-academy-deletion`.
@@ -439,8 +440,11 @@ missing key stalls the queue rather than burning it.
 safe check is that it claims nothing and exits cleanly:
 
 1. Invoke the function once. With no `identity_verification_requested` rows pending it must return
-   `{"claimed":0,"sent":0,"refused":0,"failed":0}`. That alone proves: it deployed, it authenticated
-   as service_role, the RPC signature resolved, and the worker-kind partition is live.
+   `{"claimed":0,"sent":0,"refused":0,"failed":0}`. That proves it deployed, it authenticated as
+   service_role, and the new 5-argument RPC signature resolved. It does **not** prove the partition
+   predicate works — with zero eligible rows there is nothing to partition. The partition evidence is
+   `scripts/db/u2-identity-worker-routing.mjs` in CI, which claims against real rows and asserts the
+   two worker kinds take disjoint sets.
 2. Confirm the generic worker is unaffected — its next scheduled run should log its usual counts.
 3. Only then deploy the challenge-producing entrypoints.
 
