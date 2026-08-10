@@ -109,7 +109,9 @@ export const APPROVED_JOB_RUNS = {
  */
 const CHECKOUT_STEP = { uses: 'actions/checkout@v4', with: { 'persist-credentials': false } };
 const SETUP_NODE_STEP = { uses: 'actions/setup-node@v4', with: { 'node-version': '24', cache: 'npm' } };
+const SETUP_DENO_STEP = { uses: 'denoland/setup-deno@v2', with: { 'deno-version': 'v2.x' } };
 export const APPROVED_JOB_USES = {
+  // The gated jobs…
   lint: [CHECKOUT_STEP, SETUP_NODE_STEP],
   'unit-tests': [CHECKOUT_STEP, SETUP_NODE_STEP],
   'db-tests': [CHECKOUT_STEP, SETUP_NODE_STEP],
@@ -117,6 +119,13 @@ export const APPROVED_JOB_USES = {
   i18n: [CHECKOUT_STEP, { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } }],
   'workflow-contract': [CHECKOUT_STEP, SETUP_NODE_STEP],
   test: [],
+  // …and every OTHER branch-required context. `ref: main` on typecheck would
+  // validate main while a PR-only type error sat green in all five required
+  // checks, so this boundary follows what branch protection requires, not only
+  // what the aggregator gates.
+  typecheck: [CHECKOUT_STEP, SETUP_NODE_STEP],
+  'edge-tests': [CHECKOUT_STEP, SETUP_DENO_STEP],
+  'edge-typecheck': [CHECKOUT_STEP, SETUP_NODE_STEP, SETUP_DENO_STEP],
 };
 
 /**
@@ -656,76 +665,55 @@ export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PRERE
   const program = extractAggregatorProgram(workflow);
   if (!program) return [{ label: 'aggregator step', ok: false, detail: 'the `test` job has no run step to execute' }];
 
-  // Lift the one interpolation the script body may contain out into $__JOIN, so
-  // the program text is identical for every case and can be run from a file.
-  let joinSeparator = null;
-  const script = program.script.replace(
-    /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
-    (_m, sep) => {
-      joinSeparator = sep;
-      return '$__JOIN';
-    },
-  );
-  if (script.includes('${{')) {
+  // Each `join(needs.*.result, <sep>)` is substituted with ITS OWN separator.
+  // Collapsing several occurrences onto one value would make a script that
+  // compares a space-joined list against a comma-joined one see them as equal
+  // here, and branch differently on the real runner.
+  const scriptFor = (results, emptyJobs) =>
+    program.script.replace(
+      /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
+      (_m, sep) => Object.entries(results).map(([job, state]) => (emptyJobs.includes(job) ? '' : state)).join(sep),
+    );
+  if (scriptFor({}, []).includes('${{')) {
     return [{ label: 'aggregator program', ok: false, detail: 'it contains an expression this verification cannot resolve, so its behaviour is unverified' }];
   }
 
-  const cases = aggregatorCases(prerequisites);
-  const dir = mkdtempSync(join(tmpdir(), 'aggregator-truth-table-'));
-  try {
-    const programPath = join(dir, 'aggregator.sh');
-    writeFileSync(programPath, script);
-    const payload = cases.map((c) => {
-      const env = {};
-      for (const [key, expression] of Object.entries(program.env)) {
-        const resolved = resolveAggregatorEnv(expression, c.results);
-        if (resolved.unresolved !== undefined) return { unresolved: `${key}: ${resolved.unresolved}` };
-        env[key] = resolved.value;
+  return aggregatorCases(prerequisites).map((c) => {
+    const env = {};
+    for (const [key, expression] of Object.entries(program.env)) {
+      const resolved = resolveAggregatorEnv(expression, c.results);
+      if (resolved.unresolved !== undefined) {
+        return { label: c.label, ok: false, detail: `env ${key}: ${resolved.unresolved} uses an expression this verification cannot resolve, so the gate's behaviour is unverified` };
       }
-      // `empty` jobs are present in needs with an empty result, so join() emits
-      // an empty field for them; `missing` jobs are absent from join entirely.
-      const joinValues = Object.entries(c.results).map(([job, state]) => (c.emptyJobs.includes(job) ? '' : state));
-      env.__JOIN = joinSeparator === null ? '' : joinValues.join(joinSeparator);
-      return { env };
-    });
-    const unresolved = payload.find((p) => p.unresolved);
-    if (unresolved) {
-      return [{ label: 'aggregator env', ok: false, detail: `env ${unresolved.unresolved} uses an expression this verification cannot resolve, so the gate's behaviour is unverified` }];
+      env[key] = resolved.value;
     }
-    // One bash process for the whole table: each line is an assignment list,
-    // evaluated under `set -a` inside a subshell so the program sees exactly
-    // that case's environment and nothing leaks between cases.
-    const shellQuote = (v) => `'${String(v).split("'").join("'\\''")}'`;
-    const envLines = payload
-      .map((p) => Object.entries(p.env).map(([k, v]) => `${k}=${shellQuote(v)}`).join(' '))
-      .join('\n');
-    const linesPath = join(dir, 'env.lines');
-    writeFileSync(linesPath, `${envLines}\n`);
-    const driver = [
-      'set -a',
-      `while IFS= read -r line; do`,
-      `  ( eval "$line"; bash --noprofile --norc -eo pipefail ${JSON.stringify(programPath)} ) >/dev/null 2>&1`,
-      `  printf '%s\\n' "$?"`,
-      `done < ${JSON.stringify(linesPath)}`,
-    ].join('\n');
-    const res = spawnSync('bash', ['--noprofile', '--norc', '-c', driver], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    const codes = res.stdout.split('\n').filter((l) => l.trim() !== '').map(Number);
-    if (codes.length !== cases.length) {
-      return [{ label: 'aggregator harness', ok: false, detail: `expected ${cases.length} results from the batched run, got ${codes.length} (${res.stderr.trim().slice(0, 200)})` }];
-    }
-    return cases.map((c, i) => {
-      const succeeded = codes[i] === 0;
-      const ok = succeeded === c.expectSuccess;
-      return {
-        label: c.label,
-        ok,
-        detail: ok ? '' : `expected the gate to ${c.expectSuccess ? 'SUCCEED' : 'FAIL'}, but it exited ${codes[i]}`,
-      };
+    // A MODELLED environment, not this process's. Inheriting the checker's own
+    // env would let an aggregator branch on something only true here — e.g.
+    // `[ "${GITHUB_JOB:-}" = test ] && exit 0` passes every case run from
+    // `lint`, while the real gate always succeeds. Only PATH and HOME carry
+    // over, because bash and coreutils need them.
+    const res = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', scriptFor(c.results, c.emptyJobs)], {
+      encoding: 'utf8',
+      env: {
+        PATH: process.env.PATH ?? '/usr/bin:/bin',
+        HOME: process.env.HOME ?? '/tmp',
+        // The GitHub context the real `test` job would run under.
+        GITHUB_ACTIONS: 'true',
+        GITHUB_JOB: 'test',
+        GITHUB_WORKFLOW: String(workflow.name ?? ''),
+        ...env,
+      },
     });
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+    const succeeded = res.status === 0;
+    const ok = succeeded === c.expectSuccess;
+    return {
+      label: c.label,
+      ok,
+      detail: ok ? '' : `expected the gate to ${c.expectSuccess ? 'SUCCEED' : 'FAIL'}, but it exited ${res.status}`,
+    };
+  });
 }
+
 
 /**
  * Returns a list of human-readable contract violations. Empty means the gate
@@ -890,8 +878,23 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
 
   // ── Only approved actions, with approved inputs, in a gated job ──
   for (const [jobName, approvedSteps] of Object.entries(APPROVED_JOB_USES)) {
-    for (const step of jobs[jobName]?.steps ?? []) {
-      if (step.uses === undefined) continue;
+    const usesSteps = (jobs[jobName]?.steps ?? []).filter((step) => step.uses !== undefined);
+    // The exact SEQUENCE, not merely a subset of an allowlist: dropping
+    // `setup-node` leaves the suite running on whatever Node the runner image
+    // happens to ship, and a duplicate would re-run setup with other inputs.
+    const actualSequence = usesSteps.map((step) => step.uses);
+    const wantedSequence = approvedSteps.map((step) => step.uses);
+    if (JSON.stringify(actualSequence) !== JSON.stringify(wantedSequence)) {
+      violations.push(`${jobName}: uses [${actualSequence.join(', ') || 'none'}], but the approved sequence is [${wantedSequence.join(', ') || 'none'}]`);
+    }
+    for (const step of usesSteps) {
+      // An action step can be weakened exactly like a run step.
+      if (step.if !== undefined) {
+        violations.push(`${jobName}: \`${step.uses}\` has an \`if:\` — its setup could be skipped while the job still reports success`);
+      }
+      if (step['continue-on-error'] !== undefined) {
+        violations.push(`${jobName}: \`${step.uses}\` sets \`continue-on-error\` — a failed checkout or setup would be tolerated`);
+      }
       const approved = approvedSteps.find((a) => a.uses === step.uses);
       if (!approved) {
         violations.push(`${jobName}: uses \`${step.uses}\`, which is not in APPROVED_JOB_USES — a gated job's actions decide what gets tested, so each is pinned by identity and version`);
