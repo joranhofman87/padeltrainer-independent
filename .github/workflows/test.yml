@@ -198,6 +198,32 @@ jobs:
       - name: Data-integrity rehearsals (shard ${{ matrix.shard }}/${{ strategy.job-total }})
         run: npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
+  # Executable form of the split gate's contract (scripts/ci/workflow-contract.mjs):
+  # every prerequisite job really runs its suite once and unweakened, the shard
+  # matrices stay single-dimension 1..N, the required check keeps the job id
+  # `test` and needs everything, the npm aliases still point at the real suites
+  # with no lifecycle hooks, and the db project still selects every database test
+  # file exclusively. It runs in its OWN job — a contract enforced only inside a
+  # job whose steps could be skipped is not enforced — and is itself a
+  # prerequisite of `test`, so dropping it turns the required check red.
+  workflow-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify the CI gate contract
+        run: node scripts/ci/workflow-contract.mjs
+
   # check-i18n-parity.ts imports only node: builtins and runs under bun, so this
   # job needs no npm ci — checkout + bun and done.
   i18n:
@@ -223,7 +249,7 @@ jobs:
   # prerequisite result is literally "success".
   test:
     runs-on: ubuntu-latest
-    needs: [unit-tests, db-tests, db-rehearsals, i18n]
+    needs: [unit-tests, db-tests, db-rehearsals, i18n, workflow-contract]
     if: always()
     steps:
       # No external binaries (jq et al.): a REQUIRED gate must not be able to
@@ -244,12 +270,14 @@ jobs:
           RESULT_DB_TESTS: ${{ needs.db-tests.result }}
           RESULT_DB_REHEARSALS: ${{ needs.db-rehearsals.result }}
           RESULT_I18N: ${{ needs.i18n.result }}
+          RESULT_WORKFLOW_CONTRACT: ${{ needs.workflow-contract.result }}
         run: |
           set -euo pipefail
           echo "$NEEDS"
           status=0
           for pair in "unit-tests=${RESULT_UNIT_TESTS}" "db-tests=${RESULT_DB_TESTS}" \
-                      "db-rehearsals=${RESULT_DB_REHEARSALS}" "i18n=${RESULT_I18N}"; do
+                      "db-rehearsals=${RESULT_DB_REHEARSALS}" "i18n=${RESULT_I18N}" \
+                      "workflow-contract=${RESULT_WORKFLOW_CONTRACT}"; do
             job="${pair%%=*}"; result="${pair#*=}"
             if [ "$result" != "success" ]; then
               echo "::error::prerequisite '$job' result is '${result:-<missing from needs>}'"

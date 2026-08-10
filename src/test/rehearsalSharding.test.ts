@@ -1,3 +1,9 @@
+// @vitest-environment node
+//
+// Node, not the project-default jsdom: this file drives CI tooling (child
+// processes, the filesystem, vite's config loader) and touches no DOM. jsdom's
+// TextEncoder also fails esbuild's `encode("") instanceof Uint8Array`
+// invariant, which breaks loading vitest.config.ts through vite.
 /**
  * Focused tests for rehearsal shard partitioning (scripts/db/rehearsal-shards.mjs)
  * and its wiring into scripts/db/run-all-rehearsals.mjs.
@@ -14,9 +20,9 @@
  *   3. the runner executable itself honors --shard/--list AND executes exactly
  *      the selected files (so the library being correct can't mask the CLI
  *      ignoring it, and listing correctly can't mask executing wrongly);
- *   4. the workflow side of the contract — single-dimension 1..N matrices whose
- *      count comes from strategy.job-total, aggregated by the required `test`
- *      gate — so .github/workflows/test.yml cannot drift from the runner.
+ *   4. the workflow side of the contract, via scripts/ci/workflow-contract.mjs
+ *      (the same module its own CI job runs) — so .github/workflows/test.yml
+ *      cannot drift from the runner.
  */
 import { describe, it, expect } from 'vitest';
 import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -24,7 +30,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
+import { checkWorkflowContract, PREREQUISITE_RUNS } from '../../scripts/ci/workflow-contract.mjs';
 import {
   REHEARSAL_PATTERN,
   UsageError,
@@ -246,6 +252,15 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
       const ran = readFileSync(marker, 'utf8').split('\n').filter(Boolean).sort();
       expect(ran).toEqual([...names].sort()); // every fake exactly once ACROSS the shard set
 
+      // No-argument mode — what `npm run db:rehearse:all` and
+      // scripts/ci-equivalent.sh use — must EXECUTE the whole inventory, not
+      // just select it. (A runner that fell through to list-mode without a
+      // shard would exit 0 having run nothing.)
+      rmSync(marker);
+      const full = run();
+      expect(full.status, full.stderr).toBe(0);
+      expect(readFileSync(marker, 'utf8').split('\n').filter(Boolean).sort()).toEqual([...names].sort());
+
       // Failure propagation, .mjs branch: exactly the shard containing the
       // failing file exits 1 and the other exits 0 — [2,1] or [null,1] would
       // mean a crash we mistook for a pass.
@@ -269,101 +284,28 @@ describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixtur
   });
 });
 
-describe('workflow ↔ runner coupling (.github/workflows/test.yml)', () => {
+describe('the CI gate contract (scripts/ci/workflow-contract.mjs)', () => {
   // The partition is only exactly-once if the workflow feeds coherent
-  // index/count pairs. These are drift alarms binding the two: a second matrix
-  // dimension (which would multiply strategy.job-total), a shard list that is
-  // not exactly 1..N, a run line that stops forwarding the shard, or a widened
-  // gate condition all fail here, loudly, instead of silently running files
-  // twice or never. The EFFECTIVE YAML is parsed — regexes over raw text were
-  // fooled by blank lines and comments (Codex r2), a parser is not.
-  const workflow = () =>
-    parseYaml(readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8'));
-
-  const SHARDED_JOBS: Record<string, string> = {
-    'db-tests': 'npm run test:db',
-    'db-rehearsals': 'npm run db:rehearse:all',
-  };
-
-  // Every prerequisite of the `test` gate and the exact command that must run
-  // it. A prerequisite job that stops running its suite — or runs it weakened —
-  // makes the gate vouch for nothing.
-  const PREREQ_RUNS: Record<string, string> = {
-    'unit-tests': 'npm run test:unit',
-    'db-tests': 'npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}',
-    'db-rehearsals': 'npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}',
-    i18n: 'bun scripts/check-i18n-parity.ts',
-  };
-
-  it('each sharded job has a single-dimension shard matrix of exactly 1..N', () => {
-    const jobs = workflow().jobs;
-    for (const name of Object.keys(SHARDED_JOBS)) {
-      const matrix = jobs[name]?.strategy?.matrix;
-      expect(matrix, `${name} must define strategy.matrix`).toBeTruthy();
-      // ONLY `shard` — any sibling dimension (or include/exclude) multiplies
-      // strategy.job-total and breaks every index/count pair.
-      expect(Object.keys(matrix), name).toEqual(['shard']);
-      const shards = matrix.shard;
-      expect(shards.length, name).toBeGreaterThanOrEqual(1);
-      expect(shards, name).toEqual(Array.from({ length: shards.length }, (_, i) => i + 1));
-    }
+  // index/count pairs — and only meaningful if each job really runs its suite.
+  // Those assertions live in the checker module so the SAME code runs here
+  // (via `npm test`, locally) and as its own CI job; a contract enforced only
+  // inside a job whose steps could be skipped is not enforced.
+  it('holds for the current workflow, package.json and vitest config', async () => {
+    const violations = await checkWorkflowContract();
+    expect(violations, violations.join('\n')).toEqual([]);
   });
 
-  it('each prerequisite job runs exactly its suite command, unconditionally', () => {
-    const jobs = workflow().jobs;
-    for (const [name, expected] of Object.entries(PREREQ_RUNS)) {
-      const job = jobs[name];
-      // Job-level weakening: `if:` can skip the whole job (result "skipped"
-      // fails the gate, fine) but `continue-on-error: true` converts a FAILED
-      // suite into a green need — the one hole the gate cannot see.
-      expect(job['continue-on-error'], `${name} job continue-on-error`).toBeUndefined();
-      expect(job.if, `${name} job if`).toBeUndefined();
-      const steps = (job.steps ?? []) as Array<{ run?: string; if?: unknown; 'continue-on-error'?: unknown }>;
-      // Full-string equality on the parsed value: the token buried in an echo,
-      // an env value, or behind a YAML comment does not count as running it.
-      const matches = steps.filter((s) => (s.run ?? '').trim() === expected);
-      expect(matches, `${name} must run \`${expected}\``).toHaveLength(1);
-      // Step-level weakening: `if: matrix.shard == 1` would silently skip a
-      // shard's entire suite while the step (and job, and gate) stay green.
-      expect(matches[0].if, `${name} suite step if`).toBeUndefined();
-      expect(matches[0]['continue-on-error'], `${name} suite step continue-on-error`).toBeUndefined();
-    }
+  it('lists the gate prerequisites the aggregator waits for', () => {
+    expect(Object.keys(PREREQUISITE_RUNS)).toEqual([
+      'unit-tests', 'db-tests', 'db-rehearsals', 'i18n', 'workflow-contract',
+    ]);
   });
 
-  it('no other step anywhere invokes a gated suite command', () => {
-    // A SECOND invocation — e.g. an unsharded `npm run test:db` added to some
-    // job — would re-run files that already ran in a shard, quietly doubling
-    // cost and masking shard imbalance.
-    const jobs = workflow().jobs;
-    const suiteMarkers = ['npm run test:unit', 'npm run test:db', 'npm run db:rehearse:all', 'check-i18n-parity'];
-    for (const marker of suiteMarkers) {
-      const invocations = Object.entries(jobs).flatMap(([jobName, job]) =>
-        ((job as { steps?: Array<{ run?: string }> }).steps ?? [])
-          .filter((s) => (s.run ?? '').includes(marker))
-          .map((s) => `${jobName}: ${(s.run ?? '').trim()}`),
-      );
-      expect(invocations, marker).toHaveLength(1);
-    }
-  });
-
-  it('the npm aliases the workflow calls still point at the real suites', () => {
-    // The workflow pins stop at the alias; a script rewritten to `:` or
-    // `echo skipped` would leave every workflow assertion green while running
-    // nothing. Exact strings, same file the workflow resolves against.
-    const pkg = JSON.parse(readFileSync(resolve(dbDir, '../../package.json'), 'utf8'));
-    expect(pkg.scripts['test:unit']).toBe('vitest run --project unit');
-    expect(pkg.scripts['test:db']).toBe('vitest run --project db');
-    expect(pkg.scripts['db:rehearse:all']).toBe('node scripts/db/run-all-rehearsals.mjs');
-    // The local full gate (ci-equivalent.sh relies on it) stays unsharded.
-    expect(pkg.scripts.test).toBe('vitest run --project unit && vitest run --project db');
-  });
-
-  it('the required `test` gate needs exactly the split jobs, under a bare always()', () => {
-    const gate = workflow().jobs.test;
-    expect(gate.needs).toEqual(['unit-tests', 'db-tests', 'db-rehearsals', 'i18n']);
-    // Exact: `always() && <anything>` can evaluate false and SKIP the required
-    // gate — a skipped required check blocks nothing in some tooling.
-    expect(gate.if).toBe('always()');
-    expect(gate['continue-on-error']).toBeUndefined();
+  it('the CLI its CI job runs exits 0 and says so', () => {
+    // The workflow calls the CLI, not the module: a checker that computed
+    // violations but never exited nonzero would gate nothing.
+    const res = spawnSync(process.execPath, [resolve(dbDir, '../ci/workflow-contract.mjs')], { encoding: 'utf8' });
+    expect(res.status, res.stderr).toBe(0);
+    expect(res.stdout).toContain('CI gate contract holds.');
   });
 });
