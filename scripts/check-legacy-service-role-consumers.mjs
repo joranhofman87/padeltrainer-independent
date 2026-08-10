@@ -162,6 +162,7 @@ const MANAGED = {
     'supabase/functions/_shared/auth.ts',
     'supabase/functions/_shared/edge-slack.ts',
     'supabase/functions/academy-update-player-email/index.ts',
+    'supabase/functions/admin-academy-deletion/index.ts',
     'supabase/functions/admin-reset-password/index.ts',
     'supabase/functions/auto-rebook-reminder/index.ts',
     'supabase/functions/backfill-email-bounces/index.ts',

@@ -37,6 +37,22 @@ jobs:
       - name: Reset database from migrations
         run: supabase db reset --yes
 
+      # The academy-deletion flow cannot be proven anywhere else. Its catalogue-drift guard pins a
+      # fingerprint of the REAL schema, so a PGlite fixture would only ever refuse; and its lock plan
+      # exists to make a concurrent writer WAIT, which needs two sessions PGlite cannot provide. This
+      # step runs against the local stack started above — never a remote database.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Academy-deletion integration (two-session, local Postgres)
+        run: node scripts/db/academy-deletion-integration.mjs
+
   types-drift:
     name: generated types drift
     runs-on: ubuntu-latest
