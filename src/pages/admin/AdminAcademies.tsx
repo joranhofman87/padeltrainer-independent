@@ -2,6 +2,10 @@ import { useState, useEffect } from "react";
 import { subscriptionStatusVariant } from '@/lib/adminStatus';
 import { useAdminAcademies, useInvalidateAdminData, type AcademyProfileAdmin } from "@/hooks/useAdminData";
 import { logger } from '@/lib/logger';
+import {
+  fetchAcademyDeletionPreview, confirmAcademyDeletion, isPreviewBlocked, isStalePreview,
+  nonZeroEntries, totalDeleted, totalDetached, totalMutated, type AcademyDeletionPreview,
+} from '@/lib/academyDeletion';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -92,6 +96,9 @@ export default function AdminAcademies() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [deletingAcademy, setDeletingAcademy] = useState<AcademyProfileAdmin | null>(null);
+  const [preview, setPreview] = useState<AcademyDeletionPreview | null>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const getSubscriptionStatus = (academy: AcademyProfileAdmin) => {
@@ -154,77 +161,52 @@ export default function AdminAcademies() {
     }
   };
 
+  /**
+   * Ask the server what deleting this academy would do. The eight client-side deletes this replaces
+   * were not a transaction: an academy with a single invoice failed on the LAST of them, after the
+   * other seven had committed — leaving it alive with its payment credentials already destroyed.
+   */
+  const openDeleteDialog = async (academy: AcademyProfileAdmin) => {
+    setDeletingAcademy(academy);
+    setPreview(null);
+    setPreviewError(null);
+    setIsPreviewing(true);
+    try {
+      setPreview(await fetchAcademyDeletionPreview(supabase, academy.id));
+    } catch (error) {
+      logger.error("Academy deletion preview failed", error instanceof Error ? error : new Error(String(error)), { component: 'AdminAcademies' });
+      setPreviewError(error instanceof Error ? error.message : "Could not load the deletion preview.");
+    } finally {
+      setIsPreviewing(false);
+    }
+  };
+
   const handleDeleteAcademy = async () => {
-    if (!deletingAcademy || isDeleting) return;
+    if (!deletingAcademy || !preview || isDeleting || isPreviewBlocked(preview)) return;
 
     setIsDeleting(true);
     try {
-      // Delete related records first (academy_managers, academy_locations, academy_trainers, etc.)
-      const { error: managersError } = await supabase
-        .from("academy_managers")
-        .delete()
-        .eq("academy_profile_id", deletingAcademy.id);
-
-      if (managersError) throw managersError;
-
-      const { error: locationsError } = await supabase
-        .from("academy_locations")
-        .delete()
-        .eq("academy_profile_id", deletingAcademy.id);
-
-      if (locationsError) throw locationsError;
-
-      const { error: trainersError } = await supabase
-        .from("academy_trainers")
-        .delete()
-        .eq("academy_profile_id", deletingAcademy.id);
-
-      if (trainersError) throw trainersError;
-
-      const { error: invitationsError } = await supabase
-        .from("academy_trainer_invitations")
-        .delete()
-        .eq("academy_profile_id", deletingAcademy.id);
-
-      if (invitationsError) throw invitationsError;
-
-      const { error: viewsError } = await supabase
-        .from("academy_profile_views")
-        .delete()
-        .eq("academy_profile_id", deletingAcademy.id);
-
-      if (viewsError) throw viewsError;
-
-      const { error: followersError } = await supabase
-        .from("academy_followers")
-        .delete()
-        .eq("academy_profile_id", deletingAcademy.id);
-
-      if (followersError) throw followersError;
-
-      const { error: mollieError } = await supabase
-        .from("academy_mollie_accounts")
-        .delete()
-        .eq("academy_profile_id", deletingAcademy.id);
-
-      if (mollieError) throw mollieError;
-
-      // Finally delete the academy profile
-      const { error: profileError } = await supabase
-        .from("academy_profiles")
-        .delete()
-        .eq("id", deletingAcademy.id);
-
-      if (profileError) throw profileError;
-
+      // Only the server-issued digest and version travel back. Counts are never sent — the server
+      // recomputes them under its own locks and would not trust ours.
+      await confirmAcademyDeletion(supabase, preview);
       toast({
         title: "Academy deleted",
         description: `${deletingAcademy.name} has been deleted successfully.`,
       });
       invalidateAcademies();
       setDeletingAcademy(null);
+      setPreview(null);
     } catch (error) {
       logger.error("Delete academy error", error instanceof Error ? error : new Error(String(error)), { component: 'AdminAcademies' });
+
+      if (isStalePreview(error)) {
+        // What the operator was shown is no longer true. Clear the confirmation and make them look
+        // at a fresh preview — never retry a destructive action on their behalf.
+        setPreview(null);
+        setPreviewError("The academy changed while you were reviewing it. Load a fresh preview before deleting.");
+        void openDeleteDialog(deletingAcademy);
+      }
+
       toast({
         title: "Delete failed",
         description: error instanceof Error ? error.message : "Unknown error",
@@ -440,7 +422,7 @@ export default function AdminAcademies() {
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
-                            onClick={() => setDeletingAcademy(academy)}
+                            onClick={() => void openDeleteDialog(academy)}
                           >
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete Academy
@@ -529,16 +511,66 @@ export default function AdminAcademies() {
 
       <ConfirmDialog
         open={!!deletingAcademy}
-        onOpenChange={(open) => !open && setDeletingAcademy(null)}
+        onOpenChange={(open) => { if (!open) { setDeletingAcademy(null); setPreview(null); setPreviewError(null); } }}
         title="Delete Academy"
         description={
-          <>
-            Are you sure you want to delete <strong>{deletingAcademy?.name}</strong>? This will permanently remove the academy and all associated data including trainers, locations, and managers. This action cannot be undone.
-          </>
+          <div className="space-y-3" data-testid="academy-deletion-preview">
+            <p>
+              Deleting <strong>{deletingAcademy?.name}</strong> cannot be undone.
+            </p>
+
+            {isPreviewing && <p data-testid="preview-loading">Checking what this would affect…</p>}
+
+            {previewError && (
+              <p className="text-destructive" data-testid="preview-error">{previewError}</p>
+            )}
+
+            {preview && isPreviewBlocked(preview) && (
+              <div data-testid="preview-blockers">
+                <p className="font-medium text-destructive">This academy cannot be deleted yet:</p>
+                <ul className="list-disc pl-5">
+                  {preview.blockers.map((b) => (
+                    <li key={b.code}>{b.code} ({b.count})</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {preview && !isPreviewBlocked(preview) && (
+              <div className="space-y-2">
+                <div data-testid="preview-deleted">
+                  <p className="font-medium">Will be deleted ({totalDeleted(preview)}):</p>
+                  <ul className="list-disc pl-5">
+                    {nonZeroEntries(preview.deleted).map(([rel, n]) => (
+                      <li key={rel}>{rel}: {n}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div data-testid="preview-mutated">
+                  <p className="font-medium">Will be changed, not deleted ({totalMutated(preview)}):</p>
+                  <ul className="ml-4 list-disc">
+                    {nonZeroEntries(preview.mutated ?? {}).map(([rel, n]) => (
+                      <li key={rel}>{rel}: {n}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div data-testid="preview-detached">
+                  <p className="font-medium">Will be detached, not deleted ({totalDetached(preview)}):</p>
+                  <ul className="list-disc pl-5">
+                    {nonZeroEntries(preview.detached).map(([rel, n]) => (
+                      <li key={rel}>{rel}: {n}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </div>
         }
         confirmLabel={isDeleting ? "Deleting..." : "Delete Academy"}
         cancelLabel="Cancel"
         loading={isDeleting}
+        confirmDisabled={!preview || isPreviewing || isPreviewBlocked(preview)}
         onConfirm={handleDeleteAcademy}
       />
     </ListPageShell>

@@ -8,6 +8,7 @@ on:
       - 'src/integrations/supabase/types.ts'
       - 'scripts/check-types-drift.ts'
       - 'scripts/db/**'
+      - 'supabase/functions/backup-database/**'
       - '.github/workflows/migrations.yml'
   pull_request:
     branches: [main]
@@ -16,6 +17,7 @@ on:
       - 'src/integrations/supabase/types.ts'
       - 'scripts/check-types-drift.ts'
       - 'scripts/db/**'
+      - 'supabase/functions/backup-database/**'
       - '.github/workflows/migrations.yml'
   workflow_dispatch:
 
@@ -39,13 +41,27 @@ jobs:
       - name: Reset database from migrations
         run: supabase db reset --yes
 
-      - uses: actions/setup-node@v4
+      # The real-Postgres suites below cannot be proven anywhere else. The academy-deletion
+      # catalogue-drift guard pins a fingerprint of the REAL schema, so a PGlite fixture would only
+      # ever refuse; and its lock plan exists to make a concurrent writer WAIT, which needs two
+      # sessions PGlite cannot provide. They run against the local stack started above — never a
+      # remote database.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Academy-deletion integration (two-session, local Postgres)
+        run: node scripts/db/academy-deletion-integration.mjs
+
+      # Fails when an identity/Player table is not in the backup's table list, or when a backed-up
+      # table's primary key is not the single `id` column the page walk keysets on.
+      - name: Backup coverage (derived from the live schema)
+        run: node scripts/db/backup-coverage.mjs
 
       # Fails if any shipped function still merges identity on an email match alone, or if a new
       # identity writer appears that nobody has reviewed. Runs in THIS job because it needs the

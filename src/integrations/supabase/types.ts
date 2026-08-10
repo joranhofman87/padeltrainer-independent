@@ -61,6 +61,51 @@ export type Database = {
         }
         Relationships: []
       }
+      academy_deletion_audit: {
+        Row: {
+          academy_profile_id: string
+          actor_user_id: string
+          blocker_codes: string[] | null
+          deleted_counts: Json | null
+          detached_counts: Json | null
+          digest: string
+          failure_reason: string | null
+          finished_at: string | null
+          id: string
+          preview_version: number
+          started_at: string
+          status: string
+        }
+        Insert: {
+          academy_profile_id: string
+          actor_user_id: string
+          blocker_codes?: string[] | null
+          deleted_counts?: Json | null
+          detached_counts?: Json | null
+          digest: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          preview_version: number
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          academy_profile_id?: string
+          actor_user_id?: string
+          blocker_codes?: string[] | null
+          deleted_counts?: Json | null
+          detached_counts?: Json | null
+          digest?: string
+          failure_reason?: string | null
+          finished_at?: string | null
+          id?: string
+          preview_version?: number
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       academy_followers: {
         Row: {
           academy_profile_id: string
@@ -10193,6 +10238,119 @@ export type Database = {
         Args: { p_owner_id: string; p_owner_type: string }
         Returns: boolean
       }
+      academy_delete_confirmed: {
+        Args: {
+          _academy_id: string
+          _actor_user_id: string
+          _audit_id: string
+          _expected_digest: string
+          _preview_version: number
+        }
+        Returns: Json
+      }
+      academy_deletion_already_counted_pred: {
+        Args: { _relname: string }
+        Returns: string
+      }
+      academy_deletion_blockers: {
+        Args: { _academy_id: string }
+        Returns: Json
+      }
+      academy_deletion_blocking_refs: {
+        Args: never
+        Returns: {
+          colname: string
+          parent: string
+          parentcol: string
+          relname: string
+        }[]
+      }
+      academy_deletion_cascade_closure: {
+        Args: never
+        Returns: {
+          relname: string
+        }[]
+      }
+      academy_deletion_catalog_fingerprint: { Args: never; Returns: string }
+      academy_deletion_deleted_scope: {
+        Args: { _relname: string }
+        Returns: string
+      }
+      academy_deletion_deletion_parents: {
+        Args: never
+        Returns: {
+          relname: string
+        }[]
+      }
+      academy_deletion_detach_check_pred: {
+        Args: { _relname: string }
+        Returns: string
+      }
+      academy_deletion_detach_targets: {
+        Args: never
+        Returns: {
+          colname: string
+          parent: string
+          parentcol: string
+          relname: string
+        }[]
+      }
+      academy_deletion_detached_scope: {
+        Args: { _relname: string }
+        Returns: string
+      }
+      academy_deletion_dying_persons_pred: {
+        Args: { _col?: string }
+        Returns: string
+      }
+      academy_deletion_dying_pred: {
+        Args: { _col: string; _parent: string; _parentcol: string }
+        Returns: string
+      }
+      academy_deletion_expected_fingerprint: { Args: never; Returns: string }
+      academy_deletion_extra_relations: {
+        Args: never
+        Returns: {
+          relname: string
+          role: string
+        }[]
+      }
+      academy_deletion_lock_plan: {
+        Args: { _academy_id: string }
+        Returns: undefined
+      }
+      academy_deletion_person_closure: {
+        Args: never
+        Returns: {
+          relname: string
+        }[]
+      }
+      academy_deletion_preview: { Args: { _academy_id: string }; Returns: Json }
+      academy_deletion_relation_digest: {
+        Args: { _academy_id: string; _relname: string; _where: string }
+        Returns: {
+          fragment: string
+          row_count: number
+        }[]
+      }
+      academy_deletion_scope_predicate: {
+        Args: { _relname: string; _root?: string; _root_pred?: string }
+        Returns: string
+      }
+      academy_deletion_surviving_persons_pred: { Args: never; Returns: string }
+      academy_deletion_trigger_helper_defs: {
+        Args: never
+        Returns: {
+          def: string
+          sig: string
+        }[]
+      }
+      academy_deletion_trigger_root_relations: {
+        Args: never
+        Returns: {
+          oid: unknown
+        }[]
+      }
       academy_has_managers: {
         Args: { _academy_profile_id: string }
         Returns: boolean
@@ -10607,6 +10765,23 @@ export type Database = {
           blocked_count: number
           blocked_slot_ids: string[]
           updated_count: number
+        }[]
+      }
+      backup_export_group: { Args: { _group: string }; Returns: Json }
+      backup_export_groups: {
+        Args: never
+        Returns: {
+          group_name: string
+          relname: string
+        }[]
+      }
+      backup_export_max_bytes: { Args: never; Returns: number }
+      backup_export_max_rows: { Args: never; Returns: number }
+      backup_export_table: { Args: { _relname: string }; Returns: Json }
+      backup_export_tables: {
+        Args: never
+        Returns: {
+          relname: string
         }[]
       }
       begin_notification_digest_attempt: {
@@ -12353,6 +12528,10 @@ export type Database = {
         Args: { p_purpose: string; p_request_id: string; p_source: string }
         Returns: string
       }
+      owner_has_programs: {
+        Args: { _owner_id: string; _owner_type: string }
+        Returns: Json
+      }
       person_claim_candidates: {
         Args: never
         Returns: {
@@ -12866,6 +13045,7 @@ export type Database = {
         Args: { p_limit?: number }
         Returns: number
       }
+      u1c_ns: { Args: { _value: string }; Returns: string }
       u2_norm: { Args: { _v: string }; Returns: string }
       u2_ns: { Args: { _v: string }; Returns: string }
       unclaim_rebook_member_open_notice: {
