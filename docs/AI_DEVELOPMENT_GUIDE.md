@@ -12,7 +12,7 @@ Status: canonical (source of truth) | last updated 2026-07-02
 
 Padeltrainer is a multi-tenant SaaS for padel academies, trainers, clubs, and players: scheduling, registrations, bookings, invoicing, and Mollie payments.
 
-- **Stack:** React + TypeScript + Vite SPA; Supabase (Postgres + RLS + `SECURITY DEFINER` RPCs + ~96 Deno edge functions + pg_cron); Mollie via OAuth-connected accounts; react-i18next (nl/en); email via Resend.
+- **Stack:** React + TypeScript + Vite SPA; Supabase (Postgres + RLS + `SECURITY DEFINER` RPCs + 108 Deno edge functions (2026-08-08 count) + pg_cron); Mollie via OAuth-connected accounts; react-i18next (nl/en); email via Resend.
 - **Roles** (`app_role` enum): `player`, `trainer`, `academy_manager`, `club_manager`, `admin`. RLS is gated by the `has_role()` SECURITY DEFINER function. **Clubs are read-only** for scheduling.
 - **Not this app:** Rallyo is the free tournament product — different repo, no payments/trainers/academies. Don't cross-reference.
 
@@ -35,7 +35,7 @@ The money spine in one line:
 
 ## 4. Where NOT to add code
 
-- **No business-critical mutations in UI components or pages.** Route dangerous actions through domain helpers / RPCs / edge functions ([ADR-0003](./adr/0003-mutation-boundary-facades.md)). The mutation boundary is shrink-only — `src/test/mutationBoundary.test.ts` fails if you add a new page-level write.
+- **No business-critical mutations in UI components or pages.** Route dangerous actions through domain helpers / RPCs / edge functions ([ADR-0003](./adr/0003-mutation-boundary-facades.md)). The mutation-boundary guard (`src/test/mutationBoundary.test.ts`) is a per-file count ceiling — it fails on a new file or a count ABOVE the stored ceiling; count-neutral swaps and stale-headroom additions stay green ("shrink-only" is convention, not enforced), so never rely on it as permission.
 - **No cross-role imports.** `components/<role>` and `pages/<role>` must not import another role's code (ESLint `no-restricted-imports`, baseline = 0). To share, lift to a neutral folder (`components/ui`, `components/slots`, `components/invoices`, `components/players`, `hooks/`, `lib/`). Note: `components/player` = the player role (private); `components/players` = shared.
 - **No new UI primitive when one exists.** Check the registry first (§10).
 - **No cycle-level price scalar.** Price lives on the slot ([ADR-0002](./adr/0002-slot-is-price-source-of-truth.md)).
@@ -49,7 +49,7 @@ Full matrix in **[`TESTING_STRATEGY.md`](./TESTING_STRATEGY.md)**. Quick map:
 |---|---|
 | Money-path lib (bookings/cycles/invoices/registrations) | vitest unit + a `*.pglite.test.ts` integration against real Postgres-in-WASM ([`src/test/fixtures/pgliteSupabase.ts`](../src/test/fixtures/pgliteSupabase.ts)) |
 | New migration / RLS / RPC | add/extend a `scripts/db/rehearse-*` invariant; `npm run db:reset` must stay green |
-| Edge function logic | put testable logic in `supabase/functions/_shared/*` (only `_shared/` is in CI) + a deno test |
+| Edge function logic | put testable logic in `supabase/functions/_shared/*` (runtime tests run only for `_shared/`; entrypoints are `deno check`ed by the `edge-typecheck` ratchet) + a deno test |
 | Shared component | vitest `.tsx` render test; contract test before consolidating a money-flow component |
 | i18n keys | en/nl parity (`i18n:check`) |
 
@@ -57,13 +57,13 @@ Open coverage gaps are tracked in [`TEST_COVERAGE_GAPS.md`](./TEST_COVERAGE_GAPS
 
 ## 6. Common mistakes to avoid
 
-- **`npm run typecheck` / root `tsc` checks NOTHING** (`files:[]`). The real gate is `npm run typecheck:baseline` (`tsc -p tsconfig.app.json`, ratcheted vs `scripts/tsc-app.baseline.json`).
-- **Edge-function `index.ts` bodies are NOT type-checked or deno-checked in CI** — only `_shared/` is. A runtime `ReferenceError` in an edge fn will pass CI. Verify imports by hand.
+- **Bare root `tsc` checks NOTHING** (`files:[]`); `npm run typecheck` runs the app project unratcheted (shows pre-existing errors — informational). The real gate is `npm run typecheck:baseline` (`tsc -p tsconfig.app.json`, ratcheted vs `scripts/tsc-app.baseline.json`).
+- **Edge-function `index.ts` bodies ARE now `deno check`ed in CI** (ratcheted `edge-typecheck` job, `check:edge-types`); `_shared/` additionally has runtime tests (`edge-tests`). Per-function runtime behavior still has no CI test — verify manually.
 - **Un-paginated `select()`** silently truncates at 1000 rows — corrupts money aggregates. Always paginate.
 - **Registration price must equal the invoice price must equal the confirmation email** — the confirmation email is composed in **two** places (client `CycleApplicationForm` self-reg + `submit-guest-intake` edge fn). Change both.
 - **Don't downgrade a paid booking/invoice** and don't hard-delete — soft-cancel only ([`INVARIANTS.md`](./INVARIANTS.md)).
 - **Split divisor = group-per-slot.** Pass `splitAmongPlayers = N` or you N×-overcharge (or under-split).
-- **types-drift CI job is perma-red** on a line-10 CLI mismatch → merge with `--admin`; the real migration gate is `supabase db reset`.
+- **types-drift CI gate is green** (stale perma-red claim removed 2026-08-07) — ship regenerated `types.ts` with the migration or pull the CI `types-generated` artifact; never merge `--admin`. `supabase db reset` remains the schema-validity gate.
 - **Don't re-add academy Agenda nav** (deliberately removed; route still mounted as a deep-link). Trainer keeps Agenda.
 
 ## 7. Deployment caveats
@@ -75,7 +75,7 @@ Open coverage gaps are tracked in [`TEST_COVERAGE_GAPS.md`](./TEST_COVERAGE_GAPS
 
 ## 8. Supabase edge-function caveats
 
-- All edge fns run with **`verify_jwt=false`** and **self-authenticate** via [`_shared/auth.ts`](../supabase/functions/_shared/auth.ts) (`requireUser` / service-role check). The SPA never holds a service-role key ([ADR-0007](./adr/README.md)).
+- Most edge fns run **`verify_jwt=false`** (88 of the 89 configured `config.toml` entries; the ~19 unconfigured entrypoints plus the configured-true ones keep GATEWAY JWT verification — roughly 20 of 108; inventory 2026-08-08). `false`-config functions authenticate class-appropriately: in-function user/service checks ([`_shared/auth.ts`](../supabase/functions/_shared/auth.ts) `requireUser`, or legacy direct `auth.getUser` in older fns), provider signatures (webhooks), or deliberate public/token scoping. `check:edge-config` gates a curated `MUST_VERIFY_JWT_FALSE` allowlist, not the whole set. The SPA never holds a service-role key ([ADR-0007](./adr/README.md)).
 - Service-role bypass is a real timing-safe key compare ([`_shared/service-role-auth.ts`](../supabase/functions/_shared/service-role-auth.ts)) — do not weaken it to a claims-only check (that was the fixed P0).
 - The `check:edge-config` gate enforces a hand-maintained `verify_jwt` allowlist — a new public function must be added to it deliberately.
 - **Bundle shared logic in `_shared/`** so it is testable and CI-covered; keep `index.ts` thin.
@@ -123,13 +123,15 @@ npm run lint             # ratcheted; never add violations, prune when you fix o
 npm run typecheck:baseline   # the REAL type gate (root tsc is a no-op)
 npm test                 # vitest unit + PGlite integration
 npm run test:edge        # deno tests on _shared/
+npm run check:edge-types # ratcheted deno check of edge entrypoints (CI job: edge-typecheck)
 npm run db:rehearse:all  # data-integrity / RLS / list-partition invariants
 npm run i18n:check       # en/nl parity (if you touched i18n)
 npm run build            # Vite production build
 ```
 
-For a migration change also run `npm run db:reset` (the real migration gate). Report which gates you ran.
+For a migration change also run `npm run db:reset` (the real migration gate) and `npm run db:types:check`
+(generated-types drift — CI enforces both on migration-bearing PRs). Report which gates you ran.
 
 ### Current state (do NOT reopen — fixed & deployed 2026-07-02)
 
-The [fresh-eyes audit](./audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) is the audit of record. These are **fixed and deployed** — treat any older audit describing them as open as stale/historical: forged-JWT service-role bypass (P0); `swap_slots` ownership guard; `merge_guest_players` cascade; M-17 webhook `23505` tolerance; extras charge/invoice; `create_invoice_deduped` dedup RPC; invoice-sync paging (now via `src/lib/supabasePaging.ts`); academy-Mollie routing. Push/OneSignal is disabled (email-only). Still open: Mollie idempotency-key on retry (G2), capacity lock on logged-in cyclus (B-1), refund/chargeback webhooks not recorded (B-3), no `deno check` on edge-fn `index.ts` (CI gap). See [`technical-debt/`](./technical-debt/) for the ranked backlogs.
+The [fresh-eyes audit](./audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) was the audit of record until the [2026-08 foundation audit](./audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md). These are **fixed and deployed** — treat any older audit describing them as open as stale/historical: forged-JWT service-role bypass (P0); `swap_slots` ownership guard; `merge_guest_players` cascade; M-17 webhook `23505` tolerance; extras charge/invoice; `create_invoice_deduped` dedup RPC; invoice-sync paging (now via `src/lib/supabasePaging.ts`); academy-Mollie routing. Push/OneSignal is disabled (email-only). Still open: B-1 capacity — corrected 2026-08-08: the authenticated cyclus insert IS locked by the current trigger, the uncovered path is service-role `finalize_cycle_proposals` (no lock/recount). The G2 Mollie idempotency-key SHIPPED (`_shared/mollie-idempotency.ts`). Since fixed (2026-08-07 correction): refund/chargeback reversal detection now alerts (`_shared/mollie-webhook-reversal*`), edge-fn `index.ts` files are `deno check`ed by the `edge-typecheck` ratchet, and paid invoices carry a DB-level delete/rewrite guard (`20260908100000_protect_paid_invoice_integrity.sql`). See [`technical-debt/`](./technical-debt/) for the ranked backlogs.

@@ -7,7 +7,7 @@ What money-path telemetry exists today, the gaps, and what this foundation adds.
 
 | Signal | Where | Durable? | Notes |
 |---|---|---|---|
-| `payment_audit_log` (table) | `create-invoice-payment` (`writeAuditLog`), `create-mollie-payment` | ✅ durable | Charge-side attempts: no-account, no-profile, mollie-error, success. RLS service-role only. Columns: `function_name, invoice_id, booking_id, recipient_type, mollie_org_id, amount, currency, status, error_message, mollie_payment_id, metadata`. |
+| `payment_audit_log` (table) | `create-invoice-payment` (`writeAuditLog`), `create-mollie-payment`, the guest charge fns (inline inserts — e.g. `create-guest-slot-payment/index.ts:71`), and `mollie-webhook` (16 sites via `_shared/payment-audit.ts`; corrected 2026-08-08) | ✅ durable | Charge-side attempts: no-account, no-profile, mollie-error, success — for `create-mollie-payment`/`create-invoice-payment`; the guest fns cover fewer branches (their no-account refusals write nothing — invariant #13 gap). RLS service-role only. Columns: `function_name, invoice_id, booking_id, recipient_type, mollie_org_id, amount, currency, status, error_message, mollie_payment_id, metadata`. |
 | Slack alerts (`slack-notify` / `notifySlackEdgeError`) | webhook, charge fns, invoice fns | ❌ ephemeral | Amount mismatch, cancelled-entity, no-account, forward failures. **Best-effort — a Slack outage = no alert.** |
 | `console` logs (`logStep`) | every edge fn | ❌ ephemeral | Structured console lines; visible in the Supabase Functions dashboard logs, not queryable historically. |
 | `email_delivery_events` (table) | `send-invoice-email`, Resend webhooks | ✅ durable | `sent` / `send_failed` + Resend message id + bounces/complaints. |
@@ -26,8 +26,11 @@ as console logs + best-effort Slack. So:
 
 A shared best-effort helper `supabase/functions/_shared/payment-audit.ts` (`writePaymentAuditLog` +
 `PaymentAuditStatus` vocabulary) — a thin wrapper over `payment_audit_log.insert` that **never throws**
-(a failed audit write must never break a payment). The `mollie-webhook` now writes an audit row at every
-terminal outcome:
+(a failed audit write must never break a payment). The `mollie-webhook` now writes an audit row at most
+outcomes (precision 2026-08-08: NOT every — unroutable/missing metadata and the failed/canceled/expired
+paths write no terminal row, and the booking-branch terminal write is paid-gated; see PAYMENT_INVARIANTS
+#13 for the exact gaps. Also shipped but missing from the table below: `payment_refunded`/
+`payment_charged_back` (:263), `paid_payment_no_bookings` (:912), `paid_hold_over_capacity` (:978)):
 
 | Event (`status`) | Where in `mollie-webhook` |
 |---|---|
@@ -59,7 +62,9 @@ where status in ('amount_mismatch_blocked','payment_for_cancelled_invoice',
   and created_at > now() - interval '7 days'
 order by created_at desc;
 
--- Payments that were received by the webhook but never marked paid (stranded):
+-- Webhook receipts without a paid terminal row — UNRESOLVED CANDIDATES, not confirmed stranded:
+-- failed/canceled/expired/pending payments legitimately have no terminal row today (see
+-- PAYMENT_INVARIANTS #13); review each hit against Mollie's own status before treating it as stranded.
 select r.mollie_payment_id, r.created_at
 from public.payment_audit_log r
 where r.status = 'webhook_received'
@@ -75,12 +80,12 @@ where r.status = 'webhook_received'
 
 Ranked, incremental — each is a small follow-up:
 
-1. **`payment_created` / `payment_create_failed` from the guest + rebook charge fns.** `create-mollie-payment`
-   and `create-invoice-payment` already write audit rows; the guest fns (`create-guest-slot-payment`,
-   `create-guest-cyclus-payment`) and `create-rebook-invoice-public` / `create-group-rebook-invoice` do not.
-   Add `payment_created` on Mollie success + `payment_create_failed` on the classified-error path (reuse the
-   same shared helper). **Value: completes the charge→confirm join for guest/rebook flows.**
-2. **`no_connected_mollie_account` from the charge fns** — they Slack-alert + write some audit rows; align them
+1. **Align the guest + rebook charge fns on the shared helper/vocabulary.** `create-mollie-payment`
+   and `create-invoice-payment` write audit rows via the shared path; the guest fns write INLINE
+   `payment_audit_log` inserts with their own shapes (e.g. `create-guest-slot-payment/index.ts:71` —
+   corrected 2026-08-08: they are not audit-silent). Align them (and the rebook fns) on the shared helper +
+   `payment_created`/`payment_create_failed` vocabulary. **Value: a uniform charge→confirm join.**
+2. **`no_connected_mollie_account` from the charge fns** — actual matrix (2026-08-08): `create-mollie-payment` audit + Slack, `create-invoice-payment` audit only, guest slot/cyclus/cart neither; align them
    on the shared `PaymentAuditStatus` vocabulary so reconciliation queries are uniform.
 3. **`hold_released` / `hold_expired`** — the release crons (`release_expired_guest_slot_holds`,
    `release_expired_rebook_holds`) are SQL cron jobs; emit a durable count (a `payment_audit_log` row or a

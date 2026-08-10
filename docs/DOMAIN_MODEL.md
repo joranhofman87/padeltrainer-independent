@@ -181,7 +181,7 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 | **UI** | `AcademyCreateInvoice.tsx`/`AcademyEditInvoice.tsx` (+ trainer twins), `AcademyInvoices.tsx`/`TrainerInvoices.tsx`, `PlayerInvoicesPage.tsx`, `PublicInvoicePay.tsx`, `MollieCallback.tsx`, `src/components/invoices/*` (`UpdateAffectedInvoicesDialog`). |
 | **lib** | `invoiceSync.ts` (recalc), `invoiceCalc.ts`, `invoiceNumber.ts`, `affectedInvoices.ts`, `applyAffectedInvoiceUpdates.ts`, `invoiceUpdateChoice.ts`, `cyclePayment.ts`, `academyPayments.ts`, `supabasePaging.ts` (shared paging helper, P1-7). |
 | **Edge/RPC** | `auto-create-invoice` (pass `splitAmongPlayers=N`), `create-mollie-payment`, `mollie-webhook`, `verify-mollie-payment`, `create-invoice-payment`, `split-invoice`, `recalculate-invoices`, `generate-invoice`/`send-invoice-email`/`forward-invoice`; RPCs `create_invoice_deduped` (P1-6), `reconcile_payments` (read-only), invoice-numbering RPC. |
-| **Dangerous** | No FK on `booking_ids` → every cancel/remove/price change **must** call the matching `sync*`. Mollie idempotency-key on retry is a known open gap (G2). Payment write-back guard `payment_status != 'paid'` is unconditional (idempotency + no-downgrade). |
+| **Dangerous** | No FK on `booking_ids` → every cancel/remove/price change **must** call the matching `sync*`. (The G2 Mollie idempotency-key shipped — `_shared/mollie-idempotency.ts`; corrected 2026-08-08.) Payment write-back guard `payment_status != 'paid'` is unconditional (idempotency + no-downgrade). |
 | **Invariants** | (1) Invoices reconcile whenever their bookings or price change (no stale billing). (2) Split divisor = group-per-slot, not whole cycle. (3) A paid booking is never downgraded. See [`payments/`](./payments/) for the 15 money invariants. |
 | **Tests** | `invoiceSync.pglite.test.ts`, `mollieWebhookWriteback.pglite.test.ts`, `mollieWebhookPayment.test.ts`, `scripts/db/rehearse-m10-invoice-numbering.ts`, `autoCreateInvoicePolicy.test.ts`. |
 
@@ -220,8 +220,8 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 | **UI** | `src/pages/admin/*` (Users, Academies, Clubs, Trainers, GuestPlayers, Pricing, Backups, Blog*, Locations, RatingSystems), `AdminDashboard.tsx`. |
 | **lib** | `admin.ts`, `adminStatus.ts`, `impersonate`-related helpers. |
 | **Edge/RPC** | `get-admin-stats`, `backup-database`, `bulk-cleanup-users`, `health-check`, `invoice-health-check`, `impersonate-user`, `admin-reset-password`, `create-stripe-checkout`, `stripe-subscription-webhook`, `customer-portal`, `cancel-stripe-subscription`, `reditus-referral-*`; pg_cron for reminders/expiry/digests. |
-| **Dangerous** | Impersonation, bulk-cleanup, backups are service-role privileged; edge fns run `verify_jwt=false` and each self-authenticates via `_shared/auth.ts` (forged-JWT service-role bypass was the audit P0 — now fixed). |
-| **Invariants** | (1) Every edge fn authenticates its caller in `_shared/auth.ts`; never trust the JWT claim alone for service-role escalation. (2) Cron jobs (claim expiry, reminders, digests) must be idempotent + heartbeat-monitored. |
+| **Dangerous** | Impersonation, bulk-cleanup, backups are service-role privileged; most edge fns run `verify_jwt=false` and authenticate class-appropriately (in-function via `_shared/auth.ts` or legacy direct `auth.getUser`; webhooks via their provider's verification contract — signature where offered, authoritative re-fetch otherwise; or an explicit public/token-scoped anonymous contract) — ~20 of 108 keep gateway JWT verification (see ARCHITECTURE_BOUNDARIES; forged-JWT service-role bypass was the audit P0 — now fixed). |
+| **Invariants** | (1) Every edge fn enforces its class-appropriate auth boundary (user/service fns via `_shared/auth.ts` or legacy direct `auth.getUser`; webhooks via their provider's verification contract — signature where offered, authoritative re-fetch otherwise; public fns via token scoping or an explicit documented anonymous contract); never trust the JWT claim alone for service-role escalation. (2) Cron jobs (claim expiry, reminders, digests) must be idempotent + heartbeat-monitored. |
 | **Tests** | `rls-smoke-test`, `get-admin-stats`/`health-check` fns; observability alerts via `slack-notify`. |
 
 ---
@@ -240,8 +240,9 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 
 - Edge functions + migrations do **not** auto-deploy — owner applies manually (CI only validates). Frontend
   auto-deploys via Vercel on merge to main.
-- Real schema gate is `supabase db reset`; the generated-**types-drift CI gate is perma-red** (CLI-version line
-  mismatch) — migrations/inert-FE merge with `--admin`.
+- Real schema gate is `supabase db reset`; the generated-types-drift CI gate is **green** (stale perma-red
+  note corrected 2026-08-07, CLI pinned 2.107.0) — ship regenerated `types.ts` with the migration or pull
+  the CI `types-generated` artifact; do not merge `--admin`.
 - `intake_requests.status` CHECK is drifted (migration lacks `'booked'` that prod + `finalize-proposals` use).
 - Root `tsc --noEmit` checks **nothing** (`files:[]`); the real typecheck gate is `typecheck:baseline`
   (`tsc -p tsconfig.app.json` ratcheted vs `scripts/tsc-app.baseline.json`).

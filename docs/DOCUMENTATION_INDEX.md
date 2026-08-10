@@ -3,7 +3,7 @@
 The canonical map of all padeltrainer documentation and the single entry point for anyone — AI agent or human — making changes to this codebase.
 
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-18
+Status: canonical (source of truth) | last updated 2026-08-08
 
 ---
 
@@ -23,7 +23,18 @@ If you are an AI agent (Claude / Codex) or a new human contributor, read these *
 | 7 | [PERFORMANCE_QUERY_RULES.md](PERFORMANCE_QUERY_RULES.md) | Read/query rules for scale (paging, indexes, N+1). |
 | 8 | [OBSERVABILITY_AND_RECOVERY.md](OBSERVABILITY_AND_RECOVERY.md) | How failures surface (Slack alerts) and how to recover. |
 | 9 | [QUALITY_GATES.md](QUALITY_GATES.md) | The exact CI gates and what each one actually checks. |
-| 10 | [FOUNDATION_ROADMAP.md](FOUNDATION_ROADMAP.md) | The go-forward plan and what's still open. |
+| 10 | [FOUNDATION_ROADMAP.md](FOUNDATION_ROADMAP.md) | Historical programme roadmap (notification units); foundation work now proceeds via rows 11–13. |
+| 11 | [FOUNDATION_DECISIONS.md](FOUNDATION_DECISIONS.md) | Owner decision ledger — OD-02–OD-06 accepted 2026-08-07, OD-09/10 accepted 2026-08-08; D-01–D-13 recorded direction (provenance noted in-doc); OD-07/08 open. |
+| 12 | [FOUNDATION_ARCHITECTURE_BLUEPRINT.md](FOUNDATION_ARCHITECTURE_BLUEPRINT.md) | Target architecture contract for the 100k-Player foundation programme (grounded in [audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md)). |
+| 13 | [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) | Ordered bounded release units U0–U10; U1a is the first authorized slice. |
+
+Deferred documentation chores (2026-08-08, code-adjacent — outside the docs-only checkpoint):
+`supabase/functions/_shared/payment-audit.ts:2` header comment says "RLS = false" (actual: RLS enabled +
+deny-all policy); `.github/workflows/test.yml:139-158` comments carry the stale "~96" count and pre-edge-typecheck
+phrasing; `docs/adr/0007-edge-functions-as-backend-boundary.md:22,47-49` + `docs/adr/README.md:27` retain the old
+all-`verify_jwt=false` and no-entrypoint-typecheck claims (refresh during ADR maintenance);
+`scripts/check-edge-deno.mjs:6` comment retains the stale "~96" count;
+`docs/payments/PAYMENT_OBSERVABILITY_AUDIT.md:83` calls two local audit helpers a shared path.
 
 Supporting canonical directories:
 
@@ -32,16 +43,19 @@ Supporting canonical directories:
 - [deployment/](deployment/) — how edge functions and migrations reach prod safely.
 - [technical-debt/](technical-debt/) — the prioritized backlogs feeding the roadmap.
 
-> **Naming note:** A few canonical docs are referenced above under target names that consolidate existing content: `AI_DEVELOPMENT_GUIDE` (extends [AGENTS.md](../AGENTS.md) + [EXTENDING_THE_DOMAIN.md](EXTENDING_THE_DOMAIN.md)), `ARCHITECTURE_BOUNDARIES` ([FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) + backend layering), and `FOUNDATION_ROADMAP`. Where a target file does not yet exist on disk, use the linked existing doc(s); sibling foundation work is consolidating these.
+> **Naming note:** A few canonical docs are referenced above under target names that consolidate existing content: `AI_DEVELOPMENT_GUIDE` (extends [AGENTS.md](../AGENTS.md) + [EXTENDING_THE_DOMAIN.md](EXTENDING_THE_DOMAIN.md)), `ARCHITECTURE_BOUNDARIES` ([FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) + backend layering). (`FOUNDATION_ROADMAP` is now a historical record — rows 11–13 are the active foundation docs.) Where a target file does not yet exist on disk, use the linked existing doc(s); sibling foundation work is consolidating these.
 
 ---
 
-## Current state (2026-07-02)
+## Historical state snapshot (2026-07-02 — superseded 2026-08-07)
 
-- **Audit of record:** [audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) — 2 P0, 9 P1, 16 P2, 11 P3.
+> **Current audit of record:** [audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md);
+> current work routes through the foundation programme docs (rows 11–13 above). The snapshot below is history.
+
+- **Audit of record at the time:** [audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) — 2 P0, 9 P1, 16 P2, 11 P3.
 - **Fixed + deployed to prod:** the P0 (forged-JWT service-role bypass) and P1-2 (swap_slots guard), P1-3 (merge_guest_players data-loss), P1-4 (M-17 webhook collision), P1-5/P2-7 (extras charge/invoice), P1-6 (invoice dedup RPC `create_invoice_deduped`), P1-7 (invoiceSync paging → new [src/lib/supabasePaging.ts](../src/lib/supabasePaging.ts)), P1-9 (academy-Mollie routing).
 - **Still open:** P1-1 (Google Calendar OAuth, parked), P1-8 (Stripe basil, disputed), and the P2 cluster.
-- **Any older audit that lists the forged-JWT P0 or P1-2..P1-9 as OPEN is STALE.** Only the fresh-eyes audit + the open items above are actionable.
+- **Any older audit that lists the forged-JWT P0 or P1-2..P1-9 as OPEN is STALE.** (Historical guidance — since 2026-08-07 the actionable source is the foundation programme, rows 11–13.)
 
 ---
 
@@ -69,6 +83,10 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | Doc | Class | Purpose | AI | Current? | Superseded / next step |
 |---|---|---|---|---|---|
 | **DOCUMENTATION_INDEX.md** (this file) | CC | The map + entry point | yes | yes | — |
+| [FOUNDATION_DECISIONS.md](FOUNDATION_DECISIONS.md) | CC | Owner decision ledger — accepted (OD-02–06, OD-09/10), recorded direction (D-01–13, provenance noted), open (OD-07/08) | yes | yes | — |
+| [FOUNDATION_ARCHITECTURE_BLUEPRINT.md](FOUNDATION_ARCHITECTURE_BLUEPRINT.md) | CC | Target architecture contract for the foundation programme (proposals marked vs current facts) | yes | yes | — |
+| [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) | CC | Bounded release units U0–U10; U1a authorized 2026-08-07 | yes | yes | — |
+| [FOUNDATION_ROADMAP.md](FOUNDATION_ROADMAP.md) | HAO | Historical pre-programme roadmap + the N0–N7 notification-unit record | ref | historical | Superseded for forward planning by FOUNDATION_EXECUTION_PLAN.md |
 | [DOMAIN_MODEL.md](DOMAIN_MODEL.md) | CC | 14-domain map + write boundaries | yes | yes | — |
 | [MUTATION_BOUNDARIES.md](MUTATION_BOUNDARIES.md) | CC | Dangerous writes + allowlist | yes | yes | — |
 | [INVARIANTS.md](INVARIANTS.md) | CC | App-wide hard rules + enforcement | yes | yes | — |
@@ -91,7 +109,7 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [CYCLE_SERIES_SPLIT_RUNBOOK.md](archive/CYCLE_SERIES_SPLIT_RUNBOOK.md) | OA | One-time mega-cycle split (APPLIED to prod 2026-06-29) | no | done | Archive |
 | [SCHEDULING_ARCHITECTURE.md](SCHEDULING_ARCHITECTURE.md) | UNU | Academy-first scheduling strategy note | yes | partial | Overlaps [DOMAIN_MODEL.md](DOMAIN_MODEL.md) |
 | [SHORT_LINKS.md](SHORT_LINKS.md) | CC | Branded `/s/<code>` short-link primitive (schema, worker, seams, invariants) | yes | yes | Distinct from `/t/` `/a/` profile slugs |
-| [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) | CC | **Person-unification program tracker** — one `persons` table over `profiles`+`guest_players` (`person_links` map, FAM-02, split-freeze), strangler-phased; phases 1–3.4 shipped, Phase 4 contract pending | yes | yes | Canonical model summarized in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §5 |
+| [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) | CC | **Person-unification program tracker** — one `persons` table over `profiles`+`guest_players` (`person_links` map, FAM-02, split-freeze), strangler-phased; phases 0–3.5d shipped, membership layer proceeds via [FOUNDATION_EXECUTION_PLAN.md](FOUNDATION_EXECUTION_PLAN.md) U1a (OD-03), Phase 4 contract pending | yes | yes | Canonical model summarized in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §5 |
 | [../src/lib/personIdentity.ts](../src/lib/personIdentity.ts) | CC | Code-as-doc: **the single TS home of the FAM-02 person rule** (person key, XOR ref, booking match scope, display name) — read it before touching any `player_id`/`guest_player_id` logic | yes | yes | SQL surfaces encode the same rule inline; keep in sync |
 | [COMPONENT_REUSE_AUDIT.md](COMPONENT_REUSE_AUDIT.md) | HAO | 2026-06-30 reuse audit + plan | ref | plan | [technical-debt/COMPONENT_REUSE_BACKLOG.md](technical-debt/COMPONENT_REUSE_BACKLOG.md) |
 | [EDGE_FUNCTIONS_FICWB_AUDIT.md](EDGE_FUNCTIONS_FICWB_AUDIT.md) | HAO | 2026-05-31 edge-fn deploy-status audit | ref | dated | — |
@@ -151,7 +169,8 @@ These are the evidence trail behind the canonical docs. Read them only when you 
 
 | Doc | Notes |
 |---|---|
-| [audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) | **Current audit of record** — 2 P0, 9 P1, 16 P2, 11 P3 |
+| [audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md) | **Current audit of record** — A1–A7 foundation audit at `ea54f08b` (2026-08-07); owner-reviewed |
+| [audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md) | Previous audit of record (2026-07-02) — 2 P0, 9 P1, 16 P2, 11 P3 |
 | [audits/FULL_APP_SCALE_READINESS_AUDIT_2026-06-29.md](audits/FULL_APP_SCALE_READINESS_AUDIT_2026-06-29.md) | Scale audit |
 | [audits/CORE_BOOKING_DOMAIN_HARDENING_AUDIT.md](audits/CORE_BOOKING_DOMAIN_HARDENING_AUDIT.md) | Booking-domain invariant audit |
 | [audits/FRONTEND_COMPONENT_ARCHITECTURE_AUDIT.md](audits/FRONTEND_COMPONENT_ARCHITECTURE_AUDIT.md) | FE maintainability audit |

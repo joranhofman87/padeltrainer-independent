@@ -22,12 +22,12 @@ P1-7 `invoiceSync` paging (`src/lib/supabasePaging.ts`), P1-9 Mollie charge==con
 
 | ID | Inv | Sev | Gap (where it lives now) | Recommended durable enforcement |
 |----|-----|-----|--------------------------|---------------------------------|
-| B-1 | I-2 | P1 | Logged-in **cyclus** insert not capacity-locked (single-slot IS) | Route the cyclus insert through a capacity-locked SECURITY DEFINER RPC (advisory lock + `FOR UPDATE`), mirroring `book_slot_for_payment` |
-| B-2 | I-5 | P1 | No guard forbids **deleting/overwriting a paid invoice**; financial-cols trigger exempts service role | Add a `deleteInvoice`/`cancelInvoice` `src/lib/` facade with a "can't delete paid" guard **and** a DB trigger blocking DELETE/financial-overwrite of `status='paid'` invoices that fires even for service role; add `.neq('status','paid')` status guard to `recalculate-invoices` (P2-6) |
-| B-3 | I-7 | P1 | **Refund / chargeback** webhooks silently ignored → reversed payment stays paid, no alert | In `mollie-webhook`, handle `status='charged_back'` and non-zero `amountRefunded`/`amountChargedBack`: don't resurrect state, write `payment_audit_log` + fire Slack alert for manual reconciliation (P2-5) |
+| B-1 | I-2 | P1 | ~~Logged-in cyclus insert~~ CORRECTED 2026-08-08: the authenticated cyclus path IS locked by the current trigger (`20260715100000` — advisory lock + seat count on every authenticated insert); the uncovered capacity path is service-role **`finalize_cycle_proposals`** (`20260701120000` inserts bookings; trigger skips service role; no lock/recount) | Add the same lock/count contract inside `finalize_cycle_proposals` (path-appropriate, not a byte copy) |
+| B-2 | I-5 | ~~P1~~ RESOLVED | **Shipped** (noted 2026-08-07): `20260908100000_protect_paid_invoice_integrity.sql` — DELETE block + financial-field freeze on paid rows, no service-role exemption; facade `deleteOrCancelInvoices` (`src/lib/invoices.ts`) | Done — see INVARIANTS.md I-5 |
+| B-3 | I-7 | ~~P1~~ RESOLVED | **Shipped** (noted 2026-08-07): `detectPaymentReversal` (`_shared/mollie-webhook-reversal*`) — reversal recognized, alert-only, no state resurrection (tested) | Done — see INVARIANTS.md I-7 |
 | B-4 | I-1 | P2 | Anon/PII **RLS read leaks**: cycles `settings.notify_admin_emails` (P2-1), shared-trainer `guest_players` roster (P2-2), `get_player_locations` trusts client `guest_player_id` (P3-3), `registrations` repeats the leak (P3-2) | Serve public forms via a postgres-owned `_public`/`_safe` view whitelisting form-safe columns; scope academy-manager guest visibility to guests actually associated with that academy; derive `guest_player_id` server-side |
 | B-5 | I-1 | P2 | `rebook_group_manage` appends to a **client-supplied `_invoice_id`** with no ownership scope (P2-3) | Add `AND rebook_group_id = v_group` (or captain-identity match) to the step-4 `UPDATE invoices` |
-| B-6 | I-13 | P0-if-broken | **No `deno check`/type-check** on the 96 edge-function `index.ts` (incl. `mollie-webhook`) (P2-9) | Add a CI job running `deno check` (not `--no-check`) over `supabase/functions/**/index.ts` with the import map, ratcheted vs a baseline like the tsc gate |
+| B-6 | I-13 | ~~P0-if-broken~~ RESOLVED | **Shipped** (noted 2026-08-07): the `edge-typecheck` CI job runs ratcheted `check:edge-types` (`deno check` vs `scripts/edge-deno.baseline.json`) over every discovered entrypoint | Done — see QUALITY_GATES.md |
 | B-7 | I-13 | P2 | No CI lint catches an edge-fn referencing a **new column/RPC without its migration** in the same PR | Add a CI check that greps changed edge fns for column/RPC names introduced by an unapplied-vs-main migration; keep the money-path deploy checklist mandatory |
 | B-8 | I-11 | P2 | `get-public-invoice` **soft-hides** a revoked token instead of hard-rejecting; no negative token test | Make `get-public-invoice` hard-reject a revoked/paid/cancelled token read; add a "token X cannot read invoice Y" test |
 | B-9 | I-8 | P2 | Deduped-invoice paid-match **tolerance scales with booking count**, no absolute cap (P3-5) | Cap the tolerance (e.g. `min(N*0.01, 0.05)`); document the magic number |
@@ -36,14 +36,14 @@ P1-7 `invoiceSync` paging (`src/lib/supabasePaging.ts`), P1-9 Mollie charge==con
 
 ## Notes for the implementer
 
-- **B-1** and **B-11** are the two capacity items — B-1 is a concurrency race (needs a new locked RPC), B-11 is
+- **B-1** and **B-11** are the two capacity items — B-1 is the `finalize_cycle_proposals` lock/count
+  hardening (fix INSIDE the existing RPC + a concurrency test — corrected 2026-08-08), B-11 is
   a partial-failure rollback in an existing edge fn (smaller). Do B-11 first (contained), B-1 as a focused RPC PR.
-- **B-2** and **B-3** are the two money-durability items; B-3 (reversal handling) also depends on
-  `payment_audit_log` being written from the webhook (see PAYMENT_INVARIANTS #13). Sequence B-3 after that.
+- **B-2** and **B-3** (the two money-durability items) are RESOLVED — see their table rows (noted 2026-08-07).
 - **B-4/B-5** are RLS/RPC tenancy fixes — each is a migration touching a policy or SECURITY DEFINER function;
   **confirm the product intent** for B-4's shared-trainer guest sharing before narrowing (audit flagged it as
   possibly intended).
-- **B-6** is the single highest-leverage CI hardening item — it protects every future edit to the money-path
-  edge functions and is a pure workflow change (no runtime risk).
-- None of these block the current measured-growth posture on their own, but B-1, B-2, B-3, B-6 are the ones to
-  land before onboarding materially more paying tenants or larger cycles.
+- **B-6** is RESOLVED — the `edge-typecheck` ratchet shipped (see its table row, noted 2026-08-07).
+- None of the remaining items block the current measured-growth posture on their own, but B-1 (now the
+  `finalize_cycle_proposals` capacity gap — see the corrected row) is the one to land before onboarding
+  materially more paying tenants or larger cycles.

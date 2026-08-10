@@ -107,9 +107,14 @@ one-off, an admin can cancel the specific stale holds (`status='cancelled'`) —
 ## 10. Wrong Mollie account routing suspected (Codex F3)
 
 **Symptoms:** an academy says a payment didn't arrive; money landed in the trainer's personal Mollie.
-**Inspect:** `payment_audit_log` for the payment's `recipient_type` / `mollie_org_id` (charge vs confirm);
-the slot's `academy_profile_id`; the trainer's `academy_trainers` memberships.
-**Do:** confirm charge-org == confirm-org (the F3 fix ensures both resolve off `slot.academy_profile_id`). If a
+**Inspect:** the CHARGE-side `payment_audit_log` row's `recipient_type` / `mollie_org_id` (the
+confirm/webhook side records neither — a charge-vs-confirm comparison is not yet executable, see
+PAYMENT_OBSERVABILITY_AUDIT deferred #5; corrected 2026-08-08); the slot's `academy_profile_id`; the
+trainer's `academy_trainers` memberships.
+**Do:** compare the logged CHARGE-side org against the expected routing (`slot.academy_profile_id` + the
+academy's Mollie connection) and Mollie's own dashboard evidence — confirm-side org proof awaits the
+deferred webhook logging (OBSERVABILITY_AUDIT #5); the F3 fix makes both sides resolve off
+`slot.academy_profile_id` by construction. If a
 past payment mis-routed (pre-fix / data corruption), **reconcile/refund** via Mollie and re-issue. Verify the
 edge fns are deployed (see the deploy-safety doc).
 **Do NOT:** change `slot.academy_profile_id` on a slot with live payments without understanding the effect on

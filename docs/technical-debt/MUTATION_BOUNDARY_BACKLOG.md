@@ -5,7 +5,8 @@ Audience / AI-read: yes
 Status: canonical (source of truth) | last updated 2026-07-02
 
 > Companion to [`../MUTATION_BOUNDARIES.md`](../MUTATION_BOUNDARIES.md) (the map) and the shrink-only
-> guardrail `src/test/mutationBoundaryAllowlist.json` (36 writes / 26 files today). Each item below is a
+> guardrail `src/test/fixtures/mutationBoundaryAllowlist.json` (34 writes / 25 files frozen; live scan
+29 / 21 as of 2026-08-07). Each item below is a
 > current allowlist entry that *should* eventually route through a `src/lib/*` facade or RPC. Ranking is
 > by money/data blast radius if the raw write diverges or is bypassed.
 

@@ -1,6 +1,9 @@
 # Payment Flow Map
 
-End-to-end map of every money flow in padeltrainer. Grounded in the code (file:line refs). Companion
+End-to-end map of the money flows in padeltrainer (the guest-CART checkout has no dedicated flow section
+yet — its RPC appears in the shared tables and its idempotency coverage in `PAYMENT_TEST_GAPS.md` G2;
+flow write-up pending). Grounded
+in the code (file:line refs). Companion
 docs: [`PAYMENT_INVARIANTS.md`](PAYMENT_INVARIANTS.md) (the rules these flows must never break),
 [`PAYMENT_RECONCILIATION_PLAN.md`](PAYMENT_RECONCILIATION_PLAN.md) (detecting drift),
 [`PAYMENT_RECOVERY_RUNBOOK.md`](PAYMENT_RECOVERY_RUNBOOK.md) (fixing it),
@@ -15,11 +18,11 @@ docs: [`PAYMENT_INVARIANTS.md`](PAYMENT_INVARIANTS.md) (the rules these flows mu
 |---|---|---|
 | `mollie-webhook` | `supabase/functions/mollie-webhook/index.ts` | THE confirm path. HTTP-status contract (200 = success or deliberate refusal, no retry; 500 = transient, Mollie retries). Booking branch (`metadata.booking_ids`) + invoice branch (`metadata.invoice_id`). |
 | `applyBookingPaymentWriteback` | `supabase/functions/_shared/mollie-webhook-payment.ts:98-112` | Atomic guarded UPDATE: `SET paid/confirmed WHERE payment_status!='paid' AND status!='cancelled'`, `.select()` returns only rows THIS delivery transitioned. Enforces idempotency + no-downgrade + no-resurrection in one predicate. |
-| `resolveSlotRecipient` (charge) / `resolveAccessToken` (confirm) | `_shared/guest-payment.ts:83-141` / `mollie-webhook/index.ts:143-198` | Recipient resolution. IDENTICAL predicate on both sides keyed off `slot.academy_profile_id` (Codex F3) → charge-org == confirm-org. trainer → active academy membership → academy Mollie (if ready), else trainer's own. |
+| `resolveSlotRecipient` (charge) / `resolveAccessToken` (confirm) | `_shared/guest-payment.ts:83-141` / `mollie-webhook/index.ts:143-198` | Recipient resolution. IDENTICAL predicate on both sides keyed off `slot.academy_profile_id` (Codex F3) → charge-org == confirm-org. An academy-scoped slot uses the academy's Mollie or REFUSES (400 — no trainer fallback, P1-9 fix); the trainer's own Mollie serves only slots without `academy_profile_id` (corrected 2026-08-08). |
 | `runBookingPaidSideEffects` | `_shared/mollie-booking-paid-side-effects.ts:26-140` | Post-paid side effects (invoice, email, Slack), gated to the FIRST paid transition. Non-fatal (swallows errors so a failed email/invoice never un-does the paid claim). |
 | `auto-create-invoice` | `supabase/functions/auto-create-invoice/index.ts` | Mints the invoice from booking rows. Split auto-detect, VAT, atomic `next_invoice_sequence` numbering, `forward-invoice` to bookkeeping. Dedup is PERSON-keyed (Phase 3.4, `supabase/migrations/20260902100000…`): `create_invoice_deduped` resolves the recipient guest-first through `person_links` (FAM-02 — a dual-keyed row belongs to the GUEST person), split-freeze-aware on both the inbound and candidate sides, advisory-locked per (trainer, person), service_role-ONLY grant; amount-neutral (`overlaps(booking_ids)` gate unchanged — only ever returns a pre-existing invoice for the SAME bookings, never merges charges or changes a total). Dual-key recipients skip the fast-path and go straight to the RPC; the single-key fast-path + 23505 race-fallback mirror the RPC's recipient arms via `_shared/invoice-dedupe-recipient.ts`. |
 | `create-invoice-payment` + `PublicInvoicePay` + `get-public-invoice` | `supabase/functions/…`, `src/pages/PublicInvoicePay.tsx` | The **no-login** `/pay/:token` stack (`verify_jwt=false`, token-gated). |
-| Booking RPCs | `book_slot_for_payment` (logged-in), `book_guest_slot_for_payment` / `book_guest_cyclus_for_payment` (guest), `respond_to_priority_claim` (rebook) | The **only** mutation boundary that inserts seats. Advisory-locked capacity checks; guest RPCs create TTL `payment_pending` holds. |
+| Booking RPCs | `book_slot_for_payment` (logged-in), `book_guest_slot_for_payment` / `book_guest_cyclus_for_payment` / `book_guest_cart_for_payment` (guest incl. cart), `respond_to_priority_claim` (rebook) | The seat-insert mutation boundary for booking flows (advisory-locked capacity checks; guest RPCs create TTL `payment_pending` holds). NOTE (2026-08-08): service-role `finalize_cycle_proposals` ALSO inserts seats, currently without a capacity lock/recount — backlog B-1. |
 
 Key tables: `bookings` (status/payment_status/hold_expires_at/mollie_payment_id/paid_at), `invoices`
 (status/total/booking_ids/public_token/player_id/guest_player_id/academy_profile_id/trainer_id/cycle_id/
@@ -51,7 +54,7 @@ GC; `pdf_url` is only a 1h signed URL), `slot_priority_claims`, `guest_players`,
 - **Entry:** same dialog (detects `slot.cyclus_id`) → `create-guest-cyclus-payment` (`…/create-guest-cyclus-payment/index.ts:57-358`). **Actor:** anonymous guest.
 - **DB rows:** `guest_players`; `bookings` N rows via `book_guest_cyclus_for_payment` (**all-or-nothing**), each `payment_pending` + `hold_expires_at`, `payment_amount` distributed whole-cents (`sum==cyclus total`), shared `public_token`.
 - **Edge/RPC:** RPC does ordered advisory locks on all slots (deadlock-safe), per-slot is_public + capacity, **single-trainer requirement** (all sessions same trainer → charge-org==confirm-org), atomic rollback on any `slot_full`. `distributeAmountCents` splits total.
-- **Mollie / Webhook / Invoice / Email:** as flow 1 but N bookings; ONE invoice covering all N; optional `split_payment` (÷ distinct players).
+- **Mollie / Webhook / Invoice / Email:** as flow 1 but N bookings; ONE invoice covering all N; optional `split_payment` (divisor frozen at charge time — G5 Option A, not live distinct players).
 - **Failure modes:** any session not-public/full → whole rollback; mixed/no trainer → 400; split recalc on re-click re-distributes.
 - **Tests:** `src/test/guestCyclusBooking.pglite.test.ts` (atomicity + idempotency). **No webhook test.**
 
@@ -63,7 +66,7 @@ GC; `pdf_url` is only a 1h signed URL), `slot_priority_claims`, `guest_players`,
 - **Mollie / Webhook:** as shared; webhook booking branch transitions all `booking_ids`.
 - **Invoice / Email:** one invoice per payment (dedup per trainer); one confirmation email (first booking).
 - **Player result:** Mollie checkout → `/app/booking-success?booking_id=…`; confirmed+paid; email.
-- **Failure modes:** failed payment → not confirmed, soft-cancel for cycles (A3); prior payment → reuse/refuse/cancel; slot full → 409; **cycle insert has no per-slot advisory lock (KEY RISK — concurrent cycle overbook)**; **split-payment divisor race (Codex F4 — no re-division if cohort changes mid-checkout)**.
+- **Failure modes:** failed payment → not confirmed, soft-cancel for cycles (A3); prior payment → reuse/refuse/cancel; slot full → 409; ~~cycle insert has no per-slot advisory lock~~ (corrected 2026-08-08 — the trigger locks + counts every authenticated insert; the uncovered path is service-role `finalize_cycle_proposals`, B-1); split divisor frozen at charge time by design (F4/G5 ✅ — no re-division is the decided behavior).
 - **Recovery:** `verify-mollie-payment` (ops manual) re-checks Mollie; `findCancelledPaidBookings` alerts paid-on-cancelled.
 - **Tests:** `bookLessonPaymentBookingIds.test.ts`, `cyclePayment.test.ts`, `mollieWebhookWriteback.pglite.test.ts`, `mollie-payment-ready.test.ts`, `bookingFinancialGuard.test.ts`.
 
@@ -129,7 +132,7 @@ All in `supabase/functions/mollie-webhook/index.ts`. **Actor:** Mollie webhook.
 ## 15. Academy Mollie missing / not-ready
 
 - **Where:** every charge fn calls `resolveSlotRecipient` / `getAcademyMolliePaymentReadiness` (`_shared/mollie-payment-ready.ts`). Readiness = `onboarding_complete AND charges_enabled AND access_token NOT NULL AND disconnected_at IS NULL` (+ org id not `pending_*`).
-- **Behavior:** academy not ready → fall back to **trainer's own Mollie** (bookings) / **400** (invoices — no trainer fallback). No account resolves → charge fn 400 `no_mollie_account` + audit + Slack; webhook → 200 + Slack refusal (M-25, never uses platform key). **Soft-disconnect (F06):** `mollie-disconnect-academy` never deletes the org row — it refuses while unpaid Mollie-linked invoices / live payment holds exist, then stamps `disconnected_at`; the row + tokens survive so late webhooks still settle, all NEW-charge paths refuse, and `mollie-callback` clears the stamp on reconnect.
+- **Behavior (corrected 2026-08-08):** academy-scoped charge + academy Mollie not ready → **REFUSE (400)** — no trainer fallback (P1-9 fix, `_shared/guest-payment.ts:123`, `create-mollie-payment/index.ts:573`); the trainer-Mollie branch runs only for slots without `academy_profile_id`. No account resolves → `create-mollie-payment` 400 + audit + Slack; `create-invoice-payment` 400 + audit only (no Slack); the GUEST charge fns 400 with neither audit nor Slack (`create-guest-slot-payment:190`, `-cyclus-:139`, `-cart-:152` — invariant #13 gap); webhook → 200 + Slack refusal (M-25, never uses platform key). **Soft-disconnect (F06):** `mollie-disconnect-academy` never deletes the org row — it refuses while unpaid Mollie-linked invoices / live payment holds exist, then stamps `disconnected_at`; the row + tokens survive so late webhooks still settle, all NEW-charge paths refuse, and `mollie-callback` clears the stamp on reconnect.
 - **Reason codes:** `no_row`, `onboarding_incomplete`, `charges_disabled`, `missing_access_token`, `disconnected` (F06 soft-disconnect). Mollie 422 → `mollie_not_ready`.
 - **Tests:** `mollie-payment-ready.test.ts` (all reason codes). **Gap:** no M-25 webhook-refusal regression test.
 
@@ -160,7 +163,7 @@ All in `supabase/functions/mollie-webhook/index.ts`. **Actor:** Mollie webhook.
 | Paid on cancelled booking/invoice | `findCancelledPaidBookings`; webhook cancelled-entity guard + Slack | **manual refund** via Mollie dashboard |
 | Amount mismatch | webhook amount guard + Slack (200, no retry) | manual review + refund/correct |
 | Webhook never arrived | booking stuck `pending` | `verify-mollie-payment` (ops) re-checks Mollie |
-| Wrong Mollie org (F3) | `payment_audit_log` recipient vs webhook | manual reconciliation/refund |
+| Wrong Mollie org (F3) | charge-side `payment_audit_log` `recipient_type`/`mollie_org_id` only — the confirm/webhook side records neither, so a charge-vs-confirm comparison is not yet executable (OBSERVABILITY_AUDIT deferred #5) | manual reconciliation/refund |
 | Guest can't see paid data | after account claim | re-run `link_guest_data_to_profile` |
 | Invoice not forwarded | `forwarded_at` null | `forward-invoice force=true` |
 | Orphaned invoice renders (renumber, pre-Theme-A deletions) | `invoice-storage-gc` (daily, report-only until flipped) — objects matching NO invoice `render_path`, 90-day grace, 200/run cap, Slack summary | auto once `{ apply: true }`; user avatars removed by `deleteUserData` (R06) |
@@ -169,9 +172,9 @@ See `PAYMENT_RECOVERY_RUNBOOK.md` for step-by-step procedures.
 
 ## Known open risks (feed the invariants + test gaps)
 
-- **Codex F4 split-payment divisor race** (logged-in cycle): divisor fixed at charge time; concurrent booker changes headcount, no re-division. No test.
-- **Cycle insert has no per-slot advisory lock** (logged-in): concurrent cycle bookings can overbook.
-- **`payment_audit_log` not written by the webhook** (only console + Slack) → no durable webhook audit trail for reconciliation.
+- ~~Codex F4 split-payment divisor race~~ **RESOLVED by design (G5 Option A, noted 2026-08-08):** the divisor is FROZEN at charge time (to capacity); no re-division is the decided behavior (`PAYMENT_TEST_GAPS.md` G5 ✅). The trivial concurrency test remains owed.
+- ~~Cycle insert has no per-slot advisory lock~~ **CORRECTED 2026-08-08:** the authenticated cycle insert is locked + seat-counted by the current trigger (`20260715100000`); the remaining uncovered capacity path is service-role `finalize_cycle_proposals` (backlog B-1).
+- ~~`payment_audit_log` not written by the webhook~~ **CORRECTED 2026-08-08:** the webhook writes audit rows at 16 sites; remaining gaps are the unroutable-metadata branch and the failed/canceled/expired outcomes (terminal rows are paid-gated) — see PAYMENT_INVARIANTS #13.
 - **Rate limits fail open** on DB error (guest flows).
 - **Silent registration mint failure** (business profile incomplete) → registrant gets confirmation with no pay link, no Slack alert.
 - **No automated Mollie-webhook end-to-end / M-25 refusal / F3 charge-confirm-mismatch tests.**

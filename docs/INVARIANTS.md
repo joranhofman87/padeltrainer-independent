@@ -5,7 +5,7 @@ enforcement is still missing. Read this before any change to booking, payment, i
 code.
 
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-18
+Status: canonical (source of truth) | last updated 2026-08-07
 
 An **invariant** is a property that must hold no matter what any UI, edge function, direct API call, or
 future AI edit does. The design principle: money/data integrity lives **at or below the RPC/DB layer** so a
@@ -18,7 +18,9 @@ Companion docs (do not duplicate — link):
 matrix), [`payments/PAYMENT_FLOW_MAP.md`](payments/PAYMENT_FLOW_MAP.md) (charge→confirm sequence),
 [`audits/CORE_BOOKING_DOMAIN_HARDENING_AUDIT.md`](audits/CORE_BOOKING_DOMAIN_HARDENING_AUDIT.md) (20-invariant
 scale audit), [`audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md`](audits/FULL_AUDIT_FRESH_EYES_2026-07-02.md)
-(current findings), [`DOMAIN_MODEL.md`](DOMAIN_MODEL.md), [`adr/`](adr/).
+(historical findings — the current audit of record is
+[`audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md`](audits/FOUNDATION_ARCHITECTURE_AUDIT_2026-08.md)),
+[`DOMAIN_MODEL.md`](DOMAIN_MODEL.md), [`adr/`](adr/).
 
 Risk legend: **P0** = money lost / double-charged / cross-tenant leak · **P1** = stuck money or capacity
 needing manual recovery · **P2** = observability/UX degradation. Enforcement legend: 🟢 durable (DB/RPC/RLS)
@@ -40,7 +42,7 @@ post-fix code.
 | I-2 | No overbooking (capacity respected) | capacity trigger + capacity-locked RPC | 🟡 |
 | I-3 | No duplicate active booking per (player\|guest, slot) | DB partial unique index (M-17) | 🟢 |
 | I-4 | No duplicate active invoice per booking | DB partial unique index + `create_invoice_deduped` RPC | 🟢 |
-| I-5 | A paid invoice cannot be hard-deleted | trigger (updates) + 🔴 no delete guard | 🟡 |
+| I-5 | A paid invoice cannot be hard-deleted or financially rewritten | `protect_paid_invoice_integrity` trigger (DELETE block + financial-field freeze; no service-role exemption) | 🟢 |
 | I-6 | A paid booking cannot be silently cancelled / downgraded | unconditional `!= 'paid'` write guard + soft-cancel | 🟢 |
 | I-7 | A cancelled booking is not resurrected by a stale webhook | `!= 'cancelled'` guard + alert | 🟢 |
 | I-8 | Payment amount == invoice / booking amount | webhook amount guards + server-side recompute | 🟡 |
@@ -54,7 +56,7 @@ post-fix code.
 | I-16 | A dual-keyed row belongs to the GUEST person (FAM-02); ownership predicates are pure-profile-guarded | pure-profile RLS policies + guest-first/guest-exclusive RPC arms | 🟢 |
 | I-17 | A split-frozen guest is its OWN person — no person arm acts on its link | `is_guest_split_frozen()` gate on every person arm, both sides | 🟢 |
 | I-18 | `person_id` columns are derived, never writer-trusted | SECURITY DEFINER stamp triggers (guest-first re-derivation) | 🟢 |
-| I-19 | `persons` / `person_links` / `person_merge_review` are definer-RPC-only (zero policies) | RLS enabled with NO policies + REVOKEd helpers | 🟢 |
+| I-19 | `persons` / `person_links` / `person_merge_review` are client-inaccessible (zero policies; definer-RPC or trusted service-role access) | RLS enabled with NO policies + REVOKEd helpers | 🟢 |
 | I-20 | Invoice dedup resolves a guest-bearing recipient guest-EXCLUSIVELY; the lock serializes every pair the recheck can dedup | person-keyed `create_invoice_deduped` (freeze-independent lock key) | 🟢 |
 | I-21 | `linked_profile_id` is never identity truth; an explicit twin stamp outranks it | backfill trust rule + twin-precedence readers | 🟢 |
 | I-22 | A person-ref expansion inside a tenant-scoped reader is intersected with the tenant scope | in-scope-guests predicate on every ref-set expansion | 🟢 |
@@ -97,12 +99,16 @@ holds** (`hold_expires_at > now()`) so abandoned checkouts self-heal; release cr
 
 **Tests:** `guestSlotBooking.pglite.test.ts` (expired holds don't occupy capacity), `cyclePayment.test.ts`.
 
-**Missing / open:** the **logged-in cyclus** insert is not routed through a per-slot capacity lock (the
-capacity trigger counts seats but has no advisory lock on the cyclus path) → concurrent cyclus bookings can
-overbook. Separately, the capacity trigger enforces *count*, not per-(slot, identity) uniqueness — I-3 covers
-the identity side. See backlog item B-1.
+**Missing / open (corrected 2026-08-08):** the authenticated path — including cyclus inserts — IS covered:
+the current `enforce_booking_slot_tier` revision (`20260715100000`) takes the slot advisory lock + seat
+count for every authenticated insert with a real `slot_id`, and the service-role booking RPCs repeat the
+guard internally. The trigger returns early for service-role writers, and the one service-role path with
+NO lock/recount is `finalize_cycle_proposals` (`20260701120000` inserts bookings directly) — that is the
+uncovered capacity path (supersedes the old "logged-in cyclus" wording). Separately, the capacity trigger
+enforces *count*, not per-(slot, identity) uniqueness — I-3 covers the identity side. See backlog item B-1.
 
-**Risk:** P1 (concurrency-only, needs simultaneous cyclus bookings on the last seat).
+**Risk:** P1 (service-role proposal-finalization path only; needs concurrent finalizes/bookings on the
+last seat).
 
 ## I-3 — No duplicate active booking per (player | guest, slot) 🟢 (P0)
 
@@ -150,7 +156,7 @@ freeze, and dual-key double-bill cases); `auto-create-invoice` routes through th
 
 **Risk:** P0, now durably enforced (was a TOCTOU before the RPC).
 
-## I-5 — A paid invoice cannot be hard-deleted 🟡 (P2→P1 if broken)
+## I-5 — A paid invoice cannot be hard-deleted or financially rewritten 🟢 (P0)
 
 **Why:** deleting a paid invoice destroys the record of money received (accounting/VAT + customer proof).
 
@@ -159,11 +165,14 @@ an invoice (`supabase/migrations/20260530120000_p0_protect_invoice_player_update
 `20260624120000_protect_booking_financial_columns_for_players.sql`); `public_token` auto-revokes on
 paid/cancelled. Cancellation of bookings is **soft** (`status='cancelled'`, never `DELETE`).
 
-**Missing / open (real gap):** there is **no** DB trigger or lib facade that forbids *deleting* a `paid`
-invoice, and no `deleteInvoice`/`cancelInvoice` facade in `src/lib/` exists yet (grep: none). The
-CORE hardening audit flagged this as E-009/E-010 (P2). The financial-columns trigger also **short-circuits for
-service role** (`auth.uid() IS NULL`), so an edge function or admin path can still overwrite a paid invoice —
-fresh-eyes P2-6 (`recalculate-invoices` has no status guard). See backlog B-2.
+**Resolved (migration `20260908100000_protect_paid_invoice_integrity.sql`; doc corrected in the 2026-08-07
+checkpoint):** the DB-final backstop now exists — `trg_protect_paid_invoice_integrity` blocks DELETE of a
+paid invoice and freezes its financial composition/identity (total, subtotal, VAT fields, line items,
+invoice number/date) on any UPDATE touching a paid row, with **no service-role or admin short-circuit**
+(a plain trigger; applies to every writer). The lib facade is `deleteOrCancelInvoices`
+(`src/lib/invoices.ts` — drafts DELETE, everything else soft-cancels; paid refused). Status transitions
+(paid→cancelled/refunded), `pdf_url`, delivery flags, billing details, and `booking_ids` stay mutable by
+design.
 
 **Progress (2026-07-15, master-audit Theme A / R02+R03):** the biggest hard-delete *path* is closed — account
 deletion no longer erases financial rows. `delete-user-data` retains invoices + slot bookings via an
@@ -172,10 +181,10 @@ anonymized-shell `trainer_profiles` (migration `20260826140000`: `invoices.train
 player bookings via `bookings.anonymized_at` + `bookings.player_id` CASCADE→SET NULL (migration
 `20260826130000`). `bulk-cleanup-users` (the admin wipe tool) now routes through the same shared
 `deleteUserData` instead of its own drifted hard-delete copy, so **every** deletion door shares the
-retained-financials semantics. The DB-level delete guard (trigger forbidding `DELETE` of a paid invoice)
-is **still missing** — a direct service-role/SQL delete remains possible.
+retained-financials semantics. The DB-level delete guard has since shipped (see above) — only a
+superuser/table-owner SQL session can bypass a trigger.
 
-**Risk:** P2 today (no automated path deletes paid invoices), P1 if a future delete surface is added without a guard.
+**Risk:** P0-class protection, now durably enforced at the DB layer.
 
 ## I-6 — A paid booking cannot be silently cancelled / downgraded 🟢 (P0)
 
@@ -201,10 +210,12 @@ alerts instead of resurrecting.
 
 **Tests:** `mollieWebhookWriteback.pglite.test.ts` (no-resurrection; strict hold not resurrected).
 
-**Missing / open:** refund/chargeback webhooks are silently ignored (fresh-eyes P2-5) — reversed payments stay
-`paid`/`confirmed` with no alert. Not a resurrection, but the reversal is unreconciled. See backlog B-3.
+**Resolved (doc corrected in the 2026-08-07 checkpoint):** reversal detection now exists —
+`detectPaymentReversal` (`supabase/functions/_shared/mollie-webhook-reversal*`) recognizes
+`charged_back` and non-zero refunded/charged-back amounts; the webhook path alerts without resurrecting
+or downgrading state (deliberately alert-only; tested in `mollie-webhook-reversal.test.ts`).
 
-**Risk:** P0 for resurrection (guarded); P2 for the unhandled-reversal observability gap.
+**Risk:** P0 for resurrection (guarded); reversal detection/alerting is resolved (alert-only by design).
 
 ## I-8 — Payment amount == invoice / booking amount 🟡 (P0)
 
@@ -221,8 +232,9 @@ single-source-of-truth extras decision so charge total and invoice total agree.
 (`amountsMatch`, `distributeAmountCents`).
 
 **Missing / open:** the webhook validates the *charge* sum, not the invoice *total*, on the fresh-creation path;
-`recalculate-invoices` can overwrite a just-paid invoice total with no status guard (P2-6). The `0.01`×N
-tolerance is an undocumented magic number (P3-5). See backlog B-4.
+the `0.01`×N tolerance is an undocumented magic number (P3-5). The former P2-6 recalc-overwrites-paid risk
+is now blocked at the DB layer (`protect_paid_invoice_integrity` freezes paid composition; recalc also
+filters out paid rows). See backlog B-9.
 
 **Risk:** P0; the systematic extras bug is fixed, residual gaps are P2/P3.
 
@@ -276,7 +288,7 @@ read) return trimmed field sets. Tokens are UUIDs (unguessable) — the URL *is*
 
 **Missing / open:** `get-public-invoice` relies on `decidePublicInvoiceAccess('paid')` to hide the pay UI
 rather than **hard-rejecting** a revoked-token read; no explicit "token X cannot read invoice Y" test. See
-backlog B-5.
+backlog B-8.
 
 **Risk:** P2 (tokens are unguessable UUIDs; the gap is a hard-reject + a negative test, not a live leak).
 
@@ -309,9 +321,9 @@ CI's `supabase db reset` gate (validates the migration applies) live in
 doesn't fail typecheck — which is exactly why the runtime dependency must be caught at deploy time.
 
 **Missing / open (real gaps):**
-1. **No `deno check` / type-check on the 96 edge-function `index.ts` files** (fresh-eyes P2-9) — CI runs
-   `deno test --no-check` on `_shared/` only, so a mistyped or un-imported symbol in `mollie-webhook/index.ts`
-   ships as a runtime `ReferenceError` with a green build.
+1. **RESOLVED (doc corrected in the 2026-08-07 checkpoint):** the `edge-typecheck` CI job
+   (`check:edge-types`) runs a ratcheted real `deno check` over every discovered edge entrypoint;
+   `edge-tests` still runs runtime tests on `_shared/` only.
 2. No CI lint that fails a PR when an edge-fn diff references a new column/RPC without the migration in the
    same PR marked deploy-ordered.
 
@@ -351,7 +363,7 @@ enforcement time (2026-07-15; 533 cycles + 12 registrations, all academy-owned).
 
 ## Person identity (unification program)
 
-The [person-unification program](PERSON_UNIFICATION_PLAN.md) (IN EXECUTION — Phases 0–3.4 shipped)
+The [person-unification program](PERSON_UNIFICATION_PLAN.md) (IN EXECUTION — Phases 0–3.5d shipped)
 introduces one canonical human (`persons`, "has a login" = `user_id IS NOT NULL`) behind the two
 legacy tables (`profiles`, `guest_players`). The identity rules below are invariants **today** —
 every shipped person-keyed reader/writer enforces them, and every future one must. The doctrine
@@ -371,7 +383,10 @@ most 1 profile + N guests per person. The backfill
 (`supabase/migrations/20260826280000_persons_backfill.sql`) mints **deterministic ids** (a profile's
 person reuses the profile uuid; a guest-only person its guest uuid), hard-verifies (any invariant
 violation RAISES and rolls back the whole migration), and installs AFTER INSERT live-mint triggers
-so the map never decays on new signups. Auto-merge happens **only** on the locked unambiguous rules
+so the map never decays on new signups. Auto-merge happens **only** on the shipped unambiguous rules
+(explicit twin stamp passing the trust rule — unaffected by OD-09 — and the unique-email B2 arm, which is
+temporary behavior pending the OD-09 retirement slice: owner 2026-08-08, D-04 supersedes B2, future
+writers must not extend email-based merging) —
 (explicit twin stamp passing the trust rule, or a system-wide-unique exact-email match — never
 inside a shared-email cluster); everything ambiguous queues in `person_merge_review` for owner
 sign-off.
@@ -397,7 +412,13 @@ invoice-dedup recipient is guest-EXCLUSIVE (I-20). **Deliberate boundary:** rela
 helpers (`is_player_of_trainer` / `is_player_of_academy` — "does my person relate to this
 trainer/academy?") are **not** pure-profile-guarded: either key legitimately establishes the
 relationship. The guard belongs on *ownership* ("this row is mine to read/cancel/bill"), not on
-*visibility*.
+*visibility*. A second deliberate boundary is the invoice **addressee exemption** (3.1-r3, kept in 3.2 —
+`20260827100000_phase32_players_overview_person_dedup.sql:55-59`): an invoice *addressed* to a profile is
+legitimately that account's to see and pay, so `get_my_invoices`
+(`20260903100000_phase35a_player_invoice_visibility.sql:98`, split-freeze-gated outside the arms) and the
+`generate-invoice` authz helper (`_shared/invoice-player-authz.ts`, including its documented deliberate
+email fallback) keep a profile arm for guest-bearing invoices. Addressee-ship is payment authority, not
+seat ownership — FAM-02's pure-profile guard governs seat/booking ownership, not invoice addressing.
 
 **Tests:** `attendancePersonRls.pglite.test.ts`; the FAM-02 arms in
 `createInvoiceDeduped.pglite.test.ts`.
@@ -445,7 +466,7 @@ non-DEFINER silent-NULL bug class).
 
 **Risk:** P0, enforced.
 
-## I-19 — `persons` / `person_links` / `person_merge_review` are definer-RPC-only 🟢 (P0)
+## I-19 — `persons` / `person_links` / `person_merge_review` are client-inaccessible (definer-RPC or trusted service-role access only) 🟢 (P0)
 
 **Why:** `persons` aggregates identity + contact PII **across tenants** (one human can relate to
 many trainers/academies), and `person_links`/`person_merge_review` expose the identity map itself.
@@ -455,10 +476,12 @@ leak.
 **Enforced:** all three tables have RLS **enabled with ZERO policies BY DESIGN**
 (`supabase/migrations/20260826260000_persons_expand.sql`,
 `supabase/migrations/20260826280000_persons_backfill.sql`) — client roles cannot touch them at all.
-Access goes exclusively through deliberate SECURITY DEFINER RPCs that scope output to the caller
-(`get_my_person_id`, `get_cycle_roster_names`, `get_players_overview`, `get_person_refs_for_scope`,
-…); definer-internal helpers are additionally REVOKEd from `anon`/`authenticated` (e.g.
-`is_guest_split_frozen`). **Do not "fix" the missing policies** — the absence IS the control. Any
+Client-role access goes exclusively through deliberate SECURITY DEFINER RPCs that scope output to the
+caller (`get_my_person_id`, `get_cycle_roster_names`, `get_players_overview`,
+`get_person_refs_for_scope`, …); trusted service-role internals in edge functions may also read the
+tables directly (service_role bypasses RLS by design — e.g. `_shared/invoice-player-authz.ts`,
+`_shared/guest-whatsapp-optin.ts`); definer-internal helpers are additionally REVOKEd from
+`anon`/`authenticated` (e.g. `is_guest_split_frozen`). **Do not "fix" the missing policies** — the absence IS the control. Any
 future read policy is a deliberate, reviewed exception (Phase 3.5 scope), never a default.
 
 **Tests:** the pglite suites exercise the readers under restricted roles; direct selects fail.
@@ -535,7 +558,7 @@ the 3.5d expansion shipped without it.
 
 ## When you touch this area
 
-- Adding a new mutation path? It must respect I-1..I-21 **at the RPC/DB layer**, not just in the UI. See
+- Adding a new mutation path? It must respect I-1..I-22 **at the RPC/DB layer**, not just in the UI. See
   [`EXTENDING_THE_DOMAIN.md`](EXTENDING_THE_DOMAIN.md).
 - Touching anything person-keyed? Every person arm must be split-freeze-gated on both sides (I-17),
   ownership predicates pure-profile-guarded (I-16), and identity resolved from `person_links` — never
