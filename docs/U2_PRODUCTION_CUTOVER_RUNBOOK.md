@@ -68,13 +68,26 @@ from the start.**
 | Item | Local / CI | Production | Verdict |
 |---|---|---|---|
 | Postgres major | **17** (`public.ecr.aws/supabase/postgres:17.6.1.127`) | **17** (17.6.1.155) | **same major** |
-| Patch | 17.6.1.127 | 17.6.1.155 | patch-level delta only, no API surface change |
+| Image build | 17.6.1.127 | 17.6.1.155 | Supabase image-build delta. Same PG major, but extension versions and platform packaging can differ, so this is **not** proof of an identical surface — it is a gap to close, not a reassurance |
 | Compute | n/a | Small | PITR prerequisite satisfied |
 | PITR | n/a | 7-day, permanent, valid window | rollback story below is upgraded — see §1 |
 
-Every gate in `scripts/ci-equivalent.sh --db` — the complete migration chain from empty via
-`supabase db reset`, the PGlite rehearsals, all five real-Postgres suites and the U2 tests — runs on
-that Postgres 17 image. There is no Postgres 15 or 16 in the loop to re-validate against.
+**Which gates actually run on that image, precisely** — an earlier draft of this section claimed "the
+whole gate", and that was wrong:
+
+| Gate | Engine | On production's engine? |
+|---|---|---|
+| `supabase db reset` — the complete migration chain from empty | Supabase PG **17.6.1.127** | **yes**, same major |
+| the five real-Postgres suites (academy-deletion, backup-coverage, u2-no-email-alone-merge, u2-identity-verification, u2-identity-worker-routing) | same local PG 17 | **yes** |
+| generated types drift | same local PG 17 | **yes** |
+| **PGlite rehearsals** (`db:rehearse:all`) | **PGlite 0.5.1 → PostgreSQL 18.3 (wasm)** | **NO** |
+
+The PGlite rehearsals do not run on Postgres 17 at all — they run an embedded wasm build that reports
+**18.3**. That is not a defect (they are behavioural rehearsals of application logic, not a
+compatibility harness, and running *ahead* of production catches removals rather than hiding them),
+but the claim that every gate validates on PG17 was false and is corrected here. The
+migration-chain and real-Postgres evidence — which is what a version claim rests on — does run on
+Postgres 17.
 
 **The one residual:** local is 127, production is 155. Same major, patch apart. To close it exactly,
 bump the Supabase CLI (2.107 → 2.113 is available) so it pulls the newer image, then re-run the full
@@ -92,9 +105,22 @@ gate. This is worth doing once before the window, and is a local change with no 
 
 **Removed/deprecated extensions — none present.** A repo-wide grep over `supabase/migrations/` and
 `supabase/functions/` for `pgjwt`, `plv8`, `timescaledb`, `plcoffee` and `plls` returns **zero
-matches**, so no U2 SQL (and no pre-existing SQL) depends on anything PG17 dropped. The repo also
-issues no `CREATE EXTENSION` of its own — extensions are platform-managed — so there is no
-extension-creation step that could fail mid-migration.
+matches**, so no U2 SQL (and no pre-existing SQL) depends on anything PG17 dropped.
+
+**The repo DOES issue `CREATE EXTENSION`** — a earlier draft of this section said it did not, which
+was wrong (the grep behind that claim was malformed and returned an empty result). All are
+`IF NOT EXISTS` and all are extensions PG17 supports, so they are no-ops against the upgraded
+database, but they are migration steps that run and they belong in the inventory:
+
+| Migration | Statement |
+|---|---|
+| `20260117134212_aa05bda0…` | `CREATE EXTENSION IF NOT EXISTS pg_cron` |
+| `20260117134212_aa05bda0…` | `CREATE EXTENSION IF NOT EXISTS pg_net` |
+| `20260330204208_90a40c27…` | `CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions` |
+| `20260506080500_repair_enable_pgcrypto` | `CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions` |
+
+These are already applied in production (they long predate this release), so the pending set does not
+re-run them. `extensions.digest` is U2's only direct pgcrypto call.
 
 **Still owed before release-ready:** re-run the complete gate on an image matching production's patch
 level, and re-confirm the extension list against the live database during the read-only preflight —
@@ -113,12 +139,15 @@ is the point.
 | `walg_enabled` | `true` (daily physical backups) | `true` |
 | `pitr_enabled` | **`false`** | **`true`, permanent, 7-day window** |
 | Best restore granularity | the 03:15 UTC daily backup | **any second within 7 days** |
-| Worst-case data loss on restore | up to ~24h of bookings, payments, invoices | **seconds** |
+| Data lost by restoring to the pre-migration point | everything since the 03:15 backup — up to ~24h | **everything since the window opened** |
 
-**Consequence, restated.** Before, a restore-based rollback discarded up to a day of real revenue, so
-rollback had to be forward-only with restore as a last resort. With PITR that constraint is gone:
-restoring to the instant before the first migration is now a *survivable* option rather than a
-catastrophic one.
+**Consequence, restated — and note what PITR does NOT buy.** PITR gives second-level choice of
+*restore point*; it does not cap elapsed data loss. Rolling back to the instant before the first
+migration still discards everything committed between that instant and the decision — if the call is
+made 30 minutes in, that is 30 minutes of webhooks, bookings and payments. What changed is the floor:
+before, the best available point was up to 24h stale, so a restore threw away a day of revenue no
+matter how fast the decision. Now the loss is bounded by *how long you take to decide*, which is
+under the operator's control. That is why step 3 records a rollback-decision deadline.
 
 **It is still not the preferred path.** Forward-only rollback (compensating migration + redeploy of
 the recorded previous edge-function versions, §3) stays first choice, because a PITR restore also
@@ -193,7 +222,8 @@ Computed from the import graph (`origin/main...HEAD`) and independently cross-ch
 | `mollie-webhook` | v66 (2026-08-07) | changed |
 | `verify-identity` | **not deployed** | new (#647) |
 | `admin-academy-deletion` | **not deployed** | new (#645) |
-| `notification-email-worker` | v22 (2026-08-07) | **will change in slice A** |
+| `notification-email-worker` | v22 (2026-08-07) | **changed in slice A** — passes `p_worker_kind`; safe only AFTER migration 18 |
+| `notification-identity-worker` | **not deployed** | **new (slice A)** — the dedicated sender; its cron ships INACTIVE (migration 19) |
 
 The "current prod version" column is the rollback table: redeploy that version to revert.
 108 functions are deployed in total.
@@ -301,6 +331,12 @@ through `person_links`** — never by email or phone, matching the owner's ident
       because this build passes `p_worker_kind`, which the pre-migration function does not accept;
    b. the identity sender (`notification-identity-worker`);
    c. `verify-identity` (the link target must exist before any link can be sent);
+   c2. **Run the non-side-effecting sender verification now** (§10, slice A): invoke
+      `notification-identity-worker` once and require
+      `{"claimed":0,"sent":0,"refused":0,"failed":0}`. It proves the function deployed,
+      authenticated as service_role, resolved the new RPC signature, and that the worker-kind
+      partition is live — before anything can enqueue a challenge. Do not continue on any other
+      result;
    d. **only then** the challenge-producing callers — the three guest payment entrypoints and
       `submit-guest-intake` — plus `create-manual-player` and `mollie-webhook`;
    e. `admin-academy-deletion`.
@@ -365,7 +401,8 @@ without verification.
 | Edge functions | redeploy the previous version from the table in §3 |
 | Schema | **forward-only compensating migration** — never a destructive down-migration |
 | Membership backfill | manifest-owned rollback (`membership_backfill_runs` / `_items` record every row written) |
-| Last resort | restore backup `1333259935` (2026-08-10 03:15:16Z) — **loses everything since**; requires explicit owner instruction |
+| Catastrophic, when nothing can be compensated | **PITR restore to the pre-migration timestamp recorded in step 3** — second-level choice of point, discards everything committed since it (see §1). Requires explicit owner instruction. |
+| Last resort, only if PITR is verified unavailable | restore the latest physical backup — coarser and much lossier; the id/timestamp must be re-read at the time, **not** taken from this document (the `1333259935` / 2026-08-10 03:15:16Z figure recorded here predates the infrastructure upgrade and is stale) |
 
 Because the migrations are additive (new tables, new functions, new nullable columns), a
 compensating migration can drop the new surface without touching existing rows. That is the intended
@@ -377,7 +414,7 @@ path.
 
 | Slice | What it must deliver | Status |
 |---|---|---|
-| **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **not started** |
+| **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **BUILT — full gate green, Codex rounds 1–3 applied.** Migrations 18–19, `notification-identity-worker`, `_shared/identity-send-gate.ts`, 13 handler + 12 gate + 10 wiring tests, 22 real-pg routing assertions. Deployment/verification/rollback below. **Not deployed, cron INACTIVE.** |
 | **B — retain-and-scrub (OD-08)** | replace the interim membership refusal; detach auth transactionally, preserve `persons.id` + memberships + financial/audit evidence, pseudonymize the rest, idempotent, auditable, single safe server command | **not started** |
 | **C — observability** | non-blocking non-PII identity-funnel telemetry + funnel/dashboard + alert thresholds | **not started** |
 
