@@ -157,6 +157,9 @@
       },
       "marketing_updates": {
         "label": "Product updates"
+      },
+      "identity_verification_requested": {
+        "label": "Confirm it's you"
       }
     },
     "sections": {

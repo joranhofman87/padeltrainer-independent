@@ -74,6 +74,11 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // U2 identity continuity: the server matched this address to existing Player(s) and is asking the
+  // booker to prove they control it before anything is booked. We show a GENERIC message — never a
+  // name, a count, or even confirmation that an account exists — and stop here; the link arrives by
+  // email and continues the flow on its own landing page.
+  const [verificationSent, setVerificationSent] = useState(false);
   /**
    * The id of THIS checkout attempt. Every retry of it carries the same one, so a double tap or a
    * replayed request books against the SAME Player — where before the address and the name were
@@ -231,11 +236,21 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
         },
       );
 
-      const result = data as { checkoutUrl?: string; token?: string } | null;
+      const result = data as { checkoutUrl?: string; token?: string; status?: string } | null;
       if (result?.checkoutUrl) {
         // the Player for this attempt exists; a later booking is a new one, not a retry
         clearCreationAttempt(attemptRef);
         window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      // Identity continuity: the address matched existing Player(s); nothing was booked. Show the
+      // generic verification prompt. The attempt id is KEPT so the resumed booking (after the
+      // emailed link is followed and a Player chosen) replays the same attempt rather than making a
+      // duplicate.
+      if (result?.status === 'verification_required') {
+        setVerificationSent(true);
+        setSubmitting(false);
         return;
       }
 
@@ -279,6 +294,24 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       setSubmitting(false);
     }
   };
+
+  if (verificationSent) {
+    // GENERIC by design: this text is identical whether one Player matched or several, and whether
+    // or not an account exists — it reveals only that IF the address is on file, a link was sent.
+    return (
+      <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('booking.guest.verify.title', 'Controleer je e-mail')}</DialogTitle>
+            <DialogDescription>
+              {t('booking.guest.verify.body',
+                'Als dit e-mailadres al bij ons bekend is, hebben we je een link gestuurd om te bevestigen dat jij het bent. Volg die link om je boeking af te ronden.')}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>

@@ -3711,6 +3711,92 @@ export type Database = {
           },
         ]
       }
+      identity_verification_challenges: {
+        Row: {
+          candidate_set_fingerprint: string
+          candidate_set_size: number
+          chose_someone_new: boolean
+          consumed_at: string | null
+          contact_fingerprint: string
+          contact_normalized: string
+          created_at: string
+          creation_request_id: string
+          expires_at: string
+          id: string
+          key_version: number
+          owner_id: string
+          owner_type: string
+          selected_person_id: string | null
+          verified_at: string | null
+          workflow: string
+        }
+        Insert: {
+          candidate_set_fingerprint: string
+          candidate_set_size: number
+          chose_someone_new?: boolean
+          consumed_at?: string | null
+          contact_fingerprint: string
+          contact_normalized: string
+          created_at?: string
+          creation_request_id: string
+          expires_at: string
+          id?: string
+          key_version: number
+          owner_id: string
+          owner_type: string
+          selected_person_id?: string | null
+          verified_at?: string | null
+          workflow: string
+        }
+        Update: {
+          candidate_set_fingerprint?: string
+          candidate_set_size?: number
+          chose_someone_new?: boolean
+          consumed_at?: string | null
+          contact_fingerprint?: string
+          contact_normalized?: string
+          created_at?: string
+          creation_request_id?: string
+          expires_at?: string
+          id?: string
+          key_version?: number
+          owner_id?: string
+          owner_type?: string
+          selected_person_id?: string | null
+          verified_at?: string | null
+          workflow?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "identity_verification_challenges_selected_person_id_fkey"
+            columns: ["selected_person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      identity_verify_key_state: {
+        Row: {
+          current_version: number
+          id: boolean
+          min_mintable_version: number
+          updated_at: string
+        }
+        Insert: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
+        }
+        Update: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       intake_requests: {
         Row: {
           birth_date: string | null
@@ -11709,6 +11795,48 @@ export type Database = {
       has_user_booked_trainer: {
         Args: { _trainer_profile_id: string }
         Returns: boolean
+      }
+      identity_candidate_fingerprint: {
+        Args: { _email_norm: string; _owner_id: string; _owner_type: string }
+        Returns: {
+          fp: string
+          n: number
+        }[]
+      }
+      identity_candidate_persons: {
+        Args: { _email_norm: string; _owner_id: string; _owner_type: string }
+        Returns: {
+          display_name: string
+          person_id: string
+        }[]
+      }
+      identity_challenge_enqueue: {
+        Args: { _challenge_id: string }
+        Returns: undefined
+      }
+      identity_resolve_or_challenge: {
+        Args: {
+          _authed_person_id?: string
+          _creation_request_id: string
+          _email: string
+          _owner_id: string
+          _owner_type: string
+          _ttl_minutes?: number
+          _workflow: string
+        }
+        Returns: Json
+      }
+      identity_verification_list: {
+        Args: { _challenge_id: string }
+        Returns: Json
+      }
+      identity_verification_select: {
+        Args: {
+          _challenge_id: string
+          _choose_someone_new?: boolean
+          _person_id: string
+        }
+        Returns: Json
       }
       intake_request_create_for_person: {
         Args: {

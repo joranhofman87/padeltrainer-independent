@@ -137,6 +137,25 @@ describe('GuestBookingDialog', () => {
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 
+  it('a verification_required response shows the generic check-your-email panel and books nothing', async () => {
+    // U2 identity continuity: the address matched an existing Player, so the server halted before
+    // any booking. The user must see a GENERIC prompt — no candidate name, no count, no redirect —
+    // and no checkout is opened.
+    invokeMock.mockResolvedValue({ data: { status: 'verification_required' }, error: null });
+    const hrefSetter = vi.fn();
+    Object.defineProperty(window, 'location', { configurable: true, value: { hostname: 'localhost', set href(v: string) { hrefSetter(v); } } });
+
+    renderDialog();
+    fillValid();
+    fireEvent.click(screen.getByRole('button', { name: /Afrekenen/ }));
+
+    await waitFor(() => expect(screen.getByText(/Controleer je e-mail/)).toBeInTheDocument());
+    // nothing booked: no checkout redirect, no error toast, and the generic body reveals no identity
+    expect(hrefSetter).not.toHaveBeenCalled();
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Afrekenen/)).not.toBeInTheDocument();
+  });
+
   it('a cyclus slot DEFAULTS to booking the WHOLE cyclus', async () => {
     cyclusSessions.current = twoSessions;
     invokeMock.mockResolvedValue({ data: { checkoutUrl: 'https://mollie.test/c/xyz' }, error: null });

@@ -1,0 +1,562 @@
+-- U2 — trusted identity continuity for anonymous returning Players (owner-approved 2026-08-10).
+--
+-- Full design + threat model: docs/U2_IDENTITY_CONTINUITY_DESIGN.md. This migration is the
+-- server heart: the challenge that proves control of a contact address, the candidate disclosure
+-- that only happens AFTER that proof, and the explicit person-keyed selection that binds a result
+-- to one create attempt. It reuses the reviewed manage-capability PATTERN (a signed capability
+-- whose secret lives only in edge env; this table stores the row + key_version + expiry, never the
+-- HMAC) — the signing/verification core is the sibling module _shared/identity-verify-token.ts.
+--
+-- THE RULE. A first-time anonymous contact creates a NEW Player. PII may only SUGGEST candidates.
+-- When candidates exist, control of the address is proven through a short-lived signed capability;
+-- only then may the person explicitly pick an existing Player or "someone new". Login or a
+-- completed selection identify the exact Player with no fresh challenge. Nothing auto-merges. A
+-- shared family address supports multiple candidates — verification proves control of the address,
+-- never which member is acting, so explicit selection stays mandatory. "One email = one Player" is
+-- encoded nowhere.
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- Signing-key state — mirrors notification_manage_key_state exactly (monotonic floor, one row)
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+CREATE TABLE public.identity_verify_key_state (
+  id boolean PRIMARY KEY DEFAULT true CHECK (id),
+  current_version int NOT NULL DEFAULT 1 CHECK (current_version >= 1),
+  min_mintable_version int NOT NULL DEFAULT 1 CHECK (min_mintable_version >= 1),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT identity_verify_key_state_coherent CHECK (current_version >= min_mintable_version)
+);
+INSERT INTO public.identity_verify_key_state (id) VALUES (true);
+
+COMMENT ON TABLE public.identity_verify_key_state IS
+  'Single-row signing-key state for identity-verification capability tokens. Raising min_mintable_version retires a burned key: no capability mints below it and the edge verifier refuses tokens below it. Existing rows are never re-signed. Mirrors notification_manage_key_state.';
+
+ALTER TABLE public.identity_verify_key_state ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.identity_verify_key_state FROM PUBLIC, anon, authenticated, service_role;
+GRANT SELECT ON public.identity_verify_key_state TO service_role;
+
+CREATE OR REPLACE FUNCTION public.identity_verify_key_state_guard()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    RAISE EXCEPTION 'identity_verify_key_state is a single permanent row — it may be raised, never removed';
+  END IF;
+  IF NEW.min_mintable_version < OLD.min_mintable_version THEN
+    RAISE EXCEPTION 'min_mintable_version is monotonic: % may not be lowered to %', OLD.min_mintable_version, NEW.min_mintable_version;
+  END IF;
+  IF NEW.current_version < OLD.current_version THEN
+    RAISE EXCEPTION 'current_version is monotonic: % may not be lowered to %', OLD.current_version, NEW.current_version;
+  END IF;
+  NEW.updated_at := now();
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_identity_verify_key_state_guard
+  BEFORE UPDATE OR DELETE ON public.identity_verify_key_state
+  FOR EACH ROW EXECUTE FUNCTION public.identity_verify_key_state_guard();
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- The challenge
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- One row per (workflow, owner, creation_request_id) collision. It binds every dimension a stolen
+-- or replayed token must not be able to cross, and it carries the candidate-set fingerprint taken
+-- at mint so a set that drifts before the choice fails closed.
+CREATE TABLE public.identity_verification_challenges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  workflow text NOT NULL
+    CHECK (workflow IN ('slot', 'cart', 'cyclus', 'intake', 'rebook')),
+  owner_type text NOT NULL CHECK (owner_type IN ('academy', 'trainer')),
+  owner_id uuid NOT NULL,
+
+  -- the create attempt this challenge (and its eventual selection) is bound to
+  creation_request_id uuid NOT NULL,
+
+  -- the address whose control is being proven. Normalized + fingerprinted (binding, not secrecy):
+  -- an old challenge must not act after the delivered destination changed.
+  contact_normalized text NOT NULL
+    CHECK (contact_normalized = lower(btrim(contact_normalized))
+           AND position('@' IN contact_normalized) > 1),
+  contact_fingerprint text NOT NULL,
+
+  -- the candidate SET at mint time. If it differs when the person chooses, the challenge is void.
+  candidate_set_fingerprint text NOT NULL,
+  candidate_set_size int NOT NULL CHECK (candidate_set_size >= 1),
+
+  key_version int NOT NULL CHECK (key_version >= 1),
+  expires_at timestamptz NOT NULL,
+
+  -- lifecycle: verified_at = address proven (re-listable, idempotent); consumed_at = a terminal
+  -- selection was made (single-use). selected_person_id NULL with consumed_at set = "someone new".
+  verified_at timestamptz,
+  consumed_at timestamptz,
+  selected_person_id uuid REFERENCES public.persons(id) ON DELETE SET NULL,
+  chose_someone_new boolean NOT NULL DEFAULT false,
+
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+-- At most ONE active (unconsumed) challenge per create attempt: this is the FAIL-CLOSED cap on
+-- verification-email abuse (the rate_limits helper fails open, so the structural cap lives here).
+CREATE UNIQUE INDEX uniq_identity_challenge_active_per_request
+  ON public.identity_verification_challenges (creation_request_id)
+  WHERE consumed_at IS NULL;
+
+-- A create attempt resolves to at most one terminal selection.
+CREATE UNIQUE INDEX uniq_identity_challenge_consumed_per_request
+  ON public.identity_verification_challenges (creation_request_id)
+  WHERE consumed_at IS NOT NULL;
+
+CREATE INDEX idx_identity_challenge_expiry
+  ON public.identity_verification_challenges (expires_at) WHERE consumed_at IS NULL;
+
+COMMENT ON TABLE public.identity_verification_challenges IS
+  'One row per anonymous returning-Player verification. Binds workflow, owner, creation_request_id, normalized contact and the candidate-set fingerprint; the token an email carries is v<N>.<id>.<HMAC over the edge-held key> — this table never stores the HMAC or the key. verified_at = address proven (idempotent re-list); consumed_at = single-use terminal selection. Definer RPCs are the only writers; no client DML.';
+
+ALTER TABLE public.identity_verification_challenges ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.identity_verification_challenges FROM PUBLIC, anon, authenticated, service_role;
+
+-- Immutable apart from the lifecycle columns — the HMAC covers only the id + key generation, so an
+-- UPDATE to workflow/owner/contact/candidate-set would silently retarget an already-signed link.
+CREATE OR REPLACE FUNCTION public.identity_challenge_guard_immutable()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.workflow IS DISTINCT FROM OLD.workflow
+     OR NEW.owner_type IS DISTINCT FROM OLD.owner_type
+     OR NEW.owner_id IS DISTINCT FROM OLD.owner_id
+     OR NEW.creation_request_id IS DISTINCT FROM OLD.creation_request_id
+     OR NEW.contact_normalized IS DISTINCT FROM OLD.contact_normalized
+     OR NEW.contact_fingerprint IS DISTINCT FROM OLD.contact_fingerprint
+     OR NEW.candidate_set_fingerprint IS DISTINCT FROM OLD.candidate_set_fingerprint
+     OR NEW.candidate_set_size IS DISTINCT FROM OLD.candidate_set_size
+     OR NEW.key_version IS DISTINCT FROM OLD.key_version
+     OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'identity_verification_challenges rows are immutable apart from verified_at/consumed_at/selected_person_id/chose_someone_new';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_identity_challenge_guard_immutable
+  BEFORE UPDATE ON public.identity_verification_challenges
+  FOR EACH ROW EXECUTE FUNCTION public.identity_challenge_guard_immutable();
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- The candidate set — definer-internal, granted to NOBODY
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- Candidates are the "returning anonymous booker" population precisely: accountless (pure-guest)
+-- canonical persons the owner may select whose IN-SCOPE GUEST source matches the address. The
+-- pure-guest restriction is load-bearing — see the WHY below the function. Split-frozen guests are
+-- excluded by player_owner_may_select_person. Ordered + fingerprinted so drift between mint and
+-- choice is detectable.
+CREATE OR REPLACE FUNCTION public.identity_candidate_persons(
+  _owner_type text, _owner_id uuid, _email_norm text
+)
+RETURNS TABLE (person_id uuid, display_name text)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT DISTINCT pl.person_id,
+         coalesce(nullif(btrim(pr.full_name), ''), 'Player')
+    FROM public.person_links pl
+    JOIN public.persons pr ON pr.id = pl.person_id
+    JOIN public.guest_players g ON g.id = pl.guest_player_id
+    WHERE _email_norm <> ''
+      AND lower(btrim(g.email)) = _email_norm
+      -- selectable by this owner — the same predicate the select step re-checks, so a candidate
+      -- offered here can never be refused there, and cross-tenant persons never appear
+      AND public.player_owner_may_select_person(_owner_type, _owner_id, pl.person_id)
+      -- PURE GUEST only: no account. Every downstream write is guest-keyed and
+      -- legacyGuestRefForCheckout refuses an account holder (booking them as a guest hides it in
+      -- their own app), so an account holder at this address logs in instead of appearing here.
+      AND NOT EXISTS (SELECT 1 FROM public.person_links pl2
+                       WHERE pl2.person_id = pl.person_id AND pl2.profile_id IS NOT NULL)
+    ORDER BY pl.person_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.identity_candidate_persons(text, uuid, text)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION public.identity_candidate_persons(text, uuid, text) IS
+  'Definer-internal candidate set for identity verification: pure-guest (accountless) canonical persons the owner may select whose in-scope guest source matches the normalized address. Granted to nobody. Accountless so the derived legacy ref is always a guest id and no booking path changes; account holders at the same address log in instead.';
+
+-- A stable fingerprint of the candidate SET, so drift between begin and select fails closed.
+CREATE OR REPLACE FUNCTION public.identity_candidate_fingerprint(
+  _owner_type text, _owner_id uuid, _email_norm text
+)
+RETURNS TABLE (fp text, n int)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT coalesce(md5(string_agg(c.person_id::text, ',' ORDER BY c.person_id)), ''),
+         count(*)::int
+    FROM public.identity_candidate_persons(_owner_type, _owner_id, _email_norm) c;
+$$;
+
+REVOKE ALL ON FUNCTION public.identity_candidate_fingerprint(text, uuid, text)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- Enqueue the (inert) verification message — definer-internal, no candidate identity to the edge
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- Enqueues ONE generic message for a challenge, idempotent on the challenge id. Key properties:
+--   * The recipient is the DETERMINISTIC lowest-person_id candidate — so the destination the
+--     outbox resolves IS the matched on-file address. We NEVER email an arbitrary typed address:
+--     a message is only ever enqueued when a candidate already exists at that address, which is the
+--     structural anti-abuse guarantee (this cannot be used to spam addresses not already on file).
+--   * The payload carries the challenge_id and workflow only — NEVER the HMAC token. The token is
+--     derived from (challenge_id, key) at the owner-gated SEND, exactly as the manage-link worker
+--     derives its token; the database never stores an HMAC.
+--   * Real delivery is INERT here (no active worker) and is the owner's activation gate. The
+--     recipient/consent nuances of a REAL send of an address-control challenge (a consent-opted-out
+--     contact would suppress a required challenge; a shared address has several candidates) are
+--     recorded for that gate in docs/U2_IDENTITY_CONTINUITY_DESIGN.md — they are delivery concerns,
+--     not begin-time correctness, and this slice only enqueues.
+CREATE OR REPLACE FUNCTION public.identity_challenge_enqueue(_challenge_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_ch public.identity_verification_challenges%ROWTYPE;
+  v_recipient uuid;
+BEGIN
+  SELECT * INTO v_ch FROM public.identity_verification_challenges WHERE id = _challenge_id;
+  IF NOT FOUND OR v_ch.consumed_at IS NOT NULL OR v_ch.expires_at <= now() THEN
+    RETURN;  -- nothing to notify about
+  END IF;
+
+  SELECT c.person_id INTO v_recipient
+    FROM public.identity_candidate_persons(v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized) c
+   ORDER BY c.person_id
+   LIMIT 1;
+  IF v_recipient IS NULL THEN
+    RETURN;  -- the set emptied out between mint and here; nothing to send, select will fail closed
+  END IF;
+
+  PERFORM public.enqueue_notification(
+    p_event_key                 => 'identity_verification_requested',
+    p_recipient_person_id        => v_recipient,
+    p_tenant_academy_profile_id  => CASE WHEN v_ch.owner_type = 'academy' THEN v_ch.owner_id END,
+    p_tenant_trainer_id          => CASE WHEN v_ch.owner_type = 'trainer' THEN v_ch.owner_id END,
+    p_idempotency_subject        => 'identity_verify:' || v_ch.id::text,
+    -- challenge_id + workflow ONLY. No token (derived at the gated send), no candidate names.
+    p_payload                    => jsonb_build_object('challenge_id', v_ch.id, 'workflow', v_ch.workflow),
+    -- the event happened NOW (the person just submitted): dating it with the mint time is correct,
+    -- and passing it explicitly honours the producer contract (no reliance on the enqueue default).
+    p_occurred_at                => now());
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.identity_challenge_enqueue(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- The resolver — the ONE function every anonymous entrypoint calls before any side effect
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- Returns exactly one of:
+--   proceed_new     — no candidate collision: create a fresh Player through the UUID command.
+--   proceed_person  — trusted evidence names an exact person: use it.
+--   verify_required — candidates exist and no trust yet: a challenge is minted (idempotent per
+--                     creation_request_id); the edge builds the token and enqueues ONE message.
+--
+-- NOTHING about candidate identity, names, counts or existence is returned on the verify_required
+-- path — the response is identical whether one candidate matched or several.
+CREATE OR REPLACE FUNCTION public.identity_resolve_or_challenge(
+  _creation_request_id uuid,
+  _owner_type text,
+  _owner_id uuid,
+  _workflow text,
+  _email text,
+  _authed_person_id uuid DEFAULT NULL,
+  _ttl_minutes int DEFAULT 30
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_email_norm text := lower(btrim(coalesce(_email, '')));
+  v_existing public.identity_verification_challenges%ROWTYPE;
+  v_fp text;
+  v_n int;
+  v_key_version int;
+  v_state_min int;
+  v_ch public.identity_verification_challenges%ROWTYPE;
+BEGIN
+  IF _creation_request_id IS NULL THEN
+    RAISE EXCEPTION 'IDENTITY_REQUEST_ID_REQUIRED' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF _owner_type NOT IN ('academy', 'trainer') THEN
+    RAISE EXCEPTION 'IDENTITY_BAD_OWNER_SCOPE' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+  IF _workflow NOT IN ('slot', 'cart', 'cyclus', 'intake', 'rebook') THEN
+    RAISE EXCEPTION 'IDENTITY_BAD_WORKFLOW' USING ERRCODE = 'invalid_parameter_value';
+  END IF;
+
+  -- (2) A completed selection bound to THIS attempt is trusted evidence — replay returns the same
+  --     terminal result, so a resumed booking is idempotent. Checked before PII so a chosen
+  --     "someone new" is honoured rather than re-challenged.
+  SELECT * INTO v_existing
+    FROM public.identity_verification_challenges
+   WHERE creation_request_id = _creation_request_id AND consumed_at IS NOT NULL
+   LIMIT 1;
+  IF FOUND THEN
+    -- the terminal selection must belong to the SAME workflow+owner that is now resuming
+    IF v_existing.workflow <> _workflow
+       OR v_existing.owner_type <> _owner_type OR v_existing.owner_id <> _owner_id THEN
+      RAISE EXCEPTION 'IDENTITY_SELECTION_SCOPE_MISMATCH' USING ERRCODE = 'insufficient_privilege';
+    END IF;
+    IF v_existing.chose_someone_new THEN
+      RETURN jsonb_build_object('status', 'proceed_new');
+    END IF;
+    RETURN jsonb_build_object('status', 'proceed_person', 'person_id', v_existing.selected_person_id);
+  END IF;
+
+  -- (1) An authenticated caller whose person the owner may act on: no challenge needed.
+  IF _authed_person_id IS NOT NULL
+     AND public.player_owner_may_select_person(_owner_type, _owner_id, _authed_person_id) THEN
+    RETURN jsonb_build_object('status', 'proceed_person', 'person_id', _authed_person_id);
+  END IF;
+
+  -- (3) PII match. A missing address cannot collide with a stored one — a contactless booker is a
+  --     first-timer by construction (and the public flows require an address for delivery anyway).
+  IF v_email_norm = '' OR position('@' IN v_email_norm) < 2 THEN
+    RETURN jsonb_build_object('status', 'proceed_new');
+  END IF;
+
+  SELECT fp, n INTO v_fp, v_n
+    FROM public.identity_candidate_fingerprint(_owner_type, _owner_id, v_email_norm);
+
+  IF coalesce(v_n, 0) = 0 THEN
+    RETURN jsonb_build_object('status', 'proceed_new');
+  END IF;
+
+  -- Candidates exist. Return the ACTIVE challenge for this attempt if one is live (idempotent
+  -- enqueue), else mint one. A live challenge keeps its mint-time candidate fingerprint; drift is
+  -- caught at select, not by re-minting here (which would re-enqueue).
+  SELECT * INTO v_existing
+    FROM public.identity_verification_challenges
+   WHERE creation_request_id = _creation_request_id
+     AND consumed_at IS NULL AND expires_at > now()
+   LIMIT 1;
+  IF FOUND THEN
+    -- Re-enqueue is safe: enqueue_notification is idempotent on (event, subject, recipient), so a
+    -- resubmitted attempt produces no second message — "at most one" holds structurally.
+    PERFORM public.identity_challenge_enqueue(v_existing.id);
+    RETURN jsonb_build_object(
+      'status', 'verify_required',
+      'challenge_id', v_existing.id,
+      'key_version', v_existing.key_version,
+      'expires_at', v_existing.expires_at);
+  END IF;
+
+  -- Mint. key_version = current generation; refuse if the floor has retired it (fail closed).
+  SELECT current_version, min_mintable_version INTO v_key_version, v_state_min
+    FROM public.identity_verify_key_state WHERE id = true;
+  IF v_key_version IS NULL OR v_key_version < v_state_min THEN
+    RAISE EXCEPTION 'IDENTITY_KEY_STATE_UNAVAILABLE' USING ERRCODE = 'object_not_in_prerequisite_state';
+  END IF;
+
+  -- Clear any EXPIRED unconsumed challenge for this attempt so the partial unique index admits the
+  -- new one (an expired challenge is dead; a fresh collision deserves a fresh proof).
+  DELETE FROM public.identity_verification_challenges
+   WHERE creation_request_id = _creation_request_id AND consumed_at IS NULL AND expires_at <= now();
+
+  INSERT INTO public.identity_verification_challenges (
+    workflow, owner_type, owner_id, creation_request_id,
+    contact_normalized, contact_fingerprint,
+    candidate_set_fingerprint, candidate_set_size,
+    key_version, expires_at
+  ) VALUES (
+    _workflow, _owner_type, _owner_id, _creation_request_id,
+    v_email_norm, md5(v_email_norm),
+    v_fp, v_n,
+    v_key_version, now() + make_interval(mins => greatest(1, _ttl_minutes))
+  )
+  RETURNING * INTO v_ch;
+
+  PERFORM public.identity_challenge_enqueue(v_ch.id);
+
+  RETURN jsonb_build_object(
+    'status', 'verify_required',
+    'challenge_id', v_ch.id,
+    'key_version', v_ch.key_version,
+    'expires_at', v_ch.expires_at);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int)
+  TO service_role;
+
+COMMENT ON FUNCTION public.identity_resolve_or_challenge(uuid, text, uuid, text, text, uuid, int) IS
+  'The one resolver every anonymous entrypoint calls before any side effect. Returns proceed_new / proceed_person / verify_required. verify_required leaks no candidate identity, name, count or existence — identical for one match or many. Service-role only (the guest edge functions).';
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- After the emailed token is verified by the edge: disclose the minimal candidate set
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- The edge validates the HMAC token (identity-verify-token.ts) BEFORE calling this — so reaching
+-- here IS the proof of address control. Marks verified_at (idempotent) and returns the minimal
+-- owner-scoped candidate labels needed to distinguish household members, PLUS the always-present
+-- "someone new" option (implicit — the client always offers it). Drift fails closed: if the set
+-- changed since mint, the challenge is void and a fresh verification is required.
+CREATE OR REPLACE FUNCTION public.identity_verification_list(_challenge_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_ch public.identity_verification_challenges%ROWTYPE;
+  v_fp text;
+  v_n int;
+  v_candidates jsonb;
+BEGIN
+  SELECT * INTO v_ch FROM public.identity_verification_challenges
+   WHERE id = _challenge_id FOR UPDATE;
+  -- Uniform generic outcome: never distinguish "no such challenge" from "expired"/"consumed".
+  IF NOT FOUND OR v_ch.consumed_at IS NOT NULL OR v_ch.expires_at <= now() THEN
+    RETURN jsonb_build_object('status', 'invalid');
+  END IF;
+
+  -- Drift check: the candidate set must be identical to the one bound at mint.
+  SELECT fp, n INTO v_fp, v_n
+    FROM public.identity_candidate_fingerprint(v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized);
+  IF v_fp IS DISTINCT FROM v_ch.candidate_set_fingerprint THEN
+    RETURN jsonb_build_object('status', 'stale');   -- caller must re-verify
+  END IF;
+
+  IF v_ch.verified_at IS NULL THEN
+    UPDATE public.identity_verification_challenges SET verified_at = now() WHERE id = _challenge_id;
+  END IF;
+
+  SELECT jsonb_agg(jsonb_build_object('person_id', c.person_id, 'name', c.display_name)
+                   ORDER BY c.display_name)
+    INTO v_candidates
+    FROM public.identity_candidate_persons(v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized) c;
+
+  RETURN jsonb_build_object('status', 'ok', 'candidates', coalesce(v_candidates, '[]'::jsonb));
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.identity_verification_list(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.identity_verification_list(uuid) TO service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- The explicit choice — single-use, drift-checked, person-keyed
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- Selects ONE authorized candidate by canonical person_id, or "someone new". Requires a verified,
+-- unconsumed, unexpired challenge whose candidate set has not drifted. Single-use: the terminal
+-- state is written once; a replay of the SAME choice returns the same result, a DIFFERENT choice
+-- after consumption is refused. Carries only canonical identity onward.
+CREATE OR REPLACE FUNCTION public.identity_verification_select(
+  _challenge_id uuid, _person_id uuid, _choose_someone_new boolean DEFAULT false
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_ch public.identity_verification_challenges%ROWTYPE;
+  v_fp text;
+  v_n int;
+BEGIN
+  SELECT * INTO v_ch FROM public.identity_verification_challenges
+   WHERE id = _challenge_id FOR UPDATE;
+  IF NOT FOUND OR v_ch.expires_at <= now() THEN
+    RETURN jsonb_build_object('status', 'invalid');
+  END IF;
+
+  -- Idempotent replay of a completed selection: same answer, no second mutation.
+  IF v_ch.consumed_at IS NOT NULL THEN
+    IF v_ch.chose_someone_new AND _choose_someone_new THEN
+      RETURN jsonb_build_object('status', 'ok', 'someone_new', true);
+    END IF;
+    IF NOT v_ch.chose_someone_new AND NOT _choose_someone_new
+       AND v_ch.selected_person_id = _person_id THEN
+      RETURN jsonb_build_object('status', 'ok', 'person_id', v_ch.selected_person_id);
+    END IF;
+    -- a different choice after the terminal one is a conflict, never a silent re-selection
+    RETURN jsonb_build_object('status', 'already_selected');
+  END IF;
+
+  -- Address control must be proven first.
+  IF v_ch.verified_at IS NULL THEN
+    RETURN jsonb_build_object('status', 'not_verified');
+  END IF;
+
+  -- Drift fails closed.
+  SELECT fp, n INTO v_fp, v_n
+    FROM public.identity_candidate_fingerprint(v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized);
+  IF v_fp IS DISTINCT FROM v_ch.candidate_set_fingerprint THEN
+    RETURN jsonb_build_object('status', 'stale');
+  END IF;
+
+  IF _choose_someone_new THEN
+    UPDATE public.identity_verification_challenges
+       SET consumed_at = now(), chose_someone_new = true
+     WHERE id = _challenge_id;
+    RETURN jsonb_build_object('status', 'ok', 'someone_new', true);
+  END IF;
+
+  -- A named candidate must be IN the current set (which player_owner_may_select_person underpins),
+  -- so a token cannot select a person outside its owner scope or outside what was disclosed.
+  IF _person_id IS NULL
+     OR NOT EXISTS (SELECT 1 FROM public.identity_candidate_persons(
+                      v_ch.owner_type, v_ch.owner_id, v_ch.contact_normalized) c
+                    WHERE c.person_id = _person_id) THEN
+    RETURN jsonb_build_object('status', 'not_a_candidate');
+  END IF;
+
+  UPDATE public.identity_verification_challenges
+     SET consumed_at = now(), selected_person_id = _person_id
+   WHERE id = _challenge_id;
+  RETURN jsonb_build_object('status', 'ok', 'person_id', _person_id);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.identity_verification_select(uuid, uuid, boolean)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.identity_verification_select(uuid, uuid, boolean) TO service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- The inert notification event — enqueue only; real delivery is the owner gate
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- Registered so enqueue_notification can accept the verification message. No active channel/worker
+-- is wired here: this matches the frozen-inactive notification posture. The token rides in the
+-- service-role-only payload, never in public_summary.
+INSERT INTO public.notification_event_types
+  (key, category, audience, priority, required_delivery,
+   supports_email, supports_whatsapp, supports_push, supports_digest,
+   default_email_frequency, default_whatsapp_frequency, default_push_frequency,
+   collapse_window_minutes, quiet_hours_respect, visibility_scope,
+   template_email, digest_engine_enabled, email_footer_policy)
+VALUES
+  ('identity_verification_requested', 'security', 'guest', 'transactional', true,
+   true, false, false, false,
+   'instant', 'off', 'off',
+   0, false, 'private_user_only',
+   -- required_delivery ⇒ footer policy MUST be 'none' (notif_event_footer_policy_coherent): a
+   -- security challenge is transactional, never marketing, and carries no unsubscribe footer.
+   'identity_verification_requested', false, 'none')
+ON CONFLICT (key) DO NOTHING;

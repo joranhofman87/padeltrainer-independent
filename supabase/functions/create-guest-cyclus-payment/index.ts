@@ -22,6 +22,7 @@ import { applySplitPayment, computeCyclusTotalFromSlots, computeCyclusExtrasTota
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { isCyclusBookingAllowed } from "../_shared/cyclus-booking.ts";
 import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
+import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -190,11 +191,25 @@ Deno.serve(async (req) => {
     const owner = slots[0].academy_profile_id
       ? { academyProfileId: slots[0].academy_profile_id as string }
       : { trainerId };
-    // The checkout resolves a CANONICAL Player. The legacy column `bookings` still requires is derived
-    // from it by the authorized adapter, and exists only for the length of this insert.
-    const { personId } = await resolvePlayerForCheckout(supabase, {
-      email, name, phone, owner, source: "public_booking", creationRequestId,
+
+    // Identity — before ANY hold/payment/create, resolve or demand verification (U2 identity
+    // continuity). A returning address colliding with existing candidates must prove control first;
+    // we return here with NO side effect. Only a proven, explicitly chosen person (or "someone
+    // new") carries on.
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "cyclus", email,
     });
+    if (identity.status === "verify_required") {
+      return json({ status: "verification_required" }, 200);
+    }
+
+    // The legacy column `bookings` still needs is derived from the person by the authorized adapter
+    // and exists only for the length of this insert.
+    const personId = identity.status === "proceed_person"
+      ? identity.personId
+      : (await resolvePlayerForCheckout(supabase, {
+          email, name, phone, owner, source: "public_booking", creationRequestId,
+        })).personId;
     const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.

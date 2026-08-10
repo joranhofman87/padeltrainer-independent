@@ -53,6 +53,11 @@ jobs:
       - name: U2 — email alone never merges (local Postgres)
         run: node scripts/db/u2-no-email-alone-merge.mjs
 
+      # Anonymous returning-Player identity continuity: verification-gated candidate selection,
+      # single-use capability, drift/expiry/cross-owner refusals, grant boundary. Same DB.
+      - name: U2 — identity verification continuity (local Postgres)
+        run: node scripts/db/u2-identity-verification.mjs
+
   types-drift:
     name: generated types drift
     runs-on: ubuntu-latest

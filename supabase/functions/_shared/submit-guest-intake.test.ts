@@ -25,6 +25,9 @@ type Recorded = {
   intakeInserts: Array<Record<string, unknown>>;
 };
 
+// The identity resolver's answer, overridable per test (default: first-timer proceeds as new).
+let identityResolution: Record<string, unknown> = { status: "proceed_new" };
+
 function makeAdmin(ownerType: "academy" | "trainer" | "club") {
   const rec: Recorded = { calls: [], tables: [], intakeInserts: [] };
   const ownerId = ownerType === "academy" ? ACADEMY : ownerType === "trainer" ? TRAINER : CLUB;
@@ -72,6 +75,11 @@ function makeAdmin(ownerType: "academy" | "trainer" | "club") {
     from,
     rpc: (fn: string, args: Record<string, unknown> = {}) => {
       rec.calls.push({ fn, args });
+      // U2 identity continuity: the resolver runs before any create. Default = first-timer proceeds
+      // as new; tests override `identityResolution` to exercise verify_required / proceed_person.
+      if (fn === "identity_resolve_or_challenge") {
+        return Promise.resolve({ data: identityResolution, error: null });
+      }
       // Per-function answers, matching the real contracts: the create command is canonical-only,
       // and the legacy reference exists ONLY in the service adapter's answer.
       if (fn === "player_create_command") {
@@ -253,4 +261,40 @@ Deno.test("the address is normalized once, on the way in", async () => {
   const { adminClient, rec } = makeAdmin("academy");
   await handleRequest(req(body({ email: "MiXeD@Example.COM" })), { adminClient });
   assertEquals(createCall(rec)?.args._email, "mixed@example.com");
+});
+
+// ── U2 identity continuity ──────────────────────────────────────────────────────────────────────
+
+Deno.test("a candidate collision returns verification_required with NO Player, intake or leak", async () => {
+  identityResolution = { status: "verify_required" };
+  try {
+    const { adminClient, rec } = makeAdmin("academy");
+    const res = await handleRequest(req(body()), { adminClient });
+    const parsed = await res.json();
+    assertEquals(res.status, 200);
+    assertEquals(parsed.status, "verification_required");
+    // NOTHING created or written, and no candidate identity/name/count in the response
+    assertEquals(createCall(rec), undefined, "it created a Player before verification");
+    assertEquals(rec.intakeInserts.length, 0, "it wrote an intake row before verification");
+    assertEquals(Object.keys(parsed), ["status"]);
+  } finally {
+    identityResolution = { status: "proceed_new" };
+  }
+});
+
+Deno.test("a verified returning Player skips the create and uses their canonical person", async () => {
+  identityResolution = { status: "proceed_person", person_id: "the-returning-person" };
+  try {
+    const { adminClient, rec } = makeAdmin("academy");
+    const res = await handleRequest(req(body()), { adminClient });
+    assertEquals(res.status, 200);
+    assertEquals(createCall(rec), undefined, "it created a Player instead of reusing the chosen one");
+    // the legacy ref for the intake row is derived from the CHOSEN person, not a fresh create
+    const refCall = rec.calls.find((c) => c.fn === "player_legacy_ref");
+    assertEquals(refCall?.args._person_id, "the-returning-person");
+    assertEquals(rec.intakeInserts.length, 1);
+    assertEquals(rec.intakeInserts[0].guest_player_id, "the-guest");
+  } finally {
+    identityResolution = { status: "proceed_new" };
+  }
 });

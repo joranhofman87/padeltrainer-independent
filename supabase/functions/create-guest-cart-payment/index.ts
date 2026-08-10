@@ -32,6 +32,7 @@ import {
   validateCartSlots,
 } from "../_shared/cart-payment.ts";
 import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
+import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -186,15 +187,26 @@ Deno.serve(async (req) => {
     const { itemAmounts, total: expectedAmount } = priceCartItems(slotIds, slots, hourlyRateByTrainer);
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
 
-    // 6. Guest identity — always a guest_players row, owned by the cart's single org.
-
-
+    // 6. Identity — before ANY hold/payment/create, resolve or demand verification (U2 identity
+    //    continuity). A returning address that collides with existing candidates must prove control
+    //    of the address first; we return here with NO side effect. Only a proven, explicitly chosen
+    //    person (or "someone new") carries on.
     const owner = academyProfileId ? { academyProfileId } : { trainerId };
-    // The checkout resolves a CANONICAL Player. The legacy column `bookings` still requires is derived
-    // from it by the authorized adapter, and exists only for the length of this insert.
-    const { personId } = await resolvePlayerForCheckout(supabase, {
-      email, name, phone, owner, source: "public_booking", creationRequestId,
+
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "cart", email,
     });
+    if (identity.status === "verify_required") {
+      return json({ status: "verification_required" }, 200);
+    }
+
+    // The legacy column `bookings` still needs is derived from the person by the authorized adapter
+    // and exists only for the length of this insert.
+    const personId = identity.status === "proceed_person"
+      ? identity.personId
+      : (await resolvePlayerForCheckout(supabase, {
+          email, name, phone, owner, source: "public_booking", creationRequestId,
+        })).personId;
     const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.

@@ -241,6 +241,7 @@ const MANAGED = {
     'supabase/functions/twilio-whatsapp-webhook/index.ts',
     'supabase/functions/update-public-invoice-details/index.ts',
     'supabase/functions/update-user/index.ts',
+    'supabase/functions/verify-identity/index.ts',
     'supabase/functions/verify-mollie-payment/index.ts',
   ],
   'downstream-caller': [

@@ -30,6 +30,7 @@ import { corsHeadersFor } from "../_shared/cors.ts";
 import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
+import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -211,17 +212,31 @@ Deno.serve(async (req) => {
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze training." }, 400);
     }
 
-    // 5. Guest identity — always a guest_players row (never an existing player_id).
-
-
+    // 5. Identity — before ANY hold/payment/create, resolve or demand verification (U2 identity
+    //    continuity). A first-time address proceeds as new; a returning address that collides with
+    //    existing candidates must prove control of the address first — we return here with NO side
+    //    effect and the browser shows a generic "check your email". Only a proven, explicitly
+    //    chosen person (or "someone new") carries on.
     const owner = slot.academy_profile_id
       ? { academyProfileId: slot.academy_profile_id as string }
       : { trainerId: slot.trainer_id as string };
-    // The checkout resolves a CANONICAL Player. The legacy column `bookings` still requires is derived
-    // from it by the authorized adapter, and exists only for the length of this insert.
-    const { personId } = await resolvePlayerForCheckout(supabase, {
-      email, name, phone, owner, source: "public_booking", creationRequestId,
+
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "slot", email,
     });
+    if (identity.status === "verify_required") {
+      // Generic, leak-free: no candidate identity, name, count or existence — and NOTHING created.
+      return json({ status: "verification_required" }, 200);
+    }
+
+    // A verified returning Player carries only their canonical person_id; a first-timer is created
+    // through the one command. Either way the legacy column `bookings` still needs is derived from
+    // the person by the authorized adapter and exists only for the length of this insert.
+    const personId = identity.status === "proceed_person"
+      ? identity.personId
+      : (await resolvePlayerForCheckout(supabase, {
+          email, name, phone, owner, source: "public_booking", creationRequestId,
+        })).personId;
     const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.

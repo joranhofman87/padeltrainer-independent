@@ -57,7 +57,8 @@ if [[ $WITH_DB == 1 ]]; then
   # ignore it, which is the opposite of why it exists.
   for suite in scripts/db/academy-deletion-integration.mjs \
                scripts/db/backup-coverage.mjs \
-               scripts/db/u2-no-email-alone-merge.mjs; do
+               scripts/db/u2-no-email-alone-merge.mjs \
+               scripts/db/u2-identity-verification.mjs; do
     [[ -f "$suite" ]] && run "$(basename "$suite" .mjs) (real pg)" node "$suite"
   done
 else

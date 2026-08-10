@@ -1,6 +1,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
+import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
 import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {
@@ -338,45 +339,71 @@ export async function handleRequest(
         );
       }
 
-      const { data: created, error: createError } = await adminClient.rpc("player_create_command", {
-        // The client mints one id per submission attempt, so a retry is the SAME attempt. Minting
-        // one here instead would make every retry a NEW attempt — the first request creates the
-        // Player, its response is lost, and the resubmission creates a second one. The 60-second
-        // duplicate window above is keyed on the address, which is exactly the kind of key U2 says
-        // may not stand in for identity or for idempotency; it suppresses a double-click and
-        // nothing beyond its window.
-        _creation_request_id: creationRequestId,
-        _owner_type: ownerType,
-        _owner_id: regRow.owner_id,
-        _full_name: nameFields.full_name,
-        _email: email.toLowerCase(),
-        _phone: phone || null,
-        _first_name: nameFields.first_name,
-        _last_name: nameFields.last_name,
-        _skill_rating: rating ?? null,
-        _rating_system: ratingSystem || null,
-        _birth_date: birthDate || null,
-        _source: "intake_form",
-        _select_person_id: null,
-        // A self-signup has no operator: the registrant is the only party present, and this
-        // endpoint's own gates (form open, CORS allow-list, per-IP and per-recipient throttles) are
-        // what stand in for one.
-        _actor_user_id: null,
-        _origin: "self_signup",
+      // Identity — before the Player is created or any intake row is written, resolve or demand
+      // verification (U2 identity continuity). A returning address that collides with existing
+      // candidates must prove control of the address first; we return here with NO side effect and
+      // the form shows a generic "check your email". Only a proven, explicitly chosen person (or
+      // "someone new") carries on.
+      const identity = await resolveAnonymousIdentity(adminClient, {
+        creationRequestId,
+        owner: ownerType === "academy"
+          ? { academyProfileId: regRow.owner_id }
+          : { trainerId: regRow.owner_id },
+        workflow: "intake",
+        email: email.toLowerCase(),
       });
-
-      if (createError) {
-        // PII hygiene (E-22): Postgres error `details` can embed submitted values — code + message.
-        console.error("Error creating player:", createError.code, createError.message);
+      if (identity.status === "verify_required") {
         return new Response(
-          JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
-          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          JSON.stringify({ status: "verification_required" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
-      // The command answers with a canonical person. `intake_requests` still physically carries the
-      // legacy columns, so the row this endpoint writes derives them from that person through the
-      // authorized adapter — the only place in this function where a legacy id exists.
-      const personId = (created as { person_id: string | null }).person_id;
+
+      let personId: string | null;
+      if (identity.status === "proceed_person") {
+        // A verified returning Player: use their canonical id, create nothing.
+        personId = identity.personId;
+      } else {
+        const { data: created, error: createError } = await adminClient.rpc("player_create_command", {
+          // The client mints one id per submission attempt, so a retry is the SAME attempt. Minting
+          // one here instead would make every retry a NEW attempt — the first request creates the
+          // Player, its response is lost, and the resubmission creates a second one. The 60-second
+          // duplicate window above is keyed on the address, which is exactly the kind of key U2 says
+          // may not stand in for identity or for idempotency; it suppresses a double-click and
+          // nothing beyond its window.
+          _creation_request_id: creationRequestId,
+          _owner_type: ownerType,
+          _owner_id: regRow.owner_id,
+          _full_name: nameFields.full_name,
+          _email: email.toLowerCase(),
+          _phone: phone || null,
+          _first_name: nameFields.first_name,
+          _last_name: nameFields.last_name,
+          _skill_rating: rating ?? null,
+          _rating_system: ratingSystem || null,
+          _birth_date: birthDate || null,
+          _source: "intake_form",
+          _select_person_id: null,
+          // A self-signup has no operator: the registrant is the only party present, and this
+          // endpoint's own gates (form open, CORS allow-list, per-IP and per-recipient throttles) are
+          // what stand in for one.
+          _actor_user_id: null,
+          _origin: "self_signup",
+        });
+
+        if (createError) {
+          // PII hygiene (E-22): Postgres error `details` can embed submitted values — code + message.
+          console.error("Error creating player:", createError.code, createError.message);
+          return new Response(
+            JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+        personId = (created as { person_id: string | null }).person_id;
+      }
+      // `intake_requests` still physically carries the legacy columns, so the row this endpoint
+      // writes derives them from the canonical person through the authorized adapter — the only
+      // place in this function where a legacy id exists.
       const { data: legacyRef, error: refError } = await adminClient.rpc("player_legacy_ref", {
         _person_id: personId,
         _owner_type: ownerType,
