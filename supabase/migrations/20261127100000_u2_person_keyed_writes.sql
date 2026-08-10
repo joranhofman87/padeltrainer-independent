@@ -256,10 +256,14 @@ COMMENT ON FUNCTION public.intake_request_create_for_person(
 -- the command used to return. Keyed by person, answers attributes only: there is deliberately no
 -- legacy id among the columns, so a caller cannot use the projection as a translator.
 --
--- Attributes come from `persons` — the canonical attribute store, rederived across sources — with
--- `notes` from the in-scope guest source (persons carries no notes; an operator note belongs to the
--- operator's scope anyway). A replayed create can answer with a person whose stored attributes
--- differ from what was just typed; showing the STORED truth is the point of reading back at all.
+-- Attributes come from the SOURCE ROW the scope actually owns — the in-scope guest first, else the
+-- profile — never from the `persons` aggregate (Codex r2 f3). The aggregate is profile-first and
+-- system-wide: an academy whose only relationship is a guest row would read the account holder's
+-- global email and phone through it, which is exactly what the overview's canonical-suppression
+-- rule exists to prevent (20261006120000). A scope reading its own source row learns nothing it
+-- did not already have; when no source row is readable, only the display name answers. A replayed
+-- create can answer with a person whose stored attributes differ from what was just typed; showing
+-- the STORED truth is the point of reading back at all.
 CREATE OR REPLACE FUNCTION public.person_display_for_owner(
   _person_id uuid, _owner_type text, _owner_id uuid
 )
@@ -282,6 +286,8 @@ SET search_path = pg_catalog, public, pg_temp
 AS $$
 DECLARE
   v_uid uuid := auth.uid();
+  v_profile uuid;
+  v_guest uuid;
 BEGIN
   IF v_uid IS NULL THEN
     RAISE EXCEPTION 'PERSON_DISPLAY_NOT_AUTHENTICATED' USING ERRCODE = 'insufficient_privilege';
@@ -295,14 +301,30 @@ BEGIN
       USING ERRCODE = 'insufficient_privilege';
   END IF;
 
-  RETURN QUERY
-  SELECT p.id, p.full_name, p.first_name, p.last_name, p.email, p.phone,
-         p.skill_rating, p.rating_system,
-         (SELECT g.notes FROM public.person_legacy_source(_person_id, _owner_type, _owner_id) s
-            JOIN public.guest_players g ON g.id = s.guest_player_id),
-         p.created_at
-    FROM public.persons p
-   WHERE p.id = _person_id;
+  SELECT s.profile_id, s.guest_player_id INTO v_profile, v_guest
+    FROM public.person_legacy_source(_person_id, _owner_type, _owner_id) s;
+
+  IF v_guest IS NOT NULL THEN
+    RETURN QUERY
+    SELECT _person_id, g.full_name, g.first_name, g.last_name, g.email, g.phone,
+           g.skill_rating, g.rating_system, g.notes, g.created_at
+      FROM public.guest_players g
+     WHERE g.id = v_guest;
+  ELSIF v_profile IS NOT NULL THEN
+    RETURN QUERY
+    SELECT _person_id, p.full_name, p.first_name, p.last_name, p.email, p.phone,
+           p.skill_rating, p.rating_system, NULL::text, p.created_at
+      FROM public.profiles p
+     WHERE p.id = v_profile;
+  ELSE
+    -- Selectable (a membership or booking relationship) but no source row this scope may read:
+    -- the display name is on every roster already; the contact aggregates are not this scope's.
+    RETURN QUERY
+    SELECT p.id, p.full_name, NULL::text, NULL::text, NULL::text, NULL::text,
+           NULL::numeric, NULL::text, NULL::text, p.created_at
+      FROM public.persons p
+     WHERE p.id = _person_id;
+  END IF;
 END;
 $$;
 

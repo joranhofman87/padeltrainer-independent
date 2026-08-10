@@ -250,7 +250,9 @@ Deno.serve(async (req) => {
       .from("bookings")
       .select("id, public_token")
       .eq("slot_id", slotId)
-      .eq("guest_player_id", guestPlayerId)
+      // person-keyed (Codex r2 f5): after a claim the derived guest can differ from the one the
+      // original booking row carried; person_id sees every row of this human either way
+      .eq("person_id", personId)
       .eq("payment_status", "paid")
       .neq("status", "cancelled")
       .limit(1)
@@ -415,9 +417,10 @@ Deno.serve(async (req) => {
       metadata: {
         booking_id: bookingId,
         booking_ids: [bookingId], // tells mollie-webhook to commit the hold (NO invoice_id)
-        // canonical correlation only: the derived guest reference dies inside this process (U2,
-        // owner correction 2026-08-09) — nothing reads a guest id back out of Mollie metadata.
-        person_id: personId,
+        // correlation by the caller's ATTEMPT id (U2): stable across replays — a claim can repoint
+        // the person mid-retry, and a changed metadata value would change the Mollie idempotency
+        // fingerprint and mint a second payment (Codex r2 f6). The receipt maps it to the person.
+        creation_request_id: creationRequestId,
         recipient_type: recipientType,
       },
     };

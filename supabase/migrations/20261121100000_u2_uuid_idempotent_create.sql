@@ -175,11 +175,26 @@ AS $$
       OR EXISTS (SELECT 1 FROM public.person_links pl
                    JOIN public.guest_players g ON g.id = pl.guest_player_id
                   WHERE pl.person_id = _person_id
+                    -- a SPLIT-FROZEN link is a disputed one: the guest may be a different human
+                    -- than the linked person, so it is no relationship to that person at all
+                    -- (Codex r2 f2 — mirrors the overview, which keys a frozen guest as its OWN
+                    -- person; the frozen-self arm below is the other half of that mirror).
+                    AND NOT public.is_guest_split_frozen(g.id)
                     AND (g.academy_profile_id = _owner_id
                          -- ...or a guest of one of the academy's ACTIVE trainers. This mirrors how
                          -- `get_players_overview` populates the picker the operator chose from, so
                          -- the two agree about who this academy's players are. A predicate that
                          -- disagreed with the picker would refuse people the UI had just offered.
+                         OR EXISTS (SELECT 1 FROM public.academy_trainers at
+                                     WHERE at.academy_profile_id = _owner_id
+                                       AND at.trainer_profile_id = g.trainer_id
+                                       AND at.status = 'active')))
+      -- ...or the pick IS a split-frozen guest, keyed as its own person — exactly how the
+      -- freeze-aware picker offers it.
+      OR EXISTS (SELECT 1 FROM public.guest_players g
+                  WHERE g.id = _person_id
+                    AND public.is_guest_split_frozen(g.id)
+                    AND (g.academy_profile_id = _owner_id
                          OR EXISTS (SELECT 1 FROM public.academy_trainers at
                                      WHERE at.academy_profile_id = _owner_id
                                        AND at.trainer_profile_id = g.trainer_id
@@ -198,7 +213,13 @@ AS $$
     WHEN 'trainer' THEN
       EXISTS (SELECT 1 FROM public.person_links pl
                 JOIN public.guest_players g ON g.id = pl.guest_player_id
-               WHERE pl.person_id = _person_id AND g.trainer_id = _owner_id)
+               WHERE pl.person_id = _person_id
+                 AND NOT public.is_guest_split_frozen(g.id)
+                 AND g.trainer_id = _owner_id)
+      OR EXISTS (SELECT 1 FROM public.guest_players g
+                  WHERE g.id = _person_id
+                    AND public.is_guest_split_frozen(g.id)
+                    AND g.trainer_id = _owner_id)
       OR EXISTS (SELECT 1 FROM public.bookings b
                    JOIN public.availability_slots s ON s.id = b.slot_id
                    JOIN public.person_links pl ON pl.profile_id = b.player_id
@@ -601,19 +622,38 @@ AS $$
     -- `player_owner_may_select_person` and the players overview use, so a person the picker
     -- offered and the predicate admitted cannot then derive to NOTHING and silently unlink the
     -- write (Codex r1 f6).
-    (SELECT pl.guest_player_id
-       FROM public.person_links pl
-       JOIN public.guest_players g ON g.id = pl.guest_player_id
-      WHERE pl.person_id = _person_id
-        AND ((_owner_type = 'academy'
-              AND (g.academy_profile_id = _owner_id
-                   OR EXISTS (SELECT 1 FROM public.academy_trainers at
-                               WHERE at.academy_profile_id = _owner_id
-                                 AND at.trainer_profile_id = g.trainer_id
-                                 AND at.status = 'active')))
-             OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
-      ORDER BY g.created_at
-      LIMIT 1);
+    --
+    -- SPLIT-FROZEN links are excluded, and the frozen guest itself answers as its OWN person
+    -- (Codex r2 f2): while a split review is pending the link may describe a different human, so
+    -- deriving the disputed guest for the linked person would pair two possibly-different people
+    -- in one row — the exact mispairing the freeze exists to prevent. The COALESCE arm mirrors the
+    -- overview, which keys a frozen guest by its own id.
+    COALESCE(
+      (SELECT pl.guest_player_id
+         FROM public.person_links pl
+         JOIN public.guest_players g ON g.id = pl.guest_player_id
+        WHERE pl.person_id = _person_id
+          AND NOT public.is_guest_split_frozen(g.id)
+          AND ((_owner_type = 'academy'
+                AND (g.academy_profile_id = _owner_id
+                     OR EXISTS (SELECT 1 FROM public.academy_trainers at
+                                 WHERE at.academy_profile_id = _owner_id
+                                   AND at.trainer_profile_id = g.trainer_id
+                                   AND at.status = 'active')))
+               OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
+        ORDER BY g.created_at
+        LIMIT 1),
+      (SELECT g.id
+         FROM public.guest_players g
+        WHERE g.id = _person_id
+          AND public.is_guest_split_frozen(g.id)
+          AND ((_owner_type = 'academy'
+                AND (g.academy_profile_id = _owner_id
+                     OR EXISTS (SELECT 1 FROM public.academy_trainers at
+                                 WHERE at.academy_profile_id = _owner_id
+                                   AND at.trainer_profile_id = g.trainer_id
+                                   AND at.status = 'active')))
+               OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))));
 $$;
 
 REVOKE ALL ON FUNCTION public.person_legacy_source(uuid, text, uuid)

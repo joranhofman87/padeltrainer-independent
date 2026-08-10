@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -115,14 +116,20 @@ export function CycleRosterInlinePicker({
       if (created) {
         onSelect(created);
       } else {
+        // The create SUCCEEDED — the operator must hear that the selection did not (Codex r2 f8),
+        // or the next click quietly mints a second attempt for a player who already exists.
         logger.error("Created player not found in the refreshed roster picker", undefined, {
           component: "CycleRosterInlinePicker",
         });
+        toast.info(t("detail.roster.picker.createdNotSelected",
+          "Speler aangemaakt — selecteer ze handmatig in de lijst."));
       }
     } catch (error) {
       logger.error("Failed to refresh the roster picker after a create", error as Error, {
         component: "CycleRosterInlinePicker",
       });
+      toast.info(t("detail.roster.picker.createdNotSelected",
+        "Speler aangemaakt — selecteer ze handmatig in de lijst."));
     }
   };
 

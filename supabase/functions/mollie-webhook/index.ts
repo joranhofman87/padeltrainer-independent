@@ -224,7 +224,7 @@ serve(async (req) => {
         booking_id: payment.metadata?.booking_id,
         booking_ids: payment.metadata?.booking_ids,
         invoice_id: payment.metadata?.invoice_id,
-        person_id: payment.metadata?.person_id,
+        creation_request_id: payment.metadata?.creation_request_id,
         recipient_type: payment.metadata?.recipient_type,
         cart: payment.metadata?.cart,
         cyclus_id: payment.metadata?.cyclus_id,
@@ -575,7 +575,9 @@ serve(async (req) => {
                   const { data: cover, error: coverErr } = await supabase.rpc("rebook_group_manage", {
                     _token: capClaim.claim_token,
                     _keep_keys: keepKeys,
-                    _new_guest_ids: [],
+                    // covers EXISTING pending members only — the person-keyed member handover
+                    // (U2, 20261128100000) is the captain's flow, not this one's
+                    _new_creation_request_ids: [],
                     _invoice_id: invoiceIdFromMetadata,
                   });
                   const coverRes = (cover ?? {}) as { ok?: boolean; booked?: number; skipped_full?: number; reason?: string };

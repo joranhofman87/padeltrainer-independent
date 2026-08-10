@@ -1081,13 +1081,21 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
   ok('and the token is still what authorizes the add',
     !badToken.ok && /invalid_token/.test(badToken.message ?? ''), badToken);
 
-  // ── the APPLY takes person ids and derives the booking keys INSIDE the definer ──────────────
-  // (owner correction 2026-08-09; Codex r1 f2). The captain's browser never held a guest id, and
-  // the derived key lands in the booking row without ever leaving the database.
+  // ── the APPLY takes the captain's own ATTEMPT ids; receipts bind them to the slot's owner ───
+  // (owner correction 2026-08-09; Codex r1 f2 + r2 f4). The captain's browser holds neither guest
+  // ids nor person ids for this — only the request ids it minted — and the derived key lands in
+  // the booking row without ever leaving the database.
   //
-  // The refusal is staged FIRST, while the captain's claim is still pending: a person outside the
-  // slot's scope aborts the whole apply by name — which also closes the pre-existing hole where
-  // any guest uuid a token-holder possessed was booked without an ownership check.
+  // The refusals are staged FIRST, while the captain's claim is still pending. An unknown attempt
+  // cannot have come from this flow; a receipt owned by another tenant is another tenant's member.
+  // This also closes the pre-existing hole where any guest uuid a token-holder possessed was
+  // booked without an ownership check.
+  const unknownApply = await asUser(null, async () => (await one(
+    `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
+    [token, await newUuid()])).r);
+  ok('an attempt id with no receipt is refused by name',
+    !unknownApply.ok && /unknown_member_attempt/.test(unknownApply.message ?? ''), unknownApply);
+
   const { id: otherAcademy } = await one(
     `INSERT INTO public.academy_profiles (name, slug)
      VALUES ('u2 other rb', 'u2orb-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
@@ -1095,11 +1103,17 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
     `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
      VALUES ('Foreign Member', $1, $2) RETURNING id`, [EMAIL(), otherAcademy]);
   const foreignPerson = (await personOfGuest(foreignGuest)).person_id;
+  const foreignReq = await newUuid();
+  await c.query(
+    `INSERT INTO public.player_create_commands
+       (creation_request_id, owner_type, owner_id, origin, payload_fingerprint, person_id)
+     VALUES ($1, 'academy', $2, 'self_signup', 'fixture-foreign', $3)`,
+    [foreignReq, otherAcademy, foreignPerson]);
   const foreignApply = await asUser(null, async () => (await one(
     `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
-    [token, foreignPerson])).r);
-  ok('a person outside the slot scope is refused by name, never booked',
-    !foreignApply.ok && /person_not_in_scope/.test(foreignApply.message ?? ''), foreignApply);
+    [token, foreignReq])).r);
+  ok('an attempt whose receipt belongs to another tenant is refused by name, never booked',
+    !foreignApply.ok && /member_not_in_scope/.test(foreignApply.message ?? ''), foreignApply);
   ok('...and no booking was written for the foreign guest',
     (await one(`SELECT count(*)::int AS n FROM public.bookings
                  WHERE slot_id = $1 AND guest_player_id = $2`, [slot, foreignGuest])).n === 0);
@@ -1109,14 +1123,39 @@ const newUuid = async () => (await one(`SELECT gen_random_uuid() AS id`)).id;
 
   const applied = await asUser(null, async () => (await one(
     `SELECT public.rebook_group_apply($1, '[]'::jsonb, ARRAY[$2]::uuid[]) AS r`,
-    [token, child.value])).r);
-  ok('the group apply books a member handed over as a canonical person', applied.ok
+    [token, reqA])).r);
+  ok('the group apply books a member handed over as the captain\'s own attempt id', applied.ok
     && applied.value.ok === true && applied.value.added >= 1, applied);
   const childGuest = (await one(`SELECT guest_player_id FROM public.person_links
                                   WHERE person_id = $1`, [child.value])).guest_player_id;
   ok('...and the booking row carries the guest key the definer derived',
     (await one(`SELECT count(*)::int AS n FROM public.bookings
                  WHERE slot_id = $1 AND guest_player_id = $2`, [slot, childGuest])).n === 1);
+
+  // ── the return really is CANONICAL, proven where person and guest ids DIVERGE ───────────────
+  // A fresh mint keys the person by the guest's own uuid, so "returns the person" and "returns
+  // the guest" are indistinguishable above (Codex r2 f10). A claim breaks the tie: the member's
+  // person collapses into the account holder's, the receipt is repointed, and the replay must
+  // answer with the SURVIVOR — an id that never named any guest row.
+  const claimMember = capMembers[1];
+  const { uid: claimantUid, profileId: claimantProfile } = await makeAccount(claimMember.email);
+  const memberGuest = (await one(`SELECT guest_player_id FROM public.person_links
+                                   WHERE person_id = $1`, [claimMember.id])).guest_player_id;
+  const { id: pairReview } = await one(
+    `SELECT id FROM public.person_merge_review
+      WHERE guest_player_id = $1 AND kind = 'email_pair_awaiting_claim' AND status = 'pending'`,
+    [memberGuest]);
+  ok('fixture: the unique-address member has a pending claim pair', !!pairReview);
+  const claimed = await asUser(claimantUid, async () =>
+    one(`SELECT public.person_claim_confirm($1) AS r`, [pairReview]));
+  ok('fixture: the claimant confirms', claimed.ok, claimed);
+  const survivor = (await personOfProfile(claimantProfile)).person_id;
+
+  const replayAfterClaim = await addMember(claimMember.req, claimMember.name, 'Van Der Berg', claimMember.email);
+  ok('a replay after the claim answers the SURVIVING person — canonical, and provably not a guest id',
+    replayAfterClaim.ok && replayAfterClaim.value === survivor
+    && replayAfterClaim.value !== memberGuest && replayAfterClaim.value !== claimMember.id,
+    { got: replayAfterClaim.value, survivor, memberGuest });
   await c.query('ROLLBACK');
 }
 
@@ -1966,6 +2005,135 @@ const commandFor = (req) => one(
       [crypto.randomUUID(), academy, foreignPerson, mgr]));
   ok('...while a FRESH select of a foreign person is refused exactly as before',
     !freshForeign.ok && /PERSON_NOT_YOURS/.test(freshForeign.message ?? ''), freshForeign);
+  await c.query('ROLLBACK');
+}
+
+// ── 7h. The split-pending FREEZE binds the new predicates too (Codex r2 f2) ────────────────────
+// While a split review is pending, the guest's person link may describe a DIFFERENT human. The
+// overview already treats such a guest as its OWN person; the U2 predicates and the derivation
+// must say the same thing from both directions, or the freeze is defeated exactly where money and
+// PII writes happen.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 freeze', 'u2fz-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academy, mgr]);
+
+  // an account holder whose person carries a guest source in this academy
+  const email = EMAIL();
+  const { uid: holderUid, profileId } = await makeAccount(email);
+  const { id: guest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Disputed Guest', $1, $2) RETURNING id`, [email, academy]);
+  const { id: pairReview } = await one(
+    `SELECT id FROM public.person_merge_review
+      WHERE guest_player_id = $1 AND kind = 'email_pair_awaiting_claim' AND status = 'pending'`, [guest]);
+  const claimed = await asUser(holderUid, async () =>
+    one(`SELECT public.person_claim_confirm($1) AS r`, [pairReview]));
+  const person = (await personOfProfile(profileId)).person_id;
+  ok('fixture: guest claimed onto the account person', claimed.ok
+    && (await personOfGuest(guest)).person_id === person);
+
+  // pre-freeze: the person derives its guest, as everywhere else in this suite
+  const before = await one(`SELECT * FROM public.person_legacy_source($1, 'academy', $2)`,
+    [person, academy]);
+  ok('fixture: before the freeze the guest derives normally', before.guest_player_id === guest, before);
+
+  // THE FREEZE: a pending split review on the guest
+  await c.query(
+    `INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id, details)
+     VALUES ('twin_detached_needs_split', 'pending', $1, $2, '{"via":"u2 test"}'::jsonb)`,
+    [guest, person]);
+
+  const during = await one(`SELECT * FROM public.person_legacy_source($1, 'academy', $2)`,
+    [person, academy]);
+  ok('a FROZEN link derives nothing for the linked person — the disputed guest is never paired',
+    during.guest_player_id === null, during);
+  ok('...while the profile side still answers', during.profile_id === profileId, during);
+
+  // The linked person's ONLY relationship to this academy was the now-disputed guest — so during
+  // the freeze the academy has no undisputed relationship to bill on, and the command fails
+  // CLOSED. The guest itself stays billable below, as its own person: nothing is unbillable, but
+  // nothing is paired across a dispute either.
+  const inv = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, $2, 'U2-FRZ-1', current_date, current_date + 14, 'Disputed Guest') AS r`,
+      [academy, person]));
+  ok('billing the LINKED person on the strength of a disputed link is refused outright',
+    !inv.ok && /INVOICE_PERSON_NOT_IN_SCOPE/.test(inv.message ?? ''), inv);
+
+  // ...and the OTHER direction: the frozen guest is its own person, exactly as the picker keys it
+  const selfSelectable = await one(
+    `SELECT public.player_owner_may_select_person('academy', $1, $2) AS r`, [academy, guest]);
+  ok('the frozen guest is selectable AS ITS OWN PERSON — the freeze-aware picker\'s key works',
+    selfSelectable.r === true);
+  const selfDerived = await one(`SELECT * FROM public.person_legacy_source($1, 'academy', $2)`,
+    [guest, academy]);
+  ok('...and derives ITSELF, with no profile attached',
+    selfDerived.guest_player_id === guest && selfDerived.profile_id === null, selfDerived);
+  const selfDisplay = await asUser(mgr, async () =>
+    one(`SELECT * FROM public.person_display_for_owner($1, 'academy', $2)`, [guest, academy]));
+  ok('...and the display projection answers the guest row\'s own attributes',
+    selfDisplay.ok && selfDisplay.value.full_name === 'Disputed Guest', selfDisplay);
+  const selfInvoice = await asUser(mgr, async () =>
+    one(`SELECT public.invoice_create_for_person(
+           'academy', $1, $2, 'U2-FRZ-2', current_date, current_date + 14, 'Disputed Guest') AS r`,
+      [academy, guest]));
+  ok('...and billing the frozen guest AS ITS OWN PERSON works, guest-keyed and profile-free',
+    selfInvoice.ok
+    && (await one(`SELECT guest_player_id, player_id FROM public.invoices WHERE id = $1`,
+        [selfInvoice.value.r.invoice_id])).guest_player_id === guest
+    && (await one(`SELECT player_id FROM public.invoices WHERE id = $1`,
+        [selfInvoice.value.r.invoice_id])).player_id === null, selfInvoice);
+
+  // resolution unfreezes: the review closes, the link derives again
+  await c.query(`UPDATE public.person_merge_review SET status = 'applied'
+                  WHERE guest_player_id = $1 AND kind = 'twin_detached_needs_split'`, [guest]);
+  const after = await one(`SELECT * FROM public.person_legacy_source($1, 'academy', $2)`,
+    [person, academy]);
+  ok('resolving the review restores the derivation', after.guest_player_id === guest, after);
+  await c.query('ROLLBACK');
+}
+
+// ── 7i. The display projection answers SOURCE-ROW attributes, never the canonical aggregate ────
+// (Codex r2 f3). The persons row is profile-first and system-wide: a scope whose only relationship
+// is a guest row must not read the account holder's global address through this projection.
+{
+  await c.query('BEGIN');
+  const { id: academy } = await one(
+    `INSERT INTO public.academy_profiles (name, slug)
+     VALUES ('u2 srcrow', 'u2sr-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`);
+  const { uid: mgr } = await makeAccount(EMAIL());
+  await c.query(`INSERT INTO public.academy_managers (academy_profile_id, user_id) VALUES ($1, $2)`,
+    [academy, mgr]);
+
+  // an account holder with a GLOBAL address, claimed onto a guest whose academy-side address differs
+  const accountEmail = EMAIL();
+  const { uid: holderUid, profileId } = await makeAccount(accountEmail);
+  const guestEmail = accountEmail;   // pair-proposal needs the shared address
+  const { id: guest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Scoped View', $1, $2) RETURNING id`, [guestEmail, academy]);
+  const { id: rev } = await one(
+    `SELECT id FROM public.person_merge_review
+      WHERE guest_player_id = $1 AND kind = 'email_pair_awaiting_claim' AND status = 'pending'`, [guest]);
+  await asUser(holderUid, async () => one(`SELECT public.person_claim_confirm($1) AS r`, [rev]));
+  const person = (await personOfProfile(profileId)).person_id;
+
+  // the account holder changes their GLOBAL address; the academy's guest row keeps the old one
+  const privateEmail = EMAIL();
+  await c.query(`UPDATE public.profiles SET email = $1 WHERE id = $2`, [privateEmail, profileId]);
+  await c.query(`SELECT public.rederive_person($1)`, [person]);
+
+  const disp = await asUser(mgr, async () =>
+    one(`SELECT * FROM public.person_display_for_owner($1, 'academy', $2)`, [person, academy]));
+  ok('the projection answers the SCOPE\'S OWN source row', disp.ok
+    && disp.value.email === guestEmail, disp);
+  ok('...and never the account holder\'s global address',
+    disp.ok && disp.value.email !== privateEmail && disp.value.phone !== 'never-mind', disp);
   await c.query('ROLLBACK');
 }
 

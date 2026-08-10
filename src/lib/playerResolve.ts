@@ -116,8 +116,21 @@ export async function ensureRosterTwinForRegisteredPlayer(
   if (error.code === '23505') {
     // Lost a mint race on uniq_guest_twin_per_academy — the winner's twin IS this person's twin
     // (B1 merges a roster twin onto the profile's person), so the person the caller already holds
-    // is the answer.
-    if (snapshot.personId) return { personId: snapshot.personId };
+    // is the answer. The flag write still happens on THIS path (Codex r2 f11): the winner may have
+    // died before its own non-blocking flag call, and the retry is the one that promised a seat.
+    if (snapshot.personId) {
+      const { error: flagError } = await supabase.rpc('person_mark_has_trained', {
+        _person_id: snapshot.personId,
+        _owner_type: 'academy',
+        _owner_id: academyProfileId,
+      });
+      if (flagError) {
+        logger.warn('person_mark_has_trained failed after a lost mint race (non-blocking)', {
+          errorCode: flagError.code,
+        });
+      }
+      return { personId: snapshot.personId };
+    }
   }
   logger.error(
     'ensureRosterTwinForRegisteredPlayer create failed',

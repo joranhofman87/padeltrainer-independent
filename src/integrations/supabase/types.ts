@@ -12367,14 +12367,18 @@ export type Database = {
         }[]
       }
       rebook_group_apply: {
-        Args: { _keep_keys?: Json; _new_person_ids?: string[]; _token: string }
+        Args: {
+          _keep_keys?: Json
+          _new_creation_request_ids?: string[]
+          _token: string
+        }
         Returns: Json
       }
       rebook_group_manage: {
         Args: {
           _invoice_id?: string
           _keep_keys?: Json
-          _new_person_ids?: string[]
+          _new_creation_request_ids?: string[]
           _token: string
         }
         Returns: Json

@@ -194,30 +194,43 @@ export function AddPlayerForm({
       // display projection. The guest re-read that stood here handed every caller a legacy id — the
       // projection carries none, so a consumer that must find this Player in a still-legacy list
       // matches that list's own rows on personId (U2, owner correction 2026-08-09).
-      const { data: display, error: readError } = await supabase.rpc("person_display_for_owner", {
-        _person_id: personId,
-        _owner_type: academyId ? "academy" : "trainer",
-        _owner_id: academyId || trainerId || null,
-      });
-      if (readError) throw readError;
-      const row = (display as CreatedPlayerRow[] | null)?.[0];
-      if (!row) throw new Error("player_display_unavailable");
+      //
+      // The CREATE has already committed by this point, so a projection failure is a DISPLAY
+      // problem, never a create failure (Codex r2 f7): reporting it as one told the operator to
+      // "try again", and the retry — under a fresh attempt id once the dialog reopened — minted a
+      // second Player. Degrade to the typed values instead; a replay would have shown stored truth,
+      // but a brand-new create's stored truth IS what was typed.
+      let row: CreatedPlayerRow | null = null;
+      try {
+        const { data: display, error: readError } = await supabase.rpc("person_display_for_owner", {
+          _person_id: personId,
+          _owner_type: academyId ? "academy" : "trainer",
+          _owner_id: academyId || trainerId || null,
+        });
+        if (readError) throw readError;
+        row = (display as CreatedPlayerRow[] | null)?.[0] ?? null;
+      } catch (displayError) {
+        logger.warn("person display projection unavailable after a successful create", {
+          component: "AddPlayerForm",
+          error: displayError instanceof Error ? displayError.message : String(displayError),
+        });
+      }
 
       clearCreationAttempt(attemptRef);
       setLastCreatedName(nameFields.full_name);
       setShowSuccess(true);
       resetForm();
       onPlayerCreated?.({
-        personId: row.person_id,
-        full_name: row.full_name ?? nameFields.full_name,
-        first_name: row.first_name,
-        last_name: row.last_name,
-        email: row.email ?? "",
-        phone: row.phone ?? "",
-        skill_rating: row.skill_rating,
-        rating_system: row.rating_system ?? ratingSystem,
-        notes: row.notes,
-        created_at: row.created_at,
+        personId,
+        full_name: row?.full_name ?? nameFields.full_name,
+        first_name: row?.first_name ?? nameFields.first_name ?? null,
+        last_name: row?.last_name ?? nameFields.last_name ?? null,
+        email: row?.email ?? email.trim().toLowerCase(),
+        phone: row?.phone ?? phone.trim(),
+        skill_rating: row?.skill_rating ?? (skillRating ? parseFloat(skillRating) : null),
+        rating_system: row?.rating_system ?? ratingSystem,
+        notes: row?.notes ?? (notes.trim() || null),
+        created_at: row?.created_at ?? new Date().toISOString(),
       });
     } catch (error: any) {
       logger.error('Error creating player', error as Error, { component: 'AddPlayerForm' });

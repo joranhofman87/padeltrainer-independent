@@ -1,11 +1,12 @@
 // @vitest-environment node
 /**
  * `rebook_group_apply` and `rebook_group_manage` had to be reproduced to change how their NEW
- * MEMBERS arrive: canonical person ids in, legacy guest ids derived inside the definer (owner
- * correction, 2026-08-09 — a browser must never carry a guest id, so the old `_new_guest_ids`
- * parameter is gone). Everything else in two long, money-adjacent, anon-reachable functions — the
- * token validation, the paid gate, the keep/decline logic, the capacity guards, the advisory
- * locks — must survive byte for byte.
+ * MEMBERS arrive: the captain's own create-attempt ids in, receipts bound to the slot's owner,
+ * legacy guest keys derived inside the definer (owner correction, 2026-08-09 — a browser carries
+ * neither guest ids nor person ids for this, only the capabilities it minted itself). Everything
+ * else in two long, money-adjacent, anon-reachable functions — the token validation, the paid
+ * gate, the keep/decline logic, the capacity guards, the advisory locks — must survive byte for
+ * byte.
  *
  * A machine checks that: strip exactly the person-keyed edits out of the new definitions and what
  * remains must be IDENTICAL to the shipped ones. A dropped guard, a weakened capacity check or a
@@ -29,16 +30,25 @@ function extract(file: string, fn: string): string {
 /** The person-keyed edits, each anchored so it cannot silently absorb neighbouring lines. */
 const COMMON_EDITS: Array<[RegExp, string]> = [
   // 1. the signature parameter
-  [/_new_person_ids uuid\[\] DEFAULT '\{\}'::uuid\[\]/, "_new_guest_ids uuid[] DEFAULT '{}'::uuid[]"],
+  [/_new_creation_request_ids uuid\[\] DEFAULT '\{\}'::uuid\[\]/, "_new_guest_ids uuid[] DEFAULT '{}'::uuid[]"],
   // 2. the declarations the derivation needs
-  [/\n(\s*)pid uuid;\n\s*v_new_guest_ids uuid\[\] := '\{\}';/, ''],
-  // 3. the derivation preamble (comment + loop), up to and including its END IF
+  [/\n(\s*)rid uuid;\n\s*v_m_person uuid;\n\s*v_m_owner_type text;\n\s*v_m_owner_id uuid;\n\s*v_new_guest_ids uuid\[\] := '\{\}';/, ''],
+  // 3. the receipt-bound derivation preamble (comment + loop), up to and including its END IF
   [
-    /\n {2}-- U2: derive the legacy guest ids from the canonical persons[\s\S]*?\n {2}END IF;\n(?=\n\s*(--|IF array_length\(v_new_guest_ids))/,
+    /\n {2}-- U2: resolve each member ATTEMPT[\s\S]*?\n {2}END IF;\n(?=\n)/,
     '',
   ],
-  // 4. the two reads of the derived array go back to the parameter
-  [/IF array_length\(v_new_guest_ids, 1\) IS NOT NULL THEN/, 'IF array_length(_new_guest_ids, 1) IS NOT NULL THEN'],
+  // 4. the sanitizer wrapper opens...
+  [
+    /\n {2}-- the 23505 detail of the guest-keyed indexes would hand the DERIVED key to an anonymous\n {2}-- caller; the whole section answers with a name instead \(Codex r2 f9\)\n {2}BEGIN\n {2}IF array_length\(v_new_guest_ids, 1\) IS NOT NULL THEN/,
+    '\n  IF array_length(_new_guest_ids, 1) IS NOT NULL THEN',
+  ],
+  // ...and closes
+  [
+    /\n {2}END IF;\n {2}EXCEPTION WHEN unique_violation THEN\n {4}RAISE EXCEPTION 'member_already_booked';\n {2}END;/,
+    '\n  END IF;',
+  ],
+  // 5. the loop reads the derived array
   [/FOREACH gid IN ARRAY v_new_guest_ids LOOP/, 'FOREACH gid IN ARRAY _new_guest_ids LOOP'],
 ];
 
@@ -46,7 +56,7 @@ const MANAGE_ONLY_EDITS: Array<[RegExp, string]> = [
   // manage additionally loads the slot's owner scope (apply already has the slot row `s`)
   [/\n\s*v_scope_academy uuid;\n\s*v_scope_trainer uuid;/, ''],
   [
-    /\n {2}-- The claim's slot names the owner scope the derivation is bound to\.\n {2}SELECT av\.academy_profile_id, av\.trainer_id INTO v_scope_academy, v_scope_trainer\n {4}FROM public\.availability_slots av WHERE av\.id = c\.slot_id;\n/,
+    /\n {2}-- The claim's slot names the owner scope the receipts are bound to\.\n {2}SELECT av\.academy_profile_id, av\.trainer_id INTO v_scope_academy, v_scope_trainer\n {4}FROM public\.availability_slots av WHERE av\.id = c\.slot_id;\n/,
     '',
   ],
 ];
@@ -68,16 +78,20 @@ describe('the person-keyed rebook functions keep every shipped guard byte for by
     expect(stripped).toBe(extract(SHIPPED_MANAGE, 'rebook_group_manage'));
   });
 
-  it('no client-supplied guest id enters either function', () => {
+  it('no client-supplied identity enters either function — attempts in, receipts checked', () => {
     for (const fn of ['rebook_group_apply', 'rebook_group_manage']) {
       const src = extract(REPRODUCED, fn);
-      expect(`${fn} takes person ids: ${src.includes('_new_person_ids uuid[]')}`)
-        .toBe(`${fn} takes person ids: true`);
+      expect(`${fn} takes attempt ids: ${src.includes('_new_creation_request_ids uuid[]')}`)
+        .toBe(`${fn} takes attempt ids: true`);
       expect(`${fn} still takes guest ids: ${/(^|[^A-Za-z0-9_])_new_guest_ids/.test(src)}`)
         .toBe(`${fn} still takes guest ids: false`);
-      // the derivation is scoped and refuses rather than skips
+      // the receipt is the authorization: unknown attempts and foreign owners refuse by name
+      expect(src).toContain('player_create_commands');
+      expect(src).toContain(`RAISE EXCEPTION 'unknown_member_attempt'`);
+      expect(src).toContain(`RAISE EXCEPTION 'member_not_in_scope'`);
+      // the derivation is internal, and its unique-violation detail never reaches the caller
       expect(src).toContain('person_legacy_source');
-      expect(src).toContain(`RAISE EXCEPTION 'person_not_in_scope'`);
+      expect(src).toContain(`RAISE EXCEPTION 'member_already_booked'`);
     }
   });
 

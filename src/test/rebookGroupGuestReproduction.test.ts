@@ -98,6 +98,17 @@ describe('the reproduced create_rebook_group_guest keeps everything that authori
     expect(reproduced).toContain('_creation_request_id');
   });
 
+  it('the answer is the CANONICAL person, never a derived guest id', () => {
+    // The executable shape, pinned (Codex r2 f10): the return variable is loaded from the
+    // command's person_id and from nothing else. The behavioural half — a replay after a claim
+    // answering the survivor, an id that never named a guest row — lives in the real-pg suite,
+    // where person and guest ids actually diverge.
+    const reproduced = extract(REPRODUCED);
+    expect(reproduced).toContain(`(v_result->>'person_id')::uuid`);
+    expect(reproduced).not.toContain(`->>'guest_player_id'`);
+    expect(reproduced).not.toContain('person_legacy_source');
+  });
+
   it('the strip is a real check — a shipped body with a guard removed does NOT pass it', () => {
     const shipped = extract(SHIPPED);
     const mutated = shipped.replace("IF v_email IS NULL THEN RAISE EXCEPTION 'email_required'; END IF;\n", '');

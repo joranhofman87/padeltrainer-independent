@@ -1,35 +1,45 @@
--- U2 — the rebook group's new members travel as canonical person ids (owner correction, 2026-08-09;
--- Codex round 1 finding 2).
+-- U2 — the rebook group's new members travel as the captain's own CREATE-ATTEMPT ids (owner
+-- correction, 2026-08-09; Codex round 1 finding 2 and round 2 findings 1/4/9).
 --
--- WHAT WAS WRONG. `create_rebook_group_guest` answered the anonymous captain with a DERIVED
--- guest_player_id, and the captain's browser collected those ids and posted them back into
--- `rebook_group_apply` / `rebook_group_manage`. That is the compatibility inversion by the book:
--- the canonical id was translated server-side and then handed to a client so the client could
--- finish the mutation. The create now answers with the person; these two functions accept
--- `_new_person_ids` and derive the legacy guest ids INTERNALLY, scoped to the slot's owner,
--- through `person_legacy_source` — the same private adapter every other person-keyed command uses.
+-- WHAT WAS WRONG, in two layers. First (r1 f2): `create_rebook_group_guest` answered the anonymous
+-- captain with a DERIVED guest_player_id, which the browser collected and posted back into
+-- `rebook_group_apply` / `rebook_group_manage` — the compatibility inversion by the book. Second
+-- (r2 f4): replacing that with bare person ids would still leave a canonical-ID selection API on an
+-- anon surface — any same-scope person uuid a token-holder possessed would become a bookable
+-- member, and the shipped `_new_guest_ids` loop had validated even less (ANY guest uuid, any
+-- scope).
 --
--- WHAT THIS ALSO CLOSES. The old `_new_guest_ids` loop performed NO ownership validation: any
--- guest uuid an anonymous token-holder happened to possess was booked onto the group's slots.
--- Deriving from persons refuses, by name, anybody without an in-scope guest source — and a member
--- minted through `create_rebook_group_guest` has one by construction.
+-- THE CONTRACT NOW. The captain hands over the `creation_request_id`s of the add-member attempts
+-- they themselves minted — capabilities of THIS flow, not identities. Each id must name a finished
+-- create RECEIPT whose owner is the slot's owner; the member's person comes from that receipt, and
+-- the legacy guest key is derived INTERNALLY through `person_legacy_source`. Possession of a
+-- request id ≈ being the party that minted the attempt: nothing about any human travels through
+-- the browser, and no foreign identity can be named into a group by uuid.
+--
+-- Unique-violation details from the guest-keyed indexes are sanitized (r2 f9): the raw 23505
+-- carries the DERIVED key in its detail, and an anonymous caller must not receive it even as an
+-- error. The whole new-member section re-raises as `member_already_booked`.
 --
 -- MECHANICALLY REPRODUCED from the shipped definitions (apply: 20260804100000; manage:
--- 20260706170000), changed ONLY in: the signature parameter, the derivation preamble, and the two
--- references that now read the derived array. `src/test/rebookGroupPersonKeyedReproduction.test.ts`
--- strips exactly those edits and byte-compares the remainder against the shipped bodies.
+-- 20260706170000), changed ONLY in: the signature parameter, the receipt-bound derivation
+-- preamble, the sanitizing wrapper, and the two references that now read the derived array.
+-- `src/test/rebookGroupPersonKeyedReproduction.test.ts` strips exactly those edits and
+-- byte-compares the remainder against the shipped bodies.
 --
 -- DROP-and-recreate because PostgreSQL refuses to rename a parameter via CREATE OR REPLACE. The
 -- PostgREST named-argument contract changes with it: a page cached from before this deploy posts
 -- `_new_guest_ids`, matches no function, and gets an error a reload fixes — the same deliberate
 -- stale-client stance as the attempt-id requirement (frontend and database deploy together).
+-- GRANTS: anon + authenticated (the captain surfaces) and service_role — mollie-webhook covers
+-- paid groups through `rebook_group_manage`, and the shipped functions were service-reachable via
+-- default PUBLIC execute, which this migration now revokes explicitly (r2 f1).
 
 DROP FUNCTION IF EXISTS public.rebook_group_apply(text, jsonb, uuid[]);
 
 CREATE OR REPLACE FUNCTION public.rebook_group_apply(
   _token text,
   _keep_keys jsonb DEFAULT '[]'::jsonb,
-  _new_person_ids uuid[] DEFAULT '{}'::uuid[]
+  _new_creation_request_ids uuid[] DEFAULT '{}'::uuid[]
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -58,7 +68,10 @@ DECLARE
   k text;
   rec record;
   gid uuid;
-  pid uuid;
+  rid uuid;
+  v_m_person uuid;
+  v_m_owner_type text;
+  v_m_owner_id uuid;
   v_new_guest_ids uuid[] := '{}';
   slotrec record;
 BEGIN
@@ -174,24 +187,36 @@ BEGIN
 
   -- 3) Add new guests: one claim + booking per distinct slot in the group, capacity-guarded.
   --    Skip a slot for a guest who already has a claim there (treated by the keep/remove logic).
-  -- U2: derive the legacy guest ids from the canonical persons, inside the definer, scoped to the
-  -- slot's owner. A person with no in-scope guest source cannot have come from
-  -- create_rebook_group_guest and is refused by name rather than skipped.
-  IF array_length(_new_person_ids, 1) IS NOT NULL THEN
-    FOREACH pid IN ARRAY _new_person_ids LOOP
-      IF pid IS NULL THEN CONTINUE; END IF;
+  -- U2: resolve each member ATTEMPT to its receipt, bind the receipt to the slot's owner, and
+  -- derive the legacy guest key inside the definer. An unknown attempt id cannot have come from
+  -- this flow; a receipt owned elsewhere is another tenant's member; a person with no in-scope
+  -- guest source has nothing to book. All three refuse by name rather than skip.
+  IF array_length(_new_creation_request_ids, 1) IS NOT NULL THEN
+    FOREACH rid IN ARRAY _new_creation_request_ids LOOP
+      IF rid IS NULL THEN CONTINUE; END IF;
+      SELECT pcc.person_id, pcc.owner_type, pcc.owner_id
+        INTO v_m_person, v_m_owner_type, v_m_owner_id
+        FROM public.player_create_commands pcc
+       WHERE pcc.creation_request_id = rid;
+      IF v_m_person IS NULL THEN
+        RAISE EXCEPTION 'unknown_member_attempt';
+      END IF;
+      IF v_m_owner_type <> (CASE WHEN s.academy_profile_id IS NOT NULL THEN 'academy' ELSE 'trainer' END)
+         OR v_m_owner_id <> coalesce(s.academy_profile_id, s.trainer_id) THEN
+        RAISE EXCEPTION 'member_not_in_scope';
+      END IF;
       SELECT ls.guest_player_id INTO gid
-        FROM public.person_legacy_source(
-               pid,
-               CASE WHEN s.academy_profile_id IS NOT NULL THEN 'academy' ELSE 'trainer' END,
-               coalesce(s.academy_profile_id, s.trainer_id)) ls;
+        FROM public.person_legacy_source(v_m_person, v_m_owner_type, v_m_owner_id) ls;
       IF gid IS NULL THEN
-        RAISE EXCEPTION 'person_not_in_scope';
+        RAISE EXCEPTION 'member_not_in_scope';
       END IF;
       v_new_guest_ids := v_new_guest_ids || gid;
     END LOOP;
   END IF;
 
+  -- the 23505 detail of the guest-keyed indexes would hand the DERIVED key to an anonymous
+  -- caller; the whole section answers with a name instead (Codex r2 f9)
+  BEGIN
   IF array_length(v_new_guest_ids, 1) IS NOT NULL THEN
     FOREACH gid IN ARRAY v_new_guest_ids LOOP
       IF gid IS NULL THEN CONTINUE; END IF;
@@ -231,6 +256,9 @@ BEGIN
       END LOOP;
     END LOOP;
   END IF;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'member_already_booked';
+  END;
 
   RETURN jsonb_build_object(
     'ok', (v_booked > 0 OR v_skipped_existing > 0),
@@ -247,14 +275,14 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.rebook_group_apply(text, jsonb, uuid[]) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.rebook_group_apply(text, jsonb, uuid[]) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rebook_group_apply(text, jsonb, uuid[]) TO anon, authenticated, service_role;
 
 DROP FUNCTION IF EXISTS public.rebook_group_manage(text, jsonb, uuid[], uuid);
 
 CREATE OR REPLACE FUNCTION public.rebook_group_manage(
   _token text,
   _keep_keys jsonb DEFAULT '[]'::jsonb,
-  _new_person_ids uuid[] DEFAULT '{}'::uuid[],
+  _new_creation_request_ids uuid[] DEFAULT '{}'::uuid[],
   _invoice_id uuid DEFAULT NULL
 )
 RETURNS jsonb
@@ -281,7 +309,10 @@ DECLARE
   k text;
   rec record;
   gid uuid;
-  pid uuid;
+  rid uuid;
+  v_m_person uuid;
+  v_m_owner_type text;
+  v_m_owner_id uuid;
   v_new_guest_ids uuid[] := '{}';
   v_scope_academy uuid;
   v_scope_trainer uuid;
@@ -374,28 +405,40 @@ BEGIN
   END LOOP;
 
   -- 3) Add new guests as COVERED bookings, one per slot, capacity-guarded.
-  -- The claim's slot names the owner scope the derivation is bound to.
+  -- The claim's slot names the owner scope the receipts are bound to.
   SELECT av.academy_profile_id, av.trainer_id INTO v_scope_academy, v_scope_trainer
     FROM public.availability_slots av WHERE av.id = c.slot_id;
 
-  -- U2: derive the legacy guest ids from the canonical persons, inside the definer, scoped to the
-  -- slot's owner. A person with no in-scope guest source cannot have come from
-  -- create_rebook_group_guest and is refused by name rather than skipped.
-  IF array_length(_new_person_ids, 1) IS NOT NULL THEN
-    FOREACH pid IN ARRAY _new_person_ids LOOP
-      IF pid IS NULL THEN CONTINUE; END IF;
+  -- U2: resolve each member ATTEMPT to its receipt, bind the receipt to the slot's owner, and
+  -- derive the legacy guest key inside the definer. An unknown attempt id cannot have come from
+  -- this flow; a receipt owned elsewhere is another tenant's member; a person with no in-scope
+  -- guest source has nothing to book. All three refuse by name rather than skip.
+  IF array_length(_new_creation_request_ids, 1) IS NOT NULL THEN
+    FOREACH rid IN ARRAY _new_creation_request_ids LOOP
+      IF rid IS NULL THEN CONTINUE; END IF;
+      SELECT pcc.person_id, pcc.owner_type, pcc.owner_id
+        INTO v_m_person, v_m_owner_type, v_m_owner_id
+        FROM public.player_create_commands pcc
+       WHERE pcc.creation_request_id = rid;
+      IF v_m_person IS NULL THEN
+        RAISE EXCEPTION 'unknown_member_attempt';
+      END IF;
+      IF v_m_owner_type <> (CASE WHEN v_scope_academy IS NOT NULL THEN 'academy' ELSE 'trainer' END)
+         OR v_m_owner_id <> coalesce(v_scope_academy, v_scope_trainer) THEN
+        RAISE EXCEPTION 'member_not_in_scope';
+      END IF;
       SELECT ls.guest_player_id INTO gid
-        FROM public.person_legacy_source(
-               pid,
-               CASE WHEN v_scope_academy IS NOT NULL THEN 'academy' ELSE 'trainer' END,
-               coalesce(v_scope_academy, v_scope_trainer)) ls;
+        FROM public.person_legacy_source(v_m_person, v_m_owner_type, v_m_owner_id) ls;
       IF gid IS NULL THEN
-        RAISE EXCEPTION 'person_not_in_scope';
+        RAISE EXCEPTION 'member_not_in_scope';
       END IF;
       v_new_guest_ids := v_new_guest_ids || gid;
     END LOOP;
   END IF;
 
+  -- the 23505 detail of the guest-keyed indexes would hand the DERIVED key to an anonymous
+  -- caller; the whole section answers with a name instead (Codex r2 f9)
+  BEGIN
   IF array_length(v_new_guest_ids, 1) IS NOT NULL THEN
     FOREACH gid IN ARRAY v_new_guest_ids LOOP
       IF gid IS NULL THEN CONTINUE; END IF;
@@ -433,6 +476,9 @@ BEGIN
       END LOOP;
     END LOOP;
   END IF;
+  EXCEPTION WHEN unique_violation THEN
+    RAISE EXCEPTION 'member_already_booked';
+  END;
 
   -- 4) Link the newly-covered bookings onto the captain's already-paid group invoice (record
   --    only — the amount is the fixed court price and does not change with the roster).
@@ -461,4 +507,4 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.rebook_group_manage(text, jsonb, uuid[], uuid) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.rebook_group_manage(text, jsonb, uuid[], uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rebook_group_manage(text, jsonb, uuid[], uuid) TO anon, authenticated, service_role;
