@@ -207,6 +207,7 @@ const MANAGED = {
     'supabase/functions/notif-manage/index.ts',
     'supabase/functions/notif-unsubscribe-one-click/index.ts',
     'supabase/functions/notification-email-worker/index.ts',
+    'supabase/functions/notification-identity-worker/index.ts',
     'supabase/functions/notification-whatsapp-worker/index.ts',
     'supabase/functions/notify-followers/index.ts',
     'supabase/functions/notify-rebook-member-open/index.ts',

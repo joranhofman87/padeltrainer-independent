@@ -41,9 +41,12 @@ the dedicated sender is deployed" — a visible stalled queue instead of silent 
 The constraint binds on the **callers**, not on the schema. `identity_challenge_enqueue` runs only
 when a guest entrypoint calls the resolver, so the migration alone enqueues nothing; the four
 challenge-producing entrypoints (`create-guest-{slot,cart,cyclus}-payment`, `submit-guest-intake`)
-are what must come last. The procedure in §6 therefore deploys the worker fix first, applies
-migrations, deploys the sender and `verify-identity`, and only then the callers — which satisfies
-this invariant with margin even if a step is retried out of order.
+are what must come last. The procedure in §6 therefore applies the routing migration FIRST (which
+makes the already-deployed worker safe on its own), then redeploys the generic worker, then the
+sender and `verify-identity`, and only then the callers — which satisfies this invariant with margin
+even if a step is retried out of order. The migration must precede the worker redeploy, not follow
+it: the new worker build passes `p_worker_kind`, which the pre-migration 4-argument function does not
+accept, so the reverse order stops all generic email.
 
 This is a hard ordering constraint, not a preference. It is the reason activation slice A is a
 blocker rather than a follow-up.
@@ -207,18 +210,23 @@ through `person_links`** — never by email or phone, matching the owner's ident
 3. **Take a fresh backup and record its id + timestamp.** Write down the rollback-decision deadline
    (recommend: decide within 30 minutes of the first smoke failure).
 4. **Capture the "before" baseline** (§4) and store it.
-5. **Deploy the worker fix FIRST, before any migration.** `notification-email-worker` must already
-   be the version that skips `identity_verification_requested` (slice A) before the schema that can
-   enqueue such a row exists. Deploying it first is safe and idempotent: the skip is inert until the
-   event type exists.
+5. **Apply the routing migration FIRST — before the worker redeploy.**
+   `20261201100000_u2_identity_worker_routing.sql` is what makes the ALREADY-DEPLOYED generic worker
+   safe, via the `p_worker_kind DEFAULT NULL`. It must go first, and the order matters in the
+   opposite direction to an earlier draft of this runbook: the new `notification-email-worker` build
+   passes `p_worker_kind` explicitly, so deploying it BEFORE the migration would have it call a
+   4-argument function with a 5th argument — PostgREST rejects the call and **all generic email
+   stops**. Codex round 1 of slice A caught that inversion.
 
    *(§0 states the real invariant precisely: nothing that can ENQUEUE a challenge may be live before
    the sender and the worker skip are. The schema alone enqueues nothing — `identity_challenge_enqueue`
    only runs when a guest entrypoint calls the resolver — so the binding constraint is on the CALLERS
    in step 7c, not on the migration itself. Deploying the worker fix first removes the race entirely
    and makes the ordering robust even if a step is retried out of sequence.)*
-6. **Apply migrations** — `supabase db push --linked` after a final `--dry-run` whose list matches
-   §2 exactly. If the list differs in any way: **stop**, do not repair, escalate.
+6. **Apply the remaining migrations** — `supabase db push --linked` after a final `--dry-run` whose
+   list matches §2 exactly (the routing migration is the last entry in that list, so in practice
+   steps 5 and 6 are one `db push`). If the list differs in any way: **stop**, do not repair,
+   escalate.
 7. **Deploy the remaining edge functions** from clean updated `main`, in this order:
    a. the identity sender;
    b. `verify-identity` (the link target must exist before any link can be sent);
@@ -301,6 +309,41 @@ path.
 | **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **not started** |
 | **B — retain-and-scrub (OD-08)** | replace the interim membership refusal; detach auth transactionally, preserve `persons.id` + memberships + financial/audit evidence, pseudonymize the rest, idempotent, auditable, single safe server command | **not started** |
 | **C — observability** | non-blocking non-PII identity-funnel telemetry + funnel/dashboard + alert thresholds | **not started** |
+
+### Slice A — deployment, verification and rollback (non-side-effecting)
+
+**Secrets required (names only — never print or commit a value).** All are already-existing
+conventions except the first, which is new for this slice:
+
+| Name | Purpose | New? |
+|---|---|---|
+| `IDENTITY_VERIFY_TOKEN_KEY_V1` | 32 random bytes, hex (64 chars). Signs the capability. Must exist on `notification-identity-worker` **and** `verify-identity`, identical value. | **new** |
+| `RESEND_API_KEY` | provider send | existing |
+| `SITE_URL` | link base, must be the public origin so the link resolves to `/verify-identity` | existing |
+| `NOTIFICATION_FROM_EMAIL` | envelope From | existing |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | drainer identity | existing |
+
+Generate with `openssl rand -hex 32`. The **same** value must be set on both functions or every link
+will fail verification; the worker refuses to mint (non-terminally) when the key is absent, so a
+missing key stalls the queue rather than burning it.
+
+**Verification without sending anything real.** The sender only ever acts on rows it claims, so the
+safe check is that it claims nothing and exits cleanly:
+
+1. Invoke the function once. With no `identity_verification_requested` rows pending it must return
+   `{"claimed":0,"sent":0,"refused":0,"failed":0}`. That alone proves: it deployed, it authenticated
+   as service_role, the RPC signature resolved, and the worker-kind partition is live.
+2. Confirm the generic worker is unaffected — its next scheduled run should log its usual counts.
+3. Only then deploy the challenge-producing entrypoints.
+
+**Rollback.** The sender is additive and claims a partition nothing else touches, so rolling it back
+cannot strand another worker's rows:
+
+| To undo | Do |
+|---|---|
+| the sender | Disable its schedule. Rows it already holds are `processing`, and **nothing releases them once the worker is gone** — they become claimable again only after the stale window (15 min) via a later run of the *same* worker kind. So before removing it, either let the in-flight batch finish, or accept that those rows wait. Rows never claimed stay `pending`; nothing is lost either way. |
+| the routing migration | `UPDATE notification_event_types SET dedicated_worker = NULL WHERE key = 'identity_verification_requested';` — the generic worker resumes claiming them, **and will terminally fail every one**, because the payload has no subject/html. Only do this when there are **zero** identity rows in `pending` OR `processing`: `SELECT count(*) FROM notification_outbox WHERE event_type='identity_verification_requested' AND status IN ('pending','processing');` must return 0 first. |
+| a bad key | Rotation is two steps, not one: `identity_verify_key_state` carries `CHECK (current_version >= min_mintable_version)`, so raising the floor to 2 while `current_version` is still 1 **fails the constraint**. Set `current_version = 2` (and provision `IDENTITY_VERIFY_TOKEN_KEY_V2` on both functions) *first*, then raise `min_mintable_version` to 2. In-flight V1 links stop verifying at that point, and the worker refuses to mint below the floor. |
 
 ### Open: challenge rows outlive their owner (retention gap, both halves)
 

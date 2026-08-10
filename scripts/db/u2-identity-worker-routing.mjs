@@ -133,8 +133,40 @@ ok('...but the identity worker DOES reap it, so a stuck row is still recoverable
    afterOwnReap.status === 'failed' && afterOwnReap.last_error === 'stuck_in_processing', afterOwnReap);
 
 // ── the send target: the challenge address, never the person's current contact ──────────────────
+// The send target, exercised AS service_role. A direct psql connection has no request JWT, so
+// `auth.role()` is not 'service_role' and the function returns nothing for ANY id — which would make
+// every assertion here pass whether the feature worked or not. Codex round 1 caught exactly that.
+await c.query(`SELECT set_config('request.jwt.claims', $1, true)`, [JSON.stringify({ role: 'service_role' })]);
+
+await c.query('SAVEPOINT chfix');
+const realChallenge = await one(`
+  INSERT INTO public.identity_verification_challenges
+    (workflow, owner_type, owner_id, creation_request_id, contact_normalized, contact_fingerprint,
+     candidate_set_fingerprint, candidate_set_size, payload_fingerprint, key_version, expires_at)
+  VALUES ('slot', 'academy', $1, gen_random_uuid(), 'target-probe@example.com', 'fp-contact',
+          'fp-set', 1, 'fp-payload', 1, now() + interval '30 minutes')
+  RETURNING id`, [owner ? owner.id : probePerson])
+  .catch(async (e) => { console.error('  (fixture insert failed:', e.message, ')'); await c.query('ROLLBACK TO SAVEPOINT chfix'); return null; });
+
+if (realChallenge) {
+  const got = await one(`SELECT * FROM public.identity_challenge_send_target($1::uuid)`, [realChallenge.id]);
+  ok('the send target returns the CHALLENGE\'s own address, not a person contact',
+     got && got.contact_normalized === 'target-probe@example.com', got);
+  ok('...with the key generation it was minted under, and that generation is mintable',
+     got && got.key_version === 1 && got.key_mintable === true, got);
+  ok('...and reports it is not yet consumed', got && got.already_consumed === false, got);
+} else {
+  ok('the send target fixture could be created (else the next assertions are vacuous)', false);
+}
+
 const tgt = await all(`SELECT * FROM public.identity_challenge_send_target(gen_random_uuid())`);
 ok('an unknown challenge id yields no send target (fail closed, nothing to send)', tgt.length === 0);
+
+await c.query(`SELECT set_config('request.jwt.claims', NULL, true)`);
+const noRole = await all(`SELECT * FROM public.identity_challenge_send_target($1::uuid)`,
+                         [realChallenge ? realChallenge.id : '00000000-0000-4000-8000-000000000000']);
+ok('...and WITHOUT the service_role claim it returns nothing even for a real challenge',
+   noRole.length === 0, noRole);
 
 const grantIdentity = await one(`
   SELECT has_function_privilege('authenticated', 'public.identity_challenge_send_target(uuid)', 'EXECUTE') AS a,

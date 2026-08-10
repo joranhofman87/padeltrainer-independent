@@ -52,6 +52,12 @@ verify_jwt = false
 [functions.notification-email-worker]
 verify_jwt = false
 
+# Slice A: the DEDICATED identity-verification sender. Same self-authenticating drainer contract as
+# the generic email worker; it claims the complementary half of the email channel (worker kind
+# 'identity_verify') so the two can run concurrently without ever taking the same row.
+[functions.notification-identity-worker]
+verify_jwt = false
+
 # Digest worker (PR 10c-a3). Same self-authenticating drainer contract as the email/WhatsApp workers: the
 # function verifies the request itself in requireServiceRole with a byte-for-byte compare against
 # SUPABASE_SERVICE_ROLE_KEY (the LEGACY service-role JWT, `eyJ…`). pg_cron sends exactly that legacy JWT, read
