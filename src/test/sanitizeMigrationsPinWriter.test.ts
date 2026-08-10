@@ -1,5 +1,6 @@
 // @vitest-environment node
-// The pin writer's malformed-input behaviour, driven through the REAL `--write-pin` command.
+// The pin writer's malformed-input behaviour, driven through the REAL `--write-pin` command —
+// against an ISOLATED COPY of it, never the repository's own pin.
 //
 // `scripts/rollout/notif-10ca3/synth/sanitize-migrations.mjs --write-pin` rewrites the reviewed-chain
 // pin, and it must carry an existing `reviews[]` array through: that array is where a reviewer
@@ -11,46 +12,59 @@
 // containing `null` — or an array, or a bare scalar — sailed past the try/catch and then threw on
 // property access. This file pins every shape.
 //
-// It drives the real command rather than re-implementing its logic: a test that re-derived the
-// merge would pass while the shipped writer crashed. That means it genuinely rewrites the repo's pin
-// file, so restoration is the safety property this file owes the repo — see `restore()` below, the
-// afterEach, and the final byte-for-byte assertion.
-import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
+// WHY A COPY, AND NOT afterEach RESTORATION. The first version of this test wrote fixtures into the
+// repository's real pin and restored it in hooks. That is not safe for a reviewed security artifact:
+// in-process cleanup does not survive a SIGKILL, a forced timeout or a worker crash, an interruption
+// mid-write can truncate the file, and the unit project runs test files in parallel so a concurrent
+// run could have its work overwritten by a stale restore. Cleanup hooks cannot make mutating a shared
+// artifact safe.
+//
+// `PIN_FILE` is derived from the script's OWN location (`../clone-safety/` relative to
+// `synth/sanitize-migrations.mjs`), and the script imports nothing but node builtins. So copying it
+// into a temp tree with the same relative layout runs the byte-identical shipped code against a
+// throwaway pin. The real artifact is never opened for writing at all — which this file also asserts.
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { readFileSync, writeFileSync, copyFileSync, mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const PIN = join(process.cwd(), 'scripts/rollout/notif-10ca3/clone-safety/reviewed-migration-chain.json');
-const SAN = join(process.cwd(), 'scripts/rollout/notif-10ca3/synth/sanitize-migrations.mjs');
+const REAL_PIN = join(process.cwd(), 'scripts/rollout/notif-10ca3/clone-safety/reviewed-migration-chain.json');
+const REAL_SAN = join(process.cwd(), 'scripts/rollout/notif-10ca3/synth/sanitize-migrations.mjs');
 const SRC = join(process.cwd(), 'supabase/migrations');
 
-/** The real file's bytes, captured once and restored after every case. */
-let ORIGINAL = '';
+let root = '';
+let SAN = '';      // the copied script
+let PIN = '';      // the copied script's pin, which is what --write-pin rewrites
 let outDir = '';
+/** The real artifact's bytes, held only to prove at the end that nothing touched it. */
+let REAL_BEFORE: Buffer | undefined;
 
-const restore = () => writeFileSync(PIN, ORIGINAL);
-
-/** Run the shipped command. Returns stdout; throws with stderr attached if it exits non-zero. */
 const writePin = (): string =>
   execFileSync('node', [SAN, SRC, outDir, '--write-pin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 
 const readPin = () => JSON.parse(readFileSync(PIN, 'utf8'));
 
 beforeAll(() => {
-  ORIGINAL = readFileSync(PIN, 'utf8');
-  outDir = mkdtempSync(join(tmpdir(), 'sanpin-'));
+  REAL_BEFORE = readFileSync(REAL_PIN);
+  root = mkdtempSync(join(tmpdir(), 'sanpin-'));
+  mkdirSync(join(root, 'synth'));
+  mkdirSync(join(root, 'clone-safety'));
+  SAN = join(root, 'synth', 'sanitize-migrations.mjs');
+  PIN = join(root, 'clone-safety', 'reviewed-migration-chain.json');
+  outDir = join(root, 'out');
+  // the SHIPPED script, copied verbatim — this tests the real code, not a re-implementation
+  copyFileSync(REAL_SAN, SAN);
+  copyFileSync(REAL_PIN, PIN);
 });
 
-// Restore after EVERY case, including a failing one, so a mid-test failure cannot leave the repo's
-// pin holding a fixture value.
-afterEach(restore);
-
 afterAll(() => {
-  restore();
-  if (outDir) rmSync(outDir, { recursive: true, force: true });
-  // the contract this file owes the repository: the worktree is exactly as it was found
-  expect(readFileSync(PIN, 'utf8'), 'the real pin must be restored byte-for-byte').toBe(ORIGINAL);
+  if (root) rmSync(root, { recursive: true, force: true });
+  // The contract this file owes the repository: it never wrote to the reviewed pin. Compared as
+  // BUFFERS, so this is a genuine byte comparison rather than a utf8-decoded one.
+  if (REAL_BEFORE) {
+    expect(readFileSync(REAL_PIN).equals(REAL_BEFORE), 'the REAL pin must be untouched').toBe(true);
+  }
 });
 
 describe('sanitize-migrations --write-pin: malformed pin files must not crash the writer', () => {
@@ -97,8 +111,10 @@ describe('sanitize-migrations --write-pin: malformed pin files must not crash th
     expect(pin.files).toBeGreaterThan(1);
   });
 
-  it('re-pinning the REAL pin is a no-op on its digest, count and review history', () => {
-    // the round-trip that matters in practice: a reviewer re-pins and loses nothing
+  it('re-pinning an unchanged pin is a no-op on its digest, count and review history', () => {
+    // the round-trip that matters in practice: a reviewer re-pins and loses nothing. The fixture is
+    // a copy of the real pin, so this exercises the actual shipped record.
+    copyFileSync(REAL_PIN, PIN);
     const before = readPin();
     writePin();
     const after = readPin();
