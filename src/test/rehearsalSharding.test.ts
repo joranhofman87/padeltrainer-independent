@@ -305,7 +305,7 @@ describe("vitest's own shard split, over the real db inventory", () => {
   // passes --shard=i/2. Everything else here would still pass if that delegated
   // half broke (a vitest upgrade changing the algorithm, or a custom sequencer),
   // so this drives vitest's REAL BaseSequencer — imported, never re-implemented,
-  // because a hand-copied algorithm tests the copy — over the actual 142 files.
+  // because a hand-copied algorithm tests the copy — over the real inventory.
   const repoRoot = resolve(dbDir, '../..');
 
   /** The db project's inventory, derived independently of vitest.config.ts. */
@@ -330,9 +330,15 @@ describe("vitest's own shard split, over the real db inventory", () => {
     return out.map((s) => s.moduleId.slice(repoRoot.length + 1));
   };
 
-  it('splits the real 142-file inventory into an exact, disjoint partition', async () => {
+  it('splits the real inventory into an exact, disjoint partition', async () => {
     const inventory = dbInventory();
-    expect(inventory.length, 'db inventory size').toBe(142);
+    // No literal count: pinning one would fail on every legitimate new database
+    // test while proving nothing about the split. What must hold is the
+    // PARTITION over whatever the inventory currently is — and that the
+    // inventory is non-empty, so an accidentally-empty selection cannot pass
+    // this test vacuously. (vitest.config.ts agreeing with the files on disk is
+    // asserted separately, by the contract checker.)
+    expect(inventory.length, 'db inventory must not be empty').toBeGreaterThan(0);
     const s1 = await shardWith(inventory, 1, 2);
     const s2 = await shardWith(inventory, 2, 2);
     expect([...s1, ...s2].sort()).toEqual(inventory); // complete AND duplicate-free
@@ -550,6 +556,17 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
       }],
+      ['NPM_CONFIG_NODE_OPTIONS makes every npm script exit 0', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_NODE_OPTIONS: --import=data:text/javascript,process.exit(0)\n'))],
+      ['NPM_CONFIG_USERCONFIG redirects npm at another config', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_USERCONFIG: /tmp/evil.npmrc\n\njobs:\n'))],
+      ['.npmrc sets node-options', /\.npmrc sets node-options/, (r) => writeFileSync(join(r, '.npmrc'), 'node-options=--import=data:text/javascript,process.exit(0)\n')],
+      ['.npmrc redirects userconfig', /\.npmrc sets userconfig/, (r) => writeFileSync(join(r, '.npmrc'), 'userconfig=/tmp/evil.npmrc\n')],
+      ['the lint copy of the checker is made non-fatal', /step sets `continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n', '      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        continue-on-error: true\n'))],
+      ['the lint copy of the checker is made conditional', /step has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n', '      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        if: github.event_name == \'push\'\n'))],
+      ['the whole lint job is made non-fatal', /job sets `continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('  lint:\n    runs-on: ubuntu-latest\n', '  lint:\n    runs-on: ubuntu-latest\n    continue-on-error: true\n'))],
+      ['a postprepare hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postprepare = 'vitest run --project db'; })],
+      ['a prepublish hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepublish = 'npm run test:db'; })],
+      ['an extra `npm --silent test` step (no run token)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm --silent test\n\n      - name: Run unit tests\n'))],
+      ['job-level concurrency serialises the shard matrix', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-tests-${{ github.ref }}\n'))],
       ['SHELLOPTS=noexec neuters every bash step', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  SHELLOPTS: noexec\n\njobs:\n'))],
       ['BASH_ENV sourced before each step', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          BASH_ENV: /tmp/exit0.sh\n'))],
       ['NODE_OPTIONS preloads a module', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    env:\n      NODE_OPTIONS: --require /tmp/exit0.js\n'))],

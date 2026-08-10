@@ -24,10 +24,27 @@
  * by the `db` project (a narrowed include would drop 126 pglite files while
  * both shards stay green) and by no other project.
  *
- * Run as a CLI (`node scripts/ci/workflow-contract.mjs`) by its own CI job, and
- * imported by src/test/rehearsalSharding.test.ts so `npm test` covers it
- * locally. Same code both ways — a contract checked only where it might be
+ * Run as a CLI (`node scripts/ci/workflow-contract.mjs`) by its own CI job AND
+ * by `lint` — an independently required check that nothing aggregates, so a
+ * weakening the aggregator could swallow still turns a required check red —
+ * and imported by src/test/rehearsalSharding.test.ts so `npm test` covers it
+ * locally. Same code every way: a contract checked only where it might be
  * disabled is not checked.
+ *
+ * ── WHAT THIS DOES NOT DEFEND AGAINST ─────────────────────────────────────
+ *
+ * A trusted contributor who deliberately rewrites the workflow, this checker
+ * and its tests in one PR. That is not solvable from inside the repository:
+ * any in-repo guard is itself repo content. The clearest example is a
+ * workflow-level `env: SHELLOPTS: noexec`, which makes every bash `run:` parse
+ * without executing and exit 0 — including both copies of this checker, so it
+ * never runs to report the variable it would otherwise reject. The answer to
+ * that class is governance (a CODEOWNERS entry for /.github/, or requiring
+ * review), which is deliberately NOT attempted here.
+ *
+ * What it does defend against, and what its tests are written for: accidental
+ * weakening, configuration drift, suite omissions, shard mistakes, and
+ * ordinary dependency or tooling changes.
  */
 import { existsSync, readFileSync, readdirSync, globSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -68,7 +85,7 @@ export const CONTRACT_JOBS = ['lint', 'workflow-contract'];
  * marker, so an allow-list of exact commands is the only shape that cannot be
  * walked around.
  */
-const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|i18n:check|\bnpm run\b.*\btest\b|\bnpm test\b/;
+const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|i18n:check|\bnpm\b[^\n]*\btest\b/;
 
 /** The exact concurrency contract (see the workflow's own comment for why). */
 const EXPECTED_CONCURRENCY = {
@@ -121,7 +138,20 @@ const MUST_PIN_BASH = { 'workflow-contract': 'the contract checker', lint: 'the 
  * npm's `script-shell` replaces the shell every `npm run` uses. Pinning
  * `shell: bash` does not defend against any of them — they act inside it.
  */
-const NEUTERING_ENV_VARS = ['npm_config_script_shell', 'shellopts', 'bash_env', 'node_options'];
+const NEUTERING_ENV_VARS = [
+  'npm_config_script_shell',
+  // npm passes this to node for every `npm run`, so
+  // `--import=data:text/javascript,process.exit(0)` makes a suite exit 0 in
+  // ~0.5s with nothing run — while a direct `node` step stays honest.
+  'npm_config_node_options',
+  // Redirects npm at a different config file entirely, which can carry
+  // script-shell or node-options, bypassing the .npmrc scan below.
+  'npm_config_userconfig',
+  'npm_config_globalconfig',
+  'shellopts',
+  'bash_env',
+  'node_options',
+];
 const neuteringEnvVar = (key) => {
   const normalized = key.toLowerCase().replace(/-/g, '_');
   return NEUTERING_ENV_VARS.find((v) => v === normalized);
@@ -248,8 +278,13 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     violations.push(`workflow defaults.run.shell: ${workflow.defaults.run.shell} — no run step would really execute`);
   }
 
-  // ── 2. Each prerequisite job runs its real suite, exactly once, unweakened ──
-  for (const [name, expected] of Object.entries(PREREQUISITE_RUNS)) {
+  // ── 2. Each gated job runs its real command, exactly once, unweakened ──
+  // `lint` is in here as well as the five prerequisites: it hosts the
+  // independent copy of this checker, and a `continue-on-error: true` on THAT
+  // step would let the one job that cannot be swallowed by the aggregator
+  // swallow the detection itself.
+  const GATED_JOB_COMMANDS = { ...PREREQUISITE_RUNS, lint: CONTRACT_CMD };
+  for (const [name, expected] of Object.entries(GATED_JOB_COMMANDS)) {
     const job = jobs[name];
     if (!checkJobIsUnweakened(job, name, violations)) continue;
     const steps = job.steps ?? [];
@@ -293,7 +328,11 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   // Install lifecycle hooks run OUTSIDE any gated command, in every job that
   // installs — a `postinstall` running the db project would execute the whole
   // unsharded suite on every runner without touching a single pinned step.
-  for (const hook of ['preinstall', 'install', 'postinstall', 'prepare', 'prepack', 'postpack']) {
+  // Exactly the hooks `npm ci` / `npm install` fire. `prepublish` is deprecated
+  // for publishing but STILL runs on install; `prepare` is wrapped by
+  // `preprepare`/`postprepare`. `prepack`/`postpack` are pack/publish-time only
+  // and were noise here.
+  for (const hook of ['preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare']) {
     const command = pkgScripts[hook];
     if (typeof command === 'string' && SUITE_LIKE.test(command)) {
       violations.push(`package.json scripts.${hook} runs a gated suite (\`${command}\`) — install hooks run outside the sharded invocation, on every installing job`);
@@ -309,8 +348,10 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   } catch {
     npmrc = '';
   }
-  if (/^\s*script-shell\s*=/m.test(npmrc)) {
-    violations.push('.npmrc sets script-shell — every `npm run` in CI would use it instead of a real shell');
+  for (const key of ['script-shell', 'node-options', 'userconfig', 'globalconfig']) {
+    if (new RegExp(`^\\s*${key}\\s*=`, 'm').test(npmrc)) {
+      violations.push(`.npmrc sets ${key} — it can make every \`npm run\` in CI exit 0 without running its suite`);
+    }
   }
   const envScopes = [
     ['workflow', workflow.env ?? {}],
@@ -339,6 +380,15 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     }
     if (job?.strategy?.['max-parallel'] !== undefined) {
       violations.push(`${name}: strategy.max-parallel re-serialises the shards`);
+    }
+  }
+  for (const name of SHARDED_JOBS) {
+    // A job-level concurrency group shared by both matrix children queues them
+    // one behind the other — the serial suite again, with every check green.
+    // A group that varies per shard is fine, so require matrix.shard in it.
+    const group = jobs[name]?.concurrency?.group ?? jobs[name]?.concurrency;
+    if (group !== undefined && !String(group).includes('matrix.shard')) {
+      violations.push(`${name}: job-level concurrency \`${group}\` is shared by every shard — the matrix children would run one at a time`);
     }
   }
 
