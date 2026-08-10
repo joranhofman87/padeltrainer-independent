@@ -25,14 +25,21 @@
  *      cannot drift from the runner.
  */
 import { describe, it, expect } from 'vitest';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { BaseSequencer } from 'vitest/node';
-import { checkWorkflowContract, PREREQUISITE_RUNS, CONTRACT_JOBS } from '../../scripts/ci/workflow-contract.mjs';
+import {
+  checkWorkflowContract,
+  aggregatorTruthTable,
+  parseNpmrcEntries,
+  isNpmConfigMutation,
+  PREREQUISITE_RUNS,
+  CONTRACT_JOBS,
+} from '../../scripts/ci/workflow-contract.mjs';
 import {
   REHEARSAL_PATTERN,
   UsageError,
@@ -393,63 +400,64 @@ describe('the CI gate contract (scripts/ci/workflow-contract.mjs)', () => {
   });
 });
 
+describe('npm config parsing and detection (the shared primitives)', () => {
+  it('parseNpmrcEntries keeps order, duplicates and sections that ini.parse would collapse', () => {
+    const { entries, sections } = parseNpmrcEntries('maxsockets=1\n"maxsockets" = 64\n[scope]\nnode-options=x\n');
+    // A whole-file ini.parse() would report maxsockets ONCE, as 64 — the shape
+    // an override takes. Line-wise parsing keeps both so it can be reported.
+    expect(entries.map(([k]) => k)).toEqual(['maxsockets', 'maxsockets', 'node-options']);
+    expect(entries[0][1]).toBe('1');
+    expect(entries[1][1]).toBe('64');
+    expect(sections).toEqual(['scope']);
+  });
+
+  it('parseNpmrcEntries ignores comments and blank lines', () => {
+    const { entries } = parseNpmrcEntries('# a comment\n\n; another\nmaxsockets=1\n');
+    expect(entries).toEqual([['maxsockets', '1']]);
+  });
+
+  it('isNpmConfigMutation sees through flags and aliases, and stays quiet otherwise', () => {
+    for (const yes of [
+      'npm config set script-shell /bin/true',
+      'npm --loglevel silent config set x y',
+      'npm c set node-options --import=x',
+      'npm config delete prefer-offline',
+    ]) {
+      expect(isNpmConfigMutation(yes), yes).toBe(true);
+    }
+    for (const no of ['npm ci', 'npm run test:db', 'echo npm config set x y', 'node scripts/ci/workflow-contract.mjs']) {
+      expect(isNpmConfigMutation(no), no).toBe(false);
+    }
+  });
+});
+
 describe('the gate program itself (executed against a result truth table)', () => {
-  // Pinning tokens in the gate's script proves nothing about CONTROL FLOW: an
-  // `exit 0` inserted after `set -euo pipefail` leaves every token in place.
-  // So the actual script is extracted from the workflow, the Actions
-  // expressions are substituted, and it is RUN under bash for each combination
-  // of prerequisite results that CI can produce.
-  const gateProgram = () => {
-    const workflow = parseYaml(readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8')) as {
-      jobs: Record<string, { steps: Array<{ run?: string; env?: Record<string, string> }> }>;
-    };
-    return workflow.jobs.test.steps[0];
-  };
+  // The EXECUTOR now lives in scripts/ci/workflow-contract.mjs and runs in the
+  // production checker, so the independently required `lint` job enforces the
+  // aggregator's behaviour — not just the tokens in its script. This test
+  // calls that same exported implementation rather than keeping a second copy:
+  // a private copy here would pass while the shipped one rotted, which is the
+  // exact failure mode that let `exit "$status"` -> `exit 0` through before.
+  const workflow = () =>
+    parseYaml(readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8'));
 
-  /** Runs the gate's real script with the given per-job results; returns its exit code. */
-  const runGate = (results: Record<string, string>) => {
-    const step = gateProgram();
-    const env: Record<string, string> = { NEEDS: JSON.stringify(results) };
-    // The `env:` block maps RESULT_* names to ${{ needs.<id>.result }}; resolve
-    // each through the results table (a job missing from needs → empty string,
-    // exactly as the expression engine would expand it).
-    for (const [key, expr] of Object.entries(step.env ?? {})) {
-      const match = /needs\.([a-z0-9-]+)\.result/.exec(expr);
-      if (match) env[key] = results[match[1]] ?? '';
-    }
-    const script = (step.run ?? '').replace(
-      /\$\{\{ join\(needs\.\*\.result, ' '\) \}\}/g,
-      Object.values(results).join(' '),
-    );
-    const res = spawnSync('bash', ['-c', script], { encoding: 'utf8', env: { ...process.env, ...env } });
-    return res.status;
-  };
-
-  const ALL = ['unit-tests', 'db-tests', 'db-rehearsals', 'i18n', 'workflow-contract'];
-  const allSuccess = () => Object.fromEntries(ALL.map((j) => [j, 'success']));
-
-  it('succeeds only when every prerequisite succeeded', () => {
-    expect(runGate(allSuccess())).toBe(0);
+  it('succeeds only when every prerequisite succeeded, and fails otherwise', () => {
+    const table = aggregatorTruthTable(workflow());
+    const failures = table.filter((row) => !row.ok).map((row) => `${row.label}: ${row.detail}`);
+    expect(failures, failures.join('\n')).toEqual([]);
+    // 1 all-success case + 5 prerequisites x (4 bad results + 1 missing) + empty needs.
+    expect(table).toHaveLength(1 + 5 * 5 + 1);
   });
 
-  it('fails on any non-success result, for every prerequisite', () => {
-    for (const job of ALL) {
-      for (const bad of ['failure', 'cancelled', 'skipped', '']) {
-        expect(runGate({ ...allSuccess(), [job]: bad }), `${job}=${bad || '<empty>'}`).toBe(1);
+  it('covers every prerequisite and every non-success GitHub result', () => {
+    const labels = aggregatorTruthTable(workflow()).map((row) => row.label);
+    for (const job of Object.keys(PREREQUISITE_RUNS)) {
+      for (const bad of ['failure', 'cancelled', 'skipped', '<empty>']) {
+        expect(labels, `${job} = ${bad}`).toContain(`${job} = ${bad}`);
       }
+      expect(labels).toContain(`${job} missing from needs`);
     }
-  });
-
-  it('fails when a prerequisite is missing from needs entirely', () => {
-    for (const job of ALL) {
-      const partial = allSuccess();
-      delete partial[job];
-      expect(runGate(partial), `${job} dropped`).toBe(1);
-    }
-  });
-
-  it('fails when needs is empty', () => {
-    expect(runGate({})).toBe(1);
+    expect(labels).toContain('needs is empty');
   });
 });
 
@@ -526,8 +534,8 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['cancellation widened to pushes', /cancel-in-progress must be exactly/, (r) => editWorkflow(r, (s) => s.replace("  cancel-in-progress: ${{ github.event_name == 'pull_request' }}", '  cancel-in-progress: true'))],
       ['npm alias neutered', /scripts\.test:db must be/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>)['test:db'] = ':'; })],
       ['npm lifecycle hook added', /scripts\.pretest:db exists/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>)['pretest:db'] = 'vitest run --project db'; })],
-      ['npmrc redirects script-shell', /\.npmrc sets script-shell/, (r) => writeFileSync(join(r, '.npmrc'), 'script-shell=/bin/true\n')],
-      ['step env redirects script-shell', /npm_config_script_shell/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          npm_config_script_shell: /bin/true\n'))],
+      ['npmrc redirects script-shell', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'script-shell=/bin/true\n')],
+      ['step env redirects script-shell', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          npm_config_script_shell: /bin/true\n'))],
       ['db loses fileParallelism false', /fileParallelism: false/, (r) => editJson(r, 'package.json', () => {
         const p = join(r, 'vitest.config.ts');
         writeFileSync(p, readFileSync(p, 'utf8').replace('fileParallelism: false', 'fileParallelism: true'));
@@ -548,7 +556,7 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['gate step loses its explicit bash', /must pin `shell: bash`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify every test prerequisite succeeded\n        shell: bash\n', '      - name: Verify every test prerequisite succeeded\n'))],
       ['gate step set to sh (dash rejects set -o pipefail)', /overrides `shell|must pin `shell: bash`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify every test prerequisite succeeded\n        shell: bash', '      - name: Verify every test prerequisite succeeded\n        shell: sh'))],
       ['workflow-level env redirects script-shell', /npm_config_script_shell|NPM_CONFIG/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  npm_config_script_shell: /bin/true\n\njobs:\n'))],
-      ['hyphenated NPM_CONFIG_SCRIPT-SHELL spelling', /SCRIPT-SHELL|script_shell/i, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_SCRIPT-SHELL: /bin/true\n'))],
+      ['hyphenated NPM_CONFIG_SCRIPT-SHELL spelling', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_SCRIPT-SHELL: /bin/true\n'))],
       ['extra full-suite `npm test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky full gate\n        run: npm test\n\n      - name: Run unit tests\n'))],
       ['the real-pg integration file drifts into unit', /not owned by the db project/, (r) => {
         const p = join(r, 'vitest.config.ts');
@@ -556,8 +564,26 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
       }],
-      ['NPM_CONFIG_PREFIX redirects npm at a tracked etc/npmrc', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_PREFIX: ${{ github.workspace }}\n\njobs:\n'))],
-      ['.npmrc sets prefix (globalconfig is derived from it)', /\.npmrc sets prefix/, (r) => writeFileSync(join(r, '.npmrc'), 'prefix=.\n')],
+      ['an unknown .npmrc key', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nsome-future-npm-option=whatever\n')],
+      ['an approved key with a CHANGED value', /the approved value is/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=64\n')],
+      ['a duplicate key (npm applies the last)', /more than once/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=1\nmaxsockets=64\n')],
+      ['a nested .npmrc nearer the command', /a second \.npmrc/, (r) => { mkdirSync(join(r, 'packages/web'), { recursive: true }); writeFileSync(join(r, 'packages/web/.npmrc'), 'script-shell=/bin/true\n'); }],
+      ['an arbitrary future NPM_CONFIG_* variable', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_SOMETHING_INVENTED_LATER: "1"\n'))],
+      ['HOME relocated to a tracked config dir', /relocates the per-user config directory/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  HOME: ${{ github.workspace }}/ci-home\n\njobs:\n'))],
+      ['USERPROFILE relocated', /relocates the per-user config directory/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          USERPROFILE: C:\\\\ci\n'))],
+      ['XDG_CONFIG_HOME relocated', /relocates the per-user config directory/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          XDG_CONFIG_HOME: /tmp/xdg\n'))],
+      ['APPDATA relocated', /relocates the per-user config directory/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          APPDATA: /tmp/appdata\n'))],
+      ['LOCALAPPDATA relocated', /relocates the per-user config directory/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          LOCALAPPDATA: /tmp/localappdata\n'))],
+      ['an `npm config set` step', /runs `npm config`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Prep\n        run: npm config set script-shell /bin/true --location=project\n\n      - name: Run unit tests\n'))],
+      ['`npm config` behind flags and an alias', /runs `npm config`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Prep\n        run: npm --loglevel silent c set node-options --import=x\n\n      - name: Run unit tests\n'))],
+      ['a package script running npm config', /scripts\..* runs `npm config`/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).preflight = 'npm config set script-shell /bin/true'; })],
+      ['working-directory on a gated step', /must run at the repository root/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        working-directory: node_modules/react\n'))],
+      ['working-directory on an install step', /must run at the repository root/, (r) => editWorkflow(r, (s) => s.replace('      - name: Install dependencies\n        run: npm ci\n', '      - name: Install dependencies\n        working-directory: packages/web\n        run: npm ci\n'))],
+      ['workflow-level defaults.run.working-directory', /moves every gated command off the repository root/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\ndefaults:\n  run:\n    working-directory: packages/web\n\njobs:\n'))],
+      ['the aggregator always exits 0', /expected the gate to FAIL/, (r) => editWorkflow(r, (s) => s.replace('          exit "$status"', '          exit 0'))],
+      ['the aggregator stops reading a result', /expected the gate to FAIL/, (r) => editWorkflow(r, (s) => s.replace('"i18n=${RESULT_I18N}"', '"i18n=success"'))],
+      ['NPM_CONFIG_PREFIX redirects npm at a tracked etc/npmrc', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_PREFIX: ${{ github.workspace }}\n\njobs:\n'))],
+      ['.npmrc sets prefix (globalconfig is derived from it)', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'prefix=.\n')],
       ['an `npm install-ci-test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm install-ci-test\n\n      - name: Run unit tests\n'))],
       ['an `npm cit` step (install-ci-test alias)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm cit\n\n      - name: Run unit tests\n'))],
       ['a flag with a separate operand: `npm --prefix . test`', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm --prefix . test\n\n      - name: Run unit tests\n'))],
@@ -567,12 +593,12 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['concurrency whose shard reference is a string literal', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', "  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ 'matrix.shard' }}-${{ github.run_id }}\n"))],
       ['concurrency whose shard reference collapses in a boolean', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ matrix.shard && github.workflow }}-${{ github.run_id }}\n'))],
       ['concurrency that varies by shard but not by run', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ matrix.shard }}\n'))],
-      ['.npmrc QUOTED node-options (double quotes)', /\.npmrc sets node-options/, (r) => writeFileSync(join(r, '.npmrc'), '"node-options"=--import=data:text/javascript,process.exit(0)\n')],
-      ['.npmrc QUOTED script-shell (single quotes, spaced)', /\.npmrc sets script-shell/, (r) => writeFileSync(join(r, '.npmrc'), "  'script-shell'  =  /bin/true  \n")],
-      ['.npmrc UPPERCASE key', /\.npmrc sets NODE-OPTIONS/, (r) => writeFileSync(join(r, '.npmrc'), 'NODE-OPTIONS=--import=x\n')],
-      ['.npmrc key inside a [section]', /\.npmrc sets .*node-options/, (r) => writeFileSync(join(r, '.npmrc'), '[some-scope]\n"node-options"=--import=x\n')],
-      ['.npmrc globalconfig redirection', /\.npmrc sets globalconfig/, (r) => writeFileSync(join(r, '.npmrc'), 'globalconfig=/tmp/evil.npmrc\n')],
-      ['NPM_CONFIG_GLOBALCONFIG at container scope', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    container:\n      image: node:24\n      env:\n        NPM_CONFIG_GLOBALCONFIG: /tmp/evil.npmrc\n'))],
+      ['.npmrc QUOTED node-options (double quotes)', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), '"node-options"=--import=data:text/javascript,process.exit(0)\n')],
+      ['.npmrc QUOTED script-shell (single quotes, spaced)', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), "  'script-shell'  =  /bin/true  \n")],
+      ['.npmrc UPPERCASE key', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'NODE-OPTIONS=--import=x\n')],
+      ['.npmrc key inside a [section]', /\[some-scope\] section/, (r) => writeFileSync(join(r, '.npmrc'), '[some-scope]\n"node-options"=--import=x\n')],
+      ['.npmrc globalconfig redirection', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'globalconfig=/tmp/evil.npmrc\n')],
+      ['NPM_CONFIG_GLOBALCONFIG at container scope', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    container:\n      image: node:24\n      env:\n        NPM_CONFIG_GLOBALCONFIG: /tmp/evil.npmrc\n'))],
       ['a preprepare hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).preprepare = 'npm run test:db'; })],
       ['a dependencies hook (arborist reification) running the suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).dependencies = 'vitest run --project db'; })],
       ['a postdependencies hook running the suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postdependencies = 'npm t'; })],
@@ -580,10 +606,10 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['an extra `npm tst` step (alias)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm tst\n\n      - name: Run unit tests\n'))],
       ['a backslash-continued `npm \\<newline> test`', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: |\n          npm \\\n            test\n\n      - name: Run unit tests\n'))],
       ['job concurrency whose group only LOOKS shard-varying', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-tests-matrix.shard\n'))],
-      ['NPM_CONFIG_NODE_OPTIONS makes every npm script exit 0', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_NODE_OPTIONS: --import=data:text/javascript,process.exit(0)\n'))],
-      ['NPM_CONFIG_USERCONFIG redirects npm at another config', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_USERCONFIG: /tmp/evil.npmrc\n\njobs:\n'))],
-      ['.npmrc sets node-options', /\.npmrc sets node-options/, (r) => writeFileSync(join(r, '.npmrc'), 'node-options=--import=data:text/javascript,process.exit(0)\n')],
-      ['.npmrc redirects userconfig', /\.npmrc sets userconfig/, (r) => writeFileSync(join(r, '.npmrc'), 'userconfig=/tmp/evil.npmrc\n')],
+      ['NPM_CONFIG_NODE_OPTIONS makes every npm script exit 0', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_NODE_OPTIONS: --import=data:text/javascript,process.exit(0)\n'))],
+      ['NPM_CONFIG_USERCONFIG redirects npm at another config', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_USERCONFIG: /tmp/evil.npmrc\n\njobs:\n'))],
+      ['.npmrc sets node-options', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'node-options=--import=data:text/javascript,process.exit(0)\n')],
+      ['.npmrc redirects userconfig', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'userconfig=/tmp/evil.npmrc\n')],
       ['the lint copy of the checker is made non-fatal', /step sets `continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n', '      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        continue-on-error: true\n'))],
       ['the lint copy of the checker is made conditional', /step has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n', '      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        if: github.event_name == \'push\'\n'))],
       ['the whole lint job is made non-fatal', /job sets `continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('  lint:\n    runs-on: ubuntu-latest\n', '  lint:\n    runs-on: ubuntu-latest\n    continue-on-error: true\n'))],
@@ -591,9 +617,9 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['a prepublish hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepublish = 'npm run test:db'; })],
       ['an extra `npm --silent test` step (no run token)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm --silent test\n\n      - name: Run unit tests\n'))],
       ['job-level concurrency serialises the shard matrix', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-tests-${{ github.ref }}\n'))],
-      ['SHELLOPTS=noexec neuters every bash step', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  SHELLOPTS: noexec\n\njobs:\n'))],
-      ['BASH_ENV sourced before each step', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          BASH_ENV: /tmp/exit0.sh\n'))],
-      ['NODE_OPTIONS preloads a module', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    env:\n      NODE_OPTIONS: --require /tmp/exit0.js\n'))],
+      ['SHELLOPTS=noexec neuters every bash step', /make a gated step exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  SHELLOPTS: noexec\n\njobs:\n'))],
+      ['BASH_ENV sourced before each step', /make a gated step exit 0/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          BASH_ENV: /tmp/exit0.sh\n'))],
+      ['NODE_OPTIONS preloads a module', /make a gated step exit 0/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    env:\n      NODE_OPTIONS: --require /tmp/exit0.js\n'))],
       ['contract no longer runs in the required lint job', /contract checker must run in exactly/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify the CI gate contract (independently required copy)\n        shell: bash\n        run: node scripts/ci/workflow-contract.mjs\n', ''))],
       ['a prerequisite waits on another (re-serialised)', /must not declare `needs`/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    needs: [unit-tests]\n'))],
       ['max-parallel re-serialises the shards', /max-parallel/, (r) => editWorkflow(r, (s) => s.replace('      fail-fast: false\n', '      fail-fast: false\n      max-parallel: 1\n'))],
@@ -643,8 +669,9 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     // must stay silent: an unrelated .npmrc, an install hook that is not a
     // suite, and a job concurrency group that genuinely varies per shard.
     const allowed: Array<[string, (root: string) => void]> = [
-      ['an .npmrc with only retry/concurrency tuning', (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nmaxsockets=1\nprefer-offline=true\n')],
-      ['an .npmrc with a quoted but harmless key', (r) => writeFileSync(join(r, '.npmrc'), '"fetch-retries" = 10\n')],
+      ['the repository\'s exact approved .npmrc', (r) => cpSync(resolve(dbDir, '../../.npmrc'), join(r, '.npmrc'))],
+      ['an .npmrc with a subset of the approved settings', (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nmaxsockets=1\nprefer-offline=true\n')],
+      ['an approved key written with quotes and spacing', (r) => writeFileSync(join(r, '.npmrc'), '"fetch-retries" = 10\n')],
       ['a postinstall hook that is not a suite (e.g. husky)', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'husky'; })],
       ['a prepare hook building types', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepare = 'tsc -p tsconfig.build.json'; })],
       ['a job concurrency group that really varies per shard', (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ github.run_id }}-${{ matrix.shard }}\n'))],

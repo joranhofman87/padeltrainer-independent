@@ -47,6 +47,7 @@
  * ordinary dependency or tooling changes.
  */
 import { existsSync, readFileSync, readdirSync, globSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
@@ -114,18 +115,47 @@ const NAMES_A_TEST_TARGET = /(^|[-:_.])(t|tst|test)($|[-:_.])/i;
  * the pinned allow-list, while a false negative means a suite silently runs
  * twice.
  */
-export function isSuiteInvocation(run) {
+/** npm subcommands that MUTATE configuration, with npm 11's aliases/abbrevs. */
+const NPM_CONFIG_SUBCOMMANDS = new Set(['config', 'c', 'con', 'conf', 'confi', 'set', 'get']);
+
+/**
+ * Does this command mutate npm's configuration at runtime?
+ *
+ * `npm config set script-shell=/bin/true --location=project` rewrites the very
+ * .npmrc the allowlist above validates, on that runner only, after this
+ * checker has already looked. Nothing in this workflow legitimately configures
+ * npm at runtime, so any such invocation is refused.
+ */
+export function isNpmConfigMutation(run) {
+  for (const args of npmInvocations(run)) {
+    if (args.some((a) => NPM_CONFIG_SUBCOMMANDS.has(a.toLowerCase()))) return true;
+  }
+  return false;
+}
+
+/**
+ * The bare-word arguments of every npm invocation in a command, or [] if none.
+ * Shared by the suite and config detectors so both see identical tokenization.
+ */
+function npmInvocations(run) {
   // A backslash-newline is a line continuation — one command, not two.
   const normalized = String(run ?? '').replace(/\\\r?\n/g, ' ');
-  if (SUITE_MARKERS.test(normalized)) return true;
   const unquote = (t) => t.replace(/^["']|["']$/g, '');
+  const found = [];
   for (const segment of normalized.split(/[\n;&|]+/)) {
     let tokens = segment.trim().split(/\s+/).filter(Boolean).map(unquote);
     // `FOO=bar npm test` is still an npm invocation; `echo npm test` is not.
     while (tokens.length > 0 && /^[A-Za-z_][A-Za-z0-9_]*=/.test(tokens[0])) tokens = tokens.slice(1);
     const command = tokens[0];
     if (command !== 'npm' && !(command ?? '').endsWith('/npm')) continue;
-    const args = tokens.slice(1).filter((t) => !t.startsWith('-'));
+    found.push(tokens.slice(1).filter((t) => !t.startsWith('-')));
+  }
+  return found;
+}
+
+export function isSuiteInvocation(run) {
+  if (SUITE_MARKERS.test(String(run ?? '').replace(/\\\r?\n/g, ' '))) return true;
+  for (const args of npmInvocations(run)) {
     // Any bare word that IS a test subcommand — which also survives a flag
     // taking a separate operand, as in `npm --prefix . test`, where the
     // operand would otherwise be mistaken for the subcommand.
@@ -185,28 +215,70 @@ export const NPM_INSTALL_LIFECYCLE_HOOKS = [
 ];
 
 /**
- * npm config keys that can make a suite succeed without running.
+ * The repository's approved root `.npmrc`, exactly — key AND value.
  *
- * Matched case-insensitively and inside `[section]`s on purpose, which is
- * STRICTER than npm: npm would treat `NODE-OPTIONS=` or a sectioned key as an
- * unknown config and ignore it. Neither spelling has a legitimate use here —
- * it is either a mistake or an attempt — so this reports them rather than
- * relying on a reader to know npm's case rules.
+ * An ALLOWLIST, deliberately, after a blocklist lost six rounds in a row:
+ * script-shell, node-options, userconfig, globalconfig, prefix, usage… npm has
+ * more knobs than an auditor can enumerate, and each new one was a silent
+ * pass. Here a setting that is not on this list is a violation whatever it
+ * does, so a future npm option cannot be quietly introduced — adding one is a
+ * reviewed change to this constant.
  */
-const FORBIDDEN_NPMRC_KEYS = new Set(['script-shell', 'node-options', 'userconfig', 'globalconfig', 'prefix']);
+const APPROVED_NPMRC = new Map([
+  ['fetch-retries', '10'],
+  ['fetch-retry-factor', '2'],
+  ['fetch-retry-mintimeout', '30000'],
+  ['fetch-retry-maxtimeout', '180000'],
+  ['maxsockets', '1'],
+  ['network-concurrency', '1'],
+  ['prefer-offline', 'true'],
+]);
 
-/** Every key in an .npmrc, including inside `[section]`s, as [key, displayPath]. */
-function npmrcKeys(source) {
-  const out = [];
-  const walk = (node, prefix) => {
-    for (const [key, value] of Object.entries(node ?? {})) {
-      const path = prefix ? `${prefix}.${key}` : key;
-      if (value && typeof value === 'object' && !Array.isArray(value)) walk(value, path);
-      else out.push([key, path]);
+/**
+ * Parses an .npmrc into ORDERED entries using npm's own INI library, one line
+ * at a time so duplicates and `[sections]` survive — `ini.parse()` of a whole
+ * file silently collapses a duplicate key to its last value, which is exactly
+ * the shape an override would take.
+ */
+export function parseNpmrcEntries(source) {
+  const entries = [];
+  const sections = [];
+  for (const line of String(source).split(/\r?\n/)) {
+    if (line.trim() === '') continue;
+    const parsed = parseIni(line);
+    for (const [key, value] of Object.entries(parsed)) {
+      if (value !== null && typeof value === 'object' && !Array.isArray(value)) sections.push(key);
+      else entries.push([key, value]);
     }
-  };
-  walk(parseIni(source), '');
-  return out;
+  }
+  return { entries, sections };
+}
+
+/** Every violation in one .npmrc, measured against the approved set. */
+function checkNpmrc(source, where) {
+  const violations = [];
+  const { entries, sections } = parseNpmrcEntries(source);
+  for (const section of sections) {
+    violations.push(`${where}: has a [${section}] section — the approved config is flat, and a section can carry settings this check would otherwise read as absent`);
+  }
+  const seen = new Set();
+  for (const [rawKey, value] of entries) {
+    const key = String(rawKey).trim();
+    if (seen.has(key)) {
+      violations.push(`${where}: sets \`${key}\` more than once — npm applies the last one, so a duplicate is an override hiding behind an approved line`);
+      continue;
+    }
+    seen.add(key);
+    if (!APPROVED_NPMRC.has(key)) {
+      violations.push(`${where}: sets \`${key}\`, which is not in the approved npm configuration — add it to APPROVED_NPMRC in scripts/ci/workflow-contract.mjs if it is genuinely wanted`);
+      continue;
+    }
+    const approved = APPROVED_NPMRC.get(key);
+    if (String(value) !== approved) {
+      violations.push(`${where}: sets \`${key}=${value}\`, but the approved value is \`${approved}\``);
+    }
+  }
+  return violations;
 }
 
 /**
@@ -240,35 +312,38 @@ const MUST_PIN_BASH = { 'workflow-contract': 'the contract checker', lint: 'the 
 
 /**
  * Environment variables that turn a real command into a no-op, in any scope.
- * `SHELLOPTS=noexec` makes bash PARSE every gated step and execute nothing,
- * exiting 0; `BASH_ENV` is sourced by non-interactive bash (which is what
- * `shell: bash` runs) so it can `exit 0` before the step body; NODE_OPTIONS
- * can `--require` a module that does the same to the node-based steps; and
- * npm's `script-shell` replaces the shell every `npm run` uses. Pinning
- * `shell: bash` does not defend against any of them — they act inside it.
+ *
+ * The npm side is a NAMESPACE rule, not a list. Enumerating dangerous npm
+ * options lost repeatedly — script-shell, node-options, userconfig,
+ * globalconfig, prefix, usage, if-present — because `npm_config_<anything>`
+ * sets the corresponding npm option, so the list could never be finished.
+ * No gated job has a legitimate reason to configure npm through the
+ * environment, so the whole namespace is refused.
+ *
+ * The rest are the non-npm ways to the same place: bash startup controls, and
+ * the HOME-like variables npm and other tools resolve their per-user config
+ * from (a redirected HOME means a different .npmrc than the one checked above).
  */
-const NEUTERING_ENV_VARS = [
-  'npm_config_script_shell',
-  // npm passes this to node for every `npm run`, so
-  // `--import=data:text/javascript,process.exit(0)` makes a suite exit 0 in
-  // ~0.5s with nothing run — while a direct `node` step stays honest.
-  'npm_config_node_options',
-  // Redirects npm at a different config file entirely, which can carry
-  // script-shell or node-options, bypassing the .npmrc scan below.
-  'npm_config_userconfig',
-  'npm_config_globalconfig',
-  // npm derives globalconfig from prefix (`<prefix>/etc/npmrc`), so setting
-  // prefix at a path that contains a tracked etc/npmrc redirects npm's config
-  // just as surely as pointing globalconfig at it.
-  'npm_config_prefix',
-  'shellopts',
-  'bash_env',
-  'node_options',
-];
-const neuteringEnvVar = (key) => {
-  const normalized = key.toLowerCase().replace(/-/g, '_');
-  return NEUTERING_ENV_VARS.find((v) => v === normalized);
-};
+const NPM_ENV_NAMESPACE = 'npm_config_';
+const CONFIG_HOME_VARS = new Set(['home', 'userprofile', 'xdg_config_home', 'appdata', 'localappdata']);
+const SHELL_CONTROL_VARS = new Set(['shellopts', 'bash_env', 'node_options']);
+
+const normalizeEnvKey = (key) => String(key).toLowerCase().replace(/-/g, '_');
+
+/** Why this env key is forbidden in a gated scope, or null if it is fine. */
+function neuteringEnvVar(key) {
+  const normalized = normalizeEnvKey(key);
+  if (normalized.startsWith(NPM_ENV_NAMESPACE)) {
+    return `it configures npm through the environment (${NPM_ENV_NAMESPACE}* is refused as a namespace, not key by key)`;
+  }
+  if (CONFIG_HOME_VARS.has(normalized)) {
+    return 'it relocates the per-user config directory, so npm would read a different .npmrc than the approved one';
+  }
+  if (SHELL_CONTROL_VARS.has(normalized)) {
+    return 'it can make a gated step exit 0 without running its command';
+  }
+  return null;
+}
 
 function checkStepIsUnweakened(step, where, violations) {
   if (step.if !== undefined) violations.push(`${where}: step has an \`if:\` — it can silently skip its suite`);
@@ -295,6 +370,28 @@ function checkJobIsUnweakened(job, where, violations, { allowIf = false } = {}) 
     violations.push(`${where}: job sets \`defaults.run.shell: ${job.defaults.run.shell}\` — every step would stop really running`);
   }
   return true;
+}
+
+/**
+ * Every .npmrc in the repository other than the root one. npm resolves config
+ * by walking UP from the current directory, so a file in any package directory
+ * a gated command might run from wins over the approved root file.
+ */
+function findNestedNpmrcFiles(repoRoot) {
+  const found = [];
+  const skip = new Set(['node_modules', '.git', 'dist', 'coverage', '.next', 'build']);
+  const walk = (rel) => {
+    for (const entry of readdirSync(join(repoRoot, rel || '.'), { withFileTypes: true })) {
+      if (entry.isDirectory()) {
+        if (skip.has(entry.name)) continue;
+        walk(rel ? `${rel}/${entry.name}` : entry.name);
+      } else if (entry.name === '.npmrc' && rel !== '') {
+        found.push(`${rel}/.npmrc`);
+      }
+    }
+  };
+  walk('');
+  return found.sort();
 }
 
 /** Every file under src/ matching `pattern`, walked independently of any config. */
@@ -347,6 +444,74 @@ const globFiles = (patterns, repoRoot) =>
   [...new Set((patterns ?? []).flatMap((p) => globSync(p, { cwd: repoRoot, exclude: (name) => name === 'node_modules' })))]
     .map((f) => f.split('\\').join('/'))
     .sort();
+
+/** The aggregator's real step: its script and the env that feeds it results. */
+export function extractAggregatorProgram(workflow) {
+  const step = (workflow?.jobs?.test?.steps ?? []).find((s) => s.run !== undefined);
+  return step ? { script: String(step.run), env: step.env ?? {} } : null;
+}
+
+/**
+ * EXECUTES the aggregator's real program against a table of GitHub result
+ * combinations and reports what it did.
+ *
+ * Token assertions cannot see behaviour: changing `exit "$status"` to `exit 0`
+ * leaves every pinned token in place, and the workflow-level test that would
+ * catch it runs inside `unit-tests` — whose failure the now-broken aggregator
+ * converts back to green. Running the program here means the independently
+ * required `lint` job enforces it, where no aggregator can swallow the result.
+ *
+ * Returns one row per case so the checker and the tests share this executor
+ * rather than each growing their own.
+ */
+export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PREREQUISITE_RUNS)) {
+  const program = extractAggregatorProgram(workflow);
+  if (!program) return [{ label: 'aggregator step', ok: false, detail: 'the `test` job has no run step to execute' }];
+
+  const cases = [{ label: 'every prerequisite succeeded', results: Object.fromEntries(prerequisites.map((j) => [j, 'success'])), expectSuccess: true }];
+  for (const job of prerequisites) {
+    for (const bad of ['failure', 'cancelled', 'skipped', '']) {
+      cases.push({
+        label: `${job} = ${bad || '<empty>'}`,
+        results: { ...Object.fromEntries(prerequisites.map((j) => [j, 'success'])), [job]: bad },
+        expectSuccess: false,
+      });
+    }
+    const missing = Object.fromEntries(prerequisites.filter((j) => j !== job).map((j) => [j, 'success']));
+    cases.push({ label: `${job} missing from needs`, results: missing, expectSuccess: false });
+  }
+  cases.push({ label: 'needs is empty', results: {}, expectSuccess: false });
+
+  return cases.map(({ label, results, expectSuccess }) => {
+    // Resolve the expressions GitHub would resolve before the shell sees them.
+    let script = program.script.replace(
+      /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
+      (_m, sep) => Object.values(results).join(sep),
+    );
+    const env = { NEEDS: JSON.stringify(Object.fromEntries(Object.entries(results).map(([j, r]) => [j, { result: r }]))) };
+    for (const [key, expression] of Object.entries(program.env)) {
+      const match = /needs\.([A-Za-z0-9_-]+)\.result/.exec(String(expression));
+      // A job dropped from `needs` expands to the empty string, exactly as here.
+      if (match) env[key] = results[match[1]] ?? '';
+      else if (!String(expression).includes('${{')) env[key] = String(expression);
+    }
+    if (script.includes('${{')) {
+      return { label, ok: false, detail: `the program still contains an unresolved \`\${{ … }}\` expression, so its behaviour cannot be verified here` };
+    }
+    // GitHub runs `shell: bash` as `bash --noprofile --norc -eo pipefail`.
+    const res = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+      encoding: 'utf8',
+      env: { ...process.env, ...env },
+    });
+    const succeeded = res.status === 0;
+    const ok = succeeded === expectSuccess;
+    return {
+      label,
+      ok,
+      detail: ok ? '' : `expected the gate to ${expectSuccess ? 'SUCCEED' : 'FAIL'}, but it exited ${res.status}`,
+    };
+  });
+}
 
 /**
  * Returns a list of human-readable contract violations. Empty means the gate
@@ -454,25 +619,22 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     }
   }
 
-  // npm's script-shell can be redirected repo-wide (.npmrc) or per step
-  // (npm_config_script_shell), making every `npm run …` exit 0 without running
-  // anything — while this checker, a direct node call, stays green.
-  let npmrc = '';
+  // ── npm configuration: an ALLOWLIST, not a hunt for dangerous keys ──
+  // Every .npmrc a gated command could load must be exactly the approved set.
+  // The root file is checked against APPROVED_NPMRC; any OTHER .npmrc in the
+  // repository is rejected outright, because npm walks up from the working
+  // directory and would read one nearer the command than this file.
+  let rootNpmrc = '';
   try {
-    npmrc = readFileSync(join(repoRoot, '.npmrc'), 'utf8');
+    rootNpmrc = readFileSync(join(repoRoot, '.npmrc'), 'utf8');
   } catch {
-    npmrc = '';
+    rootNpmrc = '';
   }
-  // PARSED with npm's own INI library, not pattern-matched: npm honours
-  // `"node-options"=…`, `'node-options' = …`, odd whitespace and `[section]`
-  // nesting, and a regex that chases those spellings loses. A quoted key made
-  // a script that should exit 7 exit 0 while an unquoted-only regex saw
-  // nothing.
-  for (const [key, where] of npmrcKeys(npmrc)) {
-    if (FORBIDDEN_NPMRC_KEYS.has(key.trim().toLowerCase())) {
-      violations.push(`.npmrc sets ${where} — it can make every \`npm run\` in CI exit 0 without running its suite`);
-    }
+  violations.push(...checkNpmrc(rootNpmrc, '.npmrc'));
+  for (const nested of findNestedNpmrcFiles(repoRoot)) {
+    violations.push(`${nested}: a second .npmrc — npm reads the one nearest the working directory, so this can override the approved root configuration`);
   }
+
   const envScopes = [
     ['workflow', workflow.env ?? {}],
     ...Object.entries(jobs).flatMap(([jobName, job]) => [
@@ -483,9 +645,9 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   ];
   for (const [scope, env] of envScopes) {
     for (const key of Object.keys(env)) {
-      const neutering = neuteringEnvVar(key);
-      if (neutering) {
-        violations.push(`${scope}: sets ${key} — it can make gated steps exit 0 without running (see NEUTERING_ENV_VARS)`);
+      const reason = neuteringEnvVar(key);
+      if (reason) {
+        violations.push(`${scope}: sets ${key} — ${reason}`);
       }
     }
   }
@@ -509,6 +671,45 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     const group = jobs[name]?.concurrency?.group ?? jobs[name]?.concurrency;
     if (group !== undefined && !shardConcurrencyIsSafe(group)) {
       violations.push(`${name}: job-level concurrency \`${group}\` must interpolate matrix.shard directly AND github.run_id, or the matrix children queue behind each other (groups are repository-wide)`);
+    }
+  }
+
+  // ── Runtime npm-configuration mutation, anywhere ──
+  // A `npm config set …` step rewrites the .npmrc the allowlist just validated,
+  // on that runner only, after this checker has looked. Nothing here needs it.
+  for (const [jobName, job] of Object.entries(jobs)) {
+    for (const step of job.steps ?? []) {
+      if (step.run !== undefined && isNpmConfigMutation(step.run)) {
+        violations.push(`${jobName}: step runs \`npm config\` (\`${String(step.run).trim().split('\n')[0]}\`) — runtime npm configuration is refused; change .npmrc and APPROVED_NPMRC in one reviewed edit instead`);
+      }
+    }
+  }
+  for (const [name, command] of Object.entries(pkgScripts)) {
+    if (typeof command === 'string' && isNpmConfigMutation(command)) {
+      violations.push(`package.json scripts.${name} runs \`npm config\` — an npm script can rewrite the approved configuration before a gated command runs`);
+    }
+  }
+
+  // ── Root execution boundary ──
+  // Every gated command is a ROOT command. `working-directory` keeps the pinned
+  // text while running it somewhere else: pointed at a package without that
+  // script (with npm's if-present, or simply a different package.json) the step
+  // exits 0 having run nothing. If this ever becomes a monorepo, that is a
+  // reviewed redesign, not silent drift.
+  if (workflow.defaults?.run?.['working-directory'] !== undefined) {
+    violations.push('workflow defaults.run.working-directory moves every gated command off the repository root');
+  }
+  const rootBoundaryJobs = new Set([...Object.keys(GATED_JOB_COMMANDS), 'test']);
+  for (const [jobName, job] of Object.entries(jobs)) {
+    if (job.defaults?.run?.['working-directory'] !== undefined) {
+      violations.push(`${jobName}: defaults.run.working-directory moves its commands off the repository root`);
+    }
+    for (const step of job.steps ?? []) {
+      const isInstall = step.run !== undefined && /\bnpm\s+(ci|install|i)\b/.test(String(step.run));
+      if (step['working-directory'] === undefined) continue;
+      if (rootBoundaryJobs.has(jobName) || isInstall) {
+        violations.push(`${jobName}: step sets working-directory: ${step['working-directory']} — gated and install steps must run at the repository root, or the pinned command runs against a different package.json`);
+      }
     }
   }
 
@@ -587,6 +788,13 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     }
     if (!script.includes('join(needs.*.result')) {
       violations.push('test: verification step must also check join(needs.*.result) so a future prerequisite cannot be added unchecked');
+    }
+  }
+
+  // ── 5c. The aggregator is verified by RUNNING it, not by reading it ──
+  for (const row of aggregatorTruthTable(workflow, expectedNeeds)) {
+    if (!row.ok) {
+      violations.push(`test (required gate): with ${row.label}, ${row.detail}`);
     }
   }
 
