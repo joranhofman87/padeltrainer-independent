@@ -457,11 +457,25 @@ export async function handleRequest(
         consent_given: consentGiven ?? true,
         metadata: { ...(metadata || {}), client_ip: clientIp },
         status: "new",
+        // Idempotency key for this submission attempt (U2): a resumed submission now resolves to a
+        // STABLE person, so without this a replay after the 60s window would write a second intake
+        // and mint a second invoice. The partial unique index (registration_id, creation_request_id)
+        // makes the duplicate impossible; the conflict below is treated as "already submitted".
+        creation_request_id: creationRequestId,
       })
       .select()
       .single();
 
     if (intakeError) {
+      // A unique-violation on (registration_id, creation_request_id) is a REPLAY of this exact
+      // attempt — the first submission already created the intake (and any invoice). Answer
+      // idempotently rather than duplicating (Codex r1 f9).
+      if (intakeError.code === "23505") {
+        return new Response(
+          JSON.stringify({ success: true, already_submitted: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       // PII hygiene (E-22): same as above — never log Postgres error `details`.
       console.error("Intake insert error:", intakeError.code, intakeError.message);
       return new Response(

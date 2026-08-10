@@ -152,11 +152,11 @@ CREATE TRIGGER trg_identity_challenge_guard_immutable
 -- The candidate set — definer-internal, granted to NOBODY
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 --
--- Candidates are the "returning anonymous booker" population precisely: accountless (pure-guest)
--- canonical persons the owner may select whose IN-SCOPE GUEST source matches the address. The
--- pure-guest restriction is load-bearing — see the WHY below the function. Split-frozen guests are
--- excluded by player_owner_may_select_person. Ordered + fingerprinted so drift between mint and
--- choice is detectable.
+-- Candidates are the "returning anonymous booker" population precisely: canonical persons with an
+-- IN-SCOPE GUEST source whose address equals the challenged one (the matching guest itself must be
+-- in the owner's scope — see the query). An account (profile link) does NOT exclude a person; a
+-- returning player who later claimed an account is still reconnected rather than duplicated.
+-- Split-frozen guests are excluded. Ordered + fingerprinted so drift between mint and choice shows.
 CREATE OR REPLACE FUNCTION public.identity_candidate_persons(
   _owner_type text, _owner_id uuid, _email_norm text
 )
@@ -172,15 +172,26 @@ AS $$
     JOIN public.persons pr ON pr.id = pl.person_id
     JOIN public.guest_players g ON g.id = pl.guest_player_id
     WHERE _email_norm <> ''
+      -- the EMAIL-MATCHING guest row must ITSELF be in the requested owner's scope (Codex r1 f3):
+      -- relying on player_owner_may_select_person alone let a person qualify whose matching guest
+      -- belonged to another owner while a DIFFERENT in-scope relationship passed the predicate. This
+      -- ties the candidate to an in-scope guest whose address equals the challenged one, which also
+      -- makes that guest the one person_legacy_source derives for this owner.
       AND lower(btrim(g.email)) = _email_norm
-      -- selectable by this owner — the same predicate the select step re-checks, so a candidate
-      -- offered here can never be refused there, and cross-tenant persons never appear
+      AND NOT public.is_guest_split_frozen(g.id)
+      AND ((_owner_type = 'academy'
+            AND (g.academy_profile_id = _owner_id
+                 OR EXISTS (SELECT 1 FROM public.academy_trainers at
+                             WHERE at.academy_profile_id = _owner_id
+                               AND at.trainer_profile_id = g.trainer_id
+                               AND at.status = 'active')))
+           OR (_owner_type = 'trainer' AND g.trainer_id = _owner_id))
+      -- defense in depth + consistency with the rest of U2; implied by the in-scope guest above
       AND public.player_owner_may_select_person(_owner_type, _owner_id, pl.person_id)
-      -- PURE GUEST only: no account. Every downstream write is guest-keyed and
-      -- legacyGuestRefForCheckout refuses an account holder (booking them as a guest hides it in
-      -- their own app), so an account holder at this address logs in instead of appearing here.
-      AND NOT EXISTS (SELECT 1 FROM public.person_links pl2
-                       WHERE pl2.person_id = pl.person_id AND pl2.profile_id IS NOT NULL)
+      -- NOTE: an account (profile link) no longer excludes a person (Codex r1 f6). Eligibility is
+      -- "has an exact in-scope guest source at this address", so a returning player who later
+      -- claimed an account is still reconnected rather than duplicated; the entrypoints book them
+      -- via legacyBookingRef's guest key (person_id is stamped, so it stays visible to them).
     ORDER BY pl.person_id;
 $$;
 
@@ -188,7 +199,7 @@ REVOKE ALL ON FUNCTION public.identity_candidate_persons(text, uuid, text)
   FROM PUBLIC, anon, authenticated, service_role;
 
 COMMENT ON FUNCTION public.identity_candidate_persons(text, uuid, text) IS
-  'Definer-internal candidate set for identity verification: pure-guest (accountless) canonical persons the owner may select whose in-scope guest source matches the normalized address. Granted to nobody. Accountless so the derived legacy ref is always a guest id and no booking path changes; account holders at the same address log in instead.';
+  'Definer-internal candidate set for identity verification: canonical persons whose in-scope guest source (the matching guest itself in the owner scope) has the challenged address. Granted to nobody. An account does not exclude a person — the entrypoints book a chosen returning player via legacyBookingRef''s guest key, with person_id stamped so it stays visible to them.';
 
 -- A stable fingerprint of the candidate SET, so drift between begin and select fails closed.
 CREATE OR REPLACE FUNCTION public.identity_candidate_fingerprint(
@@ -220,11 +231,15 @@ REVOKE ALL ON FUNCTION public.identity_candidate_fingerprint(text, uuid, text)
 --   * The payload carries the challenge_id and workflow only — NEVER the HMAC token. The token is
 --     derived from (challenge_id, key) at the owner-gated SEND, exactly as the manage-link worker
 --     derives its token; the database never stores an HMAC.
---   * Real delivery is INERT here (no active worker) and is the owner's activation gate. The
---     recipient/consent nuances of a REAL send of an address-control challenge (a consent-opted-out
---     contact would suppress a required challenge; a shared address has several candidates) are
---     recorded for that gate in docs/U2_IDENTITY_CONTINUITY_DESIGN.md — they are delivery concerns,
---     not begin-time correctness, and this slice only enqueues.
+--   * Real delivery is INERT here (no active worker) and is the owner's activation gate. TWO
+--     delivery concerns are recorded for that gate in docs/U2_IDENTITY_CONTINUITY_DESIGN.md and are
+--     NOT solved by this inert enqueue (Codex r1 f3): (1) the challenge proves control of THE
+--     CHALLENGED ADDRESS (`contact_normalized`), but enqueue_notification resolves the recipient
+--     PERSON's own notification-contact, which for a claimed candidate can be a different address —
+--     so the activation sender MUST target `contact_normalized`, not the person's resolved contact;
+--     (2) a consent-opted-out contact would suppress a required challenge. Both are delivery-layer
+--     redesign for activation; begin-time correctness (the halt, the candidate set, the selection)
+--     does not depend on them, and this slice only enqueues inertly.
 CREATE OR REPLACE FUNCTION public.identity_challenge_enqueue(_challenge_id uuid)
 RETURNS void
 LANGUAGE plpgsql
@@ -234,10 +249,26 @@ AS $$
 DECLARE
   v_ch public.identity_verification_challenges%ROWTYPE;
   v_recipient uuid;
+  v_recent int;
+  -- Per-address hourly cap on verification emails. The per-creation_request_id uniqueness is NOT an
+  -- abuse cap (a caller rotates request ids for unlimited challenges — Codex r1 f5), so the real,
+  -- fail-CLOSED cap is here: at most this many messages to one on-file address in one owner per
+  -- hour. Skipping the enqueue leaves the resolver's response unchanged (still verify_required), so
+  -- capping the email does not add an enumeration signal.
+  v_hourly_email_cap constant int := 5;
 BEGIN
   SELECT * INTO v_ch FROM public.identity_verification_challenges WHERE id = _challenge_id;
   IF NOT FOUND OR v_ch.consumed_at IS NOT NULL OR v_ch.expires_at <= now() THEN
     RETURN;  -- nothing to notify about
+  END IF;
+
+  SELECT count(*) INTO v_recent
+    FROM public.identity_verification_challenges ch
+   WHERE ch.contact_normalized = v_ch.contact_normalized
+     AND ch.owner_type = v_ch.owner_type AND ch.owner_id = v_ch.owner_id
+     AND ch.created_at > now() - interval '1 hour';
+  IF v_recent > v_hourly_email_cap THEN
+    RETURN;  -- address hit its hourly cap: cap the EMAIL, not the (uniform) response
   END IF;
 
   SELECT c.person_id INTO v_recipient
@@ -317,9 +348,15 @@ BEGIN
    WHERE creation_request_id = _creation_request_id AND consumed_at IS NOT NULL
    LIMIT 1;
   IF FOUND THEN
-    -- the terminal selection must belong to the SAME workflow+owner that is now resuming
+    -- The terminal selection must belong to the SAME workflow, owner AND contact address that was
+    -- verified. Without the contact check (Codex r1 f2) a caller who kept the creation_request_id
+    -- could resume with a DIFFERENT address and still book as the verified person — the selection
+    -- was authorized for the address whose control was proven, not for whatever is resubmitted. A
+    -- legitimate corrected address yields a different creation_request_id (the client keys the id on
+    -- the address), so a mismatch here is never a normal flow: fail closed.
     IF v_existing.workflow <> _workflow
-       OR v_existing.owner_type <> _owner_type OR v_existing.owner_id <> _owner_id THEN
+       OR v_existing.owner_type <> _owner_type OR v_existing.owner_id <> _owner_id
+       OR v_existing.contact_normalized IS DISTINCT FROM v_email_norm THEN
       RAISE EXCEPTION 'IDENTITY_SELECTION_SCOPE_MISMATCH' USING ERRCODE = 'insufficient_privilege';
     END IF;
     IF v_existing.chose_someone_new THEN
@@ -347,23 +384,27 @@ BEGIN
     RETURN jsonb_build_object('status', 'proceed_new');
   END IF;
 
-  -- Candidates exist. Return the ACTIVE challenge for this attempt if one is live (idempotent
-  -- enqueue), else mint one. A live challenge keeps its mint-time candidate fingerprint; drift is
-  -- caught at select, not by re-minting here (which would re-enqueue).
+  -- Candidates exist. Return the ACTIVE challenge for this attempt if one is live AND its bound
+  -- candidate set has not drifted; a drifted active challenge is superseded here rather than left to
+  -- rot until expiry (Codex r1 f10) — otherwise the attempt is stuck for 30 minutes.
   SELECT * INTO v_existing
     FROM public.identity_verification_challenges
    WHERE creation_request_id = _creation_request_id
      AND consumed_at IS NULL AND expires_at > now()
    LIMIT 1;
   IF FOUND THEN
-    -- Re-enqueue is safe: enqueue_notification is idempotent on (event, subject, recipient), so a
-    -- resubmitted attempt produces no second message — "at most one" holds structurally.
-    PERFORM public.identity_challenge_enqueue(v_existing.id);
-    RETURN jsonb_build_object(
-      'status', 'verify_required',
-      'challenge_id', v_existing.id,
-      'key_version', v_existing.key_version,
-      'expires_at', v_existing.expires_at);
+    IF v_existing.candidate_set_fingerprint = v_fp THEN
+      -- Re-enqueue is safe: enqueue_notification is idempotent on (event, subject, recipient), so a
+      -- resubmitted attempt produces no second message — "at most one" holds structurally.
+      PERFORM public.identity_challenge_enqueue(v_existing.id);
+      RETURN jsonb_build_object(
+        'status', 'verify_required',
+        'challenge_id', v_existing.id,
+        'key_version', v_existing.key_version,
+        'expires_at', v_existing.expires_at);
+    END IF;
+    -- drifted: retire the stale one so the mint below (a fresh proof over the new set) can proceed.
+    DELETE FROM public.identity_verification_challenges WHERE id = v_existing.id;
   END IF;
 
   -- Mint. key_version = current generation; refuse if the floor has retired it (fail closed).
@@ -538,6 +579,44 @@ $$;
 REVOKE ALL ON FUNCTION public.identity_verification_select(uuid, uuid, boolean)
   FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.identity_verification_select(uuid, uuid, boolean) TO service_role;
+
+-- The edge verifier needs ONE fact to bind the signed token generation to the stored row — the
+-- challenge's key_version — and must learn nothing else. The challenge table is granted to nobody
+-- (it carries the contact address), and BYPASSRLS does not bypass a table ACL, so a direct SELECT
+-- by the service role would fail (Codex r1 f1). This definer RPC returns the key_version alone.
+CREATE OR REPLACE FUNCTION public.identity_challenge_key_version(_challenge_id uuid)
+RETURNS int
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT key_version FROM public.identity_verification_challenges WHERE id = _challenge_id;
+$$;
+
+REVOKE ALL ON FUNCTION public.identity_challenge_key_version(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.identity_challenge_key_version(uuid) TO service_role;
+
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+-- Public-intake idempotency on the create attempt (Codex r1 f9)
+-- ═══════════════════════════════════════════════════════════════════════════════════════════════
+--
+-- Now that a resumed submission resolves to a STABLE person (the consumed challenge replays
+-- proceed_person indefinitely), the public intake insert must be idempotent on the same attempt or a
+-- replay after the 60-second heuristic window would write a second intake_requests row (and mint a
+-- second invoice from it). The caller's creation_request_id is the natural key; a partial unique
+-- index makes the duplicate structurally impossible, and submit-guest-intake treats the conflict as
+-- "already submitted". Nullable + partial so every pre-existing row and every non-public writer that
+-- does not set it is unaffected.
+ALTER TABLE public.intake_requests
+  ADD COLUMN IF NOT EXISTS creation_request_id uuid;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_intake_requests_creation_request
+  ON public.intake_requests (registration_id, creation_request_id)
+  WHERE creation_request_id IS NOT NULL;
+
+COMMENT ON COLUMN public.intake_requests.creation_request_id IS
+  'The public self-service submission attempt this row was created for (U2). Partial-unique with registration_id so a resumed/replayed submission cannot write a duplicate intake. NULL for every other writer.';
 
 -- ═══════════════════════════════════════════════════════════════════════════════════════════════
 -- The inert notification event — enqueue only; real delivery is the owner gate

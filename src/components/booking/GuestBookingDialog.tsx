@@ -105,6 +105,7 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       setPhone('');
       setNotes('');
       setSubmitting(false);
+      setVerificationSent(false);
       setMode('cyclus');
     }
   }, [open, slot?.id]);
@@ -308,6 +309,14 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
                 'Als dit e-mailadres al bij ons bekend is, hebben we je een link gestuurd om te bevestigen dat jij het bent. Volg die link om je boeking af te ronden.')}
             </DialogDescription>
           </DialogHeader>
+          {/* Same-device resume: re-submitting the SAME attempt after the link is followed resolves
+              to the chosen person and proceeds to checkout. */}
+          <Button
+            onClick={() => { setVerificationSent(false); void handleSubmit(); }}
+            disabled={submitting}
+          >
+            {t('booking.guest.verify.continue', 'Ik heb bevestigd — ga verder')}
+          </Button>
         </DialogContent>
       </Dialog>
     );

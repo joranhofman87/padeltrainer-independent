@@ -3802,6 +3802,7 @@ export type Database = {
           birth_date: string | null
           consent_given: boolean
           created_at: string
+          creation_request_id: string | null
           cycle_id: string | null
           email: string | null
           full_name: string
@@ -3832,6 +3833,7 @@ export type Database = {
           birth_date?: string | null
           consent_given?: boolean
           created_at?: string
+          creation_request_id?: string | null
           cycle_id?: string | null
           email?: string | null
           full_name: string
@@ -3862,6 +3864,7 @@ export type Database = {
           birth_date?: string | null
           consent_given?: boolean
           created_at?: string
+          creation_request_id?: string | null
           cycle_id?: string | null
           email?: string | null
           full_name?: string
@@ -11813,6 +11816,10 @@ export type Database = {
       identity_challenge_enqueue: {
         Args: { _challenge_id: string }
         Returns: undefined
+      }
+      identity_challenge_key_version: {
+        Args: { _challenge_id: string }
+        Returns: number
       }
       identity_resolve_or_challenge: {
         Args: {

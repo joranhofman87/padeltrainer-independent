@@ -21,7 +21,7 @@ import { corsHeadersFor } from "../_shared/cors.ts";
 import { applySplitPayment, computeCyclusTotalFromSlots, computeCyclusExtrasTotal, resolveSplitDivisorFromSlots, hasNonUniformCapacity, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { isCyclusBookingAllowed } from "../_shared/cyclus-booking.ts";
-import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
+import { legacyBookingRef, legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
@@ -147,7 +147,35 @@ Deno.serve(async (req) => {
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
     }
 
-    // 4. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
+    // 4. Identity — FIRST, before any Mollie credential work (resolveSlotRecipient refreshes/writes
+    //    OAuth tokens), so a verify_required request causes no external or credential mutation
+    //    (Codex r1 f7). Only a proven, explicitly chosen person (or "someone new") carries on.
+    const owner = slots[0].academy_profile_id
+      ? { academyProfileId: slots[0].academy_profile_id as string }
+      : { trainerId };
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "cyclus", email,
+    });
+    if (identity.status === "verify_required") {
+      return json({ status: "verification_required" }, 200);
+    }
+    // A verified returning Player is booked via the guest key legacyBookingRef derives (person_id is
+    // stamped, so a claimed account holder still sees it); a first-timer is created via the command.
+    let personId: string;
+    let guestPlayerId: string;
+    if (identity.status === "proceed_person") {
+      personId = identity.personId;
+      const ref = await legacyBookingRef(supabase, personId, owner);
+      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
+      guestPlayerId = ref.guestPlayerId;
+    } else {
+      personId = (await resolvePlayerForCheckout(supabase, {
+        email, name, phone, owner, source: "public_booking", creationRequestId,
+      })).personId;
+      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
+    }
+
+    // 5. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
     //    share one academy, so slots[0].academy_profile_id disambiguates a multi-academy trainer
     //    (Codex F3); the webhook resolves the same academy off any of these slots.
     const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
@@ -184,33 +212,6 @@ Deno.serve(async (req) => {
       (settings.extra_costs as ExtraCost[] | null) ??
       ((slots[0] as { extra_costs?: ExtraCost[] | null })?.extra_costs ?? null);
     const total = baseTotal + computeCyclusExtrasTotal(cycleExtraCosts, slots.length);
-
-    // 6. Guest identity — always a guest_players row.
-
-
-    const owner = slots[0].academy_profile_id
-      ? { academyProfileId: slots[0].academy_profile_id as string }
-      : { trainerId };
-
-    // Identity — before ANY hold/payment/create, resolve or demand verification (U2 identity
-    // continuity). A returning address colliding with existing candidates must prove control first;
-    // we return here with NO side effect. Only a proven, explicitly chosen person (or "someone
-    // new") carries on.
-    const identity = await resolveAnonymousIdentity(supabase, {
-      creationRequestId, owner, workflow: "cyclus", email,
-    });
-    if (identity.status === "verify_required") {
-      return json({ status: "verification_required" }, 200);
-    }
-
-    // The legacy column `bookings` still needs is derived from the person by the authorized adapter
-    // and exists only for the length of this insert.
-    const personId = identity.status === "proceed_person"
-      ? identity.personId
-      : (await resolvePlayerForCheckout(supabase, {
-          email, name, phone, owner, source: "public_booking", creationRequestId,
-        })).personId;
-    const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
     // Tenant comes from the SLOT above, never from the client — the client sends a boolean and

@@ -22,7 +22,7 @@ import { Loader2 } from 'lucide-react';
  * delivery itself is inert here (owner-gated), so this page is exercised by tests, not live mail.
  */
 type Candidate = { person_id: string; name: string };
-type Phase = 'loading' | 'choose' | 'done' | 'generic_error' | 'unavailable';
+type Phase = 'loading' | 'choose' | 'done' | 'already_done' | 'generic_error' | 'unavailable';
 
 export default function VerifyIdentity() {
   const { t } = useTranslation('common');
@@ -75,8 +75,11 @@ export default function VerifyIdentity() {
       const result = data as { status: string } | null;
       if (error || result?.status === 'unavailable') { setPhase('unavailable'); return; }
       if (result?.status === 'ok') { setPhase('done'); return; }
-      // already_selected is terminal-safe (the choice stands); everything else is generic.
-      if (result?.status === 'already_selected') { setPhase('done'); return; }
+      // already_selected means THIS attempt was already resolved to a DIFFERENT choice (e.g. a
+      // shared mailbox where another member chose first). It must NOT read as "your choice was
+      // confirmed" (Codex r1 f8) — it fails closed: the booking will use the earlier choice, and a
+      // different intent needs a fresh booking.
+      if (result?.status === 'already_selected') { setPhase('already_done'); return; }
       setPhase('generic_error');
     } catch {
       setPhase('unavailable');
@@ -132,6 +135,13 @@ export default function VerifyIdentity() {
             <p className="text-sm text-muted-foreground">
               {t('verifyIdentity.done',
                 'Bevestigd. Ga terug naar je boeking om die af te ronden.')}
+            </p>
+          )}
+
+          {phase === 'already_done' && (
+            <p className="text-sm text-muted-foreground">
+              {t('verifyIdentity.alreadyDone',
+                'Deze boeking is al met een andere keuze afgerond. Start een nieuwe boeking als je iets anders wilt.')}
             </p>
           )}
 

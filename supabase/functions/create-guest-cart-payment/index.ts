@@ -31,7 +31,7 @@ import {
   priceCartItems,
   validateCartSlots,
 } from "../_shared/cart-payment.ts";
-import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
+import { legacyBookingRef, legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
@@ -163,6 +163,32 @@ Deno.serve(async (req) => {
     const trainerId = slots[0].trainer_id as string;
     const academyProfileId = slots[0].academy_profile_id ?? null;
 
+    // Identity — FIRST, before any Mollie credential work (resolveSlotRecipient refreshes/writes
+    // OAuth tokens), so a verify_required request causes no external or credential mutation
+    // (Codex r1 f7). Only a proven, explicitly chosen person (or "someone new") carries on.
+    const owner = academyProfileId ? { academyProfileId } : { trainerId };
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "cart", email,
+    });
+    if (identity.status === "verify_required") {
+      return json({ status: "verification_required" }, 200);
+    }
+    // A verified returning Player is booked via the guest key legacyBookingRef derives (person_id is
+    // stamped, so a claimed account holder still sees it); a first-timer is created via the command.
+    let personId: string;
+    let guestPlayerId: string;
+    if (identity.status === "proceed_person") {
+      personId = identity.personId;
+      const ref = await legacyBookingRef(supabase, personId, owner);
+      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
+      guestPlayerId = ref.guestPlayerId;
+    } else {
+      personId = (await resolvePlayerForCheckout(supabase, {
+        email, name, phone, owner, source: "public_booking", creationRequestId,
+      })).personId;
+      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
+    }
+
     // Recipient — same predicate as mollie-webhook will use to CONFIRM (charge==confirm).
     const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
       supabase,
@@ -186,28 +212,6 @@ Deno.serve(async (req) => {
     });
     const { itemAmounts, total: expectedAmount } = priceCartItems(slotIds, slots, hourlyRateByTrainer);
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
-
-    // 6. Identity — before ANY hold/payment/create, resolve or demand verification (U2 identity
-    //    continuity). A returning address that collides with existing candidates must prove control
-    //    of the address first; we return here with NO side effect. Only a proven, explicitly chosen
-    //    person (or "someone new") carries on.
-    const owner = academyProfileId ? { academyProfileId } : { trainerId };
-
-    const identity = await resolveAnonymousIdentity(supabase, {
-      creationRequestId, owner, workflow: "cart", email,
-    });
-    if (identity.status === "verify_required") {
-      return json({ status: "verification_required" }, 200);
-    }
-
-    // The legacy column `bookings` still needs is derived from the person by the authorized adapter
-    // and exists only for the length of this insert.
-    const personId = identity.status === "proceed_person"
-      ? identity.personId
-      : (await resolvePlayerForCheckout(supabase, {
-          email, name, phone, owner, source: "public_booking", creationRequestId,
-        })).personId;
-    const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
     // Tenant comes from the SLOT above, never from the client — the client sends a boolean and

@@ -39,6 +39,7 @@ const asUser = async (uid, fn) => {
   catch (e) { await c.query('ROLLBACK TO SAVEPOINT au'); await c.query(`RESET ROLE`); return { ok: false, code: e.code, message: e.message }; }
 };
 
+const personOfProfile = (p) => one(`SELECT person_id FROM public.person_links WHERE profile_id = $1`, [p]);
 const mkAcademy = async (label) => (await one(
   `INSERT INTO public.academy_profiles (name, slug)
    VALUES ($1, 'u2iv-' || replace(gen_random_uuid()::text,'-','')) RETURNING id`, [label])).id;
@@ -315,6 +316,135 @@ const outboxFor = (challengeId) => all(
   try { await c.query(`DELETE FROM public.identity_verify_key_state WHERE id = true`); }
   catch (e) { del = e.message; }
   ok('...and the single row cannot be deleted', del !== null, { del });
+  await c.query('ROLLBACK');
+}
+
+// ══ 13. RESUME with a DIFFERENT address is refused (Codex r1 f2) ═══════════════════════════════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('resume-bind');
+  const email = EMAIL();
+  const { person } = await mkGuest(academy, email, 'Bound Betty');
+  const req = await newUuid();
+  const ch = (await resolve(req, academy, 'slot', email)).r.challenge_id;
+  await one(`SELECT public.identity_verification_list($1) AS r`, [ch]);
+  await one(`SELECT public.identity_verification_select($1,$2,false) AS r`, [ch, person]);
+  // legitimate resume with the SAME address → proceed_person
+  const good = (await resolve(req, academy, 'slot', email)).r;
+  ok('a resume with the same address proceeds as the chosen person', good.status === 'proceed_person', good);
+  // resume with a DIFFERENT address under the same creation_request_id → refused
+  let mismatch = null;
+  try { await resolve(req, academy, 'slot', EMAIL()); } catch (e) { mismatch = e.message; }
+  ok('a resume with a DIFFERENT address is refused (selection is bound to the verified address)',
+    mismatch !== null && /SELECTION_SCOPE_MISMATCH/.test(mismatch), { mismatch });
+  await c.query('ROLLBACK');
+}
+
+// ══ 14. A CLAIMED person with an in-scope guest is still a candidate (Codex r1 f6) ═════════════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('claimed-candidate');
+  const email = EMAIL();
+  const { guest, person } = await mkGuest(academy, email, 'Claimed Chris');
+  // give this person an account too (a profile link) — they claimed at some point
+  const authEmail = `auth-${await newUuid()}@example.com`;
+  const { id: uid } = await one(
+    `INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+     VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $1, '', now(), now()) RETURNING id`, [authEmail]);
+  const { id: profileId } = await one(`SELECT id FROM public.profiles WHERE user_id = $1`, [uid]);
+  // the signup trigger already minted a person for the profile; simulate a completed claim by
+  // repointing the profile's link onto the guest's person and dropping the now-orphan person, so one
+  // canonical person carries BOTH the guest and the account.
+  const profilePerson = (await personOfProfile(profileId)).person_id;
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE profile_id = $2`, [person, profileId]);
+  await c.query(`DELETE FROM public.persons WHERE id = $1`, [profilePerson]);
+
+  const req = await newUuid();
+  const r = (await resolve(req, academy, 'slot', email)).r;
+  ok('a returning player who later CLAIMED an account is still a candidate, not a duplicate',
+    r.status === 'verify_required', r);
+  const list = (await one(`SELECT public.identity_verification_list($1) AS r`, [r.challenge_id])).r;
+  ok('...and they are the disclosed candidate', list.status === 'ok'
+    && list.candidates.some((x) => x.person_id === person), list);
+  // the derived legacy source for this owner is still the guest (so the booking is guest-keyed)
+  const src = await one(`SELECT * FROM public.person_legacy_source($1, 'academy', $2)`, [person, academy]);
+  ok('...and person_legacy_source yields their in-scope guest', src.guest_player_id === guest, src);
+  await c.query('ROLLBACK');
+}
+
+// ══ 15. Candidate scope is tied to the MATCHING guest, not a side relationship (Codex r1 f3b) ══
+{
+  await c.query('BEGIN');
+  const academyA = await mkAcademy('scope-A');
+  const academyB = await mkAcademy('scope-B');
+  const email = EMAIL();
+  // one person: an in-scope guest for A with a DIFFERENT address, and the email-matching guest in B
+  const aGuest = await mkGuest(academyA, EMAIL(), 'In A, other address');
+  const person = aGuest.person;
+  const { guest: bGuest } = await one(
+    `INSERT INTO public.guest_players (full_name, email, academy_profile_id)
+     VALUES ('Matches in B', $1, $2) RETURNING id AS guest`, [email, academyB]).then((row) => ({ guest: row.guest }));
+  await c.query(`UPDATE public.person_links SET person_id = $1 WHERE guest_player_id = $2`, [person, bGuest]);
+  // person is selectable by A (via aGuest) and has a B-guest matching the email. It must NOT be an
+  // A-candidate for `email`: the matching guest belongs to B, not A.
+  const req = await newUuid();
+  const r = (await resolve(req, academyA, 'slot', email)).r;
+  ok('a person whose EMAIL-matching guest is another owner\'s is NOT a candidate here',
+    r.status === 'proceed_new', r);
+  await c.query('ROLLBACK');
+}
+
+// ══ 16. Drift re-mints a fresh challenge rather than reusing the stale one (Codex r1 f10) ══════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('drift-remint');
+  const email = EMAIL();
+  await mkGuest(academy, email, 'First');
+  const req = await newUuid();
+  const first = (await resolve(req, academy, 'slot', email)).r;
+  await mkGuest(academy, email, 'Second');   // the set drifts
+  const second = (await resolve(req, academy, 'slot', email)).r;
+  ok('a drifted set re-mints a NEW challenge for the same attempt (not stuck till expiry)',
+    second.status === 'verify_required' && second.challenge_id !== first.challenge_id, { first, second });
+  ok('...and the stale challenge is gone', (await one(
+    `SELECT count(*)::int AS n FROM public.identity_verification_challenges WHERE id = $1`, [first.challenge_id])).n === 0);
+  await c.query('ROLLBACK');
+}
+
+// ══ 17. Per-address hourly email cap (Codex r1 f5) — rotating request ids can't spam emails ════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('email-cap');
+  const email = EMAIL();
+  await mkGuest(academy, email, 'Popular');
+  // 8 attempts with DIFFERENT request ids all target the same on-file address
+  for (let i = 0; i < 8; i++) await resolve(await newUuid(), academy, 'slot', email);
+  const outboxCount = (await one(
+    `SELECT count(*)::int AS n FROM public.notification_outbox
+      WHERE event_type = 'identity_verification_requested'
+        AND destination_normalized = $1`, [email])).n;
+  ok('rotating request ids cannot exceed the per-address hourly email cap', outboxCount <= 6, { outboxCount });
+  await c.query('ROLLBACK');
+}
+
+// ══ 18. The edge key_version RPC returns the challenge generation, service-role only (f1) ══════
+{
+  await c.query('BEGIN');
+  const academy = await mkAcademy('keyver');
+  const email = EMAIL();
+  await mkGuest(academy, email, 'KV');
+  const ch = (await resolve(await newUuid(), academy, 'slot', email)).r.challenge_id;
+  const kv = (await one(`SELECT public.identity_challenge_key_version($1) AS v`, [ch])).v;
+  ok('identity_challenge_key_version returns the stored generation', kv === 1, { kv });
+  const { uid } = await (async () => {
+    const u = await one(
+      `INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at)
+       VALUES (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', $1, '', now(), now()) RETURNING id`,
+      [`auth-${await newUuid()}@example.com`]);
+    return { uid: u.id };
+  })();
+  const denied = await asUser(uid, async () => one(`SELECT public.identity_challenge_key_version($1) AS v`, [ch]));
+  ok('...and an authenticated client cannot call it', !denied.ok && denied.code === '42501', denied);
   await c.query('ROLLBACK');
 }
 

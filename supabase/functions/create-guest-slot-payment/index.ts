@@ -29,7 +29,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { computeSingleSlotPaymentAmount, sumSlotExtraCosts, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
-import { legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
+import { legacyBookingRef, legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
 import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
@@ -198,10 +198,46 @@ Deno.serve(async (req) => {
       sumSlotExtraCosts(slot.extra_costs as ExtraCost[] | null);
     if (!(expectedAmount > 0)) return json({ error: "invalid_amount" }, 400);
 
-    // 4. Recipient — resolved the SAME way mollie-webhook will later CONFIRM the
+    // 4. Identity — FIRST, before any Mollie credential work or hold (U2 identity continuity).
+    //    resolveSlotRecipient below refreshes/writes Mollie OAuth tokens (an external + credential
+    //    mutation), so it must not run on the verify_required path (Codex r1 f7). A first-time
+    //    address proceeds as new; a returning address that collides with existing candidates must
+    //    prove control first — we return here with NO side effect and the browser shows a generic
+    //    "check your email". Only a proven, explicitly chosen person (or "someone new") carries on.
+    if (!slot.trainer_id) return json({ error: "no_mollie_account" }, 400);
+    const owner = slot.academy_profile_id
+      ? { academyProfileId: slot.academy_profile_id as string }
+      : { trainerId: slot.trainer_id as string };
+
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "slot", email,
+    });
+    if (identity.status === "verify_required") {
+      // Generic, leak-free: no candidate identity, name, count or existence — and NOTHING created,
+      // and no Mollie token touched.
+      return json({ status: "verification_required" }, 200);
+    }
+
+    // A verified returning Player carries only their canonical person_id (booked via the guest key
+    // legacyBookingRef derives — person_id is stamped, so it stays visible to a claimed account
+    // holder); a first-timer is created through the one command.
+    let personId: string;
+    let guestPlayerId: string;
+    if (identity.status === "proceed_person") {
+      personId = identity.personId;
+      const ref = await legacyBookingRef(supabase, personId, owner);
+      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
+      guestPlayerId = ref.guestPlayerId;
+    } else {
+      personId = (await resolvePlayerForCheckout(supabase, {
+        email, name, phone, owner, source: "public_booking", creationRequestId,
+      })).personId;
+      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
+    }
+
+    // 5. Recipient — resolved the SAME way mollie-webhook will later CONFIRM the
     // paid hold (trainer → active-academy → academy Mollie, else trainer Mollie),
     // so the charging org always equals the confirming org.
-    if (!slot.trainer_id) return json({ error: "no_mollie_account" }, 400);
     const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
       supabase,
       slot.trainer_id as string,
@@ -211,33 +247,6 @@ Deno.serve(async (req) => {
       logStep("Refused — no connected Mollie account", { slotId });
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze training." }, 400);
     }
-
-    // 5. Identity — before ANY hold/payment/create, resolve or demand verification (U2 identity
-    //    continuity). A first-time address proceeds as new; a returning address that collides with
-    //    existing candidates must prove control of the address first — we return here with NO side
-    //    effect and the browser shows a generic "check your email". Only a proven, explicitly
-    //    chosen person (or "someone new") carries on.
-    const owner = slot.academy_profile_id
-      ? { academyProfileId: slot.academy_profile_id as string }
-      : { trainerId: slot.trainer_id as string };
-
-    const identity = await resolveAnonymousIdentity(supabase, {
-      creationRequestId, owner, workflow: "slot", email,
-    });
-    if (identity.status === "verify_required") {
-      // Generic, leak-free: no candidate identity, name, count or existence — and NOTHING created.
-      return json({ status: "verification_required" }, 200);
-    }
-
-    // A verified returning Player carries only their canonical person_id; a first-timer is created
-    // through the one command. Either way the legacy column `bookings` still needs is derived from
-    // the person by the authorized adapter and exists only for the length of this insert.
-    const personId = identity.status === "proceed_person"
-      ? identity.personId
-      : (await resolvePlayerForCheckout(supabase, {
-          email, name, phone, owner, source: "public_booking", creationRequestId,
-        })).personId;
-    const guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
     // Tenant comes from the SLOT above, never from the client — the client sends a boolean and
