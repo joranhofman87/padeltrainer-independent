@@ -1,6 +1,35 @@
 {
   "_comment": "Digest of the migration chain reviewed for outbound behaviour. Re-pin only after reviewing the diff.",
-  "sha256": "3d87a2a95000198b20acdf47fb12fae75b648b5521a451359a9238c18982efce",
-  "files": 607,
-  "pinned_at": "2026-08-07"
+  "sha256": "baf39b3d2c40700b3bebf5c2fc540b5415c614131b59d2b3c5817620dbe84fa8",
+  "files": 626,
+  "pinned_at": "2026-08-10",
+  "reviews": [
+    {
+      "from": { "sha256": "3d87a2a95000198b20acdf47fb12fae75b648b5521a451359a9238c18982efce", "files": 607, "pinned_at": "2026-08-07" },
+      "to": { "sha256": "baf39b3d2c40700b3bebf5c2fc540b5415c614131b59d2b3c5817620dbe84fa8", "files": 626 },
+      "added": 19,
+      "range": "20261113100000_u1a_academy_player_memberships .. 20261202100000_u2_identity_worker_cron_inert",
+      "units": "U1a, U1b, U1c prereqs 1-4 (#641-#646, already merged to main) and U2 incl. slice A (#647)",
+      "outbound_sweep": {
+        "method": "every sanitizer sweep pattern applied to all 19 added migrations: cron.schedule, cron.alter_job, net.http_post, net.http_request_queue, supabase_functions.http_request, extensions.http_, dblink, CREATE FOREIGN TABLE/SERVER, schedule_in_database, vault.*, CREATE EXTENSION, pg_read_, COPY",
+        "migrations_with_outbound_capability": ["20261202100000_u2_identity_worker_cron_inert.sql"],
+        "new_outbound_capable_functions": "none — no added migration defines a function that reaches net.http_post, supabase_functions.http_request, dblink or extensions.http_*, so reviewed-outbound-functions.tsv is unchanged",
+        "new_extensions": "none — no added migration issues CREATE EXTENSION, so reviewed-extensions.tsv is unchanged",
+        "false_positives_checked": "the only COPY hit (20261117100000) is the word 'copy' inside a prose comment, not a COPY command"
+      },
+      "why_the_sanitized_clone_stays_outbound_inert": [
+        "The single outbound-capable migration schedules a cron job whose command contains net.http_post. That call lives inside a $cmd$ STRING LITERAL: it is stored, never executed at apply time, so applying the chain issues no request.",
+        "On a rehearsal target pg_cron and pg_net are never installed — the sanitizer neutralises their CREATE EXTENSION statements — and sql/platform_stub.sql supplies inert cron/net objects instead. There is no scheduler process, so a stored command can never tick.",
+        "The stub's cron.schedule INSERTs with active = false, and its cron.alter_job hard-codes active = false on every call. A job created through the stub therefore cannot be armed even by a migration that tried to arm one. This migration also disables the job itself, so the two agree.",
+        "The stub's net.http_post is inert and records into net.blocked_outbound_attempts rather than emitting anything.",
+        "The migration's Vault read resolves against the stub's vault.decrypted_secrets view. It finds no service_role_key on a rehearsal target, which this migration handles by installing the job anyway (deliberately: an apply-time skip would record the migration as applied while creating nothing).",
+        "The stub's cron.job carries the username column and cron.schedule returns bigint, so this migration's owner-scoped lookup and its use of the returned jobid both work unchanged on a sanitized target."
+      ],
+      "inventories_updated": [
+        "reviewed-cron-jobs.tsv — added notification-identity-worker, outbound=yes (the column classifies the stored command, not whether the job is armed; it ships INACTIVE)",
+        "reviewed-outbound-functions.tsv — unchanged, no new outbound-capable functions",
+        "reviewed-extensions.tsv — unchanged, no new extensions"
+      ]
+    }
+  ]
 }

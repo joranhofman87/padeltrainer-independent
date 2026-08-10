@@ -139,7 +139,7 @@ is the point.
 | `walg_enabled` | `true` (daily physical backups) | `true` |
 | `pitr_enabled` | **`false`** | **`true`, permanent, 7-day window** |
 | Best restore granularity | the 03:15 UTC daily backup | **any second within 7 days** |
-| Data lost by restoring to the pre-migration point | everything since the 03:15 backup — up to ~24h | **everything since the window opened** |
+| Data lost by restoring to the pre-migration point | everything since the 03:15 backup — up to ~24h | **everything committed after that restore point** |
 
 **Consequence, restated — and note what PITR does NOT buy.** PITR gives second-level choice of
 *restore point*; it does not cap elapsed data loss. Rolling back to the instant before the first
@@ -415,7 +415,7 @@ path.
 
 | Slice | What it must deliver | Status |
 |---|---|---|
-| **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **BUILT — full gate green, Codex rounds 1–3 applied.** Migrations 18–19, `notification-identity-worker`, `_shared/identity-send-gate.ts`, 13 handler + 12 gate + 10 wiring tests, 22 real-pg routing assertions. Deployment/verification/rollback below. **Not deployed, cron INACTIVE.** |
+| **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **BUILT, NOT RELEASE-CLEAR.** Codex rounds 1–5 all occurred (5 = the thread's ceiling); the implementation was verified clear at round 3, but the **round-5 correction was applied without review**, so this slice is explicitly not signed off. A separate narrow release-capture unit covers the remaining blockers. Migrations 18–19, `notification-identity-worker`, `_shared/identity-send-gate.ts`, handler + send-gate + wiring tests, the real-Postgres cron lifecycle proof and the routing partition proof. Local gates green; **remote required checks and rollout `verify` must also be green before any "gate green" claim.** Deployment/verification/rollback below. **Not deployed, cron INACTIVE.** |
 | **B — retain-and-scrub (OD-08)** | replace the interim membership refusal; detach auth transactionally, preserve `persons.id` + memberships + financial/audit evidence, pseudonymize the rest, idempotent, auditable, single safe server command | **not started** |
 | **C — observability** | non-blocking non-PII identity-funnel telemetry + funnel/dashboard + alert thresholds | **not started** |
 
@@ -502,6 +502,20 @@ by itself, but both should land before the backup is ever relied on for a restor
    column, and it cannot simply be added: its primary key is `creation_request_id`, not the single
    `id` the exporter orders on, and the exporter hardcodes `ORDER BY t.id`, so it needs exporter or schema work.
 
-Slice A additionally requires a **new SECURITY DEFINER RPC** exposing `contact_normalized`,
-`owner_type`, `owner_id` and `key_version` for a challenge: the challenge table is `REVOKE`d even
-from `service_role`, and BYPASSRLS does not bypass a table ACL, so no direct read is possible.
+**That RPC now exists** — `identity_challenge_send_target(uuid)`, added by migration
+`20261201100000`. It was needed because the challenge table is `REVOKE`d even from `service_role`,
+and BYPASSRLS does not bypass a table ACL, so no direct read is possible. It is `SECURITY DEFINER`,
+`STABLE`, granted to `service_role` alone, and additionally refuses unless `auth.role() =
+'service_role'`. It returns exactly six fields, and deliberately no capability material:
+
+| Field | Purpose |
+|---|---|
+| `contact_normalized` | the address the challenge proves control of — the send target, never the candidate person's current contact |
+| `workflow` | which flow minted it (`slot`/`cart`/`cyclus`/`intake`/`rebook`), for telemetry |
+| `key_version` | the signing generation the challenge was minted under, so the sender signs with that one rather than a newer key the row was never bound to |
+| `expires_at` | so the sender refuses a challenge whose link would arrive dead |
+| `already_consumed` | so a challenge whose selection is already made is never re-mailed |
+| `key_mintable` | whether `key_version` is still at or above `identity_verify_key_state.min_mintable_version` |
+
+`owner_type`/`owner_id` are **not** returned: the sender does not need them, and every field omitted
+is a field that cannot leak.
