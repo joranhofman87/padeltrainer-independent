@@ -39,6 +39,7 @@ import {
   RESULT_STATES,
   parseNpmrcEntries,
   isNpmConfigMutation,
+  isSuiteInvocation,
   PREREQUISITE_RUNS,
   CONTRACT_JOBS,
 } from '../../scripts/ci/workflow-contract.mjs';
@@ -418,6 +419,28 @@ describe('npm config parsing and detection (the shared primitives)', () => {
     expect(entries).toEqual([['maxsockets', '1']]);
   });
 
+  it('isSuiteInvocation recognises every npm spelling, and no mere mention', () => {
+    // Asserted on the function because the workflow can no longer host a
+    // fixture for it: APPROVED_JOB_STEPS pins every job's steps exactly, so
+    // there is nowhere left to put an illustrative extra step.
+    for (const yes of [
+      'npm test', 'npm t', 'npm tst', 'npm tes', 'npm ts',
+      'npm --silent test', 'npm run --silent test', 'npm run test:db',
+      'npm install-ci-test', 'npm cit', 'npm --prefix . test',
+      'npm --workspace web run test', 'npm run "test"', 'npm \\\n  test',
+      'vitest run --project db', 'node scripts/db/run-all-rehearsals.mjs',
+    ]) {
+      expect(isSuiteInvocation(yes), yes).toBe(true);
+    }
+    for (const no of [
+      'npm ci', 'npm i', 'npm run lint', 'npm run build',
+      'npm run check:edge-types:selftest', 'npm run check:legacy-key:selftest',
+      'echo npm test is sharded in CI', 'deno test --no-check --allow-env x',
+    ]) {
+      expect(isSuiteInvocation(no), no).toBe(false);
+    }
+  });
+
   it('isNpmConfigMutation sees through flags and aliases, and stays quiet otherwise', () => {
     for (const yes of [
       'npm config set script-shell /bin/true',
@@ -589,9 +612,9 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['checkout pinned to an arbitrary SHA', /unapproved input `ref:/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n          ref: 0123456789abcdef0123456789abcdef01234567\n'))],
       ['checkout losing persist-credentials: false', /persist-credentials/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n'))],
       ['persist-credentials flipped to true', /persist-credentials|approved value is false/, (r) => editWorkflow(r, (s) => s.replace('          persist-credentials: false\n', '          persist-credentials: true\n'))],
-      ['an unknown action in a gated job', /not in APPROVED_JOB_USES/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Cache\n        uses: actions/cache@v4\n\n      - name: Run unit tests\n'))],
+      ['an unknown action in a gated job', /approved sequence has|approved step is/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Cache\n        uses: actions/cache@v4\n\n      - name: Run unit tests\n'))],
       ['an approved action with an extra unapproved input', /unapproved input `registry-url:/, (r) => editWorkflow(r, (s) => s.replace("          node-version: '24'\n          cache: 'npm'\n", "          node-version: '24'\n          cache: 'npm'\n          registry-url: https://example.invalid\n"))],
-      ['a changed action version', /not in APPROVED_JOB_USES/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n', '        uses: actions/checkout@v3\n'))],
+      ['a changed action version', /approved sequence has|approved step is/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n', '        uses: actions/checkout@v3\n'))],
       // ── the hosted-runner boundary
       ['a gated job moved to self-hosted', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: self-hosted'))],
       ['runs-on as an array containing self-hosted', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: [self-hosted, linux]'))],
@@ -604,10 +627,15 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['text surrounding the expression', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', '          RESULT_I18N: prefix-${{ needs.i18n.result }}\n'))],
       ['an unrelated expression that merely contains the text', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ format('needs.i18n.result') }}\n"))],
       // ── the aggregator must fail for COMBINATIONS, not just one bad result
+      ['an aggregator that short-circuits on CI=true', /expected the gate to FAIL/, (r) => editWorkflow(r, (s) => s.replace('          set -euo pipefail\n', '          set -euo pipefail\n          if [ "${CI:-}" = "true" ]; then exit 0; fi\n'))],
+      ['an aggregator reading a variable the model does not provide', /does not model/, (r) => editWorkflow(r, (s) => s.replace('          set -euo pipefail\n', '          set -euo pipefail\n          if [ "${GITHUB_REF:-}" = "refs/heads/main" ]; then exit 0; fi\n'))],
+      ['the edge-tests suite step made conditional', /has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Edge-function unit tests (deno)\n', "      - name: Edge-function unit tests (deno)\n        if: github.event_name == 'push'\n"))],
+      ['typecheck losing its build step', /approved sequence has|approved step is/, (r) => editWorkflow(r, (s) => s.replace('      - name: Production build\n        run: npm run build\n', ''))],
+      ['setup-node moved below the command that needs it', /order matters|approved step is/, (r) => editWorkflow(r, (s) => s.replace("      - name: Setup Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: 'npm'\n\n      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n        run: npm run test:unit\n", "      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n        run: npm run test:unit\n\n      - name: Setup Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: 'npm'\n"))],
       ['an aggregator that short-circuits on the real job context', /expected the gate to FAIL/, (r) => swapAggregator(r, `          set -euo pipefail\n          if [ "\${GITHUB_JOB:-}" = "test" ]; then exit 0; fi\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          [ -n "$results" ]\n          for r in $results; do\n            if [ "$r" != "success" ]; then exit 1; fi\n          done\n          exit 0`)],
       ['typecheck (branch-required) pinned to main', /unapproved input `ref:/, (r) => editWorkflow(r, (s) => s.replace('  typecheck:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout code\n        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '  typecheck:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout code\n        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n          ref: main\n'))],
       ['edge-typecheck moved to a self-hosted runner', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  edge-typecheck:\n    runs-on: ubuntu-latest', '  edge-typecheck:\n    runs-on: self-hosted'))],
-      ['setup-node dropped from a gated job', /approved sequence is/, (r) => editWorkflow(r, (s) => s.replace("      - name: Setup Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: 'npm'\n\n      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n", '      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n'))],
+      ['setup-node dropped from a gated job', /approved sequence has|approved step is/, (r) => editWorkflow(r, (s) => s.replace("      - name: Setup Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: 'npm'\n\n      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n", '      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n'))],
       ['an action step made conditional', /has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', "        uses: actions/checkout@v4\n        if: github.event_name == 'push'\n        with:\n          persist-credentials: false\n"))],
       ['an action step made non-fatal', /`continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n        continue-on-error: true\n        with:\n          persist-credentials: false\n'))],
       ['an aggregator that tolerates two cancelled', /cancelled.*cancelled/, (r) => swapAggregator(r, `          set -euo pipefail\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          [ -n "$results" ]\n          cancelled=0; bad=0\n          for r in $results; do\n            if [ "$r" = "cancelled" ]; then cancelled=$((cancelled+1));\n            elif [ "$r" != "success" ]; then bad=1; fi\n          done\n          if [ "$cancelled" -eq 1 ]; then bad=1; fi\n          exit "$bad"`)],
@@ -618,7 +646,7 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['an extra step in a gated job that touches $HOME config', /not in APPROVED_JOB_RUNS/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Prep\n        run: cp ci/npmrc "$HOME/.npmrc"\n\n      - name: Run unit tests\n'))],
       ['an extra step in the lint job', /not in APPROVED_JOB_RUNS/, (r) => editWorkflow(r, (s) => s.replace('      - name: Lint (ratcheted)\n', '      - name: Extra\n        run: echo something\n\n      - name: Lint (ratcheted)\n'))],
       ['the aggregator gains an env expression this verification cannot resolve', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS: ${{ toJSON(needs) }}\n', '          NEEDS: ${{ toJSON(needs) }}\n          TRIGGER: ${{ github.event_name }}\n'))],
-      ['the aggregator loses its NEEDS env (unbound under set -u)', /expected the gate to SUCCEED/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS: ${{ toJSON(needs) }}\n', ''))],
+      ['the aggregator loses its NEEDS env (unbound under set -u)', /does not model|expected the gate to SUCCEED/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS: ${{ toJSON(needs) }}\n', ''))],
       ['an unknown .npmrc key', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nsome-future-npm-option=whatever\n')],
       ['an approved key with a CHANGED value', /the approved value is/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=64\n')],
       ['a duplicate key (npm applies the last)', /more than once/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=1\nmaxsockets=64\n')],
@@ -739,10 +767,6 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
 
       ['a job concurrency group that really varies per shard', (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ github.run_id }}-${{ matrix.shard }}\n'))],
       ["a shard group using bracket syntax matrix['shard'], run-isolated", (r) => editWorkflow(r, (s) => s.replace('  db-rehearsals:\n    runs-on: ubuntu-latest\n', "  db-rehearsals:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: reh-${{ github.run_id }}-${{ matrix['shard'] }}\n"))],
-      // In a NON-gated job (typecheck), where the run allowlist does not apply:
-      // this proves the tokenizer does not mistake a mention for an invocation.
-      ['a non-gated step that merely MENTIONS npm test', (r) => editWorkflow(r, (s) => s.replace('      - name: Production build\n', '      - name: Friendly notice\n        run: echo npm test is sharded in CI\n\n      - name: Production build\n'))],
-      ['a non-gated npm step whose script merely contains "selftest"', (r) => editWorkflow(r, (s) => s.replace('      - name: Production build\n', '      - name: Some guard\n        run: npm run check:something:selftest\n\n      - name: Production build\n'))],
     ];
     for (const [label, mutate] of allowed) {
       const root = makeFixture();

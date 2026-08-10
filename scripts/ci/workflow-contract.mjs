@@ -97,47 +97,99 @@ export const APPROVED_JOB_RUNS = {
 };
 
 /**
- * Exactly which actions each gated job may USE, and with exactly which inputs.
+ * The exact, ORDERED steps of every job that backs a required status check.
  *
- * Pinning the `run:` commands was only half the boundary: a step that runs
- * nothing can still decide WHAT gets tested. `actions/checkout` with
- * `ref: main` makes a pull request check out and test main — every command
- * unchanged, every check green, and the PR's own head never exercised. So the
- * action identity AND its inputs are pinned: an unknown action, an unapproved
- * input, a changed value, or a missing one (notably
- * `persist-credentials: false`) is a violation.
+ * One sequence per job, actions and commands together, because splitting them
+ * hid two holes: an approved action could be dropped (the suite then runs on
+ * whatever Node the runner image ships) or REORDERED below the command that
+ * depends on it, and neither changed the set of actions or the set of
+ * commands. Order is the property that matters, so order is what is pinned.
+ *
+ * Covers the branch-required contexts (lint, typecheck, test, edge-tests,
+ * edge-typecheck) as well as the aggregator's prerequisites: `ref: main` on
+ * typecheck, or an `if:` on the edge-tests suite, would otherwise leave a
+ * required check green while validating something other than this PR.
+ *
+ * The aggregator's own program is the one entry not compared as text — it is
+ * verified by EXECUTION in aggregatorTruthTable().
  */
-const CHECKOUT_STEP = { uses: 'actions/checkout@v4', with: { 'persist-credentials': false } };
-const SETUP_NODE_STEP = { uses: 'actions/setup-node@v4', with: { 'node-version': '24', cache: 'npm' } };
-const SETUP_DENO_STEP = { uses: 'denoland/setup-deno@v2', with: { 'deno-version': 'v2.x' } };
-export const APPROVED_JOB_USES = {
-  // The gated jobs…
-  lint: [CHECKOUT_STEP, SETUP_NODE_STEP],
-  'unit-tests': [CHECKOUT_STEP, SETUP_NODE_STEP],
-  'db-tests': [CHECKOUT_STEP, SETUP_NODE_STEP],
-  'db-rehearsals': [CHECKOUT_STEP, SETUP_NODE_STEP],
-  i18n: [CHECKOUT_STEP, { uses: 'oven-sh/setup-bun@v2', with: { 'bun-version': 'latest' } }],
-  'workflow-contract': [CHECKOUT_STEP, SETUP_NODE_STEP],
-  test: [],
-  // …and every OTHER branch-required context. `ref: main` on typecheck would
-  // validate main while a PR-only type error sat green in all five required
-  // checks, so this boundary follows what branch protection requires, not only
-  // what the aggregator gates.
-  typecheck: [CHECKOUT_STEP, SETUP_NODE_STEP],
-  'edge-tests': [CHECKOUT_STEP, SETUP_DENO_STEP],
-  'edge-typecheck': [CHECKOUT_STEP, SETUP_NODE_STEP, SETUP_DENO_STEP],
-};
-
 /**
- * The runner every gated job must use.
+ * The runner every required job must use.
  *
- * `APPROVED_JOB_RUNS` is only safe because each GitHub-hosted job gets a fresh,
+ * The step contract is only sound because each GitHub-hosted job gets a fresh,
  * isolated machine — that is what makes a $HOME write in one job unable to
  * reach another's suite. A self-hosted or custom-labelled runner can be
- * persistent and shared, which would quietly invalidate that reasoning, so the
- * isolation model is asserted rather than assumed.
+ * persistent and shared, so the isolation model is asserted, not assumed.
  */
 const APPROVED_RUNNER = 'ubuntu-latest';
+
+const AGGREGATOR_PROGRAM = Symbol('aggregator program, verified by execution');
+export const APPROVED_JOB_STEPS = {
+  lint: [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
+    { run: "npm ci" },
+    { run: "npm run lint" },
+    { run: "npm run check:edge-config" },
+    { run: "npm run check:legacy-key:selftest" },
+    { run: "npm run check:legacy-key" },
+    { run: "npm run check:edge-pins:selftest" },
+    { run: "npm run check:edge-pins" },
+    { run: "node scripts/ci/workflow-contract.mjs" },
+  ],
+  typecheck: [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
+    { run: "npm ci" },
+    { run: "npm run typecheck:baseline" },
+    { run: "npm run build" },
+  ],
+  "unit-tests": [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
+    { run: "npm ci" },
+    { run: "npm run test:unit" },
+  ],
+  "db-tests": [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
+    { run: "npm ci" },
+    { run: "npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}" },
+  ],
+  "db-rehearsals": [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
+    { run: "npm ci" },
+    { run: "npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}" },
+  ],
+  i18n: [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "oven-sh/setup-bun@v2", with: { "bun-version": "latest" } },
+    { run: "bun scripts/check-i18n-parity.ts" },
+  ],
+  "workflow-contract": [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
+    { run: "npm ci" },
+    { run: "node scripts/ci/workflow-contract.mjs" },
+  ],
+  test: [
+    { run: AGGREGATOR_PROGRAM }, // verified by aggregatorTruthTable(), not by text
+  ],
+  "edge-tests": [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "denoland/setup-deno@v2", with: { "deno-version": "v2.x" } },
+    { run: "deno test --no-check --allow-env --allow-net supabase/functions/_shared/" },
+  ],
+  "edge-typecheck": [
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
+    { run: "npm ci" },
+    { uses: "denoland/setup-deno@v2", with: { "deno-version": "v2.x" } },
+    { run: "npm run check:edge-types:selftest" },
+    { run: "npm run check:edge-types" },
+  ],
+};
 
 /**
  * Install lifecycle hooks the repository is allowed to define: none.
@@ -556,6 +608,47 @@ export function extractAggregatorProgram(workflow) {
  * Returns one row per case so the checker and the tests share this executor
  * rather than each growing their own.
  */
+/**
+ * The ambient variables the model provides, matching what Actions sets.
+ *
+ * Modelling these is only half the answer — the list can never be complete, and
+ * `CI=true` was the one it was missing. So `unmodelledVariables()` below rejects
+ * a program that reads ANY variable outside this set, its own locals and its
+ * declared `env:`. The gate cannot branch on something this verification does
+ * not know about, which is a boundary rather than another list to extend.
+ */
+const MODELLED_AMBIENT_ENV = {
+  CI: 'true',
+  GITHUB_ACTIONS: 'true',
+  GITHUB_JOB: 'test',
+  RUNNER_OS: 'Linux',
+};
+
+/** Shell variables that are always defined, and need no declaration. */
+const SHELL_BUILTIN_VARS = new Set(['PATH', 'HOME', 'PWD', 'IFS', 'RANDOM', 'SECONDS', 'LINENO', 'HOSTNAME', 'BASH_VERSION', 'OSTYPE', 'SHLVL', '_']);
+
+/**
+ * Variables a program reads that nothing here defines.
+ *
+ * Assignments (`x=…`), loop variables (`for x in …`) and the step's own `env:`
+ * are known; everything else would be ambient on the runner and absent (or
+ * different) in this model, so the program's behaviour could not be verified.
+ */
+export function unmodelledVariables(script, declaredEnv) {
+  const text = String(script);
+  const defined = new Set([
+    ...Object.keys(declaredEnv ?? {}),
+    ...Object.keys(MODELLED_AMBIENT_ENV),
+    ...SHELL_BUILTIN_VARS,
+  ]);
+  for (const m of text.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=/gm)) defined.add(m[1]);
+  for (const m of text.matchAll(/\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b/g)) defined.add(m[1]);
+  const read = new Set();
+  // $NAME, ${NAME}, ${NAME:-default}, ${NAME#pattern} … but not $((arithmetic)).
+  for (const m of text.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\b/g)) read.add(m[1]);
+  return [...read].filter((name) => !defined.has(name)).sort();
+}
+
 /** The result states GitHub can hand an aggregator for a prerequisite. */
 export const RESULT_STATES = ['success', 'failure', 'cancelled', 'skipped', 'empty', 'missing'];
 
@@ -661,9 +754,23 @@ export function aggregatorCases(prerequisites) {
  * `join()` interpolation lifted into an environment variable, and a driver
  * loops the vectors. 7776 cases cost about a second instead of two minutes.
  */
+/**
+ * Memo for the truth table.
+ *
+ * The table is a pure function of (program text, declared env, prerequisites) —
+ * same input, same 356 executions, same verdicts — so identical programs are
+ * computed once. That matters because the fixture suite checks ~55 repositories
+ * whose aggregator is usually byte-identical to the real one; without this it
+ * re-ran ~19,000 shells to learn the same answer.
+ */
+const truthTableMemo = new Map();
+
 export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PREREQUISITE_RUNS)) {
   const program = extractAggregatorProgram(workflow);
   if (!program) return [{ label: 'aggregator step', ok: false, detail: 'the `test` job has no run step to execute' }];
+  const memoKey = JSON.stringify([program.script, program.env, prerequisites, String(workflow.name ?? '')]);
+  const memoized = truthTableMemo.get(memoKey);
+  if (memoized) return memoized;
 
   // Each `join(needs.*.result, <sep>)` is substituted with ITS OWN separator.
   // Collapsing several occurrences onto one value would make a script that
@@ -674,11 +781,23 @@ export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PRERE
       /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
       (_m, sep) => Object.entries(results).map(([job, state]) => (emptyJobs.includes(job) ? '' : state)).join(sep),
     );
+  const remember = (rows) => {
+    truthTableMemo.set(memoKey, rows);
+    return rows;
+  };
   if (scriptFor({}, []).includes('${{')) {
-    return [{ label: 'aggregator program', ok: false, detail: 'it contains an expression this verification cannot resolve, so its behaviour is unverified' }];
+    return remember([{ label: 'aggregator program', ok: false, detail: 'it contains an expression this verification cannot resolve, so its behaviour is unverified' }]);
+  }
+  const unmodelled = unmodelledVariables(scriptFor({}, []), program.env);
+  if (unmodelled.length > 0) {
+    return remember([{
+      label: 'aggregator program',
+      ok: false,
+      detail: `it reads ${unmodelled.map((n) => `$${n}`).join(', ')}, which this verification does not model — the gate would then behave differently on the runner than it does here`,
+    }]);
   }
 
-  return aggregatorCases(prerequisites).map((c) => {
+  return remember(aggregatorCases(prerequisites).map((c) => {
     const env = {};
     for (const [key, expression] of Object.entries(program.env)) {
       const resolved = resolveAggregatorEnv(expression, c.results);
@@ -698,8 +817,7 @@ export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PRERE
         PATH: process.env.PATH ?? '/usr/bin:/bin',
         HOME: process.env.HOME ?? '/tmp',
         // The GitHub context the real `test` job would run under.
-        GITHUB_ACTIONS: 'true',
-        GITHUB_JOB: 'test',
+        ...MODELLED_AMBIENT_ENV,
         GITHUB_WORKFLOW: String(workflow.name ?? ''),
         ...env,
       },
@@ -711,7 +829,7 @@ export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PRERE
       ok,
       detail: ok ? '' : `expected the gate to ${c.expectSuccess ? 'SUCCEED' : 'FAIL'}, but it exited ${res.status}`,
     };
-  });
+  }));
 }
 
 
@@ -876,49 +994,55 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     }
   }
 
-  // ── Only approved actions, with approved inputs, in a gated job ──
-  for (const [jobName, approvedSteps] of Object.entries(APPROVED_JOB_USES)) {
-    const usesSteps = (jobs[jobName]?.steps ?? []).filter((step) => step.uses !== undefined);
-    // The exact SEQUENCE, not merely a subset of an allowlist: dropping
-    // `setup-node` leaves the suite running on whatever Node the runner image
-    // happens to ship, and a duplicate would re-run setup with other inputs.
-    const actualSequence = usesSteps.map((step) => step.uses);
-    const wantedSequence = approvedSteps.map((step) => step.uses);
-    if (JSON.stringify(actualSequence) !== JSON.stringify(wantedSequence)) {
-      violations.push(`${jobName}: uses [${actualSequence.join(', ') || 'none'}], but the approved sequence is [${wantedSequence.join(', ') || 'none'}]`);
+  // ── Every required job runs exactly its approved steps, in order ──
+  for (const [jobName, approvedSteps] of Object.entries(APPROVED_JOB_STEPS)) {
+    const steps = jobs[jobName]?.steps ?? [];
+    const describe = (step) => (step.uses !== undefined ? `uses ${step.uses}` : `run ${String(step.run ?? '').trim().split('\n')[0]}`);
+    if (steps.length !== approvedSteps.length) {
+      violations.push(`${jobName}: has ${steps.length} steps, but the approved sequence has ${approvedSteps.length}`);
     }
-    for (const step of usesSteps) {
-      // An action step can be weakened exactly like a run step.
+    for (let i = 0; i < Math.max(steps.length, approvedSteps.length); i++) {
+      const step = steps[i];
+      const approved = approvedSteps[i];
+      if (!step || !approved) continue;
+      if (approved.uses !== undefined) {
+        if (step.uses !== approved.uses) {
+          violations.push(`${jobName}: step ${i + 1} is \`${describe(step)}\`, but the approved step is \`uses ${approved.uses}\` — order matters, because a setup action moved below the command that needs it changes what the command runs on`);
+          continue;
+        }
+        const actual = step.with ?? {};
+        for (const [key, value] of Object.entries(approved.with ?? {})) {
+          if (!(key in actual)) {
+            violations.push(`${jobName}: \`${step.uses}\` is missing the required input \`${key}: ${JSON.stringify(value)}\``);
+          } else if (JSON.stringify(actual[key]) !== JSON.stringify(value)) {
+            violations.push(`${jobName}: \`${step.uses}\` sets \`${key}: ${JSON.stringify(actual[key])}\`, but the approved value is ${JSON.stringify(value)}`);
+          }
+        }
+        for (const key of Object.keys(actual)) {
+          if (!(key in (approved.with ?? {}))) {
+            violations.push(`${jobName}: \`${step.uses}\` sets the unapproved input \`${key}: ${JSON.stringify(actual[key])}\` — \`ref\` in particular would make this job test something other than the pull request's own head`);
+          }
+        }
+      } else if (approved.run === AGGREGATOR_PROGRAM) {
+        if (step.run === undefined) {
+          violations.push(`${jobName}: step ${i + 1} is \`${describe(step)}\`, but the approved step is the aggregator program`);
+        }
+      } else if (String(step.run ?? '').trim() !== approved.run) {
+        violations.push(`${jobName}: step ${i + 1} is \`${describe(step)}\`, but the approved step is \`run ${approved.run}\``);
+      }
+      // Every step of a required job, action or command, must be unweakened.
       if (step.if !== undefined) {
-        violations.push(`${jobName}: \`${step.uses}\` has an \`if:\` — its setup could be skipped while the job still reports success`);
+        violations.push(`${jobName}: step ${i + 1} (\`${describe(step)}\`) has an \`if:\` — it could be skipped while the job still reports success`);
       }
       if (step['continue-on-error'] !== undefined) {
-        violations.push(`${jobName}: \`${step.uses}\` sets \`continue-on-error\` — a failed checkout or setup would be tolerated`);
-      }
-      const approved = approvedSteps.find((a) => a.uses === step.uses);
-      if (!approved) {
-        violations.push(`${jobName}: uses \`${step.uses}\`, which is not in APPROVED_JOB_USES — a gated job's actions decide what gets tested, so each is pinned by identity and version`);
-        continue;
-      }
-      const actual = step.with ?? {};
-      const wanted = approved.with ?? {};
-      for (const [key, value] of Object.entries(wanted)) {
-        if (!(key in actual)) {
-          violations.push(`${jobName}: \`${step.uses}\` is missing the required input \`${key}: ${JSON.stringify(value)}\``);
-        } else if (JSON.stringify(actual[key]) !== JSON.stringify(value)) {
-          violations.push(`${jobName}: \`${step.uses}\` sets \`${key}: ${JSON.stringify(actual[key])}\`, but the approved value is ${JSON.stringify(value)}`);
-        }
-      }
-      for (const key of Object.keys(actual)) {
-        if (!(key in wanted)) {
-          violations.push(`${jobName}: \`${step.uses}\` sets the unapproved input \`${key}: ${JSON.stringify(actual[key])}\` — \`ref\` in particular would make this job test something other than the pull request's own head`);
-        }
+        violations.push(`${jobName}: step ${i + 1} (\`${describe(step)}\`) sets \`continue-on-error\` — its failure would be tolerated`);
       }
     }
+    checkJobIsUnweakened(jobs[jobName], jobName, violations, { allowIf: jobName === 'test' });
   }
 
   // ── Gated jobs run on isolated, GitHub-hosted runners ──
-  for (const jobName of Object.keys(APPROVED_JOB_USES)) {
+  for (const jobName of Object.keys(APPROVED_JOB_STEPS)) {
     const runsOn = jobs[jobName]?.['runs-on'];
     if (runsOn === undefined) continue;
     if (runsOn !== APPROVED_RUNNER) {
