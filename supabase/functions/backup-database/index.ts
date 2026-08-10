@@ -41,6 +41,10 @@ export const TABLES_TO_BACKUP = [
   "persons",
   "person_links",
   "person_merge_review",
+  // U2: the durable create receipt (creation_request_id → the canonical person it produced). Losing
+  // it does not lose an audit trail — it loses the thing that stops a REPLAYED create from minting a
+  // second Player for a request that already had one.
+  "player_create_commands",
   // U1a/U1b: the canonical academy↔Player relation and the backfill's own checkpoint state. The
   // U1c rollback is "delete only the backfilled membership rows", which is not something you can
   // do from a backup that never contained them.

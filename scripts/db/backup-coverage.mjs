@@ -37,6 +37,7 @@ const SOURCE = 'supabase/functions/backup-database/index.ts';
  */
 const EXCLUDED = new Map([
   ['notification_outbox', 'transient queue state: rows are re-derivable from their source events, and a restored outbox would re-send. Consent lives in notification_contacts, which IS backed up.'],
+  ['identity_verification_challenges', 'short-lived single-use capability state: every row carries an expires_at measured in minutes and is consumed by one terminal selection. Losing them costs a returning visitor one extra "confirm it is you" email, which the flow re-mints on the next attempt — and a RESTORED challenge would be worse than a missing one, because it would resurrect a capability whose address may since have changed hands. The decision it records is not lost with it: a consumed challenge has already written its person onto the booking. The durable create receipt (player_create_commands) IS backed up.'],
 ]);
 
 /** The tables a U1c backfill rollback has to read together, or it is reading a contradiction. */
