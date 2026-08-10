@@ -161,6 +161,41 @@ describe('U2 slice A — the identity cron is installed INERT', () => {
     expect(ours.schedule).toBe('*/2 * * * *');
   });
 
+  it('SERIALIZES against a concurrent apply — the advisory lock is load-bearing', async () => {
+    // cron.schedule UPSERTS on (jobname, username), so an unserialized check-then-create can see
+    // "absent", then update a job a concurrent apply had just created — and disable it. The lock is
+    // what closes that, and nothing else in this file would notice if it were deleted.
+    //
+    // Proven by contention: a second connection holds the SAME transaction-scoped advisory lock, and
+    // the migration must then BLOCK rather than proceed. A short statement_timeout turns "blocked"
+    // into an observable error (55P03/57014) instead of a hung test.
+    const other = new pg.Client({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${PORT}/postgres` });
+    await other.connect();
+    try {
+      await other.query('BEGIN');
+      await other.query(`SELECT pg_advisory_xact_lock(hashtextextended('cron:${JOB}', 0))`);
+
+      await c.query(`SET statement_timeout = '2s'`);
+      let blocked = false;
+      try {
+        await c.query(MIG);
+      } catch (e) {
+        blocked = /timeout|canceling statement/i.test(String((e as Error).message));
+      }
+      await c.query(`RESET statement_timeout`);
+      expect(blocked, 'the migration must wait on the advisory lock a concurrent apply holds').toBe(true);
+
+      // and once the other transaction releases it, the migration completes normally
+      await other.query('ROLLBACK');
+      await c.query(MIG);
+      const j = await job();
+      expect(j, 'after the lock is released the job installs').toBeTruthy();
+      expect(j.active).toBe(false);
+    } finally {
+      await other.end();
+    }
+  });
+
   it('makes no outbound request while applying — the command is stored, not executed', async () => {
     // net is never installed here. If applying the migration tried to EXECUTE net.http_post rather
     // than store it as text, this would raise `schema "net" does not exist` instead of succeeding.
