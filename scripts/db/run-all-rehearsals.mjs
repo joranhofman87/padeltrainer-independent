@@ -8,23 +8,62 @@
  * so a regression to those invariants shipped green. This runner IS the orphan guard:
  * it discovers every rehearse-* file, so adding one auto-includes it in CI and a
  * rehearsal can never be silently dropped again.
+ *
+ * CI sharding: `--shard=<index>/<count>` runs a deterministic subset of the
+ * DISCOVERED inventory (see scripts/db/rehearsal-shards.mjs) so isolated runners
+ * split the wall-clock cost. Across shards 1..count every rehearsal runs exactly
+ * once; src/test/rehearsalSharding.test.ts pins that against the real directory.
+ * No flag = run everything, exactly as before (local gates and ci-equivalent.sh
+ * keep the complete unsharded run). `--list` prints the selected files without
+ * executing anything, for auditing what a shard would run.
+ *
+ * Exit codes: 0 all selected rehearsals passed · 1 a rehearsal failed (or the
+ * discovery found nothing) · 2 the invocation itself was invalid.
  */
-import { readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { discoverRehearsals, parseRunnerArgs, UsageError, partitionShard } from './rehearsal-shards.mjs';
 
 const dir = dirname(fileURLToPath(import.meta.url));
-const files = readdirSync(dir)
-  .filter((f) => /^rehearse-.*\.(mjs|ts)$/.test(f))
-  .sort();
 
-if (files.length === 0) {
+let opts;
+try {
+  opts = parseRunnerArgs(process.argv.slice(2));
+} catch (err) {
+  if (err instanceof UsageError) {
+    console.error(err.message);
+    console.error('Usage: node scripts/db/run-all-rehearsals.mjs [--shard=<index>/<count>] [--list]');
+    process.exit(2);
+  }
+  throw err;
+}
+
+const all = discoverRehearsals(dir);
+if (all.length === 0) {
   console.error('No scripts/db/rehearse-*.{mjs,ts} found — runner misconfigured.');
   process.exit(1);
 }
 
-console.log(`Running ${files.length} DB rehearsals…\n`);
+if (opts.shard && opts.shard.count > all.length) {
+  // Same fail-closed stance as vitest --shard: a count beyond the inventory
+  // guarantees empty shards, and an empty shard passing is indistinguishable
+  // from a shard that silently skipped its work.
+  console.error(`--shard count ${opts.shard.count} exceeds the ${all.length} discovered rehearsals.`);
+  process.exit(2);
+}
+
+const files = opts.shard ? partitionShard(all, opts.shard.index, opts.shard.count) : all;
+
+if (opts.list) {
+  for (const f of files) console.log(f);
+  process.exit(0);
+}
+
+const label = opts.shard
+  ? `${files.length} of ${all.length} DB rehearsals (shard ${opts.shard.index}/${opts.shard.count})`
+  : `${files.length} DB rehearsals`;
+console.log(`Running ${label}…\n`);
 const failed = [];
 for (const f of files) {
   const isTs = f.endsWith('.ts');

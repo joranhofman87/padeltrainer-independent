@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [main, master]
 
+# One live run per branch: a newer commit on the same PR branch cancels the now-
+# obsolete run (same group), and can never touch another branch's run (different
+# group — head_ref for PRs, ref for pushes). Pushes to main/master are grouped
+# but NOT cancelled: post-merge validation of an earlier merge must finish even
+# when merges land back to back, or a breakage window hides behind a cancel.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint:
     runs-on: ubuntu-latest
@@ -87,9 +96,18 @@ jobs:
       - name: Production build
         run: npm run build
 
-  test:
-    runs-on: ubuntu-latest
+  # ── The former monolithic `test` job, split so the slow suites run in PARALLEL ──
+  #
+  # It ran unit → db → rehearsals → i18n back to back (~13½ min, the critical path
+  # of every PR). The pieces share nothing — different pools, different databases,
+  # different runtimes — so they now run as separate jobs, and the `test` job at
+  # the bottom aggregates them into the single required check branch protection
+  # already knows. Total compute goes up (each job pays checkout + npm ci ≈ 1 min);
+  # wall-clock roughly halves. Locally nothing changes: `npm test` and
+  # `npm run db:rehearse:all` still run everything unsharded.
 
+  unit-tests:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -104,13 +122,85 @@ jobs:
         run: npm ci
 
       - name: Run unit tests
-        run: npm test
+        run: npm run test:unit
 
-      # Data-integrity invariants (PGlite): RLS isolation, RPC contracts, and — critically —
-      # that list RPCs never HIDE a record (e.g. the invoice paid/unpaid tabs are a complete
-      # partition across every status). A regression that makes data disappear fails here.
-      - name: Data-integrity rehearsals
-        run: npm run db:rehearse:all
+  # The db vitest project: 142 files, each booting its own database (WASM pglite or
+  # a real embedded Postgres). fileParallelism stays OFF inside a runner — that
+  # determinism safeguard is the whole point of the project split (vitest.config.ts)
+  # and sharding must never reintroduce contention. Wall-clock relief comes from
+  # ABOVE the runner instead: `--shard=i/c` gives each isolated machine a disjoint
+  # contiguous slice of the hash-sorted file list. Vitest's sequencer makes the
+  # slices an exact partition (sha1-of-path sort, floor-balanced ranges) and refuses
+  # to run at all if count exceeds the file total, so nothing is skipped and nothing
+  # runs twice. --shard changes WHICH files a runner executes, never HOW.
+  #
+  # The shard count is strategy.job-total, i.e. the length of the `shard` list —
+  # one source of truth. Keep this matrix single-dimension: a second dimension
+  # would multiply job-total and break index/count.
+  db-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      # One shard failing must not cancel the other: the surviving shard's result
+      # still tells you whether the failure is isolated, and the `test` gate below
+      # fails either way.
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run database tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+        run: npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # Data-integrity invariants (PGlite): RLS isolation, RPC contracts, and — critically —
+  # that list RPCs never HIDE a record (e.g. the invoice paid/unpaid tabs are a complete
+  # partition across every status). A regression that makes data disappear fails here.
+  #
+  # Sharded like db-tests, but the partition lives in the runner itself
+  # (scripts/db/rehearsal-shards.mjs): round-robin over the sorted DISCOVERED
+  # rehearse-* inventory, so every rehearsal runs exactly once across the shard
+  # set. The runner fails closed on malformed/unknown shard arguments (exit 2)
+  # instead of degrading to "run everything", and src/test/rehearsalSharding.test.ts
+  # re-proves the exactly-once union against the real directory on every CI run.
+  db-rehearsals:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Data-integrity rehearsals (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+        run: npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # check-i18n-parity.ts imports only node: builtins and runs under bun, so this
+  # job needs no npm ci — checkout + bun and done.
+  i18n:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -119,6 +209,30 @@ jobs:
 
       - name: Check i18n parity (en + nl)
         run: bun scripts/check-i18n-parity.ts
+
+  # Aggregator gate. The job id MUST stay exactly `test`: branch protection
+  # requires the status check named "test", and renaming it would leave merges
+  # gated on a check that never reports again. `if: always()` + explicit result
+  # inspection — not the default success() behavior — so a failed, cancelled or
+  # skipped prerequisite turns this check RED instead of leaving it skipped
+  # (which some tooling reads as neutral). It succeeds ONLY when every
+  # prerequisite result is literally "success".
+  test:
+    runs-on: ubuntu-latest
+    needs: [unit-tests, db-tests, db-rehearsals, i18n]
+    if: always()
+    steps:
+      - name: Verify every test prerequisite succeeded
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          not_ok=$(echo "$NEEDS" | jq '[to_entries[] | select(.value.result != "success")] | length')
+          if [ "$not_ok" -ne 0 ]; then
+            echo "::error::$not_ok test prerequisite(s) did not succeed"
+            exit 1
+          fi
+          echo "All test prerequisites succeeded."
 
   # Pure unit tests for the Deno edge functions (auth gates, Mollie payment-ready, guest-name
   # resolution). These previously ran in NO CI (pre-scale audit P0 #3). The function-dir
