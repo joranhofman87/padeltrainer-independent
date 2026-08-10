@@ -50,6 +50,7 @@ import { existsSync, readFileSync, readdirSync, globSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { parse as parseIni } from 'ini';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -85,7 +86,43 @@ export const CONTRACT_JOBS = ['lint', 'workflow-contract'];
  * marker, so an allow-list of exact commands is the only shape that cannot be
  * walked around.
  */
-const SUITE_LIKE = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|i18n:check|\bnpm\b[^\n]*\btest\b/;
+const SUITE_MARKERS = /vitest|rehears|check-i18n-parity|workflow-contract|test:unit|test:db|i18n:check/;
+
+/** npm's documented aliases for `npm test`. */
+const NPM_TEST_ALIASES = new Set(['test', 't', 'tst']);
+
+/** A script name that names a test target: `test`, `test:db`, `x-tst`, but NOT `selftest`. */
+const NAMES_A_TEST_TARGET = /(^|[-:_.])(t|tst|test)($|[-:_.])/i;
+
+/**
+ * Does this `run:` block invoke one of the gated suites, however it is spelled?
+ *
+ * Tokenized rather than pattern-matched, because the spellings kept escaping
+ * regexes: `npm test`, `npm run test:db`, `npm --silent test`, `npm t`, `npm
+ * tst`, and a backslash-continued line splitting `npm` from its subcommand.
+ * Errs toward saying yes: a false positive means a new step must be added to
+ * the pinned allow-list, while a false negative means a suite silently runs
+ * twice.
+ */
+export function isSuiteInvocation(run) {
+  // A backslash-newline is a line continuation — one command, not two.
+  const normalized = String(run ?? '').replace(/\\\r?\n/g, ' ');
+  if (SUITE_MARKERS.test(normalized)) return true;
+  for (const segment of normalized.split(/[\n;&|]+/)) {
+    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+    const npmAt = tokens.findIndex((t) => t === 'npm' || t.endsWith('/npm'));
+    if (npmAt === -1) continue;
+    // Flags carry no meaning here; the first bare word is the subcommand.
+    const args = tokens.slice(npmAt + 1).filter((t) => !t.startsWith('-'));
+    const [subcommand, script] = args;
+    if (subcommand === undefined) continue;
+    if (NPM_TEST_ALIASES.has(subcommand)) return true;
+    if ((subcommand === 'run' || subcommand === 'run-script') && script && NAMES_A_TEST_TARGET.test(script)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /** The exact concurrency contract (see the workflow's own comment for why). */
 const EXPECTED_CONCURRENCY = {
@@ -118,6 +155,46 @@ const FORBIDDEN_LIFECYCLE_HOOKS = [
  * runner is dash — which rejects the gate's `set -euo pipefail` and would fail
  * the required check even when every prerequisite passed.
  */
+/**
+ * Hooks npm fires during `npm ci` — read out of the npm this repo uses
+ * (11.12.1), not from memory: lib/commands/ci.js:107-110 runs prepublish →
+ * preprepare → prepare → postprepare on the root package; @npmcli/arborist
+ * rebuild.js (#build) runs preinstall, install and postinstall; reify.js:246
+ * runs predependencies → dependencies → postdependencies whenever the
+ * dependency tree actually changed. `prepack`/`postpack` are pack- and
+ * publish-time only, and are deliberately absent.
+ */
+export const NPM_INSTALL_LIFECYCLE_HOOKS = [
+  'preinstall', 'install', 'postinstall',
+  'prepublish', 'preprepare', 'prepare', 'postprepare',
+  'predependencies', 'dependencies', 'postdependencies',
+];
+
+/** npm config keys that can make a suite succeed without running. */
+const FORBIDDEN_NPMRC_KEYS = new Set(['script-shell', 'node-options', 'userconfig', 'globalconfig']);
+
+/** Every key in an .npmrc, including inside `[section]`s, as [key, displayPath]. */
+function npmrcKeys(source) {
+  const out = [];
+  const walk = (node, prefix) => {
+    for (const [key, value] of Object.entries(node ?? {})) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (value && typeof value === 'object' && !Array.isArray(value)) walk(value, path);
+      else out.push([key, path]);
+    }
+  };
+  walk(parseIni(source), '');
+  return out;
+}
+
+/**
+ * A group that really varies per shard: an Actions EXPRESSION referencing
+ * matrix.shard (dot or bracket form). A literal `db-tests-matrix.shard`
+ * contains the words and still gives both children one group — the substring
+ * test this replaces accepted exactly that.
+ */
+const SHARD_EXPRESSION = /\$\{\{[^}]*\bmatrix\s*(?:\.\s*shard\b|\[\s*(['"])shard\1\s*\])[^}]*\}\}/;
+
 const ALLOWED_STEP_SHELLS = ['bash'];
 
 /**
@@ -303,7 +380,7 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     // it is separately pinned to exactly one (non-suite) verification step.
     (jobName === 'test' ? [] : job.steps ?? [])
       .map((s) => (s.run ?? '').trim())
-      .filter((run) => SUITE_LIKE.test(run))
+      .filter((run) => isSuiteInvocation(run))
       .map((run) => ({ jobName, run })),
   );
   for (const { jobName, run } of suiteLikeSteps) {
@@ -328,13 +405,15 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   // Install lifecycle hooks run OUTSIDE any gated command, in every job that
   // installs — a `postinstall` running the db project would execute the whole
   // unsharded suite on every runner without touching a single pinned step.
-  // Exactly the hooks `npm ci` / `npm install` fire. `prepublish` is deprecated
-  // for publishing but STILL runs on install; `prepare` is wrapped by
-  // `preprepare`/`postprepare`. `prepack`/`postpack` are pack/publish-time only
-  // and were noise here.
-  for (const hook of ['preinstall', 'install', 'postinstall', 'prepublish', 'preprepare', 'prepare', 'postprepare']) {
+  // Every root-package hook `npm ci` can fire, read out of the npm this repo
+  // uses (11.12.1): lib/commands/ci.js runs prepublish → preprepare → prepare →
+  // postprepare; @npmcli/arborist rebuild.js runs preinstall, install and
+  // postinstall; and reify.js runs predependencies → dependencies →
+  // postdependencies whenever the dep tree actually changed. `prepack`/
+  // `postpack` are pack/publish-time only and are deliberately absent.
+  for (const hook of NPM_INSTALL_LIFECYCLE_HOOKS) {
     const command = pkgScripts[hook];
-    if (typeof command === 'string' && SUITE_LIKE.test(command)) {
+    if (typeof command === 'string' && isSuiteInvocation(command)) {
       violations.push(`package.json scripts.${hook} runs a gated suite (\`${command}\`) — install hooks run outside the sharded invocation, on every installing job`);
     }
   }
@@ -348,9 +427,14 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   } catch {
     npmrc = '';
   }
-  for (const key of ['script-shell', 'node-options', 'userconfig', 'globalconfig']) {
-    if (new RegExp(`^\\s*${key}\\s*=`, 'm').test(npmrc)) {
-      violations.push(`.npmrc sets ${key} — it can make every \`npm run\` in CI exit 0 without running its suite`);
+  // PARSED with npm's own INI library, not pattern-matched: npm honours
+  // `"node-options"=…`, `'node-options' = …`, odd whitespace and `[section]`
+  // nesting, and a regex that chases those spellings loses. A quoted key made
+  // a script that should exit 7 exit 0 while an unquoted-only regex saw
+  // nothing.
+  for (const [key, where] of npmrcKeys(npmrc)) {
+    if (FORBIDDEN_NPMRC_KEYS.has(key.trim().toLowerCase())) {
+      violations.push(`.npmrc sets ${where} — it can make every \`npm run\` in CI exit 0 without running its suite`);
     }
   }
   const envScopes = [
@@ -387,7 +471,7 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     // one behind the other — the serial suite again, with every check green.
     // A group that varies per shard is fine, so require matrix.shard in it.
     const group = jobs[name]?.concurrency?.group ?? jobs[name]?.concurrency;
-    if (group !== undefined && !String(group).includes('matrix.shard')) {
+    if (group !== undefined && !SHARD_EXPRESSION.test(String(group))) {
       violations.push(`${name}: job-level concurrency \`${group}\` is shared by every shard — the matrix children would run one at a time`);
     }
   }

@@ -556,6 +556,19 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
       }],
+      ['.npmrc QUOTED node-options (double quotes)', /\.npmrc sets node-options/, (r) => writeFileSync(join(r, '.npmrc'), '"node-options"=--import=data:text/javascript,process.exit(0)\n')],
+      ['.npmrc QUOTED script-shell (single quotes, spaced)', /\.npmrc sets script-shell/, (r) => writeFileSync(join(r, '.npmrc'), "  'script-shell'  =  /bin/true  \n")],
+      ['.npmrc UPPERCASE key', /\.npmrc sets NODE-OPTIONS/, (r) => writeFileSync(join(r, '.npmrc'), 'NODE-OPTIONS=--import=x\n')],
+      ['.npmrc key inside a [section]', /\.npmrc sets .*node-options/, (r) => writeFileSync(join(r, '.npmrc'), '[some-scope]\n"node-options"=--import=x\n')],
+      ['.npmrc globalconfig redirection', /\.npmrc sets globalconfig/, (r) => writeFileSync(join(r, '.npmrc'), 'globalconfig=/tmp/evil.npmrc\n')],
+      ['NPM_CONFIG_GLOBALCONFIG at container scope', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    container:\n      image: node:24\n      env:\n        NPM_CONFIG_GLOBALCONFIG: /tmp/evil.npmrc\n'))],
+      ['a preprepare hook running the db suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).preprepare = 'npm run test:db'; })],
+      ['a dependencies hook (arborist reification) running the suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).dependencies = 'vitest run --project db'; })],
+      ['a postdependencies hook running the suite', /install hooks run outside/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postdependencies = 'npm t'; })],
+      ['an extra `npm t` step (alias)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm t\n\n      - name: Run unit tests\n'))],
+      ['an extra `npm tst` step (alias)', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm tst\n\n      - name: Run unit tests\n'))],
+      ['a backslash-continued `npm \\<newline> test`', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: |\n          npm \\\n            test\n\n      - name: Run unit tests\n'))],
+      ['job concurrency whose group only LOOKS shard-varying', /job-level concurrency/, (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-tests-matrix.shard\n'))],
       ['NPM_CONFIG_NODE_OPTIONS makes every npm script exit 0', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_NODE_OPTIONS: --import=data:text/javascript,process.exit(0)\n'))],
       ['NPM_CONFIG_USERCONFIG redirects npm at another config', /can make gated steps exit 0/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_USERCONFIG: /tmp/evil.npmrc\n\njobs:\n'))],
       ['.npmrc sets node-options', /\.npmrc sets node-options/, (r) => writeFileSync(join(r, '.npmrc'), 'node-options=--import=data:text/javascript,process.exit(0)\n')],
@@ -607,6 +620,31 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
         mutate(root);
         const violations = await checkWorkflowContract({ repoRoot: root });
         expect(violations.join('\n'), `${label}: expected a violation matching ${pattern}`).toMatch(pattern);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  }, 180_000);
+
+  it('accepts legitimate configuration — the detectors must not cry wolf', async () => {
+    // Negative tests alone would be satisfied by a checker that rejects
+    // everything. These are the shapes a real contributor may add, and each
+    // must stay silent: an unrelated .npmrc, an install hook that is not a
+    // suite, and a job concurrency group that genuinely varies per shard.
+    const allowed: Array<[string, (root: string) => void]> = [
+      ['an .npmrc with only retry/concurrency tuning', (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nmaxsockets=1\nprefer-offline=true\n')],
+      ['an .npmrc with a quoted but harmless key', (r) => writeFileSync(join(r, '.npmrc'), '"fetch-retries" = 10\n')],
+      ['a postinstall hook that is not a suite (e.g. husky)', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'husky'; })],
+      ['a prepare hook building types', (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).prepare = 'tsc -p tsconfig.build.json'; })],
+      ['a job concurrency group that really varies per shard', (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ github.run_id }}-${{ matrix.shard }}\n'))],
+      ["a shard group using bracket syntax matrix['shard']", (r) => editWorkflow(r, (s) => s.replace('  db-rehearsals:\n    runs-on: ubuntu-latest\n', "  db-rehearsals:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: reh-${{ matrix['shard'] }}\n"))],
+      ['an unrelated npm step whose script merely contains "selftest"', (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Some guard\n        run: npm run check:something:selftest\n\n      - name: Run unit tests\n'))],
+    ];
+    for (const [label, mutate] of allowed) {
+      const root = makeFixture();
+      try {
+        mutate(root);
+        expect(await checkWorkflowContract({ repoRoot: root }), `${label}: must NOT be reported`).toEqual([]);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
