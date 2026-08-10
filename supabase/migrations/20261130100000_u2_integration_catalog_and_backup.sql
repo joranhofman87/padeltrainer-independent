@@ -21,22 +21,111 @@
 --     "...and the resumed attempt re-resolves (proceed_new: the merged-away guest is gone)"
 --   so the row dies with its person and the visitor's next attempt starts clean.
 --
---   The scope derivation ACCEPTED the new relation: `academy_delete_confirmed` refused on the
---   fingerprint compare, not on `% is reached by the cascade but cannot be scoped to one academy`.
---   The blast radius is therefore still fully scopable to one academy; only the pinned literal was
---   stale. Per the manifest's own rule ("the new fingerprint is read from
+--   Per the manifest's own rule ("the new fingerprint is read from
 --   academy_deletion_catalog_fingerprint() and pinned here in the same migration that changed it"),
 --   re-pinning in THIS migration is the reviewable act.
 --
+--   BUT the FK is not the whole truth, and re-pinning on its own would have been WRONG. A challenge
+--   belongs to an academy through `owner_type`/`owner_id` — a POLYMORPHIC pair with no foreign key
+--   (20261129100000, lines 72-73), so the FK-derived catalogue cannot see it. Scoped only through
+--   `selected_person_id`, the flow would have missed every challenge whose selection is NULL: each
+--   unconsumed challenge, and each consumed "someone new". Those rows carry `contact_normalized` —
+--   an email address — and would have OUTLIVED the academy that collected it.
+--
+--   (The earlier reasoning that "it refused on the fingerprint compare, not on the unscopable
+--   refusal, therefore the blast radius is fine" was unsound: `academy_delete_confirmed` compares
+--   the fingerprint as step 1, BEFORE the lock plan and the recomputation, so reaching that refusal
+--   proves nothing about scoping. Codex round 1 caught it.)
+--
+--   So the relation is given an explicit OWNER scope below, and only then is the fingerprint pinned.
+CREATE OR REPLACE FUNCTION public.academy_deletion_extra_relations()
+RETURNS TABLE (relname text, role text)
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+  SELECT * FROM (VALUES
+    ('academy_player_metadata',          'overlay'),
+    ('academy_player_locations',         'overlay'),
+    ('availability_slots',               'detached'),
+    ('invoices',                         'blocker'),
+    ('cycles',                           'blocker'),
+    ('registrations',                    'blocker'),
+    ('person_links',                     'identity'),
+    ('persons',                          'identity'),
+    ('academy_player_memberships',       'identity'),
+    ('person_merge_review',              'mutated'),
+    -- U2: owned through a polymorphic (owner_type, owner_id) pair that no FK describes.
+    ('identity_verification_challenges', 'owner_scoped')
+  ) AS t(relname, role);
+$$;
+
+-- The owner scope itself. OR-ed with whatever the FK graph already reached, exactly like the
+-- overlay arm above it: a challenge can be reached BOTH as this academy's own row AND as a row
+-- whose selected person is dying, and either predicate alone under-counts.
+--
+-- The person arm stays: `selected_person_id ... ON DELETE CASCADE` means those rows DO disappear
+-- when the person does, so a preview that omitted them would be untruthful about what the operation
+-- destroys. Including both arms is what makes the count match reality.
+CREATE OR REPLACE FUNCTION public.academy_deletion_deleted_scope(_relname text)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $$
+DECLARE
+  v_scope text;
+  v_person_scope text;
+BEGIN
+  IF _relname = 'persons' THEN
+    RETURN public.academy_deletion_dying_persons_pred();
+  END IF;
+
+  v_scope := public.academy_deletion_scope_predicate(_relname);
+
+  v_person_scope := public.academy_deletion_scope_predicate(
+    _relname, 'persons', public.academy_deletion_dying_persons_pred());
+  IF v_person_scope IS NOT NULL THEN
+    v_scope := CASE WHEN v_scope IS NULL THEN v_person_scope
+                    ELSE '(' || v_scope || ' OR ' || v_person_scope || ')' END;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM public.academy_deletion_extra_relations() er
+              WHERE er.relname = _relname AND er.role = 'overlay') THEN
+    v_scope := CASE WHEN v_scope IS NULL THEN '(academy_profile_id = $1)'
+                    ELSE '(academy_profile_id = $1 OR ' || v_scope || ')' END;
+  END IF;
+
+  -- U2 owner-scoped relations: keyed to the academy by a polymorphic pair, not by a foreign key.
+  IF EXISTS (SELECT 1 FROM public.academy_deletion_extra_relations() er
+              WHERE er.relname = _relname AND er.role = 'owner_scoped') THEN
+    v_scope := CASE WHEN v_scope IS NULL
+                    THEN '(owner_type = ''academy'' AND owner_id = $1)'
+                    ELSE '((owner_type = ''academy'' AND owner_id = $1) OR ' || v_scope || ')' END;
+  END IF;
+
+  IF v_scope IS NULL
+     AND (EXISTS (SELECT 1 FROM public.academy_deletion_cascade_closure() cc WHERE cc.relname = _relname)
+       OR EXISTS (SELECT 1 FROM public.academy_deletion_person_closure() pc WHERE pc.relname = _relname)) THEN
+    RAISE EXCEPTION 'ACADEMY_DELETION_CATALOG_DRIFT: % is reached by the cascade but cannot be scoped to one academy', _relname
+      USING ERRCODE = 'raise_exception';
+  END IF;
+
+  RETURN v_scope;
+END;
+$$;
+
 --   Old: 2238f9c213c1c87b3c6233d42148ee1be33c4173a50dc8ef9758f75d4997ba57  (pre-U2 catalogue)
---   New: 6b87c22354ef4261befdc7ed81d82ca25503e5693ec9653e6834164c7310cc36  (with U2 identity tables)
+--   New: 8145bad9294c6b1673ce940abfd8135aa1e2151c534a3f0928d447c334173c28  (U2 identity tables + the owner scope below)
 CREATE OR REPLACE FUNCTION public.academy_deletion_expected_fingerprint()
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
 SECURITY DEFINER
 SET search_path = pg_catalog, public, pg_temp
-AS $$ SELECT '6b87c22354ef4261befdc7ed81d82ca25503e5693ec9653e6834164c7310cc36'::text $$;
+AS $$ SELECT '8145bad9294c6b1673ce940abfd8135aa1e2151c534a3f0928d447c334173c28'::text $$;
 
 COMMENT ON FUNCTION public.academy_deletion_expected_fingerprint() IS
   'The REVIEWED academy-deletion catalogue fingerprint. Re-pinned by U2 integration: identity_verification_challenges joined the person closure via selected_person_id ON DELETE CASCADE. Changing this value means editing a migration, which is a review.';

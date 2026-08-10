@@ -51,7 +51,8 @@ Verified two independent ways (`supabase migration list --linked` and `db push -
 **607 applied, `remote-only = 0`** — production carries no history the repo does not know about, so
 there is nothing to repair and no `migration repair` step in this runbook.
 
-Pending after #645 + #646 merged (15, in apply order):
+Pending on the integrated #647 head (**17**, in apply order — this is the literal
+`supabase db push --dry-run --linked` output, re-verify it immediately before applying):
 
 | # | Migration | Origin |
 |---|---|---|
@@ -59,20 +60,25 @@ Pending after #645 + #646 merged (15, in apply order):
 | 2 | `20261114100000_u1b_membership_backfill_manifest` | U1b (#642) |
 | 3 | `20261115100000_u1c_prereq_membership_repoint` | U1c-p1 (#643) |
 | 4 | `20261116100000_u1c_prereq_deletion_preflight` | U1c-p2 (#644) |
-| 5 | `20261118100000_u1c_prereq_backup_export` | U1c-p4 (#646) |
-| 6 | `20261119100000_u2_no_email_alone_merge` | U2 (#647) |
-| 7 | `20261120100000_u2_explicit_claim` | U2 (#647) |
-| 8 | `20261121100000_u2_uuid_idempotent_create` | U2 (#647) |
-| 9 | `20261122100000_u2_merge_keeps_create_commands` | U2 (#647) |
-| 10 | `20261123100000_u2_intake_email_optional` | U2 (#647) |
-| 11 | `20261124100000_u2_rebook_group_guest_uuid_create` | U2 (#647) |
-| 12 | `20261125100000_u2_the_command_is_the_only_door` | U2 (#647) |
-| 13 | `20261127100000_u2_person_keyed_writes` | U2 (#647) |
-| 14 | `20261128100000_u2_rebook_person_keyed_members` | U2 (#647) |
-| 15 | `20261129100000_u2_identity_verification` | U2 (#647) |
+| 5 | `20261117100000_u1c_prereq_academy_deletion` | U1c-p3 (#645) |
+| 6 | `20261118100000_u1c_prereq_backup_export` | U1c-p4 (#646) |
+| 7 | `20261119100000_u2_no_email_alone_merge` | U2 (#647) |
+| 8 | `20261120100000_u2_explicit_claim` | U2 (#647) |
+| 9 | `20261121100000_u2_uuid_idempotent_create` | U2 (#647) |
+| 10 | `20261122100000_u2_merge_keeps_create_commands` | U2 (#647) |
+| 11 | `20261123100000_u2_intake_email_optional` | U2 (#647) |
+| 12 | `20261124100000_u2_rebook_group_guest_uuid_create` | U2 (#647) |
+| 13 | `20261125100000_u2_the_command_is_the_only_door` | U2 (#647) |
+| 14 | `20261127100000_u2_person_keyed_writes` | U2 (#647) |
+| 15 | `20261128100000_u2_rebook_person_keyed_members` | U2 (#647) |
+| 16 | `20261129100000_u2_identity_verification` | U2 (#647) |
+| 17 | `20261130100000_u2_integration_catalog_and_backup` | U2×U1c integration (#647) |
 
-(#645's academy-deletion work ships as functions/edge code, not a new dated migration in this set.)
-`20261118100000` sorts before the U2 block — correct ordering, no interleaving hazard.
+An earlier draft of this table said 15 and claimed #645 shipped no dated migration. That was wrong —
+`20261117100000` is #645's, and `20261130100000` is the integration fix — and because step 5 of §6
+refuses to proceed unless the dry run matches this list exactly, the error would have stopped a
+correct deployment. Codex round 1 caught it. Numbers 1–6 are already merged to `main`; 7–17 arrive
+with #647.
 
 **Never** use `supabase db reset --linked`, `--include-seed`, a blind `db push`, or hand-edited
 production SQL. No contraction, no legacy-column drop: `guest_player_id` stays private and intact.
@@ -108,30 +114,31 @@ The "current prod version" column is the rollback table: redeploy that version t
 Captured read-only inside `BEGIN READ ONLY`. Counts and aggregates only — no names, emails, phones
 or addresses were selected or stored. **Re-run immediately before and after the window and diff.**
 
-Baseline SQL: `scripts/db/prod-baseline.sql` (to be committed with the packet; currently in the
-session scratchpad). It reports: persons total/with-login/without-login, profiles, guest_players,
+Baseline SQL: `scripts/db/prod-baseline.sql`. It reports: persons total/with-login/without-login, profiles, guest_players,
 person_links coverage by source, unlinked sources, integrity counters
 (multi-profile persons, orphaned links, persons with no link), bookings and invoices by key
-(person/guest/player), invoice totals and paid totals, and the large-academy slice
-(`f5124b05-6c8b-40e4-9d67-36e2a41acd36`, RL Padel Performance).
+(person/guest/player), invoice totals and paid totals, and the largest-academy slice.
 
-### Baseline captured 2026-08-10 11:45:59 UTC
+**Figures are deliberately not reproduced in this file.** An earlier draft pinned a named academy's
+exact booking counts and invoice revenue into git history for good; that is customer-identifiable
+commercial data and it does not need to live here. Run the script to get current numbers — what the
+cutover needs is the BEFORE/AFTER diff, not a committed snapshot. The structural findings below carry
+no figures and are the part worth writing down.
 
-| Metric | Value |
+### What the 2026-08-10 baseline established (structure, not figures)
+
+Run `scripts/db/prod-baseline.sql` for the numbers. What matters and does not change run to run:
+
+| Invariant | Result |
 |---|---|
-| `persons` total / with login / without login | **581** / 94 / 487 |
-| sources: `profiles` / `guest_players` | 94 / 535 |
-| `person_links` total (guest + profile) / distinct persons | 629 (535 + 94) / 581 |
-| **orphaned links** | **0** |
-| **persons with no link** | **0** |
-| **persons with >1 profile source** | **0** |
-| **profiles without link / guests without link** | **0 / 0** |
-| guests carrying `linked_profile_id` | 50 |
-| `bookings` total / **with `person_id`** / with guest / with player | 5286 / **5286 (100%)** / 5015 / 940 |
-| `invoices` total / with `person_id` / with guest / with player | 443 / **442** / 430 / 85 |
-| invoices paid count / total sum / paid sum / null-status | 354 / **€163,886.38** / **€107,657.83** / **0** |
-| Large academy `f5124b05…` guests / **linked** | 439 / **439 (100%)** |
-| Large academy bookings via guest / invoices / invoice sum | 4360 / 417 / **€152,761.40** |
+| orphaned `person_links` | **0** |
+| persons with no link | **0** |
+| persons with more than one profile source | **0** |
+| profiles without a link / guests without a link | **0 / 0** |
+| bookings carrying `person_id` | **100%** |
+| invoices carrying `person_id` | all but **one** |
+| largest academy's guests linked to a person | **100%** |
+| invoices with NULL status | **0** |
 
 **Read this before the window:** the canonical identity foundation is already fully populated and
 internally consistent — every legacy source resolves to a person, there are no orphans, and every
@@ -179,25 +186,35 @@ through `person_links`** — never by email or phone, matching the owner's ident
 3. **Take a fresh backup and record its id + timestamp.** Write down the rollback-decision deadline
    (recommend: decide within 30 minutes of the first smoke failure).
 4. **Capture the "before" baseline** (§4) and store it.
-5. **Apply migrations** — `supabase db push --linked` after a final `--dry-run` whose list matches
+5. **Deploy the worker fix FIRST, before any migration.** `notification-email-worker` must already
+   be the version that skips `identity_verification_requested` (slice A) before the schema that can
+   enqueue such a row exists. Deploying it first is safe and idempotent: the skip is inert until the
+   event type exists.
+
+   *(§0 states the real invariant precisely: nothing that can ENQUEUE a challenge may be live before
+   the sender and the worker skip are. The schema alone enqueues nothing — `identity_challenge_enqueue`
+   only runs when a guest entrypoint calls the resolver — so the binding constraint is on the CALLERS
+   in step 7c, not on the migration itself. Deploying the worker fix first removes the race entirely
+   and makes the ordering robust even if a step is retried out of sequence.)*
+6. **Apply migrations** — `supabase db push --linked` after a final `--dry-run` whose list matches
    §2 exactly. If the list differs in any way: **stop**, do not repair, escalate.
-6. **Deploy edge functions** from clean updated `main`, in this order:
-   a. `notification-email-worker` (slice A: must skip identity rows) **before** anything that can
-      enqueue a challenge;
-   b. the identity sender;
-   c. `verify-identity`, then the four guest entrypoints, `create-manual-player`, `mollie-webhook`;
+7. **Deploy the remaining edge functions** from clean updated `main`, in this order:
+   a. the identity sender;
+   b. `verify-identity` (the link target must exist before any link can be sent);
+   c. **only then** the challenge-producing callers — the three guest payment entrypoints and
+      `submit-guest-intake` — plus `create-manual-player` and `mollie-webhook`;
    d. `admin-academy-deletion`.
-7. **Confirm the frontend** (Vercel) is serving the build that matches the deployed backend.
-8. **Set secrets / config** (§8) — owner-performed.
-9. **Activate the sender** — owner-performed, last.
-10. **Run the U1 inventory read-only** (§5) and record counts. Do **not** back-fill yet.
-11. **Capture the "after" baseline** and diff against step 4. Every count must be explained: totals
+8. **Confirm the frontend** (Vercel) is serving the build that matches the deployed backend.
+9. **Set secrets / config** (§8) — owner-performed.
+10. **Activate the sender** — owner-performed, last.
+11. **Run the U1 inventory read-only** (§5) and record counts. Do **not** back-fill yet.
+12. **Capture the "after" baseline** and diff against step 4. Every count must be explained: totals
     must not drop; the large academy's guest_players / bookings / invoices must be unchanged
     (these migrations are additive).
-12. **Read-only payment/invoice reconciliation** — invoice count, paid count, total and paid sums
+13. **Read-only payment/invoice reconciliation** — invoice count, paid count, total and paid sums
     identical before/after; no invoice orphaned from its person/guest key.
-13. **Smoke flows** (§7).
-14. **Reopen traffic**, then monitor 30–60 minutes (§7.4).
+14. **Smoke flows** (§7).
+15. **Reopen traffic**, then monitor 30–60 minutes (§7.4).
 
 ---
 
