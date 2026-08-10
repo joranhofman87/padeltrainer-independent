@@ -480,6 +480,9 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
           .replace(", 'src/test/notificationDigestRealPg.integration.test.ts']", ']')
           .replace("'**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "'**/*.pglite.test.ts']"));
       }],
+      ['workflow token widened beyond read', /permissions must be exactly/, (r) => editWorkflow(r, (s) => s.replace('permissions:\n  contents: read', 'permissions:\n  contents: write'))],
+      ['permissions block removed entirely', /permissions must be exactly/, (r) => editWorkflow(r, (s) => s.replace('permissions:\n  contents: read\n\n', ''))],
+      ['checkout starts persisting credentials again', /persist-credentials: false/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n'))],
       ['a rehearsal hidden in a subdirectory', /run zero times/, (r) => {
         mkdirSync(join(r, 'scripts/db/nested'), { recursive: true });
         writeFileSync(join(r, 'scripts/db/nested/rehearse-buried.mjs'), '// unreachable\n');

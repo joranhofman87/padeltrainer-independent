@@ -6,6 +6,15 @@ on:
   pull_request:
     branches: [main, master]
 
+# Read-only token. Nothing here writes to the repo, and `actions/checkout`
+# persists the token into .git/config inside the workspace by default — with
+# this split that now happens on eleven runners instead of five, each of which
+# then executes repository code (tests, rehearsals, postinstall scripts). A
+# read-only token plus persist-credentials: false below means a compromised
+# dependency finds nothing worth stealing in .git/config.
+permissions:
+  contents: read
+
 # One live run per PR: a newer commit on the same PR cancels the now-obsolete
 # run. The group key is the PR NUMBER, not head_ref — branch names collide
 # (two forks both named `feature`, or a branch literally named
@@ -25,6 +34,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -84,6 +95,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -120,6 +133,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -158,6 +173,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -190,6 +207,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -216,6 +235,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -239,6 +260,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -314,6 +337,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Deno
         uses: denoland/setup-deno@v2
@@ -345,6 +370,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

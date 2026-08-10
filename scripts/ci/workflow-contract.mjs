@@ -193,6 +193,21 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     }
   }
 
+  // ── 1b. Least privilege, and no token left lying in the workspace ──
+  // Eleven runner instances now check out this repo and then execute repo code
+  // (tests, rehearsals, postinstall). A write-scoped token persisted into
+  // .git/config by actions/checkout would be readable by any of them.
+  if (JSON.stringify(workflow.permissions) !== JSON.stringify({ contents: 'read' })) {
+    violations.push(`workflow permissions must be exactly {contents: read}, found ${JSON.stringify(workflow.permissions)}`);
+  }
+  for (const [jobName, job] of Object.entries(jobs)) {
+    for (const step of job.steps ?? []) {
+      if (typeof step.uses === 'string' && step.uses.startsWith('actions/checkout') && step.with?.['persist-credentials'] !== false) {
+        violations.push(`${jobName}: checkout must set persist-credentials: false — otherwise the job leaves a usable token in .git/config`);
+      }
+    }
+  }
+
   // A workflow-level shell default neuters EVERY run step at once, including
   // this checker's own job and the aggregator.
   if (workflow.defaults?.run?.shell !== undefined && !ALLOWED_STEP_SHELLS.includes(workflow.defaults.run.shell)) {
