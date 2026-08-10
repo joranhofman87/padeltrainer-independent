@@ -6,13 +6,17 @@ on:
   pull_request:
     branches: [main, master]
 
-# One live run per branch: a newer commit on the same PR branch cancels the now-
-# obsolete run (same group), and can never touch another branch's run (different
-# group — head_ref for PRs, ref for pushes). Pushes to main/master are grouped
-# but NOT cancelled: post-merge validation of an earlier merge must finish even
-# when merges land back to back, or a breakage window hides behind a cancel.
+# One live run per PR: a newer commit on the same PR cancels the now-obsolete
+# run. The group key is the PR NUMBER, not head_ref — branch names collide
+# (two forks both named `feature`, or a branch literally named
+# `refs/heads/main` shadowing the push group) and a collision here means one
+# PR's required checks cancel another's. Pushes get github.run_id — unique per
+# run — so post-merge validation runs on main/master never queue behind, never
+# replace, and never cancel each other: with a shared group even
+# cancel-in-progress:false lets a third push REPLACE the pending second one,
+# leaving a merged commit with no completed validation.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -222,16 +226,25 @@ jobs:
     needs: [unit-tests, db-tests, db-rehearsals, i18n]
     if: always()
     steps:
+      # No external binaries (jq et al.): a REQUIRED gate must not be able to
+      # fail open because a tool was missing or errored — the results are
+      # expanded by the Actions expression engine before the shell ever runs,
+      # and the shell does a positive every-result-is-"success" check under
+      # `set -euo pipefail` (an empty expansion fails the [ -n ] guard).
       - name: Verify every test prerequisite succeeded
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
-          echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          not_ok=$(echo "$NEEDS" | jq '[to_entries[] | select(.value.result != "success")] | length')
-          if [ "$not_ok" -ne 0 ]; then
-            echo "::error::$not_ok test prerequisite(s) did not succeed"
-            exit 1
-          fi
+          set -euo pipefail
+          echo "$NEEDS"
+          results="${{ join(needs.*.result, ' ') }}"
+          [ -n "$results" ]
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "::error::a test prerequisite finished with result '$r'"
+              exit 1
+            fi
+          done
           echo "All test prerequisites succeeded."
 
   # Pure unit tests for the Deno edge functions (auth gates, Mollie payment-ready, guest-name

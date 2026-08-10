@@ -8,16 +8,20 @@
  * data-integrity regression ships green, and a duplicate wastes a runner while
  * hiding imbalance. These tests pin, on every CI run:
  *
- *   1. the exactly-once union over the REAL scripts/db inventory (so the CI
- *      matrix in .github/workflows/test.yml cannot drift from the runner);
+ *   1. the exactly-once union over the REAL scripts/db inventory;
  *   2. strict argument validation that fails closed on malformed shard specs
  *      (a typo must never degrade into "quietly run everything, twice");
- *   3. the runner executable itself honors --shard/--list end to end (so the
- *      library being correct can't mask the CLI ignoring it).
+ *   3. the runner executable itself honors --shard/--list AND executes exactly
+ *      the selected files (so the library being correct can't mask the CLI
+ *      ignoring it, and listing correctly can't mask executing wrongly);
+ *   4. the workflow side of the contract — single-dimension 1..N matrices whose
+ *      count comes from strategy.job-total, aggregated by the required `test`
+ *      gate — so .github/workflows/test.yml cannot drift from the runner.
  */
 import { describe, it, expect } from 'vitest';
-import { readdirSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -95,6 +99,21 @@ describe('partitionShard', () => {
 
   it('rejects duplicate file names — a partition is defined over a set', () => {
     expect(() => partitionShard(['rehearse-a.mjs', 'rehearse-a.mjs'], 1, 2)).toThrow(/duplicate/);
+  });
+
+  it('rejects a count larger than the inventory — an empty shard must be impossible', () => {
+    expect(() => partitionShard(['rehearse-a.mjs', 'rehearse-b.mjs'], 3, 3)).toThrow(RangeError);
+    expect(() => partitionShard([], 1, 1)).toThrow(RangeError);
+  });
+
+  it('pins the allocation itself: position i goes to shard (i % count) + 1', () => {
+    // Round-robin over the SORTED names is the documented contract, not an
+    // accident: it spreads alphabetically adjacent (often similar-cost)
+    // rehearsals across shards. A switch to e.g. a contiguous slice would keep
+    // every set-level property above and still fail here, on purpose.
+    const files = ['rehearse-b.mjs', 'rehearse-a.mjs', 'rehearse-c.ts', 'rehearse-e.ts', 'rehearse-d.mjs'];
+    expect(partitionShard(files, 1, 2)).toEqual(['rehearse-a.mjs', 'rehearse-c.ts', 'rehearse-e.ts']);
+    expect(partitionShard(files, 2, 2)).toEqual(['rehearse-b.mjs', 'rehearse-d.mjs']);
   });
 
   it('rejects invalid shard parameters', () => {
@@ -188,5 +207,87 @@ describe('run-all-rehearsals.mjs CLI (end to end, --list mode: no rehearsal exec
       expect(res.status, `argv ${JSON.stringify(argv)}`).toBe(2);
       expect(res.stderr).toMatch(/Usage:|exceeds/);
     }
+  });
+});
+
+describe('run-all-rehearsals.mjs EXECUTES exactly the selected shard (tmp fixture dir)', () => {
+  // The --list tests above prove selection; this proves the execution loop runs
+  // what was selected — a runner that listed correctly but executed `all`, or
+  // skipped the first file, would pass every list-mode assertion. The REAL
+  // runner and partition module are copied byte-for-byte at test time (never
+  // hand-inlined — an inline copy tests the copy, not the code) into a temp dir
+  // whose only rehearse-* files are fakes that append their name to a marker.
+  it('runs each fake rehearsal exactly once across both shards, and a failing one fails only its shard', () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'rehearsal-shards-e2e-'));
+    try {
+      copyFileSync(runnerPath, join(tmp, 'run-all-rehearsals.mjs'));
+      copyFileSync(join(dbDir, 'rehearsal-shards.mjs'), join(tmp, 'rehearsal-shards.mjs'));
+      const marker = join(tmp, 'ran.log');
+      // One .ts fake so the `npx tsx` branch runs for real too.
+      const names = ['rehearse-e2e-a.mjs', 'rehearse-e2e-b.mjs', 'rehearse-e2e-c.ts', 'rehearse-e2e-d.mjs', 'rehearse-e2e-e.mjs'];
+      for (const name of names) {
+        writeFileSync(
+          join(tmp, name),
+          `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(marker)}, ${JSON.stringify(`${name}\n`)});\n`,
+        );
+      }
+      const run = (...args: string[]) =>
+        spawnSync(process.execPath, [join(tmp, 'run-all-rehearsals.mjs'), ...args], { encoding: 'utf8' });
+
+      const s1 = run('--shard=1/2');
+      const s2 = run('--shard=2/2');
+      expect(s1.status, s1.stderr).toBe(0);
+      expect(s2.status, s2.stderr).toBe(0);
+      const ran = readFileSync(marker, 'utf8').split('\n').filter(Boolean).sort();
+      expect(ran).toEqual([...names].sort()); // every fake exactly once ACROSS the shard set
+
+      // Failure propagation: add a failing fake; exactly one shard must exit 1.
+      writeFileSync(join(tmp, 'rehearse-e2e-f.mjs'), 'process.exit(1);\n');
+      const s3 = run('--shard=1/2');
+      const s4 = run('--shard=2/2');
+      expect([s3.status, s4.status].filter((c) => c === 1)).toHaveLength(1);
+      expect(`${s3.stdout}${s3.stderr}${s4.stdout}${s4.stderr}`).toContain('rehearse-e2e-f.mjs (');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('workflow ↔ runner coupling (.github/workflows/test.yml)', () => {
+  // The partition is only exactly-once if the workflow feeds coherent
+  // index/count pairs. These are drift alarms binding the two: a second matrix
+  // dimension (which would multiply strategy.job-total), a shard list that is
+  // not exactly 1..N, or a run line that stops deriving count from job-total
+  // all fail here, loudly, instead of silently running files twice or never.
+  const workflowSrc = () =>
+    readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8');
+
+  it('both sharded jobs use a single-dimension shard matrix of exactly 1..N', () => {
+    const src = workflowSrc();
+    // `matrix:` immediately followed by its ONLY key, `shard: [...]` — the
+    // negative lookahead rejects any sibling key at the same indent.
+    const blocks = [...src.matchAll(/matrix:\n(\s+)shard: \[([^\]\n]+)\]\n(?!\1\S)/g)];
+    expect(blocks, 'expected exactly the db-tests and db-rehearsals shard matrices').toHaveLength(2);
+    for (const block of blocks) {
+      const shards = block[2].split(',').map((s) => Number(s.trim()));
+      expect(shards).toEqual(Array.from({ length: shards.length }, (_, i) => i + 1));
+    }
+  });
+
+  it('both sharded run lines derive the count from strategy.job-total', () => {
+    const src = workflowSrc();
+    const runLines = src.match(/--shard=\$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}/g) ?? [];
+    expect(runLines).toHaveLength(2);
+  });
+
+  it('the required `test` gate needs every split job and runs under if: always()', () => {
+    const src = workflowSrc();
+    const gateStart = src.indexOf('\n  test:\n');
+    expect(gateStart).toBeGreaterThan(-1);
+    const rest = src.slice(gateStart + 1);
+    const nextJob = rest.slice(1).search(/\n {2}[a-z0-9-]+:\n/);
+    const gate = nextJob === -1 ? rest : rest.slice(0, nextJob + 2);
+    expect(gate).toContain('needs: [unit-tests, db-tests, db-rehearsals, i18n]');
+    expect(gate).toContain('if: always()');
   });
 });

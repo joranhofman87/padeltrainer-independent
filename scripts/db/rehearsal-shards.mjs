@@ -95,6 +95,13 @@ export function partitionShard(files, index, count) {
   if (!Number.isSafeInteger(index) || !Number.isSafeInteger(count) || count < 1 || index < 1 || index > count) {
     throw new RangeError(`partitionShard: invalid shard ${index}/${count}`);
   }
+  if (count > files.length) {
+    // Same fail-closed stance as vitest --shard: more shards than files
+    // guarantees empty shards, and an empty shard passing is indistinguishable
+    // from a shard that silently skipped its work. Guarded HERE, not only in
+    // the runner, so no future direct caller can fail open.
+    throw new RangeError(`partitionShard: count ${count} exceeds the ${files.length} files`);
+  }
   const sorted = [...files].sort();
   for (let i = 1; i < sorted.length; i++) {
     if (sorted[i] === sorted[i - 1]) {
