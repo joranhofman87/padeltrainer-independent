@@ -68,7 +68,7 @@ if [[ $WITH_DB == 1 ]]; then
     [[ -f "$suite" ]] && run "$(basename "$suite" .mjs) (real pg)" node "$suite"
   done
 else
-  printf '\n\033[33m── skipped (pass --db): db reset, db rehearsals, types drift, and the six real-Postgres suites\033[0m\n'
+  printf '\n\033[33m── skipped (pass --db): db reset, db rehearsals, types drift, and the seven real-Postgres suites\033[0m\n'
 fi
 
 printf '\n'

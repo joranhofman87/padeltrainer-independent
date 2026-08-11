@@ -78,7 +78,7 @@ whole gate", and that was wrong:
 | Gate | Engine | On production's engine? |
 |---|---|---|
 | `supabase db reset` — the complete migration chain from empty | Supabase PG **17.6.1.127** | **yes**, same major |
-| the six real-Postgres suites (academy-deletion, backup-coverage, u2-no-email-alone-merge, u2-identity-verification, u2-identity-worker-routing, u2-scrub-claim-race) | same local PG 17 | **yes** |
+| the seven real-Postgres suites (academy-deletion, backup-coverage, u2-no-email-alone-merge, u2-identity-verification, u2-identity-worker-routing, u2-scrub-claim-race, u2-scrub-claim-race-recovery) | same local PG 17 | **yes** |
 | generated types drift | same local PG 17 | **yes** |
 | **PGlite rehearsals** (`db:rehearse:all`) | **PGlite 0.5.1 → PostgreSQL 18.3 (wasm)** | **NO** |
 
