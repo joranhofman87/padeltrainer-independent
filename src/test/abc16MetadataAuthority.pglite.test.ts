@@ -180,39 +180,92 @@ describe('ABC-16 · AFTER H0 — every overlay-derived authority is closed', () 
     expect(await guestVisibleToAttacker(db, IDS.guestBookedOnAttackerSlot)).toBe(false);
   });
 
-  it('a booking\'s subject can no longer be reassigned at all', async () => {
+  // The partial UPDATE-only guard was WITHDRAWN rather than extended. It could not cover the
+  // trainer dual-key INSERT, and it could never make historical or privileged-writer bookings
+  // trustworthy — so relying on it was overclaiming. The boundary is the READER: a booking is
+  // activity, never evidence about a person. These tests therefore assert that reassignment
+  // still SUCCEEDS and buys the caller nothing, which is a strictly stronger property than
+  // "the write is blocked".
+  it('reassigning a booking subject still succeeds — bookings are not guarded, they are distrusted', async () => {
     const result = await reassignBookingSubject(db, IDS.guestOwnedByVictimAcademy);
-    expect(result.ok).toBe(false);
-    expect(result.error).toMatch(/booking's player cannot be changed/i);
+    expect(result.ok).toBe(true);
   });
 
-  it('the reassignment guard is role-based, so internal re-keying still works', async () => {
-    // merge_guest_players and link_guest_data_to_profile repoint guest_player_id and are
-    // SECURITY DEFINER, so they run as the owner rather than `authenticated`. Emulate that by
-    // performing the same write as the table owner: it must succeed, or the guard would have
-    // broken the merge path.
-    const r = await db.query(
-      `UPDATE public.bookings SET guest_player_id = $1 WHERE slot_id = $2`,
-      [IDS.guestOwnedByAttackerAcademy, IDS.attackerSlot],
-    );
-    expect(affected(r)).toBeGreaterThan(0);
-    // put it back so later assertions see the fixture's world
+  it('…and it grants NO access to that person', async () => {
+    expect(await belongs(db, IDS.guestOwnedByVictimAcademy)).toBe(false);
+    expect(await guestVisibleToAttacker(db, IDS.guestOwnedByVictimAcademy)).toBe(false);
+    // restore the fixture's world for later assertions
     await db.query(`UPDATE public.bookings SET guest_player_id = $1 WHERE slot_id = $2`,
       [IDS.guestBookedOnAttackerSlot, IDS.attackerSlot]);
   });
 
-  it('other booking columns are still updatable by the academy — only the subject is frozen', async () => {
+  it('a trainer dual-key INSERT naming an arbitrary player grants nothing either', async () => {
+    // The trainer INSERT policy (20260116200114) admits {owned guest, arbitrary player_id}.
+    // That row is still insertable; what it must not do is confer visibility.
+    await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
+    await db.query(
+      `INSERT INTO public.bookings (slot_id, guest_player_id, player_id, status)
+       VALUES ($1, $2, $3, 'confirmed')`,
+      [IDS.attackerSlot, IDS.guestOwnedByAttackerAcademy, IDS.nascentProfile],
+    );
+
+    const r = await db.query<{ ok: boolean }>(
+      `SELECT public.is_player_of_trainer($1) AS ok`, [IDS.nascentProfile]);
+    expect(r.rows[0].ok).toBe(false);
+
+    const a = await db.query<{ ok: boolean }>(
+      `SELECT public.is_player_of_academy($1, $2) AS ok`, [IDS.nascentProfile, IDS.attackerAcademy]);
+    expect(a.rows[0].ok).toBe(false);
+  });
+
+  it('the staff visibility helpers admit nothing for a non-admin caller', async () => {
+    const r = await db.query<{ t: boolean; a: boolean }>(
+      `SELECT public.is_player_of_trainer($1) AS t,
+              public.is_player_of_academy($1, $2) AS a`,
+      [IDS.bookedProfile, IDS.attackerAcademy],
+    );
+    expect(r.rows[0]).toEqual({ t: false, a: false });
+  });
+
+  // ── ABC-18: the legacy guest↔account bridge is frozen going forward ─────────────────────
+  it('a client cannot create a guest that is already linked to an account', async () => {
+    await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
+    await db.exec('SET ROLE authenticated');
+    try {
+      await expect(db.query(
+        `INSERT INTO public.guest_players (id, full_name, academy_profile_id, linked_profile_id)
+         VALUES (gen_random_uuid(), 'Claimed', $1, $2)`,
+        [IDS.attackerAcademy, IDS.nascentProfile],
+      )).rejects.toThrow(/cannot be created already linked/i);
+    } finally {
+      await db.exec('RESET ROLE');
+    }
+  });
+
+  it('a client cannot set or change an existing guest\'s account link', async () => {
+    await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
+    await db.exec('SET ROLE authenticated');
+    try {
+      await expect(db.query(
+        `UPDATE public.guest_players SET twin_of_profile_id = $1 WHERE id = $2`,
+        [IDS.nascentProfile, IDS.guestOwnedByAttackerAcademy],
+      )).rejects.toThrow(/account link cannot be set or changed/i);
+    } finally {
+      await db.exec('RESET ROLE');
+    }
+  });
+
+  it('ordinary guest edits still work — only the bridge columns are frozen', async () => {
     await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
     await db.exec('SET ROLE authenticated');
     try {
       const r = await db.query(
-        `UPDATE public.bookings SET status = 'cancelled' WHERE slot_id = $1`,
-        [IDS.attackerSlot],
+        `UPDATE public.guest_players SET full_name = 'Renamed Guest' WHERE id = $1`,
+        [IDS.guestOwnedByAttackerAcademy],
       );
-      expect(affected(r)).toBeGreaterThan(0);
+      expect(affected(r)).toBe(1);
     } finally {
       await db.exec('RESET ROLE');
-      await db.query(`UPDATE public.bookings SET status = 'confirmed' WHERE slot_id = $1`, [IDS.attackerSlot]);
     }
   });
 

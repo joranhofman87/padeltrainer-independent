@@ -308,44 +308,65 @@ describe('ABC-16 H0 · data preservation and continued readability', () => {
   });
 });
 
-describe('ABC-17 · a booking subject cannot be reassigned', () => {
-  it('reassignment by the slot-owning academy is refused, on a real server', async () => {
-    await expect(
-      asAuthenticated(
-        `UPDATE public.bookings SET guest_player_id = $1 WHERE slot_id = $2`,
-        [IDS.guestOwnedByVictimAcademy, IDS.attackerSlot],
-      ),
-    ).rejects.toThrow(/booking's player cannot be changed/i);
-  });
-
-  it('reassigning the registered subject is refused too', async () => {
-    await expect(
-      asAuthenticated(
-        `UPDATE public.bookings SET player_id = $1 WHERE slot_id = $2`,
-        [IDS.nascentProfile, IDS.attackerSlot],
-      ),
-    ).rejects.toThrow(/booking's player cannot be changed/i);
-  });
-
-  it('the guard fires on ANY update shape, not only when the column is in the SET list', async () => {
-    // The trigger is a plain BEFORE UPDATE rather than `UPDATE OF <cols>` precisely so a
-    // statement cannot step around it by the shape of its SET clause.
+describe('ABC-17/18 · bookings are distrusted, and the bridge is frozen', () => {
+  it('the partial booking guard is WITHDRAWN, not silently retained', async () => {
+    // Keeping an UPDATE-only guard would have implied bookings were trustworthy. They are not:
+    // it could not cover the trainer dual-key INSERT and could never vouch for historical or
+    // privileged-writer rows. Overclaiming a partial guard is worse than not having one.
     const { rows } = await c.query(
       `SELECT count(*)::int AS n FROM pg_trigger
-        WHERE tgname = 'trg_guard_booking_subject_immutable' AND NOT tgisinternal AND tgattr = ''::int2vector`,
+        WHERE tgname = 'trg_guard_booking_subject_immutable' AND NOT tgisinternal`,
     );
-    expect(rows[0].n).toBe(1);
+    expect(rows[0].n).toBe(0);
+    const { rows: fn } = await c.query(
+      `SELECT count(*)::int AS n FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+        WHERE ns.nspname='public' AND p.proname='guard_booking_subject_immutable'`,
+    );
+    expect(fn[0].n).toBe(0);
   });
 
-  it('an internal SECURITY DEFINER writer can still re-key a booking', async () => {
-    // merge_guest_players repoints guest_player_id and runs as its owner, so the role-based
-    // guard must not touch it. Emulated by writing as the owner.
-    const before = await c.query(`SELECT guest_player_id FROM public.bookings WHERE slot_id = $1 AND guest_player_id IS NOT NULL LIMIT 1`, [IDS.attackerSlot]);
-    const original = before.rows[0].guest_player_id;
-    await c.query(`UPDATE public.bookings SET guest_player_id = $1 WHERE slot_id = $2 AND guest_player_id = $3`,
-      [IDS.guestOwnedByAttackerAcademy, IDS.attackerSlot, original]);
-    await c.query(`UPDATE public.bookings SET guest_player_id = $1 WHERE slot_id = $2 AND guest_player_id = $3`,
-      [original, IDS.attackerSlot, IDS.guestOwnedByAttackerAcademy]);
+  it('the staff visibility helpers no longer read a booking or a bridge column', async () => {
+    const { rows } = await c.query(
+      `SELECT p.proname, p.prosrc ~ 'bookings|linked_profile_id|twin_of_profile_id|person_links' AS taints
+         FROM pg_proc p JOIN pg_namespace ns ON ns.oid = p.pronamespace
+        WHERE ns.nspname='public' AND p.proname IN ('is_player_of_trainer','is_player_of_academy')
+        ORDER BY 1`,
+    );
+    expect(rows.map((r) => r.taints)).toEqual([false, false]);
+  });
+
+  it('the bridge minting RPC is callable by no untrusted role', async () => {
+    const { rows } = await c.query(
+      `SELECT has_function_privilege('authenticated','public.link_guest_data_to_profile(uuid)','EXECUTE') AS a,
+              has_function_privilege('anon','public.link_guest_data_to_profile(uuid)','EXECUTE') AS b,
+              has_function_privilege('service_role','public.link_guest_data_to_profile(uuid)','EXECUTE') AS c`,
+    );
+    expect(rows[0]).toEqual({ a: false, b: false, c: false });
+  });
+
+  it('bridge columns cannot be authored on INSERT or UPDATE by a client', async () => {
+    await expect(asAuthenticated(
+      `INSERT INTO public.guest_players (id, full_name, academy_profile_id, twin_of_profile_id)
+       VALUES (gen_random_uuid(), 'Claimed', $1, $2)`,
+      [IDS.attackerAcademy, IDS.nascentProfile],
+    )).rejects.toThrow(/already linked/i);
+
+    await expect(asAuthenticated(
+      `UPDATE public.guest_players SET linked_profile_id = $1 WHERE id = $2`,
+      [IDS.nascentProfile, IDS.guestOwnedByAttackerAcademy],
+    )).rejects.toThrow(/cannot be set or changed/i);
+  });
+
+  it('service_role is blocked from authoring the bridge too', async () => {
+    await c.query('SET ROLE service_role');
+    try {
+      await expect(c.query(
+        `UPDATE public.guest_players SET twin_of_profile_id = $1 WHERE id = $2`,
+        [IDS.nascentProfile, IDS.guestOwnedByAttackerAcademy],
+      )).rejects.toThrow(/cannot be set or changed/i);
+    } finally {
+      await c.query('RESET ROLE');
+    }
   });
 
   it('the trainer booked-guest policy is gone', async () => {

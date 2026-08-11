@@ -27,6 +27,10 @@ export const H0_MIGRATION = '20261118110000_abc16_abc17_relationship_evidence_co
  * authority predicates in their EFFECTIVE definitions, and the person-stamp triggers.
  */
 export const PRE_H0_MIGRATIONS = [
+  // The academy-manager guest_players write policies. Required, not decorative: without them
+  // `authenticated` cannot UPDATE a guest at all, so a bridge-column write would be refused by
+  // RLS before the ABC-18 trigger ever fires — and the test would pass for the wrong reason.
+  '20260224171306_1e85f4f8-c803-42b0-9b68-a30cd581ffcd.sql',
   '20260510090036_ef6a35bb-824f-45dc-b596-c77d707b02e8.sql', // metadata + tags tables, FOR ALL policies
   '20260510102923_d1c09638-3284-4cfd-b382-ab4c1abb85f4.sql', // trainer-owned arm + its FOR ALL policies
   '20260531130000_academy_player_metadata_preferred_location.sql',
@@ -100,7 +104,9 @@ export const STUB_SQL = /* sql */ `
   CREATE TABLE IF NOT EXISTS public.guest_players (
     id uuid PRIMARY KEY, full_name text, first_name text, last_name text,
     email text DEFAULT '', phone text,
-    academy_profile_id uuid, trainer_id uuid, linked_profile_id uuid, twin_of_profile_id uuid,
+    -- academy_profile_id is NOT declared here: 20260224171306 adds it with a bare ADD COLUMN,
+    -- which errors if the stub already has it. The shipped migration owns that column.
+    trainer_id uuid, linked_profile_id uuid, twin_of_profile_id uuid,
     birth_date date, skill_rating numeric, rating_system text, notes text, source text,
     has_trained boolean, billing_business_name text, billing_address text, billing_btw_number text,
     created_at timestamptz DEFAULT now()
@@ -152,6 +158,10 @@ export const STUB_SQL = /* sql */ `
   CREATE TABLE IF NOT EXISTS public.cycles (
     id uuid PRIMARY KEY, settings jsonb DEFAULT '{}'::jsonb, owner_type text, owner_id uuid, type text
   );
+  -- Touched by link_guest_data_to_profile when it re-keys a claimed guest's rows.
+  CREATE TABLE IF NOT EXISTS public.club_players (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), club_id uuid, player_id uuid, guest_player_id uuid
+  );
 
   -- Helper predicates other migrations own. Same shape as production; the ABC-16 suites never
   -- assert ON these, they assert on what H0 does given them.
@@ -193,12 +203,35 @@ export const STUB_SQL = /* sql */ `
     ));
 `;
 
+/**
+ * Extract one shipped `CREATE OR REPLACE FUNCTION` block verbatim from a migration file.
+ *
+ * `link_guest_data_to_profile` lives in 20260611220000, a broad migration that also rewrites
+ * club tables this fixture has no reason to model. Applying the whole file would drag in
+ * unrelated schema; hand-copying the function would test a copy instead of the shipped code.
+ * This takes the real bytes and nothing else — the function under containment is exercised as
+ * written, and the ambient noise stays out.
+ */
+export function extractFunction(file: string, name: string): string {
+  const sql = MIGRATION(file);
+  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
+  if (start < 0) throw new Error(`extractFunction: ${name} not found in ${file}`);
+  const end = sql.indexOf('$$;', start);
+  if (end < 0) throw new Error(`extractFunction: unterminated body for ${name} in ${file}`);
+  return sql.slice(start, end + 3);
+}
+
+/** The shipped bridge minter, needed so the containment's REVOKE has a real target. */
+export const BRIDGE_MINTER_SQL = () =>
+  extractFunction('20260611220000_relax_guest_email_uniqueness.sql', 'link_guest_data_to_profile');
+
 /** Apply the stubs, then every pre-H0 migration in chain order. */
 export async function applyPreH0(exec: (sql: string) => Promise<unknown>): Promise<void> {
   await exec(STUB_SQL);
   for (const file of PRE_H0_MIGRATIONS) {
     await exec(MIGRATION(file));
   }
+  await exec(BRIDGE_MINTER_SQL());
 }
 
 /** Apply the H0 migration under test. */
@@ -292,9 +325,11 @@ export const FIXTURE_SQL = /* sql */ `
   INSERT INTO public.guest_players (id, full_name, academy_profile_id) VALUES
     ('${IDS.guestOwnedByAttackerAcademy}', 'Own Guest', '${IDS.attackerAcademy}');
 
-  -- (b) a guest with a real booking on the attacker's own slot — must stay visible
-  INSERT INTO public.guest_players (id, full_name) VALUES
-    ('${IDS.guestBookedOnAttackerSlot}', 'Booked Guest');
+  -- (b) a TRAINER-owned guest with a real booking on the attacker's academy slot. Owned by the
+  --     trainer rather than ownerless, because 20260224171306 adds guest_players_owner_check
+  --     (exactly one of academy_profile_id / trainer_id).
+  INSERT INTO public.guest_players (id, full_name, trainer_id) VALUES
+    ('${IDS.guestBookedOnAttackerSlot}', 'Booked Guest', '${IDS.attackerTrainer}');
   INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
     ('${IDS.attackerSlot}', '${IDS.guestBookedOnAttackerSlot}', 'confirmed');
 

@@ -19,15 +19,28 @@
 --             policies require the row to ALREADY be the caller's, so a caller cannot claim
 --             somebody else's guest. Admissible.
 --
---   Class C — server-owned only once constrained. `bookings.player_id` /
---             `bookings.guest_player_id`: creating a booking on the academy's own slot is a
---             real transaction, but NOTHING constrained the subject afterwards. The academy
---             policy (20260704120000) and the trainer policy (20260115210247) both gate on the
---             SLOT and never mention the subject columns, and `public.bookings` carries no
---             triggers at all. So the slot owner could repoint any booking on their own slot
---             at an arbitrary victim UUID and read that person through every booking-derived
---             predicate. That is the ABC-17 finding: the first containment RETAINED booking
---             evidence, so it relocated the defect rather than closing it.
+--   Class C — untrusted. `bookings.player_id` / `bookings.guest_player_id`: creating a booking
+--             on the academy's own slot is a real transaction, but nothing constrains the
+--             SUBJECT. The academy policy (20260704120000) and the trainer policy
+--             (20260115210247) both gate on the SLOT and never mention the subject columns.
+--             `public.bookings` does carry triggers (updated_at, slot-tier enforcement,
+--             auto-follow, person-stamp — 20260115210247, 20260610220000, 20260613130000,
+--             20260325212340, 20260826260000); none of them constrains the subject. An earlier
+--             draft of this header wrongly said the table had no triggers at all.
+--
+--             The trainer INSERT policy (20260116200114) also admits a dual-key row —
+--             an owned `guest_player_id` alongside an arbitrary `player_id` — so the subject is
+--             forgeable at INSERT, not only at UPDATE. Bookings are therefore treated as
+--             ACTIVITY, never as evidence about a person, and historical and privileged-writer
+--             bookings stay untrusted.
+--
+--   Class D — untrusted legacy bridge. `guest_players.linked_profile_id` /
+--             `.twin_of_profile_id`, and any guest→person→profile equality derived from them.
+--             The guest write policies validate only who owns the GUEST row, so a caller can
+--             name an arbitrary registered profile. `person_links` carries no provenance column
+--             (20260826260000:67) and `collapse_guest_person_into` repoints `person_id` IN
+--             PLACE, so a row keeps no trace of the decision that set it — historical links
+--             cannot be re-trusted, only frozen going forward.
 --
 -- The actor barrier is low in the repository model: any authenticated user can create an
 -- academy and become its owner-manager (create-academy-profile inserts `academy_profiles`
@@ -194,7 +207,10 @@ COMMENT ON FUNCTION public.filter_academy_priority_ids(uuid, uuid[], uuid[]) IS
 -- so every read that worked before still works and no row disappears from any surface. Only
 -- the write half is withdrawn. Policies are permissive and OR together, so replacing both
 -- metadata policies keeps the academy-owned and trainer-owned read scopes exactly as they were.
+-- Each block drops BOTH the old name and the new one before creating, so the migration is
+-- rerunnable: `CREATE POLICY` has no OR REPLACE and a second run would fail on "already exists".
 DROP POLICY IF EXISTS "Academy managers manage player metadata" ON public.academy_player_metadata;
+DROP POLICY IF EXISTS "Academy managers read player metadata" ON public.academy_player_metadata;
 CREATE POLICY "Academy managers read player metadata"
 ON public.academy_player_metadata
 FOR SELECT
@@ -202,6 +218,7 @@ TO authenticated
 USING (public.is_academy_manager(auth.uid(), academy_profile_id));
 
 DROP POLICY IF EXISTS "Trainers manage their player metadata" ON public.academy_player_metadata;
+DROP POLICY IF EXISTS "Trainers read their player metadata" ON public.academy_player_metadata;
 CREATE POLICY "Trainers read their player metadata"
 ON public.academy_player_metadata
 FOR SELECT
@@ -212,6 +229,7 @@ USING (trainer_profile_id IS NOT NULL AND EXISTS (
 ));
 
 DROP POLICY IF EXISTS apl_manager_all ON public.academy_player_locations;
+DROP POLICY IF EXISTS apl_manager_select ON public.academy_player_locations;
 CREATE POLICY apl_manager_select ON public.academy_player_locations
   FOR SELECT TO authenticated
   USING (public.is_academy_manager(auth.uid(), academy_profile_id));
@@ -268,53 +286,137 @@ REVOKE ALL ON FUNCTION public.stamp_person_id_academy_player_locations()
   FROM PUBLIC, anon, authenticated, service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 8. ABC-17 — a booking's SUBJECT is immutable to client roles.
+-- 8. ABC-17 — the partial booking-subject guard is WITHDRAWN.
 -- ─────────────────────────────────────────────────────────────────────────────
--- Sections 1-4 removed booking evidence from every authorization predicate. This closes the
--- forgery itself, so the booking-derived VISIBILITY that necessarily remains — chiefly
--- `get_players_overview`, which admits a registered player to the academy's own roster on the
--- strength of a booking — is no longer something the academy can fabricate.
+-- An earlier draft installed a BEFORE UPDATE trigger freezing `player_id` /
+-- `guest_player_id` for client roles, and leaned on it to argue that the booking-derived
+-- admission left in `get_players_overview` was dependable. That argument was wrong twice over:
 --
--- SCOPE: only WHO the booking is for is frozen. Cancelling, paying, moving the booking between
--- the academy's own slots and every other column remain exactly as before.
+--   * the guard covered UPDATE only, while the trainer INSERT policy (20260116200114) admits a
+--     dual-key row — an owned guest alongside an arbitrary `player_id` — so a forged subject
+--     never needed an UPDATE;
+--   * every booking that already exists predates the guard, and privileged writers bypass it
+--     by design, so it could not make historical rows trustworthy either.
 --
--- ROLE-BASED, not a blanket refusal: `merge_guest_players` and `link_guest_data_to_profile`
--- legitimately repoint `guest_player_id`, and a blanket RAISE would break the merge path. They
--- are SECURITY DEFINER and therefore run as their owner, not as `authenticated`. No client
--- flow writes these columns — verified across src/, supabase/functions/ and the chain; client
--- booking updates touch status, payment fields, paid_at and slot_id only.
+-- A complete client write invariant would have to cover every legitimate booking flow (public
+-- slot and cyclus payment, cart, guest intake, trainer and academy creation, rebooking, merge
+-- re-keying). That has not been proven here, and the standing instruction is to remove a
+-- partial guard rather than overclaim it. So the trigger is dropped and the boundary is moved
+-- entirely to the READERS: bookings are activity, never evidence about a person.
 --
--- SECURITY INVOKER (the default) is REQUIRED here: the guard reads `current_user`, and
--- SECURITY DEFINER would report the function's owner for every caller and never fire.
-CREATE OR REPLACE FUNCTION public.guard_booking_subject_immutable()
+-- DROP IF EXISTS on both, so the migration is rerunnable and so a database that received the
+-- earlier draft converges on this state rather than keeping a guard this file no longer
+-- describes.
+DROP TRIGGER IF EXISTS trg_guard_booking_subject_immutable ON public.bookings;
+DROP FUNCTION IF EXISTS public.guard_booking_subject_immutable();
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8b. ABC-18 — the legacy guest↔account bridge is frozen going forward.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- `linked_profile_id` and `twin_of_profile_id` name a registered profile, but the
+-- `guest_players` write policies validate only who owns the GUEST row (20260224171306), so a
+-- caller can point an owned guest at anyone. Downstream those columns — and the
+-- `person_links` equality derived from them — were read as identity.
+--
+-- EXISTING ROWS ARE PRESERVED BYTE-IDENTICALLY. Historical provenance cannot be
+-- reconstructed: `person_links` has no provenance column and `collapse_guest_person_into`
+-- repoints `person_id` in place. So this freezes AUTHORING and leaves the past untouched; the
+-- readers stop trusting it (sections 9-10), and re-trusting anything historical needs the
+-- attestation/proposal model that belongs to A/U2 under its own material-schema gate.
+--
+-- SECURITY INVOKER (the default) is required: the guard reads `current_user`, and a definer
+-- function would report its owner for every caller and never fire.
+CREATE OR REPLACE FUNCTION public.guard_guest_bridge_columns()
 RETURNS trigger
 LANGUAGE plpgsql
 SET search_path = public
 AS $$
 BEGIN
-  IF current_user IN ('authenticated', 'anon')
-     AND (NEW.player_id IS DISTINCT FROM OLD.player_id
-       OR NEW.guest_player_id IS DISTINCT FROM OLD.guest_player_id) THEN
-    RAISE EXCEPTION
-      'a booking''s player cannot be changed'
-      USING ERRCODE = '42501',
-            HINT = 'Cancel the booking and create a new one for the correct person.';
+  -- service_role is included: it is reachable from Edge functions that accept client input,
+  -- so it is not a trusted authoring context for an identity claim. Internal re-keying runs
+  -- inside SECURITY DEFINER functions, which execute as the function owner and are unaffected.
+  IF current_user IN ('authenticated', 'anon', 'service_role') THEN
+    IF TG_OP = 'INSERT' THEN
+      IF NEW.linked_profile_id IS NOT NULL OR NEW.twin_of_profile_id IS NOT NULL THEN
+        RAISE EXCEPTION 'a guest cannot be created already linked to an account'
+          USING ERRCODE = '42501',
+                HINT = 'Create the guest, then use a reviewed link proposal.';
+      END IF;
+    ELSIF NEW.linked_profile_id IS DISTINCT FROM OLD.linked_profile_id
+       OR NEW.twin_of_profile_id IS DISTINCT FROM OLD.twin_of_profile_id THEN
+      RAISE EXCEPTION 'a guest''s account link cannot be set or changed here'
+        USING ERRCODE = '42501',
+              HINT = 'Linking a guest to an account is a reviewed decision, not a field edit.';
+    END IF;
   END IF;
   RETURN NEW;
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.guard_booking_subject_immutable() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.guard_guest_bridge_columns() FROM PUBLIC, anon, authenticated, service_role;
 
--- Plain BEFORE UPDATE rather than `UPDATE OF player_id, guest_player_id`: the OF-list fires
--- only when those columns appear in the SET clause, and the OLD/NEW comparison inside costs
--- nothing on the rows it does not concern. A guard that can be stepped around by the shape of
--- a statement is not a guard.
-DROP TRIGGER IF EXISTS trg_guard_booking_subject_immutable ON public.bookings;
-CREATE TRIGGER trg_guard_booking_subject_immutable
-  BEFORE UPDATE ON public.bookings
+DROP TRIGGER IF EXISTS trg_guard_guest_bridge_columns ON public.guest_players;
+CREATE TRIGGER trg_guard_guest_bridge_columns
+  BEFORE INSERT OR UPDATE ON public.guest_players
   FOR EACH ROW
-  EXECUTE FUNCTION public.guard_booking_subject_immutable();
+  EXECUTE FUNCTION public.guard_guest_bridge_columns();
+
+-- The minting RPCs. `link_guest_data_to_profile` had NO grant or revoke anywhere in the chain,
+-- so it sat on PostgreSQL's default PUBLIC EXECUTE while being SECURITY DEFINER and rewriting
+-- booking subjects as its owner — a direct route around every guard above.
+REVOKE ALL ON FUNCTION public.link_guest_data_to_profile(uuid) FROM PUBLIC, anon, authenticated, service_role;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public' AND p.proname = 'claim_guest_twin_for_academy'
+  ) THEN
+    EXECUTE 'REVOKE ALL ON FUNCTION public.claim_guest_twin_for_academy(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role';
+  END IF;
+END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8c. ABC-18 — the two staff↔player visibility helpers fail closed.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- `is_player_of_trainer` was booking-derived end to end. `is_player_of_academy` was a booking
+-- arm OR a guest-bridge arm (`twin_of_profile_id`, `linked_profile_id`, or guest→person→profile
+-- equality). Every one of those is Class C or Class D, so nothing admissible remains for a
+-- REGISTERED subject and both close to admin-only.
+--
+-- They are not dropped: they gate `profiles_public` arms and profile UPDATE policies, and a
+-- missing function would error rather than deny. Signature, volatility and grants are unchanged
+-- so no caller drifts — `authenticated` keeps EXECUTE because RLS evaluates helpers as the
+-- session user and revoking it would break every policy that calls them.
+--
+-- CONSEQUENCE, stated rather than discovered later: an academy manager or trainer can no longer
+-- see or update a registered player's profile through these predicates. Directly owned GUEST
+-- rows are unaffected — they are reached by ownership, not by these helpers.
+CREATE OR REPLACE FUNCTION public.is_player_of_trainer(p_player_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT public.is_admin(auth.uid());
+$$;
+
+COMMENT ON FUNCTION public.is_player_of_trainer(uuid) IS
+  'ABC-18: fails closed to admin-only. Its sole evidence was a booking subject, which the slot owner can choose at INSERT, so it never established anything about the person.';
+
+CREATE OR REPLACE FUNCTION public.is_player_of_academy(p_player_id uuid, p_academy_profile_id uuid)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+STABLE
+SET search_path = public
+AS $$
+  SELECT public.is_admin(auth.uid());
+$$;
+
+COMMENT ON FUNCTION public.is_player_of_academy(uuid, uuid) IS
+  'ABC-18: fails closed to admin-only. Its evidence was a booking subject (caller-chosen) or a guest bridge (linked_profile_id / twin_of_profile_id / person equality derived from them), all non-authoritative. Canonical membership is the replacement and belongs to U2.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
@@ -386,21 +488,41 @@ BEGIN
   END IF;
   IF has_function_privilege('authenticated', 'public.stamp_person_id_academy_player_metadata()', 'EXECUTE')
      OR has_function_privilege('authenticated', 'public.stamp_person_id_academy_player_locations()', 'EXECUTE')
-     OR has_function_privilege('authenticated', 'public.guard_booking_subject_immutable()', 'EXECUTE') THEN
+     OR has_function_privilege('authenticated', 'public.guard_guest_bridge_columns()', 'EXECUTE') THEN
     RAISE EXCEPTION 'ABC-16: a trigger function is still client-callable';
   END IF;
   IF has_function_privilege('authenticated', 'public.guest_booked_with_trainer(uuid,uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'ABC-17: the retired booked-guest oracle is still client-callable';
   END IF;
 
+  -- 9c-bis. the bridge minting RPC is not callable by any untrusted role.
+  IF has_function_privilege('authenticated', 'public.link_guest_data_to_profile(uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.link_guest_data_to_profile(uuid)', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.link_guest_data_to_profile(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-18: link_guest_data_to_profile is still callable by an untrusted role';
+  END IF;
+
   -- 9d. the stamp triggers still exist — withdrawing EXECUTE must not have disturbed them —
-  --     and the new subject guard is installed.
+  --     and the bridge guard is installed while the withdrawn booking guard is gone.
   IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_stamp_person_id_academy_player_metadata' AND NOT tgisinternal)
      OR NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_stamp_person_id_academy_player_locations' AND NOT tgisinternal) THEN
     RAISE EXCEPTION 'ABC-16: a person-stamp trigger is missing';
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_guard_booking_subject_immutable' AND NOT tgisinternal) THEN
-    RAISE EXCEPTION 'ABC-17: the booking-subject guard trigger is missing';
+  IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_guard_guest_bridge_columns' AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'ABC-18: the guest bridge guard trigger is missing';
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_guard_booking_subject_immutable' AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'ABC-17: the withdrawn partial booking guard is still installed';
+  END IF;
+
+  -- 9d-bis. the two staff visibility helpers admit nothing but admin.
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+       AND p.proname IN ('is_player_of_trainer', 'is_player_of_academy')
+       AND p.prosrc ~ 'bookings|linked_profile_id|twin_of_profile_id|person_links'
+  ) THEN
+    RAISE EXCEPTION 'ABC-18: a staff visibility helper still reads a booking or a guest bridge';
   END IF;
 
   -- 9e. no authority predicate reads an overlay OR a booking any more.

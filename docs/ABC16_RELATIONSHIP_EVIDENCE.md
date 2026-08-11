@@ -132,23 +132,63 @@ reconciliation happens.
 
 ---
 
-## 6. ABC-17 — server-validating the booking subject
+## 5b. Three claims I got wrong, corrected
 
-A booking's subject becomes immutable to client roles. The row can still be cancelled, paid, moved
-between the academy's own slots, and re-keyed by the internal merge/link paths — only the identity of
-*who the booking is for* is frozen.
+Recorded because each one shaped a decision:
 
-- Enforced by a `BEFORE UPDATE` trigger on `public.bookings`, refusing a change to `player_id` or
-  `guest_player_id` when `current_user` is `authenticated` or `anon`.
-- `SECURITY DEFINER` functions run as their owner, so `merge_guest_players` and
-  `link_guest_data_to_profile` are unaffected — they were the only writers of those columns, verified
-  across `src/`, `supabase/functions/` and the migration chain.
-- The guard is role-based rather than a blanket `RAISE`, because a blanket refusal would break the
-  merge path that legitimately repoints bookings.
+1. **"`public.bookings` has no triggers."** False — it has at least five (updated_at, slot-tier
+   enforcement on insert and update, auto-follow, person-stamp). My grep was line-anchored and
+   multi-line `CREATE TRIGGER` statements slipped past it. What is true, and is the point, is that
+   none of them constrains the *subject*.
+2. **"Removing booking admission empties every roster."** Overstated. Directly owned guests remain
+   in scope — academy via `guest_players.academy_profile_id`, trainer via `guest_players.trainer_id`.
+   What is lost is booking-admitted *registered* players, which is a real and measurable
+   degradation but not an empty screen.
+3. **"No membership writer exists."** Inaccurate. A fresh chain leaves
+   `academy_player_memberships` empty and there is no deployed, authorized ongoing writer, but an
+   offline rehearsal/applier exists at `scripts/db/u1b-backfill-apply.mjs`. Production population
+   is unknown and was not inspected.
 
-This does **not** promote booking evidence back into the authorization predicates. Those removals
-stand. The guard exists so the remaining booking-derived *visibility* is not forgeable, and so a
-later design can re-admit the signal on evidence rather than on hope.
+## 5c. Class D — the legacy guest↔account bridge
+
+`guest_players.linked_profile_id` and `.twin_of_profile_id` name a registered profile, but the
+guest write policies validate only who owns the *guest* row, so a caller can point an owned guest
+at anyone. Everything derived from them inherits that status: guest→person→profile equality, and
+the booking/invoice/person stamps computed from it.
+
+Historical provenance **cannot be reconstructed**: `person_links` has no provenance column
+(20260826260000:67), and `collapse_guest_person_into` repoints `person_id` in place, so a row keeps
+no trace of the decision that set it. `person_merge_review` records events, not row state, and its
+FKs are `ON DELETE SET NULL`.
+
+So the containment freezes **authoring** and distrusts the **readers**; it re-trusts nothing and
+changes no row. Profile→person self-mapping and guest→person structural mapping remain as internal
+projections. Guest/profile *equality* never grants identity, access, money, delivery or routing.
+
+Re-trusting any of it needs an immutable attestation / proposal-confirmation model and an
+idempotent membership writer. **That belongs to A/U2 under its own material-schema owner gate** and
+is deliberately not attempted here.
+
+## 6. ABC-17 — the booking subject is distrusted, not guarded
+
+An earlier draft installed a `BEFORE UPDATE` trigger freezing `player_id` / `guest_player_id` for
+client roles, and leaned on it to argue the booking-derived admission left in
+`get_players_overview` was dependable. **That trigger has been withdrawn**, for two reasons:
+
+- it covered UPDATE only, while the trainer INSERT policy (20260116200114) admits a dual-key row —
+  an owned `guest_player_id` alongside an arbitrary `player_id` — so a chosen subject never needed
+  an UPDATE at all;
+- every booking that already exists predates it, and privileged writers bypass it by design, so it
+  could not vouch for historical rows either.
+
+A complete client write invariant would have to cover every legitimate booking flow (public slot
+and cyclus payment, cart, guest intake, trainer and academy creation, rebooking, merge re-keying).
+That is not proven here, and a partial guard that is *described* as making bookings trustworthy is
+worse than no guard. So the boundary moved entirely to the readers: **a booking is activity, never
+evidence about a person**, and historical and privileged-writer bookings stay untrusted.
+
+A client subject guard may return later as defense in depth — after every booking flow is mapped,
+and covering INSERT as well as UPDATE — but it must never be used to reclassify bookings as trusted.
 
 ---
 
