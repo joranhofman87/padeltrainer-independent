@@ -96,11 +96,12 @@ CREATE TABLE public.account_scrub_operations (
   finished_at              timestamptz,
 
   -- bigint, not integer. Post-scrub work is retryable for ever by design, so this counter has no
-  -- policy ceiling; an `integer` would give it an arithmetic one, and overflowing it would raise on
-  -- every subsequent claim — leaving a row that cannot advance, cannot fail, cannot be deleted, and
-  -- whose subject the one-live-operation index then blocks for good. Reaching 2^31 needs millennia
-  -- at the five-minute lease floor, so this is a cheap way to delete a failure mode rather than a
-  -- reachable bug. A parked state and an alert threshold still belong to the worker slice.
+  -- POLICY ceiling; a column type gives it an arithmetic one, and overflowing that raises on every
+  -- subsequent claim — leaving a row that cannot advance, cannot fail, cannot be deleted, and whose
+  -- subject the one-live-operation index then blocks for good. bigint does not abolish the ceiling,
+  -- it moves it out of reach: 2^63 attempts at the five-minute lease floor is on the order of 10^13
+  -- years, against 2^31 which a determined loop could be argued toward. A parked state and an alert
+  -- threshold for an operation retrying for days still belong to the worker slice.
   external_attempt_count   bigint NOT NULL DEFAULT 0,
   last_attempt_at          timestamptz,
   next_attempt_at          timestamptz,

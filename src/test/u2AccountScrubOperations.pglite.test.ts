@@ -112,11 +112,16 @@ beforeAll(async () => {
     -- A NEW TABLE IN SUPABASE'S public SCHEMA IS NOT BORN PRIVATE, and the ACL assertions in this
     -- file are worthless unless the harness says so. Read off pg_default_acl on the real local
     -- stack (grantor postgres, objtype r): service_role receives arwdDxtm — every privilege — and
-    -- anon/authenticated receive Dxtm, which includes TRUNCATE. Bare Postgres grants none of that,
-    -- so without these two statements the migration's REVOKE is a no-op here and the tests below
-    -- pass over a guard nothing exercised. Verified: with the REVOKE deleted and these lines
-    -- present, all three roles come back with privileges; with them absent, deleting the REVOKE
-    -- changes nothing at all.
+    -- anon/authenticated receive Dxtm. GRANT ALL reproduces the first exactly; the second is spelled
+    -- out as TRUNCATE, REFERENCES, TRIGGER, which is Dxt — MAINTAIN, the trailing m, is PG17+ and
+    -- naming it here would make this fixture refuse to run on 16. Nothing rests on that gap: the
+    -- assertions below derive the privilege set from acldefault() rather than from this list, so
+    -- MAINTAIN is checked wherever the server has it.
+    --
+    -- Bare Postgres grants none of this, so without these statements the migration's REVOKE is a
+    -- no-op here and the tests below pass over a guard nothing exercised. Verified both ways: with
+    -- the REVOKE deleted and these lines present, all three roles come back with privileges; with
+    -- these lines absent, deleting the REVOKE changes nothing at all.
     ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO service_role;
     ALTER DEFAULT PRIVILEGES IN SCHEMA public
       GRANT TRUNCATE, REFERENCES, TRIGGER ON TABLES TO anon, authenticated;
@@ -384,16 +389,33 @@ describe('identity and immutability', () => {
     }
   });
 
-  it('counts attempts in a width that cannot overflow into an unfinishable row', async () => {
-    // An `integer` counter overflows at 2^31; the claim that raises on the increment leaves a row
-    // that cannot advance, cannot fail and cannot be deleted, and the one-live-operation index then
-    // blocks its subject for good. Millennia away at the five-minute lease floor, but the column
-    // width deletes the failure mode outright.
-    const { rows } = await db.query<{ type: string }>(`
-      SELECT format_type(atttypid, atttypmod) AS type FROM pg_attribute
-       WHERE attrelid = 'public.account_scrub_operations'::regclass AND attname = 'external_attempt_count'
-    `);
-    expect(rows[0].type).toBe('bigint');
+  it('keeps claiming past the int4 ceiling, where an integer counter would strand the row', async () => {
+    // An `integer` counter raises on the increment at 2^31, leaving a row that cannot advance,
+    // cannot fail and cannot be deleted, while the one-live-operation index blocks its subject for
+    // good. bigint does not make overflow IMPOSSIBLE — 2^63 is still a number — it moves the ceiling
+    // from "reachable by a determined loop" to "unreachable by any physical process": the five-minute
+    // lease floor puts 2^63 attempts some 10^13 years out. The claim in the docs is therefore about
+    // reachability, not arithmetic, and this test asserts the behaviour rather than the type name,
+    // because the type name alone would pass for the wrong reason.
+    const id = uuid('9', 993);
+    await db.exec('ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER');
+    await db.query(`
+      INSERT INTO public.account_scrub_operations
+        (id, command_id, subject_user_id, actor_user_id, self_service, subject_person_id, state,
+         database_scrubbed_at, external_attempt_count, last_attempt_at, next_attempt_at, last_error_code)
+      VALUES ($1::uuid, $2::uuid, $3::uuid, $3::uuid, true, $4::uuid, 'database_scrubbed',
+              clock_timestamp(), 2147483647, clock_timestamp(),
+              clock_timestamp() - interval '1 second', 'unexpected_internal')
+    `, [id, uuid('8', 993), uuid('7', 993), uuid('6', 993)]);
+    await db.exec('ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER');
+
+    // the increment an `integer` column would refuse with "integer out of range"
+    await db.exec(`UPDATE public.account_scrub_operations
+                      SET state = 'external_cleanup_in_progress', lease_token = '${uuid('5', 993)}'
+                    WHERE id = '${id}'`);
+    const { rows } = await db.query<{ attempts: string }>(
+      `SELECT external_attempt_count::text AS attempts FROM public.account_scrub_operations WHERE id = $1`, [id]);
+    expect(rows[0].attempts).toBe('2147483648');
   });
 });
 
@@ -743,35 +765,63 @@ describe('operational surface', () => {
     // validates the SHAPE of a transition, not the caller's entitlement to make it: a broad
     // INSERT/UPDATE grant would let any holder of the service key write any transition on any row,
     // and an UPDATE that forgot its lease-token predicate would look perfectly valid on the way past.
-    // Asserted from relacl via aclexplode rather than against a hand-written privilege list. A list
-    // is only as good as its author's memory of the privilege set — an earlier version of this test
-    // omitted TRIGGER, so `GRANT TRIGGER ... TO anon` would have left it green, and PostgreSQL 17
-    // adds MAINTAIN on top. aclexplode enumerates whatever is actually there, so a privilege nobody
-    // thought of still fails this.
-    const { rows: acl } = await db.query<{ grantee: string; privilege_type: string }>(`
-      SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') AS grantee, a.privilege_type
-        FROM pg_class c
-        JOIN pg_namespace n ON n.oid = c.relnamespace
-        CROSS JOIN LATERAL aclexplode(c.relacl) a
-       WHERE n.nspname = 'public' AND c.relname = 'account_scrub_operations'
-         AND a.grantee <> c.relowner
-       ORDER BY 1, 2
+    // Three questions, none of which relies on remembering the privilege set.
+    //
+    //   * has_table_privilege over privilege names DERIVED from acldefault('r', owner) — whatever
+    //     this PostgreSQL defines. A hand-written list goes stale silently: an earlier version of
+    //     this test stopped at REFERENCES so `GRANT TRIGGER` passed, and PostgreSQL 17 then added
+    //     MAINTAIN on top of that.
+    //   * aclexplode(relacl), so a grant to a role the list does not name still fails.
+    //   * aclexplode(attacl), because has_table_privilege cannot see COLUMN grants and
+    //     `GRANT UPDATE (state, last_error_code)` is enough to drive the state machine.
+    const { rows } = await db.query<{ held: string; probed: number }>(`
+      WITH rel AS (
+        SELECT c.oid, c.relowner, coalesce(c.relacl, '{}'::aclitem[]) AS relacl
+          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND c.relname = 'account_scrub_operations'
+      ),
+      privs AS (SELECT DISTINCT a.privilege_type FROM rel, aclexplode(acldefault('r', rel.relowner)) a),
+      roles AS (SELECT unnest(ARRAY['anon','authenticated','service_role']) AS role),
+      held AS (
+        SELECT r.role || ':' || p.privilege_type AS h
+          FROM rel, roles r, privs p WHERE has_table_privilege(r.role, rel.oid, p.privilege_type)
+        UNION
+        SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
+          FROM rel, aclexplode(rel.relacl) a WHERE a.grantee <> rel.relowner
+        UNION
+        SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
+               || ' on column ' || att.attname
+          FROM rel JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attacl IS NOT NULL,
+               LATERAL aclexplode(att.attacl) a WHERE a.grantee <> rel.relowner
+      )
+      SELECT coalesce((SELECT string_agg(h, ', ' ORDER BY h) FROM held), '') AS held,
+             (SELECT count(*)::int FROM privs) AS probed
     `);
-    expect(acl).toEqual([]);
+    expect(rows[0].held).toBe('');
+    // and the derivation actually found a privilege set, so "nothing is held" cannot be true
+    // because nothing was asked
+    expect(rows[0].probed).toBeGreaterThanOrEqual(7);
+  });
 
-    // ...and the same question asked the other way, so a NULL relacl cannot pass by holding nothing
-    // to explode. Every role×privilege pair is probed explicitly and every one must be denied.
-    const roles = ['anon', 'authenticated', 'service_role'];
-    const privileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
-    const { rows } = await db.query<{ role: string; privilege: string; granted: boolean }>(`
-      SELECT r.role, p.privilege,
-             has_table_privilege(r.role, 'public.account_scrub_operations', p.privilege) AS granted
-        FROM unnest($1::text[]) AS r(role), unnest($2::text[]) AS p(privilege)
-       ORDER BY r.role, p.privilege
-    `, [roles, privileges]);
-    expect(rows.filter((x) => x.granted)).toEqual([]);
-    // and the matrix was actually populated, so an empty result cannot pass by asking nothing
-    expect(rows).toHaveLength(roles.length * privileges.length);
+  it('the ACL assertion catches a column grant, which has_table_privilege cannot see', async () => {
+    // Proving the assertion above is load-bearing for the case that motivated it. Applied and rolled
+    // back inside a transaction so the shipped ACL is unchanged.
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`GRANT UPDATE (state, last_error_code) ON public.account_scrub_operations TO service_role`);
+      const { rows } = await db.query<{ table_level: boolean; column_level: number }>(`
+        SELECT has_table_privilege('service_role', 'public.account_scrub_operations', 'UPDATE') AS table_level,
+               (SELECT count(*)::int FROM pg_attribute att, LATERAL aclexplode(att.attacl) a
+                 WHERE att.attrelid = 'public.account_scrub_operations'::regclass
+                   AND att.attacl IS NOT NULL
+                   AND a.grantee = 'service_role'::regrole) AS column_level
+      `);
+      // the exact blind spot: the table-level question says no, the column ACL says yes
+      expect(rows[0].table_level).toBe(false);
+      expect(rows[0].column_level).toBe(2);
+    } finally {
+      await db.exec('ROLLBACK');
+    }
   });
 
   it('keeps RLS on with zero policies, so a future grant still lands on deny-all', async () => {

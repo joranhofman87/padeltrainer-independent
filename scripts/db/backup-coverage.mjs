@@ -316,17 +316,57 @@ else pass('the backup can execute all three');
     // owner's. Access arrives later as narrow SECURITY DEFINER RPCs.
     'account_scrub_operations',
   ];
+  // ...and the list is checked against the seed itself, not trusted. Drift is possible in BOTH
+  // directions: deleting a seed re-revoke is caught by the assertion below, but deleting an entry
+  // HERE while the seed stays correct would silently retire the guard. Set equality closes that.
+  {
+    const seedSrc = readFileSync('supabase/seed.sql', 'utf8');
+    const seedDenied = [...seedSrc.matchAll(
+      /REVOKE ALL ON public\.([a-z0-9_]+) FROM PUBLIC, anon, authenticated, service_role/g)]
+      .map((m) => m[1]);
+    const a = [...new Set(seedDenied)].sort();
+    const b = [...DEFAULT_DENY].sort();
+    ok_(a.length === b.length && a.every((t, i) => t === b[i]),
+      'the seed deny-list and this guard name the same tables, so neither can be retired alone',
+      { seed: a, guard: b });
+  }
+
+  // Version-aware, because a privilege list goes stale silently: PostgreSQL 17 added MAINTAIN, and a
+  // guard enumerating up to TRIGGER would have let `GRANT MAINTAIN ... TO anon` through while
+  // reporting no privilege held. The set is derived from the owner's own default ACL, so it is
+  // whatever THIS server defines. Column-level grants are checked too — `has_table_privilege` does
+  // not see them, so `GRANT UPDATE (state) ... TO service_role` would otherwise pass every
+  // table-level assertion while being enough to drive the state machine.
+  const DENY_SQL = `
+    WITH rel AS (
+      SELECT c.oid, c.relowner, coalesce(c.relacl, '{}'::aclitem[]) AS relacl
+        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = 'public' AND c.relname = $1
+    ),
+    privs AS (SELECT DISTINCT a.privilege_type FROM rel, aclexplode(acldefault('r', rel.relowner)) a),
+    roles AS (SELECT unnest(ARRAY['anon','authenticated','service_role']) AS role),
+    held AS (
+      SELECT r.role || ':' || p.privilege_type AS h
+        FROM rel, roles r, privs p WHERE has_table_privilege(r.role, rel.oid, p.privilege_type)
+      UNION
+      SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
+        FROM rel, aclexplode(rel.relacl) a WHERE a.grantee <> rel.relowner
+      UNION
+      SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
+             || ' on column ' || att.attname
+        FROM rel JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attacl IS NOT NULL,
+             LATERAL aclexplode(att.attacl) a WHERE a.grantee <> rel.relowner
+    )
+    SELECT coalesce((SELECT string_agg(h, ', ' ORDER BY h) FROM held), '') AS held,
+           (SELECT count(*)::int FROM privs) AS probed`;
+
   for (const t of DEFAULT_DENY) {
-    const { rows: [open] } = await c.query(`
-      SELECT coalesce(string_agg(g.role || ':' || g.priv, ', ' ORDER BY g.role, g.priv), '') AS held
-        FROM unnest(ARRAY['anon','authenticated','service_role']) AS r(role),
-             unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p(priv),
-             LATERAL (SELECT r.role AS role, p.priv AS priv) g
-       WHERE to_regclass('public.' || $1) IS NOT NULL
-         AND has_table_privilege(g.role, to_regclass('public.' || $1), g.priv)`, [t]);
-    ok_(open.held === '',
-      `${t} is default-deny AFTER the seed's blanket grant — no client role holds any privilege`,
-      { held: open.held });
+    const { rows: [open] } = await c.query(DENY_SQL, [t]);
+    // probed > 0 proves the derivation found a privilege set at all; an empty one would make
+    // "nothing is held" true by asking nothing
+    ok_(open.held === '' && open.probed > 0,
+      `${t} is default-deny AFTER the seed's blanket grant — no client role holds any privilege (${open.probed} probed)`,
+      { held: open.held, probed: open.probed });
   }
 
   {

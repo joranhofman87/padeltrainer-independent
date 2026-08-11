@@ -225,6 +225,7 @@ Computed from the import graph (`origin/main...HEAD`) and independently cross-ch
 | `admin-academy-deletion` | **not deployed** | new (#645) |
 | `notification-email-worker` | v22 (2026-08-07) | **changed in slice A** — passes `p_worker_kind`; safe only AFTER migration 18 |
 | `notification-identity-worker` | **not deployed** | **new (slice A)** — the dedicated sender; its cron ships INACTIVE (migration 19) |
+| `backup-database` | **UNKNOWN — owner must fill in before executing** | **changed (U1c-p4 + slice B1)** — reads its table set from `backup_export_groups()`; deployed at step 6b. Its current prod version cannot be read from the repository, and §9 rollback redeploys from this column, so record it during the step-0 preflight. Rolling back to the previous version restores a backup that omits every U2 table — acceptable only as a deliberate, temporary step. |
 
 The "current prod version" column is the rollback table: redeploy that version to revert.
 108 functions are deployed in total.
@@ -332,10 +333,22 @@ through `person_links`** — never by email or phone, matching the owner's ident
    But it does NOT on its own put `account_scrub_operations` into the nightly backup, and an earlier
    revision of this runbook wrongly said it did. `TABLES_TO_BACKUP` is a declaration the coverage
    guard checks, not a runtime input; the function reads its table set from `backup_export_groups()`
-   — and both that RPC (entry 11, `20261118100000`) and the rewritten `backup-database` that calls it
-   arrive with #647. Until step 7 deploys that function, whatever is deployed today keeps running
-   with its own hard-coded list and the ledger is not exported. Harmless in B1, since the table is
-   empty, but the coverage only becomes real at step 7 — verify it there, see step 7f.)*
+   — and that RPC arrives as **entry 6**, `20261118100000_u1c_prereq_backup_export` (U1c-p4, #646),
+   alongside the rewritten `backup-database` that calls it. Until that function is deployed, whatever
+   is deployed today keeps running with its own hard-coded list and the ledger is not exported.
+   Harmless for the ledger itself in B1, since it is empty — but `player_create_commands` is not, so
+   the deploy happens at **step 6b, before any U2 writer**, not late in step 7.)*
+6b. **Deploy `backup-database`** — required, not optional, and easy to skip because nothing breaks
+   loudly without it. Only this build reads its table set from `backup_export_groups()`; the build
+   deployed today walks its own hard-coded list, so until it is replaced every U2 table is absent
+   from every nightly backup. It depends only on step 6 (it calls `backup_export_group`, entry 6),
+   and it must precede step 7d — those callers write `player_create_commands` receipts, and a receipt
+   created while the old backup is still deployed is a receipt no nightly run captures, silently,
+   while reporting success. **Verify rather than assume:** invoke it once and require `ok: true`
+   **and** `account_scrub_operations` and `player_create_commands` present in `tables[]`. `row_count`
+   0 for the ledger is expected and correct — it is inert. A run reporting `ok: true` while omitting
+   a table is the exact failure this function was rewritten to end, so check the member list, not
+   just the status.
 7. **Deploy the edge functions** from clean updated `main`, in this order:
    a. **`notification-email-worker`** — the redeploy §0 promises. It is safe only AFTER step 6,
       because this build passes `p_worker_kind`, which the pre-migration function does not accept;
@@ -350,16 +363,8 @@ through `person_links`** — never by email or phone, matching the owner's ident
       rows in CI. Do not continue on any other result;
    d. **only then** the challenge-producing callers — the three guest payment entrypoints and
       `submit-guest-intake` — plus `create-manual-player` and `mollie-webhook`;
-   e. `admin-academy-deletion`;
-   f. **`backup-database`** — required, not optional, and easy to skip because nothing breaks
-      loudly without it. Only this build reads its table set from `backup_export_groups()`; the
-      build deployed today walks its own hard-coded list, so until it is replaced the U2 tables are
-      absent from every nightly backup. It is safe only AFTER step 6, because it calls
-      `backup_export_group`, which arrives with entry 11. **Verify rather than assume:** invoke it
-      once and require `ok: true` with `account_scrub_operations` and `player_create_commands`
-      present in `tables[]` (row_count 0 for the ledger is the expected and correct result — it is
-      inert). A run that reports `ok: true` while omitting a table is the exact failure this
-      function was rewritten to end, so check the member list, not just the status.
+   e. `admin-academy-deletion`.
+   *(`backup-database` is deliberately NOT here — it is step 6b, before the receipt writers in 7d.)*
 8. **Confirm the frontend** (Vercel) is serving the build that matches the deployed backend.
 9. **Set secrets / config** (§8) — owner-performed.
 10. **Activate the sender** — owner-performed, last.
@@ -532,7 +537,10 @@ set of such tables instead of hard-coding it.
 
 **Post-scrub work never gives up.** Once database state is destroyed, abandoning the operation would
 strand the account half-erased, so `failed` is reachable only before the scrub commits and
-`external_attempt_count` has no ceiling. Backoff is exponential and capped at six hours. A parked
+`external_attempt_count` has no POLICY ceiling — it is `bigint`, so its arithmetic ceiling of 2^63 is
+some 10^13 years away at the five-minute lease floor and no process can reach it. (`integer` would
+have put that ceiling at 2^31 and turned an overflow into an unfinishable row, which is why the
+column is not one.) Backoff is exponential and capped at six hours. A parked
 state and an alert threshold for an operation that has retried for days belong to the worker slice;
 until then the two reconciliation indexes are how an operator finds them.
 
