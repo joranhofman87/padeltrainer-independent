@@ -16,11 +16,16 @@
  * it is asserting the order the runner chose. Three separate reviews landed on that same mistake
  * here, in three different disguises, which is why the rule is written down rather than assumed:
  *
- *   - a test needing rows creates them itself, in a transaction it rolls back;
+ *   - a test needing rows creates them itself, at identifiers it owns (`uuid()` / `newOperation()`),
+ *     and asserts only about those. Most of those inserts COMMIT and the rows stay until the
+ *     database closes — that is fine, and cheaper than isolating every test, precisely because no
+ *     assertion is allowed to depend on an otherwise-empty table. What is forbidden is the ambient
+ *     read: `count(*)` over the whole table, or a snapshot of every row, from inside a test;
  *   - a claim about what the MIGRATION did is measured in `beforeAll`, either side of applying it,
  *     and compared capture-to-capture — never by reading the live table mid-suite;
- *   - anything that mutates shared state (an ACL, a disabled trigger) restores it in a `finally`,
- *     and `afterEach` re-checks the one that cannot be undone by a ROLLBACK.
+ *   - a test that must mutate SHARED state rather than add to it — an ACL, a disabled trigger — is
+ *     the exception that does need a transaction, and rolls back in a `finally`. `afterEach`
+ *     re-checks the trigger, which a ROLLBACK cannot restore.
  *
  * Verified, not just intended: `npx vitest run --project db <this file> --sequence.shuffle` passes
  * repeatedly. Run it after adding a test — it is how the last two order dependencies were found.
