@@ -225,7 +225,7 @@ Computed from the import graph (`origin/main...HEAD`) and independently cross-ch
 | `admin-academy-deletion` | **not deployed** | new (#645) |
 | `notification-email-worker` | v22 (2026-08-07) | **changed in slice A** — passes `p_worker_kind`; safe only AFTER migration 18 |
 | `notification-identity-worker` | **not deployed** | **new (slice A)** — the dedicated sender; its cron ships INACTIVE (migration 19) |
-| `backup-database` | **UNKNOWN — owner must fill in before executing** | **changed (U1c-p4 + slice B1)** — reads its table set from `backup_export_groups()`; deployed at step 6b. Its current prod version cannot be read from the repository, and §9 rollback redeploys from this column, so record it during the step-0 preflight. Rolling back to the previous version restores a backup that omits every U2 table — acceptable only as a deliberate, temporary step. |
+| `backup-database` | **UNKNOWN — owner must fill in before executing** | **changed (U1c-p4 + slice B1)** — reads its table set from `backup_export_groups()`; deployed at step 6b. Its current prod version cannot be read from the repository, so record it during the step-0 preflight. **It is exempt from the blanket §9 edge rollback** — see "Rolling back around the backup" in §9. |
 
 The "current prod version" column is the rollback table: redeploy that version to revert.
 108 functions are deployed in total.
@@ -423,11 +423,29 @@ without verification.
 | Layer | Action |
 |---|---|
 | Frontend | revert the Vercel deployment to the previous build |
-| Edge functions | redeploy the previous version from the table in §3 |
+| Edge functions | redeploy the previous version from the table in §3 — **except `backup-database`, see below** |
 | Schema | **forward-only compensating migration** — never a destructive down-migration |
 | Membership backfill | manifest-owned rollback (`membership_backfill_runs` / `_items` record every row written) |
 | Catastrophic, when nothing can be compensated | **PITR restore to the pre-migration timestamp recorded in step 3** — second-level choice of point, discards everything committed since it (see §1). Requires explicit owner instruction. |
 | Last resort, only if PITR is verified unavailable | restore the latest physical backup — coarser and much lossier; the id/timestamp must be re-read at the time, **not** taken from this document (the `1333259935` / 2026-08-10 03:15:16Z figure recorded here predates the infrastructure upgrade and is stale) |
+
+**Rolling back around `backup-database`.** The blanket "redeploy the previous version" above does
+not apply to it, and applying it anyway is how you get a silent gap. Once step 6 has run, the U2
+tables exist and `player_create_commands` receipts accumulate as soon as the step-7d callers are
+live; the previously deployed build walks a hard-coded list that names none of them. Redeploying it
+therefore does not fail — it keeps reporting `ok: true` every night while omitting the newest,
+least-reconstructible evidence in the system.
+
+* **Rolling back something else** (frontend, another function, a compensating migration): leave
+  `backup-database` at the covered version. It depends only on `backup_export_group`, which is
+  additive and stays.
+* **Rolling back `backup-database` itself**, because that function is the fault: treat it as a
+  bounded, supervised suspension rather than a state to sit in. Record the start time; verify the
+  covered tables are still exported by whatever runs in the interim, or accept and write down that
+  they are not; fix forward rather than waiting. Before reopening, run one export and check
+  `tables[]` contains `player_create_commands` and `account_scrub_operations`, as at step 6b.
+* **If the schema is compensated away entirely**, the previous build is correct again — but only
+  after the compensating migration has removed the tables, not before.
 
 Because the migrations are additive (new tables, new functions, new nullable columns), a
 compensating migration can drop the new surface without touching existing rows. That is the intended
@@ -450,8 +468,10 @@ it can order a transactional database scrub, external Auth/asset cleanup that ca
 transaction, and a durable completion. It is empty on arrival and nothing writes to it in this
 release.
 
-**`account_deletion_audit` is not touched.** Not its columns, constraints, trigger, rows or its two
-current callers. An earlier draft of this slice added a protocol-2 lane to that table; it was
+**`account_deletion_audit` is not touched.** Not its columns, constraints, trigger, rows, ACL, RLS or
+its one direct writer (`request-account-deletion/index.ts:88`, which also stamps it at `:125` and
+`:145`). The three deletion routes covered by `deletion-callers.test.ts` share the deletion HELPER,
+not this table. An earlier draft of this slice added a protocol-2 lane to that table; it was
 replaced because the erasure ledger must be backed up (see below) while that table carries
 `subject_email`, `subject_name`, `ip_address`, `user_agent` and a raw `failure_reason`, and because
 sharing its column set made two permanent-wedge defects reachable. Reviewing migration 20 should
@@ -471,13 +491,16 @@ are all stamped by the guard trigger from one `clock_timestamp()`; a caller says
 happened, never when. No caller value reaches a stored timestamp — but by two different routes, and
 an operator reading an error should know which: `started_at`, the two external markers,
 `last_attempt_at`, `next_attempt_at` and `lease_expires_at` are **overwritten**, while
-`database_scrubbed_at` and `finished_at` are **refused** by the immutability check, so an UPDATE
-naming either is rejected rather than silently ignored (retrying without it succeeds). Two reproduced
+`database_scrubbed_at` and `finished_at` are **refused** by the immutability check — but only for a
+DIFFERENT value: the check uses `IS DISTINCT FROM`, so naming either with NULL or with the value it
+already holds changes nothing, passes, and is then stamped or left as the branch dictates. Either
+way no caller value is stored; the difference is only whether the caller gets an error. Retrying
+without the column always succeeds. Two reproduced
 wedges in the earlier draft are the reason for the rule, and both are pinned by regression tests:
 
 * a caller-supplied future `started_at` satisfied neither exit from `started`, could not be corrected
-  (immutable) or removed (append-only), and the one-live-operation index then blocked that account
-  from ever being erased;
+  (immutable) or removed (append-only), so the operation could not finish until database time caught
+  up with the caller's stamp — and the one-live-operation index blocked any replacement meanwhile;
 * a worker clock ahead of Postgres — `delete-user-data.ts` already stamps with `new Date()` — wrote a
   future `auth_deleted_at`; completion required `finished_at >= auth_deleted_at`, the marker was
   write-once and survived release-and-retry, so the erasure was unfinishable until real time caught
@@ -529,11 +552,22 @@ tables created there. The `REVOKE` is what makes the table private, and it was v
 not by inspection: remove that line and all three roles come back with privileges.
 
 **Access arrives later as narrow `SECURITY DEFINER` RPCs — none of them in B1.** One per transition
-(open, scrub, claim, progress, release, finalize) plus a bounded operator read; each takes the
-operation id and, after the scrub, the caller's current lease token, and predicates its UPDATE on
-both so a stale holder matches zero rows before the trigger is consulted; each gets EXECUTE to
-exactly the role that needs it and no table privileges. That slice also owes the two-session
-real-Postgres proof of the fencing. Until it exists the table is reachable only by its owner and by
+(open, scrub, claim, progress, release, finalize) plus a bounded operator read; each gets EXECUTE to
+exactly the role that needs it and no table privileges.
+
+Their fence must predicate on the operation id, the lease token, an unexpired lease **and the
+monotonic `external_attempt_count` the caller was handed at claim time**. The last term is not
+belt-and-braces: `lease_token` is a caller-supplied value, this table keeps no history of retired
+tokens, and nothing prevents one recurring — so without a generation term a worker holding a token
+from an earlier generation can match a row that has since been reclaimed back to the same token
+value, and its stale write lands looking legitimate. That is ABA, and the attempt counter is immune
+to it because the trigger increments it on every claim and reclaim and never resets it. The RPC
+should also mint the token itself rather than accept one, so a worker cannot choose to collide.
+
+That slice still owes the two-session real-Postgres proof of the RPC-level fence. The transition
+layer beneath it is already proven concurrent — `scripts/db/u2-scrub-claim-race.mjs` races two real
+sessions through claim and reclaim and shows exactly one survives, refused by the state machine
+rather than by luck, with the attempt counter advancing once. Until it exists the table is reachable only by its owner and by
 the already-reviewed `SECURITY DEFINER` export path — the right state for a table with no writer.
 
 **The backup still works.** `backup_export_table`/`backup_export_group` are `SECURITY DEFINER` and run
@@ -544,10 +578,12 @@ set of such tables instead of hard-coding it.
 
 **Post-scrub work never gives up.** Once database state is destroyed, abandoning the operation would
 strand the account half-erased, so `failed` is reachable only before the scrub commits and
-`external_attempt_count` has no POLICY ceiling — it is `bigint`, so its arithmetic ceiling of 2^63 is
-some 10^13 years away at the five-minute lease floor and no process can reach it. (`integer` would
-have put that ceiling at 2^31 and turned an overflow into an unfinishable row, which is why the
-column is not one.) Backoff is exponential and capped at six hours. A parked
+`external_attempt_count` has no POLICY ceiling, and the protocol rate-limits it hard: the fastest
+legal increment is a lease expiring and being reclaimed five minutes later, which reaches 2^31 in
+roughly twenty thousand years, and the released path's backoff caps at six hours, giving about 1.5
+million. `integer` would therefore have been sufficient against legal history. It is `bigint` as
+defence in depth for the states the protocol does not produce — a fabricated, corrupted or
+hand-repaired row — where an overflow would raise on every subsequent claim and strand the row. Backoff is exponential and capped at six hours. A parked
 state and an alert threshold for an operation that has retried for days belong to the worker slice;
 until then the two reconciliation indexes are how an operator finds them.
 
@@ -570,7 +606,18 @@ compensating migration:
    quietly;
 5. regenerate `src/integrations/supabase/types.ts`. The committed file carries an
    `account_scrub_operations` block; drop the table without regenerating and `npm run db:types:check`
-   fails on a table that no longer exists.
+   fails on a table that no longer exists;
+6. **review and re-pin the chain.** A compensating migration is a new file appended to
+   `supabase/migrations/`, so it changes the chain digest, and
+   `scripts/rollout/notif-10ca3/synth/sanitize-migrations.mjs` REFUSES to build a sanitized clone
+   until the digest in `scripts/rollout/notif-10ca3/clone-safety/reviewed-migration-chain.json`
+   matches. Give the compensating migration the same outbound sweep every other migration gets,
+   record it in `reviews[]`, then `--write-pin`. Skipping this does not fail quietly: every clone
+   build stops until someone does it;
+7. **reconcile the pending-migration inventory in §2.** The compensation adds an entry, so the
+   number and the ordered list in that table are both wrong the moment it is written, and step 6
+   refuses to proceed unless the `db push --dry-run` output matches §2 exactly. That table has been
+   wrong twice before; re-derive it rather than incrementing it.
 
 Refuse the whole compensation if any row exists: once an erasure is recorded, its evidence must not
 be discarded. Because B1 creates only an empty table, this pre-activation compensation restores and

@@ -39,7 +39,10 @@
 --      two permanent-wedge defects reachable (see THE DATABASE OWNS TIME below). A purpose-built
 --      table states the same invariants with far less machinery.
 --   3. BLAST RADIUS. account_deletion_audit — its schema, its rows, its constraints, its trigger and
---      its two current callers — is untouched by this migration. Nothing that works today can break.
+--      its one direct writer (supabase/functions/request-account-deletion/index.ts:88, which also
+--      stamps it at :125 and :145) — is untouched by this migration. The three account-deletion
+--      routes proven by supabase/functions/_shared/deletion-callers.test.ts share the deletion
+--      HELPER, not this table. Nothing that works today can break.
 --
 -- THE DATABASE OWNS TIME. Every durable timestamp here is stamped by the trigger from one
 -- clock_timestamp() captured when the trigger executes. A caller says WHICH milestone happened; it
@@ -50,10 +53,13 @@
 --     next_attempt_at, lease_expires_at. Whatever arrives is replaced by the trigger's own reading;
 --     for the two external markers the value is the caller's way of saying "this milestone just
 --     happened", and only its non-NULL-ness is read.
---   REFUSED — database_scrubbed_at and finished_at. These are the committed milestones, so they are
---     covered by the immutability check and an UPDATE that names one is rejected outright rather
---     than silently ignored. Retrying without it succeeds. Refusing is the stricter of the two and
---     is deliberate for the two timestamps that mark a point of no return.
+--   REFUSED — database_scrubbed_at and finished_at. These are the committed milestones, and the
+--     immutability check compares them with IS DISTINCT FROM, so an UPDATE that names one with a
+--     DIFFERENT value is rejected outright rather than silently ignored. Be exact about the limit:
+--     naming one with NULL, or with the value it already holds, changes nothing, passes that check,
+--     and is then stamped or left as the branch dictates. Nothing a caller supplies is ever stored
+--     either way; the difference is only whether it gets an error. Retrying without the column
+--     always succeeds.
 --
 -- That is not tidiness, it closes two reproduced wedges in the draft this replaces:
 --
@@ -107,13 +113,16 @@ CREATE TABLE public.account_scrub_operations (
   public_assets_deleted_at timestamptz,
   finished_at              timestamptz,
 
-  -- bigint, not integer. Post-scrub work is retryable for ever by design, so this counter has no
-  -- POLICY ceiling; a column type gives it an arithmetic one, and overflowing that raises on every
-  -- subsequent claim — leaving a row that cannot advance, cannot fail, cannot be deleted, and whose
-  -- subject the one-live-operation index then blocks for good. bigint does not abolish the ceiling,
-  -- it moves it out of reach: 2^63 attempts at the five-minute lease floor is on the order of 10^13
-  -- years, against 2^31 which a determined loop could be argued toward. A parked state and an alert
-  -- threshold for an operation retrying for days still belong to the worker slice.
+  -- bigint, and to be honest about why: NOT because int4 is reachable by legal history. Post-scrub
+  -- work is retryable for ever by design, so the counter has no POLICY ceiling, but the protocol
+  -- rate-limits it hard. The fastest legal increment is a lease expiring and being reclaimed, five
+  -- minutes apart, which reaches 2^31 in roughly twenty thousand years; via release the backoff caps
+  -- at six hours, which is about 1.5 million. int4 would have been sufficient on that evidence.
+  -- bigint is defence in depth for the states the protocol does not produce — a fabricated,
+  -- corrupted or hand-repaired row — where an overflow would raise on every subsequent claim and
+  -- leave a row that cannot advance, cannot fail and cannot be deleted, with the one-live-operation
+  -- index blocking its subject. A parked state and an alert threshold for an operation retrying for
+  -- days still belong to the worker slice.
   external_attempt_count   bigint NOT NULL DEFAULT 0,
   last_attempt_at          timestamptz,
   next_attempt_at          timestamptz,
@@ -279,10 +288,18 @@ CREATE INDEX account_scrub_operations_expired_lease
 
 -- ── the guard ──────────────────────────────────────────────────────────────────────────────────
 -- OWNER-EFFECTIVE, so a future SECURITY DEFINER command cannot bypass it by accident. It pins the
--- transition graph and owns every timestamp. It is NOT by itself an activated concurrency boundary:
--- the later claim/progress/release/finalize RPCs must still predicate their UPDATEs on the operation
--- id, the caller's current lease_token and an unexpired lease, so a stale holder's statement matches
--- zero rows rather than arriving here at all.
+-- transition graph and owns every timestamp. It is NOT by itself an activated concurrency boundary.
+--
+-- THE FENCE THE LATER RPCs OWE, stated precisely because the obvious version of it is wrong. A
+-- claim/progress/release/finalize RPC must predicate its UPDATE on the operation id, the caller's
+-- lease token, an unexpired lease AND the monotonic external_attempt_count the caller was handed at
+-- claim time. Dropping that last term admits ABA: lease_token is a value the caller supplies, this
+-- table holds no history of retired tokens, and nothing stops a token from recurring — so a worker
+-- holding a token from generation N can match a row that has since been reclaimed back to the same
+-- token value, and its stale write lands looking perfectly legitimate. The attempt counter cannot
+-- recur: the trigger increments it on every claim and reclaim and never resets it, which is exactly
+-- what a fencing generation has to be. The token should also be minted by the RPC rather than
+-- accepted from the caller, so a worker cannot choose to collide with one.
 CREATE OR REPLACE FUNCTION public.account_scrub_operations_guard() RETURNS trigger
   LANGUAGE plpgsql SET search_path = pg_catalog, public, pg_temp AS $$
 DECLARE

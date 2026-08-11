@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
+      # `db reset` applies this, and its blanket GRANT + deny-list is what makes the post-seed ACL
+      # property true locally and in CI. A change here can hand service_role a table the migration
+      # revoked, which only backup-coverage.mjs notices — so it must trigger this workflow.
+      - 'supabase/seed.sql'
       - 'src/integrations/supabase/types.ts'
       - 'scripts/check-types-drift.ts'
       - 'scripts/db/**'
@@ -14,6 +18,10 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
+      # `db reset` applies this, and its blanket GRANT + deny-list is what makes the post-seed ACL
+      # property true locally and in CI. A change here can hand service_role a table the migration
+      # revoked, which only backup-coverage.mjs notices — so it must trigger this workflow.
+      - 'supabase/seed.sql'
       - 'src/integrations/supabase/types.ts'
       - 'scripts/check-types-drift.ts'
       - 'scripts/db/**'

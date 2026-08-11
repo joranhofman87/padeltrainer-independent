@@ -53,9 +53,31 @@ const legacyProjection = `
   FROM public.account_deletion_audit a
 `;
 
-/** Columns, constraints and triggers of the legacy table — the owner required it stay untouched. */
+/**
+ * The legacy table's schema AND its security surface — the owner required it stay untouched, and
+ * "untouched" has to include the parts a migration can change without altering a column: its ACL,
+ * whether RLS is on, its policies, its owner, and the guard function's SECURITY DEFINER flag,
+ * search_path and EXECUTE grants.
+ */
 const legacySchemaProjection = `
   SELECT jsonb_build_object(
+    'relacl', (SELECT coalesce(relacl::text, '(none)') FROM pg_class
+                WHERE oid = 'public.account_deletion_audit'::regclass),
+    'relowner', (SELECT pg_get_userbyid(relowner) FROM pg_class
+                  WHERE oid = 'public.account_deletion_audit'::regclass),
+    'rls', (SELECT jsonb_build_object('enabled', relrowsecurity, 'forced', relforcerowsecurity)
+              FROM pg_class WHERE oid = 'public.account_deletion_audit'::regclass),
+    'policies', (SELECT jsonb_agg(jsonb_build_object(
+                          'n', polname, 'cmd', polcmd, 'permissive', polpermissive,
+                          'roles', (SELECT jsonb_agg(pg_get_userbyid(r) ORDER BY r) FROM unnest(polroles) r),
+                          'qual', pg_get_expr(polqual, polrelid),
+                          'check', pg_get_expr(polwithcheck, polrelid)) ORDER BY polname)
+                   FROM pg_policy WHERE polrelid = 'public.account_deletion_audit'::regclass),
+    'guard_security', (SELECT jsonb_build_object(
+                                'secdef', prosecdef,
+                                'config', coalesce(to_jsonb(proconfig), 'null'::jsonb),
+                                'acl', coalesce(proacl::text, '(none)'))
+                         FROM pg_proc WHERE proname = 'account_deletion_audit_guard'),
     'columns', (SELECT jsonb_agg(jsonb_build_object('c', attname, 't', atttypid::regtype::text, 'nn', attnotnull)
                                  ORDER BY attname)
                   FROM pg_attribute
@@ -245,8 +267,14 @@ describe('B1 leaves the legacy audit rows, the legacy schema projection and the 
   });
 
   it('keeps the legacy started -> completed|failed caller contract working exactly as before', async () => {
+    // Driven as service_role, which is what request-account-deletion/index.ts:88-94,125,145 actually
+    // is: it inserts the `started` row, then stamps `failed` or `completed`. Running this as the
+    // table owner would prove the trigger still works while saying nothing about whether the real
+    // writer still has the privileges to reach it.
     const complete = '10000000-0000-4000-8000-000000000011';
     const fail = '10000000-0000-4000-8000-000000000012';
+    await db.exec('BEGIN');
+    await db.exec('SET LOCAL ROLE service_role');
     await db.exec(`
       INSERT INTO public.account_deletion_audit
         (id, subject_user_id, actor_user_id, self_service, subject_email)
@@ -256,6 +284,10 @@ describe('B1 leaves the legacy audit rows, the legacy schema projection and the 
       UPDATE public.account_deletion_audit SET status = 'completed' WHERE id = '${complete}';
       UPDATE public.account_deletion_audit SET status = 'failed', failure_reason = 'legacy failure' WHERE id = '${fail}';
     `);
+    const { rows: who } = await db.query<{ who: string }>(`SELECT current_user AS who`);
+    expect(who[0].who).toBe('service_role');
+    await db.exec('RESET ROLE');
+    await db.exec('COMMIT');
     const { rows } = await db.query<{ id: string; status: string; finished: boolean }>(`
       SELECT id, status, finished_at IS NOT NULL AS finished
       FROM public.account_deletion_audit WHERE id IN ($1, $2) ORDER BY id
@@ -466,30 +498,50 @@ describe('identity and immutability', () => {
 });
 
 describe('the database owns every timestamp', () => {
-  it('discards a caller-supplied started_at and stamps its own', async () => {
-    const id = uuid('9', 950);
-    await db.query(
-      `INSERT INTO public.account_scrub_operations
-         (id, command_id, subject_user_id, actor_user_id, self_service, started_at)
-       VALUES ($1::uuid, $2::uuid, $3::uuid, $3::uuid, true, clock_timestamp() + interval '1 hour')`,
-      [id, uuid('8', 950), uuid('7', 950)],
-    );
-    const { rows } = await db.query<{ in_future: boolean }>(
-      `SELECT started_at > clock_timestamp() AS in_future FROM public.account_scrub_operations WHERE id = $1`, [id]);
-    expect(rows[0].in_future).toBe(false);
-  });
+  // BOTH directions, and bracketed against the database clock rather than merely "not in the
+  // future". Asserting only that a future sentinel is discarded is satisfied by
+  // `LEAST(caller, now)`, which would faithfully store a caller's PAST value — so a clamp would
+  // have passed the earlier version of this test while letting a caller pick the timestamp.
+  for (const [label, sentinel] of [
+    ['an hour in the future', `clock_timestamp() + interval '1 hour'`],
+    ['an hour in the past', `clock_timestamp() - interval '1 hour'`],
+  ] as const) {
+    it(`discards a caller-supplied started_at ${label} and stamps its own`, async () => {
+      const seed = label.includes('past') ? 951 : 950;
+      const id = uuid('9', seed);
+      const { rows: b } = await db.query<{ t: string }>(`SELECT clock_timestamp() AS t`);
+      await db.query(
+        `INSERT INTO public.account_scrub_operations
+           (id, command_id, subject_user_id, actor_user_id, self_service, started_at)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $3::uuid, true, ${sentinel})`,
+        [id, uuid('8', seed), uuid('7', seed)],
+      );
+      const { rows: a } = await db.query<{ t: string }>(`SELECT clock_timestamp() AS t`);
+      const { rows } = await db.query<{ within: boolean }>(
+        `SELECT started_at >= $2::timestamptz AND started_at <= $3::timestamptz AS within
+           FROM public.account_scrub_operations WHERE id = $1`, [id, b[0].t, a[0].t]);
+      expect(rows[0].within).toBe(true);
+    });
+  }
 
-  it('discards a caller-supplied external outcome time and stamps its own', async () => {
-    const op = await newOperation();
-    await scrub(op.id, op.person);
-    await claim(op.id, op.lease);
-    await db.exec(`UPDATE public.account_scrub_operations
-                      SET auth_deleted_at = clock_timestamp() + interval '1 hour' WHERE id = '${op.id}'`);
-    const { rows } = await db.query<{ in_future: boolean }>(
-      `SELECT auth_deleted_at > clock_timestamp() AS in_future
-         FROM public.account_scrub_operations WHERE id = $1`, [op.id]);
-    expect(rows[0].in_future).toBe(false);
-  });
+  for (const [label, sentinel] of [
+    ['an hour in the future', `clock_timestamp() + interval '1 hour'`],
+    ['an hour in the past', `clock_timestamp() - interval '1 hour'`],
+  ] as const) {
+    it(`discards a caller-supplied external outcome time ${label} and stamps its own`, async () => {
+      const op = await newOperation();
+      await scrub(op.id, op.person);
+      await claim(op.id, op.lease);
+      const { rows: b } = await db.query<{ t: string }>(`SELECT clock_timestamp() AS t`);
+      await db.exec(`UPDATE public.account_scrub_operations
+                        SET auth_deleted_at = ${sentinel} WHERE id = '${op.id}'`);
+      const { rows: a } = await db.query<{ t: string }>(`SELECT clock_timestamp() AS t`);
+      const { rows } = await db.query<{ within: boolean }>(
+        `SELECT auth_deleted_at >= $2::timestamptz AND auth_deleted_at <= $3::timestamptz AS within
+           FROM public.account_scrub_operations WHERE id = $1`, [op.id, b[0].t, a[0].t]);
+      expect(rows[0].within).toBe(true);
+    });
+  }
 
   it('never lets a recorded external outcome be rewritten', async () => {
     const op = await newOperation();
@@ -555,9 +607,20 @@ describe('the database owns every timestamp', () => {
         FROM public.account_scrub_operations WHERE id = $1`, [op.id]);
     expect(rows[0].bounded).toBe(true);
 
+    // Record a genuine NEW outcome and forge the extension in the SAME statement. Without the
+    // outcome the update is refused for advancing nothing, which is a different guard: the earlier
+    // version of this test accepted either message and so never reached the extension check at all.
     await expect(db.exec(`UPDATE public.account_scrub_operations
-                             SET lease_expires_at = lease_expires_at + interval '1 hour' WHERE id = '${op.id}'`))
-      .rejects.toThrow(/cannot be extended|record an external outcome/i);
+                             SET auth_deleted_at = clock_timestamp(),
+                                 lease_expires_at = lease_expires_at + interval '1 hour'
+                           WHERE id = '${op.id}'`))
+      .rejects.toThrow(/a lease cannot be extended, renumbered or rescheduled in place/i);
+
+    // and the refusal rolled back the outcome too — a rejected statement records nothing
+    const { rows: after } = await db.query<{ recorded: boolean }>(
+      `SELECT auth_deleted_at IS NOT NULL AS recorded
+         FROM public.account_scrub_operations WHERE id = $1`, [op.id]);
+    expect(after[0].recorded).toBe(false);
   });
 });
 
@@ -653,10 +716,31 @@ describe('wedge regressions (both reproduced in the draft this replaces)', () =>
     await db.exec(`UPDATE public.account_scrub_operations
                       SET state = 'external_cleanup_in_progress', lease_token = '${uuid('5', 980)}'
                     WHERE id = '${op.id}'`);
-    const { rows } = await db.query<{ attempts: number; token: string }>(`
-      SELECT external_attempt_count AS attempts, lease_token AS token
+    const { rows } = await db.query<{
+      attempts: number; token: string; window_is_db_owned: boolean; in_future: boolean;
+    }>(`
+      SELECT external_attempt_count AS attempts, lease_token AS token,
+             lease_expires_at <= clock_timestamp() + interval '5 minutes' AS window_is_db_owned,
+             lease_expires_at > clock_timestamp() AS in_future
         FROM public.account_scrub_operations WHERE id = $1`, [op.id]);
-    expect(rows[0]).toEqual({ attempts: 2, token: uuid('5', 980) });
+    // the reclaimer gets the protocol's window, not the dead holder's leftovers and not one of its
+    // own choosing
+    expect(rows[0]).toEqual({
+      attempts: 2, token: uuid('5', 980), window_is_db_owned: true, in_future: true,
+    });
+
+    // ...and it can actually work: a refusal that leaves the row unusable would be a wedge wearing
+    // the clothes of a guard.
+    await db.exec(`UPDATE public.account_scrub_operations
+                      SET auth_deleted_at = clock_timestamp() WHERE id = '${op.id}'`);
+    await db.exec(`UPDATE public.account_scrub_operations
+                      SET state = 'database_scrubbed', last_error_code = 'asset_retryable'
+                    WHERE id = '${op.id}'`);
+    const { rows: released } = await db.query<{ state: string; backing_off: boolean; kept: boolean }>(`
+      SELECT state, next_attempt_at > clock_timestamp() AS backing_off,
+             auth_deleted_at IS NOT NULL AS kept
+        FROM public.account_scrub_operations WHERE id = $1`, [op.id]);
+    expect(released[0]).toEqual({ state: 'database_scrubbed', backing_off: true, kept: true });
   });
 });
 
@@ -779,7 +863,7 @@ describe('operational surface', () => {
     `);
     const defs = Object.fromEntries(rows.map((r) => [r.indexname, r.indexdef]));
     expect(Object.keys(defs).sort()).toEqual([
-      // constraint-backed: the primary key the backup keyset-walks, and the idempotency key
+      // constraint-backed: the primary key the export orders by, and the idempotency key
       'account_scrub_operations_command_id_key',
       'account_scrub_operations_pkey',
       // the operational three
@@ -818,6 +902,31 @@ describe('operational surface', () => {
     // and the derivation actually found a privilege set, so "nothing is held" cannot be true
     // because nothing was asked
     expect(rows[0].probed).toBeGreaterThanOrEqual(7);
+  });
+
+  it('the ACL assertion catches a grant to a role it does not name', async () => {
+    // The generic aclexplode(relacl) branch of ACL_DENY_SQL (acl-deny-query.mjs:39-45). The
+    // has_table_privilege branch only asks about anon, authenticated and service_role; a grant to
+    // any other role is invisible to it, and the column branch does not see a RELATION grant. So
+    // this is the only branch that can catch it — proved by granting to a role invented here.
+    // Rolled back, and the shipped ACL re-checked afterwards.
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`CREATE ROLE u2_acl_probe`);
+      await db.exec(`GRANT SELECT ON public.account_scrub_operations TO u2_acl_probe`);
+
+      const { rows: named } = await db.query<{ n: number }>(`
+        SELECT count(*)::int AS n FROM unnest(ARRAY['anon','authenticated','service_role']) r
+         WHERE has_table_privilege(r, 'public.account_scrub_operations', 'SELECT')`);
+      expect(named[0].n).toBe(0);   // the roles the query names hold nothing...
+
+      const { rows } = await heldPrivileges();
+      expect(rows[0].held).toBe('u2_acl_probe:SELECT');   // ...and it catches the one it does not
+    } finally {
+      await db.exec('ROLLBACK');
+    }
+    const { rows: after } = await heldPrivileges();
+    expect(after[0].held).toBe('');
   });
 
   it('the ACL assertion catches a column grant, which has_table_privilege cannot see', async () => {
@@ -942,7 +1051,7 @@ describe('operational surface', () => {
     expect(allowed).not.toContain('account_deletion_audit');
   });
 
-  it('satisfies the backup keyset precondition: a single uuid `id` primary key', async () => {
+  it('satisfies the backup key precondition: a single uuid `id` primary key', async () => {
     const { rows } = await db.query<{ pk: string; pk_type: string }>(`
       SELECT (SELECT string_agg(a.attname, ',' ORDER BY x.ord)
                 FROM pg_index i

@@ -144,7 +144,7 @@ if (reasonless.length) {
 ok_(!hasReason('') && !hasReason(undefined) && !hasReason('too short') && hasReason('x'.repeat(30)),
   'the written-reason rule actually rejects an unwritten reason');
 
-// ── PAGINATION PRECONDITION ────────────────────────────────────────────────────────────────────
+// ── KEY PRECONDITION ───────────────────────────────────────────────────────────────────────────
 const { rows: keys } = await c.query(`
   SELECT c.relname,
          (SELECT count(*)::int FROM pg_index i WHERE i.indrelid = c.oid AND i.indisprimary) AS has_pk,
@@ -166,18 +166,18 @@ else pass('every declared table exists');
 
 const badKey = keys.filter((k) => k.pk !== 'id');
 if (badKey.length) {
-  fail('backed-up tables whose primary key is not a single `id` column — the keyset walk would page them wrongly',
+  fail('backed-up tables whose primary key is not a single `id` column — the export could not order them deterministically',
     badKey.map((k) => `${k.relname}:${k.pk}`));
 } else {
-  pass(`all ${keys.length} backed-up tables keyset-page on a single id primary key`);
+  pass(`all ${keys.length} backed-up tables have a single id primary key the export can order by`);
 }
 
 const badType = keys.filter((k) => k.pk === 'id' && k.pk_type !== 'uuid');
 if (badType.length) {
-  fail('backed-up tables whose `id` is not uuid — backup_export_page takes a uuid cursor',
+  fail('backed-up tables whose `id` is not uuid — the declared key type for this export',
     badType.map((k) => `${k.relname}:${k.pk_type}`));
 } else {
-  pass('every backed-up id is a uuid, which is what the export cursor takes');
+  pass('every backed-up id is a uuid, the declared key type for this export');
 }
 
 // ── ALLOW-LIST AGREEMENT ───────────────────────────────────────────────────────────────────────
