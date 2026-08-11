@@ -15,13 +15,24 @@
 --             SELECT policy, and made a nascent account's login email rewritable through
 --             `get_player_email_edit_capability` -> `academy-update-player-email`.
 --
---   Class B — server-owned. `guest_players.academy_profile_id` / `.trainer_id`: the write
---             policies require the row to ALREADY be the caller's, so a caller cannot claim
---             somebody else's guest. Admissible.
+--   Class B — server-owned, and the ONLY admissible evidence in this release:
+--               * a directly owned guest — `guest_players.academy_profile_id` = the academy, or
+--                 `.trainer_id` = the trainer. The write policies require the row to ALREADY be
+--                 the caller's, so nobody can claim someone else's guest. No active-trainer
+--                 union: a trainer may serve several academies.
+--               * a caller-bound self profile — `profiles.user_id = auth.uid()`. The subject is
+--                 the caller, so there is nothing to forge.
+--               * explicit admin, public-trainer and managed-trainer relations.
 --
---   Class C — untrusted. `bookings.player_id` / `bookings.guest_player_id`: creating a booking
---             on the academy's own slot is a real transaction, but nothing constrains the
---             SUBJECT. The academy policy (20260704120000) and the trainer policy
+--             Everything else — person equality, `person_links`, `linked_profile_id`,
+--             `twin_of_profile_id` — NEVER grants identity, access, routing or mutation. Those
+--             columns remain readable as inert legacy observations only.
+--
+--   Class C — untrusted, permanently. `bookings.player_id` / `bookings.guest_player_id`:
+--             creating a booking on the academy's own slot is a real transaction, but nothing
+--             constrains the SUBJECT, and no guard in this release makes one authority-grade.
+--             Bookings are ACTIVITY ONLY: they may colour state for a subject that is ALREADY
+--             in scope by independent evidence, and they may never put one there. The academy policy (20260704120000) and the trainer policy
 --             (20260115210247) both gate on the SLOT and never mention the subject columns.
 --             `public.bookings` does carry triggers (updated_at, slot-tier enforcement,
 --             auto-follow, person-stamp — 20260115210247, 20260610220000, 20260613130000,

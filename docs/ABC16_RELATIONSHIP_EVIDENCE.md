@@ -57,14 +57,16 @@ Written only by a path that validates the subject against something the caller d
 
 **Rule: admissible.**
 
-### Class C — server-owned only once constrained
+### Class C — activity, never authority
 
-A signal whose *creation* is meaningful but whose *subject* was mutable after the fact. Booking rows
-are the whole class: creating a booking on the academy's slot is real, and repointing its subject
-afterwards is free.
+A signal whose *creation* is meaningful but whose *subject* the creator chooses. Booking rows are the
+whole class: the slot is the academy's, the subject is not, and nothing constrains it — at INSERT or
+afterwards.
 
-**Rule: inadmissible while the subject is mutable; admissible once it is not.** This is the class
-ABC-17 acts on.
+**Rule: never admissible as relationship proof.** A booking may colour state for a subject that is
+already in scope by Class-B evidence; it may never put one there. An earlier draft called this
+"admissible once the subject is immutable" and shipped a partial UPDATE-only guard on that basis;
+both the claim and the guard were withdrawn (§6).
 
 ---
 
@@ -77,11 +79,15 @@ Verified against the effective chain, not assumed:
   Neither mentions `player_id` or `guest_player_id`.
 - `Trainers can update bookings for their slots` (20260115210247) — `USING` on slot ownership, no
   `WITH CHECK` at all, so the same expression is reused. Same gap.
-- `public.bookings` carries **no triggers whatsoever**. The `OLD.player_id` guards that exist in the
-  chain are on `invoices` (20260530120000), not bookings.
+- `public.bookings` does carry triggers — updated_at, slot-tier enforcement on insert and update,
+  auto-follow, person-stamp — but **none constrains the subject**. (An earlier draft of this document
+  claimed the table had no triggers at all; that was a line-anchored grep missing multi-line
+  `CREATE TRIGGER` statements.)
+- The trainer INSERT policy (20260116200114) admits a dual-key row: an owned `guest_player_id`
+  alongside an arbitrary `player_id`. So the subject is chosen at INSERT, not only repointed later.
 
-So the slot owner could take any booking on their own slot and repoint it at an arbitrary victim
-UUID, then read that person through every booking-derived predicate.
+So the slot owner could seat an arbitrary victim UUID and read that person through every
+booking-derived predicate.
 
 ---
 
@@ -111,7 +117,9 @@ UUID, then read that person through every booking-derived predicate.
 | `guest_booked_with_trainer` | — policy dropped entirely | it was booking-derived end to end |
 | `filter_academy_priority_ids` | guests the academy owns | booking arm, metadata arm, location arm |
 | `get_player_email_edit_capability` | authorization gate only; always returns `override` | the entire `direct` outcome |
-| `get_players_overview` | unchanged | nothing — see below |
+| `get_players_overview` | directly owned guests only | booking-admitted registered profiles, the active-trainer union, person expansion and cross-person dedup |
+| `get_person_refs_for_scope` | an owned guest, resolving to itself | sibling expansion, profile expansion, `has_login` |
+| `get_player_locations` | an owned guest's clubs | subject-unauthorized calls, `person_links` expansion |
 
 Two consequences are deliberate and are **not** bugs:
 
@@ -120,10 +128,10 @@ Two consequences are deliberate and are **not** bugs:
   U2's canonical membership, not another heuristic.
 - **Trainers lose visibility of guests who merely booked their slot.** They keep guests they own.
 
-`get_players_overview` is deliberately *not* narrowed. Removing booking admission would empty every
-academy's player list — an outage, not a containment, and H0's own mandate is to keep player pages
-readable. Instead ABC-17 removes the forgeability at the source (§6), which restores the honesty of
-the booking signal the overview depends on.
+`get_players_overview` IS narrowed, to directly owned guests. An earlier draft argued against this on
+the grounds that it would empty every roster; that was overstated — directly owned guests remain, and
+what is lost is booking-admitted *registered* players. That loss is real, measurable and intentional
+until canonical membership exists.
 
 **U1a/U1b/D5 must continue to refuse metadata-only and location-only rows as authoritative** until
 the inventory is run and the owner has ruled on disposition. Canonical membership is Class B, but it
@@ -189,6 +197,14 @@ evidence about a person**, and historical and privileged-writer bookings stay un
 
 A client subject guard may return later as defense in depth — after every booking flow is mapped,
 and covering INSERT as well as UPDATE — but it must never be used to reclassify bookings as trusted.
+
+**The contract, stated once so no reader has to infer it.** Booking subjects are not immutable and
+are not authority. What IS admissible: a directly owned guest (`academy_profile_id` = the academy,
+or `trainer_id` = the trainer — never an active-trainer union), a caller-bound self profile
+(`profiles.user_id = auth.uid()`), and explicit admin / public-trainer / managed-trainer relations.
+Bookings are activity: they may colour state for a subject already in scope, never admit one.
+Person equality, `person_links`, `linked_profile_id` and `twin_of_profile_id` grant nothing —
+not identity, not access, not routing, not mutation — and survive only as inert observations.
 
 ---
 

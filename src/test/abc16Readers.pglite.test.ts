@@ -188,6 +188,39 @@ describe('ABC-17/18 · the overview contract', () => {
     expect(rows.find((r) => r.guest_player_id === other)?.has_overdue_payment).toBe(false);
   });
 
+  it('literal overdue stays overdue even when the due date is in the FUTURE', async () => {
+    const g = '2d000000-0000-4000-8000-000000000a01';
+    await db.exec(`
+      INSERT INTO public.guest_players (id, full_name, academy_profile_id)
+        VALUES ('${g}', 'Literal Overdue', '${IDS.attackerAcademy}');
+      INSERT INTO public.invoices (guest_player_id, academy_profile_id, status, due_date, paid_at)
+        VALUES ('${g}', '${IDS.attackerAcademy}', 'overdue', current_date + 30, NULL);
+    `);
+    const rows = await overview('academy', IDS.attackerAcademy, IDS.attackerUser);
+    expect(rows.find((r) => r.guest_player_id === g)?.has_overdue_payment).toBe(true);
+  });
+
+  const TERMINAL_GUESTS: Record<string, string> = {
+    paid:      '2d000000-0000-4000-8000-000000000b01',
+    cancelled: '2d000000-0000-4000-8000-000000000b02',
+    draft:     '2d000000-0000-4000-8000-000000000b03',
+    void:      '2d000000-0000-4000-8000-000000000b04',
+  };
+
+  it.each(['paid', 'cancelled', 'draft', 'void'])(
+    'a past-due %s invoice is NOT overdue', async (status) => {
+      const g = TERMINAL_GUESTS[status];
+      await db.exec(`
+        INSERT INTO public.guest_players (id, full_name, academy_profile_id)
+          VALUES ('${g}', 'Terminal ${status}', '${IDS.attackerAcademy}');
+        INSERT INTO public.invoices (guest_player_id, academy_profile_id, status, due_date, paid_at)
+          VALUES ('${g}', '${IDS.attackerAcademy}', '${status}', current_date - 30,
+                  ${status === 'paid' ? 'now()' : 'NULL'});
+      `);
+      const rows = await overview('academy', IDS.attackerAcademy, IDS.attackerUser);
+      expect(rows.find((r) => r.guest_player_id === g)?.has_overdue_payment).toBe(false);
+    });
+
   it('soft removal: active shown, removed hidden, no-metadata shown', async () => {
     const removed = '2c000000-0000-4000-8000-00000000ff01';
     const plain = '2c000000-0000-4000-8000-00000000ff02';
@@ -261,5 +294,87 @@ describe('ABC-18 · get_player_locations authorizes the SUBJECT, not just the ac
 
   it('a profile subject returns nothing — the profile argument is ignored', async () => {
     expect(await locs(null, IDS.bookedProfile)).toEqual([]);
+  });
+
+  it('a CONFIRMED booking\'s club is retained, a CANCELLED one is not', async () => {
+    const okLoc = '80000000-0000-0000-0000-0000000000e1';
+    const badLoc = '80000000-0000-0000-0000-0000000000e2';
+    const okSlot = '30000000-0000-0000-0000-0000000000e1';
+    const badSlot = '30000000-0000-0000-0000-0000000000e2';
+    await db.exec(`
+      INSERT INTO public.locations (id, name) VALUES
+        ('${okLoc}', 'Confirmed Club'), ('${badLoc}', 'Cancelled Club B') ON CONFLICT DO NOTHING;
+      INSERT INTO public.availability_slots (id, academy_profile_id, trainer_id, location_id) VALUES
+        ('${okSlot}',  '${IDS.attackerAcademy}', '${IDS.attackerTrainer}', '${okLoc}'),
+        ('${badSlot}', '${IDS.attackerAcademy}', '${IDS.attackerTrainer}', '${badLoc}');
+      INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+        ('${okSlot}',  '${ACADEMY_OWN_GUEST}', 'completed'),
+        ('${badSlot}', '${ACADEMY_OWN_GUEST}', 'cancelled');
+    `);
+    const names = (await locs(ACADEMY_OWN_GUEST)).map((r) => r.location_name);
+    expect(names).toContain('Confirmed Club');       // positively retained
+    expect(names).not.toContain('Cancelled Club B'); // untrusted observation
+  });
+});
+
+describe('ABC-17/18 · the trainer_id filter uses in-scope activity only', () => {
+  const OTHER_TRAINER = '70000000-0000-0000-0000-0000000000d9';
+  const FILTER_GUEST = '2e000000-0000-4000-8000-000000000c01';
+  const NO_ACTIVITY_GUEST = '2e000000-0000-4000-8000-000000000c02';
+  const FILTER_SLOT = '30000000-0000-0000-0000-0000000000d1';
+  const OUT_OF_SCOPE_SLOT = '30000000-0000-0000-0000-0000000000d2';
+  const CANCELLED_SLOT = '30000000-0000-0000-0000-0000000000d3';
+
+  beforeAll(async () => {
+    await db.exec(`
+      INSERT INTO public.trainer_profiles (id, user_id) VALUES ('${OTHER_TRAINER}', '${IDS.victimUser}')
+        ON CONFLICT DO NOTHING;
+      -- Both guests are DIRECTLY owned by the academy; the filter only narrows within that set.
+      INSERT INTO public.guest_players (id, full_name, academy_profile_id) VALUES
+        ('${FILTER_GUEST}',      'Has Trainer Activity', '${IDS.attackerAcademy}'),
+        ('${NO_ACTIVITY_GUEST}', 'No Trainer Activity',  '${IDS.attackerAcademy}');
+      INSERT INTO public.availability_slots (id, academy_profile_id, trainer_id) VALUES
+        ('${FILTER_SLOT}',        '${IDS.attackerAcademy}', '${OTHER_TRAINER}'),
+        ('${CANCELLED_SLOT}',     '${IDS.attackerAcademy}', '${OTHER_TRAINER}'),
+        ('${OUT_OF_SCOPE_SLOT}',  '${IDS.victimAcademy}',   '${OTHER_TRAINER}');
+      INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+        ('${FILTER_SLOT}',       '${FILTER_GUEST}',      'confirmed'),
+        ('${CANCELLED_SLOT}',    '${NO_ACTIVITY_GUEST}', 'cancelled'),
+        ('${OUT_OF_SCOPE_SLOT}', '${NO_ACTIVITY_GUEST}', 'confirmed');
+    `);
+  });
+
+  const byTrainer = async (trainerId: string) => {
+    await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
+    const r = await db.query<{ guest_player_id: string }>(
+      `SELECT guest_player_id FROM public.get_players_overview('academy', $1, NULL, $2::jsonb)`,
+      [IDS.attackerAcademy, JSON.stringify({ trainer_id: trainerId })]);
+    return r.rows.map((x) => x.guest_player_id);
+  };
+
+  it('includes an owned guest with confirmed activity for the requested trainer', async () => {
+    expect(await byTrainer(OTHER_TRAINER)).toContain(FILTER_GUEST);
+  });
+
+  it('excludes an owned guest whose only activity is CANCELLED or OUT OF SCOPE', async () => {
+    const ids = await byTrainer(OTHER_TRAINER);
+    expect(ids).not.toContain(NO_ACTIVITY_GUEST);
+  });
+
+  it('excludes owned guests with no activity for that trainer at all', async () => {
+    const ids = await byTrainer(OTHER_TRAINER);
+    expect(ids).not.toContain(ACADEMY_OWN_GUEST);
+  });
+
+  it('a different trainer id returns neither', async () => {
+    const ids = await byTrainer(IDS.attackerTrainer);
+    expect(ids).not.toContain(FILTER_GUEST);
+    expect(ids).not.toContain(NO_ACTIVITY_GUEST);
+  });
+
+  it('the filter never ADMITS a guest the academy does not own', async () => {
+    const ids = await byTrainer(OTHER_TRAINER);
+    expect(ids).not.toContain(TRAINER_PRIVATE_GUEST);
+    expect(ids).not.toContain(IDS.guestTargetedByForgedMetadata);
   });
 });
