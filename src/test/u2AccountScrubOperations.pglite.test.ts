@@ -348,6 +348,53 @@ describe('identity and immutability', () => {
       await db.exec('ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER');
     }
   });
+
+  it('leaves the CHECK no NULL escape hatch when the trigger is not there to help', async () => {
+    // `NULL IN (...)` evaluates to NULL and a CHECK constraint ACCEPTS NULL, so an arm written as
+    // `last_error_code IN (...)` without a preceding IS NOT NULL admits a row carrying no reason at
+    // all. Each case below is a state the transition graph cannot produce, and the CHECK — not the
+    // trigger — is what has to refuse it. The trigger is off precisely so it cannot answer for the
+    // constraint.
+    await db.exec('ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER');
+    try {
+      const shapes: Array<[string, string, string]> = [
+        ['a terminal failure with no reason',
+          `state, finished_at`,
+          `'failed', clock_timestamp()`],
+        ['a backing-off retry with no reason',
+          `subject_person_id, state, database_scrubbed_at, external_attempt_count, last_attempt_at, next_attempt_at`,
+          `gen_random_uuid(), 'database_scrubbed', clock_timestamp(), 1, clock_timestamp(), clock_timestamp() + interval '1 minute'`],
+        ['external success recorded against zero attempts',
+          `subject_person_id, state, database_scrubbed_at, auth_deleted_at`,
+          `gen_random_uuid(), 'database_scrubbed', clock_timestamp(), clock_timestamp()`],
+        ['asset deletion recorded against zero attempts',
+          `subject_person_id, state, database_scrubbed_at, public_assets_deleted_at`,
+          `gen_random_uuid(), 'database_scrubbed', clock_timestamp(), clock_timestamp()`],
+      ];
+      for (const [index, [label, columns, values]] of shapes.entries()) {
+        await expect(db.query(`
+          INSERT INTO public.account_scrub_operations
+            (id, command_id, subject_user_id, actor_user_id, self_service, ${columns})
+          VALUES ($1::uuid, $2::uuid, $3::uuid, $3::uuid, true, ${values})
+        `, [uuid('9', 941 + index), uuid('8', 941 + index), uuid('7', 941 + index)]),
+        `${label} must be refused by the CHECK`).rejects.toThrow(/state_shape/i);
+      }
+    } finally {
+      await db.exec('ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER');
+    }
+  });
+
+  it('counts attempts in a width that cannot overflow into an unfinishable row', async () => {
+    // An `integer` counter overflows at 2^31; the claim that raises on the increment leaves a row
+    // that cannot advance, cannot fail and cannot be deleted, and the one-live-operation index then
+    // blocks its subject for good. Millennia away at the five-minute lease floor, but the column
+    // width deletes the failure mode outright.
+    const { rows } = await db.query<{ type: string }>(`
+      SELECT format_type(atttypid, atttypmod) AS type FROM pg_attribute
+       WHERE attrelid = 'public.account_scrub_operations'::regclass AND attname = 'external_attempt_count'
+    `);
+    expect(rows[0].type).toBe('bigint');
+  });
 });
 
 describe('the database owns every timestamp', () => {
@@ -626,7 +673,17 @@ describe('the transition graph', () => {
       .rejects.toThrow(/invalid transition/i);
   });
 
-  it('fences a stale lease holder out of every write', async () => {
+  it('does NOT fence a stale holder by identity — that is the future RPC\'s job, not the trigger\'s', async () => {
+    // THIS IS NOT FENCING COVERAGE, and it is written to make that impossible to misread. The
+    // trigger validates the SHAPE of a transition, never who is making it. A superseded worker that
+    // still believes it holds the lease is stopped only by a predicate the RPC must carry, and no
+    // RPC exists in B1. Asserting that a hand-written `AND lease_token = $stale` matches zero rows
+    // would prove the predicate this test just typed — not anything the migration ships.
+    //
+    // So both halves are pinned: with the predicate the stale holder is refused, and WITHOUT it the
+    // very same write succeeds. The second assertion is the honest one, and it will start failing
+    // the day real fencing lands — which is the correct moment to delete this test and replace it
+    // with a two-session proof against the shipped RPC.
     const op = await newOperation();
     await scrub(op.id, op.person);
     await claim(op.id, op.lease);
@@ -639,11 +696,15 @@ describe('the transition graph', () => {
     await db.exec(`UPDATE public.account_scrub_operations
                       SET state = 'external_cleanup_in_progress', lease_token = '${fresh}' WHERE id = '${op.id}'`);
 
-    // the RPC layer's own predicate — the fence a worker's UPDATE must carry
-    const { rows } = await db.query<{ id: string }>(
+    const guarded = await db.query<{ id: string }>(
       `UPDATE public.account_scrub_operations SET auth_deleted_at = clock_timestamp()
         WHERE id = $1::uuid AND lease_token = $2::uuid RETURNING id`, [op.id, stale]);
-    expect(rows).toHaveLength(0);
+    expect(guarded.rows).toHaveLength(0);
+
+    const unguarded = await db.query<{ id: string }>(
+      `UPDATE public.account_scrub_operations SET auth_deleted_at = clock_timestamp()
+        WHERE id = $1::uuid RETURNING id`, [op.id]);
+    expect(unguarded.rows).toHaveLength(1);
   });
 });
 
@@ -682,8 +743,26 @@ describe('operational surface', () => {
     // validates the SHAPE of a transition, not the caller's entitlement to make it: a broad
     // INSERT/UPDATE grant would let any holder of the service key write any transition on any row,
     // and an UPDATE that forgot its lease-token predicate would look perfectly valid on the way past.
+    // Asserted from relacl via aclexplode rather than against a hand-written privilege list. A list
+    // is only as good as its author's memory of the privilege set — an earlier version of this test
+    // omitted TRIGGER, so `GRANT TRIGGER ... TO anon` would have left it green, and PostgreSQL 17
+    // adds MAINTAIN on top. aclexplode enumerates whatever is actually there, so a privilege nobody
+    // thought of still fails this.
+    const { rows: acl } = await db.query<{ grantee: string; privilege_type: string }>(`
+      SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') AS grantee, a.privilege_type
+        FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
+        CROSS JOIN LATERAL aclexplode(c.relacl) a
+       WHERE n.nspname = 'public' AND c.relname = 'account_scrub_operations'
+         AND a.grantee <> c.relowner
+       ORDER BY 1, 2
+    `);
+    expect(acl).toEqual([]);
+
+    // ...and the same question asked the other way, so a NULL relacl cannot pass by holding nothing
+    // to explode. Every role×privilege pair is probed explicitly and every one must be denied.
     const roles = ['anon', 'authenticated', 'service_role'];
-    const privileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES'];
+    const privileges = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
     const { rows } = await db.query<{ role: string; privilege: string; granted: boolean }>(`
       SELECT r.role, p.privilege,
              has_table_privilege(r.role, 'public.account_scrub_operations', p.privilege) AS granted

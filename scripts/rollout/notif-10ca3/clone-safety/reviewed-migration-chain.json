@@ -1,6 +1,6 @@
 {
   "_comment": "Digest of the migration chain reviewed for outbound behaviour. Re-pin only after reviewing the diff.",
-  "sha256": "c7326d165b2da669b916ea7091750bed80e1bde6f8ab1121fa3aa920eef84456",
+  "sha256": "06521f7e3ec3d0d84f65b94fec1f54ac864290936d913e8706e0ac8c0e7536c8",
   "files": 627,
   "pinned_at": "2026-08-11",
   "reviews": [
@@ -11,7 +11,7 @@
         "pinned_at": "2026-08-10"
       },
       "to": {
-        "sha256": "c7326d165b2da669b916ea7091750bed80e1bde6f8ab1121fa3aa920eef84456",
+        "sha256": "06521f7e3ec3d0d84f65b94fec1f54ac864290936d913e8706e0ac8c0e7536c8",
         "files": 627
       },
       "added": 1,
@@ -34,8 +34,10 @@
       "review_history": [
         "The first draft added a protocol-2 lane to account_deletion_audit. It was replaced, not patched, after an independent read-only audit reproduced two permanent-wedge defects: a caller-supplied future started_at, and a worker clock ahead of Postgres writing a future auth_deleted_at. Both left an operation with no legal exit while the one-active-operation index blocked any replacement — an account that could not be erased. Closed by the database owning every timestamp and by deleting every cross-timestamp CHECK; ordering is now structural via the transition graph. Both variants are pinned by regression tests.",
         "ABC-14 (owner-approved) then removed the direct service_role grant and the admin SELECT policy. The policy could never have fired — authenticated holds no SELECT privilege — and the grant would have let any holder of the service key write any transition on any row, which the guard trigger cannot prevent because it validates transition shape, not caller entitlement. Access will arrive as narrow SECURITY DEFINER RPCs; none is in B1.",
-        "Twelve guards were mutation-checked: each removed in isolation, then the invariant it claims to enforce probed. All twelve failed without their guard. Three needed sharper probes first: two (the append-only DELETE refusal and the subject_person_id bind-once exemption) are ALSO caught by a second guard, so the probes assert the specific refusal reason rather than merely that an error occurred; and the ACL probe was initially unfalsifiable because bare Postgres grants nothing by default — the harness now models Supabase's standing ALTER DEFAULT PRIVILEGES, under which deleting the REVOKE does restore privileges to all three roles.",
-        "Verified against real Postgres, not only PGlite: after supabase db reset the table's relacl is {postgres=arwdDxtm/postgres} with RLS on and zero policies. Getting there required adding the table to the deny-list in supabase/seed.sql, whose local-only blanket GRANT ALL TO service_role had been silently re-granting everything the migration revoked — so local and CI would have tested the opposite of production."
+        "Sixteen guards were mutation-checked: each removed in isolation, then the invariant it claims to enforce probed. All sixteen failed without their guard. Three needed sharper probes first: two (the append-only DELETE refusal and the subject_person_id bind-once exemption) are ALSO caught by a second guard, so the probes assert the specific refusal reason rather than merely that an error occurred; and the ACL probe was initially unfalsifiable because bare Postgres grants nothing by default — the harness now models Supabase's standing ALTER DEFAULT PRIVILEGES, under which deleting the REVOKE does restore privileges to all three roles.",
+        "Verified against real Postgres, not only PGlite: after supabase db reset the table's relacl is {postgres=arwdDxtm/postgres} with RLS on and zero policies. Getting there required adding the table to the deny-list in supabase/seed.sql, whose local-only blanket GRANT ALL TO service_role had been silently re-granting everything the migration revoked — so local and CI would have tested the opposite of production.",
+        "Codex gpt-5.6-sol/ultra reviewed the first committed head (9f8293316) in thread 019ff061-9be2-7ef3-b0ee-720df894d26b: no P1/P2, five P3, all five confirmed and fixed. The material one was a CHECK NULL escape hatch — `last_error_code IN (...)` without a preceding IS NOT NULL evaluates to NULL and a CHECK accepts NULL, so a terminal failure or a backing-off retry could carry no reason at all. Also fixed: the zero-attempt arm now requires both external markers null; external_attempt_count widened to bigint so it cannot overflow into an unfinishable row; backup-coverage.mjs now asserts the default-deny set BY NAME (the derived sweep passed trivially if a table stopped being closed); the ACL matrix gained TRIGGER; and the stale-lease test was rewritten so it cannot be read as fencing coverage — it now also asserts that WITHOUT the predicate the write succeeds, which is the honest state until the RPCs land. That review cleared no head: it predates these corrections and the owner's wording audit.",
+        "Owner wording audit of 9f8293316, applied here: the 'UUIDs, states, codes and timestamps' enumerations omitted the self_service boolean and the attempt counter and are now either complete or reduced to 'no direct identifiers'; and the claim that the JSON export otherwise carries no direct identifiers was false — profiles, persons, guest_players, trainer_profiles, invoices and notification_contacts all do, because a restore needs them. The account_deletion_audit exclusion is a data-minimisation decision about one table, not a property of the snapshot."
       ],
       "inventories_updated": [
         "reviewed-cron-jobs.tsv — unchanged, no new jobs",

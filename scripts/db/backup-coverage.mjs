@@ -304,6 +304,31 @@ else pass('the backup can execute all three');
   // now join that set without anyone remembering to extend a hard-coded list here. Asserting the
   // grant shape is not the same as proving the read succeeds, which is the whole reason this block
   // runs as service_role at all.
+  // NAMED, not derived, and deliberately so. The derived sweep below asks "of the tables that are
+  // closed, do they still export?" — which passes trivially if a table stops being closed. That is
+  // exactly the failure mode to guard: supabase/seed.sql blanket-grants service_role on every public
+  // table during `db reset`, and each default-deny table needs an explicit re-revoke there. Delete
+  // or misspell one of those and the table silently drops out of the derived set. So the tables whose
+  // default-deny is a SECURITY property are asserted by name, against the post-seed database.
+  const DEFAULT_DENY = [
+    'academy_player_memberships', 'membership_backfill_runs', 'membership_backfill_items',
+    // U2 B1: no authorized caller exists yet, so the only privilege anything should hold is the
+    // owner's. Access arrives later as narrow SECURITY DEFINER RPCs.
+    'account_scrub_operations',
+  ];
+  for (const t of DEFAULT_DENY) {
+    const { rows: [open] } = await c.query(`
+      SELECT coalesce(string_agg(g.role || ':' || g.priv, ', ' ORDER BY g.role, g.priv), '') AS held
+        FROM unnest(ARRAY['anon','authenticated','service_role']) AS r(role),
+             unnest(ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER']) AS p(priv),
+             LATERAL (SELECT r.role AS role, p.priv AS priv) g
+       WHERE to_regclass('public.' || $1) IS NOT NULL
+         AND has_table_privilege(g.role, to_regclass('public.' || $1), g.priv)`, [t]);
+    ok_(open.held === '',
+      `${t} is default-deny AFTER the seed's blanket grant — no client role holds any privilege`,
+      { held: open.held });
+  }
+
   {
     const { rows: closedToBackup } = await c.query(`
       SELECT t.relname FROM public.backup_export_tables() t

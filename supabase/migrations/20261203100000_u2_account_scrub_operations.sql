@@ -22,8 +22,8 @@
 --      completed after the restore point, reconcile Auth and Storage, and only then reopen the system
 --      — needs exactly this evidence to exist, and it cannot be reconstructed after the fact. That is
 --      the requirement. Making it durable recovery evidence and making it share a table with the
---      subject's email, name and IP are directly opposed. Split, the new table carries immutable
---      UUIDs, lifecycle state and controlled codes only, so exporting it ADDS NO DIRECT IDENTIFIER
+--      subject's email, name and IP are directly opposed. Split, the new table holds NO DIRECT
+--      IDENTIFIER of any kind — see the column list below — so exporting it adds none
 --      — it still exports personal data, because those UUIDs stay linkable to a person, and the
 --      rows are pseudonymous personal data with every obligation that follows. What the split buys
 --      is a smaller blast radius, not an exemption. It also stops account_deletion_audit being
@@ -95,7 +95,13 @@ CREATE TABLE public.account_scrub_operations (
   public_assets_deleted_at timestamptz,
   finished_at              timestamptz,
 
-  external_attempt_count   integer NOT NULL DEFAULT 0,
+  -- bigint, not integer. Post-scrub work is retryable for ever by design, so this counter has no
+  -- policy ceiling; an `integer` would give it an arithmetic one, and overflowing it would raise on
+  -- every subsequent claim — leaving a row that cannot advance, cannot fail, cannot be deleted, and
+  -- whose subject the one-live-operation index then blocks for good. Reaching 2^31 needs millennia
+  -- at the five-minute lease floor, so this is a cheap way to delete a failure mode rather than a
+  -- reachable bug. A parked state and an alert threshold still belong to the worker slice.
+  external_attempt_count   bigint NOT NULL DEFAULT 0,
   last_attempt_at          timestamptz,
   next_attempt_at          timestamptz,
   lease_token              uuid,
@@ -152,11 +158,18 @@ CREATE TABLE public.account_scrub_operations (
         (external_attempt_count = 0
          AND last_attempt_at IS NULL
          AND next_attempt_at IS NULL
-         AND last_error_code IS NULL)
+         AND last_error_code IS NULL
+         -- An outcome can only be recorded while holding a lease, and holding one means at least
+         -- one attempt. Zero attempts and a recorded outcome is not a state the graph can produce.
+         AND auth_deleted_at IS NULL
+         AND public_assets_deleted_at IS NULL)
         OR
         (external_attempt_count > 0
          AND last_attempt_at IS NOT NULL
          AND next_attempt_at IS NOT NULL
+         -- IS NOT NULL first, and not decoration: `NULL IN (...)` evaluates to NULL, and a CHECK
+         -- accepts NULL. Without this a backing-off row could carry no reason at all.
+         AND last_error_code IS NOT NULL
          AND last_error_code IN (
            'auth_retryable', 'auth_ambiguous', 'asset_retryable',
            'external_ambiguous', 'unexpected_internal')
@@ -207,13 +220,16 @@ CREATE TABLE public.account_scrub_operations (
       AND next_attempt_at IS NULL
       AND lease_token IS NULL
       AND lease_expires_at IS NULL
+      -- IS NOT NULL first: see the retry arm above. A terminal failure with no reason would
+      -- otherwise satisfy this arm, and a refusal nobody can explain is not evidence.
+      AND last_error_code IS NOT NULL
       AND last_error_code IN ('database_terminal', 'unsupported_account')
     )
   )
 );
 
 COMMENT ON TABLE public.account_scrub_operations IS
-  'Append-only ledger of retain-and-scrub account-erasure operations (U2 OD-08). Direct-identifier-minimized by contract: immutable UUIDs, lifecycle and lease state, controlled error codes and database-stamped timestamps only — no email, name, phone, IP, user-agent or raw provider error ever enters it. Its UUIDs remain linkable to a person, so the table is PSEUDONYMOUS PERSONAL DATA, not anonymous data, and every access, export and retention rule that follows from that applies to it. It is included in the logical export because it is durable, non-rederivable evidence: nothing else records which account an erasure erased, and a future restore-replay protocol will need it. Including it does not by itself prevent a restore from reinstating an erased account — no replay protocol exists yet, nothing reads this ledger on restore, and in this release nothing writes to it either.';
+  'Append-only ledger of retain-and-scrub account-erasure operations (U2 OD-08). Direct-identifier-minimized by contract: it holds UUIDs, one boolean, one attempt counter, a state, a controlled error code and database-stamped timestamps, and NO DIRECT IDENTIFIER — no email, name, phone, IP, user-agent or raw provider error ever enters it. Its UUIDs remain linkable to a person, so the table is PSEUDONYMOUS PERSONAL DATA, not anonymous data, and every access, export and retention rule that follows from that applies to it. It is included in the logical export because it is durable, non-rederivable evidence: nothing else records which account an erasure erased, and a future restore-replay protocol will need it. Including it does not by itself prevent a restore from reinstating an erased account — no replay protocol exists yet, nothing reads this ledger on restore, and in this release nothing writes to it either.';
 
 COMMENT ON COLUMN public.account_scrub_operations.command_id IS
   'Stable caller-generated UUID idempotency key. Every retry of the same logical command reuses it, so a lost response can never mint a second erasure. Never derived from PII.';
@@ -514,10 +530,11 @@ REVOKE ALL ON public.account_scrub_operations FROM PUBLIC, anon, authenticated, 
 -- This ledger joins the logical export because it is non-rederivable: restore a database to a point
 -- before an erasure and nothing in the restored state says the account was subsequently erased, and
 -- no later query can work it out. Exporting it PRESERVES THE EVIDENCE a future restore-replay
--- protocol will need; it is not that protocol and does not stand in for one. Adding it ADDS NO
--- DIRECT IDENTIFIER — every column is a UUID, a state, a controlled code or a timestamp. It does add
--- personal data: those UUIDs remain linkable to a person, so the exported rows are pseudonymous
--- personal data and inherit every access, encryption and retention control the export carries.
+-- protocol will need; it is not that protocol and does not stand in for one. Adding it introduces NO
+-- DIRECT IDENTIFIER: the columns are UUIDs, one boolean, one attempt counter, a state, a controlled
+-- code and timestamps. It does add personal data — those UUIDs remain linkable to a person, so the
+-- exported rows are pseudonymous personal data and inherit every access, encryption and retention
+-- control the export carries.
 --
 -- Revoking service_role above does not break this. backup_export_table/backup_export_group are
 -- SECURITY DEFINER and run as the owner, so they read the table on the backup's behalf without the

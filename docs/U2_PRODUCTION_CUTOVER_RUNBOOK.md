@@ -328,10 +328,14 @@ through `person_links`** — never by email or phone, matching the owner's ident
    entry 19, followed by the empty Slice-B erasure ledger at entry 20, so in practice steps 5 and 6
    are a single `db push` that ends with all three). If the list differs in any way: **stop**, do not repair,
    escalate.
-   *(Entry 20 needs no matching edge deploy and has no ordering hazard with one. `TABLES_TO_BACKUP`
-   in `backup-database` is a declaration the coverage guard checks; at runtime the function reads the
-   table set from `backup_export_groups()`, so the migration alone makes the next nightly backup
-   include `account_scrub_operations` — of which there will be zero rows.)*
+   *(Entry 20 has no ordering hazard with any edge deploy — it creates an empty table nothing calls.
+   But it does NOT on its own put `account_scrub_operations` into the nightly backup, and an earlier
+   revision of this runbook wrongly said it did. `TABLES_TO_BACKUP` is a declaration the coverage
+   guard checks, not a runtime input; the function reads its table set from `backup_export_groups()`
+   — and both that RPC (entry 11, `20261118100000`) and the rewritten `backup-database` that calls it
+   arrive with #647. Until step 7 deploys that function, whatever is deployed today keeps running
+   with its own hard-coded list and the ledger is not exported. Harmless in B1, since the table is
+   empty, but the coverage only becomes real at step 7 — verify it there, see step 7f.)*
 7. **Deploy the edge functions** from clean updated `main`, in this order:
    a. **`notification-email-worker`** — the redeploy §0 promises. It is safe only AFTER step 6,
       because this build passes `p_worker_kind`, which the pre-migration function does not accept;
@@ -346,7 +350,16 @@ through `person_links`** — never by email or phone, matching the owner's ident
       rows in CI. Do not continue on any other result;
    d. **only then** the challenge-producing callers — the three guest payment entrypoints and
       `submit-guest-intake` — plus `create-manual-player` and `mollie-webhook`;
-   e. `admin-academy-deletion`.
+   e. `admin-academy-deletion`;
+   f. **`backup-database`** — required, not optional, and easy to skip because nothing breaks
+      loudly without it. Only this build reads its table set from `backup_export_groups()`; the
+      build deployed today walks its own hard-coded list, so until it is replaced the U2 tables are
+      absent from every nightly backup. It is safe only AFTER step 6, because it calls
+      `backup_export_group`, which arrives with entry 11. **Verify rather than assume:** invoke it
+      once and require `ok: true` with `account_scrub_operations` and `player_create_commands`
+      present in `tables[]` (row_count 0 for the ledger is the expected and correct result — it is
+      inert). A run that reports `ok: true` while omitting a table is the exact failure this
+      function was rewritten to end, so check the member list, not just the status.
 8. **Confirm the frontend** (Vercel) is serving the build that matches the deployed backend.
 9. **Set secrets / config** (§8) — owner-performed.
 10. **Activate the sender** — owner-performed, last.
@@ -439,9 +452,10 @@ replaced because the erasure ledger must be backed up (see below) while that tab
 sharing its column set made two permanent-wedge defects reachable. Reviewing migration 20 should
 confirm the only statements naming `account_deletion_audit` are in comments.
 
-**Direct-identifier-minimized by contract.** Every column is a UUID, a state, a controlled code or a
-timestamp. There is no place to put an email, a name, a phone number, an IP, a user agent or a raw
-provider error, and a test asserts the exact column list so adding one is a deliberate review moment.
+**Direct-identifier-minimized by contract.** The columns are UUIDs, one boolean (`self_service`), one
+attempt counter, a state, a controlled error code and timestamps — and **no direct identifier**.
+There is no place to put an email, a name, a phone number, an IP, a user agent or a raw provider
+error, and a test asserts the exact column list so adding one is a deliberate review moment.
 Minimized is not anonymous: the UUIDs remain linkable to a person, so this table is **pseudonymous
 personal data** and carries the same access, export and retention obligations as any other personal
 data here. "No direct identifiers" is a blast-radius reduction, not an exemption.
