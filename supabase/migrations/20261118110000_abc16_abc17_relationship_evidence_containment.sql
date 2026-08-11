@@ -1180,6 +1180,269 @@ $fn$;
 COMMENT ON FUNCTION public.get_booking_login_flags(uuid[]) IS
   'ABC-18 A1: always false. Every arm disclosed whether a seat belongs to an account holder — via persons.user_id, a caller-chosen booking subject, or person_links. Signature, grants and the authorization gate are unchanged.';
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- PASS A2 — notes, journey, feedback and attendance.
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Admissible here: explicit admin, the caller's OWN profile (caller-bound, nothing to forge),
+-- and a guest the trainer/academy DIRECTLY owns. Withdrawn everywhere: person equality,
+-- twin/linked bridges, and booking evidence used to establish who a subject IS.
+
+-- 8l. `subject_guest_reads_as_me` — fails closed.
+-- Its three arms were person equality, the twin bridge and the linked bridge. A guest row has no
+-- login, so nothing non-bridge can tie one to the caller; there is no narrower version to keep.
+CREATE OR REPLACE FUNCTION public.subject_guest_reads_as_me(_guest_player_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+  SELECT false;
+$fn$;
+
+COMMENT ON FUNCTION public.subject_guest_reads_as_me(uuid) IS
+  'ABC-18 A2: always false. Person equality, twin_of_profile_id and linked_profile_id were its only arms, and a guest row carries no login, so no non-bridge evidence can tie one to the caller.';
+
+-- 8m. session_player_notes — SELECT.
+-- The subject arm keeps only the caller''s own profile. The trainer/academy oversight arms keep
+-- slot ownership, but a note ABOUT a registered player is no longer readable through them unless
+-- the caller wrote it — owning the slot is not consent to that person''s coaching history.
+DROP POLICY IF EXISTS spn_select_subject_player ON public.session_player_notes;
+CREATE POLICY spn_select_subject_player ON public.session_player_notes
+  FOR SELECT TO authenticated
+  USING (
+    author_role IN ('trainer','academy')
+    AND visibility = 'shared'
+    AND subject_profile_id = public.get_profile_id_for_user(auth.uid())
+  );
+
+DROP POLICY IF EXISTS spn_select_trainer ON public.session_player_notes;
+CREATE POLICY spn_select_trainer ON public.session_player_notes
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.availability_slots s
+      JOIN public.trainer_profiles tp ON tp.id = s.trainer_id
+      WHERE s.id = session_player_notes.slot_id AND tp.user_id = auth.uid()
+    )
+    AND (author_role IN ('trainer','academy') OR (author_role = 'player' AND visibility = 'shared'))
+    AND (
+      author_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM public.guest_players gp
+        JOIN public.trainer_profiles tp2 ON tp2.id = gp.trainer_id
+        WHERE gp.id = session_player_notes.subject_guest_player_id AND tp2.user_id = auth.uid()
+      )
+    )
+  );
+
+DROP POLICY IF EXISTS spn_select_academy ON public.session_player_notes;
+CREATE POLICY spn_select_academy ON public.session_player_notes
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.availability_slots s
+      WHERE s.id = session_player_notes.slot_id
+        AND s.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid()))
+    )
+    AND (author_role IN ('trainer','academy') OR (author_role = 'player' AND visibility = 'shared'))
+    AND (
+      author_id = auth.uid()
+      OR EXISTS (
+        SELECT 1 FROM public.guest_players gp
+        WHERE gp.id = session_player_notes.subject_guest_player_id
+          AND gp.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid()))
+      )
+    )
+  );
+
+-- 8n. session_player_notes — INSERT. A booking no longer authorizes writing about a subject.
+DROP POLICY IF EXISTS spn_insert_trainer ON public.session_player_notes;
+CREATE POLICY spn_insert_trainer ON public.session_player_notes
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    author_id = auth.uid() AND author_role = 'trainer'
+    AND subject_profile_id IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public.availability_slots s
+      JOIN public.trainer_profiles tp ON tp.id = s.trainer_id
+      WHERE s.id = slot_id AND tp.user_id = auth.uid()
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.guest_players gp
+      JOIN public.trainer_profiles tp2 ON tp2.id = gp.trainer_id
+      WHERE gp.id = subject_guest_player_id AND tp2.user_id = auth.uid()
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.bookings b
+      WHERE b.slot_id = session_player_notes.slot_id
+        AND b.guest_player_id = subject_guest_player_id
+        AND b.status IN ('pending','confirmed','completed')
+    )
+  );
+
+DROP POLICY IF EXISTS spn_insert_academy ON public.session_player_notes;
+CREATE POLICY spn_insert_academy ON public.session_player_notes
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    author_id = auth.uid() AND author_role = 'academy'
+    AND subject_profile_id IS NULL
+    AND EXISTS (
+      SELECT 1 FROM public.availability_slots s
+      WHERE s.id = slot_id AND s.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid()))
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.guest_players gp
+      WHERE gp.id = subject_guest_player_id
+        AND gp.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid()))
+    )
+    AND EXISTS (
+      SELECT 1 FROM public.bookings b
+      WHERE b.slot_id = session_player_notes.slot_id
+        AND b.guest_player_id = subject_guest_player_id
+        AND b.status IN ('pending','confirmed','completed')
+    )
+  );
+
+-- 8o. `can_report_attendance_on_slot` — the caller''s own pure-profile seat only.
+-- That arm is caller-bound: the subject IS auth.uid()''s profile, so there is nothing to forge.
+-- The guest arm was person-stamp plus the twin/linked bridge and is withdrawn.
+-- `session_reports_player_summaries` reads through this function, so it narrows with it and
+-- needs no separate re-emit (its column tripwire stays intact).
+CREATE OR REPLACE FUNCTION public.can_report_attendance_on_slot(
+  _slot_id uuid,
+  _require_active boolean DEFAULT false
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.bookings b
+    WHERE b.slot_id = _slot_id
+      AND (NOT _require_active
+           OR COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap'))
+      AND b.player_id = public.get_profile_id_for_user(auth.uid())
+      AND b.guest_player_id IS NULL
+  );
+$fn$;
+
+COMMENT ON FUNCTION public.can_report_attendance_on_slot(uuid, boolean) IS
+  'ABC-18 A2: the caller''s OWN pure-profile seat only — caller-bound, so nothing is forgeable. The guest arm (person stamp plus the twin/linked bridge) is withdrawn. FAM-02 dual-keyed rows still grant nothing here.';
+
+
+-- 8p. `get_player_journey` — self or admin, and no bridge-derived guest set.
+-- The two booking arms let a trainer or academy read a registered player''s entire coaching
+-- history by authoring a booking naming them. Withdrawn. `v_guest_ids` was the person/twin/
+-- linked ref-set; it is now always empty, so guest-seated sessions and guest-keyed notes no
+-- longer attach to a profile. Signature, paging, ordering and content shape are unchanged.
+CREATE OR REPLACE FUNCTION public.get_player_journey(
+  p_profile_id uuid,
+  p_limit  integer DEFAULT 20,
+  p_offset integer DEFAULT 0
+)
+RETURNS TABLE (
+  slot_id uuid, start_time timestamptz, end_time timestamptz, trainer_id uuid,
+  trainer_name text, academy_profile_id uuid, location_name text,
+  session_happened boolean, trainer_confirmed boolean, player_confirmed boolean,
+  group_summary text, shared_coaching_notes jsonb, own_notes jsonb,
+  rating_at_session numeric, rating_system text, total_count bigint
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $fn$
+DECLARE
+  v_limit  integer := least(greatest(coalesce(p_limit, 20), 1), 100);
+  v_offset integer := greatest(coalesce(p_offset, 0), 0);
+BEGIN
+  -- COALESCE is load-bearing: get_profile_id_for_user returns NULL for a caller with no
+  -- profile row, so a bare `p_profile_id = ...` yields NULL and `IF NOT (NULL)` does NOT raise —
+  -- the gate would open for precisely the callers it exists to stop.
+  IF NOT (coalesce(p_profile_id = public.get_profile_id_for_user(auth.uid()), false)
+          OR coalesce(public.is_admin(auth.uid()), false)) THEN
+    RAISE EXCEPTION 'not authorized for player %', p_profile_id USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  WITH seats AS (
+    SELECT b.slot_id AS b_slot
+    FROM public.bookings b
+    WHERE b.player_id = p_profile_id AND b.guest_player_id IS NULL
+      AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
+  ),
+  base AS (
+    SELECT s.id, s.start_time, s.end_time, s.trainer_id, s.academy_profile_id, s.location_id
+    FROM public.availability_slots s
+    WHERE s.id IN (SELECT b_slot FROM seats)
+  )
+  SELECT
+    ba.id, ba.start_time, ba.end_time, ba.trainer_id,
+    (SELECT pr.full_name FROM public.profiles pr
+      JOIN public.trainer_profiles tp ON tp.user_id = pr.user_id
+      WHERE tp.id = ba.trainer_id),
+    ba.academy_profile_id,
+    (SELECT l.name FROM public.locations l WHERE l.id = ba.location_id),
+    (SELECT sr.session_happened FROM public.session_reports sr
+      WHERE sr.slot_id = ba.id ORDER BY (sr.reporter_role = 'trainer') DESC LIMIT 1),
+    EXISTS (SELECT 1 FROM public.session_reports sr WHERE sr.slot_id = ba.id AND sr.reporter_role = 'trainer'),
+    EXISTS (SELECT 1 FROM public.session_reports sr WHERE sr.slot_id = ba.id AND sr.reporter_role = 'player'),
+    (SELECT sr.public_notes FROM public.session_reports sr
+      WHERE sr.slot_id = ba.id AND sr.reporter_role = 'trainer' LIMIT 1),
+    coalesce((SELECT jsonb_agg(jsonb_build_object('id', n.id, 'author_role', n.author_role,
+                                                  'body', n.body, 'created_at', n.created_at))
+                FROM public.session_player_notes n
+               WHERE n.slot_id = ba.id AND n.visibility = 'shared'
+                 AND n.author_role IN ('trainer','academy')
+                 AND n.subject_profile_id = p_profile_id), '[]'::jsonb),
+    coalesce((SELECT jsonb_agg(jsonb_build_object('id', n.id, 'visibility', n.visibility,
+                                                  'body', n.body, 'created_at', n.created_at))
+                FROM public.session_player_notes n
+               WHERE n.slot_id = ba.id AND n.author_role = 'player'
+                 AND n.subject_profile_id = p_profile_id), '[]'::jsonb),
+    NULL::numeric, NULL::text,
+    count(*) OVER ()
+  FROM base ba
+  ORDER BY ba.start_time DESC
+  LIMIT v_limit OFFSET v_offset;
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_player_journey(uuid, integer, integer) IS
+  'ABC-18 A2: self or admin only. The trainer/academy booking arms let staff read a registered player''s whole coaching history by authoring a booking naming them. The person/twin/linked guest ref-set is gone, so only the caller''s own pure-profile seats appear.';
+
+-- 8q. `get_unseen_shared_feedback_count` — same ref-set removal; gate already self/admin.
+CREATE OR REPLACE FUNCTION public.get_unseen_shared_feedback_count(p_profile_id uuid)
+RETURNS integer
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $fn$
+DECLARE
+  v_count integer;
+BEGIN
+  -- Same NULL-safety as get_player_journey: `<>` against a NULL profile yields NULL, not true.
+  IF NOT (coalesce(p_profile_id = public.get_profile_id_for_user(auth.uid()), false)
+          OR coalesce(public.is_admin(auth.uid()), false)) THEN
+    RAISE EXCEPTION 'not authorized for player %', p_profile_id USING ERRCODE = '42501';
+  END IF;
+
+  SELECT count(*)::int INTO v_count
+  FROM public.session_player_notes n
+  WHERE n.visibility = 'shared'
+    AND n.author_role IN ('trainer','academy')
+    AND n.subject_profile_id = p_profile_id
+    AND NOT EXISTS (
+      SELECT 1 FROM public.coaching_note_views v
+      WHERE v.note_id = n.id AND v.profile_id = p_profile_id
+    );
+
+  RETURN coalesce(v_count, 0);
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_unseen_shared_feedback_count(uuid) IS
+  'ABC-18 A2: counts shared notes keyed to the caller''s own profile. The person/twin/linked guest ref-set is withdrawn.';
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────

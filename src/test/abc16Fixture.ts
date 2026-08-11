@@ -27,36 +27,31 @@ export const H0_MIGRATION = '20261118110000_abc16_abc17_relationship_evidence_co
  * authority predicates in their EFFECTIVE definitions, and the person-stamp triggers.
  */
 export const PRE_H0_MIGRATIONS = [
-  // The academy-manager guest_players write policies. Required, not decorative: without them
-  // `authenticated` cannot UPDATE a guest at all, so a bridge-column write would be refused by
-  // RLS before the ABC-18 trigger ever fires — and the test would pass for the wrong reason.
+  // Chronological: the chain must apply in timestamp order, or a later migration that
+  // ALTERs an earlier table (persons_expand stamping session_player_notes) fails.
   '20260224171306_1e85f4f8-c803-42b0-9b68-a30cd581ffcd.sql',
-  '20260510090036_ef6a35bb-824f-45dc-b596-c77d707b02e8.sql', // metadata + tags tables, FOR ALL policies
-  '20260510102923_d1c09638-3284-4cfd-b382-ab4c1abb85f4.sql', // trainer-owned arm + its FOR ALL policies
+  '20260510090036_ef6a35bb-824f-45dc-b596-c77d707b02e8.sql',
+  '20260510102923_d1c09638-3284-4cfd-b382-ab4c1abb85f4.sql',
   '20260531130000_academy_player_metadata_preferred_location.sql',
   '20260531140000_academy_player_metadata_removed.sql',
-  '20260615110040_email_remediation.sql',                    // get_player_email_edit_capability v1
-  '20260615110050_email_remediation_hardening.sql',          // its EFFECTIVE definition + billing_email CHECK
-  '20260615110100_academy_player_locations.sql',             // locations + set_player_location
-  '20260704120000_academy_manager_bookings_update.sql',      // the REAL bookings UPDATE policy
-  '20260706130100_p2_2_guest_players_academy_scope.sql',     // guest_belongs_to_user_academy
-  '20260713110000_trainer_guest_visibility.sql',             // trainer guest SELECT policy
-  '20260731100000_member_window_priority_guest.sql',         // filter_academy_priority_ids
-  '20260801100000_fix_guest_players_select_returning.sql',   // the EFFECTIVE academy guest SELECT policy
-  // The REAL twin bridge: find_guest_twin_for_academy(uuid,uuid) and the THREE-uuid
-  // claim_guest_twin_for_academy, plus their authenticated grants. Required, not optional —
-  // the containment revokes those exact signatures, and an earlier fixture that omitted the
-  // function hid a wrong-overload REVOKE that aborts on the real chain.
+  '20260615100000_session_player_notes.sql',
+  '20260615110040_email_remediation.sql',
+  '20260615110050_email_remediation_hardening.sql',
+  '20260615110100_academy_player_locations.sql',
+  '20260704120000_academy_manager_bookings_update.sql',
+  '20260706130100_p2_2_guest_players_academy_scope.sql',
+  '20260713110000_trainer_guest_visibility.sql',
+  '20260731100000_member_window_priority_guest.sql',
+  '20260801100000_fix_guest_players_select_returning.sql',
   '20260826210000_guest_twin_bridge.sql',
-  '20260826260000_persons_expand.sql',                       // persons/person_links + the stamp triggers
-  // person_merge_review, trg_mint_person_for_profile, trg_mint_person_for_guest and
-  // trg_relink_person_on_twin_change. Required: the containment re-emits all three mint/relink
-  // functions and asserts on their bodies, so a fixture without them proves nothing.
+  '20260826240000_twin_reader_precedence_and_lock.sql',
+  '20260826250000_repurpose_trigger_definer.sql',
+  '20260826260000_persons_expand.sql',
   '20260826280000_persons_backfill.sql',
-  '20260826240000_twin_reader_precedence_and_lock.sql',      // trg_clear_guest_twin_on_repurpose
-  '20260826250000_repurpose_trigger_definer.sql',            // its definer fix
-  '20260901100000_phase33d_person_refs_has_login.sql',       // get_person_refs_for_scope
-  '20260906100000_phase35d_small_readers_person.sql',        // get_player_locations
+  '20260831100000_phase33_attendance_person_rls.sql',
+  '20260901100000_phase33d_person_refs_has_login.sql',
+  '20260905110000_phase35c_notes_journey_person.sql',
+  '20260906100000_phase35d_small_readers_person.sql',
 ];
 
 /**
@@ -179,8 +174,22 @@ export const STUB_SQL = /* sql */ `
     guest_player_id uuid, booked_by_player_id uuid, booked_by_guest_player_id uuid,
     booked_by_profile_id uuid
   );
-  CREATE TABLE IF NOT EXISTS public.session_player_notes (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), subject_profile_id uuid, subject_guest_player_id uuid
+  -- session_reports is ambient for the attendance surface; session_player_notes comes from its
+  -- own shipped migration so the real policies are exercised.
+  CREATE TABLE IF NOT EXISTS public.session_reports (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, reporter_role text,
+    reporter_id uuid, session_happened boolean, public_notes text, notes text,
+    attendees jsonb, created_at timestamptz DEFAULT now()
+  );
+  ALTER TABLE public.session_reports ENABLE ROW LEVEL SECURITY;
+  -- seen-markers for shared coaching notes (its own migration owns this upstream).
+  CREATE TABLE IF NOT EXISTS public.coaching_note_views (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), note_id uuid, profile_id uuid,
+    viewed_at timestamptz DEFAULT now()
+  );
+  CREATE TABLE IF NOT EXISTS public.player_rating_history (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(), player_id uuid, rating numeric,
+    rating_system text, created_at timestamptz DEFAULT now()
   );
   CREATE TABLE IF NOT EXISTS public.email_campaign_templates (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid, name text
@@ -221,6 +230,20 @@ export const STUB_SQL = /* sql */ `
   CREATE OR REPLACE FUNCTION public.get_profile_id_for_user(_user_id uuid)
   RETURNS uuid LANGUAGE sql STABLE AS $fn$
     SELECT id FROM public.profiles WHERE user_id = _user_id LIMIT 1
+  $fn$;
+
+  -- Ambient person helper used by the attendance surface (its own migration owns it upstream).
+  -- plpgsql, not sql: a SQL body is parsed at CREATE time and person_links does not exist yet
+  -- (persons_expand creates it later in the chain). plpgsql resolves at call time.
+  CREATE OR REPLACE FUNCTION public.get_my_person_id()
+  RETURNS uuid LANGUAGE plpgsql STABLE AS $fn$
+  DECLARE v uuid;
+  BEGIN
+    SELECT pl.person_id INTO v FROM public.person_links pl
+    JOIN public.profiles p ON p.id = pl.profile_id
+    WHERE p.user_id = auth.uid() LIMIT 1;
+    RETURN v;
+  END;
   $fn$;
 
   CREATE OR REPLACE FUNCTION public.get_user_club_ids(_user_id uuid)
