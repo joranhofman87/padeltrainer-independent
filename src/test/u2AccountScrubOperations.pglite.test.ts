@@ -3,26 +3,21 @@
  * U2 Slice B1 — the inert `account_scrub_operations` ledger.
  *
  * The suite applies the LEGACY account-deletion audit migration first, writes representative legacy
- * and business rows, snapshots them, and only then applies B1. A green run therefore proves the new
- * table is additive and that nothing existing was rewritten — which testing B1 alone on an empty
- * database could not.
+ * and business rows, snapshots them, and only then applies B1. That is what lets it assert B1 left
+ * the legacy audit table, its schema and the business rows untouched — which testing B1 alone on an
+ * empty database could not. B1 does deliberately replace one existing object,
+ * `backup_export_tables()`, and a test asserts that replacement rather than its absence.
  *
  * Two describe blocks exist because two permanent-wedge defects were REPRODUCED in the draft this
  * replaces, and both were caused by trusting a caller's clock. They are pinned here so the fix
  * cannot regress silently; each names its exact cause.
  *
- * ORDER INDEPENDENCE IS THE INVARIANT, and one command enforces it:
+ * Tests must not depend on each other's rows — one database is shared across the file. To sample
+ * for that, run:
  *
  *     npx vitest run --project db src/test/u2AccountScrubOperations.pglite.test.ts --sequence.shuffle
  *
- * Run it after adding a test. One database is shared across this file, so a test that depends on
- * what other tests left behind is asserting the runner's order rather than its own claim; three
- * reviews found exactly that here, in three disguises, and the shuffle run found two more they had
- * not. How any individual test achieves independence — building its own rows, capturing a snapshot
- * in `beforeAll`, or rolling back a transaction — varies, and is explained where it happens. Earlier
- * revisions of this comment tried to enumerate those mechanisms as rules, and three consecutive
- * reviews then found the enumeration overstated: every version universalised something that
- * deliberately had exceptions. The behaviour is the contract; the mechanisms are implementation.
+ * It permutes on one seed, so it is a probe, not a proof: a pass means that ordering was fine.
  *
  * PGLITE CLOCK RESOLUTION, learned the hard way here. `clock_timestamp()` advances roughly once per
  * millisecond under PGlite, not per statement — eight consecutive reads returned three distinct
@@ -102,12 +97,9 @@ const uuid = (prefix: string, n: number) =>
  *
  * Several tests need to stage a row the trigger would never let a caller write, or to age a lease
  * without waiting five real minutes. Doing that with a bare DISABLE ... work ... ENABLE is a trap: if
- * the work throws, the ENABLE never runs, and every later test in the file then executes with no
- * guard at all — passing while asserting nothing. That is silent, and it is the failure mode this
- * suite exists to detect in the production code, so it has no business living in the suite itself.
- *
- * `afterEach` below is the second half: it fails loudly if any test leaves the triggers off,
- * including one that forgets to use this helper.
+ * the work throws, the ENABLE never runs and later tests run with no guard, asserting less than they
+ * appear to. `afterEach` below is the second half — it fails if any test leaves the triggers off, so
+ * a test that forgets this helper is caught rather than silently weakening the ones after it.
  */
 async function withTriggersDisabled<T>(fn: () => Promise<T>): Promise<T> {
   await db.exec('ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER');
@@ -244,7 +236,7 @@ afterEach(async () => {
   expect(rows[0].disabled, 'a test left the guard trigger disabled — use withTriggersDisabled()').toBe(0);
 });
 
-describe('B1 is additive: nothing that exists is changed', () => {
+describe('B1 changes nothing except the allow-list function it deliberately replaces', () => {
   it('leaves every legacy audit row and value byte-identical', () => {
     expect(legacyAfter).toBe(legacyBefore);
   });
