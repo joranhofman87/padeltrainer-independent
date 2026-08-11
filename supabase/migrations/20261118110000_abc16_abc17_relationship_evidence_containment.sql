@@ -463,23 +463,11 @@ BEGIN
   VALUES (NEW.id, NEW.id)
   ON CONFLICT (guest_player_id) DO NOTHING;
 
-  -- A coincidence is still worth surfacing — as a PENDING proposal a human resolves, never as
-  -- an applied merge. This is the only thing an email match is allowed to produce.
-  IF v_email IS NOT NULL AND EXISTS (
-    SELECT 1 FROM public.profiles p
-    WHERE nullif(btrim(p.email), '') IS NOT NULL AND lower(btrim(p.email)) = lower(v_email)
-  ) THEN
-    INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, details)
-    VALUES ('signup_pair_needs_review', 'pending', NEW.email, NEW.id,
-            jsonb_build_object('via', 'guest_insert_email_coincidence', 'authoritative', false));
-  END IF;
-
-  IF NEW.twin_of_profile_id IS NOT NULL THEN
-    INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, profile_id, details)
-    VALUES ('twin_trust_failure', 'pending', NEW.email, NEW.id, NEW.twin_of_profile_id,
-            jsonb_build_object('via', 'abc18_twin_no_longer_authoritative', 'authoritative', false));
-  END IF;
-
+  -- NO review/proposal row is written here. An earlier draft logged one on every email
+  -- coincidence; that was wrong. Such a row has no counterpart, tenant or idempotency key, it
+  -- duplicates the address as fresh PII, and anyone able to insert a guest could flood the
+  -- table by reusing a known address. H0 mints separate structural persons and stops. An
+  -- actionable, attested proposal is A/U2 work under its later material gate.
   RETURN NEW;
 END;
 $$;
@@ -491,40 +479,68 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-DECLARE
-  v_email text := nullif(btrim(NEW.email), '');
 BEGIN
   IF EXISTS (SELECT 1 FROM public.person_links WHERE profile_id = NEW.id) THEN
     RETURN NEW;
   END IF;
 
+  -- The STRUCTURAL MIRROR is reproduced byte-for-byte from the effective definition
+  -- (20261115100000:594-625) — including `user_id`, which carries the canonical login identity,
+  -- plus rating_member_id, avatar_url, bio, location, preferred_language, the billing fields and
+  -- stripe_customer_id. Only the email-collapse tail below it is removed. An earlier draft of
+  -- this containment dropped seven of these columns, which would have silently degraded every
+  -- new account's person row.
   INSERT INTO public.persons (
-    id, full_name, first_name, last_name, email, phone, birth_date,
-    skill_rating, rating_system, billing_business_name, billing_address, billing_btw_number
+    id, user_id, full_name, first_name, last_name, email, phone, birth_date,
+    skill_rating, rating_system, rating_member_id, avatar_url, bio, location,
+    preferred_language, billing_business_name, billing_address, billing_btw_number,
+    stripe_customer_id
   ) VALUES (
-    NEW.id, NEW.full_name, NEW.first_name, NEW.last_name, NEW.email, NEW.phone, NEW.birth_date,
-    NEW.skill_rating, NEW.rating_system, NEW.billing_business_name, NEW.billing_address, NEW.billing_btw_number
+    NEW.id, NEW.user_id, NEW.full_name, NEW.first_name, NEW.last_name, NEW.email, NEW.phone, NEW.birth_date,
+    NEW.skill_rating, NEW.rating_system, NEW.rating_member_id, NEW.avatar_url, NEW.bio, NEW.location,
+    NEW.preferred_language, NEW.billing_business_name, NEW.billing_address, NEW.billing_btw_number,
+    NEW.stripe_customer_id
   ) ON CONFLICT (id) DO NOTHING;
 
   INSERT INTO public.person_links (person_id, profile_id)
   VALUES (NEW.id, NEW.id)
   ON CONFLICT (profile_id) DO NOTHING;
 
-  -- The account-claim shape (a guest existed first, the human signs up with that address) is
-  -- the single largest source of pre-backfill matches. It is now a PENDING proposal only: the
-  -- collapse it used to perform moved bookings, invoices and memberships on a mutable string.
-  IF v_email IS NOT NULL AND EXISTS (
-    SELECT 1 FROM public.guest_players g
-    WHERE nullif(btrim(g.email), '') IS NOT NULL AND lower(btrim(g.email)) = lower(v_email)
-  ) THEN
-    INSERT INTO public.person_merge_review (kind, status, email, profile_id, details)
-    VALUES ('signup_pair_needs_review', 'pending', NEW.email, NEW.id,
-            jsonb_build_object('via', 'profile_signup_email_coincidence', 'authoritative', false));
-  END IF;
-
+  -- The reverse unique-email collapse (guest existed first, the human signs up with that
+  -- address) is REMOVED. It moved bookings, invoices and memberships on the strength of a
+  -- mutable string. No proposal row replaces it here — see mint_person_for_guest.
   RETURN NEW;
 END;
 $$;
+
+-- (3c) `merge_guest_players` is retired as a client mutation.
+--
+-- Not patched — retired. Its effective body (20261115100000:236) still reads and propagates
+-- `twin_of_profile_id` / `linked_profile_id`, re-keys bookings and invoices, and can move
+-- memberships between persons. Every one of those is an identity decision taken on legacy
+-- bridge values that this containment has just declared non-authoritative, so leaving it
+-- callable would reopen the whole boundary through one RPC.
+--
+-- The function and every existing row are preserved. A canonical, idempotent guest-merge
+-- command belongs to U2.
+REVOKE ALL ON FUNCTION public.merge_guest_players(text, uuid, uuid, uuid, jsonb)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION public.merge_guest_players(text, uuid, uuid, uuid, jsonb) IS
+  'ABC-18: no longer callable by any external role. It propagates legacy twin/linked bridge values and re-keys bookings, invoices and memberships — identity decisions on evidence that is not authoritative. A canonical idempotent merge command is U2 work.';
+
+-- (3d) the obsolete clear-on-repurpose trigger is retired.
+--
+-- `clear_guest_twin_on_repurpose` (20260826240000:283-284) nulls `NEW.twin_of_profile_id` when a
+-- stamped guest is renamed to a different human. It existed to stop a stale stamp being READ as
+-- identity — which no reader does any more.
+--
+-- Left installed it produces a phantom failure: an ordinary rename or email edit on a
+-- historically twinned guest trips the trigger, which sets the column to NULL, which the ABC-18
+-- bridge guard then sees as a client-side change and rejects — so the whole edit fails for a
+-- reason the user cannot act on. Retiring it lets those edits succeed while the stored stamp
+-- stays exactly as it is: inert observation, never cleared, never trusted.
+DROP TRIGGER IF EXISTS trg_clear_guest_twin_on_repurpose ON public.guest_players;
 
 -- (4) changing a twin stamp no longer moves anyone between persons.
 CREATE OR REPLACE FUNCTION public.relink_person_on_twin_change()
@@ -674,8 +690,22 @@ BEGIN
   -- 9c-quater. the owner-context auto-link triggers are gone and the mint paths no longer
   --            collapse on email or twin.
   IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_link_guest_data_on_guest_player_change' AND NOT tgisinternal)
-     OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_link_guest_invoices_on_signup' AND NOT tgisinternal) THEN
-    RAISE EXCEPTION 'ABC-18: an owner-context auto-link trigger is still installed';
+     OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_link_guest_invoices_on_signup' AND NOT tgisinternal)
+     OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_clear_guest_twin_on_repurpose' AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'ABC-18: an owner-context auto-link or twin-clearing trigger is still installed';
+  END IF;
+
+  -- the merge RPC is not callable by any external role.
+  IF has_function_privilege('authenticated', 'public.merge_guest_players(text,uuid,uuid,uuid,jsonb)', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.merge_guest_players(text,uuid,uuid,uuid,jsonb)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-18: merge_guest_players is still callable';
+  END IF;
+
+  -- the profile mirror keeps the canonical login identity: dropping user_id here would
+  -- silently degrade every new account's person row.
+  IF (SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'mint_person_for_profile') !~ 'NEW\.user_id' THEN
+    RAISE EXCEPTION 'ABC-18: mint_person_for_profile no longer mirrors user_id';
   END IF;
   IF EXISTS (
     SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace

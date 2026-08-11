@@ -314,23 +314,11 @@ export type RegisteredPlayerSnapshot = {
  */
 export async function resolveOrCreateGuestTwinForRegisteredPlayer(
   scope: GuestResolveScope,
-  snapshot: RegisteredPlayerSnapshot,
+  _snapshot: RegisteredPlayerSnapshot,
 ): Promise<string | null> {
-  const email = (snapshot.email ?? '').trim().toLowerCase() || null;
-  const legacyArgs: ResolveOrCreateGuestPlayerArgs = {
-    scope,
-    fullName: snapshot.fullName,
-    email,
-    phone: snapshot.phone ?? null,
-    skillRating: snapshot.skillRating ?? null,
-    ratingSystem: snapshot.ratingSystem ?? null,
-    birthDate: snapshot.birthDate ?? null,
-    source: 'roster_registered_twin',
-    hasTrained: true,
-    patchExistingEmptyFields: true,
-    requireNameMatch: true,
-  };
-
+  // No legacy args are built: the 'roster_registered_twin' source is itself part of the retired
+  // bridge, and constructing the payload would invite a future edit to "just" pass it on.
+  //
   // ABC-18 — the find → claim → mint twin bridge is RETIRED.
   //
   // Every step asserted "this guest row IS that registered person" on evidence the caller
@@ -345,7 +333,16 @@ export async function resolveOrCreateGuestTwinForRegisteredPlayer(
   // "reuse someone else's row".
   //
   // This now resolves the GUEST-ONLY, unverified path: a plain guest row for the scope, with no
-  // assertion about which account it belongs to. A verified claim returns with the
-  // attestation/proposal model in A/U2; until then an unlinked guest is the honest answer.
-  return resolveOrCreateGuestPlayer(legacyArgs);
+  // assertion about which account it belongs to.
+  //
+  // It does NOT fall back to the email+name guest resolver either. That would hand a registered
+  // person a guest SURROGATE on exactly the mutable-PII match this containment rejects, and the
+  // surrogate would then flow into cycle booking and invoicing as if it were that account.
+  // Admitting a registered player needs canonical membership or an attestation, and neither
+  // exists yet — so this fails closed and the caller surfaces it.
+  logger.warn(
+    'ABC-18: registered-player admission is unavailable until canonical membership exists',
+    { scopeKind: scope.kind },
+  );
+  return null;
 }

@@ -435,7 +435,7 @@ describe('resolveOrCreateGuestTwinForRegisteredPlayer — ABC-18: the twin bridg
   // name, and downstream that stamp was read as identity. The expectations are inverted rather
   // than deleted, so the same scenarios stay covered.
 
-  it('resolves the guest-only path and never claims a twin', async () => {
+  it('FAILS CLOSED for a registered player — no claim, no reuse, no surrogate', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
     emailLookupResults = [[{ id: 'guest-existing', full_name: 'Mark Jan Alewijn' }]];
 
@@ -444,74 +444,81 @@ describe('resolveOrCreateGuestTwinForRegisteredPlayer — ABC-18: the twin bridg
       { profileId: 'p1', fullName: 'Mark Jan Alewijn', email: '  MarkJan@Test.COM ' },
     );
 
-    expect(id).toBe('guest-existing');
+    // Reusing that email match would hand a registered person a guest surrogate on a mutable
+    // string, and the surrogate would flow into booking and invoicing as if it were the account.
+    expect(id).toBeNull();
     expect(claimMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('never writes twin_of_profile_id when it has to create a row', async () => {
+  it('creates nothing at all — repeated attempts cannot mint duplicate seats', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    emailLookupResults = [[]];
+    emailLookupResults = [[], [], []];
 
-    await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Nieuwe Speler', email: 'nieuw@test.com' },
-    );
-
-    for (const call of insertMock.mock.calls) {
-      expect(call[0]).not.toHaveProperty('twin_of_profile_id');
-      expect(call[0]).not.toHaveProperty('linked_profile_id');
+    for (let i = 0; i < 3; i += 1) {
+      const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+        { kind: 'academy', academyProfileId: 'a1' },
+        { profileId: 'p1', fullName: 'Nieuwe Speler', email: 'nieuw@test.com' },
+      );
+      expect(id).toBeNull();
     }
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('an emailless registered player still gets a plain guest row, unstamped', async () => {
+  it('an emailless registered player is refused too — ambiguity never mints a seat', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
 
-    await resolveOrCreateGuestTwinForRegisteredPlayer(
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: 'a1' },
       { profileId: 'p1', fullName: 'Geen Mail' },
     );
 
+    expect(id).toBeNull();
     expect(claimMock).not.toHaveBeenCalled();
-    for (const call of insertMock.mock.calls) {
-      expect(call[0]).not.toHaveProperty('twin_of_profile_id');
-    }
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('a trainer scope behaves identically — there is no academy-only bridge left', async () => {
+  it('a trainer scope is refused identically — and never uses an active-trainer union', async () => {
     emailLookupResults = [[]];
-    await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'trainer', trainerProfileId: 't1' },
+    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      { kind: 'trainer', trainerId: 't1' },
       { profileId: 'p1', fullName: 'Trainer Scope', email: 'ts@test.com' },
     );
+    expect(id).toBeNull();
     expect(claimMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });
 
-describe('resolveOrCreateGuestTwinForRegisteredPlayer — wrong-person guard (audit #1)', () => {
-  it('does NOT reuse a lone household-email match whose NAME differs → mints a fresh twin for the right person', async () => {
+describe('resolveOrCreateGuestTwinForRegisteredPlayer — wrong-person guard, after ABC-18', () => {
+  // This block pinned the name-gating that stopped a shared household email reusing the WRONG
+  // guest row. That guard mattered while the resolver still reused rows on an email match. It no
+  // longer does — a registered player is refused outright — so both scenarios now converge on
+  // the same, stronger answer: nothing is reused and nothing is created.
+
+  it('a lone household-email match with a DIFFERENT name is refused, not reused', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    // The ONLY guest with this shared family email is the CHILD "Sofie de Vries" — the parent
-    // "Mark de Vries" is the registered player being added. Single match, but a different human.
     emailLookupResults = [[{ id: 'child-sofie', full_name: 'Sofie de Vries' }]];
-    insertResult = { data: { id: 'new-twin-mark' }, error: null };
+
     const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
+      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@test.com' },
     );
-    expect(id).toBe('new-twin-mark');          // fresh twin, NOT Sofie's guest
-    expect(insertMock).toHaveBeenCalled();
-    // And the child's PII is never patched (we never reused her row).
-    expect(updateMock).not.toHaveBeenCalled();
+
+    expect(id).toBeNull();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('reuses a lone email match when the NAME matches (the real twin)', async () => {
+  it('a lone email match with the SAME name is refused too — a name is not evidence either', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
     emailLookupResults = [[{ id: 'marks-twin', full_name: 'Mark de Vries' }]];
+
     const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
+      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@test.com' },
     );
-    expect(id).toBe('marks-twin');
-    expect(insertMock).not.toHaveBeenCalled();
+
+    expect(id).toBeNull();
+    expect(claimMock).not.toHaveBeenCalled();
   });
 });

@@ -49,6 +49,12 @@ export const PRE_H0_MIGRATIONS = [
   // function hid a wrong-overload REVOKE that aborts on the real chain.
   '20260826210000_guest_twin_bridge.sql',
   '20260826260000_persons_expand.sql',                       // persons/person_links + the stamp triggers
+  // person_merge_review, trg_mint_person_for_profile, trg_mint_person_for_guest and
+  // trg_relink_person_on_twin_change. Required: the containment re-emits all three mint/relink
+  // functions and asserts on their bodies, so a fixture without them proves nothing.
+  '20260826280000_persons_backfill.sql',
+  '20260826240000_twin_reader_precedence_and_lock.sql',      // trg_clear_guest_twin_on_repurpose
+  '20260826250000_repurpose_trigger_definer.sql',            // its definer fix
 ];
 
 /**
@@ -92,10 +98,15 @@ export const STUB_SQL = /* sql */ `
   CREATE OR REPLACE FUNCTION public.update_updated_at_column() RETURNS trigger
   LANGUAGE plpgsql AS $fn$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $fn$;
 
+  -- The full account mirror. Every column here is one that mint_person_for_profile copies into
+  -- persons; the fixture must carry them all, or the "did the mirror survive?" assertion cannot
+  -- be written at all.
   CREATE TABLE IF NOT EXISTS public.profiles (
     id uuid PRIMARY KEY, user_id uuid, full_name text, email text, phone text,
     first_name text, last_name text, birth_date date, skill_rating numeric,
-    rating_system text, billing_business_name text, billing_address text, billing_btw_number text
+    rating_system text, rating_member_id text, avatar_url text, bio text, location text,
+    preferred_language text, billing_business_name text, billing_address text,
+    billing_btw_number text, stripe_customer_id text
   );
   CREATE TABLE IF NOT EXISTS public.academy_profiles (id uuid PRIMARY KEY, name text, slug text);
   CREATE TABLE IF NOT EXISTS public.academy_managers (
@@ -190,6 +201,10 @@ export const STUB_SQL = /* sql */ `
   RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
 
   CREATE OR REPLACE FUNCTION public.is_cycle_member(_user_id uuid, _cycle_id uuid)
+  RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
+
+  -- Referenced by 20260826240000 (which the chain needs only for the repurpose trigger).
+  CREATE OR REPLACE FUNCTION public.can_current_user_book_member_window(_cycle_id uuid)
   RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
 
   -- Ambient bookings SELECT scope. Production has several (20260115210247 onwards); this

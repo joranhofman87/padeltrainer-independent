@@ -67,9 +67,6 @@ beforeAll(async () => {
     INSERT INTO public.academy_trainers (academy_profile_id, trainer_profile_id, status)
     VALUES ('${IDS.attackerAcademy}', '${IDS.attackerTrainer}', 'active');
 
-    INSERT INTO public.persons (id) VALUES ('11111111-1111-4111-8111-111111111111');
-    INSERT INTO public.person_links (person_id, profile_id)
-    VALUES ('11111111-1111-4111-8111-111111111111', '${IDS.bookedProfile}');
     INSERT INTO public.academy_player_metadata (academy_profile_id, profile_id, notes)
     VALUES ('${IDS.attackerAcademy}', '${IDS.bookedProfile}', 'booking-observed');
 
@@ -81,9 +78,6 @@ beforeAll(async () => {
     -- The person link is created FIRST so the stamp trigger stamps the row on insert. Without
     -- it the row would land in missing_person_stamp, which sits ahead of the evidence
     -- classes in the precedence, and this fixture would prove nothing about evidence.
-    INSERT INTO public.persons (id) VALUES ('22222222-2222-4222-8222-222222222222');
-    INSERT INTO public.person_links (person_id, guest_player_id)
-    VALUES ('22222222-2222-4222-8222-222222222222', '${IDS.guestOwnedByVictimAcademy}');
     INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, notes)
     VALUES ('${IDS.victimAcademy}', '${IDS.guestOwnedByVictimAcademy}', 'owned-guest');
 

@@ -65,6 +65,7 @@ const expectRefused = async (sql: string, params: unknown[] = []) => {
 };
 
 let digestBeforeH0: Record<string, { rows: number; digest: string }>;
+let digestAfterH0: Record<string, { rows: number; digest: string }>;
 
 beforeAll(async () => {
   const dir = mkdtempSync(join(tmpdir(), 'abc16-rp-'));
@@ -104,6 +105,11 @@ beforeAll(async () => {
   digestBeforeH0 = await overlayDigest();
 
   await applyH0(exec);
+
+  // Taken here, not in the test body: later cases insert and delete overlay rows, and a
+  // delete+insert changes ctid, so a digest read at assertion time would drift for reasons that
+  // have nothing to do with the migration.
+  digestAfterH0 = await overlayDigest();
 }, 240_000);
 
 afterAll(async () => {
@@ -251,12 +257,12 @@ describe('ABC-16 H0 · the RPC and the stamp functions are not client-callable',
   it('but the stamp TRIGGERS still fire for a trusted internal writer', async () => {
     // PostgreSQL checks EXECUTE on a trigger function at CREATE TRIGGER time, not per fire.
     // If that were not so, H0 would have silently disabled person stamping — so prove it.
-    const person = '11111111-1111-4111-8111-111111111111';
-    await c.query(`INSERT INTO public.persons (id) VALUES ($1) ON CONFLICT DO NOTHING`, [person]);
-    await c.query(
-      `INSERT INTO public.person_links (person_id, profile_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [person, IDS.bookedProfile],
-    );
+    // mint_person_for_profile already gave this profile its OWN person (id = profile id). That
+    // is the ABC-18 shape: separate structural persons, never a cross-source collapse.
+    const { rows: linked } = await c.query(
+      `SELECT person_id FROM public.person_links WHERE profile_id = $1`, [IDS.bookedProfile]);
+    const person = linked[0].person_id;
+    expect(person).toBe(IDS.bookedProfile);
 
     const { rows } = await c.query(
       `INSERT INTO public.academy_player_metadata (academy_profile_id, profile_id, notes)
@@ -271,9 +277,8 @@ describe('ABC-16 H0 · the RPC and the stamp functions are not client-callable',
 });
 
 describe('ABC-16 H0 · data preservation and continued readability', () => {
-  it('every overlay row is byte-identical across the migration', async () => {
-    const after = await overlayDigest();
-    expect(after).toEqual(digestBeforeH0);
+  it('every overlay row is byte-identical across the migration', () => {
+    expect(digestAfterH0).toEqual(digestBeforeH0);
   });
 
   it('the row minted BEFORE H0 still exists — nothing was cleaned up', async () => {
