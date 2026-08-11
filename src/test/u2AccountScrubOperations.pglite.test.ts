@@ -919,8 +919,8 @@ describe('operational surface', () => {
     // whose body is a VALUES list of table NAMES — it returns the string and never reads a row.
     // (backup_export_table() does read it, but by dynamic format() on its argument, so it names no
     // table in its definition and is governed by that allow-list rather than by this assertion.)
-    // The day a real scrub RPC appears it shows up here as a failing expectation, which is the
-    // review moment this exists to force.
+    // This describes the surface B1 ships. It is not a tripwire for later slices: this suite loads
+    // only the legacy migration and B1, so a future RPC's migration is not even applied here.
     const { rows } = await db.query<{ proname: string }>(`
       SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'public' AND p.prosecdef

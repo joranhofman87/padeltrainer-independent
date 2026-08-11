@@ -12,15 +12,18 @@
  *     or is listed below with a reason. A new person-keyed table fails this by default; being
  *     forgotten is not an option the schema allows any more.
  *
- *   PAGINATION PRECONDITION — every backed-up table has a single-column `id` primary key of type
- *     uuid, because the backup keyset-walks on exactly that and `backup_export_page` takes a uuid
- *     cursor. A table with a composite, differently-named or differently-typed key would page
- *     wrongly, and silently: the walk would still return rows.
+ *   KEY PRECONDITION — every backed-up table has a single-column `id` primary key of type uuid.
+ *     `backup_export_table` ORDERs BY t.id, which is what makes two exports of an unchanged table
+ *     byte-identical and therefore diffable. (This rule outlived the keyset cursor it was written
+ *     for: an earlier exporter paged on `id` via a `backup_export_page` that no longer exists. The
+ *     current one aggregates a whole table in one statement. The rule is kept for the ordering
+ *     guarantee, not for paging.)
  *
- *   ALLOW-LIST AGREEMENT — the edge function's list and the database's `backup_export_tables()`
- *     allow-list name the same tables. They are two halves of one decision: a table in the edge
- *     list but not the allow-list is permission denied every night, and one in the allow-list but
- *     not the edge list is an export capability nobody asked for.
+ *   ALLOW-LIST AGREEMENT — the edge function's `TABLES_TO_BACKUP` and the database's
+ *     `backup_export_tables()` name the same tables. Note that `TABLES_TO_BACKUP` is a DECLARATION,
+ *     not a runtime input: at run time the function reads its members from `backup_export_groups()`.
+ *     So this check is a policy gate — it makes the intended set reviewable in the edge function and
+ *     refuses drift between the two — rather than a guard against a nightly failure.
  *
  * Runs in `migrations.yml` after `supabase db reset`, against the real local schema. LOCAL ONLY —
  * the connection string is hardcoded to 127.0.0.1:54322 and nothing here reads a credential.
