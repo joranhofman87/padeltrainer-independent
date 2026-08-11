@@ -2,15 +2,12 @@
 /**
  * U2 Slice B1 — the inert `account_scrub_operations` ledger.
  *
- * The suite applies the LEGACY account-deletion audit migration first, writes representative legacy
- * and business rows, snapshots them, and only then applies B1. That is what lets it assert B1 left
- * the legacy audit table, its schema and the business rows untouched — which testing B1 alone on an
- * empty database could not. B1 does deliberately replace one existing object,
- * `backup_export_tables()`, and a test asserts that replacement rather than its absence.
+ * The legacy account-deletion audit migration is applied and snapshotted BEFORE B1, so the
+ * preservation tests compare the same projections either side of it. What those projections cover is
+ * defined by the queries below — read them rather than a summary here.
  *
- * Two describe blocks exist because two permanent-wedge defects were REPRODUCED in the draft this
- * replaces, and both were caused by trusting a caller's clock. They are pinned here so the fix
- * cannot regress silently; each names its exact cause.
+ * Two permanent-wedge defects were REPRODUCED in the draft B1 replaces, both caused by trusting a
+ * caller's clock. The regression tests naming them are below.
  *
  * Tests must not depend on each other's rows — one database is shared across the file. To sample
  * for that, run:
@@ -224,9 +221,7 @@ beforeAll(async () => {
 
 afterAll(async () => { await db?.close(); });
 
-// A test that leaves the guard trigger disabled does not fail — it makes every LATER test in the
-// file pass without the thing it is asserting. So the leak is caught here, at the boundary, one test
-// after it happens, instead of showing up as a suite that is quietly green.
+// No test may leave the guard trigger disabled: later tests would then run without it.
 afterEach(async () => {
   const { rows } = await db.query<{ disabled: number }>(`
     SELECT count(*)::int AS disabled FROM pg_trigger
@@ -236,7 +231,7 @@ afterEach(async () => {
   expect(rows[0].disabled, 'a test left the guard trigger disabled — use withTriggersDisabled()').toBe(0);
 });
 
-describe('B1 changes nothing except the allow-list function it deliberately replaces', () => {
+describe('B1 leaves the legacy audit rows, the legacy schema projection and the business rows unchanged', () => {
   it('leaves every legacy audit row and value byte-identical', () => {
     expect(legacyAfter).toBe(legacyBefore);
   });
