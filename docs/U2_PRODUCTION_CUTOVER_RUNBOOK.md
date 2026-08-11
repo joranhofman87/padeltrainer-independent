@@ -167,9 +167,9 @@ Verified two independent ways (`supabase migration list --linked` and `db push -
 **607 applied, `remote-only = 0`** — production carries no history the repo does not know about, so
 there is nothing to repair and no `migration repair` step in this runbook.
 
-Pending on the integrated #647 head (**19**, in apply order). The first 17 were confirmed against a
-literal `supabase db push --dry-run --linked`; entries 18–19 were added by slice A and are listed
-from the repository, because production access is paused. **Re-run the dry run and reconcile it with
+Pending on the integrated #647 head (**20**, in apply order). The first 17 were confirmed against a
+literal `supabase db push --dry-run --linked`; entries 18–20 were added after that preflight and are
+listed from the repository, because production access is paused. **Re-run the dry run and reconcile it with
 this table before applying anything** — if it disagrees, stop.
 
 | # | Migration | Origin |
@@ -193,12 +193,13 @@ this table before applying anything** — if it disagrees, stop.
 | 17 | `20261130100000_u2_integration_catalog_and_backup` | U2×U1c integration (#647) |
 | 18 | `20261201100000_u2_identity_worker_routing` | U2 slice A (#647) |
 | 19 | `20261202100000_u2_identity_worker_cron_inert` | U2 slice A (#647), installs the sender cron INACTIVE |
+| 20 | `20261203100000_u2_account_scrub_operations` | U2 slice B1 (#647), one new empty ledger table + its backup allow-list entry; no caller switch, no data scrub, no change to any existing table |
 
 This table has been wrong twice, both times caught by review, and both times it would have HALTED a
 correct deployment because step 6 refuses to proceed unless the dry run matches exactly. First it
 said 15 and claimed #645 shipped no dated migration (it is `20261117100000`). Then it said 17 after
 slice A added two more. Treat the number as a live fact to re-derive, not a constant. Numbers 1–6 are
-already merged to `main`; 7–19 arrive with #647.
+already merged to `main`; 7–20 arrive with #647.
 
 **Never** use `supabase db reset --linked`, `--include-seed`, a blind `db push`, or hand-edited
 production SQL. No contraction, no legacy-column drop: `guest_player_id` stays private and intact.
@@ -324,8 +325,13 @@ through `person_links`** — never by email or phone, matching the owner's ident
    and makes the ordering robust even if a step is retried out of sequence.)*
 6. **Apply the remaining migrations** — `supabase db push --linked` after a final `--dry-run` whose
    list matches §2 exactly (the routing migration is entry 18 and the inert sender cron is
-   entry 19, so in practice steps 5 and 6 are a single `db push` that ends with both). If the list differs in any way: **stop**, do not repair,
+   entry 19, followed by the empty Slice-B erasure ledger at entry 20, so in practice steps 5 and 6
+   are a single `db push` that ends with all three). If the list differs in any way: **stop**, do not repair,
    escalate.
+   *(Entry 20 needs no matching edge deploy and has no ordering hazard with one. `TABLES_TO_BACKUP`
+   in `backup-database` is a declaration the coverage guard checks; at runtime the function reads the
+   table set from `backup_export_groups()`, so the migration alone makes the next nightly backup
+   include `account_scrub_operations` — of which there will be zero rows.)*
 7. **Deploy the edge functions** from clean updated `main`, in this order:
    a. **`notification-email-worker`** — the redeploy §0 promises. It is safe only AFTER step 6,
       because this build passes `p_worker_kind`, which the pre-migration function does not accept;
@@ -415,9 +421,114 @@ path.
 
 | Slice | What it must deliver | Status |
 |---|---|---|
-| **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **BUILT, NOT RELEASE-CLEAR.** Codex rounds 1–5 all occurred (5 = the thread's ceiling); the implementation was verified clear at round 3, but the **round-5 correction was applied without review**, so this slice is explicitly not signed off. A separate narrow release-capture unit covers the remaining blockers. Migrations 18–19, `notification-identity-worker`, `_shared/identity-send-gate.ts`, handler + send-gate + wiring tests, the real-Postgres cron lifecycle proof and the routing partition proof. Local gates green; **remote required checks and rollout `verify` must also be green before any "gate green" claim.** Deployment/verification/rollback below. **Not deployed, cron INACTIVE.** |
-| **B — retain-and-scrub (OD-08)** | replace the interim membership refusal; detach auth transactionally, preserve `persons.id` + memberships + financial/audit evidence, pseudonymize the rest, idempotent, auditable, single safe server command | **not started** |
+| **A — identity sender** | production-capable sender for `identity_verification_requested`; generic worker must skip identity rows; target `contact_normalized`; required-transactional (no marketing suppression); honour `is_email_suppressed`; token derived at send only; NL+EN copy; idempotent; per-address cap preserved; link → `/verify-identity` | **REVIEW-CLEAR at `76251d78ce7be8512c7d321373ca94caf4c1ef17`.** The later release-capture commits closed the formerly unreviewed round-5 correction; exact-head required checks and rollout `verify` were green. Migrations 18–19, sender, send gate, real-Postgres cron proof and routing-partition proof remain **not deployed**, and the cron remains **INACTIVE**. |
+| **B — retain-and-scrub (OD-08)** | replace the interim membership refusal; detach auth transactionally, preserve `persons.id` + memberships + financial/audit evidence, pseudonymize the rest, idempotent, auditable, single safe server command | **B1 foundation built locally; Slice B remains incomplete and not release-clear.** Migration 20 creates one new empty ledger, `public.account_scrub_operations`, and adds it to the backup allow-list. It performs no scrub, Auth call, asset deletion, caller switch or activation, and it changes no existing table. Transactional scrub RPCs, external-work RPCs, caller convergence and reconciliation remain separate bounded releases. |
 | **C — observability** | non-blocking non-PII identity-funnel telemetry + funnel/dashboard + alert thresholds | **not started** |
+
+### Slice B1 — the erasure ledger: what it is, and what applying it does
+
+Migration 20 creates `public.account_scrub_operations` — the state machine a later command needs so
+it can order a transactional database scrub, external Auth/asset cleanup that cannot share that
+transaction, and a durable completion. It is empty on arrival and nothing writes to it in this
+release.
+
+**`account_deletion_audit` is not touched.** Not its columns, constraints, trigger, rows or its two
+current callers. An earlier draft of this slice added a protocol-2 lane to that table; it was
+replaced because the erasure ledger must be backed up (see below) while that table carries
+`subject_email`, `subject_name`, `ip_address`, `user_agent` and a raw `failure_reason`, and because
+sharing its column set made two permanent-wedge defects reachable. Reviewing migration 20 should
+confirm the only statements naming `account_deletion_audit` are in comments.
+
+**Direct-identifier-minimized by contract.** Every column is a UUID, a state, a controlled code or a
+timestamp. There is no place to put an email, a name, a phone number, an IP, a user agent or a raw
+provider error, and a test asserts the exact column list so adding one is a deliberate review moment.
+Minimized is not anonymous: the UUIDs remain linkable to a person, so this table is **pseudonymous
+personal data** and carries the same access, export and retention obligations as any other personal
+data here. "No direct identifiers" is a blast-radius reduction, not an exemption.
+
+**The database owns every timestamp.** `started_at`, `database_scrubbed_at`, `auth_deleted_at`,
+`public_assets_deleted_at`, `finished_at`, `last_attempt_at`, `next_attempt_at` and `lease_expires_at`
+are all stamped by the guard trigger from one `clock_timestamp()`; a caller says which milestone
+happened, never when, and any value it supplies is discarded. Two reproduced wedges in the earlier
+draft are the reason, and both are pinned by regression tests:
+
+* a caller-supplied future `started_at` satisfied neither exit from `started`, could not be corrected
+  (immutable) or removed (append-only), and the one-live-operation index then blocked that account
+  from ever being erased;
+* a worker clock ahead of Postgres — `delete-user-data.ts` already stamps with `new Date()` — wrote a
+  future `auth_deleted_at`; completion required `finished_at >= auth_deleted_at`, the marker was
+  write-once and survived release-and-retry, so the erasure was unfinishable until real time caught
+  up, with no replacement operation possible meanwhile.
+
+There is deliberately no CHECK comparing two timestamps. Ordering is guaranteed structurally by the
+transition graph. Such a CHECK cannot make the order more true and can make a row unfinishable.
+
+**Backup coverage — and precisely what it does not buy.** The ledger is in `TABLES_TO_BACKUP` and in
+`backup_export_tables()` because it is non-rederivable: restore the database to a point before an
+erasure and nothing in the restored state says the erasure happened, and no later query can work it
+out. Exporting it means that evidence still exists when it is needed.
+
+It is needed by a **restore-replay protocol that does not exist yet** — restore into an
+outbound-isolated environment, replay every erasure completed after the restore point, reconcile Auth
+and Storage, and only then reopen users, sessions, jobs, webhooks and notifications. Until that
+protocol is designed, reviewed and built, **a restore still reinstates erased accounts.** Nothing
+reads this ledger on restore; in this release nothing writes to it either. Do not describe B1, or the
+backup entry, as resurrection prevention — it is evidence preservation, one prerequisite of several.
+
+Two further prerequisites remain open and belong to the DR slice, not here: the erasure record must
+be retained **outside and beyond** every backup capable of reinstating the data (a copy that lives
+only inside the restore point disappears with it), and the replay must reconcile external providers,
+not just database rows.
+
+The JSON exporter remains a **scoped recovery snapshot, not disaster recovery** — no auth schema, no
+Storage bytes, no configuration or secrets, and deliberately not `account_deletion_audit`. Everything
+it does contain is personal data, pseudonymous at least. Full database recovery including all
+required PII is Supabase physical backup/PITR. Storage-object recovery, configuration/secret recovery
+and a portable off-site dump are likewise DR-slice work. **Owner check before relying on any of this:
+confirm PITR is enabled and its retention window — that cannot be verified from the repository.**
+
+**No client role can touch it (ABC-14).** `REVOKE ALL … FROM PUBLIC, anon, authenticated,
+service_role`, no `GRANT`, and no policy. `service_role` is revoked deliberately, not by omission: a
+broad INSERT/UPDATE grant would let any holder of the service key write any transition on any row,
+and the guard trigger cannot help — it validates the *shape* of a transition, not the caller's
+entitlement to make it, and an UPDATE that forgets `AND lease_token = $token` is a stolen lease that
+looks perfectly valid on the way past. The admin SELECT policy an earlier draft carried is gone as
+well: `authenticated` holds no SELECT privilege, so it could never fire, and an ACL a reviewer counts
+but the database never consults is worse than none. RLS stays **on with zero policies** — deny-all —
+as the backstop for a future grant made without reading the migration.
+
+*This matters because a new table in Supabase's `public` schema is not born private.* `pg_default_acl`
+grants `service_role` every privilege and `anon`/`authenticated` `Dxtm` (including TRUNCATE) on
+tables created there. The `REVOKE` is what makes the table private, and it was verified by deletion,
+not by inspection: remove that line and all three roles come back with privileges.
+
+**Access arrives later as narrow `SECURITY DEFINER` RPCs — none of them in B1.** One per transition
+(open, scrub, claim, progress, release, finalize) plus a bounded operator read; each takes the
+operation id and, after the scrub, the caller's current lease token, and predicates its UPDATE on
+both so a stale holder matches zero rows before the trigger is consulted; each gets EXECUTE to
+exactly the role that needs it and no table privileges. That slice also owes the two-session
+real-Postgres proof of the fencing. Until it exists the table is reachable only by its owner and by
+the already-reviewed `SECURITY DEFINER` export path — the right state for a table with no writer.
+
+**The backup still works.** `backup_export_table`/`backup_export_group` are `SECURITY DEFINER` and run
+as the owner, so the nightly export reads the table without `service_role` holding any privilege on
+it — the same path `academy_player_memberships` and the two manifest tables already take.
+`backup-coverage.mjs` proves this by running the real export as `service_role`, and now derives the
+set of such tables instead of hard-coding it.
+
+**Post-scrub work never gives up.** Once database state is destroyed, abandoning the operation would
+strand the account half-erased, so `failed` is reachable only before the scrub commits and
+`external_attempt_count` has no ceiling. Backoff is exponential and capped at six hours. A parked
+state and an alert threshold for an operation that has retried for days belong to the worker slice;
+until then the two reconciliation indexes are how an operator finds them.
+
+**Forward compensation.** If migration 20 causes a regression, stop before any writer is deployed,
+confirm `SELECT count(*) FROM public.account_scrub_operations` is zero, and drop the table and revert
+`backup_export_tables()` in a reviewed compensating migration. Refuse that compensation if any row
+exists: once an erasure is recorded, its evidence must not be discarded. Because B1 creates only an
+empty table, this pre-activation compensation restores and rewrites no user, membership, booking,
+invoice or Auth data. Production execution, as always, requires the owner gate and a freshly verified
+PITR timestamp.
 
 ### Slice A — deployment, verification and rollback (non-side-effecting)
 

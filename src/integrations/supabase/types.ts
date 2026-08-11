@@ -1307,6 +1307,69 @@ export type Database = {
         }
         Relationships: []
       }
+      account_scrub_operations: {
+        Row: {
+          actor_user_id: string
+          auth_deleted_at: string | null
+          command_id: string
+          database_scrubbed_at: string | null
+          external_attempt_count: number
+          finished_at: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          next_attempt_at: string | null
+          public_assets_deleted_at: string | null
+          self_service: boolean
+          started_at: string
+          state: string
+          subject_person_id: string | null
+          subject_user_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          auth_deleted_at?: string | null
+          command_id: string
+          database_scrubbed_at?: string | null
+          external_attempt_count?: number
+          finished_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          next_attempt_at?: string | null
+          public_assets_deleted_at?: string | null
+          self_service: boolean
+          started_at?: string
+          state?: string
+          subject_person_id?: string | null
+          subject_user_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          auth_deleted_at?: string | null
+          command_id?: string
+          database_scrubbed_at?: string | null
+          external_attempt_count?: number
+          finished_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          next_attempt_at?: string | null
+          public_assets_deleted_at?: string | null
+          self_service?: boolean
+          started_at?: string
+          state?: string
+          subject_person_id?: string | null
+          subject_user_id?: string
+        }
+        Relationships: []
+      }
       admin_impersonation_logs: {
         Row: {
           action: string | null

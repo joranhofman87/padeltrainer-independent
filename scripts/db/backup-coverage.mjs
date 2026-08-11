@@ -298,6 +298,28 @@ else pass('the backup can execute all three');
   const viaFn = await probe(`SELECT public.backup_export_table('academy_player_memberships') AS r`);
   ok_(viaFn.ok, 'the same read THROUGH backup_export_table succeeds as service_role', viaFn);
 
+  // ...and the same proof for EVERY backed-up table service_role cannot read directly, derived
+  // rather than listed. U2's account_scrub_operations revokes service_role too — it is reachable
+  // only through this definer path and through narrow RPCs that do not exist yet — so a table can
+  // now join that set without anyone remembering to extend a hard-coded list here. Asserting the
+  // grant shape is not the same as proving the read succeeds, which is the whole reason this block
+  // runs as service_role at all.
+  {
+    const { rows: closedToBackup } = await c.query(`
+      SELECT t.relname FROM public.backup_export_tables() t
+       WHERE NOT has_table_privilege('service_role', to_regclass('public.' || t.relname), 'SELECT')
+       ORDER BY 1`);
+    for (const { relname } of closedToBackup) {
+      const direct = await probe(`SELECT 1 FROM public.${relname} LIMIT 1`);
+      ok_(!direct.ok && direct.code === '42501',
+        `a DIRECT read of ${relname} as service_role is denied`, direct);
+      const viaDefiner = await probe(`SELECT public.backup_export_table($1) AS r`, [relname]);
+      ok_(viaDefiner.ok,
+        `...but the backup still exports ${relname} through the definer path`, viaDefiner);
+    }
+    pass(`${closedToBackup.length} backed-up table(s) revoke service_role and stay exportable anyway`);
+  }
+
   const viaGroup = await probe(`SELECT public.backup_export_group('u1c_membership') AS r`);
   const gotTables = Object.keys(viaGroup.rows?.[0]?.r ?? {}).sort();
   ok_(viaGroup.ok && JSON.stringify(gotTables) === JSON.stringify([...ROLLBACK_FAMILY].sort()),

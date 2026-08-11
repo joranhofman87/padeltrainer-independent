@@ -25,6 +25,28 @@
  *    schema instead of trusting this list to stay current.
  *
  * A backup that silently saves less than it claims is worse than no backup, because it is trusted.
+ *
+ * WHAT THIS IS NOT. It is a SCOPED recovery snapshot — a declared set of tables, as JSON, kept 14
+ * days — and it must never be described as disaster recovery. It contains no auth schema, no Storage
+ * object bytes, no project configuration, no extensions or secrets, and by deliberate decision no
+ * `account_deletion_audit` (that table carries subject_email, subject_name, ip_address, user_agent
+ * and raw failure_reason, and copying those into 14-day JSON snapshots would add DIRECT identifiers
+ * to an artifact that otherwise carries none).
+ * Full-database recovery INCLUDING all required PII is Supabase physical backup / PITR, which
+ * necessarily holds the personal data present at each restore point. Storage-object recovery,
+ * configuration/secret recovery, a portable off-site dump, and an erasure ledger retained outside
+ * and beyond every restorable backup are all real requirements and all belong to a separate reviewed
+ * DR slice — not to this function.
+ *
+ * WHAT IT CONTAINS, stated plainly: personal data. Rows keyed by UUIDs that remain linkable to a
+ * person are pseudonymous personal data, not anonymous data, and several of these tables hold direct
+ * identifiers outright. The snapshots inherit every access, encryption and retention obligation that
+ * follows from that.
+ *
+ * A NOTE ON WHAT BACKING UP AN ERASURE RECORD DOES AND DOES NOT BUY. Preserving evidence is not the
+ * same as acting on it. Restoring a database to a point before an erasure still reinstates the erased
+ * account: nothing here replays erasures after a restore, and no restore-replay protocol exists yet.
+ * What the export buys is that the evidence such a protocol would need still exists when it is built.
  */
 import { corsHeaders, requireServiceRoleOrAdmin } from "../_shared/auth.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
@@ -45,6 +67,14 @@ export const TABLES_TO_BACKUP = [
   // it does not lose an audit trail — it loses the thing that stops a REPLAYED create from minting a
   // second Player for a request that already had one.
   "player_create_commands",
+  // U2: the erasure record, and the mirror image of the line above. Restore the database to a point
+  // before an account was erased and nothing in the restored state says the erasure happened — and
+  // no later query can derive it. Kept so a future restore-replay protocol has the evidence it will
+  // need; it is not that protocol, and on its own it prevents nothing. Every column is a UUID, a
+  // state, a controlled code or a timestamp, so including it adds no direct identifier (the UUIDs
+  // are still pseudonymous personal data). The legacy PII-bearing account_deletion_audit is
+  // deliberately NOT here — see the header note.
+  "account_scrub_operations",
   // U1a/U1b: the canonical academy↔Player relation and the backfill's own checkpoint state. The
   // U1c rollback is "delete only the backfilled membership rows", which is not something you can
   // do from a backup that never contained them.

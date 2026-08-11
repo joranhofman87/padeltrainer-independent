@@ -1,9 +1,48 @@
 {
   "_comment": "Digest of the migration chain reviewed for outbound behaviour. Re-pin only after reviewing the diff.",
-  "sha256": "baf39b3d2c40700b3bebf5c2fc540b5415c614131b59d2b3c5817620dbe84fa8",
-  "files": 626,
-  "pinned_at": "2026-08-10",
+  "sha256": "c7326d165b2da669b916ea7091750bed80e1bde6f8ab1121fa3aa920eef84456",
+  "files": 627,
+  "pinned_at": "2026-08-11",
   "reviews": [
+    {
+      "from": {
+        "sha256": "baf39b3d2c40700b3bebf5c2fc540b5415c614131b59d2b3c5817620dbe84fa8",
+        "files": 626,
+        "pinned_at": "2026-08-10"
+      },
+      "to": {
+        "sha256": "c7326d165b2da669b916ea7091750bed80e1bde6f8ab1121fa3aa920eef84456",
+        "files": 627
+      },
+      "added": 1,
+      "range": "20261203100000_u2_account_scrub_operations",
+      "units": "U2 slice B1 (#647) — the retain-and-scrub erasure ledger, inert and unreachable",
+      "outbound_sweep": {
+        "method": "every sanitizer sweep pattern applied to the one added migration: cron.schedule, cron.alter_job, net.http_post, net.http_request_queue, supabase_functions.http_request, extensions.http_, dblink, CREATE FOREIGN TABLE/SERVER, schedule_in_database, vault.*, CREATE EXTENSION, pg_read_, COPY",
+        "migrations_with_outbound_capability": "none — every pattern returned zero matches, including inside comments and string literals. Re-run against the final text after the ABC-14 access changes.",
+        "new_outbound_capable_functions": "none. The migration defines two functions: a plpgsql BEFORE-row trigger guard, and a CREATE OR REPLACE of the existing IMMUTABLE SECURITY DEFINER backup_export_tables() whose body is a VALUES literal. Neither reaches net.http_post, supabase_functions.http_request, dblink or extensions.http_*, so reviewed-outbound-functions.tsv is unchanged",
+        "new_extensions": "none — no CREATE EXTENSION, so reviewed-extensions.tsv is unchanged",
+        "new_cron_jobs": "none — no cron.schedule or cron.alter_job, so reviewed-cron-jobs.tsv is unchanged",
+        "false_positives_checked": "none to check; the sweep produced no hits at all"
+      },
+      "why_the_sanitized_clone_stays_outbound_inert": [
+        "There is nothing to neutralise. The migration is one CREATE TABLE, three CREATE INDEX, one trigger function, two CREATE TRIGGER, an RLS enable, one REVOKE, a CREATE OR REPLACE of backup_export_tables(), and comments. It touches no scheduler, no network primitive, no extension and no foreign data wrapper, so a sanitized rehearsal target replays it exactly as production would.",
+        "The one SECURITY DEFINER object is a redefinition of an already-reviewed function. Its body is a static VALUES list of table names; it takes no argument, reads no table, and runs SET search_path = pg_catalog, public, pg_temp. CREATE OR REPLACE preserves the REVOKE/GRANT set installed by 20261118100000, and scripts/db/backup-coverage.mjs re-asserts on every run that anon and authenticated cannot execute it and service_role can.",
+        "The new table is created EMPTY, has NO authorized caller, and grants no privilege to any client role — anon, authenticated and service_role are all revoked and there are zero RLS policies. Nothing in this release writes to it, and nothing can. The migration also does not read, update or delete a row in any existing table.",
+        "account_deletion_audit is untouched. Every occurrence of that name in the migration is inside a comment; src/test/u2AccountScrubOperations.pglite.test.ts snapshots that table's rows AND its columns, constraints, triggers, guard body and indexes across the migration and asserts both are byte-identical."
+      ],
+      "review_history": [
+        "The first draft added a protocol-2 lane to account_deletion_audit. It was replaced, not patched, after an independent read-only audit reproduced two permanent-wedge defects: a caller-supplied future started_at, and a worker clock ahead of Postgres writing a future auth_deleted_at. Both left an operation with no legal exit while the one-active-operation index blocked any replacement — an account that could not be erased. Closed by the database owning every timestamp and by deleting every cross-timestamp CHECK; ordering is now structural via the transition graph. Both variants are pinned by regression tests.",
+        "ABC-14 (owner-approved) then removed the direct service_role grant and the admin SELECT policy. The policy could never have fired — authenticated holds no SELECT privilege — and the grant would have let any holder of the service key write any transition on any row, which the guard trigger cannot prevent because it validates transition shape, not caller entitlement. Access will arrive as narrow SECURITY DEFINER RPCs; none is in B1.",
+        "Twelve guards were mutation-checked: each removed in isolation, then the invariant it claims to enforce probed. All twelve failed without their guard. Three needed sharper probes first: two (the append-only DELETE refusal and the subject_person_id bind-once exemption) are ALSO caught by a second guard, so the probes assert the specific refusal reason rather than merely that an error occurred; and the ACL probe was initially unfalsifiable because bare Postgres grants nothing by default — the harness now models Supabase's standing ALTER DEFAULT PRIVILEGES, under which deleting the REVOKE does restore privileges to all three roles.",
+        "Verified against real Postgres, not only PGlite: after supabase db reset the table's relacl is {postgres=arwdDxtm/postgres} with RLS on and zero policies. Getting there required adding the table to the deny-list in supabase/seed.sql, whose local-only blanket GRANT ALL TO service_role had been silently re-granting everything the migration revoked — so local and CI would have tested the opposite of production."
+      ],
+      "inventories_updated": [
+        "reviewed-cron-jobs.tsv — unchanged, no new jobs",
+        "reviewed-outbound-functions.tsv — unchanged, no new outbound-capable functions",
+        "reviewed-extensions.tsv — unchanged, no new extensions"
+      ]
+    },
     {
       "from": {
         "sha256": "3d87a2a95000198b20acdf47fb12fae75b648b5521a451359a9238c18982efce",
