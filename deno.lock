@@ -323,6 +323,7 @@
         "npm:html-to-image@^1.11.13",
         "npm:i18next-browser-languagedetector@^8.2.0",
         "npm:i18next@^25.7.4",
+        "npm:ini@7",
         "npm:jsdom@^20.0.3",
         "npm:leaflet@^1.9.4",
         "npm:lucide-react@0.462",
@@ -347,6 +348,7 @@
         "npm:typescript@^5.8.3",
         "npm:vite@^5.4.19",
         "npm:vitest@^4.0.18",
+        "npm:yaml@^2.9.0",
         "npm:zod@^3.25.76"
       ],
       "overrides": {
