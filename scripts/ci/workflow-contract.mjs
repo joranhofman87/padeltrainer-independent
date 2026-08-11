@@ -124,6 +124,9 @@ export const APPROVED_JOB_RUNS = {
  */
 const APPROVED_RUNNER = 'ubuntu-latest';
 
+/** Same validator source, same verdicts — see checkValidatorBehaviour(). */
+const validatorBehaviourMemo = new Map();
+
 /**
  * The gate's decision, exercised from HERE — which runs in `lint`, an
  * independently required check that nothing aggregates.
@@ -135,36 +138,77 @@ const APPROVED_RUNNER = 'ubuntu-latest';
  * the same reason this checker runs in `lint` at all.
  */
 function checkValidatorBehaviour(repoRoot, violations) {
+  const cli = join(repoRoot, 'scripts/ci/verify-prerequisites.mjs');
+  let source = '';
+  try {
+    source = readFileSync(cli, 'utf8');
+  } catch {
+    violations.push(`${GATE_COMMAND} is missing — the gate has no validator to run`);
+    return;
+  }
+  // Same validator, same verdicts: the fixture suite checks ~55 repositories
+  // whose validator is byte-identical, and each vector costs a process.
+  const memoized = validatorBehaviourMemo.get(source);
+  if (memoized) {
+    violations.push(...memoized);
+    return;
+  }
+
+  const found = [];
   const good = JSON.stringify(Object.fromEntries(EXPECTED_PREREQUISITES.map((job) => [job, { result: 'success' }])));
-  const withOne = (job, result) =>
-    JSON.stringify(Object.fromEntries(EXPECTED_PREREQUISITES.map((j) => [j, { result: j === job ? result : 'success' }])));
+  const withResults = (overrides) =>
+    JSON.stringify(Object.fromEntries(EXPECTED_PREREQUISITES.map((j) => [j, { result: overrides[j] ?? 'success' }])));
   const dropOne = (job) =>
     JSON.stringify(Object.fromEntries(EXPECTED_PREREQUISITES.filter((j) => j !== job).map((j) => [j, { result: 'success' }])));
+  const [a, b, c, d, e] = EXPECTED_PREREQUISITES;
+
+  // One table, used for BOTH the pure function and the CLI. Checking the CLI on
+  // only one bad vector left `problems.length > 0` -> `=== 1` alive: the single
+  // -problem cases still exited 1, so nothing noticed that two problems exited
+  // 0. Multi-problem vectors are therefore first-class here.
   const vectors = [
     ['every prerequisite succeeded', good, true],
-    ['one failure', withOne(EXPECTED_PREREQUISITES[0], 'failure'), false],
-    ['one cancelled', withOne(EXPECTED_PREREQUISITES[1], 'cancelled'), false],
-    ['one skipped', withOne(EXPECTED_PREREQUISITES[2], 'skipped'), false],
-    ['an empty result', withOne(EXPECTED_PREREQUISITES[3], ''), false],
-    ['a prerequisite missing from needs', dropOne(EXPECTED_PREREQUISITES[4]), false],
+    ['one failure', withResults({ [a]: 'failure' }), false],
+    ['one cancelled', withResults({ [b]: 'cancelled' }), false],
+    ['one skipped', withResults({ [c]: 'skipped' }), false],
+    ['an empty result', withResults({ [d]: '' }), false],
+    ['a prerequisite missing from needs', dropOne(e), false],
     ['an unexpected prerequisite', JSON.stringify({ ...JSON.parse(good), invented: { result: 'success' } }), false],
+    ['TWO failures at once', withResults({ [a]: 'failure', [b]: 'failure' }), false],
+    ['a failure and a cancellation at once', withResults({ [a]: 'failure', [c]: 'cancelled' }), false],
+    ['three problems at once', withResults({ [a]: 'failure', [b]: 'cancelled', [c]: 'skipped' }), false],
+    ['every prerequisite failed', withResults(Object.fromEntries(EXPECTED_PREREQUISITES.map((j) => [j, 'failure']))), false],
+    ['a missing prerequisite AND a failure', JSON.stringify(
+      Object.fromEntries(EXPECTED_PREREQUISITES.filter((j) => j !== e).map((j) => [j, { result: j === a ? 'failure' : 'success' }])),
+    ), false],
     ['malformed JSON', '{oops', false],
     ['no input at all', '', false],
   ];
+
+  const run = (value) =>
+    spawnSync(process.execPath, [cli], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH ?? '', [NEEDS_ENV_VAR]: value },
+    }).status;
+
   for (const [label, raw, shouldPass] of vectors) {
     const passed = validatePrerequisites(raw).length === 0;
     if (passed !== shouldPass) {
-      violations.push(`the gate's validator got ${label} wrong: it ${passed ? 'accepted' : 'rejected'} it`);
+      found.push(`the gate's validator got ${label} wrong: it ${passed ? 'accepted' : 'rejected'} it`);
+    }
+    // The CLI on EVERY vector, not just one: a validator that computes the
+    // right answer and exits 0 anyway gates nothing, and the exit path can be
+    // wrong for some inputs while right for others.
+    const status = run(raw);
+    if ((status === 0) !== shouldPass) {
+      found.push(
+        `the gate's validator CLI exited ${status} for ${label} — it must exit ${shouldPass ? '0' : 'non-zero'}`,
+      );
     }
   }
-  // …and the CLI's exit contract, because a validator that computes the right
-  // answer and exits 0 anyway gates nothing.
-  const cli = join(repoRoot, 'scripts/ci/verify-prerequisites.mjs');
-  const run = (value) => spawnSync(process.execPath, [cli], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', [NEEDS_ENV_VAR]: value } }).status;
-  if (run(good) !== 0) violations.push("the gate's validator CLI does not exit 0 when every prerequisite succeeded");
-  if (run(withOne(EXPECTED_PREREQUISITES[0], 'failure')) === 0) {
-    violations.push("the gate's validator CLI exits 0 on a failed prerequisite — it would report success for a red run");
-  }
+
+  validatorBehaviourMemo.set(source, found);
+  violations.push(...found);
 }
 
 /** The gate's only command, and its only input. */

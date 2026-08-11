@@ -564,6 +564,37 @@ describe('the required gate\'s decision (a pure function, not a shell program)',
     expect(run().status, 'no NEEDS_JSON at all').toBe(1);
     expect(run('{oops').status, 'malformed JSON').toBe(1);
   });
+
+  it('the CLI exits non-zero when SEVERAL prerequisites are bad at once', () => {
+    // The single-problem cases above cannot see an exit path keyed to the
+    // COUNT of problems: `problems.length === 1` instead of `> 0` passes every
+    // one of them while letting two simultaneous failures exit 0 — a green
+    // required check for a doubly-red run.
+    const cli = resolve(dbDir, '../ci/verify-prerequisites.mjs');
+    const run = (value: string) =>
+      spawnSync(process.execPath, [cli], {
+        encoding: 'utf8',
+        env: { PATH: process.env.PATH ?? '', NEEDS_JSON: value },
+      });
+    const [a, b, c, d, e] = EXPECTED_PREREQUISITES;
+    const multiProblem: Array<[string, string]> = [
+      ['two failures', withResults({ [a]: 'failure', [b]: 'failure' })],
+      ['a failure and a cancellation', withResults({ [a]: 'failure', [c]: 'cancelled' })],
+      ['three problems', withResults({ [a]: 'failure', [b]: 'cancelled', [c]: 'skipped' })],
+      ['four problems', withResults({ [a]: 'failure', [b]: 'cancelled', [c]: 'skipped', [d]: '' })],
+      ['every prerequisite failed', withResults(Object.fromEntries(EXPECTED_PREREQUISITES.map((j) => [j, 'failure'])))],
+      ['a missing prerequisite AND a failure', JSON.stringify(
+        Object.fromEntries(
+          EXPECTED_PREREQUISITES.filter((j) => j !== e).map((j) => [j, { result: j === a ? 'failure' : 'success' }]),
+        ),
+      )],
+    ];
+    for (const [label, input] of multiProblem) {
+      // More than one problem, and still a non-zero exit.
+      expect(validatePrerequisites(input).length, `${label}: expected several problems`).toBeGreaterThan(1);
+      expect(run(input).status, label).not.toBe(0);
+    }
+  });
 });
 
 describe('the contract checker detects each weakening (fixture repos)', () => {
