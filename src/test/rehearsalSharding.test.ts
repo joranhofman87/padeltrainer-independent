@@ -522,12 +522,33 @@ describe('the required gate\'s decision (a pure function, not a shell program)',
       ['a JSON string', '"success"'],
       ['a JSON number', '42'],
       ['null', 'null'],
-      ['an entry that is not an object', '{"unit-tests":"success"}'],
-      ['an entry with no result', '{"unit-tests":{}}'],
-      ['a non-string result', '{"unit-tests":{"result":true}}'],
     ];
     for (const [label, raw] of bad) {
       expect(validatePrerequisites(raw as string), label).not.toEqual([]);
+    }
+  });
+
+  it('fails on a corrupt ENTRY inside an otherwise complete payload', () => {
+    // The payload is complete, so a missing-key error cannot satisfy these —
+    // each must be reported for its own reason, naming the job it belongs to.
+    const corrupt = (entry: unknown) => {
+      const payload = Object.fromEntries(
+        EXPECTED_PREREQUISITES.map((j) => [j, j === 'db-tests' ? entry : { result: 'success' }]),
+      );
+      return validatePrerequisites(JSON.stringify(payload));
+    };
+    for (const [label, entry, expected] of [
+      ['a string instead of an object', 'success', /'db-tests' has no result object/],
+      ['an array', [], /'db-tests' has no result object/],
+      ['null', null, /'db-tests' has no result object/],
+      ['no result field', {}, /'db-tests' has a non-string result/],
+      ['a boolean result', { result: true }, /'db-tests' has a non-string result/],
+      ['a numeric result', { result: 0 }, /'db-tests' has a non-string result/],
+      ['a nested result', { result: { value: 'success' } }, /'db-tests' has a non-string result/],
+    ] as Array<[string, unknown, RegExp]>) {
+      const problems = corrupt(entry);
+      expect(problems, label).toHaveLength(1);
+      expect(problems[0], label).toMatch(expected);
     }
   });
 
@@ -569,6 +590,10 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     for (const f of ['src/plain.test.ts', 'src/test/thing.pglite.test.ts', 'src/test/other.realpg.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']) {
       writeFileSync(join(root, f), '// fixture\n');
     }
+    // The contract exercises the validator's behaviour, so the fixture repo
+    // needs the real one — copied, never re-implemented.
+    mkdirSync(join(root, 'scripts/ci'), { recursive: true });
+    cpSync(resolve(dbDir, '../ci/verify-prerequisites.mjs'), join(root, 'scripts/ci/verify-prerequisites.mjs'));
     mkdirSync(join(root, 'scripts/db'), { recursive: true });
     for (const f of ['scripts/db/rehearse-alpha.mjs', 'scripts/db/rehearse-beta.ts']) {
       writeFileSync(join(root, f), '// fixture rehearsal\n');

@@ -51,7 +51,9 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parse as parseIni } from 'ini';
-import { EXPECTED_PREREQUISITES, NEEDS_ENV_VAR } from './verify-prerequisites.mjs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath as toPath } from 'node:url';
+import { EXPECTED_PREREQUISITES, NEEDS_ENV_VAR, validatePrerequisites } from './verify-prerequisites.mjs';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -121,6 +123,49 @@ export const APPROVED_JOB_RUNS = {
  * persistent and shared, so the isolation model is asserted, not assumed.
  */
 const APPROVED_RUNNER = 'ubuntu-latest';
+
+/**
+ * The gate's decision, exercised from HERE — which runs in `lint`, an
+ * independently required check that nothing aggregates.
+ *
+ * The validator's own unit tests live in the `unit-tests` job, which the
+ * validator itself aggregates: deleting its `process.exit(1)` would fail those
+ * tests and then let the broken gate report success anyway. Checking the
+ * behaviour from the required-but-unaggregated path is what closes that loop —
+ * the same reason this checker runs in `lint` at all.
+ */
+function checkValidatorBehaviour(repoRoot, violations) {
+  const good = JSON.stringify(Object.fromEntries(EXPECTED_PREREQUISITES.map((job) => [job, { result: 'success' }])));
+  const withOne = (job, result) =>
+    JSON.stringify(Object.fromEntries(EXPECTED_PREREQUISITES.map((j) => [j, { result: j === job ? result : 'success' }])));
+  const dropOne = (job) =>
+    JSON.stringify(Object.fromEntries(EXPECTED_PREREQUISITES.filter((j) => j !== job).map((j) => [j, { result: 'success' }])));
+  const vectors = [
+    ['every prerequisite succeeded', good, true],
+    ['one failure', withOne(EXPECTED_PREREQUISITES[0], 'failure'), false],
+    ['one cancelled', withOne(EXPECTED_PREREQUISITES[1], 'cancelled'), false],
+    ['one skipped', withOne(EXPECTED_PREREQUISITES[2], 'skipped'), false],
+    ['an empty result', withOne(EXPECTED_PREREQUISITES[3], ''), false],
+    ['a prerequisite missing from needs', dropOne(EXPECTED_PREREQUISITES[4]), false],
+    ['an unexpected prerequisite', JSON.stringify({ ...JSON.parse(good), invented: { result: 'success' } }), false],
+    ['malformed JSON', '{oops', false],
+    ['no input at all', '', false],
+  ];
+  for (const [label, raw, shouldPass] of vectors) {
+    const passed = validatePrerequisites(raw).length === 0;
+    if (passed !== shouldPass) {
+      violations.push(`the gate's validator got ${label} wrong: it ${passed ? 'accepted' : 'rejected'} it`);
+    }
+  }
+  // …and the CLI's exit contract, because a validator that computes the right
+  // answer and exits 0 anyway gates nothing.
+  const cli = join(repoRoot, 'scripts/ci/verify-prerequisites.mjs');
+  const run = (value) => spawnSync(process.execPath, [cli], { encoding: 'utf8', env: { PATH: process.env.PATH ?? '', [NEEDS_ENV_VAR]: value } }).status;
+  if (run(good) !== 0) violations.push("the gate's validator CLI does not exit 0 when every prerequisite succeeded");
+  if (run(withOne(EXPECTED_PREREQUISITES[0], 'failure')) === 0) {
+    violations.push("the gate's validator CLI exits 0 on a failed prerequisite — it would report success for a red run");
+  }
+}
 
 /** The gate's only command, and its only input. */
 const GATE_COMMAND = 'node scripts/ci/verify-prerequisites.mjs';
@@ -817,6 +862,16 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     checkJobIsUnweakened(jobs[jobName], jobName, violations, { allowIf: jobName === 'test' });
   }
 
+  // ── No approved job runs in a container ──
+  // A container brings its own image, entrypoint and `options:` — including
+  // `--env`, which sets variables the env scan above never sees. No job needs
+  // one, so the whole surface is refused rather than pinned piece by piece.
+  for (const jobName of Object.keys(APPROVED_JOB_STEPS)) {
+    if (jobs[jobName]?.container !== undefined) {
+      violations.push(`${jobName}: runs in a container — its image and \`options\` (e.g. \`--env NPM_CONFIG_SCRIPT_SHELL=…\`) sit outside every other boundary here`);
+    }
+  }
+
   // ── Gated jobs run on isolated, GitHub-hosted runners ──
   for (const jobName of Object.keys(APPROVED_JOB_STEPS)) {
     const runsOn = jobs[jobName]?.['runs-on'];
@@ -861,7 +916,7 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   if (workflow.defaults?.run?.['working-directory'] !== undefined) {
     violations.push('workflow defaults.run.working-directory moves every gated command off the repository root');
   }
-  const rootBoundaryJobs = new Set([...Object.keys(GATED_JOB_COMMANDS), 'test']);
+  const rootBoundaryJobs = new Set(Object.keys(APPROVED_JOB_STEPS));
   for (const [jobName, job] of Object.entries(jobs)) {
     if (job.defaults?.run?.['working-directory'] !== undefined) {
       violations.push(`${jobName}: defaults.run.working-directory moves its commands off the repository root`);
@@ -930,6 +985,8 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   if (gate.if !== 'always()') {
     violations.push(`test: \`if\` must be exactly always(), found ${JSON.stringify(gate.if)}`);
   }
+  checkValidatorBehaviour(repoRoot, violations);
+
   // ── 5c. The gate is a fixed command over one declared input ──
   // Nothing to execute or model: the decision lives in a pure function that
   // src/test/rehearsalSharding.test.ts exercises directly. What must hold HERE

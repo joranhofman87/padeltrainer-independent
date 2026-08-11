@@ -20,6 +20,9 @@
  * shows up here as a MISSING key — which fails, exactly like a failed one.
  */
 
+import { realpathSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
+
 /** The jobs the gate exists to wait for. Changing this is a reviewed edit. */
 export const EXPECTED_PREREQUISITES = [
   'unit-tests',
@@ -90,7 +93,15 @@ export function validatePrerequisites(raw, expected = EXPECTED_PREREQUISITES) {
   return problems;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Resolved through realpath, not string-concatenated: `file://${argv[1]}`
+// misses when the invoking path is a symlink (macOS /var -> /private/var), and
+// the failure mode is silent — the CLI would parse nothing, check nothing and
+// exit 0, which for a required gate means green for every red run. A fixture
+// running this file from a temp directory caught exactly that.
+const invokedDirectly =
+  process.argv[1] !== undefined && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href;
+
+if (invokedDirectly) {
   const problems = validatePrerequisites(process.env[NEEDS_ENV_VAR]);
   console.log(process.env[NEEDS_ENV_VAR] ?? `<${NEEDS_ENV_VAR} unset>`);
   if (problems.length > 0) {
