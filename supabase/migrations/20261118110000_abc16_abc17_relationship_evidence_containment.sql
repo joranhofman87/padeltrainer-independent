@@ -529,6 +529,23 @@ REVOKE ALL ON FUNCTION public.merge_guest_players(text, uuid, uuid, uuid, jsonb)
 COMMENT ON FUNCTION public.merge_guest_players(text, uuid, uuid, uuid, jsonb) IS
   'ABC-18: no longer callable by any external role. It propagates legacy twin/linked bridge values and re-keys bookings, invoices and memberships — identity decisions on evidence that is not authoritative. A canonical idempotent merge command is U2 work.';
 
+-- (3c-bis) `collapse_guest_person_into` is not callable by any external role.
+--
+-- 20260826280000:954 revoked it from PUBLIC, anon and authenticated but NOT service_role, while
+-- its sibling `collapse_guest_person_into_reporting` WAS revoked from service_role
+-- (20261115100000:223) — an asymmetry that reads as an oversight rather than a decision.
+--
+-- It is the single most powerful identity primitive in the schema: it repoints
+-- `person_links.person_id` in place and re-keys bookings, invoices, intake requests, priority
+-- claims, session notes and location overlays onto another person. Reachable by service_role it
+-- undoes this whole containment in one call, and it is the reason historical link provenance
+-- cannot be reconstructed.
+REVOKE ALL ON FUNCTION public.collapse_guest_person_into(uuid, uuid, uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION public.collapse_guest_person_into(uuid, uuid, uuid) IS
+  'ABC-18: callable by no external role. It repoints person_links in place and re-keys bookings, invoices, claims and notes onto another person — an identity decision, and the reason legacy link provenance is unrecoverable. Internal definer callers are unaffected.';
+
 -- (3d) the obsolete clear-on-repurpose trigger is retired.
 --
 -- `clear_guest_twin_on_repurpose` (20260826240000:283-284) nulls `NEW.twin_of_profile_id` when a
@@ -695,10 +712,15 @@ BEGIN
     RAISE EXCEPTION 'ABC-18: an owner-context auto-link or twin-clearing trigger is still installed';
   END IF;
 
-  -- the merge RPC is not callable by any external role.
+  -- the merge and collapse primitives are not callable by any external role.
   IF has_function_privilege('authenticated', 'public.merge_guest_players(text,uuid,uuid,uuid,jsonb)', 'EXECUTE')
      OR has_function_privilege('service_role', 'public.merge_guest_players(text,uuid,uuid,uuid,jsonb)', 'EXECUTE') THEN
     RAISE EXCEPTION 'ABC-18: merge_guest_players is still callable';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.collapse_guest_person_into(uuid,uuid,uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.collapse_guest_person_into(uuid,uuid,uuid)', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.collapse_guest_person_into(uuid,uuid,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-18: collapse_guest_person_into is still callable by an external role';
   END IF;
 
   -- the profile mirror keeps the canonical login identity: dropping user_id here would

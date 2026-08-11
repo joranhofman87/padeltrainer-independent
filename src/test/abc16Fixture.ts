@@ -74,6 +74,13 @@ export const STUB_SQL = /* sql */ `
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
   ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
 
+  -- Supabase also grants EXECUTE on new FUNCTIONS to the three client roles. Without this the
+  -- fixture only carried PostgreSQL's PUBLIC default, so a function the chain never granted
+  -- explicitly looked "not callable by service_role" when on the real platform it is. Every
+  -- ABC-18 assertion about a definer RPC being unreachable depends on reproducing this — it is
+  -- exactly the gap that let collapse_guest_person_into look contained when it was not.
+  ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+
   CREATE SCHEMA IF NOT EXISTS auth;
   CREATE TABLE IF NOT EXISTS auth.users (
     id uuid PRIMARY KEY,

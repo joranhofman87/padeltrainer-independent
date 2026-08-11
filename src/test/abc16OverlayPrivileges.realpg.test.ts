@@ -395,6 +395,37 @@ describe('ABC-17/18 · bookings are distrusted, and the bridge is frozen', () =>
     expect(rows[0].three_arg).not.toBeNull();
   });
 
+  // The identity primitives, checked with has_function_privilege (EFFECTIVE privilege, so it
+  // accounts for the platform's default grants and any role inheritance) rather than by reading
+  // proacl. The fixture reproduces Supabase's `ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE ON
+  // FUNCTIONS TO anon, authenticated, service_role`, without which every one of these would
+  // report "not callable" for the wrong reason.
+  it.each([
+    ['public.collapse_guest_person_into(uuid,uuid,uuid)'],
+    ['public.merge_guest_players(text,uuid,uuid,uuid,jsonb)'],
+    ['public.link_guest_data_to_profile(uuid)'],
+    ['public.claim_guest_twin_for_academy(uuid,uuid,uuid)'],
+    ['public.find_guest_twin_for_academy(uuid,uuid)'],
+  ])('%s is executable by NO external role', async (fn) => {
+    const { rows } = await c.query(
+      `SELECT has_function_privilege('anon', $1, 'EXECUTE')          AS anon,
+              has_function_privilege('authenticated', $1, 'EXECUTE') AS authenticated,
+              has_function_privilege('service_role', $1, 'EXECUTE')  AS service_role`,
+      [fn],
+    );
+    expect({ fn, ...rows[0] }).toEqual({ fn, anon: false, authenticated: false, service_role: false });
+  });
+
+  it('the fixture really does grant EXECUTE by default — otherwise the checks above are vacuous', async () => {
+    // A control: a function this containment does NOT revoke must still be callable by the
+    // client roles. If this fails, the default-grant reproduction is broken and every
+    // "not callable" assertion above proves nothing.
+    const { rows } = await c.query(
+      `SELECT has_function_privilege('service_role','public.guest_belongs_to_user_academy(uuid,uuid)','EXECUTE') AS svc`,
+    );
+    expect(rows[0].svc).toBe(true);
+  });
+
   it('the owner-context auto-link triggers are retired', async () => {
     const { rows } = await c.query(
       `SELECT count(*)::int AS n FROM pg_trigger
