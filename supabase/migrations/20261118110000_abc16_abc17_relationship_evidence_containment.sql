@@ -616,6 +616,333 @@ COMMENT ON FUNCTION public.is_player_of_academy(uuid, uuid) IS
   'ABC-18: fails closed to admin-only. Its evidence was a booking subject (caller-chosen) or a guest bridge (linked_profile_id / twin_of_profile_id / person equality derived from them), all non-authoritative. Canonical membership is the replacement and belongs to U2.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 8e. ABC-17/18 — the roster reader keeps only directly owned guests.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- What is withdrawn, and why each one had to go:
+--
+--   * REGISTERED ADMISSION BY BOOKING. A profile entered the roster because it had a booking on
+--     a slot run by one of the academy's active trainers. The subject of that booking is chosen
+--     by whoever owns the slot, so the academy could admit — and read the full PII of — any
+--     profile it liked. Removed outright; canonical membership (U2) is the replacement.
+--   * THE ACTIVE-TRAINER UNION. Academy scope also pulled in guests owned by any active trainer.
+--     A trainer can work for several academies and can have private guests, so that union
+--     crosses tenant boundaries. Academy scope is now exactly
+--     `guest_players.academy_profile_id = p_scope_id`; trainer scope exactly `trainer_id`.
+--   * PERSON EXPANSION AND CROSS-PERSON DEDUP. Rows were merged per person via `person_links`,
+--     so one row could carry a sibling row's identity — and that equality descends from the
+--     legacy email/twin bridge. Each in-scope guest is now exactly one row, keyed by itself.
+--
+-- What is kept: the manager/trainer authorization gate, the owner-scoped soft-removal
+-- suppression, owner-scoped notes and tags, search, filters, sorting and paging. Club chips are
+-- the owner's own curated rows plus slots this guest actually booked WITHIN the owner's scope —
+-- booking activity about a subject already in scope by ownership, which is allowed.
+--
+-- Signature, volatility, security and grants are unchanged, so no caller or generated type
+-- drifts. `profile_id` is now always NULL and `player_type` always 'guest'; the UI renders a
+-- neutral placeholder for registered players rather than their personal data.
+CREATE OR REPLACE FUNCTION public.get_players_overview(
+  p_scope text,
+  p_scope_id uuid,
+  p_search text DEFAULT NULL,
+  p_filters jsonb DEFAULT '{}'::jsonb,
+  p_sort text DEFAULT 'name',
+  p_sort_dir text DEFAULT 'asc',
+  p_limit integer DEFAULT 50,
+  p_offset integer DEFAULT 0
+)
+RETURNS TABLE (
+  player_key text,
+  player_type text,
+  guest_player_id uuid,
+  profile_id uuid,
+  person_id uuid,
+  full_name text,
+  email text,
+  phone text,
+  billing_business_name text,
+  billing_address text,
+  billing_btw_number text,
+  skill_rating numeric,
+  rating_system text,
+  notes text,
+  source text,
+  birth_date date,
+  has_trained boolean,
+  created_at timestamptz,
+  owner_trainer_id uuid,
+  metadata_id uuid,
+  tag_ids uuid[],
+  academy_notes text,
+  trainer_ids uuid[],
+  location_ids uuid[],
+  location_names text[],
+  has_active_cyclus boolean,
+  has_overdue_payment boolean,
+  email_undeliverable boolean,
+  total_count bigint
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_tokens text[];
+  v_filter_location uuid  := nullif(p_filters->>'location_id','')::uuid;
+  v_level_gt numeric      := (p_filters->>'level_gt')::numeric;
+  v_level_max numeric     := (p_filters->>'level_max')::numeric;
+  v_level_unrated boolean := coalesce((p_filters->>'level_unrated')::boolean, false);
+  v_has_cyclus boolean    := (p_filters->>'has_active_cyclus')::boolean;
+  v_tag text              := nullif(p_filters->>'tag_id','');
+  v_payment text          := nullif(p_filters->>'payment','');
+  v_limit integer         := least(greatest(coalesce(p_limit, 50), 1), 500);
+  v_offset integer        := greatest(coalesce(p_offset, 0), 0);
+BEGIN
+  -- Authorization is unchanged: the function bypasses RLS, so the gate stays explicit.
+  IF p_scope = 'academy' THEN
+    IF NOT public.is_academy_manager(auth.uid(), p_scope_id) THEN
+      RAISE EXCEPTION 'not authorized for academy %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+  ELSIF p_scope = 'trainer' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.trainer_profiles tp
+       WHERE tp.id = p_scope_id AND tp.user_id = auth.uid()
+    ) THEN
+      RAISE EXCEPTION 'not authorized for trainer %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'invalid scope: %', p_scope;
+  END IF;
+
+  IF coalesce(btrim(p_search), '') <> '' THEN
+    v_tokens := regexp_split_to_array(public.fold_search_text(btrim(p_search)), '\s+');
+  END IF;
+
+  RETURN QUERY
+  WITH owned AS (
+    -- DIRECT OWNERSHIP ONLY. Exactly one column decides scope; there is no union.
+    SELECT g.*
+    FROM public.guest_players g
+    WHERE (p_scope = 'academy' AND g.academy_profile_id = p_scope_id)
+       OR (p_scope = 'trainer'  AND g.trainer_id        = p_scope_id)
+  ),
+  meta AS (
+    -- Owner-scoped overlay: notes, tags and soft removal. Presentation only, and only for rows
+    -- whose owner IS this scope — never another tenant's overlay.
+    SELECT m.*
+    FROM public.academy_player_metadata m
+    WHERE m.guest_player_id IS NOT NULL
+      AND ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
+        OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
+  ),
+  visible AS (
+    SELECT o.*, mt.id AS m_id, mt.tag_ids AS m_tag_ids, mt.notes AS m_notes
+    FROM owned o
+    LEFT JOIN meta mt ON mt.guest_player_id = o.id
+    WHERE mt.removed_at IS NULL OR mt.removed_at IS NULL
+  ),
+  enriched AS (
+    SELECT
+      v.*,
+      (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v.id) AS p_person_id,
+      (SELECT coalesce(array_agg(DISTINCT loc.lid), '{}'::uuid[]) FROM (
+         SELECT apl.location_id AS lid
+         FROM public.academy_player_locations apl
+         WHERE p_scope = 'academy' AND apl.academy_profile_id = p_scope_id
+           AND apl.guest_player_id = v.id AND apl.dismissed = false
+         UNION
+         SELECT s.location_id
+         FROM public.bookings b
+         JOIN public.availability_slots s ON s.id = b.slot_id
+         WHERE b.guest_player_id = v.id
+           AND s.location_id IS NOT NULL
+           AND ((p_scope = 'academy' AND s.academy_profile_id = p_scope_id)
+             OR (p_scope = 'trainer' AND s.trainer_id = p_scope_id))
+       ) loc) AS p_location_ids,
+      EXISTS (
+        SELECT 1 FROM public.bookings b
+        JOIN public.availability_slots s ON s.id = b.slot_id
+        WHERE b.guest_player_id = v.id AND s.cyclus_id IS NOT NULL AND s.end_time >= now()
+          AND ((p_scope = 'academy' AND s.academy_profile_id = p_scope_id)
+            OR (p_scope = 'trainer' AND s.trainer_id = p_scope_id))
+      ) AS p_has_cyclus,
+      EXISTS (
+        SELECT 1 FROM public.invoices i
+        WHERE i.guest_player_id = v.id
+          AND ((p_scope = 'academy' AND i.academy_profile_id = p_scope_id)
+            OR (p_scope = 'trainer' AND i.trainer_id = p_scope_id))
+          AND coalesce(i.status, '') IN ('overdue')
+      ) AS p_overdue
+    FROM visible v
+  ),
+  filtered AS (
+    SELECT e.* FROM enriched e
+    WHERE (v_tokens IS NULL OR (
+            SELECT bool_and(public.fold_search_text(
+                     coalesce(e.full_name,'') || ' ' || coalesce(e.email,'') || ' ' || coalesce(e.phone,'')
+                   ) LIKE '%' || tok || '%')
+            FROM unnest(v_tokens) AS tok))
+      AND (v_level_gt IS NULL OR e.skill_rating > v_level_gt)
+      AND (v_level_max IS NULL OR e.skill_rating <= v_level_max)
+      AND (NOT v_level_unrated OR e.skill_rating IS NULL)
+      AND (v_has_cyclus IS NULL OR v_has_cyclus = e.p_has_cyclus)
+      AND (v_payment IS NULL OR (v_payment = 'overdue') = e.p_overdue)
+      AND (v_filter_location IS NULL OR v_filter_location = ANY (e.p_location_ids))
+      AND (v_tag IS NULL
+           OR (v_tag = 'untagged' AND coalesce(array_length(e.m_tag_ids, 1), 0) = 0)
+           OR (v_tag <> 'untagged' AND e.m_tag_ids @> ARRAY[v_tag::uuid]))
+  )
+  SELECT
+    'g:' || f.id::text,
+    'guest'::text,
+    f.id,
+    NULL::uuid,                                   -- no registered admission: never a profile
+    coalesce(f.p_person_id, f.id),
+    coalesce(nullif(btrim(f.full_name), ''), 'Unknown'),
+    coalesce(f.email, ''),
+    coalesce(f.phone, ''),
+    f.billing_business_name,
+    f.billing_address,
+    f.billing_btw_number,
+    f.skill_rating,
+    coalesce(nullif(f.rating_system, ''), 'knltb'),
+    f.notes,
+    f.source,
+    f.birth_date,
+    coalesce(f.has_trained, false),
+    f.created_at,
+    f.trainer_id,
+    f.m_id,
+    coalesce(f.m_tag_ids, '{}'::uuid[]),
+    f.m_notes,
+    CASE WHEN f.trainer_id IS NOT NULL THEN ARRAY[f.trainer_id] ELSE '{}'::uuid[] END,
+    f.p_location_ids,
+    (SELECT coalesce(array_agg(l.name ORDER BY l.name), '{}'::text[])
+       FROM public.locations l WHERE l.id = ANY (f.p_location_ids)),
+    f.p_has_cyclus,
+    f.p_overdue,
+    false,                                        -- deliverability is surfaced by its own reader
+    count(*) OVER ()
+  FROM filtered f
+  ORDER BY
+    CASE WHEN p_sort = 'name'       AND coalesce(p_sort_dir,'asc') = 'asc'  THEN f.full_name END ASC,
+    CASE WHEN p_sort = 'name'       AND coalesce(p_sort_dir,'asc') = 'desc' THEN f.full_name END DESC,
+    CASE WHEN p_sort = 'email'      AND coalesce(p_sort_dir,'asc') = 'asc'  THEN f.email END ASC,
+    CASE WHEN p_sort = 'email'      AND coalesce(p_sort_dir,'asc') = 'desc' THEN f.email END DESC,
+    CASE WHEN p_sort = 'skill'      AND coalesce(p_sort_dir,'asc') = 'asc'  THEN f.skill_rating END ASC,
+    CASE WHEN p_sort = 'skill'      AND coalesce(p_sort_dir,'asc') = 'desc' THEN f.skill_rating END DESC,
+    CASE WHEN p_sort = 'created_at' AND coalesce(p_sort_dir,'asc') = 'desc' THEN f.created_at END DESC,
+    f.created_at ASC,
+    f.id ASC
+  LIMIT v_limit OFFSET v_offset;
+END;
+$$;
+
+COMMENT ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) IS
+  'ABC-17/18: directly owned guests only — academy scope is guest_players.academy_profile_id, trainer scope is trainer_id. No active-trainer union (a trainer can serve several academies), no booking-admitted registered profiles (the booking subject is chosen by the slot owner), and no person_links expansion or cross-person dedup (that equality descends from the legacy email/twin bridge). profile_id is always NULL.';
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8f. `get_person_refs_for_scope` — a clicked guest resolves to itself, and stops.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- It expanded a clicked guest to the person's OTHER in-scope guests and to the linked profile,
+-- and reported `has_login` from `persons.user_id`. Every one of those crosses the bridge: the
+-- sibling set and the profile come from `person_links` equality that descends from the legacy
+-- email/twin merge, and `has_login` discloses that a guest row is an account holder.
+--
+-- Now: an in-scope guest returns ONLY itself, `profile_id` NULL, `has_login` false. A clicked
+-- PROFILE returns nothing — registered admission is withdrawn, so there is no authorized profile
+-- ref to hand back. Signature and grants unchanged.
+CREATE OR REPLACE FUNCTION public.get_person_refs_for_scope(
+  p_scope text,
+  p_scope_id uuid,
+  p_guest_id uuid DEFAULT NULL,
+  p_profile_id uuid DEFAULT NULL
+)
+RETURNS TABLE (guest_ids uuid[], profile_id uuid, has_login boolean)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF p_scope = 'academy' THEN
+    IF NOT public.is_academy_manager(auth.uid(), p_scope_id) THEN
+      RAISE EXCEPTION 'not authorized for academy %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+  ELSIF p_scope = 'trainer' THEN
+    IF NOT EXISTS (SELECT 1 FROM public.trainer_profiles tp
+                    WHERE tp.id = p_scope_id AND tp.user_id = auth.uid()) THEN
+      RAISE EXCEPTION 'not authorized for trainer %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'invalid scope: %', p_scope;
+  END IF;
+
+  RETURN QUERY
+  SELECT ARRAY[g.id], NULL::uuid, false
+  FROM public.guest_players g
+  WHERE g.id = p_guest_id
+    AND ((p_scope = 'academy' AND g.academy_profile_id = p_scope_id)
+      OR (p_scope = 'trainer'  AND g.trainer_id        = p_scope_id));
+END;
+$$;
+
+COMMENT ON FUNCTION public.get_person_refs_for_scope(text, uuid, uuid, uuid) IS
+  'ABC-18: a directly owned, in-scope guest resolves to ITSELF only — profile_id NULL, has_login false. Sibling and profile expansion came from person_links equality descended from the legacy email/twin bridge, and has_login disclosed that a guest row is an account holder.';
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8g. `get_player_locations` — directly scoped guest references only.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- It authorized the ACADEMY but never the subject, then expanded a guest ref to the person's
+-- other guests through `person_links` — so at a shared club it answered "which clubs is this
+-- person associated with" for a caller-supplied id. Now the subject must be a guest this scope
+-- directly owns, and no expansion happens.
+CREATE OR REPLACE FUNCTION public.get_player_locations(
+  p_academy_profile_id uuid,
+  p_profile_id uuid,
+  p_guest_player_id uuid
+)
+RETURNS TABLE (location_id uuid, location_name text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.is_academy_manager(auth.uid(), p_academy_profile_id) THEN
+    RAISE EXCEPTION 'not authorized for academy %', p_academy_profile_id USING ERRCODE = '42501';
+  END IF;
+
+  -- SUBJECT authorization, which the previous definition never performed.
+  IF p_guest_player_id IS NULL
+     OR NOT EXISTS (SELECT 1 FROM public.guest_players g
+                     WHERE g.id = p_guest_player_id
+                       AND g.academy_profile_id = p_academy_profile_id) THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT l.id, l.name
+  FROM public.locations l
+  WHERE l.id IN (
+    SELECT apl.location_id
+    FROM public.academy_player_locations apl
+    WHERE apl.academy_profile_id = p_academy_profile_id
+      AND apl.guest_player_id = p_guest_player_id
+      AND apl.dismissed = false
+    UNION
+    SELECT s.location_id
+    FROM public.bookings b
+    JOIN public.availability_slots s ON s.id = b.slot_id
+    WHERE b.guest_player_id = p_guest_player_id
+      AND s.academy_profile_id = p_academy_profile_id
+      AND s.location_id IS NOT NULL
+  )
+  ORDER BY l.name;
+END;
+$$;
+
+COMMENT ON FUNCTION public.get_player_locations(uuid, uuid, uuid) IS
+  'ABC-18: the SUBJECT is authorized, not only the academy — it must be a guest this academy directly owns, and the profile argument is ignored. No person_links expansion: at a shared club the old shape was a cross-tenant player-location oracle.';
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Privileges are read back from the SERVER's own catalog rather than compared against a

@@ -55,6 +55,8 @@ export const PRE_H0_MIGRATIONS = [
   '20260826280000_persons_backfill.sql',
   '20260826240000_twin_reader_precedence_and_lock.sql',      // trg_clear_guest_twin_on_repurpose
   '20260826250000_repurpose_trigger_definer.sql',            // its definer fix
+  '20260901100000_phase33d_person_refs_has_login.sql',       // get_person_refs_for_scope
+  '20260906100000_phase35d_small_readers_person.sql',        // get_player_locations
 ];
 
 /**
@@ -213,6 +215,13 @@ export const STUB_SQL = /* sql */ `
   -- Referenced by 20260826240000 (which the chain needs only for the repurpose trigger).
   CREATE OR REPLACE FUNCTION public.can_current_user_book_member_window(_cycle_id uuid)
   RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
+
+  -- Search folding used by get_players_overview. Same contract as production (case/diacritic
+  -- folding); the ABC suites assert scope, not collation subtleties.
+  CREATE OR REPLACE FUNCTION public.fold_search_text(_t text)
+  RETURNS text LANGUAGE sql IMMUTABLE AS $fn$ SELECT lower(coalesce(_t, '')) $fn$;
+
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status text;
 
   -- Ambient bookings SELECT scope. Production has several (20260115210247 onwards); this
   -- reproduces the academy-manager one, scoped exactly like the shipped UPDATE policy.
