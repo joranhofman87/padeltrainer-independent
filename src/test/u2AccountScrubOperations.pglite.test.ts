@@ -17,7 +17,7 @@
  * a test needs a distinguishable timestamp it uses an explicit offset rather than a second bare
  * `clock_timestamp()`.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
 
@@ -73,6 +73,58 @@ async function snapshot(sql: string): Promise<string> {
 let seq = 0;
 const uuid = (prefix: string, n: number) =>
   `${prefix}0000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+
+/**
+ * Run a block with the guard trigger off, and put it back WHATEVER HAPPENS.
+ *
+ * Several tests need to stage a row the trigger would never let a caller write, or to age a lease
+ * without waiting five real minutes. Doing that with a bare DISABLE ... work ... ENABLE is a trap: if
+ * the work throws, the ENABLE never runs, and every later test in the file then executes with no
+ * guard at all — passing while asserting nothing. That is silent, and it is the failure mode this
+ * suite exists to detect in the production code, so it has no business living in the suite itself.
+ *
+ * `afterEach` below is the second half: it fails loudly if any test leaves the triggers off,
+ * including one that forgets to use this helper.
+ */
+async function withTriggersDisabled<T>(fn: () => Promise<T>): Promise<T> {
+  await db.exec('ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER');
+  try {
+    return await fn();
+  } finally {
+    await db.exec('ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER');
+  }
+}
+
+/**
+ * THE SHIPPED ACL QUESTION, asked once and reused.
+ *
+ * Both the "no client role holds any privilege" assertion and the column-grant test below run THIS
+ * query. An earlier version of the column-grant test re-implemented the interesting half inline,
+ * which proved the blind spot exists without proving the shipped assertion covers it — a test of a
+ * copy is not a test of the thing.
+ */
+const HELD_PRIVILEGES_SQL = `
+  WITH rel AS (
+    SELECT c.oid, c.relowner, coalesce(c.relacl, '{}'::aclitem[]) AS relacl
+      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+     WHERE n.nspname = 'public' AND c.relname = 'account_scrub_operations'
+  ),
+  privs AS (SELECT DISTINCT a.privilege_type FROM rel, aclexplode(acldefault('r', rel.relowner)) a),
+  roles AS (SELECT unnest(ARRAY['anon','authenticated','service_role']) AS role),
+  held AS (
+    SELECT r.role || ':' || p.privilege_type AS h
+      FROM rel, roles r, privs p WHERE has_table_privilege(r.role, rel.oid, p.privilege_type)
+    UNION
+    SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
+      FROM rel, aclexplode(rel.relacl) a WHERE a.grantee <> rel.relowner
+    UNION
+    SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
+           || ' on column ' || att.attname
+      FROM rel JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attacl IS NOT NULL,
+           LATERAL aclexplode(att.attacl) a WHERE a.grantee <> rel.relowner
+  )
+  SELECT coalesce((SELECT string_agg(h, ', ' ORDER BY h) FROM held), '') AS held,
+         (SELECT count(*)::int FROM privs) AS probed`;
 
 /** Start an operation and return every id it needs. Each call is independent of every other. */
 async function newOperation(overrides: { subjectUser?: string; actorUser?: string } = {}) {
@@ -175,6 +227,18 @@ beforeAll(async () => {
 });
 
 afterAll(async () => { await db?.close(); });
+
+// A test that leaves the guard trigger disabled does not fail — it makes every LATER test in the
+// file pass without the thing it is asserting. So the leak is caught here, at the boundary, one test
+// after it happens, instead of showing up as a suite that is quietly green.
+afterEach(async () => {
+  const { rows } = await db.query<{ disabled: number }>(`
+    SELECT count(*)::int AS disabled FROM pg_trigger
+     WHERE tgrelid = 'public.account_scrub_operations'::regclass
+       AND NOT tgisinternal AND tgenabled = 'D'
+  `);
+  expect(rows[0].disabled, 'a test left the guard trigger disabled — use withTriggersDisabled()').toBe(0);
+});
 
 describe('B1 is additive: nothing that exists is changed', () => {
   it('leaves every legacy audit row and value byte-identical', async () => {
@@ -341,17 +405,14 @@ describe('identity and immutability', () => {
   });
 
   it('keeps the shape checks effective even if a privileged session disables triggers', async () => {
-    await db.exec('ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER');
-    try {
+    await withTriggersDisabled(async () => {
       await expect(db.query(
         `INSERT INTO public.account_scrub_operations
            (id, command_id, subject_user_id, actor_user_id, self_service, state, finished_at)
          VALUES ($1::uuid, $2::uuid, $3::uuid, $3::uuid, true, 'completed', clock_timestamp())`,
         [uuid('9', 940), uuid('8', 940), uuid('7', 940)],
       )).rejects.toThrow(/state_shape/i);
-    } finally {
-      await db.exec('ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER');
-    }
+    });
   });
 
   it('leaves the CHECK no NULL escape hatch when the trigger is not there to help', async () => {
@@ -360,8 +421,7 @@ describe('identity and immutability', () => {
     // all. Each case below is a state the transition graph cannot produce, and the CHECK — not the
     // trigger — is what has to refuse it. The trigger is off precisely so it cannot answer for the
     // constraint.
-    await db.exec('ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER');
-    try {
+    await withTriggersDisabled(async () => {
       const shapes: Array<[string, string, string]> = [
         ['a terminal failure with no reason',
           `state, finished_at`,
@@ -384,9 +444,7 @@ describe('identity and immutability', () => {
         `, [uuid('9', 941 + index), uuid('8', 941 + index), uuid('7', 941 + index)]),
         `${label} must be refused by the CHECK`).rejects.toThrow(/state_shape/i);
       }
-    } finally {
-      await db.exec('ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER');
-    }
+    });
   });
 
   it('keeps claiming past the int4 ceiling, where an integer counter would strand the row', async () => {
@@ -398,16 +456,14 @@ describe('identity and immutability', () => {
     // reachability, not arithmetic, and this test asserts the behaviour rather than the type name,
     // because the type name alone would pass for the wrong reason.
     const id = uuid('9', 993);
-    await db.exec('ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER');
-    await db.query(`
+    await withTriggersDisabled(() => db.query(`
       INSERT INTO public.account_scrub_operations
         (id, command_id, subject_user_id, actor_user_id, self_service, subject_person_id, state,
          database_scrubbed_at, external_attempt_count, last_attempt_at, next_attempt_at, last_error_code)
       VALUES ($1::uuid, $2::uuid, $3::uuid, $3::uuid, true, $4::uuid, 'database_scrubbed',
               clock_timestamp(), 2147483647, clock_timestamp(),
               clock_timestamp() - interval '1 second', 'unexpected_internal')
-    `, [id, uuid('8', 993), uuid('7', 993), uuid('6', 993)]);
-    await db.exec('ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER');
+    `, [id, uuid('8', 993), uuid('7', 993), uuid('6', 993)]));
 
     // the increment an `integer` column would refuse with "integer out of range"
     await db.exec(`UPDATE public.account_scrub_operations
@@ -600,10 +656,8 @@ describe('permanent-wedge regressions (both reproduced in the draft this replace
                       SET state = 'external_cleanup_in_progress', lease_token = '${op.lease}'
                     WHERE id = '${op.id}'`);
     // simulate the lease elapsing without waiting five real minutes
-    await db.exec(`ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER`);
-    await db.exec(`UPDATE public.account_scrub_operations
-                      SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = '${op.id}'`);
-    await db.exec(`ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER`);
+    await withTriggersDisabled(() => db.exec(`UPDATE public.account_scrub_operations
+                      SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = '${op.id}'`));
 
     await expect(db.exec(`UPDATE public.account_scrub_operations
                              SET auth_deleted_at = clock_timestamp() WHERE id = '${op.id}'`))
@@ -710,10 +764,8 @@ describe('the transition graph', () => {
     await scrub(op.id, op.person);
     await claim(op.id, op.lease);
     const stale = op.lease;
-    await db.exec(`ALTER TABLE public.account_scrub_operations DISABLE TRIGGER USER`);
-    await db.exec(`UPDATE public.account_scrub_operations
-                      SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = '${op.id}'`);
-    await db.exec(`ALTER TABLE public.account_scrub_operations ENABLE TRIGGER USER`);
+    await withTriggersDisabled(() => db.exec(`UPDATE public.account_scrub_operations
+                      SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = '${op.id}'`));
     const fresh = uuid('5', 985);
     await db.exec(`UPDATE public.account_scrub_operations
                       SET state = 'external_cleanup_in_progress', lease_token = '${fresh}' WHERE id = '${op.id}'`);
@@ -774,29 +826,7 @@ describe('operational surface', () => {
     //   * aclexplode(relacl), so a grant to a role the list does not name still fails.
     //   * aclexplode(attacl), because has_table_privilege cannot see COLUMN grants and
     //     `GRANT UPDATE (state, last_error_code)` is enough to drive the state machine.
-    const { rows } = await db.query<{ held: string; probed: number }>(`
-      WITH rel AS (
-        SELECT c.oid, c.relowner, coalesce(c.relacl, '{}'::aclitem[]) AS relacl
-          FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-         WHERE n.nspname = 'public' AND c.relname = 'account_scrub_operations'
-      ),
-      privs AS (SELECT DISTINCT a.privilege_type FROM rel, aclexplode(acldefault('r', rel.relowner)) a),
-      roles AS (SELECT unnest(ARRAY['anon','authenticated','service_role']) AS role),
-      held AS (
-        SELECT r.role || ':' || p.privilege_type AS h
-          FROM rel, roles r, privs p WHERE has_table_privilege(r.role, rel.oid, p.privilege_type)
-        UNION
-        SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
-          FROM rel, aclexplode(rel.relacl) a WHERE a.grantee <> rel.relowner
-        UNION
-        SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
-               || ' on column ' || att.attname
-          FROM rel JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attacl IS NOT NULL,
-               LATERAL aclexplode(att.attacl) a WHERE a.grantee <> rel.relowner
-      )
-      SELECT coalesce((SELECT string_agg(h, ', ' ORDER BY h) FROM held), '') AS held,
-             (SELECT count(*)::int FROM privs) AS probed
-    `);
+    const { rows } = await db.query<{ held: string; probed: number }>(HELD_PRIVILEGES_SQL);
     expect(rows[0].held).toBe('');
     // and the derivation actually found a privilege set, so "nothing is held" cannot be true
     // because nothing was asked
@@ -804,24 +834,35 @@ describe('operational surface', () => {
   });
 
   it('the ACL assertion catches a column grant, which has_table_privilege cannot see', async () => {
-    // Proving the assertion above is load-bearing for the case that motivated it. Applied and rolled
-    // back inside a transaction so the shipped ACL is unchanged.
+    // The mutation that proves the assertion above is load-bearing for the case that motivated it.
+    // Applied and rolled back inside a transaction, so the shipped ACL is unchanged.
+    //
+    // It re-runs HELD_PRIVILEGES_SQL — the SAME query the assertion uses — rather than an inline
+    // re-implementation. An earlier version asked its own question here and only established that
+    // the blind spot exists; it never established that the shipped assertion closes it, which is the
+    // whole claim.
     await db.exec('BEGIN');
     try {
       await db.exec(`GRANT UPDATE (state, last_error_code) ON public.account_scrub_operations TO service_role`);
-      const { rows } = await db.query<{ table_level: boolean; column_level: number }>(`
-        SELECT has_table_privilege('service_role', 'public.account_scrub_operations', 'UPDATE') AS table_level,
-               (SELECT count(*)::int FROM pg_attribute att, LATERAL aclexplode(att.attacl) a
-                 WHERE att.attrelid = 'public.account_scrub_operations'::regclass
-                   AND att.attacl IS NOT NULL
-                   AND a.grantee = 'service_role'::regrole) AS column_level
-      `);
-      // the exact blind spot: the table-level question says no, the column ACL says yes
-      expect(rows[0].table_level).toBe(false);
-      expect(rows[0].column_level).toBe(2);
+
+      // the blind spot itself: the table-level question still answers "no privilege"
+      const { rows: blind } = await db.query<{ table_level: boolean }>(
+        `SELECT has_table_privilege('service_role', 'public.account_scrub_operations', 'UPDATE') AS table_level`);
+      expect(blind[0].table_level).toBe(false);
+
+      // ...and the shipped query sees it anyway, naming both columns
+      const { rows } = await db.query<{ held: string; probed: number }>(HELD_PRIVILEGES_SQL);
+      expect(rows[0].held).toBe(
+        'service_role:UPDATE on column last_error_code, service_role:UPDATE on column state');
+      expect(rows[0].probed).toBeGreaterThanOrEqual(7);
     } finally {
       await db.exec('ROLLBACK');
     }
+
+    // and the rollback really restored the shipped ACL, so this test cannot leak a grant into the
+    // assertions that follow it
+    const { rows: after } = await db.query<{ held: string }>(HELD_PRIVILEGES_SQL);
+    expect(after[0].held).toBe('');
   });
 
   it('keeps RLS on with zero policies, so a future grant still lands on deny-all', async () => {
