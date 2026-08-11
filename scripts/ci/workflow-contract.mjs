@@ -311,7 +311,18 @@ export const REAL_PG_SUITES = [
   'scripts/db/u2-identity-verification.mjs',
   'scripts/db/u2-identity-worker-routing.mjs',
   'scripts/db/u2-scrub-claim-race.mjs',
+  'scripts/db/u2-scrub-claim-race-recovery.mjs',
 ];
+
+/**
+ * The job they must run IN. Naming it matters: these suites need the database `supabase db reset`
+ * built, so the same command sitting in some other job — or in a job that never initialised one —
+ * would satisfy a "the file appears somewhere" check while testing an empty or absent database.
+ */
+export const REAL_PG_JOB = 'db-reset';
+
+/** What makes that job initialised. Without these its suites would run against nothing. */
+export const REAL_PG_JOB_REQUIRED_STEPS = ['supabase db reset', 'npm ci'];
 
 /**
  * Paths that must trigger `migrations.yml`. `supabase/seed.sql` is here because `db reset` applies
@@ -1192,15 +1203,40 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
       migrations = null;
     }
     if (migrations) {
-      const steps = Object.values(migrations.jobs ?? {}).flatMap((job) => job?.steps ?? []);
-      for (const suite of REAL_PG_SUITES) {
-        const matching = steps.filter((step) => typeof step.run === 'string' && step.run.includes(suite));
-        if (matching.length === 0) {
-          violations.push(`${where}: real-Postgres suite \`${suite}\` has no \`run:\` step — a path filter makes the workflow run, not the suite`);
-        } else if (matching.length > 1) {
-          violations.push(`${where}: real-Postgres suite \`${suite}\` runs ${matching.length} times`);
-        } else {
-          checkStepIsUnweakened(matching[0], `${where} (${suite})`, violations);
+      // THE JOB, by name. `Object.values(jobs).flatMap(...)` would accept the command sitting in any
+      // job, including one with no database — which is the failure this whole block exists to catch.
+      const job = migrations.jobs?.[REAL_PG_JOB];
+      if (job === undefined) {
+        violations.push(`${where}: job \`${REAL_PG_JOB}\` is missing — the real-Postgres suites have nowhere to run`);
+      } else {
+        checkJobIsUnweakened(job, `${where} (${REAL_PG_JOB})`, violations);
+        const steps = job.steps ?? [];
+        const runs = steps.map((step) => (typeof step.run === 'string' ? step.run : ''));
+
+        // ...and it must actually build the database first, or the suites test nothing
+        for (const required of REAL_PG_JOB_REQUIRED_STEPS) {
+          if (!runs.some((run) => run.includes(required))) {
+            violations.push(`${where} (${REAL_PG_JOB}): no step runs \`${required}\` — the suites below would run against an uninitialised database`);
+          }
+        }
+
+        for (const suite of REAL_PG_SUITES) {
+          const expected = `node ${suite}`;
+          // EXACT, after trimming. A substring match accepts `echo node scripts/...`, `: node ...`,
+          // `true # node ...` and `[[ -f x ]] && node ...` — every one of which reports success
+          // while running nothing.
+          const exact = steps.filter((step) => typeof step.run === 'string' && step.run.trim() === expected);
+          const mentions = steps.filter((step) => typeof step.run === 'string' && step.run.includes(suite));
+          if (exact.length === 0) {
+            const near = mentions.length > 0 ? ` (found ${JSON.stringify(mentions[0].run)})` : '';
+            violations.push(`${where} (${REAL_PG_JOB}): no step runs exactly \`${expected}\`${near} — a path filter makes the workflow run, not the suite`);
+          } else if (exact.length > 1) {
+            violations.push(`${where} (${REAL_PG_JOB}): \`${expected}\` runs ${exact.length} times`);
+          } else if (mentions.length > exact.length) {
+            violations.push(`${where} (${REAL_PG_JOB}): \`${suite}\` is also referenced by a step that does not run it exactly`);
+          } else {
+            checkStepIsUnweakened(exact[0], `${where} (${REAL_PG_JOB}: ${suite})`, violations);
+          }
         }
       }
       // both triggers, because a suite that only runs on push is not a gate on a pull request

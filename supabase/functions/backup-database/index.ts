@@ -189,7 +189,7 @@ export async function handleRequest(
     const results: TableResult[] = [];
     const failedQueries: string[] = [];
     const failedUploads: string[] = [];
-    /** Tables whose page walk disagreed with the database's own count. */
+    /** Tables whose exported row count disagreed with the count the same scan reported. */
     const incomplete: string[] = [];
 
     // Grouped, so the tables that have to agree with each other come from one snapshot. Everything

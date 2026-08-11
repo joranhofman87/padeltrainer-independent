@@ -94,6 +94,13 @@ jobs:
       - name: U2 — scrub claim/reclaim race (two sessions, local Postgres)
         run: node scripts/db/u2-scrub-claim-race.mjs
 
+      # ...and the recovery contract of that harness: it disables the guard trigger and opens three
+      # sessions to stage a race, so a leak would poison every later assertion while staying green.
+      # Drives the harness with a failure injected at each stage and inspects the database from an
+      # independent connection.
+      - name: U2 — scrub race recovery (fault injection, local Postgres)
+        run: node scripts/db/u2-scrub-claim-race-recovery.mjs
+
   types-drift:
     name: generated types drift
     runs-on: ubuntu-latest

@@ -639,6 +639,12 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     const p = join(root, '.github/workflows/test.yml');
     writeFileSync(p, edit(readFileSync(p, 'utf8')));
   };
+  /** The exact step line the migrations.yml cases below mutate. */
+  const RACE = '        run: node scripts/db/u2-scrub-claim-race.mjs';
+  const editMigrations = (root: string, edit: (src: string) => string) => {
+    const p = join(root, '.github/workflows/migrations.yml');
+    writeFileSync(p, edit(readFileSync(p, 'utf8')));
+  };
   const editJson = (root: string, file: string, edit: (o: Record<string, unknown>) => void) => {
     const p = join(root, file);
     const o = JSON.parse(readFileSync(p, 'utf8'));
@@ -698,6 +704,38 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['gate step loses its explicit bash', /must pin `shell: bash`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify every test prerequisite succeeded\n        shell: bash\n', '      - name: Verify every test prerequisite succeeded\n'))],
       ['gate step set to sh (dash rejects set -o pipefail)', /overrides `shell|must pin `shell: bash`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Verify every test prerequisite succeeded\n        shell: bash', '      - name: Verify every test prerequisite succeeded\n        shell: sh'))],
       ['workflow-level env redirects script-shell', /npm_config_script_shell|NPM_CONFIG/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  npm_config_script_shell: /bin/true\n\njobs:\n'))],
+
+      // ── migrations.yml: the real-Postgres suites must RUN, in the initialised job ────────────
+      // A path filter decides whether the workflow runs; a `run:` step decides whether a suite
+      // executes. Every case below keeps the workflow triggering and the check green-looking.
+      ['real-pg suite step deleted', /no step runs exactly `node scripts\/db\/u2-scrub-claim-race\.mjs`/,
+        (r) => editMigrations(r, (s) => s.replace(`${RACE}\n`, ''))],
+      ['real-pg suite made conditional', /step has an `if:`/,
+        (r) => editMigrations(r, (s) => s.replace(RACE, `        if: github.event_name == 'push'\n${RACE}`))],
+      ['real-pg suite continue-on-error', /continue-on-error/,
+        (r) => editMigrations(r, (s) => s.replace(RACE, `        continue-on-error: true\n${RACE}`))],
+      ['real-pg suite shell bypass', /overrides `shell/,
+        (r) => editMigrations(r, (s) => s.replace(RACE, `        shell: bash -n {0}\n${RACE}`))],
+      ['real-pg suite echoed instead of run', /no step runs exactly/,
+        (r) => editMigrations(r, (s) => s.replace(RACE, '        run: echo node scripts/db/u2-scrub-claim-race.mjs'))],
+      ['real-pg suite no-op substituted', /no step runs exactly/,
+        (r) => editMigrations(r, (s) => s.replace(RACE, '        run: ": node scripts/db/u2-scrub-claim-race.mjs"'))],
+      ['real-pg suite guarded by a file test', /no step runs exactly/,
+        (r) => editMigrations(r, (s) => s.replace(RACE, '        run: test -f scripts/db/u2-scrub-claim-race.mjs && node scripts/db/u2-scrub-claim-race.mjs'))],
+      ['whole db-reset job made conditional', /job has an `if:`/,
+        (r) => editMigrations(r, (s) => s.replace('  db-reset:\n', "  db-reset:\n    if: github.event_name == 'push'\n"))],
+      ['db-reset job renamed away', /job `db-reset` is missing/,
+        (r) => editMigrations(r, (s) => s.replace('\n  db-reset:\n', '\n  db-reset-renamed:\n'))],
+      // the job NAME is also "supabase db reset", so this must target the run: line, not the first match
+      ['db-reset loses its database', /would run against an uninitialised database/,
+        (r) => editMigrations(r, (s) => s.replace('        run: supabase db reset --yes', '        run: echo skipped'))],
+      ['seed.sql dropped from the push filter', /on\.push\.paths is missing `supabase\/seed\.sql`/,
+        (r) => editMigrations(r, (s) => s.replace("      - 'supabase/seed.sql'\n", '', 1))],
+      ['seed.sql dropped from the PR filter', /on\.pull_request\.paths is missing `supabase\/seed\.sql`/,
+        (r) => editMigrations(r, (s) => {
+          const i = s.lastIndexOf("      - 'supabase/seed.sql'\n");
+          return s.slice(0, i) + s.slice(i + "      - 'supabase/seed.sql'\n".length);
+        })],
       ['hyphenated NPM_CONFIG_SCRIPT-SHELL spelling', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_SCRIPT-SHELL: /bin/true\n'))],
       ['extra full-suite `npm test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky full gate\n        run: npm test\n\n      - name: Run unit tests\n'))],
       ['the real-pg integration file drifts into unit', /not owned by the db project/, (r) => {

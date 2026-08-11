@@ -20,12 +20,16 @@
  * rolls the disable back rather than leaking it. Nothing here is left to a happy path.
  *
  * `U2_RACE_FAULT=<stage>` raises at a chosen point so the recovery path can be proven rather than
- * asserted. It is test-only scaffolding for exactly that; unset, it does nothing.
+ * asserted, and `scripts/db/u2-scrub-claim-race-recovery.mjs` drives every stage in CI. Stages:
+ * `after-connect-A|B|admin` (partial connection failure), `before-insert`, `after-insert`,
+ * `inside-guard-window`, `after-claim-race`, `before-cleanup`, plus `hold-guard-window` which
+ * pauses instead of throwing. Unset, none of it does anything.
  *
  * LOCAL ONLY — the connection string is hardcoded to 127.0.0.1:54322 and nothing here reads a
  * credential.
  */
 import pg from 'pg';
+import { randomUUID } from 'node:crypto';
 
 // application_name tags this run's three sessions so they can be told apart from the stack's own
 // pooled backends — PostgREST, for one, sits idle in a transaction holding its schema cache.
@@ -46,9 +50,21 @@ const ok_ = (cond, msg, detail) => (cond ? pass(msg) : fail(msg, detail));
 const a = new pg.Client({ connectionString: CONN });
 const b = new pg.Client({ connectionString: CONN });
 const admin = new pg.Client({ connectionString: CONN });
-await a.connect(); await b.connect(); await admin.connect();
 
-/** Rows this run created, recorded the instant they exist so an error cannot leak one. */
+/**
+ * Clients that actually connected. `connect()` on a client that never opened throws, and `end()` on
+ * one that never opened is not reliably a no-op, so the cleanup below acts only on what really
+ * opened — and connecting happens INSIDE the try, so a failure on the second or third client still
+ * closes the first.
+ */
+const opened = [];
+
+/**
+ * Ids this run is responsible for, recorded BEFORE the INSERT that uses them. Generated here rather
+ * than read back from `RETURNING id`: a connection lost between the server committing the row and
+ * the client receiving the id would otherwise leave a row nothing can name, and therefore nothing
+ * can clean up.
+ */
 const created = [];
 
 /**
@@ -71,18 +87,25 @@ async function withGuardDisabled(client, fn) {
 }
 
 try {
+  for (const [client, label] of [[a, 'A'], [b, 'B'], [admin, 'admin']]) {
+    await client.connect();
+    opened.push([client, label]);
+    faultIf(`after-connect-${label}`);
+  }
+
   /** A fresh operation, carried to `database_scrubbed` so a claim is the next legal step. */
   async function scrubbedOperation() {
-    const { rows: [row] } = await admin.query(`
-      INSERT INTO ${TABLE} (command_id, subject_user_id, actor_user_id, self_service)
-      VALUES (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), false)
-      RETURNING id`);
-    created.push(row.id);          // recorded BEFORE anything else can throw
+    const id = randomUUID();
+    created.push(id);              // recorded BEFORE the row can possibly exist
+    faultIf('before-insert');
+    await admin.query(`
+      INSERT INTO ${TABLE} (id, command_id, subject_user_id, actor_user_id, self_service)
+      VALUES ($1::uuid, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), false)`, [id]);
     faultIf('after-insert');
     await admin.query(
       `UPDATE ${TABLE} SET state = 'database_scrubbed', subject_person_id = gen_random_uuid()
-        WHERE id = $1`, [row.id]);
-    return row.id;
+        WHERE id = $1`, [id]);
+    return id;
   }
 
   /** Age a lease without waiting five real minutes. The guard owns the column, so it must be off. */
@@ -212,7 +235,7 @@ try {
 } finally {
   // Whatever happened above — assertion failure, injected fault, thrown query — no session may be
   // left holding a transaction, no row may be left behind, and no client may be left open.
-  for (const [client, label] of [[a, 'A'], [b, 'B'], [admin, 'admin']]) {
+  for (const [client, label] of opened) {
     try {
       await client.query('ROLLBACK');   // a no-op outside a transaction, by design
     } catch (err) {
@@ -220,7 +243,8 @@ try {
     }
   }
 
-  if (created.length) {
+  // Only attempt row cleanup if the connection that performs it is actually up.
+  if (created.length && opened.some(([client]) => client === admin)) {
     try {
       // Append-only by trigger, so removing this run's rows needs the guard off — transactionally,
       // exactly as when it was staged.
@@ -232,8 +256,8 @@ try {
     }
   }
 
-  for (const client of [a, b, admin]) {
-    try { await client.end(); } catch { /* already closed or never opened */ }
+  for (const [client] of opened) {
+    try { await client.end(); } catch { /* already closing */ }
   }
 }
 
