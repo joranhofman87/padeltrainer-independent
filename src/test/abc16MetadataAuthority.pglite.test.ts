@@ -255,6 +255,57 @@ describe('ABC-16 · AFTER H0 — every overlay-derived authority is closed', () 
     }
   });
 
+  // THE OWNER-CONTEXT BYPASS. The BEFORE guard only stops a client naming a profile directly.
+  // Before this fix, inserting a guest with the victim's EMAIL and NULL bridge fields passed
+  // the guard and was linked a moment later by an AFTER trigger running as the function owner.
+  it('a guest inserted with a victim\'s email is NOT auto-linked in owner context', async () => {
+    const victimEmail = 'nascent@example.test';           // the nascent profile's address
+    const newGuest = '2a000000-0000-4000-8000-00000000aa01';
+
+    await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
+    await db.exec('SET ROLE authenticated');
+    try {
+      await db.query(
+        `INSERT INTO public.guest_players (id, full_name, email, academy_profile_id)
+         VALUES ($1, 'Lookalike', $2, $3)`,
+        [newGuest, victimEmail, IDS.attackerAcademy],
+      );
+    } finally {
+      await db.exec('RESET ROLE');
+    }
+
+    // the bridge stayed NULL …
+    const g = await db.query<{ linked_profile_id: string | null; twin_of_profile_id: string | null }>(
+      `SELECT linked_profile_id, twin_of_profile_id FROM public.guest_players WHERE id = $1`, [newGuest]);
+    expect(g.rows[0]).toEqual({ linked_profile_id: null, twin_of_profile_id: null });
+
+    // … and no cross-source person link was created: the guest has its OWN person.
+    const pl = await db.query<{ person_id: string }>(
+      `SELECT person_id FROM public.person_links WHERE guest_player_id = $1`, [newGuest]);
+    if (pl.rows.length > 0) {
+      const shared = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM public.person_links WHERE person_id = $1 AND profile_id IS NOT NULL`,
+        [pl.rows[0].person_id]);
+      expect(shared.rows[0].n).toBe(0);
+    }
+  });
+
+  it('an email change on an existing guest does not link it either', async () => {
+    await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
+    await db.exec('SET ROLE authenticated');
+    try {
+      // a DIFFERENT registered address than the insert test used — the academy+email unique
+      // index would otherwise reject this before the trigger question is even reached.
+      await db.query(`UPDATE public.guest_players SET email = $1 WHERE id = $2`,
+        ['booked@example.test', IDS.guestOwnedByAttackerAcademy]);
+    } finally {
+      await db.exec('RESET ROLE');
+    }
+    const g = await db.query<{ linked_profile_id: string | null }>(
+      `SELECT linked_profile_id FROM public.guest_players WHERE id = $1`, [IDS.guestOwnedByAttackerAcademy]);
+    expect(g.rows[0].linked_profile_id).toBeNull();
+  });
+
   it('ordinary guest edits still work — only the bridge columns are frozen', async () => {
     await db.query(`SELECT set_config('abc16.uid', $1, false)`, [IDS.attackerUser]);
     await db.exec('SET ROLE authenticated');

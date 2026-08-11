@@ -369,6 +369,36 @@ describe('ABC-17/18 · bookings are distrusted, and the bridge is frozen', () =>
     }
   });
 
+  it('the twin claim/discovery RPCs are revoked at their REAL signatures', async () => {
+    const { rows } = await c.query(
+      `SELECT has_function_privilege('authenticated','public.claim_guest_twin_for_academy(uuid,uuid,uuid)','EXECUTE') AS claim_auth,
+              has_function_privilege('service_role','public.claim_guest_twin_for_academy(uuid,uuid,uuid)','EXECUTE') AS claim_svc,
+              has_function_privilege('authenticated','public.find_guest_twin_for_academy(uuid,uuid)','EXECUTE') AS find_auth`,
+    );
+    expect(rows[0]).toEqual({ claim_auth: false, claim_svc: false, find_auth: false });
+  });
+
+  it('the wrong overload does not exist — the discriminating check for the aborted-migration defect', async () => {
+    // An earlier draft revoked claim_guest_twin_for_academy(uuid,uuid). On the real chain the
+    // name matched and the wrong-signature REVOKE aborted the migration. Proving the 2-uuid
+    // overload is absent while the 3-uuid one is present is exactly what that draft got wrong.
+    const { rows } = await c.query(
+      `SELECT to_regprocedure('public.claim_guest_twin_for_academy(uuid,uuid)')   AS two_arg,
+              to_regprocedure('public.claim_guest_twin_for_academy(uuid,uuid,uuid)') AS three_arg`,
+    );
+    expect(rows[0].two_arg).toBeNull();
+    expect(rows[0].three_arg).not.toBeNull();
+  });
+
+  it('the owner-context auto-link triggers are retired', async () => {
+    const { rows } = await c.query(
+      `SELECT count(*)::int AS n FROM pg_trigger
+        WHERE NOT tgisinternal
+          AND tgname IN ('trg_link_guest_data_on_guest_player_change','trg_link_guest_invoices_on_signup')`,
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
   it('the trainer booked-guest policy is gone', async () => {
     const { rows } = await c.query(
       `SELECT policyname FROM pg_policies

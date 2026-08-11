@@ -43,6 +43,11 @@ export const PRE_H0_MIGRATIONS = [
   '20260713110000_trainer_guest_visibility.sql',             // trainer guest SELECT policy
   '20260731100000_member_window_priority_guest.sql',         // filter_academy_priority_ids
   '20260801100000_fix_guest_players_select_returning.sql',   // the EFFECTIVE academy guest SELECT policy
+  // The REAL twin bridge: find_guest_twin_for_academy(uuid,uuid) and the THREE-uuid
+  // claim_guest_twin_for_academy, plus their authenticated grants. Required, not optional —
+  // the containment revokes those exact signatures, and an earlier fixture that omitted the
+  // function hid a wrong-overload REVOKE that aborts on the real chain.
+  '20260826210000_guest_twin_bridge.sql',
   '20260826260000_persons_expand.sql',                       // persons/person_links + the stamp triggers
 ];
 

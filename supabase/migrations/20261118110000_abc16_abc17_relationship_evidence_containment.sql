@@ -366,15 +366,179 @@ CREATE TRIGGER trg_guard_guest_bridge_columns
 -- booking subjects as its owner — a direct route around every guard above.
 REVOKE ALL ON FUNCTION public.link_guest_data_to_profile(uuid) FROM PUBLIC, anon, authenticated, service_role;
 
-DO $$
+-- The shipped signature is THREE uuids (20260826210000:82-86), granted to authenticated at
+-- :142-143. An earlier draft revoked a two-uuid overload: on the real chain the name check
+-- passed and the wrong-signature REVOKE aborted the whole migration. Pinned by
+-- `regprocedure` so the argument list is part of the statement rather than a comment.
+REVOKE ALL ON FUNCTION public.claim_guest_twin_for_academy(uuid, uuid, uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- `find_guest_twin_for_academy` is the discovery half of the same claim flow. It answers
+-- "which guest row in this academy is this profile's twin", which is only useful as the input
+-- to a claim that is now impossible, and is itself a bridge oracle.
+REVOKE ALL ON FUNCTION public.find_guest_twin_for_academy(uuid, uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 8d. ABC-18 — the OWNER-CONTEXT auto-link paths are retired.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Revoking EXECUTE is not a freeze. The BEFORE guard at 8b stops a client naming a profile
+-- directly, but three SECURITY DEFINER paths ran as the function owner and re-created the link
+-- from a mutable email anyway:
+--
+--   * `link_guest_data_on_guest_player_change` — an AFTER INSERT OR UPDATE OF
+--     (linked_profile_id, email) trigger on guest_players (20260530190000:169-173) whose email
+--     arm calls `link_guest_data_to_profile` for EVERY profile sharing the address (:145,:159);
+--   * `link_guest_invoices_on_signup` — the same call at signup (:106);
+--   * `mint_person_for_guest` / `mint_person_for_profile` / `relink_person_on_twin_change` —
+--     collapse a guest's person into a profile's on a unique-email pair or a twin stamp.
+--
+-- So an authenticated INSERT with the victim's email and NULL bridge fields passed the guard
+-- and was linked a moment later, in owner context. That is the bypass this section closes.
+--
+-- An email or name match may SUGGEST a proposal. It may never confirm one. There is no
+-- email-only signup exception — a special case there is the same defect with a nicer story.
+--
+-- NO DML: functions and triggers only. Every existing link, person, booking and invoice keeps
+-- its current value; nothing is re-derived, cleared or re-stamped.
+
+-- (1) guest insert/email change no longer links anything.
+DROP TRIGGER IF EXISTS trg_link_guest_data_on_guest_player_change ON public.guest_players;
+
+CREATE OR REPLACE FUNCTION public.link_guest_data_on_guest_player_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname = 'public' AND p.proname = 'claim_guest_twin_for_academy'
-  ) THEN
-    EXECUTE 'REVOKE ALL ON FUNCTION public.claim_guest_twin_for_academy(uuid, uuid) FROM PUBLIC, anon, authenticated, service_role';
+  -- ABC-18: inert. Retained as an object so nothing that references it errors; its trigger is
+  -- dropped above. Editing a guest's email is a contact-detail change and nothing more.
+  RETURN NEW;
+END;
+$$;
+
+-- (2) signup no longer claims guest history by email.
+DROP TRIGGER IF EXISTS trg_link_guest_invoices_on_signup ON public.profiles;
+
+CREATE OR REPLACE FUNCTION public.link_guest_invoices_on_signup()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- ABC-18: inert. Signing up with an address that appears on a guest row is a coincidence of
+  -- mutable PII, not proof the two are the same person — and it granted roles, follows,
+  -- bookings and invoices. A claim flow returns with the attestation model in A/U2.
+  RETURN NEW;
+END;
+$$;
+
+-- (3) a guest always mints its OWN person; email and twin never collapse two persons.
+CREATE OR REPLACE FUNCTION public.mint_person_for_guest()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_email text := nullif(btrim(NEW.email), '');
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.person_links WHERE guest_player_id = NEW.id) THEN
+    RETURN NEW;
   END IF;
-END $$;
+
+  -- Structural mint: this guest row becomes its own person. Deterministic id (the guest's own)
+  -- exactly as before, so nothing downstream that assumes that shape changes.
+  INSERT INTO public.persons (
+    id, full_name, first_name, last_name, email, phone, birth_date,
+    skill_rating, rating_system, billing_business_name, billing_address, billing_btw_number
+  ) VALUES (
+    NEW.id, NEW.full_name, NEW.first_name, NEW.last_name, NEW.email, NEW.phone, NEW.birth_date,
+    NEW.skill_rating, NEW.rating_system, NEW.billing_business_name, NEW.billing_address, NEW.billing_btw_number
+  ) ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.person_links (person_id, guest_player_id)
+  VALUES (NEW.id, NEW.id)
+  ON CONFLICT (guest_player_id) DO NOTHING;
+
+  -- A coincidence is still worth surfacing — as a PENDING proposal a human resolves, never as
+  -- an applied merge. This is the only thing an email match is allowed to produce.
+  IF v_email IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.profiles p
+    WHERE nullif(btrim(p.email), '') IS NOT NULL AND lower(btrim(p.email)) = lower(v_email)
+  ) THEN
+    INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, details)
+    VALUES ('signup_pair_needs_review', 'pending', NEW.email, NEW.id,
+            jsonb_build_object('via', 'guest_insert_email_coincidence', 'authoritative', false));
+  END IF;
+
+  IF NEW.twin_of_profile_id IS NOT NULL THEN
+    INSERT INTO public.person_merge_review (kind, status, email, guest_player_id, profile_id, details)
+    VALUES ('twin_trust_failure', 'pending', NEW.email, NEW.id, NEW.twin_of_profile_id,
+            jsonb_build_object('via', 'abc18_twin_no_longer_authoritative', 'authoritative', false));
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- (3b) a new profile mints its OWN person and never absorbs a guest's on an email match.
+CREATE OR REPLACE FUNCTION public.mint_person_for_profile()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+DECLARE
+  v_email text := nullif(btrim(NEW.email), '');
+BEGIN
+  IF EXISTS (SELECT 1 FROM public.person_links WHERE profile_id = NEW.id) THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO public.persons (
+    id, full_name, first_name, last_name, email, phone, birth_date,
+    skill_rating, rating_system, billing_business_name, billing_address, billing_btw_number
+  ) VALUES (
+    NEW.id, NEW.full_name, NEW.first_name, NEW.last_name, NEW.email, NEW.phone, NEW.birth_date,
+    NEW.skill_rating, NEW.rating_system, NEW.billing_business_name, NEW.billing_address, NEW.billing_btw_number
+  ) ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.person_links (person_id, profile_id)
+  VALUES (NEW.id, NEW.id)
+  ON CONFLICT (profile_id) DO NOTHING;
+
+  -- The account-claim shape (a guest existed first, the human signs up with that address) is
+  -- the single largest source of pre-backfill matches. It is now a PENDING proposal only: the
+  -- collapse it used to perform moved bookings, invoices and memberships on a mutable string.
+  IF v_email IS NOT NULL AND EXISTS (
+    SELECT 1 FROM public.guest_players g
+    WHERE nullif(btrim(g.email), '') IS NOT NULL AND lower(btrim(g.email)) = lower(v_email)
+  ) THEN
+    INSERT INTO public.person_merge_review (kind, status, email, profile_id, details)
+    VALUES ('signup_pair_needs_review', 'pending', NEW.email, NEW.id,
+            jsonb_build_object('via', 'profile_signup_email_coincidence', 'authoritative', false));
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- (4) changing a twin stamp no longer moves anyone between persons.
+CREATE OR REPLACE FUNCTION public.relink_person_on_twin_change()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  -- ABC-18: inert. A twin stamp is caller-authored, so re-pointing a person on the strength of
+  -- one moved identity, memberships, bookings and invoices on an unverified assertion.
+  RETURN NEW;
+END;
+$$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 8c. ABC-18 — the two staff↔player visibility helpers fail closed.
@@ -493,6 +657,34 @@ BEGIN
   END IF;
   IF has_function_privilege('authenticated', 'public.guest_booked_with_trainer(uuid,uuid)', 'EXECUTE') THEN
     RAISE EXCEPTION 'ABC-17: the retired booked-guest oracle is still client-callable';
+  END IF;
+
+  -- 9c-ter. the twin claim/discovery RPCs are pinned by their REAL three-uuid and two-uuid
+  --         signatures. `to_regprocedure` returns NULL rather than raising if the overload does
+  --         not exist, so a wrong-signature edit fails here instead of aborting mid-migration.
+  IF to_regprocedure('public.claim_guest_twin_for_academy(uuid,uuid,uuid)') IS NULL THEN
+    RAISE EXCEPTION 'ABC-18: the shipped 3-uuid claim_guest_twin_for_academy is missing — wrong overload?';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.claim_guest_twin_for_academy(uuid,uuid,uuid)', 'EXECUTE')
+     OR has_function_privilege('service_role', 'public.claim_guest_twin_for_academy(uuid,uuid,uuid)', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.find_guest_twin_for_academy(uuid,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-18: a twin claim/discovery RPC is still callable';
+  END IF;
+
+  -- 9c-quater. the owner-context auto-link triggers are gone and the mint paths no longer
+  --            collapse on email or twin.
+  IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_link_guest_data_on_guest_player_change' AND NOT tgisinternal)
+     OR EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_link_guest_invoices_on_signup' AND NOT tgisinternal) THEN
+    RAISE EXCEPTION 'ABC-18: an owner-context auto-link trigger is still installed';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public'
+       AND p.proname IN ('mint_person_for_guest', 'mint_person_for_profile', 'relink_person_on_twin_change',
+                         'link_guest_data_on_guest_player_change', 'link_guest_invoices_on_signup')
+       AND p.prosrc ~ 'link_guest_data_to_profile|auto_merged'
+  ) THEN
+    RAISE EXCEPTION 'ABC-18: a person/link path still calls the minter or applies an auto-merge';
   END IF;
 
   -- 9c-bis. the bridge minting RPC is not callable by any untrusted role.
