@@ -21,7 +21,7 @@ Status: canonical (source of truth) | last updated 2026-07-02
 
 ## CI gates (from `.github/workflows/`)
 
-- **test.yml** — `lint` (ratcheted eslint via `eslint-suppressions.json`, shrink-only) + `check:edge-config` (edge verify_jwt drift) | `typecheck:baseline` + `vite build` | `npm test` (vitest incl. PGlite) + `db:rehearse:all` + `i18n:check` (bun, en+nl parity) | `deno test --no-check` on `_shared/`.
+- **test.yml** — `lint` (ratcheted eslint via `eslint-suppressions.json`, shrink-only) + `check:edge-config` (edge verify_jwt drift) | `typecheck:baseline` + `vite build` | `test:unit`, `test:db` ×2 shards (`vitest --shard=i/2`, exact partition, `fileParallelism: false` per runner), `db:rehearse:all` ×2 shards (round-robin, exactly-once union pinned by `src/test/rehearsalSharding.test.ts`) , `i18n:check` (bun, en+nl parity) and `workflow-contract` (`scripts/ci/workflow-contract.mjs`, the split gate's own contract) — all five aggregated by the required `test` gate, which is one fixed command over `toJSON(needs)` (`scripts/ci/verify-prerequisites.mjs`, a pure function unit-tested directly) | `deno test --no-check` on `_shared/`. Locally `npm test` + `db:rehearse:all` still run everything unsharded.
 - **migrations.yml** — `supabase db reset` + generated-types drift.
 - **e2e.yml** — playwright: navigation/i18n/error-handling/accessibility/rls-health/invoice-health/performance, then roles/payments/booking. **seo-smoke.yml**, **sitemap.yml**.
 
