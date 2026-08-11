@@ -27,6 +27,7 @@
  */
 import pg from 'pg';
 import { readFileSync } from 'node:fs';
+import { ACL_DENY_SQL } from './acl-deny-query.mjs';
 
 const CONN = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const SOURCE = 'supabase/functions/backup-database/index.ts';
@@ -331,37 +332,10 @@ else pass('the backup can execute all three');
       { seed: a, guard: b });
   }
 
-  // Version-aware, because a privilege list goes stale silently: PostgreSQL 17 added MAINTAIN, and a
-  // guard enumerating up to TRIGGER would have let `GRANT MAINTAIN ... TO anon` through while
-  // reporting no privilege held. The set is derived from the owner's own default ACL, so it is
-  // whatever THIS server defines. Column-level grants are checked too — `has_table_privilege` does
-  // not see them, so `GRANT UPDATE (state) ... TO service_role` would otherwise pass every
-  // table-level assertion while being enough to drive the state machine.
-  const DENY_SQL = `
-    WITH rel AS (
-      SELECT c.oid, c.relowner, coalesce(c.relacl, '{}'::aclitem[]) AS relacl
-        FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'public' AND c.relname = $1
-    ),
-    privs AS (SELECT DISTINCT a.privilege_type FROM rel, aclexplode(acldefault('r', rel.relowner)) a),
-    roles AS (SELECT unnest(ARRAY['anon','authenticated','service_role']) AS role),
-    held AS (
-      SELECT r.role || ':' || p.privilege_type AS h
-        FROM rel, roles r, privs p WHERE has_table_privilege(r.role, rel.oid, p.privilege_type)
-      UNION
-      SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
-        FROM rel, aclexplode(rel.relacl) a WHERE a.grantee <> rel.relowner
-      UNION
-      SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
-             || ' on column ' || att.attname
-        FROM rel JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attacl IS NOT NULL,
-             LATERAL aclexplode(att.attacl) a WHERE a.grantee <> rel.relowner
-    )
-    SELECT coalesce((SELECT string_agg(h, ', ' ORDER BY h) FROM held), '') AS held,
-           (SELECT count(*)::int FROM privs) AS probed`;
-
+  // The query lives in scripts/db/acl-deny-query.mjs and is version-aware; the PGlite suite imports
+  // THE SAME text and mutates the ACL against it, so a regression in this guard fails there too.
   for (const t of DEFAULT_DENY) {
-    const { rows: [open] } = await c.query(DENY_SQL, [t]);
+    const { rows: [open] } = await c.query(ACL_DENY_SQL, [t]);
     // probed > 0 proves the derivation found a privilege set at all; an empty one would make
     // "nothing is held" true by asking nothing
     ok_(open.held === '' && open.probed > 0,

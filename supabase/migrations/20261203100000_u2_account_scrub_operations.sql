@@ -43,7 +43,18 @@
 --
 -- THE DATABASE OWNS TIME. Every durable timestamp here is stamped by the trigger from one
 -- clock_timestamp() captured when the trigger executes. A caller says WHICH milestone happened; it
--- never says WHEN, and any value it supplies for a timestamp is overwritten rather than trusted.
+-- never says WHEN. No caller value reaches a stored timestamp, by one of two routes, and it is worth
+-- knowing which is which when reading an error:
+--
+--   OVERWRITTEN — started_at, auth_deleted_at, public_assets_deleted_at, last_attempt_at,
+--     next_attempt_at, lease_expires_at. Whatever arrives is replaced by the trigger's own reading;
+--     for the two external markers the value is the caller's way of saying "this milestone just
+--     happened", and only its non-NULL-ness is read.
+--   REFUSED — database_scrubbed_at and finished_at. These are the committed milestones, so they are
+--     covered by the immutability check and an UPDATE that names one is rejected outright rather
+--     than silently ignored. Retrying without it succeeds. Refusing is the stricter of the two and
+--     is deliberate for the two timestamps that mark a point of no return.
+--
 -- That is not tidiness, it closes two reproduced wedges in the draft this replaces:
 --
 --   * a row inserted with a future started_at could reach NEITHER of its exits, because both were
@@ -241,7 +252,7 @@ COMMENT ON COLUMN public.account_scrub_operations.started_at IS
 COMMENT ON COLUMN public.account_scrub_operations.last_error_code IS
   'Why the last attempt did not succeed, as one value from a controlled vocabulary fixed by account_scrub_operations_error_code_check. It is deliberately coarse, and free text is rejected rather than truncated: a provider or PostgreSQL message can quote the address, name or row being erased, so the detail belongs in transient redacted logs and never in durable erasure evidence. Codes before the scrub commits are terminal; codes after it are retryable.';
 COMMENT ON COLUMN public.account_scrub_operations.lease_expires_at IS
-  'Database-stamped fencing deadline. A worker cannot choose or extend it; when it passes, another worker may reclaim the row with a fresh token and the previous holder can no longer write.';
+  'Database-stamped claim deadline. A worker cannot choose or extend it; once it passes, another worker may reclaim the row with a fresh token. It is NOT yet a fence: the trigger refuses transitions made under an expired lease, but nothing here ties a statement to the identity of the worker that holds the current one. A superseded holder is stopped only by an UPDATE predicated on the current lease_token, and that predicate belongs to the SECURITY DEFINER RPCs, which do not exist in this release. Until they do, the table has no writer at all, which is what makes the gap safe rather than latent.';
 
 -- ── indexes ────────────────────────────────────────────────────────────────────────────────────
 -- One live erasure per account. A finished operation does not block a later, genuinely new one.
@@ -513,8 +524,11 @@ CREATE TRIGGER trg_account_scrub_operations_no_truncate
 -- role may already read, and `authenticated` has no SELECT privilege on this table, so the policy was
 -- decoration that read as access control — the worst kind of ACL, because a reviewer counts it.
 --
--- RLS stays ON with zero policies, which is deny-all. It is the backstop for the day someone grants
--- a role SELECT without reading this comment.
+-- RLS stays ON with zero policies, which is deny-all FOR ROLES SUBJECT TO RLS — anon and
+-- authenticated. Be precise about its limit: service_role carries BYPASSRLS, so if someone ever
+-- grants it a table privilege, RLS will not stop the read. For service_role the REVOKE above is the
+-- only thing standing there, which is exactly why it names service_role explicitly rather than
+-- relying on a policy to catch it.
 --
 -- HOW ACCESS ARRIVES LATER, when it is needed: narrow SECURITY DEFINER RPCs, one per transition
 -- (open, scrub, claim, progress, release, finalize) plus a bounded operator read. Each takes the

@@ -19,6 +19,8 @@
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
+// the SHIPPED deny query, imported rather than copied — see scripts/db/acl-deny-query.mjs
+import { ACL_DENY_SQL } from '../../scripts/db/acl-deny-query.mjs';
 import { readFileSync } from 'node:fs';
 
 const LEGACY_AUDIT = 'supabase/migrations/20261107100000_account_deletion_audit.sql';
@@ -95,36 +97,9 @@ async function withTriggersDisabled<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
-/**
- * THE SHIPPED ACL QUESTION, asked once and reused.
- *
- * Both the "no client role holds any privilege" assertion and the column-grant test below run THIS
- * query. An earlier version of the column-grant test re-implemented the interesting half inline,
- * which proved the blind spot exists without proving the shipped assertion covers it — a test of a
- * copy is not a test of the thing.
- */
-const HELD_PRIVILEGES_SQL = `
-  WITH rel AS (
-    SELECT c.oid, c.relowner, coalesce(c.relacl, '{}'::aclitem[]) AS relacl
-      FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = 'public' AND c.relname = 'account_scrub_operations'
-  ),
-  privs AS (SELECT DISTINCT a.privilege_type FROM rel, aclexplode(acldefault('r', rel.relowner)) a),
-  roles AS (SELECT unnest(ARRAY['anon','authenticated','service_role']) AS role),
-  held AS (
-    SELECT r.role || ':' || p.privilege_type AS h
-      FROM rel, roles r, privs p WHERE has_table_privilege(r.role, rel.oid, p.privilege_type)
-    UNION
-    SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
-      FROM rel, aclexplode(rel.relacl) a WHERE a.grantee <> rel.relowner
-    UNION
-    SELECT coalesce(pg_get_userbyid(a.grantee), 'PUBLIC') || ':' || a.privilege_type
-           || ' on column ' || att.attname
-      FROM rel JOIN pg_attribute att ON att.attrelid = rel.oid AND att.attacl IS NOT NULL,
-           LATERAL aclexplode(att.attacl) a WHERE a.grantee <> rel.relowner
-  )
-  SELECT coalesce((SELECT string_agg(h, ', ' ORDER BY h) FROM held), '') AS held,
-         (SELECT count(*)::int FROM privs) AS probed`;
+/** Run the SHIPPED deny query — the byte-identical text scripts/db/backup-coverage.mjs runs. */
+const heldPrivileges = () =>
+  db.query<{ held: string; probed: number }>(ACL_DENY_SQL, ['account_scrub_operations']);
 
 /** Start an operation and return every id it needs. Each call is independent of every other. */
 async function newOperation(overrides: { subjectUser?: string; actorUser?: string } = {}) {
@@ -826,7 +801,7 @@ describe('operational surface', () => {
     //   * aclexplode(relacl), so a grant to a role the list does not name still fails.
     //   * aclexplode(attacl), because has_table_privilege cannot see COLUMN grants and
     //     `GRANT UPDATE (state, last_error_code)` is enough to drive the state machine.
-    const { rows } = await db.query<{ held: string; probed: number }>(HELD_PRIVILEGES_SQL);
+    const { rows } = await heldPrivileges();
     expect(rows[0].held).toBe('');
     // and the derivation actually found a privilege set, so "nothing is held" cannot be true
     // because nothing was asked
@@ -837,7 +812,7 @@ describe('operational surface', () => {
     // The mutation that proves the assertion above is load-bearing for the case that motivated it.
     // Applied and rolled back inside a transaction, so the shipped ACL is unchanged.
     //
-    // It re-runs HELD_PRIVILEGES_SQL — the SAME query the assertion uses — rather than an inline
+    // It re-runs ACL_DENY_SQL — the SAME text scripts/db/backup-coverage.mjs runs — rather than an inline
     // re-implementation. An earlier version asked its own question here and only established that
     // the blind spot exists; it never established that the shipped assertion closes it, which is the
     // whole claim.
@@ -851,7 +826,7 @@ describe('operational surface', () => {
       expect(blind[0].table_level).toBe(false);
 
       // ...and the shipped query sees it anyway, naming both columns
-      const { rows } = await db.query<{ held: string; probed: number }>(HELD_PRIVILEGES_SQL);
+      const { rows } = await heldPrivileges();
       expect(rows[0].held).toBe(
         'service_role:UPDATE on column last_error_code, service_role:UPDATE on column state');
       expect(rows[0].probed).toBeGreaterThanOrEqual(7);
@@ -861,11 +836,11 @@ describe('operational surface', () => {
 
     // and the rollback really restored the shipped ACL, so this test cannot leak a grant into the
     // assertions that follow it
-    const { rows: after } = await db.query<{ held: string }>(HELD_PRIVILEGES_SQL);
+    const { rows: after } = await heldPrivileges();
     expect(after[0].held).toBe('');
   });
 
-  it('keeps RLS on with zero policies, so a future grant still lands on deny-all', async () => {
+  it('keeps RLS on with zero policies — deny-all for the roles RLS applies to, and no more', async () => {
     const { rows } = await db.query<{ rls: boolean; policies: number }>(`
       SELECT c.relrowsecurity AS rls,
              (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
@@ -876,6 +851,27 @@ describe('operational surface', () => {
     // SELECT privilege, so it could never fire, and an ACL a reviewer counts but the database never
     // consults is worse than none.
     expect(rows[0]).toEqual({ rls: true, policies: 0 });
+  });
+
+  it('...and RLS is NOT a backstop for service_role, which is why the REVOKE names it', async () => {
+    // Stated because the opposite is an easy and dangerous assumption. service_role carries
+    // BYPASSRLS, so zero policies stop anon and authenticated and do nothing for it. Demonstrated by
+    // granting SELECT inside a transaction and reading as that role; rolled back, so the shipped ACL
+    // is unchanged — and re-checked afterwards to prove it.
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`GRANT SELECT ON public.account_scrub_operations TO service_role`);
+      await db.exec(`SET LOCAL ROLE service_role`);
+      const { rows } = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM public.account_scrub_operations`);
+      // RLS is on with no policies, and the read still succeeds. That is BYPASSRLS.
+      expect(typeof rows[0].n).toBe('number');
+      await db.exec(`RESET ROLE`);
+    } finally {
+      await db.exec('ROLLBACK');
+    }
+    const { rows: after } = await heldPrivileges();
+    expect(after[0].held).toBe('');
   });
 
   it('exposes exactly one definer function naming the table, and it only returns the name', async () => {

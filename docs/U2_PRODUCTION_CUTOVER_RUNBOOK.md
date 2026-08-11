@@ -468,8 +468,12 @@ data here. "No direct identifiers" is a blast-radius reduction, not an exemption
 **The database owns every timestamp.** `started_at`, `database_scrubbed_at`, `auth_deleted_at`,
 `public_assets_deleted_at`, `finished_at`, `last_attempt_at`, `next_attempt_at` and `lease_expires_at`
 are all stamped by the guard trigger from one `clock_timestamp()`; a caller says which milestone
-happened, never when, and any value it supplies is discarded. Two reproduced wedges in the earlier
-draft are the reason, and both are pinned by regression tests:
+happened, never when. No caller value reaches a stored timestamp — but by two different routes, and
+an operator reading an error should know which: `started_at`, the two external markers,
+`last_attempt_at`, `next_attempt_at` and `lease_expires_at` are **overwritten**, while
+`database_scrubbed_at` and `finished_at` are **refused** by the immutability check, so an UPDATE
+naming either is rejected rather than silently ignored (retrying without it succeeds). Two reproduced
+wedges in the earlier draft are the reason for the rule, and both are pinned by regression tests:
 
 * a caller-supplied future `started_at` satisfied neither exit from `started`, could not be corrected
   (immutable) or removed (append-only), and the one-live-operation index then blocked that account
@@ -513,8 +517,11 @@ and the guard trigger cannot help — it validates the *shape* of a transition, 
 entitlement to make it, and an UPDATE that forgets `AND lease_token = $token` is a stolen lease that
 looks perfectly valid on the way past. The admin SELECT policy an earlier draft carried is gone as
 well: `authenticated` holds no SELECT privilege, so it could never fire, and an ACL a reviewer counts
-but the database never consults is worse than none. RLS stays **on with zero policies** — deny-all —
-as the backstop for a future grant made without reading the migration.
+but the database never consults is worse than none. RLS stays **on with zero policies**, which is
+deny-all **for the roles subject to RLS** — `anon` and `authenticated`. It is not a backstop for
+`service_role`, which carries `BYPASSRLS`: grant that role a privilege and RLS will not stop the
+read. For `service_role` the `REVOKE` is the only thing standing there, which is why it is named
+explicitly rather than left to a policy.
 
 *This matters because a new table in Supabase's `public` schema is not born private.* `pg_default_acl`
 grants `service_role` every privilege and `anon`/`authenticated` `Dxtm` (including TRUNCATE) on
@@ -545,12 +552,23 @@ state and an alert threshold for an operation that has retried for days belong t
 until then the two reconciliation indexes are how an operator finds them.
 
 **Forward compensation.** If migration 20 causes a regression, stop before any writer is deployed,
-confirm `SELECT count(*) FROM public.account_scrub_operations` is zero, and drop the table and revert
-`backup_export_tables()` in a reviewed compensating migration. Refuse that compensation if any row
-exists: once an erasure is recorded, its evidence must not be discarded. Because B1 creates only an
-empty table, this pre-activation compensation restores and rewrites no user, membership, booking,
-invoice or Auth data. Production execution, as always, requires the owner gate and a freshly verified
-PITR timestamp.
+confirm `SELECT count(*) FROM public.account_scrub_operations` is zero, and in a reviewed
+compensating migration:
+
+1. `DROP TABLE public.account_scrub_operations;` — this also drops its two triggers and its three
+   indexes, but **not** the trigger function;
+2. `DROP FUNCTION public.account_scrub_operations_guard();` — easy to miss, because dropping the
+   table leaves it behind with nothing referencing it. Verify with
+   `SELECT to_regprocedure('public.account_scrub_operations_guard()')`, which must return NULL;
+3. restore `backup_export_tables()` to its `20261130100000` body (28 tables, without
+   `account_scrub_operations`), and remove the table from `TABLES_TO_BACKUP`, the `DEFAULT_DENY` list
+   in `scripts/db/backup-coverage.mjs` and the deny-list block in `supabase/seed.sql` — the coverage
+   guard asserts those three agree, so leaving any one behind fails CI rather than drifting quietly.
+
+Refuse the whole compensation if any row exists: once an erasure is recorded, its evidence must not
+be discarded. Because B1 creates only an empty table, this pre-activation compensation restores and
+rewrites no user, membership, booking, invoice or Auth data. Production execution, as always,
+requires the owner gate and a freshly verified PITR timestamp.
 
 ### Slice A — deployment, verification and rollback (non-side-effecting)
 
