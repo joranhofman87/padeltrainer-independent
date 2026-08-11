@@ -11,6 +11,20 @@
  * replaces, and both were caused by trusting a caller's clock. They are pinned here so the fix
  * cannot regress silently; each names its exact cause.
  *
+ * EVERY TEST BUILDS ITS OWN DISCRIMINATING FIXTURE. One database is shared across the file, so a
+ * test that measures whatever rows happened to exist when it ran is not asserting its invariant —
+ * it is asserting the order the runner chose. Three separate reviews landed on that same mistake
+ * here, in three different disguises, which is why the rule is written down rather than assumed:
+ *
+ *   - a test needing rows creates them itself, in a transaction it rolls back;
+ *   - a claim about what the MIGRATION did is measured in `beforeAll`, either side of applying it,
+ *     and compared capture-to-capture — never by reading the live table mid-suite;
+ *   - anything that mutates shared state (an ACL, a disabled trigger) restores it in a `finally`,
+ *     and `afterEach` re-checks the one that cannot be undone by a ROLLBACK.
+ *
+ * Verified, not just intended: `npx vitest run --project db <this file> --sequence.shuffle` passes
+ * repeatedly. Run it after adding a test — it is how the last two order dependencies were found.
+ *
  * PGLITE CLOCK RESOLUTION, learned the hard way here. `clock_timestamp()` advances roughly once per
  * millisecond under PGlite, not per statement — eight consecutive reads returned three distinct
  * values. Any assertion whose meaning depends on two clock readings DIFFERING is a coin flip. Where
@@ -31,9 +45,17 @@ const LEGACY_COMPLETED = '10000000-0000-4000-8000-000000000002';
 const LEGACY_FAILED = '10000000-0000-4000-8000-000000000003';
 
 let db: PGlite;
+// Captured either side of applying B1, in beforeAll. The preservation claims are about what the
+// MIGRATION did, so they are measured at migration time and compared capture-to-capture. Reading
+// the live table inside a test instead would make the assertion depend on which tests ran first —
+// it did, and `--sequence.shuffle` caught it.
 let legacyBefore = '';
+let legacyAfter = '';
 let legacySchemaBefore = '';
+let legacySchemaAfter = '';
 let businessBefore = '';
+let businessAfter = '';
+let scrubRowsAfterMigration = -1;
 
 const legacyProjection = `
   SELECT jsonb_agg(to_jsonb(a) ORDER BY a.id)::text AS snapshot
@@ -198,7 +220,15 @@ beforeAll(async () => {
   legacyBefore = await snapshot(legacyProjection);
   legacySchemaBefore = await snapshot(legacySchemaProjection);
   businessBefore = await snapshot(businessProjection);
+
   await db.exec(readFileSync(B1, 'utf8'));
+
+  // ...and immediately again, before any test has had a chance to write anything.
+  legacyAfter = await snapshot(legacyProjection);
+  legacySchemaAfter = await snapshot(legacySchemaProjection);
+  businessAfter = await snapshot(businessProjection);
+  scrubRowsAfterMigration = (await db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM public.account_scrub_operations`)).rows[0].n;
 });
 
 afterAll(async () => { await db?.close(); });
@@ -216,16 +246,16 @@ afterEach(async () => {
 });
 
 describe('B1 is additive: nothing that exists is changed', () => {
-  it('leaves every legacy audit row and value byte-identical', async () => {
-    expect(await snapshot(legacyProjection)).toBe(legacyBefore);
+  it('leaves every legacy audit row and value byte-identical', () => {
+    expect(legacyAfter).toBe(legacyBefore);
   });
 
-  it('leaves the legacy audit SCHEMA — columns, constraints, trigger and guard body — untouched', async () => {
-    expect(await snapshot(legacySchemaProjection)).toBe(legacySchemaBefore);
+  it('leaves the legacy audit SCHEMA — columns, constraints, trigger and guard body — untouched', () => {
+    expect(legacySchemaAfter).toBe(legacySchemaBefore);
   });
 
-  it('does not rewrite Player, membership, booking or invoice data', async () => {
-    expect(await snapshot(businessProjection)).toBe(businessBefore);
+  it('does not rewrite Player, membership, booking or invoice data', () => {
+    expect(businessAfter).toBe(businessBefore);
   });
 
   it('keeps the legacy started -> completed|failed caller contract working exactly as before', async () => {
@@ -250,10 +280,9 @@ describe('B1 is additive: nothing that exists is changed', () => {
     ]);
   });
 
-  it('creates no operation: applying B1 is inert', async () => {
-    const { rows } = await db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM public.account_scrub_operations`);
-    expect(rows[0].n).toBe(0);
+  it('creates no operation: applying B1 is inert', () => {
+    // measured the instant the migration finished, not whenever this test happens to run
+    expect(scrubRowsAfterMigration).toBe(0);
   });
 });
 
@@ -858,16 +887,24 @@ describe('operational surface', () => {
     // BYPASSRLS, so zero policies stop anon and authenticated and do nothing for it. Demonstrated by
     // granting SELECT inside a transaction and reading as that role; rolled back, so the shipped ACL
     // is unchanged — and re-checked afterwards to prove it.
-    // The owner's view first. It must be non-zero, or the assertion below cannot tell BYPASSRLS
-    // from RLS working perfectly: a role WITHOUT bypass, holding SELECT on a zero-policy table,
-    // does not get an error — it gets every row filtered away and a count of 0, which is also "a
-    // number". Comparing against a known non-zero count is what makes the two cases distinguishable.
-    const { rows: owner } = await db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM public.account_scrub_operations`);
-    expect(owner[0].n).toBeGreaterThan(0);
-
     await db.exec('BEGIN');
     try {
+      // The discriminating fixture, built HERE rather than inherited from whatever ran before.
+      // It must exist, or the assertion below cannot tell BYPASSRLS from RLS working perfectly: a
+      // role WITHOUT bypass, holding SELECT on a zero-policy table, does not get an error — it gets
+      // every row filtered away and a count of 0, which is also "a number". An earlier version of
+      // this test measured whatever rows other tests happened to leave behind, so running it alone
+      // (`-t 'RLS is NOT a backstop'`) failed on an empty ledger. A test that only works in company
+      // is not a proof of anything; the row is transaction-local and the ROLLBACK removes it.
+      await db.query(
+        `INSERT INTO public.account_scrub_operations
+           (id, command_id, subject_user_id, actor_user_id, self_service)
+         VALUES ($1::uuid, $2::uuid, $3::uuid, $3::uuid, true)`,
+        [uuid('9', 996), uuid('8', 996), uuid('7', 996)]);
+      const { rows: owner } = await db.query<{ n: number }>(
+        `SELECT count(*)::int AS n FROM public.account_scrub_operations`);
+      expect(owner[0].n).toBeGreaterThan(0);
+
       await db.exec(`GRANT SELECT ON public.account_scrub_operations TO service_role`);
       await db.exec(`SET LOCAL ROLE service_role`);
       const { rows } = await db.query<{ who: string; n: number; rls_on: boolean; policies: number }>(`
