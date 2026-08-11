@@ -292,49 +292,27 @@ jobs:
     needs: [unit-tests, db-tests, db-rehearsals, i18n, workflow-contract]
     if: always()
     steps:
-      # No external binaries (jq et al.): a REQUIRED gate must not be able to
-      # fail open because a tool was missing or errored — every value below is
-      # expanded by the Actions expression engine before the shell ever runs,
-      # and the shell only compares words under `set -euo pipefail`.
-      # The per-job RESULT_* envs make the gate self-verifying: a prerequisite
-      # DROPPED from `needs:` vanishes from the needs context, so its
-      # expression expands to the EMPTY string — which is not "success" and
-      # fails the gate. (A substring scan over toJSON(needs) was rejected in
-      # review: a surviving job's output could contain the missing job's name.)
-      # The join() loop then covers any FUTURE prerequisite added to needs:
-      # without a matching RESULT_* line — every listed result must be success.
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # A FIXED command over ONE declared input, not an inline shell program.
+      # `${{ toJSON(needs) }}` is the whole decision: a prerequisite dropped from
+      # `needs:` above is simply absent from that object, which the validator
+      # treats as a failure — nothing waited for it. Everything the check does
+      # lives in scripts/ci/verify-prerequisites.mjs as a pure function, so it is
+      # tested directly instead of by simulating shell runs.
       - name: Verify every test prerequisite succeeded
         shell: bash
         env:
-          NEEDS: ${{ toJSON(needs) }}
-          RESULT_UNIT_TESTS: ${{ needs.unit-tests.result }}
-          RESULT_DB_TESTS: ${{ needs.db-tests.result }}
-          RESULT_DB_REHEARSALS: ${{ needs.db-rehearsals.result }}
-          RESULT_I18N: ${{ needs.i18n.result }}
-          RESULT_WORKFLOW_CONTRACT: ${{ needs.workflow-contract.result }}
-        run: |
-          set -euo pipefail
-          echo "$NEEDS"
-          status=0
-          for pair in "unit-tests=${RESULT_UNIT_TESTS}" "db-tests=${RESULT_DB_TESTS}" \
-                      "db-rehearsals=${RESULT_DB_REHEARSALS}" "i18n=${RESULT_I18N}" \
-                      "workflow-contract=${RESULT_WORKFLOW_CONTRACT}"; do
-            job="${pair%%=*}"; result="${pair#*=}"
-            if [ "$result" != "success" ]; then
-              echo "::error::prerequisite '$job' result is '${result:-<missing from needs>}'"
-              status=1
-            fi
-          done
-          results="${{ join(needs.*.result, ' ') }}"
-          [ -n "$results" ]
-          for r in $results; do
-            if [ "$r" != "success" ]; then
-              echo "::error::a test prerequisite finished with result '$r'"
-              status=1
-            fi
-          done
-          [ "$status" -eq 0 ] && echo "All test prerequisites succeeded."
-          exit "$status"
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node scripts/ci/verify-prerequisites.mjs
 
   # Pure unit tests for the Deno edge functions (auth gates, Mollie payment-ready, guest-name
   # resolution). These previously ran in NO CI (pre-scale audit P0 #3). The function-dir

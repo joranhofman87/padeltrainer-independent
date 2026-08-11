@@ -44,7 +44,7 @@ Before you change code, know which gate will catch a mistake — and which gates
   - `workflow-contract`: `node scripts/ci/workflow-contract.mjs` — the split gate's own contract (every prerequisite really runs its suite once and unweakened; shard matrices stay single-dimension 1..N; the required check keeps the id `test`; npm aliases and the db-project inventory are intact)
   - `edge-tests`: `deno test --no-check` on `_shared/`
   - `edge-typecheck`: `check:edge-types`(+selftest), ratcheted real `deno check`
-  - `test`: the aggregator branch protection requires — `if: always()`, succeeds only when `unit-tests`, both `db-tests` shards, both `db-rehearsals` shards, `i18n` and `workflow-contract` all succeeded
+  - `test`: the aggregator branch protection requires — `if: always()`, one fixed command (`node scripts/ci/verify-prerequisites.mjs`) over one declared input (`NEEDS_JSON: ${{ toJSON(needs) }}`). It succeeds only when every prerequisite — `unit-tests`, both `db-tests` shards, both `db-rehearsals` shards, `i18n` and `workflow-contract` — is present in `needs` **and** reports `success`. A job dropped from `needs:` is simply absent from that JSON, which the validator treats as a failure. The decision is a pure function (`validatePrerequisites`), so it is unit-tested directly rather than by simulating shell runs.
 - **`migrations.yml`** (PRs touching migrations/types only): `supabase db reset` + generated-types drift.
 - **`e2e.yml`**, **`seo-smoke.yml`**, **`sitemap.yml`**: scheduled/manual, not per-PR.
 

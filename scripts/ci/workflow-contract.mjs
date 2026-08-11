@@ -46,13 +46,12 @@
  * weakening, configuration drift, suite omissions, shard mistakes, and
  * ordinary dependency or tooling changes.
  */
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, globSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync, readdirSync, globSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parse as parseIni } from 'ini';
+import { EXPECTED_PREREQUISITES, NEEDS_ENV_VAR } from './verify-prerequisites.mjs';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -123,7 +122,9 @@ export const APPROVED_JOB_RUNS = {
  */
 const APPROVED_RUNNER = 'ubuntu-latest';
 
-const AGGREGATOR_PROGRAM = Symbol('aggregator program, verified by execution');
+/** The gate's only command, and its only input. */
+const GATE_COMMAND = 'node scripts/ci/verify-prerequisites.mjs';
+const GATE_ENV = { [NEEDS_ENV_VAR]: '${{ toJSON(needs) }}' };
 export const APPROVED_JOB_STEPS = {
   lint: [
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
@@ -174,7 +175,9 @@ export const APPROVED_JOB_STEPS = {
     { run: "node scripts/ci/workflow-contract.mjs" },
   ],
   test: [
-    { run: AGGREGATOR_PROGRAM }, // verified by aggregatorTruthTable(), not by text
+    { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
+    { uses: "actions/setup-node@v4", with: { "node-version": "24" } },
+    { run: GATE_COMMAND },
   ],
   "edge-tests": [
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
@@ -609,231 +612,6 @@ export function extractAggregatorProgram(workflow) {
  * rather than each growing their own.
  */
 /**
- * The ambient variables the model provides, matching what Actions sets.
- *
- * Modelling these is only half the answer — the list can never be complete, and
- * `CI=true` was the one it was missing. So `unmodelledVariables()` below rejects
- * a program that reads ANY variable outside this set, its own locals and its
- * declared `env:`. The gate cannot branch on something this verification does
- * not know about, which is a boundary rather than another list to extend.
- */
-const MODELLED_AMBIENT_ENV = {
-  CI: 'true',
-  GITHUB_ACTIONS: 'true',
-  GITHUB_JOB: 'test',
-  RUNNER_OS: 'Linux',
-};
-
-/** Shell variables that are always defined, and need no declaration. */
-const SHELL_BUILTIN_VARS = new Set(['PATH', 'HOME', 'PWD', 'IFS', 'RANDOM', 'SECONDS', 'LINENO', 'HOSTNAME', 'BASH_VERSION', 'OSTYPE', 'SHLVL', '_']);
-
-/**
- * Variables a program reads that nothing here defines.
- *
- * Assignments (`x=…`), loop variables (`for x in …`) and the step's own `env:`
- * are known; everything else would be ambient on the runner and absent (or
- * different) in this model, so the program's behaviour could not be verified.
- */
-export function unmodelledVariables(script, declaredEnv) {
-  const text = String(script);
-  const defined = new Set([
-    ...Object.keys(declaredEnv ?? {}),
-    ...Object.keys(MODELLED_AMBIENT_ENV),
-    ...SHELL_BUILTIN_VARS,
-  ]);
-  for (const m of text.matchAll(/(?:^|[\s;&|(])([A-Za-z_][A-Za-z0-9_]*)=/gm)) defined.add(m[1]);
-  for (const m of text.matchAll(/\bfor\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b/g)) defined.add(m[1]);
-  const read = new Set();
-  // $NAME, ${NAME}, ${NAME:-default}, ${NAME#pattern} … but not $((arithmetic)).
-  for (const m of text.matchAll(/\$\{?([A-Za-z_][A-Za-z0-9_]*)\b/g)) read.add(m[1]);
-  return [...read].filter((name) => !defined.has(name)).sort();
-}
-
-/** The result states GitHub can hand an aggregator for a prerequisite. */
-export const RESULT_STATES = ['success', 'failure', 'cancelled', 'skipped', 'empty', 'missing'];
-
-/** The only expression forms the behavioural model understands, anchored whole. */
-const EXACT_NEEDS_RESULT = /^needs\.([A-Za-z0-9_-]+)\.result$/;
-const EXACT_TOJSON_NEEDS = /^toJSON\(\s*needs\s*\)$/;
-const WHOLE_EXPRESSION = /^\$\{\{\s*([\s\S]*?)\s*\}\}$/;
-
-/**
- * Resolves one `env:` value the way GitHub would, or reports that it cannot.
- *
- * Anchored, not substring-matched: `${{ needs.x.result && 'success' }}` and
- * `${{ needs.x.result == 'failure' }}` both CONTAIN `needs.x.result` while
- * evaluating to something else entirely, so modelling them as the bare result
- * would verify a program that does not exist. Anything outside the two exact
- * forms fails closed.
- */
-function resolveAggregatorEnv(text, results) {
-  const raw = String(text);
-  if (!raw.includes('${{')) return { value: raw };
-  const whole = WHOLE_EXPRESSION.exec(raw);
-  if (!whole) return { unresolved: raw };
-  const body = whole[1];
-  const needsResult = EXACT_NEEDS_RESULT.exec(body);
-  // A job dropped from `needs` expands to the empty string, exactly as here.
-  if (needsResult) return { value: results[needsResult[1]] ?? '' };
-  if (EXACT_TOJSON_NEEDS.test(body)) {
-    return { value: JSON.stringify(Object.fromEntries(Object.entries(results).map(([j, r]) => [j, { result: r }]))) };
-  }
-  return { unresolved: raw };
-}
-
-/**
- * The result vectors to execute: bounded, deterministic, and exhaustive over
- * every multi-job interaction that matters.
- *
- * The full product is 6^5 = 7776 vectors, which costs more runtime than it buys
- * — the defects it finds are interactions between at most two positions, plus
- * whole-vector uniformity. So this enumerates, exactly:
- *   - all-success;
- *   - every non-empty SUBSET of jobs set to each non-success state (so two
- *     cancelled, three missing, all skipped … are all present);
- *   - every ORDERED PAIR of distinct jobs crossed with every pair of
- *     non-success states (so failure+skipped, cancelled+missing, and every
- *     other mixed pair are present).
- * That is exhaustive for 1- and 2-way interactions and for uniform vectors,
- * which is what discriminates an aggregator that handles one bad result but
- * not two.
- */
-export function aggregatorCases(prerequisites) {
-  const badStates = RESULT_STATES.filter((state) => state !== 'success');
-  const seen = new Set();
-  const cases = [];
-  const add = (vector) => {
-    const key = vector.join('|');
-    if (seen.has(key)) return;
-    seen.add(key);
-    const label =
-      prerequisites.map((job, i) => `${job}=${vector[i]}`).filter((_, i) => vector[i] !== 'success').join(', ') ||
-      'all success';
-    cases.push({
-      label,
-      results: Object.fromEntries(
-        prerequisites.map((job, i) => [job, vector[i] === 'empty' ? '' : vector[i]]).filter((_, i) => vector[i] !== 'missing'),
-      ),
-      emptyJobs: prerequisites.filter((_, i) => vector[i] === 'empty'),
-      expectSuccess: vector.every((state) => state === 'success'),
-    });
-  };
-
-  add(prerequisites.map(() => 'success'));
-  // Every subset, one state at a time — covers "two cancelled", "all missing".
-  for (const state of badStates) {
-    for (let mask = 1; mask < 2 ** prerequisites.length; mask++) {
-      add(prerequisites.map((_, i) => ((mask >> i) & 1 ? state : 'success')));
-    }
-  }
-  // Every mixed pair — covers "failure + skipped", "cancelled + missing".
-  for (let a = 0; a < prerequisites.length; a++) {
-    for (let b = 0; b < prerequisites.length; b++) {
-      if (a === b) continue;
-      for (const stateA of badStates) {
-        for (const stateB of badStates) {
-          add(prerequisites.map((_, i) => (i === a ? stateA : i === b ? stateB : 'success')));
-        }
-      }
-    }
-  }
-  return cases;
-}
-
-/**
- * EXECUTES the aggregator's real program across every result vector and reports
- * what it did.
- *
- * Token assertions cannot see behaviour: changing `exit "$status"` to `exit 0`
- * leaves every pinned token in place, and a workflow-level test would run
- * inside `unit-tests` — whose failure the now-broken aggregator converts back
- * to green. Running the program here means the independently required `lint`
- * job enforces it, where no aggregator can swallow the result.
- *
- * One bash process runs the whole table: the program is written once with its
- * `join()` interpolation lifted into an environment variable, and a driver
- * loops the vectors. 7776 cases cost about a second instead of two minutes.
- */
-/**
- * Memo for the truth table.
- *
- * The table is a pure function of (program text, declared env, prerequisites) —
- * same input, same 356 executions, same verdicts — so identical programs are
- * computed once. That matters because the fixture suite checks ~55 repositories
- * whose aggregator is usually byte-identical to the real one; without this it
- * re-ran ~19,000 shells to learn the same answer.
- */
-const truthTableMemo = new Map();
-
-export function aggregatorTruthTable(workflow, prerequisites = Object.keys(PREREQUISITE_RUNS)) {
-  const program = extractAggregatorProgram(workflow);
-  if (!program) return [{ label: 'aggregator step', ok: false, detail: 'the `test` job has no run step to execute' }];
-  const memoKey = JSON.stringify([program.script, program.env, prerequisites, String(workflow.name ?? '')]);
-  const memoized = truthTableMemo.get(memoKey);
-  if (memoized) return memoized;
-
-  // Each `join(needs.*.result, <sep>)` is substituted with ITS OWN separator.
-  // Collapsing several occurrences onto one value would make a script that
-  // compares a space-joined list against a comma-joined one see them as equal
-  // here, and branch differently on the real runner.
-  const scriptFor = (results, emptyJobs) =>
-    program.script.replace(
-      /\$\{\{\s*join\(needs\.\*\.result,\s*'([^']*)'\)\s*\}\}/g,
-      (_m, sep) => Object.entries(results).map(([job, state]) => (emptyJobs.includes(job) ? '' : state)).join(sep),
-    );
-  const remember = (rows) => {
-    truthTableMemo.set(memoKey, rows);
-    return rows;
-  };
-  if (scriptFor({}, []).includes('${{')) {
-    return remember([{ label: 'aggregator program', ok: false, detail: 'it contains an expression this verification cannot resolve, so its behaviour is unverified' }]);
-  }
-  const unmodelled = unmodelledVariables(scriptFor({}, []), program.env);
-  if (unmodelled.length > 0) {
-    return remember([{
-      label: 'aggregator program',
-      ok: false,
-      detail: `it reads ${unmodelled.map((n) => `$${n}`).join(', ')}, which this verification does not model — the gate would then behave differently on the runner than it does here`,
-    }]);
-  }
-
-  return remember(aggregatorCases(prerequisites).map((c) => {
-    const env = {};
-    for (const [key, expression] of Object.entries(program.env)) {
-      const resolved = resolveAggregatorEnv(expression, c.results);
-      if (resolved.unresolved !== undefined) {
-        return { label: c.label, ok: false, detail: `env ${key}: ${resolved.unresolved} uses an expression this verification cannot resolve, so the gate's behaviour is unverified` };
-      }
-      env[key] = resolved.value;
-    }
-    // A MODELLED environment, not this process's. Inheriting the checker's own
-    // env would let an aggregator branch on something only true here — e.g.
-    // `[ "${GITHUB_JOB:-}" = test ] && exit 0` passes every case run from
-    // `lint`, while the real gate always succeeds. Only PATH and HOME carry
-    // over, because bash and coreutils need them.
-    const res = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', scriptFor(c.results, c.emptyJobs)], {
-      encoding: 'utf8',
-      env: {
-        PATH: process.env.PATH ?? '/usr/bin:/bin',
-        HOME: process.env.HOME ?? '/tmp',
-        // The GitHub context the real `test` job would run under.
-        ...MODELLED_AMBIENT_ENV,
-        GITHUB_WORKFLOW: String(workflow.name ?? ''),
-        ...env,
-      },
-    });
-    const succeeded = res.status === 0;
-    const ok = succeeded === c.expectSuccess;
-    return {
-      label: c.label,
-      ok,
-      detail: ok ? '' : `expected the gate to ${c.expectSuccess ? 'SUCCEED' : 'FAIL'}, but it exited ${res.status}`,
-    };
-  }));
-}
-
-
-/**
  * Returns a list of human-readable contract violations. Empty means the gate
  * still means what it claims to mean.
  */
@@ -975,10 +753,15 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   // A prerequisite that waits on another prerequisite, or a matrix capped to
   // one runner at a time, silently rebuilds the serial job this PR replaced —
   // green, correct, and slow again.
-  for (const name of Object.keys(PREREQUISITE_RUNS)) {
+  // Every mapped job, not only the aggregator's prerequisites: a required job
+  // made to depend on a SKIPPED helper is itself skipped, and a skipped
+  // required check blocks nothing. `test` is the one job that legitimately
+  // waits, and its needs are pinned separately.
+  for (const name of Object.keys(APPROVED_JOB_STEPS)) {
+    if (name === 'test') continue;
     const job = jobs[name];
     if (job?.needs !== undefined) {
-      violations.push(`${name}: prerequisite jobs must not declare \`needs\` (found ${JSON.stringify(job.needs)}) — they must all start at once`);
+      violations.push(`${name}: must not declare \`needs\` (found ${JSON.stringify(job.needs)}) — jobs start at once, and a job waiting on a skipped one is skipped, which blocks nothing`);
     }
     if (job?.strategy?.['max-parallel'] !== undefined) {
       violations.push(`${name}: strategy.max-parallel re-serialises the shards`);
@@ -1023,20 +806,13 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
             violations.push(`${jobName}: \`${step.uses}\` sets the unapproved input \`${key}: ${JSON.stringify(actual[key])}\` — \`ref\` in particular would make this job test something other than the pull request's own head`);
           }
         }
-      } else if (approved.run === AGGREGATOR_PROGRAM) {
-        if (step.run === undefined) {
-          violations.push(`${jobName}: step ${i + 1} is \`${describe(step)}\`, but the approved step is the aggregator program`);
-        }
       } else if (String(step.run ?? '').trim() !== approved.run) {
         violations.push(`${jobName}: step ${i + 1} is \`${describe(step)}\`, but the approved step is \`run ${approved.run}\``);
       }
-      // Every step of a required job, action or command, must be unweakened.
-      if (step.if !== undefined) {
-        violations.push(`${jobName}: step ${i + 1} (\`${describe(step)}\`) has an \`if:\` — it could be skipped while the job still reports success`);
-      }
-      if (step['continue-on-error'] !== undefined) {
-        violations.push(`${jobName}: step ${i + 1} (\`${describe(step)}\`) sets \`continue-on-error\` — its failure would be tolerated`);
-      }
+      // Every step of a required job — action or command — goes through the
+      // SAME unweakened check, which also rejects a `shell:` override such as
+      // `bash -n {0}` that syntax-checks a command instead of running it.
+      checkStepIsUnweakened(step, `${jobName}: step ${i + 1} (${describe(step)})`, violations);
     }
     checkJobIsUnweakened(jobs[jobName], jobName, violations, { allowIf: jobName === 'test' });
   }
@@ -1154,34 +930,26 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   if (gate.if !== 'always()') {
     violations.push(`test: \`if\` must be exactly always(), found ${JSON.stringify(gate.if)}`);
   }
-  const gateSteps = gate.steps ?? [];
-  if (gateSteps.length !== 1) {
-    violations.push(`test: expected exactly 1 verification step, found ${gateSteps.length}`);
+  // ── 5c. The gate is a fixed command over one declared input ──
+  // Nothing to execute or model: the decision lives in a pure function that
+  // src/test/rehearsalSharding.test.ts exercises directly. What must hold HERE
+  // is that the workflow still hands that function the whole picture.
+  const gateStep = (gate.steps ?? []).find((step) => step.run !== undefined);
+  if (!gateStep) {
+    violations.push('test: the gate has no command step');
   } else {
-    checkStepIsUnweakened(gateSteps[0], 'test (required gate)', violations);
-    const script = gateSteps[0].run ?? '';
-    const env = gateSteps[0].env ?? {};
-    // The step must read EVERY prerequisite's result directly: a job dropped
-    // from `needs:` expands to the empty string, which is not "success".
-    for (const name of expectedNeeds) {
-      const expr = `needs.${name}.result`;
-      if (!Object.values(env).some((v) => typeof v === 'string' && v.includes(expr))) {
-        violations.push(`test: verification step must read \${{ ${expr} }} into an env var`);
-      }
+    if (String(gateStep.run).trim() !== GATE_COMMAND) {
+      violations.push(`test: the gate must run exactly \`${GATE_COMMAND}\`, found \`${String(gateStep.run).trim()}\``);
     }
-    if (!script.includes('set -euo pipefail')) {
-      violations.push('test: verification step must run under `set -euo pipefail`');
-    }
-    if (!script.includes('join(needs.*.result')) {
-      violations.push('test: verification step must also check join(needs.*.result) so a future prerequisite cannot be added unchecked');
+    const gateEnv = gateStep.env ?? {};
+    if (JSON.stringify(gateEnv) !== JSON.stringify(GATE_ENV)) {
+      violations.push(`test: the gate's env must be exactly ${JSON.stringify(GATE_ENV)}, found ${JSON.stringify(gateEnv)} — \`toJSON(needs)\` is the entire input, so a narrowed or renamed mapping would hide a prerequisite`);
     }
   }
-
-  // ── 5c. The aggregator is verified by RUNNING it, not by reading it ──
-  for (const row of aggregatorTruthTable(workflow, expectedNeeds)) {
-    if (!row.ok) {
-      violations.push(`test (required gate): with ${row.label}, ${row.detail}`);
-    }
+  // The validator's expected set and the workflow's `needs:` must agree, or the
+  // gate would wait for one set and judge another.
+  if (JSON.stringify([...EXPECTED_PREREQUISITES].sort()) !== JSON.stringify([...expectedNeeds].sort())) {
+    violations.push(`test: EXPECTED_PREREQUISITES (${EXPECTED_PREREQUISITES.join(', ')}) does not match the gate's needs (${expectedNeeds.join(', ')})`);
   }
 
   // ── 5b. No rehearsal hidden in a subdirectory ──

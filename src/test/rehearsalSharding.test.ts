@@ -30,13 +30,10 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parse as parseYaml } from 'yaml';
 import { BaseSequencer } from 'vitest/node';
+import { validatePrerequisites, EXPECTED_PREREQUISITES } from '../../scripts/ci/verify-prerequisites.mjs';
 import {
   checkWorkflowContract,
-  aggregatorTruthTable,
-  aggregatorCases,
-  RESULT_STATES,
   parseNpmrcEntries,
   isNpmConfigMutation,
   isSuiteInvocation,
@@ -456,42 +453,95 @@ describe('npm config parsing and detection (the shared primitives)', () => {
   });
 });
 
-describe('the gate program itself (executed against a result truth table)', () => {
-  // The EXECUTOR now lives in scripts/ci/workflow-contract.mjs and runs in the
-  // production checker, so the independently required `lint` job enforces the
-  // aggregator's behaviour — not just the tokens in its script. This test
-  // calls that same exported implementation rather than keeping a second copy:
-  // a private copy here would pass while the shipped one rotted, which is the
-  // exact failure mode that let `exit "$status"` -> `exit 0` through before.
-  const workflow = () =>
-    parseYaml(readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8'));
+describe('the required gate\'s decision (a pure function, not a shell program)', () => {
+  // The gate used to be an inline bash program, and proving it stayed correct
+  // meant modelling arbitrary shell — ambient environment, variable reads,
+  // expression interpolation — which review defeated four times over
+  // (SHELLOPTS, CI, `printenv GITHUB_REF`, a `shell:` override). There is no
+  // program to model now: the decision is validatePrerequisites(json), so the
+  // cases below ARE the coverage, and they run in milliseconds.
+  const ok = (jobs: string[]) =>
+    JSON.stringify(Object.fromEntries(jobs.map((j) => [j, { result: 'success' }])));
+  const withResults = (overrides: Record<string, string>) =>
+    JSON.stringify(
+      Object.fromEntries(
+        EXPECTED_PREREQUISITES.map((j) => [j, { result: overrides[j] ?? 'success' }]),
+      ),
+    );
 
-  it('succeeds only when every prerequisite succeeded, and fails otherwise', () => {
-    const table = aggregatorTruthTable(workflow());
-    const failures = table.filter((row) => !row.ok).map((row) => `${row.label}: ${row.detail}`);
-    expect(failures, failures.join('\n')).toEqual([]);
-    // Bounded product: all-success, every subset per non-success state, and
-    // every mixed ordered pair — exhaustive for 1- and 2-way interactions.
-    expect(table.length).toBeGreaterThan(300);
-    expect(table).toHaveLength(aggregatorCases(Object.keys(PREREQUISITE_RUNS)).length);
+  it('passes only the exact all-success input', () => {
+    expect(validatePrerequisites(ok(EXPECTED_PREREQUISITES))).toEqual([]);
   });
 
-  it('covers every prerequisite and every non-success GitHub result', () => {
-    const labels = aggregatorTruthTable(workflow()).map((row) => row.label);
-    const jobs = Object.keys(PREREQUISITE_RUNS);
-    // Every prerequisite, in every state GitHub can report.
-    for (const job of jobs) {
-      for (const state of RESULT_STATES.filter((r) => r !== 'success')) {
-        expect(labels, `${job}=${state}`).toContain(`${job}=${state}`);
+  it('fails each individual non-success result, for every prerequisite', () => {
+    for (const job of EXPECTED_PREREQUISITES) {
+      for (const result of ['failure', 'cancelled', 'skipped', '', 'SUCCESS', 'succeeded', 'unknown']) {
+        const problems = validatePrerequisites(withResults({ [job]: result }));
+        expect(problems, `${job}=${result || '<empty>'}`).not.toEqual([]);
+        expect(problems.join('\n')).toContain(job);
       }
     }
-    expect(labels).toContain('all success');
-    // And COMBINATIONS, which is what discriminates an aggregator that handles
-    // one bad result but not two. Each of these is a mutation I ran.
-    expect(labels).toContain('unit-tests=cancelled, db-tests=cancelled');
-    expect(labels).toContain('unit-tests=failure, db-tests=skipped');
-    expect(labels).toContain('unit-tests=missing, db-tests=missing, db-rehearsals=missing');
-    expect(labels).toContain('unit-tests=empty, db-tests=empty');
+  });
+
+  it('fails when several prerequisites fail, are cancelled or are skipped together', () => {
+    const combinations: Array<Record<string, string>> = [
+      { 'unit-tests': 'cancelled', 'db-tests': 'cancelled' },
+      { 'unit-tests': 'failure', 'db-tests': 'skipped' },
+      { 'db-tests': 'skipped', 'db-rehearsals': 'skipped', i18n: 'skipped' },
+      Object.fromEntries(EXPECTED_PREREQUISITES.map((j) => [j, 'failure'])),
+    ];
+    for (const overrides of combinations) {
+      const problems = validatePrerequisites(withResults(overrides));
+      // Every bad job is named, not just the first one found.
+      for (const job of Object.keys(overrides)) {
+        expect(problems.join('\n'), JSON.stringify(overrides)).toContain(job);
+      }
+    }
+  });
+
+  it('fails when an expected prerequisite is missing entirely', () => {
+    for (const dropped of EXPECTED_PREREQUISITES) {
+      const remaining = EXPECTED_PREREQUISITES.filter((j) => j !== dropped);
+      const problems = validatePrerequisites(ok(remaining));
+      expect(problems.join('\n'), dropped).toContain(`'${dropped}' is missing from needs`);
+    }
+  });
+
+  it('fails when an unexpected prerequisite appears', () => {
+    const problems = validatePrerequisites(ok([...EXPECTED_PREREQUISITES, 'something-new']));
+    expect(problems.join('\n')).toContain("unexpected prerequisite 'something-new'");
+  });
+
+  it('fails closed on empty, malformed and wrongly-shaped input', () => {
+    const bad: Array<[string, unknown]> = [
+      ['unset', undefined],
+      ['empty string', ''],
+      ['whitespace', '   '],
+      ['not JSON', '{oops'],
+      ['a JSON array', '[]'],
+      ['a JSON string', '"success"'],
+      ['a JSON number', '42'],
+      ['null', 'null'],
+      ['an entry that is not an object', '{"unit-tests":"success"}'],
+      ['an entry with no result', '{"unit-tests":{}}'],
+      ['a non-string result', '{"unit-tests":{"result":true}}'],
+    ];
+    for (const [label, raw] of bad) {
+      expect(validatePrerequisites(raw as string), label).not.toEqual([]);
+    }
+  });
+
+  it('the CLI exits 1 on a bad input and 0 on the exact good one', () => {
+    const cli = resolve(dbDir, '../ci/verify-prerequisites.mjs');
+    const run = (value?: string) =>
+      spawnSync(process.execPath, [cli], {
+        encoding: 'utf8',
+        env: value === undefined ? { PATH: process.env.PATH ?? '' } : { PATH: process.env.PATH ?? '', NEEDS_JSON: value },
+      });
+    expect(run(ok(EXPECTED_PREREQUISITES)).status).toBe(0);
+    expect(run(withResults({ i18n: 'failure' })).status).toBe(1);
+    expect(run().status, 'no NEEDS_JSON at all').toBe(1);
+    expect(run('{oops').status, 'malformed JSON').toBe(1);
   });
 });
 
@@ -530,15 +580,6 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     const p = join(root, '.github/workflows/test.yml');
     writeFileSync(p, edit(readFileSync(p, 'utf8')));
   };
-  /** Replaces the aggregator's whole run block, for behavioural fixtures. */
-  const swapAggregator = (root: string, program: string) =>
-    editWorkflow(root, (src) => {
-      const start = src.indexOf('          set -euo pipefail');
-      const marker = '          exit "$status"';
-      const end = src.indexOf(marker) + marker.length;
-      return src.slice(0, start) + program + src.slice(end);
-    });
-
   const editJson = (root: string, file: string, edit: (o: Record<string, unknown>) => void) => {
     const p = join(root, file);
     const o = JSON.parse(readFileSync(p, 'utf8'));
@@ -562,7 +603,6 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['gate renamed', /must not set `name:`/, (r) => editWorkflow(r, (s) => s.replace('  test:\n    runs-on:', '  test:\n    name: Aggregate\n    runs-on:'))],
       ['gate need dropped', /needs must be exactly/, (r) => editWorkflow(r, (s) => s.replace(', i18n, workflow-contract]', ', workflow-contract]'))],
       ['gate condition widened', /`if` must be exactly always\(\)/, (r) => editWorkflow(r, (s) => s.replace('    if: always()', "    if: always() && github.event_name == 'push'"))],
-      ['gate stops reading a result', /must read \$\{\{ needs\.i18n\.result \}\}/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', ''))],
       ['second matrix dimension', /single dimension/, (r) => editWorkflow(r, (s) => s.replace('        shard: [1, 2]\n', '        shard: [1, 2]\n\n        os: [ubuntu-latest]\n'))],
       ['shard list not 1..N', /shard list must be exactly/, (r) => editWorkflow(r, (s) => s.replace('        shard: [1, 2]', '        shard: [1, 1]'))],
       ['fail-fast dropped', /fail-fast must be false/, (r) => editWorkflow(r, (s) => s.replace('      fail-fast: false\n', ''))],
@@ -621,32 +661,32 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['a custom runner label', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: our-big-box'))],
       ['runs-on chosen by an expression', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  unit-tests:\n    runs-on: ubuntu-latest', '  unit-tests:\n    runs-on: ${{ github.event_name == \'push\' && \'self-hosted\' || \'ubuntu-latest\' }}'))],
       // ── the expression grammar: containing the text is not being the text
-      ['a compound && expression in the gate env', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ needs.i18n.result && 'success' }}\n"))],
-      ['a compound || expression in the gate env', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ needs.i18n.result || 'success' }}\n"))],
-      ['a comparison wrapped around the result', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ needs.i18n.result == 'failure' }}\n"))],
-      ['text surrounding the expression', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', '          RESULT_I18N: prefix-${{ needs.i18n.result }}\n'))],
-      ['an unrelated expression that merely contains the text', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          RESULT_I18N: ${{ needs.i18n.result }}\n', "          RESULT_I18N: ${{ format('needs.i18n.result') }}\n"))],
       // ── the aggregator must fail for COMBINATIONS, not just one bad result
-      ['an aggregator that short-circuits on CI=true', /expected the gate to FAIL/, (r) => editWorkflow(r, (s) => s.replace('          set -euo pipefail\n', '          set -euo pipefail\n          if [ "${CI:-}" = "true" ]; then exit 0; fi\n'))],
-      ['an aggregator reading a variable the model does not provide', /does not model/, (r) => editWorkflow(r, (s) => s.replace('          set -euo pipefail\n', '          set -euo pipefail\n          if [ "${GITHUB_REF:-}" = "refs/heads/main" ]; then exit 0; fi\n'))],
       ['the edge-tests suite step made conditional', /has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('      - name: Edge-function unit tests (deno)\n', "      - name: Edge-function unit tests (deno)\n        if: github.event_name == 'push'\n"))],
       ['typecheck losing its build step', /approved sequence has|approved step is/, (r) => editWorkflow(r, (s) => s.replace('      - name: Production build\n        run: npm run build\n', ''))],
       ['setup-node moved below the command that needs it', /order matters|approved step is/, (r) => editWorkflow(r, (s) => s.replace("      - name: Setup Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: 'npm'\n\n      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n        run: npm run test:unit\n", "      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n        run: npm run test:unit\n\n      - name: Setup Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: 'npm'\n"))],
-      ['an aggregator that short-circuits on the real job context', /expected the gate to FAIL/, (r) => swapAggregator(r, `          set -euo pipefail\n          if [ "\${GITHUB_JOB:-}" = "test" ]; then exit 0; fi\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          [ -n "$results" ]\n          for r in $results; do\n            if [ "$r" != "success" ]; then exit 1; fi\n          done\n          exit 0`)],
       ['typecheck (branch-required) pinned to main', /unapproved input `ref:/, (r) => editWorkflow(r, (s) => s.replace('  typecheck:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout code\n        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '  typecheck:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout code\n        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n          ref: main\n'))],
       ['edge-typecheck moved to a self-hosted runner', /not "ubuntu-latest"/, (r) => editWorkflow(r, (s) => s.replace('  edge-typecheck:\n    runs-on: ubuntu-latest', '  edge-typecheck:\n    runs-on: self-hosted'))],
       ['setup-node dropped from a gated job', /approved sequence has|approved step is/, (r) => editWorkflow(r, (s) => s.replace("      - name: Setup Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: '24'\n          cache: 'npm'\n\n      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n", '      - name: Install dependencies\n        run: npm ci\n\n      - name: Run unit tests\n'))],
       ['an action step made conditional', /has an `if:`/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', "        uses: actions/checkout@v4\n        if: github.event_name == 'push'\n        with:\n          persist-credentials: false\n"))],
       ['an action step made non-fatal', /`continue-on-error`/, (r) => editWorkflow(r, (s) => s.replace('        uses: actions/checkout@v4\n        with:\n          persist-credentials: false\n', '        uses: actions/checkout@v4\n        continue-on-error: true\n        with:\n          persist-credentials: false\n'))],
-      ['an aggregator that tolerates two cancelled', /cancelled.*cancelled/, (r) => swapAggregator(r, `          set -euo pipefail\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          [ -n "$results" ]\n          cancelled=0; bad=0\n          for r in $results; do\n            if [ "$r" = "cancelled" ]; then cancelled=$((cancelled+1));\n            elif [ "$r" != "success" ]; then bad=1; fi\n          done\n          if [ "$cancelled" -eq 1 ]; then bad=1; fi\n          exit "$bad"`)],
-      ['an aggregator that tolerates failure + skipped together', /failure.*skipped|skipped.*failure/, (r) => swapAggregator(r, `          set -euo pipefail\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          [ -n "$results" ]\n          f=0; k=0; other=0\n          for r in $results; do\n            case "$r" in success) ;; failure) f=1 ;; skipped) k=1 ;; *) other=1 ;; esac\n          done\n          if [ "$f" = 1 ] && [ "$k" = 1 ]; then exit 0; fi\n          if [ "$f" = 1 ] || [ "$k" = 1 ] || [ "$other" = 1 ]; then exit 1; fi\n          exit 0`)],
-      ['an aggregator that tolerates several missing prerequisites', /missing.*missing/, (r) => swapAggregator(r, `          set -euo pipefail\n          echo "$NEEDS"\n          results="\${{ join(needs.*.result, ' ') }}"\n          n=0\n          for r in $results; do n=$((n+1)); if [ "$r" != "success" ] && [ -n "$r" ]; then exit 1; fi; done\n          if [ "$n" -le 3 ]; then exit 0; fi\n          if [ "$n" -lt 5 ]; then exit 1; fi\n          exit 0`)],
+      // ── the required gate: one fixed command over one declared input
+      ['the gate running a different command', /must run exactly/, (r) => editWorkflow(r, (s) => s.replace('        run: node scripts/ci/verify-prerequisites.mjs\n', '        run: node -e "process.exit(0)"\n'))],
+      ['the gate\'s JSON input renamed', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS: ${{ toJSON(needs) }}\n'))],
+      ['the gate\'s input narrowed to one job', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS_JSON: ${{ toJSON(needs.i18n) }}\n'))],
+      ['an extra env var smuggled into the gate', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS_JSON: ${{ toJSON(needs) }}\n          SKIP: "1"\n'))],
+      ['the gate losing a prerequisite from needs', /needs must be exactly|does not match the gate's needs/, (r) => editWorkflow(r, (s) => s.replace('    needs: [unit-tests, db-tests, db-rehearsals, i18n, workflow-contract]', '    needs: [unit-tests, db-tests, db-rehearsals, i18n]'))],
+      // ── every approved step, run steps included, must be unweakened
+      ['`shell: bash -n {0}` on an approved run step', /overrides `shell/, (r) => editWorkflow(r, (s) => s.replace('      - name: Lint (ratcheted)\n        run: npm run lint\n', '      - name: Lint (ratcheted)\n        shell: bash -n {0}\n        run: npm run lint\n'))],
+      ['`shell: bash -n {0}` on the gate itself', /overrides `shell/, (r) => editWorkflow(r, (s) => s.replace('        shell: bash\n        env:\n          NEEDS_JSON:', '        shell: bash -n {0}\n        env:\n          NEEDS_JSON:'))],
+      // ── a required job that waits on something can be skipped, and a skipped
+      //    required check blocks nothing
+      ['lint declaring needs on a helper job', /must not declare `needs`/, (r) => editWorkflow(r, (s) => s.replace('  lint:\n    runs-on: ubuntu-latest\n', '  lint:\n    runs-on: ubuntu-latest\n    needs: [typecheck]\n'))],
+      ['edge-tests declaring needs', /must not declare `needs`/, (r) => editWorkflow(r, (s) => s.replace('  edge-tests:\n    runs-on: ubuntu-latest\n', '  edge-tests:\n    runs-on: ubuntu-latest\n    needs: [lint]\n'))],
       ['ANY install hook, even a harmless-looking one', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'husky'; })],
       ['a postinstall that writes npm user config outside the repo', /refused unless added to APPROVED_INSTALL_HOOKS/, (r) => editJson(r, 'package.json', (o) => { (o.scripts as Record<string, string>).postinstall = 'cp ci/npmrc "$HOME/.npmrc"'; })],
       ['an extra step in a gated job that touches $HOME config', /not in APPROVED_JOB_RUNS/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Prep\n        run: cp ci/npmrc "$HOME/.npmrc"\n\n      - name: Run unit tests\n'))],
       ['an extra step in the lint job', /not in APPROVED_JOB_RUNS/, (r) => editWorkflow(r, (s) => s.replace('      - name: Lint (ratcheted)\n', '      - name: Extra\n        run: echo something\n\n      - name: Lint (ratcheted)\n'))],
-      ['the aggregator gains an env expression this verification cannot resolve', /cannot resolve/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS: ${{ toJSON(needs) }}\n', '          NEEDS: ${{ toJSON(needs) }}\n          TRIGGER: ${{ github.event_name }}\n'))],
-      ['the aggregator loses its NEEDS env (unbound under set -u)', /does not model|expected the gate to SUCCEED/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS: ${{ toJSON(needs) }}\n', ''))],
       ['an unknown .npmrc key', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nsome-future-npm-option=whatever\n')],
       ['an approved key with a CHANGED value', /the approved value is/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=64\n')],
       ['a duplicate key (npm applies the last)', /more than once/, (r) => writeFileSync(join(r, '.npmrc'), 'maxsockets=1\nmaxsockets=64\n')],
@@ -663,8 +703,6 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['working-directory on a gated step', /must run at the repository root/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        working-directory: node_modules/react\n'))],
       ['working-directory on an install step', /must run at the repository root/, (r) => editWorkflow(r, (s) => s.replace('      - name: Install dependencies\n        run: npm ci\n', '      - name: Install dependencies\n        working-directory: packages/web\n        run: npm ci\n'))],
       ['workflow-level defaults.run.working-directory', /moves every gated command off the repository root/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\ndefaults:\n  run:\n    working-directory: packages/web\n\njobs:\n'))],
-      ['the aggregator always exits 0', /expected the gate to FAIL/, (r) => editWorkflow(r, (s) => s.replace('          exit "$status"', '          exit 0'))],
-      ['the aggregator stops reading a result', /expected the gate to FAIL/, (r) => editWorkflow(r, (s) => s.replace('"i18n=${RESULT_I18N}"', '"i18n=success"'))],
       ['NPM_CONFIG_PREFIX redirects npm at a tracked etc/npmrc', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  NPM_CONFIG_PREFIX: ${{ github.workspace }}\n\njobs:\n'))],
       ['.npmrc sets prefix (globalconfig is derived from it)', /not in the approved npm configuration/, (r) => writeFileSync(join(r, '.npmrc'), 'prefix=.\n')],
       ['an `npm install-ci-test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky\n        run: npm install-ci-test\n\n      - name: Run unit tests\n'))],
@@ -756,11 +794,6 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       // program: they must resolve separately. An implementation collapsing them
       // onto one value would make these compare EQUAL, take the early exit, and
       // report this correct aggregator as broken.
-      ['an aggregator reading two differently-joined result lists', (r) => editWorkflow(r, (s) => s.replace(
-        `          results="\${{ join(needs.*.result, ' ') }}"\n`,
-        `          results="\${{ join(needs.*.result, ' ') }}"\n` +
-        `          commaed="\${{ join(needs.*.result, ',') }}"\n` +
-        `          if [ "$results" = "$commaed" ] && [ "\${results#* }" != "$results" ]; then exit 1; fi\n`))],
       ['the repository\'s exact approved .npmrc', (r) => cpSync(resolve(dbDir, '../../.npmrc'), join(r, '.npmrc'))],
       ['an .npmrc with a subset of the approved settings', (r) => writeFileSync(join(r, '.npmrc'), 'fetch-retries=10\nmaxsockets=1\nprefer-offline=true\n')],
       ['an approved key written with quotes and spacing', (r) => writeFileSync(join(r, '.npmrc'), '"fetch-retries" = 10\n')],
