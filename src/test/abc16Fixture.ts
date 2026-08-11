@@ -221,7 +221,11 @@ export const STUB_SQL = /* sql */ `
   CREATE OR REPLACE FUNCTION public.fold_search_text(_t text)
   RETURNS text LANGUAGE sql IMMUTABLE AS $fn$ SELECT lower(coalesce(_t, '')) $fn$;
 
+  -- The billing columns the restored overdue predicate reads: past-due AND unpaid AND
+  -- non-terminal, not merely status = 'overdue'.
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS due_date date;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS paid_at timestamptz;
 
   -- Ambient bookings SELECT scope. Production has several (20260115210247 onwards); this
   -- reproduces the academy-manager one, scoped exactly like the shipped UPDATE policy.

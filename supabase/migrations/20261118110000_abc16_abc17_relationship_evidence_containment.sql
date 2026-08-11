@@ -637,6 +637,12 @@ COMMENT ON FUNCTION public.is_player_of_academy(uuid, uuid) IS
 -- the owner's own curated rows plus slots this guest actually booked WITHIN the owner's scope —
 -- booking activity about a subject already in scope by ownership, which is allowed.
 --
+-- `person_id` is returned as NULL. An earlier draft fell back to the guest's own id when no
+-- link existed, which hands the client a guest UUID in a column named for the canonical person
+-- — indistinguishable downstream from a real person id, and for a legacy collapsed row it would
+-- have returned the SHARED person uuid that the bridge created. No person UUID escapes this
+-- reader.
+--
 -- Signature, volatility, security and grants are unchanged, so no caller or generated type
 -- drifts. `profile_id` is now always NULL and `player_type` always 'guest'; the UI renders a
 -- neutral placeholder for registered players rather than their personal data.
@@ -688,6 +694,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_tokens text[];
+  v_filter_trainer uuid   := nullif(p_filters->>'trainer_id','')::uuid;
   v_filter_location uuid  := nullif(p_filters->>'location_id','')::uuid;
   v_level_gt numeric      := (p_filters->>'level_gt')::numeric;
   v_level_max numeric     := (p_filters->>'level_max')::numeric;
@@ -739,22 +746,26 @@ BEGIN
     SELECT o.*, mt.id AS m_id, mt.tag_ids AS m_tag_ids, mt.notes AS m_notes
     FROM owned o
     LEFT JOIN meta mt ON mt.guest_player_id = o.id
-    WHERE mt.removed_at IS NULL OR mt.removed_at IS NULL
+    -- LEFT JOIN + IS NULL keeps guests with NO overlay row and drops soft-removed ones. (An
+    -- earlier draft wrote this predicate twice, OR'd with itself — same result, no excuse.)
+    WHERE mt.removed_at IS NULL
   ),
   enriched AS (
     SELECT
       v.*,
-      (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = v.id) AS p_person_id,
       (SELECT coalesce(array_agg(DISTINCT loc.lid), '{}'::uuid[]) FROM (
          SELECT apl.location_id AS lid
          FROM public.academy_player_locations apl
          WHERE p_scope = 'academy' AND apl.academy_profile_id = p_scope_id
            AND apl.guest_player_id = v.id AND apl.dismissed = false
          UNION
+         -- CONFIRMED/COMPLETED only. A cancelled or still-pending seat is an unverified
+         -- observation about who the booking is for; it must not shape displayed state.
          SELECT s.location_id
          FROM public.bookings b
          JOIN public.availability_slots s ON s.id = b.slot_id
          WHERE b.guest_player_id = v.id
+           AND b.status IN ('confirmed', 'completed')
            AND s.location_id IS NOT NULL
            AND ((p_scope = 'academy' AND s.academy_profile_id = p_scope_id)
              OR (p_scope = 'trainer' AND s.trainer_id = p_scope_id))
@@ -763,6 +774,7 @@ BEGIN
         SELECT 1 FROM public.bookings b
         JOIN public.availability_slots s ON s.id = b.slot_id
         WHERE b.guest_player_id = v.id AND s.cyclus_id IS NOT NULL AND s.end_time >= now()
+          AND b.status IN ('confirmed', 'completed')
           AND ((p_scope = 'academy' AND s.academy_profile_id = p_scope_id)
             OR (p_scope = 'trainer' AND s.trainer_id = p_scope_id))
       ) AS p_has_cyclus,
@@ -771,8 +783,26 @@ BEGIN
         WHERE i.guest_player_id = v.id
           AND ((p_scope = 'academy' AND i.academy_profile_id = p_scope_id)
             OR (p_scope = 'trainer' AND i.trainer_id = p_scope_id))
-          AND coalesce(i.status, '') IN ('overdue')
-      ) AS p_overdue
+          -- The effective predecessor's semantics (20261006120000:424-427): a literal
+          -- 'overdue' status OR a past-due, unpaid, non-terminal invoice. Restricting this to
+          -- the literal status silently under-reports real debt.
+          AND (lower(i.status) = 'overdue'
+            OR (i.due_date < current_date
+                AND i.paid_at IS NULL
+                AND lower(coalesce(i.status, '')) NOT IN ('paid','cancelled','draft','void')))
+      ) AS p_overdue,
+      EXISTS (
+        -- The trainer filter, restored WITHOUT the ownership union: the guest is already in
+        -- scope by direct ownership, and this only asks whether that guest has independently
+        -- in-scope confirmed/completed activity with the named trainer.
+        SELECT 1 FROM public.bookings b
+        JOIN public.availability_slots s ON s.id = b.slot_id
+        WHERE b.guest_player_id = v.id
+          AND b.status IN ('confirmed', 'completed')
+          AND s.trainer_id = v_filter_trainer
+          AND ((p_scope = 'academy' AND s.academy_profile_id = p_scope_id)
+            OR (p_scope = 'trainer' AND s.trainer_id = p_scope_id))
+      ) AS p_with_filter_trainer
     FROM visible v
   ),
   filtered AS (
@@ -788,16 +818,19 @@ BEGIN
       AND (v_has_cyclus IS NULL OR v_has_cyclus = e.p_has_cyclus)
       AND (v_payment IS NULL OR (v_payment = 'overdue') = e.p_overdue)
       AND (v_filter_location IS NULL OR v_filter_location = ANY (e.p_location_ids))
+      AND (v_filter_trainer IS NULL
+           OR e.trainer_id = v_filter_trainer
+           OR e.p_with_filter_trainer)
       AND (v_tag IS NULL
            OR (v_tag = 'untagged' AND coalesce(array_length(e.m_tag_ids, 1), 0) = 0)
            OR (v_tag <> 'untagged' AND e.m_tag_ids @> ARRAY[v_tag::uuid]))
   )
   SELECT
-    'g:' || f.id::text,
+    'g_' || f.id::text,
     'guest'::text,
     f.id,
     NULL::uuid,                                   -- no registered admission: never a profile
-    coalesce(f.p_person_id, f.id),
+    NULL::uuid,                                   -- see the header: no person UUID escapes
     coalesce(nullif(btrim(f.full_name), ''), 'Unknown'),
     coalesce(f.email, ''),
     coalesce(f.phone, ''),
@@ -932,6 +965,7 @@ BEGIN
     FROM public.bookings b
     JOIN public.availability_slots s ON s.id = b.slot_id
     WHERE b.guest_player_id = p_guest_player_id
+      AND b.status IN ('confirmed', 'completed')   -- same rule as the overview
       AND s.academy_profile_id = p_academy_profile_id
       AND s.location_id IS NOT NULL
   )

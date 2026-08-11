@@ -43,7 +43,9 @@ async function overview(scope: 'academy' | 'trainer', scopeId: string, uid: stri
   await db.query(`SELECT set_config('abc16.uid', $1, false)`, [uid]);
   const r = await db.query<{
     player_key: string; player_type: string; guest_player_id: string | null;
-    profile_id: string | null; full_name: string; email: string; academy_notes: string | null;
+    profile_id: string | null; person_id: string | null; full_name: string; email: string;
+    academy_notes: string | null; location_names: string[] | null;
+    has_active_cyclus: boolean; has_overdue_payment: boolean;
   }>(`SELECT * FROM public.get_players_overview($1, $2)`, [scope, scopeId]);
   return r.rows;
 }
@@ -109,6 +111,98 @@ describe('ABC-17/18 · get_players_overview keeps only directly owned guests', (
   it('every existing guest row is still present in the table — nothing was deleted', async () => {
     const r = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM public.guest_players`);
     expect(r.rows[0].n).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe('ABC-17/18 · the overview contract', () => {
+  it('player_key uses the established g_<uuid> form — the invoice picker parses it', async () => {
+    const rows = await overview('academy', IDS.attackerAcademy, IDS.attackerUser);
+    const own = rows.find((r) => r.guest_player_id === ACADEMY_OWN_GUEST);
+    expect(own?.player_key).toBe(`g_${ACADEMY_OWN_GUEST}`);
+    expect(rows.every((r) => /^g_[0-9a-f-]{36}$/i.test(r.player_key))).toBe(true);
+  });
+
+  it('NO person UUID escapes — not even for a legacy collapsed/forged link', async () => {
+    // Give the owned guest a person link that ALSO belongs to a profile: exactly the shape the
+    // legacy email/twin bridge produced. The old fallback returned that shared person uuid (or
+    // the guest's own id dressed as one); either way the client could not tell it from a
+    // canonical person id.
+    const sharedPerson = '3a000000-0000-4000-8000-00000000dd01';
+    await db.exec(`
+      INSERT INTO public.persons (id) VALUES ('${sharedPerson}') ON CONFLICT DO NOTHING;
+      UPDATE public.person_links SET person_id = '${sharedPerson}'
+        WHERE guest_player_id = '${ACADEMY_OWN_GUEST}';
+      INSERT INTO public.person_links (person_id, profile_id)
+        VALUES ('${sharedPerson}', '${IDS.nascentProfile}')
+        ON CONFLICT (profile_id) DO UPDATE SET person_id = EXCLUDED.person_id;
+    `);
+
+    const rows = await overview('academy', IDS.attackerAcademy, IDS.attackerUser);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.person_id === null)).toBe(true);
+    expect(rows.map((r) => r.person_id)).not.toContain(sharedPerson);
+    // and the collapse still does not admit the profile
+    expect(rows.every((r) => r.profile_id === null)).toBe(true);
+  });
+
+  it('only CONFIRMED/COMPLETED activity shapes clubs and active-cycle state', async () => {
+    const cancelledLoc = '80000000-0000-0000-0000-0000000000f1';
+    const cancelledSlot = '30000000-0000-0000-0000-0000000000f1';
+    await db.exec(`
+      INSERT INTO public.locations (id, name) VALUES ('${cancelledLoc}', 'Cancelled Club')
+        ON CONFLICT DO NOTHING;
+      INSERT INTO public.availability_slots (id, academy_profile_id, trainer_id, location_id, cyclus_id, end_time)
+        VALUES ('${cancelledSlot}', '${IDS.attackerAcademy}', '${IDS.attackerTrainer}',
+                '${cancelledLoc}', gen_random_uuid(), now() + interval '7 days');
+      INSERT INTO public.bookings (slot_id, guest_player_id, status)
+        VALUES ('${cancelledSlot}', '${ACADEMY_OWN_GUEST}', 'cancelled');
+    `);
+
+    const rows = await overview('academy', IDS.attackerAcademy, IDS.attackerUser);
+    const own = rows.find((r) => r.guest_player_id === ACADEMY_OWN_GUEST);
+    expect(own?.location_names ?? []).not.toContain('Cancelled Club');
+    expect(own?.has_active_cyclus).toBe(false);
+  });
+
+  it('overdue means past-due and unpaid, not only the literal status', async () => {
+    await db.exec(`
+      INSERT INTO public.invoices (guest_player_id, academy_profile_id, status, due_date, paid_at)
+      VALUES ('${ACADEMY_OWN_GUEST}', '${IDS.attackerAcademy}', 'sent',
+              current_date - 10, NULL);
+    `);
+    const rows = await overview('academy', IDS.attackerAcademy, IDS.attackerUser);
+    const own = rows.find((r) => r.guest_player_id === ACADEMY_OWN_GUEST);
+    expect(own?.has_overdue_payment).toBe(true);
+  });
+
+  it('a paid or cancelled past-due invoice is NOT overdue', async () => {
+    const other = '2b000000-0000-4000-8000-00000000ee01';
+    await db.exec(`
+      INSERT INTO public.guest_players (id, full_name, academy_profile_id)
+        VALUES ('${other}', 'Paid Up', '${IDS.attackerAcademy}');
+      INSERT INTO public.invoices (guest_player_id, academy_profile_id, status, due_date, paid_at)
+        VALUES ('${other}', '${IDS.attackerAcademy}', 'paid', current_date - 10, now()),
+               ('${other}', '${IDS.attackerAcademy}', 'cancelled', current_date - 10, NULL);
+    `);
+    const rows = await overview('academy', IDS.attackerAcademy, IDS.attackerUser);
+    expect(rows.find((r) => r.guest_player_id === other)?.has_overdue_payment).toBe(false);
+  });
+
+  it('soft removal: active shown, removed hidden, no-metadata shown', async () => {
+    const removed = '2c000000-0000-4000-8000-00000000ff01';
+    const plain = '2c000000-0000-4000-8000-00000000ff02';
+    await db.exec(`
+      INSERT INTO public.guest_players (id, full_name, academy_profile_id) VALUES
+        ('${removed}', 'Removed Guest', '${IDS.attackerAcademy}'),
+        ('${plain}',   'No Overlay',    '${IDS.attackerAcademy}');
+      INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, removed_at)
+        VALUES ('${IDS.attackerAcademy}', '${removed}', now());
+    `);
+    const ids = (await overview('academy', IDS.attackerAcademy, IDS.attackerUser))
+      .map((r) => r.guest_player_id);
+    expect(ids).toContain(ACADEMY_OWN_GUEST);  // active, has an overlay row
+    expect(ids).toContain(plain);              // no overlay row at all
+    expect(ids).not.toContain(removed);        // soft-removed
   });
 });
 
