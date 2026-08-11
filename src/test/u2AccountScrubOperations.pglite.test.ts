@@ -11,24 +11,18 @@
  * replaces, and both were caused by trusting a caller's clock. They are pinned here so the fix
  * cannot regress silently; each names its exact cause.
  *
- * EVERY TEST BUILDS ITS OWN DISCRIMINATING FIXTURE. One database is shared across the file, so a
- * test that measures whatever rows happened to exist when it ran is not asserting its invariant —
- * it is asserting the order the runner chose. Three separate reviews landed on that same mistake
- * here, in three different disguises, which is why the rule is written down rather than assumed:
+ * ORDER INDEPENDENCE IS THE INVARIANT, and one command enforces it:
  *
- *   - a test needing rows creates them itself, at identifiers it owns (`uuid()` / `newOperation()`),
- *     and asserts only about those. Most of those inserts COMMIT and the rows stay until the
- *     database closes — that is fine, and cheaper than isolating every test, precisely because no
- *     assertion is allowed to depend on an otherwise-empty table. What is forbidden is the ambient
- *     read: `count(*)` over the whole table, or a snapshot of every row, from inside a test;
- *   - a claim about what the MIGRATION did is measured in `beforeAll`, either side of applying it,
- *     and compared capture-to-capture — never by reading the live table mid-suite;
- *   - a test that must mutate SHARED state rather than add to it — an ACL, a disabled trigger — is
- *     the exception that does need a transaction, and rolls back in a `finally`. `afterEach`
- *     re-checks the trigger, which a ROLLBACK cannot restore.
+ *     npx vitest run --project db src/test/u2AccountScrubOperations.pglite.test.ts --sequence.shuffle
  *
- * Verified, not just intended: `npx vitest run --project db <this file> --sequence.shuffle` passes
- * repeatedly. Run it after adding a test — it is how the last two order dependencies were found.
+ * Run it after adding a test. One database is shared across this file, so a test that depends on
+ * what other tests left behind is asserting the runner's order rather than its own claim; three
+ * reviews found exactly that here, in three disguises, and the shuffle run found two more they had
+ * not. How any individual test achieves independence — building its own rows, capturing a snapshot
+ * in `beforeAll`, or rolling back a transaction — varies, and is explained where it happens. Earlier
+ * revisions of this comment tried to enumerate those mechanisms as rules, and three consecutive
+ * reviews then found the enumeration overstated: every version universalised something that
+ * deliberately had exceptions. The behaviour is the contract; the mechanisms are implementation.
  *
  * PGLITE CLOCK RESOLUTION, learned the hard way here. `clock_timestamp()` advances roughly once per
  * millisecond under PGlite, not per statement — eight consecutive reads returned three distinct
