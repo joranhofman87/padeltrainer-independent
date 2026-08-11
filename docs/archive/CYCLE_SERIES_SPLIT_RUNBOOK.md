@@ -2,7 +2,7 @@
 
 One-time, owner-run cleanup that splits 3 legacy "mega-cycles" (each bundling a
 whole season of many weekly series into one row) into one `type='cyclus'` cycle
-per weekly series. The migration is `docs/CYCLE_SERIES_SPLIT.sql`. It is
+per weekly series. The migration is `docs/archive/CYCLE_SERIES_SPLIT.sql`. It is
 **invoice-safe** (0 invoices reference these cycles; bookings link to slots by
 `slot_id`, which never changes), **idempotent**, and **reversible**.
 
@@ -104,7 +104,7 @@ SELECT (SELECT count(*) FROM availability_slots) AS slots,
 
 ## 2. Apply
 
-1. **Dry-run first.** Open `docs/CYCLE_SERIES_SPLIT.sql`, change the final
+1. **Dry-run first.** Open `docs/archive/CYCLE_SERIES_SPLIT.sql`, change the final
    `COMMIT;` to `ROLLBACK;`, run it. You should see the `NOTICE`:
    `cycle series split OK: 31 split cycles own 384 slots (384 moved this run); parents now empty; bookings + invoices unchanged.`
    and **no** `EXCEPTION`. Nothing is written (rolled back).

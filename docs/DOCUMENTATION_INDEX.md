@@ -32,7 +32,7 @@ Supporting canonical directories:
 - [deployment/](deployment/) — how edge functions and migrations reach prod safely.
 - [technical-debt/](technical-debt/) — the prioritized backlogs feeding the roadmap.
 
-> **Naming note:** A few canonical docs are referenced above under target names that consolidate existing content: `AI_DEVELOPMENT_GUIDE` (extends [AGENTS.md](../AGENTS.md) + [EXTENDING_THE_DOMAIN.md](EXTENDING_THE_DOMAIN.md)), `ARCHITECTURE_BOUNDARIES` ([FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) + backend layering), and `FOUNDATION_ROADMAP`. Where a target file does not yet exist on disk, use the linked existing doc(s); sibling foundation work is consolidating these.
+> **Naming note:** A few canonical docs are referenced above under target names that consolidate existing content: `AI_DEVELOPMENT_GUIDE` (extends [AGENTS.md](../AGENTS.md) + [EXTENDING_THE_DOMAIN.md](EXTENDING_THE_DOMAIN.md)), `ARCHITECTURE_BOUNDARIES` ([FRONTEND_ARCHITECTURE.md](FRONTEND_ARCHITECTURE.md) + backend layering), and `FOUNDATION_ROADMAP`. All three now exist on disk.
 
 ---
 
@@ -42,6 +42,7 @@ Supporting canonical directories:
 - **Fixed + deployed to prod:** the P0 (forged-JWT service-role bypass) and P1-2 (swap_slots guard), P1-3 (merge_guest_players data-loss), P1-4 (M-17 webhook collision), P1-5/P2-7 (extras charge/invoice), P1-6 (invoice dedup RPC `create_invoice_deduped`), P1-7 (invoiceSync paging → new [src/lib/supabasePaging.ts](../src/lib/supabasePaging.ts)), P1-9 (academy-Mollie routing).
 - **Still open:** P1-1 (Google Calendar OAuth, parked), P1-8 (Stripe basil, disputed), and the P2 cluster.
 - **Any older audit that lists the forged-JWT P0 or P1-2..P1-9 as OPEN is STALE.** Only the fresh-eyes audit + the open items above are actionable.
+- **Person unification (2026-07-18):** Phases 0–3.6 shipped + deployed (`persons`/`person_links` live; every read/write surface person-keyed). Only the Phase-4 contract remains, gated on the `person_merge_review` owner queue — see [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) §0 and INVARIANTS I-15..I-22.
 
 ---
 
@@ -91,10 +92,13 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [CYCLE_SERIES_SPLIT_RUNBOOK.md](archive/CYCLE_SERIES_SPLIT_RUNBOOK.md) | OA | One-time mega-cycle split (APPLIED to prod 2026-06-29) | no | done | Archive |
 | [SCHEDULING_ARCHITECTURE.md](SCHEDULING_ARCHITECTURE.md) | UNU | Academy-first scheduling strategy note | yes | partial | Overlaps [DOMAIN_MODEL.md](DOMAIN_MODEL.md) |
 | [SHORT_LINKS.md](SHORT_LINKS.md) | CC | Branded `/s/<code>` short-link primitive (schema, worker, seams, invariants) | yes | yes | Distinct from `/t/` `/a/` profile slugs |
-| [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) | CC | **Person-unification program tracker** — one `persons` table over `profiles`+`guest_players` (`person_links` map, FAM-02, split-freeze), strangler-phased; phases 1–3.4 shipped, Phase 4 contract pending | yes | yes | Canonical model summarized in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §5 |
+| [REGISTRATION_DECOUPLE_PLAN.md](REGISTRATION_DECOUPLE_PLAN.md) | CC | Registration = pure intake, decoupled from cycles — Phase 2 shipped + deployed (migrations `20260823100000–130000`); planning-board Phase 3 + proposals-UI retirement still open | yes | yes | Grounded by [audits/ARCHITECTURE_AUDIT_2026-07-11.md](audits/ARCHITECTURE_AUDIT_2026-07-11.md) |
+| [CRON_SERVICE_KEY_SETUP.md](CRON_SERVICE_KEY_SETUP.md) | CC | Vault/cron service-key auth — how scheduled jobs authenticate (referenced by migration `20260722100000`) | ref | yes | — |
+| [cloudflare-worker.js](cloudflare-worker.js) | CC | Deployed Cloudflare Worker source of truth (incl. the `/s/` short-link resolver); deploy via `npx wrangler deploy` | ref | yes | See [SHORT_LINKS.md](SHORT_LINKS.md) + [../DEPLOYMENT_GUIDE.md](../DEPLOYMENT_GUIDE.md) |
+| [PERSON_UNIFICATION_PLAN.md](PERSON_UNIFICATION_PLAN.md) | CC | **Person-unification program tracker** — one `persons` table over `profiles`+`guest_players` (`person_links` map, FAM-02, split-freeze), strangler-phased; phases 0–3.6 shipped + deployed, Phase-4 contract pending on the P-B owner queue | yes | yes | Canonical model summarized in [DOMAIN_MODEL.md](DOMAIN_MODEL.md) §5 |
 | [../src/lib/personIdentity.ts](../src/lib/personIdentity.ts) | CC | Code-as-doc: **the single TS home of the FAM-02 person rule** (person key, XOR ref, booking match scope, display name) — read it before touching any `player_id`/`guest_player_id` logic | yes | yes | SQL surfaces encode the same rule inline; keep in sync |
 | [COMPONENT_REUSE_AUDIT.md](COMPONENT_REUSE_AUDIT.md) | HAO | 2026-06-30 reuse audit + plan | ref | plan | [technical-debt/COMPONENT_REUSE_BACKLOG.md](technical-debt/COMPONENT_REUSE_BACKLOG.md) |
-| [EDGE_FUNCTIONS_FICWB_AUDIT.md](EDGE_FUNCTIONS_FICWB_AUDIT.md) | HAO | 2026-05-31 edge-fn deploy-status audit | ref | dated | — |
+| [EDGE_FUNCTIONS_FICWB_AUDIT.md](archive/EDGE_FUNCTIONS_FICWB_AUDIT.md) | OA | 2026-05-31 edge-fn deploy-status audit (cutover done; archived 2026-07-18) | no | done | Archive |
 | [FICWB_SECRETS_AUDIT.md](FICWB_SECRETS_AUDIT.md) | HAO | 2026-06-02 edge secrets audit | ref | dated | — |
 | [P0_PR1_PR4_NOTES.md](P0_PR1_PR4_NOTES.md) | HAO | P0 hardening PR-1..4 deploy notes | no | historical | — |
 | [PUBLIC_BOOKING_WIDGET_PLAN.md](PUBLIC_BOOKING_WIDGET_PLAN.md) | UNU | Not-started feature plan (audited 2026-07-01) | ref | plan (not built; re-base on persons first) | — |
@@ -118,6 +122,8 @@ Legend — **Class:** `CC` canonical-current (source of truth) · `UNU` useful-n
 | [adr/0002-slot-is-price-source-of-truth.md](adr/0002-slot-is-price-source-of-truth.md) | yes | yes |
 | [adr/0003-mutation-boundary-facades.md](adr/0003-mutation-boundary-facades.md) | yes | yes |
 | [adr/0004-rebooking-priority-claims.md](adr/0004-rebooking-priority-claims.md) | yes | yes |
+| [adr/0006-invoice-public-token-payment-links.md](adr/0006-invoice-public-token-payment-links.md) | yes | yes |
+| [adr/0007-edge-functions-as-backend-boundary.md](adr/0007-edge-functions-as-backend-boundary.md) | yes | yes |
 
 ### `docs/technical-debt/` — prioritized backlogs (all CC)
 
@@ -170,12 +176,14 @@ These are the evidence trail behind the canonical docs. Read them only when you 
 | [audits/CODEX_PLAYER_REBOOK_AUDIT_BRIEF.md](audits/CODEX_PLAYER_REBOOK_AUDIT_BRIEF.md) | Audit brief |
 | [audits/CODEX_SLICE_A_NOLOGIN_REBOOK_PAYMENT_REVIEW_FOR_CLAUDE.md](audits/CODEX_SLICE_A_NOLOGIN_REBOOK_PAYMENT_REVIEW_FOR_CLAUDE.md) | Codex review of #311 |
 | [audits/SLICE_A_NOLOGIN_REBOOK_PAYMENT_DESIGN.md](audits/SLICE_A_NOLOGIN_REBOOK_PAYMENT_DESIGN.md) | Design doc (built) |
+| [audits/ARCHITECTURE_AUDIT_2026-07-11.md](audits/ARCHITECTURE_AUDIT_2026-07-11.md) | Cycles⇄registrations + cycles/slots/players triangle audit (grounds [REGISTRATION_DECOUPLE_PLAN.md](REGISTRATION_DECOUPLE_PLAN.md)) |
+| [audits/MULTI_SESSION_CART_BOOKING_AUDIT.md](audits/MULTI_SESSION_CART_BOOKING_AUDIT.md) | Cart-booking audit/design only — nothing built |
 
 ---
 
 ## Archived / historical
 
-These docs describe one-time work that has **shipped** (migrations applied, cutovers closed, sprints done). They are kept for context only and should **not** be followed as instructions. The orchestrator moves the `OA` rows into `docs/archive/` (they are marked historical in place until then). **Nothing under `docs/audits/` is ever archived** — audits are permanent evidence.
+These docs describe one-time work that has **shipped** (migrations applied, cutovers closed, sprints done). They are kept for context only and should **not** be followed as instructions. The `OA` rows live under `docs/archive/` (see [archive/README.md](archive/README.md)). **Nothing under `docs/audits/` is ever archived** — audits are permanent evidence.
 
 To be archived under `docs/archive/`:
 
@@ -190,5 +198,8 @@ To be archived under `docs/archive/`:
 - `docs/archive/test-summary.md`, `docs/archive/testability-report.md`
 - `docs/archive/AUDIT-2026-06.md` (moved 2026-07-18)
 - `docs/archive/REBOOK_LINKED_GUEST_BACKFILL.sql` (one-time backfill, executed; moved 2026-07-18 — do not rerun)
+- `docs/archive/PHASE2_STEP3_CUTOVER.sql` (executed; moved 2026-07-18 — do not rerun; still read by `settingsSplit.golden.test.ts`)
+- `docs/archive/CYCLE_SERIES_SPLIT.sql` (applied 2026-06-29; moved 2026-07-18 — do not rerun; still rehearsed by CI)
+- `docs/archive/EDGE_FUNCTIONS_FICWB_AUDIT.md` (cutover-era snapshot; moved 2026-07-18)
 
-**Superseded, keep in place (historical/needs-update):** `README.md` (rewrite pending), `MIGRATION_STABILIZATION.md`, `lessons-learned.md`, `TEST_BASELINE.md`, `DATA_INTEGRITY_AUDIT.md`, `docs/DATA_HEALTH_CHECKS.md`, `docs/EDGE_FUNCTIONS_FICWB_AUDIT.md`, `docs/FICWB_SECRETS_AUDIT.md`, `docs/P0_PR1_PR4_NOTES.md`, `docs/SCHEDULING_ARCHITECTURE.md`, `docs/COMPONENT_REUSE_AUDIT.md`, `docs/PUBLIC_BOOKING_WIDGET_PLAN.md` (re-base on persons/person_links before build).
+**Superseded, keep in place (historical/needs-update):** `README.md` (rewrite pending), `MIGRATION_STABILIZATION.md`, `lessons-learned.md`, `TEST_BASELINE.md`, `DATA_INTEGRITY_AUDIT.md`, `docs/DATA_HEALTH_CHECKS.md`, `docs/FICWB_SECRETS_AUDIT.md`, `docs/P0_PR1_PR4_NOTES.md`, `docs/SCHEDULING_ARCHITECTURE.md`, `docs/COMPONENT_REUSE_AUDIT.md`, `docs/PUBLIC_BOOKING_WIDGET_PLAN.md` (re-base on persons/person_links before build).

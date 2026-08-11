@@ -1,10 +1,13 @@
 /**
- * An academy player the academy grants rebook priority to. Either a REGISTERED player
- * (id = profiles.id) or a GUEST academy player with no login (id = guest_players.id). Guests are
- * reached exactly like guest cohort members: emailed a pre-filled "create account & book" link;
- * once they sign up their guest row links by email and can_book_member_window grants them the
- * member window (clause e). Kept in a plain module (not the component file) so the pure mapper can
- * be shared + unit-tested without tripping the react-refresh component-export rule.
+ * An academy player the academy grants rebook priority to. Either a REGISTERED player granted via
+ * their in-scope profile (id = profiles.id) or a person granted via their guest ref
+ * (id = guest_players.id) — usually accountless, but since Phase 3.3e also possibly a login holder
+ * whose profile is outside this academy's scope. Accountless guests are reached exactly like guest
+ * cohort members: emailed a pre-filled "create account & book" link (their guest row links by email
+ * at signup, clause e); a guest ref whose PERSON already has a login is granted the member window
+ * directly by can_book_member_window's person arms (clauses d/e) — see toPriorityPerson below.
+ * Kept in a plain module (not the component file) so the pure mapper can be shared + unit-tested
+ * without tripping the react-refresh component-export rule.
  */
 export interface PriorityPerson {
   id: string; // profiles.id (registered) OR guest_players.id (guest)

@@ -121,9 +121,13 @@ in-flight webhooks.
 **Inspect:** `guest_players.linked_profile_id` for the new profile; whether `link_guest_data_to_profile` ran;
 whether the booking/invoice carries the right `guest_player_id`.
 **Do:** re-run **`link_guest_data_to_profile(<profile_id>)`** (idempotent — it relinks bookings + invoices by
-matching email / `linked_profile_id`). If the email differs (typo), set `guest_players.linked_profile_id`
-manually, then re-run.
-**Do NOT:** copy rows / change `player_id` by hand on paid records — use the linking RPC.
+matching email / `linked_profile_id`). If the email differs (typo), correct `guest_players.email` to the
+account's email first, then re-run the RPC. Do **NOT** set `linked_profile_id` by hand — it is never
+identity truth (INVARIANTS I-21) and hand-writes bypass the trigger/`person_links` consistency the
+RPC + `merge_guest_players` maintain. If the guest has a pending `person_merge_review` row
+(split-frozen, I-17), resolve the review instead of linking.
+**Do NOT:** copy rows / change `player_id` by hand on paid records — use the linking RPC; reconcile
+same-person duplicates only via `merge_guest_players`.
 
 ## 12. Rebooking invite clicked YES but payment abandoned
 

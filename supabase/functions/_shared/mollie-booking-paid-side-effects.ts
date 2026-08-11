@@ -53,7 +53,9 @@ export async function runBookingPaidSideEffects(opts: {
 
   // Auto-create invoice (auto-create-invoice dedupes internally). Capture the minted
   // invoice id — the guest confirmation below emails the INVOICE (send-invoice-email),
-  // because a guest has no profile email for the player template.
+  // addressed via the guest row's email: even when the guest ref belongs to a merged
+  // login holder (Phase 3.3e), the money/email chain stays guest-keyed (the
+  // guest-exclusive recipient rule), so the player template's profile email is not used.
   let invoiceId: string | null = null;
   try {
     const { data: invoiceRes, error: invoiceError } = await supabase.functions.invoke("auto-create-invoice", {

@@ -245,7 +245,7 @@ export default function AcademyCyclusOverview({ highlightCyclusId }: AcademyCycl
   };
 
   // Hide the empty parent shells left behind by the one-time cycle-series split
-  // (docs/CYCLE_SERIES_SPLIT.sql): their slots now live on the per-series child cycles, so the
+  // (docs/archive/CYCLE_SERIES_SPLIT.sql): their slots now live on the per-series child cycles, so the
   // 0-session parent row is just noise in the cycles list (the parents are retained in the DB
   // because they still back their registration form + intake_requests). FE-only, no DB change:
   // a split parent is any cycle referenced by a child's settings.split_from_cycle_id.

@@ -181,7 +181,8 @@ export function computeMemberOpenAudience(
     if (!out.has(pid)) out.set(pid, { player_id: pid, guest_player_id: null });
   }
 
-  // Priority list — accountless GUESTS (guest_players.id). Keyed g:<id> like a guest claim, so it
+  // Priority list — guest-ref grants (guest_players.id; usually accountless, but since Phase 3.3e
+  // possibly a login holder granted via their guest ref). Keyed g:<id> like a guest claim, so it
   // dedupes against a guest already in the cohort and against a prior run; a guest who already
   // rebooked is skipped. They get the same "create account & book" member-open email.
   for (const gid of priorityGuestIds) {

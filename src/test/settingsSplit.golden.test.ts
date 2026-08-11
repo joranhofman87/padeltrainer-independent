@@ -52,7 +52,7 @@ describe('GOLDEN: registration↔cycle settings split contract', () => {
   });
 
   it('the Phase-2 backfill cutover splits on the SAME form allowlist (write path ≡ backfill)', () => {
-    const backfillSql = readFileSync(join(process.cwd(), 'docs', 'PHASE2_STEP3_CUTOVER.sql'), 'utf8');
+    const backfillSql = readFileSync(join(process.cwd(), 'docs', 'archive', 'PHASE2_STEP3_CUTOVER.sql'), 'utf8');
     for (const k of FORM_ONLY_SETTING_KEYS) {
       expect(backfillSql, `backfill form-settings array must include ${k}`).toContain(`'${k}'`);
     }

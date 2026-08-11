@@ -31,6 +31,8 @@ export function PlayerCoachingNoteEditor({
   subjectProfileId: string | null;
   subjectGuestPlayerId: string | null;
   subjectName: string;
+  // PERSON-LEVEL "has no login" (Phase 3.5c: callers pass isGuestForBadge, NOT the seat kind) —
+  // gates note sharing; a seat-based value would hide the share toggle for merged login holders.
   isGuest: boolean;
   notes: CoachingNote[];
 }) {
@@ -57,7 +59,7 @@ export function PlayerCoachingNoteEditor({
         authorRole,
         subjectProfileId,
         subjectGuestPlayerId,
-        // a guest can't log in to read a shared note → always private
+        // person has no login, so a shared note would be unreadable → always private
         visibility: !isGuest && share ? 'shared' : 'private',
         body: body.trim(),
       },

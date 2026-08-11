@@ -153,8 +153,10 @@ async function notifyCycle(supabase: any, resendApiKey: string, cycleId: string)
   const priorityPeople: string[] = Array.isArray(settings.rebook_priority_people)
     ? (settings.rebook_priority_people as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
-  // Accountless GUEST academy players granted priority — emailed the same "create account & book"
-  // link; can_book_member_window clause (e) grants them once their guest row links by email.
+  // GUEST-ref priority grants — usually accountless, but may be a login holder granted via their
+  // guest ref (Phase 3.3e). All get the "create account & book" email: an accountless guest signs
+  // up (guest row links by email, clause e), while a guest ref whose person already has a login is
+  // granted directly by clause (d)/(e)'s person arms and uses the "already have an account?" link.
   const priorityGuests: string[] = Array.isArray(settings.rebook_priority_guests)
     ? (settings.rebook_priority_guests as unknown[]).filter((x): x is string => typeof x === "string")
     : [];
@@ -269,10 +271,12 @@ async function notifyCycle(supabase: any, resendApiKey: string, cycleId: string)
   const slug = (academy as { slug?: string | null } | null)?.slug ?? null;
   const tz = (academy as { timezone?: string | null } | null)?.timezone || "Europe/Amsterdam";
   const bookUrl = slug ? `${APP_BASE}/nl/academies/${slug}?cycle=${cycleId}` : `${APP_BASE}/nl`;
-  // R06: a guest (no login) can't book the member window until they complete an account.
+  // R06: an ACCOUNTLESS guest can't book the member window until they complete an account —
   // link_guest_data_to_profile links them by email at signup, after which
-  // can_book_member_window clause (d) recognises them — so guests get an account-completion
-  // CTA (email + name pre-filled) instead of the bare booking link, which would dead-end.
+  // can_book_member_window clauses (d)/(e) recognise them (cohort claim / priority list). A guest
+  // ref whose PERSON already has a login (Phase 3.3e merged/out-of-scope holders) is granted by
+  // the same clauses' person arms and just uses the fallback booking link. So guest recipients
+  // get an account-completion CTA (email + name pre-filled) instead of the bare booking link.
   // redirect is /app/player (sanitizeAppRedirect only allows /app/ paths); the booking link
   // is offered as the "already have an account?" fallback below.
   const signupUrl = (name: string, email: string) => {

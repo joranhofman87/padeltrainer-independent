@@ -1,11 +1,13 @@
 # Person Unification Plan — one `persons` table, "has a login" as an attribute
 
-Status: **IN EXECUTION** (last updated 2026-07-18). Phases 0–3.4 are **shipped + deployed**
-(`persons` + `person_links` live and backfilled, dual-write stamps on, person-keyed readers through
-the money-path dedup guard); Phase 3.5 slices a–e are in PR review (#578–#581); Phase 3.6 + Phase 4
-(CONTRACT) remain. This is the tracker for the largest migration in the codebase. Execute it as a
-**strangler / expand→migrate→contract** program of small, independently-shippable PRs — never a
-big-bang. You can stop between any two phases with a fully working app.
+Status: **PHASES 0–3.6 SHIPPED + DEPLOYED + PROD-VERIFIED** (last updated 2026-07-18, main
+`0871325f`). `persons` + `person_links` are live and backfilled, dual-write stamps are on, and every
+reader — rosters, pickers, detail pages, booking gate, attendance, invoices + the money-path dedup
+guard, RLS helpers, notes/journey, locations, label chips, dashboards — is person-keyed. Only
+**Phase 4 (CONTRACT)** remains, gated on the ~106-row `person_merge_review` P-B owner queue (§7).
+This is the tracker for the largest migration in the codebase, executed as a **strangler /
+expand→migrate→contract** program of small, independently-shippable PRs — never a big-bang; the app
+was fully working between every two phases.
 
 Audience / AI-read: yes. Companion: [`INVARIANTS.md`](INVARIANTS.md), the person-identity rule in
 `src/lib/personIdentity.ts`, and the registration-decouple precedent
@@ -13,6 +15,37 @@ Audience / AI-read: yes. Companion: [`INVARIANTS.md`](INVARIANTS.md), the person
 smaller scale).
 
 ---
+
+## 0. Final state — the shipped model (read this first)
+
+Sections 1–5 are the *history* of how we got here (kept verbatim as the audit trail); this section
+is the state of the world today (phases 0–3.6 live).
+
+- **One `persons` row per human.** "Has a login" = `persons.user_id IS NOT NULL`. Deterministic
+  ids: an account holder's person id IS their profile id; a guest-only person's id IS their guest
+  id — which is why the profile-keyed single-key tables are person-correct by construction.
+- **`person_links`** maps every legacy `profiles` / `guest_players` row to its person. The legacy
+  `player_id` / `guest_player_id` columns remain live as a dual-write layer until Phase 4;
+  `person_id` columns are DERIVED data, stamped guest-first by triggers — never written by hand.
+- **Doctrines every future change must respect** (enforced + explained as I-15..I-22 in
+  [`INVARIANTS.md`](INVARIANTS.md)):
+  - **FAM-02** — a dual-keyed row belongs to the GUEST person. Pure-profile guards apply to
+    OWNERSHIP predicates only, never to relationship-VISIBILITY helpers.
+  - **Split-freeze** — `is_guest_split_frozen()` gates every person arm, on BOTH the inbound and
+    the candidate side. `person_id` STAYS STAMPED while frozen, so use the frozen-CASE pattern:
+    a plain `COALESCE(person_id, …)` silently folds a frozen guest into a possibly-different human.
+  - **Money paths resolve recipients guest-EXCLUSIVELY** (never COALESCE-fallthrough to profile),
+    and an advisory lock paired with a freeze-gated recheck keys on the freeze-INDEPENDENT
+    recipient id.
+  - **Labels/badges tell LOGINS, not seats** — players-overview Type, detail-page badge, roster
+    badges, dashboard registered/guest splits.
+  - **`linked_profile_id` is NEVER identity truth**; the twin-precedence bridge
+    (`twin_of_profile_id` outranks it) stays only until the P-B queue drains.
+- **Code homes:** `src/lib/personIdentity.ts` (the TS choke point), person-keyed RPC inventory in
+  [`DOMAIN_MODEL.md`](DOMAIN_MODEL.md) §5, per-surface pglite suites in `src/test/` (each executes
+  the REAL migration file, GRANTs included since 3.6).
+- **What remains:** Phase 4 (CONTRACT) only — the consolidated checklist lives in §5 Phase 4;
+  everything deliberately deferred is listed THERE, nowhere else.
 
 ## 1. Why (the problem this ends)
 
@@ -105,10 +138,10 @@ an account-less record — consistent with the Theme A "retain, don't destroy" r
 per-owner data (`trainer_id`, `academy_profile_id`, `notes`, `has_trained`, `source`,
 `preferred_location_id`, tags, per-academy rating) is a **membership** row, not a person column. A
 partial membership layer already exists (`academy_player_metadata`, `academy_player_locations`) —
-extend it rather than inventing a new table. **Open question P-A (decide at Phase 3):** confirm the
-membership shape and whether a person is GLOBAL (one row per human, linked to N academies via
-memberships — recommended) vs per-owner-scoped (today's guest behavior). Recommended: global person
-+ `person_academy_memberships(person_id, academy_profile_id, …)` / trainer memberships.
+extend it rather than inventing a new table. **P-A RESOLVED (shipped in Phases 1–2): persons are
+GLOBAL** — one row per human, linked to N owners; the per-owner relationship data stays on
+`guest_players` + `academy_player_metadata` until Phase 4 moves the remaining guest columns onto
+the membership overlay.
 
 ### 4.3 The collapse: every `(player_id | guest_player_id)` → `person_id`
 
@@ -542,7 +575,22 @@ One domain per PR, each with tests + live-verify, in dependency order:
    reader must expose no ref/PII the caller couldn't already see in its scope, and identity NEVER
    comes from persons.* contact fields.
 
-2. **Membership layer** (decide Open question P-A) → move per-owner metadata off guest_players.
+   **Progress — 3.3d SHIPPED (migration `20260901100000`):** the player DETAIL-page type badge tells LOGINS, not the clicked seat (owner-reported after the 3.3 deploy: Adri Govers — a merged account holder — showed 'Guest' on his contact page because the badge keyed on parsed.kind=g_). `get_person_refs_for_scope` gains a person-level `has_login` boolean (resolved person's persons.user_id; a boolean, not PII; frozen clicked guest → own accountless person → false); both AcademyPlayerDetail + TrainerPlayerDetail badge on `refs.hasLogin ?? seat-type` (fallback = old seat-based until deployed). The players-LIST type column was already correct (get_players_overview returns player_type='registered' — verified in prod; a stale bundle explains the reported list symptom). Deferred still: the fuller detail-page identity person-keying (name/linked_profile_id) → Phase-4 prep.
+
+   **Progress — 3.3e SHIPPED (migration `20260901110000`): the players-overview TYPE column tells LOGINS.** Owner
+saw 6 RL Padel account holders labelled 'Guest' in the list Type column — `get_players_overview`
+computed `player_type` from `b_has_login = bool_or(profile side IN SCOPE)`, so a login holder who
+only ever attended as a GUEST (no in-scope player_id booking → no profile side in `sided`) showed
+'guest'. Same seat-vs-login bug as the roster (3.3a) + detail (3.3d). player_type now = the resolved
+PERSON has a login (persons.user_id of b_person_id); a 'registered' row may carry profile_id NULL
+(profile out of scope) — the Type/Status badges only read player_type and detail links/edit flows key
+on guest/profile ids independently, so nothing downstream breaks. CREATE OR REPLACE (signature
+unchanged → no drift), everything else verbatim from 20260827100000. Diagnosed in prod: 375/419
+players genuinely accountless ('almost all guest' is correct), only 6 mislabelled → now 'registered'.
+
+2. **Membership layer** — ✅ RESOLVED-IN-PRACTICE (Phases 1–2): global person model shipped;
+   per-owner metadata stays on `guest_players`/`academy_player_metadata` until the Phase-4
+   merge-out (see the Phase-4 checklist).
 3. **Booking path** (RPCs, capacity, holds) → `person_id`.
 
    **Progress — 3.3c BUILT (migration `20260830100000`):** the booking ELIGIBILITY gate is
@@ -565,58 +613,10 @@ One domain per PR, each with tests + live-verify, in dependency order:
    in 3.2. **Twin/link column RETIREMENT stays for Phase 4** (drop twin_of_profile_id/
    linked_profile_id once the review queue is drained and nothing reads them).
 4. **Money path** (invoicing, pricing, split, mollie-webhook writeback) → `person_id`. Highest care;
-   golden + mock-Mollie e2e must stay green.
-5. **RLS + helpers** (`get_user_academy_ids`, `is_player_of_trainer`, the 8 guest policies, 48 fns) →
-   `person_id`, and add the missing "academy manager can view persons in their academy" policy that
-   PR #557 worked around.
-6. Remaining single-key tables (followers, ratings, waitlist, notes).
-- Old columns stay dual-written throughout, so each PR is independently shippable and revertible.
+   golden + mock-Mollie e2e must stay green. — ✅ SHIPPED as 3.4 (the dedup guard, below) + 3.5a
+   (player invoice surfaces); amount-affecting divisors stay deferred per P-C (§7).
 
-### Phase 4 — CONTRACT (remove the old world)
-- Once nothing reads `player_id`/`guest_player_id`: drop the dual-write triggers, drop the columns,
-  drop `guest_players` + `club_players`, retire `personIdentity.ts`'s dual-key branches.
-- Final pglite + full-suite + mock-Mollie e2e green; live-verify the money paths.
-
-## 6. Risks & mitigations
-- **Money tables (bookings, invoices):** never migrate a reader without the golden/e2e money tests
-  green; keep dual-write until the very end so a bad PR reverts cleanly.
-- **RLS regressions = tenant leak or lockout:** every RLS PR ships with a pglite policy test that
-  sets a real JWT and asserts both allow and deny. Mirror the S01/S557 verification style.
-- **Auth path:** `persons.user_id UNIQUE` must match auth.users 1:1 for accounts; the signup +
-  account-claim flows (`playerResolve.ts`, `link_guest_data_to_profile`) get migrated in Phase 3
-  step 1–2 and live-tested.
-- **Deploy discipline:** merge → pull → `db push` → deploy edge fns from `main`, every phase (the
-  recurring lesson). No edge-fn deploy from an unmerged branch.
-
-## 7. Open decisions (resolve at the phase noted)
-- **P-A (Phase 3.2):** global person + membership table vs per-owner person scope. Recommended:
-  global + memberships (reuse `academy_player_metadata`).
-- **P-B (Phase 2):** disposition of the 76 no-email guests and 28 shared-email families after the
-  review report — merge, keep, or manual case-by-case.
-- **P-C (Phase 3.4): RESOLVED — identity-only.** Owner chose "dedup/grouping only, amount math
-  UNCHANGED". 3.4 (migration `20260902100000`) person-keys `create_invoice_deduped`'s double-bill
-  guard and nothing else. The two headcount/recipient-count divisors (`split-invoice` N,
-  `cycle-commitment` `group.size`) are deferred to a future explicit money-amount phase.
-
-## 8. First actionable step
-Phase 0 (consistent person provisioning on the roster/add paths) OR Phase 1 (Expand) — both are
-safe, additive, and independently valuable. Recommend Phase 0 first: it also delivers the
-"add a registered account as a cycle participant" capability the owner asked for, immediately.
-
-   **Progress — 3.3d BUILT (migration `20260901100000`):** the player DETAIL-page type badge tells LOGINS, not the clicked seat (owner-reported after the 3.3 deploy: Adri Govers — a merged account holder — showed 'Guest' on his contact page because the badge keyed on parsed.kind=g_). `get_person_refs_for_scope` gains a person-level `has_login` boolean (resolved person's persons.user_id; a boolean, not PII; frozen clicked guest → own accountless person → false); both AcademyPlayerDetail + TrainerPlayerDetail badge on `refs.hasLogin ?? seat-type` (fallback = old seat-based until deployed). The players-LIST type column was already correct (get_players_overview returns player_type='registered' — verified in prod; a stale bundle explains the reported list symptom). Deferred still: the fuller detail-page identity person-keying (name/linked_profile_id) → Phase-4 prep.
-
-**3.3e (migration `20260901110000`): the players-overview TYPE column tells LOGINS.** Owner
-saw 6 RL Padel account holders labelled 'Guest' in the list Type column — `get_players_overview`
-computed `player_type` from `b_has_login = bool_or(profile side IN SCOPE)`, so a login holder who
-only ever attended as a GUEST (no in-scope player_id booking → no profile side in `sided`) showed
-'guest'. Same seat-vs-login bug as the roster (3.3a) + detail (3.3d). player_type now = the resolved
-PERSON has a login (persons.user_id of b_person_id); a 'registered' row may carry profile_id NULL
-(profile out of scope) — the Type/Status badges only read player_type and detail links/edit flows key
-on guest/profile ids independently, so nothing downstream breaks. CREATE OR REPLACE (signature
-unchanged → no drift), everything else verbatim from 20260827100000. Diagnosed in prod: 375/419
-players genuinely accountless ('almost all guest' is correct), only 6 mislabelled → now 'registered'.
-
-**3.4 (migration `20260902100000`): person-key the invoice double-bill guard — AMOUNT-NEUTRAL.**
+   **Progress — 3.4 SHIPPED (migration `20260902100000`): person-key the invoice double-bill guard — AMOUNT-NEUTRAL.**
 Resolves open decision **P-C = identity-only** (§7): dedup/grouping only, amount math untouched.
 `create_invoice_deduped` (the atomic P1-6 per-recipient create guard; the auto-create-invoice dedup
 insert path — NOT the only way an invoice row is inserted: event-registration, public-rebook, and the
@@ -709,3 +709,120 @@ divisor N = `floor(total/N)`) and `_shared/cycle-commitment-invoicing.ts` `group
 recipient-COUNT math, not recipient dedup. The client `groupChargeableBookingsByRecipient` add-player
 partition is a per-operation single-key-per-person no-op (new bookings carry one key) fully
 backstopped by the atomic RPC guard.
+
+   **Progress — 3.5a SHIPPED (PR #578, migration `20260903100000`):** the player invoice surfaces
+   are person-keyed. `get_my_invoices` (SECURITY DEFINER reader: profile-addressed + all linked
+   guest-addressed invoices, freeze-gated person arm, `can_edit_billing` flag) feeds
+   PlayerInvoicesTab, which falls back to the legacy direct query pre-deploy (PGRST202
+   congruence); the invoice player SELECT/UPDATE RLS stays PURE-PROFILE (FAM-02 — the definer
+   reader, not a widened policy, carries the person view); `generate-invoice` authorizes the PDF
+   path via the shared `_shared/invoice-player-authz.ts` helper (guest-EXCLUSIVE recipient rule).
+   Deploy order mattered: functions BEFORE `db push`. Tests: `getMyInvoices.pglite.test.ts` +
+   `invoice-player-authz.test.ts` (Deno).
+5. **RLS + helpers** (`get_user_academy_ids`, `is_player_of_trainer`, the 8 guest policies, 48 fns) →
+   `person_id`. — ✅ SHIPPED as 3.5b. The once-planned "academy manager can view persons" RLS
+   policy was deliberately NOT added: `persons` stays ZERO-POLICY (definer-RPC-only) because a row
+   policy would expose global cross-tenant PII; the person-keyed reader RPCs ARE the policy.
+
+   **Progress — 3.5b SHIPPED (PR #579, migration `20260904100000`):** `is_player_of_academy` +
+   `is_player_of_trainer` gain a freeze-gated PERSON ARM (merged humans stay visible to their
+   tenants), with the auth.uid() oracle pin and the inactive-membership filter kept. DOCTRINE
+   recorded here: these are relationship-VISIBILITY helpers, so they deliberately carry NO
+   pure-profile guard — FAM-02's pure-profile guards belong to OWNERSHIP predicates only. Test:
+   `isPlayerOfAcademyPerson.pglite.test.ts`.
+6. **Remaining single-key tables** (followers, ratings, waitlist, notes). — ✅ SHIPPED as 3.5c
+   (notes/journey), 3.5d (locations + label chips) and 3.6 (dashboards + rating-trend refs); the
+   remaining profile-keyed tables are person-correct BY CONSTRUCTION (deterministic ids) and only
+   need the Phase-4 column renames.
+
+   **Progress — 3.5c SHIPPED (PR #580, migrations `20260905100000` + `20260905110000`):** staff
+   Guest badges key on PERSON-level login via the bulk `get_booking_login_flags` RPC (freeze-gated
+   person arm, NO club arm; react-query hook `useBookingLoginFlags`, ~12 surfaces), and the
+   session-notes / My Journey read path is person-keyed (`subject_guest_reads_as_me` guest arm on
+   `spn_select_subject_player`, `get_player_journey` guest-seated sessions,
+   `get_unseen_shared_feedback_count` guest arm). Codex round fixed the dual-key note subject FK
+   (P1 — explicit BookedPlayer refs, never the `x||y` display key) and the unseen-count guest arm;
+   `subject_guest_reads_as_me` was real types drift (hand-spliced alphabetically). Tests:
+   `getBookingLoginFlags.pglite.test.ts` + `notesJourneyPerson.pglite.test.ts`.
+
+   **Progress — 3.5d SHIPPED (PR #581, migration `20260906100000`):** the last two small readers —
+   `get_academy_cyclus_labels` (person-first names, per-person dedup, frozen guest = own chip) and
+   `get_player_locations` (guest-only in-scope ref expansion: multi-guest persons' clubs union,
+   any-ref dismissal). Two audit rounds: the profile-side expansion was a cross-tenant leak →
+   expansion is TENANT-SCOPED (guest refs only), recorded as **I-22**; the detail page feeds the
+   tenant-authorized `personRefs.profileId` into the locations control (frontend pin). Test:
+   `smallReadersPerson.pglite.test.ts`.
+
+   **Progress — 3.5e SHIPPED (PR #582, docs only):** living docs consolidated to the shipped
+   person model — DOMAIN_MODEL §5 canonical summary, INVARIANTS I-15..I-22, DOCUMENTATION_INDEX,
+   MUTATION_BOUNDARIES, TEST_COVERAGE_GAPS; stale audits archived.
+
+   **Progress — 3.6 SHIPPED (PR #583, migration `20260907100000`):** person-correct dashboard
+   head-counts (the 3.5d deferral). Both dashboards' new-players CTEs keyed on SEAT keys, so a
+   merged profile+guest person counted TWICE; now one row per person — stamped `person_id` first,
+   a split-frozen guest keys as its OWN accountless person via the frozen-CASE pattern, and
+   `is_registered` = the PERSON has a login on EVERY arm (3.3e doctrine; audit rounds fixed a
+   dead-COALESCE profile-presence fallback — `x IS NOT NULL` never yields NULL — and the trainer
+   arms' seat-sourced labels, per the `get_booking_login_flags` doctrine). Rating-trend fetch on
+   both detail pages now uses the person-resolved profile ref (route congruence; the tenant read
+   path itself stays deferred — see Phase 4). `admin_stats_summary` deliberately untouched
+   (whole-table conversion telemetry). Everything outside the two `first_seen` CTEs re-emitted
+   BYTE-IDENTICAL from `20260818100000` (script-verified), lockdown GRANT block carried. Test:
+   `dashboardPersonCounts.pglite.test.ts` (10 pins, incl. dual-key-accountless = guest).
+- Old columns stay dual-written throughout, so each PR is independently shippable and revertible.
+
+### Phase 4 — CONTRACT (remove the old world) — the ONLY remaining phase
+
+**Gate: the P-B owner queue (§7) must drain first.** Until then the twin-precedence bridge and the
+split-freeze machinery stay load-bearing and MUST NOT be removed.
+
+**Phase 4 checklist — everything deliberately deferred lives HERE (single source):**
+- Drop the dual-write triggers, the legacy `player_id`/`guest_player_id` (+ `paid_by_*` /
+  `subject_*`) column pairs, `twin_of_profile_id` + `linked_profile_id`, and
+  `guest_players` + `club_players` (merging the remaining per-owner columns onto the membership
+  overlay); retire `personIdentity.ts`'s dual-key branches.
+- Single-key table column renames (`profile_id` → `person_id` on reviews, the 3 follower tables,
+  `player_rating_history`, `waiting_list_entries`, `coaching_note_views`, `player_locations`) —
+  pure renames; person-correct today via deterministic ids.
+- **Reviews INSERT policy tightening** — currently profile-only with NO booking-ownership check
+  (pre-existing, migration `20260115215407`). The tightening MUST be person-keyed
+  (booking.person_id = caller's person), NOT player_id-only, or merged-person guest-seated
+  reviews break.
+- **Re-key `uq_invoices_rebook_cyclus_claimant`** (migration `20260705130000`) from
+  `(rebook_cyclus_id, COALESCE(player_id, guest_player_id))` to `(rebook_cyclus_id, person_id)`.
+- **Rating-history tenant read path**: `player_rating_history` RLS is self-view + admin only, so
+  the manager/trainer trend cards render empty — deliberate. Needs a person-aware policy or a
+  DEFINER RPC if the owner wants staff-visible trends (product decision).
+- `profiles_public` arm 6b (linked-only bridge — see the `20260904100000` migration comment).
+- Detail-page identity person-keying (name/edit machinery still reads the clicked row — 3.3d note).
+- G7 consolidated cross-tenant IDOR suite (TEST_COVERAGE_GAPS gap 5) as the Phase-4 entry test.
+- Exit: final pglite + full-suite + mock-Mollie e2e green; live-verify the money paths.
+
+## 6. Risks & mitigations
+- **Money tables (bookings, invoices):** never migrate a reader without the golden/e2e money tests
+  green; keep dual-write until the very end so a bad PR reverts cleanly.
+- **RLS regressions = tenant leak or lockout:** every RLS PR ships with a pglite policy test that
+  sets a real JWT and asserts both allow and deny. Mirror the S01/S557 verification style.
+- **Auth path:** `persons.user_id UNIQUE` must match auth.users 1:1 for accounts; the signup +
+  account-claim flows (`playerResolve.ts`, `link_guest_data_to_profile`) get migrated in Phase 3
+  step 1–2 and live-tested.
+- **Deploy discipline:** merge → pull → `db push` → deploy edge fns from `main`, every phase (the
+  recurring lesson). No edge-fn deploy from an unmerged branch.
+
+## 7. Open decisions (resolve at the phase noted)
+- **P-A: RESOLVED — global person** (shipped Phases 1–2). One global `persons` row per human,
+  linked to N owners; per-owner data remains on `guest_players`/`academy_player_metadata` until the
+  Phase-4 merge-out completes the membership layer.
+- **P-B: OPEN — THE PHASE-4 GATE.** ~106 pending `person_merge_review` rows (27 guests in 13
+  shared-email clusters incl. 2 with `suggested_profile_id`, 76 no-email guests, 1 stale mislink,
+  plus live-filed rows) await owner disposition — merge, keep, or case-by-case. Until drained, the
+  twin-precedence bridge and split-freeze stay, and Phase 4 must not start.
+- **P-C (Phase 3.4): RESOLVED — identity-only.** Owner chose "dedup/grouping only, amount math
+  UNCHANGED". 3.4 (migration `20260902100000`) person-keys `create_invoice_deduped`'s double-bill
+  guard and nothing else. The two headcount/recipient-count divisors (`split-invoice` N,
+  `cycle-commitment` `group.size`) are deferred to a future explicit money-amount phase.
+
+## 8. Next actionable step (updated 2026-07-18)
+Drain the ~106-row `person_merge_review` owner queue (P-B), then execute Phase 4 per its checklist.
+*(Historical: the original recommendation — Phase 0 first, for the add-registered-participant
+capability — was followed on 2026-07-16.)*

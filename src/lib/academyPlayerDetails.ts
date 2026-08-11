@@ -29,9 +29,11 @@ export function canEditRegisteredPlayerEmail(): boolean {
 }
 
 /**
- * Linked guest = guest_players row with linked_profile_id set. The profile is
- * canonical for identity (name/phone/skill/rating system/email); the guest row
- * keeps the relationship data (notes, source, preferred location, ...).
+ * Linked guest = guest_players row with linked_profile_id set (the legacy email-inferred bridge —
+ * NEVER identity truth, INVARIANTS I-21; person truth lives in persons/person_links). For DISPLAY
+ * the detail pages source identity fields (name/phone/skill/rating system/email) from the profile
+ * side when present; the guest row keeps the relationship data (notes, source, preferred
+ * location, ...).
  */
 export function isLinkedGuest(
   kind: AcademyPlayerKind,

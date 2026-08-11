@@ -2,7 +2,7 @@
 
 Purpose: tells an AI agent or human exactly which tests MUST accompany a change, which runner to use, and how to run it — so changes stay safe and CI-green.
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-02
+Status: canonical (source of truth) | last updated 2026-07-18
 
 ---
 
@@ -11,7 +11,7 @@ Status: canonical (source of truth) | last updated 2026-07-02
 | Runner | Command | Scope | Environment |
 |---|---|---|---|
 | **vitest unit** | `npm test` (`vitest run`) | Pure TS/TSX in `src/**/*.test.{ts,tsx}` — lib logic, React components (jsdom + RTL) | mocked Supabase; no network ([`vitest.config.ts`](../vitest.config.ts) sets dummy env) |
-| **PGlite integration** | `npm test` (same run; files `src/**/*.pglite.test.ts`) | The REAL money-path lib run against real Postgres-in-WASM via the [`pgliteSupabase`](../src/test/fixtures/pgliteSupabase.ts) adapter | in-process Postgres; `// @vitest-environment node` |
+| **PGlite integration** | `npm test` (same run; files `src/**/*.pglite.test.ts`) | The REAL money-path lib AND person-keyed migration suites run against real Postgres-in-WASM (the person suites `exec()` the REAL migration file — GRANTs included, roles created in the harness) via the [`pgliteSupabase`](../src/test/fixtures/pgliteSupabase.ts) adapter | in-process Postgres; `// @vitest-environment node` |
 | **deno _shared** | `npm run test:edge` (`deno test --allow-env --allow-net supabase/functions/_shared/`) | Edge-function SHARED helpers only (`supabase/functions/_shared/*.test.ts`) | Deno; CI runs it `--no-check` |
 | **db:rehearse** | `npm run db:rehearse:all` (individual: `db:rehearse:*`) | SQL migrations / RPC / RLS invariants replayed against a fresh DB (`scripts/db/*`) | needs local Supabase / PGlite per script |
 | **migrations validate** | `npm run db:reset` (`supabase db reset`) | Every migration in `supabase/migrations/` applies cleanly + generated-types drift | local Supabase |
@@ -81,7 +81,21 @@ Money is the highest-risk surface. See [`payments/PAYMENT_INVARIANTS.md`](paymen
 - **check:edge-config (required):** new/changed function must satisfy the verify_jwt config gate (`npm run check:edge-config`).
 - Remember: edge functions do NOT auto-deploy — owner applies manually; tests are your only pre-deploy safety net.
 
-### 10. Migration
+### 10. Person-identity (anything touching `player_id` / `guest_player_id` / `person_id` / `persons`)
+
+- **PGlite integration (required):** a same-named suite that `exec()`s the REAL migration file and
+  pins, for the changed surface: FAM-02 (a dual-keyed row belongs to the GUEST person),
+  split-freeze on BOTH the inbound and candidate sides (frozen guest = its own person; the stamp
+  persists, so pin the frozen-CASE path), and — where the surface labels people — labels tell
+  LOGINS, not seats. Model: [`dashboardPersonCounts.pglite.test.ts`](../src/test/dashboardPersonCounts.pglite.test.ts),
+  [`createInvoiceDeduped.pglite.test.ts`](../src/test/createInvoiceDeduped.pglite.test.ts).
+- **Frontend (when a detail page/control consumes person refs):** a personRefs wiring pin via the
+  passthrough-spy pattern (`vi.mock` with `importOriginal`, override once) — see
+  `AcademyPlayerDetail.test.tsx`.
+- **Full doctrine:** [`INVARIANTS.md`](INVARIANTS.md) I-15..I-22 and
+  [`PERSON_UNIFICATION_PLAN.md`](PERSON_UNIFICATION_PLAN.md) §0.
+
+### 11. Migration
 - **migrations validate (required):** `npm run db:reset` (`supabase db reset`) — the real gate; must apply cleanly + regenerate types with no drift.
 - **db:rehearse (required):** add/extend a `scripts/db/rehearse-*` that replays the new RPC/trigger/index and asserts the invariant (e.g. [`rehearse-recalc-split.mjs`](../scripts/db/rehearse-recalc-split.mjs), `rehearse-phase45-integrity`). Wire it into `db:rehearse:all` if it should gate.
 - Migrations do NOT auto-deploy — the owner applies them by hand; the rehearsal is the proof-of-safety.

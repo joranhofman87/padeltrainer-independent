@@ -1,6 +1,6 @@
 # Phase 2 Step 3 — Cutover backfill runbook (owner-run)
 
-The cutover SQL lives in [`PHASE2_STEP3_CUTOVER.sql`](./PHASE2_STEP3_CUTOVER.sql). It is intentionally **NOT** a tracked migration — run it by hand, once, after the gate below. It is non-destructive, idempotent, re-runnable, and self-rolls-back on any anomaly. Hardened by a 6-lens adversarial review (no P0; all P1s folded in).
+The cutover SQL lives in [`PHASE2_STEP3_CUTOVER.sql`](PHASE2_STEP3_CUTOVER.sql). It is intentionally **NOT** a tracked migration — run it by hand, once, after the gate below. It is non-destructive, idempotent, re-runnable, and self-rolls-back on any anomaly. Hardened by a 6-lens adversarial review (no P0; all P1s folded in).
 
 ## Hard ordering (operator-enforced — nothing technical blocks an out-of-order run)
 
