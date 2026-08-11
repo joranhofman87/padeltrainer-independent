@@ -560,10 +560,17 @@ compensating migration:
 2. `DROP FUNCTION public.account_scrub_operations_guard();` — easy to miss, because dropping the
    table leaves it behind with nothing referencing it. Verify with
    `SELECT to_regprocedure('public.account_scrub_operations_guard()')`, which must return NULL;
-3. restore `backup_export_tables()` to its `20261130100000` body (28 tables, without
-   `account_scrub_operations`), and remove the table from `TABLES_TO_BACKUP`, the `DEFAULT_DENY` list
-   in `scripts/db/backup-coverage.mjs` and the deny-list block in `supabase/seed.sql` — the coverage
-   guard asserts those three agree, so leaving any one behind fails CI rather than drifting quietly.
+3. restore `backup_export_tables()` to its `20261130100000` **body AND its `COMMENT ON FUNCTION`**.
+   `CREATE OR REPLACE FUNCTION` does not touch an object comment, so reverting only the body leaves
+   a comment still describing `account_scrub_operations` as exported. Verify with
+   `SELECT obj_description('public.backup_export_tables()'::regprocedure, 'pg_proc')`;
+4. remove the table from `TABLES_TO_BACKUP`, from the `DEFAULT_DENY` list in
+   `scripts/db/backup-coverage.mjs`, and from the deny-list block in `supabase/seed.sql` — the
+   coverage guard asserts those three agree, so leaving any one behind fails CI rather than drifting
+   quietly;
+5. regenerate `src/integrations/supabase/types.ts`. The committed file carries an
+   `account_scrub_operations` block; drop the table without regenerating and `npm run db:types:check`
+   fails on a table that no longer exists.
 
 Refuse the whole compensation if any row exists: once an erasure is recorded, its evidence must not
 be discarded. Because B1 creates only an empty table, this pre-activation compensation restores and

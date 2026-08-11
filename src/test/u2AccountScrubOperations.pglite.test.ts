@@ -858,14 +858,33 @@ describe('operational surface', () => {
     // BYPASSRLS, so zero policies stop anon and authenticated and do nothing for it. Demonstrated by
     // granting SELECT inside a transaction and reading as that role; rolled back, so the shipped ACL
     // is unchanged — and re-checked afterwards to prove it.
+    // The owner's view first. It must be non-zero, or the assertion below cannot tell BYPASSRLS
+    // from RLS working perfectly: a role WITHOUT bypass, holding SELECT on a zero-policy table,
+    // does not get an error — it gets every row filtered away and a count of 0, which is also "a
+    // number". Comparing against a known non-zero count is what makes the two cases distinguishable.
+    const { rows: owner } = await db.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM public.account_scrub_operations`);
+    expect(owner[0].n).toBeGreaterThan(0);
+
     await db.exec('BEGIN');
     try {
       await db.exec(`GRANT SELECT ON public.account_scrub_operations TO service_role`);
       await db.exec(`SET LOCAL ROLE service_role`);
-      const { rows } = await db.query<{ n: number }>(
-        `SELECT count(*)::int AS n FROM public.account_scrub_operations`);
-      // RLS is on with no policies, and the read still succeeds. That is BYPASSRLS.
-      expect(typeof rows[0].n).toBe('number');
+      const { rows } = await db.query<{ who: string; n: number; rls_on: boolean; policies: number }>(`
+        SELECT current_user AS who,
+               (SELECT count(*)::int FROM public.account_scrub_operations) AS n,
+               c.relrowsecurity AS rls_on,
+               (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
+          FROM pg_class c JOIN pg_namespace n2 ON n2.oid = c.relnamespace
+         WHERE n2.nspname = 'public' AND c.relname = 'account_scrub_operations'
+      `);
+      // Reading AS service_role, with RLS on and not one policy that could admit a row, every row is
+      // still visible. That is BYPASSRLS, and it is why a policy could never have protected this
+      // table from the role that matters.
+      expect(rows[0].who).toBe('service_role');
+      expect(rows[0].rls_on).toBe(true);
+      expect(rows[0].policies).toBe(0);
+      expect(rows[0].n).toBe(owner[0].n);
       await db.exec(`RESET ROLE`);
     } finally {
       await db.exec('ROLLBACK');

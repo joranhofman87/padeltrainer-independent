@@ -289,7 +289,9 @@ DECLARE
   -- and then execute after expiry while now() still reports its old start. One wall-clock reading,
   -- taken here, is used for every decision and every stamp in this invocation.
   v_wall_now  timestamptz := clock_timestamp();
-  -- The fencing window a claim gets. Fixed by the protocol, not by the caller.
+  -- The claim window. Fixed by the protocol, not by the caller. Not a FENCE: it bounds how long a
+  -- claim stands before another worker may take the row, and nothing here ties a statement to the
+  -- identity of the worker holding it.
   c_lease     constant interval := interval '5 minutes';
   v_advanced  boolean := false;
 BEGIN
