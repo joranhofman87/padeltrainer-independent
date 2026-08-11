@@ -173,8 +173,8 @@ beforeAll(async () => {
     CREATE TABLE public.invoices (
       id uuid PRIMARY KEY, person_id uuid, status text NOT NULL, total_amount numeric NOT NULL);
 
-    -- The B1 migration redefines backup_export_tables(); a stand-in with the pre-B1 body proves the
-    -- redefinition is what adds the new table rather than the table appearing from nowhere.
+    -- A stand-in so B1's CREATE OR REPLACE has something to replace. It is not the real pre-B1
+    -- body; it exists so the allow-list assertion reads a value B1 put there.
     CREATE FUNCTION public.backup_export_tables() RETURNS TABLE (relname text)
       LANGUAGE sql IMMUTABLE AS $$ SELECT * FROM (VALUES ('persons'), ('profiles')) AS t(relname) $$;
   `);
@@ -561,7 +561,7 @@ describe('the database owns every timestamp', () => {
   });
 });
 
-describe('permanent-wedge regressions (both reproduced in the draft this replaces)', () => {
+describe('wedge regressions (both reproduced in the draft this replaces)', () => {
   /**
    * WEDGE 1 — a caller-supplied future `started_at`.
    *
@@ -569,9 +569,9 @@ describe('permanent-wedge regressions (both reproduced in the draft this replace
    * exits from `started` were gated on a CHECK comparing the trigger's wall-clock stamp against it:
    * `database_scrubbed_at >= started_at` and `finished_at >= started_at`. A row started an hour in
    * the future therefore satisfied NEITHER exit, could not be corrected, and could not be deleted
-   * (append-only) — and the one-active-operation index then blocked that account from EVER being
-   * erased. The fix is that the trigger stamps `started_at` itself, so no caller clock can place a
-   * row outside the window its own exits need.
+   * (append-only), while the one-active-operation index blocked any replacement — so that account
+   * could not be erased until database time passed the caller's stamp. The fix is that the trigger
+   * stamps `started_at` itself, so no caller clock places a row outside the window its exits need.
    */
   it('an operation whose caller claimed a future start can still finish', async () => {
     const id = uuid('9', 970);
@@ -636,10 +636,8 @@ describe('permanent-wedge regressions (both reproduced in the draft this replace
     expect(rows[0]).toEqual({ state: 'completed', finished: true, markers_sane: true });
   });
 
-  it('every live state has an exit, so no account can be stranded un-erasable', async () => {
-    // started -> failed, started -> database_scrubbed and the whole external path are covered above.
-    // This pins the last one: an abandoned lease is always reclaimable, so a crashed worker cannot
-    // park an erasure for ever.
+  it('an abandoned lease can be reclaimed, so a crashed worker does not park an erasure', async () => {
+    // The remaining exit from a live state; the others are covered above.
     const op = await newOperation();
     await scrub(op.id, op.person);
     await db.exec(`UPDATE public.account_scrub_operations
@@ -747,9 +745,8 @@ describe('the transition graph', () => {
     // would prove the predicate this test just typed — not anything the migration ships.
     //
     // So both halves are pinned: with the predicate the stale holder is refused, and WITHOUT it the
-    // very same write succeeds. The second assertion is the honest one, and it will start failing
-    // the day real fencing lands — which is the correct moment to delete this test and replace it
-    // with a two-session proof against the shipped RPC.
+    // very same write succeeds. When the RPCs land, replace this with a two-session proof against
+    // them.
     const op = await newOperation();
     await scrub(op.id, op.person);
     await claim(op.id, op.lease);
