@@ -625,7 +625,9 @@
       "started": "Started",
       "noClubs": "No clubs yet",
       "removeClub": "Remove club",
-      "addClub": "Add club"
+      "addClub": "Add club",
+      "clubsReadOnly": "Clubs are temporarily view-only while we improve how players are linked to your academy.",
+      "removeUnavailable": "Removing a player is temporarily unavailable while we improve how players are linked to your academy. Nothing about this player has changed."
     },
     "import": {
       "button": "Import CSV",
@@ -768,7 +770,8 @@
     "playerSingular": "player",
     "subtitleShort": "Manage your players and contacts",
     "notesAdd": "Add note",
-    "notesLabel": "Internal notes"
+    "notesLabel": "Internal notes",
+    "notesReadOnly": "Notes are temporarily view-only while we improve how players are linked to your academy."
   },
   "earnings": {
     "title": "Earnings",

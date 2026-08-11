@@ -4,64 +4,28 @@ import {
   shouldShowPlayerInAcademyOverview,
   removePlayerFromAcademy,
 } from './academyPlayerRemoval';
+import { isOverlayWriteDisabledError } from './overlayWriteContainment';
 
 const ACADEMY_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-const ACADEMY_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const GUEST_ID = 'gggggggg-gggg-4ggg-8ggg-gggggggggggg';
 const PROFILE_ID = 'pppppppp-pppp-4ppp-8ppp-pppppppppppp';
-const META_ID = 'mmmmmmmm-mmmm-4mmm-8mmm-mmmmmmmmmmmm';
 const MANAGER_ID = 'uuuuuuuu-uuuu-4uuu-8uuu-uuuuuuuuuuuu';
 
-const updateMock = vi.fn();
-const insertMock = vi.fn();
-const eqCalls: Array<[string, ...unknown[]]> = [];
-const fromTables: string[] = [];
+/**
+ * The supabase client is mocked to RECORD any use and to fail loudly if the module reaches
+ * for it. Under ABC-16 H0 the interesting property is not "which payload is written" — it is
+ * that NOTHING is written and no request leaves the client, so the mock exists to prove the
+ * negative rather than to satisfy a chain.
+ */
+const fromMock = vi.fn((_table: string) => {
+  throw new Error('the supabase client must not be reached while overlay writes are contained');
+});
 
-function createChain(table: string) {
-  fromTables.push(table);
-  const chain: Record<string, unknown> = {
-    select: () => chain,
-    eq: (...args: unknown[]) => {
-      eqCalls.push([table, ...args]);
-      return chain;
-    },
-    update: (payload: unknown) => {
-      updateMock(table, payload);
-      return {
-        eq: (...args: unknown[]) => {
-          eqCalls.push([table, ...args]);
-          return {
-            eq: (...innerArgs: unknown[]) => {
-              eqCalls.push([table, ...innerArgs]);
-              return Promise.resolve({ error: null });
-            },
-          };
-        },
-      };
-    },
-    insert: (payload: unknown) => {
-      insertMock(table, payload);
-      return Promise.resolve({ error: null });
-    },
-    maybeSingle: () => maybeSingleMock(table),
-  };
-  return chain;
-}
-
-const maybeSingleMock = vi.fn();
-
-vi.mock('@/lib/supabaseClient', () => ({
-  supabase: {
-    from: (table: string) => createChain(table),
-  },
-}));
+vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: (t: string) => fromMock(t) } }));
 
 describe('academyPlayerRemoval', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    eqCalls.length = 0;
-    fromTables.length = 0;
-    maybeSingleMock.mockResolvedValue({ data: null, error: null });
   });
 
   it('detects removed metadata', () => {
@@ -71,91 +35,67 @@ describe('academyPlayerRemoval', () => {
     expect(shouldShowPlayerInAcademyOverview(null)).toBe(true);
   });
 
-  it('inserts metadata with removed_at for guest without existing row', async () => {
-    await removePlayerFromAcademy({
+  // ── ABC-16 H0 ────────────────────────────────────────────────────────────────────────────
+  // These cases previously asserted that soft removal INSERTED or UPDATED
+  // `academy_player_metadata`. That write is exactly the defect: it created, for a
+  // caller-chosen subject, the row three authorization predicates accepted as proof of the
+  // academy↔player relationship. The expectations are inverted rather than deleted, so the
+  // suite still pins the behaviour of every case it used to cover.
+
+  it('refuses to soft-remove a guest, and sends no request', async () => {
+    await expect(
+      removePlayerFromAcademy({
+        academyProfileId: ACADEMY_A,
+        guestPlayerId: GUEST_ID,
+        profileId: null,
+        removedByProfileId: MANAGER_ID,
+      }),
+    ).rejects.toSatisfy(isOverlayWriteDisabledError);
+
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses for a linked guest too — neither identity is written', async () => {
+    await expect(
+      removePlayerFromAcademy({
+        academyProfileId: ACADEMY_A,
+        guestPlayerId: GUEST_ID,
+        profileId: PROFILE_ID,
+        removedByProfileId: MANAGER_ID,
+      }),
+    ).rejects.toSatisfy(isOverlayWriteDisabledError);
+
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses for a registered player', async () => {
+    await expect(
+      removePlayerFromAcademy({
+        academyProfileId: ACADEMY_A,
+        guestPlayerId: null,
+        profileId: PROFILE_ID,
+        removedByProfileId: MANAGER_ID,
+      }),
+    ).rejects.toSatisfy(isOverlayWriteDisabledError);
+
+    expect(fromMock).not.toHaveBeenCalled();
+  });
+
+  it('the refusal is a plain-language message, never a raw permission error', async () => {
+    const err = await removePlayerFromAcademy({
       academyProfileId: ACADEMY_A,
       guestPlayerId: GUEST_ID,
       profileId: null,
-      removedByProfileId: MANAGER_ID,
-    });
+    }).catch((e) => e as Error);
 
-    expect(fromTables).not.toContain('guest_players');
-    expect(fromTables).not.toContain('profiles');
-    expect(insertMock).toHaveBeenCalledWith(
-      'academy_player_metadata',
-      expect.objectContaining({
-        academy_profile_id: ACADEMY_A,
-        guest_player_id: GUEST_ID,
-        profile_id: null,
-        removed_by: MANAGER_ID,
-        removed_at: expect.any(String),
-      }),
-    );
+    expect(err.message).not.toMatch(/permission denied|row-level security|42501/i);
+    expect(err.message).toMatch(/read-only/i);
+    // it must also say that nothing changed — a failed destructive action that is ambiguous
+    // about what it did is worse than one that failed loudly.
+    expect(err.message).toMatch(/nothing was changed/i);
   });
 
-  it('marks BOTH identities removed for a linked guest (guest + profile)', async () => {
-    await removePlayerFromAcademy({
-      academyProfileId: ACADEMY_A,
-      guestPlayerId: GUEST_ID,
-      profileId: PROFILE_ID,
-      removedByProfileId: MANAGER_ID,
-    });
-
-    // One metadata row per identity, each marked removed — otherwise removing only the
-    // guest un-hides the linked profile and the player reappears in the overview.
-    expect(insertMock).toHaveBeenCalledWith(
-      'academy_player_metadata',
-      expect.objectContaining({ guest_player_id: GUEST_ID, profile_id: null, removed_at: expect.any(String) }),
-    );
-    expect(insertMock).toHaveBeenCalledWith(
-      'academy_player_metadata',
-      expect.objectContaining({ guest_player_id: null, profile_id: PROFILE_ID, removed_at: expect.any(String) }),
-    );
-    expect(insertMock).toHaveBeenCalledTimes(2);
-  });
-
-  it('updates existing metadata with removed_at for registered player', async () => {
-    maybeSingleMock.mockResolvedValue({
-      data: { id: META_ID, tag_ids: ['tag-1'], notes: 'Keep notes' },
-      error: null,
-    });
-
-    await removePlayerFromAcademy({
-      academyProfileId: ACADEMY_A,
-      guestPlayerId: null,
-      profileId: PROFILE_ID,
-      removedByProfileId: MANAGER_ID,
-    });
-
-    expect(updateMock).toHaveBeenCalledWith(
-      'academy_player_metadata',
-      expect.objectContaining({
-        removed_at: expect.any(String),
-        removed_by: MANAGER_ID,
-      }),
-    );
-    expect(insertMock).not.toHaveBeenCalled();
-    expect(eqCalls).toContainEqual(['academy_player_metadata', 'id', META_ID]);
-    expect(eqCalls).toContainEqual(['academy_player_metadata', 'academy_profile_id', ACADEMY_A]);
-  });
-
-  it('scopes removal to the given academy profile id', async () => {
-    maybeSingleMock.mockResolvedValue({
-      data: { id: META_ID, tag_ids: [], notes: null },
-      error: null,
-    });
-
-    await removePlayerFromAcademy({
-      academyProfileId: ACADEMY_A,
-      guestPlayerId: GUEST_ID,
-      profileId: null,
-    });
-
-    expect(eqCalls).toContainEqual(['academy_player_metadata', 'academy_profile_id', ACADEMY_A]);
-    expect(eqCalls).not.toContainEqual(['academy_player_metadata', 'academy_profile_id', ACADEMY_B]);
-  });
-
-  it('rejects invalid player key', async () => {
+  it('rejects an invalid player key BEFORE the containment — the caller keeps that diagnosis', async () => {
     await expect(
       removePlayerFromAcademy({
         academyProfileId: ACADEMY_A,

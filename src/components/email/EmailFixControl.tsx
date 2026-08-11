@@ -6,12 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, MailWarning } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import {
-  usePlayerEmailEditCapability,
-  updatePlayerEmailDirect,
-  updateGuestEmail,
-  updateBillingEmailOverride,
-} from '@/lib/emailBounce';
+import { updateGuestEmail } from '@/lib/emailBounce';
 
 interface Props {
   academyProfileId: string;
@@ -23,42 +18,38 @@ interface Props {
 }
 
 /**
- * Inline "fix a bouncing email" control. Picks the right path:
- *  - guest               -> edit the guest contact email directly
- *  - registered/'direct'  -> overwrite the real login email (gated edge fn)
- *  - registered/'override'-> set an invoice-only billing-email override
- * Because bounce state is address-keyed, saving a new address clears the flags.
+ * Inline "fix a bouncing email" control.
+ *
+ * ABC-16 H0 reduced this to the one path that is independently safe:
+ *
+ *   - GUEST      -> edit the guest contact email directly. A guest has no login, and the
+ *                   write lands on `guest_players`, whose policies are ownership-based and
+ *                   reference no overlay table.
+ *   - REGISTERED -> guidance only. Both former writers are gone: overwriting the player's
+ *                   real login email (an academy may not rewrite an accepted identity) and
+ *                   the billing override (it wrote `academy_player_metadata`, now read-only).
+ *
+ * The registered branch deliberately renders NO input. An input that cannot save is worse
+ * than none: it invites the work and then throws it away.
  */
-export function EmailFixControl({ academyProfileId, playerType, profileId, guestPlayerId, currentEmail, onFixed }: Props) {
+export function EmailFixControl({ playerType, guestPlayerId, currentEmail, onFixed }: Props) {
   const { t } = useTranslation('academy');
   const { toast } = useToast();
   const qc = useQueryClient();
   const [email, setEmail] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const { data: capability } = usePlayerEmailEditCapability(
-    playerType === 'registered' ? profileId : null,
-    playerType === 'registered' ? academyProfileId : null,
-  );
-  const mode: 'guest' | 'direct' | 'override' =
-    playerType === 'guest' ? 'guest' : (capability ?? 'override');
-  const isOverride = mode === 'override';
+  const isGuest = playerType === 'guest';
 
   const save = async () => {
     const next = email.trim().toLowerCase();
     if (!next || next === (currentEmail || '').toLowerCase()) return;
+    if (!guestPlayerId) return;
     setSaving(true);
     try {
-      if (mode === 'guest' && guestPlayerId) {
-        await updateGuestEmail(guestPlayerId, next);
-      } else if (mode === 'direct' && profileId) {
-        await updatePlayerEmailDirect(profileId, academyProfileId, next);
-      } else {
-        await updateBillingEmailOverride({ academyProfileId, profileId, guestPlayerId, email: next });
-      }
+      await updateGuestEmail(guestPlayerId, next);
       await Promise.all([
         qc.invalidateQueries({ queryKey: ['academy-undeliverable-recipients'] }),
-        qc.invalidateQueries({ queryKey: ['player-email-edit-capability'] }),
         qc.invalidateQueries({ queryKey: ['players-overview'] }),
         qc.invalidateQueries({ queryKey: ['invoices-delivery-status'] }),
       ]);
@@ -81,25 +72,33 @@ export function EmailFixControl({ academyProfileId, playerType, profileId, guest
         <MailWarning className="h-4 w-4" />
         {t('emailDelivery.fixTitle', 'This email is bouncing')}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {isOverride
-          ? t('emailDelivery.overrideHelp', "You can't change this player's login email, so set a billing email used only for their invoices.")
-          : t('emailDelivery.directHelp', 'Enter a corrected email address.')}
-      </p>
-      <div className="flex gap-2">
-        <Input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder={isOverride
-            ? t('emailDelivery.billingEmailPlaceholder', 'Billing email')
-            : t('emailDelivery.newEmailPlaceholder', 'New email address')}
-          className="h-9"
-        />
-        <Button size="sm" onClick={save} disabled={saving || !email.trim()}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('emailDelivery.fixSave', 'Save')}
-        </Button>
-      </div>
+
+      {isGuest ? (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {t('emailDelivery.directHelp', 'Enter a corrected email address.')}
+          </p>
+          <div className="flex gap-2">
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder={t('emailDelivery.newEmailPlaceholder', 'New email address')}
+              className="h-9"
+            />
+            <Button size="sm" onClick={save} disabled={saving || !email.trim()}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t('emailDelivery.fixSave', 'Save')}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground" data-testid="email-fix-self-service">
+          {t(
+            'emailDelivery.selfServiceHelp',
+            'This player signs in with this email address, so only they can change it. Ask them to update it in their own account settings. Setting a separate invoice email is temporarily unavailable.',
+          )}
+        </p>
+      )}
     </div>
   );
 }

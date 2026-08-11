@@ -628,7 +628,9 @@
       "started": "Gestart",
       "noClubs": "Nog geen clubs",
       "removeClub": "Club verwijderen",
-      "addClub": "Club toevoegen"
+      "addClub": "Club toevoegen",
+      "clubsReadOnly": "Clubs zijn tijdelijk alleen-lezen terwijl we verbeteren hoe spelers aan je academy worden gekoppeld.",
+      "removeUnavailable": "Een speler verwijderen is tijdelijk niet beschikbaar terwijl we verbeteren hoe spelers aan je academy worden gekoppeld. Er is niets aan deze speler gewijzigd."
     },
     "import": {
       "button": "CSV importeren",
@@ -771,7 +773,8 @@
     "playerSingular": "speler",
     "subtitleShort": "Beheer je spelers en contacten",
     "notesAdd": "Notitie toevoegen",
-    "notesLabel": "Interne notities"
+    "notesLabel": "Interne notities",
+    "notesReadOnly": "Notities zijn tijdelijk alleen-lezen terwijl we verbeteren hoe spelers aan je academy worden gekoppeld."
   },
   "earnings": {
     "title": "Inkomsten",

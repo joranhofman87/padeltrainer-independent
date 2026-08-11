@@ -9,6 +9,7 @@ import {
   validatePlayerDetailsForm,
 } from '@/lib/academyPlayerDetails';
 import { validatePreferredLocationId } from '@/lib/academyPlayerTrainingLocations';
+import { refuseOverlayWrite } from '@/lib/overlayWriteContainment';
 
 export type TrainerPlayerDetailsValues = AcademyPlayerDetailsValues;
 
@@ -37,47 +38,23 @@ export async function fetchTrainerLocationOptions(
   return (locs || []).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export async function saveTrainerPlayerMetadataFields(params: {
+/**
+ * ABC-16 H0: trainer notes / tags / preferred club are temporarily read-only.
+ *
+ * The trainer-owned arm of `academy_player_metadata` has the same defect as the academy
+ * arm — the policy proves the caller owns the ROW, never that the subject has any
+ * relationship with that trainer — so it closes with it. See
+ * `src/lib/overlayWriteContainment.ts`. Reads are untouched.
+ */
+export async function saveTrainerPlayerMetadataFields(_params: {
   trainerProfileId: string;
   guestPlayerId: string | null;
   profileId: string | null;
   notes: string | null;
   preferredLocationId?: string | null;
   tagIds?: string[];
-}) {
-  const baseQuery = supabase
-    .from('academy_player_metadata')
-    .select('id')
-    .eq('trainer_profile_id', params.trainerProfileId);
-
-  const { data: existing } = await (params.guestPlayerId
-    ? baseQuery.eq('guest_player_id', params.guestPlayerId)
-    : baseQuery.eq('profile_id', params.profileId!)
-  ).maybeSingle();
-
-  const metadataFields = {
-    notes: params.notes,
-    preferred_location_id: params.preferredLocationId ?? null,
-    ...(params.tagIds ? { tag_ids: params.tagIds } : {}),
-  };
-
-  if (existing) {
-    const { error } = await supabase
-      .from('academy_player_metadata')
-      .update(metadataFields as Record<string, unknown>)
-      .eq('id', existing.id);
-    if (error) throw error;
-    return;
-  }
-
-  const { error } = await supabase.from('academy_player_metadata').insert({
-    trainer_profile_id: params.trainerProfileId,
-    guest_player_id: params.guestPlayerId,
-    profile_id: params.profileId,
-    tag_ids: params.tagIds ?? [],
-    ...metadataFields,
-  } as Record<string, unknown>);
-  if (error) throw error;
+}): Promise<never> {
+  refuseOverlayWrite('notes');
 }
 
 export async function saveTrainerPlayerDetails(params: {
@@ -88,16 +65,15 @@ export async function saveTrainerPlayerDetails(params: {
   form: AcademyPlayerDetailsForm;
   allowedLocationIds: ReadonlySet<string>;
   tagIds?: string[];
-}) {
+}): Promise<void> {
   const validationError = validatePlayerDetailsForm(params.form, params.allowedLocationIds);
   if (validationError) {
     throw new Error(validationError);
   }
 
-  const preferredLocationId = validatePreferredLocationId(
-    params.form.locationId,
-    params.allowedLocationIds,
-  );
+  // Still validated — it throws on a free-text or out-of-trainer club, and a rejected value
+  // must not look accepted. H0 has no writer for the preferred club (registered branch below).
+  validatePreferredLocationId(params.form.locationId, params.allowedLocationIds);
 
   if (params.kind === 'guest' && params.guestPlayerId) {
     if (params.profileId) {
@@ -113,7 +89,7 @@ export async function saveTrainerPlayerDetails(params: {
         .eq('id', params.guestPlayerId)
         .eq('trainer_id', params.trainerProfileId);
       if (guestError) throw guestError;
-      return { guestPayload };
+      return;
     }
 
     const payload = buildGuestPlayerUpdatePayload(params.form, params.allowedLocationIds);
@@ -123,7 +99,7 @@ export async function saveTrainerPlayerDetails(params: {
       .eq('id', params.guestPlayerId)
       .eq('trainer_id', params.trainerProfileId);
     if (error) throw error;
-    return payload;
+    return;
   }
 
   if (params.kind === 'registered' && params.profileId) {
@@ -137,16 +113,11 @@ export async function saveTrainerPlayerDetails(params: {
       .eq('id', params.profileId);
     if (profileError) throw profileError;
 
-    await saveTrainerPlayerMetadataFields({
-      trainerProfileId: params.trainerProfileId,
-      guestPlayerId: null,
-      profileId: params.profileId,
-      notes: params.form.notes.trim() || null,
-      preferredLocationId,
-      tagIds: params.tagIds,
-    });
-
-    return { profilePayload, preferredLocationId };
+    // ABC-16 H0: the overlay write that used to follow this profile write is removed rather
+    // than left to refuse. It runs AFTER a committed profile change, so throwing here would
+    // report the whole save as failed while the name and level really did change. The
+    // overlay controls render read-only instead.
+    return;
   }
 
   throw new Error('invalidPlayer');

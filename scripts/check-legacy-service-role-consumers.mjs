@@ -161,7 +161,6 @@ const MANAGED = {
   'admin-client': [
     'supabase/functions/_shared/auth.ts',
     'supabase/functions/_shared/edge-slack.ts',
-    'supabase/functions/academy-update-player-email/index.ts',
     'supabase/functions/admin-academy-deletion/index.ts',
     'supabase/functions/admin-reset-password/index.ts',
     'supabase/functions/auto-rebook-reminder/index.ts',
@@ -351,7 +350,6 @@ const MANAGED_ANON = {
     'src/pages/marketing/Partner.tsx',
   ],
   'edge-anon': [
-    'supabase/functions/academy-update-player-email/index.ts',
     'supabase/functions/bulk-update-vat/index.ts',
     'supabase/functions/create-academy-trainer/index.ts',
     'supabase/functions/create-admin-trainer/index.ts',

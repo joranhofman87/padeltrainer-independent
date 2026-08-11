@@ -361,11 +361,6 @@
       "count": 3
     }
   },
-  "src/components/players/PlayerNotesCell.tsx": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    }
-  },
   "src/components/players/TagPicker.tsx": {
     "react-refresh/only-export-components": {
       "count": 1
@@ -579,16 +574,6 @@
   "src/lib/academy.ts": {
     "@typescript-eslint/no-explicit-any": {
       "count": 24
-    }
-  },
-  "src/lib/academyPlayerDetails.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
-    }
-  },
-  "src/lib/academyPlayerRemoval.ts": {
-    "@typescript-eslint/no-explicit-any": {
-      "count": 2
     }
   },
   "src/lib/academyTrainerPayments.ts": {

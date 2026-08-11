@@ -143,14 +143,11 @@ describe('trainerPlayerDetails save', () => {
     const profileUpdate = updateMock.mock.calls.find(([table]) => table === 'profiles')?.[1];
     expect(profileUpdate).toBeDefined();
     expect(profileUpdate).not.toHaveProperty('email');
-    expect(insertMock).toHaveBeenCalledWith(
-      'academy_player_metadata',
-      expect.objectContaining({
-        trainer_profile_id: 'trainer-1',
-        profile_id: 'profile-1',
-        notes: 'Trainer notes',
-      }),
-    );
+
+    // ABC-16 H0: the trainer-scoped overlay write that used to follow is gone, for the same
+    // reason as the academy one — it ran after an already-committed profile change.
+    expect(insertMock).not.toHaveBeenCalledWith('academy_player_metadata', expect.anything());
+    expect(updateMock).not.toHaveBeenCalledWith('academy_player_metadata', expect.anything());
   });
 });
 

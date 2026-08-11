@@ -5,8 +5,7 @@
 // so it needs no hook here.
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabaseClient';
-
-export type EmailEditCapability = 'direct' | 'override';
+import { refuseOverlayWrite } from '@/lib/overlayWriteContainment';
 
 // 'provider_suppressed' = on Resend's suppression list (state='ok', no bounce) — still undeliverable. Populated by
 // the PR-2 email.suppressed webhook; the reader returns it in place of a bare 'ok'.
@@ -80,53 +79,37 @@ export function useInvoicesDeliveryStatus(invoiceIds: string[]) {
 }
 
 // ===================== remediation (fix-it) =====================
+//
+// ABC-16 H0 removed both registered-player remediation writers.
+//
+//   * The `direct` path invoked `academy-update-player-email`, which replaced the player's
+//     REAL Auth login email with the service role. Its gate ("this academy owns the player")
+//     was satisfied by a caller-authored `academy_player_metadata` row, so an academy could
+//     take over a nascent account. `get_player_email_edit_capability` no longer returns
+//     'direct', the Edge Function refuses unconditionally, and this client path is gone —
+//     all three, because the service role is bound by none of the other two.
+//
+//   * The billing-email OVERRIDE also wrote `academy_player_metadata`, which H0 made
+//     read-only for clients. It is therefore contained too, rather than left to fail at the
+//     network boundary with a raw permission error.
+//
+// A guest has no login, and the guest write below goes to `guest_players`, whose write
+// policies are ownership-based (`academy_profile_id` in the caller's academies, or an ACTIVE
+// academy trainer owns the row — 20260224171306) and reference no overlay. That path was
+// verified independently safe and is deliberately preserved.
 
-/** Whether the academy may edit a registered player's REAL email ('direct') or
- *  must use a billing-email override ('override'). Guests are edited directly. */
-export function usePlayerEmailEditCapability(profileId: string | null | undefined, academyProfileId: string | null | undefined) {
-  return useQuery({
-    queryKey: ['player-email-edit-capability', profileId, academyProfileId],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('get_player_email_edit_capability', {
-        _profile_id: profileId!,
-        _academy_profile_id: academyProfileId!,
-      });
-      if (error) throw error;
-      return (data ?? 'override') as EmailEditCapability;
-    },
-    enabled: !!profileId && !!academyProfileId,
-    staleTime: 60 * 1000,
-  });
-}
-
-/** Gated edit of a registered player's real login email (only when capability='direct'). */
-export async function updatePlayerEmailDirect(profileId: string, academyProfileId: string, email: string): Promise<void> {
-  const { data, error } = await supabase.functions.invoke('academy-update-player-email', {
-    body: { profile_id: profileId, academy_profile_id: academyProfileId, email },
-  });
-  if (error) throw error;
-  if (data && (data as { error?: string }).error) throw new Error((data as { error: string }).error);
-}
-
-/** Academy/trainer edit a guest's contact email directly. */
+/** Academy/trainer edit a guest's contact email directly. Unaffected by ABC-16 H0. */
 export async function updateGuestEmail(guestPlayerId: string, email: string): Promise<void> {
   const { error } = await supabase.from('guest_players').update({ email: email.trim().toLowerCase() }).eq('id', guestPlayerId);
   if (error) throw error;
 }
 
-/** Set an invoice-only billing-email override on the academy's player-metadata row. */
-export async function updateBillingEmailOverride(opts: {
+/** Invoice-only billing-email override. ABC-16 H0: temporarily has no client writer. */
+export async function updateBillingEmailOverride(_opts: {
   academyProfileId: string;
   profileId?: string | null;
   guestPlayerId?: string | null;
   email: string;
-}): Promise<void> {
-  let q = supabase
-    .from('academy_player_metadata')
-    .update({ billing_email: opts.email.trim().toLowerCase() })
-    .eq('academy_profile_id', opts.academyProfileId)
-    .is('removed_at', null);
-  q = opts.guestPlayerId ? q.eq('guest_player_id', opts.guestPlayerId) : q.eq('profile_id', opts.profileId!);
-  const { error } = await q;
-  if (error) throw error;
+}): Promise<never> {
+  refuseOverlayWrite('billingEmail');
 }
