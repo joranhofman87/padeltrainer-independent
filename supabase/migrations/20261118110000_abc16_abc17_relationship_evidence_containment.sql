@@ -987,6 +987,199 @@ $$;
 COMMENT ON FUNCTION public.get_player_locations(uuid, uuid, uuid) IS
   'ABC-18: the SUBJECT is authorized, not only the academy — it must be a guest this academy directly owns, and the profile argument is ignored. No person_links expansion: at a shared club the old shape was a cross-tenant player-location oracle.';
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- PASS A1 — profile visibility, roster naming, cycle labels, login flags.
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Shared rule for a REGISTERED participant whose seat must still be counted: expose no profile
+-- or person UUID, no name, no login signal and no bridge-derived identifier. Where a row is
+-- needed for compatibility, key it by the BOOKING — a reference to the seat, not to the human —
+-- and label it neutrally.
+
+-- 8h. `profiles_public` — nine arms, four withdrawn.
+--
+-- Withdrawn: (4) is_player_of_trainer, (6) academy-manager-plus-booking, (6b) the
+-- linked_profile_id bridge, (9) club-manager-plus-booking. Each admitted a profile on evidence
+-- the caller controls — a booking subject they choose, or a guest link they author.
+--
+-- Retained: (1) public trainers, (2) own profile, (3) admin, (5) academy manager OF THE TRAINER,
+-- (7) the caller's OWN booking revealing that trainer's name — the subject there is
+-- get_profile_id_for_user(auth.uid()), i.e. caller-bound, so there is nothing to forge — and
+-- (8) club manager of the trainer.
+--
+-- p.user_id IS NOT NULL is added as a global condition: a profile shell with no account is not a
+-- public identity and has no business in this view.
+CREATE OR REPLACE VIEW public.profiles_public
+WITH (security_invoker = off)
+AS
+SELECT
+  p.id, p.user_id, p.full_name, p.avatar_url, p.bio, p.location,
+  p.skill_rating, p.rating_system, p.rating_member_id, p.created_at, p.updated_at
+FROM public.profiles p
+WHERE p.user_id IS NOT NULL
+  AND (
+    EXISTS (SELECT 1 FROM public.trainer_profiles tp
+             WHERE tp.user_id = p.user_id AND tp.is_public = true)
+    OR (auth.uid() IS NOT NULL AND p.user_id = auth.uid())
+    OR public.is_admin(auth.uid())
+    OR p.user_id IN (
+      SELECT tp.user_id FROM public.trainer_profiles tp
+      JOIN public.academy_trainers atr ON atr.trainer_profile_id = tp.id
+      JOIN public.academy_managers am ON am.academy_profile_id = atr.academy_profile_id
+      WHERE am.user_id = auth.uid() AND atr.status = 'active'
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.bookings b
+      JOIN public.availability_slots s ON s.id = b.slot_id
+      JOIN public.trainer_profiles tp ON tp.id = s.trainer_id
+      WHERE b.player_id = public.get_profile_id_for_user(auth.uid())
+        AND tp.user_id = p.user_id
+    )
+    OR p.user_id IN (
+      SELECT tp.user_id FROM public.trainer_profiles tp
+      JOIN public.trainer_locations tl ON tl.trainer_id = tp.id
+      JOIN public.club_profiles cp ON cp.location_id = tl.location_id
+      JOIN public.club_managers cm ON cm.club_profile_id = cp.id
+      WHERE cm.user_id = auth.uid()
+    )
+  );
+
+GRANT SELECT ON public.profiles_public TO anon, authenticated;
+
+-- 8i. `get_cycle_roster_names` — owned guests by name, everyone else neutral.
+CREATE OR REPLACE FUNCTION public.get_cycle_roster_names(_cycle_id uuid)
+RETURNS TABLE (id uuid, full_name text, has_login boolean)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_owner_type text;
+  v_owner_id uuid;
+BEGIN
+  SELECT c.owner_type, c.owner_id INTO v_owner_type, v_owner_id
+  FROM public.cycles c WHERE c.id = _cycle_id;
+
+  IF NOT (
+    public.is_admin(auth.uid())
+    OR (v_owner_type = 'club' AND v_owner_id IN (SELECT public.get_user_club_ids(auth.uid())))
+    OR EXISTS (
+      SELECT 1 FROM public.availability_slots s
+      WHERE s.cyclus_id = _cycle_id AND (
+        (s.academy_profile_id IS NOT NULL
+          AND s.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid())))
+        OR s.trainer_id IN (SELECT tp.id FROM public.trainer_profiles tp WHERE tp.user_id = auth.uid())
+      )
+    )
+  ) THEN
+    RAISE EXCEPTION 'not_authorized_for_cycle' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  RETURN QUERY
+  SELECT DISTINCT ON (u.uid) u.uid, u.uname, u.ulogin
+  FROM (
+    -- Directly owned guests: named.
+    -- Ownership is judged against THE CYCLE'S OWN SCOPE, not whichever column happens to
+    -- match. An academy-owned cycle names academy-owned guests; a trainer-run one names that
+    -- trainer's. Accepting either column would let a trainer's private guest be named on an
+    -- academy roster merely because that trainer teaches the slot.
+    SELECT gp.id AS uid, gp.full_name AS uname, false AS ulogin, 1 AS urank
+    FROM public.bookings b
+    JOIN public.availability_slots s ON s.id = b.slot_id
+    JOIN public.guest_players gp ON gp.id = b.guest_player_id
+    WHERE s.cyclus_id = _cycle_id
+      AND gp.full_name IS NOT NULL
+      AND CASE WHEN v_owner_type = 'academy'
+               THEN gp.academy_profile_id = v_owner_id
+               ELSE gp.trainer_id = s.trainer_id END
+    UNION ALL
+    -- Every other seat: the BOOKING id, a neutral label, no login signal.
+    SELECT b.id, 'Registered player'::text, false, 2
+    FROM public.bookings b
+    JOIN public.availability_slots s ON s.id = b.slot_id
+    WHERE s.cyclus_id = _cycle_id
+      AND NOT EXISTS (
+        SELECT 1 FROM public.guest_players gp2
+        WHERE gp2.id = b.guest_player_id
+          AND CASE WHEN v_owner_type = 'academy'
+                   THEN gp2.academy_profile_id = v_owner_id
+                   ELSE gp2.trainer_id = s.trainer_id END
+      )
+  ) u
+  ORDER BY u.uid, u.urank;
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_cycle_roster_names(uuid) IS
+  'ABC-18 A1: names only guests the cycle owner directly owns. Any other seat returns its BOOKING id with a neutral label and has_login = false — no profile or person uuid, no name, no login signal, nothing bridge-derived.';
+
+-- 8j. `get_academy_cyclus_labels` — first names of directly owned guests only.
+CREATE OR REPLACE FUNCTION public.get_academy_cyclus_labels(p_academy_profile_id uuid)
+RETURNS TABLE (cycle_id uuid, earliest_start timestamptz, first_names text[], location_name text)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $fn$
+BEGIN
+  IF NOT public.is_academy_manager(auth.uid(), p_academy_profile_id) THEN
+    RAISE EXCEPTION 'not authorized for academy %', p_academy_profile_id USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  WITH cyc AS (
+    SELECT c.id, c.location_id FROM public.cycles c
+    WHERE c.owner_type = 'academy' AND c.owner_id = p_academy_profile_id AND c.type = 'cyclus'
+  ),
+  sl AS (
+    SELECT s.id AS slot_id, s.cyclus_id, s.start_time, s.location_id
+    FROM public.availability_slots s JOIN cyc ON cyc.id = s.cyclus_id
+  ),
+  earliest AS (
+    SELECT DISTINCT ON (cyclus_id) cyclus_id, start_time AS e_start, location_id AS e_loc
+    FROM sl ORDER BY cyclus_id, start_time
+  ),
+  names AS (
+    SELECT sl.cyclus_id AS n_cycle,
+           coalesce(nullif(btrim(gp.first_name), ''),
+                    nullif(split_part(coalesce(gp.full_name, ''), ' ', 1), '')) AS n_first
+    FROM sl
+    JOIN public.bookings b ON b.slot_id = sl.slot_id
+    JOIN public.guest_players gp ON gp.id = b.guest_player_id
+    WHERE coalesce(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
+      AND gp.academy_profile_id = p_academy_profile_id
+  )
+  SELECT e.cyclus_id, e.e_start,
+         (SELECT coalesce(array_agg(DISTINCT n.n_first), '{}'::text[])
+            FROM names n WHERE n.n_cycle = e.cyclus_id AND n.n_first IS NOT NULL),
+         (SELECT l.name FROM public.locations l WHERE l.id = e.e_loc)
+  FROM earliest e;
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_academy_cyclus_labels(uuid) IS
+  'ABC-18 A1: first names of DIRECTLY owned guests only. The persons/profile/dual-key fallbacks are withdrawn — a chip row is itself the identity, so there is no neutral form and other seats contribute nothing.';
+
+-- 8k. `get_booking_login_flags` — the login signal is withdrawn.
+CREATE OR REPLACE FUNCTION public.get_booking_login_flags(_booking_ids uuid[])
+RETURNS TABLE (booking_id uuid, has_login boolean)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+  SELECT b.id AS booking_id, false AS has_login
+  FROM public.bookings b
+  JOIN public.availability_slots s ON s.id = b.slot_id
+  WHERE b.id = ANY(_booking_ids)
+    AND (
+      public.is_admin(auth.uid())
+      OR s.trainer_id IN (SELECT tp.id FROM public.trainer_profiles tp WHERE tp.user_id = auth.uid())
+      OR (s.academy_profile_id IS NOT NULL
+          AND s.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid())))
+    );
+$fn$;
+
+COMMENT ON FUNCTION public.get_booking_login_flags(uuid[]) IS
+  'ABC-18 A1: always false. Every arm disclosed whether a seat belongs to an account holder — via persons.user_id, a caller-chosen booking subject, or person_links. Signature, grants and the authorization gate are unchanged.';
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────

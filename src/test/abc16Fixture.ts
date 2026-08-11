@@ -115,14 +115,21 @@ export const STUB_SQL = /* sql */ `
     first_name text, last_name text, birth_date date, skill_rating numeric,
     rating_system text, rating_member_id text, avatar_url text, bio text, location text,
     preferred_language text, billing_business_name text, billing_address text,
-    billing_btw_number text, stripe_customer_id text
+    billing_btw_number text, stripe_customer_id text,
+    created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now()
   );
   CREATE TABLE IF NOT EXISTS public.academy_profiles (id uuid PRIMARY KEY, name text, slug text);
   CREATE TABLE IF NOT EXISTS public.academy_managers (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     academy_profile_id uuid NOT NULL, user_id uuid NOT NULL, role text DEFAULT 'manager'
   );
-  CREATE TABLE IF NOT EXISTS public.trainer_profiles (id uuid PRIMARY KEY, user_id uuid);
+  CREATE TABLE IF NOT EXISTS public.trainer_profiles (
+    id uuid PRIMARY KEY, user_id uuid, is_public boolean DEFAULT false
+  );
+  -- Ambient tables profiles_public joins for its retained club/trainer arms.
+  CREATE TABLE IF NOT EXISTS public.trainer_locations (trainer_id uuid, location_id uuid);
+  CREATE TABLE IF NOT EXISTS public.club_profiles (id uuid PRIMARY KEY, location_id uuid);
+  CREATE TABLE IF NOT EXISTS public.club_managers (club_profile_id uuid, user_id uuid);
   CREATE TABLE IF NOT EXISTS public.academy_trainers (
     academy_profile_id uuid, trainer_profile_id uuid, status text
   );
@@ -147,7 +154,8 @@ export const STUB_SQL = /* sql */ `
   );
   CREATE TABLE IF NOT EXISTS public.availability_slots (
     id uuid PRIMARY KEY, academy_profile_id uuid, trainer_id uuid, location_id uuid,
-    cyclus_id uuid, source_cycle_id uuid, end_time timestamptz
+    cyclus_id uuid, source_cycle_id uuid, start_time timestamptz DEFAULT now(),
+    end_time timestamptz
   );
   CREATE TABLE IF NOT EXISTS public.bookings (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid,
@@ -181,7 +189,8 @@ export const STUB_SQL = /* sql */ `
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid, name text
   );
   CREATE TABLE IF NOT EXISTS public.cycles (
-    id uuid PRIMARY KEY, settings jsonb DEFAULT '{}'::jsonb, owner_type text, owner_id uuid, type text
+    id uuid PRIMARY KEY, settings jsonb DEFAULT '{}'::jsonb, owner_type text, owner_id uuid,
+    type text, location_id uuid
   );
   -- Touched by link_guest_data_to_profile when it re-keys a claimed guest's rows.
   CREATE TABLE IF NOT EXISTS public.club_players (
@@ -208,6 +217,16 @@ export const STUB_SQL = /* sql */ `
 
   CREATE OR REPLACE FUNCTION public.is_guest_split_frozen(_guest_id uuid)
   RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
+
+  CREATE OR REPLACE FUNCTION public.get_profile_id_for_user(_user_id uuid)
+  RETURNS uuid LANGUAGE sql STABLE AS $fn$
+    SELECT id FROM public.profiles WHERE user_id = _user_id LIMIT 1
+  $fn$;
+
+  CREATE OR REPLACE FUNCTION public.get_user_club_ids(_user_id uuid)
+  RETURNS SETOF uuid LANGUAGE sql STABLE AS $fn$
+    SELECT club_profile_id FROM public.club_managers WHERE user_id = _user_id
+  $fn$;
 
   CREATE OR REPLACE FUNCTION public.is_cycle_member(_user_id uuid, _cycle_id uuid)
   RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
