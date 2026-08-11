@@ -78,7 +78,7 @@ whole gate", and that was wrong:
 | Gate | Engine | On production's engine? |
 |---|---|---|
 | `supabase db reset` — the complete migration chain from empty | Supabase PG **17.6.1.127** | **yes**, same major |
-| the five real-Postgres suites (academy-deletion, backup-coverage, u2-no-email-alone-merge, u2-identity-verification, u2-identity-worker-routing) | same local PG 17 | **yes** |
+| the six real-Postgres suites (academy-deletion, backup-coverage, u2-no-email-alone-merge, u2-identity-verification, u2-identity-worker-routing, u2-scrub-claim-race) | same local PG 17 | **yes** |
 | generated types drift | same local PG 17 | **yes** |
 | **PGlite rehearsals** (`db:rehearse:all`) | **PGlite 0.5.1 → PostgreSQL 18.3 (wasm)** | **NO** |
 
@@ -437,12 +437,15 @@ therefore does not fail — it keeps reporting `ok: true` every night while omit
 least-reconstructible evidence in the system.
 
 * **Rolling back something else** (frontend, another function, a compensating migration): leave
-  `backup-database` at the covered version. It depends only on `backup_export_group`, which is
-  additive and stays.
-* **Rolling back `backup-database` itself**, because that function is the fault: treat it as a
-  bounded, supervised suspension rather than a state to sit in. Record the start time; verify the
-  covered tables are still exported by whatever runs in the interim, or accept and write down that
-  they are not; fix forward rather than waiting. Before reopening, run one export and check
+  `backup-database` at the covered version. It depends on `backup_export_groups()` for its table set
+  **and** `backup_export_group(text)` for each read — both from entry 6, both additive, both staying.
+* **Rolling back `backup-database` itself**, because that function is the fault: this is a
+  suspension of backup coverage, and it gets a **written deadline agreed BEFORE it starts**, not a
+  best effort afterwards. The default deadline is *restoration before the next scheduled backup run*
+  — i.e. no scheduled run may pass uncovered. Record the start time and the deadline in the incident
+  note. If coverage cannot be restored within it, **continuing is a separate owner decision**: an
+  uncovered interval means U2 receipts and ledger rows created in that window exist in no nightly
+  snapshot, and nothing later reconstructs them. Before reopening, run one export and check
   `tables[]` contains `player_create_commands` and `account_scrub_operations`, as at step 6b.
 * **If the schema is compensated away entirely**, the previous build is correct again — but only
   after the compensating migration has removed the tables, not before.

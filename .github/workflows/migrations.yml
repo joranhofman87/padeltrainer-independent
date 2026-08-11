@@ -67,7 +67,7 @@ jobs:
         run: node scripts/db/academy-deletion-integration.mjs
 
       # Fails when an identity/Player table is not in the backup's table list, or when a backed-up
-      # table's primary key is not the single `id` column the page walk keysets on.
+      # table's primary key is not the single uuid `id` column the export orders by.
       - name: Backup coverage (derived from the live schema)
         run: node scripts/db/backup-coverage.mjs
 
@@ -86,6 +86,13 @@ jobs:
       # rows. Real Postgres because the claim is a concurrency boundary, not a predicate.
       - name: U2 — identity worker routing partition (local Postgres)
         run: node scripts/db/u2-identity-worker-routing.mjs
+
+      # Slice B1: two real sessions race through claim and reclaim on one operation. PGlite is a
+      # single connection and cannot express it. Adding `supabase/seed.sql` to the path filters
+      # above makes this workflow RUN on a relevant change; it does not make any suite execute —
+      # that is what this step is for, and scripts/ci/workflow-contract.mjs pins its presence.
+      - name: U2 — scrub claim/reclaim race (two sessions, local Postgres)
+        run: node scripts/db/u2-scrub-claim-race.mjs
 
   types-drift:
     name: generated types drift

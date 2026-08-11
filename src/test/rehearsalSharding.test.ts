@@ -606,6 +606,9 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     mkdirSync(join(root, '.github/workflows'), { recursive: true });
     mkdirSync(join(root, 'src/test'), { recursive: true });
     copyFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), join(root, '.github/workflows/test.yml'));
+    // migrations.yml too: the contract now also pins the real-Postgres suites and this workflow's
+    // trigger paths, so a fixture without it is not a faithful copy of the gate.
+    copyFileSync(resolve(dbDir, '../../.github/workflows/migrations.yml'), join(root, '.github/workflows/migrations.yml'));
     const realPkg = JSON.parse(readFileSync(resolve(dbDir, '../../package.json'), 'utf8'));
     writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: realPkg.scripts }, null, 2));
     // A minimal config with the same project shape and no imports, so vite can

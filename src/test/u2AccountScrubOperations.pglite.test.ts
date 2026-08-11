@@ -74,11 +74,17 @@ const legacySchemaProjection = `
                           'check', pg_get_expr(polwithcheck, polrelid)) ORDER BY polname)
                    FROM pg_policy WHERE polrelid = 'public.account_deletion_audit'::regclass),
     'guard_security', (SELECT jsonb_build_object(
+                                'owner', pg_get_userbyid(proowner),
                                 'secdef', prosecdef,
                                 'config', coalesce(to_jsonb(proconfig), 'null'::jsonb),
                                 'acl', coalesce(proacl::text, '(none)'))
-                         FROM pg_proc WHERE proname = 'account_deletion_audit_guard'),
-    'columns', (SELECT jsonb_agg(jsonb_build_object('c', attname, 't', atttypid::regtype::text, 'nn', attnotnull)
+                         FROM pg_proc
+                        WHERE oid = 'public.account_deletion_audit_guard()'::regprocedure),
+    'columns', (SELECT jsonb_agg(jsonb_build_object('c', attname, 't', atttypid::regtype::text,
+                                                   'nn', attnotnull,
+                                                   -- per-column grants: a column ACL is invisible to
+                                                   -- relacl and to has_table_privilege alike
+                                                   'acl', coalesce(attacl::text, '(none)'))
                                  ORDER BY attname)
                   FROM pg_attribute
                  WHERE attrelid = 'public.account_deletion_audit'::regclass
@@ -87,7 +93,10 @@ const legacySchemaProjection = `
                       FROM pg_constraint WHERE conrelid = 'public.account_deletion_audit'::regclass),
     'triggers', (SELECT jsonb_agg(jsonb_build_object('n', tgname, 'd', pg_get_triggerdef(oid)) ORDER BY tgname)
                    FROM pg_trigger WHERE tgrelid = 'public.account_deletion_audit'::regclass AND NOT tgisinternal),
-    'guard_body', (SELECT prosrc FROM pg_proc WHERE proname = 'account_deletion_audit_guard'),
+    -- scoped by SCHEMA and exact signature: matching on proname alone would match an overload, or a
+    -- same-named function in another schema, and silently compare the wrong body
+    'guard_body', (SELECT prosrc FROM pg_proc
+                    WHERE oid = 'public.account_deletion_audit_guard()'::regprocedure),
     'indexes', (SELECT jsonb_agg(indexdef ORDER BY indexname)
                   FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'account_deletion_audit')
   )::text AS snapshot
@@ -273,9 +282,14 @@ describe('B1 leaves the legacy audit rows, the legacy schema projection and the 
     // writer still has the privileges to reach it.
     const complete = '10000000-0000-4000-8000-000000000011';
     const fail = '10000000-0000-4000-8000-000000000012';
+    // The role switch and the transaction are BOTH undone in a finally: an assertion that throws
+    // between them would otherwise leave the shared connection as service_role, inside an open
+    // transaction, for every test that runs after it.
+    let who = '';
     await db.exec('BEGIN');
-    await db.exec('SET LOCAL ROLE service_role');
-    await db.exec(`
+    try {
+      await db.exec('SET LOCAL ROLE service_role');
+      await db.exec(`
       INSERT INTO public.account_deletion_audit
         (id, subject_user_id, actor_user_id, self_service, subject_email)
       VALUES
@@ -284,10 +298,14 @@ describe('B1 leaves the legacy audit rows, the legacy schema projection and the 
       UPDATE public.account_deletion_audit SET status = 'completed' WHERE id = '${complete}';
       UPDATE public.account_deletion_audit SET status = 'failed', failure_reason = 'legacy failure' WHERE id = '${fail}';
     `);
-    const { rows: who } = await db.query<{ who: string }>(`SELECT current_user AS who`);
-    expect(who[0].who).toBe('service_role');
-    await db.exec('RESET ROLE');
-    await db.exec('COMMIT');
+      who = (await db.query<{ who: string }>(`SELECT current_user AS who`)).rows[0].who;
+      await db.exec('COMMIT');
+    } finally {
+      // RESET ROLE covers the path where COMMIT never ran; ROLLBACK is a no-op after a COMMIT
+      try { await db.exec('RESET ROLE'); } catch { /* nothing left to reset */ }
+      try { await db.exec('ROLLBACK'); } catch { /* no transaction in progress */ }
+    }
+    expect(who).toBe('service_role');
     const { rows } = await db.query<{ id: string; status: string; finished: boolean }>(`
       SELECT id, status, finished_at IS NOT NULL AS finished
       FROM public.account_deletion_audit WHERE id IN ($1, $2) ORDER BY id

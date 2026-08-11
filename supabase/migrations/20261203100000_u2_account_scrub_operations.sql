@@ -262,7 +262,7 @@ COMMENT ON COLUMN public.account_scrub_operations.started_at IS
 COMMENT ON COLUMN public.account_scrub_operations.last_error_code IS
   'Why the last attempt did not succeed, as one value from a controlled vocabulary fixed by account_scrub_operations_error_code_check. It is deliberately coarse, and free text is rejected rather than truncated: a provider or PostgreSQL message can quote the address, name or row being erased, so the detail belongs in transient redacted logs and never in durable erasure evidence. Codes before the scrub commits are terminal; codes after it are retryable.';
 COMMENT ON COLUMN public.account_scrub_operations.lease_expires_at IS
-  'Database-stamped claim deadline. A worker cannot choose or extend it; once it passes, another worker may reclaim the row with a fresh token. It is NOT yet a fence: the trigger refuses transitions made under an expired lease, but nothing here ties a statement to the identity of the worker that holds the current one. A superseded holder is stopped only by an UPDATE predicated on the current lease_token, and that predicate belongs to the SECURITY DEFINER RPCs, which do not exist in this release. Until they do, the table has no writer at all, which is what makes the gap safe rather than latent.';
+  'Database-stamped claim deadline. A worker cannot choose or extend it; once it passes, another worker may reclaim the row with a fresh token. It is NOT yet a fence: the trigger refuses transitions made under an expired lease, but nothing here ties a statement to the identity of the worker that holds the current one. A superseded holder is stopped only by an UPDATE predicated on the operation id, a server-minted token, an unexpired lease AND the monotonic external_attempt_count the caller was handed at claim time — token alone admits ABA, because the token is a value and values can recur. That predicate belongs to the SECURITY DEFINER RPCs, which do not exist in this release. Until they do, the table has no writer at all, which is what makes the gap safe rather than latent.';
 
 -- ── indexes ────────────────────────────────────────────────────────────────────────────────────
 -- One live erasure per account. A finished operation does not block a later, genuinely new one.
@@ -552,9 +552,12 @@ CREATE TRIGGER trg_account_scrub_operations_no_truncate
 -- relying on a policy to catch it.
 --
 -- HOW ACCESS ARRIVES LATER, when it is needed: narrow SECURITY DEFINER RPCs, one per transition
--- (open, scrub, claim, progress, release, finalize) plus a bounded operator read. Each takes the
--- operation id and — after the scrub — the caller's current lease token, and predicates its UPDATE
--- on both, so a stale holder's statement matches zero rows before the trigger is ever consulted.
+-- (open, scrub, claim, progress, release, finalize) plus a bounded operator read. Each predicates
+-- its UPDATE on the operation id, a token the RPC MINTED (never one the caller supplied), an
+-- unexpired lease, and the monotonic external_attempt_count handed out at claim time — all four, so
+-- a stale holder's statement matches zero rows before the trigger is ever consulted. The counter is
+-- the term that defeats ABA: a token can recur, an attempt number the trigger only ever increments
+-- cannot.
 -- Each gets EXECUTE granted to exactly the role that needs it, and nothing gets table privileges.
 -- **None of those RPCs is in B1.** Until they exist, this table is reachable only by its owner and
 -- by the already-reviewed SECURITY DEFINER export path, which is precisely the intended state for a

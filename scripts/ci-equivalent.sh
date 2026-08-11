@@ -54,7 +54,10 @@ if [[ $WITH_DB == 1 ]]; then
 
   # The real-Postgres suites are per-unit and land on different branches, so run whichever this
   # branch actually has. A runner that fails on a file the branch never introduced trains people to
-  # ignore it, which is the opposite of why it exists.
+  # ignore it, which is the opposite of why it exists. CI is stricter on purpose: every suite in
+  # scripts/ci/workflow-contract.mjs REAL_PG_SUITES must be an unweakened step in migrations.yml,
+  # so a file present on the branch cannot be dropped from the gate — only skipped locally when the
+  # branch genuinely lacks it.
   for suite in scripts/db/academy-deletion-integration.mjs \
                scripts/db/backup-coverage.mjs \
                scripts/db/u2-no-email-alone-merge.mjs \
@@ -64,7 +67,7 @@ if [[ $WITH_DB == 1 ]]; then
     [[ -f "$suite" ]] && run "$(basename "$suite" .mjs) (real pg)" node "$suite"
   done
 else
-  printf '\n\033[33m── skipped (pass --db): db rehearsals, types drift, academy-deletion real-pg\033[0m\n'
+  printf '\n\033[33m── skipped (pass --db): db reset, db rehearsals, types drift, and the six real-Postgres suites\033[0m\n'
 fi
 
 printf '\n'
