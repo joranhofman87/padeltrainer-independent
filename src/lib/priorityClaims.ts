@@ -4,6 +4,30 @@ import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { logger } from '@/lib/logger';
 
+/**
+ * ABC-18 A3 — the single guest-first normalization for a priority claim's identity.
+ *
+ * A DUAL-KEY claim carries both columns. The person it is about is the GUEST; the profile column
+ * on such a row is a legacy artefact, not the claimant. Resolving it profile-first let a guest
+ * token resolve to that profile and then sweep the profile's PURE sibling claims — accepting and
+ * paying for seats that belong to a different account.
+ *
+ * Exported so both the browser paths here and the tests exercise the SAME rule rather than two
+ * hand-copied conditionals that can drift apart. The service-role Edge path
+ * (create-rebook-invoice-public) applies the identical rule at its own boundary, because it runs
+ * without RLS and cannot import from src/.
+ */
+export function normalizeClaimIdentity(
+  claim: { player_id?: string | null; guest_player_id?: string | null } | null | undefined,
+): { playerId: string | null; guestPlayerId: string | null } {
+  const guestPlayerId = claim?.guest_player_id ?? null;
+  return {
+    // dual-key ⇒ the guest owns the claim; the profile column is inert
+    playerId: guestPlayerId ? null : (claim?.player_id ?? null),
+    guestPlayerId,
+  };
+}
+
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
 
 /**
@@ -456,7 +480,7 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
   // academy/captain rebooking on behalf of a linked account-holder surfaces on their OWN
   // dashboard (a guest-keyed claim is invisible to a plain player_id read). Normalised into
   // the nested shape the group-collapse loop below already expects. Falls back to the legacy
-  // player_id-only direct read when the RPC isn't deployed yet (PGRST202) so the card keeps
+  // pure-profile direct read when the RPC isn't deployed yet (PGRST202) so the card keeps
   // working in the FE-deployed-migration-pending window.
   type NestedClaim = {
     id: string;
@@ -986,7 +1010,14 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
   try {
     const claimData = await fetchClaimByToken(token);
     slot = (claimData?.slot ?? null) as ClaimSlotInfo | null;
-    playerId = ((claimData?.claim as { player_id?: string | null } | undefined)?.player_id) ?? null;
+    // ABC-18 A3 — GUEST-FIRST. A DUAL-KEY claim is about the GUEST; its profile column is a
+    // legacy artefact. Taking player_id raw made this token resolve to that profile and then
+    // sweep the profile's PURE sibling claims below — accepting and paying for seats belonging
+    // to a different account. A dual-key token therefore yields NO playerId, so the sibling
+    // sweep is skipped entirely and only this one claim is settled.
+    playerId = normalizeClaimIdentity(
+      claimData?.claim as { player_id?: string | null; guest_player_id?: string | null } | undefined,
+    ).playerId;
     // Prefer the status-independent mode from the token RPC (SECURITY DEFINER, so it resolves
     // even after the cycle leaves 'open' — otherwise an upfront cycle would silently fall back
     // to deferred and skip the pay-first gate). Fall back to the cycles_public read only when
@@ -1074,11 +1105,14 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     const cycleSlotIds = (cycleSlots || []).map((s) => s.id);
 
     // Multi-slot cycles: the player may hold one claim per slot. Accept the
-    // remaining pending ones first so a single checkout covers the whole
-    // cycle. RLS scopes this select to the player's own claims; we also pin
-    // player_id explicitly (defense-in-depth) so a future RLS change can't
-    // widen it. Previously accepted ('claimed') siblings are picked up via
-    // their booking_id.
+    // remaining pending ones first so a single checkout covers the whole cycle.
+    //
+    // The sweep is PURE-PROFILE ONLY, and `playerId` is already null for a dual-key token
+    // (see the guest-first normalization above), so a guest token can never reach a profile's
+    // sibling claims. The explicit `player_id` + `guest_player_id IS NULL` pin is the
+    // defence-in-depth layer beneath that: the RLS policy now carries the same predicate
+    // (ABC-18 A3), and neither is relied on alone. Previously accepted ('claimed') siblings
+    // are picked up via their booking_id.
     //
     // NOTE: this is cycle-scoped (all slots sharing the target cyclus_id), not
     // rebook-group-scoped. For a cohort rebooked across several weekday/time

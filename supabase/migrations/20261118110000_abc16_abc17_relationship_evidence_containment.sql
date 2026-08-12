@@ -1847,17 +1847,26 @@ BEGIN
 
   -- 9e-bis. the priority surfaces admit pure-profile claims only. A restored raw arm shows up
   --         as a missing guest_player_id null-check in either the policy or the tier gate.
+  -- Substring presence is NOT sufficient: `... OR guest_player_id IS NULL` contains the same
+  -- text while WIDENING the policy. Require the profile equality AND the null-check, and refuse
+  -- any disjunction in the predicate, so a widened rewrite fails here instead of shipping.
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
      WHERE schemaname = 'public' AND tablename = 'slot_priority_claims'
        AND policyname = 'Players read own priority claims'
+       AND qual::text ~ 'get_profile_id_for_user'
        AND qual::text ~ 'guest_player_id IS NULL'
+       AND qual::text !~* '\mOR\M'
   ) THEN
-    RAISE EXCEPTION 'ABC-18: the player priority-claim policy no longer requires a pure-profile claim';
+    RAISE EXCEPTION 'ABC-18: the player priority-claim policy must be (player_id = me AND guest_player_id IS NULL), with no disjunction';
   END IF;
+
+  -- Same for the tier gate: the null-check must sit inside the slot_priority_claims lookup, and
+  -- that lookup must still be keyed on the caller's profile.
   IF (SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-       WHERE n.nspname = 'public' AND p.proname = 'can_book_slot') !~ 'guest_player_id IS NULL' THEN
-    RAISE EXCEPTION 'ABC-18: can_book_slot no longer requires a pure-profile priority claim';
+       WHERE n.nspname = 'public' AND p.proname = 'can_book_slot')
+     !~ 'slot_priority_claims[\s\S]*player_id = v_profile[\s\S]*guest_player_id IS NULL' THEN
+    RAISE EXCEPTION 'ABC-18: can_book_slot must require a PURE-PROFILE priority claim (player_id = me AND guest_player_id IS NULL)';
   END IF;
 
   -- 9e. no authority predicate reads an overlay OR a booking any more.
