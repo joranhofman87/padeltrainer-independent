@@ -1791,6 +1791,180 @@ BEGIN
   END IF;
 END $$;
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- ABC-20 cluster — the token boundaries resolve identity guest-first.
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Canonical rule (FAM-02, the same one personRefOf/personKeyOf encode in TS): a row carrying
+-- BOTH identity columns belongs to the GUEST; the player_id beside it is legacy link decoration.
+-- Resolution order is therefore: guest present → guest only; else player present → pure-profile
+-- (guest must be null); else fail closed. No boundary may run an UNSCOPED sibling query.
+
+-- ── 1. the claim-by-token boundary now SUPPLIES the identity it is resolved by ───────────────
+-- The claim object exposed only {id, status, claim_token}, so the browser had nothing to resolve
+-- and had to infer the claimant elsewhere. Adding the two columns is what lets the client apply
+-- the same guest-first rule instead of guessing — and it is what makes the pure-profile sibling
+-- sweep possible AT ALL, since a caller with no identity can only be given the fail-closed path.
+--
+-- `player_name` also becomes guest-first: on a dual-key claim the profile join won and the page
+-- showed the ACCOUNT HOLDER's name over a seat that belongs to the guest.
+CREATE OR REPLACE FUNCTION public.get_priority_claim_by_token(_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  result jsonb;
+BEGIN
+  SELECT jsonb_build_object(
+    'claim', jsonb_build_object(
+      'id', c.id,
+      'status', c.status,
+      'claim_token', c.claim_token,
+      -- ABC-20: the caller resolves these guest-first (personRefOf). Exposed so the client
+      -- applies the shared rule rather than inferring identity from anything else.
+      'player_id', c.player_id,
+      'guest_player_id', c.guest_player_id
+    ),
+    'slot', jsonb_build_object(
+      'id', s.id, 'start_time', s.start_time, 'end_time', s.end_time,
+      'cyclus_id', s.cyclus_id, 'cyclus_name', s.cyclus_name, 'location_id', s.location_id,
+      'price_per_session', s.price_per_session, 'total_price', s.total_price,
+      'max_participants', s.max_participants,
+      'priority_window_ends_at', s.priority_window_ends_at,
+      'trainer_id', s.trainer_id, 'academy_profile_id', s.academy_profile_id
+    ),
+    'sessions', GREATEST(1, (
+      SELECT count(*)
+      FROM public.slot_priority_claims c2
+      WHERE c2.rebook_group_id = c.rebook_group_id
+        AND c2.player_id IS NOT DISTINCT FROM c.player_id
+        AND c2.guest_player_id IS NOT DISTINCT FROM c.guest_player_id
+    )),
+    -- guest-first: a dual-key claim is the GUEST's seat, so it must not display the account
+    -- holder's name.
+    'player_name', COALESCE(gp.full_name, p.full_name),
+    'booked_by_captain_name', CASE
+      WHEN c.booked_by_player_id IS NOT NULL OR c.booked_by_guest_player_id IS NOT NULL
+      THEN COALESCE(NULLIF(bgp.first_name, ''), NULLIF(split_part(bgp.full_name, ' ', 1), ''),
+                    NULLIF(bp.first_name, ''), NULLIF(split_part(bp.full_name, ' ', 1), ''))
+      ELSE NULL
+    END,
+    'rebook_rules', (SELECT cy.settings->>'rebook_rules' FROM public.cycles cy WHERE cy.id = s.cyclus_id),
+    'rebook_claim_info', (SELECT cy.settings->>'rebook_claim_info' FROM public.cycles cy WHERE cy.id = s.cyclus_id),
+    'rebook_payment_mode', (
+      SELECT CASE WHEN cy.settings->>'rebook_payment_mode' = 'upfront' THEN 'upfront' ELSE 'deferred_split' END
+      FROM public.cycles cy WHERE cy.id = s.cyclus_id
+    ),
+    'split_payment', (
+      SELECT COALESCE((cy.settings->>'split_payment')::boolean, false)
+      FROM public.cycles cy WHERE cy.id = s.cyclus_id
+    )
+  )
+  INTO result
+  FROM public.slot_priority_claims c
+  JOIN public.availability_slots s ON s.id = c.slot_id
+  LEFT JOIN public.profiles p ON p.id = c.player_id
+  LEFT JOIN public.guest_players gp ON gp.id = c.guest_player_id
+  LEFT JOIN public.profiles bp ON bp.id = c.booked_by_player_id
+  LEFT JOIN public.guest_players bgp ON bgp.id = c.booked_by_guest_player_id
+  WHERE c.claim_token = _token
+  LIMIT 1;
+
+  RETURN result;
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_priority_claim_by_token(text) IS
+  'ABC-20: supplies player_id and guest_player_id so the caller resolves the claimant guest-first (personRefOf), and names the claimant guest-first — a dual-key claim is the GUEST''s seat.';
+
+-- ── 3. the resume-payment boundary is guest-first ────────────────────────────────────────────
+-- Both branches tested `c.player_id IS NOT NULL` FIRST, so a DUAL-KEY guest token resolved to
+-- the profile and could be handed the public_token of a PURE-PROFILE invoice — a different
+-- person's payment page, complete with their amount and their seats.
+--
+-- Now: guest present → match invoices by guest_player_id; else pure-profile, and the invoice must
+-- itself be pure (i.guest_player_id IS NULL) so the profile branch cannot reach a guest's
+-- dual-key invoice either. Neither present → fail closed.
+CREATE OR REPLACE FUNCTION public.get_unpaid_rebook_invoice_by_claim_token(_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  c public.slot_priority_claims%ROWTYPE;
+  v_cyclus_id uuid;
+  v_inv public.invoices%ROWTYPE;
+  v_gid uuid;
+  v_pid uuid;
+BEGIN
+  SELECT * INTO c FROM public.slot_priority_claims WHERE claim_token = _token LIMIT 1;
+  IF NOT FOUND THEN RETURN NULL; END IF;
+
+  -- guest-first resolution, once
+  v_gid := c.guest_player_id;
+  v_pid := CASE WHEN c.guest_player_id IS NOT NULL THEN NULL ELSE c.player_id END;
+  IF v_gid IS NULL AND v_pid IS NULL THEN RETURN NULL; END IF;   -- fail closed
+
+  IF c.rebook_group_id IS NOT NULL THEN
+    SELECT i.* INTO v_inv FROM public.invoices i
+    WHERE i.rebook_group_id = c.rebook_group_id
+      AND ((v_gid IS NOT NULL AND i.guest_player_id = v_gid)
+        OR (v_pid IS NOT NULL AND i.player_id = v_pid AND i.guest_player_id IS NULL))
+      AND i.status NOT IN ('paid', 'cancelled', 'draft')
+      AND i.public_token IS NOT NULL
+      AND i.public_token_revoked_at IS NULL
+    ORDER BY i.created_at DESC
+    LIMIT 1;
+  ELSE
+    SELECT s.cyclus_id INTO v_cyclus_id FROM public.availability_slots s WHERE s.id = c.slot_id;
+    IF v_cyclus_id IS NULL THEN RETURN NULL; END IF;
+    SELECT i.* INTO v_inv FROM public.invoices i
+    WHERE i.rebook_cyclus_id = v_cyclus_id
+      AND ((v_gid IS NOT NULL AND i.guest_player_id = v_gid)
+        OR (v_pid IS NOT NULL AND i.player_id = v_pid AND i.guest_player_id IS NULL))
+      AND i.status NOT IN ('paid', 'cancelled', 'draft')
+      AND i.public_token IS NOT NULL
+      AND i.public_token_revoked_at IS NULL
+    ORDER BY i.created_at DESC
+    LIMIT 1;
+  END IF;
+
+  IF NOT FOUND THEN RETURN NULL; END IF;
+  RETURN jsonb_build_object('public_token', v_inv.public_token, 'status', v_inv.status);
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_unpaid_rebook_invoice_by_claim_token(text) IS
+  'ABC-20: guest-first. A dual-key guest token matches invoices by guest_player_id and can never be handed a PURE-PROFILE invoice''s public_token; the profile branch requires the invoice itself be pure. Neither identity ⇒ NULL.';
+
+-- ── install assertions ──────────────────────────────────────────────────────────────────────
+DO $$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_priority_claim_by_token';
+  IF v_src !~ '''player_id'', c\.player_id' OR v_src !~ '''guest_player_id'', c\.guest_player_id' THEN
+    RAISE EXCEPTION 'ABC-20: get_priority_claim_by_token must expose both identity columns';
+  END IF;
+  IF v_src !~ 'COALESCE\(gp\.full_name, p\.full_name\)' THEN
+    RAISE EXCEPTION 'ABC-20: get_priority_claim_by_token must name the claimant guest-first';
+  END IF;
+
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_unpaid_rebook_invoice_by_claim_token';
+  -- the profile branch must never reach a dual-key invoice
+  IF v_src !~ 'i\.player_id = v_pid AND i\.guest_player_id IS NULL' THEN
+    RAISE EXCEPTION 'ABC-20: the resume-payment profile branch must require a PURE-PROFILE invoice';
+  END IF;
+  IF v_src ~ 'c\.player_id IS NOT NULL AND i\.player_id = c\.player_id' THEN
+    RAISE EXCEPTION 'ABC-20: the resume-payment boundary is still profile-first';
+  END IF;
+END $$;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────

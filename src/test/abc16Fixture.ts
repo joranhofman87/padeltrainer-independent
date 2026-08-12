@@ -153,8 +153,12 @@ export const STUB_SQL = /* sql */ `
   CREATE TABLE IF NOT EXISTS public.availability_slots (
     id uuid PRIMARY KEY, academy_profile_id uuid, trainer_id uuid, location_id uuid,
     cyclus_id uuid, source_cycle_id uuid, start_time timestamptz DEFAULT now(),
-    end_time timestamptz
+    end_time timestamptz,
+    -- columns the claim-by-token payload projects (their own migrations own them upstream)
+    cyclus_name text, price_per_session numeric, total_price numeric,
+    max_participants integer, priority_window_ends_at timestamptz
   );
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS booking_tier text;
   CREATE TABLE IF NOT EXISTS public.bookings (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid,
     guest_player_id uuid, player_id uuid,
@@ -287,6 +291,11 @@ export const STUB_SQL = /* sql */ `
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status text;
   -- ABC-20 keys its two partial indexes on this column (20260705130000 owns it upstream).
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS rebook_cyclus_id uuid;
+  -- resume-payment columns the token boundary reads (their own migrations own them upstream)
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS rebook_group_id uuid;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS public_token text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS public_token_revoked_at timestamptz;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
   -- the profile-first index ABC-20 replaces, so the swap is exercised rather than assumed
   CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_rebook_cyclus_claimant
     ON public.invoices (rebook_cyclus_id, COALESCE(player_id, guest_player_id))
