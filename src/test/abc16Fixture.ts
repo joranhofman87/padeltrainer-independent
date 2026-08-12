@@ -357,6 +357,12 @@ export const STUB_SQL = /* sql */ `
   -- A3 reads these on the claim/slot side; the shipped migrations own them upstream.
   ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS status text DEFAULT 'pending';
   ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS claim_token text;
+  -- Pass B §2 needs the auto-reminder producer's real due-window columns, or its WHERE clause
+  -- would silently match nothing and every §2 assertion would pass vacuously.
+  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS start_time timestamptz;
+  ALTER TABLE public.cycles ADD COLUMN IF NOT EXISTS name text;
   ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS rebook_group_id uuid;
   ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS cyclus_name text;
   ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS price_per_session numeric;

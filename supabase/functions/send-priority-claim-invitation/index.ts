@@ -33,7 +33,7 @@ interface ClaimRow {
   guest_player_id: string | null;
   rebook_group_id: string | null;
   profiles: { full_name: string | null; email: string | null } | null;
-  guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
+  guest_players: { full_name: string | null; email: string | null } | null;
 }
 
 const escapeHtml = (s: string) =>
@@ -191,13 +191,13 @@ const handler = async (req: Request): Promise<Response> => {
       // would never converge). Slots are batched by 200 to bound the .in() list; claims within each
       // batch are KEYSET-paginated by claim id (Codex round-7 #4) — stable against pending claims
       // changing status mid-read, and no >1000-row truncation.
-      type RepClaim = { id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null; linked_profile: { email: string | null } | null } | null };
+      type RepClaim = { id: string; invited_at: string | null; slot_id: string; player_id: string | null; guest_player_id: string | null; rebook_group_id: string | null; availability_slots: { start_time: string } | null; profiles: { email: string | null } | null; guest_players: { email: string | null } | null };
       const { rows: repClaimsRaw, error: rcErr } = await fetchAllInChunks<RepClaim>(
         cycleSlotIds,
         (slotChunk, after, limit) => {
           let q = supabase
             .from("slot_priority_claims")
-            .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email, linked_profile:linked_profile_id(email))")
+            .select("id, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, availability_slots:slot_id(start_time), profiles:player_id(email), guest_players:guest_player_id(email)")
             .in("slot_id", slotChunk)
             .eq("status", "pending");
           if (after) q = q.gt("id", after);
@@ -302,7 +302,7 @@ const handler = async (req: Request): Promise<Response> => {
     let query = supabase
       .from("slot_priority_claims")
       .select(
-        "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))"
+        "id, claim_token, status, invited_at, slot_id, player_id, guest_player_id, rebook_group_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)"
       );
     if (cycleCandidateIds) query = query.in("id", cycleCandidateIds);
     else if (authorizedIds) query = query.in("id", authorizedIds);

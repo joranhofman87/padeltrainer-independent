@@ -39,31 +39,30 @@ export const recipientKey = (r: { player_id: string | null; guest_player_id: str
 const keyOf = recipientKey;
 
 /**
- * Contact lookups for member-open recipients. Guest identity/account come from the GUEST's OWN
- * verified relationships (person_links → twin_of_profile_id → linked_profile_id, split-freeze) —
- * resolved in SQL by `resolve_guest_member_contacts`, matching `can_book_member_window`. The claim's
- * dual-key player_id is NOT an input here: it is not proof of an account.
+ * Contact lookups for member-open recipients (Pass B §2).
+ *
+ * A guest is reached at the guest's OWN address only. The account maps this interface used to
+ * carry are GONE rather than merely unread — leaving them in place would let one edit re-open the
+ * routing that sent a member-open invitation to whoever once shared an address with the guest.
+ * The claim's dual-key player_id is not an input either.
  */
 export interface MemberOpenContactMaps {
   profileName: Map<string, string>;       // profileId -> name (pure-profile recipient)
   profileEmail: Map<string, string>;      // profileId -> email
   guestOwnName: Map<string, string>;      // guestId -> the guest's OWN name
   guestOwnEmail: Map<string, string>;     // guestId -> the guest's OWN email
-  guestAccountName: Map<string, string>;  // guestId -> verified account profile name (blank-name fallback)
-  guestAccountEmail: Map<string, string>; // guestId -> verified account profile email
-  guestHasAccount: Set<string>;           // guestIds with a VERIFIED account (person_links/twin/linked, not split-frozen)
 }
 
 /**
- * Resolve a member-open recipient's contact, GUEST-FIRST (FAM-02), matching booking authorization.
+ * Resolve a member-open recipient's contact, GUEST-FIRST (FAM-02).
  *
- * For a GUEST recipient (guest_player_id set), the claim's player_id is IGNORED — identity + account
- * are the guest's own:
- *   name        — the guest's OWN name; the verified account's name is the blank-name fallback.
- *   email       — the guest's OWN address, then the VERIFIED account profile's email.
- *   needsSignup — NOT has_account, decided from the verified relationship INDEPENDENTLY of which
- *                 address received the message (a linked/twin/person-linked guest never gets a
- *                 "create an account" CTA; a genuinely accountless guest does).
+ * For a GUEST recipient the claim's player_id is IGNORED; identity is the guest's own:
+ *   name        — the guest's OWN name, blank if they have none.
+ *   email       — the guest's OWN address. No account fallback.
+ *   needsSignup — always true for a guest. Whether a guest "already has an account" was decided
+ *                 by the legacy bridge, which cannot answer it truthfully, so the honest position
+ *                 is that we do not know and everyone is offered the signup CTA. This is a
+ *                 deliberate, recorded product loss; it misroutes nothing.
  * For a pure PROFILE recipient (guest_player_id null): its own email, never needs signup.
  *
  * Returns null when no deliverable email exists (the caller drops the recipient). Pure — unit-tested.
@@ -74,10 +73,10 @@ export function resolveMemberOpenContact(
 ): { name: string; email: string; needsSignup: boolean } | null {
   const gid = ref.guest_player_id ?? null;
   if (gid) {
-    const name = maps.guestOwnName.get(gid) || maps.guestAccountName.get(gid) || "";
-    const email = maps.guestOwnEmail.get(gid) || maps.guestAccountEmail.get(gid) || null;
+    const name = maps.guestOwnName.get(gid) || "";
+    const email = maps.guestOwnEmail.get(gid) || null;
     if (!email) return null;
-    return { name, email, needsSignup: !maps.guestHasAccount.has(gid) };
+    return { name, email, needsSignup: true };
   }
   const pid = ref.player_id ?? null;
   if (pid) {

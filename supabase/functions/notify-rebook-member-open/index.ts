@@ -234,7 +234,7 @@ async function notifyCycle(supabase: any, resendApiKey: string, cycleId: string)
   }
   const maps: MemberOpenContactMaps = {
     profileName: new Map(), profileEmail: new Map(),
-    guestOwnName: new Map(), guestOwnEmail: new Map(), guestAccountName: new Map(), guestAccountEmail: new Map(), guestHasAccount: new Set(),
+    guestOwnName: new Map(), guestOwnEmail: new Map(),
   };
   for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null; email: string | null }>) {
     maps.profileName.set(p.id, (p.full_name ?? "").trim());
@@ -243,11 +243,11 @@ async function notifyCycle(supabase: any, resendApiKey: string, cycleId: string)
   for (
     const g of (guestContacts ?? []) as Array<{ guest_id: string; own_name: string | null; own_email: string | null; account_name: string | null; account_email: string | null; has_account: boolean }>
   ) {
+    // Pass B §2: the guest's OWN attributes only. The RPC still returns account_* columns (its
+    // shape is unchanged and they are always null now), and they are deliberately not read — a
+    // guest is not reachable through whoever once shared their address.
     if (g.own_name?.trim()) maps.guestOwnName.set(g.guest_id, g.own_name.trim());
     if (g.own_email?.trim()) maps.guestOwnEmail.set(g.guest_id, g.own_email.trim());
-    if (g.account_name?.trim()) maps.guestAccountName.set(g.guest_id, g.account_name.trim());
-    if (g.account_email?.trim()) maps.guestAccountEmail.set(g.guest_id, g.account_email.trim());
-    if (g.has_account) maps.guestHasAccount.add(g.guest_id);
   }
   const recipients = audience
     .map((a) => {

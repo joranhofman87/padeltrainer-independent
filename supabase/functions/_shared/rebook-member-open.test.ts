@@ -167,45 +167,57 @@ Deno.test("FAM-02: existing pure-profile + guest-only persisted keys stay byte-f
 
 const emptyMaps = (): MemberOpenContactMaps => ({
   profileName: new Map(), profileEmail: new Map(),
-  guestOwnName: new Map(), guestOwnEmail: new Map(), guestAccountName: new Map(), guestAccountEmail: new Map(),
-  guestHasAccount: new Set(),
+  guestOwnName: new Map(), guestOwnEmail: new Map(),
 });
 
-Deno.test("FAM-02 contact: a dual-key child's OWN name + email win; a verified account → no signup", () => {
+Deno.test("Pass B §2: a dual-key child is reached at their OWN name and email", () => {
   const m = emptyMaps();
   m.guestOwnName.set("child", "Child"); m.guestOwnEmail.set("child", "child@x.com");
-  m.guestHasAccount.add("child"); // resolved account (person_links/twin/linked)
   assertEquals(
     resolveMemberOpenContact({ player_id: "parent", guest_player_id: "child" }, m),
-    { name: "Child", email: "child@x.com", needsSignup: false },
+    { name: "Child", email: "child@x.com", needsSignup: true },
   );
 });
 
-Deno.test("FAM-02 contact: the VERIFIED ACCOUNT email is the fallback when the guest has no own email (account name is the blank-name fallback)", () => {
+Deno.test("Pass B §2: a guest with NO own email is unresolved — never an inherited account address", () => {
   const m = emptyMaps();
-  m.guestAccountName.set("g5", "Account Holder"); m.guestAccountEmail.set("g5", "account@x.com");
-  m.guestHasAccount.add("g5"); // no own name/email
+  // the account arms are gone entirely, so there is nothing to fall back to
+  m.profileEmail.set("some-account", "account@x.com");
+  assertEquals(resolveMemberOpenContact({ player_id: "some-account", guest_player_id: "g5" }, m), null);
+});
+
+Deno.test("Pass B §2: two guests sharing one stale account stay separate, each at their own address", () => {
+  const m = emptyMaps();
+  m.guestOwnName.set("gA", "Alpha"); m.guestOwnEmail.set("gA", "alpha@x.com");
+  m.guestOwnName.set("gB", "Beta"); m.guestOwnEmail.set("gB", "beta@x.com");
+  const a = resolveMemberOpenContact({ player_id: "shared", guest_player_id: "gA" }, m);
+  const b = resolveMemberOpenContact({ player_id: "shared", guest_player_id: "gB" }, m);
+  assertEquals(a, { name: "Alpha", email: "alpha@x.com", needsSignup: true });
+  assertEquals(b, { name: "Beta", email: "beta@x.com", needsSignup: true });
+});
+
+Deno.test("Pass B §2: a guest's blank name is NOT filled in from an account", () => {
+  const m = emptyMaps();
+  m.guestOwnEmail.set("g6", "new@x.com");   // no own name
+  m.profileName.set("acct", "Account Holder");
   assertEquals(
-    resolveMemberOpenContact({ player_id: null, guest_player_id: "g5" }, m),
-    { name: "Account Holder", email: "account@x.com", needsSignup: false },
+    resolveMemberOpenContact({ player_id: "acct", guest_player_id: "g6" }, m),
+    { name: "", email: "new@x.com", needsSignup: true },
   );
 });
 
-Deno.test("FAM-02 contact: a genuinely accountless guest (own email, no verified account) gets the SIGNUP CTA", () => {
+Deno.test("RETAINED: a pure-profile recipient keeps direct profile contact and never needs signup", () => {
   const m = emptyMaps();
-  m.guestOwnName.set("g6", "New Guest"); m.guestOwnEmail.set("g6", "new@x.com"); // no guestHasAccount
+  m.profileName.set("p1", "Real Player"); m.profileEmail.set("p1", "player@x.com");
   assertEquals(
-    resolveMemberOpenContact({ player_id: null, guest_player_id: "g6" }, m),
-    { name: "New Guest", email: "new@x.com", needsSignup: true },
+    resolveMemberOpenContact({ player_id: "p1", guest_player_id: null }, m),
+    { name: "Real Player", email: "player@x.com", needsSignup: false },
   );
 });
 
-Deno.test("FAM-02 contact PROOF: a raw dual-key player_id is NOT proof of account — no verified account → SIGNUP, and player_id's email is never used", () => {
-  // player_id is present (the legacy dual-key link) but the guest has NO verified account
-  // (person_links/twin/linked). needsSignup must be true and the address must be the guest's OWN,
-  // never the raw player_id profile's.
+Deno.test("Pass B §2 PROOF: a raw dual-key player_id is never used to reach a guest", () => {
   const m = emptyMaps();
-  m.guestOwnName.set("child", "Child"); m.guestOwnEmail.set("child", "child@x.com"); // guestHasAccount NOT set
+  m.guestOwnName.set("child", "Child"); m.guestOwnEmail.set("child", "child@x.com");
   m.profileEmail.set("unverified-parent", "parent@x.com"); // present but MUST be ignored for a guest
   assertEquals(
     resolveMemberOpenContact({ player_id: "unverified-parent", guest_player_id: "child" }, m),

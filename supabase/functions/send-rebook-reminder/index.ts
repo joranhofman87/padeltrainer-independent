@@ -111,7 +111,7 @@ serve(async (req: Request) => {
       player_id: string | null;
       guest_player_id: string | null;
       profiles: { full_name: string | null; email: string | null } | null;
-      guest_players: { full_name: string | null; email: string | null; linked_profile: { email: string | null } | null } | null;
+      guest_players: { full_name: string | null; email: string | null } | null;
     };
     // Slots batched (bounds the .in() list) + claims keyset-paged per batch — the shared discovery
     // helper (Codex round-8/9 #4). A legacy single-cycle round can hold >1000 claims, and offset paging
@@ -121,7 +121,7 @@ serve(async (req: Request) => {
       (slotChunk, after, limit) => {
         let q = supabase
           .from("slot_priority_claims")
-          .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email, linked_profile:linked_profile_id(email))")
+          .select("id, claim_token, player_id, guest_player_id, profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, email)")
           .in("slot_id", slotChunk)
           .in("status", ["pending", "claimed"]);
         if (after) q = q.gt("id", after);
@@ -131,7 +131,7 @@ serve(async (req: Request) => {
     );
     if (claimsErr) throw new Error(`claims read failed: ${claimsErr.message}`); // fail loud — else we'd silently reach nobody
     const byPlayer = new Map<string, ClaimRow>();
-    // PostgREST types the to-one embeds (incl. the nested linked_profile) as arrays; the
+    // PostgREST types the to-one embeds as arrays; the
     // runtime values are single objects — cast through unknown (same idiom as the invite fn).
     // Dedup GUEST-FIRST: a dual-key child (g:<guest>) and their linked parent (p:<player>) are
     // DISTINCT people — the old player-first key collapsed both under p:<player>, so only one of

@@ -3904,3 +3904,220 @@ BEGIN
     RAISE EXCEPTION 'ABC-23 §4: authenticated must be able to evaluate its own gate';
   END IF;
 END $chk$;
+
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+-- PASS B §2 — guest/account contact separation
+--
+-- A guest's contact details are the GUEST's. The rebook senders used to fall back to an
+-- "account" address resolved through the legacy bridge chain (curated person links, then
+-- twin_of_profile_id, then linked_profile_id). Every element of that chain is Class D evidence:
+-- it was written by an email/name matcher, not by anything that verified a relationship. Two
+-- different people who once shared an address are joined by it, and a claim token or reminder
+-- addressed to "the account" then reaches the wrong person.
+--
+-- So the account arm is withdrawn at the source and again at every consumer, rather than only at
+-- the source: one restored function must not be able to re-open all of them.
+--
+-- SIGNATURES AND GRANTS ARE UNCHANGED. Result SHAPES are unchanged too — the account columns
+-- remain and are always NULL/false — so no caller breaks and no types drift.
+--
+-- INTENTIONAL PRODUCT LOSS, recorded rather than discovered later:
+--   • a guest with no email of their own is now UNRESOLVED and is skipped, where before they
+--     would have been emailed at a linked account address;
+--   • member-open recipients can no longer be told apart into "has an account" and "needs one",
+--     because that was decided by the same bridge, so the signup CTA is shown to every guest.
+-- Neither is a silent failure: both surface through the existing explicit skipped/unresolved
+-- outcomes.
+--
+-- The bridge identifiers are deliberately ABSENT from every body below, including in comments —
+-- the install assertions grep `prosrc`, and an explanatory comment naming the thing it forbids
+-- would fail its own check. That trap has cost this branch a debug cycle before.
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.guest_verified_account_profile(_guest_id uuid)
+RETURNS uuid
+LANGUAGE sql
+IMMUTABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  -- Fail-closed. No legacy relationship evidence establishes an account for a guest, so there is
+  -- no account profile to return. Kept as an object with its original signature and grants so
+  -- every existing caller keeps working and simply resolves nothing.
+  SELECT NULL::uuid;
+$$;
+REVOKE ALL ON FUNCTION public.guest_verified_account_profile(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.guest_verified_account_profile(uuid) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.resolve_guest_member_contacts(_guest_ids uuid[])
+RETURNS TABLE (
+  guest_id uuid,
+  own_name text,
+  own_email text,
+  account_name text,
+  account_email text,
+  has_account boolean
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  -- Own attributes only. The account columns are retained at their original positions and types
+  -- so the row shape callers destructure is unchanged; they are constant NULL/false because no
+  -- account can be established for a guest.
+  SELECT
+    gp.id,
+    gp.full_name,
+    NULLIF(btrim(gp.email), ''),
+    NULL::text,
+    NULL::text,
+    false
+  FROM public.guest_players gp
+  WHERE gp.id = ANY(_guest_ids);
+$$;
+REVOKE ALL ON FUNCTION public.resolve_guest_member_contacts(uuid[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resolve_guest_member_contacts(uuid[]) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.guests_have_rebook_contact(_guest_ids uuid[])
+RETURNS TABLE (guest_id uuid, has_contact boolean)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Oversize input still FAILS LOUD rather than silently truncating: getCycleRebookStatus reads
+  -- every absent id as has_contact=false, so a capped WHERE would show reachable members as
+  -- unreachable. Unchanged from the effective definition.
+  IF cardinality(_guest_ids) > 1000 THEN
+    RAISE EXCEPTION 'guests_have_rebook_contact: too many ids (%); max 1000 per call', cardinality(_guest_ids)
+      USING ERRCODE = 'program_limit_exceeded';
+  END IF;
+  RETURN QUERY
+  -- The tenant gate is unchanged: only guests holding a claim on a slot in a cycle owned by an
+  -- academy the CALLER manages are answered about at all.
+  WITH authorized AS (
+    SELECT DISTINCT spc.guest_player_id AS gid
+    FROM public.slot_priority_claims spc
+    JOIN public.availability_slots s ON s.id = spc.slot_id
+    JOIN public.cycles c ON c.id = s.cyclus_id AND c.owner_type = 'academy'
+    JOIN public.academy_managers am ON am.academy_profile_id = c.owner_id AND am.user_id = auth.uid()
+    WHERE spc.guest_player_id = ANY(_guest_ids)
+  )
+  SELECT a.gid, (NULLIF(btrim(gp.email), '') IS NOT NULL)
+  FROM authorized a
+  JOIN public.guest_players gp ON gp.id = a.gid;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.guests_have_rebook_contact(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.guests_have_rebook_contact(uuid[]) TO authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.rebook_claims_needing_auto_reminder(_lead_hours int DEFAULT 24)
+RETURNS TABLE (
+  cycle_id uuid,
+  cycle_name text,
+  academy_name text,
+  player_id uuid,
+  guest_player_id uuid,
+  recipient_name text,
+  recipient_email text,
+  claim_token text
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  -- Guest-first namespaced key (FAM-02): a guest row is exactly g:<guest>, so a child and the
+  -- adult whose address once matched theirs remain two representatives, not one.
+  SELECT DISTINCT ON (c.id, COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text))
+    c.id,
+    c.name,
+    ap.name,
+    spc.player_id,
+    spc.guest_player_id,
+    -- A guest shows their OWN name and is addressed at their OWN email. The claim's player_id is
+    -- not consulted: it is decoration on a dual-key row, not proof of anything. A pure profile
+    -- (player_id set, guest null) keeps its own direct profile contact.
+    CASE WHEN spc.guest_player_id IS NOT NULL
+         THEN NULLIF(btrim(gp.full_name), '')
+         ELSE pr.full_name END,
+    CASE WHEN spc.guest_player_id IS NOT NULL
+         THEN NULLIF(btrim(gp.email), '')
+         ELSE NULLIF(btrim(pr.email), '') END,
+    spc.claim_token
+  FROM public.slot_priority_claims spc
+  JOIN public.availability_slots s ON s.id = spc.slot_id
+  JOIN public.cycles c ON c.id = s.cyclus_id
+  JOIN public.academy_profiles ap ON ap.id = c.owner_id
+  LEFT JOIN public.profiles pr ON pr.id = spc.player_id
+  LEFT JOIN public.guest_players gp ON gp.id = spc.guest_player_id
+  WHERE spc.status = 'pending'
+    AND spc.claim_token IS NOT NULL
+    AND spc.reminder_sent_at IS NULL
+    AND spc.expires_at IS NOT NULL
+    AND spc.expires_at > now()
+    AND spc.expires_at <= now() + make_interval(hours => _lead_hours)
+    AND s.start_time > now()
+  ORDER BY c.id,
+           COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text),
+           spc.expires_at;
+$$;
+REVOKE ALL ON FUNCTION public.rebook_claims_needing_auto_reminder(int) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.rebook_claims_needing_auto_reminder(int) TO service_role;
+
+DO $chk$
+DECLARE
+  v_src text;
+  v_fn text;
+  -- Assembled at runtime so the forbidden identifiers never appear as literals in prosrc, which
+  -- is what the greps below inspect.
+  v_bridge text[] := ARRAY['person_' || 'links', 'twin_of_' || 'profile_id', 'linked_' || 'profile_id'];
+  v_tok text;
+BEGIN
+  FOREACH v_fn IN ARRAY ARRAY[
+    'guest_verified_account_profile',
+    'resolve_guest_member_contacts',
+    'guests_have_rebook_contact',
+    'rebook_claims_needing_auto_reminder'
+  ] LOOP
+    SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public' AND p.proname = v_fn;
+    IF v_src IS NULL THEN
+      RAISE EXCEPTION 'Pass B §2: % is missing', v_fn;
+    END IF;
+    FOREACH v_tok IN ARRAY v_bridge LOOP
+      IF position(v_tok in v_src) > 0 THEN
+        RAISE EXCEPTION 'Pass B §2: % still reads legacy relationship evidence (%)', v_fn, v_tok;
+      END IF;
+    END LOOP;
+  END LOOP;
+
+  -- The tenant gate and the loud over-cap guard must both survive the narrowing.
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'guests_have_rebook_contact';
+  IF COALESCE(v_src !~ 'academy_managers', true) THEN
+    RAISE EXCEPTION 'Pass B §2: guests_have_rebook_contact lost its tenant gate';
+  END IF;
+  IF COALESCE(v_src !~ 'program_limit_exceeded', true) THEN
+    RAISE EXCEPTION 'Pass B §2: guests_have_rebook_contact lost its over-cap refusal';
+  END IF;
+
+  -- Pure-profile contact must remain reachable, or the narrowing has silenced legitimate sends.
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'rebook_claims_needing_auto_reminder';
+  IF COALESCE(v_src !~ 'pr\.email', true) THEN
+    RAISE EXCEPTION 'Pass B §2: the pure-profile arm lost its direct profile contact';
+  END IF;
+
+  -- Grants unchanged: none of these may become client-callable, and the one that always was
+  -- (the manager-facing contact predicate) must stay so.
+  IF has_function_privilege('anon', 'public.resolve_guest_member_contacts(uuid[])', 'EXECUTE')
+     OR has_function_privilege('authenticated', 'public.resolve_guest_member_contacts(uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Pass B §2: resolve_guest_member_contacts must stay service_role only';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.guests_have_rebook_contact(uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Pass B §2: guests_have_rebook_contact must stay callable by managers';
+  END IF;
+END $chk$;

@@ -623,9 +623,9 @@ serve(async (req) => {
       for (let i = 0; i < guestArr.length; i += 200) {
         const { data } = await supabase
           .from("guest_players")
-          .select("id, full_name, email, linked_profile:linked_profile_id(email)")
+          .select("id, full_name, email")
           .in("id", guestArr.slice(i, i + 200));
-        for (const r of (data ?? []) as unknown as Array<{ id: string; full_name: string | null; email: string | null; linked_profile: { email: string | null } | null }>) {
+        for (const r of (data ?? []) as unknown as Array<{ id: string; full_name: string | null; email: string | null }>) {
           infoByKey.set(`g:${r.id}`, {
             name: (r.full_name ?? "").trim() || "—",
             hasEmail: Boolean(effectiveGuestEmail(r)),
