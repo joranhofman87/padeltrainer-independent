@@ -172,6 +172,9 @@ export const STUB_SQL = /* sql */ `
   CREATE TABLE IF NOT EXISTS public.intake_requests (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), player_id uuid, guest_player_id uuid, status text
   );
+  -- RLS + the shipped player/slot-owner policies live in 20260506080606; that migration also
+  -- creates the table, so the stub below is guarded and the policies are added here instead of
+  -- pulling in an early, unrelated chain.
   CREATE TABLE IF NOT EXISTS public.slot_priority_claims (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid,
     guest_player_id uuid, booked_by_player_id uuid, booked_by_guest_player_id uuid,
@@ -261,6 +264,19 @@ export const STUB_SQL = /* sql */ `
   CREATE OR REPLACE FUNCTION public.can_current_user_book_member_window(_cycle_id uuid)
   RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
 
+  -- Tier helpers can_book_slot calls. Their own chain is unrelated to A3; these reproduce the
+  -- shape it depends on (tier from the slot column, cutoff off by default).
+  CREATE OR REPLACE FUNCTION public.resolve_slot_booking_tier(_slot_id uuid)
+  RETURNS text LANGUAGE plpgsql STABLE AS $fn$
+  DECLARE v text;
+  BEGIN
+    SELECT coalesce(booking_tier, 'public') INTO v FROM public.availability_slots WHERE id = _slot_id;
+    RETURN coalesce(v, 'public');
+  END; $fn$;
+
+  CREATE OR REPLACE FUNCTION public.is_slot_within_player_booking_cutoff(_slot_id uuid)
+  RETURNS boolean LANGUAGE sql STABLE AS $fn$ SELECT false $fn$;
+
   -- Search folding used by get_players_overview. Same contract as production (case/diacritic
   -- folding); the ABC suites assert scope, not collation subtleties.
   CREATE OR REPLACE FUNCTION public.fold_search_text(_t text)
@@ -298,6 +314,23 @@ export const STUB_SQL = /* sql */ `
   -- policy, an UPDATE ... WHERE cannot find its rows at all, so a reassignment attempt reports
   -- "0 rows changed" and would read as "correctly refused" no matter what the guard does.
   -- Defined last because it calls get_user_academy_ids, declared just above.
+  -- The shipped slot_priority_claims policies (20260506080606). Reproduced here rather than
+  -- applying that early migration, which creates unrelated rebook scaffolding. The PLAYER one is
+  -- the pre-correction shape on purpose: the containment re-emits it, and starting from the
+  -- narrowed form would make the correction untestable.
+  ALTER TABLE public.slot_priority_claims ENABLE ROW LEVEL SECURITY;
+  CREATE POLICY "Players read own priority claims"
+    ON public.slot_priority_claims FOR SELECT TO authenticated
+    USING (player_id = public.get_profile_id_for_user(auth.uid()));
+  CREATE POLICY "Slot owners manage priority claims"
+    ON public.slot_priority_claims FOR ALL TO authenticated
+    USING (EXISTS (
+      SELECT 1 FROM public.availability_slots s
+      WHERE s.id = slot_priority_claims.slot_id
+        AND (s.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid()))
+          OR s.trainer_id IN (SELECT tp.id FROM public.trainer_profiles tp WHERE tp.user_id = auth.uid()))
+    ));
+
   CREATE POLICY "abc16 fixture: academy managers read bookings on their slots"
     ON public.bookings FOR SELECT TO authenticated
     USING (EXISTS (

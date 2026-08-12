@@ -1619,6 +1619,79 @@ COMMENT ON FUNCTION public.can_book_member_window(uuid, uuid) IS
   'ABC-18 A3: a pure-profile seat in the cycle, an explicit pure-profile priority claim, or the cycle''s explicit rebook_priority_people list. The guest-claim and linked-ex-guest arms are withdrawn — both resolved identity through person_links or the twin/linked bridge. Pure authorization gate: it never affects capacity, and window timing is unchanged.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- 8w. A3 correction — the RLS policy and can_book_slot, not just the RPCs.
+-- ─────────────────────────────────────────────────────────────────────────────
+-- A3 narrowed `get_my_pending_priority_claims`, but that reader was never the only way in. The
+-- underlying SELECT policy still matched a raw `player_id`, so a DUAL-KEY claim — one naming a
+-- parent profile alongside a child's guest row — disclosed its `claim_token` straight from the
+-- table. That token is the bearer credential `respond_to_priority_claim` accepts, so the leak
+-- was equivalent to letting the parent accept or decline the child's seat.
+--
+-- The responder is token-authorized and is deliberately left as shipped: closing the disclosure
+-- closes the path, and rewriting a token check would alter unrelated accept/release semantics.
+-- The slot-owner/admin policy is independently valid (it authorizes on slot OWNERSHIP, not on
+-- who the claim names) and is likewise untouched.
+DROP POLICY IF EXISTS "Players read own priority claims" ON public.slot_priority_claims;
+CREATE POLICY "Players read own priority claims"
+  ON public.slot_priority_claims
+  FOR SELECT
+  TO authenticated
+  USING (
+    player_id = public.get_profile_id_for_user(auth.uid())
+    AND guest_player_id IS NULL   -- a dual-key claim belongs to the GUEST, not to this account
+  );
+
+-- `can_book_slot` — the priority tier gate carried the same raw arm, so a dual-key claim also
+-- bought a booking. Re-emitted from its effective definition (20260925100000) with ONLY that
+-- predicate added: tier resolution, the members window, the hidden tier, the booking cutoff and
+-- the return contract are byte-for-byte what shipped. Capacity, status, payment and cancellation
+-- live elsewhere and are untouched.
+CREATE OR REPLACE FUNCTION public.can_book_slot(_slot_id uuid, _user_id uuid)
+RETURNS text
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_tier    text := public.resolve_slot_booking_tier(_slot_id);
+  v_profile uuid := public.get_profile_id_for_user(_user_id);
+  v_src     uuid;
+BEGIN
+  IF v_tier = 'priority' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.slot_priority_claims
+      WHERE slot_id = _slot_id
+        AND player_id = v_profile
+        AND guest_player_id IS NULL      -- ABC-18 A3: pure-profile claims only
+        AND status IN ('pending', 'claimed')
+    ) THEN
+      RETURN 'priority_restricted';
+    END IF;
+
+  ELSIF v_tier = 'members' THEN
+    SELECT source_cycle_id INTO v_src FROM public.availability_slots WHERE id = _slot_id;
+    IF NOT COALESCE(public.can_book_member_window(_user_id, v_src), false) THEN
+      RETURN 'members_only';
+    END IF;
+
+  ELSIF v_tier = 'hidden' THEN
+    RETURN 'slot_not_released';
+  END IF;
+
+  -- Booking cutoff, last: the player may be eligible for this tier and still be too late.
+  IF public.is_slot_within_player_booking_cutoff(_slot_id) THEN
+    RETURN 'booking_cutoff';
+  END IF;
+
+  RETURN '';  -- 'public', or eligible for the current tier
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.can_book_slot(uuid, uuid) IS
+  'ABC-18 A3 correction: the priority tier requires a PURE-PROFILE claim (player_id = me AND guest_player_id IS NULL) — a dual-key claim belongs to the guest. Tier resolution, the members window, the hidden tier, booking cutoff and the return contract are unchanged.';
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Privileges are read back from the SERVER's own catalog rather than compared against a
@@ -1770,6 +1843,21 @@ BEGIN
        AND p.prosrc ~ 'bookings|linked_profile_id|twin_of_profile_id|person_links'
   ) THEN
     RAISE EXCEPTION 'ABC-18: a staff visibility helper still reads a booking or a guest bridge';
+  END IF;
+
+  -- 9e-bis. the priority surfaces admit pure-profile claims only. A restored raw arm shows up
+  --         as a missing guest_player_id null-check in either the policy or the tier gate.
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+     WHERE schemaname = 'public' AND tablename = 'slot_priority_claims'
+       AND policyname = 'Players read own priority claims'
+       AND qual::text ~ 'guest_player_id IS NULL'
+  ) THEN
+    RAISE EXCEPTION 'ABC-18: the player priority-claim policy no longer requires a pure-profile claim';
+  END IF;
+  IF (SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'can_book_slot') !~ 'guest_player_id IS NULL' THEN
+    RAISE EXCEPTION 'ABC-18: can_book_slot no longer requires a pure-profile priority claim';
   END IF;
 
   -- 9e. no authority predicate reads an overlay OR a booking any more.

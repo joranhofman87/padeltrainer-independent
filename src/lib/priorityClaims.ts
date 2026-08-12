@@ -480,6 +480,9 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
       .from('slot_priority_claims')
       .select('id, claim_token, slot_id, rebook_group_id, availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at)')
       .eq('player_id', profileId)
+      // ABC-18 A3: PURE-PROFILE only — a dual-key claim belongs to the guest, and this
+      // fallback selects claim_token, the bearer credential respond_to_priority_claim takes.
+      .is('guest_player_id', null)
       .eq('status', 'pending');
     if (fb.error) throw fb.error;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1090,7 +1093,8 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
         .from('slot_priority_claims')
         .select('claim_token, slot_id, status, booking_id')
         .in('slot_id', cycleSlotIds);
-      if (playerId) myClaimsQuery = myClaimsQuery.eq('player_id', playerId);
+      // ABC-18 A3: pure-profile only, for the same reason as the fallback above.
+      if (playerId) myClaimsQuery = myClaimsQuery.eq('player_id', playerId).is('guest_player_id', null);
       const { data: myClaims } = await myClaimsQuery;
       for (const mc of myClaims || []) {
         if (mc.claim_token === token) continue;

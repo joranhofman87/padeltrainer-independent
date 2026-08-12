@@ -108,7 +108,12 @@ export async function filterVisibleSlotIds(slots: RawSlotForVisibility[]): Promi
           const { data: bookings } = await supabase
             .from('bookings')
             .select('slot_id, status')
-            .eq('player_id', profile.id);
+            .eq('player_id', profile.id)
+            // ABC-18 A3: PURE-PROFILE only. A dual-key row names this profile alongside a
+            // guest and belongs to the guest, so it must not decide what this account sees.
+            // The DB predicates enforce this too; the client filter keeps the fallback from
+            // relying on a staff policy OR-composing its way into player authority.
+            .is('guest_player_id', null);
           const myActiveSlotIds = (bookings || [])
             .filter(b => !['cancelled', 'cancelled_swap'].includes(String(b.status || 'confirmed')))
             .map(b => b.slot_id);
