@@ -4121,3 +4121,725 @@ BEGIN
     RAISE EXCEPTION 'Pass B §2: guests_have_rebook_contact must stay callable by managers';
   END IF;
 END $chk$;
+
+
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+-- PASS B §3 — notification authority, routing and history
+--
+-- Re-emitted from the EFFECTIVE definitions. Signatures, grants, and every unrelated behaviour
+-- (cadence, caps, suppression, digest, occurrence, staff-request delivery, tenant contracts, the
+-- mandatory-recipient and idempotency-subject refusals) are carried over unchanged; only the
+-- identity arms are narrowed.
+--
+-- The whole section is EXECUTEd behind a schema guard. These bodies name notification tables, and
+-- a plpgsql %ROWTYPE / SQL body is resolved at CREATE time, so an environment that legitimately
+-- has no notification schema — the ABC-16 relationship fixture, which models identity and nothing
+-- else — cannot even parse them. Guarding is not the same as skipping quietly: where the schema
+-- IS present the narrowing and its assertions both run, and the last assertion below fails loudly
+-- if the guard was taken while the functions exist un-narrowed.
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+
+DO $outer$
+BEGIN
+  IF to_regclass('public.notification_event_types') IS NULL
+     OR to_regclass('public.notification_outbox') IS NULL THEN
+    RAISE NOTICE 'Pass B §3: no notification schema in this database — section not applied';
+    RETURN;
+  END IF;
+
+  EXECUTE $sql$
+CREATE OR REPLACE FUNCTION public.notif_my_academy_ids()
+RETURNS SETOF uuid
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  -- Pass B §3. Both former arms are withdrawn:
+  --   (1) the BOOKING arm treated "has a seat at one of this academy's trainers" as membership.
+  --       A booking's subject columns are chosen by whoever owns the slot (ABC-17), so that made
+  --       academy membership assignable by a third party.
+  --   (2) the GUEST arm walked the legacy bridge to decide that a guest row belonged to the
+  --       caller's account. That is precisely the evidence this containment withdrew.
+  --
+  -- What remains is the one independently authoritative source that already existed: explicit
+  -- manager membership, the same relation is_academy_manager reads. An ordinary player account
+  -- therefore returns NO academy ids, and the notification history reader that consumes this
+  -- shows them nothing academy-attributed. That is a deliberate, recorded loss of a feature that
+  -- was only ever populated by inadmissible evidence.
+  SELECT DISTINCT am.academy_profile_id
+    FROM public.academy_managers am
+   WHERE am.user_id = auth.uid()
+$$;
+
+CREATE OR REPLACE FUNCTION public.notification_row_visible_to_caller(
+  p_visibility_scope          text,
+  p_tenant_academy_profile_id uuid,
+  p_tenant_trainer_id         uuid,
+  p_recipient_person_id       uuid,
+  p_recipient_user_id         uuid
+) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN public.is_admin(auth.uid()) THEN true
+    WHEN p_visibility_scope = 'admin_only' THEN false
+    -- the recipient's OWN PRIVATE history. Deliberately gated on private_user_only: a
+    -- tenant_visible row must ALWAYS clear the tenant-scope check below, even when it is
+    -- addressed to the caller. Otherwise a malformed / mis-routed row carrying a FOREIGN
+    -- tenant ref would surface purely because the caller's id sits in a recipient column
+    -- (tenant-visible rows belong to their TENANT, not to whoever happens to receive them).
+    -- Staff still see their own staff mail — those rows carry their own academy/trainer and
+    -- pass the tenant arm below.
+    -- Pass B §3: private history is DIRECT only. The "my person" arm expanded self-history to
+    -- everything the legacy bridge had ever joined to the caller's person, so one bad historical
+    -- match handed a stranger's message history to whoever shared it.
+    WHEN p_visibility_scope = 'private_user_only'
+      AND p_recipient_user_id IS NOT NULL AND p_recipient_user_id = auth.uid()
+      THEN true
+    -- tenant staff: tenant-visible rows, and only inside their own tenant scope
+    WHEN p_visibility_scope IN ('tenant_visible', 'tenant_visible_limited')
+      AND (
+        (p_tenant_academy_profile_id IS NOT NULL
+          AND public.is_academy_manager(auth.uid(), p_tenant_academy_profile_id))
+        OR (p_tenant_trainer_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM public.trainer_profiles tp
+                      WHERE tp.id = p_tenant_trainer_id AND tp.user_id = auth.uid()))
+      )
+      THEN true
+    ELSE false
+  END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_player_notification_timeline(
+  p_scope      text DEFAULT NULL,
+  p_scope_id   uuid DEFAULT NULL,
+  p_guest_id   uuid DEFAULT NULL,
+  p_profile_id uuid DEFAULT NULL,
+  p_limit      int  DEFAULT 50
+) RETURNS TABLE (
+  outbox_id            uuid,
+  delivery_event_id    uuid,
+  event_type           text,
+  channel              text,
+  status               text,
+  skip_reason          text,
+  destination_redacted text,
+  public_summary       jsonb,
+  created_at           timestamptz,
+  scheduled_for        timestamptz,
+  sent_at              timestamptz,
+  failed_at            timestamptz,
+  occurred_at          timestamptz
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_guest_ids  uuid[] := '{}';
+  v_profile_id uuid;
+  v_person_id  uuid;
+  v_self       boolean := (p_scope IS NULL);
+BEGIN
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'not authenticated' USING ERRCODE = '42501';
+  END IF;
+
+  IF v_self THEN
+    -- Pass B §3: own private history is exactly the rows addressed to THIS user. No person
+    -- expansion — see notification_row_visible_to_caller for why that arm is gone.
+    v_person_id := NULL;
+  ELSE
+    -- delegates the scope pin + IDOR guard + split-freeze to the existing person-scope reader
+    SELECT r.guest_ids, r.profile_id INTO v_guest_ids, v_profile_id
+    FROM public.get_person_refs_for_scope(p_scope, p_scope_id, p_guest_id, p_profile_id) r;
+    v_guest_ids := coalesce(v_guest_ids, '{}');
+    -- Staff read DIRECTLY OWNED guest ids and tenant-visible rows only. Deriving a person from
+    -- the scope and matching on it pulled in every row the bridge had ever associated with that
+    -- person, including other tenants' and the account holder's own private mail.
+    v_person_id := NULL;
+  END IF;
+
+  RETURN QUERY
+  SELECT o.id, de.id, o.event_type, o.channel, o.status, o.skip_reason,
+         o.destination_redacted, o.public_summary,
+         o.created_at, o.scheduled_for, o.sent_at, o.failed_at, de.occurred_at
+  FROM public.notification_outbox o
+  LEFT JOIN LATERAL (
+    SELECT e.id, e.occurred_at FROM public.email_delivery_events e
+    WHERE e.outbox_id = o.id ORDER BY e.occurred_at DESC, e.created_at DESC LIMIT 1
+  ) de ON true
+  WHERE (
+      CASE WHEN v_self
+        THEN o.recipient_user_id = auth.uid()
+             OR (v_person_id IS NOT NULL AND o.recipient_person_id = v_person_id)
+        ELSE (v_person_id IS NOT NULL AND o.recipient_person_id = v_person_id)
+             OR (array_length(v_guest_ids, 1) IS NOT NULL AND o.recipient_guest_player_id = ANY(v_guest_ids))
+      END
+    )
+    AND public.notification_row_visible_to_caller(
+          o.visibility_scope, o.tenant_academy_profile_id, o.tenant_trainer_id,
+          o.recipient_person_id, o.recipient_user_id)
+  ORDER BY o.created_at DESC
+  LIMIT least(greatest(coalesce(p_limit, 50), 1), 200);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.enqueue_notification(
+  p_event_key                 text,
+  p_recipient_person_id       uuid        DEFAULT NULL,
+  p_recipient_user_id         uuid        DEFAULT NULL,
+  p_recipient_guest_player_id uuid        DEFAULT NULL,
+  p_tenant_academy_profile_id uuid        DEFAULT NULL,
+  p_tenant_trainer_id         uuid        DEFAULT NULL,
+  p_idempotency_subject       text        DEFAULT NULL,
+  p_related_booking_ids       uuid[]      DEFAULT NULL,
+  p_related_invoice_id        uuid        DEFAULT NULL,
+  p_related_payment_id        text        DEFAULT NULL,
+  p_template_key              text        DEFAULT NULL,
+  p_payload                   jsonb       DEFAULT '{}'::jsonb,
+  p_public_summary            jsonb       DEFAULT NULL,
+  p_scheduled_for             timestamptz DEFAULT NULL,
+  -- AUDIT ROUND 2: WHEN THE THING HAPPENED, as distinct from when this row was written. Every
+  -- producer in the closed inventory passes it explicitly (the call-site guard test enforces
+  -- that); it defaults to now() only so a forgotten argument fails safe-and-current rather than
+  -- silently ancient. It is immutable once written and may not be in the future.
+  p_occurred_at               timestamptz DEFAULT NULL
+) RETURNS TABLE (
+  outbox_id              uuid,
+  channel                text,
+  status                 text,
+  skip_reason            text,
+  visibility_scope       text,
+  destination_normalized text,
+  destination_redacted   text,
+  idempotency_key        text,
+  collapse_key           text,
+  recipient_person_id    uuid,
+  public_summary         jsonb,
+  template_key           text,
+  scheduled_for          timestamptz
+)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+#variable_conflict use_column
+DECLARE
+  v_evt              public.notification_event_types%ROWTYPE;
+  v_emitted          uuid[] := '{}';
+  v_row_id           uuid;
+  v_person_id        uuid;
+  v_user_id          uuid;
+  v_guest_id         uuid := p_recipient_guest_player_id;
+  v_subject          text;
+  v_recipient_key    text;
+  v_idem_key         text;
+  v_now              timestamptz := now();
+  v_occurred         timestamptz := coalesce(p_occurred_at, now());
+  v_channel          text;
+  v_supports         boolean;
+  v_default_freq     text;
+  v_freq             text;
+  v_contact          public.notification_contacts%ROWTYPE;
+  v_dest             text;
+  v_dest_redacted    text;
+  v_contact_id       uuid;
+  v_deliverable      boolean;
+  v_any_deliverable  boolean := false;
+  v_email_skip       text;
+  v_cap              text;   -- N3: the academy cap for (tenant, event, channel), if any
+  v_cap_applied      boolean;  -- N3: true when the CAP (not the player) produced the final 'off'
+  v_visibility       text;
+  v_public_summary   jsonb;
+  v_template         text;
+  v_scheduled        timestamptz;
+  v_collapse_key     text;
+  -- 10c-b digest snapshot locals
+  v_is_digest        boolean;
+  v_status           text;
+  v_skip             text;
+  v_delivery_mode    text;
+  v_digest_freq      text;
+  v_tz               text;
+  v_locale           text;
+  v_boundary         timestamptz;
+  v_item             jsonb;
+  v_fingerprint      text;
+  v_prefixed_key     text;
+  v_tmpl_version     int;
+  v_payload_out      jsonb;
+BEGIN
+  -- occurred_at is a PAST tense. A future stamp would sail over every occurrence floor below
+  -- it, so the one way to launder a historical event into a current one is refused here and by
+  -- the table's CHECK constraint (this raise exists to say WHY, not to be the only guard).
+  IF v_occurred > v_now + interval '1 minute' THEN
+    RAISE EXCEPTION 'enqueue_notification: p_occurred_at % is in the future — it records when the event happened, not when the message should be sent (use p_scheduled_for for that)', v_occurred;
+  END IF;
+  -- 1. resolve the event type (config drives every downstream decision)
+  SELECT * INTO v_evt FROM public.notification_event_types WHERE key = p_event_key;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'enqueue_notification: unknown event_type %', p_event_key;
+  END IF;
+
+  -- 2. a recipient is mandatory
+  IF p_recipient_person_id IS NULL AND p_recipient_user_id IS NULL AND p_recipient_guest_player_id IS NULL THEN
+    RAISE EXCEPTION 'enqueue_notification: no recipient (person/user/guest all null) for %', p_event_key;
+  END IF;
+
+  -- 3. FAM-02 identity. There is no normalization "to the one person" any more, because the
+  --    thing that produced that one person was the legacy bridge.
+  --
+  --    A row carrying a guest IS that guest. Any person or user arriving alongside it is
+  --    decoration and is dropped here, so nothing downstream — routing, preferences, contact
+  --    resolution, digest grouping — can address the account instead of the guest.
+  --
+  --    A direct recipient_user_id is kept exactly as given. What is gone is the UPGRADE: a
+  --    person-only input no longer acquires a user id by lookup. Deriving one turns "we know a
+  --    person" into "we know an account to email", which is the same false step in a different
+  --    place.
+  IF v_guest_id IS NOT NULL THEN
+    v_person_id := NULL;
+    v_user_id   := NULL;
+  ELSE
+    v_person_id := p_recipient_person_id;
+    v_user_id   := p_recipient_user_id;
+  END IF;
+
+  -- 4. PER-RECIPIENT idempotency key
+  v_subject := nullif(btrim(coalesce(p_idempotency_subject, '')), '');
+  IF v_subject IS NULL THEN
+    v_subject := CASE
+      WHEN p_related_invoice_id IS NOT NULL THEN 'invoice:' || p_related_invoice_id::text
+      WHEN p_related_payment_id IS NOT NULL THEN 'payment:' || p_related_payment_id
+      WHEN p_related_booking_ids IS NOT NULL AND array_length(p_related_booking_ids, 1) > 0
+        THEN 'bookings:' || (SELECT string_agg(b::text, ',' ORDER BY b) FROM unnest(p_related_booking_ids) AS b)
+      ELSE NULL
+    END;
+  END IF;
+  IF v_subject IS NULL THEN
+    RAISE EXCEPTION 'enqueue_notification: % needs an idempotency subject (pass p_idempotency_subject, or a related invoice/payment/booking ref to derive one)', p_event_key;
+  END IF;
+  -- Namespaced and guest-first. The old key was person-first and un-namespaced, so two
+  -- different guests sharing one stale person collapsed onto ONE idempotency key and the second
+  -- guest's notification was suppressed as a duplicate of the first's.
+  v_recipient_key := CASE
+    WHEN v_guest_id IS NOT NULL THEN 'g:' || v_guest_id::text
+    WHEN v_user_id  IS NOT NULL THEN 'u:' || v_user_id::text
+    ELSE 'p:' || v_person_id::text
+  END;
+  v_idem_key := p_event_key || ':' || v_subject || ':' || v_recipient_key;
+
+  -- 5. tenant-visibility contract
+  v_visibility := v_evt.visibility_scope;
+  IF v_visibility IN ('tenant_visible', 'tenant_visible_limited') THEN
+    IF p_tenant_academy_profile_id IS NULL AND p_tenant_trainer_id IS NULL THEN
+      RAISE EXCEPTION 'enqueue_notification: % is %, but no tenant context was supplied', p_event_key, v_visibility;
+    END IF;
+    v_public_summary := coalesce(p_public_summary, jsonb_build_object('event_type', p_event_key));
+  ELSE
+    v_public_summary := p_public_summary;
+  END IF;
+
+  -- 6. resolve + enqueue per supported channel
+  FOREACH v_channel IN ARRAY ARRAY['email', 'whatsapp', 'push'] LOOP
+    v_supports := CASE v_channel
+      WHEN 'email'    THEN v_evt.supports_email
+      WHEN 'whatsapp' THEN v_evt.supports_whatsapp
+      WHEN 'push'     THEN v_evt.supports_push
+    END;
+    CONTINUE WHEN NOT v_supports;
+
+    -- 6a. preference frequency: prefs_v2 override (needs a login) else event default
+    v_default_freq := CASE v_channel
+      WHEN 'email'    THEN v_evt.default_email_frequency
+      WHEN 'whatsapp' THEN v_evt.default_whatsapp_frequency
+      WHEN 'push'     THEN v_evt.default_push_frequency
+    END;
+    v_freq := NULL;
+    IF v_user_id IS NOT NULL THEN
+      SELECT CASE v_channel
+        WHEN 'email'    THEN email_frequency
+        WHEN 'whatsapp' THEN whatsapp_frequency
+        WHEN 'push'     THEN push_frequency
+      END INTO v_freq
+      FROM public.notification_preferences_v2
+      WHERE user_id = v_user_id AND event_type = p_event_key;
+    END IF;
+    -- WHATSAPP: AN EXPLICIT BOOKING OPT-IN *IS* THE OPT-IN. (Preserved verbatim from
+    -- 20260922100000 — the TRUE pre-C baseline of this function. prefs_v2 is user_id-keyed, so
+    -- a GUEST can never express a cadence and would stay pinned to the 'off' default forever;
+    -- and a logged-in player has no WhatsApp control on required_delivery events. So when the
+    -- person has expressed NO preference, an opted-in IN-SCOPE contact supplies the cadence,
+    -- but only for events flagged whatsapp_optin_via_booking. An EXPLICIT preference still
+    -- wins, INCLUDING 'off'.)
+    IF v_channel = 'whatsapp'
+       AND v_freq IS NULL
+       AND v_evt.whatsapp_optin_via_booking
+       AND public.whatsapp_optin_in_scope(
+             v_person_id, v_user_id, v_guest_id,
+             p_tenant_academy_profile_id, p_tenant_trainer_id) THEN
+      v_freq := 'instant';
+    END IF;
+
+    v_freq := coalesce(v_freq, v_default_freq);
+
+    -- 6a-N3. THE ACADEMY CAP — most-restrictive-wins, NEVER a floor (design contract, thread
+    -- 019fd175). Applied ONLY to optional events (a required event is untouchable by tenants —
+    -- refused at write by M2's trigger AND ignored here, belt and braces), ONLY to
+    -- academy-attributed sends (a trainer-only or global send has no academy to answer to; the
+    -- attribution matrix documents which events those are), and ONLY when it is stricter than
+    -- what the player already chose: a player's own 'off' stays their own decision with their
+    -- own skip reason, and a player's 'weekly' under a 'daily' cap stays 'weekly'.
+    v_cap_applied := false;
+    IF NOT v_evt.required_delivery AND p_tenant_academy_profile_id IS NOT NULL AND v_freq <> 'off' THEN
+      SELECT r.max_frequency INTO v_cap
+        FROM public.academy_notification_restrictions r
+       WHERE r.academy_profile_id = p_tenant_academy_profile_id
+         AND r.event_type = p_event_key AND r.channel = v_channel;
+      IF FOUND AND public.notif_frequency_rank(v_cap) > public.notif_frequency_rank(v_freq) THEN
+        v_freq := v_cap;
+        v_cap_applied := (v_freq = 'off');
+      END IF;
+    END IF;
+
+    -- 6b. required delivery guarantees the EMAIL channel: it can't be off or digested.
+    -- RUNS LAST by contract (finding 7): even a stale cap row surviving a catalog flip to
+    -- required cannot weaken required email.
+    IF v_evt.required_delivery AND v_channel = 'email' THEN
+      v_freq := 'instant';
+    END IF;
+
+    IF v_freq = 'off' THEN
+      IF v_cap_applied THEN
+        -- FINDING 11: a cap-caused 'off' is a TENANT decision and must be visible as one — a
+        -- terminal skipped row, written BEFORE contact resolution (no destination is ever
+        -- resolved for it), tenant-attributed, carrying only the safe public summary. Distinct
+        -- from 'preference_off' so observability and the audit trail stay honest about WHO
+        -- silenced the send. The row consumes this send's (channel, idem, tenant) slot: the
+        -- decision is evidence, and a later re-invocation of the SAME send does not resurrect
+        -- it — a new send (new subject) enqueues normally.
+        INSERT INTO public.notification_outbox (
+          event_type, channel, occurred_at,
+          recipient_user_id, recipient_person_id, recipient_guest_player_id,
+          tenant_academy_profile_id, tenant_trainer_id, visibility_scope,
+          related_booking_ids, related_invoice_id, related_payment_id,
+          payload, public_summary,
+          idempotency_key, status, skip_reason, scheduled_for
+        ) VALUES (
+          p_event_key, v_channel, v_occurred,
+          v_user_id, v_person_id, v_guest_id,
+          p_tenant_academy_profile_id, p_tenant_trainer_id, v_visibility,
+          p_related_booking_ids, p_related_invoice_id, p_related_payment_id,
+          -- NO payload retention: this send was refused before rendering or contact resolution
+          -- ever ran, and evidence of a refusal needs no content — only the safe summary.
+          '{}'::jsonb, v_public_summary,
+          v_idem_key, 'skipped', 'tenant_restricted', v_now
+        )
+        ON CONFLICT (channel, idempotency_key, tenant_scope_key) DO NOTHING
+        RETURNING id INTO v_row_id;
+        IF FOUND THEN v_emitted := array_append(v_emitted, v_row_id); END IF;
+      ELSIF v_channel = 'email' THEN
+        v_email_skip := 'preference_off';
+      END IF;
+      CONTINUE;
+    END IF;
+
+    -- 6c. destination + consent
+    v_deliverable := false; v_dest := NULL; v_dest_redacted := NULL; v_contact_id := NULL;
+
+    IF v_channel = 'email' THEN
+      SELECT * INTO v_contact FROM public.notification_contacts
+      WHERE channel = 'email' AND revoked_at IS NULL AND consent_status <> 'opted_out'
+        AND (consent_scope <> 'global' OR v_user_id IS NOT NULL)
+        AND public.is_notification_consent_in_scope(
+              consent_scope, consent_academy_profile_id, consent_trainer_id,
+              p_tenant_academy_profile_id, p_tenant_trainer_id)
+        AND ( (v_person_id IS NOT NULL AND person_id = v_person_id)
+           OR (v_user_id   IS NOT NULL AND user_id = v_user_id)
+           OR (v_guest_id  IS NOT NULL AND guest_player_id = v_guest_id) )
+      ORDER BY is_primary DESC, verified_at DESC NULLS LAST
+      LIMIT 1;
+      IF FOUND THEN
+        v_dest := v_contact.destination_normalized;
+        v_dest_redacted := v_contact.destination_redacted;
+        v_contact_id := v_contact.id;
+      ELSIF v_user_id IS NOT NULL THEN
+        SELECT email INTO v_dest FROM public.persons WHERE id = v_person_id;
+        v_dest_redacted := public.notification_redact_destination(v_dest, 'email');
+      END IF;
+
+      IF v_dest IS NULL OR btrim(v_dest) = '' THEN
+        v_email_skip := coalesce(v_email_skip, 'no_email_contact');
+      ELSIF public.is_email_suppressed(v_dest) THEN
+        v_email_skip := 'email_suppressed';
+      -- N6 FINAL AUDIT, the N2<->N3 seam: MARKETING mail must honour the one-click unsubscribe.
+      -- N2 declares which events carry an unsubscribe footer (email_footer_policy) and records the
+      -- result in email_marketing_suppression; the resolver never read it, so a marketing event
+      -- enqueued through this path would have promised an unsubscribe in its own footer and then
+      -- ignored it. Scope-aware: a platform suppression silences everything, an academy one
+      -- silences that academy's sends. (Trainer-attributed marketing has no scope of its own here —
+      -- the platform arm still covers it, and a trainer-scoped suppression is checked when the send
+      -- is trainer-attributed.)
+      ELSIF v_evt.email_footer_policy = 'marketing_unsubscribe'
+            AND (
+              public.is_marketing_suppressed(v_dest, 'platform', NULL)
+              OR (p_tenant_academy_profile_id IS NOT NULL
+                  AND public.is_marketing_suppressed(v_dest, 'academy', p_tenant_academy_profile_id))
+              OR (p_tenant_trainer_id IS NOT NULL
+                  AND public.is_marketing_suppressed(v_dest, 'trainer', p_tenant_trainer_id))
+            ) THEN
+        v_email_skip := 'marketing_unsubscribed';
+      ELSE
+        v_deliverable := true;
+      END IF;
+
+    ELSE
+      SELECT * INTO v_contact FROM public.notification_contacts
+      WHERE channel = v_channel AND revoked_at IS NULL AND consent_status = 'opted_in'
+        AND (consent_scope <> 'global' OR v_user_id IS NOT NULL)
+        AND public.is_notification_consent_in_scope(
+              consent_scope, consent_academy_profile_id, consent_trainer_id,
+              p_tenant_academy_profile_id, p_tenant_trainer_id)
+        AND ( (v_person_id IS NOT NULL AND person_id = v_person_id)
+           OR (v_user_id   IS NOT NULL AND user_id = v_user_id)
+           OR (v_guest_id  IS NOT NULL AND guest_player_id = v_guest_id) )
+      ORDER BY is_primary DESC, verified_at DESC NULLS LAST
+      LIMIT 1;
+      IF FOUND THEN
+        v_dest := v_contact.destination_normalized;
+        v_dest_redacted := v_contact.destination_redacted;
+        v_contact_id := v_contact.id;
+        v_deliverable := true;
+      END IF;
+    END IF;
+
+    CONTINUE WHEN NOT v_deliverable;
+
+    -- 6d. DELIVERY MODE (10c-b). Reset every iteration — a stale digest snapshot leaking
+    --     onto the next channel's row would mint a bogus group identity.
+    v_is_digest := false; v_status := 'pending'; v_skip := NULL;
+    v_delivery_mode := NULL; v_digest_freq := NULL; v_tz := NULL; v_locale := NULL;
+    v_boundary := NULL; v_item := NULL; v_fingerprint := NULL; v_prefixed_key := NULL;
+    v_tmpl_version := NULL; v_payload_out := coalesce(p_payload, '{}'::jsonb);
+
+    -- FREEZE THE DESTINATION FINGERPRINT ON EVERY EMAIL ROW, not just digest members.
+    -- The live-send policy (notif_digest_member_stop_reason) refuses to send when the CURRENT
+    -- contact no longer fingerprints to the frozen value — but that check is written
+    -- `IF destination_fingerprint IS NOT NULL`, so a NULL silently disables it. Instant rows
+    -- previously had NULL here, which meant the worker would happily deliver to the frozen OLD
+    -- address after a user changed their email. Freezing it for instant rows too is what makes
+    -- the destination_changed stop reachable on that path.
+    IF v_channel = 'email' AND v_dest IS NOT NULL THEN
+      v_fingerprint := public.notif_digest_destination_fingerprint(v_dest);
+    END IF;
+
+    IF v_channel = 'email' AND v_evt.digest_cutover AND v_freq IN ('daily','weekly') THEN
+      IF v_evt.digest_engine_enabled THEN
+        -- A real digest member. Every canonical grouping input is frozen HERE; the item
+        -- is minted by trusted SQL from structured payload fields (never edge-rendered).
+        v_is_digest     := true;
+        v_delivery_mode := 'digest';
+        v_digest_freq   := v_freq;
+        v_tz            := public.notif_digest_recipient_timezone(p_tenant_academy_profile_id, p_tenant_trainer_id);
+        v_locale        := public.notif_digest_group_locale(v_person_id, v_user_id);
+        v_boundary      := public.notif_digest_boundary_at(v_now, v_freq, v_tz);
+        v_item          := public.notif_digest_item_for_event(p_event_key, v_locale, coalesce(p_payload, '{}'::jsonb));
+        v_tmpl_version  := v_evt.template_version;   -- fingerprint already frozen above
+        -- ADR §M1 prefixed recipient key: person is the stable identity, then account, then guest.
+        v_prefixed_key  := CASE
+          WHEN v_person_id IS NOT NULL THEN 'p:' || v_person_id::text
+          WHEN v_user_id   IS NOT NULL THEN 'u:' || v_user_id::text
+          ELSE 'g:' || v_guest_id::text
+        END;
+      ELSE
+        -- Engine OFF. An explicit, auditable, INERT outcome: not a digest row (no
+        -- delivery_mode → the materializer cannot see it), not pending (the instant
+        -- worker cannot see it), not scheduled into the future (nothing to burst).
+        v_status := 'skipped';
+        v_skip   := 'digest_engine_disabled';
+      END IF;
+    END IF;
+
+    -- A cutover event on an INSTANT cadence still needs SERVER-RENDERED content. The instant
+    -- worker reads payload.subject/payload.html and treats a row that cannot render as TERMINAL,
+    -- so without this an instant open-slots alert would be reported as enqueued and then
+    -- silently terminal-failed — with its idempotency key then blocking every retry. Slice C's
+    -- backfill carries a legacy `instant` choice across verbatim, so this cadence is live.
+    -- The copy comes from the SAME trusted item builder the digest uses, so the two routes say
+    -- the same thing and the edge function still supplies nothing a recipient can read.
+    IF v_channel = 'email' AND v_evt.digest_cutover AND v_freq = 'instant' THEN
+      v_locale      := public.notif_digest_group_locale(v_person_id, v_user_id);
+      v_item        := public.notif_digest_item_for_event(p_event_key, v_locale, coalesce(p_payload, '{}'::jsonb));
+      v_payload_out := v_payload_out || public.notif_open_slots_instant_payload(v_item);
+      v_item        := NULL;   -- instant rows carry no digest snapshot
+    END IF;
+
+    -- 6e. scheduling. The legacy daily/weekly delayed-instant branch below is UNCHANGED
+    --     and still governs every non-cutover event.
+    v_scheduled := CASE
+      WHEN v_is_digest          THEN v_boundary
+      WHEN v_status = 'skipped' THEN v_now
+      WHEN v_freq = 'daily'     THEN date_trunc('day',  v_now) + interval '1 day'  + interval '8 hours'
+      WHEN v_freq = 'weekly'    THEN date_trunc('week', v_now) + interval '7 days' + interval '8 hours'
+      ELSE coalesce(p_scheduled_for, v_now)
+    END;
+
+    -- collapse window: pending rows sharing this key are worker-collapsed into one send.
+    v_collapse_key := NULL;
+    IF v_evt.collapse_window_minutes > 0 THEN
+      v_collapse_key := p_event_key || ':' || v_channel || ':' || v_recipient_key || ':'
+        || floor(extract(epoch FROM v_now) / (v_evt.collapse_window_minutes * 60))::text;
+    END IF;
+
+    v_template := coalesce(p_template_key, CASE v_channel
+      WHEN 'email'    THEN v_evt.template_email
+      WHEN 'whatsapp' THEN v_evt.template_whatsapp
+      ELSE NULL END);
+
+    INSERT INTO public.notification_outbox (
+      event_type, channel, occurred_at,
+      recipient_user_id, recipient_person_id, recipient_guest_player_id,
+      tenant_academy_profile_id, tenant_trainer_id, visibility_scope,
+      related_booking_ids, related_invoice_id, related_payment_id,
+      destination_normalized, destination_redacted, contact_id,
+      template_key, payload, public_summary,
+      idempotency_key, collapse_key, status, skip_reason, scheduled_for,
+      delivery_mode, recipient_key, digest_frequency, group_locale, recipient_timezone,
+      digest_boundary_at, template_version, destination_fingerprint, digest_item
+    ) VALUES (
+      p_event_key, v_channel, v_occurred,
+      v_user_id, v_person_id, v_guest_id,
+      p_tenant_academy_profile_id, p_tenant_trainer_id, v_visibility,
+      p_related_booking_ids, p_related_invoice_id, p_related_payment_id,
+      v_dest, v_dest_redacted, v_contact_id,
+      v_template, v_payload_out, v_public_summary,
+      v_idem_key, v_collapse_key, v_status, v_skip, v_scheduled,
+      v_delivery_mode, v_prefixed_key, v_digest_freq, v_locale, v_tz,
+      v_boundary, v_tmpl_version, v_fingerprint, v_item
+    )
+    ON CONFLICT (channel, idempotency_key, tenant_scope_key) DO NOTHING
+    RETURNING id INTO v_row_id;
+
+    IF FOUND THEN
+      v_emitted := array_append(v_emitted, v_row_id);
+    END IF;
+    v_any_deliverable := true;
+  END LOOP;
+
+  -- 7. required delivery but nothing was deliverable → a VISIBLE skipped row
+  IF NOT v_any_deliverable AND v_evt.required_delivery THEN
+    INSERT INTO public.notification_outbox (
+      event_type, channel, occurred_at,
+      recipient_user_id, recipient_person_id, recipient_guest_player_id,
+      tenant_academy_profile_id, tenant_trainer_id, visibility_scope,
+      related_booking_ids, related_invoice_id, related_payment_id,
+      payload, public_summary,
+      idempotency_key, status, skip_reason, scheduled_for
+    ) VALUES (
+      p_event_key, 'email', v_occurred,
+      v_user_id, v_person_id, v_guest_id,
+      p_tenant_academy_profile_id, p_tenant_trainer_id, v_visibility,
+      p_related_booking_ids, p_related_invoice_id, p_related_payment_id,
+      coalesce(p_payload, '{}'::jsonb), v_public_summary,
+      v_idem_key, 'skipped', coalesce(v_email_skip, 'no_deliverable_channel'), v_now
+    )
+    ON CONFLICT (channel, idempotency_key, tenant_scope_key) DO NOTHING
+    RETURNING id INTO v_row_id;
+    IF FOUND THEN
+      v_emitted := array_append(v_emitted, v_row_id);
+    END IF;
+  END IF;
+
+  RETURN QUERY
+    SELECT o.id, o.channel, o.status, o.skip_reason, o.visibility_scope,
+           o.destination_normalized, o.destination_redacted, o.idempotency_key,
+           o.collapse_key, o.recipient_person_id, o.public_summary, o.template_key, o.scheduled_for
+    FROM public.notification_outbox o
+    WHERE o.id = ANY(v_emitted)
+    ORDER BY o.channel;
+  RETURN;
+END;
+$$;
+
+DO $chk$
+DECLARE
+  v_src text;
+  v_bridge text[] := ARRAY['person_' || 'links', 'twin_of_' || 'profile_id', 'linked_' || 'profile_id'];
+  v_tok text;
+BEGIN
+  -- notif_my_academy_ids: no booking arm, no bridge arm, and the authoritative arm present.
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'notif_my_academy_ids';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'Pass B §3: notif_my_academy_ids is missing'; END IF;
+  IF COALESCE(v_src ~ 'public\.bookings', false) THEN
+    RAISE EXCEPTION 'Pass B §3: notif_my_academy_ids must not derive membership from bookings';
+  END IF;
+  FOREACH v_tok IN ARRAY v_bridge LOOP
+    IF position(v_tok in v_src) > 0 THEN
+      RAISE EXCEPTION 'Pass B §3: notif_my_academy_ids still reads legacy evidence (%)', v_tok;
+    END IF;
+  END LOOP;
+  IF COALESCE(v_src !~ 'academy_managers', true) THEN
+    RAISE EXCEPTION 'Pass B §3: notif_my_academy_ids lost its authoritative membership arm';
+  END IF;
+
+  -- Private history is direct-user only.
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'notification_row_visible_to_caller';
+  IF COALESCE(v_src ~ 'get_my_person_id', false) THEN
+    RAISE EXCEPTION 'Pass B §3: private history must not expand through the caller''s person';
+  END IF;
+  IF COALESCE(v_src !~ 'is_admin', true) OR COALESCE(v_src !~ 'is_academy_manager', true) THEN
+    RAISE EXCEPTION 'Pass B §3: the admin/tenant arms must survive';
+  END IF;
+
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_player_notification_timeline';
+  IF COALESCE(v_src ~ 'get_my_person_id', false) THEN
+    RAISE EXCEPTION 'Pass B §3: the self timeline must not expand through the caller''s person';
+  END IF;
+  IF COALESCE(v_src !~ 'get_person_refs_for_scope', true) THEN
+    RAISE EXCEPTION 'Pass B §3: the staff scope pin/IDOR guard must survive';
+  END IF;
+
+  -- enqueue_notification: guest-first namespaced key, no person->user upgrade, and every
+  -- unrelated contract still present.
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'enqueue_notification';
+  IF COALESCE(v_src !~ '''g:''', true) THEN
+    RAISE EXCEPTION 'Pass B §3: the guest idempotency key must be namespaced g:<guest>';
+  END IF;
+  IF COALESCE(v_src ~ 'SELECT user_id INTO v_user_id', false) THEN
+    RAISE EXCEPTION 'Pass B §3: a person-only recipient must never be upgraded into a user';
+  END IF;
+  IF position('person_' || 'links' in v_src) > 0 THEN
+    RAISE EXCEPTION 'Pass B §3: enqueue_notification must not resolve a guest through legacy evidence';
+  END IF;
+  IF COALESCE(v_src !~ 'no recipient \(person/user/guest all null\)', true) THEN
+    RAISE EXCEPTION 'Pass B §3: the mandatory-recipient refusal was lost';
+  END IF;
+  IF COALESCE(v_src !~ 'needs an idempotency subject', true) THEN
+    RAISE EXCEPTION 'Pass B §3: the idempotency-subject refusal was lost';
+  END IF;
+  IF COALESCE(v_src !~ 'no tenant context was supplied', true) THEN
+    RAISE EXCEPTION 'Pass B §3: the tenant-visibility contract was lost';
+  END IF;
+END $chk$;
+
+$sql$;
+END $outer$;
+
+DO $chk3$
+DECLARE v_src text;
+BEGIN
+  -- Consistency: if the functions exist at all, they MUST be the narrowed ones. This is what
+  -- turns the guard above from "silently skipped" into "provably not needed here".
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'notification_row_visible_to_caller';
+  IF v_src IS NOT NULL AND COALESCE(v_src ~ 'get_my_person_id', false) THEN
+    RAISE EXCEPTION 'Pass B §3: notification_row_visible_to_caller exists but was not narrowed';
+  END IF;
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'enqueue_notification';
+  IF v_src IS NOT NULL AND COALESCE(v_src ~ 'SELECT user_id INTO v_user_id', false) THEN
+    RAISE EXCEPTION 'Pass B §3: enqueue_notification exists but still upgrades a person into a user';
+  END IF;
+END $chk3$;
