@@ -2934,6 +2934,11 @@ DECLARE
   v_occ int;
   v_expired uuid[];
   v_fits boolean;
+  v_redundant uuid[] := '{}';      -- target holds superseded by an existing active booking
+  v_surv RECORD;
+  v_late RECORD;                   -- an active seat committed after the survivor scan
+  v_invoice public.invoices%ROWTYPE;
+  v_invoice_paid_now boolean := false;
 BEGIN
   -- ── input validation: reject null/empty/duplicate/missing ────────────────────────────────
   IF _booking_ids IS NULL OR array_length(_booking_ids, 1) IS NULL THEN
@@ -2964,18 +2969,11 @@ BEGIN
   END IF;
 
   -- ── association: verify against STORED provider identity, never the caller's claim ───────
-  IF _invoice_id IS NOT NULL THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM public.invoices i
-      WHERE i.id = _invoice_id
-        AND (i.mollie_payment_id IS NULL OR i.mollie_payment_id = _provider_payment_id)
-        AND v_ids <@ COALESCE(i.booking_ids, '{}'::uuid[])
-    ) THEN
-      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                          'invoice_association_mismatch'::text;
-      RETURN;
-    END IF;
-  END IF;
+  -- The invoice is NOT validated here. An earlier draft did a pre-lock EXISTS check, which was
+  -- both a TOCTOU (the invoice can be cancelled or re-pointed while we wait on the slot locks)
+  -- and less precise — it collapsed missing / cancelled / provider-conflict / association faults
+  -- into one reason, and fired first, shadowing the authoritative post-lock diagnosis. Invoice
+  -- validation now happens once, against the LOCKED row, further down.
 
   -- Refuse a DIFFERENT non-null stored provider id rather than overwrite it.
   IF EXISTS (
@@ -3023,9 +3021,72 @@ BEGIN
     RETURN;
   END IF;
 
+  -- ── invoice: lock and RE-READ before any booking mutation ────────────────────────────────
+  -- Validating the invoice before the lock is a TOCTOU: it can be cancelled, re-pointed or
+  -- claimed by another payment while we wait on the slot locks. Everything below is decided
+  -- against the LOCKED row, and the update is conditional on that same state so a concurrently
+  -- cancelled invoice is never resurrected.
+  IF _invoice_id IS NOT NULL THEN
+    SELECT * INTO v_invoice FROM public.invoices WHERE id = _invoice_id FOR UPDATE;
+    IF v_invoice.id IS NULL THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                          'invoice_missing'::text;
+      RETURN;
+    END IF;
+    IF COALESCE(v_invoice.status, '') = 'cancelled' THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                          'invoice_cancelled'::text;
+      RETURN;
+    END IF;
+    IF v_invoice.mollie_payment_id IS NOT NULL
+       AND v_invoice.mollie_payment_id <> _provider_payment_id THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                          'invoice_provider_conflict'::text;
+      RETURN;
+    END IF;
+    IF NOT (v_ids <@ COALESCE(v_invoice.booking_ids, '{}'::uuid[])) THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                          'invoice_association_mismatch'::text;
+      RETURN;
+    END IF;
+  END IF;
+
   -- Liveness is judged AFTER the locks, with clock_timestamp() — transaction-start now() would
   -- classify against a moment that may be long past by the time contention clears.
   v_now := clock_timestamp();
+
+  -- ── M-17 SURVIVOR RESOLUTION ─────────────────────────────────────────────────────────────
+  -- A paid hold can collide with the (slot, guest) / (slot, player WHERE guest IS NULL) partial
+  -- unique indexes when staff added the SAME person to the SAME slot while the payment was in
+  -- flight. The pre-existing ACTIVE row is the operational survivor: it already occupies the
+  -- seat, so the hold is redundant. Confirming the hold would raise 23505 and, on a service-role
+  -- webhook, turn captured money into an endless 500/retry loop.
+  --
+  -- Typed identity is the INDEX's identity, which is guest-first by construction: a dual-key
+  -- row's player_id is never pure-profile identity. Person/link/twin/email equality grants
+  -- nothing here.
+  --
+  -- Survivors are resolved AFTER the slot and target locks, and locked in UUID order, so this
+  -- adds no new lock-ordering edge.
+  FOR v_surv IN
+    SELECT h.id AS hold_id, o.id AS survivor_id
+      FROM public.bookings h
+      JOIN public.bookings o
+        ON o.slot_id = h.slot_id
+       AND o.id <> h.id
+       AND NOT (o.id = ANY(v_ids))
+       AND o.status IN ('pending', 'confirmed', 'completed')
+       AND CASE WHEN h.guest_player_id IS NOT NULL
+                THEN o.guest_player_id = h.guest_player_id
+                ELSE o.player_id = h.player_id AND o.guest_player_id IS NULL
+                     AND h.player_id IS NOT NULL AND h.guest_player_id IS NULL END
+     WHERE h.id = ANY(v_ids)
+       AND h.status = 'payment_pending'
+     ORDER BY o.id, h.id
+  LOOP
+    PERFORM 1 FROM public.bookings WHERE id = v_surv.survivor_id FOR UPDATE;
+    v_redundant := v_redundant || v_surv.hold_id;
+  END LOOP;
 
   -- ── per slot: decide, then apply ─────────────────────────────────────────────────────────
   IF v_slots IS NOT NULL THEN
@@ -3050,7 +3111,11 @@ BEGIN
      WHERE b.id = ANY(v_ids) AND b.slot_id = v_slot
        AND b.status = 'payment_pending'
        AND b.hold_expires_at IS NOT NULL AND b.hold_expires_at <= v_now
-       AND COALESCE(b.payment_status, '') <> 'paid';
+       AND COALESCE(b.payment_status, '') <> 'paid'
+       -- A redundant hold consumes NO new seat: its survivor already occupies the one it would
+       -- have taken. Counting it would refuse a settlement that fits, and two target holds for
+       -- one typed seat would double-count.
+       AND NOT (b.id = ANY(v_redundant));
 
     -- seats already taken by anyone who is NOT one of those expired additions
     SELECT count(*) INTO v_occ
@@ -3085,11 +3150,82 @@ BEGIN
       END LOOP;
     END IF;
 
+    -- ── redundant holds: settle onto the survivor ────────────────────────────────────────
+    FOR v_surv IN
+      SELECT DISTINCT ON (o.id) h.id AS hold_id, o.id AS survivor_id,
+             o.status AS s_status, o.payment_status AS s_payment,
+             o.mollie_payment_id AS s_provider
+        FROM public.bookings h
+        JOIN public.bookings o
+          ON o.slot_id = h.slot_id AND o.id <> h.id AND NOT (o.id = ANY(v_ids))
+         AND o.status IN ('pending', 'confirmed', 'completed')
+         AND CASE WHEN h.guest_player_id IS NOT NULL
+                  THEN o.guest_player_id = h.guest_player_id
+                  ELSE o.player_id = h.player_id AND o.guest_player_id IS NULL
+                       AND h.player_id IS NOT NULL AND h.guest_player_id IS NULL END
+       WHERE h.id = ANY(v_redundant) AND h.slot_id = v_slot
+       -- DISTINCT ON (o.id): several target holds for ONE typed seat consume one seat and
+       -- produce ONE first-transition result, never one per hold.
+       ORDER BY o.id, h.id
+    LOOP
+      IF v_surv.s_provider IS NOT NULL AND v_surv.s_provider <> _provider_payment_id THEN
+        -- The survivor belongs to a DIFFERENT captured payment. Touching it would attribute one
+        -- person's money to another's seat, so it is left exactly as it is and THIS payment is
+        -- represented durably on its own hold.
+        FOR r IN SELECT b.id, b.status, b.payment_status FROM public.bookings b
+                  WHERE b.id = ANY(v_redundant) AND b.slot_id = v_slot LOOP
+          IF r.status = 'cancelled' AND r.payment_status = 'paid' THEN
+            v_replay := v_replay || r.id;
+          ELSE
+            UPDATE public.bookings
+               SET status = 'cancelled', payment_status = 'paid',
+                   mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
+                   mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                   paid_at = COALESCE(paid_at, v_now), hold_expires_at = NULL, updated_at = v_now
+             WHERE id = r.id;
+            v_nos := v_nos || r.id;
+          END IF;
+        END LOOP;
+      ELSE
+        -- Stamp the survivor paid on its FIRST paid transition only. `completed` is preserved —
+        -- demoting it to 'confirmed' would rewrite a finished session's history.
+        IF COALESCE(v_surv.s_payment, '') <> 'paid' THEN
+          UPDATE public.bookings
+             SET payment_status = 'paid',
+                 status = CASE WHEN status = 'completed' THEN status ELSE 'confirmed' END,
+                 mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
+                 mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                 paid_at = COALESCE(paid_at, v_now), updated_at = v_now
+           WHERE id = v_surv.survivor_id;
+          v_conf := v_conf || v_surv.survivor_id;
+        END IF;
+        -- the redundant hold is cancelled WITHOUT being marked paid: the money is attributed to
+        -- the survivor, and a second paid row would double-count the payment.
+        UPDATE public.bookings
+           SET status = 'cancelled', hold_expires_at = NULL, updated_at = v_now
+         WHERE id = ANY(v_redundant) AND slot_id = v_slot AND status = 'payment_pending';
+
+        -- An invoice must not end up paid while pointing only at the cancelled hold: substitute
+        -- the survivor, de-duplicated, so the billed row is the one that actually holds the seat.
+        IF _invoice_id IS NOT NULL THEN
+          UPDATE public.invoices
+             SET booking_ids = (
+                   SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[])
+                     FROM unnest(
+                       array_remove(COALESCE(booking_ids, '{}'::uuid[]), v_surv.hold_id)
+                       || v_surv.survivor_id
+                     ) AS t(x))
+           WHERE id = _invoice_id;
+        END IF;
+      END IF;
+    END LOOP;
+
     -- everything else on this slot that is not a refused expired addition settles normally
     FOR r IN
       SELECT b.id, b.payment_status, b.status FROM public.bookings b
        WHERE b.id = ANY(v_ids) AND b.slot_id = v_slot
          AND NOT (b.id = ANY(v_nos)) AND NOT (b.id = ANY(v_replay))
+         AND NOT (b.id = ANY(v_redundant))
     LOOP
       IF r.payment_status = 'paid' AND r.status <> 'cancelled' THEN
         v_already := v_already || r.id;         -- duplicate delivery: state-derived no-op
@@ -3103,16 +3239,75 @@ BEGIN
         v_ref := v_ref || r.id;                 -- never resurrect an unrelated cancellation
         v_reason := COALESCE(v_reason, 'already_cancelled');
       ELSE
-        UPDATE public.bookings
-           SET status = 'confirmed',
-               payment_status = 'paid',
-               mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
-               mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
-               paid_at = COALESCE(paid_at, v_now),
-               hold_expires_at = NULL,
-               updated_at = v_now
-         WHERE id = r.id;
-        v_conf := v_conf || r.id;
+        BEGIN
+          UPDATE public.bookings
+             SET status = 'confirmed',
+                 payment_status = 'paid',
+                 mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
+                 mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                 paid_at = COALESCE(paid_at, v_now),
+                 hold_expires_at = NULL,
+                 updated_at = v_now
+           WHERE id = r.id;
+          v_conf := v_conf || r.id;
+        EXCEPTION WHEN unique_violation THEN
+          -- A writer that does NOT take this command's advisory key -- staff adding the same
+          -- person to this slot -- committed an active row after the survivor scan above and
+          -- before this UPDATE. The M-17 partial indexes then reject the confirm. Captured money
+          -- must never become an endless 23505/500, so the collision is reconciled here, inside
+          -- the same transaction: the implicit savepoint rolls back only this statement.
+          SELECT o.id, o.status, o.payment_status, o.mollie_payment_id
+            INTO v_late
+            FROM public.bookings h
+            JOIN public.bookings o
+              ON o.slot_id = h.slot_id AND o.id <> h.id AND NOT (o.id = ANY(v_ids))
+             AND o.status IN ('pending', 'confirmed', 'completed')
+             AND CASE WHEN h.guest_player_id IS NOT NULL
+                      THEN o.guest_player_id = h.guest_player_id
+                      ELSE o.player_id = h.player_id AND o.guest_player_id IS NULL
+                           AND h.player_id IS NOT NULL AND h.guest_player_id IS NULL END
+           WHERE h.id = r.id
+           ORDER BY o.id
+           LIMIT 1
+             FOR UPDATE OF o;
+          -- Any other unique violation is NOT this reconcilable collision; re-raise it rather
+          -- than reporting a settlement that did not happen.
+          IF NOT FOUND THEN RAISE; END IF;
+
+          IF v_late.mollie_payment_id IS NOT NULL
+             AND v_late.mollie_payment_id <> _provider_payment_id THEN
+            UPDATE public.bookings
+               SET status = 'cancelled', payment_status = 'paid',
+                   mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
+                   mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                   paid_at = COALESCE(paid_at, v_now), hold_expires_at = NULL, updated_at = v_now
+             WHERE id = r.id;
+            v_nos := v_nos || r.id;
+          ELSE
+            IF COALESCE(v_late.payment_status, '') <> 'paid' THEN
+              UPDATE public.bookings
+                 SET payment_status = 'paid',
+                     status = CASE WHEN status = 'completed' THEN status ELSE 'confirmed' END,
+                     mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
+                     mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                     paid_at = COALESCE(paid_at, v_now), updated_at = v_now
+               WHERE id = v_late.id;
+              v_conf := v_conf || v_late.id;
+            END IF;
+            UPDATE public.bookings
+               SET status = 'cancelled', hold_expires_at = NULL, updated_at = v_now
+             WHERE id = r.id AND status = 'payment_pending';
+            IF _invoice_id IS NOT NULL THEN
+              UPDATE public.invoices
+                 SET booking_ids = (
+                       SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[])
+                         FROM unnest(
+                           array_remove(COALESCE(booking_ids, '{}'::uuid[]), r.id) || v_late.id
+                         ) AS t(x))
+               WHERE id = _invoice_id;
+            END IF;
+          END IF;
+        END;
       END IF;
     END LOOP;
   END LOOP;
@@ -3122,13 +3317,30 @@ BEGIN
   -- The invoice stays paid even when every booking came back paid_no_seat: the money was
   -- captured, and ABC-23 does not auto-refund.
   IF _invoice_id IS NOT NULL THEN
+    -- Conditional on the state we LOCKED and re-read: a concurrently cancelled invoice is never
+    -- resurrected, and a second delivery does not re-stamp paid_at.
     UPDATE public.invoices
        SET status = 'paid',
            paid_at = COALESCE(paid_at, v_now),
            mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id)
-     WHERE id = _invoice_id AND COALESCE(status, '') <> 'paid';
+     WHERE id = _invoice_id
+       AND COALESCE(status, '') NOT IN ('paid', 'cancelled');
+    v_invoice_paid_now := FOUND;
   END IF;
 
+  -- deterministic + de-duplicated result arrays
+  SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[]) INTO v_conf FROM unnest(v_conf) t(x);
+  SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[]) INTO v_already FROM unnest(v_already) t(x);
+  SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[]) INTO v_nos FROM unnest(v_nos) t(x);
+  SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[]) INTO v_replay FROM unnest(v_replay) t(x);
+  SELECT COALESCE(array_agg(DISTINCT x ORDER BY x), '{}'::uuid[]) INTO v_ref FROM unnest(v_ref) t(x);
+
+  -- refusal_reason stays PURELY a refusal channel. An earlier draft folded `invoice_paid_now`
+  -- into it, which would make any caller testing `refusal_reason IS NOT NULL` read a successful
+  -- invoice settlement as a failure. No caller needs the indicator until Boundary B, and adding
+  -- a result column changes the return type, so it is deliberately not returned yet;
+  -- v_invoice_paid_now remains request-local.
+  PERFORM v_invoice_paid_now;
   RETURN QUERY SELECT v_conf, v_already, v_nos, v_replay, v_ref, v_reason;
 END;
 $fn$;
