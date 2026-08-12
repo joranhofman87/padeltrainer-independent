@@ -323,6 +323,20 @@ export const STUB_SQL = /* sql */ `
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS booking_ids uuid[] DEFAULT '{}'::uuid[];
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS split_count integer;
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS person_id uuid;
+  -- ABC-23 §1c: columns the atomic settlement command reads/writes.
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS mollie_payment_id text;
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS mollie_payment_id text;
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS mollie_transaction_id text;
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS paid_at timestamptz;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS split_payment boolean DEFAULT false;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS allow_single_booking boolean DEFAULT false;
+  -- booking_occupies_seat ships in a migration outside this chain; reproduce its exact body so
+  -- the settlement command's occupancy test is the real one.
+  CREATE OR REPLACE FUNCTION public.booking_occupies_seat(p_status text, p_hold_expires_at timestamptz)
+  RETURNS boolean LANGUAGE sql STABLE AS $fn$
+    SELECT COALESCE(p_status, 'confirmed') IN ('confirmed', 'pending', 'pending_approval')
+        OR (p_status = 'payment_pending' AND p_hold_expires_at IS NOT NULL AND p_hold_expires_at > now());
+  $fn$;
   -- the profile-first index ABC-20 replaces, so the swap is exercised rather than assumed
   CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_rebook_cyclus_claimant
     ON public.invoices (rebook_cyclus_id, COALESCE(player_id, guest_player_id))

@@ -2872,6 +2872,294 @@ BEGIN
   END IF;
 END $$;
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- ABC-23 §1c — settle_paid_bookings: the single atomic paid-settlement authority.
+-- ═════════════════════════════════════════════════════════════════════════════
+-- Replaces the classifier→raw-UPDATE shape (expired_holds_over_capacity read at
+-- mollie-webhook:964, write at :1016). That read is STABLE and takes NO LOCKS, and the write
+-- happens later, so two concurrent settlements can both read "fits" and both confirm — the court
+-- is oversold. It also judged liveness with transaction-start now() and applied the raw
+-- max_participants cap to every booking, ignoring the effective purchase cap used at creation.
+--
+-- And today a seatless paid hold is merely EXCLUDED from the update: money captured, row left a
+-- stale payment_pending hold with no paid marker. That is the financial gap this closes.
+--
+-- CONTRACT
+--   * one transaction owns invoice + bookings; no invoice-first split;
+--   * a live hold or an already-occupying booking → confirmed + paid;
+--   * an expired hold that still fits → confirmed + paid;
+--   * an expired hold that no longer fits → cancelled + PAID, provider ids + paid_at persisted,
+--     hold_expires_at cleared, typed `paid_no_seat`. It never occupies and never resurrects;
+--   * same-slot expired additions are ALL-OR-NONE — never a UUID-order winner;
+--   * independent slots fulfil independently;
+--   * duplicate delivery is a state-derived no-op returning the same shape.
+--
+-- LOCK PROTOCOL (deadlock-free by construction)
+--   1. snapshot target booking/slot identities WITHOUT locking;
+--   2. slot rows FOR SHARE in ascending uuid order;
+--   3. pg_advisory_xact_lock per slot in the same ascending order;
+--   4. only then lock the booking/invoice rows and RE-READ, failing closed if anything moved.
+--   Every session takes the same keys in the same order, so no cycle can form.
+CREATE OR REPLACE FUNCTION public.settle_paid_bookings(
+  _booking_ids uuid[],
+  _provider_payment_id text,
+  _provider_transaction_id text DEFAULT NULL,
+  _invoice_id uuid DEFAULT NULL
+)
+RETURNS TABLE (
+  confirmed_paid uuid[],
+  already_confirmed_paid uuid[],
+  paid_no_seat uuid[],
+  replayed_paid_no_seat uuid[],
+  refused uuid[],
+  refusal_reason text
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_ids uuid[];
+  v_slots uuid[];
+  v_slot uuid;
+  v_now timestamptz;
+  v_conf uuid[] := '{}';
+  v_already uuid[] := '{}';
+  v_nos uuid[] := '{}';
+  v_replay uuid[] := '{}';
+  v_ref uuid[] := '{}';
+  v_reason text := NULL;
+  r RECORD;
+  v_cap int;
+  v_occ int;
+  v_expired uuid[];
+  v_fits boolean;
+BEGIN
+  -- ── input validation: reject null/empty/duplicate/missing ────────────────────────────────
+  IF _booking_ids IS NULL OR array_length(_booking_ids, 1) IS NULL THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                        'no_targets'::text;
+    RETURN;
+  END IF;
+  IF EXISTS (SELECT 1 FROM unnest(_booking_ids) t(id) WHERE t.id IS NULL) THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                        'null_target'::text;
+    RETURN;
+  END IF;
+  SELECT array_agg(DISTINCT t.id ORDER BY t.id) INTO v_ids FROM unnest(_booking_ids) t(id);
+  IF array_length(v_ids, 1) <> array_length(_booking_ids, 1) THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], _booking_ids,
+                        'duplicate_targets'::text;
+    RETURN;
+  END IF;
+  IF _provider_payment_id IS NULL OR btrim(_provider_payment_id) = '' THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                        'missing_provider_payment_id'::text;
+    RETURN;
+  END IF;
+  IF (SELECT count(*) FROM public.bookings b WHERE b.id = ANY(v_ids)) <> array_length(v_ids, 1) THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                        'unknown_target'::text;
+    RETURN;
+  END IF;
+
+  -- ── association: verify against STORED provider identity, never the caller's claim ───────
+  IF _invoice_id IS NOT NULL THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.invoices i
+      WHERE i.id = _invoice_id
+        AND (i.mollie_payment_id IS NULL OR i.mollie_payment_id = _provider_payment_id)
+        AND v_ids <@ COALESCE(i.booking_ids, '{}'::uuid[])
+    ) THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                          'invoice_association_mismatch'::text;
+      RETURN;
+    END IF;
+  END IF;
+
+  -- Refuse a DIFFERENT non-null stored provider id rather than overwrite it.
+  IF EXISTS (
+    SELECT 1 FROM public.bookings b
+    WHERE b.id = ANY(v_ids)
+      AND b.mollie_payment_id IS NOT NULL
+      AND b.mollie_payment_id <> _provider_payment_id
+  ) THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                        'provider_payment_id_conflict'::text;
+    RETURN;
+  END IF;
+
+  -- ── 1. snapshot slot identities WITHOUT locking ──────────────────────────────────────────
+  SELECT array_agg(DISTINCT b.slot_id ORDER BY b.slot_id) INTO v_slots
+  FROM public.bookings b WHERE b.id = ANY(v_ids) AND b.slot_id IS NOT NULL;
+
+  -- ── 2+3. slot rows FOR SHARE, then advisory locks, both in ascending uuid order ──────────
+  IF v_slots IS NOT NULL THEN
+    PERFORM 1 FROM public.availability_slots s
+     WHERE s.id = ANY(v_slots) ORDER BY s.id FOR SHARE;
+    FOREACH v_slot IN ARRAY v_slots LOOP
+      PERFORM pg_advisory_xact_lock(hashtextextended(v_slot::text, 0));
+    END LOOP;
+  END IF;
+
+  -- ── 4. lock the targets and RE-READ; fail closed if anything moved while we waited ───────
+  PERFORM 1 FROM public.bookings b WHERE b.id = ANY(v_ids) ORDER BY b.id FOR UPDATE;
+
+  IF (SELECT array_agg(DISTINCT b.slot_id ORDER BY b.slot_id)
+        FROM public.bookings b WHERE b.id = ANY(v_ids) AND b.slot_id IS NOT NULL)
+     IS DISTINCT FROM v_slots THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                        'target_slots_changed'::text;
+    RETURN;
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM public.bookings b
+    WHERE b.id = ANY(v_ids)
+      AND b.mollie_payment_id IS NOT NULL
+      AND b.mollie_payment_id <> _provider_payment_id
+  ) THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
+                        'provider_payment_id_conflict'::text;
+    RETURN;
+  END IF;
+
+  -- Liveness is judged AFTER the locks, with clock_timestamp() — transaction-start now() would
+  -- classify against a moment that may be long past by the time contention clears.
+  v_now := clock_timestamp();
+
+  -- ── per slot: decide, then apply ─────────────────────────────────────────────────────────
+  IF v_slots IS NOT NULL THEN
+  FOREACH v_slot IN ARRAY v_slots LOOP
+    -- capacity mode is DB-DERIVED from stored shapes, never caller-selected.
+    SELECT CASE
+             WHEN EXISTS (
+               SELECT 1 FROM public.invoices i
+               WHERE (i.rebook_cyclus_id IS NOT NULL OR i.rebook_group_id IS NOT NULL)
+                 AND v_ids && COALESCE(i.booking_ids, '{}'::uuid[])
+             ) THEN COALESCE(s.max_participants, 1)
+             WHEN COALESCE(s.split_payment, false) OR COALESCE(s.allow_single_booking, false)
+               THEN COALESCE(s.max_participants, 1)
+             ELSE 1
+           END
+      INTO v_cap
+      FROM public.availability_slots s WHERE s.id = v_slot;
+
+    -- expired-hold targets on THIS slot (the only ones needing new capacity)
+    SELECT COALESCE(array_agg(b.id ORDER BY b.id), '{}'::uuid[]) INTO v_expired
+      FROM public.bookings b
+     WHERE b.id = ANY(v_ids) AND b.slot_id = v_slot
+       AND b.status = 'payment_pending'
+       AND b.hold_expires_at IS NOT NULL AND b.hold_expires_at <= v_now
+       AND COALESCE(b.payment_status, '') <> 'paid';
+
+    -- seats already taken by anyone who is NOT one of those expired additions
+    SELECT count(*) INTO v_occ
+      FROM public.bookings o
+     WHERE o.slot_id = v_slot
+       AND NOT (o.id = ANY(v_expired))
+       AND public.booking_occupies_seat(o.status, o.hold_expires_at);
+
+    -- ALL-OR-NONE within the slot: the whole expired set fits, or none of it does. Never a
+    -- uuid-order winner.
+    v_fits := array_length(v_expired, 1) IS NULL
+              OR (v_occ + array_length(v_expired, 1)) <= v_cap;
+
+    IF array_length(v_expired, 1) IS NOT NULL AND NOT v_fits THEN
+      -- paid_no_seat: financially paid, never occupying, hold cleared.
+      FOR r IN SELECT b.id, b.payment_status, b.status FROM public.bookings b
+                WHERE b.id = ANY(v_expired) LOOP
+        IF r.status = 'cancelled' AND r.payment_status = 'paid' THEN
+          v_replay := v_replay || r.id;         -- stable replay, no side effects
+        ELSE
+          UPDATE public.bookings
+             SET status = 'cancelled',
+                 payment_status = 'paid',
+                 mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
+                 mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                 paid_at = COALESCE(paid_at, v_now),
+                 hold_expires_at = NULL,
+                 updated_at = v_now
+           WHERE id = r.id;
+          v_nos := v_nos || r.id;
+        END IF;
+      END LOOP;
+    END IF;
+
+    -- everything else on this slot that is not a refused expired addition settles normally
+    FOR r IN
+      SELECT b.id, b.payment_status, b.status FROM public.bookings b
+       WHERE b.id = ANY(v_ids) AND b.slot_id = v_slot
+         AND NOT (b.id = ANY(v_nos)) AND NOT (b.id = ANY(v_replay))
+    LOOP
+      IF r.payment_status = 'paid' AND r.status <> 'cancelled' THEN
+        v_already := v_already || r.id;         -- duplicate delivery: state-derived no-op
+      ELSIF r.status = 'cancelled' AND r.payment_status = 'paid' THEN
+        -- Already settled as paid_no_seat by an earlier delivery. It is a REPLAY, not a
+        -- resurrect-refusal: reporting it as refused would make retries look like conflicts and
+        -- would hide that this payment is already reconciled. It stays cancelled and paid; no
+        -- side effect fires again.
+        v_replay := v_replay || r.id;
+      ELSIF r.status = 'cancelled' THEN
+        v_ref := v_ref || r.id;                 -- never resurrect an unrelated cancellation
+        v_reason := COALESCE(v_reason, 'already_cancelled');
+      ELSE
+        UPDATE public.bookings
+           SET status = 'confirmed',
+               payment_status = 'paid',
+               mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
+               mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+               paid_at = COALESCE(paid_at, v_now),
+               hold_expires_at = NULL,
+               updated_at = v_now
+         WHERE id = r.id;
+        v_conf := v_conf || r.id;
+      END IF;
+    END LOOP;
+  END LOOP;
+  END IF;
+
+  -- ── invoice settles in THIS transaction, never invoice-first ─────────────────────────────
+  -- The invoice stays paid even when every booking came back paid_no_seat: the money was
+  -- captured, and ABC-23 does not auto-refund.
+  IF _invoice_id IS NOT NULL THEN
+    UPDATE public.invoices
+       SET status = 'paid',
+           paid_at = COALESCE(paid_at, v_now),
+           mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id)
+     WHERE id = _invoice_id AND COALESCE(status, '') <> 'paid';
+  END IF;
+
+  RETURN QUERY SELECT v_conf, v_already, v_nos, v_replay, v_ref, v_reason;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid) TO service_role;
+
+COMMENT ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid) IS
+  'ABC-23: the single atomic paid-settlement authority. Locks slots FOR SHARE then advisory, both in ascending uuid order, before locking and re-reading targets; classifies hold liveness with clock_timestamp() after acquisition. Same-slot expired additions are all-or-none; independent slots fulfil independently. A seatless paid hold becomes cancelled+paid with provider ids and paid_at persisted and the hold cleared — never occupying, never resurrected. service_role only.';
+
+DO $$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'settle_paid_bookings';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'ABC-23: settle_paid_bookings is missing'; END IF;
+  IF v_src !~ 'FOR SHARE' OR v_src !~ 'pg_advisory_xact_lock' THEN
+    RAISE EXCEPTION 'ABC-23: settle_paid_bookings must take both slot locks';
+  END IF;
+  IF v_src !~ 'clock_timestamp\(\)' THEN
+    RAISE EXCEPTION 'ABC-23: hold liveness must be judged with clock_timestamp() after locking';
+  END IF;
+  IF has_function_privilege('authenticated', 'public.settle_paid_bookings(uuid[],text,text,uuid)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.settle_paid_bookings(uuid[],text,text,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-23: settle_paid_bookings must be service_role only';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.settle_paid_bookings(uuid[],text,text,uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-23: service_role must retain EXECUTE';
+  END IF;
+END $$;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────
