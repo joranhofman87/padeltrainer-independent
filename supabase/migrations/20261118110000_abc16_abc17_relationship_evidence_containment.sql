@@ -1443,6 +1443,181 @@ $fn$;
 COMMENT ON FUNCTION public.get_unseen_shared_feedback_count(uuid) IS
   'ABC-18 A2: counts shared notes keyed to the caller''s own profile. The person/twin/linked guest ref-set is withdrawn.';
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- PASS A3 — booking ownership, payment visibility, priority and member window.
+-- ═════════════════════════════════════════════════════════════════════════════
+-- The rule these five share: a PURE-PROFILE row is the only self-evidence. The authenticated
+-- profile must be directly and unambiguously the subject — `player_id = me AND
+-- guest_player_id IS NULL`. Guest, linked, twin, person-expanded and dual-key variants do not
+-- qualify, because each of them derives from a signal someone else authored.
+--
+-- Capacity, tier, member-window timing, payment and invoice state, booking status, slot/cycle
+-- ownership and cancellation rules are untouched: only identity evidence is withdrawn.
+
+-- 8r. `get_my_linked_guest_bookings` — fails closed.
+-- The whole function IS the linked-guest booking path: it selects rows where
+-- `guest_player_id IS NOT NULL` and then decides they are the caller's via the person stamp or
+-- the twin/linked bridge. There is no pure-profile remainder to keep. The caller's own
+-- pure-profile bookings were never in here — they come through the player RLS policies, which
+-- 20260826290000 already made pure-profile and which this slice leaves alone.
+CREATE OR REPLACE FUNCTION public.get_my_linked_guest_bookings()
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+BEGIN
+  RETURN '[]'::jsonb;
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_my_linked_guest_bookings() IS
+  'ABC-18 A3: always []. Every row it returned was a GUEST booking claimed for the caller through the person stamp or the twin/linked bridge — staff-authored evidence about who an account represents. Pure-profile bookings are unaffected; they never came through here.';
+
+-- 8s. `get_my_paid_booking_ids` — pure-profile invoices only.
+CREATE OR REPLACE FUNCTION public.get_my_paid_booking_ids()
+RETURNS TABLE (booking_id uuid)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_profile uuid;
+BEGIN
+  v_profile := public.get_profile_id_for_user(auth.uid());
+  IF v_profile IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT DISTINCT bid
+  FROM public.invoices i
+  CROSS JOIN LATERAL unnest(coalesce(i.booking_ids, '{}'::uuid[])) AS bid
+  WHERE i.status = 'paid'                      -- payment semantics unchanged
+    AND i.player_id = v_profile
+    AND i.guest_player_id IS NULL;             -- dual-key belongs to the guest, not to me
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_my_paid_booking_ids() IS
+  'ABC-18 A3: pure-profile invoices only (player_id = me AND guest_player_id IS NULL). The person-stamp and twin/linked arms let a staff-authored link expose another account''s payment state. Invoice status semantics are unchanged.';
+
+-- 8t. `get_my_pending_priority_claims` — explicit pure-profile claims only.
+CREATE OR REPLACE FUNCTION public.get_my_pending_priority_claims()
+RETURNS TABLE (
+  id uuid,
+  claim_token text,
+  slot_id uuid,
+  rebook_group_id uuid,
+  start_time timestamptz,
+  end_time timestamptz,
+  cyclus_id uuid,
+  cyclus_name text,
+  price_per_session numeric,
+  priority_window_ends_at timestamptz
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_profile uuid;
+BEGIN
+  v_profile := public.get_profile_id_for_user(auth.uid());
+  IF v_profile IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT c.id, c.claim_token, c.slot_id, c.rebook_group_id,
+         s.start_time, s.end_time, s.cyclus_id, s.cyclus_name,
+         s.price_per_session, s.priority_window_ends_at
+  FROM public.slot_priority_claims c
+  JOIN public.availability_slots s ON s.id = c.slot_id
+  WHERE c.status = 'pending'                   -- claim status semantics unchanged
+    AND c.player_id = v_profile
+    AND c.guest_player_id IS NULL;             -- a dual-key claim belongs to the guest
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_my_pending_priority_claims() IS
+  'ABC-18 A3: explicit pure-profile claims only. The person-stamp and twin/linked arms let a staff-authored guest link hand one account another''s rebooking priority.';
+
+-- 8u. `is_cycle_member` — pure-profile seats only.
+-- The guest arm resolved through `guest_verified_account_profile`, i.e. person_links → twin →
+-- linked. Grants are unchanged (service_role only), and so is the cancelled-status filter that
+-- capacity and tier logic depend on.
+CREATE OR REPLACE FUNCTION public.is_cycle_member(_user_id uuid, _cycle_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE SECURITY DEFINER
+SET search_path = public
+AS $fn$
+  WITH me AS (SELECT id FROM public.profiles WHERE user_id = _user_id)
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.bookings b
+    JOIN public.availability_slots s ON s.id = b.slot_id
+    WHERE s.cyclus_id = _cycle_id
+      AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
+      AND b.guest_player_id IS NULL
+      AND b.player_id = (SELECT id FROM me)
+  );
+$fn$;
+
+COMMENT ON FUNCTION public.is_cycle_member(uuid, uuid) IS
+  'ABC-18 A3: pure-profile seats only. The guest arm resolved through guest_verified_account_profile (person_links → twin → linked), which is staff-authored. Status filtering, and therefore capacity and tier behaviour, is unchanged.';
+
+-- 8v. `can_book_member_window` — pure-profile rebooker, pure-profile claim, explicit list.
+-- Retained: (a) narrowed to a pure-profile seat, (b) the pure-profile priority claim, and
+-- (c) the cycle's explicit `rebook_priority_people` profile list. Withdrawn: (d) and (e), the
+-- guest-claim and linked-ex-guest arms, both of which resolve identity through person_links or
+-- the twin/linked bridge. Window TIMING is untouched — this function is an eligibility gate
+-- only and never affects capacity.
+CREATE OR REPLACE FUNCTION public.can_book_member_window(_user_id uuid, _cycle_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+  WITH me AS (SELECT id FROM public.profiles WHERE user_id = _user_id LIMIT 1)
+  SELECT
+    -- (a) existing rebooker, pure-profile seat
+    EXISTS (
+      SELECT 1
+      FROM public.bookings b
+      JOIN public.availability_slots s ON s.id = b.slot_id
+      WHERE s.cyclus_id = _cycle_id
+        AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
+        AND b.guest_player_id IS NULL
+        AND b.player_id = (SELECT id FROM me)
+    )
+    -- (b) original cohort: an explicit PURE-PROFILE priority claim in this round
+    OR EXISTS (
+      SELECT 1
+      FROM public.slot_priority_claims spc
+      JOIN public.availability_slots s ON s.id = spc.slot_id
+      WHERE s.source_cycle_id = _cycle_id
+        AND spc.player_id = (SELECT id FROM me)
+        AND spc.guest_player_id IS NULL
+    )
+    -- (c) the cycle's explicit registered priority list — a profile id staff named directly,
+    --     not an identity inferred from a guest row
+    OR EXISTS (
+      SELECT 1
+      FROM public.cycles c
+      WHERE c.id = _cycle_id
+        AND COALESCE(c.settings->'rebook_priority_people', '[]'::jsonb) ? (SELECT id::text FROM me)
+    );
+$fn$;
+
+COMMENT ON FUNCTION public.can_book_member_window(uuid, uuid) IS
+  'ABC-18 A3: a pure-profile seat in the cycle, an explicit pure-profile priority claim, or the cycle''s explicit rebook_priority_people list. The guest-claim and linked-ex-guest arms are withdrawn — both resolved identity through person_links or the twin/linked bridge. Pure authorization gate: it never affects capacity, and window timing is unchanged.';
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────

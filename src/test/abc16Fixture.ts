@@ -27,8 +27,7 @@ export const H0_MIGRATION = '20261118110000_abc16_abc17_relationship_evidence_co
  * authority predicates in their EFFECTIVE definitions, and the person-stamp triggers.
  */
 export const PRE_H0_MIGRATIONS = [
-  // Chronological: the chain must apply in timestamp order, or a later migration that
-  // ALTERs an earlier table (persons_expand stamping session_player_notes) fails.
+  // Chronological: the chain must apply in timestamp order.
   '20260224171306_1e85f4f8-c803-42b0-9b68-a30cd581ffcd.sql',
   '20260510090036_ef6a35bb-824f-45dc-b596-c77d707b02e8.sql',
   '20260510102923_d1c09638-3284-4cfd-b382-ab4c1abb85f4.sql',
@@ -41,6 +40,8 @@ export const PRE_H0_MIGRATIONS = [
   '20260704120000_academy_manager_bookings_update.sql',
   '20260706130100_p2_2_guest_players_academy_scope.sql',
   '20260713110000_trainer_guest_visibility.sql',
+  '20260716100000_member_window_linked_guest.sql',
+  '20260717100000_lock_can_book_member_window.sql',
   '20260731100000_member_window_priority_guest.sql',
   '20260801100000_fix_guest_players_select_returning.sql',
   '20260826210000_guest_twin_bridge.sql',
@@ -48,10 +49,12 @@ export const PRE_H0_MIGRATIONS = [
   '20260826250000_repurpose_trigger_definer.sql',
   '20260826260000_persons_expand.sql',
   '20260826280000_persons_backfill.sql',
+  '20260826290000_phase31_person_display_readers.sql',
   '20260831100000_phase33_attendance_person_rls.sql',
   '20260901100000_phase33d_person_refs_has_login.sql',
   '20260905110000_phase35c_notes_journey_person.sql',
   '20260906100000_phase35d_small_readers_person.sql',
+  '20261001100000_is_cycle_member_guest_safe_lockdown.sql',
 ];
 
 /**
@@ -266,6 +269,25 @@ export const STUB_SQL = /* sql */ `
   -- The billing columns the restored overdue predicate reads: past-due AND unpaid AND
   -- non-terminal, not merely status = 'overdue'.
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS booking_ids uuid[];
+  -- A3 reads these on the claim/slot side; the shipped migrations own them upstream.
+  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS status text DEFAULT 'pending';
+  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS claim_token text;
+  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS rebook_group_id uuid;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS cyclus_name text;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS price_per_session numeric;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS priority_window_ends_at timestamptz;
+  -- enforce_booking_slot_tier (installed by the member-window chain) fires on every booking
+  -- write and reads these; without them the trigger raises and unrelated tests fail.
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS hold_expires_at timestamptz;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS booking_tier text;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS released_at timestamptz;
+  ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS max_players integer;
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS payment_status text;
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS paid_externally boolean;
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS notes text;
+  -- the capacity/tier trigger counts held seats on BOOKINGS, not on slots
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS hold_expires_at timestamptz;
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS due_date date;
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS paid_at timestamptz;
 
@@ -296,24 +318,61 @@ export const STUB_SQL = /* sql */ `
  */
 export function extractFunction(file: string, name: string): string {
   const sql = MIGRATION(file);
-  const start = sql.indexOf(`CREATE OR REPLACE FUNCTION public.${name}`);
-  if (start < 0) throw new Error(`extractFunction: ${name} not found in ${file}`);
+  // BOTH forms: some shipped migrations use a bare `CREATE FUNCTION`. Matching only
+  // `CREATE OR REPLACE` returned -1, and slicing from -1 silently produced a fragment that
+  // applied without error while defining nothing — the failure then surfaced much later as a
+  // return-type conflict. Throw instead of guessing.
+  const start = [
+    `CREATE OR REPLACE FUNCTION public.${name}`,
+    `CREATE FUNCTION public.${name}`,
+  ].map((needle) => sql.indexOf(needle)).find((i) => i >= 0);
+  if (start === undefined) throw new Error(`extractFunction: ${name} not found in ${file}`);
   const end = sql.indexOf('$$;', start);
   if (end < 0) throw new Error(`extractFunction: unterminated body for ${name} in ${file}`);
-  return sql.slice(start, end + 3);
+  // A bare CREATE FUNCTION cannot replace an existing one, and the chain may already have an
+  // older overload, so drop first.
+  return `DROP FUNCTION IF EXISTS public.${name}(uuid);\n${sql.slice(start, end + 3)}`;
 }
 
 /** The shipped bridge minter, needed so the containment's REVOKE has a real target. */
 export const BRIDGE_MINTER_SQL = () =>
   extractFunction('20260611220000_relax_guest_email_uniqueness.sql', 'link_guest_data_to_profile');
 
+/**
+ * `guest_verified_account_profile` — the person_links -> twin -> linked resolver that
+ * `is_cycle_member` and `can_book_member_window` used before A3 withdrew those arms. Its own
+ * migration (20260927100000) also rewrites unrelated rebook schema, so the shipped function is
+ * taken on its own: the A3 suite needs the PRE-state resolver to exist in order to prove the
+ * arms that consumed it are gone.
+ */
+export const GUEST_VERIFIED_RESOLVER_SQL = () =>
+  extractFunction('20260927100000_rebook_identity_guest_first.sql', 'guest_verified_account_profile');
+
+/**
+ * The effective 3-column `get_cycle_roster_names` (id, full_name, has_login). Its migration
+ * also re-emits `get_academy_cyclus_groups`, which belongs to an unrelated chain this fixture
+ * has no reason to model — so the roster function is taken on its own. Without it the fixture
+ * carries the older 2-column version and the A1 re-emission cannot even be created.
+ */
+export const ROSTER_HAS_LOGIN_SQL = () =>
+  extractFunction('20260828100000_phase33a_roster_haslogin.sql', 'get_cycle_roster_names');
+
 /** Apply the stubs, then every pre-H0 migration in chain order. */
 export async function applyPreH0(exec: (sql: string) => Promise<unknown>): Promise<void> {
   await exec(STUB_SQL);
   for (const file of PRE_H0_MIGRATIONS) {
     await exec(MIGRATION(file));
+    // The extracted helpers land at their real chain position: after person_links exists (their
+    // bodies reference it, and a SQL body is parsed at CREATE time) AND after 20260826290000,
+    // which re-emits a 2-column get_cycle_roster_names that would otherwise overwrite the
+    // effective 3-column one. Appending them at the very end instead would fail for the
+    // consumers applied earlier in the chain.
+    if (file.startsWith('20260826290000')) {
+      await exec(BRIDGE_MINTER_SQL());
+      await exec(GUEST_VERIFIED_RESOLVER_SQL());
+      await exec(ROSTER_HAS_LOGIN_SQL());
+    }
   }
-  await exec(BRIDGE_MINTER_SQL());
 }
 
 /** Apply the H0 migration under test. */
