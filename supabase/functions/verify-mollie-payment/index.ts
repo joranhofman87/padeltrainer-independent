@@ -7,7 +7,13 @@ import {
 } from "../_shared/booking-access.ts";
 import { amountsMatch, parseMollieAmountValue } from "../_shared/booking-pricing.ts";
 import { runBookingPaidSideEffects } from "../_shared/mollie-booking-paid-side-effects.ts";
-import { applyBookingPaymentWriteback, findCancelledPaidBookings } from "../_shared/mollie-webhook-payment.ts";
+import { findCancelledPaidBookings } from "../_shared/mollie-webhook-payment.ts";
+import {
+  settlePaidBookings,
+  settlementLogContext,
+  isHardRefusal,
+  type SettlementOutcome,
+} from "../_shared/settlement.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[VERIFY-MOLLIE-PAYMENT] ${step}`, details ? JSON.stringify(details) : "");
@@ -360,21 +366,57 @@ serve(async (req) => {
       // payment_pending HOLD flipped paid here can't collide with the M-17
       // (slot, guest|player) index and 500 the verify. Returns the SURVIVOR/
       // transitioned id set (colliding hold cancelled, survivor stamped paid).
-      let transitionedRows: { id: string }[] = [];
-      let writebackFailed = false;
+      // ABC-23 §3: the verifier settles through the SAME single authority as the webhook, with
+      // the complete stored set for this payment. Whichever of the two arrives first performs the
+      // transition; the other sees zero first transitions and skips the side-effects.
+      let settlement: SettlementOutcome | null = null;
+      let settlementError: string | null = null;
       try {
-        transitionedRows = await applyBookingPaymentWriteback(supabase, metadataIds, {
-          payment_status: "paid",
-          status: "confirmed",
-          mollie_transaction_id: payment.id,
-          paid_at: new Date().toISOString(),
+        settlement = await settlePaidBookings(supabase, {
+          source: "verifier",
+          bookingIds: metadataIds,
+          providerPaymentId: payment.id,
+          providerTransactionId: payment.id,
         });
-      } catch (writebackErr) {
-        writebackFailed = true;
-        logStep("Warning: Failed to update bookings", {
-          error: writebackErr instanceof Error ? writebackErr.message : String(writebackErr),
-        });
+        logStep("Settlement command applied", settlementLogContext(settlement));
+      } catch (settleErr) {
+        settlementError = settleErr instanceof Error ? settleErr.message : String(settleErr);
+        logStep("Settlement FAILED", { error: settlementError });
       }
+
+      // A failed or refused settlement must NEVER be reported as a completed payment. Returning
+      // `paid: true` here told the success page the seat was booked while the booking was still
+      // an unpaid hold — the client then stopped polling and the discrepancy went unnoticed.
+      if (settlementError) {
+        await notifySlackError("verify-mollie-payment", "Settlement failed on the verifier path", {
+          paymentId: payment.id,
+          bookingIds: metadataIds,
+          error: settlementError,
+        });
+        return new Response(
+          JSON.stringify({ paid: false, settled: false, status: payment.status, error: settlementError }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      if (settlement?.refusalReason) {
+        await notifySlackError("verify-mollie-payment", "Settlement refused on the verifier path", {
+          paymentId: payment.id,
+          reason: settlement.refusalReason,
+          bookingIds: settlement.refused,
+        });
+        const terminal = isHardRefusal(settlement.refusalReason);
+        return new Response(
+          JSON.stringify({
+            paid: false,
+            settled: false,
+            status: payment.status,
+            refusalReason: settlement.refusalReason,
+          }),
+          { status: terminal ? 200 : 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+      const transitionedRows: { id: string }[] = (settlement?.confirmedPaid ?? []).map((id) => ({ id }));
+      const writebackFailed = false;
 
       if (!writebackFailed) {
         const paidIds = transitionedRows.map((r) => r.id);

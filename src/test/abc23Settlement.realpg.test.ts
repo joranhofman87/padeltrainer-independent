@@ -411,9 +411,9 @@ describe('ABC-23 · concurrency (two sessions, observer, bounded)', () => {
 describe('ABC-23 · ACL matrix', () => {
   it('is service_role only, with an unrevoked control proving the default grant is real', async () => {
     const r = await a.query(`
-      SELECT has_function_privilege('authenticated','public.settle_paid_bookings(uuid[],text,text,uuid)','EXECUTE') AS auth,
-             has_function_privilege('anon','public.settle_paid_bookings(uuid[],text,text,uuid)','EXECUTE') AS anon,
-             has_function_privilege('service_role','public.settle_paid_bookings(uuid[],text,text,uuid)','EXECUTE') AS svc,
+      SELECT has_function_privilege('authenticated','public.settle_paid_bookings(uuid[],text,text,uuid,uuid,uuid,text)','EXECUTE') AS auth,
+             has_function_privilege('anon','public.settle_paid_bookings(uuid[],text,text,uuid,uuid,uuid,text)','EXECUTE') AS anon,
+             has_function_privilege('service_role','public.settle_paid_bookings(uuid[],text,text,uuid,uuid,uuid,text)','EXECUTE') AS svc,
              has_function_privilege('authenticated','public.booking_occupies_seat(text,timestamptz)','EXECUTE') AS control`);
     expect(r.rows[0]).toMatchObject({ auth: false, anon: false, svc: true, control: true });
   });

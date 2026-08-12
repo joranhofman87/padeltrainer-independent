@@ -2900,11 +2900,26 @@ END $$;
 --   3. pg_advisory_xact_lock per slot in the same ascending order;
 --   4. only then lock the booking/invoice rows and RE-READ, failing closed if anything moved.
 --   Every session takes the same keys in the same order, so no cycle can form.
+-- The return type changes (invoice_paid_now) and two payer-attribution parameters are added, so
+-- the Boundary-A signature is dropped rather than replaced. Both are required by §3: a caller must
+-- learn whether IT claimed the invoice transition (to notify/forward exactly once) without reading
+-- that out of the refusal channel, and rebook-group coverage must stamp WHO paid inside the same
+-- atomic settlement instead of in a second, non-atomic write.
+DROP FUNCTION IF EXISTS public.settle_paid_bookings(uuid[], text, text, uuid);
+
 CREATE OR REPLACE FUNCTION public.settle_paid_bookings(
   _booking_ids uuid[],
   _provider_payment_id text,
   _provider_transaction_id text DEFAULT NULL,
-  _invoice_id uuid DEFAULT NULL
+  _invoice_id uuid DEFAULT NULL,
+  _paid_by_player_id uuid DEFAULT NULL,
+  _paid_by_guest_player_id uuid DEFAULT NULL,
+  -- 'mollie' = a captured provider payment. 'manual' = a trainer/academy recording an
+  -- externally-received payment (bank transfer, cash). Manual settlement writes NO provider
+  -- columns: inventing a Mollie id to satisfy this command would put a value in
+  -- bookings.mollie_payment_id that no Mollie account can ever resolve, corrupting every
+  -- reconciliation that joins on it.
+  _settlement_source text DEFAULT 'mollie'
 )
 RETURNS TABLE (
   confirmed_paid uuid[],
@@ -2912,7 +2927,11 @@ RETURNS TABLE (
   paid_no_seat uuid[],
   replayed_paid_no_seat uuid[],
   refused uuid[],
-  refusal_reason text
+  refusal_reason text,
+  -- TRUE only for the request that actually transitioned the invoice to paid. Kept OUT of
+  -- refusal_reason deliberately: a caller testing `refusal_reason IS NOT NULL` must never read a
+  -- successful settlement as a failure.
+  invoice_paid_now boolean
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -2939,32 +2958,94 @@ DECLARE
   v_late RECORD;                   -- an active seat committed after the survivor scan
   v_invoice public.invoices%ROWTYPE;
   v_invoice_paid_now boolean := false;
+  -- NULL in manual mode. Every provider write is COALESCE(existing, v_pay), so a NULL leaves the
+  -- column untouched; every provider COMPARISON is `<> v_pay`, which is NULL and therefore never
+  -- true. That is deliberate, not incidental: provider identity is not a meaningful check for a
+  -- payment that did not come from the provider.
+  v_pay text;
+  v_txn text;
 BEGIN
+  IF _settlement_source IS NULL OR _settlement_source NOT IN ('mollie', 'manual') THEN
+    RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                        'invalid_settlement_source'::text, false;
+    RETURN;
+  END IF;
+  v_pay := CASE WHEN _settlement_source = 'manual' THEN NULL ELSE _provider_payment_id END;
+  v_txn := CASE WHEN _settlement_source = 'manual' THEN NULL ELSE _provider_transaction_id END;
   -- ── input validation: reject null/empty/duplicate/missing ────────────────────────────────
   IF _booking_ids IS NULL OR array_length(_booking_ids, 1) IS NULL THEN
+    -- ── INVOICE-ONLY PATH ────────────────────────────────────────────────────────────────
+    -- An invoice can genuinely have no bookings (an administrative or membership invoice).
+    -- It still settles through this one authority, atomically and with the same refusal
+    -- vocabulary; it is a separate branch because there is no slot, no capacity and no
+    -- survivor question here. What it must NOT become is a bypass: an invoice that DOES cite
+    -- bookings is refused, so no caller can mark money received while its seats stay unpaid.
+    IF _invoice_id IS NULL THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                          'no_targets'::text, false;
+      RETURN;
+    END IF;
+    IF _settlement_source = 'mollie'
+       AND (_provider_payment_id IS NULL OR btrim(_provider_payment_id) = '') THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                          'missing_provider_payment_id'::text, false;
+      RETURN;
+    END IF;
+
+    v_now := clock_timestamp();
+    SELECT * INTO v_invoice FROM public.invoices WHERE id = _invoice_id FOR UPDATE;
+    IF v_invoice.id IS NULL THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                          'invoice_missing'::text, false;
+      RETURN;
+    END IF;
+    IF COALESCE(v_invoice.status, '') = 'cancelled' THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                          'invoice_cancelled'::text, false;
+      RETURN;
+    END IF;
+    IF v_invoice.mollie_payment_id IS NOT NULL
+       AND v_invoice.mollie_payment_id <> v_pay THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                          'invoice_provider_conflict'::text, false;
+      RETURN;
+    END IF;
+    IF COALESCE(array_length(v_invoice.booking_ids, 1), 0) > 0 THEN
+      RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
+                          'invoice_has_bookings'::text, false;
+      RETURN;
+    END IF;
+
+    UPDATE public.invoices
+       SET status = 'paid', paid_at = COALESCE(paid_at, v_now),
+           mollie_payment_id = COALESCE(mollie_payment_id, v_pay)
+     WHERE id = _invoice_id AND COALESCE(status, '') NOT IN ('paid', 'cancelled');
+    v_invoice_paid_now := FOUND;
+
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
-                        'no_targets'::text;
+                        NULL::text, v_invoice_paid_now;
     RETURN;
   END IF;
   IF EXISTS (SELECT 1 FROM unnest(_booking_ids) t(id) WHERE t.id IS NULL) THEN
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[],
-                        'null_target'::text;
+                        'null_target'::text, false;
     RETURN;
   END IF;
   SELECT array_agg(DISTINCT t.id ORDER BY t.id) INTO v_ids FROM unnest(_booking_ids) t(id);
   IF array_length(v_ids, 1) <> array_length(_booking_ids, 1) THEN
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], _booking_ids,
-                        'duplicate_targets'::text;
+                        'duplicate_targets'::text, false;
     RETURN;
   END IF;
-  IF _provider_payment_id IS NULL OR btrim(_provider_payment_id) = '' THEN
+  IF _settlement_source = 'mollie'
+     AND (_provider_payment_id IS NULL OR btrim(_provider_payment_id) = '') THEN
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                        'missing_provider_payment_id'::text;
+                        'missing_provider_payment_id'::text, false;
     RETURN;
   END IF;
   IF (SELECT count(*) FROM public.bookings b WHERE b.id = ANY(v_ids)) <> array_length(v_ids, 1) THEN
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                        'unknown_target'::text;
+                        'unknown_target'::text, false;
     RETURN;
   END IF;
 
@@ -2980,10 +3061,17 @@ BEGIN
     SELECT 1 FROM public.bookings b
     WHERE b.id = ANY(v_ids)
       AND b.mollie_payment_id IS NOT NULL
-      AND b.mollie_payment_id <> _provider_payment_id
+      AND b.mollie_payment_id <> v_pay
+      -- ...but only while the booking is still UNSETTLED. A booking that is ALREADY PAID under a
+      -- different provider payment is not a conflict to refuse, it is a seat somebody else
+      -- already paid for: the correct outcome is the no-op below (already_confirmed_paid), and
+      -- its stored provider id is left alone. Refusing here failed an ENTIRE rebook-group
+      -- coverage batch because one member had paid their own seat first — the captain's payment
+      -- then covered nobody, terminally.
+      AND COALESCE(b.payment_status, '') <> 'paid'
   ) THEN
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                        'provider_payment_id_conflict'::text;
+                        'provider_payment_id_conflict'::text, false;
     RETURN;
   END IF;
 
@@ -3007,17 +3095,18 @@ BEGIN
         FROM public.bookings b WHERE b.id = ANY(v_ids) AND b.slot_id IS NOT NULL)
      IS DISTINCT FROM v_slots THEN
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                        'target_slots_changed'::text;
+                        'target_slots_changed'::text, false;
     RETURN;
   END IF;
   IF EXISTS (
     SELECT 1 FROM public.bookings b
     WHERE b.id = ANY(v_ids)
       AND b.mollie_payment_id IS NOT NULL
-      AND b.mollie_payment_id <> _provider_payment_id
+      AND b.mollie_payment_id <> v_pay
+      AND COALESCE(b.payment_status, '') <> 'paid'   -- same narrowing as the pre-lock check
   ) THEN
     RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                        'provider_payment_id_conflict'::text;
+                        'provider_payment_id_conflict'::text, false;
     RETURN;
   END IF;
 
@@ -3030,23 +3119,23 @@ BEGIN
     SELECT * INTO v_invoice FROM public.invoices WHERE id = _invoice_id FOR UPDATE;
     IF v_invoice.id IS NULL THEN
       RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                          'invoice_missing'::text;
+                          'invoice_missing'::text, false;
       RETURN;
     END IF;
     IF COALESCE(v_invoice.status, '') = 'cancelled' THEN
       RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                          'invoice_cancelled'::text;
+                          'invoice_cancelled'::text, false;
       RETURN;
     END IF;
     IF v_invoice.mollie_payment_id IS NOT NULL
-       AND v_invoice.mollie_payment_id <> _provider_payment_id THEN
+       AND v_invoice.mollie_payment_id <> v_pay THEN
       RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                          'invoice_provider_conflict'::text;
+                          'invoice_provider_conflict'::text, false;
       RETURN;
     END IF;
     IF NOT (v_ids <@ COALESCE(v_invoice.booking_ids, '{}'::uuid[])) THEN
       RETURN QUERY SELECT '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], '{}'::uuid[], v_ids,
-                          'invoice_association_mismatch'::text;
+                          'invoice_association_mismatch'::text, false;
       RETURN;
     END IF;
   END IF;
@@ -3139,8 +3228,10 @@ BEGIN
           UPDATE public.bookings
              SET status = 'cancelled',
                  payment_status = 'paid',
-                 mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
-                 mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                 mollie_payment_id = COALESCE(mollie_payment_id, v_pay),
+                 mollie_transaction_id = COALESCE(mollie_transaction_id, v_txn),
+                 paid_by_player_id = COALESCE(paid_by_player_id, _paid_by_player_id),
+                 paid_by_guest_player_id = COALESCE(paid_by_guest_player_id, _paid_by_guest_player_id),
                  paid_at = COALESCE(paid_at, v_now),
                  hold_expires_at = NULL,
                  updated_at = v_now
@@ -3168,7 +3259,7 @@ BEGIN
        -- produce ONE first-transition result, never one per hold.
        ORDER BY o.id, h.id
     LOOP
-      IF v_surv.s_provider IS NOT NULL AND v_surv.s_provider <> _provider_payment_id THEN
+      IF v_surv.s_provider IS NOT NULL AND v_surv.s_provider <> v_pay THEN
         -- The survivor belongs to a DIFFERENT captured payment. Touching it would attribute one
         -- person's money to another's seat, so it is left exactly as it is and THIS payment is
         -- represented durably on its own hold.
@@ -3179,8 +3270,10 @@ BEGIN
           ELSE
             UPDATE public.bookings
                SET status = 'cancelled', payment_status = 'paid',
-                   mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
-                   mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                   mollie_payment_id = COALESCE(mollie_payment_id, v_pay),
+                   mollie_transaction_id = COALESCE(mollie_transaction_id, v_txn),
+                 paid_by_player_id = COALESCE(paid_by_player_id, _paid_by_player_id),
+                 paid_by_guest_player_id = COALESCE(paid_by_guest_player_id, _paid_by_guest_player_id),
                    paid_at = COALESCE(paid_at, v_now), hold_expires_at = NULL, updated_at = v_now
              WHERE id = r.id;
             v_nos := v_nos || r.id;
@@ -3193,8 +3286,10 @@ BEGIN
           UPDATE public.bookings
              SET payment_status = 'paid',
                  status = CASE WHEN status = 'completed' THEN status ELSE 'confirmed' END,
-                 mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
-                 mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                 mollie_payment_id = COALESCE(mollie_payment_id, v_pay),
+                 mollie_transaction_id = COALESCE(mollie_transaction_id, v_txn),
+                 paid_by_player_id = COALESCE(paid_by_player_id, _paid_by_player_id),
+                 paid_by_guest_player_id = COALESCE(paid_by_guest_player_id, _paid_by_guest_player_id),
                  paid_at = COALESCE(paid_at, v_now), updated_at = v_now
            WHERE id = v_surv.survivor_id;
           v_conf := v_conf || v_surv.survivor_id;
@@ -3243,8 +3338,10 @@ BEGIN
           UPDATE public.bookings
              SET status = 'confirmed',
                  payment_status = 'paid',
-                 mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
-                 mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                 mollie_payment_id = COALESCE(mollie_payment_id, v_pay),
+                 mollie_transaction_id = COALESCE(mollie_transaction_id, v_txn),
+                 paid_by_player_id = COALESCE(paid_by_player_id, _paid_by_player_id),
+                 paid_by_guest_player_id = COALESCE(paid_by_guest_player_id, _paid_by_guest_player_id),
                  paid_at = COALESCE(paid_at, v_now),
                  hold_expires_at = NULL,
                  updated_at = v_now
@@ -3275,11 +3372,13 @@ BEGIN
           IF NOT FOUND THEN RAISE; END IF;
 
           IF v_late.mollie_payment_id IS NOT NULL
-             AND v_late.mollie_payment_id <> _provider_payment_id THEN
+             AND v_late.mollie_payment_id <> v_pay THEN
             UPDATE public.bookings
                SET status = 'cancelled', payment_status = 'paid',
-                   mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
-                   mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                   mollie_payment_id = COALESCE(mollie_payment_id, v_pay),
+                   mollie_transaction_id = COALESCE(mollie_transaction_id, v_txn),
+                 paid_by_player_id = COALESCE(paid_by_player_id, _paid_by_player_id),
+                 paid_by_guest_player_id = COALESCE(paid_by_guest_player_id, _paid_by_guest_player_id),
                    paid_at = COALESCE(paid_at, v_now), hold_expires_at = NULL, updated_at = v_now
              WHERE id = r.id;
             v_nos := v_nos || r.id;
@@ -3288,8 +3387,10 @@ BEGIN
               UPDATE public.bookings
                  SET payment_status = 'paid',
                      status = CASE WHEN status = 'completed' THEN status ELSE 'confirmed' END,
-                     mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id),
-                     mollie_transaction_id = COALESCE(mollie_transaction_id, _provider_transaction_id),
+                     mollie_payment_id = COALESCE(mollie_payment_id, v_pay),
+                     mollie_transaction_id = COALESCE(mollie_transaction_id, v_txn),
+                 paid_by_player_id = COALESCE(paid_by_player_id, _paid_by_player_id),
+                 paid_by_guest_player_id = COALESCE(paid_by_guest_player_id, _paid_by_guest_player_id),
                      paid_at = COALESCE(paid_at, v_now), updated_at = v_now
                WHERE id = v_late.id;
               v_conf := v_conf || v_late.id;
@@ -3322,7 +3423,7 @@ BEGIN
     UPDATE public.invoices
        SET status = 'paid',
            paid_at = COALESCE(paid_at, v_now),
-           mollie_payment_id = COALESCE(mollie_payment_id, _provider_payment_id)
+           mollie_payment_id = COALESCE(mollie_payment_id, v_pay)
      WHERE id = _invoice_id
        AND COALESCE(status, '') NOT IN ('paid', 'cancelled');
     v_invoice_paid_now := FOUND;
@@ -3340,15 +3441,14 @@ BEGIN
   -- invoice settlement as a failure. No caller needs the indicator until Boundary B, and adding
   -- a result column changes the return type, so it is deliberately not returned yet;
   -- v_invoice_paid_now remains request-local.
-  PERFORM v_invoice_paid_now;
-  RETURN QUERY SELECT v_conf, v_already, v_nos, v_replay, v_ref, v_reason;
+  RETURN QUERY SELECT v_conf, v_already, v_nos, v_replay, v_ref, v_reason, v_invoice_paid_now;
 END;
 $fn$;
 
-REVOKE ALL ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid) TO service_role;
+REVOKE ALL ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid, uuid, uuid, text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid, uuid, uuid, text) TO service_role;
 
-COMMENT ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid) IS
+COMMENT ON FUNCTION public.settle_paid_bookings(uuid[], text, text, uuid, uuid, uuid, text) IS
   'ABC-23: the single atomic paid-settlement authority. Locks slots FOR SHARE then advisory, both in ascending uuid order, before locking and re-reading targets; classifies hold liveness with clock_timestamp() after acquisition. Same-slot expired additions are all-or-none; independent slots fulfil independently. A seatless paid hold becomes cancelled+paid with provider ids and paid_at persisted and the hold cleared — never occupying, never resurrected. service_role only.';
 
 DO $$
@@ -3363,11 +3463,11 @@ BEGIN
   IF v_src !~ 'clock_timestamp\(\)' THEN
     RAISE EXCEPTION 'ABC-23: hold liveness must be judged with clock_timestamp() after locking';
   END IF;
-  IF has_function_privilege('authenticated', 'public.settle_paid_bookings(uuid[],text,text,uuid)', 'EXECUTE')
-     OR has_function_privilege('anon', 'public.settle_paid_bookings(uuid[],text,text,uuid)', 'EXECUTE') THEN
+  IF has_function_privilege('authenticated', 'public.settle_paid_bookings(uuid[],text,text,uuid,uuid,uuid,text)', 'EXECUTE')
+     OR has_function_privilege('anon', 'public.settle_paid_bookings(uuid[],text,text,uuid,uuid,uuid,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'ABC-23: settle_paid_bookings must be service_role only';
   END IF;
-  IF NOT has_function_privilege('service_role', 'public.settle_paid_bookings(uuid[],text,text,uuid)', 'EXECUTE') THEN
+  IF NOT has_function_privilege('service_role', 'public.settle_paid_bookings(uuid[],text,text,uuid,uuid,uuid,text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'ABC-23: service_role must retain EXECUTE';
   END IF;
 END $$;
@@ -3578,3 +3678,229 @@ BEGIN
     RAISE EXCEPTION 'ABC-16: the academy guest SELECT policy is not the expected one';
   END IF;
 END $$;
+
+
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+-- ABC-23 §5 — reconciliation of captured money that holds no seat
+--
+-- Re-emitted from the EFFECTIVE definition (20260712100000_reconcile_payments_service_role.sql),
+-- checks 1-9 byte-identical and the authorization gate unchanged: an end-user JWT must be admin,
+-- and a NULL uid (the service role, which no end-user key can produce) is the nightly
+-- invoice-health-check. Only check 10 is added.
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.reconcile_payments(_since interval DEFAULT interval '30 days')
+RETURNS TABLE (check_name text, severity text, entity_kind text, entity_id uuid, detail jsonb)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  -- Admin for user JWTs; a NULL uid is the service role (edge functions — the
+  -- nightly invoice-health-check runs this), which no end-user key can produce.
+  IF auth.uid() IS NOT NULL AND NOT public.has_role(auth.uid(), 'admin') THEN
+    RAISE EXCEPTION 'forbidden' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  RETURN QUERY
+  -- 1) Stranded invoice: has a Mollie payment id but never reached a terminal status (should be final).
+  SELECT 'stranded_invoice'::text, 'P1'::text, 'invoice'::text, i.id,
+         jsonb_build_object('status', i.status, 'mollie_payment_id', i.mollie_payment_id, 'total', i.total, 'created_at', i.created_at)
+  FROM public.invoices i
+  WHERE i.mollie_payment_id IS NOT NULL
+    AND i.status NOT IN ('paid', 'cancelled')
+    AND i.created_at < now() - interval '1 hour'
+    AND i.created_at > now() - _since
+
+  UNION ALL
+  -- 2) A PAID invoice whose linked booking is still unpaid + not cancelled (writeback lost).
+  SELECT 'invoice_paid_bookings_unpaid'::text, 'P1', 'invoice', i.id,
+         jsonb_build_object('booking_id', b.id, 'booking_payment_status', b.payment_status, 'booking_status', b.status)
+  FROM public.invoices i
+  JOIN public.bookings b ON b.id = ANY(i.booking_ids)
+  WHERE i.status = 'paid' AND b.payment_status IS DISTINCT FROM 'paid' AND b.status <> 'cancelled'
+    AND COALESCE(i.paid_at, i.created_at) > now() - _since
+
+  UNION ALL
+  -- 3) A CANCELLED booking still billed by a PAID invoice (money taken, seat gone).
+  SELECT 'cancelled_booking_on_paid_invoice'::text, 'P1', 'booking', b.id,
+         jsonb_build_object('invoice_id', i.id)
+  FROM public.invoices i
+  JOIN public.bookings b ON b.id = ANY(i.booking_ids)
+  WHERE i.status = 'paid' AND b.status = 'cancelled'
+    AND COALESCE(i.paid_at, i.created_at) > now() - _since
+
+  UNION ALL
+  -- 4) Two ACTIVE (non-cancelled) invoices billing the SAME booking (double-pay risk).
+  SELECT 'overlapping_active_invoices'::text, 'P0', 'invoice', i1.id,
+         jsonb_build_object('other_invoice_id', i2.id,
+           'overlap', (SELECT array_agg(x) FROM unnest(i1.booking_ids) x WHERE x = ANY(i2.booking_ids)))
+  FROM public.invoices i1
+  JOIN public.invoices i2 ON i1.id < i2.id AND i1.booking_ids && i2.booking_ids
+  WHERE i1.status <> 'cancelled' AND i2.status <> 'cancelled'
+
+  UNION ALL
+  -- 5) More than one ACTIVE invoice for one rebook group (the unique index should prevent this).
+  SELECT 'duplicate_rebook_group_invoice'::text, 'P0', 'invoice', i.id,
+         jsonb_build_object('rebook_group_id', i.rebook_group_id, 'active_count', cnt.n)
+  FROM public.invoices i
+  JOIN (
+    SELECT rebook_group_id, count(*) AS n FROM public.invoices
+    WHERE rebook_group_id IS NOT NULL AND status <> 'cancelled'
+    GROUP BY rebook_group_id HAVING count(*) > 1
+  ) cnt ON cnt.rebook_group_id = i.rebook_group_id
+  WHERE i.status <> 'cancelled'
+
+  UNION ALL
+  -- 6) An expired payment_pending hold still occupying capacity (release sweep lagging).
+  SELECT 'stale_hold'::text, 'P1', 'booking', b.id,
+         jsonb_build_object('slot_id', b.slot_id, 'hold_expires_at', b.hold_expires_at)
+  FROM public.bookings b
+  WHERE b.status = 'payment_pending' AND b.hold_expires_at IS NOT NULL
+    AND b.hold_expires_at < now() - interval '10 minutes'
+
+  UNION ALL
+  -- 7) A SENT, payable invoice with no public_token → it cannot be paid.
+  SELECT 'sent_invoice_no_token'::text, 'P1', 'invoice', i.id,
+         jsonb_build_object('status', i.status, 'total', i.total)
+  FROM public.invoices i
+  WHERE i.status = 'sent' AND i.public_token IS NULL AND i.total > 0
+
+  UNION ALL
+  -- 8) A PAID invoice whose total drifts from the sum of its booked amounts (beyond tolerance).
+  SELECT 'invoice_total_booking_sum_mismatch'::text, 'P1', 'invoice', s.invoice_id,
+         jsonb_build_object('invoice_total', s.total, 'booking_sum', s.booking_sum, 'booking_count', s.n)
+  FROM (
+    SELECT i.id AS invoice_id, i.total, count(b.id) AS n, COALESCE(sum(b.payment_amount), 0) AS booking_sum
+    FROM public.invoices i
+    JOIN public.bookings b ON b.id = ANY(i.booking_ids)
+    WHERE i.status = 'paid' AND COALESCE(i.paid_at, i.created_at) > now() - _since
+    GROUP BY i.id, i.total
+  ) s
+  WHERE abs(s.total - s.booking_sum) > greatest(0.01, s.n * 0.01)
+
+  UNION ALL
+  -- 9) A booking marked paid > 1 day ago that no ACTIVE invoice bills (missing payment trail).
+  SELECT 'booking_paid_no_invoice'::text, 'P2', 'booking', b.id,
+         jsonb_build_object('slot_id', b.slot_id, 'paid_at', b.paid_at, 'payment_amount', b.payment_amount)
+  FROM public.bookings b
+  WHERE b.payment_status = 'paid' AND b.paid_at IS NOT NULL
+    AND b.paid_at < now() - interval '1 day' AND b.paid_at > now() - _since
+    AND NOT EXISTS (
+      SELECT 1 FROM public.invoices i WHERE b.id = ANY(i.booking_ids) AND i.status <> 'cancelled'
+    )
+
+  UNION ALL
+  -- 10) ABC-23 paid_no_seat: money captured on a booking that holds NO seat. Settlement now
+  -- records this state explicitly (cancelled + paid) instead of leaving a silent stale hold, so
+  -- reconciliation can finally see it.
+  --
+  -- Deliberately NOT bounded by _since. Every other check is a freshness sweep; this one is an
+  -- open financial obligation. A payment the operator has not yet refunded does not stop being
+  -- owed because it is 31 days old, and a windowed report would quietly retire exactly the cases
+  -- that went unhandled longest.
+  --
+  -- It clears when the operator sets the LOCAL payment_status to 'refunded' after handling the
+  -- refund in Mollie. That is the whole lifecycle: this function still writes nothing, there is
+  -- no automated refund, no operator queue and no new table.
+  SELECT 'paid_no_seat'::text, 'P0', 'booking', b.id,
+         jsonb_build_object(
+           'slot_id', b.slot_id,
+           'paid_at', b.paid_at,
+           'payment_amount', b.payment_amount,
+           'mollie_payment_id', b.mollie_payment_id,
+           'invoice_ids', (SELECT COALESCE(array_agg(i.id), '{}'::uuid[])
+                             FROM public.invoices i WHERE b.id = ANY(i.booking_ids)),
+           'resolution', 'refund in Mollie, then set bookings.payment_status = ''refunded''')
+  FROM public.bookings b
+  WHERE b.status = 'cancelled' AND b.payment_status = 'paid';
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.reconcile_payments(interval) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.reconcile_payments(interval) TO authenticated;
+
+DO $chk$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'reconcile_payments';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'ABC-23 §5: reconcile_payments is missing'; END IF;
+  IF COALESCE(v_src !~ 'paid_no_seat', true) THEN
+    RAISE EXCEPTION 'ABC-23 §5: reconcile_payments must report paid_no_seat';
+  END IF;
+  -- The obligation report must not be windowed away. `.` matches newlines in a POSIX regex, so
+  -- a whole-body pattern would match any _since anywhere; this looks only at the tail that
+  -- starts at the check-10 SELECT.
+  IF COALESCE(substring(v_src from position('''paid_no_seat''::text' in v_src)) ~ '_since', false) THEN
+    RAISE EXCEPTION 'ABC-23 §5: the paid_no_seat check must not be bounded by _since';
+  END IF;
+  IF COALESCE(v_src !~ 'has_role', true) THEN
+    RAISE EXCEPTION 'ABC-23 §5: reconcile_payments lost its admin gate';
+  END IF;
+END $chk$;
+
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+-- ABC-23 §4 — who may settle an invoice MANUALLY
+--
+-- This mirrors, exactly, the authorization the browser used to rely on: the two UPDATE policies
+-- on public.invoices.
+--   • "Trainers can update their own invoices"   → trainer_id ∈ this user's trainer_profiles
+--   • "Academy managers can update invoices"     → is_academy_manager(uid, academy_profile_id)
+--
+-- There is deliberately NO admin arm: no admin UPDATE policy on public.invoices exists today, so
+-- adding one here would WIDEN authority under cover of a refactor. An admin who is also the
+-- owning trainer or an academy manager passes through those arms, exactly as now.
+--
+-- The player arm of the policy set is also excluded on purpose: players may update billing
+-- details only, and trg_protect_invoice_financial_columns_for_players blocks them from touching
+-- financial columns. Marking an invoice paid has never been theirs.
+--
+-- auth.uid() IS NOT NULL is load-bearing: the service role has a NULL uid, and a NULL-uid caller
+-- must never satisfy a user-authorization check by accident.
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.can_settle_invoice_manually(_invoice_id uuid)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+      FROM public.invoices i
+     WHERE i.id = _invoice_id
+       AND auth.uid() IS NOT NULL
+       AND (
+         i.trainer_id IN (
+           SELECT tp.id FROM public.trainer_profiles tp WHERE tp.user_id = auth.uid()
+         )
+         OR (
+           i.academy_profile_id IS NOT NULL
+           AND public.is_academy_manager(auth.uid(), i.academy_profile_id)
+         )
+       )
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_settle_invoice_manually(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.can_settle_invoice_manually(uuid) TO authenticated;
+
+DO $chk$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'can_settle_invoice_manually';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'ABC-23 §4: can_settle_invoice_manually is missing'; END IF;
+  IF COALESCE(v_src !~ 'auth\.uid\(\) IS NOT NULL', true) THEN
+    RAISE EXCEPTION 'ABC-23 §4: the manual-settlement gate must refuse a NULL uid';
+  END IF;
+  IF COALESCE(v_src ~ 'has_role', false) THEN
+    RAISE EXCEPTION 'ABC-23 §4: the manual-settlement gate must not add an admin arm';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.can_settle_invoice_manually(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-23 §4: authenticated must be able to evaluate its own gate';
+  END IF;
+END $chk$;

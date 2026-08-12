@@ -241,6 +241,7 @@ const MANAGED = {
     'supabase/functions/twilio-whatsapp-webhook/index.ts',
     'supabase/functions/update-public-invoice-details/index.ts',
     'supabase/functions/update-user/index.ts',
+    'supabase/functions/settle-invoice-manual/index.ts',
     'supabase/functions/verify-mollie-payment/index.ts',
   ],
   'downstream-caller': [
@@ -351,6 +352,7 @@ const MANAGED_ANON = {
   ],
   'edge-anon': [
     'supabase/functions/bulk-update-vat/index.ts',
+    'supabase/functions/settle-invoice-manual/index.ts',
     'supabase/functions/create-academy-trainer/index.ts',
     'supabase/functions/create-admin-trainer/index.ts',
     'supabase/functions/create-club-trainer/index.ts',

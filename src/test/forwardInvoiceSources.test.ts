@@ -77,12 +77,12 @@ describe('mollie-webhook forward handling', () => {
   });
 
   it('does not block paid status when forwarding fails', () => {
-    const paidUpdateIdx = source.indexOf(
-      'status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId',
-    );
+    // ABC-23 §3: "paid" is now set by the atomic settlement rather than a local UPDATE; the
+    // property under test is the same — forwarding happens after, and cannot undo, the payment.
+    const settleIdx = source.indexOf('source: "webhook_invoice"');
     const forwardIdx = source.indexOf('invoke("forward-invoice"');
-    expect(paidUpdateIdx).toBeGreaterThan(-1);
-    expect(forwardIdx).toBeGreaterThan(paidUpdateIdx);
+    expect(settleIdx).toBeGreaterThan(-1);
+    expect(forwardIdx).toBeGreaterThan(settleIdx);
     expect(source).toContain('non-fatal — paid status already saved');
   });
 });

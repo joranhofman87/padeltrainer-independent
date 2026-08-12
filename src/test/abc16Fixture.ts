@@ -325,6 +325,18 @@ export const STUB_SQL = /* sql */ `
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS person_id uuid;
   -- ABC-23 §1c: columns the atomic settlement command reads/writes.
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS mollie_payment_id text;
+  ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS payment_amount numeric;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS rebook_group_id uuid;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS public_token text;
+  -- reconcile_payments (ABC-23 §5) is admin-gated. The real has_role lives in a much earlier,
+  -- unrelated chain; this stub keeps the GATE real (a non-admin uid is refused) without pulling
+  -- that chain in. Admin membership is set with public.abc16_grant_admin(uid).
+  CREATE TABLE IF NOT EXISTS public.abc16_admins (user_id uuid PRIMARY KEY);
+  CREATE OR REPLACE FUNCTION public.has_role(_user_id uuid, _role text)
+  RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $hr$
+    SELECT _role = 'admin' AND EXISTS (SELECT 1 FROM public.abc16_admins a WHERE a.user_id = _user_id);
+  $hr$;
   ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS mollie_payment_id text;
   ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS mollie_transaction_id text;
   ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS paid_at timestamptz;

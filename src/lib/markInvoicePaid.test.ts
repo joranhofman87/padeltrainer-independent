@@ -1,68 +1,72 @@
 import { describe, it, expect, vi } from 'vitest';
-import { markInvoicePaidAndSyncBookings } from './markInvoicePaid';
+import { requestManualInvoiceSettlement } from './markInvoicePaid';
 
-type Result = { data?: unknown; error: unknown };
+/**
+ * ABC-23 §4. These assert the property that matters at this boundary: the browser no longer
+ * settles anything. It asks one server function, and it never reports success unless the server
+ * says the settlement happened.
+ */
+type InvokeResult = { data: unknown; error: { message: string } | null };
 
-function makeClient(opts: { invoice?: Result; booking?: { error: unknown } } = {}) {
-  const invoiceResult: Result = opts.invoice ?? { data: [{ id: 'inv1' }], error: null };
-  const bookingResult = opts.booking ?? { error: null };
-  const invoiceSelect = vi.fn().mockResolvedValue(invoiceResult);
-  const bookingIn = vi.fn(() => {
-    const chain: { neq: ReturnType<typeof vi.fn>; then: (r: (v: unknown) => unknown, j?: (e: unknown) => unknown) => Promise<unknown> } = {
-      neq: vi.fn(() => chain),
-      then: (r, j) => Promise.resolve(bookingResult).then(r, j),
-    };
-    return chain;
-  });
-  const from = vi.fn((table: string) => {
-    if (table === 'invoices') {
-      return { update: vi.fn(() => ({ eq: () => ({ neq: () => ({ select: invoiceSelect }) }) })) };
-    }
-    if (table === 'bookings') {
-      return { update: vi.fn(() => ({ in: bookingIn })) };
-    }
-    throw new Error(`unexpected table: ${table}`);
-  });
-  return { client: { from } as never, bookingIn };
-}
+const clientWith = (result: InvokeResult) => {
+  const invoke = vi.fn().mockResolvedValue(result);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- minimal client seam
+  return { client: { functions: { invoke } } as any, invoke };
+};
 
-describe('markInvoicePaidAndSyncBookings', () => {
-  it('marks the invoice paid and syncs bookings to paid+confirmed', async () => {
-    const { client, bookingIn } = makeClient();
-    const r = await markInvoicePaidAndSyncBookings('inv1', ['b1', 'b2'], client);
-    expect(r.error).toBeNull();
-    expect(r.invoicePaid).toBe(true);
-    expect(bookingIn).toHaveBeenCalledWith('id', ['b1', 'b2']);
+describe('requestManualInvoiceSettlement', () => {
+  it('sends only the invoice id — never a booking list the browser chose', async () => {
+    const { client, invoke } = clientWith({ data: { settled: true, invoicePaid: true }, error: null });
+    await requestManualInvoiceSettlement('inv1', client);
+    expect(invoke).toHaveBeenCalledWith('settle-invoice-manual', { body: { invoiceId: 'inv1' } });
+    // the covered set is derived server-side from the stored invoice
+    expect(JSON.stringify(invoke.mock.calls[0][1])).not.toContain('booking');
   });
 
-  it('blocks a cancelled invoice and does not touch bookings', async () => {
-    const { client, bookingIn } = makeClient({ invoice: { data: [], error: null } });
-    const r = await markInvoicePaidAndSyncBookings('inv1', ['b1'], client);
-    expect(r.blockedCancelled).toBe(true);
+  it('reports success only when the server settled', async () => {
+    const { client } = clientWith({ data: { settled: true, invoicePaid: true, paidNoSeat: [] }, error: null });
+    expect(await requestManualInvoiceSettlement('inv1', client)).toEqual({
+      error: null, invoicePaid: true, paidNoSeat: [],
+    });
+  });
+
+  it('a cancelled invoice is a blocked refusal, not an error and not a success', async () => {
+    const { client } = clientWith({
+      data: { settled: false, refusalReason: 'invoice_cancelled' },
+      error: { message: 'Conflict' },
+    });
+    const r = await requestManualInvoiceSettlement('inv1', client);
+    expect(r).toEqual({ error: null, blockedCancelled: true, invoicePaid: false });
+  });
+
+  it('a refusal is NEVER reported as paid', async () => {
+    const { client } = clientWith({
+      data: { settled: false, refusalReason: 'invoice_has_bookings' },
+      error: { message: 'Conflict' },
+    });
+    const r = await requestManualInvoiceSettlement('inv1', client);
     expect(r.invoicePaid).toBe(false);
-    expect(bookingIn).not.toHaveBeenCalled();
+    expect(r.error?.message).toBe('invoice_has_bookings');
   });
 
-  it('reports invoicePaid=true when only the booking sync fails', async () => {
-    const { client } = makeClient({ booking: { error: { message: 'boom' } } });
-    const r = await markInvoicePaidAndSyncBookings('inv1', ['b1'], client);
-    expect(r.invoicePaid).toBe(true);
-    expect(r.error).toBeInstanceOf(Error);
-  });
-
-  it('skips the booking update when there are no booking ids', async () => {
-    const { client, bookingIn } = makeClient();
-    const r = await markInvoicePaidAndSyncBookings('inv1', [], client);
-    expect(r.error).toBeNull();
-    expect(r.invoicePaid).toBe(true);
-    expect(bookingIn).not.toHaveBeenCalled();
-  });
-
-  it('returns invoicePaid=false when the invoice update errors', async () => {
-    const { client, bookingIn } = makeClient({ invoice: { data: null, error: { message: 'db' } } });
-    const r = await markInvoicePaidAndSyncBookings('inv1', ['b1'], client);
-    expect(r.error).toBeInstanceOf(Error);
+  it('a transport failure is an error, not a silent success', async () => {
+    const { client } = clientWith({ data: null, error: { message: 'network down' } });
+    const r = await requestManualInvoiceSettlement('inv1', client);
     expect(r.invoicePaid).toBe(false);
-    expect(bookingIn).not.toHaveBeenCalled();
+    expect(r.error?.message).toBe('network down');
+  });
+
+  it('an empty 200 body is not treated as settled', async () => {
+    const { client } = clientWith({ data: {}, error: null });
+    const r = await requestManualInvoiceSettlement('inv1', client);
+    expect(r.invoicePaid).toBe(false);
+    expect(r.error).toBeTruthy();
+  });
+
+  it('surfaces paid_no_seat so the UI can report money without a seat', async () => {
+    const { client } = clientWith({
+      data: { settled: true, invoicePaid: true, paidNoSeat: ['b9'] }, error: null,
+    });
+    expect((await requestManualInvoiceSettlement('inv1', client)).paidNoSeat).toEqual(['b9']);
   });
 });

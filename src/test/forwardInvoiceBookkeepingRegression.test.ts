@@ -120,14 +120,17 @@ describe('bookkeeping regression: service-role auth', () => {
 describe('bookkeeping regression: mollie-webhook forwarding path', () => {
   const webhookSource = readSource('supabase/functions/mollie-webhook/index.ts');
 
-  it('invoice-paid branch invokes forward-invoice after DB paid update', () => {
-    const paidIdx = webhookSource.indexOf(
-      'status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId',
-    );
+  // ABC-23 §3: the paid transition is the atomic settlement, not a local UPDATE. The ordering
+  // property this protects is unchanged — bookkeeping is forwarded only AFTER the money is
+  // durably recorded, and only by the request that actually claimed the transition.
+  it('invoice-paid branch invokes forward-invoice after the atomic settlement', () => {
+    const settleIdx = webhookSource.indexOf('source: "webhook_invoice"');
     const forwardIdx = webhookSource.indexOf('invoke("forward-invoice"');
-    expect(paidIdx).toBeGreaterThan(-1);
-    expect(forwardIdx).toBeGreaterThan(paidIdx);
+    expect(settleIdx).toBeGreaterThan(-1);
+    expect(forwardIdx).toBeGreaterThan(settleIdx);
     expect(webhookSource).toContain('forward_invoice_invoke');
+    // and it is gated on THIS request having claimed the invoice
+    expect(webhookSource).toContain('const claimedPaidTransition = invoiceSettlement.invoicePaidNow');
   });
 
   it('invoice_id metadata takes priority when booking_ids also exists', () => {

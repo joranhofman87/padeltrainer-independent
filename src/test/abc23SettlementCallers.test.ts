@@ -19,10 +19,50 @@ const INVENTORY = readFileSync(join(ROOT, 'docs/ABC23_SETTLEMENT_CALLERS.md'), '
 const IN_SCOPE = [
   'supabase/functions/mollie-webhook/index.ts',
   'supabase/functions/verify-mollie-payment/index.ts',
+  'supabase/functions/settle-invoice-manual/index.ts',
   'supabase/functions/_shared/mollie-webhook-payment.ts',
+  'supabase/functions/_shared/settlement.ts',
   'src/lib/markInvoicePaid.ts',
   'src/components/trainer/InvoiceList.tsx',
+  'src/pages/trainer/TrainerEditInvoice.tsx',
+  'src/pages/academy/AcademyEditInvoice.tsx',
 ];
+
+const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8');
+const WEBHOOK = read('supabase/functions/mollie-webhook/index.ts');
+const VERIFIER = read('supabase/functions/verify-mollie-payment/index.ts');
+const MANUAL = read('supabase/functions/settle-invoice-manual/index.ts');
+const CLIENT_SHIM = read('src/lib/markInvoicePaid.ts');
+const UI = IN_SCOPE.filter((f) => f.startsWith('src/pages') || f.startsWith('src/components'))
+  .map((f) => ({ file: f, src: read(f) }));
+
+// ── detectors ────────────────────────────────────────────────────────────────────────────────
+// Each returns TRUE when the defect is present. Every one is exercised below against BOTH the
+// real source (must be clean) and a mutated copy that reintroduces the defect (must be caught) —
+// a detector that cannot fail is not a guard, it is decoration.
+
+/** The classifier used as a settlement DECISION rather than as diagnostics. */
+const usesClassifierAsDecision = (src: string) =>
+  /expired_holds_over_capacity/.test(src) &&
+  /(confirmBookingIds|bookingIds)\s*(=|\.filter)/.test(
+    src.slice(Math.max(0, src.indexOf('expired_holds_over_capacity') - 400),
+              src.indexOf('expired_holds_over_capacity') + 900));
+
+/** The invoice flipped to paid by its own UPDATE instead of inside the atomic command. */
+const flipsInvoicePaidDirectly = (src: string) =>
+  /from\(["']invoices["']\)[\s\S]{0,200}?\.update\(\s*\{[^}]{0,300}status:\s*["']paid["']/.test(src);
+
+/** The settlement authority is actually invoked here. */
+const invokesAuthority = (src: string) => /settlePaidBookings\s*\(/.test(src);
+
+/** A settlement failure that is caught and then reported as success. */
+const swallowsSettlementFailure = (src: string) =>
+  invokesAuthority(src) && !/settlementError\s*\)\s*\{[\s\S]{0,600}?status:\s*500/.test(src);
+
+/** A browser file writing a paid settlement itself. */
+const browserSettles = (src: string) =>
+  /from\(['"](bookings|invoices)['"]\)[\s\S]{0,200}?\.update\(\s*\{[^}]{0,300}(payment_status:\s*['"]paid['"]|status:\s*['"]paid['"])/
+    .test(src);
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const e of readdirSync(dir)) {
@@ -73,6 +113,64 @@ describe('ABC-23 · settlement-caller tripwire', () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  // ── the five individual mutation proofs ────────────────────────────────────────────────
+  it('MUTATION: restoring the classifier as a settlement decision is caught', () => {
+    expect(usesClassifierAsDecision(WEBHOOK)).toBe(false);
+    const mutant = WEBHOOK.replace(
+      '// ABC-23 §3: the oversell decision is NO LONGER made here.',
+      `const { data: oversoldRows } = await supabase.rpc("expired_holds_over_capacity", { _booking_ids: bookingIds });
+       confirmBookingIds = bookingIds.filter((id) => !oversoldRows.includes(id));
+       //`);
+    expect(usesClassifierAsDecision(mutant)).toBe(true);
+  });
+
+  it('MUTATION: restoring an invoice-first paid UPDATE is caught', () => {
+    expect(flipsInvoicePaidDirectly(WEBHOOK)).toBe(false);
+    const mutant = WEBHOOK.replace(
+      'const { data: invoiceData, error: linkedReadErr } = await supabase',
+      `await supabase.from("invoices").update({ status: "paid", paid_at: now }).eq("id", invoiceIdFromMetadata);
+       const { data: invoiceData, error: linkedReadErr } = await supabase`);
+    expect(flipsInvoicePaidDirectly(mutant)).toBe(true);
+  });
+
+  it.each([
+    ['webhook', () => WEBHOOK],
+    ['verifier', () => VERIFIER],
+    ['manual boundary', () => MANUAL],
+  ])('MUTATION: deleting the authority call in the %s is caught', (_label, get) => {
+    const src = get();
+    expect(invokesAuthority(src)).toBe(true);
+    const mutant = src.replace(/settlePaidBookings\s*\(/g, 'legacyWriteback(');
+    expect(invokesAuthority(mutant)).toBe(false);
+  });
+
+  it('MUTATION: swallowing a verifier settlement failure is caught', () => {
+    expect(swallowsSettlementFailure(VERIFIER)).toBe(false);
+    // the exact historical defect: catch it, log it, return paid anyway
+    const mutant = VERIFIER.replace(/if \(settlementError\) \{[\s\S]*?\n {6}\}/, 'if (settlementError) { /* ignored */ }');
+    expect(swallowsSettlementFailure(mutant)).toBe(true);
+  });
+
+  it.each(UI.map((u) => [u.file, u.src] as const))(
+    'MUTATION: restoring browser raw settlement in %s is caught', (_file, src) => {
+      expect(browserSettles(src)).toBe(false);
+      const mutant = src + `
+        async function legacyMarkPaid(id) {
+          await supabase.from('invoices').update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id);
+        }`;
+      expect(browserSettles(mutant)).toBe(true);
+    });
+
+  it('the client shim asks the server and never settles locally', () => {
+    expect(browserSettles(CLIENT_SHIM)).toBe(false);
+    expect(CLIENT_SHIM).toMatch(/functions\.invoke\(\s*['"]settle-invoice-manual['"]/);
+  });
+
+  it('no caller invents a Mollie id for a manual settlement', () => {
+    expect(MANUAL).not.toMatch(/tr_|mollie_payment_id\s*:/);
+    expect(MANUAL).toMatch(/settlementSource:\s*["']manual["']/);
   });
 
   it('the atomic command exists and is the documented authority', () => {
