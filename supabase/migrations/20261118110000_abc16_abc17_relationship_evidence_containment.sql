@@ -1965,6 +1965,588 @@ BEGIN
   END IF;
 END $$;
 
+-- ── 5. the group RPCs use namespaced GUEST-FIRST identity ───────────────────────────────────
+-- Two distinct defects, both from resolving profile-first on dual-key rows:
+--
+--   * `get_rebook_group_by_token` built member keys as
+--     `CASE WHEN player_id IS NOT NULL THEN 'p:'||player ELSE 'g:'||guest END`. A dual-key row
+--     therefore keyed as `p:<stale player_id>` — so TWO DIFFERENT GUESTS sharing one legacy
+--     player_id collapsed into a single group member, and `is_self` could match the wrong person.
+--
+--   * `rebook_group_apply` / `rebook_group_manage` matched with a raw OR:
+--       (player_id = ANY(keep_player)) OR (guest_player_id = ANY(keep_guest))
+--     A dual-key row matched through the PLAYER arm even though it belongs to the guest, so
+--     keeping or removing by profile id swept guest seats — and, in manage, booked and PAID them.
+--
+-- The transform is exclusive rather than preferential: guest present ⇒ decide ONLY by guest;
+-- otherwise decide only by a pure player. Bodies are otherwise re-emitted unchanged, so capacity,
+-- status, cutoff, group and payment semantics are untouched.
+
+CREATE OR REPLACE FUNCTION public.get_rebook_group_by_token(_token text)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  c public.slot_priority_claims;
+  s public.availability_slots;
+  v_self_key text;
+  v_members jsonb;
+  v_paid boolean;
+  v_invoice_id uuid;
+  v_invoice_status text;
+BEGIN
+  SELECT * INTO c FROM public.slot_priority_claims WHERE claim_token = _token LIMIT 1;
+  IF c.id IS NULL OR c.rebook_group_id IS NULL THEN
+    RETURN NULL;
+  END IF;
+  SELECT * INTO s FROM public.availability_slots WHERE id = c.slot_id;
+
+  v_self_key := CASE WHEN c.guest_player_id IS NOT NULL THEN 'g:' || c.guest_player_id::text
+                     ELSE 'p:' || c.player_id::text END;
+
+  -- Has the captain already paid for their group seat? (drives can_manage_group)
+  SELECT EXISTS (
+    SELECT 1 FROM public.bookings b
+    WHERE b.id = c.booking_id AND b.payment_status = 'paid'
+  ) INTO v_paid;
+
+  -- The single active group invoice for this group (NULL until someone pays-first).
+  SELECT id, status INTO v_invoice_id, v_invoice_status FROM public.invoices
+  WHERE rebook_group_id = c.rebook_group_id AND status <> 'cancelled'
+  ORDER BY created_at DESC LIMIT 1;
+
+  SELECT jsonb_agg(m ORDER BY m->>'first_name')
+  INTO v_members
+  FROM (
+    SELECT jsonb_build_object(
+      'key', CASE WHEN g.guest_player_id IS NOT NULL THEN 'g:' || g.guest_player_id::text
+                  ELSE 'p:' || g.player_id::text END,
+      'first_name', COALESCE(NULLIF(p.first_name, ''), NULLIF(split_part(p.full_name, ' ', 1), ''),
+                             NULLIF(gp.first_name, ''), NULLIF(split_part(gp.full_name, ' ', 1), ''), '—'),
+      'status', CASE WHEN bool_or(g.status = 'claimed') THEN 'claimed'
+                     WHEN bool_or(g.status = 'pending') THEN 'pending'
+                     ELSE 'declined' END,
+      'is_self', (CASE WHEN g.guest_player_id IS NOT NULL THEN 'g:' || g.guest_player_id::text
+                       ELSE 'p:' || g.player_id::text END) = v_self_key,
+      'has_email', COALESCE(NULLIF(p.email, '') IS NOT NULL OR NULLIF(gp.email, '') IS NOT NULL, false)
+    ) AS m
+    FROM public.slot_priority_claims g
+    LEFT JOIN public.profiles p ON p.id = g.player_id
+    LEFT JOIN public.guest_players gp ON gp.id = g.guest_player_id
+    WHERE g.rebook_group_id = c.rebook_group_id
+    GROUP BY g.player_id, g.guest_player_id, p.first_name, p.full_name, p.email, gp.first_name, gp.full_name, gp.email
+  ) sub;
+
+  RETURN jsonb_build_object(
+    'rebook_group_id', c.rebook_group_id,
+    -- PAID group invoice ⇒ the court is settled: no member may start another group pay
+    -- (or be shown the buttons). An UNPAID active invoice keeps this true so any member
+    -- can complete an abandoned captain checkout (double-pay guard re-serves it).
+    'can_rebook_group', (c.status = 'pending'
+      AND (s.priority_window_ends_at IS NULL OR s.priority_window_ends_at > now())
+      AND COALESCE(v_invoice_status, '') <> 'paid'),
+    -- The captain paid up front → may keep managing the roster even though their claim is 'claimed'.
+    'can_manage_group', (c.status = 'claimed' AND v_paid),
+    'group_invoice_id', v_invoice_id,
+    'group_invoice_status', v_invoice_status,
+    'self_key', v_self_key,
+    'slot', jsonb_build_object(
+      'id', s.id, 'start_time', s.start_time, 'end_time', s.end_time,
+      'cyclus_id', s.cyclus_id, 'cyclus_name', s.cyclus_name,
+      'price_per_session', s.price_per_session, 'max_participants', s.max_participants,
+      'priority_window_ends_at', s.priority_window_ends_at,
+      'trainer_id', s.trainer_id, 'academy_profile_id', s.academy_profile_id
+    ),
+    'sessions', GREATEST(1, (
+      SELECT count(*) FROM public.slot_priority_claims c2
+      WHERE c2.rebook_group_id = c.rebook_group_id
+        AND c2.player_id IS NOT DISTINCT FROM c.player_id
+        AND c2.guest_player_id IS NOT DISTINCT FROM c.guest_player_id
+    )),
+    'members', COALESCE(v_members, '[]'::jsonb)
+  );
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.rebook_group_apply(
+  _token text,
+  _keep_keys jsonb DEFAULT '[]'::jsonb,
+  _new_guest_ids uuid[] DEFAULT '{}'::uuid[]
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  c public.slot_priority_claims;
+  s public.availability_slots;
+  v_group uuid;
+  v_cap_player uuid;
+  v_cap_guest uuid;
+  v_keep_player uuid[] := '{}';
+  v_keep_guest uuid[] := '{}';
+  v_seats integer;
+  v_max integer;
+  v_booking_id uuid;
+  v_booked integer := 0;
+  v_declined integer := 0;
+  v_skipped_full integer := 0;
+  v_skipped_existing integer := 0;
+  v_added integer := 0;
+  v_is_own boolean;
+  v_existing_booking uuid;
+  v_booking_ids uuid[] := '{}';
+  k text;
+  rec record;
+  gid uuid;
+  slotrec record;
+BEGIN
+  SELECT * INTO c FROM public.slot_priority_claims WHERE claim_token = _token FOR UPDATE;
+  IF c.id IS NULL THEN RAISE EXCEPTION 'Claim not found'; END IF;
+  IF c.rebook_group_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_a_group');
+  END IF;
+  SELECT * INTO s FROM public.availability_slots WHERE id = c.slot_id;
+  IF c.status <> 'pending' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'already_responded', 'status', c.status);
+  END IF;
+  IF s.priority_window_ends_at IS NOT NULL AND s.priority_window_ends_at < now() THEN
+    UPDATE public.slot_priority_claims SET status = 'expired', responded_at = now() WHERE id = c.id;
+    RETURN jsonb_build_object('ok', false, 'reason', 'window_expired');
+  END IF;
+
+  -- UPFRONT GUARD (incident fix): this deferred path books confirmed-but-UNPAID seats. On an
+  -- upfront cycle the whole-group payment must go through create-group-rebook-invoice instead —
+  -- refuse server-side rather than trusting the client's mode resolution (a stale frontend or the
+  -- silent cycles_public fallback could route an upfront group here and seat it without payment).
+  IF (SELECT cy.settings->>'rebook_payment_mode' FROM public.cycles cy WHERE cy.id = s.cyclus_id) = 'upfront' THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'upfront_cycle');
+  END IF;
+
+  v_group := c.rebook_group_id;
+  v_cap_player := c.player_id;
+  v_cap_guest := c.guest_player_id;
+
+  -- Serialize the whole group so two captains can't both apply concurrently.
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_group::text, 1));
+
+  -- Parse keep keys; the captain is ALWAYS kept.
+  FOR k IN SELECT jsonb_array_elements_text(_keep_keys) LOOP
+    IF k LIKE 'p:%' THEN v_keep_player := array_append(v_keep_player, substring(k from 3)::uuid);
+    ELSIF k LIKE 'g:%' THEN v_keep_guest := array_append(v_keep_guest, substring(k from 3)::uuid);
+    END IF;
+  END LOOP;
+  IF v_cap_player IS NOT NULL THEN v_keep_player := array_append(v_keep_player, v_cap_player); END IF;
+  IF v_cap_guest IS NOT NULL THEN v_keep_guest := array_append(v_keep_guest, v_cap_guest); END IF;
+
+  -- 1) Decline removed members' PENDING claims only (never cancel a booked/paid seat).
+  FOR rec IN
+    SELECT id FROM public.slot_priority_claims
+    WHERE rebook_group_id = v_group AND status = 'pending'
+      AND NOT (
+        CASE WHEN guest_player_id IS NOT NULL
+             THEN guest_player_id = ANY(v_keep_guest)
+             ELSE player_id IS NOT NULL AND player_id = ANY(v_keep_player) END
+      )
+    FOR UPDATE
+  LOOP
+    UPDATE public.slot_priority_claims
+      SET status = 'declined', responded_at = now(), decline_reason = 'captain_removed'
+      WHERE id = rec.id;
+    v_declined := v_declined + 1;
+  END LOOP;
+
+  -- 2) Book kept members' PENDING claims, capacity-guarded per slot (reuse the lock key).
+  FOR rec IN
+    SELECT spc.id, spc.slot_id, spc.player_id, spc.guest_player_id, av.max_participants
+    FROM public.slot_priority_claims spc
+    JOIN public.availability_slots av ON av.id = spc.slot_id
+    WHERE spc.rebook_group_id = v_group AND spc.status = 'pending'
+      AND (
+        CASE WHEN spc.guest_player_id IS NOT NULL
+             THEN spc.guest_player_id = ANY(v_keep_guest)
+             ELSE spc.player_id IS NOT NULL AND spc.player_id = ANY(v_keep_player) END
+      )
+    ORDER BY av.start_time
+    FOR UPDATE OF spc
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(rec.slot_id::text, 0));
+    v_is_own := (rec.player_id IS NOT DISTINCT FROM v_cap_player
+                 AND rec.guest_player_id IS NOT DISTINCT FROM v_cap_guest);
+
+    -- If this member already holds an ACTIVE booking on the slot — matched to the M-17
+    -- unique-active-booking index set ('pending'/'confirmed'/'completed') — never INSERT a
+    -- duplicate (it would raise 23505 and abort the whole group). Just mark their claim
+    -- claimed against the existing booking + keep it in the group's booking set.
+    SELECT id INTO v_existing_booking FROM public.bookings
+      WHERE slot_id = rec.slot_id
+        AND player_id IS NOT DISTINCT FROM rec.player_id
+        AND guest_player_id IS NOT DISTINCT FROM rec.guest_player_id
+        AND status IN ('pending', 'confirmed', 'completed')
+      LIMIT 1;
+    IF v_existing_booking IS NOT NULL THEN
+      UPDATE public.slot_priority_claims
+        SET status = 'claimed', responded_at = now(), booking_id = v_existing_booking,
+            booked_by_player_id = CASE WHEN v_is_own THEN NULL ELSE v_cap_player END,
+            booked_by_guest_player_id = CASE WHEN v_is_own THEN NULL ELSE v_cap_guest END
+        WHERE id = rec.id;
+      v_booking_ids := array_append(v_booking_ids, v_existing_booking);
+      v_skipped_existing := v_skipped_existing + 1;
+      CONTINUE;
+    END IF;
+
+    -- Capacity: count only seats actually occupied (the canonical occupying set).
+    SELECT count(*) INTO v_seats FROM public.bookings
+      WHERE slot_id = rec.slot_id AND (status IN ('confirmed', 'pending', 'pending_approval') OR (status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now()));
+    IF v_seats >= COALESCE(rec.max_participants, 1) THEN v_skipped_full := v_skipped_full + 1; CONTINUE; END IF;
+
+    INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status, payment_status, created_at, updated_at)
+    VALUES (rec.slot_id, rec.player_id, rec.guest_player_id, 'confirmed', 'pending', now(), now())
+    RETURNING id INTO v_booking_id;
+
+    UPDATE public.slot_priority_claims
+      SET status = 'claimed', responded_at = now(), booking_id = v_booking_id,
+          booked_by_player_id = CASE WHEN v_is_own THEN NULL ELSE v_cap_player END,
+          booked_by_guest_player_id = CASE WHEN v_is_own THEN NULL ELSE v_cap_guest END
+      WHERE id = rec.id;
+    v_booking_ids := array_append(v_booking_ids, v_booking_id);
+    v_booked := v_booked + 1;
+  END LOOP;
+
+  -- 3) Add new guests: one claim + booking per distinct slot in the group, capacity-guarded.
+  --    Skip a slot for a guest who already has a claim there (treated by the keep/remove logic).
+  IF array_length(_new_guest_ids, 1) IS NOT NULL THEN
+    FOREACH gid IN ARRAY _new_guest_ids LOOP
+      IF gid IS NULL THEN CONTINUE; END IF;
+      FOR slotrec IN
+        SELECT DISTINCT spc.slot_id, av.max_participants
+        FROM public.slot_priority_claims spc
+        JOIN public.availability_slots av ON av.id = spc.slot_id
+        WHERE spc.rebook_group_id = v_group
+        ORDER BY 1
+      LOOP
+        PERFORM pg_advisory_xact_lock(hashtextextended(slotrec.slot_id::text, 0));
+        -- Already a member (claim) OR already actively booked on this slot → don't duplicate.
+        -- The active-booking check matches the M-17 unique index set, preventing 23505.
+        IF EXISTS (SELECT 1 FROM public.slot_priority_claims
+                   WHERE slot_id = slotrec.slot_id AND guest_player_id = gid)
+           OR EXISTS (SELECT 1 FROM public.bookings
+                   WHERE slot_id = slotrec.slot_id AND guest_player_id = gid
+                     AND status IN ('pending', 'confirmed', 'completed')) THEN
+          CONTINUE;
+        END IF;
+        SELECT count(*) INTO v_seats FROM public.bookings
+          WHERE slot_id = slotrec.slot_id AND (status IN ('confirmed', 'pending', 'pending_approval') OR (status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now()));
+        IF v_seats >= COALESCE(slotrec.max_participants, 1) THEN v_skipped_full := v_skipped_full + 1; CONTINUE; END IF;
+
+        INSERT INTO public.bookings (slot_id, guest_player_id, status, payment_status, created_at, updated_at)
+        VALUES (slotrec.slot_id, gid, 'confirmed', 'pending', now(), now())
+        RETURNING id INTO v_booking_id;
+
+        INSERT INTO public.slot_priority_claims
+          (slot_id, guest_player_id, rebook_group_id, status, responded_at, booking_id,
+           booked_by_player_id, booked_by_guest_player_id)
+        VALUES (slotrec.slot_id, gid, v_group, 'claimed', now(), v_booking_id, v_cap_player, v_cap_guest);
+
+        v_booking_ids := array_append(v_booking_ids, v_booking_id);
+        v_booked := v_booked + 1;
+        v_added := v_added + 1;
+      END LOOP;
+    END LOOP;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', (v_booked > 0 OR v_skipped_existing > 0),
+    'group', true,
+    'rebook_group_id', v_group,
+    'booked', v_booked,
+    'declined', v_declined,
+    'added', v_added,
+    'skipped_existing', v_skipped_existing,
+    'skipped_full', v_skipped_full,
+    'booking_ids', to_jsonb(v_booking_ids)
+  );
+END;
+$fn$;
+
+CREATE OR REPLACE FUNCTION public.rebook_group_manage(
+  _token text,
+  _keep_keys jsonb DEFAULT '[]'::jsonb,
+  _new_guest_ids uuid[] DEFAULT '{}'::uuid[],
+  _invoice_id uuid DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  c public.slot_priority_claims;
+  v_group uuid;
+  v_cap_player uuid;
+  v_cap_guest uuid;
+  v_cap_paid boolean;
+  v_keep_player uuid[] := '{}';
+  v_keep_guest uuid[] := '{}';
+  v_seats integer;
+  v_booking_id uuid;
+  v_booked integer := 0;
+  v_declined integer := 0;
+  v_added integer := 0;
+  v_skipped_full integer := 0;
+  v_skipped_existing integer := 0;
+  v_new_ids uuid[] := '{}';
+  k text;
+  rec record;
+  gid uuid;
+  slotrec record;
+BEGIN
+  SELECT * INTO c FROM public.slot_priority_claims WHERE claim_token = _token FOR UPDATE;
+  IF c.id IS NULL OR c.rebook_group_id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_a_group');
+  END IF;
+
+  -- Gate: the captain must have already PAID (claim 'claimed' + a paid booking). This path
+  -- never charges — it only assigns covered seats — so it must not run before payment.
+  SELECT EXISTS (SELECT 1 FROM public.bookings b WHERE b.id = c.booking_id AND b.payment_status = 'paid')
+    INTO v_cap_paid;
+  IF c.status <> 'claimed' OR NOT v_cap_paid THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_paid');
+  END IF;
+
+  v_group := c.rebook_group_id;
+  v_cap_player := c.player_id;
+  v_cap_guest := c.guest_player_id;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_group::text, 1));
+
+  FOR k IN SELECT jsonb_array_elements_text(_keep_keys) LOOP
+    IF k LIKE 'p:%' THEN v_keep_player := array_append(v_keep_player, substring(k from 3)::uuid);
+    ELSIF k LIKE 'g:%' THEN v_keep_guest := array_append(v_keep_guest, substring(k from 3)::uuid);
+    END IF;
+  END LOOP;
+  IF v_cap_player IS NOT NULL THEN v_keep_player := array_append(v_keep_player, v_cap_player); END IF;
+  IF v_cap_guest IS NOT NULL THEN v_keep_guest := array_append(v_keep_guest, v_cap_guest); END IF;
+
+  -- 1) Decline removed members' PENDING claims (never touch a booked/paid seat).
+  FOR rec IN
+    SELECT id FROM public.slot_priority_claims
+    WHERE rebook_group_id = v_group AND status = 'pending'
+      AND NOT (
+        CASE WHEN guest_player_id IS NOT NULL
+             THEN guest_player_id = ANY(v_keep_guest)
+             ELSE player_id IS NOT NULL AND player_id = ANY(v_keep_player) END
+      )
+    FOR UPDATE
+  LOOP
+    UPDATE public.slot_priority_claims
+      SET status = 'declined', responded_at = now(), decline_reason = 'captain_removed'
+      WHERE id = rec.id;
+    v_declined := v_declined + 1;
+  END LOOP;
+
+  -- 2) Book kept members' PENDING claims as COVERED (paid by the captain), capacity-guarded.
+  FOR rec IN
+    SELECT spc.id, spc.slot_id, spc.player_id, spc.guest_player_id, av.max_participants
+    FROM public.slot_priority_claims spc
+    JOIN public.availability_slots av ON av.id = spc.slot_id
+    WHERE spc.rebook_group_id = v_group AND spc.status = 'pending'
+      AND (
+        CASE WHEN spc.guest_player_id IS NOT NULL
+             THEN spc.guest_player_id = ANY(v_keep_guest)
+             ELSE spc.player_id IS NOT NULL AND spc.player_id = ANY(v_keep_player) END
+      )
+    ORDER BY av.start_time
+    FOR UPDATE OF spc
+  LOOP
+    PERFORM pg_advisory_xact_lock(hashtextextended(rec.slot_id::text, 0));
+    -- Already actively booked (M-17 index set) → don't duplicate; just claim it.
+    IF EXISTS (SELECT 1 FROM public.bookings WHERE slot_id = rec.slot_id
+                 AND player_id IS NOT DISTINCT FROM rec.player_id
+                 AND guest_player_id IS NOT DISTINCT FROM rec.guest_player_id
+                 AND status IN ('pending','confirmed','completed')) THEN
+      UPDATE public.slot_priority_claims SET status = 'claimed', responded_at = now(),
+        booked_by_player_id = v_cap_player, booked_by_guest_player_id = v_cap_guest
+        WHERE id = rec.id;
+      v_skipped_existing := v_skipped_existing + 1;
+      CONTINUE;
+    END IF;
+    SELECT count(*) INTO v_seats FROM public.bookings
+      WHERE slot_id = rec.slot_id AND (status IN ('confirmed','pending','pending_approval') OR (status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now()));
+    IF v_seats >= COALESCE(rec.max_participants, 1) THEN v_skipped_full := v_skipped_full + 1; CONTINUE; END IF;
+
+    INSERT INTO public.bookings (slot_id, player_id, guest_player_id, status, payment_status, paid_at,
+                                 paid_by_player_id, paid_by_guest_player_id, created_at, updated_at)
+    VALUES (rec.slot_id, rec.player_id, rec.guest_player_id, 'confirmed', 'paid', now(),
+            v_cap_player, v_cap_guest, now(), now())
+    RETURNING id INTO v_booking_id;
+
+    UPDATE public.slot_priority_claims
+      SET status = 'claimed', responded_at = now(), booking_id = v_booking_id,
+          booked_by_player_id = v_cap_player, booked_by_guest_player_id = v_cap_guest
+      WHERE id = rec.id;
+    v_new_ids := array_append(v_new_ids, v_booking_id);
+    v_booked := v_booked + 1;
+  END LOOP;
+
+  -- 3) Add new guests as COVERED bookings, one per slot, capacity-guarded.
+  IF array_length(_new_guest_ids, 1) IS NOT NULL THEN
+    FOREACH gid IN ARRAY _new_guest_ids LOOP
+      IF gid IS NULL THEN CONTINUE; END IF;
+      FOR slotrec IN
+        SELECT DISTINCT spc.slot_id, av.max_participants
+        FROM public.slot_priority_claims spc
+        JOIN public.availability_slots av ON av.id = spc.slot_id
+        WHERE spc.rebook_group_id = v_group
+        ORDER BY 1
+      LOOP
+        PERFORM pg_advisory_xact_lock(hashtextextended(slotrec.slot_id::text, 0));
+        IF EXISTS (SELECT 1 FROM public.slot_priority_claims
+                     WHERE slot_id = slotrec.slot_id AND guest_player_id = gid)
+           OR EXISTS (SELECT 1 FROM public.bookings WHERE slot_id = slotrec.slot_id
+                        AND guest_player_id = gid AND status IN ('pending','confirmed','completed')) THEN
+          CONTINUE;
+        END IF;
+        SELECT count(*) INTO v_seats FROM public.bookings
+          WHERE slot_id = slotrec.slot_id AND (status IN ('confirmed','pending','pending_approval') OR (status = 'payment_pending' AND hold_expires_at IS NOT NULL AND hold_expires_at > now()));
+        IF v_seats >= COALESCE(slotrec.max_participants, 1) THEN v_skipped_full := v_skipped_full + 1; CONTINUE; END IF;
+
+        INSERT INTO public.bookings (slot_id, guest_player_id, status, payment_status, paid_at,
+                                     paid_by_player_id, paid_by_guest_player_id, created_at, updated_at)
+        VALUES (slotrec.slot_id, gid, 'confirmed', 'paid', now(), v_cap_player, v_cap_guest, now(), now())
+        RETURNING id INTO v_booking_id;
+
+        INSERT INTO public.slot_priority_claims
+          (slot_id, guest_player_id, rebook_group_id, status, responded_at, booking_id,
+           booked_by_player_id, booked_by_guest_player_id)
+        VALUES (slotrec.slot_id, gid, v_group, 'claimed', now(), v_booking_id, v_cap_player, v_cap_guest);
+
+        v_new_ids := array_append(v_new_ids, v_booking_id);
+        v_booked := v_booked + 1;
+        v_added := v_added + 1;
+      END LOOP;
+    END LOOP;
+  END IF;
+
+  -- 4) Link the newly-covered bookings onto the captain's already-paid group invoice (record
+  --    only — the amount is the fixed court price and does not change with the roster).
+  --    P2-3: the invoice MUST be this group's own tagged invoice (rebook_group_id = v_group),
+  --    not an arbitrary client-supplied paid invoice belonging to another tenant.
+  IF _invoice_id IS NOT NULL AND array_length(v_new_ids, 1) IS NOT NULL THEN
+    UPDATE public.invoices
+      SET booking_ids = (
+        SELECT array(SELECT DISTINCT unnest(COALESCE(booking_ids, '{}'::uuid[]) || v_new_ids))
+      )
+      WHERE id = _invoice_id AND status = 'paid' AND rebook_group_id = v_group;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'group', true,
+    'rebook_group_id', v_group,
+    'booked', v_booked,
+    'declined', v_declined,
+    'added', v_added,
+    'skipped_full', v_skipped_full,
+    'skipped_existing', v_skipped_existing,
+    'booking_ids', to_jsonb(v_new_ids)
+  );
+END;
+$fn$;
+
+DO $$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_rebook_group_by_token';
+  IF v_src ~ 'player_id IS NOT NULL THEN ''p:' THEN
+    RAISE EXCEPTION 'ABC-20: get_rebook_group_by_token still keys members profile-first';
+  END IF;
+
+  FOR v_src IN
+    SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+     WHERE n.nspname = 'public' AND p.proname IN ('rebook_group_apply', 'rebook_group_manage')
+  LOOP
+    IF v_src ~ 'player_id = ANY\(v_keep_player\)\)\s*\n\s*OR \(' THEN
+      RAISE EXCEPTION 'ABC-20: a group RPC still uses raw-player OR matching for dual-key rows';
+    END IF;
+    IF v_src !~ 'guest_player_id IS NOT NULL\s*\n\s*THEN' THEN
+      RAISE EXCEPTION 'ABC-20: a group RPC is not guest-first';
+    END IF;
+  END LOOP;
+END $$;
+-- ── 4c. `release_rebook_hold` — a profile may release only a PURE-PROFILE hold ───────────────
+-- The ownership test was `v_booking.player_id IS DISTINCT FROM v_profile`, which passes for a
+-- DUAL-KEY booking: the caller's player_id sits beside somebody else's guest_player_id, and that
+-- player_id is legacy link decoration rather than ownership. The account holder could therefore
+-- release a guest's held seat — cancelling their booking and re-opening their claim.
+--
+-- Guest and dual-key holds now fail closed here. Releasing one needs independently valid guest
+-- authority, which this RPC (auth.uid()-keyed, and a guest has no login) cannot establish; the
+-- legacy profile linkage is explicitly not that authority. Everything else — the FOR UPDATE lock,
+-- the payment_pending idempotent no-op, the cancel, and the claim reset — is unchanged.
+CREATE OR REPLACE FUNCTION public.release_rebook_hold(_booking_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_profile uuid;
+  v_booking public.bookings;
+BEGIN
+  v_profile := public.get_profile_id_for_user(auth.uid());
+  IF v_profile IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'no_profile');
+  END IF;
+
+  SELECT * INTO v_booking FROM public.bookings WHERE id = _booking_id FOR UPDATE;
+  IF v_booking.id IS NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_found');
+  END IF;
+
+  -- ABC-20: PURE-PROFILE only. A dual-key hold belongs to the guest.
+  IF v_booking.guest_player_id IS NOT NULL THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_yours');
+  END IF;
+  IF v_booking.player_id IS DISTINCT FROM v_profile THEN
+    RETURN jsonb_build_object('ok', false, 'reason', 'not_yours');
+  END IF;
+
+  IF v_booking.status <> 'payment_pending' THEN
+    RETURN jsonb_build_object('ok', true, 'released', false, 'status', v_booking.status);
+  END IF;
+
+  UPDATE public.bookings SET status = 'cancelled', updated_at = now() WHERE id = _booking_id;
+  UPDATE public.slot_priority_claims
+    SET status = 'pending', booking_id = NULL, responded_at = NULL
+    WHERE booking_id = _booking_id AND status = 'claimed';
+
+  RETURN jsonb_build_object('ok', true, 'released', true);
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.release_rebook_hold(uuid) IS
+  'ABC-20: a profile may release only a PURE-PROFILE hold. A dual-key hold belongs to the guest and fails closed — legacy profile linkage is not authority, and this auth.uid()-keyed RPC cannot establish guest authority.';
+
+-- ── install assertions for items 2/4/5 ──────────────────────────────────────────────────────
+DO $$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'release_rebook_hold';
+  IF v_src IS NULL THEN
+    RAISE EXCEPTION 'ABC-20: release_rebook_hold is missing entirely';
+  END IF;
+  IF v_src !~ 'v_booking\.guest_player_id IS NOT NULL' THEN
+    RAISE EXCEPTION 'ABC-20: release_rebook_hold must refuse dual-key/guest holds';
+  END IF;
+END $$;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────

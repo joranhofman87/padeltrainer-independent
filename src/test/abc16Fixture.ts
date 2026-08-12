@@ -163,7 +163,8 @@ export const STUB_SQL = /* sql */ `
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid,
     guest_player_id uuid, player_id uuid,
     paid_by_player_id uuid, paid_by_guest_player_id uuid,
-    status text, created_at timestamptz DEFAULT now()
+    status text, created_at timestamptz DEFAULT now(),
+    updated_at timestamptz DEFAULT now(), hold_expires_at timestamptz, notes text
   );
   -- ABC-17 turns on whether an academy manager can REASSIGN a booking's subject under the real
   -- UPDATE policy (20260704120000, applied from its shipped file). With RLS off, the
@@ -182,6 +183,7 @@ export const STUB_SQL = /* sql */ `
   CREATE TABLE IF NOT EXISTS public.slot_priority_claims (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, player_id uuid,
     guest_player_id uuid, booked_by_player_id uuid, booked_by_guest_player_id uuid,
+    booking_id uuid, responded_at timestamptz, strict boolean,
     booked_by_profile_id uuid
   );
   -- session_reports is ambient for the attendance surface; session_player_notes comes from its
