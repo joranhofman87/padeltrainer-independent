@@ -1691,6 +1691,106 @@ $fn$;
 COMMENT ON FUNCTION public.can_book_slot(uuid, uuid) IS
   'ABC-18 A3 correction: the priority tier requires a PURE-PROFILE claim (player_id = me AND guest_player_id IS NULL) — a dual-key claim belongs to the guest. Tier resolution, the members window, the hidden tier, booking cutoff and the return contract are unchanged.';
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- ABC-20 — transitional rebook-invoice idempotency, guest-first.
+-- ═════════════════════════════════════════════════════════════════════════════
+-- `uq_invoices_rebook_cyclus_claimant` (20260705130000:22) keys on
+-- `COALESCE(player_id, guest_player_id)` — PROFILE-FIRST. On a DUAL-KEY invoice that resolves to
+-- the profile, which contradicts the FAM-02 rule the rest of this system now follows: a row
+-- carrying both columns belongs to the GUEST, and the profile column beside it is legacy
+-- decoration. Two consequences, both live:
+--
+--   * a guest's dual-key invoice and a DIFFERENT person's pure-profile invoice for the same
+--     cyclus collapse onto one index key, so one of them cannot be created;
+--   * the same guest can hold two active invoices for one cyclus — one dual-key, one guest-only —
+--     because the profile-first key separates rows that are the same person.
+--
+-- Replacement: two partial indexes that never rewrite a row.
+--
+--   guest rows        UNIQUE (rebook_cyclus_id, guest_player_id)  WHERE guest_player_id IS NOT NULL
+--   pure-profile rows UNIQUE (rebook_cyclus_id, player_id)        WHERE guest_player_id IS NULL
+--
+-- The two predicates PARTITION the space (guest_player_id is either null or not), so every active
+-- rebook invoice is covered by exactly one of them and nothing is double-constrained.
+--
+-- TRANSITIONAL. The end state is a single key on canonical `persons.id`, which U2 owns; that
+-- cannot be used yet because person stamps descend from the legacy bridge this containment has
+-- just declared non-authoritative. These indexes hold the line until then.
+--
+-- NO ROW IS TOUCHED. If existing data cannot satisfy the new shape the migration REFUSES and
+-- changes nothing — no merge, no cancel, no re-key, no inference about who anyone is.
+
+-- ── preflight: refuse rather than repair ────────────────────────────────────────────────────
+DO $$
+DECLARE
+  v_guest_dupes   text;
+  v_profile_dupes text;
+BEGIN
+  SELECT string_agg(format('cyclus=%s guest=%s (%s invoices)', rebook_cyclus_id, guest_player_id, n), '; ')
+    INTO v_guest_dupes
+    FROM (
+      SELECT rebook_cyclus_id, guest_player_id, count(*) AS n
+        FROM public.invoices
+       WHERE rebook_cyclus_id IS NOT NULL AND status <> 'cancelled' AND guest_player_id IS NOT NULL
+       GROUP BY rebook_cyclus_id, guest_player_id
+      HAVING count(*) > 1
+    ) d;
+
+  SELECT string_agg(format('cyclus=%s player=%s (%s invoices)', rebook_cyclus_id, player_id, n), '; ')
+    INTO v_profile_dupes
+    FROM (
+      SELECT rebook_cyclus_id, player_id, count(*) AS n
+        FROM public.invoices
+       WHERE rebook_cyclus_id IS NOT NULL AND status <> 'cancelled'
+         AND guest_player_id IS NULL AND player_id IS NOT NULL
+       GROUP BY rebook_cyclus_id, player_id
+      HAVING count(*) > 1
+    ) d;
+
+  IF v_guest_dupes IS NOT NULL OR v_profile_dupes IS NOT NULL THEN
+    RAISE EXCEPTION
+      'ABC-20 refused: existing active rebook invoices already violate the guest-first uniqueness contract. Guest conflicts: [%]. Pure-profile conflicts: [%]. No row was changed. Resolve these deliberately (an owner decision about WHICH invoice stands) before re-running; this migration will not merge, cancel or re-key anything.',
+      coalesce(v_guest_dupes, 'none'), coalesce(v_profile_dupes, 'none');
+  END IF;
+END $$;
+
+-- ── the swap ────────────────────────────────────────────────────────────────────────────────
+-- Drop first: the old profile-first key would otherwise keep rejecting exactly the pairs the new
+-- contract is meant to allow (a guest's dual-key invoice alongside another person's pure-profile
+-- invoice for the same cyclus).
+DROP INDEX IF EXISTS public.uq_invoices_rebook_cyclus_claimant;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_rebook_cyclus_guest
+  ON public.invoices (rebook_cyclus_id, guest_player_id)
+  WHERE rebook_cyclus_id IS NOT NULL AND status <> 'cancelled' AND guest_player_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_rebook_cyclus_pure_profile
+  ON public.invoices (rebook_cyclus_id, player_id)
+  WHERE rebook_cyclus_id IS NOT NULL AND status <> 'cancelled'
+    AND guest_player_id IS NULL AND player_id IS NOT NULL;
+
+COMMENT ON INDEX public.uq_invoices_rebook_cyclus_guest IS
+  'ABC-20: one active rebook invoice per (cyclus, guest). Covers dual-key rows — a row carrying both columns belongs to the GUEST (FAM-02).';
+COMMENT ON INDEX public.uq_invoices_rebook_cyclus_pure_profile IS
+  'ABC-20: one active rebook invoice per (cyclus, profile), PURE-PROFILE rows only. Transitional until U2 can key on canonical persons.id.';
+
+-- ── install assertion ───────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_class WHERE relname = 'uq_invoices_rebook_cyclus_claimant') THEN
+    RAISE EXCEPTION 'ABC-20: the profile-first rebook index is still installed';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'uq_invoices_rebook_cyclus_guest')
+     OR NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'uq_invoices_rebook_cyclus_pure_profile') THEN
+    RAISE EXCEPTION 'ABC-20: a guest-first rebook index is missing';
+  END IF;
+  -- the pure-profile index must be restricted to guest-null rows, or it re-creates the collision
+  IF (SELECT pg_get_indexdef(oid) FROM pg_class WHERE relname = 'uq_invoices_rebook_cyclus_pure_profile')
+     !~ 'guest_player_id IS NULL' THEN
+    RAISE EXCEPTION 'ABC-20: the pure-profile rebook index must exclude dual-key rows';
+  END IF;
+END $$;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────

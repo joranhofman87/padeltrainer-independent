@@ -285,6 +285,12 @@ export const STUB_SQL = /* sql */ `
   -- The billing columns the restored overdue predicate reads: past-due AND unpaid AND
   -- non-terminal, not merely status = 'overdue'.
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS status text;
+  -- ABC-20 keys its two partial indexes on this column (20260705130000 owns it upstream).
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS rebook_cyclus_id uuid;
+  -- the profile-first index ABC-20 replaces, so the swap is exercised rather than assumed
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_rebook_cyclus_claimant
+    ON public.invoices (rebook_cyclus_id, COALESCE(player_id, guest_player_id))
+    WHERE rebook_cyclus_id IS NOT NULL AND status <> 'cancelled';
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS booking_ids uuid[];
   -- A3 reads these on the claim/slot side; the shipped migrations own them upstream.
   ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS status text DEFAULT 'pending';

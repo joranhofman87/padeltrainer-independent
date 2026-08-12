@@ -1,32 +1,29 @@
 import { supabase } from '@/lib/supabaseClient';
+import { personRefOf, type PersonIdRow } from '@/lib/personIdentity';
 import { resolveSplitDivisor } from '@/lib/splitDivisor';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { logger } from '@/lib/logger';
 
 /**
- * ABC-18 A3 — the single guest-first normalization for a priority claim's identity.
+ * ABC-18 A3 / ABC-20 — the guest-first identity of a priority claim.
  *
- * A DUAL-KEY claim carries both columns. The person it is about is the GUEST; the profile column
- * on such a row is a legacy artefact, not the claimant. Resolving it profile-first let a guest
- * token resolve to that profile and then sweep the profile's PURE sibling claims — accepting and
- * paying for seats that belong to a different account.
+ * This is `personRefOf` under a claim-shaped name, deliberately NOT a second implementation.
+ * The FAM-02 rule it encodes — a row carrying BOTH columns belongs to the GUEST, and the
+ * player_id beside it is legacy link decoration — already had exactly one TS home in
+ * `personIdentity.ts`, and a parallel copy here would be free to drift from it.
  *
- * Exported so both the browser paths here and the tests exercise the SAME rule rather than two
- * hand-copied conditionals that can drift apart. The service-role Edge path
- * (create-rebook-invoice-public) applies the identical rule at its own boundary, because it runs
- * without RLS and cannot import from src/.
+ * The claim case that matters: resolving profile-first let a guest token resolve to the raw
+ * profile and then sweep that profile's PURE sibling claims, accepting and paying for seats
+ * belonging to a different account.
  */
 export function normalizeClaimIdentity(
-  claim: { player_id?: string | null; guest_player_id?: string | null } | null | undefined,
+  claim: PersonIdRow | null | undefined,
 ): { playerId: string | null; guestPlayerId: string | null } {
-  const guestPlayerId = claim?.guest_player_id ?? null;
-  return {
-    // dual-key ⇒ the guest owns the claim; the profile column is inert
-    playerId: guestPlayerId ? null : (claim?.player_id ?? null),
-    guestPlayerId,
-  };
+  const ref = personRefOf(claim ?? {});
+  return { playerId: ref?.playerId ?? null, guestPlayerId: ref?.guestPlayerId ?? null };
 }
+
 
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
 
