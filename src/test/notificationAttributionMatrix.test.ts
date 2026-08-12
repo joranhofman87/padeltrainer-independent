@@ -99,6 +99,10 @@ describe('attribution matrix pins', () => {
       'supabase/functions/notify-followers/index.ts',
       'supabase/migrations/20260913100000_notification_pilot_review_received.sql',
       'supabase/migrations/20260926100000_booking_notification_enqueue_rpc.sql',
+      // U2 identity continuity: the resolver enqueues the (inert) address-control challenge. A
+      // genuine new producer — it dates the event with now() (the submission just happened) and is
+      // asserted to carry p_occurred_at below.
+      'supabase/migrations/20261129100000_u2_identity_verification.sql',
     ]);
   });
 
@@ -138,6 +142,14 @@ describe('attribution matrix pins', () => {
     for (const call of sqlCalls) expect(call).toMatch(/p_occurred_at\s*=>/);
     // fail closed rather than dating an undateable message with now()
     expect(mig).toMatch(/refusing to enqueue a message we cannot date/);
+
+    // the U2 identity-continuity producer dates its (inert) challenge with now() too — the
+    // submission just happened, so there is nothing historical to preserve, but the argument is
+    // passed explicitly rather than defaulted.
+    const ivMig = read('supabase/migrations/20261129100000_u2_identity_verification.sql');
+    const ivIdx = ivMig.indexOf('enqueue_notification(');
+    expect(ivIdx, 'the identity-verification producer should call enqueue').toBeGreaterThan(-1);
+    expect(ivMig.slice(ivIdx, ivIdx + 1400)).toMatch(/p_occurred_at\s*=>/);
   });
 
   // open-slots-notify.ts COMPOSES the open_slots_player send but does not call the resolver

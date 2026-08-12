@@ -1307,6 +1307,69 @@ export type Database = {
         }
         Relationships: []
       }
+      account_scrub_operations: {
+        Row: {
+          actor_user_id: string
+          auth_deleted_at: string | null
+          command_id: string
+          database_scrubbed_at: string | null
+          external_attempt_count: number
+          finished_at: string | null
+          id: string
+          last_attempt_at: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          lease_token: string | null
+          next_attempt_at: string | null
+          public_assets_deleted_at: string | null
+          self_service: boolean
+          started_at: string
+          state: string
+          subject_person_id: string | null
+          subject_user_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          auth_deleted_at?: string | null
+          command_id: string
+          database_scrubbed_at?: string | null
+          external_attempt_count?: number
+          finished_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          next_attempt_at?: string | null
+          public_assets_deleted_at?: string | null
+          self_service: boolean
+          started_at?: string
+          state?: string
+          subject_person_id?: string | null
+          subject_user_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          auth_deleted_at?: string | null
+          command_id?: string
+          database_scrubbed_at?: string | null
+          external_attempt_count?: number
+          finished_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          lease_token?: string | null
+          next_attempt_at?: string | null
+          public_assets_deleted_at?: string | null
+          self_service?: boolean
+          started_at?: string
+          state?: string
+          subject_person_id?: string | null
+          subject_user_id?: string
+        }
+        Relationships: []
+      }
       admin_impersonation_logs: {
         Row: {
           action: string | null
@@ -3756,13 +3819,103 @@ export type Database = {
           },
         ]
       }
+      identity_verification_challenges: {
+        Row: {
+          candidate_set_fingerprint: string
+          candidate_set_size: number
+          chose_someone_new: boolean
+          consumed_at: string | null
+          contact_fingerprint: string
+          contact_normalized: string
+          created_at: string
+          creation_request_id: string
+          expires_at: string
+          id: string
+          key_version: number
+          owner_id: string
+          owner_type: string
+          payload_fingerprint: string
+          selected_person_id: string | null
+          verified_at: string | null
+          workflow: string
+        }
+        Insert: {
+          candidate_set_fingerprint: string
+          candidate_set_size: number
+          chose_someone_new?: boolean
+          consumed_at?: string | null
+          contact_fingerprint: string
+          contact_normalized: string
+          created_at?: string
+          creation_request_id: string
+          expires_at: string
+          id?: string
+          key_version: number
+          owner_id: string
+          owner_type: string
+          payload_fingerprint?: string
+          selected_person_id?: string | null
+          verified_at?: string | null
+          workflow: string
+        }
+        Update: {
+          candidate_set_fingerprint?: string
+          candidate_set_size?: number
+          chose_someone_new?: boolean
+          consumed_at?: string | null
+          contact_fingerprint?: string
+          contact_normalized?: string
+          created_at?: string
+          creation_request_id?: string
+          expires_at?: string
+          id?: string
+          key_version?: number
+          owner_id?: string
+          owner_type?: string
+          payload_fingerprint?: string
+          selected_person_id?: string | null
+          verified_at?: string | null
+          workflow?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "identity_verification_challenges_selected_person_id_fkey"
+            columns: ["selected_person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      identity_verify_key_state: {
+        Row: {
+          current_version: number
+          id: boolean
+          min_mintable_version: number
+          updated_at: string
+        }
+        Insert: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
+        }
+        Update: {
+          current_version?: number
+          id?: boolean
+          min_mintable_version?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       intake_requests: {
         Row: {
           birth_date: string | null
           consent_given: boolean
           created_at: string
+          creation_request_id: string | null
           cycle_id: string | null
-          email: string
+          email: string | null
           full_name: string
           guest_player_id: string | null
           id: string
@@ -3791,8 +3944,9 @@ export type Database = {
           birth_date?: string | null
           consent_given?: boolean
           created_at?: string
+          creation_request_id?: string | null
           cycle_id?: string | null
-          email: string
+          email?: string | null
           full_name: string
           guest_player_id?: string | null
           id?: string
@@ -3821,8 +3975,9 @@ export type Database = {
           birth_date?: string | null
           consent_given?: boolean
           created_at?: string
+          creation_request_id?: string | null
           cycle_id?: string | null
-          email?: string
+          email?: string | null
           full_name?: string
           guest_player_id?: string | null
           id?: string
@@ -5227,6 +5382,7 @@ export type Database = {
           category: string
           collapse_window_minutes: number
           created_at: string
+          dedicated_worker: string | null
           default_email_frequency: string
           default_push_frequency: string
           default_whatsapp_frequency: string
@@ -5255,6 +5411,7 @@ export type Database = {
           category: string
           collapse_window_minutes?: number
           created_at?: string
+          dedicated_worker?: string | null
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
@@ -5283,6 +5440,7 @@ export type Database = {
           category?: string
           collapse_window_minutes?: number
           created_at?: string
+          dedicated_worker?: string | null
           default_email_frequency?: string
           default_push_frequency?: string
           default_whatsapp_frequency?: string
@@ -6650,6 +6808,50 @@ export type Database = {
         }
         Relationships: []
       }
+      player_create_commands: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          creation_request_id: string
+          id: string
+          origin: string
+          owner_id: string
+          owner_type: string
+          payload_fingerprint: string
+          person_id: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          creation_request_id: string
+          id?: string
+          origin: string
+          owner_id: string
+          owner_type: string
+          payload_fingerprint: string
+          person_id?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          creation_request_id?: string
+          id?: string
+          origin?: string
+          owner_id?: string
+          owner_type?: string
+          payload_fingerprint?: string
+          person_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "player_create_commands_person_id_fkey"
+            columns: ["person_id"]
+            isOneToOne: false
+            referencedRelation: "persons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       player_links: {
         Row: {
           created_at: string
@@ -7096,6 +7298,32 @@ export type Database = {
           step?: number
         }
         Relationships: []
+      }
+      rebook_member_attempts: {
+        Row: {
+          created_at: string
+          creation_request_id: string
+          rebook_group_id: string
+        }
+        Insert: {
+          created_at?: string
+          creation_request_id: string
+          rebook_group_id: string
+        }
+        Update: {
+          created_at?: string
+          creation_request_id?: string
+          rebook_group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rebook_member_attempts_creation_request_id_fkey"
+            columns: ["creation_request_id"]
+            isOneToOne: true
+            referencedRelation: "player_create_commands"
+            referencedColumns: ["creation_request_id"]
+          },
+        ]
       }
       registrations: {
         Row: {
@@ -10750,6 +10978,7 @@ export type Database = {
           p_limit?: number
           p_stale_after_minutes?: number
           p_worker: string
+          p_worker_kind?: string
         }
         Returns: {
           attempts: number
@@ -10859,6 +11088,7 @@ export type Database = {
       create_invoice_deduped: { Args: { _payload: Json }; Returns: Json }
       create_rebook_group_guest: {
         Args: {
+          _creation_request_id?: string
           _email?: string
           _first_name: string
           _last_name?: string
@@ -11814,7 +12044,109 @@ export type Database = {
         Args: { _trainer_profile_id: string }
         Returns: boolean
       }
+      identity_candidate_fingerprint: {
+        Args: { _email_norm: string; _owner_id: string; _owner_type: string }
+        Returns: {
+          fp: string
+          n: number
+        }[]
+      }
+      identity_candidate_persons: {
+        Args: { _email_norm: string; _owner_id: string; _owner_type: string }
+        Returns: {
+          display_name: string
+          person_id: string
+          phone_hint: string
+        }[]
+      }
+      identity_challenge_enqueue: {
+        Args: { _challenge_id: string }
+        Returns: undefined
+      }
+      identity_challenge_key_version: {
+        Args: { _challenge_id: string }
+        Returns: number
+      }
+      identity_challenge_send_target: {
+        Args: { p_challenge_id: string }
+        Returns: {
+          already_consumed: boolean
+          contact_normalized: string
+          expires_at: string
+          key_mintable: boolean
+          key_version: number
+          workflow: string
+        }[]
+      }
+      identity_resolve_or_challenge: {
+        Args: {
+          _authed_person_id?: string
+          _creation_request_id: string
+          _email: string
+          _owner_id: string
+          _owner_type: string
+          _payload_key?: string
+          _ttl_minutes?: number
+          _workflow: string
+        }
+        Returns: Json
+      }
+      identity_verification_list: {
+        Args: { _challenge_id: string }
+        Returns: Json
+      }
+      identity_verification_select: {
+        Args: {
+          _challenge_id: string
+          _choose_someone_new?: boolean
+          _person_id: string
+        }
+        Returns: Json
+      }
+      intake_request_create_for_person: {
+        Args: {
+          _email?: string
+          _full_name: string
+          _lesson_types?: string[]
+          _location_id?: string
+          _notes?: string
+          _person_id: string
+          _phone?: string
+          _preferred_days?: string[]
+          _preferred_duration_minutes?: number
+          _preferred_time_windows?: Json
+          _preferred_trainer_ids?: string[]
+          _rating?: number
+          _rating_system?: string
+          _registration_id: string
+          _sessions_per_week?: number
+        }
+        Returns: Json
+      }
       invoice_booking_set_key: { Args: { _ids: string[] }; Returns: string }
+      invoice_create_for_person: {
+        Args: {
+          _due_date: string
+          _invoice_date: string
+          _invoice_number: string
+          _line_items?: Json
+          _notes?: string
+          _owner_id: string
+          _owner_type: string
+          _person_id: string
+          _player_address?: string
+          _player_btw_number?: string
+          _player_business_name?: string
+          _player_name: string
+          _prices_include_vat?: boolean
+          _subtotal?: number
+          _total?: number
+          _vat_amount?: number
+          _vat_breakdown?: Json
+          _vat_rate?: number
+        }
+        Returns: Json
+      }
       invoice_gc_list_objects: {
         Args: { _after?: string; _limit?: number }
         Returns: {
@@ -12221,6 +12553,10 @@ export type Database = {
         }[]
       }
       notif_error_class: { Args: { p_error: string }; Returns: string }
+      notif_event_dedicated_worker: {
+        Args: { p_event_type: string }
+        Returns: string
+      }
       notif_frequency_rank: { Args: { p_freq: string }; Returns: number }
       notif_my_academy_ids: { Args: never; Returns: string[] }
       notif_open_slots_escape_html: {
@@ -12278,6 +12614,31 @@ export type Database = {
         Args: { _owner_id: string; _owner_type: string }
         Returns: Json
       }
+      person_claim_candidates: {
+        Args: never
+        Returns: {
+          academy_name: string
+          guest_name: string
+          proposed_at: string
+          review_id: string
+        }[]
+      }
+      person_claim_confirm: { Args: { _review_id: string }; Returns: Json }
+      person_display_for_owner: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
+        Returns: {
+          created_at: string
+          email: string
+          first_name: string
+          full_name: string
+          last_name: string
+          notes: string
+          person_id: string
+          phone: string
+          rating_system: string
+          skill_rating: number
+        }[]
+      }
       person_has_tenant_relationship: {
         Args: {
           p_academy_profile_id: string
@@ -12286,8 +12647,86 @@ export type Database = {
         }
         Returns: boolean
       }
+      person_legacy_source: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
+        Returns: {
+          guest_player_id: string
+          profile_id: string
+        }[]
+      }
+      person_mark_has_trained: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
+        Returns: boolean
+      }
+      player_create_command: {
+        Args: {
+          _actor_user_id?: string
+          _birth_date?: string
+          _creation_request_id: string
+          _email?: string
+          _first_name?: string
+          _full_name?: string
+          _last_name?: string
+          _notes?: string
+          _origin?: string
+          _owner_id?: string
+          _owner_type: string
+          _phone?: string
+          _rating_system?: string
+          _select_person_id?: string
+          _skill_rating?: number
+          _source?: string
+          _twin_of_profile_id?: string
+        }
+        Returns: Json
+      }
+      player_create_execute: {
+        Args: {
+          _actor_user_id: string
+          _birth_date?: string
+          _creation_request_id: string
+          _email?: string
+          _first_name?: string
+          _full_name?: string
+          _last_name?: string
+          _notes?: string
+          _origin: string
+          _owner_id: string
+          _owner_type: string
+          _phone?: string
+          _rating_system?: string
+          _select_person_id?: string
+          _skill_rating?: number
+          _source?: string
+          _twin_of_profile_id?: string
+        }
+        Returns: Json
+      }
+      player_create_fingerprint: {
+        Args: {
+          _email: string
+          _full_name: string
+          _phone: string
+          _select_person_id: string
+          _source?: string
+          _twin_of_profile_id?: string
+        }
+        Returns: string
+      }
       player_has_active_booking_on_slot: {
         Args: { _slot_id: string }
+        Returns: boolean
+      }
+      player_legacy_ref: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
+        Returns: Json
+      }
+      player_owner_may_create: {
+        Args: { _owner_id: string; _owner_type: string; _user_id: string }
+        Returns: boolean
+      }
+      player_owner_may_select_person: {
+        Args: { _owner_id: string; _owner_type: string; _person_id: string }
         Returns: boolean
       }
       prepare_notification_digest_group: {
@@ -12355,14 +12794,18 @@ export type Database = {
         }[]
       }
       rebook_group_apply: {
-        Args: { _keep_keys?: Json; _new_guest_ids?: string[]; _token: string }
+        Args: {
+          _keep_keys?: Json
+          _new_creation_request_ids?: string[]
+          _token: string
+        }
         Returns: Json
       }
       rebook_group_manage: {
         Args: {
           _invoice_id?: string
           _keep_keys?: Json
-          _new_guest_ids?: string[]
+          _new_creation_request_ids?: string[]
           _token: string
         }
         Returns: Json
@@ -12685,6 +13128,8 @@ export type Database = {
         Returns: number
       }
       u1c_ns: { Args: { _value: string }; Returns: string }
+      u2_norm: { Args: { _v: string }; Returns: string }
+      u2_ns: { Args: { _v: string }; Returns: string }
       unclaim_rebook_member_open_notice: {
         Args: { _cycle_id: string }
         Returns: undefined

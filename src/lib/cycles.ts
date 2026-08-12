@@ -382,16 +382,24 @@ export async function findSlotsAfterDate(cyclusId: string, endDate: string): Pro
 // Intake Requests CRUD
 
 export async function submitIntakeRequest(input: IntakeRequestInput): Promise<IntakeRequest> {
-  // Rate limiting: Check for recent submissions from same email (max 3 per hour)
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-  const { count } = await supabase
-    .from('intake_requests')
-    .select('*', { count: 'exact', head: true })
-    .eq('email', input.email)
-    .gte('created_at', oneHourAgo);
+  // Rate limiting: Check for recent submissions from same email (max 3 per hour). The address is
+  // optional since U2, and `.eq('email', undefined)` is a query with no predicate rather than one
+  // that matches nothing — so an addressless submission skips the per-address limit instead of
+  // silently counting every intake ever made. This path is signed-in and player-keyed; the public,
+  // unauthenticated one is `submit-guest-intake`, which still requires an address and keeps its own
+  // per-IP and per-recipient throttles.
+  const submitterEmail = input.email?.trim() || null;
+  if (submitterEmail) {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { count } = await supabase
+      .from('intake_requests')
+      .select('*', { count: 'exact', head: true })
+      .eq('email', submitterEmail)
+      .gte('created_at', oneHourAgo);
 
-  if (count && count >= 3) {
-    throw new Error('Too many applications submitted. Please try again later.');
+    if (count && count >= 3) {
+      throw new Error('Too many applications submitted. Please try again later.');
+    }
   }
 
   // input.cycle_id is the FORM's id (registrationToCycle exposes registration.id). Intakes link to
@@ -409,7 +417,7 @@ export async function submitIntakeRequest(input: IntakeRequestInput): Promise<In
     cycle_id: null,
     player_id: input.player_id,
     full_name: input.full_name,
-    email: input.email,
+    email: submitterEmail,
     phone: input.phone || null,
     birth_date: input.birth_date || null,
     rating: input.rating || null,
@@ -492,11 +500,6 @@ async function autoFollowOwner(
 //
 // club_players NEVER upserts: its unique email index is PARTIAL (WHERE email IS NOT NULL AND
 // email != '', migration 20260126164841) and PostgREST upserts cannot target partial indexes
-// (Postgres 42P10). Use select-then-insert; a 23505 on insert means the row already exists.
-//
-// RLS note (club): a logged-in player self-registering can INSERT the club_players row because
-// migration 20260126164841's INSERT policy requires linked_profile_id = their own profile id AND
-// source = 'cycle_registration' (both set in addToClubStudentList). Players have no SELECT/UPDATE
 // on the table, so a pre-existing same-email row makes the dedup select miss and the insert hits
 // the unique index (23505) — acceptable, the player is already listed.
 async function addToStudentList(
@@ -520,11 +523,23 @@ async function addToStudentList(
 // club_players variant: select-by-email-then-insert (unique_club_player_email is
 // also a PARTIAL index — WHERE email IS NOT NULL AND email != '' — so upsert
 // with onConflict fails with 42P10 exactly like guest_players did).
+//
+// REVERTED to the pre-round-9 behaviour, deliberately (owner, architecture correction). A server
+// command keyed on the canonical person was built here and is withdrawn: `club_players` is a legacy
+// model that the person-unification plan RETIRES, and building permanent identity infrastructure
+// around it now is the opposite of the direction. Club ownership is an owner decision that has not
+// been made.
+//
+// KNOWN, RECORDED, NOT FIXED HERE: this deduplicates a club roster entry by (club, email), so two
+// people who share an address produce one row and the second registrant is never added. It is
+// PRE-EXISTING (it is on origin/main untouched) and it is a real instance of an attribute
+// deduplicating a person. It is carried as a club-architecture dependency rather than patched into
+// a table that is on its way out — see the U2 handoff.
 async function addToClubStudentList(
   clubProfileId: string,
   input: IntakeRequestInput
 ): Promise<void> {
-  const email = input.email.trim();
+  const email = (input.email ?? '').trim();
 
   if (email) {
     const { data: existing } = await supabase
@@ -555,7 +570,6 @@ async function addToClubStudentList(
     logger.error('Add to club student list failed (non-blocking)', new Error(error.message), {
       clubProfileId,
       cycleId: input.cycle_id,
-      errorCode: error.code,
     });
   }
 }
@@ -1079,41 +1093,41 @@ export async function unlinkPlayer(intakeRequestId: string): Promise<void> {
   }
 }
 
-// Create a manual intake request (for club managers to add registrations)
+// Create a manual intake request (the staff add-a-registration dialog).
+//
+// The caller supplies the CANONICAL person_id the create command answered with; the server command
+// authorizes against the registration's owner, derives the temporary legacy link columns from the
+// person internally, and writes the row in one transaction. No legacy id enters or leaves this
+// function (U2, owner correction 2026-08-09) — the direct `.from('intake_requests').insert` that
+// stood here carried a guest id through browser state, which is the leak the command closes.
 export async function createManualIntakeRequest(
-  input: IntakeRequestInput & { player_id?: string | null; guest_player_id?: string | null }
-): Promise<IntakeRequest> {
-  const insertData: Record<string, unknown> = {
-    // input.cycle_id is the FORM's id (registration.id); a manually-added applicant links to the form
-    // and is not yet planned into a training cycle (cycle_id NULL).
-    registration_id: input.cycle_id,
-    cycle_id: null,
-    player_id: input.player_id || null,
-    guest_player_id: (input as any).guest_player_id || null,
-    full_name: input.full_name,
-    email: input.email,
-    phone: input.phone || null,
-    rating: input.rating || null,
-    rating_system: input.rating_system || 'knltb',
-    lesson_type: input.lesson_types,
-    preferred_days: input.preferred_days,
-    preferred_time_windows: input.preferred_time_windows as unknown as Json,
-    preferred_duration_minutes: input.preferred_duration_minutes || 60,
-    sessions_per_week: input.sessions_per_week || 1,
-    preferred_trainer_ids: input.preferred_trainer_ids || [],
-    location_id: input.location_id || null,
-    notes: input.notes || null,
-    consent_given: true,
-    status: 'new' as const,
-  };
-
-  const { data, error } = await supabase
-    .from('intake_requests')
-    .insert(insertData as any)
-    .select()
-    .single();
+  input: IntakeRequestInput & { person_id: string }
+): Promise<{ intakeRequestId: string }> {
+  const { data, error } = await supabase.rpc('intake_request_create_for_person', {
+    // input.cycle_id is the FORM's id (registration.id); a manually-added applicant links to the
+    // form and is not yet planned into a training cycle (the command writes cycle_id NULL).
+    _registration_id: input.cycle_id,
+    _person_id: input.person_id,
+    _full_name: input.full_name,
+    // NULL, not '': an applicant with no address has no address. An empty string is a value, and a
+    // value is something a matcher will happily match on.
+    _email: input.email?.trim() || null,
+    _phone: input.phone || null,
+    _rating: input.rating || null,
+    _rating_system: input.rating_system || 'knltb',
+    _lesson_types: input.lesson_types,
+    _preferred_days: input.preferred_days,
+    _preferred_time_windows: input.preferred_time_windows as unknown as Json,
+    _preferred_duration_minutes: input.preferred_duration_minutes || 60,
+    _sessions_per_week: input.sessions_per_week || 1,
+    _preferred_trainer_ids: input.preferred_trainer_ids || [],
+    _location_id: input.location_id || null,
+    _notes: input.notes || null,
+  });
 
   if (error) throw error;
-  return toIntakeRequest(data);
+  const result = data as { intake_request_id: string | null } | null;
+  if (!result?.intake_request_id) throw new Error('intake_create_no_result');
+  return { intakeRequestId: result.intake_request_id };
 }
 

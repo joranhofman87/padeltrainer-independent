@@ -215,9 +215,20 @@ serve(async (req) => {
     }
 
     const payment = await mollieResponse.json();
-    logStep("Payment fetched", { 
-      status: payment.status, 
-      metadata: payment.metadata 
+    // Whitelisted keys only, never the metadata object wholesale: payments created before the U2
+    // correction still carry a guest_player_id in their metadata, and a derived legacy id must not
+    // reappear in the logs on its way back through (owner correction 2026-08-09).
+    logStep("Payment fetched", {
+      status: payment.status,
+      metadata: {
+        booking_id: payment.metadata?.booking_id,
+        booking_ids: payment.metadata?.booking_ids,
+        invoice_id: payment.metadata?.invoice_id,
+        creation_request_id: payment.metadata?.creation_request_id,
+        recipient_type: payment.metadata?.recipient_type,
+        cart: payment.metadata?.cart,
+        cyclus_id: payment.metadata?.cyclus_id,
+      },
     });
 
     const { invoiceId: invoiceIdFromMetadata, bookingIds } = parseMolliePaymentMetadata(
@@ -564,7 +575,9 @@ serve(async (req) => {
                   const { data: cover, error: coverErr } = await supabase.rpc("rebook_group_manage", {
                     _token: capClaim.claim_token,
                     _keep_keys: keepKeys,
-                    _new_guest_ids: [],
+                    // covers EXISTING pending members only — the person-keyed member handover
+                    // (U2, 20261128100000) is the captain's flow, not this one's
+                    _new_creation_request_ids: [],
                     _invoice_id: invoiceIdFromMetadata,
                   });
                   const coverRes = (cover ?? {}) as { ok?: boolean; booked?: number; skipped_full?: number; reason?: string };

@@ -1,4 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -96,6 +101,9 @@ export default function CycleApplicationForm({
   const { t, i18n } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  // U2 identity continuity: the address matched existing Player(s); the registrant must prove
+  // control of it before anything is recorded. Generic, leak-free — see the screen below.
+  const [verificationRequired, setVerificationRequired] = useState(false);
   const [ratingSystems, setRatingSystems] = useState<{ code: string; name: string }[]>([]);
   const [cycleTerms, setCycleTerms] = useState<string | null>(null);
   const [termsLoading, setTermsLoading] = useState(false);
@@ -298,6 +306,15 @@ export default function CycleApplicationForm({
     };
   }, [form, applyDraftKey, selectedPaymentMethod, selectedDurationWeeks, selectedCyclusOption]);
 
+  /**
+   * The submission ATTEMPT currently in flight, KEYED on the identity fields the server
+   * fingerprints. Reused by every retry of the same attempt — a double submit, a network replay, a
+   * second tap — and minted afresh when the registrant edits who they are, because a raw id held
+   * across an edit is answered with PLAYER_CREATE_IDEMPOTENCY_CONFLICT and the corrected form can
+   * never be submitted (U2).
+   */
+  const creationAttemptRef = useRef<CreationAttempt>(null);
+
   const onSubmit = async (values: FormValues) => {
     if (isSubmitting) return;
     // A cycle that offers packages (e.g. Leden / Niet-leden) prices ONLY via the chosen
@@ -368,6 +385,21 @@ export default function CycleApplicationForm({
             consentGiven: values.consent,
             language: i18n.language,
             paymentMethod: selectedPaymentMethod,
+            creationRequestId: creationRequestIdFor(
+              creationAttemptRef,
+              // Must cover AT LEAST every field the server binds into buildIntentKey for intake
+              // (Codex r4) — intake binds the WHOLE application, so editing any of it after a
+              // challenge must start a fresh attempt rather than be refused on resume.
+              JSON.stringify([
+                cycle.id, fullName, values.email.trim().toLowerCase(), values.phone.trim(),
+                values.birth_date || null, values.rating ?? null, values.rating_system || null,
+                values.lesson_types || [], preferredDays, timeWindows,
+                values.preferred_duration_minutes ?? null, values.sessions_per_week ?? null,
+                values.preferred_trainer_id ? [values.preferred_trainer_id] : [],
+                values.location_id || null, notesWithFlag || null, values.consent ?? null,
+                selectedPaymentMethod || null, selectedCyclusOption ?? null, selectedDurationWeeks ?? null,
+              ]),
+            ),
             metadata: {
               ...(selectedCyclusOption ? { selected_cyclus_option: selectedCyclusOption } : {}),
               ...(selectedDurationWeeks ? { preferred_number_of_weeks: selectedDurationWeeks } : {}),
@@ -377,6 +409,16 @@ export default function CycleApplicationForm({
 
         if (fnError) throw fnError;
         if (result?.error) throw new Error(result.error);
+        // Identity continuity: the address matched existing Player(s); NOTHING was recorded. Show
+        // the generic verification prompt and stop. The attempt id is KEPT so the resumed
+        // registration (after the emailed link is followed and a Player chosen) replays the same
+        // attempt rather than creating a duplicate.
+        if (result?.status === 'verification_required') {
+          setVerificationRequired(true);
+          return;
+        }
+        // the attempt is finished: anything after this is a NEW registration, not a retry
+        clearCreationAttempt(creationAttemptRef);
         redirectPayUrl = result?.payment?.payUrl ?? null;
       } else {
         // Logged-in user flow
@@ -486,6 +528,30 @@ export default function CycleApplicationForm({
       setIsSubmitting(false);
     }
   };
+
+  if (verificationRequired) {
+    // GENERIC by design: identical whether one Player matched or several, and whether or not an
+    // account exists. It reveals only that IF the address is on file, a link was sent.
+    return (
+      <Card className="border-primary/20">
+        <CardContent className="pt-6">
+          <div className="text-center space-y-4">
+            <CheckCircle2 className="h-16 w-16 text-primary mx-auto" />
+            <h3 className="text-xl font-semibold">{t('application.verify.title', 'Controleer je e-mail')}</h3>
+            <p className="text-muted-foreground">
+              {t('application.verify.body',
+                'Als dit e-mailadres al bij ons bekend is, hebben we je een link gestuurd om te bevestigen dat jij het bent. Volg die link om je inschrijving af te ronden.')}
+            </p>
+            {/* Same-device resume: bring the (still-filled) form back so the confirmed registrant can
+                re-submit — the kept attempt id resolves to the chosen person and proceeds. */}
+            <Button variant="outline" onClick={() => setVerificationRequired(false)}>
+              {t('application.verify.continue', 'Ik heb bevestigd — ga verder')}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isSuccess) {
     return (

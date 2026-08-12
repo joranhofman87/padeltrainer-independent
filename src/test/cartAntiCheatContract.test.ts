@@ -39,8 +39,21 @@ describe('create-guest-cart-payment — client trust surface', () => {
     // and touches nothing about pricing, slot selection or identity. The tenant that consent is
     // scoped to is read from the SLOT server-side, never from the body — which is the property
     // this suite exists to protect, and why the boolean is safe to accept.
+    //
+    // creationRequestId (U2) is an OPAQUE IDEMPOTENCY TOKEN, and the trust it carries is worth
+    // being precise about, because "a client-supplied id" is exactly the shape this suite exists
+    // to be suspicious of. It names an ATTEMPT, never a Player, a price or a slot:
+    //   * it cannot select an existing Player. Replaying an id returns the Player that id created
+    //     and only if the owner scope, the origin AND the sha256 of (name, email, phone) all still
+    //     agree; any other payload is refused as PLAYER_CREATE_IDEMPOTENCY_CONFLICT. So reaching
+    //     somebody else's Player requires already knowing their exact name, address and phone —
+    //     which is precisely what the email-and-name lookup this replaced handed over for free.
+    //   * it grants no authorization. The scope comes from the server-read SLOT, and the command
+    //     re-decides who may create there.
+    //   * guessing is a uuid4 search, and a hit that does not match the fingerprint is a refusal.
     const allowed = new Set([
       'slotIds', 'firstName', 'lastName', 'fullName', 'email', 'phone', 'notes', 'whatsappOptIn',
+      'creationRequestId',
     ]);
     const read = clientFieldsRead(fnSource);
     expect([...read].filter((f) => !allowed.has(f))).toEqual([]);
@@ -60,8 +73,21 @@ describe('create-guest-cart-payment — client trust surface', () => {
     expect(fnSource).toMatch(/academyProfileId,?\n?\s*trainerId|academyProfileId: academyProfileId|academyProfileId,/);
   });
 
+  it('the client id is validated as a uuid before it reaches the command', () => {
+    // An unvalidated token would reach Postgres as a uuid cast and answer a malformed request with
+    // a 500 instead of a refusal — and it is the one client field the create is keyed on.
+    expect(fnSource).toMatch(/UUID_RE\.test\(creationRequestId\)/);
+    expect(fnSource).toMatch(/invalid_creation_request_id/);
+  });
+
   it('guest identity is server-resolved and the Mollie metadata uses the RPC-returned ids', () => {
-    expect(fnSource).toContain('resolveOrCreateGuestPlayer(');
+    expect(fnSource).toContain('resolvePlayerForCheckout(');
+    // ...and "server-resolved" now means CREATED through the one command, answering with the
+    // canonical person only — the legacy booking column is derived by the service adapter inside
+    // this process (U2, owner correction 2026-08-09).
+    expect(readFileSync(
+      join(process.cwd(), 'supabase', 'functions', '_shared', 'guest-players.ts'), 'utf8',
+    )).toContain('player_create_command');
     // canonical sort of the RPC output (idempotency-key body stability)…
     expect(fnSource).toMatch(/\[\.\.\.\(\(idsData as string\[\]\) \?\? \[\]\)\]\.sort\(\)/);
     // …and metadata.booking_ids comes from that variable, nothing client-supplied

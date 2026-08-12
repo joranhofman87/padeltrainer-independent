@@ -40,7 +40,13 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
   const [keep, setKeep] = useState<Set<string>>(
     () => new Set(group.members.filter((m) => m.status !== 'declined').map((m) => m.key)),
   );
-  const [newMembers, setNewMembers] = useState<NewGroupMember[]>([]);
+  /**
+   * Each new member carries the id of the attempt that will create them, stamped when the captain
+   * ADDS them rather than when the group is submitted. A submit that fails halfway — a capacity
+   * refusal, a dropped connection — is retried with the same ids, so the members who already landed
+   * replay instead of being minted a second time (U2: the address no longer recognises a repeat).
+   */
+  const [newMembers, setNewMembers] = useState<Array<NewGroupMember & { creationRequestId: string }>>([]);
   const [submitting, setSubmitting] = useState(false);
 
   const sessions = group.sessions || 1;
@@ -66,16 +72,17 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      // Mint each new member server-side (token-gated), collecting their guest ids.
-      const newGuestIds: string[] = [];
+      // Mint each new member server-side (token-gated). The submit then hands over the ATTEMPT ids
+      // this browser minted — no identity of any kind travels back through it (U2): the definers
+      // resolve each attempt's receipt and derive the booking keys internally.
       for (const m of newMembers) {
-        const id = await createRebookGroupGuest(token, m);
-        newGuestIds.push(id);
+        await createRebookGroupGuest(token, m);
       }
+      const newCreationRequestIds = newMembers.map((m) => m.creationRequestId);
       const keepKeys = group.members.filter((m) => keep.has(m.key) && !m.is_self).map((m) => m.key);
       const res = mode === 'manage'
-        ? await manageRebookGroup(token, { keepKeys, newGuestIds, invoiceId })
-        : await applyRebookGroup(token, { keepKeys, newGuestIds });
+        ? await manageRebookGroup(token, { keepKeys, newCreationRequestIds, invoiceId })
+        : await applyRebookGroup(token, { keepKeys, newCreationRequestIds });
       if (!res.ok) {
         if (res.reason === 'window_expired') {
           toast.error(t('rebooking.errorExpired', 'The reservation period has expired.'));
@@ -166,7 +173,7 @@ export function RebookGroupEditor({ token, group, paymentMode, mode = 'apply', i
         </div>
       )}
 
-      <AddGroupMemberFields disabled={submitting} onAdd={(m) => setNewMembers((prev) => [...prev, m])} />
+      <AddGroupMemberFields disabled={submitting} onAdd={(m) => setNewMembers((prev) => [...prev, { ...m, creationRequestId: crypto.randomUUID() }])} />
 
       {/* Price preview */}
       {pricePer > 0 && (

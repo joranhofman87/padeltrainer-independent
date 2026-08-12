@@ -44,11 +44,31 @@ run "deno (edge)"                 deno test --no-check --allow-env --allow-net s
 
 if [[ $WITH_DB == 1 ]]; then
   # ── test.yml: PGlite rehearsals, and migrations.yml against real local Postgres ──────────────
+  # RESET FIRST, like migrations.yml does. Without it these gates test whatever schema happens to
+  # be installed: a function-body edit keeps the generated type shapes, so "types drift" and the
+  # real-pg suite can both pass against stale bodies — which is exactly how a broken 5e section
+  # stayed green for a whole session (2026-08-10, and Codex r1 f11 named the same trap).
+  run "local db reset (migrations)" supabase db reset
   run "db rehearsals (PGlite)"    npm run --silent db:rehearse:all
   run "generated types drift"     npm run --silent db:types:check
-  run "academy-deletion (real pg)" node scripts/db/academy-deletion-integration.mjs
+
+  # The real-Postgres suites are per-unit and land on different branches, so run whichever this
+  # branch actually has. A runner that fails on a file the branch never introduced trains people to
+  # ignore it, which is the opposite of why it exists. CI is stricter on purpose: every suite in
+  # scripts/ci/workflow-contract.mjs REAL_PG_SUITES must be an unweakened step in migrations.yml,
+  # so a file present on the branch cannot be dropped from the gate — only skipped locally when the
+  # branch genuinely lacks it.
+  for suite in scripts/db/academy-deletion-integration.mjs \
+               scripts/db/backup-coverage.mjs \
+               scripts/db/u2-no-email-alone-merge.mjs \
+               scripts/db/u2-identity-verification.mjs \
+               scripts/db/u2-identity-worker-routing.mjs \
+               scripts/db/u2-scrub-claim-race.mjs \
+               scripts/db/u2-scrub-claim-race-recovery.mjs; do
+    [[ -f "$suite" ]] && run "$(basename "$suite" .mjs) (real pg)" node "$suite"
+  done
 else
-  printf '\n\033[33m── skipped (pass --db): db rehearsals, types drift, academy-deletion real-pg\033[0m\n'
+  printf '\n\033[33m── skipped (pass --db): db reset, db rehearsals, types drift, and the seven real-Postgres suites\033[0m\n'
 fi
 
 printf '\n'

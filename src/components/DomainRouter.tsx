@@ -182,6 +182,7 @@ const AcademyBulkCopySlots = lazy(() => import('@/pages/academy/AcademyBulkCopyS
 const AcademyRebookCohort = lazy(() => import('@/pages/academy/AcademyRebookCohort'));
 const TrainerBulkCopySlots = lazy(() => import('@/pages/trainer/TrainerBulkCopySlots'));
 const PriorityClaim = lazy(() => import('@/pages/PriorityClaim'));
+const VerifyIdentity = lazy(() => import('@/pages/VerifyIdentity'));
 const AcademyCycleDetail = lazy(() => import('@/pages/academy/AcademyCycleDetail'));
 const AcademyCycleDetailView = lazy(() => import('@/pages/academy/AcademyCycleDetailView'));
 const AcademyRebookManage = lazy(() => import('@/pages/academy/AcademyRebookManage'));
@@ -227,6 +228,9 @@ export function DomainRouter() {
 
         {/* Login-free guest booking confirmation (post-payment redirect target) */}
         <Route path="/booking/:token" element={<GuestBookingSuccess />} />
+
+        {/* U2 identity-verification link target (the token rides in ?token=, never the path) */}
+        <Route path="/verify-identity" element={<VerifyIdentity />} />
 
         {/* API callback routes (legacy + new path) */}
         <Route path="/api/mollie-callback" element={<MollieCallback />} />

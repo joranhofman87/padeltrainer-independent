@@ -12,21 +12,25 @@
  *     or is listed below with a reason. A new person-keyed table fails this by default; being
  *     forgotten is not an option the schema allows any more.
  *
- *   PAGINATION PRECONDITION — every backed-up table has a single-column `id` primary key of type
- *     uuid, because the backup keyset-walks on exactly that and `backup_export_page` takes a uuid
- *     cursor. A table with a composite, differently-named or differently-typed key would page
- *     wrongly, and silently: the walk would still return rows.
+ *   KEY PRECONDITION — every backed-up table has a single-column `id` primary key of type uuid.
+ *     `backup_export_table` ORDERs BY t.id, which is what makes two exports of an unchanged table
+ *     byte-identical and therefore diffable. (This rule outlived the keyset cursor it was written
+ *     for: an earlier exporter paged on `id` via a `backup_export_page` that no longer exists. The
+ *     current one aggregates a whole table in one statement. The rule is kept for the ordering
+ *     guarantee, not for paging.)
  *
- *   ALLOW-LIST AGREEMENT — the edge function's list and the database's `backup_export_tables()`
- *     allow-list name the same tables. They are two halves of one decision: a table in the edge
- *     list but not the allow-list is permission denied every night, and one in the allow-list but
- *     not the edge list is an export capability nobody asked for.
+ *   ALLOW-LIST AGREEMENT — the edge function's `TABLES_TO_BACKUP` and the database's
+ *     `backup_export_tables()` name the same tables. Note that `TABLES_TO_BACKUP` is a DECLARATION,
+ *     not a runtime input: at run time the function reads its members from `backup_export_groups()`.
+ *     So this check is a policy gate — it makes the intended set reviewable in the edge function and
+ *     refuses drift between the two — rather than a guard against a nightly failure.
  *
  * Runs in `migrations.yml` after `supabase db reset`, against the real local schema. LOCAL ONLY —
  * the connection string is hardcoded to 127.0.0.1:54322 and nothing here reads a credential.
  */
 import pg from 'pg';
 import { readFileSync } from 'node:fs';
+import { ACL_DENY_SQL } from './acl-deny-query.mjs';
 
 const CONN = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
 const SOURCE = 'supabase/functions/backup-database/index.ts';
@@ -37,6 +41,7 @@ const SOURCE = 'supabase/functions/backup-database/index.ts';
  */
 const EXCLUDED = new Map([
   ['notification_outbox', 'transient queue state: rows are re-derivable from their source events, and a restored outbox would re-send. Consent lives in notification_contacts, which IS backed up.'],
+  ['identity_verification_challenges', 'live capability state, deliberately not restorable. A restored challenge is WORSE than a missing one: a CONSUMED row is trusted as terminal evidence before any expiry check, so restoring one resurrects a proof-of-control over an address that may since have changed hands. (An unconsumed row is harmless to lose — expiry already invalidates it and the flow re-mints.) The recovery contract is therefore explicit and is NOT "the decision survives elsewhere" — a selection is recorded only on the challenge row itself (identity_verification_select updates that row; the resumed request reads it as terminal evidence), so a restore between selection and resume loses that decision by design and the visitor is simply re-challenged on the next attempt. That costs one extra "confirm it is you" email and never mis-assigns an identity, which is the trade this exclusion is making. The DURABLE half of the flow — the create receipt that stops a replay minting a duplicate Player — is player_create_commands, and that IS backed up.'],
 ]);
 
 /** The tables a U1c backfill rollback has to read together, or it is reading a contradiction. */
@@ -139,7 +144,7 @@ if (reasonless.length) {
 ok_(!hasReason('') && !hasReason(undefined) && !hasReason('too short') && hasReason('x'.repeat(30)),
   'the written-reason rule actually rejects an unwritten reason');
 
-// ── PAGINATION PRECONDITION ────────────────────────────────────────────────────────────────────
+// ── KEY PRECONDITION ───────────────────────────────────────────────────────────────────────────
 const { rows: keys } = await c.query(`
   SELECT c.relname,
          (SELECT count(*)::int FROM pg_index i WHERE i.indrelid = c.oid AND i.indisprimary) AS has_pk,
@@ -161,18 +166,18 @@ else pass('every declared table exists');
 
 const badKey = keys.filter((k) => k.pk !== 'id');
 if (badKey.length) {
-  fail('backed-up tables whose primary key is not a single `id` column — the keyset walk would page them wrongly',
+  fail('backed-up tables whose primary key is not a single `id` column — the export could not order them deterministically',
     badKey.map((k) => `${k.relname}:${k.pk}`));
 } else {
-  pass(`all ${keys.length} backed-up tables keyset-page on a single id primary key`);
+  pass(`all ${keys.length} backed-up tables have a single id primary key the export can order by`);
 }
 
 const badType = keys.filter((k) => k.pk === 'id' && k.pk_type !== 'uuid');
 if (badType.length) {
-  fail('backed-up tables whose `id` is not uuid — backup_export_page takes a uuid cursor',
+  fail('backed-up tables whose `id` is not uuid — the declared key type for this export',
     badType.map((k) => `${k.relname}:${k.pk_type}`));
 } else {
-  pass('every backed-up id is a uuid, which is what the export cursor takes');
+  pass('every backed-up id is a uuid, the declared key type for this export');
 }
 
 // ── ALLOW-LIST AGREEMENT ───────────────────────────────────────────────────────────────────────
@@ -296,6 +301,66 @@ else pass('the backup can execute all three');
 
   const viaFn = await probe(`SELECT public.backup_export_table('academy_player_memberships') AS r`);
   ok_(viaFn.ok, 'the same read THROUGH backup_export_table succeeds as service_role', viaFn);
+
+  // ...and the same proof for EVERY backed-up table service_role cannot read directly, derived
+  // rather than listed. U2's account_scrub_operations revokes service_role too — it is reachable
+  // only through this definer path and through narrow RPCs that do not exist yet — so a table can
+  // now join that set without anyone remembering to extend a hard-coded list here. Asserting the
+  // grant shape is not the same as proving the read succeeds, which is the whole reason this block
+  // runs as service_role at all.
+  // NAMED, not derived, and deliberately so. The derived sweep below asks "of the tables that are
+  // closed, do they still export?" — which passes trivially if a table stops being closed. That is
+  // exactly the failure mode to guard: supabase/seed.sql blanket-grants service_role on every public
+  // table during `db reset`, and each default-deny table needs an explicit re-revoke there. Delete
+  // or misspell one of those and the table silently drops out of the derived set. So the tables whose
+  // default-deny is a SECURITY property are asserted by name, against the post-seed database.
+  const DEFAULT_DENY = [
+    'academy_player_memberships', 'membership_backfill_runs', 'membership_backfill_items',
+    // U2 B1: no authorized caller exists yet, so the only privilege anything should hold is the
+    // owner's. Access arrives later as narrow SECURITY DEFINER RPCs.
+    'account_scrub_operations',
+  ];
+  // ...and the list is checked against the seed itself, not trusted. Drift is possible in BOTH
+  // directions: deleting a seed re-revoke is caught by the assertion below, but deleting an entry
+  // HERE while the seed stays correct would silently retire the guard. Set equality closes that.
+  {
+    const seedSrc = readFileSync('supabase/seed.sql', 'utf8');
+    const seedDenied = [...seedSrc.matchAll(
+      /REVOKE ALL ON public\.([a-z0-9_]+) FROM PUBLIC, anon, authenticated, service_role/g)]
+      .map((m) => m[1]);
+    const a = [...new Set(seedDenied)].sort();
+    const b = [...DEFAULT_DENY].sort();
+    ok_(a.length === b.length && a.every((t, i) => t === b[i]),
+      'the seed deny-list and this guard name the same tables, so neither can be retired alone',
+      { seed: a, guard: b });
+  }
+
+  // The query lives in scripts/db/acl-deny-query.mjs and is version-aware; the PGlite suite imports
+  // THE SAME text and mutates the ACL against it, so a regression in this guard fails there too.
+  for (const t of DEFAULT_DENY) {
+    const { rows: [open] } = await c.query(ACL_DENY_SQL, [t]);
+    // probed > 0 proves the derivation found a privilege set at all; an empty one would make
+    // "nothing is held" true by asking nothing
+    ok_(open.held === '' && open.probed > 0,
+      `${t} is default-deny AFTER the seed's blanket grant — no client role holds any privilege (${open.probed} probed)`,
+      { held: open.held, probed: open.probed });
+  }
+
+  {
+    const { rows: closedToBackup } = await c.query(`
+      SELECT t.relname FROM public.backup_export_tables() t
+       WHERE NOT has_table_privilege('service_role', to_regclass('public.' || t.relname), 'SELECT')
+       ORDER BY 1`);
+    for (const { relname } of closedToBackup) {
+      const direct = await probe(`SELECT 1 FROM public.${relname} LIMIT 1`);
+      ok_(!direct.ok && direct.code === '42501',
+        `a DIRECT read of ${relname} as service_role is denied`, direct);
+      const viaDefiner = await probe(`SELECT public.backup_export_table($1) AS r`, [relname]);
+      ok_(viaDefiner.ok,
+        `...but the backup still exports ${relname} through the definer path`, viaDefiner);
+    }
+    pass(`${closedToBackup.length} backed-up table(s) revoke service_role and stay exportable anyway`);
+  }
 
   const viaGroup = await probe(`SELECT public.backup_export_group('u1c_membership') AS r`);
   const gotTables = Object.keys(viaGroup.rows?.[0]?.r ?? {}).sort();

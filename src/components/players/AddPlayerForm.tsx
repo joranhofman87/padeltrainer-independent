@@ -1,4 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from "@/lib/creationRequestId";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
@@ -14,12 +19,26 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, PartyPopper } from "lucide-react";
 import { getRatingSystems, RatingSystemConfig, COUNTRY_NAMES } from "@/lib/ratingSystems";
-import type { GuestPlayer } from "./AddPlayerDialog";
+import type { CreatedPlayer } from "@/components/players/guestPlayer";
+
+/** The row shape `person_display_for_owner` answers with — attributes only, no legacy id. */
+type CreatedPlayerRow = {
+  person_id: string;
+  full_name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  skill_rating: number | null;
+  rating_system: string | null;
+  notes: string | null;
+  created_at: string;
+};
 
 interface AddPlayerFormProps {
   trainerId?: string;
   academyId?: string;
-  onPlayerCreated?: (player: GuestPlayer) => void;
+  onPlayerCreated?: (player: CreatedPlayer) => void;
   /** If true, show Cancel button */
   showCancel?: boolean;
   onCancel?: () => void;
@@ -36,6 +55,12 @@ export function AddPlayerForm({
   const { toast } = useToast();
 
   const [isLoading, setIsLoading] = useState(false);
+  /**
+   * The id of THIS create attempt. A double-click, or a save retried after a network hiccup,
+   * carries the same one and yields the same Player — no attribute of the person may be used to
+   * recognise a repeat (U2). Editing the fields makes it honestly a different attempt.
+   */
+  const attemptRef = useRef<CreationAttempt>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -138,40 +163,75 @@ export function AddPlayerForm({
     setIsLoading(true);
 
     try {
-      const { data, error } = await supabase
-        .from("guest_players")
-        .insert({
-          trainer_id: trainerId || null,
-          academy_profile_id: academyId || null,
-          ...nameFields,
-          email: email.trim().toLowerCase() || null,
-          phone: phone.trim() || null,
-          skill_rating: skillRating ? parseFloat(skillRating) : null,
-          rating_system: ratingSystem,
-          notes: notes.trim() || null,
-        } as any)
-        .select()
-        .single();
+      // Through the one create command, not a direct insert: that is what makes this retryable
+      // without producing a second Player, authorizes the scope in one place, and files a
+      // possible_duplicate_player proposal when the new Player looks like one already here.
+      const { data: created, error } = await supabase.rpc("player_create_command", {
+        _creation_request_id: creationRequestIdFor(
+          attemptRef,
+          JSON.stringify([
+            academyId ?? trainerId ?? null, nameFields.full_name,
+            email.trim().toLowerCase(), phone.trim(),
+          ]),
+        ),
+        _owner_type: academyId ? "academy" : "trainer",
+        _owner_id: academyId || trainerId || null,
+        _full_name: nameFields.full_name,
+        _email: email.trim().toLowerCase() || null,
+        _phone: phone.trim() || null,
+        _first_name: nameFields.first_name ?? null,
+        _last_name: nameFields.last_name ?? null,
+        _skill_rating: skillRating ? parseFloat(skillRating) : null,
+        _rating_system: ratingSystem,
+        _notes: notes.trim() || null,
+        _source: "manual_player",
+      });
+      if (error) throw error;
 
-      if (error) {
-        // Harmless fallback: the unique email indexes were dropped (shared
-        // emails are allowed), so 23505 only fires on environments that have
-        // not run that migration yet.
-        if (error.code === "23505") {
-          toast({
-            title: t("players.duplicateEmail"),
-            description: t("players.duplicateEmailDescription"),
-            variant: "destructive",
-          });
-          return;
-        }
-        throw error;
+      const personId = (created as { person_id: string | null } | null)?.person_id;
+      if (!personId) throw new Error("player_create_no_person");
+      // The command answers with the canonical id; what callers RENDER comes from the person-keyed
+      // display projection. The guest re-read that stood here handed every caller a legacy id — the
+      // projection carries none, so a consumer that must find this Player in a still-legacy list
+      // matches that list's own rows on personId (U2, owner correction 2026-08-09).
+      //
+      // The CREATE has already committed by this point, so a projection failure is a DISPLAY
+      // problem, never a create failure (Codex r2 f7): reporting it as one told the operator to
+      // "try again", and the retry — under a fresh attempt id once the dialog reopened — minted a
+      // second Player. Degrade to the typed values instead; a replay would have shown stored truth,
+      // but a brand-new create's stored truth IS what was typed.
+      let row: CreatedPlayerRow | null = null;
+      try {
+        const { data: display, error: readError } = await supabase.rpc("person_display_for_owner", {
+          _person_id: personId,
+          _owner_type: academyId ? "academy" : "trainer",
+          _owner_id: academyId || trainerId || null,
+        });
+        if (readError) throw readError;
+        row = (display as CreatedPlayerRow[] | null)?.[0] ?? null;
+      } catch (displayError) {
+        logger.warn("person display projection unavailable after a successful create", {
+          component: "AddPlayerForm",
+          error: displayError instanceof Error ? displayError.message : String(displayError),
+        });
       }
 
+      clearCreationAttempt(attemptRef);
       setLastCreatedName(nameFields.full_name);
       setShowSuccess(true);
       resetForm();
-      onPlayerCreated?.(data as GuestPlayer);
+      onPlayerCreated?.({
+        personId,
+        full_name: row?.full_name ?? nameFields.full_name,
+        first_name: row?.first_name ?? nameFields.first_name ?? null,
+        last_name: row?.last_name ?? nameFields.last_name ?? null,
+        email: row?.email ?? email.trim().toLowerCase(),
+        phone: row?.phone ?? phone.trim(),
+        skill_rating: row?.skill_rating ?? (skillRating ? parseFloat(skillRating) : null),
+        rating_system: row?.rating_system ?? ratingSystem,
+        notes: row?.notes ?? (notes.trim() || null),
+        created_at: row?.created_at ?? new Date().toISOString(),
+      });
     } catch (error: any) {
       logger.error('Error creating player', error as Error, { component: 'AddPlayerForm' });
       toast({
@@ -352,29 +412,4 @@ export function AddPlayerForm({
     </form>
     </>
   );
-}
-
-/** Build guest_players insert payload (exported for tests). */
-export function buildAddPlayerInsertPayload(args: {
-  firstName: string;
-  lastName: string;
-  trainerId?: string;
-  academyId?: string;
-  email?: string;
-  phone?: string;
-  skillRating?: string;
-  ratingSystem?: string;
-  notes?: string;
-}) {
-  const nameFields = buildGuestPlayerDbFields(args.firstName, args.lastName);
-  return {
-    trainer_id: args.trainerId || null,
-    academy_profile_id: args.academyId || null,
-    ...nameFields,
-    email: args.email?.trim().toLowerCase() || null,
-    phone: args.phone?.trim() || null,
-    skill_rating: args.skillRating ? parseFloat(args.skillRating) : null,
-    rating_system: args.ratingSystem ?? "knltb",
-    notes: args.notes?.trim() || null,
-  };
 }

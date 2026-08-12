@@ -2,6 +2,12 @@ import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  parseImportedPlayersCsv,
+  type CsvFatalReason,
+  type CsvRowError,
+  type ParsedImportPlayer,
+} from "@/lib/importPlayersCsv";
 import { logger } from "@/lib/logger";
 import {
   Dialog,
@@ -31,28 +37,16 @@ import {
   AlertTriangle,
   Loader2,
 } from "lucide-react";
-import { GuestPlayer } from "./AddPlayerDialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { csvHasGuestNameColumn, guestNameFieldsFromCsvRow } from "@/lib/guestPlayerCsvName";
 
 interface ImportPlayersDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   trainerId?: string;
   academyId?: string;
-  onPlayersImported: (players: GuestPlayer[]) => void;
-}
-
-interface ParsedPlayer {
-  full_name: string;
-  first_name: string | null;
-  last_name: string | null;
-  email: string;
-  phone: string;
-  skill_rating: number | null;
-  notes: string | null;
-  isValid: boolean;
-  errors: string[];
+  /** Canonical ids of the Players created (or replayed) by this import — no legacy ids (U2). The
+   * dialog shows counts; callers refetch their lists rather than splicing rows in. */
+  onPlayersImported: (imported: Array<{ personId: string }>) => void;
 }
 
 type ImportStep = "upload" | "preview" | "importing" | "complete";
@@ -69,7 +63,7 @@ export function ImportPlayersDialog({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<ImportStep>("upload");
-  const [parsedPlayers, setParsedPlayers] = useState<ParsedPlayer[]>([]);
+  const [parsedPlayers, setParsedPlayers] = useState<ParsedImportPlayer[]>([]);
   const [importProgress, setImportProgress] = useState(0);
   const [importedCount, setImportedCount] = useState(0);
   const [failedCount, setFailedCount] = useState(0);
@@ -93,117 +87,28 @@ export function ImportPlayersDialog({
     onOpenChange(isOpen);
   };
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email.trim());
+  /** Error codes carry no language; the dialog is where they become sentences. */
+  const FATAL_MESSAGE: Record<CsvFatalReason, string> = {
+    no_data_rows: t("players.import.noDataRows"),
+    missing_name_column: t("players.import.missingColumns"),
+  };
+  const ROW_MESSAGE: Record<CsvRowError, string> = {
+    name_missing: t("players.import.errors.nameMissing"),
+    email_invalid: t("players.import.errors.emailInvalid"),
+    skill_out_of_range: t("players.import.errors.skillOutOfRange"),
   };
 
-  const parseCSV = (content: string): ParsedPlayer[] => {
-    const lines = content.split(/\r?\n/).filter(line => line.trim());
-    
-    if (lines.length < 2) {
+  const parseCSV = (content: string): ParsedImportPlayer[] => {
+    const result = parseImportedPlayersCsv(content);
+    if (!result.ok) {
       toast({
         title: t("players.import.invalidFile"),
-        description: t("players.import.noDataRows"),
+        description: FATAL_MESSAGE[result.reason],
         variant: "destructive",
       });
       return [];
     }
-
-    // Parse header to find column indices
-    const headerLine = lines[0].toLowerCase();
-    const headers = parseCSVLine(headerLine);
-    
-    const emailIndex = headers.findIndex(h => 
-      h.includes("email") || h.includes("e-mail")
-    );
-    const phoneIndex = headers.findIndex(h => 
-      h.includes("phone") || h.includes("telefoon") || h.includes("tel")
-    );
-    const skillIndex = headers.findIndex(h => 
-      h.includes("skill") || h.includes("rating") || h.includes("niveau")
-    );
-    const notesIndex = headers.findIndex(h => 
-      h.includes("note") || h.includes("opmerking") || h.includes("notitie")
-    );
-
-    if (!csvHasGuestNameColumn(headers) || emailIndex === -1) {
-      toast({
-        title: t("players.import.invalidFile"),
-        description: t("players.import.missingColumns"),
-        variant: "destructive",
-      });
-      return [];
-    }
-
-    const players: ParsedPlayer[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-      const values = parseCSVLine(lines[i]);
-      const errors: string[] = [];
-
-      const { fields: nameFields, missingName } = guestNameFieldsFromCsvRow(headers, values);
-      const email = values[emailIndex]?.trim() || "";
-      const phone = phoneIndex !== -1 ? values[phoneIndex]?.trim() || "" : "";
-      const skillRaw = skillIndex !== -1 ? values[skillIndex]?.trim() : null;
-      const notes = notesIndex !== -1 ? values[notesIndex]?.trim() || null : null;
-
-      // Validation
-      if (missingName) {
-        errors.push(t("players.import.errors.nameMissing"));
-      }
-      if (!email) {
-        errors.push(t("players.import.errors.emailMissing"));
-      } else if (!validateEmail(email)) {
-        errors.push(t("players.import.errors.emailInvalid"));
-      }
-
-      let skillRating: number | null = null;
-      if (skillRaw) {
-        const parsed = parseFloat(skillRaw.replace(",", "."));
-        if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) {
-          skillRating = parsed;
-        } else if (!isNaN(parsed)) {
-          errors.push(t("players.import.errors.skillOutOfRange"));
-        }
-      }
-
-      players.push({
-        full_name: nameFields.full_name,
-        first_name: nameFields.first_name,
-        last_name: nameFields.last_name,
-        email,
-        phone,
-        skill_rating: skillRating,
-        notes,
-        isValid: errors.length === 0,
-        errors,
-      });
-    }
-
-    return players;
-  };
-
-  const parseCSVLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = "";
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
-      
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if ((char === "," || char === ";") && !inQuotes) {
-        result.push(current.trim());
-        current = "";
-      } else {
-        current += char;
-      }
-    }
-    result.push(current.trim());
-    
-    return result;
+    return result.players;
   };
 
   const handleFileSelect = async (file: File) => {
@@ -248,38 +153,41 @@ export function ImportPlayersDialog({
 
     setStep("importing");
     setImportProgress(0);
-    
-    const imported: GuestPlayer[] = [];
+
+    const imported: Array<{ personId: string }> = [];
     let failed = 0;
 
     for (let i = 0; i < validPlayers.length; i++) {
       const player = validPlayers[i];
       
       try {
-        const { data, error } = await supabase
-          .from("guest_players")
-          .insert({
-            trainer_id: trainerId || null,
-            academy_profile_id: academyId || null,
-            first_name: player.first_name,
-            last_name: player.last_name,
-            full_name: player.full_name,
-            email: player.email.toLowerCase(),
-            phone: player.phone,
-            skill_rating: player.skill_rating,
-            notes: player.notes,
-          } as any)
-          .select()
-          .single();
+        // Through the one create command, not a direct insert: each row is idempotent on its own
+        // attempt id, the scope is authorized in one place, and a row that looks like a Player the
+        // academy already has files a proposal for a human instead of silently doubling them.
+        const { data: created, error } = await supabase.rpc("player_create_command", {
+          _creation_request_id: player.creationRequestId,
+          _owner_type: academyId ? "academy" : "trainer",
+          _owner_id: academyId || trainerId || null,
+          _full_name: player.full_name,
+          // already normalized (trimmed, lowercased) or NULL by the parser — a Player is not
+          // required to have an address, and '' would be a value a matcher could match on
+          _email: player.email,
+          _phone: player.phone || null,
+          _first_name: player.first_name,
+          _last_name: player.last_name,
+          _skill_rating: player.skill_rating,
+          _notes: player.notes,
+          _source: "csv_import",
+        });
+        if (error) throw error;
 
-        if (error) {
-          // Handle unique constraint violation (duplicate email)
-          if (error.code === "23505") {
-            logger.warn("Duplicate email skipped", { component: 'ImportPlayersDialog', email: player.email });
-          }
-          throw error;
-        }
-        imported.push(data as GuestPlayer);
+        // The command answers with the canonical id, which is all this dialog needs: the preview
+        // table shows the PARSED rows, the completion screen shows counts, and the callers refetch
+        // their lists. The per-row guest_players re-read that stood here existed only to hand the
+        // caller a legacy row (U2, owner correction 2026-08-09).
+        const personId = (created as { person_id: string | null } | null)?.person_id;
+        if (!personId) throw new Error("player_create_no_person");
+        imported.push({ personId });
       } catch (error) {
         logger.error("Failed to import player", error instanceof Error ? error : new Error(String(error)), { component: 'ImportPlayersDialog', email: player.email });
         failed++;
@@ -298,10 +206,13 @@ export function ImportPlayersDialog({
   };
 
   const downloadTemplate = () => {
+    // Comma-delimited; a semicolon file is read just as happily (the header decides). The third row
+    // deliberately has NO email: a player does not need one, and a template that never shows that
+    // is how "email is required" survives in everyone's head after the code stopped saying it.
     const template = `first_name,last_name,email,phone,skill_rating,notes
 Jan,Jansen,jan@example.com,+31612345678,7.5,Beginner player
-Maria de Vries,maria@example.com,+31687654321,5.0,
-Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
+Maria,de Vries,maria@example.com,+31687654321,5.0,
+Piet,Pietersen,,+31698765432,,No email — that is fine`;
     
     const blob = new Blob([template], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -392,6 +303,7 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
               </ul>
               <p className="font-medium mt-2">{t("players.import.optionalColumns")}:</p>
               <ul className="list-disc list-inside ml-2">
+                <li>email / e-mail</li>
                 <li>phone / telefoon</li>
                 <li>skill_rating / rating / niveau (1-10)</li>
                 <li>notes / notitie / opmerking</li>
@@ -450,7 +362,7 @@ Piet Pietersen,piet@example.com,+31698765432,,Focus on backhand`;
                           <div>
                             {player.errors.length > 0 && (
                               <div className="text-xs text-destructive">
-                                {player.errors.join(", ")}
+                                {player.errors.map((e) => ROW_MESSAGE[e]).join(", ")}
                               </div>
                             )}
                           </div>

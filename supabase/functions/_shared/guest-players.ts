@@ -1,36 +1,27 @@
 /**
- * Shared guest-player identity resolution for anonymous public flows (public
- * booking widget, guest intake). Lifted from submit-guest-intake so the guest
- * pay-first booking fn reuses the SAME family rule.
+ * PLAYER identity for the anonymous public payment flows (the booking widget's single-slot, cart
+ * and cyclus checkouts).
  *
- * Family rule: an email is shared within a family (a parent booking for a child
- * uses the parent's address). The unique index on guest_players.email was
- * dropped for exactly this, so several guests can share one address — only
- * REUSE the row whose NAME matches within the owner scope; a different name is a
- * different person (a sibling) and gets a fresh record instead of overwriting.
+ * WHAT THIS USED TO DO, and why it no longer does. It looked the typed address up in
+ * `guest_players`, took the row whose NAME matched within the owner scope, OVERWROTE that row's
+ * name and contact details with whatever had just been typed, and booked against it. That is an
+ * identity selected from two mutable attributes by an unauthenticated stranger — the decision U2
+ * removed everywhere else (owner, 2026-08-09). The family rule made it narrower than an
+ * email-alone match; it did not make it a decision anybody had authorized.
  *
- * SECURITY: this NEVER attributes a booking to an existing authenticated profile
- * (player_id). An anonymous caller must not be able to attach a booking to
- * someone else's account merely by knowing their email — that would be
- * impersonation / IDOR. Booking as an existing player requires authentication
- * (create-mollie-payment); the guest path always mints/reuses a guest_players
- * row keyed on (email, name, owner).
+ * WHAT IT DOES NOW. It creates a Player through the one server-side command, idempotently on the
+ * caller's `creationRequestId`. A booker who retries — a double tap, a network replay, a Mollie
+ * redirect that comes back — carries the same id and gets the same Player. A booker who returns
+ * next month is a new Player, and the command files a `possible_duplicate_player` proposal for a
+ * human to judge rather than quietly writing over the previous one's details.
+ *
+ * SECURITY, unchanged: this NEVER attributes a booking to an existing authenticated profile
+ * (`player_id`). An anonymous caller must not be able to attach a booking to someone else's account
+ * merely by knowing their email — that would be impersonation. Booking as an existing player
+ * requires authentication (create-mollie-payment).
  */
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
-
-export function normalizeGuestName(s: string | null | undefined): string {
-  return (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-/** Pure: pick the candidate guest whose name matches the target, else null. */
-export function matchGuestByName<T extends { id: string; full_name: string | null }>(
-  candidates: T[] | null | undefined,
-  fullName: string,
-): T | null {
-  const target = normalizeGuestName(fullName);
-  return (candidates ?? []).find((g) => normalizeGuestName(g.full_name) === target) ?? null;
-}
 
 export type GuestOwner = { academyProfileId?: string | null; trainerId?: string | null };
 
@@ -48,72 +39,116 @@ export type ResolveGuestParams = {
   ratingSystem?: string | null;
   owner: GuestOwner;
   source?: string;
+  /**
+   * The booker's own id for THIS checkout attempt. Required: without it a retry is a different
+   * attempt and makes a second Player, and no attribute of the person may be used to notice that.
+   */
+  creationRequestId: string;
 };
 
 /**
- * Find-or-create the guest_players row for this (email, name) within the owner
- * scope. Owner is XOR: academy OR trainer OR neither (never both). Returns the
- * guest_player_id to book against.
+ * Create (or replay) the Player to book against. Returns the CANONICAL person_id and nothing else.
+ *
+ * Throws on refusal — the callers treat having a Player as a hard precondition for taking money,
+ * and a booking against a Player that was never created is worse than a failed checkout.
  */
-export async function resolveOrCreateGuestPlayer(
+export async function resolvePlayerForCheckout(
   admin: SupabaseClient,
   params: ResolveGuestParams,
-): Promise<{ guestPlayerId: string }> {
-  const email = params.email.toLowerCase();
+): Promise<{ personId: string }> {
   const academyProfileId = params.owner.academyProfileId ?? null;
   const trainerId = params.owner.trainerId ?? null;
 
-  // Candidates on this address, scoped to the owner (family rule).
-  let query = admin.from("guest_players").select("id, full_name").eq("email", email);
-  if (academyProfileId) query = query.eq("academy_profile_id", academyProfileId);
-  else if (trainerId) query = query.eq("trainer_id", trainerId);
-  else query = query.is("academy_profile_id", null).is("trainer_id", null);
-
-  const { data: candidates } = await query;
-  const existing = matchGuestByName(
-    candidates as { id: string; full_name: string | null }[] | null,
-    params.name.full_name,
-  );
-
-  if (existing) {
-    await admin
-      .from("guest_players")
-      .update({
-        first_name: params.name.first_name,
-        last_name: params.name.last_name,
-        full_name: params.name.full_name,
-        // Only OVERWRITE contact fields the caller actually supplied — a booking
-        // that omits phone must not null out a phone captured on an earlier one.
-        ...(params.phone ? { phone: params.phone } : {}),
-        ...(params.skillRating != null ? { skill_rating: params.skillRating } : {}),
-        ...(params.ratingSystem ? { rating_system: params.ratingSystem } : {}),
-      })
-      .eq("id", existing.id);
-    return { guestPlayerId: existing.id };
+  // `guest_players` requires a trainer or an academy (`guest_players_owner_check`), so a scopeless
+  // booking has never been storable. Refused here rather than at the constraint.
+  if (!academyProfileId && !trainerId) {
+    throw new Error("player_create_failed:no_owner_scope");
+  }
+  if (!params.creationRequestId) {
+    throw new Error("player_create_failed:missing_creation_request_id");
   }
 
-  const insertRow: Record<string, unknown> = {
-    first_name: params.name.first_name,
-    last_name: params.name.last_name,
-    full_name: params.name.full_name,
-    email,
-    phone: params.phone ?? null,
-    skill_rating: params.skillRating ?? null,
-    rating_system: params.ratingSystem ?? "knltb",
-    source: params.source ?? "public_booking",
-  };
-  if (academyProfileId) insertRow.academy_profile_id = academyProfileId;
-  else if (trainerId) insertRow.trainer_id = trainerId;
+  const { data, error } = await admin.rpc("player_create_command", {
+    _creation_request_id: params.creationRequestId,
+    _owner_type: academyProfileId ? "academy" : "trainer",
+    _owner_id: academyProfileId ?? trainerId,
+    _full_name: params.name.full_name,
+    _email: params.email.toLowerCase(),
+    _phone: params.phone ?? null,
+    _first_name: params.name.first_name,
+    _last_name: params.name.last_name,
+    _skill_rating: params.skillRating ?? null,
+    _rating_system: params.ratingSystem ?? null,
+    _source: params.source ?? "public_booking",
+    // The booker is the only party present; this endpoint's own gates (slot validity, throttles,
+    // CORS allow-list) stand in for an operator, exactly as they do for the registration form.
+    _origin: "self_signup",
+  });
 
-  const { data: created, error } = await admin
-    .from("guest_players")
-    .insert(insertRow)
-    .select("id")
-    .single();
-
-  if (error || !created) {
-    // PII hygiene: log code only (Postgres error details can embed the email).
-    throw new Error(`guest_player_insert_failed:${error?.code ?? "unknown"}`);
+  if (error) {
+    // PII hygiene: log/throw the code only — Postgres error details can embed the email.
+    throw new Error(`player_create_failed:${error.code ?? "unknown"}`);
   }
-  return { guestPlayerId: created.id as string };
+  const result = data as { person_id: string | null } | null;
+  if (!result?.person_id) {
+    throw new Error("player_create_failed:no_person");
+  }
+  // ONE id, and it is canonical. This used to return a guest row id and throw when there was none,
+  // which made a legacy compatibility reference a precondition of taking a payment — a Player whose
+  // guest source had been claimed into an account was a checkout that could not happen.
+  return { personId: result.person_id };
+}
+
+/**
+ * The legacy column a booking row still physically needs, derived from the canonical person by the
+ * SERVICE-ONLY adapter (`player_legacy_ref` is granted to service_role alone and refuses any other
+ * caller — owner correction, 2026-08-09). This module runs inside a service-key edge function, the
+ * one place such a derivation is permitted, and the derived id must die in this process: it goes
+ * into the `bookings` insert and NEVER into an HTTP response, a log line or any client-visible
+ * state. Callers pass a person and a scope; they never choose a legacy id.
+ *
+ * Returns BOTH shapes because `bookings` carries both: an account holder is written as `player_id`
+ * and everyone else as `guest_player_id`, and after a claim or merge the same person may have both
+ * — in which case the registered path is the compatible one and the adapter says so.
+ */
+export async function legacyBookingRef(
+  admin: SupabaseClient,
+  personId: string,
+  owner: GuestOwner,
+): Promise<{ playerId: string | null; guestPlayerId: string | null }> {
+  const academyProfileId = owner.academyProfileId ?? null;
+  const trainerId = owner.trainerId ?? null;
+  const { data, error } = await admin.rpc("player_legacy_ref", {
+    _person_id: personId,
+    _owner_type: academyProfileId ? "academy" : "trainer",
+    _owner_id: academyProfileId ?? trainerId,
+  });
+  if (error) throw new Error(`legacy_ref_failed:${error.code ?? "unknown"}`);
+  const ref = data as { player_id: string | null; guest_player_id: string | null } | null;
+  return { playerId: ref?.player_id ?? null, guestPlayerId: ref?.guest_player_id ?? null };
+}
+
+/**
+ * The one legacy column an anonymous checkout must write, or a loud failure.
+ *
+ * `bookings.guest_player_id` is NOT NULL-able in practice for this path, so a missing source is a
+ * broken invariant rather than a case to handle: a self-signup checkout creates a brand-new Player,
+ * which by construction has a guest source in this scope and no account.
+ *
+ * A person with BOTH sources is a legitimate case here, not a wrong turn (Codex r1 f7): the create
+ * REPLAYS — a retry of a checkout attempt made before the person claimed their account still owes
+ * the caller its booking, and the in-scope guest row is still the compatible key for it. The
+ * booking stays visible to the account holder because `stamp_person_id_bookings` keys the row on
+ * the person. Only a person with a profile and NO in-scope guest source is refused: that is an
+ * account holder this flow never created, and the authenticated path is theirs.
+ */
+export async function legacyGuestRefForCheckout(
+  admin: SupabaseClient,
+  personId: string,
+  owner: GuestOwner,
+): Promise<string> {
+  const { playerId, guestPlayerId } = await legacyBookingRef(admin, personId, owner);
+  if (guestPlayerId) return guestPlayerId;
+  if (playerId) throw new Error("legacy_ref_failed:registered_player_path_required");
+  throw new Error("legacy_ref_failed:no_guest_source");
 }

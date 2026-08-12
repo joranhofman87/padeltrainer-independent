@@ -1,4 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
@@ -54,6 +59,15 @@ export function CartCheckoutDialog({
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // U2 identity continuity: the address matched existing Player(s); the server halted before any
+  // hold/payment. Generic prompt, no identity revealed.
+  const [verificationSent, setVerificationSent] = useState(false);
+  /**
+   * The id of THIS checkout attempt. Every retry of it carries the same one, so a double tap or a
+   * replayed request books against the SAME Player — where before the address and the name were
+   * used to recognise a repeat. Editing who is booking mints a new one: that is a different attempt.
+   */
+  const attemptRef = useRef<CreationAttempt>(null);
 
   useEffect(() => {
     if (open) {
@@ -63,6 +77,7 @@ export function CartCheckoutDialog({
       setPhone('');
       setNotes('');
       setSubmitting(false);
+      setVerificationSent(false);
     }
   }, [open]);
 
@@ -89,12 +104,32 @@ export function CartCheckoutDialog({
           phone: phone.trim(),
           notes: notes.trim() || undefined,
           whatsappOptIn,
+          creationRequestId: creationRequestIdFor(
+            attemptRef,
+            // Must cover AT LEAST every field the server binds into buildIntentKey (Codex r4): the
+            // exact cart (sorted slot ids — previously MISSING), contact, notes and WhatsApp
+            // consent. Otherwise editing the cart/notes/consent reuses the id and the resume is
+            // refused as IDENTITY_SELECTION_SCOPE_MISMATCH.
+            JSON.stringify([[...items.map((i) => i.id)].sort(), email.trim().toLowerCase(),
+              firstName.trim(), lastName.trim(), phone.trim(), notes.trim(), whatsappOptIn === true]),
+          ),
         },
       });
 
-      const result = data as { checkoutUrl?: string; token?: string } | null;
+      const result = data as { checkoutUrl?: string; token?: string; status?: string } | null;
       if (result?.checkoutUrl) {
+        // the Player for this attempt exists; a later checkout is a new one, not a retry
+        clearCreationAttempt(attemptRef);
         window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      // Identity continuity: the address matched existing Player(s); nothing was held or charged.
+      // Show the generic verification prompt and KEEP the attempt id so a same-device resume (after
+      // the emailed link is followed) replays this attempt as the chosen person.
+      if (result?.status === 'verification_required') {
+        setVerificationSent(true);
+        setSubmitting(false);
         return;
       }
 
@@ -144,6 +179,31 @@ export function CartCheckoutDialog({
       setSubmitting(false);
     }
   };
+
+  if (verificationSent) {
+    // GENERIC by design: identical whether one Player matched or several, and whether or not an
+    // account exists. "I've confirmed" re-submits the SAME attempt — which, once the emailed link is
+    // followed and a Player chosen, resolves to that person and proceeds to checkout (same device).
+    return (
+      <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('booking.guest.verify.title', 'Controleer je e-mail')}</DialogTitle>
+            <DialogDescription>
+              {t('booking.guest.verify.body',
+                'Als dit e-mailadres al bij ons bekend is, hebben we je een link gestuurd om te bevestigen dat jij het bent. Volg die link om je boeking af te ronden.')}
+            </DialogDescription>
+          </DialogHeader>
+          <Button
+            onClick={() => { setVerificationSent(false); void handleSubmit(); }}
+            disabled={submitting}
+          >
+            {t('booking.guest.verify.continue', 'Ik heb bevestigd — ga verder')}
+          </Button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>

@@ -28,8 +28,8 @@ import { supabase } from '@/lib/supabaseClient';
 import { useCycleDetail, representativeSlotPrice, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
 import { pickerExcludeKeysFor, removePersonFromCycle, swapPersonInCycle } from '@/lib/cycleRosterPerson';
 import { addPlayersToCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
-import { resolveOrCreateGuestTwinForRegisteredPlayer } from '@/lib/playerResolve';
-import { type BookablePerson } from '@/lib/playersOverview';
+import { ensureRosterTwinForRegisteredPlayer } from '@/lib/playerResolve';
+import { fetchBookablePersons, type BookablePerson } from '@/lib/playersOverview';
 import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
 import { CycleRosterInlinePicker } from '@/components/cycles/CycleRosterInlinePicker';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -424,10 +424,14 @@ export function CycleDetailView({
   };
 
   // Resolve a picked person to the guest id the roster writes book against. A guest is itself; a
-  // REGISTERED player (person-unification Phase 0) is resolved to their guest twin so the
-  // guest-keyed booking/invoice chain seats them — the twin's profile id rides along so the roster
-  // dedup catches a seat that human already holds under their player_id. Returns null = abort
-  // (twin mint failed, or no academy scope to own the twin).
+  // REGISTERED player (person-unification Phase 0) gets a guest twin ensured server-side so the
+  // guest-keyed booking/invoice chain can seat them — the twin's profile id rides along so the
+  // roster dedup catches a seat that human already holds under their player_id. Returns null =
+  // abort (twin mint failed, or no academy scope to own the twin).
+  //
+  // U2 (owner correction, 2026-08-09): the twin ensure answers with CANONICAL identity only. The
+  // guest id used for the seat comes from re-reading the overview — the same pre-existing surface
+  // every other pick's guest id comes from — never from the create contract.
   const resolvePersonToGuest = async (
     person: BookablePerson,
   ): Promise<{ guestPlayerId: string; twinProfileId: string | null } | null> => {
@@ -439,10 +443,11 @@ export function CycleDetailView({
       return { guestPlayerId: person.guestPlayerId, twinProfileId: person.profileId ?? null };
     }
     if (person.profileId && academyProfileId) {
-      const twinId = await resolveOrCreateGuestTwinForRegisteredPlayer(
+      const ensured = await ensureRosterTwinForRegisteredPlayer(
         { kind: 'academy', academyProfileId },
         {
           profileId: person.profileId,
+          personId: person.personId,
           fullName: person.full_name,
           email: person.email || null,
           phone: person.phone || null,
@@ -451,7 +456,16 @@ export function CycleDetailView({
           birthDate: person.birth_date,
         },
       );
-      return twinId ? { guestPlayerId: twinId, twinProfileId: person.profileId } : null;
+      if (!ensured) return null;
+      const rows = await fetchBookablePersons({ kind: 'academy', id: academyProfileId });
+      const refreshed = rows.find((p) => p.personId === ensured.personId);
+      if (refreshed?.guestPlayerId) {
+        return {
+          guestPlayerId: refreshed.guestPlayerId,
+          twinProfileId: refreshed.profileId ?? person.profileId,
+        };
+      }
+      return null;
     }
     return null;
   };

@@ -1,4 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { logger } from '@/lib/logger';
 import { useTranslation } from 'react-i18next';
 import { CalendarClock, Loader2, MapPin, ShoppingCart } from 'lucide-react';
@@ -69,6 +74,17 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
   const [whatsappOptIn, setWhatsappOptIn] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // U2 identity continuity: the server matched this address to existing Player(s) and is asking the
+  // booker to prove they control it before anything is booked. We show a GENERIC message — never a
+  // name, a count, or even confirmation that an account exists — and stop here; the link arrives by
+  // email and continues the flow on its own landing page.
+  const [verificationSent, setVerificationSent] = useState(false);
+  /**
+   * The id of THIS checkout attempt. Every retry of it carries the same one, so a double tap or a
+   * replayed request books against the SAME Player — where before the address and the name were
+   * used to recognise a repeat. Editing who is booking mints a new one: that is a different attempt.
+   */
+  const attemptRef = useRef<CreationAttempt>(null);
   // Default to the WHOLE cyclus (only relevant when the slot is part of one) — nudges the fuller
   // booking; the visitor can toggle down to a single session.
   const [mode, setMode] = useState<'single' | 'cyclus'>('cyclus');
@@ -89,6 +105,7 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       setPhone('');
       setNotes('');
       setSubmitting(false);
+      setVerificationSent(false);
       setMode('cyclus');
     }
   }, [open, slot?.id]);
@@ -208,13 +225,34 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
             phone: phone.trim(),
             notes: notes.trim() || undefined,
             whatsappOptIn,
+            creationRequestId: creationRequestIdFor(
+              attemptRef,
+              // Must cover AT LEAST every field the server binds into buildIntentKey (Codex r4):
+              // otherwise editing notes/consent after a challenge reuses the id, and the resume is
+              // refused as IDENTITY_SELECTION_SCOPE_MISMATCH instead of starting a fresh challenge.
+              // Target + contact + notes + WhatsApp consent.
+              JSON.stringify([bookCyclus ? cyclusId : slot.id, email.trim().toLowerCase(),
+                firstName.trim(), lastName.trim(), phone.trim(), notes.trim(), whatsappOptIn === true]),
+            ),
           },
         },
       );
 
-      const result = data as { checkoutUrl?: string; token?: string } | null;
+      const result = data as { checkoutUrl?: string; token?: string; status?: string } | null;
       if (result?.checkoutUrl) {
+        // the Player for this attempt exists; a later booking is a new one, not a retry
+        clearCreationAttempt(attemptRef);
         window.location.href = result.checkoutUrl;
+        return;
+      }
+
+      // Identity continuity: the address matched existing Player(s); nothing was booked. Show the
+      // generic verification prompt. The attempt id is KEPT so the resumed booking (after the
+      // emailed link is followed and a Player chosen) replays the same attempt rather than making a
+      // duplicate.
+      if (result?.status === 'verification_required') {
+        setVerificationSent(true);
+        setSubmitting(false);
         return;
       }
 
@@ -258,6 +296,32 @@ export function GuestBookingDialog({ slot, open, onOpenChange, timezone }: Guest
       setSubmitting(false);
     }
   };
+
+  if (verificationSent) {
+    // GENERIC by design: this text is identical whether one Player matched or several, and whether
+    // or not an account exists — it reveals only that IF the address is on file, a link was sent.
+    return (
+      <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t('booking.guest.verify.title', 'Controleer je e-mail')}</DialogTitle>
+            <DialogDescription>
+              {t('booking.guest.verify.body',
+                'Als dit e-mailadres al bij ons bekend is, hebben we je een link gestuurd om te bevestigen dat jij het bent. Volg die link om je boeking af te ronden.')}
+            </DialogDescription>
+          </DialogHeader>
+          {/* Same-device resume: re-submitting the SAME attempt after the link is followed resolves
+              to the chosen person and proceeds to checkout. */}
+          <Button
+            onClick={() => { setVerificationSent(false); void handleSubmit(); }}
+            disabled={submitting}
+          >
+            {t('booking.guest.verify.continue', 'Ik heb bevestigd — ga verder')}
+          </Button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={(o) => !submitting && onOpenChange(o)}>

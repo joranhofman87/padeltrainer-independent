@@ -13,13 +13,15 @@ interface AddPlayerDialogProps {
   onOpenChange: (open: boolean) => void;
   trainerId?: string;
   academyId?: string;
-  onPlayerCreated?: (player: GuestPlayer) => void;
+  /** The person-keyed projection — the create flow no longer hands out a legacy guest row (U2). */
+  onPlayerCreated?: (player: CreatedPlayer) => void;
 }
 
-// GuestPlayer now lives in the neutral players domain; imported for local use
-// and re-exported so existing `from '.../AddPlayerDialog'` importers keep working.
-import type { GuestPlayer } from '@/components/players/guestPlayer';
-export type { GuestPlayer };
+// GuestPlayer (the legacy LIST-row shape) stays re-exported so existing
+// `from '.../AddPlayerDialog'` importers keep working; CreatedPlayer is what
+// the create callback now carries.
+import type { CreatedPlayer, GuestPlayer } from '@/components/players/guestPlayer';
+export type { CreatedPlayer, GuestPlayer };
 
 export function AddPlayerDialog({
   open,

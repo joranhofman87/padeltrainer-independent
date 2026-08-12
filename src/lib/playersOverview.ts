@@ -243,6 +243,9 @@ export interface BookableGuestPlayer {
   created_at: string;
   updated_at: string;
   linked_profile_id: string | null;
+  /** Canonical Player identity (U2). The create flows answer with a person id and nothing else, so
+   * a dialog that just created somebody locates their row in THIS list by matching person_id. */
+  person_id: string | null;
 }
 
 /**
@@ -274,6 +277,7 @@ export async function fetchBookableGuestPlayers(
       created_at: row.created_at,
       updated_at: row.created_at,
       linked_profile_id: row.profile_id ?? null,
+      person_id: row.person_id ?? null,
     }));
 }
 

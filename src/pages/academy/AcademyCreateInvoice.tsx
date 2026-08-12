@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -33,8 +33,16 @@ import {
 } from '@/lib/invoiceCustomer';
 import {
   buildInvoicePlayerAddress,
-  resolveInvoiceGuestPlayerId,
+  createDraftInvoiceForPerson,
+  invoiceRecipientKey,
+  resolveInvoicePersonId,
 } from '@/lib/invoiceCustomerInsert';
+import type { Json } from '@/integrations/supabase/types';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import {
   fetchInvoicePlayerForPrefill,
   searchInvoiceSelectablePlayers,
@@ -61,9 +69,12 @@ export default function AcademyCreateInvoice() {
   const [playerLink, setPlayerLink] = useState<InvoicePlayerLink>({
     profileId: null,
     guestPlayerId: null,
+    personId: null,
     linkedDisplayName: null,
   });
   const [oneTimeMode, setOneTimeMode] = useState(false);
+  /** The create attempt for the typed recipient, so a retried save does not make a second Player. */
+  const recipientAttemptRef = useRef<CreationAttempt>(null);
   const [prefilledFromProfile, setPrefilledFromProfile] = useState(false);
   const [lineItems, setLineItems] = useState<InvoiceFormLineItem[]>([
     { description: '', quantity: 1, unit_price: 0, amount: 0, vat_rate: 21 },
@@ -103,6 +114,7 @@ export default function AcademyCreateInvoice() {
       setPlayerLink({
         profileId: player.profileId,
         guestPlayerId: player.guestPlayerId,
+        personId: player.personId,
         linkedDisplayName: player.full_name,
       });
       setReceiver(billingToReceiverFields(player));
@@ -158,15 +170,26 @@ export default function AcademyCreateInvoice() {
       const includeYear = (academy as any).invoice_include_year ?? true;
 
       const effectiveLink = oneTimeMode
-        ? { profileId: null, guestPlayerId: null, linkedDisplayName: null }
+        ? { profileId: null, guestPlayerId: null, personId: null, linkedDisplayName: null }
         : playerLink;
 
-      const guestPlayerId = await resolveInvoiceGuestPlayerId({
+      const personId = await resolveInvoicePersonId({
         playerLink: effectiveLink,
         oneTimeMode,
         receiver,
         scope: 'academy',
         academyProfileId,
+        // One id for this save ATTEMPT: a retry with the same recipient replays into the same
+        // Player, while editing the recipient is honestly a different attempt (U2).
+        creationRequestId: creationRequestIdFor(
+          recipientAttemptRef,
+          invoiceRecipientKey({
+            playerName: receiver.playerName,
+            playerEmail: receiver.playerEmail,
+            scope: 'academy',
+            ownerId: academyProfileId,
+          }),
+        ),
       });
 
       const primaryVatRate = lineItems[0]?.vat_rate ?? 21;
@@ -177,7 +200,9 @@ export default function AcademyCreateInvoice() {
       }));
 
       // M-10: allocate the number atomically via the DB (no read-increment-write),
-      // and retry on the rare collision with a concurrent creator.
+      // and retry on the rare collision with a concurrent creator. The INSERT itself happens
+      // server-side in `invoice_create_for_person`, which derives the legacy link columns from the
+      // person — no legacy id passes through here (U2, owner correction 2026-08-09).
       let invoiceNumber = '';
       for (let attempt = 0; ; attempt++) {
         const allocation = await allocateInvoiceNumber({
@@ -188,35 +213,35 @@ export default function AcademyCreateInvoice() {
         });
         invoiceNumber = allocation.invoiceNumber;
 
-        const { error: insertError } = await supabase
-          .from('invoices')
-          .insert({
-            invoice_number: invoiceNumber,
-            invoice_date: format(new Date(), 'yyyy-MM-dd'),
-            due_date: format(dueDate, 'yyyy-MM-dd'),
-            player_name: receiver.playerName.trim(),
-            player_business_name: receiver.playerBusinessName.trim() || null,
-            player_address: buildInvoicePlayerAddress(receiver),
-            player_btw_number: receiver.playerBtwNumber.trim() || null,
-            player_id: oneTimeMode ? null : playerLink.profileId,
-            guest_player_id: guestPlayerId,
-            academy_profile_id: academyProfileId,
-            trainer_id: null,
-            line_items: updatedItems,
+        try {
+          await createDraftInvoiceForPerson({
+            scope: 'academy',
+            ownerId: academyProfileId,
+            personId,
+            invoiceNumber,
+            invoiceDate: format(new Date(), 'yyyy-MM-dd'),
+            dueDate: format(dueDate, 'yyyy-MM-dd'),
+            playerName: receiver.playerName.trim(),
+            playerBusinessName: receiver.playerBusinessName.trim() || null,
+            playerAddress: buildInvoicePlayerAddress(receiver),
+            playerBtwNumber: receiver.playerBtwNumber.trim() || null,
+            lineItems: updatedItems as unknown as Json,
             subtotal,
-            vat_rate: primaryVatRate,
-            vat_amount: vatAmount,
-            vat_breakdown: vatBreakdown || null,
+            vatRate: primaryVatRate,
+            vatAmount,
+            vatBreakdown: (vatBreakdown || null) as Json | null,
             total,
-            status: 'draft',
-            prices_include_vat: pricesIncludeVat,
+            pricesIncludeVat,
             notes: notes.trim() || null,
           });
-
-        if (!insertError) break;
-        if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
+          break;
+        } catch (insertError) {
+          if (!isInvoiceNumberCollision(insertError) || attempt >= 2) throw insertError;
+        }
       }
 
+      // the attempt is finished: the next invoice is a new one, not a retry of this
+      clearCreationAttempt(recipientAttemptRef);
       toast.success(t('invoiceForm.create.createdToast', { number: invoiceNumber }));
       queryClient.invalidateQueries({ queryKey: ['academy-invoices'] });
       invalidateAllPlayerData(queryClient, { kind: 'academy', id: academyProfileId });

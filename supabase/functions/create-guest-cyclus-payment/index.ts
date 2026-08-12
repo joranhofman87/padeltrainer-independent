@@ -21,7 +21,9 @@ import { corsHeadersFor } from "../_shared/cors.ts";
 import { applySplitPayment, computeCyclusTotalFromSlots, computeCyclusExtrasTotal, resolveSplitDivisorFromSlots, hasNonUniformCapacity, type ExtraCost, type SlotPricingInput } from "../_shared/booking-pricing.ts";
 import { resolveSlotTier } from "../_shared/slot-tier.ts";
 import { isCyclusBookingAllowed } from "../_shared/cyclus-booking.ts";
-import { resolveOrCreateGuestPlayer } from "../_shared/guest-players.ts";
+import { legacyBookingRef, legacyGuestRefForCheckout, resolvePlayerForCheckout } from "../_shared/guest-players.ts";
+import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
+import { buildIntentKey } from "../_shared/identity-intent.ts";
 import { recordGuestWhatsAppOptIn, type ConsentWriteClient } from "../_shared/guest-whatsapp-optin.ts";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { classifyMollieCreateError, distributeAmountCents, resolveSlotRecipient, softCancelGuestHolds, throttleGuestPayment } from "../_shared/guest-payment.ts";
@@ -29,6 +31,7 @@ import { mollieIdempotencyKey } from "../_shared/mollie-idempotency.ts";
 
 type Supa = SupabaseClient;
 const ENDPOINT = "create-guest-cyclus-payment";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
@@ -77,9 +80,21 @@ Deno.serve(async (req) => {
     // Strict === true: a missing or truthy-ish value must never read as consent.
     const whatsappOptIn = body?.whatsappOptIn === true;
     const notes = typeof body?.notes === "string" && body.notes.trim() ? body.notes.trim() : null;
+    // U2: the booker's own id for THIS checkout attempt. It is what makes the Player create
+    // idempotent — a double tap, a network replay or a returning Mollie redirect carries the same
+    // id and gets the same Player, where before the address and the name were used to recognise a
+    // repeat. Required, because an attribute may not stand in for it.
+    const creationRequestId = typeof body?.creationRequestId === "string" ? body.creationRequestId.trim() : "";
+    if (!UUID_RE.test(creationRequestId)) {
+      return json({ error: "invalid_creation_request_id", message: "Vernieuw de pagina en probeer opnieuw." }, 400);
+    }
     const name = resolveRegistrationNameFields({ firstName: body?.firstName, lastName: body?.lastName, fullName: body?.fullName });
 
     if (!cyclusId) return json({ error: "cyclus_required" }, 400);
+    // CONTACT, not identity (U2, owner 2026-08-09). This flow has to reach the registrant — a
+    // pay link or a confirmation goes to this address — so it requires one as workflow input.
+    // The PLAYER may still have none: the create command takes NULL, and no address ever
+    // selects, merges or reuses an identity here or anywhere.
     if (!EMAIL_RE.test(email)) return json({ error: "invalid_email" }, 400);
     if (!phone) return json({ error: "phone_required" }, 400);
     if (!name.full_name) return json({ error: "name_required" }, 400);
@@ -133,19 +148,13 @@ Deno.serve(async (req) => {
       return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
     }
 
-    // 4. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
-    //    share one academy, so slots[0].academy_profile_id disambiguates a multi-academy trainer
-    //    (Codex F3); the webhook resolves the same academy off any of these slots.
-    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
-      supabase,
-      trainerId,
-      slots[0].academy_profile_id as string | null,
-    );
-    if (!accessToken || !recipientType) {
-      return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
-    }
+    const owner = slots[0].academy_profile_id
+      ? { academyProfileId: slots[0].academy_profile_id as string }
+      : { trainerId };
 
-    // 5. Server-authoritative total + optional split.
+    // 4. Pure-read bookability/pricing guards run BEFORE identity (Codex r3 f4), so a disabled or
+    //    zero-price cyclus is refused without ever minting a challenge or emailing a candidate.
+    // Server-authoritative total + optional split.
     let hourlyRate: number | null = null;
     const { data: tp } = await supabase.from("trainer_profiles").select("hourly_rate").eq("id", trainerId).maybeSingle();
     hourlyRate = tp?.hourly_rate != null ? Number(tp.hourly_rate) : null;
@@ -163,6 +172,50 @@ Deno.serve(async (req) => {
     const settings = (cycle?.settings as Record<string, unknown>) || {};
     const splitPayment = settings.split_payment === true;
 
+    // 5. Identity — after the pure-read guards, before any Mollie credential work
+    //    (resolveSlotRecipient refreshes/writes OAuth tokens), so verify_required touches no
+    //    credential (Codex r1 f7). Only a proven, explicitly chosen person carries on.
+    const identity = await resolveAnonymousIdentity(supabase, {
+      creationRequestId, owner, workflow: "cyclus", email,
+      // the COMPLETE material intent (Codex r3 f1): cyclus + contact + notes + consent.
+      payloadKey: buildIntentKey("cyclus", {
+        cyclusId, email, name: name.full_name, phone, notes, whatsappOptIn: whatsappOptIn === true,
+      }),
+    });
+    if (identity.status === "verify_required") {
+      return json({ status: "verification_required" }, 200);
+    }
+
+    // 6. Recipient — same predicate as mollie-webhook will use to CONFIRM. All slots in a cyclus
+    //    share one academy, so slots[0].academy_profile_id disambiguates a multi-academy trainer
+    //    (Codex F3); the webhook resolves the same academy off any of these slots.
+    const { accessToken, recipientType, mollieOrgId, platformFee } = await resolveSlotRecipient(
+      supabase,
+      trainerId,
+      slots[0].academy_profile_id as string | null,
+    );
+    if (!accessToken || !recipientType) {
+      return json({ error: "no_mollie_account", message: "Online betaling is niet beschikbaar voor deze cyclus." }, 400);
+    }
+
+    // 7. Only now — recipient valid, cyclus bookable, price authoritative — create/derive the
+    //    Player, so a disabled/zero-price/payment-unavailable cyclus never leaves an orphan Player
+    //    (Codex r2 f5). A verified returning Player is booked via the guest key legacyBookingRef
+    //    derives (person_id stamped); a first-timer is created via the command.
+    let personId: string;
+    let guestPlayerId: string;
+    if (identity.status === "proceed_person") {
+      personId = identity.personId;
+      const ref = await legacyBookingRef(supabase, personId, owner);
+      if (!ref.guestPlayerId) throw new Error("legacy_ref_failed:no_guest_source");
+      guestPlayerId = ref.guestPlayerId;
+    } else {
+      personId = (await resolvePlayerForCheckout(supabase, {
+        email, name, phone, owner, source: "public_booking", creationRequestId,
+      })).personId;
+      guestPlayerId = await legacyGuestRefForCheckout(supabase, personId, owner);
+    }
+
     // Fold extras into the charge so it collects what the invoice bills (one_time once, per_session
     // per session, each ÷ split). Same extras source as auto-create-invoice: cycle settings, else
     // first slot (audit Batch 2 — charge/invoice extras must agree; owner: charge the extras).
@@ -170,14 +223,6 @@ Deno.serve(async (req) => {
       (settings.extra_costs as ExtraCost[] | null) ??
       ((slots[0] as { extra_costs?: ExtraCost[] | null })?.extra_costs ?? null);
     const total = baseTotal + computeCyclusExtrasTotal(cycleExtraCosts, slots.length);
-
-    // 6. Guest identity — always a guest_players row.
-
-
-    const owner = slots[0].academy_profile_id
-      ? { academyProfileId: slots[0].academy_profile_id as string }
-      : { trainerId };
-    const { guestPlayerId } = await resolveOrCreateGuestPlayer(supabase, { email, name, phone, owner, source: "public_booking" });
 
     // WhatsApp opt-in: only if the guest ticked the box next to the number they just typed.
     // Tenant comes from the SLOT above, never from the client — the client sends a boolean and
@@ -223,7 +268,9 @@ Deno.serve(async (req) => {
       .from("bookings")
       .select("public_token")
       .in("slot_id", slotIds)
-      .eq("guest_player_id", guestPlayerId)
+      // person-keyed (Codex r2 f5): the replay-after-claim guard must see rows written under any
+      // of this human's legacy keys
+      .eq("person_id", personId)
       .eq("payment_status", "paid")
       .neq("status", "cancelled")
       .limit(1)
@@ -366,7 +413,10 @@ Deno.serve(async (req) => {
       profileId: mollieProfileId,
       metadata: {
         booking_ids: bookingIds, // tells mollie-webhook to commit ALL holds (NO invoice_id)
-        guest_player_id: guestPlayerId,
+        // correlation by the caller's ATTEMPT id (U2): stable across replays — a claim can repoint
+        // the person mid-retry, and a changed metadata value would change the Mollie idempotency
+        // fingerprint and mint a second payment (Codex r2 f6). The receipt maps it to the person.
+        creation_request_id: creationRequestId,
         recipient_type: recipientType,
         cyclus_id: cyclusId,
       },
