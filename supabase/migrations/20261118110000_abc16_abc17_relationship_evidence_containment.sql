@@ -2739,6 +2739,139 @@ BEGIN
   END IF;
 END $$;
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- PASS B §1b — invoice recipient identity, email and delivery status.
+-- ═════════════════════════════════════════════════════════════════════════════
+
+-- ── get_invoice_recipient_identity — guest-first, own attributes only ────────────────────────
+-- Three defects, each of which routed a guest's invoice to somebody else:
+--
+--   1. PROFILE-FIRST DISPATCH. The guest arm required `_player_id IS NULL`, so a DUAL-KEY call
+--      (both ids passed, which is exactly what a dual-key invoice supplies) matched only the
+--      PROFILE arm. The guest's invoice resolved to the linked account's name, email and billing.
+--   2. LINKED-PROFILE PREFERENCE inside the guest arm: email took `lp.email` BEFORE `g.email`,
+--      and phone/billing preferred `lp.*` too — so even when the guest arm did fire, delivery
+--      went to the account rather than the guest.
+--   3. METADATA BILLING OVERRIDE. `academy_player_metadata.billing_email` won over both. That
+--      table is caller-authored (ABC-16), so it could redirect an invoice by writing a row.
+--
+-- Now: guest present ⇒ that guest's OWN attributes, nothing else. Pure profile ⇒ direct profile
+-- fields. Neither ⇒ no row, i.e. unresolved — callers must treat an empty result as a refusal to
+-- send rather than substituting anything.
+--
+-- `_academy_profile_id` is retained in the signature (callers pass it) but no longer selects an
+-- override; it is left in place so no caller has to change shape.
+CREATE OR REPLACE FUNCTION public.get_invoice_recipient_identity(
+  _player_id uuid DEFAULT NULL,
+  _guest_player_id uuid DEFAULT NULL,
+  _academy_profile_id uuid DEFAULT NULL
+)
+RETURNS TABLE (
+  full_name text, email text, phone text,
+  billing_business_name text, billing_address text, billing_btw_number text
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+  -- GUEST arm — fires whenever a guest is present, dual-key included.
+  SELECT
+    COALESCE(
+      NULLIF(btrim(COALESCE(g.first_name, '') || ' ' || COALESCE(g.last_name, '')), ''),
+      NULLIF(btrim(g.full_name), ''),
+      'Unknown Player'
+    ),
+    COALESCE(NULLIF(btrim(g.email), ''), ''),
+    COALESCE(g.phone, ''),
+    g.billing_business_name,
+    g.billing_address,
+    g.billing_btw_number
+  FROM public.guest_players g
+  WHERE _guest_player_id IS NOT NULL AND g.id = _guest_player_id
+
+  UNION ALL
+
+  -- PURE-PROFILE arm — only when no guest is present.
+  SELECT
+    COALESCE(NULLIF(btrim(p.full_name), ''), 'Unknown Player'),
+    COALESCE(NULLIF(btrim(p.email), ''), ''),
+    COALESCE(p.phone, ''),
+    p.billing_business_name,
+    p.billing_address,
+    p.billing_btw_number
+  FROM public.profiles p
+  WHERE _guest_player_id IS NULL AND _player_id IS NOT NULL AND p.id = _player_id;
+$fn$;
+
+COMMENT ON FUNCTION public.get_invoice_recipient_identity(uuid, uuid, uuid) IS
+  'ABC-18 Pass B §1b: guest-first. A guest resolves to its OWN name/email/phone/billing — no linked-profile fallback, no academy_player_metadata billing override (that table is caller-authored). The profile arm requires guest NULL. Neither id ⇒ no row = unresolved.';
+
+-- ── get_invoices_delivery_status — same guest-first identity ─────────────────────────────────
+-- Re-emitted so the status a manager sees is keyed to the SAME recipient the mail actually goes
+-- to. Deliverability itself (hard bounce, complaint, provider suppression) is unchanged: only the
+-- address it is looked up for changes, from "the linked account's" to "this guest's own".
+CREATE OR REPLACE FUNCTION public.get_invoices_delivery_status(_invoice_ids uuid[])
+RETURNS TABLE (invoice_id uuid, recipient_email text, delivery_state text)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+BEGIN
+  RETURN QUERY
+  SELECT
+    i.id,
+    r.email,
+    CASE
+      WHEN NULLIF(btrim(COALESCE(r.email, '')), '') IS NULL THEN 'no_email'
+      WHEN EXISTS (
+        SELECT 1 FROM public.email_suppressions s
+        WHERE lower(s.email) = lower(r.email)
+      ) THEN 'undeliverable'
+      WHEN i.sent_at IS NOT NULL THEN 'sent'
+      ELSE 'not_sent'
+    END
+  FROM public.invoices i
+  CROSS JOIN LATERAL public.get_invoice_recipient_identity(
+    i.player_id, i.guest_player_id, i.academy_profile_id
+  ) r
+  WHERE i.id = ANY(_invoice_ids)
+    -- tenant gate unchanged: the caller must own the invoice's trainer or academy, or be admin
+    AND (
+      public.is_admin(auth.uid())
+      OR i.trainer_id IN (SELECT tp.id FROM public.trainer_profiles tp WHERE tp.user_id = auth.uid())
+      OR (i.academy_profile_id IS NOT NULL
+          AND i.academy_profile_id IN (SELECT public.get_user_academy_ids(auth.uid())))
+    );
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_invoices_delivery_status(uuid[]) IS
+  'ABC-18 Pass B §1b: delivery state for the SAME guest-first recipient the mail is sent to. Real provider/suppression status is unchanged; only the address it is resolved for is corrected. Tenant gate preserved.';
+
+DO $$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_invoice_recipient_identity';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'Pass B §1b: get_invoice_recipient_identity is missing'; END IF;
+  -- no linked-profile join, no metadata override, and the guest arm must not require a null player
+  IF v_src ~ 'linked_profile_id|academy_player_metadata' THEN
+    RAISE EXCEPTION 'Pass B §1b: recipient identity still traverses the bridge or a metadata override';
+  END IF;
+  IF v_src !~ '_guest_player_id IS NULL AND _player_id IS NOT NULL' THEN
+    RAISE EXCEPTION 'Pass B §1b: the profile arm must require guest NULL';
+  END IF;
+
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_invoices_delivery_status';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'Pass B §1b: get_invoices_delivery_status is missing'; END IF;
+  IF v_src !~ 'get_invoice_recipient_identity' THEN
+    RAISE EXCEPTION 'Pass B §1b: delivery status must resolve through the guest-first identity reader';
+  END IF;
+END $$;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────
