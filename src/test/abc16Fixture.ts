@@ -298,6 +298,31 @@ export const STUB_SQL = /* sql */ `
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS public_token text;
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS public_token_revoked_at timestamptz;
   ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+  -- Pass B: the full column set create_invoice_deduped writes, so the money path is exercised
+  -- end to end rather than failing before its identity logic is reached.
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS trainer_id uuid;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS academy_profile_id uuid;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_number text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS invoice_date date;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS due_date date;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS paid_at timestamptz;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS sent_at timestamptz;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS pdf_url text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS notes text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS player_name text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS player_business_name text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS player_address text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS player_btw_number text;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS line_items jsonb DEFAULT '[]'::jsonb;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS subtotal numeric DEFAULT 0;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS vat_rate numeric DEFAULT 21;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS vat_amount numeric DEFAULT 0;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS total numeric DEFAULT 0;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS vat_breakdown jsonb;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS prices_include_vat boolean DEFAULT true;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS booking_ids uuid[] DEFAULT '{}'::uuid[];
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS split_count integer;
+  ALTER TABLE public.invoices ADD COLUMN IF NOT EXISTS person_id uuid;
   -- the profile-first index ABC-20 replaces, so the swap is exercised rather than assumed
   CREATE UNIQUE INDEX IF NOT EXISTS uq_invoices_rebook_cyclus_claimant
     ON public.invoices (rebook_cyclus_id, COALESCE(player_id, guest_player_id))

@@ -2547,6 +2547,198 @@ BEGIN
   END IF;
 END $$;
 
+-- ═════════════════════════════════════════════════════════════════════════════
+-- PASS B §1 — invoice authority, identity and concurrency.
+-- ═════════════════════════════════════════════════════════════════════════════
+
+-- ── get_my_invoices — pure-profile only ─────────────────────────────────────────────────────
+-- Three admission arms went beyond the caller's own profile: a RAW `i.player_id = v_profile`
+-- (which matches DUAL-KEY invoices, i.e. a guest's invoice carrying the caller's stale
+-- player_id), `i.person_id = v_person` (person equality), and a twin/linked guest-surrogate set.
+-- Each showed one account another person's invoice — amounts, billing identity and status.
+--
+-- All three are withdrawn. The whole split-freeze apparatus goes with them: it existed only to
+-- make the person arm safe, and there is no person arm now. Retained fields and the
+-- pure-profile-only billing-edit rule are unchanged.
+CREATE OR REPLACE FUNCTION public.get_my_invoices()
+RETURNS TABLE (
+  id uuid, invoice_number text, invoice_date date, due_date date,
+  player_name text, player_business_name text, player_address text, player_btw_number text,
+  subtotal numeric, vat_rate numeric, vat_amount numeric, total numeric,
+  status text, pdf_url text, sent_at timestamptz, paid_at timestamptz, notes text,
+  can_edit_billing boolean
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $fn$
+DECLARE
+  v_profile uuid;
+BEGIN
+  v_profile := public.get_profile_id_for_user(auth.uid());
+  IF v_profile IS NULL THEN
+    RETURN;
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    i.id, i.invoice_number, i.invoice_date, i.due_date,
+    i.player_name, i.player_business_name, i.player_address, i.player_btw_number,
+    i.subtotal, i.vat_rate, i.vat_amount, i.total,
+    i.status, i.pdf_url, i.sent_at, i.paid_at, i.notes,
+    true AS can_edit_billing   -- every returned row is already pure-profile and the caller's
+  FROM public.invoices i
+  WHERE i.status <> 'draft'
+    AND i.player_id = v_profile
+    AND i.guest_player_id IS NULL;   -- a dual-key invoice belongs to the GUEST
+END;
+$fn$;
+
+COMMENT ON FUNCTION public.get_my_invoices() IS
+  'ABC-18 Pass B: PURE-PROFILE only (player_id = me AND guest_player_id IS NULL). The raw player arm matched dual-key invoices, and the person / twin-linked guest-surrogate arms showed one account another person''s invoice.';
+
+-- ── create_invoice_deduped — typed identity, no person equivalence ──────────────────────────
+-- The lock key and one dedup arm resolved through `person_links`, so two rows the bridge called
+-- one person could serialize together and DEDUP ONTO EACH OTHER — one human paying, or not
+-- paying, for another's bookings. Person equivalence is withdrawn from all three places the
+-- brief names: the lock, the overlap search and the dedup arms.
+--
+-- TYPED IDENTITY: `g:<guest>` when a guest is present (dual-key included — the guest is the
+-- recipient), else `p:<profile>` for a pure profile. Neither ⇒ refuse.
+--
+-- DETERMINISTIC LOCKING covers BOTH dimensions the brief requires:
+--   1. the typed recipient — so two creates for one recipient serialize;
+--   2. the booking-overlap set — sorted and de-duplicated, so two creates touching the same
+--      bookings serialize even under DIFFERENT recipients, which is exactly the cross-recipient
+--      double-bill window. Two locks, always taken in the same order (recipient then bookings),
+--      so two sessions can never deadlock by acquiring them opposite ways.
+--
+-- Amounts, snapshots, statuses and the returned shape are untouched.
+CREATE OR REPLACE FUNCTION public.create_invoice_deduped(_payload jsonb)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $fn$
+DECLARE
+  v_trainer_id uuid := (_payload->>'trainer_id')::uuid;
+  v_player_id uuid := NULLIF(_payload->>'player_id', '')::uuid;
+  v_guest_player_id uuid := NULLIF(_payload->>'guest_player_id', '')::uuid;
+  v_booking_ids uuid[];
+  v_recipient_key text;
+  v_bk uuid;
+  v_winner public.invoices%ROWTYPE;
+  v_new public.invoices%ROWTYPE;
+BEGIN
+  SELECT COALESCE(array_agg(DISTINCT b ORDER BY b), '{}'::uuid[])
+    INTO v_booking_ids
+    FROM jsonb_array_elements_text(COALESCE(_payload->'booking_ids', '[]'::jsonb)) AS t(b_text),
+         LATERAL (SELECT t.b_text::uuid AS b) x;
+
+  -- typed identity, guest-first; neither ⇒ fail closed rather than invoice an unknown recipient
+  v_recipient_key := CASE
+    WHEN v_guest_player_id IS NOT NULL THEN 'g:' || v_guest_player_id::text
+    WHEN v_player_id IS NOT NULL THEN 'p:' || v_player_id::text
+    ELSE NULL
+  END;
+  IF v_recipient_key IS NULL THEN
+    RAISE EXCEPTION 'create_invoice_deduped: unscoped recipient' USING ERRCODE = '22023';
+  END IF;
+
+  PERFORM pg_advisory_xact_lock(hashtextextended('inv:' || v_trainer_id::text || ':' || v_recipient_key, 0));
+
+  IF array_length(v_booking_ids, 1) > 0 THEN
+    -- PER-BOOKING locks, in deterministic sorted order.
+    --
+    -- Locking the whole SET under one key is NOT overlap-safe: [A] and [A,B] hash differently,
+    -- so two sessions with PARTIAL overlap take disjoint locks, each passes its overlap SELECT
+    -- without seeing the other's uncommitted row, and both INSERT — booking A billed twice, to
+    -- two different recipients. The exact-set indexes do not reject partial overlap either.
+    --
+    -- One lock per booking uuid closes it: any two statements touching a shared booking contend
+    -- on that booking's own key. Sorted order (v_booking_ids is sorted + de-duplicated above)
+    -- means two sessions always acquire shared locks in the same sequence, so they cannot
+    -- deadlock by taking them in opposite orders.
+    FOREACH v_bk IN ARRAY v_booking_ids LOOP
+      PERFORM pg_advisory_xact_lock(hashtextextended('invb:' || v_trainer_id::text || ':' || v_bk::text, 0));
+    END LOOP;
+
+    -- Overlap is re-read AFTER every lock is held: a competing transaction holding any of these
+    -- bookings has now committed or rolled back, so this SELECT sees the settled truth rather
+    -- than the pre-lock snapshot.
+    SELECT i.* INTO v_winner FROM public.invoices i
+    WHERE i.trainer_id = v_trainer_id AND i.status <> 'cancelled' AND i.booking_ids && v_booking_ids
+      AND (
+        -- pure-profile arm: pure on BOTH sides
+        (v_guest_player_id IS NULL AND v_player_id IS NOT NULL
+           AND i.player_id = v_player_id AND i.guest_player_id IS NULL)
+        -- guest arm: fires for guest-only AND dual-key inbound — the guest is the recipient
+        OR (v_guest_player_id IS NOT NULL AND i.guest_player_id = v_guest_player_id)
+      )
+    ORDER BY i.created_at ASC LIMIT 1;
+
+    IF FOUND THEN
+      RETURN jsonb_build_object('id', v_winner.id, 'invoice_number', v_winner.invoice_number,
+        'status', v_winner.status, 'sent_at', v_winner.sent_at,
+        'booking_ids', to_jsonb(v_winner.booking_ids), 'total', v_winner.total, 'deduped', true);
+    END IF;
+
+    -- Overlap under a DIFFERENT typed recipient: refuse. Returning or reusing that invoice would
+    -- hand this caller another recipient's row; silently inserting a second one would double-bill
+    -- the same seats. Neither is acceptable, so the caller is told.
+    IF EXISTS (
+      SELECT 1 FROM public.invoices i
+      WHERE i.trainer_id = v_trainer_id AND i.status <> 'cancelled' AND i.booking_ids && v_booking_ids
+    ) THEN
+      RAISE EXCEPTION 'create_invoice_deduped: bookings already invoiced under a different recipient'
+        USING ERRCODE = '23505';
+    END IF;
+  END IF;
+
+  INSERT INTO public.invoices (
+    trainer_id, academy_profile_id, invoice_number, invoice_date, due_date, player_id, guest_player_id,
+    player_name, player_business_name, player_address, player_btw_number, line_items, subtotal, vat_rate,
+    vat_amount, total, vat_breakdown, prices_include_vat, status, booking_ids, split_count, paid_at, sent_at
+  ) VALUES (
+    v_trainer_id, NULLIF(_payload->>'academy_profile_id', '')::uuid, _payload->>'invoice_number',
+    (_payload->>'invoice_date')::date, (_payload->>'due_date')::date, v_player_id, v_guest_player_id,
+    _payload->>'player_name', _payload->>'player_business_name', _payload->>'player_address',
+    _payload->>'player_btw_number', COALESCE(_payload->'line_items', '[]'::jsonb),
+    COALESCE((_payload->>'subtotal')::numeric, 0), COALESCE((_payload->>'vat_rate')::numeric, 21),
+    COALESCE((_payload->>'vat_amount')::numeric, 0), COALESCE((_payload->>'total')::numeric, 0),
+    CASE WHEN _payload ? 'vat_breakdown' THEN _payload->'vat_breakdown' ELSE NULL END,
+    COALESCE((_payload->>'prices_include_vat')::boolean, true), COALESCE(_payload->>'status', 'draft'),
+    v_booking_ids, NULLIF(_payload->>'split_count', '')::integer,
+    NULLIF(_payload->>'paid_at', '')::timestamptz, NULLIF(_payload->>'sent_at', '')::timestamptz
+  ) RETURNING * INTO v_new;
+
+  RETURN jsonb_build_object('id', v_new.id, 'invoice_number', v_new.invoice_number,
+    'status', v_new.status, 'sent_at', v_new.sent_at,
+    'booking_ids', to_jsonb(v_new.booking_ids), 'total', v_new.total, 'deduped', false);
+END; $fn$;
+
+COMMENT ON FUNCTION public.create_invoice_deduped(jsonb) IS
+  'ABC-18 Pass B: typed identity g:<guest> / p:<pure profile>; no person/link/twin/email equivalence in the lock, the overlap search or the dedup arms. Two ordered advisory locks (typed recipient, then the sorted de-duplicated booking set) serialize both same-recipient and cross-recipient overlap. Overlap under a different recipient refuses rather than returning or reusing that recipient''s invoice.';
+
+DO $$
+DECLARE v_src text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_my_invoices';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'Pass B: get_my_invoices is missing'; END IF;
+  IF v_src !~ 'i\.guest_player_id IS NULL' OR v_src ~ 'person_id|twin_of_profile_id|linked_profile_id' THEN
+    RAISE EXCEPTION 'Pass B: get_my_invoices must be pure-profile with no person/twin/link admission';
+  END IF;
+
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'create_invoice_deduped';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'Pass B: create_invoice_deduped is missing'; END IF;
+  IF v_src ~ 'person_links|is_guest_split_frozen|i\.person_id' THEN
+    RAISE EXCEPTION 'Pass B: create_invoice_deduped still uses person equivalence';
+  END IF;
+  -- must lock PER BOOKING (a whole-set key is not overlap-safe), and must do so in a loop
+  IF v_src !~ 'FOREACH v_bk IN ARRAY v_booking_ids' OR v_src !~ 'invb:' THEN
+    RAISE EXCEPTION 'Pass B: create_invoice_deduped must take a per-booking advisory lock in sorted order';
+  END IF;
+END $$;
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 9. Install assertions — the migration proves its own postcondition.
 -- ─────────────────────────────────────────────────────────────────────────────
