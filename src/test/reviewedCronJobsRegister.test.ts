@@ -161,9 +161,18 @@ describe('H — the clone-safety cron register covers every scheduled job', () =
     expect(unreadable).toEqual([]);
   });
 
-  // Jobs a migration schedules that are deliberately NOT expected in production. Empty today.
+  // Jobs a migration schedules that are deliberately NOT expected in production.
   // Adding a name here means "retired — a clone will not see it", and it carries its reason.
-  const RETIRED = new Map<string, string>();
+  const RETIRED = new Map<string, string>([
+    ['notify-rebook-member-open',
+      'D7 runtime cutover. `20261118115000_d7_runtime_crons.sql` unschedules it, and it sorts '
+      + 'BEFORE ABC-27 on purpose: ABC-27 revokes `service_role` EXECUTE on the first RPC this job '
+      + 'calls, so an armed job would 500 on a 42501 every 15 minutes forever. The edge function is '
+      + 'deleted too. `20260722100000_rebook_crons_use_vault.sql` still SCHEDULES it — migrations '
+      + 'are immutable — which is exactly why this map exists rather than a TSV row: a clone taken '
+      + 'after the cutover will not see the job, so registering it as a live outbound job would '
+      + 'make the quiesce procedure hunt for something that is not there.'],
+  ]);
 
   it('every job any migration schedules is in reviewed-cron-jobs.tsv', () => {
     // NOT "every job the migrations LEAVE scheduled". Three registered jobs

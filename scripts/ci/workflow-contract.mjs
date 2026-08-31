@@ -88,13 +88,16 @@ export const APPROVED_JOB_RUNS = {
     'npm run check:legacy-key',
     'npm run check:edge-pins:selftest',
     'npm run check:edge-pins',
+    'npm run check:trainer-authority:selftest',
+    'npm run check:trainer-authority',
     'node scripts/ci/workflow-contract.mjs',
   ],
   'unit-tests': ['npm ci', 'npm run test:unit'],
   'db-tests': ['npm ci', 'npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}'],
   'db-rehearsals': ['npm ci', 'npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}'],
   i18n: ['bun scripts/check-i18n-parity.ts'],
-  'workflow-contract': ['npm ci', 'node scripts/ci/workflow-contract.mjs'],
+  'workflow-contract': ['npm ci', 'npm run check:trainer-authority:selftest',
+    'npm run check:trainer-authority', 'node scripts/ci/workflow-contract.mjs'],
 };
 
 /**
@@ -225,6 +228,8 @@ export const APPROVED_JOB_STEPS = {
     { run: "npm run check:legacy-key" },
     { run: "npm run check:edge-pins:selftest" },
     { run: "npm run check:edge-pins" },
+    { run: "npm run check:trainer-authority:selftest" },
+    { run: "npm run check:trainer-authority" },
     { run: "node scripts/ci/workflow-contract.mjs" },
   ],
   typecheck: [
@@ -261,6 +266,8 @@ export const APPROVED_JOB_STEPS = {
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
     { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
     { run: "npm ci" },
+    { run: "npm run check:trainer-authority:selftest" },
+    { run: "npm run check:trainer-authority" },
     { run: "node scripts/ci/workflow-contract.mjs" },
   ],
   test: [
@@ -419,6 +426,15 @@ const PINNED_SCRIPTS = {
   // The local/ci-equivalent full gate stays unsharded — CI sharding must never
   // become the only way to run the suite.
   test: 'vitest run --project unit && vitest run --project db',
+  // THE TRAINER-NAMESPACE PROPERTY, PINNED AT ITS NEW ADDRESS. This used to pin a whole second
+  // run of the database suite with `ABC27_TRAINER_GUARD=1 ABC27_GUARD_LANE=1`, because the
+  // property was watched by a client-side observer that was off by default. That observer's
+  // terminal review refused the approach; the property is now established at the SOURCE and these
+  // two commands are what prove it. Both are pinned: the guard alone could be satisfied by a
+  // guard that refuses nothing, and the self-test is what makes it discriminate.
+  'check:trainer-authority': 'node scripts/check-abc27-trainer-source-authority.mjs',
+  'check:trainer-authority:selftest':
+    'node scripts/check-abc27-trainer-source-authority.mjs --self-test',
 };
 
 // `npm run test:db -- --shard=…` forwards the args to the SCRIPT only; a
@@ -428,6 +444,8 @@ const FORBIDDEN_LIFECYCLE_HOOKS = [
   'pretest:unit', 'posttest:unit',
   'pretest:db', 'posttest:db',
   'predb:rehearse:all', 'postdb:rehearse:all',
+  'precheck:trainer-authority', 'postcheck:trainer-authority',
+  'precheck:trainer-authority:selftest', 'postcheck:trainer-authority:selftest',
 ];
 
 /**
@@ -1090,12 +1108,55 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   // vitest will use — not a re-parse that could disagree with it. (A plain
   // `import` cannot: the config uses __dirname, which is CJS-only.)
   const { loadConfigFromFile } = await import('vite');
-  const loaded = await loadConfigFromFile(
+  const loadVitestConfig = async () => (await loadConfigFromFile(
     { command: 'serve', mode: 'test' },
     join(repoRoot, 'vitest.config.ts'),
     repoRoot,
-  );
-  const config = loaded?.config ?? {};
+  ))?.config ?? {};
+  const config = await loadVitestConfig();
+
+  // ...AND AGAIN UNDER VITEST'S OWN ENVIRONMENT. Vitest sets `VITEST=true` (and `MODE=test`)
+  // BEFORE it loads this config; a plain Node loader does not. A config that reads
+  // `process.env.VITEST` could therefore install a name filter that exists only during the real
+  // CI runs, while every check here inspected a different object. Both loads are checked, and the
+  // config file is additionally required to read no environment at all — so the two loads cannot
+  // legitimately differ in the first place.
+  // THE CONFIG MUST BE A CONSTANT, and the constraint is on TOKENS rather than on one spelling:
+  // `process.env.X`, `process['env']`, `import.meta.env`, `loadEnv(...)` and a helper imported
+  // from elsewhere are all ways for the config CI runs to differ from the config this reads.
+  const vitestConfigSource = readFileSync(join(repoRoot, 'vitest.config.ts'), 'utf8');
+  for (const [pattern, what] of [
+    [/\bprocess\b/, '`process`'],
+    [/\bimport\s*\.\s*meta\b/, '`import.meta`'],
+    [/\bloadEnv\b/, '`loadEnv`'],
+    [/\brequire\s*\(/, '`require(`'],
+  ]) {
+    if (pattern.test(vitestConfigSource)) {
+      violations.push(`vitest.config.ts references ${what} - the CI contract inspects the config it can load, and a config whose shape can depend on the environment is not provably the config CI runs`);
+    }
+  }
+  // ...and its imports are pinned, because a constant that calls into another module is only as
+  // constant as that module.
+  const APPROVED_VITEST_CONFIG_IMPORTS = ['vitest/config', '@vitejs/plugin-react-swc', 'path'];
+  const configImports = [...vitestConfigSource.matchAll(/^\s*import[^;]*?from\s+["']([^"']+)["']/gm)]
+    .map((m) => m[1]);
+  const unapprovedImports = configImports.filter((spec) => !APPROVED_VITEST_CONFIG_IMPORTS.includes(spec));
+  if (unapprovedImports.length > 0) {
+    violations.push(`vitest.config.ts imports ${unapprovedImports.join(', ')} - only ${APPROVED_VITEST_CONFIG_IMPORTS.join(', ')} are approved, because an imported helper can decide the config CI runs`);
+  }
+  const previousVitestEnv = process.env.VITEST;
+  const previousModeEnv = process.env.MODE;
+  let configUnderVitest;
+  try {
+    process.env.VITEST = 'true';
+    process.env.MODE = 'test';
+    configUnderVitest = await loadVitestConfig();
+  } finally {
+    if (previousVitestEnv === undefined) delete process.env.VITEST;
+    else process.env.VITEST = previousVitestEnv;
+    if (previousModeEnv === undefined) delete process.env.MODE;
+    else process.env.MODE = previousModeEnv;
+  }
   const projects = config.test?.projects ?? [];
   const byName = Object.fromEntries(projects.map((p) => [p.test?.name, p.test]));
   const db = byName.db;
@@ -1155,6 +1216,69 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   const misfiled = databaseTestFilesOnDisk(repoRoot).filter((f) => unitSet.has(f) || !dbSelected.includes(f));
   if (misfiled.length > 0) {
     violations.push(`vitest.config.ts: ${misfiled.length} database test file(s) are not owned by the db project, e.g. ${misfiled.slice(0, 3).join(', ')}`);
+  }
+
+  // ── 8. NO NAME FILTER MAY NARROW A GATED SUITE ────────────────────────────
+  //
+  // Section 7 proves every FILE is selected. It says nothing about which TESTS
+  // inside those files run, and that is a whole second way to keep a suite green
+  // while it proves nothing: `vitest run --project db -t nothing-matches-this`
+  // selects all 142 files, runs zero tests, and exits 0. `passWithNoTests` is the
+  // same hole from the other side — it turns "this run found nothing" from a
+  // failure into a pass, which is exactly the verdict a filter produces.
+  //
+  // BOTH SPELLINGS, IN BOTH PLACES. The flag can sit in the workflow's `run:`
+  // text or inside the npm script the workflow invokes, and the config option can
+  // sit at the root or on a project; each is checked where it can actually be
+  // written. This is independent of any one suite: it closes the hole for every
+  // lane at once.
+  const NAME_FILTER_FLAG = /(^|\s)(-t(\s|=|$)|--testNamePattern(\s|=|$))/;
+  const filterSites = [];
+  for (const [job, steps] of Object.entries(workflow.jobs ?? {})) {
+    for (const step of steps.steps ?? []) {
+      if (typeof step.run === 'string' && NAME_FILTER_FLAG.test(step.run)) {
+        filterSites.push(`.github/workflows/test.yml job ${job}: \`${step.run.trim().slice(0, 80)}\``);
+      }
+    }
+  }
+  for (const [name, command] of Object.entries(pkg.scripts ?? {})) {
+    if (typeof command === 'string' && NAME_FILTER_FLAG.test(command)) {
+      filterSites.push(`package.json script ${name}: \`${command.slice(0, 80)}\``);
+    }
+  }
+  for (const site of filterSites) {
+    violations.push(`a vitest name filter (-t / --testNamePattern) appears in ${site} — a filter that matches nothing runs zero tests and still exits 0, so no CI invocation may carry one`);
+  }
+  // THE WHOLE OF SECTION 7, AGAIN, ON THE CONFIG VITEST ITSELF WOULD LOAD. Checking only the two
+  // name-filter options there left project SELECTION, the sequencer and `fileParallelism`
+  // verified on one object while CI ran another. The comparison is by VALUE: the two loads must
+  // agree on everything this contract depends on, which is a stronger and simpler statement than
+  // re-deriving each rule twice.
+  const projectShape = (cfg) => (cfg ? {
+    include: cfg.include, exclude: cfg.exclude, name: cfg.name,
+    fileParallelism: cfg.fileParallelism, sequencer: cfg.sequence?.sequencer,
+    testNamePattern: cfg.testNamePattern, passWithNoTests: cfg.passWithNoTests,
+  } : null);
+  const wholeShape = (cfg) => JSON.stringify({
+    root: projectShape(cfg.test),
+    projects: (cfg.test?.projects ?? []).map((p) => projectShape(p.test)),
+  });
+  if (wholeShape(config) !== wholeShape(configUnderVitest)) {
+    violations.push('vitest.config.ts resolves to a DIFFERENT shape under VITEST=true than under a plain load - every check in this section then describes an object CI does not run');
+  }
+  const vitestProjects = configUnderVitest.test?.projects ?? [];
+  const underVitest = Object.fromEntries(vitestProjects.map((p) => [p.test?.name, p.test]));
+  for (const [label, cfg] of [
+    ['root', config.test], ['unit', unit], ['db', db],
+    ['root (VITEST=true)', configUnderVitest.test],
+    ['unit (VITEST=true)', underVitest.unit], ['db (VITEST=true)', underVitest.db],
+  ]) {
+    if (cfg?.testNamePattern !== undefined) {
+      violations.push(`vitest.config.ts: ${label} defines testNamePattern — a name filter in the config narrows every invocation, including CI's`);
+    }
+    if (cfg?.passWithNoTests !== undefined && cfg.passWithNoTests !== false) {
+      violations.push(`vitest.config.ts: ${label} sets passWithNoTests — a run that selected nothing must FAIL, because "nothing matched" is what a hollowed-out lane looks like`);
+    }
   }
 
   return violations;

@@ -115,7 +115,7 @@ booking-derived predicate.
 |---|---|---|
 | `guest_belongs_to_user_academy` | (a) the academy owns the guest row | (b) booking on the academy's slot, (c) metadata link |
 | `guest_booked_with_trainer` | — policy dropped entirely | it was booking-derived end to end |
-| `filter_academy_priority_ids` | guests the academy owns | booking arm, metadata arm, location arm |
+| `filter_academy_priority_ids` | **RETIRED (ABC-26)** — fail-closed, no runtime EXECUTE for any role | booking arm, metadata arm, location arm, and finally the guest arm: supplementary priority is unavailable for every class |
 | `get_player_email_edit_capability` | authorization gate only; always returns `override` | the entire `direct` outcome |
 | `get_players_overview` | directly owned guests only | booking-admitted registered profiles, the active-trainer union, person expansion and cross-person dedup |
 | `get_person_refs_for_scope` | an owned guest, resolving to itself | sibling expansion, profile expansion, `has_login` |
@@ -123,9 +123,12 @@ booking-derived predicate.
 
 Two consequences are deliberate and are **not** bugs:
 
-- **Registered players can no longer be admitted to academy rebooking priority at all.** Every route
-  that could admit them was Class A or Class C. Fail-closed is the honest answer; the replacement is
-  U2's canonical membership, not another heuristic.
+- **Supplementary rebooking priority is unavailable for every class (ABC-26)** — registered
+  selections, directly owned guests and exclusion-derived second-bucket selections alike. Registered
+  admission was Class A or C; the guest arm was withdrawn because owning a row is an editing right,
+  not a queue position. Ordinary round creation with zero supplementary priority is unaffected. The
+  replacement is a purpose-bound expiring offer on canonical Player/U3 identity, not another
+  heuristic. See `ABC16_PASS_B_OWNER_DECISIONS.md`.
 - **Trainers lose visibility of guests who merely booked their slot.** They keep guests they own.
 
 `get_players_overview` IS narrowed, to directly owned guests. An earlier draft argued against this on
@@ -253,7 +256,12 @@ Stated explicitly so they are not mistaken for solved:
    regression, accepted because the policy authorized reading *any* guest in the database. The fix is
    canonical membership, not a wider policy — and it should be prioritised, because the people it
    affects are staff doing their job, not attackers.
-6. **Registered rebooking priority silently admits nobody.** `bulk-rebook-cycle` filters its priority
-   list through `filter_academy_priority_ids`, which now returns no profiles at all, so registered
-   priority people are dropped without an error. The edge function's reporting was not changed here;
-   whether it should refuse loudly instead is a product decision.
+6. ~~**Registered rebooking priority silently admits nobody.**~~ **CLOSED by ABC-26.** This item
+   described a silent filter — a selection dropped without an error because
+   `filter_academy_priority_ids` had stopped returning profiles — and left "whether it should refuse
+   loudly instead" as an open product decision. The decision was made: supplementary rebooking
+   priority is unavailable for **every** class, and the behaviour is now the opposite of silent.
+   `bulk-rebook-cycle` parses the request ONCE, before any write, and returns a typed refusal
+   carrying the RAW submitted counts; nothing is truncated, de-duplicated or filtered away first.
+   `filter_academy_priority_ids` is retired (fail-closed body, no runtime EXECUTE for any role), and
+   neither wizard can offer or submit a selection. See `ABC16_PASS_B_OWNER_DECISIONS.md` (ABC-26).

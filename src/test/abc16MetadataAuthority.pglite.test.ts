@@ -333,15 +333,14 @@ describe('ABC-16 · AFTER H0 — every overlay-derived authority is closed', () 
     expect(await guestVisibleToAttacker(db, IDS.guestOwnedByAttackerAcademy)).toBe(true);
   });
 
-  it('a guest the academy owns is still admitted by the guest priority arm', async () => {
+  it('ABC-26 retires supplementary priority for every class, including owned and forged/foreign guests', async () => {
     const rows = await asAttacker<{ guest_player_id: string | null }>(
       db, `SELECT guest_player_id FROM public.filter_academy_priority_ids($1, NULL, $2::uuid[])`,
       [IDS.attackerAcademy, [IDS.guestOwnedByAttackerAcademy, IDS.guestTargetedByForgedMetadata]],
     );
     const ids = rows.map((r) => r.guest_player_id);
-    expect(ids).toContain(IDS.guestOwnedByAttackerAcademy);
-    // the victim academy's guest is NOT the attacker's, forged metadata notwithstanding
-    expect(ids).not.toContain(IDS.guestTargetedByForgedMetadata);
+    expect(rows).toEqual([]);
+    expect(ids).toEqual([]);
   });
 
   // ── fail-closed edges ───────────────────────────────────────────────────────────────────

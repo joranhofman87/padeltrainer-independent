@@ -102,8 +102,8 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 | **Key tables** | `persons`, `person_links` (`profile_id` UNIQUE, `guest_player_id` UNIQUE, exactly-one-source CHECK, one-profile-per-person partial index), `person_merge_review` (owner sign-off queue) — all three RLS-enabled with **zero policies BY DESIGN** (definer/service-only; `supabase/migrations/20260826260000_persons_expand.sql`, `…280000_persons_backfill.sql`). Person ids are **deterministic** (an absorbed profile/guest keeps its old uuid as its person id). Legacy: `guest_players` (`twin_of_profile_id` = explicit manager-asserted twin stamp; `linked_profile_id` is email-inferred and **NEVER identity truth** — the twin bridge retires at Phase 4), `player_locations`, `academy_player_metadata` (per-academy overlay), `player_rating_history`, `user_discounts`, `waiting_list_entries`. |
 | **UI** | `src/pages/{PlayerDashboard,PlayerAgenda,PlayerBookings,PlayerInvoicesPage,PlayerJourney}.tsx`, `AcademyPlayers.tsx`/`AcademyPlayerDetail.tsx`, `src/components/players/*` (shared) vs `src/components/player/*` (player-role-only, ESLint-restricted). |
 | **lib** | **`personIdentity.ts` — the single TS home of the person rule** (`personKeyOf`/`unifiedPersonKeyOf`/`personRefOf`/`matchBookingsToPerson`/`personDisplayName`), `guestPlayers.ts`, `academyPlayersQuery.ts`, `academyPlayerDetails.ts`, `signupClaimFlow.ts` (guest→account claim), `mapPlayersOverviewRow` / `UnifiedPlayer`. |
-| **Edge/RPC** | `create-manual-player`, `create-guest-slot-payment`, `create-guest-cyclus-payment`, `get-guest-booking`, `submit-guest-intake`; RPC `merge_guest_players` (twin-aware, data-loss-safe — the **only** same-person reconcile path, hardened P1-3); person-keyed readers (Phase 3.x): `get_my_person_id`, `get_cycle_roster_names`, `get_players_overview` (person-dedup), `get_person_refs_for_scope` (+`has_login`), `get_my_linked_guest_bookings`/`get_my_paid_booking_ids`/`get_my_pending_priority_claims`, `can_book_member_window`, `can_report_attendance_on_slot`, `is_guest_split_frozen`. |
-| **Dangerous** | Never treat `linked_profile_id` (or a bare email match) as identity — reconcile same-person duplicates only via `merge_guest_players`. Never write `person_id` columns directly — they are derived (invariant 2). Guest→profile linking outside the hardened RPC can lose booking/invoice history. |
+| **Edge/RPC** | `create-manual-player`, `create-guest-slot-payment`, `create-guest-cyclus-payment`, `get-guest-booking`, `submit-guest-intake`; RPC `merge_guest_players` (**RETIRED** — no UI entrypoint calls it; player merge is unavailable during containment); person-keyed readers (Phase 3.x): `get_my_person_id`, `get_cycle_roster_names`, `get_players_overview` (person-dedup), `get_person_refs_for_scope` (+`has_login`), `get_my_linked_guest_bookings`/`get_my_paid_booking_ids`/`get_my_pending_priority_claims`, `can_book_member_window`, `can_report_attendance_on_slot`, `is_guest_split_frozen`. |
+| **Dangerous** | Never treat `linked_profile_id` (or a bare email match) as identity. **Same-person reconciliation is UNAVAILABLE during containment**: `merge_guest_players` is retired and no UI entrypoint calls it, so there is no supported merge path to route a duplicate through — do not add one, and do not hand-write the reconcile it used to perform. Never write `person_id` columns directly — they are derived (invariant 2). Guest→profile linking outside the hardened RPC can lose booking/invoice history. |
 | **Invariants** | (1) **FAM-02**: guests and profiles are DISTINCT people unless `person_links` says otherwise, and a **dual-keyed row** (`player_id` + `guest_player_id` both set — written by the historical signup linker, exists by design) **belongs to the GUEST person**. Ownership predicates (player RLS on bookings/invoices) therefore carry pure-profile guards (`player_id = me AND guest_player_id IS NULL`); relationship-visibility helpers (`is_player_of_trainer`/`is_player_of_academy`) deliberately do not. (2) The `person_id` columns on the 7 dual-keyed tables (9 column-pairs) are **pure derived data**: `stamp_person_id_*` SECURITY DEFINER triggers recompute them guest-first from `person_links` on every keyed write — a client-supplied value is re-derived, never trusted. (3) **Split-freeze**: a guest with a pending `twin_detached_needs_split`/`merged_guest_email_moved` review (`is_guest_split_frozen`) reads as its OWN person — every person arm/path is freeze-gated on both the inbound and the candidate side until the owner resolves the `person_merge_review` row. (4) Delete of an academy player is a **soft remove** (reversible metadata flag), not a row delete. |
 | **Tests** | `personIdentity.test.ts`, `academyPlayerRemoval.test.ts`, `signupClaimFlow.test.ts`, `guestPlayers`-related tests, `AdminGuestPlayers.tsx`. |
 
@@ -164,7 +164,7 @@ registrations ──source_cycle_id──▶ cycles(type='cyclus') ──cyclus_
 | | |
 |---|---|
 | **Purpose** | Prior-cohort players (a group captain) re-book the whole group for a new round + pay once; consent to rules on the claim/pay page. |
-| **Key tables** | `slot_priority_claims` (`reminded_at`, consent record), rebook metadata on `cycles`, `invoices` (group-payment links). |
+| **Key tables** | `slot_priority_claims` (`reminded_at`, consent record), rebook metadata on `cycles`, `invoices` (group-payment links). ABC-26: `cycles.settings.rebook_priority_people`/`_guests` are no longer written and are **suppressed on read** — supplementary priority is unavailable for every class; stored values are left in place, never backfilled away. |
 | **UI** | `PriorityClaim.tsx` (public claim/pay), `AcademyRebookCohort.tsx`, `AcademyRebookManage.tsx`, `src/components/cycles/*` (`AcademyNewRoundWizard`, `PriorityClaimsSection`, `AddGroupMemberFields`, `RebookRulesField`), `RichTextConsent`. |
 | **lib** | `rebookManage.ts`, `priorityClaims.ts`, `rebookPaymentEligibility.ts`, `rebookRules.ts`, `signupClaimFlow.ts`, `invoiceClaimTracking.ts`. |
 | **Edge/RPC** | `bulk-rebook-cycle`, `send-priority-claim-invitation`, `send-rebook-reminder`, `send-rebook-group-confirmation`, `create-rebook-invoice`(+`-public`), `create-group-rebook-invoice`; RPCs `rebook_group_apply`, `expire_lapsed_priority_claim` (cron). |
@@ -262,3 +262,86 @@ Generic branded short-link primitive — full architecture in [`SHORT_LINKS.md`]
   (`src/test/shortLinkContract.test.ts`); `resolve_short_link` must never write (edge-cacheable).
 - **Distinct from** the `/t/` `/a/` profile slug links (`slug_redirects` + `resolve_public_handle`) —
   do not conflate; use `/s/` for new surfaces.
+
+## Rebook round recipient universe (ABC-27 / D5)
+
+A **rebook round** owns two immutable relations that together define who a member-open
+notification is for. They are additive, append-only and identifiers-only.
+
+- `rebook_round_recipients` — one row per canonical recipient of a **frozen** round. Exactly one
+  typed subject (`recipient_guest_player_id` XOR `recipient_player_profile_id`), guest-first: a
+  claim carrying both IDs is one recipient, the guest, and the accompanying profile UUID never
+  becomes a second recipient. A generated `recipient_order_key` gives deterministic bounded pages.
+- `rebook_round_recipient_claim_sources` — one row per source claim that put a recipient into the
+  universe, recording the claim/slot/cycle UUIDs and the captured identity, status and intent.
+
+**Membership is decided once.** Both relations are populated in the same transaction that freezes
+the round, from a single materialized source capture, so recipients and provenance observe
+identical claim tuples. Claims committed afterwards are intentionally not members: they may still
+affect live eligibility at send time, but they can never add, remove, rename or repoint a snapshot
+recipient. The round carries no cursor, count or digest — the rows are the universe.
+
+**Progress and completion.** Materialization pages the snapshot and anti-joins it against durable
+`notification_outbox` decisions. Every recipient ends with exactly one email-channel decision:
+`pending`, or terminal `skipped` with a canonical reason (`rebook_member_open_ineligible`,
+`member_window_closed`, or the resolver's own preference/contact/suppression reason). Finalization
+is authorized only by `NOT EXISTS` over undecided snapshot rows. Contributor markers are stamped on
+exactly the siblings named by provenance, never on every sibling in the round.
+
+**PRODUCT DELTA — an `upfront` round no longer emits a member-open invitation at all.** Live
+eligibility carries a cycle-level arm: a round whose `rebook_payment_mode` is `upfront` suppresses
+every recipient. The reasoning is in the migration, in its own words — *an upfront round is paid in
+full at claim time, so "a seat freed up, come and take it" is not an instrument the product can
+honour*. The retired legacy path was narrower: it suppressed only the individual courts a **paid
+group** actually held. So an upfront round with no paid group used to get the blast and now will
+not. That is a decided, recorded narrowing, not a defect.
+
+**A PAID GROUP HOLDS ITS COURT, IN EVERY PAYMENT MODE.** This was briefly not true, and the repair
+is worth recording because the two rules are different shapes. The legacy authority
+`slot_held_by_paid_group` is **slot-level**: a priority claim carrying a `rebook_group_id` for which
+a `paid` invoice exists. ABC-27 shipped only the **cycle-level** `upfront` rule above. For an
+`upfront` round that is a strict superset — measured — but a paid group inside a `deferred_split`
+round left the recipient eligible, where the legacy blast had suppressed that court. The state was
+product-reachable: both create paths stamp a `rebook_group_id` on every claim regardless of payment
+mode, and `create-rebook-invoice-public` delegates a **solo** group to
+`create-group-rebook-invoice` with no payment-mode gate — so an invitation could offer seats on a
+court somebody had already paid for in full.
+
+`20261203120000_d7_paid_group_hold_safety.sql` closes it by folding the canonical slot-level hold
+into the freed-seat arm, and **retains** the cycle-wide `upfront` rule beside it. The two answer
+different questions and both are kept:
+
+| | Question | Scope |
+|---|---|---|
+| `upfront` | is this whole round paid in full at claim time? | the cycle |
+| paid-group hold | has a group bought THIS court outright? | the slot |
+
+**It is deliberately per-court.** A held court disqualifies itself as the freed seat; a genuinely
+free seat on any other court of the same sibling still invites. Expressing the hold cycle-wide would
+over-suppress every other court in the sibling — the mirror image of the defect it repairs — so
+`src/test/d7RuntimeContract.realpg.test.ts` proves both directions, along with the adversarial arms:
+an unpaid or absent invoice never suppresses, another group's paid invoice never suppresses, and a
+held court in a sibling cycle or a foreign tenant never suppresses. Parity with the canonical
+authority is proved slot-for-slot over a fixture matrix rather than asserted.
+
+**WHEN the hold is read — the linearization point.** Eligibility is consulted at three places, and
+`20261203130000_d7_dispatch_linearization.sql` added the third: the materializer, the live
+pre-dispatch resolve, and the durable `begin_dispatch` authorization itself. The last of these is
+the **linearization point** for member-open eligibility: it re-reads the same authority, with the
+same arguments, inside the transaction that authorizes the send and before any durable artifact
+exists, so a payment landing between the resolve and the send is seen and the row is refused with
+zero provider calls.
+
+That is a statement about an *observation instant*, not an impossibility claim, and the distinction
+matters when reading the rule above. **A payment committed after the linearization point does not
+retroactively invalidate an already-authorized external send.** Closing the remaining
+snapshot-to-commit interval would require holding a payment or booking lock across a provider call,
+which this design refuses: it would trade a stale invitation for a deadlock on the payment path. An
+eligibility read and an outbound email cannot be made atomic.
+
+**Eligibility** is one set-based authority (`rebook_round_eligible_recipients`) shared verbatim by
+the materializer and the live send-time gate. It judges a recipient only in the siblings their
+provenance names, then unions, so a claimed or declined state in sibling A never suppresses an
+outstanding claim in sibling B. It re-verifies that the provenance-linked claim still exists and
+still canonicalizes to the same recipient, so a post-freeze merge, repoint or deletion withdraws
+backing rather than silently retargeting the invitation.

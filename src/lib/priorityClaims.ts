@@ -423,21 +423,54 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
   return { copiedSlots, createdClaims, notifiableSlotIds };
 }
 
+/** What a bulk notify actually achieved, per claim rather than per slot. */
+export interface NotifyClaimsResult {
+  /** claims durably enqueued — NOT delivered; the D7 worker delivers, and it is inactive */
+  queued: number;
+  /**
+   * claims that need a person. NOT disjoint from `queued`: the endpoint counts a durable enqueue
+   * whose `invited_at` stamp failed as BOTH — the message is queued and the claim is still
+   * un-stamped — so this is "needs attention", never "was not queued".
+   */
+  needsAttention: number;
+  /** claims the endpoint reported as outright failures */
+  failed: number;
+  /** SLOTS whose invocation never returned. The claim count behind them is unknown. */
+  unreachableSlots: number;
+}
+
 /**
  * Send priority-claim invitation emails for the given slots (one call per slot;
  * the edge function emails every pending, not-yet-invited claim on that slot).
- * Returns how many slots were notified. Failures per slot are swallowed so one
- * bad slot doesn't abort the rest.
+ *
+ * COUNTS CLAIMS, NOT SLOTS. This used to count a slot as "notified" whenever the HTTP invoke
+ * returned no error — but the endpoint answers 200 with a per-claim tally, so a slot whose every
+ * claim was REFUSED counted exactly like a slot that queued them all. Bulk-copied claims carry no
+ * round provenance, and the enqueue refuses a claim it cannot attribute to a round, so this is not
+ * a hypothetical: the whole batch could be refused and the wizard would report success (review
+ * round 2). Per-slot invoke failures are still swallowed so one bad slot cannot abort the rest —
+ * they surface as `failed`.
  */
-export async function notifyPriorityClaimsForSlots(slotIds: string[]): Promise<number> {
-  let notified = 0;
+export async function notifyPriorityClaimsForSlots(slotIds: string[]): Promise<NotifyClaimsResult> {
+  const out: NotifyClaimsResult = { queued: 0, needsAttention: 0, failed: 0, unreachableSlots: 0 };
   for (const slotId of slotIds) {
-    const { error } = await supabase.functions.invoke('send-priority-claim-invitation', {
+    const { data, error } = await supabase.functions.invoke('send-priority-claim-invitation', {
       body: { slotId },
     });
-    if (!error) notified++;
+    // A SLOT, not a claim. The invocation never returned, so how many claims it held is unknown —
+    // counting it as one failed invitation understated a slot holding five.
+    if (error) { out.unreachableSlots += 1; continue; }
+    const body = (data ?? {}) as {
+      queued?: number; suppressed?: number; held?: number; unstamped?: number; failed?: number;
+    };
+    // DISJOINT. `unstamped` is queued-but-unrecorded, so it counts in both figures on purpose —
+    // the message is on its way AND a person has to look at it.
+    out.queued += Number(body.queued ?? 0) + Number(body.unstamped ?? 0);
+    out.failed += Number(body.failed ?? 0);
+    out.needsAttention += Number(body.suppressed ?? 0) + Number(body.held ?? 0)
+      + Number(body.unstamped ?? 0);
   }
-  return notified;
+  return out;
 }
 
 export interface MyPendingClaim {

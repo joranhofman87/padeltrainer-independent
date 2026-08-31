@@ -1,5 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PRIORITY_PROTOCOL_VERSION, type PriorityRefusalReason } from '@/lib/priorityUnavailable';
+import {
+  PriorityRefusalAlert,
+  PriorityUnavailableExplanation,
+  RoundNoWorkNotice,
+  RoundNotPermittedNotice,
+  RoundSelectionMovedNotice,
+  RoundRecoveredNotice,
+  RoundUnknownAlert,
+} from './PriorityUnavailableNotice';
 import { addWeeks, format, startOfDay } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +25,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/lib/supabaseClient';
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
-import { createAndDrainRebookRound } from '@/lib/rebookInviteSend';
+import { createAndDrainRebookRound, previewRebookRound, type RoundUnknownReason } from '@/lib/rebookInviteSend';
+import { newSelectionUuid, type ReviewedSelection } from '@/lib/rebookSelectionDriver';
 import { getCycles, type Cycle } from '@/lib/cycles';
 import { fetchCyclusLabels, buildCyclusLabel, type CyclusRosterEntry } from '@/lib/cyclusLabel';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
@@ -30,7 +41,6 @@ import { RebookReminderLeadField } from '@/components/cycles/RebookReminderLeadF
 import { normalizeRichTextHtml } from '@/lib/richText';
 import { RebookPaymentModeField } from './RebookPaymentModeField';
 import { RebookPublicOpenModeField, type PublicOpenMode } from './RebookPublicOpenModeField';
-import { RebookPriorityListField, type PriorityPerson } from './RebookPriorityListField';
 
 interface Props {
   academyProfileId: string;
@@ -44,7 +54,14 @@ interface HolidayRange {
 }
 
 // Review summary returned by the dryRun before anything is created/emailed.
+//
+// `revision` and `body` pin the review to the EXACT request that produced it. Creation re-sends
+// `body` rather than rebuilding it from live state, and the send button is blocked whenever
+// `revision` no longer matches the live inputs — so a round can never be created from a shape the
+// operator did not see.
 interface ReviewData {
+  revision: string;
+  body: Record<string, unknown>;
   groups: number;
   players: number;
   totalSessions: number;
@@ -52,22 +69,91 @@ interface ReviewData {
   suggestedPrice: number | null;
   groupsDetail: RebookGroupDetail[];
   noEmailTotal: number;
+  /** Invitations this send authorizes: summed per included series, not a deduped headcount. */
+  emailInvitationTotal: number;
+  /** When the server took the contact snapshot this review shows. Disclosure only, never authority. */
+  rosterAsOf: string | null;
   grandInvoiceTotal: number;
+  /**
+   * The names the SERVER will give the cycles it creates.
+   *
+   * REVIEW ROUND 3 (P1): this wizard used to display the raw label it had typed, while the server
+   * runs a disambiguation chain over the round's existing names. With one series and a same-date
+   * cycle already holding `Ronde`, the review said `Ronde` and the round was written as
+   * `Ronde — Ma 18:00`. Fixing the derivation and fingerprinting it made the wrong name STABLE; it
+   * did not make it the name the operator saw.
+   */
+  targetCycles: Array<{ name: string }>;
 }
+
+/** A safe, non-negative integer from an untrusted response field — never `Number(...)`. */
+const count = (v: unknown): number => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : 0);
+/** An optional numeric field: a real finite number, or null. */
+const optionalNumber = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /**
  * Academy "new round" / rebook wizard, keyed on a SOURCE CYCLUS.
  *
- * Mirrors creating a new session (start date, number of weeks, price per
- * session) and reuses the /slot/new date picker. It drives the same
- * `bulk-rebook-cycle` edge function as RebookCohortWizard — which clusters the
- * cyclus's slots into ONE weekly series and GENERATES N weeks (skipping
- * holidays) rather than copying every source slot 1:1 — and shows a stepped
- * preview of exactly what will be created + emailed before sending.
+ * Mirrors creating a new session (start date, number of weeks, price per session) and reuses the
+ * /slot/new date picker. It shows a stepped preview of exactly what will be created and emailed
+ * before sending.
+ *
+ * IT NAMES A CYCLE; THE DATABASE DECIDES WHAT THAT MEANS. The selection surface clusters the
+ * cyclus's slots into weekly series by academy-local weekday and time, generates the occurrences
+ * (skipping holidays) rather than copying source slots 1:1, and names each child with the legacy
+ * disambiguation chain. This wizard never sees a source slot and could not reconstruct one — the
+ * derivation bridges are granted to no client role.
  */
 export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Props) {
   const { t } = useTranslation('cycles');
   const navigate = useNavigate();
+  // ABC-26: the three terminal outcomes that must stay on screen. All are PERSISTENT — a blocking
+  // result that a toast takes away is a result the operator cannot act on — and all are keyed on a
+  // structured reason, never a display string.
+  const [priorityRefusal, setPriorityRefusal] = useState<{ reason: PriorityRefusalReason; submitted: number } | null>(null);
+  const [recovered, setRecovered] = useState<
+    { roundId: string; targetCycleId: string; via: 'replay' | 'ledger' } | null>(null);
+  const [unknownOutcome, setUnknownOutcome] = useState<
+    { reason: RoundUnknownReason; targetCycleId: string | null; commandId?: string;
+      recovery?: 'not_visible' | 'unreadable' } | null>(null);
+  const [noWork, setNoWork] = useState(false);
+  const [selectionMoved, setSelectionMoved] = useState(false);
+  const [notPermitted, setNotPermitted] = useState<
+    'session_price' | 'extend_unavailable' | 'not_permitted' | null>(null);
+  /** Clear every terminal notice at the start of a new attempt, so none of them can look current. */
+  const clearOutcomes = () => {
+    setPriorityRefusal(null); setUnknownOutcome(null); setRecovered(null); setNoWork(false); setSelectionMoved(false); setNotPermitted(null);
+  };
+
+  // ── THE SELECTION SESSION ─────────────────────────────────────────────────────────────────
+  //
+  // Two facts that belong to this CONVERSATION rather than to what the operator chose, and both
+  // live in refs for reasons that are not stylistic:
+  //
+  //   • The round uuid is client-minted and must be STABLE. Re-minting it on a retry would make the
+  //     retry a different round — the derived child identities are keyed on it — so a transport
+  //     failure followed by a second click would create a second set of cycles instead of replaying
+  //     the first. It is minted ONCE, when the wizard mounts.
+  //   • The selection digest arrives WITH a server answer. Folding it into `baseBody` would change
+  //     `bodyRevision`, which is what blocks the send when the form no longer matches the review —
+  //     so every answer would invalidate the review it had just produced.
+  const roundIdRef = useRef<string>(newSelectionUuid());
+  const selectionDigestRef = useRef<string | null>(null);
+  // THE REVIEWED ARTEFACTS. The fingerprint binds the minted target identities and the command
+  // uuid, so the send must present exactly what the review produced — re-deriving any of them
+  // would apply something the operator never approved.
+  const reviewedRef = useRef<ReviewedSelection | null>(null);
+  const rpc = useCallback(
+    async (fn: string, args: Record<string, unknown>) => {
+      const r = await supabase.rpc(fn as never, args as never);
+      return { data: r.data as unknown, error: r.error as unknown };
+    },
+    [],
+  );
+  // Ordering guard: only the NEWEST preview may write state. An older in-flight response is
+  // discarded even if it lands last, and its AbortController is fired so it usually never lands.
+  const previewGenRef = useRef(0);
+  const previewAbortRef = useRef<AbortController | null>(null);
   const [searchParams] = useSearchParams();
 
   const [cycles, setCycles] = useState<Cycle[]>([]);
@@ -116,17 +202,6 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   const [rebookRules, setRebookRules] = useState('');
   // Per-round override of the claim page's standard explanation box ('' = standard copy).
   const [claimInfo, setClaimInfo] = useState('');
-  // Priority list: registered players who also get first dibs (+ an email) when the
-  // member window opens, plus the optional message for that "sessions opened" email.
-  const [priorityPeople, setPriorityPeople] = useState<PriorityPerson[]>([]);
-  const [priorityMessage, setPriorityMessage] = useState('');
-
-  // The priority list is only honoured during the member window, so selecting anyone
-  // force-enables it (and the toggle is disabled while the list is non-empty).
-  useEffect(() => {
-    if (priorityPeople.length > 0 && !enableMemberWindow) setEnableMemberWindow(true);
-  }, [priorityPeople, enableMemberWindow]);
-
   useEffect(() => {
     getCycles('academy', academyProfileId)
       .then(setCycles)
@@ -156,6 +231,15 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
 
   const baseBody = useMemo(
     () => ({
+      // Pass B §4: declares that this client can READ the priority accounting. The Edge function
+      // refuses a submission it could not report on, rather than returning a green round whose
+      // refusals this page cannot show.
+      priorityContractVersion: PRIORITY_PROTOCOL_VERSION,
+      // THE TENANT IS NOW THE CALLER'S TO NAME. The retired edge function resolved the academy
+      // from the source cyclus when the body omitted it; the typed surface authorizes against the
+      // academy the CALLER names and re-anchors the cyclus to it, so an omitted academy is not a
+      // convenience — it is a call that can only be refused.
+      academyProfileId,
       sourceCyclusId,
       newStartDate,
       priorityWindowDays,
@@ -181,55 +265,212 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       claimInfo: normalizeRichTextHtml(claimInfo),
       // Split by type: registered profiles vs accountless guests (two separate settings arrays,
       // each with its own can_book_member_window clause).
-      priorityPeople: priorityPeople.filter((p) => p.player_type === 'registered').map((p) => p.id),
-      priorityGuests: priorityPeople.filter((p) => p.player_type === 'guest').map((p) => p.id),
-      memberOpenMessage: priorityMessage.trim() || null,
+      // ABC-26: canonical empty arrays, always. Sending the fields explicitly (rather than
+      // omitting them) makes the request self-describing and keeps the server's parse on one
+      // code path for old and new clients alike.
+      priorityPeople: [],
+      priorityGuests: [],
+      memberOpenMessage: null,
       autoReminder,
       reminderLeadHours,
     }),
-    [sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, publicOpenMode, publicOpenSplit, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, claimInfo, priorityPeople, priorityMessage, autoReminder, reminderLeadHours],
+    [academyProfileId, sourceCyclusId, newStartDate, newEndDate, priorityWindowDays, enableMemberWindow, memberWindowDays, paymentMode, strictMollie, publicOpenMode, publicOpenSplit, requireAdminReview, targetCycleName, sessionPrice, holidays, invitationMessage, invitationSubject, reminderMessage, reminderSubject, rebookRules, claimInfo, autoReminder, reminderLeadHours],
   );
 
+  // The EXACT identity of the request. Every field that reaches the server is in it, so any change
+  // an operator makes after reviewing — a date, the price, the round name, the reminder copy —
+  // invalidates the review rather than silently riding along into creation.
+  const bodyRevision = useMemo(() => JSON.stringify(baseBody), [baseBody]);
+  // The LIVE revision, readable from inside an in-flight await: a closure captures the value
+  // it started with, which is exactly what a staleness check must not compare against itself.
+  const bodyRevisionRef = useRef(bodyRevision);
+  useEffect(() => { bodyRevisionRef.current = bodyRevision; }, [bodyRevision]);
+  // Blocking conditions for the send button AND for the handler it calls. Both are checked: a
+  // disabled button is a hint, not a guarantee — the handler can still be reached by a stale
+  // click, a keyboard activation racing a re-render, or a test.
+  const reviewIsStale = review === null || review.revision !== bodyRevision;
+  const sendBlocked =
+    submitting || previewing || reviewIsStale || priorityRefusal !== null || unknownOutcome !== null
+    || noWork || selectionMoved || notPermitted !== null;
+
   // Step 1 → 2: dryRun to compute exactly what will be created + emailed.
+  //
+  // Every non-preview answer is a PERSISTENT notice, and every one of them clears the review: a
+  // review left on screen next to a refusal is a page showing two contradictory truths, and the
+  // send button is driven by the review.
   const handleReview = async () => {
     if (!inputsValid) {
       toast.error(t('newRound.errFillRequired', 'Kies een cyclus en een startdatum.'));
       return;
     }
+    const gen = ++previewGenRef.current;
+    previewAbortRef.current?.abort();
+    const ac = new AbortController();
+    previewAbortRef.current = ac;
+    // Snapshot the request AND its revision before awaiting, so the result is matched against the
+    // inputs it was actually computed from — not against whatever the form holds when it returns.
+    const snapshot = baseBody;
+    const revision = bodyRevision;
     setPreviewing(true);
+    clearOutcomes();
     try {
-      const { data, error } = await supabase.functions.invoke('bulk-rebook-cycle', {
-        body: { ...baseBody, dryRun: true },
-      });
-      if (error) throw error;
-      const players = Number(data?.players ?? 0);
+      // ── NO LENGTH? ASK FOR THE SOURCE TERM FIRST ──────────────────────────────────────────
+      //
+      // REVIEW ROUND 2 (P1). This screen offers "leave the end date blank to reuse the previous
+      // round's length", and the typed core refuses an intent carrying neither an end date nor a
+      // week count — so the blank-end-date flow reported "there is nothing to rebook" and could
+      // never reach the suggestion that would have filled it in.
+      //
+      // `counts` is the projection that can answer without a length. It DESCRIBES the term that
+      // ran; it does not substitute one, which is the rule the server enforces and this respects:
+      // the field is filled in on screen and the operator reviews again, having seen it.
+      if (!endDate) {
+        const counted = await previewRebookRound(
+          snapshot,
+          { rpc, newUuid: newSelectionUuid, signal: ac.signal },
+          { roundId: roundIdRef.current, selectionDigest: selectionDigestRef.current },
+          'counts',
+        );
+        // REVIEW ROUND 3 (P2): THE FORM MUST NOT HAVE MOVED EITHER. `previewGenRef` only advances
+        // on another Review click, and the source and date controls stay enabled while the count
+        // is in flight — so an operator who picked an end date or a different source mid-flight had
+        // the stale answer overwrite their input and clear the digest they had just invalidated.
+        if (gen !== previewGenRef.current || counted.phase === 'aborted') return;
+        if (revision !== bodyRevisionRef.current) return;
+        if (counted.phase === 'preview') {
+          const weeks = count(counted.body.suggestedWeeks);
+          selectionDigestRef.current = counted.selectionDigest;
+          if (weeks > 0 && startDate) {
+            setEndDate(startOfDay(addWeeks(startDate, weeks - 1)));
+            // The review is not run against a length the operator has not seen: filling the field
+            // changes the request, so they confirm it and ask again.
+            return;
+          }
+        }
+      }
+
+      // `review`, not `counts`: this wizard's preview IS the review — it carries the label, the
+      // dates and the length, and its numbers are what the operator approves before sending.
+      const result = await previewRebookRound(
+        snapshot,
+        { rpc, newUuid: newSelectionUuid, signal: ac.signal },
+        { roundId: roundIdRef.current, selectionDigest: selectionDigestRef.current },
+        'review',
+      );
+      // A superseded request carries no information about the world: it must not clear, replace or
+      // contradict the authority held by the request that superseded it.
+      if (gen !== previewGenRef.current || result.phase === 'aborted') return;
+
+      if (result.phase === 'priority_refused') {
+        setPriorityRefusal({ reason: result.reason, submitted: result.totalSubmitted });
+        setReview(null);
+        return;
+      }
+      if (result.phase === 'unknown') {
+        setUnknownOutcome({ reason: result.reason, targetCycleId: null });
+        setReview(null);
+        return;
+      }
+      if (result.phase === 'creation_failed') {
+        // A dry run that proves there is nothing to create. Not an error, and not a toast.
+        setNoWork(true);
+        setReview(null);
+        return;
+      }
+      if (result.phase === 'not_permitted') {
+        // A REAL REVIEW, AND NO SEND.
+        //
+        // REVIEW ROUND 2 (P2): THE REVIEW STAYS ON SCREEN. What is withheld is the SEND
+        // AUTHORITY — `reviewedRef` — not the information. Clearing the review as well made
+        // the stated mitigation false: the operator was told the round cannot be sent and
+        // simultaneously shown nothing about it.
+        setNotPermitted(result.reason);
+        reviewedRef.current = null;
+        if (result.body) {
+          const d = result.body;
+          selectionDigestRef.current = result.selectionDigest ?? null;
+          setAckNoEmail(false);
+          setReview({
+            revision,
+            body: snapshot,
+            groups: count(d.groups),
+            players: count(d.players),
+            totalSessions: count(d.totalSessions),
+            effWeeks: count(d.effWeeks),
+            suggestedPrice: optionalNumber(d.suggestedPrice),
+            groupsDetail: Array.isArray(d.groupsDetail) ? (d.groupsDetail as RebookGroupDetail[]) : [],
+            noEmailTotal: count(d.noEmailTotal),
+            emailInvitationTotal: count(d.emailInvitationTotal),
+            rosterAsOf: typeof d.rosterAsOf === 'string' ? d.rosterAsOf : null,
+            grandInvoiceTotal: optionalNumber(d.grandInvoiceTotal) ?? 0,
+            targetCycles: Array.isArray(d.targetCycles) ? (d.targetCycles as Array<{ name: string }>) : [],
+          });
+          setStep('review');
+        }
+        return;
+      }
+      if (result.phase === 'selection_moved') {
+        // The sessions changed under the digest this page was holding. The review is cleared —
+        // it describes a selection the server no longer derives — and the operator is told to look
+        // again rather than being shown numbers nothing will honour.
+        setSelectionMoved(true);
+        setReview(null);
+        selectionDigestRef.current = null;
+        reviewedRef.current = null;
+        return;
+      }
+
+      selectionDigestRef.current = result.selectionDigest;
+      reviewedRef.current = result.reviewed;
+      const data = result.body;
+      const players = count(data.players);
       if (players === 0) {
-        toast.info(t('newRound.previewEmpty', 'Geen spelers gevonden in deze cyclus.'));
+        setNoWork(true);
+        setReview(null);
         return;
       }
       // Pre-fill the end date + price from the previous round when the user left them blank.
       // The last session lands (weeks-1) weeks after the start, so that's the suggested end date —
       // the user sees a concrete range they can shorten/extend and re-check.
-      const suggestedWeeks = Number(data?.suggestedWeeks ?? 0);
-      const suggestedPrice = data?.suggestedPrice == null ? null : Number(data.suggestedPrice);
+      const suggestedWeeks = count(data.suggestedWeeks);
+      const suggestedPrice = optionalNumber(data.suggestedPrice);
       if (!endDate && startDate && suggestedWeeks > 0) setEndDate(startOfDay(addWeeks(startDate, suggestedWeeks - 1)));
-      if (sessionPrice === '' && suggestedPrice != null) setSessionPrice(String(suggestedPrice));
+      // REVIEW ROUND 4 (P1): THE PRICE IS NO LONGER PREFILLED, and this is the difference
+      // between a blocked flow and an UNSENDABLE one. ABC-27 marks any non-null session
+      // price apply-ineligible, so auto-filling it from the source term meant an eligible
+      // review immediately made itself un-appliable — and re-reviewing simply refilled it.
+      // The suggestion is still SHOWN beside the field; typing one is the operator's
+      // choice, and they are told plainly why it withholds the send.
+      // (was: setSessionPrice(<the source term's modal price>))
       setAckNoEmail(false);
       setReview({
-        groups: Number(data?.groups ?? 0),
+        revision,
+        body: snapshot,
+        groups: count(data.groups),
         players,
-        totalSessions: Number(data?.totalSessions ?? 0),
-        effWeeks: Number(data?.effWeeks ?? 0),
+        totalSessions: count(data.totalSessions),
+        effWeeks: count(data.effWeeks),
         suggestedPrice,
-        groupsDetail: Array.isArray(data?.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : [],
-        noEmailTotal: Number(data?.noEmailTotal ?? 0),
-        grandInvoiceTotal: Number(data?.grandInvoiceTotal ?? 0),
+        groupsDetail: Array.isArray(data.groupsDetail) ? (data.groupsDetail as RebookGroupDetail[]) : [],
+        noEmailTotal: count(data.noEmailTotal),
+        emailInvitationTotal: count(data.emailInvitationTotal),
+        rosterAsOf: typeof data.rosterAsOf === 'string' ? data.rosterAsOf : null,
+        // REVIEW ROUND 1 (P2): NOT `count`. That helper takes SAFE INTEGERS only, so a
+        // legitimate total of 59.85 rendered as 0 — a review screen quietly showing the
+        // operator a price of nothing. Money is not an integer here.
+        grandInvoiceTotal: optionalNumber(data.grandInvoiceTotal) ?? 0,
+        targetCycles: Array.isArray(data.targetCycles) ? (data.targetCycles as Array<{ name: string }>) : [],
       });
       setStep('review');
-    } catch (e) {
-      toast.error(getFriendlyErrorMessage(e, t('newRound.errPreview', 'Kon de preview niet ophalen. Probeer het opnieuw.')));
+    } catch {
+      // previewRebookRound never throws for a server outcome, so anything here is a client-side
+      // fault. It leaves the preview UNVERIFIED rather than failed, and it clears the review.
+      if (gen === previewGenRef.current) {
+        setUnknownOutcome({ reason: 'unreadable_response', targetCycleId: null });
+        setReview(null);
+      }
     } finally {
-      setPreviewing(false);
+      if (gen === previewGenRef.current) setPreviewing(false);
     }
   };
 
@@ -237,9 +478,12 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   // in bounded, resumable chunks. This avoids one giant edge invocation that could
   // hit the wall-clock and silently partial-send a large first blast.
   const handleSubmit = async () => {
-    if (!inputsValid || !review || review.players <= 0 || submitting) return;
+    // The same guard the button renders, re-evaluated here. `review` is also the SNAPSHOT that gets
+    // sent, so creation can only ever use the exact shape that was reviewed.
+    if (!inputsValid || sendBlocked || !review || review.players <= 0) return;
     setSubmitting(true);
     setSendProgress(null);
+    clearOutcomes();
     try {
       // 1. Create the round + claims WITHOUT sending (skipInvites) — returns fast.
       //    roundAware:true tells the engine we can drain a MULTI-cycle round (one cycle per
@@ -247,12 +491,66 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
       //    sibling cycles' invites.
       // Create the round WITHOUT sending, then drain invites in bounded, resumable chunks — the SHARED
       // orchestration both wizards use, so neither can regress to an inline blast (Codex round-9 #1).
-      const total = Number(review?.players ?? 0);
+      // What the operator agreed to send, in the same unit the server reports back and the drain
+      // actually produces: one recipient per (series, player) with an address.
+      const approvedInvitations = review.emailInvitationTotal;
+      // THE DENOMINATOR OF "x OF y INVITATIONS SENT" IS INVITATIONS, NOT PEOPLE.
+      //
+      // REVIEW ROUND 1 (P2): this was `review.players`, the DISTINCT headcount. A player in two
+      // included groups is one person and two invitations, so a partial send of one of them read
+      // "1 of 1 invitations sent" while one was still queued. The correct denominator was already
+      // computed on the line above.
+      const total = approvedInvitations;
+      // NO REVIEW ARTEFACTS, NO SEND. The fingerprint is the only thing the apply accepts, so a
+      // review that produced none is a review this page may display but must never act on.
+      const reviewed = reviewedRef.current;
+      if (!reviewed) {
+        setUnknownOutcome({ reason: 'unverified_creation', targetCycleId: null });
+        return;
+      }
       setSendProgress({ sent: 0, total });
-      const result = await createAndDrainRebookRound(baseBody, {
-        invoke: (fn, args) => supabase.functions.invoke(fn, args),
-        onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
-      });
+      const result = await createAndDrainRebookRound(
+        review.body,
+        {
+          rpc,
+          onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
+        },
+        // THE SAME ROUND UUID the wizard has held since it mounted…
+        { roundId: roundIdRef.current, selectionDigest: selectionDigestRef.current },
+        // …and the EXACT review the operator approved. A retry re-enters here with both unchanged,
+        // so the command replays instead of creating a second round.
+        reviewed,
+      );
+      if (result.phase === 'priority_refused') {
+        // Nothing was created and nothing was sent. Persistent, focused, no navigation.
+        setPriorityRefusal({ reason: result.reason, submitted: result.totalSubmitted });
+        return;
+      }
+      if (result.phase === 'unknown') {
+        // The round MAY exist. Zero invites were drained by construction. Never a success toast and
+        // never a navigation — landing the operator on a round page would assert the round exists.
+        // REVIEW ROUND 2 (P2): THE COMMAND UUID TRAVELS WITH IT. Re-presenting it replays the
+        // stored receipt instead of creating a second round, so it is the one handle that can
+        // resolve an ambiguous apply — and it stopped at the helper boundary before.
+        setUnknownOutcome({
+          reason: result.reason,
+          targetCycleId: result.targetCycleId,
+          commandId: result.commandId,
+          // D7 TERMINAL CLOSURE: the orchestration ASKED the command ledger before giving up, and
+          // what it learned changes what the operator should do next. `absent` means start again
+          // safely; `unreadable` means look before creating anything.
+          recovery: result.recovery,
+        });
+        return;
+      }
+      if (result.phase === 'selection_moved') {
+        // Nothing was created and nothing was sent. The review is dropped with the digest, so the
+        // send stays blocked until the operator has seen the current selection.
+        setSelectionMoved(true);
+        setReview(null);
+        selectionDigestRef.current = null;
+        return;
+      }
       if (result.phase === 'creation_failed') {
         // The round was NOT created (Codex round-9 #2) — show the reason and do NOT navigate.
         if (result.reason === 'already_exists') toast.error(t('newRound.alreadyExists', 'Er bestaat al een ronde met deze naam en startdatum. Geef de nieuwe ronde een andere naam of datum.'));
@@ -261,9 +559,42 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
         else toast.error(t('newRound.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.'));
         return;
       }
-      // Round CREATED (navigable). A partial/unknown delivery ⇒ resend from the rebook page. leftover
-      // ===null means the count is UNKNOWN (a send threw before any count was learned — Codex round-10
-      // #1): use a no-numbers copy, never a fabricated total.
+      // ── THE ROUND EXISTS, AND NOTHING WAS SENT BY THIS ATTEMPT ─────────────────────────────
+      //
+      // `D7_RECOVERY_AMBIGUOUS_PROVIDER_SEND_P1_V1`. Either the server replayed an earlier command
+      // or we recovered its receipt from the ledger — both mean an earlier attempt may already have
+      // mailed some of these players, and nothing durable records whether it did. So this stops
+      // here: a persistent notice, no toast, no navigation, and above all no send. Resuming is an
+      // explicit action on the round's own page, where the unresolved counts are visible.
+      if (result.phase === 'recovered') {
+        setRecovered({ roundId: result.roundId, targetCycleId: result.targetCycleId, via: result.via });
+        return;
+      }
+      // ── OD1/OD2 · THE CONTACT DELTA IS DISCLOSED ON ITS OWN TERMS ────────────────────────
+      //
+      // REVIEW ROUND 1 (P2): this used to be one arm of the delivery else-if chain, so it was
+      // SUPPRESSED whenever delivery was partial or unknown — precisely the situations where an
+      // operator most needs to know that the recipient set moved. Approve four, apply reports
+      // three, one send fails: they saw only "3 of 4 sent" and never learned that somebody's email
+      // address had changed underneath the round. It is a separate fact from how the send went, so
+      // it is now a separate notice and both can appear.
+      //
+      // Null counts mean the server did not state them — a recovered round carries a stored
+      // receipt, not a fresh contact read — so there is nothing to compare and nothing is claimed.
+      if (approvedInvitations !== null
+          && result.contactableCount !== null
+          && result.contactableCount !== approvedInvitations) {
+        toast.warning(
+          t('newRound.contactsMoved', 'De ronde is aangemaakt. Let op: bij het versturen waren {{now}} spelers bereikbaar per e-mail, terwijl je er {{approved}} had goedgekeurd — iemand heeft er tussendoor een e-mailadres toegevoegd of verwijderd. Er zijn {{invites}} e-mails verstuurd.', {
+            now: result.contactableCount,
+            approved: approvedInvitations,
+            invites: result.totalSent,
+          }),
+        );
+      }
+      // Round CREATED and fully VERIFIED (the only navigable arm). A partial/unknown delivery ⇒
+      // resend from the rebook page. leftover===null means the count is UNKNOWN (a send threw before
+      // any count was learned — Codex round-10 #1): use a no-numbers copy, never a fabricated total.
       if (result.leftover === null) {
         toast.warning(
           t('newRound.invitesPartialUnknown', 'De ronde is aangemaakt, maar het versturen van de uitnodigingen is onderbroken — verstuur de rest via de ronde-pagina.'),
@@ -286,9 +617,13 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
           }),
         );
       }
-      // Land on the new cycle's rebook management view (falls back to backHref).
-      navigate(result.targetCycleId ? `/app/academy/cycles/${result.targetCycleId}/rebook` : backHref);
+      // Land on the new cycle's rebook management view. `targetCycleId` is a validated UUID on this
+      // arm, so there is no fallback branch that could navigate somewhere unrelated.
+      navigate(`/app/academy/cycles/${result.targetCycleId}/rebook`);
     } catch (e) {
+      // createAndDrainRebookRound does not throw for a server outcome; anything landing here is a
+      // genuine client-side fault, and it leaves the world unverified rather than failed.
+      setUnknownOutcome({ reason: 'transport_error', targetCycleId: null });
       toast.error(getFriendlyErrorMessage(e, t('newRound.errSubmit', 'Kon de ronde niet aanmaken. Probeer het opnieuw.')));
     } finally {
       setSubmitting(false);
@@ -305,6 +640,8 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
   }
 
   const effPrice = sessionPrice || (review?.suggestedPrice != null ? String(review.suggestedPrice) : '');
+  // A price is only universal when the operator TYPED one; otherwise each series keeps its own.
+  const priceIsUniversal = sessionPrice.trim() !== '';
 
   return (
     <div className="container max-w-3xl mx-auto px-4 py-6 space-y-6">
@@ -330,6 +667,29 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
         </span>
       </div>
 
+      {/* ABC-26: terminal outcomes live ABOVE the step switch, so a refusal raised on step 2 is
+          still on screen after the operator steps back to fix the inputs. Rendering them inside a
+          step made them vanish exactly when they were being acted on. */}
+      <PriorityRefusalAlert
+        reason={priorityRefusal?.reason ?? null}
+        submitted={priorityRefusal?.submitted ?? 0}
+      />
+      <RoundRecoveredNotice
+        roundId={recovered?.roundId ?? null}
+        targetCycleId={recovered?.targetCycleId ?? null}
+        via={recovered?.via ?? null}
+        testId="round-recovered"
+      />
+      <RoundUnknownAlert
+        reason={unknownOutcome?.reason ?? null}
+        targetCycleId={unknownOutcome?.targetCycleId ?? null}
+        commandId={unknownOutcome?.commandId ?? null}
+        recovery={unknownOutcome?.recovery ?? null}
+      />
+      <RoundNoWorkNotice shown={noWork} />
+      <RoundNotPermittedNotice reason={notPermitted} />
+      <RoundSelectionMovedNotice shown={selectionMoved} />
+
       {step === 'configure' && (
         <>
           <Card>
@@ -337,7 +697,18 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             <CardContent className="space-y-4">
               <div>
                 <Label className="text-xs">{t('newRound.sourceLabel', 'Cyclus')}</Label>
-                <Select value={sourceCyclusId} onValueChange={(v) => { setSourceCyclusId(v); setReview(null); }}>
+                <Select
+                  value={sourceCyclusId}
+                  onValueChange={(v) => {
+                    setSourceCyclusId(v);
+                    setReview(null);
+                    // A NEW SOURCE IS A NEW SELECTION. Keeping the old digest would make the first
+                    // review of it a guaranteed `selection_moved` — correct, and a wasted round
+                    // trip that tells the operator to recover from something they just did.
+                    selectionDigestRef.current = null;
+                    reviewedRef.current = null;
+                  }}
+                >
                   <SelectTrigger><SelectValue placeholder={t('newRound.selectCyclus', 'Kies een cyclus')} /></SelectTrigger>
                   <SelectContent>
                     {sourceCycles.map((c) => <SelectItem key={c.id} value={c.id}>{cyclusLabel(c)}</SelectItem>)}
@@ -420,27 +791,23 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             setEnableMemberWindow={setEnableMemberWindow}
             memberWindowDays={memberWindowDays}
             setMemberWindowDays={setMemberWindowDays}
-            lockMemberWindow={priorityPeople.length > 0}
-            lockMemberWindowHint={t('newRound.priorityRequiresMember', 'De voorrangslijst gebruikt het ledenvenster; dit staat daarom aan.')}
+            lockMemberWindow={false}
           />
 
-          {/* The priority list rides on the member window (that's when these people get first
-              dibs on freed seats) — without it the list does nothing, so only show it then. */}
-          {enableMemberWindow && (
-            <Card>
-              <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>
-              <CardContent>
-                <RebookPriorityListField
-                  academyProfileId={academyProfileId}
-                  value={priorityPeople}
-                  onChange={setPriorityPeople}
-                  message={priorityMessage}
-                  onMessageChange={setPriorityMessage}
-                  disabled={submitting}
-                />
-              </CardContent>
-            </Card>
-          )}
+          {/* ABC-26: rendered UNCONDITIONALLY, not under `enableMemberWindow`.
+              The old gate made sense when the card held a selector that only mattered during the
+              member window. It now holds the containment truth, and gating truth on a toggle means
+              the explanation vanishes the moment an operator turns the member window off — exactly
+              when they are most likely to go looking for where the priority list went.
+              The selector is GONE, not disabled: a disabled control still implies the action exists
+              and will return, and a disabled control with stale state can still be submitted by a
+              handler. There is nothing here to submit. */}
+          <Card>
+            <CardHeader><CardTitle>{t('newRound.priorityListTitle', 'Voorrangslijst')}</CardTitle></CardHeader>
+            <CardContent>
+              <PriorityUnavailableExplanation testId="new-round-priority-unavailable" />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader><CardTitle>{t('newRound.publicRelease', 'Publiek vrijgeven')}</CardTitle></CardHeader>
@@ -470,8 +837,24 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             <CardHeader><CardTitle>{t('newRound.reviewTitle', 'Dit gaat er gebeuren')}</CardTitle></CardHeader>
             <CardContent className="space-y-4 text-sm">
               <p>
-                {t('newRound.reviewIntroRange', 'Je maakt "{{name}}" aan van {{start}} t/m {{end}}, € {{price}} per sessie:', {
-                  name: targetCycleName.trim() || t('newRound.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
+                {/* REVIEW ROUND 5 (P2): DO NOT CLAIM ONE PRICE THE ROUND DOES NOT HAVE. A blank
+                    price field sends `sessionPrice: null`, and the server then gives every series
+                    its OWN source price. This line used to substitute the single modal
+                    recommendation anyway, so a €20/€30 pair of groups read "€20 per sessie" while a
+                    child was written at €30. It is exactly the sendable path that was wrong: a
+                    typed price makes the round apply-ineligible, so blank is the only case that
+                    can reach a send. */}
+                {t(priceIsUniversal ? 'newRound.reviewIntroRange' : 'newRound.reviewIntroRangePerGroup',
+                  priceIsUniversal
+                    ? 'Je maakt "{{name}}" aan van {{start}} t/m {{end}}, € {{price}} per sessie:'
+                    : 'Je maakt "{{name}}" aan van {{start}} t/m {{end}}. Elke groep houdt zijn eigen prijs per sessie — zie de tabel hieronder:', {
+                  // THE SERVER'S NAME, NOT THE TYPED ONE (review round 3, P1). The database runs a
+                  // disambiguation chain over the round's existing names, so what gets created can
+                  // differ from what was typed — and this line is the operator's only sight of it.
+                  // Falling back to the typed label only when the server named nothing.
+                  name: review.targetCycles.map((c) => c.name).join(', ')
+                    || targetCycleName.trim()
+                    || t('newRound.defaultCycleName', 'Volgende ronde {{year}}', { year: new Date().getFullYear() }),
                   start: newStartDate,
                   end: newEndDate || newStartDate,
                   price: effPrice || '—',
@@ -489,6 +872,15 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                 ackNoEmail={ackNoEmail}
                 onAckChange={setAckNoEmail}
                 paymentMode={paymentMode}
+                // REVIEW ROUND 1 (P2): THE SERVER'S TOTALS, as the cohort wizard already passes.
+                // Without them the table sums per-series players, so a person in two groups is
+                // displayed twice — while `review.players` is the authoritative DISTINCT headcount
+                // the server computed for exactly that reason.
+                summary={{
+                  groups: review.groups,
+                  players: review.players,
+                  participantSessions: review.totalSessions,
+                }}
               />
               {holidays.filter((h) => h.from && h.to).length > 0 && (
                 <p className="text-xs text-muted-foreground">
@@ -497,9 +889,22 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
                   })}
                 </p>
               )}
+              {review.rosterAsOf && (
+                /* OD1 · THE ROSTER IS A SNAPSHOT, AND IT SAYS SO.
+                   Contact data is a mutable attribute of a person, not identity of this command:
+                   the reviewed receipt binds WHO and WHAT, never how they are reachable. So the
+                   round is not frozen against a contact edit — it is sent against whatever is
+                   current — and the operator is told that plainly rather than being left to assume
+                   the list they approved is the list that gets mailed. */
+                <p className="text-xs text-muted-foreground" data-testid="new-round-contacts-asof">
+                  {t('newRound.contactsSnapshot', 'Contactgegevens gecontroleerd op {{time}}. Wie daarna een e-mailadres toevoegt of verwijdert, verandert wie er een uitnodiging krijgt — we versturen naar de dan geldende gegevens.', {
+                    time: new Date(review.rosterAsOf).toLocaleString(),
+                  })}
+                </p>
+              )}
               <p className="font-medium">
                 {t('newRound.reviewEmails', '{{players}} spelers krijgen nu een uitnodiging per e-mail.', {
-                  players: Math.max(0, review.players - review.noEmailTotal),
+                  players: review.emailInvitationTotal,
                 })}
               </p>
               <div className="space-y-3 rounded-md border p-3">
@@ -586,9 +991,12 @@ export default function AcademyNewRoundWizard({ academyProfileId, backHref }: Pr
             <Button variant="ghost" onClick={() => setStep('configure')} disabled={submitting}>
               <ArrowLeft className="h-4 w-4 mr-2" /> {t('newRound.backToConfigure', 'Aanpassen')}
             </Button>
+            {/* Blocked on the SAME condition the handler re-checks: pending, stale (the inputs moved
+                since this review was computed), or any terminal outcome standing. */}
             <Button
               onClick={handleSubmit}
-              disabled={submitting || (review.noEmailTotal > 0 && !ackNoEmail)}
+              data-testid="new-round-send"
+              disabled={sendBlocked || (review.noEmailTotal > 0 && !ackNoEmail)}
             >
               <Send className="h-4 w-4 mr-2" />
               {sendProgress

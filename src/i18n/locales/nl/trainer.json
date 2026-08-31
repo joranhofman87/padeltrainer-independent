@@ -630,7 +630,8 @@
       "removeClub": "Club verwijderen",
       "addClub": "Club toevoegen",
       "clubsReadOnly": "Clubs zijn tijdelijk alleen-lezen terwijl we verbeteren hoe spelers aan je academy worden gekoppeld.",
-      "removeUnavailable": "Een speler verwijderen is tijdelijk niet beschikbaar terwijl we verbeteren hoe spelers aan je academy worden gekoppeld. Er is niets aan deze speler gewijzigd."
+      "removeUnavailable": "Een speler verwijderen is tijdelijk niet beschikbaar terwijl we verbeteren hoe spelers aan je academy worden gekoppeld. Er is niets aan deze speler gewijzigd.",
+      "registeredOverlayUnavailable": "Hier op dit moment niet te bewerken."
     },
     "import": {
       "button": "CSV importeren",
@@ -702,7 +703,11 @@
         "billingBusinessName": "Bedrijfsnaam (facturatie)",
         "billingAddress": "Factuuradres",
         "billingBtwNumber": "Btw-nummer"
-      }
+      },
+      "unavailableTitle": "Spelers samenvoegen is niet beschikbaar",
+      "unavailableBody": "Twee spelers samenvoegen tot één staat uit. Het gebruikte overeenkomende namen, e-mailadressen en oude accountkoppelingen om te bepalen dat twee vermeldingen dezelfde persoon waren. Dat is niet betrouwbaar genoeg om trainingen en facturen te verplaatsen — en samenvoegen kan niet ongedaan gemaakt worden. Bewerk de spelers los van elkaar.",
+      "unavailableHint": "Er is niets gewijzigd of verwijderd. Beide spelers bestaan nog, met hun eigen trainingen en facturen.",
+      "close": "Sluiten"
     },
     "tags": {
       "deleteConfirmTitle": "Tag verwijderen?",

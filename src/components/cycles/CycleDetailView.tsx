@@ -27,8 +27,12 @@ import { SlotEditForm, type SlotEditFormSlot, type SlotEditFormValues } from '@/
 import { supabase } from '@/lib/supabaseClient';
 import { useCycleDetail, representativeSlotPrice, type CycleDetailSlot, type CycleRosterEntry } from '@/lib/cycleDetail';
 import { pickerExcludeKeysFor, removePersonFromCycle, swapPersonInCycle } from '@/lib/cycleRosterPerson';
+import {
+  ROSTER_REGISTERED_UNAVAILABLE_I18N,
+  admitRosterCandidate,
+  isRosterCandidateSelectable,
+} from '@/lib/cycleRosterAdmission';
 import { addPlayersToCycle, type AddPlayersToCycleResult } from '@/lib/cycleRoster';
-import { resolveOrCreateGuestTwinForRegisteredPlayer } from '@/lib/playerResolve';
 import { type BookablePerson } from '@/lib/playersOverview';
 import { SkipInvoiceUpdatesCheckbox } from '@/components/booking/SkipInvoiceUpdatesCheckbox';
 import { CycleRosterInlinePicker } from '@/components/cycles/CycleRosterInlinePicker';
@@ -423,49 +427,40 @@ export function CycleDetailView({
     return false;
   };
 
-  // Resolve a picked person to the guest id the roster writes book against. A guest is itself; a
-  // REGISTERED player (person-unification Phase 0) is resolved to their guest twin so the
-  // guest-keyed booking/invoice chain seats them — the twin's profile id rides along so the roster
-  // dedup catches a seat that human already holds under their player_id. Returns null = abort
-  // (twin mint failed, or no academy scope to own the twin).
-  const resolvePersonToGuest = async (
+  // Pass B §4: admission is decided PURELY, before any network activity.
+  //
+  // A directly owned guest is itself. A REGISTERED player is refused here and no longer minted a
+  // "guest twin" — that twin was created from a name/email match against the account, which is
+  // the identity evidence this containment withdrew, and a twin minted for the wrong human seats
+  // AND BILLS the wrong human. The retired resolver is not called on this path at all, so there
+  // is no request to fail and nothing optimistic to roll back.
+  //
+  // FAM-02: a row carrying a guest id IS that guest; an accompanying profile id is decoration and
+  // is not passed on as a twin hint.
+  const resolvePersonToGuest = (
     person: BookablePerson,
-  ): Promise<{ guestPlayerId: string; twinProfileId: string | null } | null> => {
-    // Since Phase 3.2 a MERGED person is one guest-preferred picker row carrying BOTH ids — the
-    // profile must ride along as the twin hint, or the dedup misses seats the human self-booked
-    // under their player_id (double seat + double invoice). This profileId comes from
-    // person_links (one-profile-per-person, freeze-respected), never linked_profile_id.
-    if (person.guestPlayerId) {
-      return { guestPlayerId: person.guestPlayerId, twinProfileId: person.profileId ?? null };
-    }
-    if (person.profileId && academyProfileId) {
-      const twinId = await resolveOrCreateGuestTwinForRegisteredPlayer(
-        { kind: 'academy', academyProfileId },
-        {
-          profileId: person.profileId,
-          fullName: person.full_name,
-          email: person.email || null,
-          phone: person.phone || null,
-          skillRating: person.skill_rating,
-          ratingSystem: person.rating_system,
-          birthDate: person.birth_date,
-        },
-      );
-      return twinId ? { guestPlayerId: twinId, twinProfileId: person.profileId } : null;
-    }
-    return null;
+  ): { guestPlayerId: string; twinProfileId: string | null } | null => {
+    const decision = admitRosterCandidate({
+      guestPlayerId: person.guestPlayerId ?? null,
+      profileId: person.profileId ?? null,
+    });
+    return decision.admitted
+      ? { guestPlayerId: decision.guestPlayerId, twinProfileId: null }
+      : null;
   };
 
   // Add one player to EVERY session of the cycle (skips sessions where they're already booked or
   // that are full). Honours the sticky "Don't update invoices" toggle.
   const handleAddPlayer = async (person: BookablePerson) => {
+    // Refused BEFORE the busy flag and before any request: an unavailable action must not look
+    // like one that was attempted and failed.
+    const resolved = resolvePersonToGuest(person);
+    if (!resolved) {
+      toast.error(t(ROSTER_REGISTERED_UNAVAILABLE_I18N.key, ROSTER_REGISTERED_UNAVAILABLE_I18N.default));
+      return;
+    }
     setRosterBusy(true);
     try {
-      const resolved = await resolvePersonToGuest(person);
-      if (!resolved) {
-        toast.error(t('detail.roster.registeredTwinFailed', 'Could not add this player. Please try again.'));
-        return; // keep the panel open so they can retry
-      }
       const res = await addPlayersToCycle({
         cycleId,
         guestPlayerIds: [resolved.guestPlayerId],
@@ -495,13 +490,14 @@ export function CycleDetailView({
   // player's bookings to the incoming guest IN PLACE (keeps amount/paid state — no €0 sessions, no
   // orphaned draft). Invoices reconcile only when the sticky toggle is off.
   const handleSwapPlayer = async (entry: CycleRosterEntry, person: BookablePerson) => {
+    // Same rule as add, and refused just as early: no busy state, no request, no partial swap.
+    const resolved = resolvePersonToGuest(person);
+    if (!resolved) {
+      toast.error(t(ROSTER_REGISTERED_UNAVAILABLE_I18N.key, ROSTER_REGISTERED_UNAVAILABLE_I18N.default));
+      return;
+    }
     setRosterBusy(true);
     try {
-      const resolved = await resolvePersonToGuest(person);
-      if (!resolved) {
-        toast.error(t('detail.roster.registeredTwinFailed', 'Could not add this player. Please try again.'));
-        return; // keep the row open so they can retry
-      }
       // Phase 3.1: swap out EVERY old-world ref the outgoing person holds seats under (one swap
       // per ref, same incoming person; duplicate seats resolve via swap's collision handling).
       const res = await swapPersonInCycle({
@@ -896,12 +892,41 @@ export function CycleDetailView({
                               <Button
                                 size="sm"
                                 className="shrink-0"
-                                disabled={!changeSelectedPerson || rosterBusy}
+                                data-testid="cycle-roster-change-confirm"
+                                data-admits-selection={String(isRosterCandidateSelectable(changeSelectedPerson))}
+                                disabled={
+                                  !changeSelectedPerson ||
+                                  rosterBusy ||
+                                  !isRosterCandidateSelectable(changeSelectedPerson)
+                                }
+                                title={
+                                  changeSelectedPerson && !isRosterCandidateSelectable(changeSelectedPerson)
+                                    ? t(
+                                        ROSTER_REGISTERED_UNAVAILABLE_I18N.key,
+                                        ROSTER_REGISTERED_UNAVAILABLE_I18N.default,
+                                      )
+                                    : undefined
+                                }
                                 onClick={() => changeSelectedPerson && void handleSwapPlayer(p, changeSelectedPerson)}
                               >
                                 {rosterBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
                                 {t('detail.roster.changeConfirm')}
                               </Button>
+                              {changeSelectedPerson && !isRosterCandidateSelectable(changeSelectedPerson) && (
+                                <p
+                                  className="text-xs text-muted-foreground"
+                                  data-testid="cycle-roster-swap-unavailable"
+                                  role="note"
+                                >
+                                  {/* A title attribute alone is invisible to keyboard and screen
+                                      reader users and never appears on touch. The reason is
+                                      rendered. */}
+                                  {t(
+                                    ROSTER_REGISTERED_UNAVAILABLE_I18N.key,
+                                    ROSTER_REGISTERED_UNAVAILABLE_I18N.default,
+                                  )}
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}
@@ -946,10 +971,37 @@ export function CycleDetailView({
                     disabled={rosterBusy}
                   />
                   <div className="flex gap-2">
-                    <Button size="sm" disabled={!addSelectedPerson || rosterBusy} onClick={() => addSelectedPerson && void handleAddPlayer(addSelectedPerson)}>
+                    <Button
+                      size="sm"
+                      data-testid="cycle-roster-add-confirm"
+                      data-admits-selection={String(isRosterCandidateSelectable(addSelectedPerson))}
+                      disabled={
+                        !addSelectedPerson || rosterBusy || !isRosterCandidateSelectable(addSelectedPerson)
+                      }
+                      title={
+                        addSelectedPerson && !isRosterCandidateSelectable(addSelectedPerson)
+                          ? t(
+                              ROSTER_REGISTERED_UNAVAILABLE_I18N.key,
+                              ROSTER_REGISTERED_UNAVAILABLE_I18N.default,
+                            )
+                          : undefined
+                      }
+                      onClick={() => addSelectedPerson && void handleAddPlayer(addSelectedPerson)}
+                    >
                       {rosterBusy && <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />}
                       {t('detail.roster.addConfirm')}
                     </Button>
+                    {addSelectedPerson && !isRosterCandidateSelectable(addSelectedPerson) && (
+                      <p
+                        className="text-xs text-muted-foreground self-center"
+                        data-testid="cycle-roster-registered-unavailable"
+                      >
+                        {t(
+                          ROSTER_REGISTERED_UNAVAILABLE_I18N.key,
+                          ROSTER_REGISTERED_UNAVAILABLE_I18N.default,
+                        )}
+                      </p>
+                    )}
                     <Button size="sm" variant="ghost" disabled={rosterBusy} onClick={() => { setAddPanelOpen(false); setAddSelectedPerson(null); }}>
                       {t('detail.delete.cancel')}
                     </Button>

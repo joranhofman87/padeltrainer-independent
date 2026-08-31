@@ -22,7 +22,7 @@ import pg from 'pg';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { applyPreH0, applyH0, FIXTURE_SQL, IDS } from './abc16Fixture';
+import { applyPreH0, applyH0, FIXTURE_SQL, H0_MIGRATION, IDS, MIGRATION } from './abc16Fixture';
 
 const { Client } = pg;
 const PORT = 54391;
@@ -442,5 +442,390 @@ describe('ABC-17/18 · bookings are distrusted, and the bridge is frozen', () =>
           AND policyname = 'Trainers can view guests booked into their slots'`,
     );
     expect(rows).toEqual([]);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════════════
+// ABC-26 · the retired supplementary-priority filter, and the narrowed member window.
+//
+// The claim being proved is "no runtime role can obtain an admission list, and the member window
+// no longer honours a stored one". Three independent kinds of evidence, because each alone can be
+// green while the object is still reachable:
+//
+//   ACL       aclexplode(proacl) — the EXPLICIT grants, the only view that shows GRANT OPTION and
+//             the only one that distinguishes PUBLIC (grantee 0) from a named role.
+//   EFFECTIVE has_function_privilege — what the server will actually answer at call time, which
+//             follows role INHERITANCE and therefore catches a grant that leaves no proacl entry.
+//   REAL      SET ROLE + an actual call. The only evidence that the catalog and the executor
+//             agree, and the only one that survives a mistaken belief about either.
+//
+// Every negative is paired with a POSITIVE CONTROL, because a suite where nothing can be called
+// proves nothing about a change that removed one specific capability.
+// ════════════════════════════════════════════════════════════════════════════════════════════
+
+const RETIRED_FILTER = 'public.filter_academy_priority_ids(uuid,uuid[],uuid[])';
+const RETIRED_FILTER_IDENT = 'uuid, uuid[], uuid[]';
+
+/** Exact shipped ABC-26 install assertion, without re-emitting any migration object. */
+function abc26AssertionSql(): string {
+  const sql = MIGRATION(H0_MIGRATION);
+  const startMarker = 'DO $chk26$';
+  const endMarker = 'END $chk26$;';
+  const start = sql.indexOf(startMarker);
+  const end = sql.indexOf(endMarker);
+  if (start < 0 || end < 0 || end < start
+      || sql.indexOf(startMarker, start + startMarker.length) >= 0
+      || sql.indexOf(endMarker, end + endMarker.length) >= 0) {
+    throw new Error('Expected exactly one ordered DO $chk26$ ... END $chk26$; assertion block');
+  }
+  return sql.slice(start, end + endMarker.length);
+}
+
+/** Run a statement under a named role, restoring the session role afterwards. */
+async function asRole(role: string, sql: string, params: unknown[] = []): Promise<pg.QueryResult> {
+  await c.query(`SET ROLE ${role}`);
+  try {
+    return await c.query(sql, params);
+  } finally {
+    await c.query('RESET ROLE');
+  }
+}
+
+describe('ABC-26 · filter_academy_priority_ids is retired, not merely unused', () => {
+  it('the object SURVIVES with its exact signature — a DROP would have broken generated types', async () => {
+    const { rows } = await c.query(
+      `SELECT p.oid::regprocedure::text  AS sig,
+              oidvectortypes(p.proargtypes) AS ident,
+              p.prosecdef                 AS security_definer,
+              p.proconfig                 AS config,
+              pg_get_userbyid(p.proowner) AS owner
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public' AND p.proname = 'filter_academy_priority_ids'`,
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].ident).toBe(RETIRED_FILTER_IDENT);
+    // The SECURITY DEFINER chain is preserved deliberately: retiring by REVOKE while silently
+    // flipping the function to INVOKER would change what a future re-grant would mean.
+    expect(rows[0].security_definer).toBe(true);
+    expect(rows[0].config).toContain('search_path=public');
+    // The owner must NOT be a role PostgREST can assume, or its ownership privilege IS reach.
+    expect(['anon', 'authenticated', 'service_role']).not.toContain(rows[0].owner);
+  });
+
+  it('proacl is NOT NULL — a NULL ACL on a function means EXECUTE TO PUBLIC', async () => {
+    const { rows } = await c.query(
+      `SELECT p.proacl IS NULL AS is_null FROM pg_proc p
+         WHERE p.oid = $1::regprocedure`,
+      [RETIRED_FILTER],
+    );
+    expect(rows[0].is_null).toBe(false);
+  });
+
+  it('EXPLICIT ACL: PUBLIC and every named role hold ZERO privileges, and nothing is grantable', async () => {
+    const { rows } = await c.query(
+      `SELECT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE pg_get_userbyid(a.grantee) END AS grantee,
+              a.privilege_type,
+              a.is_grantable
+         FROM pg_proc p CROSS JOIN LATERAL aclexplode(p.proacl) a
+        WHERE p.oid = $1::regprocedure
+        ORDER BY 1, 2`,
+      [RETIRED_FILTER],
+    );
+    const owner = (await c.query(
+      `SELECT pg_get_userbyid(p.proowner) AS owner FROM pg_proc p WHERE p.oid = $1::regprocedure`,
+      [RETIRED_FILTER],
+    )).rows[0].owner;
+
+    // PUBLIC is asserted BY NAME: it is grantee 0 and never appears under a role name, so a guard
+    // written only over role names misses the widest grantee there is.
+    expect(rows.filter((r) => r.grantee === 'PUBLIC')).toEqual([]);
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      expect(rows.filter((r) => r.grantee === role)).toEqual([]);
+    }
+    // The owner's ownership entry is the ONLY thing allowed to remain.
+    expect([...new Set(rows.map((r) => r.grantee))].filter((g) => g !== owner)).toEqual([]);
+    // A GRANT OPTION anywhere is a standing licence to undo this retirement without editing the
+    // migration, so it is checked separately from who holds the privilege.
+    expect(rows.filter((r) => r.is_grantable)).toEqual([]);
+  });
+
+  it('EFFECTIVE privilege: no non-superuser role can execute it, inheritance included', async () => {
+    const { rows } = await c.query(
+      `SELECT r.rolname
+         FROM pg_roles r
+        WHERE NOT r.rolsuper
+          AND r.rolname NOT LIKE 'pg\\_%'
+          AND r.rolname <> (SELECT pg_get_userbyid(p.proowner) FROM pg_proc p WHERE p.oid = $1::regprocedure)
+          AND has_function_privilege(r.rolname, $1, 'EXECUTE')
+        ORDER BY 1`,
+      [RETIRED_FILTER],
+    );
+    expect(rows.map((r) => r.rolname)).toEqual([]);
+  });
+
+  it('the three named roles exist — otherwise every assertion above is vacuous', async () => {
+    const { rows } = await c.query(
+      `SELECT rolname FROM pg_roles WHERE rolname = ANY($1) ORDER BY 1`,
+      [['anon', 'authenticated', 'service_role']],
+    );
+    expect(rows.map((r) => r.rolname)).toEqual(['anon', 'authenticated', 'service_role']);
+  });
+
+  it.each(['anon', 'authenticated', 'service_role'])(
+    'REAL SET ROLE: %s calling it is refused by the executor, not just by the catalog',
+    async (role) => {
+      await expect(
+        asRole(role, `SELECT * FROM public.filter_academy_priority_ids($1, NULL, NULL)`, [IDS.attackerAcademy]),
+      ).rejects.toThrow(/permission denied/i);
+    },
+  );
+
+  it('POSITIVE CONTROL: even the owner gets ZERO rows — the body is fail-closed, not just unreachable', async () => {
+    // Inputs that the pre-ABC-26 function would have admitted: a guest this academy really owns,
+    // and a real profile id. If the retirement were privilege-only, this would return rows.
+    const { rows } = await c.query(
+      `SELECT * FROM public.filter_academy_priority_ids($1, $2::uuid[], $3::uuid[])`,
+      [IDS.attackerAcademy, [IDS.bookedProfile], [IDS.guestOwnedByAttackerAcademy]],
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('POSITIVE CONTROL: the client roles CAN still call an unrelated function', async () => {
+    // Without this, "permission denied" above could equally mean the fixture broke role setup.
+    const { rows } = await asRole(
+      'service_role',
+      `SELECT has_function_privilege('service_role','public.guest_belongs_to_user_academy(uuid,uuid)','EXECUTE') AS ok`,
+    );
+    expect(rows[0].ok).toBe(true);
+  });
+
+  it('CONSUMER INVENTORY: no other database function still calls the retired filter', async () => {
+    const { rows } = await c.query(
+      `SELECT n.nspname || '.' || p.proname AS fn
+         FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE p.proname <> 'filter_academy_priority_ids'
+          AND p.prosrc LIKE '%filter_academy_priority_ids%'
+        ORDER BY 1`,
+    );
+    expect(rows.map((r) => r.fn)).toEqual([]);
+  });
+
+  // ── Drift: re-grant, dirty install, reapply ────────────────────────────────────────────────
+
+  it('DIRTY INSTALL: a direct re-GRANT is undone by re-applying the migration', async () => {
+    await c.query(`GRANT EXECUTE ON FUNCTION ${RETIRED_FILTER} TO service_role`);
+    const granted = await c.query(
+      `SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS ok`, [RETIRED_FILTER],
+    );
+    expect(granted.rows[0].ok).toBe(true);   // the drift is real before we repair it
+
+    await applyH0(async (sql: string) => { await c.query(sql); });
+
+    const repaired = await c.query(
+      `SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS ok`, [RETIRED_FILTER],
+    );
+    expect(repaired.rows[0].ok).toBe(false);
+  });
+
+  it('DEFAULT GRANTS: a fresh CREATE OR REPLACE does not silently re-open it', async () => {
+    // Supabase's ALTER DEFAULT PRIVILEGES grants EXECUTE on NEW functions to the three client
+    // roles. CREATE OR REPLACE keeps the existing ACL rather than re-applying defaults — but the
+    // migration must not depend on that subtlety, so this asserts the end state after a replace.
+    await c.query(`
+      CREATE OR REPLACE FUNCTION public.filter_academy_priority_ids(
+        _academy_profile_id uuid, _profile_ids uuid[] DEFAULT NULL, _guest_ids uuid[] DEFAULT NULL)
+      RETURNS TABLE (profile_id uuid, guest_player_id uuid)
+      LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+      AS $$ SELECT NULL::uuid, NULL::uuid WHERE false $$;`);
+    await applyH0(async (sql: string) => { await c.query(sql); });
+    const { rows } = await c.query(
+      `SELECT has_function_privilege('anon', $1, 'EXECUTE')          AS anon,
+              has_function_privilege('authenticated', $1, 'EXECUTE') AS authenticated,
+              has_function_privilege('service_role', $1, 'EXECUTE')  AS service_role`,
+      [RETIRED_FILTER],
+    );
+    expect(rows[0]).toEqual({ anon: false, authenticated: false, service_role: false });
+  });
+
+  it('INHERITANCE TRIPWIRE: a grant reached through role membership FAILS the install assertion', async () => {
+    // Make the helper the owner, then inherit that ownership privilege. This leaves no explicit
+    // non-owner grant for the earlier ACL assertion to catch, isolating the effective check.
+    const originalOwner = (await c.query(
+      `SELECT pg_get_userbyid(p.proowner) AS owner FROM pg_proc p WHERE p.oid = $1::regprocedure`,
+      [RETIRED_FILTER],
+    )).rows[0].owner;
+
+    await c.query('BEGIN');
+    try {
+      await c.query(`CREATE ROLE abc26_helper NOLOGIN`);
+      await c.query(`GRANT CREATE ON SCHEMA public TO abc26_helper`);
+      await c.query(`ALTER FUNCTION ${RETIRED_FILTER} OWNER TO abc26_helper`);
+      await c.query(`REVOKE ALL ON FUNCTION ${RETIRED_FILTER} FROM anon, authenticated, service_role`);
+      await c.query(`GRANT abc26_helper TO service_role`);
+
+      const effective = await c.query(
+        `SELECT has_function_privilege('service_role', $1, 'EXECUTE') AS ok`, [RETIRED_FILTER],
+      );
+      expect(effective.rows[0].ok).toBe(true);
+
+      const direct = await c.query(
+        `SELECT count(*)::int AS n
+           FROM pg_proc p
+           CROSS JOIN LATERAL aclexplode(p.proacl) a
+           JOIN pg_roles r ON r.oid = a.grantee
+          WHERE p.oid = $1::regprocedure
+            AND r.rolname = 'service_role'
+            AND a.privilege_type = 'EXECUTE'`,
+        [RETIRED_FILTER],
+      );
+      expect(direct.rows[0].n).toBe(0);
+
+      await expect(c.query(abc26AssertionSql())).rejects.toThrow(
+        /ABC-26: role\(s\) can still execute the retired priority filter \(effective, including inherited\): service_role/,
+      );
+    } finally {
+      await c.query('ROLLBACK');
+    }
+
+    const restored = await c.query(
+      `SELECT pg_get_userbyid(p.proowner) AS owner,
+              has_function_privilege('service_role', p.oid, 'EXECUTE') AS service_role_can_execute
+         FROM pg_proc p WHERE p.oid = $1::regprocedure`,
+      [RETIRED_FILTER],
+    );
+    expect(restored.rows[0]).toEqual({ owner: originalOwner, service_role_can_execute: false });
+    const helper = await c.query(`SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'abc26_helper') AS exists`);
+    expect(helper.rows[0].exists).toBe(false);
+  });
+});
+
+describe('ABC-26 · can_book_member_window is narrowed, not deleted', () => {
+  // A world of its OWN, so no assertion here depends on state another describe block set up, and
+  // nothing here perturbs state another block relies on.
+  const CYCLE = '90000000-0000-0000-0000-0000000026a1';
+  const SEAT_SLOT = '30000000-0000-0000-0000-0000000026a1';
+  const CLAIM_SLOT = '30000000-0000-0000-0000-0000000026a2';
+  // Three distinct subjects, one per arm, so a positive can never mask a negative:
+  const SEAT_PROFILE = '10000000-0000-0000-0000-0000000026a1';
+  const SEAT_USER = '60000000-0000-0000-0000-0000000026a1';
+  const CLAIM_PROFILE = '10000000-0000-0000-0000-0000000026a2';
+  const CLAIM_USER = '60000000-0000-0000-0000-0000000026a2';
+  /** In the stored priority list and NOTHING else — no seat, no claim. The whole point. */
+  const LISTED_PROFILE = '10000000-0000-0000-0000-0000000026a3';
+  const LISTED_USER = '60000000-0000-0000-0000-0000000026a3';
+
+  beforeAll(async () => {
+    await c.query(
+      `INSERT INTO auth.users (id, email) VALUES ($1,'seat@abc26.test'),($2,'claim@abc26.test'),($3,'listed@abc26.test')
+       ON CONFLICT (id) DO NOTHING`,
+      [SEAT_USER, CLAIM_USER, LISTED_USER],
+    );
+    await c.query(
+      `INSERT INTO public.profiles (id, user_id, full_name) VALUES ($1,$2,'Seat'),($3,$4,'Claim'),($5,$6,'Listed')
+       ON CONFLICT (id) DO NOTHING`,
+      [SEAT_PROFILE, SEAT_USER, CLAIM_PROFILE, CLAIM_USER, LISTED_PROFILE, LISTED_USER],
+    );
+    // A cycle whose stored settings STILL carry a supplementary priority list — exactly the state
+    // every pre-ABC-26 round is in. Nothing deletes it; the predicate must stop honouring it.
+    await c.query(
+      `INSERT INTO public.cycles (id, settings, owner_type, owner_id, type)
+       VALUES ($1, jsonb_build_object('rebook_priority_people', jsonb_build_array($2::text)), 'academy', $3, 'cyclus')
+       ON CONFLICT (id) DO UPDATE SET settings = EXCLUDED.settings`,
+      [CYCLE, LISTED_PROFILE, IDS.attackerAcademy],
+    );
+    // cyclus_id feeds arm (a); source_cycle_id feeds arm (b). Two slots so neither arm can be
+    // satisfied by accident through the other's join.
+    await c.query(
+      `INSERT INTO public.availability_slots (id, academy_profile_id, cyclus_id) VALUES ($1,$2,$3)
+       ON CONFLICT (id) DO NOTHING`,
+      [SEAT_SLOT, IDS.attackerAcademy, CYCLE],
+    );
+    await c.query(
+      `INSERT INTO public.availability_slots (id, academy_profile_id, source_cycle_id) VALUES ($1,$2,$3)
+       ON CONFLICT (id) DO NOTHING`,
+      [CLAIM_SLOT, IDS.attackerAcademy, CYCLE],
+    );
+    await c.query(
+      `INSERT INTO public.bookings (slot_id, player_id, status) VALUES ($1,$2,'confirmed')`,
+      [SEAT_SLOT, SEAT_PROFILE],
+    );
+    await c.query(
+      `INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id) VALUES ($1,$2,NULL)`,
+      [CLAIM_SLOT, CLAIM_PROFILE],
+    );
+  }, 60_000);
+
+  it('NEGATIVE: a profile named ONLY in a stored rebook_priority_people list gets no member window', async () => {
+    const { rows } = await c.query(`SELECT public.can_book_member_window($1,$2) AS ok`, [LISTED_USER, CYCLE]);
+    expect(rows[0].ok).toBe(false);
+  });
+
+  it('the stored list is still THERE — containment suppresses on read, it does not rewrite rows', async () => {
+    const { rows } = await c.query(
+      `SELECT settings->'rebook_priority_people' AS list FROM public.cycles WHERE id = $1`, [CYCLE],
+    );
+    expect(rows[0].list).toEqual([LISTED_PROFILE]);
+  });
+
+  it('POSITIVE (arm a): a pure-profile SEAT in the cycle still grants the member window', async () => {
+    const { rows } = await c.query(`SELECT public.can_book_member_window($1,$2) AS ok`, [SEAT_USER, CYCLE]);
+    expect(rows[0].ok).toBe(true);
+  });
+
+  it('POSITIVE (arm b): a pure-profile CLAIM in the round still grants the member window', async () => {
+    const { rows } = await c.query(`SELECT public.can_book_member_window($1,$2) AS ok`, [CLAIM_USER, CYCLE]);
+    expect(rows[0].ok).toBe(true);
+  });
+
+  it('a DUAL-KEY (guest-backed) claim grants nothing — the A3 narrowing still holds', async () => {
+    const dualUser = '60000000-0000-0000-0000-0000000026a4';
+    const dualProfile = '10000000-0000-0000-0000-0000000026a4';
+    await c.query(`INSERT INTO auth.users (id, email) VALUES ($1,'dual@abc26.test') ON CONFLICT (id) DO NOTHING`, [dualUser]);
+    await c.query(`INSERT INTO public.profiles (id, user_id, full_name) VALUES ($1,$2,'Dual') ON CONFLICT (id) DO NOTHING`, [dualProfile, dualUser]);
+    // Their ONLY evidence is a claim that also names a guest — the shape A3 withdrew.
+    await c.query(
+      `INSERT INTO public.slot_priority_claims (slot_id, player_id, guest_player_id) VALUES ($1,$2,$3)`,
+      [CLAIM_SLOT, dualProfile, IDS.guestOwnedByAttackerAcademy],
+    );
+    const { rows } = await c.query(`SELECT public.can_book_member_window($1,$2) AS ok`, [dualUser, CYCLE]);
+    expect(rows[0].ok).toBe(false);
+  });
+
+  it('MUTATION TRIPWIRE: re-adding the settings arm makes the install assertion FAIL', async () => {
+    // A guard is only worth having if removing what it protects turns the suite red. Put the
+    // withdrawn arm back, prove it genuinely restores the capability, then run only the shipped
+    // assertion block against those mutant bytes.
+    await c.query('BEGIN');
+    try {
+      await c.query(`
+        CREATE OR REPLACE FUNCTION public.can_book_member_window(_user_id uuid, _cycle_id uuid)
+        RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+        AS $fn$
+          WITH me AS (SELECT id FROM public.profiles WHERE user_id = _user_id LIMIT 1)
+          SELECT EXISTS (
+            SELECT 1 FROM public.bookings b
+            JOIN public.availability_slots s ON s.id = b.slot_id
+            WHERE s.cyclus_id = _cycle_id
+              AND COALESCE(b.status, 'confirmed') NOT IN ('cancelled', 'cancelled_swap')
+              AND b.guest_player_id IS NULL AND b.player_id = (SELECT id FROM me))
+          OR EXISTS (
+            SELECT 1 FROM public.slot_priority_claims spc
+            JOIN public.availability_slots s ON s.id = spc.slot_id
+            WHERE s.source_cycle_id = _cycle_id
+              AND spc.player_id = (SELECT id FROM me) AND spc.guest_player_id IS NULL)
+          OR EXISTS (
+            SELECT 1 FROM public.cycles c WHERE c.id = _cycle_id
+              AND COALESCE(c.settings->'rebook_priority_people', '[]'::jsonb) ? (SELECT id::text FROM me));
+        $fn$;`);
+      const { rows } = await c.query(`SELECT public.can_book_member_window($1,$2) AS ok`, [LISTED_USER, CYCLE]);
+      expect(rows[0].ok).toBe(true);   // the mutant really does re-open it
+      await expect(c.query(abc26AssertionSql())).rejects.toThrow(
+        /ABC-26: can_book_member_window must not read a stored priority list/,
+      );
+    } finally {
+      await c.query('ROLLBACK');
+    }
+    const { rows: after } = await c.query(`SELECT public.can_book_member_window($1,$2) AS ok`, [LISTED_USER, CYCLE]);
+    expect(after[0].ok).toBe(false);
   });
 });

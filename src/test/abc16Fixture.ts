@@ -105,6 +105,18 @@ export const STUB_SQL = /* sql */ `
   CREATE OR REPLACE FUNCTION public.update_updated_at_column() RETURNS trigger
   LANGUAGE plpgsql AS $fn$ BEGIN NEW.updated_at = now(); RETURN NEW; END; $fn$;
 
+  -- The shipped test clock (20260724100000_app_now_clock.sql), reproduced byte-for-byte
+  -- including its GRANT. The auto-reminder producer's window predicates are written against it
+  -- rather than now(), which is what makes "the window is open / closed / opt-out" testable at
+  -- all: a suite can move the clock with set_config('app.fake_now', …) instead of rewriting
+  -- rows. Deriving it differently here would let those predicates look correct against a
+  -- definition production does not have.
+  CREATE OR REPLACE FUNCTION public.app_now() RETURNS timestamptz
+  LANGUAGE sql STABLE AS $fn$
+    SELECT COALESCE(NULLIF(current_setting('app.fake_now', true), '')::timestamptz, now());
+  $fn$;
+  GRANT EXECUTE ON FUNCTION public.app_now() TO PUBLIC;
+
   -- The full account mirror. Every column here is one that mint_person_for_profile copies into
   -- persons; the fixture must carry them all, or the "did the mirror survive?" assertion cannot
   -- be written at all.
@@ -213,6 +225,38 @@ export const STUB_SQL = /* sql */ `
     id uuid PRIMARY KEY, settings jsonb DEFAULT '{}'::jsonb, owner_type text, owner_id uuid,
     type text, location_id uuid
   );
+  -- ── Email delivery state, modelled FAITHFULLY (shape AND ACL) ───────────────────────────────
+  --
+  -- H0's undeliverable reader and the overview deliverability flag both read this table, so a
+  -- fixture without it cannot exercise either — and, worse, an ACL assertion about them would
+  -- pass for want of a subject. The generated is_suppressed column is reproduced exactly as
+  -- 20261006100000 defines it (it is the SINGLE source of truth for suppression; deriving it
+  -- differently here would let a reader look correct against a definition production does not
+  -- have).
+  --
+  -- The GRANT/REVOKE lines are copied from 20260615110000_email_delivery_tables.sql rather than
+  -- invented: the point of the ABC-16 privilege suite is that a SECURITY DEFINER reader can see
+  -- this table while anon/authenticated cannot reach it directly, and that property only
+  -- exists if the fixture reproduces the real revocation. Note the ALTER DEFAULT PRIVILEGES above
+  -- grants ALL on new tables to the three client roles — so without this REVOKE the fixture would
+  -- model a WIDER world than production and every "cannot read directly" assertion would be
+  -- testing the wrong database.
+  CREATE TABLE IF NOT EXISTS public.email_address_state (
+    email           text PRIMARY KEY,
+    state           text NOT NULL DEFAULT 'ok'
+                      CHECK (state IN ('ok','soft_bounced','hard_bounced','complained')),
+    last_event_type text,
+    last_event_at   timestamptz,
+    reason          text,
+    provider_suppressed_active boolean NOT NULL DEFAULT false,
+    is_suppressed   boolean GENERATED ALWAYS AS
+                      ((state IN ('hard_bounced','complained')) OR provider_suppressed_active) STORED,
+    updated_at      timestamptz NOT NULL DEFAULT now()
+  );
+  ALTER TABLE public.email_address_state ENABLE ROW LEVEL SECURITY;
+  REVOKE ALL ON TABLE public.email_address_state FROM PUBLIC, anon, authenticated;
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.email_address_state TO service_role;
+
   -- Touched by link_guest_data_to_profile when it re-keys a claimed guest's rows.
   CREATE TABLE IF NOT EXISTS public.club_players (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(), club_id uuid, player_id uuid, guest_player_id uuid
@@ -357,10 +401,19 @@ export const STUB_SQL = /* sql */ `
   -- A3 reads these on the claim/slot side; the shipped migrations own them upstream.
   ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS status text DEFAULT 'pending';
   ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS claim_token text;
-  -- Pass B §2 needs the auto-reminder producer's real due-window columns, or its WHERE clause
-  -- would silently match nothing and every §2 assertion would pass vacuously.
-  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS expires_at timestamptz;
-  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS reminder_sent_at timestamptz;
+  -- The auto-reminder producer's real due-window columns, each from the migration that owns it:
+  -- reminded_at from 20260625130000_rebook_claim_reminded_at.sql and response_intent from
+  -- 20260705120000_priority_claim_response_intent.sql, both declared there exactly as here.
+  -- Neither migration is in the focused pre-H0 chain, so they are ambient here for the same
+  -- reason status/claim_token/rebook_group_id are.
+  --
+  -- There are deliberately NO expires_at / reminder_sent_at columns. No migration in this
+  -- repository creates them and nothing anywhere writes them; they exist only as hosted drift.
+  -- Declaring them here would have let a producer grounded on them look exercised while being
+  -- permanently inert in every real database — which is exactly the synthetic-fixture
+  -- substitution that must not stand in for source lineage.
+  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS reminded_at timestamptz;
+  ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS response_intent text;
   ALTER TABLE public.availability_slots ADD COLUMN IF NOT EXISTS start_time timestamptz;
   ALTER TABLE public.cycles ADD COLUMN IF NOT EXISTS name text;
   ALTER TABLE public.slot_priority_claims ADD COLUMN IF NOT EXISTS rebook_group_id uuid;
@@ -415,6 +468,30 @@ export const STUB_SQL = /* sql */ `
 `;
 
 /**
+ * Columns owned by rebooking migrations outside the focused pre-H0 fixture chain.
+ *
+ * Apply this immediately after the real 20260506080606 migration creates
+ * slot_priority_claims. The status column, its CHECK, token and policies are deliberately absent:
+ * those are production objects from the shipped migration, not ambient fixture substitutes.
+ *
+ * `reminded_at` and `response_intent` are declared with the exact types their own shipped
+ * migrations give them (20260625130000 and 20260705120000). Both statements there are
+ * `ADD COLUMN IF NOT EXISTS` too, so a lineage that reaches those files later is unaffected.
+ *
+ * `expires_at` / `reminder_sent_at` are deliberately NOT declared — see FIXTURE_SQL.
+ */
+const SLOT_PRIORITY_AMBIENT_SQL = /* sql */ `
+  ALTER TABLE public.slot_priority_claims
+    ADD COLUMN IF NOT EXISTS booked_by_player_id uuid,
+    ADD COLUMN IF NOT EXISTS booked_by_guest_player_id uuid,
+    ADD COLUMN IF NOT EXISTS strict boolean,
+    ADD COLUMN IF NOT EXISTS booked_by_profile_id uuid,
+    ADD COLUMN IF NOT EXISTS reminded_at timestamptz,
+    ADD COLUMN IF NOT EXISTS response_intent text,
+    ADD COLUMN IF NOT EXISTS rebook_group_id uuid;
+`;
+
+/**
  * Extract one shipped `CREATE OR REPLACE FUNCTION` block verbatim from a migration file.
  *
  * `link_guest_data_to_profile` lives in 20260611220000, a broad migration that also rewrites
@@ -464,21 +541,32 @@ export const GUEST_VERIFIED_RESOLVER_SQL = () =>
 export const ROSTER_HAS_LOGIN_SQL = () =>
   extractFunction('20260828100000_phase33a_roster_haslogin.sql', 'get_cycle_roster_names');
 
+/** Apply one fixture migration plus the exact position-dependent ambient/extracted inputs. */
+export async function applyPreH0Migration(
+  exec: (sql: string) => Promise<unknown>,
+  file: string,
+): Promise<void> {
+  await exec(MIGRATION(file));
+  if (file.startsWith('20260506080606')) {
+    await exec(SLOT_PRIORITY_AMBIENT_SQL);
+  }
+  // The extracted helpers land at their real chain position: after person_links exists (their
+  // bodies reference it, and a SQL body is parsed at CREATE time) AND after 20260826290000,
+  // which re-emits a 2-column get_cycle_roster_names that would otherwise overwrite the
+  // effective 3-column one. Appending them at the very end instead would fail for the
+  // consumers applied earlier in the chain.
+  if (file.startsWith('20260826290000')) {
+    await exec(BRIDGE_MINTER_SQL());
+    await exec(GUEST_VERIFIED_RESOLVER_SQL());
+    await exec(ROSTER_HAS_LOGIN_SQL());
+  }
+}
+
 /** Apply the stubs, then every pre-H0 migration in chain order. */
 export async function applyPreH0(exec: (sql: string) => Promise<unknown>): Promise<void> {
   await exec(STUB_SQL);
   for (const file of PRE_H0_MIGRATIONS) {
-    await exec(MIGRATION(file));
-    // The extracted helpers land at their real chain position: after person_links exists (their
-    // bodies reference it, and a SQL body is parsed at CREATE time) AND after 20260826290000,
-    // which re-emits a 2-column get_cycle_roster_names that would otherwise overwrite the
-    // effective 3-column one. Appending them at the very end instead would fail for the
-    // consumers applied earlier in the chain.
-    if (file.startsWith('20260826290000')) {
-      await exec(BRIDGE_MINTER_SQL());
-      await exec(GUEST_VERIFIED_RESOLVER_SQL());
-      await exec(ROSTER_HAS_LOGIN_SQL());
-    }
+    await applyPreH0Migration(exec, file);
   }
 }
 

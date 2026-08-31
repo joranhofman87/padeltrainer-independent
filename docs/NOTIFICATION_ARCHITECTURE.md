@@ -59,7 +59,7 @@ Central dispatcher `send-email` (~26 `type`s) + standalone senders:
 `send-campaign-emails`, `send-digest-emails`, `trigger-welcome-emails`,
 `process-onboarding-emails`, `notify-followers`,
 `send-priority-claim-invitation`, `send-rebook-reminder`,
-`auto-rebook-reminder`, `notify-rebook-member-open`,
+`auto-rebook-reminder`,
 `send-rebook-group-confirmation`, `send-schedule-notifications`,
 `update-user`, `signup-user`, `create-manual-player`, `submit-guest-intake`,
 plus the shared paid-booking helpers.
@@ -806,5 +806,41 @@ resolves to a visible `no_email_contact` skip instead of sending to a stale addr
 
 Out-of-scope findings surfaced during the migration are tracked in
 [NOTIFICATION_FOLLOWUPS.md](./NOTIFICATION_FOLLOWUPS.md) — currently the recipient-discovery
-fail-open sweep from PR 10b (send-invoice-email, notify-rebook-member-open, forward-invoice;
-notify-followers is covered by PR 10c).
+fail-open sweep from PR 10b (send-invoice-email, forward-invoice; notify-followers is covered by
+PR 10c). `notify-rebook-member-open` was the third entry in that sweep and is **retired** — see the
+D7 transport chain below.
+
+## The D7 rebook member-open transport chain
+
+The rebook "sessions have opened" invitation does **not** go through the generic worker, and it is
+the one event that does not. Its whole authority — who is in the round, whether they are still
+eligible, what the message says, whether a provider call may be made, and what the outcome was —
+lives in the database (`20261118120000_abc27_rebook_round_notification_authority.sql`). Three private
+service-role edge functions drive it and hold no policy of their own:
+
+| Function | Cadence | What it does |
+|---|---|---|
+| `rebook-round-materializer` | */5 | one bounded `rebook_round_materialize` page: freeze the recipient universe, write one durable decision per recipient, enqueue the invitations |
+| `rebook-member-open-worker` | */2 | claim → `pre_dispatch_resolve` → `begin_dispatch` → **exactly one** provider call → `record_dispatch_outcome` |
+| `rebook-member-open-janitor` | */10 | recover expired leases; close unresolved rows |
+
+**All three ship with their schedules INACTIVE**, and the dispatcher additionally ships with its
+`REBOOK_MEMBER_OPEN_SEND_ENABLED` flag absent — two independent activation gates.
+
+How it differs from the generic worker, and why:
+
+- **The database classifies, not the worker.** The worker records a raw observation — HTTP status,
+  a bounded provider code, a bounded message id, a closed transport fault, and whether the envelope
+  was structurally valid — and reads back whatever the server decided. There is no client-side
+  notion of "retryable".
+- **At most one provider call per authorized generation.** `begin_dispatch` authorizes once per
+  lease generation; the send has no loop and no internal retry.
+- **A kill DEFERS, it does not release.** `release_notification_claims_on_kill` is unreachable from
+  this path, and the worker holds no grant for it.
+- **The transport state machine is separate from `status`.** A D7 row keeps `status = 'pending'`
+  unless accepted, and `§7c` excludes the event from the generic claim in every statement — so the
+  generic drainer never picks one up.
+
+The retired predecessor was `notify-rebook-member-open`, a cron-driven function that discovered its
+own audience, sent through Resend directly and checkpointed into `cycles.settings`. Its migrations
+remain in the lineage as history; the function, its shared helper and its cron are gone.

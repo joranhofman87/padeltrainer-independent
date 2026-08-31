@@ -207,15 +207,18 @@ describe('A3 · can_book_member_window and its auth-bound wrapper', () => {
     expect(await wrapper(ME_USER, OTHER_CYCLE)).toBe(false);
   });
 
-  it('RETAINS the cycle\'s explicit registered priority list', async () => {
+  it('withdraws settings priority-list eligibility while seats and claims remain authoritative', async () => {
     const c = '90000000-0000-4000-8000-00000000a304';
     await db.exec(`
       INSERT INTO public.cycles (id, owner_type, owner_id, type, settings)
       VALUES ('${c}','academy','${IDS.attackerAcademy}','cyclus',
               jsonb_build_object('rebook_priority_people', jsonb_build_array('${ME_PROFILE}')));
     `);
-    expect(await direct(ME_USER, c)).toBe(true);
+    // Seats and claims remain the authority; a settings priority list no longer grants eligibility.
+    expect(await direct(ME_USER, c)).toBe(false);
+    expect(await wrapper(ME_USER, c)).toBe(false);
     expect(await direct(OTHER_USER, c)).toBe(false);
+    expect(await wrapper(OTHER_USER, c)).toBe(false);
   });
 
   it('an email/name equivalence alone grants nothing', async () => {

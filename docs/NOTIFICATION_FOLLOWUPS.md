@@ -3,6 +3,23 @@
 Durable record of out-of-scope findings surfaced during the notification migration, so they
 are not lost between PRs. Each has a spawned-task id where one exists.
 
+> **STATUS UPDATE — the `notify-rebook-member-open` path is RETIRED (D7 runtime cutover).**
+>
+> Every item below that names `notify-rebook-member-open` or
+> `supabase/functions/_shared/rebook-member-open.ts` is now HISTORICAL. The edge function, the
+> shared helper, the `*/15` cron job and the four `cycles.settings`-based database shims
+> (`claim_rebook_member_open_notice`, `unclaim_rebook_member_open_notice`,
+> `append_rebook_member_open_notified`, `rebook_cycles_needing_member_open_notice`) are all gone.
+>
+> They are NOT rewritten here, deliberately: this file is the record of what was found and when, and
+> editing that record would destroy the thing it exists to be. What replaced them is the ABC-27
+> authority migration plus three private service-role workers — see
+> `docs/ABC27_ROLLOUT_RUNBOOK.md` and the D7 transport chain section of
+> `docs/NOTIFICATION_ARCHITECTURE.md`. Where an item's SUBSTANCE survived the move (per-recipient
+> checkpointing, fail-loud discovery reads, crash recovery) it survived as a database property
+> rather than as edge-function discipline, and is proved on the replayed chain in
+> `src/test/d7RuntimeContract.realpg.test.ts`.
+
 ## Email-footer settings link is chosen by TYPE, not recipient role (found by the N1 audit, 2026-08-05; owner: N2)
 
 `send-email` picks the "manage notification preferences" footer path from the EMAIL TYPE
@@ -277,6 +294,12 @@ site), but the right central defence. No task id yet.
 
 ## Guest-first identity — rebook/priority paths (P1 RECIPIENT-ROUTING) — RESOLVED: DEPLOYED + PROD-VERIFIED 2026-07-23 (PR 10d)
 
+> **ABC-26 supersedes part of this section.** Supplementary rebooking priority is unavailable for
+> every class, so `notify-rebook-member-open` no longer emails a supplemental list or second bucket —
+> those recipients are suppressed even when an older round still stores them. Only recipients holding
+> a real `slot_priority_claims` row are notified. Guest contact resolution itself is unchanged and is
+> further narrowed by Pass B §2 (a guest is reached at their OWN address only).
+
 CORRECTION (Codex re-review): an earlier version of this entry called these "display-only". That
 was wrong. They are P1 WRONG-RECIPIENT bugs, not just wrong names.
 
@@ -298,7 +321,7 @@ already-corrupted input. Every audit-proven site is fixed guest-first:
 | `bulk-rebook-cycle` (~L988) `repByPlayer` | representative selection collapsed child+parent BEFORE the invite fn | `personKeyOf` |
 | `src/lib/rebookManage.ts` (~L531) `keyOf` | built the reminder `targets` player-first | `personKeyOf` (nameByKey renamespaced) |
 | `auto-rebook-reminder` (~L164) | reminded-stamp routing | `personRefOf` |
-| `notify-rebook-member-open` + `_shared/rebook-member-open.ts` `recipientKey` | player-first grouping, name/email, **RB03 already-notified keys persisted to `cycles.settings`** | `recipientKey` guest-first (format-preserving: pure profile/guest keys byte-compatible, only a dual-key child moves to `g:<child>` for its one catch-up); `resolveMemberOpenContact` guest-first name/email + parent fallback |
+| `notify-rebook-member-open` + `_shared/rebook-member-open.ts` `recipientKey` | player-first grouping, name/email, **RB03 already-notified keys persisted to `cycles.settings`** | `recipientKey` guest-first (format-preserving: pure profile/guest keys byte-compatible, only a dual-key child moves to `g:<child>` for its one catch-up); `resolveMemberOpenContact` guest-first name/email — **no parent/account fallback**, withdrawn by Pass B §2 (a guest is reached at their OWN address only; the RPC still returns `account_*` columns and they are deliberately unread) |
 | `rebook_claims_needing_auto_reminder` RPC (`20260721100000`) | player-first `DISTINCT ON` + profile-first name/email | guest-first FLAT re-emit (migration `20260927100000`; kept flat, not a CTE, to match the proven structure + avoid a PGlite plan-cache flake) |
 | `bump_rebook_reminders` RPC (`20260625130000`) | player arm had no `guest_player_id IS NULL` guard | guarded (migration `20260927100000`) |
 
@@ -309,16 +332,21 @@ prod: anon/authenticated = EXECUTE). Now REVOKEd from `PUBLIC, anon, authenticat
 `service_role` only.
 
 Proofs: `rebookIdentityGuestFirst.pglite.test.ts` (cross-layer — raw claims → RPC grouping →
-guest-first routing → stamp; dual-key child mailed at own email; linked-profile fallback only when
-absent; parent stamp never touches child and vice-versa; grants locked down — all mutation-verified),
+guest-first routing → stamp; dual-key child mailed at own email; parent stamp never touches child and
+vice-versa; grants locked down — all mutation-verified). NOTE: this proof was written when a
+linked-profile fallback still existed "only when absent". Pass B §2 REMOVED that fallback outright —
+a guest with no address of their own is now dropped rather than reached through whoever once shared
+one — so the fallback clause no longer describes the shipped behaviour,
 `priorityClaimInvite.test.ts` (resolveRecipient guest-first), `rebookIdentityWiring.test.ts` (every
 call site wired to the twin). **RESOLVED — PR 10d deployed + prod-verified 2026-07-23** (3 migrations
 then all 7 edge fns; ACL leak closed, exact grant matrix verified; first `notify-rebook-member-open`
 run succeeded).
 
-`bulk-rebook-cycle:493` (`registeredPlayerIds` for `computeRebookExclusion`) is consciously left
+`bulk-rebook-cycle` (`registeredPlayerIds` for `computeRebookExclusion`) is consciously left
 alone — it is eligibility bucketing, not notification identity; changing it would alter rebook
-eligibility semantics (an unrelated refactor).
+eligibility semantics (an unrelated refactor). ABC-26 note: the second-bucket half of that bucketing
+is now inert — `secondBucketSeriesKeys` is always empty, so the exclusion still excludes and grants
+nobody a member window. The line number is deliberately dropped: it had already drifted.
 
 ## Rebook SECURITY DEFINER RPC lockdown (closed in PR 10d migration 20260927100000)
 
@@ -829,6 +857,19 @@ timeout the same way. All pass in isolation. They belong to 10c-a2 and the invoi
 
 **Owner:** whoever next touches those suites — either raise the per-test timeout/budget or mark them
 serial. Do not "fix" them by relaxing what they assert.
+
+### D7 correction gates — explicitly still open (2026-08-13)
+
+The ABC27 member-open correction freezes resolver-rendered email bytes, but it is **not a
+deployment-clear override** of the following owner gates:
+
+1. The catalog remains `quiet_hours_respect=true`. Instant-send quiet-hours enforcement is the
+   separately approved **D7-3** item; do not flip the catalog field to false to bypass it.
+2. The checkpoint CTA stays neutral at `https://padeltrainer.ai/app/player`. A dedicated
+   authenticated round deep link belongs to the later full **U4 route/adapter** implementation.
+3. Guests terminate as `rebook_member_open_guest_not_actionable`. Future guest member-window
+   support requires a separate owner-approved claim/auth/identity design; no guest login, claim or
+   booking entitlement is implied here.
 
 ---
 

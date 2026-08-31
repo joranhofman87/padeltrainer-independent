@@ -585,11 +585,23 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // Single-claim invoices → per identity; group invoices → per group (propagated to members).
   const { isPaid, hasInvoice: hasInvoiceFor, getPayToken } = buildRebookPaidResolver(singleInvoices, groupInvoices);
 
-  // GUEST-FIRST person key (FAM-02), namespaced (p:/g:): a dual-key child and their linked parent
-  // are DISTINCT people, so they stay two selectable rows — and the `targets` posted to
-  // send-rebook-reminder carry both, instead of the old player-first key collapsing them into one.
+  // TWO KEYS, because there are two questions.
+  //
+  // WHO someone is stays GUEST-FIRST (FAM-02), namespaced `p:`/`g:` — a dual-key child and their
+  // linked parent are distinct people, they stay two selectable rows, the reminder `targets` carry
+  // both, and `nameByKey` above is built in this shape.
   const keyOf = (c: { player_id: string | null; guest_player_id: string | null }) =>
     personKeyOf(c) ?? '';
+  // WHICH INVITATION a claim belongs to is PAIR-EXACT
+  // (`OWNER_DECISION_D7_RUNTIME_PRIORITY_INVITE_SEMANTICS_V1`). The sender discovers, describes and
+  // stamps ONE representative per exact `(player_id, guest_player_id)` pair, because that is the
+  // set `respond_to_priority_claim` books. Counted guest-first, this projection collapsed `(P, G)`
+  // and `(NULL, G)` into one: it reported "1/1 queued" for two invitations and — worse — when only
+  // one had been stamped before an interrupted drain, `uninvitedCount` fell to zero and the Resume
+  // control DISAPPEARED while the other was still unqueued (review round 3). The counting has to
+  // match what the sender does; the DISPLAY grouping does not, and does not change here.
+  const invitePairOf = (c: { player_id: string | null; guest_player_id: string | null }) =>
+    `p:${c.player_id ?? ''}|g:${c.guest_player_id ?? ''}`;
   // Strongest response per (group, player) — a player on a multi-week series has one
   // claim per slot; collapse to claimed > pending > declined.
   const rank = { claimed: 3, pending: 2, declined: 1, expired: 0 } as const;
@@ -598,6 +610,9 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // stamps exactly one representative per (group, player), so a single invited_at
   // means that invitee was emailed. Used to count how many invites are still un-sent.
   const invitedKeys = new Set<string>();
+  // Every pending claim's INVITATION key. The counts below are per exact pair, because that is what
+  // the sender enqueues and stamps — a player ROW may cover more than one of them.
+  const pendingPairs = new Set<string>();
   const groupsMap = new Map<string, { slotIds: Set<string>; players: Map<string, RebookManagePlayer> }>();
   for (const c of claimRows) {
     const groupKey = c.rebook_group_id ?? c.slot_id;
@@ -605,7 +620,10 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
     if (!g) { g = { slotIds: new Set(), players: new Map() }; groupsMap.set(groupKey, g); }
     g.slotIds.add(c.slot_id);
     const pk = keyOf(c);
-    if (c.invited_at) invitedKeys.add(`${groupKey}|${pk}`);
+    // The INVITATION key, not the identity key: one stamp per exact pair.
+    const pairKey = `${groupKey}|${invitePairOf(c)}`;
+    if (c.invited_at) invitedKeys.add(pairKey);
+    if (c.status === 'pending') pendingPairs.add(pairKey);
     const resp: ClaimResponse =
       c.status === 'claimed' || c.status === 'pending' || c.status === 'declined' || c.status === 'expired'
         ? c.status
@@ -714,16 +732,23 @@ export async function getCycleRebookStatus(cycleId: string): Promise<RebookManag
   // Un-sent invites: pending reps never emailed. Emailless reps (guest OR registered)
   // are stamped invited_at by the sender's drain (they can't be emailed), so they fall
   // out of this count once a drain has touched the round — the banner converges.
-  let uninvitedCount = 0;
+  //
+  // COUNTED PER INVITATION, not per displayed row (review round 3). A guest-first row can cover two
+  // exact pairs, and the sender enqueues one invitation for each; counting rows reported "1/1" for
+  // two invitations, and drove `uninvitedCount` to zero — hiding the Resume control — as soon as
+  // either one was stamped.
+  // Three figures over ONE set, so they cannot disagree with each other:
+  //   total   — every invitation this round has or still needs: pending pairs ∪ stamped pairs
+  //   sent    — those that are stamped (answered ones included: the invitation WAS queued)
+  //   uninvited — pending pairs with no stamp, which is what Resume has left to do
+  // Round 3's first version counted `sent` over pending pairs only, so an invited claim that was
+  // then ANSWERED dropped out of the numerator and the round displayed "0/1 queued" (round 4).
+  const allPairs = new Set([...pendingPairs, ...invitedKeys]);
   let invitesSent = 0;
-  let invitesTotal = 0;
-  for (const g of groups) {
-    for (const p of g.players) {
-      invitesTotal += 1;
-      if (p.invited) invitesSent += 1;
-      if (p.response === 'pending' && !invitedKeys.has(`${g.groupId}|${p.key}`)) uninvitedCount += 1;
-    }
-  }
+  for (const k of allPairs) if (invitedKeys.has(k)) invitesSent += 1;
+  let uninvitedCount = 0;
+  for (const k of pendingPairs) if (!invitedKeys.has(k)) uninvitedCount += 1;
+  const invitesTotal = allPairs.size;
   const { paidAmount, outstandingAmount } = sumRebookInvoiceAmounts(singleInvoices, groupInvoices);
 
   return {

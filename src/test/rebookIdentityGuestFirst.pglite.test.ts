@@ -9,6 +9,16 @@
 // grouping), runs the detection RPC (which groups), routes each candidate exactly as the cron
 // sender does (guest-first), calls bump_rebook_reminders, and asserts the FINAL stamped rows — so
 // no unit test can pass around an already-collapsed input.
+//
+// HISTORICAL SCOPE NOTE (D7 runtime cutover). The live schema no longer carries the four
+// member-open shim functions — `rebook_cycles_needing_member_open_notice`,
+// `claim_rebook_member_open_notice`, `unclaim_rebook_member_open_notice` and
+// `append_rebook_member_open_notified` are DROPped by 20261119110000. This file is unaffected and
+// deliberately unchanged in that respect: it replays 20260927100000 IN ISOLATION and its subject
+// is what THAT migration does, which is a fact about a historical, immutable file. The
+// `CREATE FUNCTION` stubs below exist purely so the migration's REVOKE/GRANT statements resolve,
+// and the ACL matrix pins the PUBLIC-execute footgun that migration closed. Neither is a claim
+// about the schema production runs today.
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
@@ -246,18 +256,12 @@ describe('PR 10d — rebook identity guest-first (cross-layer)', () => {
     expect(by.ghrc_auth).toBe(true);        // authenticated managers, but academy-scoped in-body
     expect(by.ghrc_svc).toBe(true);
   });
-
-  it('append_rebook_member_open_notified is ATOMIC + dedup (one UPDATE, no whole-settings clobber)', async () => {
-    const CY = 'c0000000-0000-0000-0000-0000000000d1';
-    await db.exec(`INSERT INTO public.cycles (id, name, owner_type, owner_id, settings) VALUES ('${CY}','Chk','academy','${ACAD}','{"other":"keep"}')`);
-    // append two keys, then re-append one of them + a new one — must dedup and PRESERVE other settings.
-    await db.query(`SELECT public.append_rebook_member_open_notified($1, $2::text[])`, [CY, ['g:a', 'p:b']]);
-    await db.query(`SELECT public.append_rebook_member_open_notified($1, $2::text[])`, [CY, ['g:a', 'p:c']]);
-    const row = (await db.query<{ settings: { rebook_member_open_notified_recipients: string[]; other: string } }>(
-      `SELECT settings FROM public.cycles WHERE id = '${CY}'`)).rows[0];
-    expect([...row.settings.rebook_member_open_notified_recipients].sort()).toEqual(['g:a', 'p:b', 'p:c']);
-    expect(row.settings.other).toBe('keep'); // sibling settings untouched
-  });
+  // THE `append_rebook_member_open_notified` ATOMIC/DEDUP TEST IS DELETED, NOT REPOINTED.
+  // D7's retirement migration DROPs that function, so its subject is dead code: the
+  // per-recipient checkpoint it proved is now `rebook_round_recipient_decisions`, a durable
+  // relation with its own uniqueness, exercised on the real chain. The ACL matrix above STAYS —
+  // its subject is a fact about THIS migration (it closed a PUBLIC-execute footgun on four
+  // names), which remains true of the migration whatever the live schema later does with them.
 });
 
 // ── Finding #3: guest ACCOUNT resolution mirrors can_book_member_window's authorization precedence

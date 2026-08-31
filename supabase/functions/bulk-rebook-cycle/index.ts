@@ -8,7 +8,10 @@ import { projectRebookGroupInvoiceTotal } from "../_shared/booking-pricing.ts";
 import { buildTargetCycleNames, seriesLabel, type SeriesNameInput } from "../_shared/rebook-target-naming.ts";
 import { canonicalizeSeriesCohort, cohortPersonKey } from "../_shared/rebook-cohort.ts";
 import { effectiveGuestEmail } from "../_shared/priority-claim-invite.ts";
-import { personKeyOf } from "../_shared/person-identity.ts";
+import {
+  parsePriorityRequest,
+  type PriorityRefusal,
+} from "../_shared/priority-unavailable.ts";
 
 const logStep = (step: string, details?: Record<string, unknown>) => {
   console.log(`[BULK-REBOOK-CYCLE] ${step}`, details ? JSON.stringify(details) : "");
@@ -193,6 +196,42 @@ serve(async (req) => {
     })();
     const targetCycleName: string | null = body?.targetCycleName ?? null;
     dryRun = body?.dryRun === true;
+
+    // ── ABC-26: supplementary rebooking priority is unavailable for EVERY class ─────────────
+    //
+    // Parsed exactly once, here, before anything is created. Nothing downstream re-reads the raw
+    // fields, so there is no second place for a filtered or truncated version of the operator's
+    // selection to survive. Registered, directly owned guest and exclusion-derived second-bucket
+    // selections are all refused; a round carrying none of them proceeds normally.
+    //
+    // The refusal reports RAW submitted counts. It never de-duplicates, never drops an invalid
+    // entry and never slices at the cap — the number the operator chose is the number they are
+    // told about.
+    const priorityParse = parsePriorityRequest({
+      priorityPeople: body?.priorityPeople,
+      priorityGuests: body?.priorityGuests,
+      secondBucketSeriesKeys: body?.secondBucketSeriesKeys,
+      priorityContractVersion: body?.priorityContractVersion,
+    });
+    if (priorityParse.kind === "refused") {
+      const refusal: PriorityRefusal = priorityParse.refusal;
+      // Logged field-by-field rather than cast wholesale: a structural cast of the contract object
+      // would keep compiling if the contract's shape changed underneath it.
+      logStep("priority_refused", {
+        reason: refusal.reason,
+        registeredSubmitted: refusal.registered.submitted,
+        guestSubmitted: refusal.guest.submitted,
+        secondBucketSubmitted: refusal.secondBucket.submitted,
+      });
+      // NO WRITE has happened: this is above every cycle, slot, claim and email path — and above
+      // every READ too, so a refused request touches nothing at all.
+      return new Response(JSON.stringify({
+        ok: false,
+        phase: "preflight",
+        reason: refusal.reason,
+        priorityRefusal: refusal,
+      }), { status: 409, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
     // Defer the invite blast to the CLIENT (resumable, bounded chunks via
     // send-priority-claim-invitation cycleId mode) so a large round can't blow the
     // edge wall-clock and silently partial-send. When set, we create the round +
@@ -238,34 +277,20 @@ serve(async (req) => {
     const claimInfo: string = typeof body?.claimInfo === "string"
       ? body.claimInfo.trim().slice(0, 8000)
       : "";
-    // Priority list: registered profile ids who also get member-window access + a
-    // "sessions opened" email. Deduped + capped here; validated against the academy's
-    // players below (only after the academy is derived/authorized).
-    const priorityPeopleRaw: string[] = Array.isArray(body?.priorityPeople)
-      ? ([...new Set(body.priorityPeople)] as unknown[])
-          .filter((x): x is string => typeof x === "string" && x.length > 0)
-          .slice(0, 200)
-      : [];
-    // Accountless GUEST academy players granted priority (guest_players.id). Validated below against
-    // the academy's own guests; reached via the "create account & book" member-open email + the
-    // linked-guest can_book_member_window clause.
-    const priorityGuestsRaw: string[] = Array.isArray(body?.priorityGuests)
-      ? ([...new Set(body.priorityGuests)] as unknown[])
-          .filter((x): x is string => typeof x === "string" && x.length > 0)
-          .slice(0, 200)
-      : [];
-    // Optional academy message for that email (empty ⇒ default copy in the notifier).
-    const memberOpenMessage: string = typeof body?.memberOpenMessage === "string"
-      ? body.memberOpenMessage.trim().slice(0, 2000)
-      : "";
-    // Trainer/session exclusion (cohort wizard): series to NOT rebook (by seriesKey),
-    // and the subset whose registered players move to the second bucket (member window).
+    // ABC-26: there are no supplementary-priority bindings left to carry. `priorityPeople`,
+    // `priorityGuests` and `memberOpenMessage` are not read, not defaulted and not stored: the
+    // request was already refused above if it carried any of them, so an empty local would be dead
+    // protocol state describing a feature that no longer exists. `memberOpenMessage` in particular
+    // was the academy's PROMISE text attached to the supplementary invitation; there is no such
+    // invitation, and a stored promise nobody sends is a claim the row makes on the product's behalf.
+    // Trainer/session exclusion (cohort wizard): series to NOT rebook (by seriesKey). Exclusion is
+    // exclusion-only now; excluding a series grants its players nothing.
     const excludedSeriesKeys: string[] = Array.isArray(body?.excludedSeriesKeys)
       ? (body.excludedSeriesKeys as unknown[]).filter((x): x is string => typeof x === "string")
       : [];
-    const secondBucketSeriesKeys: string[] = Array.isArray(body?.secondBucketSeriesKeys)
-      ? (body.secondBucketSeriesKeys as unknown[]).filter((x): x is string => typeof x === "string")
-      : [];
+    // ABC-26: provably empty (see parsePriorityRequest). No series can be moved to a second
+    // bucket, because the member window that bucket fed is exactly the unavailable feature.
+    const secondBucketSeriesKeys: string[] = [];
 
     if (!newStartDate || (!sourceCyclusId && (!academyProfileId || locationIds.length === 0 || !termEndDate))) {
       return new Response(JSON.stringify({ error: "newStartDate plus either sourceCyclusId, or academyProfileId + locationIds + termEndDate, are required" }), {
@@ -460,6 +485,11 @@ serve(async (req) => {
         : sourceCyclusId
           ? "No bookable sessions found in this cyclus."
           : "No series found ending in that week at those locations.";
+      // A no-work round still reports the shape, so a consumer never has to handle a missing
+      // field to know nothing was refused.
+      // ABC-26: an ordinary no-work result. It is NOT a validation outage and must not be
+      // dressed as one — the round simply had nothing to rebook, and no supplementary priority
+      // was submitted (a submission would have been refused above, before this point).
       return new Response(JSON.stringify({ ok: true, dryRun, groups: 0, players: 0, slotsCopied: 0, claimsCreated: 0, invitesSent: 0, alreadySentGroups, message }), {
         headers: { "Content-Type": "application/json", ...corsHeaders },
       });
@@ -508,8 +538,10 @@ serve(async (req) => {
         }
       }
     }
-    // Merge the moved-to-second-bucket players into the priority list (validated below).
-    const priorityPeopleWithExcluded = [...new Set([...priorityPeopleRaw, ...exclusion.secondBucketProfileIds])].slice(0, 200);
+    // ABC-26: there is no admission step. Nothing to admit, nothing to validate against the
+    // academy, and therefore no call to filter_academy_priority_ids — which is itself retired with
+    // a fail-closed body and no EXECUTE for any role. A round reaching this point carries zero
+    // supplementary priority, because a request carrying any was refused before the first write.
 
     if (!dryRun && includedSeries.length === 0) {
       return new Response(JSON.stringify({ ok: false, phase: "creation", reason: "nothing_to_rebook" }), {
@@ -725,8 +757,9 @@ serve(async (req) => {
         totalSessions,
         noEmailTotal,
         grandInvoiceTotal,
-        // How many registered players the current exclusions would move to the second bucket.
-        secondBucketAddedCount: exclusion.secondBucketProfileIds.length,
+        // ABC-26: `secondBucketAddedCount` is GONE. `secondBucketSeriesKeys` is always empty, so
+        // the field could only ever report 0 — a number that looks like an answer ("nobody was
+        // moved") when the truth is that there is nothing to move to. No client reads it.
         // Extend mode: groups skipped because they are already part of the round.
         alreadySentGroups,
       }), { headers: { "Content-Type": "application/json", ...corsHeaders } });
@@ -782,35 +815,6 @@ serve(async (req) => {
     const newEndDate = bodyEndDate
       ?? new Date(new Date(`${newStartDate}T00:00:00.000Z`).getTime() + (effWeeks - 1) * 7 * DAY_MS).toISOString().slice(0, 10);
 
-    // Validate the priority list against THIS academy's registered players, so a
-    // client can't grant an arbitrary profile member-window access to freed seats.
-    let priorityPeople: string[] = [];
-    let priorityGuests: string[] = [];
-    if (priorityPeopleWithExcluded.length > 0 || priorityGuestsRaw.length > 0) {
-      // Keep only ids that genuinely belong to this academy. filter_academy_priority_ids is
-      // service-role-callable (unlike get_players_overview, which is gated on is_academy_manager
-      // (auth.uid()) and granted to `authenticated` only — from this service-role context that call
-      // failed and SILENTLY dropped every priority person, registered included). Authorization was
-      // already done above via the academy_managers gate.
-      const { data: valid, error: validErr } = await supabase.rpc("filter_academy_priority_ids", {
-        _academy_profile_id: academyProfileId,
-        _profile_ids: priorityPeopleWithExcluded,
-        _guest_ids: priorityGuestsRaw,
-      });
-      if (validErr) logStep("priority_validation_error", { error: validErr.message });
-      const rows = (valid ?? []) as Array<{ profile_id: string | null; guest_player_id: string | null }>;
-      const okProfiles = new Set(rows.map((r) => r.profile_id).filter((x): x is string => !!x));
-      const okGuests = new Set(rows.map((r) => r.guest_player_id).filter((x): x is string => !!x));
-      priorityPeople = priorityPeopleWithExcluded.filter((id) => okProfiles.has(id));
-      priorityGuests = priorityGuestsRaw.filter((id) => okGuests.has(id));
-      if (priorityPeople.length !== priorityPeopleWithExcluded.length || priorityGuests.length !== priorityGuestsRaw.length) {
-        logStep("priority_people_filtered", {
-          submittedRegistered: priorityPeopleWithExcluded.length, keptRegistered: priorityPeople.length,
-          submittedGuests: priorityGuestsRaw.length, keptGuests: priorityGuests.length,
-        });
-      }
-    }
-
     // allow_cyclus_booking is cycle-level → read each series' SOURCE cycle settings (cyclus mode
     // already fetched them; location mode fetches the distinct source cycles here).
     const srcCycleIds = [...new Set(includedSeries.map((sr) => sr[0].cyclus_id).filter((x): x is string => !!x))];
@@ -826,7 +830,20 @@ serve(async (req) => {
     // existing round's id, so the added series join its combined overview.
     const roundId = extendRoundId ?? crypto.randomUUID();
     const sharedRebookSettings = {
-      rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_claim_info: claimInfo || null, rebook_priority_people: priorityPeople, rebook_priority_guests: priorityGuests, rebook_member_open_message: memberOpenMessage || null, rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder, rebook_reminder_lead_hours: reminderLeadHours,
+      rebook_payment_mode: paymentMode, rebook_strict_mollie: strictMollie, rebook_weeks: effWeeks, rebook_holidays: holidays, rebook_session_price: sessionPrice ?? null, rebook_invitation_message: invitationMessage || null, rebook_invitation_subject: invitationSubject || null, rebook_reminder_message: reminderMessage || null, rebook_reminder_subject: reminderSubject || null, rebook_rules: rebookRules || null, rebook_claim_info: claimInfo || null,
+      // ABC-26: `rebook_priority_people`, `rebook_priority_guests` and `rebook_member_open_message`
+      // are NOT written — not as empty arrays, not as null. A key that is present, even empty,
+      // states that this round has a supplementary-priority audience whose value happens to be
+      // nothing; the truth is that the round has no such concept. Absent is the honest encoding,
+      // and it is what the notifier's suppression already treats as the normal case.
+      //
+      // `rebook_member_open_notified_at` DOES stay, as an inert seeded key. It WAS the member-open
+      // cron's idempotency marker, stamped by `claim_rebook_member_open_notice`; the D7 runtime
+      // cutover retired that cron and dropped the function, and the durable per-recipient
+      // checkpoint is now `rebook_round_recipient_decisions`. The key is left in place rather than
+      // removed because ABC-27 §10b's import backfill reasons over it for pre-D7 rounds — seeding
+      // it null keeps a new round's shape identical to the rows that backfill reads.
+      rebook_member_open_notified_at: null, rebook_auto_reminder: autoReminder, rebook_reminder_lead_hours: reminderLeadHours,
       rebook_round_id: roundId, rebook_round_label: effName,
     };
     const draftRows = includedSeries.map((series) => {
@@ -898,7 +915,7 @@ serve(async (req) => {
       //    series (one slot insert + chunked claim inserts) so a 20-group term is a few
       //    dozen round-trips, not thousands.
       //    Excluded series (trainer deselected / session removed) are omitted here;
-      //    their moved players were folded into rebook_priority_people above.
+      //    ABC-26: their players are NOT folded into a priority list — that feature is gone.
       for (const series of includedSeries) {
         const tmpl = series[0];
         // THIS series' own target cycle — slots + claims land here, never in a shared mega-cycle.
@@ -1009,12 +1026,22 @@ serve(async (req) => {
         // collapsed both under p:<player>, dropping one person's rep BEFORE the invite fn ran — so
         // that person was never invited (the invite fn's own fix cannot recover a rep it never sees).
         const repByPlayer = new Map<string, { claimId: string; start: string }>();
+        // PAIR-EXACT, PER SERIES — `APPROVE_D7_RUNTIME_FINAL_CONVERGENCE_V1`, D2.
+        //
+        // This was keyed GUEST-FIRST and CYCLE-WIDE: it collapsed `(P, G)` with `(NULL, G)` — the
+        // shape the owner's pair-exact decision ruled against — and picked one representative per
+        // PERSON per cycle rather than one per series, so a player in two series got one invitation
+        // covering only the first. It is the third leader rule the convergence removes; the key is
+        // now the one the offer, the sender and the accept all use.
         for (const cl of insertedClaims) {
-          const pkey = personKeyOf(cl);
-          if (!pkey) continue;
           const start = startBySlot.get(cl.slot_id) ?? "";
-          const cur = repByPlayer.get(pkey);
-          if (!cur || start < cur.start) repByPlayer.set(pkey, { claimId: cl.id, start });
+          // Every claim in this loop belongs to THIS series, so the group is `rebookGroupId`.
+          const k = `${rebookGroupId ?? cl.slot_id}|p:${cl.player_id ?? ""}|g:${cl.guest_player_id ?? ""}`;
+          const cur = repByPlayer.get(k);
+          // Earliest session, then id — the same total order the offer uses to name the leader.
+          if (!cur || start < cur.start || (start === cur.start && cl.id < cur.claimId)) {
+            repByPlayer.set(k, { claimId: cl.id, start });
+          }
         }
         for (const r of repByPlayer.values()) representativeClaimIds.push(r.claimId);
       }

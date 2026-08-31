@@ -191,8 +191,8 @@ COMMENT ON FUNCTION public.get_player_email_edit_capability(uuid, uuid) IS
 -- decision), not containment.
 CREATE OR REPLACE FUNCTION public.filter_academy_priority_ids(
   _academy_profile_id uuid,
-  _profile_ids uuid[],
-  _guest_ids uuid[]
+  _profile_ids uuid[] DEFAULT NULL,
+  _guest_ids uuid[] DEFAULT NULL
 )
 RETURNS TABLE (profile_id uuid, guest_player_id uuid)
 LANGUAGE sql
@@ -865,7 +865,14 @@ BEGIN
        FROM public.locations l WHERE l.id = ANY (f.p_location_ids)),
     f.p_has_cyclus,
     f.p_overdue,
-    false,                                        -- deliverability is surfaced by its own reader
+    -- Pass B §4: TRUTHFUL, and derived from nothing but this already-admitted guest's OWN
+    -- address. A hardcoded false asserted "deliverable" for a guest whose own address is
+    -- hard-bounced, which is a false negative on a fix card the academy needs to see. NULL means
+    -- "not applicable" (no address on file) rather than "fine".
+    CASE WHEN nullif(btrim(f.email), '') IS NULL THEN NULL::boolean
+         ELSE EXISTS (SELECT 1 FROM public.email_address_state s
+                       WHERE s.email = lower(btrim(f.email)) AND s.is_suppressed)
+    END,
     count(*) OVER ()
   FROM filtered f
   ORDER BY
@@ -1571,11 +1578,11 @@ $fn$;
 COMMENT ON FUNCTION public.is_cycle_member(uuid, uuid) IS
   'ABC-18 A3: pure-profile seats only. The guest arm resolved through guest_verified_account_profile (person_links → twin → linked), which is staff-authored. Status filtering, and therefore capacity and tier behaviour, is unchanged.';
 
--- 8v. `can_book_member_window` — pure-profile rebooker, pure-profile claim, explicit list.
--- Retained: (a) narrowed to a pure-profile seat, (b) the pure-profile priority claim, and
--- (c) the cycle's explicit `rebook_priority_people` profile list. Withdrawn: (d) and (e), the
--- guest-claim and linked-ex-guest arms, both of which resolve identity through person_links or
--- the twin/linked bridge. Window TIMING is untouched — this function is an eligibility gate
+-- 8v. `can_book_member_window` — pure-profile seat and explicit pure-profile claim only.
+-- Retained: (a) the pure-profile seat and (b) the explicit pure-profile priority claim.
+-- Withdrawn: (c) the stored `rebook_priority_people` profile list by ABC-26, plus (d) and (e),
+-- the guest-claim and linked-ex-guest arms, both of which resolve identity through person_links
+-- or the twin/linked bridge. Window TIMING is untouched — this function is an eligibility gate
 -- only and never affects capacity.
 CREATE OR REPLACE FUNCTION public.can_book_member_window(_user_id uuid, _cycle_id uuid)
 RETURNS boolean
@@ -1605,18 +1612,17 @@ AS $fn$
         AND spc.player_id = (SELECT id FROM me)
         AND spc.guest_player_id IS NULL
     )
-    -- (c) the cycle's explicit registered priority list — a profile id staff named directly,
-    --     not an identity inferred from a guest row
-    OR EXISTS (
-      SELECT 1
-      FROM public.cycles c
-      WHERE c.id = _cycle_id
-        AND COALESCE(c.settings->'rebook_priority_people', '[]'::jsonb) ? (SELECT id::text FROM me)
-    );
+    -- (c) WITHDRAWN by ABC-26. This arm read the cycle's rebook_priority_people settings list.
+    --     Supplementary rebooking priority is unavailable for every class during containment, so
+    --     no list is written any more — and an OLD cycle may still carry a stale one. Keeping the
+    --     arm would let that stale JSON keep granting a member window long after the feature that
+    --     produced it was withdrawn. The list is SUPPRESSED here, not deleted from settings: the
+    --     containment changes no rows.
+  ;
 $fn$;
 
 COMMENT ON FUNCTION public.can_book_member_window(uuid, uuid) IS
-  'ABC-18 A3: a pure-profile seat in the cycle, an explicit pure-profile priority claim, or the cycle''s explicit rebook_priority_people list. The guest-claim and linked-ex-guest arms are withdrawn — both resolved identity through person_links or the twin/linked bridge. Pure authorization gate: it never affects capacity, and window timing is unchanged.';
+  'ABC-18 A3 + ABC-26: a pure-profile seat in the cycle, or an explicit pure-profile priority claim. The guest-claim and linked-ex-guest arms were withdrawn by A3 (both resolved identity through the person/twin/linked bridge); the rebook_priority_people settings-list arm is withdrawn by ABC-26, because supplementary priority is unavailable for every class and a stale stored list would otherwise keep granting a member window. Stored settings are suppressed, never rewritten. Pure authorization gate: it never affects capacity, and window timing is unchanged.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 8w. A3 correction — the RLS policy and can_book_slot, not just the RPCs.
@@ -2761,6 +2767,12 @@ END $$;
 --
 -- `_academy_profile_id` is retained in the signature (callers pass it) but no longer selects an
 -- override; it is left in place so no caller has to change shape.
+--
+-- The body is two arms: the GUEST arm fires whenever a guest is present, dual-key included; the
+-- PURE-PROFILE arm fires only when no guest is present. It carries no comments, and the install
+-- guards below enforce that — a guard greps prosrc for the profile arm's guest-NULL requirement,
+-- and a commented body would let that requirement be commented OUT while the guard still found
+-- its text and passed.
 CREATE OR REPLACE FUNCTION public.get_invoice_recipient_identity(
   _player_id uuid DEFAULT NULL,
   _guest_player_id uuid DEFAULT NULL,
@@ -2775,7 +2787,6 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $fn$
-  -- GUEST arm — fires whenever a guest is present, dual-key included.
   SELECT
     COALESCE(
       NULLIF(btrim(COALESCE(g.first_name, '') || ' ' || COALESCE(g.last_name, '')), ''),
@@ -2792,7 +2803,6 @@ AS $fn$
 
   UNION ALL
 
-  -- PURE-PROFILE arm — only when no guest is present.
   SELECT
     COALESCE(NULLIF(btrim(p.full_name), ''), 'Unknown Player'),
     COALESCE(NULLIF(btrim(p.email), ''), ''),
@@ -2811,6 +2821,33 @@ COMMENT ON FUNCTION public.get_invoice_recipient_identity(uuid, uuid, uuid) IS
 -- Re-emitted so the status a manager sees is keyed to the SAME recipient the mail actually goes
 -- to. Deliverability itself (hard bounce, complaint, provider suppression) is unchanged: only the
 -- address it is looked up for changes, from "the linked account's" to "this guest's own".
+--
+-- RESULT SHAPE CHANGES → DROP FIRST. The predecessor built by this same lineage
+-- (20260615110080) returns (invoice_id, delivery_status, linked_email); this definition returns
+-- (invoice_id, recipient_email, delivery_state). CREATE OR REPLACE cannot change the row type
+-- defined by OUT parameters, so without the DROP a fresh replay — and an eventual deploy over
+-- today's lineage — dies here with 42P13 mid-file, which no later corrective migration can
+-- reach. 20260615110080 states the same rule for the same function and applies it. The DROP is
+-- argument-specific and IF EXISTS, so it is a no-op where the predecessor was never built and
+-- idempotent on rerun; pg_depend carries no dependents on this function.
+--
+-- SUPPRESSION AUTHORITY. Deliverability comes from the ONE tracked source:
+-- email_address_state.is_suppressed, the generated column 20261006100000 made canonical
+-- (hard_bounced / complained OR an active provider suppression). This file already reads it that
+-- way for the overview deliverability flag and the undeliverable-recipients card, so all three
+-- operator surfaces agree. `email` there is a normalized-lowercase PRIMARY KEY, so the lookup
+-- lowers and trims the recipient address before keying it — an unnormalized comparison would
+-- silently miss every mixed-case recipient and report a bouncing address as deliverable.
+--
+-- The tenant gate is unchanged: the caller must own the invoice's trainer or academy, or be admin.
+--
+-- THE BODY BELOW CARRIES NO COMMENTS, AND THE INSTALL GUARDS AFTER IT ENFORCE THAT. Explanation
+-- lives here, above the statement, precisely so that prosrc contains executable SQL and nothing
+-- else: a guard that greps prosrc cannot then match the prose describing the predicate it is
+-- supposed to be checking, and no comment-stripping pass — which is a regex, not a SQL lexer, and
+-- can both hide live text and splice unrelated fragments together — has to run at all.
+DROP FUNCTION IF EXISTS public.get_invoices_delivery_status(uuid[]);
+
 CREATE OR REPLACE FUNCTION public.get_invoices_delivery_status(_invoice_ids uuid[])
 RETURNS TABLE (invoice_id uuid, recipient_email text, delivery_state text)
 LANGUAGE plpgsql
@@ -2826,8 +2863,9 @@ BEGIN
     CASE
       WHEN NULLIF(btrim(COALESCE(r.email, '')), '') IS NULL THEN 'no_email'
       WHEN EXISTS (
-        SELECT 1 FROM public.email_suppressions s
-        WHERE lower(s.email) = lower(r.email)
+        SELECT 1 FROM public.email_address_state s
+        WHERE s.email = lower(btrim(r.email))
+          AND s.is_suppressed
       ) THEN 'undeliverable'
       WHEN i.sent_at IS NOT NULL THEN 'sent'
       ELSE 'not_sent'
@@ -2837,7 +2875,6 @@ BEGIN
     i.player_id, i.guest_player_id, i.academy_profile_id
   ) r
   WHERE i.id = ANY(_invoice_ids)
-    -- tenant gate unchanged: the caller must own the invoice's trainer or academy, or be admin
     AND (
       public.is_admin(auth.uid())
       OR i.trainer_id IN (SELECT tp.id FROM public.trainer_profiles tp WHERE tp.user_id = auth.uid())
@@ -2848,27 +2885,113 @@ END;
 $fn$;
 
 COMMENT ON FUNCTION public.get_invoices_delivery_status(uuid[]) IS
-  'ABC-18 Pass B §1b: delivery state for the SAME guest-first recipient the mail is sent to. Real provider/suppression status is unchanged; only the address it is resolved for is corrected. Tenant gate preserved.';
+  'ABC-18 Pass B §1b: delivery state for the SAME guest-first recipient the mail is sent to. Real provider/suppression status is unchanged (email_address_state.is_suppressed); only the address it is resolved for is corrected. Tenant gate preserved.';
+
+-- The DROP above discards the function's ACL with it, and the platform re-grants EXECUTE to
+-- PUBLIC and anon by default privileges on the fresh CREATE. Re-emitting 20260615110080's own
+-- least-privilege idiom verbatim is therefore mandatory, not decorative: without it this
+-- SECURITY DEFINER, tenant-gated invoice reader would be reachable by ANONYMOUS callers.
+-- service_role keeps its EXECUTE from the same platform default privileges — as it does for the
+-- 20260615110030/110080 shapes — so the trio is unchanged: anon=f / authenticated=t /
+-- service_role=t. No broader grant is added here.
+REVOKE ALL ON FUNCTION public.get_invoices_delivery_status(uuid[]) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_invoices_delivery_status(uuid[]) TO authenticated;
 
 DO $$
-DECLARE v_src text;
+DECLARE
+  v_src  text;
+  -- prosrc INCLUDES a body's own comments, and prose describing a predicate names the very
+  -- identifiers a guard looks for — so a guard grepping a commented body can keep passing after
+  -- the executable predicate it claims to check has been deleted.
+  --
+  -- NO COMMENT STRIPPING HAPPENS HERE, BY DESIGN. An earlier version of these guards stripped
+  -- comments out of prosrc with a regex so they would not match the body's own prose. That is
+  -- unsound in BOTH directions: a `--` inside a string literal makes the strip delete live SQL
+  -- (hiding a forbidden reference), and replacing a comment with whitespace can splice two
+  -- separated fragments into a match that the real body never contained. A regex is not a SQL
+  -- lexer and cannot be made into one here. So the bodies carry no comments at all — their
+  -- explanation sits above each statement — and the guards below inspect raw prosrc directly.
+  -- The comment-free shape is asserted, not assumed.
 BEGIN
-  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'get_invoice_recipient_identity';
+  -- Resolve each function by its EXACT signature. `SELECT … INTO` is not STRICT, so with an
+  -- unexpected same-name overload present it would bind an arbitrary body and these guards would
+  -- accept or reject the wrong one. to_regprocedure also yields NULL for "not installed", which
+  -- is the missing-function case each check below already handles.
+  SELECT p.prosrc INTO v_src FROM pg_proc p
+   WHERE p.oid = to_regprocedure('public.get_invoice_recipient_identity(uuid,uuid,uuid)');
   IF v_src IS NULL THEN RAISE EXCEPTION 'Pass B §1b: get_invoice_recipient_identity is missing'; END IF;
-  -- no linked-profile join, no metadata override, and the guest arm must not require a null player
-  IF v_src ~ 'linked_profile_id|academy_player_metadata' THEN
+  -- The same comment-free contract as the reader below, for the same reason: the positive check
+  -- that follows greps prosrc, and on a commented body the guest-NULL requirement could be
+  -- commented OUT while its text survived and this guard still passed.
+  IF v_src ~ '--' OR v_src ~ '/\*' THEN
+    RAISE EXCEPTION 'Pass B §1b: get_invoice_recipient_identity carries a comment; this body must stay comment-free so its install guards inspect executable SQL only';
+  END IF;
+  -- No linked-profile join and no metadata override. `~*`: an unquoted SQL identifier is
+  -- case-insensitive, so `LINKED_PROFILE_ID` names exactly the same column and must trip this.
+  IF v_src ~* 'linked_profile_id|academy_player_metadata' THEN
     RAISE EXCEPTION 'Pass B §1b: recipient identity still traverses the bridge or a metadata override';
   END IF;
-  IF v_src !~ '_guest_player_id IS NULL AND _player_id IS NOT NULL' THEN
+  -- Anchored to the END of prosrc, because this arm is the last thing the body does. Without the
+  -- anchor the seam after `p.id = _player_id` stays open, and an appended `OR TRUE` would leave
+  -- every matched character intact while making the SECURITY DEFINER profile arm return every
+  -- profile in the table.
+  IF v_src !~ 'WHERE\s+_guest_player_id IS NULL AND _player_id IS NOT NULL AND p\.id = _player_id;\s*$' THEN
     RAISE EXCEPTION 'Pass B §1b: the profile arm must require guest NULL';
   END IF;
 
-  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'get_invoices_delivery_status';
+  SELECT p.prosrc INTO v_src FROM pg_proc p
+   WHERE p.oid = to_regprocedure('public.get_invoices_delivery_status(uuid[])');
   IF v_src IS NULL THEN RAISE EXCEPTION 'Pass B §1b: get_invoices_delivery_status is missing'; END IF;
+
+  -- The comment-free invariant every guard below depends on.
+  IF v_src ~ '--' OR v_src ~ '/\*' THEN
+    RAISE EXCEPTION 'Pass B §1b: get_invoices_delivery_status carries a comment; this body must stay comment-free so its install guards inspect executable SQL only';
+  END IF;
+
   IF v_src !~ 'get_invoice_recipient_identity' THEN
     RAISE EXCEPTION 'Pass B §1b: delivery status must resolve through the guest-first identity reader';
+  END IF;
+  -- THE WHOLE delivery-state CASE AS ONE MATCH, from its first WHEN to its ELSE. Pinning only the
+  -- suppression sub-select leaves the arm's own polarity outside the guard: `WHEN NOT EXISTS (…)`
+  -- or `WHEN FALSE AND EXISTS (…)` keeps every matched character intact while inverting or
+  -- disabling suppression, and anything appended after 'undeliverable' sits past the end of a
+  -- shorter pattern. Threading all four arms into one match closes both seams.
+  --
+  -- It binds, in order: the empty-address arm; the suppression arm keyed on the NORMALIZED
+  -- address (email_address_state.email is a lowercase PRIMARY KEY, so an unnormalized comparison
+  -- misses every mixed-case recipient) and testing the canonical generated column (a raw `state`
+  -- read misses a provider suppression carrying no bounce); the sent arm; and the default.
+  --
+  -- Case-SENSITIVE on purpose: the quoted results and the column names are data, and case-folding
+  -- them would accept a body returning a different value or reading a different column. Only
+  -- whitespace may vary — this body is authored in this same file, so a reformatting that trips
+  -- this fails loudly and closed here rather than silently loosening the guard.
+  IF v_src !~ (
+        'CASE\s+WHEN\s+NULLIF\(btrim\(COALESCE\(r\.email,\s*''''\)\),\s*''''\)\s+IS NULL\s+THEN\s+''no_email'''
+     || '\s+WHEN\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+public\.email_address_state\s+s'
+     || '\s+WHERE\s+s\.email\s*=\s*lower\(btrim\(r\.email\)\)\s+AND\s+s\.is_suppressed'
+     || '\s*\)\s+THEN\s+''undeliverable'''
+     || '\s+WHEN\s+i\.sent_at\s+IS NOT NULL\s+THEN\s+''sent'''
+     || '\s+ELSE\s+''not_sent''\s+END'
+    ) THEN
+    RAISE EXCEPTION 'Pass B §1b: the delivery-state CASE is no longer the guest-first, email_address_state.is_suppressed contract (normalized key, unnegated suppression arm, sent/not_sent defaults)';
+  END IF;
+  IF v_src ~* 'email_suppressions' THEN
+    RAISE EXCEPTION 'Pass B §1b: delivery status reads an email-suppression relation no migration creates';
+  END IF;
+
+  -- The DROP+CREATE above re-applies platform default privileges. Assert the intended trio
+  -- directly rather than trusting the REVOKE/GRANT to have run: anon must NOT be able to reach
+  -- a SECURITY DEFINER, tenant-gated invoice reader, and the two roles that legitimately call
+  -- it must still be able to.
+  IF has_function_privilege('anon', 'public.get_invoices_delivery_status(uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Pass B §1b: get_invoices_delivery_status must not be executable by anon';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.get_invoices_delivery_status(uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Pass B §1b: get_invoices_delivery_status must stay callable by authenticated';
+  END IF;
+  IF NOT has_function_privilege('service_role', 'public.get_invoices_delivery_status(uuid[])', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Pass B §1b: get_invoices_delivery_status must stay callable by service_role';
   END IF;
 END $$;
 
@@ -3979,6 +4102,15 @@ $$;
 REVOKE ALL ON FUNCTION public.resolve_guest_member_contacts(uuid[]) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.resolve_guest_member_contacts(uuid[]) TO service_role;
 
+-- Oversize input still FAILS LOUD rather than silently truncating: getCycleRebookStatus reads
+-- every absent id as has_contact=false, so a capped WHERE would show reachable members as
+-- unreachable. The tenant gate is likewise unchanged: only guests holding a claim on a slot in a
+-- cycle owned by an academy the CALLER manages are answered about at all. Both are carried over
+-- from the effective definition.
+--
+-- The body carries no comments, and the install guards enforce that: they grep prosrc for the
+-- academy_managers join and the over-cap refusal, and on a commented body either could be
+-- commented OUT while its text survived and the guard still passed.
 CREATE OR REPLACE FUNCTION public.guests_have_rebook_contact(_guest_ids uuid[])
 RETURNS TABLE (guest_id uuid, has_contact boolean)
 LANGUAGE plpgsql
@@ -3987,16 +4119,11 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Oversize input still FAILS LOUD rather than silently truncating: getCycleRebookStatus reads
-  -- every absent id as has_contact=false, so a capped WHERE would show reachable members as
-  -- unreachable. Unchanged from the effective definition.
   IF cardinality(_guest_ids) > 1000 THEN
     RAISE EXCEPTION 'guests_have_rebook_contact: too many ids (%); max 1000 per call', cardinality(_guest_ids)
       USING ERRCODE = 'program_limit_exceeded';
   END IF;
   RETURN QUERY
-  -- The tenant gate is unchanged: only guests holding a claim on a slot in a cycle owned by an
-  -- academy the CALLER manages are answered about at all.
   WITH authorized AS (
     SELECT DISTINCT spc.guest_player_id AS gid
     FROM public.slot_priority_claims spc
@@ -4013,6 +4140,38 @@ $$;
 REVOKE ALL ON FUNCTION public.guests_have_rebook_contact(uuid[]) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.guests_have_rebook_contact(uuid[]) TO authenticated, service_role;
 
+-- ── rebook_claims_needing_auto_reminder ─────────────────────────────────────────────────────
+-- DUE-WINDOW AUTHORITY: the body below is the SHIPPED detection model, re-emitted from
+-- 20260930100000 (itself the 20260927100000 body plus the future-session guard). Pass B §2's
+-- charter is to narrow the IDENTITY arms only, so nothing about WHICH claims are due moves with
+-- it: the per-round opt-out, the response-intent guard, the lead-hours override with its
+-- digits-only parse (junk falls back rather than erroring the cron), the 336-hour clamp and the
+-- app_now() test clock all stay exactly as shipped.
+--
+-- THE ONE APPROVED WITHDRAWAL is the verified-account contact fallback. A guest shows their OWN
+-- name and is addressed at their OWN email; the claim's player_id is not consulted, because it is
+-- decoration on a dual-key row, not proof of anything. A pure profile (player_id set, guest null)
+-- keeps its own direct profile contact. The guest's verified-account profile is no longer a
+-- fallback for a blank guest name or a missing guest address: a claim token is a bearer
+-- credential for a seat, and routing it to an account resolved from a guest row is exactly the
+-- relationship evidence this containment withdrew. A guest with no address of their own is
+-- therefore not reachable, and the deliverable-address guard drops them rather than addressing
+-- someone else on their behalf.
+--
+-- Guest-first namespaced key (FAM-02): a guest row is exactly g:<guest>, so a child and the adult
+-- whose address once matched theirs remain two representatives, not one. The ORDER BY takes the
+-- earliest-closing slot as that representative.
+--
+-- SCOPE, STATED TRUTHFULLY: this is a GLOBAL, UNBOUNDED sweep. It carries no tenant argument, no
+-- LIMIT and no batch key — every academy's due claims across the whole database come back in one
+-- result, and the caller (the reminder cron) decides how many to send. That is the shipped
+-- behaviour, and it is why the ACL below is service_role only: the function returns claim tokens
+-- and addresses cross-academy. Nothing here bounds the sweep and no comment may imply otherwise.
+--
+-- THE BODY CARRIES NO COMMENTS, AND THE INSTALL GUARDS ENFORCE THAT — same reason as §1b above:
+-- prosrc holds executable SQL only, so a guard that greps it cannot match the prose describing
+-- the predicate it checks, and no regex comment-strip (which can hide live text and splice
+-- unrelated fragments together) has to run.
 CREATE OR REPLACE FUNCTION public.rebook_claims_needing_auto_reminder(_lead_hours int DEFAULT 24)
 RETURNS TABLE (
   cycle_id uuid,
@@ -4029,17 +4188,12 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  -- Guest-first namespaced key (FAM-02): a guest row is exactly g:<guest>, so a child and the
-  -- adult whose address once matched theirs remain two representatives, not one.
   SELECT DISTINCT ON (c.id, COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text))
     c.id,
     c.name,
     ap.name,
     spc.player_id,
     spc.guest_player_id,
-    -- A guest shows their OWN name and is addressed at their OWN email. The claim's player_id is
-    -- not consulted: it is decoration on a dual-key row, not proof of anything. A pure profile
-    -- (player_id set, guest null) keeps its own direct profile contact.
     CASE WHEN spc.guest_player_id IS NOT NULL
          THEN NULLIF(btrim(gp.full_name), '')
          ELSE pr.full_name END,
@@ -4053,16 +4207,25 @@ AS $$
   JOIN public.academy_profiles ap ON ap.id = c.owner_id
   LEFT JOIN public.profiles pr ON pr.id = spc.player_id
   LEFT JOIN public.guest_players gp ON gp.id = spc.guest_player_id
-  WHERE spc.status = 'pending'
-    AND spc.claim_token IS NOT NULL
-    AND spc.reminder_sent_at IS NULL
-    AND spc.expires_at IS NOT NULL
-    AND spc.expires_at > now()
-    AND spc.expires_at <= now() + make_interval(hours => _lead_hours)
-    AND s.start_time > now()
+  WHERE c.owner_type = 'academy'
+    AND (c.settings->>'rebook_payment_mode') IS NOT NULL
+    AND COALESCE((c.settings->>'rebook_auto_reminder')::boolean, true) = true
+    AND spc.status = 'pending'
+    AND spc.response_intent IS DISTINCT FROM 'decline'
+    AND spc.reminded_at IS NULL
+    AND s.start_time > public.app_now()
+    AND s.priority_window_ends_at IS NOT NULL
+    AND s.priority_window_ends_at > public.app_now()
+    AND s.priority_window_ends_at <= public.app_now() + make_interval(hours => GREATEST(1, LEAST(336, COALESCE(
+      CASE WHEN c.settings->>'rebook_reminder_lead_hours' ~ '^[0-9]{1,4}$'
+           THEN (c.settings->>'rebook_reminder_lead_hours')::int END,
+      _lead_hours, 24))))
+    AND (CASE WHEN spc.guest_player_id IS NOT NULL
+              THEN NULLIF(btrim(gp.email), '')
+              ELSE NULLIF(btrim(pr.email), '') END) IS NOT NULL
   ORDER BY c.id,
            COALESCE('g:' || spc.guest_player_id::text, 'p:' || spc.player_id::text),
-           spc.expires_at;
+           s.priority_window_ends_at ASC;
 $$;
 REVOKE ALL ON FUNCTION public.rebook_claims_needing_auto_reminder(int) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.rebook_claims_needing_auto_reminder(int) TO service_role;
@@ -4076,40 +4239,138 @@ DECLARE
   v_bridge text[] := ARRAY['person_' || 'links', 'twin_of_' || 'profile_id', 'linked_' || 'profile_id'];
   v_tok text;
 BEGIN
+  -- EXACT SIGNATURES, not bare names: `SELECT … INTO` is not STRICT, so an unexpected same-name
+  -- overload would bind an arbitrary body and every guard below would inspect the wrong one.
   FOREACH v_fn IN ARRAY ARRAY[
-    'guest_verified_account_profile',
-    'resolve_guest_member_contacts',
-    'guests_have_rebook_contact',
-    'rebook_claims_needing_auto_reminder'
+    'public.guest_verified_account_profile(uuid)',
+    'public.resolve_guest_member_contacts(uuid[])',
+    'public.guests_have_rebook_contact(uuid[])',
+    'public.rebook_claims_needing_auto_reminder(int)'
   ] LOOP
-    SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-     WHERE n.nspname = 'public' AND p.proname = v_fn;
+    SELECT p.prosrc INTO v_src FROM pg_proc p WHERE p.oid = to_regprocedure(v_fn);
     IF v_src IS NULL THEN
       RAISE EXCEPTION 'Pass B §2: % is missing', v_fn;
     END IF;
     FOREACH v_tok IN ARRAY v_bridge LOOP
-      IF position(v_tok in v_src) > 0 THEN
+      -- Case-folded on both sides: these are unquoted SQL identifiers, so `PERSON_LINKS` and
+      -- `Linked_Profile_Id` resolve to exactly the same objects and must trip the same refusal.
+      IF position(lower(v_tok) in lower(v_src)) > 0 THEN
         RAISE EXCEPTION 'Pass B §2: % still reads legacy relationship evidence (%)', v_fn, v_tok;
       END IF;
     END LOOP;
   END LOOP;
 
   -- The tenant gate and the loud over-cap guard must both survive the narrowing.
-  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'guests_have_rebook_contact';
-  IF COALESCE(v_src !~ 'academy_managers', true) THEN
+  SELECT p.prosrc INTO v_src FROM pg_proc p
+   WHERE p.oid = to_regprocedure('public.guests_have_rebook_contact(uuid[])');
+  -- The marker-free contract applies to every POSITIVELY searched body. The two checks below
+  -- look for text that must be present, so on a commented body either could be commented OUT
+  -- while its text survived in prosrc and the check still passed — the tenant gate silently
+  -- gone. (The bridge-token loop above needs no such contract: it searches for text that must be
+  -- ABSENT, so a comment mentioning a forbidden identifier can only trip it — fail-closed.)
+  IF COALESCE(v_src ~ '--', false) OR COALESCE(v_src ~ '/\*', false) THEN
+    RAISE EXCEPTION 'Pass B §2: guests_have_rebook_contact carries a comment; this body must stay comment-free so its install guards inspect executable SQL only';
+  END IF;
+  -- Bound through the CTE's closing WHERE and paren, not just the JOIN. A pattern ending at
+  -- `auth.uid()` leaves the seam after it open, and `… AND am.user_id = auth.uid() OR
+  -- public.is_admin(auth.uid())` would keep every matched character while handing any
+  -- authenticated admin the guest-contact state of every academy they do not manage. The suite
+  -- cannot see that either — its outsider is not an admin — so this guard is the thing that has
+  -- to close it.
+  IF COALESCE(v_src !~ (
+        'JOIN\s+public\.academy_managers\s+am\s+ON\s+am\.academy_profile_id\s*=\s*c\.owner_id'
+     || '\s+AND\s+am\.user_id\s*=\s*auth\.uid\(\)'
+     || '\s+WHERE\s+spc\.guest_player_id\s*=\s*ANY\(_guest_ids\)\s*\)'
+    ), true) THEN
     RAISE EXCEPTION 'Pass B §2: guests_have_rebook_contact lost its tenant gate';
   END IF;
-  IF COALESCE(v_src !~ 'program_limit_exceeded', true) THEN
+  -- The WHOLE refusal block, from its own `IF` to its own `END IF`. Every shorter form leaves a
+  -- seam: `> 1000\M` alone lets `100000` masquerade as `1000`; binding only forward from the
+  -- threshold lets a trailing conjunct in (`> 1000 AND cardinality(_guest_ids) < 2000 THEN`);
+  -- and starting AT the threshold lets a leading one in (`IF cardinality(_guest_ids) < 5000 AND
+  -- cardinality(_guest_ids) > 1000 THEN`), which refuses 1001 and 3000 — both suite controls —
+  -- while passing 5000 unrefused. Anchoring both ends closes all three, and no finite number of
+  -- input-size controls could substitute for it: a floor cannot be proven by sampling.
+  -- `[\s\S]*?` is non-greedy and spans lines for the message only; a `[^;]*` bridge would stop
+  -- inside it, because the message itself contains `(%);`.
+  IF COALESCE(v_src !~ 'IF\s+cardinality\(_guest_ids\)\s*>\s*1000\M\s*THEN\s+RAISE EXCEPTION[\s\S]*?USING ERRCODE\s*=\s*''program_limit_exceeded'';\s*END IF;', true) THEN
     RAISE EXCEPTION 'Pass B §2: guests_have_rebook_contact lost its over-cap refusal';
   END IF;
 
   -- Pure-profile contact must remain reachable, or the narrowing has silenced legitimate sends.
-  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-   WHERE n.nspname = 'public' AND p.proname = 'rebook_claims_needing_auto_reminder';
+  SELECT p.prosrc INTO v_src FROM pg_proc p
+   WHERE p.oid = to_regprocedure('public.rebook_claims_needing_auto_reminder(int)');
   IF COALESCE(v_src !~ 'pr\.email', true) THEN
     RAISE EXCEPTION 'Pass B §2: the pure-profile arm lost its direct profile contact';
   END IF;
+
+  -- The due window is the SHIPPED one (20260930100000) and must stay that way. §2 narrows the
+  -- identity arms; it does not get to invent a detection model. Each conjunct below is load-
+  -- bearing: without the opt-out an academy that turned reminders off still gets them, without
+  -- the response-intent guard a claimant who declined is chased, without reminded_at they are
+  -- chased every tick, and without app_now() the window is untestable.
+  --
+  -- The comment-free invariant every guard below depends on (see the note above the CREATE).
+  IF v_src ~ '--' OR v_src ~ '/\*' THEN
+    RAISE EXCEPTION 'Pass B §2: the auto-reminder producer carries a comment; this body must stay comment-free so its install guards inspect executable SQL only';
+  END IF;
+
+  -- THE WHOLE WHERE CHAIN AS ONE CONTIGUOUS PATTERN, not a bag of independent fragments. Matching
+  -- conjuncts separately lets a body pass that still contains each fragment while meaning
+  -- something else: `spc.status = 'pending' OR TRUE` satisfies a fragment check, a `LEAST(336,`
+  -- found anywhere satisfies a clamp check even if the lead expression no longer uses it, and
+  -- `app_now() - make_interval(…)` satisfies a check that stopped at `app_now()`. Threading every
+  -- conjunct through its `AND` boundaries into a single match closes all three: an inserted
+  -- disjunction, a re-pointed clamp or a flipped sign all break the chain.
+  --
+  -- Case-SENSITIVE throughout. The quoted values are data, not keywords: PostgreSQL compares
+  -- 'pending' / 'decline' / 'academy' and the JSON keys case-sensitively, so a case-folding match
+  -- would accept a body reading 'PENDING' or a different settings key. Only whitespace may vary.
+  IF COALESCE(v_src !~ (
+        'WHERE\s+c\.owner_type\s*=\s*''academy'''
+     || '\s+AND\s+\(\s*c\.settings->>''rebook_payment_mode''\s*\)\s+IS\s+NOT\s+NULL'
+     || '\s+AND\s+COALESCE\(\s*\(\s*c\.settings->>''rebook_auto_reminder''\s*\)::boolean\s*,\s*true\s*\)\s*=\s*true'
+     || '\s+AND\s+spc\.status\s*=\s*''pending'''
+     || '\s+AND\s+spc\.response_intent\s+IS\s+DISTINCT\s+FROM\s+''decline'''
+     || '\s+AND\s+spc\.reminded_at\s+IS\s+NULL'
+     || '\s+AND\s+s\.start_time\s*>\s*public\.app_now\(\)'
+     || '\s+AND\s+s\.priority_window_ends_at\s+IS\s+NOT\s+NULL'
+     || '\s+AND\s+s\.priority_window_ends_at\s*>\s*public\.app_now\(\)'
+     || '\s+AND\s+s\.priority_window_ends_at\s*<=\s*public\.app_now\(\)\s*\+\s*make_interval\('
+     || 'hours\s*=>\s*GREATEST\(\s*1\s*,\s*LEAST\(\s*336\s*,\s*COALESCE\('
+     -- the lead override's digits-only parse and its fallback chain, in the SAME match: split
+     -- across two patterns, `COALESCE(999, CASE WHEN …, _lead_hours, 24)` fits in the seam
+     -- between them and pins the effective lead at the clamp ceiling while both still pass.
+     || '\s*CASE\s+WHEN\s+c\.settings->>''rebook_reminder_lead_hours''\s*~\s*''\^\[0-9\]\{1,4\}\$'''
+     || '\s+THEN\s+\(\s*c\.settings->>''rebook_reminder_lead_hours''\s*\)::int\s+END\s*,'
+     || '\s*_lead_hours\s*,\s*24\s*\)\s*\)\s*\)\s*\)'
+     -- …and straight on into the deliverable-address guard and the ORDER BY, still in the SAME
+     -- match. In the seam between the lead expression and the address guard, an `OR TRUE` would
+     -- otherwise leave all three separate patterns intact while SQL precedence collapsed the
+     -- filter to `(due predicates) OR (TRUE AND deliverable_address)` — every academy, opt-out,
+     -- status, response-intent and window gate bypassed, with the guards none the wiser.
+     || '\s+AND\s+\(\s*CASE\s+WHEN\s+spc\.guest_player_id\s+IS\s+NOT\s+NULL'
+     || '\s+THEN\s+NULLIF\(\s*btrim\(\s*gp\.email\s*\)\s*,\s*''''\s*\)'
+     || '\s+ELSE\s+NULLIF\(\s*btrim\(\s*pr\.email\s*\)\s*,\s*''''\s*\)\s+END\s*\)\s+IS\s+NOT\s+NULL'
+     || '\s+ORDER\s+BY'
+    ), true) THEN
+    RAISE EXCEPTION 'Pass B §2: the auto-reminder due window is no longer the shipped 20260930100000 model (WHERE chain, lead override, or the guest-first deliverable-address guard)';
+  END IF;
+
+  -- …and it must NOT be re-grounded on the two claim columns that have no migration anywhere in
+  -- this repository. A body referencing them parses only where a database carries them out of
+  -- band, and even there matches nothing forever, because nothing writes them. \m…\M are word
+  -- boundaries, so hold_expires_at / priority_window_ends_at do not false-positive; `~*` because
+  -- an identifier IS case-insensitive to PostgreSQL and must be to this check too.
+  IF COALESCE(v_src ~* '\mexpires_at\M', false) OR COALESCE(v_src ~* '\mreminder_sent_at\M', false) THEN
+    RAISE EXCEPTION 'Pass B §2: the auto-reminder producer reads an unsourced slot_priority_claims column';
+  END IF;
+
+  -- The deliverable-address guard is what makes the withdrawal a real narrowing instead of a
+  -- NULL-address row handed to the mailer: a guest must never be addressed at an account's
+  -- address, and an unreachable claimant must be dropped rather than sent somewhere else. It is
+  -- asserted as the tail of the single WHERE-chain match above, not separately — see the seam
+  -- note there for why splitting it out would leave an `OR TRUE` bypass open.
 
   -- Grants unchanged: none of these may become client-callable, and the one that always was
   -- (the manager-facing contact predicate) must stay so.
@@ -4843,3 +5104,353 @@ BEGIN
     RAISE EXCEPTION 'Pass B §3: enqueue_notification exists but still upgrades a person into a user';
   END IF;
 END $chk3$;
+
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+-- PASS B §4.1 — undeliverable recipients: directly owned guests only
+--
+-- The effective reader answered "who in this academy has an unreachable address" from
+-- academy_player_metadata — a table the caller writes. It admitted a REGISTERED arm keyed on
+-- metadata.profile_id, so an academy could name any account and have that account's login email,
+-- name and bounce history returned; and its guest arm preferred the metadata billing_email
+-- override and then the LINKED profile's address over the guest's own, so a fix card could show
+-- (and invite repair of) an address belonging to someone else entirely.
+--
+-- After this the reader answers only about guests the academy DIRECTLY OWNS
+-- (guest_players.academy_profile_id = the academy asked about), using the guest's own name and
+-- own email, and it returns profile_id = NULL because there is no account to name.
+--
+-- Unchanged: the manager gate (same helper, same refusal and SQLSTATE), and the truthful state
+-- vocabulary — a real hard bounce or complaint reports itself, and a provider-only suppression
+-- reports 'provider_suppressed' rather than a bare 'ok' the client would miscast as healthy.
+--
+-- INTENTIONAL PRODUCT LOSS: registered players no longer appear on the academy's undeliverable
+-- fix card at all. Their address is their account's, not the academy's to see or repair.
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.get_academy_undeliverable_recipients(p_academy_profile_id uuid)
+RETURNS TABLE (
+  player_key      text,
+  player_type     text,
+  profile_id      uuid,
+  guest_player_id uuid,
+  full_name       text,
+  email           text,
+  state           text,
+  last_event_at   timestamptz
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  IF NOT public.is_academy_manager(auth.uid(), p_academy_profile_id) THEN
+    RAISE EXCEPTION 'not authorized for academy %', p_academy_profile_id USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  SELECT DISTINCT ON (('g_' || g.id::text))
+         ('g_' || g.id::text),
+         'guest'::text,
+         NULL::uuid,                                    -- no account is named by this reader
+         g.id,
+         coalesce(nullif(btrim(g.full_name), ''), ''),  -- the guest's OWN name
+         lower(btrim(g.email)),                         -- the guest's OWN address
+         CASE WHEN s.state IN ('hard_bounced', 'complained') THEN s.state
+              ELSE 'provider_suppressed' END,
+         s.last_event_at
+    FROM public.guest_players g
+    JOIN public.email_address_state s ON s.email = lower(btrim(g.email))
+   WHERE g.academy_profile_id = p_academy_profile_id      -- DIRECT ownership, nothing else
+     AND nullif(btrim(g.email), '') IS NOT NULL
+     AND s.is_suppressed
+   ORDER BY ('g_' || g.id::text), coalesce(nullif(btrim(g.full_name), ''), '');
+END;
+$$;
+COMMENT ON FUNCTION public.get_academy_undeliverable_recipients(uuid) IS
+  'Email delivery tracking, Pass B §4.1: guests the academy DIRECTLY OWNS (guest_players.academy_profile_id), reported at the guest''s OWN address only. The old comment said "players/guests" and "resolved email"; both were false after the narrowing — the registered arm was admitted by caller-written metadata, and the guest address resolved through a billing override and then the linked profile, so the card could show and invite repair of an address belonging to someone else. profile_id is always NULL: this reader names no account. OWNER-RESOLVED A1: registered delivery repair is out of THIS release and returns in the later composed U2/U1c unit, once all three of (1) immutable Class-B attestation for academy membership, (2) proof-populated lifecycle-governed academy membership, and (3) a canonical account projection (profile->person self-projection, never guest-origin linked/twin/person equality) exist. That is a bounded condition, not an open question. OWNER-RESOLVED B1: the gate stays is_academy_manager only; platform-wide admin access to named addresses and bounce history would need a separate purpose-bound audited support reader with its own security review. SECURITY DEFINER, authenticated EXECUTE. See docs/ABC16_PASS_B_OWNER_DECISIONS.md.';
+
+REVOKE ALL ON FUNCTION public.get_academy_undeliverable_recipients(uuid) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.get_academy_undeliverable_recipients(uuid) TO authenticated;
+
+DO $chk4$
+DECLARE
+  v_src text;
+  v_bridge text[] := ARRAY['academy_player_' || 'metadata', 'billing_' || 'email',
+                           'linked_' || 'profile_id', 'twin_of_' || 'profile_id',
+                           'person_' || 'links', 'public.' || 'bookings'];
+  v_tok text;
+BEGIN
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_academy_undeliverable_recipients';
+  IF v_src IS NULL THEN
+    RAISE EXCEPTION 'Pass B §4.1: get_academy_undeliverable_recipients is missing';
+  END IF;
+  FOREACH v_tok IN ARRAY v_bridge LOOP
+    IF position(v_tok in v_src) > 0 THEN
+      RAISE EXCEPTION 'Pass B §4.1: the undeliverable reader still admits % as evidence', v_tok;
+    END IF;
+  END LOOP;
+  IF COALESCE(v_src !~ 'g\.academy_profile_id = p_academy_profile_id', true) THEN
+    RAISE EXCEPTION 'Pass B §4.1: the reader must be pinned to DIRECT academy ownership';
+  END IF;
+  IF COALESCE(v_src !~ 'is_academy_manager', true) THEN
+    RAISE EXCEPTION 'Pass B §4.1: the manager gate was lost';
+  END IF;
+  IF COALESCE(v_src !~ 'provider_suppressed', true)
+     OR COALESCE(v_src !~ 'hard_bounced', true) THEN
+    RAISE EXCEPTION 'Pass B §4.1: the truthful deliverability vocabulary was lost';
+  END IF;
+  IF COALESCE(v_src ~ '''registered''', false) THEN
+    RAISE EXCEPTION 'Pass B §4.1: the registered arm must not come back';
+  END IF;
+
+  -- OD-A is RESOLVED (A1): directly-owned guests only in this release. The assertions below are
+  -- not a placeholder for an unanswered question — they hold this reader at the decided shape
+  -- until the three named preconditions are met in the later composed U2/U1c unit:
+  --   (1) immutable Class-B attestation for academy membership;
+  --   (2) proof-populated, lifecycle-governed academy membership (not backfilled from Class-A);
+  --   (3) a canonical account projection — profile->person SELF-projection is admissible;
+  --       guest-origin linked/twin/person equality is Class D and never is.
+  -- Adding an arm before then must edit this block, which is the point.
+  IF COALESCE(v_src ~ 'academy_player_memberships', false) THEN
+    RAISE EXCEPTION 'Pass B §4.1 (OD-A/A1): canonical membership is not proof-populated or reader-authorized yet';
+  END IF;
+  IF COALESCE(v_src ~ 'public\.profiles', false) THEN
+    RAISE EXCEPTION 'Pass B §4.1 (OD-A/A1): no pure-profile arm in this release';
+  END IF;
+  IF COALESCE(v_src ~ 'p_email|full_name.*profiles', false) THEN
+    RAISE EXCEPTION 'Pass B §4.1: the reader must not project account attributes';
+  END IF;
+
+  -- OD-B is RESOLVED (B1): manager-only, exactly the effective helper. Platform-wide admin access
+  -- to a named person''s address and bounce history would need a separate purpose-bound audited
+  -- support reader with its own owner and security review, not a widened arm here.
+  IF COALESCE(v_src ~ 'is_admin', false) THEN
+    RAISE EXCEPTION 'Pass B §4.1 (OD-B/B1): the gate stays manager-only';
+  END IF;
+
+  -- The address projected must be the GUEST''s own column, and the ownership pin must be the
+  -- guest row''s own academy — not a join that could reintroduce indirection.
+  IF COALESCE(v_src !~ 'lower\(btrim\(g\.email\)\)', true) THEN
+    RAISE EXCEPTION 'Pass B §4.1: the reader must project the guest''s own address';
+  END IF;
+  IF COALESCE(v_src !~ 'NULL::uuid', true) THEN
+    RAISE EXCEPTION 'Pass B §4.1: profile_id must be NULL — this reader names no account';
+  END IF;
+  IF has_function_privilege('anon', 'public.get_academy_undeliverable_recipients(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Pass B §4.1: the reader must not be anon-callable';
+  END IF;
+  IF NOT has_function_privilege('authenticated', 'public.get_academy_undeliverable_recipients(uuid)', 'EXECUTE') THEN
+    RAISE EXCEPTION 'Pass B §4.1: managers must still be able to call the reader';
+  END IF;
+
+  -- The overview flag must be computed, not asserted, and only from the guest's own address.
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'get_players_overview';
+  IF COALESCE(v_src !~ 'email_address_state', true) THEN
+    RAISE EXCEPTION 'Pass B §4.1: the overview deliverability flag must be derived, not hardcoded';
+  END IF;
+END $chk4$;
+
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+-- ABC-26 — retire filter_academy_priority_ids
+--
+-- Consumer inventory, taken from effective source before this change:
+--   • runtime: supabase/functions/bulk-rebook-cycle/index.ts — the SOLE caller, service_role.
+--   • tests:   src/test/abc16MetadataAuthority.pglite.test.ts (exercises the guard itself).
+--   • types:   src/integrations/supabase/types.ts (generated entry).
+--   • grants:  service_role only; PUBLIC/anon/authenticated were already revoked.
+--
+-- The Edge caller is gone with ABC-26, so this has no runtime consumer left. It is retired
+-- DEPENDENCY-SAFELY rather than dropped: the object keeps its exact signature so the generated
+-- types, the existing test and anything that merely references the name continue to resolve, and
+-- the migration stays rerunnable. What changes is that it can no longer answer and can no longer
+-- be executed at runtime by ANY role, service_role included — the privilege that made it reachable
+-- from an edge function is exactly the one that must go.
+--
+-- Its former job was to decide which submitted ids an academy may grant supplementary priority to.
+-- There is no such decision to make while priority is unavailable for every class, and leaving a
+-- callable "which of these may I privilege?" helper in place is how a withdrawn feature quietly
+-- comes back.
+-- ════════════════════════════════════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION public.filter_academy_priority_ids(
+  _academy_profile_id uuid,
+  _profile_ids uuid[] DEFAULT NULL,
+  _guest_ids uuid[] DEFAULT NULL
+)
+RETURNS TABLE (profile_id uuid, guest_player_id uuid)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  -- Retired (ABC-26). Fail-closed: no row is ever returned, for any input, so a caller that
+  -- somehow retains EXECUTE cannot obtain an admission list. Signature preserved deliberately.
+  SELECT NULL::uuid, NULL::uuid WHERE false;
+$$;
+
+REVOKE ALL ON FUNCTION public.filter_academy_priority_ids(uuid, uuid[], uuid[])
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMENT ON FUNCTION public.filter_academy_priority_ids(uuid, uuid[], uuid[]) IS
+  'RETIRED by ABC-26. Supplementary rebooking priority is unavailable for every class during containment, so there is no admission list to compute. Fail-closed body (returns no rows for any input) and no runtime EXECUTE for any role, service_role included. The object and signature are kept so generated types and existing references resolve; do not re-grant. The durable replacement is a purpose-bound expiring offer on canonical Player/U3 identity.';
+
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+-- ABC-26 install assertions.
+--
+-- The privilege half is written against the EFFECTIVE privilege state, from three angles,
+-- because each one alone can pass while the object is still reachable:
+--
+--   • `aclexplode(proacl)` is the EXPLICIT grant list. It is the only view that shows a grant's
+--     GRANT OPTION and the only one that distinguishes PUBLIC (grantee 0) from a named role. It
+--     does NOT show inherited privilege.
+--   • `has_function_privilege` is the EFFECTIVE answer PostgreSQL will actually give at call
+--     time: it follows role membership, so a grant to a role that `service_role` inherits shows
+--     up here and nowhere in proacl. It does NOT distinguish a grant from ownership.
+--   • The OWNER holds EXECUTE through the default ACL entry rather than a grant, and that entry
+--     is expected to survive; what matters is that it is the ONLY holder, that it is not
+--     grantable, and that the owner is not a role PostgREST can assume.
+--
+-- A NULL `proacl` is treated as a FAILURE rather than as "no grants": for a function, NULL means
+-- PostgreSQL's built-in default, which is EXECUTE TO PUBLIC — the exact opposite of retired.
+-- ────────────────────────────────────────────────────────────────────────────────────────────
+DO $chk26$
+DECLARE
+  v_src   text;
+  v_code  text;
+  v_oid   oid;
+  v_owner text;
+  v_bad   text;
+  v_n     integer;
+  v_role  text;
+BEGIN
+  -- NOTE ON v_code. `prosrc` includes COMMENTS, and that cuts both ways:
+  --   • a forbidden token appearing only in a comment that EXPLAINS the withdrawal trips a
+  --     raw-source guard — so the migration could not install while documenting itself honestly;
+  --   • an arm COMMENTED OUT still satisfies a raw-source "this arm must survive" guard.
+  -- Every structural assertion below therefore runs against `v_code`: the body with block and
+  -- line comments stripped. Privilege assertions are unaffected — they read the catalog.
+  -- Dependency-safe retirement: the object must still EXIST, with its exact identity arguments,
+  -- so generated types and every existing reference keep resolving. A DROP would have been the
+  -- easy move and would have broken all of them.
+  SELECT p.oid, p.prosrc, pg_get_userbyid(p.proowner)
+    INTO v_oid, v_src, v_owner
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.proname = 'filter_academy_priority_ids'
+     AND p.oid = to_regprocedure('public.filter_academy_priority_ids(uuid,uuid[],uuid[])');
+  IF v_oid IS NULL THEN
+    RAISE EXCEPTION 'ABC-26: filter_academy_priority_ids must remain, with its exact signature, as a retired object';
+  END IF;
+  v_code := regexp_replace(regexp_replace(v_src, '/\*.*?\*/', ' ', 'gs'), '--[^\n]*', ' ', 'g');
+  IF COALESCE(v_code !~ 'WHERE false', true) THEN
+    RAISE EXCEPTION 'ABC-26: filter_academy_priority_ids must be fail-closed';
+  END IF;
+  -- Fail-closed in BODY, not merely in privilege: a future re-grant must still return nothing.
+  IF COALESCE(v_code ~ 'guest_players|public\.profiles|academy_player_metadata', false) THEN
+    RAISE EXCEPTION 'ABC-26: the retired filter must not read any subject table';
+  END IF;
+
+  -- (1) EXPLICIT ACL.
+  IF (SELECT p.proacl FROM pg_proc p WHERE p.oid = v_oid) IS NULL THEN
+    RAISE EXCEPTION 'ABC-26: proacl is NULL, which for a function means EXECUTE TO PUBLIC — the retirement did not take';
+  END IF;
+
+  -- PUBLIC, named explicitly. It is grantee 0 and never appears under a role name, so a guard
+  -- written only over role names misses precisely the widest grantee there is.
+  SELECT count(*) INTO v_n
+    FROM pg_proc p, aclexplode(p.proacl) a
+   WHERE p.oid = v_oid AND a.grantee = 0;
+  IF v_n > 0 THEN
+    RAISE EXCEPTION 'ABC-26: PUBLIC still holds % privilege(s) on the retired priority filter', v_n;
+  END IF;
+
+  -- Every other grantee, with its privilege and its grant option spelled out in the failure.
+  SELECT string_agg(format('%s:%s%s',
+           pg_get_userbyid(a.grantee), a.privilege_type,
+           CASE WHEN a.is_grantable THEN ' WITH GRANT OPTION' ELSE '' END), ', ' ORDER BY 1)
+    INTO v_bad
+    FROM pg_proc p, aclexplode(p.proacl) a
+   WHERE p.oid = v_oid
+     AND a.grantee <> 0
+     AND pg_get_userbyid(a.grantee) <> v_owner;
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'ABC-26: the retired priority filter still carries explicit grants: %', v_bad;
+  END IF;
+
+  -- Not even the owner's surviving entry may be onward-grantable: a GRANT OPTION is a standing
+  -- licence for someone else to undo this retirement without touching this migration.
+  SELECT count(*) INTO v_n
+    FROM pg_proc p, aclexplode(p.proacl) a
+   WHERE p.oid = v_oid AND a.is_grantable;
+  IF v_n > 0 THEN
+    RAISE EXCEPTION 'ABC-26: no privilege on the retired priority filter may carry GRANT OPTION (% found)', v_n;
+  END IF;
+
+  -- (2) EFFECTIVE / INHERITED privilege — the answer the server gives at call time. Superusers
+  -- and the reserved pg_* roles are excluded because they bypass ACLs by design; the owner is
+  -- excluded because its ownership privilege is the expected survivor asserted in (3).
+  SELECT string_agg(r.rolname, ', ' ORDER BY r.rolname) INTO v_bad
+    FROM pg_roles r
+   WHERE NOT r.rolsuper
+     AND r.rolname <> v_owner
+     AND r.rolname NOT LIKE 'pg\_%'
+     AND has_function_privilege(r.rolname, v_oid, 'EXECUTE');
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'ABC-26: role(s) can still execute the retired priority filter (effective, including inherited): %', v_bad;
+  END IF;
+
+  -- The three named Supabase roles are asserted BY NAME as well. (2) already covers them, but
+  -- only if they exist — and a guard that passes because its subject is absent is not a guard.
+  FOREACH v_role IN ARRAY ARRAY['anon', 'authenticated', 'service_role'] LOOP
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
+      RAISE EXCEPTION 'ABC-26: named role % does not exist, so the ACL assertions would be vacuous', v_role;
+    END IF;
+    IF has_function_privilege(v_role, v_oid, 'EXECUTE') THEN
+      RAISE EXCEPTION 'ABC-26: % may still execute the retired priority filter', v_role;
+    END IF;
+  END LOOP;
+
+  -- (3) OWNER. Its EXECUTE survives (ownership, not a grant) and that is accepted: the owner is
+  -- the migration role, not a role PostgREST can assume — a client reaches the database as
+  -- anon/authenticated/service_role, every one of which was just proven unable to call this.
+  IF NOT has_function_privilege(v_owner, v_oid, 'EXECUTE') THEN
+    RAISE EXCEPTION 'ABC-26: unexpected state — the owner (%) cannot execute its own function', v_owner;
+  END IF;
+  IF v_owner IN ('anon', 'authenticated', 'service_role') THEN
+    RAISE EXCEPTION 'ABC-26: the retired filter is owned by the runtime role %, so its ownership privilege IS runtime reach', v_owner;
+  END IF;
+
+  -- ── The member window: a NARROWING, not a deletion ────────────────────────────────────────
+  SELECT p.prosrc INTO v_src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public' AND p.proname = 'can_book_member_window';
+  IF v_src IS NULL THEN RAISE EXCEPTION 'ABC-26: can_book_member_window is missing'; END IF;
+  v_code := regexp_replace(regexp_replace(v_src, '/\*.*?\*/', ' ', 'gs'), '--[^\n]*', ' ', 'g');
+  -- The withdrawn arm named the settings key it read; the surviving COMMENT still names it, which
+  -- is exactly what a reader of this function needs to see. The guard therefore tests executable
+  -- code only — and, because it does, it also catches an arm that was merely commented out.
+  IF position('rebook_priority_' || 'people' in v_code) > 0 THEN
+    RAISE EXCEPTION 'ABC-26: can_book_member_window must not read a stored priority list';
+  END IF;
+  IF position('cycles' in v_code) > 0 OR position('settings' in v_code) > 0 THEN
+    RAISE EXCEPTION 'ABC-26: can_book_member_window must not read cycle settings at all';
+  END IF;
+  -- BOTH surviving pure-profile arms are asserted. Checking only the claim arm would let the
+  -- seat arm be dropped silently, turning a narrowing into a deletion that locks out every
+  -- existing rebooker — and the suite would still be green.
+  -- (a) the pure-profile SEAT arm: a confirmed booking in this cycle with no guest subject.
+  IF COALESCE(v_code !~ 'public\.bookings', true)
+     OR COALESCE(v_code !~ 'b\.guest_player_id IS NULL', true)
+     OR COALESCE(v_code !~ 's\.cyclus_id = _cycle_id', true) THEN
+    RAISE EXCEPTION 'ABC-26: the pure-profile SEAT arm must survive';
+  END IF;
+  -- (b) the pure-profile CLAIM arm: a priority claim in this round with no guest subject.
+  IF COALESCE(v_code !~ 'slot_priority_claims', true)
+     OR COALESCE(v_code !~ 'spc\.guest_player_id IS NULL', true)
+     OR COALESCE(v_code !~ 's\.source_cycle_id = _cycle_id', true) THEN
+    RAISE EXCEPTION 'ABC-26: the pure-profile CLAIM arm must survive';
+  END IF;
+  -- Neither arm may have quietly re-admitted guest-origin identity while surviving.
+  IF COALESCE(v_code ~ 'person_links|twin_of_profile_id|linked_profile_id', false) THEN
+    RAISE EXCEPTION 'ABC-26: can_book_member_window must not resolve identity through the guest bridge';
+  END IF;
+END $chk26$;

@@ -113,19 +113,46 @@ describe('§1b · get_invoice_recipient_identity is guest-first', () => {
 });
 
 describe('§1b · get_invoices_delivery_status uses the same recipient', () => {
-  const INV_DUAL = '1c000000-0000-4000-8000-0000000000b1';
-  const INV_NOMAIL = '1c000000-0000-4000-8000-0000000000b2';
+  const INV_DUAL = '1c000000-0000-4000-8000-0000000000b1';    // guest address hard-bounced
+  const INV_NOMAIL = '1c000000-0000-4000-8000-0000000000b2';  // guest has no address at all
+  const INV_PROV = '1c000000-0000-4000-8000-0000000000b3';    // guest address provider-suppressed
+  const INV_CLEAN = '1c000000-0000-4000-8000-0000000000b4';   // guest address known-good, sent
+  const INV_UNSENT = '1c000000-0000-4000-8000-0000000000b5';  // guest address known-good, not sent
+  const INV_MIXED = '1c000000-0000-4000-8000-0000000000b6';   // guest address stored MIXED-CASE
+  const GUEST_CLEAN = '2c000000-0000-4000-8000-0000000000b4';
+  const GUEST_MIXED = '2c000000-0000-4000-8000-0000000000b5';
 
   beforeAll(async () => {
     await db.exec(`
-      CREATE TABLE IF NOT EXISTS public.email_suppressions (
-        email text PRIMARY KEY, reason text
-      );
+      -- A fourth guest with a KNOWN-GOOD address, carrying the same stale account as the others.
+      INSERT INTO public.guest_players (id, full_name, email, academy_profile_id, linked_profile_id) VALUES
+        ('${GUEST_CLEAN}', 'Guest Clean', 'clean@example.test',
+         '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}'),
+        -- stored with capitals and surrounding whitespace, as real user-entered addresses are
+        ('${GUEST_MIXED}', 'Guest Mixed', '  Mixed.Case@Example.Test  ',
+         '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}');
+
       INSERT INTO public.invoices (id, trainer_id, academy_profile_id, player_id, guest_player_id, status, sent_at)
       VALUES
         ('${INV_DUAL}',   NULL, '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}', '${GUEST_A}', 'sent', now()),
-        ('${INV_NOMAIL}', NULL, '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}', '${GUEST_NO_EMAIL}', 'sent', now());
-      INSERT INTO public.email_suppressions (email, reason) VALUES ('alpha@example.test', 'hard_bounce');
+        ('${INV_NOMAIL}', NULL, '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}', '${GUEST_NO_EMAIL}', 'sent', now()),
+        ('${INV_PROV}',   NULL, '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}', '${GUEST_B}', 'sent', now()),
+        ('${INV_CLEAN}',  NULL, '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}', '${GUEST_CLEAN}', 'sent', now()),
+        ('${INV_UNSENT}', NULL, '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}', '${GUEST_CLEAN}', 'draft', NULL),
+        ('${INV_MIXED}',  NULL, '${IDS.attackerAcademy}', '${ACCOUNT_PROFILE}', '${GUEST_MIXED}', 'sent', now());
+
+      -- Suppression comes from the TRACKED authority, email_address_state, whose is_suppressed is
+      -- a GENERATED column: the rows below set the two independent axes it is derived from, so a
+      -- reader that consulted the raw \`state\` instead would disagree with a reader that consults
+      -- is_suppressed — which is exactly what the provider-suppressed row discriminates.
+      INSERT INTO public.email_address_state (email, state, provider_suppressed_active) VALUES
+        ('alpha@example.test',         'hard_bounced', false),  -- bounce axis
+        ('beta@example.test',          'ok',           true),   -- provider-suppression axis only
+        ('clean@example.test',         'ok',           false),  -- present but NOT suppressed
+        -- email_address_state.email is a LOWERCASE-NORMALIZED primary key: the suppression row
+        -- for the mixed-case guest is keyed lowercase, as record_email_event always writes it.
+        ('mixed.case@example.test',    'hard_bounced', false),
+        ('${ACCOUNT_EMAIL}',           'hard_bounced', true);   -- the ACCOUNT is undeliverable
     `);
   });
 
@@ -143,6 +170,45 @@ describe('§1b · get_invoices_delivery_status uses the same recipient', () => {
     expect(rows[0].delivery_state).toBe('undeliverable');   // genuine provider suppression
   });
 
+  it('a PROVIDER suppression with no bounce is undeliverable too — the canonical predicate', async () => {
+    // beta@ has state='ok'. A reader deriving suppression from `state` alone would call this
+    // 'sent' and the academy would keep mailing an address Resend refuses to deliver to.
+    const rows = await status(IDS.attackerUser, [INV_PROV]);
+    expect(rows[0].recipient_email).toBe('beta@example.test');
+    expect(rows[0].delivery_state).toBe('undeliverable');
+  });
+
+  it('DISCRIMINATING CONTROL: a known-good address reports sent, not undeliverable', async () => {
+    // clean@ HAS a row in email_address_state. If the predicate degraded to "a row exists",
+    // every tracked address on the platform would read as undeliverable and the two arms above
+    // would pass for the wrong reason.
+    const rows = await status(IDS.attackerUser, [INV_CLEAN]);
+    expect(rows[0].recipient_email).toBe('clean@example.test');
+    expect(rows[0].delivery_state).toBe('sent');
+  });
+
+  it('…and the account\'s OWN suppression never leaks onto the guest\'s state', async () => {
+    // INV_CLEAN carries the stale ACCOUNT player_id, and that account address is hard-bounced
+    // AND provider-suppressed. Account-first resolution would report 'undeliverable' here.
+    const rows = await status(IDS.attackerUser, [INV_CLEAN]);
+    expect(rows[0].recipient_email).not.toBe(ACCOUNT_EMAIL);
+    expect(rows[0].delivery_state).not.toBe('undeliverable');
+  });
+
+  it('a MIXED-CASE recipient address still matches its normalized suppression row', async () => {
+    // email_address_state.email is the lowercase-normalized PRIMARY KEY. A lookup that failed to
+    // lower/btrim the recipient address would find no row and report this hard-bounced guest as
+    // deliverable — the academy would keep mailing an address that bounces. Every other address
+    // in this suite is already lowercase, so without this arm that regression is invisible.
+    const rows = await status(IDS.attackerUser, [INV_MIXED]);
+    expect(rows[0].delivery_state).toBe('undeliverable');
+  });
+
+  it('an unsent invoice to a deliverable address is not_sent', async () => {
+    const rows = await status(IDS.attackerUser, [INV_UNSENT]);
+    expect(rows[0].delivery_state).toBe('not_sent');
+  });
+
   it('a guest with no address reports no_email, not the account\'s address', async () => {
     const rows = await status(IDS.attackerUser, [INV_NOMAIL]);
     expect(rows[0].recipient_email).toBe('');
@@ -150,6 +216,40 @@ describe('§1b · get_invoices_delivery_status uses the same recipient', () => {
   });
 
   it('the tenant gate still refuses an outsider', async () => {
-    expect(await status(IDS.victimUser, [INV_DUAL, INV_NOMAIL])).toEqual([]);
+    expect(await status(IDS.victimUser, [INV_DUAL, INV_NOMAIL, INV_CLEAN])).toEqual([]);
+  });
+
+  it('the reader resolves suppression through the TRACKED authority, not an invented relation', async () => {
+    const r = await db.query<{ src: string }>(`
+      SELECT p.prosrc AS src FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'get_invoices_delivery_status'`);
+    expect(r.rows[0].src).toContain('email_address_state');
+    expect(r.rows[0].src).toContain('is_suppressed');
+    expect(r.rows[0].src).not.toContain('email_suppressions');
+  });
+
+  it('ACL: anon cannot execute it; authenticated and service_role can', async () => {
+    // The result-shape repair DROPs the predecessor, which discards its ACL — and the platform
+    // default privileges then re-grant EXECUTE to PUBLIC and anon. Without the re-emitted
+    // REVOKE/GRANT this SECURITY DEFINER, tenant-gated invoice reader is anonymously callable.
+    const r = await db.query<{ anon: boolean; auth: boolean; svc: boolean }>(`
+      SELECT has_function_privilege('anon',          'public.get_invoices_delivery_status(uuid[])', 'EXECUTE') AS anon,
+             has_function_privilege('authenticated', 'public.get_invoices_delivery_status(uuid[])', 'EXECUTE') AS auth,
+             has_function_privilege('service_role',  'public.get_invoices_delivery_status(uuid[])', 'EXECUTE') AS svc`);
+    expect(r.rows[0]).toEqual({ anon: false, auth: true, svc: true });
+  });
+
+  it('it is still SECURITY DEFINER on a pinned search path, with the §1b result shape', async () => {
+    const r = await db.query<{ secdef: boolean; cfg: string[] | null; args: string; result: string }>(`
+      SELECT p.prosecdef AS secdef, p.proconfig AS cfg,
+             pg_get_function_identity_arguments(p.oid) AS args,
+             pg_get_function_result(p.oid) AS result
+        FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+       WHERE n.nspname = 'public' AND p.proname = 'get_invoices_delivery_status'`);
+    expect(r.rows[0].secdef).toBe(true);
+    expect(r.rows[0].cfg).toContain('search_path=public');
+    expect(r.rows[0].args).toBe('_invoice_ids uuid[]');
+    expect(r.rows[0].result).toBe(
+      'TABLE(invoice_id uuid, recipient_email text, delivery_state text)');
   });
 });

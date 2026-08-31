@@ -627,7 +627,8 @@
       "removeClub": "Remove club",
       "addClub": "Add club",
       "clubsReadOnly": "Clubs are temporarily view-only while we improve how players are linked to your academy.",
-      "removeUnavailable": "Removing a player is temporarily unavailable while we improve how players are linked to your academy. Nothing about this player has changed."
+      "removeUnavailable": "Removing a player is temporarily unavailable while we improve how players are linked to your academy. Nothing about this player has changed.",
+      "registeredOverlayUnavailable": "Not editable here at the moment."
     },
     "import": {
       "button": "Import CSV",
@@ -699,7 +700,11 @@
         "billingBusinessName": "Billing business name",
         "billingAddress": "Billing address",
         "billingBtwNumber": "VAT number"
-      }
+      },
+      "unavailableTitle": "Merging players is unavailable",
+      "unavailableBody": "Combining two players into one is switched off. It relied on matching names, email addresses and old account links to decide that two entries were the same person, which is not reliable enough to move trainings and invoices — and a merge cannot be undone. Edit each player separately instead.",
+      "unavailableHint": "Nothing has been changed or deleted. Both players are still there, with their own trainings and invoices.",
+      "close": "Close"
     },
     "tags": {
       "deleteConfirmTitle": "Delete tag?",

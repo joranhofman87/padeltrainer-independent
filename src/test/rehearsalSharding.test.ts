@@ -697,6 +697,26 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['workflow-level env redirects script-shell', /npm_config_script_shell|NPM_CONFIG/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  npm_config_script_shell: /bin/true\n\njobs:\n'))],
       ['hyphenated NPM_CONFIG_SCRIPT-SHELL spelling', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_SCRIPT-SHELL: /bin/true\n'))],
       ['extra full-suite `npm test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky full gate\n        run: npm test\n\n      - name: Run unit tests\n'))],
+      // ── the NAME-FILTER hole: every file selected, zero tests run, exit 0
+      ['a name filter in the db workflow step', /name filter \(-t \/ --testNamePattern\)/,
+        (r) => editWorkflow(r, (s) => s.replace(
+          'run: npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}',
+          'run: npm run test:db -- -t "" --shard=${{ matrix.shard }}/${{ strategy.job-total }}'))],
+      ['a name filter inside the db npm script', /name filter \(-t \/ --testNamePattern\)/,
+        (r) => editJson(r, 'package.json', (o) => {
+          (o.scripts as Record<string, string>)['test:db'] =
+            'vitest run --project db --testNamePattern=nothing';
+        })],
+      ['a testNamePattern in the vitest config', /defines testNamePattern/, (r) => {
+        const p2 = join(r, 'vitest.config.ts');
+        writeFileSync(p2, readFileSync(p2, 'utf8')
+          .replace("name: 'db',", "name: 'db',\n          testNamePattern: 'nothing',"));
+      }],
+      ['passWithNoTests turning an empty run green', /sets passWithNoTests/, (r) => {
+        const p2 = join(r, 'vitest.config.ts');
+        writeFileSync(p2, readFileSync(p2, 'utf8')
+          .replace("name: 'db',", "name: 'db',\n          passWithNoTests: true,"));
+      }],
       ['the real-pg integration file drifts into unit', /not owned by the db project/, (r) => {
         const p = join(r, 'vitest.config.ts');
         writeFileSync(p, readFileSync(p, 'utf8')
@@ -731,7 +751,7 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['the gate\'s JSON input renamed', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS: ${{ toJSON(needs) }}\n'))],
       ['the gate\'s input narrowed to one job', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS_JSON: ${{ toJSON(needs.i18n) }}\n'))],
       ['an extra env var smuggled into the gate', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS_JSON: ${{ toJSON(needs) }}\n          SKIP: "1"\n'))],
-      ['the gate losing a prerequisite from needs', /needs must be exactly|does not match the gate's needs/, (r) => editWorkflow(r, (s) => s.replace('    needs: [unit-tests, db-tests, db-rehearsals, i18n, workflow-contract]', '    needs: [unit-tests, db-tests, db-rehearsals, i18n]'))],
+      ['the gate losing a prerequisite from needs', /needs must be exactly|does not match the gate's needs/, (r) => editWorkflow(r, (s) => s.replace('    needs: [unit-tests, db-tests, db-rehearsals, i18n, workflow-contract]', '    needs: [unit-tests, db-tests, db-rehearsals]'))],
       // ── every approved step, run steps included, must be unweakened
       ['`shell: bash -n {0}` on an approved run step', /overrides `shell/, (r) => editWorkflow(r, (s) => s.replace('      - name: Lint (ratcheted)\n        run: npm run lint\n', '      - name: Lint (ratcheted)\n        shell: bash -n {0}\n        run: npm run lint\n'))],
       ['`shell: bash -n {0}` on the gate itself', /overrides `shell/, (r) => editWorkflow(r, (s) => s.replace('        shell: bash\n        env:\n          NEEDS_JSON:', '        shell: bash -n {0}\n        env:\n          NEEDS_JSON:'))],

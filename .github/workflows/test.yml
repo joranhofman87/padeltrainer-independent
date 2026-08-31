@@ -84,6 +84,24 @@ jobs:
       - name: Edge import-pin guard
         run: npm run check:edge-pins
 
+      # Proves the trainer-source guard DISCRIMINATES, on 60 adversarial fixtures: a literal
+      # UUID, an `as`-cast, `any`, a server-chosen row, an id minted in SQL, a trainer-moving
+      # UPDATE, and the four obfuscated spellings (`INSERT/**/INTO`, case/spacing/ONLY/quoting,
+      # `U&"..."`, a statement assembled from two literals) that the retired source scan's terminal
+      # review named as escapes it could not see. Its acceptance half is just as load-bearing: a
+      # guard that refuses everything proves nothing and gets deleted.
+      - name: Trainer source-authority guard self-test
+        run: npm run check:trainer-authority:selftest
+
+      # Fails if any write to public.availability_slots in the ABC-27 suite binds `trainer_id` to
+      # anything but an IsolatedTrainerId issued by src/test/abc27TrainerAuthority.ts — or to
+      # anything the compiler-API reader cannot classify, which is refused rather than skipped.
+      # This REPLACES the `db-trainer-guard` job, which re-ran the whole 224 s database suite to
+      # arm a client-side observer whose terminal review refused the approach outright. Same
+      # property, proved at the source, in about a second.
+      - name: Trainer source-authority guard
+        run: npm run check:trainer-authority
+
       # The SAME contract the `workflow-contract` job runs, deliberately duplicated here.
       # `lint` is an independently required branch-protection context that nothing
       # aggregates, so a weakening the aggregator could swallow — e.g. a
@@ -255,6 +273,19 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      # THE TRAINER SOURCE-AUTHORITY GUARD, DELIBERATELY DUPLICATED FROM `lint`.
+      #
+      # `lint` is an independently required branch-protection context, but branch protection is
+      # configuration this repository cannot evidence. This job IS a prerequisite of the aggregator
+      # `test`, so running the guard here makes the gating visible in the workflow itself rather
+      # than resting on a setting a reader has to take on trust. Same rationale as the duplicated
+      # contract check in `lint`, in the opposite direction. Both copies cost about a second.
+      - name: Trainer source-authority guard self-test (gated copy)
+        run: npm run check:trainer-authority:selftest
+
+      - name: Trainer source-authority guard (gated copy)
+        run: npm run check:trainer-authority
 
       # Explicit shell so a workflow-level defaults.run.shell cannot neuter the
       # one job whose purpose is to notice that.

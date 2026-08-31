@@ -165,6 +165,23 @@ There are exactly **three** proactive channels. Slack is the only proactive *ser
 - **Reconciliation-first triage:** run `reconcile_payments()` (§3) → each finding maps to a runbook section.
 - **Operator tooling gaps** (what you *cannot* yet self-serve): [`docs/payments/PAYMENT_OPERATOR_TOOL_GAPS.md`](payments/PAYMENT_OPERATOR_TOOL_GAPS.md).
 - **Invariants** the recovery must preserve: [`docs/payments/PAYMENT_INVARIANTS.md`](payments/PAYMENT_INVARIANTS.md); flow context: [`docs/payments/PAYMENT_FLOW_MAP.md`](payments/PAYMENT_FLOW_MAP.md).
+- **Rebook member-open transport (D7):** [`docs/ABC27_ROLLOUT_RUNBOOK.md`](ABC27_ROLLOUT_RUNBOOK.md)
+  → *D7 runtime cutover*, and the D7 tables in
+  [`docs/NOTIFICATION_OPERATIONS.md`](NOTIFICATION_OPERATIONS.md).
+
+  **This path recovers ITSELF, and the correct operator action is usually to do nothing.** The
+  cron-driven `notify-rebook-member-open` function that used to own it is RETIRED; its replacement
+  is a database state machine with a separate janitor on its own 10-minute schedule. A stale lease
+  returns to its exact stored origin, an authorized-but-unanswered send becomes
+  `acceptance_uncertain` and is closed as `dispatch_unknown` at the row's own write-once deadline,
+  and a killed channel DEFERS rather than releasing.
+
+  Two things an operator must NOT do here, because both are how a duplicate send happens: re-send an
+  `acceptance_uncertain` row by hand, and reach for the generic
+  `release_notification_claims_on_kill` on a D7 row (the outbox guard refuses it anyway — for the
+  table owner as much as for anyone else). To stop D7 sending immediately, unset
+  `REBOOK_MEMBER_OPEN_SEND_ENABLED` or disarm the `rebook-member-open-worker` cron; either makes the
+  next invocation a clean no-op with zero database calls.
 
 ---
 

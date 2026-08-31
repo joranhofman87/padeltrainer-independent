@@ -25,6 +25,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { TagPicker } from '@/components/players/TagPicker';
 import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
+import { PLAYER_MERGE_UNAVAILABLE_I18N } from '@/lib/playerMergeAvailability';
 import { AcademyPlayerDetailsCard } from '@/components/academy/AcademyPlayerDetailsCard';
 import { PlayerLocationsControl } from '@/components/academy/PlayerLocationsControl';
 import { PlayerNotificationTimelineCard } from '@/components/notifications/NotificationTimelineCard';
@@ -521,10 +522,19 @@ export default function AcademyPlayerDetail() {
                 <Button
                   variant="outline"
                   data-testid="academy-player-merge-button"
-                  onClick={() => setMergeOpen(true)}
+                  disabled
+                  aria-disabled="true"
+                  data-merge-available="false"
+                  title={t(
+                    PLAYER_MERGE_UNAVAILABLE_I18N.bodyKey,
+                    PLAYER_MERGE_UNAVAILABLE_I18N.bodyDefault,
+                  )}
                 >
                   <Merge className="h-4 w-4 mr-2" />
-                  {t('players.merge.action', 'Merge with another player…')}
+                  {t(
+                    PLAYER_MERGE_UNAVAILABLE_I18N.titleKey,
+                    PLAYER_MERGE_UNAVAILABLE_I18N.titleDefault,
+                  )}
                 </Button>
               )}
             </div>

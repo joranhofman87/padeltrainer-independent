@@ -68,7 +68,10 @@ exists) reschedules them cleanly. On a DB with no `pg_cron` or no Vault secret i
 | `notification-email-worker` | `*/2 * * * *` | **Yes** | v2 email outbox drainer. Self-auth via `requireServiceRole`. |
 | `notification-whatsapp-worker` | `*/2 * * * *` | **Yes** | v2 WhatsApp outbox drainer. Self-auth via `requireServiceRole`. |
 | `notification-digest-worker` | `*/5 * * * *` **INACTIVE** | **Yes** (at tick time, once armed) | 10c-b F installs the job DISABLED in the same transaction that creates it (`20261012100000`), so it exists but never ticks. Arming it is an owner gate: `cron.alter_job(jobid, active := true)`, after the send switch is on and one canary is reconciled. The migration is non-destructive — a re-run never re-arms or disarms an existing job — and installs even when the Vault secret is absent, because the stored command reads Vault at tick time. Verify with `SELECT * FROM public.notif_digest_worker_liveness()`. |
-| `notify-rebook-member-open` | `*/15 * * * *` | **Yes** | Rebook "sessions opened" email. No fallback. |
+| ~~`notify-rebook-member-open`~~ | ~~`*/15 * * * *`~~ | — | **RETIRED** by `20261118115000_d7_runtime_crons.sql`. Its edge function is deleted and ABC-27 revokes the RPC it called, so the job had to go before ABC-27 applied — which is why that migration sorts BEFORE it. Replaced by the three D7 jobs below. |
+| `rebook-round-materializer` | `*/5 * * * *` | No | D7: freezes due rounds and writes per-recipient decisions. **SHIPS INACTIVE.** Makes no provider call. |
+| `rebook-member-open-worker` | `*/2 * * * *` | **Yes** | D7: drives real rebook member-open sends. **SHIPS INACTIVE**, and the function itself ships with `REBOOK_MEMBER_OPEN_SEND_ENABLED` absent — two independent gates. |
+| `rebook-member-open-janitor` | `*/10 * * * *` | No | D7: recovers expired transport leases and closes unresolved rows. **SHIPS INACTIVE.** Makes no provider call, and is deliberately not behind the send flag — an inert janitor turns a stale lease into a permanent wedge. |
 | `auto-rebook-reminder` | `0 6-19 * * *` | **Yes** | Rebook deadline reminder (daytime-only). No fallback. |
 | `invoice-health-check-daily` | `0 6 * * *` | **Yes** (legacy) | Redundant duplicate of the Vercel maintenance job; posts to `invoice-health-check` with a `Bearer` from the old `sr_key` path. Pause/unschedule in an emergency. |
 | `release-expired-rebook-holds` | `*/5 * * * *` | No | Pure SQL, self-schedules. |
@@ -185,6 +188,7 @@ the guard) tracks **lifecycle**, not membership. Current state:
 | `20260919110000_notification_whatsapp_worker_cron.sql` | **active** | notification-whatsapp-worker via Vault | (Path B) `sb_secret_` cutover |
 | `20260606120000_phase5_email_idempotency_and_cron_ficwb.sql` | **active-legacy** | invoice-health-check-daily via `app.settings` (redundant; `app.settings` reads empty on Supabase → effectively inert) | unschedule the redundant cron, or (Path B) `sb_secret_` |
 | `20260714110000_notify_rebook_member_open_cron.sql` | superseded | notify-rebook-member-open via `app.settings` | `20260722100000_rebook_crons_use_vault.sql` |
+| `20261118115000_d7_runtime_crons.sql` | active | Retires the `notify-rebook-member-open` job; installs `rebook-member-open-worker`, `rebook-round-materializer` and `rebook-member-open-janitor`, **all INACTIVE**. All three stored commands read the Vault `service_role_key` at tick time. Sorts BEFORE ABC-27 so `db push` cannot apply ABC-27 while the legacy job is still armed | (Path B) future `sb_secret_` cutover migration |
 | `20260721100000_auto_rebook_reminder.sql` | superseded | auto-rebook-reminder via `app.settings` | `20260722100000_rebook_crons_use_vault.sql` |
 | `20260531110000_schedule_invoice_health_check_job.sql` | superseded | invoice-health-check-daily via `app.settings` | `20260606120000_phase5_email_idempotency_and_cron_ficwb.sql` |
 | `20260511165940_…-….sql` | superseded | enrich-locations / fetch-location-logos crons via `app.settings` | `20260606120000_…` (jobs later unscheduled) |
@@ -201,7 +205,8 @@ select jobname, schedule, active from cron.job order by jobname;
 
 > ⚠️ **Most drainers SEND on invocation — never use a live worker as an auth health check.** An authenticated
 > call to `notification-email-worker` claims + sends pending rows (no kill switch); `auto-rebook-reminder`
-> (esp. `?force=1`, which bypasses the daytime window) and `notify-rebook-member-open` send real emails. Do NOT
+> (esp. `?force=1`, which bypasses the daytime window) and, once BOTH of its gates are open,
+> `rebook-member-open-worker` send real emails. Do NOT
 > invoke these to "test the key" — you will send real customer email.
 
 **Side-effect-free auth probe (today):** only a worker whose SEND is switched OFF is safe to invoke as an
@@ -212,7 +217,9 @@ authentication check — its disabled branch returns `200` before claiming/sendi
 | `notification-digest-worker` | **Yes, when `DIGEST_SEND_ENABLED` ≠ `"true"`** | disabled → `200 {"status":"disabled"}`, zero DB |
 | `notification-whatsapp-worker` | **Yes, when `WHATSAPP_SEND_ENABLED` ≠ `"true"`** | returns before claiming |
 | `notification-email-worker` | **No** | no kill switch — invoking it SENDS |
-| `auto-rebook-reminder`, `notify-rebook-member-open` | **No** | invoking them SENDS (force bypasses quiet hours) |
+| `auto-rebook-reminder` | **No** | invoking it SENDS (force bypasses quiet hours) |
+| `rebook-member-open-worker` | **No** once its send flag is set | with `REBOOK_MEMBER_OPEN_SEND_ENABLED` absent an invocation is a 200 no-op with zero database calls; with it set, invoking it SENDS |
+| `rebook-round-materializer`, `rebook-member-open-janitor` | Yes | neither makes a provider call at all |
 
 > 🚦 **Hard precondition — confirm the switch is OFF *before* you post.** This probe is side-effect-free ONLY
 > while `notification-digest-worker` has `DIGEST_SEND_ENABLED` unset / ≠ `"true"`. There is no SQL to read a
@@ -252,7 +259,7 @@ Expect `status_code = 200` with `{"status":"disabled","reason":"disabled"}` — 
 was off (zero writes). A `401` means the Vault secret isn't the key *this* function's `requireServiceRole` expects.
 
 > ⚠️ **A disabled-worker probe proves only that ONE worker's path — never generalise it to the senders.** It
-> does NOT prove `notification-email-worker`, `notify-rebook-member-open`, or `auto-rebook-reminder` will
+> does NOT prove `notification-email-worker`, `rebook-member-open-worker`, or `auto-rebook-reminder` will
 > authenticate: those verify the key with **their own separate checks** (the rebook crons use inline `Bearer`
 > comparisons, not the shared `requireServiceRole`; see Path B, step 2 — `inbound-auth`). Each sender needs its **own**
 > reviewed side-effect-free auth-only probe before its auth can be considered verified. **The senders have NO
@@ -308,19 +315,19 @@ caller so nothing keeps using the compromised key.
   ```sql
   SELECT cron.alter_job(jobid, active := false)
     FROM cron.job
-   WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+   WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','auto-rebook-reminder','rebook-member-open-worker','rebook-round-materializer','rebook-member-open-janitor');
 
   -- assert: exactly the 4 expected jobs exist AND all are inactive (both must equal the expected count)
   SELECT count(*) AS expected_present, count(*) FILTER (WHERE NOT active) AS inactive
     FROM cron.job
-   WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+   WHERE jobname IN ('notification-email-worker','notification-whatsapp-worker','auto-rebook-reminder','rebook-member-open-worker','rebook-round-materializer','rebook-member-open-janitor');
   -- expect expected_present = 4 AND inactive = 4
 
   -- assert: no RUNNING execution for THOSE jobs only (global 'running' would include unrelated jobs)
   SELECT d.jobid, j.jobname, d.status, d.start_time
     FROM cron.job_run_details d JOIN cron.job j USING (jobid)
    WHERE d.status = 'running'
-     AND j.jobname IN ('notification-email-worker','notification-whatsapp-worker','notify-rebook-member-open','auto-rebook-reminder');
+     AND j.jobname IN ('notification-email-worker','notification-whatsapp-worker','auto-rebook-reminder','rebook-member-open-worker','rebook-round-materializer','rebook-member-open-janitor');
   -- expect ZERO rows
   ```
 - **Vercel crons** — `/api/cron/daily-emails` and `/api/cron/daily-maintenance` cannot be `cron.alter_job`'d.
@@ -449,7 +456,7 @@ inventories are clean AND both replacement paths are verified in production.**
   2. **`inbound-auth` (6) — worker/self-auth checks.** Change each to accept the new key — read
      `SUPABASE_SECRET_KEYS` (or a dedicated named worker secret), not `SUPABASE_SERVICE_ROLE_KEY`. The auth is
      **not shared today**: `notification-email/whatsapp/digest-worker` use `requireServiceRole`
-     (`supabase/functions/_shared/service-role-auth.ts`), but `notify-rebook-member-open` / `auto-rebook-reminder`
+     (`supabase/functions/_shared/service-role-auth.ts`), but the D7 workers / `auto-rebook-reminder`
      have their **own inline `Bearer` comparisons** — every path must be updated.
   3. **`downstream-caller` (5).** Functions/shared email helpers that forward the key to invoke another function —
      update the forwarded credential + header (`apikey`, not `Bearer`) to match the callee's new check.
