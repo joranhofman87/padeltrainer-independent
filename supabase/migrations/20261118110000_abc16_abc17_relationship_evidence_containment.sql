@@ -2887,15 +2887,24 @@ $fn$;
 COMMENT ON FUNCTION public.get_invoices_delivery_status(uuid[]) IS
   'ABC-18 Pass B §1b: delivery state for the SAME guest-first recipient the mail is sent to. Real provider/suppression status is unchanged (email_address_state.is_suppressed); only the address it is resolved for is corrected. Tenant gate preserved.';
 
--- The DROP above discards the function's ACL with it, and the platform re-grants EXECUTE to
--- PUBLIC and anon by default privileges on the fresh CREATE. Re-emitting 20260615110080's own
--- least-privilege idiom verbatim is therefore mandatory, not decorative: without it this
--- SECURITY DEFINER, tenant-gated invoice reader would be reachable by ANONYMOUS callers.
--- service_role keeps its EXECUTE from the same platform default privileges — as it does for the
--- 20260615110030/110080 shapes — so the trio is unchanged: anon=f / authenticated=t /
--- service_role=t. No broader grant is added here.
+-- The DROP above discards the function's ACL with it. What the fresh CREATE starts from is
+-- PostgreSQL's own default — EXECUTE for PUBLIC — plus whatever default privileges the database
+-- carries for the creating role, AND THOSE DIFFER BETWEEN THE PLACES THIS FILE RUNS: the hosted
+-- project's default ACL grants EXECUTE on a new public function to anon, authenticated and
+-- service_role, while a fresh local stack (`supabase start`, `supabase db reset`, and so CI's
+-- "Migrations and types" workflow) adds no client-role grant at all — a function `postgres`
+-- creates there carries a NULL ACL, so once PUBLIC is revoked below nothing but an explicit
+-- GRANT remains. The first revision of this block left service_role's EXECUTE to the hosted
+-- default and granted only authenticated; on the fresh chain that revoked service_role and the
+-- install guard below refused the whole file. The trio is therefore stated in full here, as this
+-- file's other service_role callers state theirs: no role's EXECUTE is left to a platform
+-- default. Re-emitting the REVOKE stays mandatory, not decorative — wherever anon holds the
+-- default, this SECURITY DEFINER, tenant-gated invoice reader would otherwise be reachable by
+-- ANONYMOUS callers. The trio is unchanged from 20260615110080: anon=f / authenticated=t /
+-- service_role=t. Proved on a chain with no function default privilege by
+-- src/test/abc16FreshChainInvoiceDeliveryAcl.realpg.test.ts.
 REVOKE ALL ON FUNCTION public.get_invoices_delivery_status(uuid[]) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.get_invoices_delivery_status(uuid[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_invoices_delivery_status(uuid[]) TO authenticated, service_role;
 
 DO $$
 DECLARE
@@ -2980,10 +2989,11 @@ BEGIN
     RAISE EXCEPTION 'Pass B §1b: delivery status reads an email-suppression relation no migration creates';
   END IF;
 
-  -- The DROP+CREATE above re-applies platform default privileges. Assert the intended trio
-  -- directly rather than trusting the REVOKE/GRANT to have run: anon must NOT be able to reach
-  -- a SECURITY DEFINER, tenant-gated invoice reader, and the two roles that legitimately call
-  -- it must still be able to.
+  -- The DROP+CREATE above starts the function from default privileges that differ between the
+  -- hosted project and a fresh local stack. Assert the intended trio directly rather than
+  -- trusting the REVOKE/GRANT to have run: anon must NOT be able to reach a SECURITY DEFINER,
+  -- tenant-gated invoice reader, and the two roles that legitimately call it must still be able
+  -- to — on EVERY chain this file is applied to, which is why the GRANT above names both.
   IF has_function_privilege('anon', 'public.get_invoices_delivery_status(uuid[])', 'EXECUTE') THEN
     RAISE EXCEPTION 'Pass B §1b: get_invoices_delivery_status must not be executable by anon';
   END IF;

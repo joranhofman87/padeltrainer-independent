@@ -73,6 +73,8 @@ sql/clone_wipe.sql          reset to bare metal (schema + shims + migration ledg
 sql/withdrawn/*             the withdrawn fence design, retained for review only
 synth/build-baseline.mjs    synthetic scale loader (no production value is read)
 clone-safety/reviewed-cron-jobs.tsv  the reviewed job allow-list + outbound classification
+clone-safety/reviewed-migration-chain.json  the reviewed-chain digest the sanitizer refuses to build without
+clone-safety/reviewed-migration-chain.review.md  the per-file review behind that digest (update with every re-pin)
 logfetch/fetch-edge-logs.sh Management API edge-log retrieval + authoritative drain proof
 logfetch/verify-step6-send.sh  step-6 send verifier (explicit --from-file only; no default)
 verify/chain.mjs            shared embedded-PG setup + SHA-pinned migration source

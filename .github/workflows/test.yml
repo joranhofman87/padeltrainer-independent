@@ -212,7 +212,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The frozen ABC-27 real-Postgres controls drive a REAL psql of the embedded server's own
+      # major (18, package.json's embedded-postgres) and refuse any other; ubuntu-latest ships 16.
+      # Installed from the PGDG repository with its signing-key fingerprint checked and the
+      # installed client's own --version re-read afterwards (scripts/ci/install-postgres-client.sh).
+      # scripts/ci/workflow-contract.mjs pins this step, the path named below and the major against
+      # package.json, so none of the three can drift or disappear on its own.
+      - name: Install the PostgreSQL 18 client for the real-Postgres controls
+        run: bash scripts/ci/install-postgres-client.sh
+
+      # ABC27_PSQL names that client to the controls. LC_ALL/LANG=C: every embedded cluster
+      # inherits the process locale at initdb, and the ABC-27 evidence lineage asserts the
+      # deterministic `C` collation BY INHERITANCE — the runner's default C.UTF-8 reports C.UTF-8
+      # instead. This is the lane the runbook runs locally. All three are pinned by the contract.
       - name: Run database tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+        env:
+          ABC27_PSQL: /usr/lib/postgresql/18/bin/psql
+          LC_ALL: C
+          LANG: C
         run: npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
   # Data-integrity invariants (PGlite): RLS isolation, RPC contracts, and — critically —
