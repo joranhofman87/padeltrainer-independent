@@ -391,13 +391,54 @@ describe('the CI gate contract (scripts/ci/workflow-contract.mjs)', () => {
     ]);
   });
 
+  // AN EXPLICIT BUDGET, because this spawns the whole checker as a CHILD PROCESS. It now loads
+  // vitest.config.ts TWICE — plainly and again under VITEST=true — which is the point (a config
+  // whose shape depends on the environment is not the config CI runs), and it roughly doubled
+  // this control's cost. Under load the 15 s default was observed to expire. The double load is
+  // kept and the budget is stated, rather than the reverse.
+  //
+  // ── AND THE `180_000` ABOVE WAS A LABEL, NOT AN ENFORCED BOUND ──────────────────────────────
+  //
+  // `spawnSync` is exactly that — SYNCHRONOUS. It blocks the whole thread until the child exits,
+  // and vitest's own per-test timeout is a timer on the EVENT LOOP: it cannot fire while the
+  // thread it would need to interrupt is parked inside a blocking native call. A `contractCli`
+  // that hung — deadlocked on a resource, waiting on stdin it will never receive — would leave
+  // this test blocked FOREVER, unwatched by the very budget stated beside it. `spawnSync`'s own
+  // `timeout` option is the only thing that can actually bound this call, because Node's
+  // child_process binding enforces it natively rather than through JavaScript's timers. It is set
+  // BELOW the vitest budget, not at it or above: the point is for spawnSync's own kill to fire
+  // and produce a diagnosable "signal: SIGTERM" result before vitest's outer timeout — which
+  // still cannot preempt a blocked thread — would otherwise leave the run simply hanging with no
+  // report at all.
   it('the CLI its CI job runs exits 0 and says so', () => {
     // The workflow calls the CLI, not the module: a checker that computed
     // violations but never exited nonzero would gate nothing.
-    const res = spawnSync(process.execPath, [contractCli], { encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [contractCli], { encoding: 'utf8', timeout: 170_000 });
+    expect(res.error, 'the CLI must not be killed for exceeding its own timeout').toBeUndefined();
     expect(res.status, res.stderr).toBe(0);
     expect(res.stdout).toContain('CI gate contract holds.');
-  });
+  }, 180_000);
+
+  // ══ THE MECHANISM ITSELF, SENSORED — CHEAPLY ═══════════════════════════════════════════════
+  //
+  // The test above proves the CLI finishes well inside its budget today; it cannot also prove
+  // that `spawnSync`'s `timeout` option would actually intervene if the CLI ever hung, without
+  // waiting out that timeout — 170 s this file does not have to spend proving a fact about
+  // Node's child_process binding rather than about the CI gate contract. So the MECHANISM is
+  // proved separately, on a deliberately-hung child and a timeout two orders of magnitude
+  // smaller: a genuine kill reports `signal: 'SIGTERM'` and populates `error` with an `ETIMEDOUT`
+  // code, in well under a second, on any platform this suite runs on. If `timeout` were silently
+  // dropped from the real call above — a refactor that hoisted the options object and lost a key,
+  // say — this is the control that would still say so.
+  it('spawnSync\'s own `timeout` genuinely kills a hung child, not merely a documented option',
+    () => {
+      const res = spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'],
+        { encoding: 'utf8', timeout: 200 });
+      expect(res.signal, 'a child that outlives its timeout must be killed, not merely reported')
+        .toBe('SIGTERM');
+      expect(res.error?.message, 'and the failure must be diagnosable as a timeout, not a crash')
+        .toMatch(/ETIMEDOUT/);
+    });
 });
 
 describe('npm config parsing and detection (the shared primitives)', () => {

@@ -2962,3 +2962,2709 @@ fixes, which is the useful kind of finding.
 | P1 · `testTrainer` read `currentTestName` without the `insideTest` gate | It uses the same gate the identity does. A hook now gets the documented refusal instead of deriving the previous test's id, proved by a control that runs it from a `beforeAll` and asserts the stale name really was available. |
 | P2 · a helper trusted branded fragment PARAMETERS, which an `any` argument satisfies | The parameters are plain strings again and the validator is called in the body. |
 | P2 · a self-test fixture used `await` in a non-async callback, so it was not runnable Vitest code | Fixed. A fixture that could never run is a verdict about a shape the suite cannot contain. |
+
+### What the fourth review round found, and what changed
+
+Five P1 and one P2. All fixed.
+
+| Finding | What changed |
+|---|---|
+| P1 · a validated fragment was trusted OUTSIDE a value-expression position — `${sqlFragment('trainer_id')}` in a column list makes `trainer_id` absent from the list and the whole INSERT unexamined | A brand says what a VALUE is, not that it may stand where SQL expects STRUCTURE. An interpolation of ANY kind is now refused in the table reference, the column list, a SET assignment target and an `unnest` alias; and the quoted-fragment rule reads quoted identifiers as well as strings. |
+| P1 · brand containment checked only directly brand-typed variables, so a branded RETURN type or object property minted a trusted brand with no cast | Three per-site rules are replaced by ONE: an expression whose checker CONTEXTUAL type is a brand must itself be branded. That is the same question the compiler asks when deciding the assignability that lets `any` through, so it closes annotated initializers, assignments, returns, arguments and array/object members together. The subsumed rules are deleted. |
+| P1 · nested `SELECT`s were counted as set-operation arms, so the arms-versus-operators equality agreed while a real `UNION VALUES` arm went unread | Arms are recognised only at paren depth zero; anything else is refused rather than half-read. |
+| P1 · the apply-options follower read only identifier-named property keys | String-literal, numeric and resolvable computed keys are read, and a key this cannot read is REFUSED rather than assumed to be a different key. |
+| P1 · `describe('g', (async () => {…}))` escaped the lifetime rule | Parentheses are stripped on the collection callback — the same AST wrapper already handled for IIFEs. |
+| P2 · the contract CLI control kept a 15 s budget although the double config load made it slower | The double load is kept (it is what proves CI runs the config this checks) and the control is given an explicit 180 s budget. |
+
+## The weekly-default window is academy-local — a DST correction
+
+**Test-fixture arithmetic only.** No product time window, calendar rule or timezone behaviour is
+changed, and no other fixture's timebase moves.
+
+Series identity is (trainer, location, **LOCAL weekday, LOCAL time**, duration), so "a whole week
+later" has to be a CALENDAR step in the academy's zone. The 7.4-B fixture stepped it as
+`'2026-09-01T17:00:00Z'::timestamptz + make_interval(days => 7N)`, and `timestamptz + interval`
+steps days in the **session** zone — UTC here — which pins the UTC clock and lets the local clock
+move. `17:00Z` is `19:00` in Europe/Amsterdam before the last Sunday of October 2026 and `18:00`
+after it. The lane allocator reaches past that date, so the fixture's own claim that stepping a
+whole week keeps two default slots template-IDENTICAL was false for any pair straddling the
+transition.
+
+The correction does the addition on a bare `timestamp` and converts once at the end:
+
+```
+(timestamp '2026-09-01 19:00:00' + make_interval(days => N)) AT TIME ZONE 'Europe/Amsterdam'
+```
+
+**Parity is preserved at the base:** 1 September is CEST (UTC+2), so that expression at `N = 0`
+IS `2026-09-01T17:00:00Z` — every fixture pinning the pre-transition instant still means the same
+instant.
+
+Two controls measure it rather than asserting it. The first takes two occurrences nine weeks apart
+on opposite sides of the transition and compares their local weekday and clock (`Tue 19:00` both
+sides), their UTC offsets, the base parity, and the hour-long duration on both sides — and
+evaluates the REPLACED expression beside it, so the control discriminates instead of merely
+passing. The second sweeps the template vector including `extra_costs` — the field most easily
+lost, being jsonb, last in the column list, and defaulted to an empty array.
+
+> **Superseded below.** As first written, both controls were weaker than they read, and the fifth
+> review round said so. The replaced expression does not simply "drift to `Tue 18:00`": it drifts
+> only when the SESSION zone differs from the academy's, so on a host whose `initdb` picked
+> Europe/Amsterdam it does not drift at all and the control failed. The offsets were read with
+> `to_char(timestamptz, 'OF')`, which is itself session-relative. And the second control measured
+> three fields, not the vector. See *The fifth review round stopped the static approach* for what
+> each of them measures now.
+
+
+## The fifth review round stopped the static approach, and what replaced it
+
+**Test-fixture architecture only.** No product schema, timestamp, window, role, permission,
+runtime or deployment behaviour is changed by anything in this section, and the frozen ABC-27
+migration is byte-identical throughout (`05e04451f944cabf…`, 20,633 lines).
+
+### The round-5 stop
+
+The fifth and final review round of the trainer-source batch came back **NOT CLEAR: 3 P1, 1 P2,
+1 P3** — all valid, none fixed. Four of the five were about one thing: the guard tried to decide,
+statically, that each of the suite's 44 slot write sites bound `trainer_id` to a value the
+authority had issued. That is a general dataflow question, and the round answered it four ways:
+
+| Finding | The escape |
+|---|---|
+| P1 · `checker:625` | The `continue` skipped an atom-bearing `unnest` alias, and the interpolation atom is ONE word token — so `countSetOperators` never saw a smuggled `union`, and `AS ${sqlFragment("x(id) union all values ('foreign'::uuid, …)")}` was constructible. |
+| P1 · `checker:1469` | `branded()` answered only "the brand, or an array of the brand". A CONTAINING type (`{ t: IsolatedTrainerId }` annotated from an `any`) and an annotation-widened alias (`string[] = brandedArr`, then mutate) both walked past it. |
+| P1 · `checker:1394` | `slotsPropertiesOf` had no `GetAccessorDeclaration` arm, so `{ get slots() { return SHARED } }` reached the apply drivers unread. |
+| P2 · `realpg:20607` | `to_char(timestamptz, 'OF')` renders the offset in the SESSION zone. `initdb` takes the HOST zone, so the control's claim that the replaced arithmetic drifts held only where the session zone was not the academy's — on this machine the asserted `Tue 18:00` read `Tue 19:00`, and the full db suite was RED on those bytes. |
+| P3 · `realpg:20641` | The sweep control's title claimed every template field; it measured `extra_costs`, the local start and the duration. |
+
+### The supersession
+
+The three P1s are not patched. Each fix to the previous two guards moved the hole rather than
+closing it — the observer before it was refused structurally for the same reason — so the
+architecture moved instead.
+
+**`src/test/abc27SlotFixtures.ts` is now the only place a slot write is spelled.** Nineteen
+complete fixed statements (four INSERTs, fourteen UPDATEs, and the UPDATE inside the planted
+drift trigger's PL/pgSQL body), no interpolation anywhere, every value a `$k` parameter. The
+suite's 44 direct write sites are converted onto its entrypoints; the one deliberate
+`SHARED_NAMESPACE_CONTROL` census exemption is unchanged.
+
+**The load-bearing check is a runtime capability, not a type.** Every entrypoint that names a
+TRAINER calls `requireOwnedByCurrentIdentity()` before it writes; every entrypoint that names a
+SLOT — including a caller-supplied INSERT id — calls `assertSlotsNotForeign()` on it; and the six
+writing apply paths call it on the EVALUATED `options.slots`. Both ask the registry about the string
+that actually arrives — which is why all three brand escapes above are closed by construction
+rather than by a rule: a containing type, a mutated alias and a getter all deliver an ordinary
+string by the time the check runs. `sqlFragment`, `sqlUuid` and their two brands are RETIRED; the
+`IsolatedTrainerId` brand survives with a smaller job (documenting provenance, keeping a raw
+string out of a fixture parameter) and is no longer asked to carry a proof.
+
+**The static guard is rewritten to a decidable question.** G1: any statement that writes
+`availability_slots` outside the factory is refused, with no classification to defeat. G2: the
+factory's statements must be plain literals, and where one binds `trainer_id` that binding must
+be a `$k` parameter or an `unnest($k…)` alias column. R1 keeps brand containment, now with a
+bounded containing-type walk that closes the P1 above — and asks whether a position REQUIRES a
+brand rather than merely mentions one, because `pg`'s `query<R, I extends any[]>` infers `I` from
+its own arguments, so a "some constituent is branded" test refused the whole repository. R2 refuses
+a write whose target relation is a hole. The T/F/Q hole classification, the static lifetime rules
+and the apply-options follower are deleted.
+
+### The narrow, honest claim
+
+> No INSERT, UPDATE, MERGE or COPY against `availability_slots` is spelled outside the factory in
+> any text the guard can read, and the factory's statements admit no interpolation — both proved
+> at CI, and what each entrypoint actually SENDS is proved byte-identical to one of those
+> constants by a runtime control. Ownership itself is enforced at RUNTIME, in every invocation, on
+> the values that arrive: a trainer this test does not own is refused before any statement is
+> sent; a slot another test owns is refused before any UPDATE names it; and a source slot another
+> test owns is refused before any of the six writing apply paths can derive a target trainer
+> from it.
+
+What is **not** claimed, stated rather than papered over:
+
+- **No dataflow proof.** The guard reads SQL it can lex and compose from literals (`+`, `.join()`,
+  `.concat()`); SQL a program computes by other means is not read. That is why the runtime check
+  is the load-bearing one — a statement the factory did not send asked the registry nothing.
+- **DELETE is outside the four guarded verbs**, deliberately: removing a row cannot create an
+  overlap namespace. The suite deletes slots in several places and none of them is a bypass of
+  anything claimed here.
+- **An array widened by *annotation*** (not by a cast) and mutated through the alias is caught at
+  runtime, by `requireAllOwnedByCurrentIdentity` reading every element, rather than by the guard.
+- **Nothing about mid-statement transient states.**
+- **Scope is the four named files.** `d7RuntimeContract.realpg.test.ts` (73 write sites) and
+  `d7Performance.realpg.test.ts` are an explicit follow-up, and `checkScopeDrift` — now exercised
+  by its own controls against a throwaway tree — will not let the scope widen silently.
+
+### The DST controls, rebuilt
+
+The P2 is fixed by measuring under BOTH session zones instead of assuming one. The corrected
+expression gives `Tue 19:00` on both sides of the October transition under `UTC` and under
+`Europe/Amsterdam`; the replaced arithmetic drifts to `Tue 18:00` under `UTC` and does **not**
+drift under `Europe/Amsterdam` — so what the control now measures is the session-dependence
+itself, which is the actual defect. The transition premise no longer uses `to_char(…, 'OF')`: it
+subtracts the same instant read in two NAMED zones, which no session setting can move. The
+fixture ARITHMETIC correction is kept exactly as it was; only its evidence is rewritten.
+
+The P3 is fixed by widening the sweep to match its title: the whole stored row via `to_jsonb`
+minus the five genuinely per-slot columns, asserted as an exact 29-key set AND compared between
+two lanes — so a column added to the relation fails here rather than joining the template vector
+unnoticed.
+
+### The evidence, measured
+
+| Gate | Result |
+|---|---|
+| `check:trainer-authority` | 19 fixed statements in the factory, 0 elsewhere, 1 declared exemption — **2.7 s** (budget was 30 s) |
+| `check:trainer-authority:selftest` | 89 assertions over 58 fixtures, incl. the real repository — under 3 s |
+| `npm run test:db` (ABC-27 file) | **230/230**, twice back to back |
+| `npm run test:unit` | 392 files / 3,932 tests |
+| `eslint .` | clean |
+| `npm run typecheck:baseline` | 82 pre-existing errors, baseline 82 — no new ones |
+| `npm run build` | ✓ |
+| `scripts/ci/workflow-contract.mjs` | CI gate contract holds |
+| `check:edge-pins` / `check:edge-config` / `check:legacy-key` | OK |
+
+**The mutation battery (as first built: 18 mutants, 18 discriminating; it grew to 42 across the
+five review rounds below, and every count in this table was re-measured at the end)**, each naming ONE non-overlapping sensor —
+a mutant whose only evidence is "some gate failed" says a gate is noisy, not that a sensor works.
+The battery restores every touched file from bytes captured before it starts and re-checks their
+sha256 after each mutant, so it cannot leave the tree mutated.
+
+| # | Mutation | Sensor |
+|---|---|---|
+| M1 / M2 | a raw slot INSERT in the suite, plain and with the comment-split verb | guard (G1) |
+| M3 | a hole interpolated into a factory statement | guard (G2) |
+| M4 | a SQL-side trainer inside the factory | guard (G2) |
+| M5 / M5b | the write-time capability check removed, for one trainer and for a lane | runtime controls |
+| M6 / M7 | the slot registry stops refusing a foreign claim / a foreign source | unit self-test |
+| M8 | an id the registry never issued is accepted | runtime controls |
+| M9 | the contextual brand rule reverts to "mentions a brand" | guard (refuses the repo) |
+| M10 | the containing-type walk removed — the round-5 P1 verbatim | guard self-test |
+| M11 / M12 | the exemption budget widened / the factory inventory loses a statement | guard self-test, guard |
+| M13 | a vitest name filter in the db script | workflow contract |
+| M14 | the scope tripwire disarmed | unit self-test |
+| M15 | the weekly default reverts to session-zone arithmetic | **db suite** |
+| M16 | a template column dropped from the sweep's expected key set | **db suite** |
+| M17 | the apply drivers stop checking their source slots | **db suite** |
+
+**M14 SURVIVED on its first run, and that is recorded rather than quietly fixed.** The scope
+tripwire is dormant by design — no `src/test/abc27*` file outside the guard's program names the
+relation beside a write verb — so disarming it changed nothing any sensor could see. A tripwire
+nothing exercises is a tripwire nobody knows is connected, so it is now driven directly against a
+throwaway tree (three cases: a sibling that writes is refused, the same file inside the program is
+not, a sibling that only reads is left alone). M14 discriminates on the re-run.
+
+**M15 is the round-5 P2's own fix, proved.** Reverting the weekly default to `timestamptz +
+interval` now turns the db suite RED **on this host** — the machine where the previous control
+could not tell the difference, because its session zone happens to be the academy's.
+
+### One defect the conversion itself introduced, and how it was found
+
+Moving the writes into the factory separated ACQUIRING a trainer from WRITING with it. The
+authority's `ensureProfiles` note already predicted the consequence in those words — a fixture
+that acquires inside a transaction it rolls back keeps the id (the registry is in memory and has
+nothing to roll back) while `trainer_profiles` loses the row — and the first full db run duly
+failed `availability_slots_trainer_id_fkey`. The factory now ensures the referential row itself,
+immediately before it writes and only AFTER the capability check, so a refused trainer still costs
+no row at all.
+
+### What the first review round of this batch found, and what changed
+
+Five P1, one P2, three P3 — all valid, all fixed. Two of the P1s were holes the previous
+architecture did not have; three were holes it had and this one inherited by reusing its reader.
+
+| Finding | What changed |
+|---|---|
+| P1 · a CTE-prefixed `WITH x AS (…) UPDATE public.availability_slots …` was invisible, because `UPDATE` was only read as a verb where a statement could BEGIN and its preceding token is `)` | The TABLE NAME answers now, unconditionally. The positional test survives only for the unresolved-target arm, where it is what stops `GRANT INSERT, UPDATE …`, `FOR UPDATE`, a policy's command list and the word in prose from reading as writes. |
+| P1 · every factory UPDATE that did not MOVE the trainer skipped the capability check — `shiftSlotTimes(c, someoneElsesSlot, { minutes: 60 })` walks another test's slot along its own trainer's calendar, which is the collision itself, through a helper that names no trainer | Every UPDATE entrypoint now runs its slot id through `assertSlotsNotForeign`, and so does the drift-trigger plant. A control writes a slot in one test and has the next test try five different setters on it; none reaches the server. |
+| P1 · two writing apply paths never checked their source slots — the `as_actor` wrapper used for receipt privacy and the operator-reachability flow — and two more replay-SHAPE controls were found beside them | All five now call one `enteringApplyWrite` helper, which checks the sources and claims the targets. A tripwire pins both the number of writing call texts and the number of guarded sites, with the needles composed from halves so the pin does not count its own literals. |
+| P1 · `INSERT INTO t AS s (cols)` is valid PostgreSQL, and the alias hid the column list — no trainer binding was found, so a statement storing a fixed foreign trainer passed the factory audit | The optional alias is read, and an INSERT whose column list this cannot read is now REFUSED rather than passed — including the column-less `INSERT INTO t VALUES (…)` form, where the trainer lands by position. |
+| P1 · the guard read the source LITERAL, not the text sent; byte-equality was pinned for `insertSlot` alone, so `SLOT_UPDATE_PRICE.replace(…)` inside an entrypoint would send a statement it had audited in another form | A control drives EVERY entrypoint and requires each sent text to be byte-identical to an exported constant, in both directions. Running it the first time found `PLANT_DRIFT_TRIGGER` sent but missing from the exported record. |
+| P1 · a statement assembled by `['INSERT INTO public.avail', 'ability_slots…'].join('')` was read as two harmless fragments | `.join()` on a literal array and `.concat()` are constant-folded exactly as `+` already was. This is folding, not a deny-list: anything that cannot be folded stays unresolved, and that residual is now stated in the honest claim instead of being implied away. |
+| P2 · the inventory keyed writes as `file:line:verb` in a Set, so two UPDATEs inside one literal — the planted trigger's body is such a literal — collapsed to one | Keyed by the verb's token offset as well, so R4 performs the addition tripwire it claims. |
+| P3 · "every entrypoint", "any statement", "no write outside" read wider than the implementation; DELETE is outside the four guarded verbs and the suite uses it | The claims are narrowed in the code and above: the four verbs are named, DELETE is named as excluded WITH the reason (removing a row cannot create an overlap namespace), and the folding limit is stated. |
+| P3 · the unit-test count and the earlier DST narrative disagreed with the corrected account | Corrected, and the earlier DST paragraph now carries an explicit **Superseded below** note rather than being silently rewritten. |
+
+**Two of the new mutants survived on their first run and both were the MUTANT's fault, recorded
+because a survivor is evidence either way**: one changed only the table alias while leaving the
+trainer parameter-bound, so the statement stayed correct and passing was right; the other removed
+the slot check while no control exercised a cross-test slot edit. The first was strengthened to do
+both halves; the second produced the missing control. The battery is now **24 mutants, 24
+discriminating**.
+
+**One load sensitivity, stated rather than hidden**: `rehearsalSharding`'s "the CLI its CI job
+runs exits 0 and says so" spawns the whole contract checker as a child process and double-loads
+`vitest.config.ts` on purpose. It passed alone and in an idle full-suite run, and expired once
+inside a long back-to-back gate sequence. That is the property its own 180 s budget was added for
+in the previous batch; nothing in this batch touches the contract CLI's cost.
+
+### What the second review round found, and what changed
+
+Five P1, two P2, two P3 — all valid, all fixed. Every one of them was a place where a fix from
+round 1 had narrowed a hole without closing it, or where a tripwire pinned one spelling of the
+thing it was supposed to pin.
+
+| Finding | What changed |
+|---|---|
+| P1 · the R2 unresolved-target arm still demanded a statement-start position, so `WITH x AS (…) UPDATE public.${t} …` escaped BOTH arms; and MERGE/COPY only asked whether the relation appeared anywhere, so an unresolved MERGE target was never examined | The positional test is gone entirely — nothing that is not followed by a HOLE reaches the arm, which is what kept `GRANT INSERT, UPDATE …`, `FOR UPDATE` and policy command lists out. MERGE and COPY now read their targets properly, which also fixes the other direction: `MERGE INTO other USING availability_slots` and `COPY … TO STDOUT` are reads and are no longer called writes. |
+| P1 · G2 passed two valid PostgreSQL forms it did not understand — `SET (trainer_id, location_id) = (…)` and an INSERT whose value source is `TABLE src` | Both fail closed. A SET target that mentions the trainer but is not one plain column name is REFUSED rather than skipped; an INSERT that names `trainer_id` in its column list and whose source this cannot decompose (only `VALUES` and `SELECT` are read) is REFUSED. |
+| P1 · `checkScopeDrift` read RAW source, so a sibling file outside the program carrying `['INSERT INTO public.avail', 'ability_slots…'].join('')` contained no contiguous table name — invisible to the tripwire, and never folded either because it never entered the program | The tripwire searches the SQUASHED text as well: the seams between adjacent string literals (a closing quote, `+`/`,`/`.concat(`/`.join(…)`, whitespace, the reopening quote) are deleted before the match. A third scope-drift control drives exactly that file shape. |
+| P1 · the byte-equality control named its own list of entrypoints, so `export const unsafeUpdate = (c, id) => c.query(SLOT_UPDATE_CAPACITY, [id, 9])` would add no literal, no site and no constant, and simply never be called | The module's exported surface is enumerated at runtime and pinned, and the exercised list is compared against it — so "every entrypoint" is a claim about the module rather than about the test's memory. |
+| P1 · the writing-apply tripwire counted the exact rendering `SELECT * FROM public.<routine>(`, and the revoked-manager barrier is spelled `SELECT status, round_id FROM …` | The needle is `FROM public.<routine>(`, which catches every projection while still excluding the two `GRANT EXECUTE ON FUNCTION` lines. That call site was in fact unguarded; it is guarded now, and there are six writing paths, not five. |
+| P2 · `w.at` is an index within each split statement, so two `UPDATE`s separated by a `;` inside ONE literal still collapsed to one inventory key — the round-1 P2 had moved, not closed | Keyed by the verb token's own `pos`, the byte offset the lexer recorded, which is unique across the whole literal. |
+| P2 · every string literal is read as SQL, so an ordinary message like `'UPDATE public.availability_slots failed'` would be refused | Not changed — it is the direction to fail in, and that is now stated in the guard's header rather than left for a reader to discover. A refusal is loud, names the site and is fixed by rewording a string; the opposite mistake is a write nobody sees. |
+| P3 · comments still said "every slot write" without the DELETE qualification, the inventory key was documented as `file:line:verb`, and the census title still said "no fourth one" | All corrected. |
+| P3 · `srcSlot` in the wrapper describe still carried a comment about a fragment validator that no longer exists, and its defaults still carried SQL quote characters — `'2026-09-01T17:00:00Z'` INCLUDING the apostrophes, handed to a `::timestamptz` cast | Comment rewritten, quotes removed at the defaults and at the one caller that passed them. The db suite is unchanged at 230/230, so no pinned digest depended on the old value. |
+
+The battery is now **31 mutants, 31 discriminating**, with M24–M31 covering each fix above.
+
+### What the third review round found, and what changed
+
+Four P1, all valid, all fixed. Every one was the same shape of mistake: a check that recognised
+the patched form rather than the general one.
+
+| Finding | What changed |
+|---|---|
+| P1 · a COMPOUND INSERT source was half-read — `… SELECT $1, $2 UNION ALL TABLE src` records a binding for the readable arm, so the round-2 "did I find any binding" fallback answered yes while the other arm went unclassified | A set operation or a `TABLE` arm at paren depth zero after the column list is now a refusal in itself. This reader decomposes ONE arm, so more than one is refused rather than half-read. (The scan also had to start AFTER the column list's closing paren; starting on it drove the depth counter to −1 and skipped everything — found by the fixture, not by inspection.) |
+| P1 · `INTO` is OPTIONAL after `MERGE`, and the guard read it as required, so `MERGE public.availability_slots AS t USING … WHEN MATCHED THEN UPDATE SET …` was skipped entirely | The target is read whether or not `INTO` is present. |
+| P1 · `checkScopeDrift` squashed string-literal seams before looking for the TABLE NAME but tested the write verb against RAW text only, so `['IN', 'SERT INTO public.availability_slots …'].join('')` was still invisible | Both questions are asked of both texts. A fourth scope control drives exactly that file. |
+| P1 · invoking an export is not the same as its check having run: deleting `await ownedSlot(id)` from one setter leaves the export list, the statement bytes and both controls unchanged | A REFUSAL MATRIX drives every writing entrypoint once with a subject this test does not own — a foreign slot for the setters and the drift plant, a foreign trainer for the inserts — and requires a refusal with nothing sent. The matrix's key set is compared against the pinned export surface, so a new entrypoint must appear in both. |
+
+Mutants M32–M35 cover these.
+
+**The round-3 table above says "fixed" of its four findings, and a fourth round then showed two of
+them fixed only for the shape round 3 had used** — the compound-source scan was depth-gated, and
+the refusal matrix supplied two foreign capabilities where one check could carry the rejection.
+Both are closed below. The tables in this section are a record of what each round found, not a
+running certificate; the current state is the last one.
+
+### Three load-sensitive controls this batch does not own
+
+`the psql resolver spends one budget across all candidates, and fails loudly when none answers`
+(realpg ~13254) failed with `invoked: false` — the temporary `#!/bin/sh` fake it spawns never
+reached its `echo` inside the control's 1,500 ms budget.
+
+**Measured, not guessed: 2 failures in 14 db runs of this batch, and the two were consecutive.**
+Three runs immediately afterwards were 230/230 each. What causes it is NOT established here — the
+consecutiveness is suggestive and nothing more, and a round-5 review was right that calling it a
+transient machine state was a claim the measurement does not support. What IS established is that
+no hunk of this batch's diff touches the control or anything it calls, and that the control is an
+unreliable gate on these bytes.
+
+It exercises `resolvePsql` and nothing else; **no hunk of this batch's diff touches it or anything
+it calls**, which was checked against the diff rather than assumed.
+
+**Two more behaved the same way, and all three share a shape**: each spawns a heavy CHILD PROCESS
+and holds it to a wall-clock budget.
+
+| Control | Observed | Alone |
+|---|---|---|
+| `the psql resolver spends one budget across all candidates` (realpg ~13254) | 2 failures in 14 db runs, consecutive | 3 clean runs immediately after |
+| `the CLI its CI job runs exits 0 and says so` (rehearsalSharding) — spawns the whole contract checker, double-loading `vitest.config.ts` on purpose | 1 failure, inside a long back-to-back gate sequence | passes standalone; passes in an idle full-suite run |
+| `runs the REAL project through the REAL child` (tscBaselineChecker) — spawns a real `tsc` | 1 failure, in a sequence where `typecheck:baseline` had just run its own `tsc` | passes standalone twice; full unit suite 392/392 alone |
+
+None of them is touched by this batch's diff, and all three pass when the machine is not already
+running another child of the same kind. They are recorded rather than repaired, because repairing
+unrelated controls inside this batch is exactly the kind of silent widening it is trying not to do
+— and because the honest statement is that this repository has three gates whose verdict depends
+on machine load, which is worth someone's attention on its own.
+
+### What the fourth review round found, and what changed
+
+Eight P1, three P2, five P3 — all valid. Three of the P1s were round-3 fixes that recognised only
+the shape round 3 had used, which is the failure mode this whole batch keeps meeting.
+
+| Finding | What changed |
+|---|---|
+| P1 · the compound-source scan ran at paren depth zero, so `INSERT … ( SELECT … UNION ALL TABLE src )` put both arms at depth one | The scan runs at every depth. G2 governs the factory alone, whose statements contain no set operation and no subquery, so looking everywhere costs nothing. |
+| P1 · `ON CONFLICT … DO UPDATE SET trainer_id = '<literal>'` was never audited — the INSERT's own `VALUES` bound a parameter and was accepted, and `writesToTable` does not see the conflict clause as a separate UPDATE because its verb is followed by `SET` | The conflict clause's assignments are read from the INSERT that contains them, by the same rules. An acceptance fixture keeps the rule about the BINDING rather than about the clause existing. |
+| P1 · the SET-list terminator was the first `FROM`/`WHERE`/`RETURNING` at ANY depth, so a subquery in an earlier assignment truncated the scan before it reached `trainer_id` | The terminator is sought at paren depth zero. |
+| P1 · `checkScopeDrift` still matched TEXT, so putting the verb and the relation in separate `const` declarations defeated the squash | The question changed from "does this text look like a slot write" to **"does this file send SQL at all"** — a `.query(…)` call, read from the syntax tree. It needs no type information (the file is not in the program, which is the point), is immune to how the text was assembled, and distinguishes a call from a comment, which a substring match cannot. The text match survives beside it for a file that exports slot SQL without sending it. No `src/test/abc27*` file outside the program calls `.query(` today, so the rule costs nothing. |
+| P1 · the export pin filtered to function-valued exports, so `export const unsafe = { update: … }` was dropped | The WHOLE export surface is pinned, of every kind. |
+| P1 · the refusal matrix gave the trainer-moving setters BOTH a foreign slot and a foreign trainer, so either check could carry the rejection and deleting the slot check left it green | One capability per case: those three get a foreign slot with an OWNED trainer, and a second pass gives them an owned slot with a foreign trainer. |
+| P1 · a caller-supplied INSERT id was registered by `claim(rows)` AFTER the write — so test A's rolled-back explicit id could be re-inserted by test B and only then refused | `s.id` goes through `assertSlotsNotForeign` before the statement is sent, with its own matrix case. |
+| P1 · the writing-apply census counted call TEXTS, and the wrapper's SQL is stored once in a `CALL` map — a second `client.query(CALL.…, …)` would move no count | Uses of the stored call text are counted and pinned too. |
+| P2 · two identical literals on one physical line produced one inventory key | The key carries the literal's own start position as well. |
+| P2 · `… FOR UPDATE ${lockMode}` read the interpolation as an UPDATE's table reference | `FOR UPDATE` and `FOR NO KEY UPDATE` are recognised as locking clauses by walking back over their own words — precise, and it does not reintroduce the positional test round 2 removed. |
+| P2 · "no diff hunk touches it" does not prove the psql control's flake is transient | Fair, and the wording is corrected: the measurement is reported (2 failures in 14 runs, consecutive, three clean runs after) and the causal claim is dropped. |
+| P3 · five stale statements in comments and the runbook | Corrected: the deleted positional test, "every entrypoint calls `requireOwnedByCurrentIdentity`", five-vs-six writing paths, and the stale 75/48 · 229/229 · 3,913 figures. |
+
+**Three of the new mutants survived first time, and all three were missing FIXTURES rather than
+missing fixes** — the parenthesised compound source, the conflict clause and the subquery-before-
+trainer SET had no adversarial case in the corpus, so the guard's own self-test could not see the
+mutation. Adding them is the finding. (A fourth was a no-op mutant that changed nothing.)
+
+## THE ROUND-5 STOP — five blocking findings, recorded and then remediated
+
+**Status at the stop: the fifth and final review round was CONSUMED and NOT CLEAR.** The
+envelope's discipline is `P1 after R5 → owner stop`, and its predecessor's was "no
+post-final-round edits". Both say the same thing, so the five P1s below were recorded rather than
+repaired at that point: a fix made after the last round carries no review, and this batch's whole
+history is a record of fixes that looked complete and were not.
+
+**Status now: all five are fixed under a separate owner approval**
+(`APPROVE_D7_STAGE1_GATE_COMPLETENESS_REMEDIATION_V1`), which set its own scope, its own evidence
+bar and its own review rounds. See *The gate-completeness remediation* below. The findings stay
+here verbatim because the record of what a round found is not rewritten by what was done about it.
+
+Every finding is stated as the reviewer stated it.
+
+### P1 — blocking
+
+1. **A nested conflict clause hides the outer conflict write.**
+   `scripts/check-abc27-trainer-source-authority.mjs` — `conflictBindings()` reads the FIRST
+   `ON CONFLICT` anywhere in the statement, so a data-modifying CTE can put an unrelated one first:
+
+   Indented rather than fenced, deliberately: every SQL-tagged fence in this document is an
+   operator-runnable query held to the `pg_catalog.` qualification discipline the install-window
+   section describes, and the block below is an illustration of a shape the guard must refuse.
+
+       WITH x AS (
+         INSERT INTO public.other_table(id) VALUES ($3) ON CONFLICT (id) DO NOTHING RETURNING id
+       )
+       INSERT INTO public.availability_slots(id, trainer_id)
+       SELECT $1, $2
+       ON CONFLICT (id) DO UPDATE SET trainer_id = 'ffffffff-…'::uuid;
+
+
+   The INSERT's own `$2` binding passes, `conflictBindings` finds the CTE's `DO NOTHING`, returns
+   nothing, and the outer fixed foreign trainer is never read.
+
+2. **The structural scope check misses element-access query calls.**
+   `sendsSql()` recognises `PropertyAccessExpression` only, so `client['query'](…)` is not seen as
+   sending SQL — and with the verb and the relation in separate declarations, neither the raw nor
+   the squashed text carries a complete `INSERT` either.
+
+3. **The caller-supplied-id sensor covers one of the two id-taking inserts.**
+   `insertSlot` and `insertTemplateSlot` both accept `id`; only `insertSlot` has an id-specific
+   refusal case. Removing `insertTemplateSlot`'s check leaves every current control green, because
+   its ordinary matrix case supplies no id and rejects on the foreign trainer instead.
+
+4. **The apply census still recognises one stored-call spelling.**
+   It counts dot access of the `CALL` map key, so `CALL['rebook_round_apply_command_as_actor']`
+   moves no pinned count. A direct call with whitespace before `(` is likewise invisible to the
+   exact `routine(` needle. And the counts are GLOBAL, so they establish no PAIRING: moving one
+   `enteringApplyWrite([], [], 'decoy')` elsewhere while leaving a real call unguarded preserves
+   every number.
+
+5. **Two exemptions on one source line collapse to one.**
+   The ordinary inventory key gained the literal's start position; the EXEMPTION record did not.
+   It is still keyed and deduplicated by `file:line`, so two separately-marked
+   `SHARED_NAMESPACE_CONTROL` writes on one physical line are counted once and the expected count
+   of one still holds.
+
+### P2 — refinements
+
+1. **The trainer-half matrix's key set is not pinned.** `bySubject` is compared against
+   `EXERCISED`; `alsoForeignTrainer` has no expected-key assertion, so its coverage can lose one of
+   the three trainer-moving setters silently.
+2. **The psql resolver control remains flaky.** The wording change did not alter the control.
+
+### What the round CONFIRMED correct
+
+The parenthesised-source scan, the depth-aware SET terminator, the optional `MERGE INTO` handling,
+the full export-key pin, both current insert-id checks, the ordinary statement inventory key, and
+the locking-clause recognition. In the reviewer's words: *every currently checked-in non-exempt
+factory/apply write reaches its applicable registry check; the sole direct exception remains the
+deliberate `SHARED_NAMESPACE_CONTROL` write.*
+
+### The honest reading of that
+
+The five P1s are all about the GATES — the static guard's coverage of SQL forms nothing in this
+repository writes, and the tripwires' ability to notice a future edit. None of them is a defect in
+the checked-in write paths: the reviewer states, and four rounds of measurement agree, that every
+non-exempt write in the suite goes through the factory and asks the registry. So the runtime half
+— the load-bearing half — is where it was said to be. What was NOT yet true is the strength of the
+static half against constructions a future author could write, and the tripwires' ability to catch
+their own erosion. That gap is what the remediation below closes.
+
+## The gate-completeness remediation
+
+Approved separately after the stop, scoped to the checker, its self-test, the direct factory
+refusal tests, the apply census and this record. The frozen migration, the `POST_ABC27_ALLOWED`
+span and the D7 convergence files are byte-exact throughout, and nothing is committed.
+
+| Round-5 P1 | The remedy | The control that proves it |
+|---|---|---|
+| 1 · a nested conflict clause hides the outer one | Every write now owns a REGION (`writeRegion`), and its clauses are read from that region **at that write's own paren depth**. `conflictBindings` takes the write rather than the statement. An `ON CONFLICT` whose action cannot be read is refused rather than assumed to be `DO NOTHING`. | Four fixtures: the reviewer's CTE verbatim; the same CTE beside a *clean* outer clause, which must still be ACCEPTED; a guarded write **inside** the CTE, audited on its own clauses; and a CTE nested **inside the write's own source**, which the region bound alone does not separate and the depth test does. |
+| 2 · the scope check missed `client['query'](…)` | `sendsSql` reads three shapes — member call, literal-subscript call, and a COMPUTED member call, which cannot be shown not to be `query` and is therefore reported. It returns the reason, which the refusal now quotes. | Two more scope-drift controls: a file that sends with the subscript spelling and carries its verb and relation in separate declarations, and one whose member call is computed. The comment-only control still must NOT be reported, so the rule stays a parser rather than a substring match. |
+| 3 · only one of the two id-taking inserts had an id case | Both are driven from a named `ID_TAKING` map whose key set is asserted, each with a slot another test owns. | The refusal matrix, extended; a third id-taking entrypoint cannot arrive without a case. |
+| 4 · the apply census counted, and counting establishes no pairing | **The census is gone and replaced by a walk of the syntax tree.** For every `.query(…)` it resolves the first argument through literals, templates, `+`, `const` bindings, `for … of` tuple destructuring, and property **or subscript** access into an object literal — which is how the stored `CALL` map is reached in either spelling — and then asks whether an `enteringApplyWrite` runs **earlier in that call's own function**. A computed subscript into a map that holds a writing routine's call text is reported. Names resolve LEXICALLY: the innermost declaration whose scope contains the reader, because a 30,000-line file declares `sql` and `calls` many times. | The census is a function of the source text, so it is run against four mutated copies of this file *inside the test itself*: a guard deleted; a guard **moved to another scope** (the exact defect counting could not see — the number of guard calls is unchanged); an unguarded subscript invocation of the stored call text placed **before** that test's own guard; and a computed subscript into the stored map. The inventory it pins is the list of DRIVER LABELS each call was paired with, not line numbers. |
+| 5 · two exemptions on one line collapsed to one | The exemption record and its inventory key carry the literal's start **and the marker comment's own byte offset**. | A fixture with two separately-marked exempt writes on ONE physical line, asserting two exemptions. |
+
+**Six mutants, one per remedy (P1.1 gets two — the region bound and the depth test are separable),
+each aimed at the control that proves THAT remedy rather than a neighbouring gate.** All six
+discriminate. Three of them initially SURVIVED and every one was the mutant or the fixture being
+wrong rather than the remedy: `R5-1` did not restore the original defect (the region bound alone
+already covered the reviewer's shape, which is how the nested-CTE fixture came to exist), and
+`R5-5`'s two writes started on different physical lines, which is not the defect at all.
+
+**One defect the remediation's own fixtures found**, and it is worth naming because inspection did
+not: with the conflict clause finally being read, an INSERT of the form `SELECT $1, $2 ON CONFLICT
+…` had no `FROM`, so the projection's terminator ran to the end of the statement and swallowed the
+whole conflict clause into the trainer's projection item. The projection now ends at the first
+clause keyword at its own depth.
+
+**And a tool defect worth recording**: six battery anchors had gone stale across the remediation's
+own edits, and the battery discovered that one expensive sensor run at a time. It gained an
+`--anchors` mode that applies and restores every mutation without running a sensor, and reports
+which no longer match — seconds instead of hours. All 49 anchors apply.
+
+### The post-review documentation, reviewed in this batch
+
+Two things were written after round 5 and so carried no review. Both are in scope here and both
+were re-read against the code:
+
+- **The round-5 record** above is accurate as a statement of what the reviewer found, and its
+  status line is corrected: the findings are no longer "deliberately NOT fixed", and saying so
+  while they were fixed would have made the document lie about its own subject.
+- **The fence retag.** The illustrative SQL in finding 1 was originally written as an SQL-tagged
+  fence, which broke `the rollout guide and the migration agree about the installation window` —
+  every SQL-tagged fence in this document is an operator-runnable query held to a `pg_catalog.`
+  qualification discipline, and an illustration of a shape the guard must refuse is not one. It is
+  indented instead, the reason is stated at the block, and the document has nine SQL fences, none
+  of which carries an unqualified name. That test is green.
+
+## THE ROUND-6 REVIEW — seven findings on the remediation's own gates
+
+The gate-completeness remediation was reviewed in a fresh thread. It returned **seven findings,
+all P1, and no P2 or P3** — and every one was a claim the gates made that the implementation did
+not support. None of them was in a write path: the write surface itself was confirmed again. They
+were all in the readers that certify it, which is the same class of defect round 5 found and the
+reason a second closure round exists at all.
+
+Each was checked against the source before being acted on, and all seven held.
+
+### The seven, and the eight changes that closed them
+
+1. **The alias resolved outside the region.** Round 5 bounded a write's CLAUSES to its own region.
+   The ALIAS one of those clauses resolves through was still sought across the whole statement, so
+   a data-modifying CTE declaring `unnest($1::uuid[]) AS t(id)` made an outer `INSERT … SELECT
+   t.id FROM public.trainer_profiles AS t` read as parameter-bound while the trainer really came
+   from the table. `unnestBindings` now takes the region and reads only bindings at the write's
+   own paren depth inside it. The `unnest` series statements the factory really uses sit at that
+   depth and still pass, which is the acceptance half of the evidence.
+
+2. **A valid UESCAPE spelling failed OPEN.** The lexer threw on any escape character but the
+   default. That was not a mis-read, it was a hole: the catch that surrounds the lexer asked its
+   fallback question of the UNDECODED text, so `U&"availability!005Fslots" UESCAPE '!'` — an
+   ordinary PostgreSQL spelling of the guarded relation — threw, carried no contiguous table name
+   for the fallback to find, and was reported as nothing at all. UESCAPE is decoded now, and a
+   clause that is genuinely unreadable (an escape character that is not one character, or none at
+   all) still throws.
+
+3. **The lex-failure fallback read raw characters.** The same finding's other half, and the more
+   general one: `text.includes('availability_slots')` is exactly the question the lexer exists to
+   stop anyone asking. A text that fails to lex is now re-read with every terminator relaxed and
+   its DECODED tokens are asked instead, recursively through dollar-quoted and string bodies; a
+   text that cannot be read even then is refused outright.
+
+4. **A send bound away from its call site was invisible.** `checkScopeDrift` asked "does this file
+   CALL `.query`". `const send = client.query.bind(client)` followed by `send(text, values)` has
+   `bind` as one callee and a bare identifier as the other, so neither call answered yes — and
+   with the verb split across declarations no text match reached it either. The question is now
+   "does this file OBTAIN `query`": a member read in any spelling, a destructuring of one, and a
+   computed member, which cannot be shown not to be `query`. A numeric subscript cannot name a
+   member and is not reported, so this did not become a ban on subscripting.
+
+5. **Exemption identity collided one level down.** Round 5 gave each exemption the marker's own
+   byte offset. The recursion into a dollar-quoted body reused the OUTER literal's start while
+   each marker position is body-local, so two bodies in one literal with their markers at the same
+   offset inside themselves produced one record — the same collapse, one nesting level deeper. The
+   body token's position composes into the site.
+
+6. **The census fell open on templates and on stored call text.** Two shapes: a template's holes
+   were discarded, so a query whose whole text arrived through one composed to an empty string, named no routine and
+   was neither paired nor reported; and a map was judged dangerous by its KEY NAMES, so the
+   writing call text filed under `{ apply: … }` and reached by a computed subscript resolved to
+   nothing. Holes are resolved now (an unresolvable one contributes its own source text, and a
+   product this cannot enumerate is reported rather than sampled), and a map is judged by what is
+   IN it.
+
+7. **"Earlier in the same function" is not "runs before".** `guardBefore` searched the whole
+   enclosing function and compared source offsets, so a guard inside a nested arrow nothing calls,
+   or behind a branch never taken, was counted. It now demands dominance: the guard is in the
+   call's own body (nested functions are not entered) and every ancestor between it and that body
+   always evaluates. Getting this right required one correction — `(guard(), await query).rows[0]`
+   is a real shape here, and a member access carries the guard only from its OBJECT side.
+
+8. **The id-taking inventory was remembered, not derived.** `ID_TAKING` was compared against a
+   second hard-coded list, so a third id-taking entrypoint could join the export pins, the refusal
+   matrix and the byte-equality driver while never appearing there. The list is now derived from
+   the factory's own declarations — every exported callable, every parameter that is not the
+   connection, and the object shape it declares — and a parameter shape the reader cannot resolve
+   is reported rather than assumed to carry no id.
+
+That is seven findings closed by eight changes; finding 2 needed two, because refusing to read a
+construct and failing open on the text are different defects with the same cause.
+
+### The evidence
+
+Nine mutants, one per remedy, each reverting the REMEDY rather than breaking a neighbour, and each
+naming the single sensor that must go red: `R6-1` the CTE-alias fixture, `R6-2` the ACCEPTANCE
+control that names another relation (which is what separates decoding from a blanket ban), `R6-3`
+the unlexable-but-still-names-the-table fixture, `R6-4` the alias scope-drift file (whose verb is
+split so no text match reaches it either), `R6-5` the two-bodies-in-one-literal fixture, `R6-6`
+`R6-7` `R6-8` the census's own template, stored-map and dominance mutants, and `R6-9` a third
+entrypoint that acquires a caller-supplied id while the export surface, the statements and the
+refusal matrix all stay exactly as they were — so only a derived list can notice it.
+
+The corpus is now 71 fixtures and 109 assertions; the census carries eight in-test mutants; the
+battery is 58 mutants and every anchor applies.
+
+**One cost the round-6 mutants really did impose**, and it is recorded rather than absorbed: the
+census's name resolver walked the whole 30,000-line file for every identifier it was asked about.
+That is quadratic, and it was affordable while the census ran five times; at nine it took the test
+past its 120-second timeout — twice, on an idle machine, so it was a real cost and not a flake. The
+declarations are indexed by one walk now and the lookup rule is unchanged (the innermost
+declaration whose own scope also contains the reader). Measured on the same bytes: 45 s before,
+1.4 s after, with identical verdicts on the real file and on all eight in-test mutants.
+
+### The second review pass, and the eight further findings
+
+The remediation above was reviewed again. **Eight findings, all P1, no P2 and no P3** — and the
+pass explicitly confirmed four things correct that it had been asked to attack: the declaration
+index is equivalent to the walk it replaced, the region-bounded `unnest` lookup is right, the
+recursive exemption-site composition is right, and the object-side rule in `dominates` is right.
+
+The eight were all cases of a remedy recognising the shape it was built around:
+
+1. **A comment is whitespace.** `U&"availability!005Fslots" /* c */ UESCAPE '!'` is one construct
+   in PostgreSQL, and skipping only `\s` decoded it with the DEFAULT escape and then read
+   `UESCAPE` as an unrelated word — a different identifier entirely. Whitespace and comments are
+   skipped alike now.
+2. **The over-bound arm still read raw characters.** Fixing the lex-failure fallback left its twin
+   untouched: a literal that expands past the bound is never lexed, and the arm deciding what to
+   do about that asked `includes('availability_slots')`. Both arms decode before they answer.
+3. **A quoted or computed destructuring obtains `query` too.** `const { 'query': send } = client`
+   was invisible; a computed one cannot be shown not to be `query` and is now reported.
+4. **An unresolved template hole must not contribute its own source text.** Doing so made
+   `c.query(<a hole>)` read as the harmless expression it is written as. A hole is one atom now.
+   Reporting EVERY unresolved hole was measured first and reports 101 of this file's ordinary
+   interpolated statements, which is why the rule is positional: a hole may stand where a value
+   goes, and may not be the whole text, stand before the statement's verb, or stand where a
+   `FROM`/`JOIN` target belongs.
+5. **A binding that can be assigned again is not a text.** `let sql = harmless; sql = writing;
+   query(sql)` was read as its initializer. Only a `const` is followed.
+6. **A `try` ancestor is not automatically dominance — and is not automatically a refusal
+   either.** Listing `TryStatement` as unconditional let a guard whose query sits after the
+   `catch` count; deleting it unguarded three real sites where the guard and the query share the
+   block. The rule is containment: a conditional ancestor is accepted only when the child the walk
+   came through also contains the guarded call. That is the same answer for `if`/`else`, loops and
+   `?:`, and it is what the construct list was a poor approximation of.
+7. **Dominance is not value-pairing, and the claim now says so.** This reader establishes that a
+   guard RUNS before each writing invocation, not that it was handed that invocation's own slots.
+   What refuses a foreign slot is `enteringApplyWrite` at run time and the drivers' own
+   `assertSourceSlotsOwned`. The one degradation the reader CAN see is now pinned: a guard handed
+   an empty array is labelled `(guarding no slots)` in the inventory, and exactly one label in
+   this file is entitled to that.
+8. **An inherited or quoted option property evaded the id derivation.** `interface SpecialSlot
+   extends BasicSlot {}` has no members of its own, and `{ 'id'?: string }` is not an identifier
+   name. Heritage is followed, quoted names are read, and a base this module does not declare
+   makes the shape UNREADABLE rather than empty.
+
+**Three statements in the suite are genuinely unreadable to the census, and they are now pinned
+rather than tolerated**: two build their `FROM` target from a catalog name the running server
+chose, and one splices a function definition around a hole. None is an apply path, and a fourth
+turns the control red.
+
+Eight more mutants, eight discriminating — including two that had to be re-aimed because the first
+attempt would have been caught by a neighbouring gate (a new export moves the export-surface pin,
+so the id-derivation mutant uses an INTERFACE, which is erased at run time and therefore invisible
+to every other control). The corpus is 75 fixtures and 115 assertions; the census carries eleven
+in-test mutants; the battery is 66 mutants and every anchor applies.
+
+## THE ROUND-6 STOP — the third review pass, and six findings left open
+
+The review budget for this batch was three passes in one thread. The third returned **six
+findings, all P1, no P2 and no P3**, and the batch STOPS here rather than editing gate code that
+no round is left to read. That is the same rule the round-5 stop followed, and for the same
+reason: gate code written after the last review is gate code with no review, which is precisely
+the condition the last two closure rounds existed to repair.
+
+The pass confirmed correct, having been asked to attack them: `skipBlanks` (the main lexer
+revisits an unterminated comment and rejects it, and strict mode rejects a missing escape literal
+immediately), the containment rule in `dominates` including its `child.pos <= at && at < child.end`
+test, the object-side allowance for property and element access, quoted names and locally-declared
+generic bases in the id derivation, and unresolved alias bases as fail-closed.
+
+**The six that remain open.** Each was checked against the source before being written down here,
+and all six hold:
+
+1. **The over-bound arm decodes SQL escapes but not JAVASCRIPT ones.** `tolerantlyNamesTable`
+   receives raw TypeScript source, so a literal that exceeds the expansion bound and spells the
+   relation as `public.availability_slots` is decoded by the runtime and by nothing else. Under
+   the bound this is caught, because the expander reads the COOKED text; over it, the arm reads
+   `getText()`. The round-2 fixtures prove `UESCAPE`, not the source language's own escapes.
+2. **The positional hole rule is raw-text matching.** `VERB` matches a verb written in a COMMENT,
+   so `` `/* SELECT */ ${hole}` `` reads as a statement whose hole is in a value position; and
+   `FROM_TARGET` accepts only an unquoted schema, so `FROM "public".${hole}(` is certified.
+   Comments, `LATERAL` and other legal separators create the same class of miss.
+3. **A quoted routine identifier evades the census entirely.** `invokedBy` matches only an
+   unquoted `public.` and an unquoted routine name, so a new UNGUARDED
+   `FROM "public"."rebook_round_apply_command_as_actor"(…)` moves none of the three lists and the
+   seven-item inventory stays green. This is a pre-existing property of `invokedBy` that the
+   round-6 work did not introduce and did not close.
+4. **A stored call map is judged harmless when its VALUE cannot be resolved.** `{ apply:
+   getWritingSql() }` makes `isStoredCallMap` return false rather than reporting, so a computed
+   subscript into it resolves to nothing. "A map is judged by what is in it" is true only for
+   values this reader can already resolve.
+5. **`(guarding no slots)` recognises only a bare `[]` node.** `([] as unknown[])`, `[...[]]`,
+   `Array.of()` and a named `EMPTY_SLOTS` all hand the guard nothing while keeping the ordinary
+   label, so the inventory does not move.
+6. **Interface DECLARATION MERGING loses the earlier declaration.** The derivation's map keys on
+   the name and the last `interface X` wins, so a shape that declares `id` in its first
+   declaration and something else in its second is read as carrying no id — and an entrypoint
+   taking it can be omitted from `ID_TAKING` without becoming unreadable.
+
+Findings 1, 2, 4, 5 and 6 are all the same shape as every finding of the last two rounds: a reader
+that answers a question it cannot actually decide, in a direction that certifies. Finding 3 is
+older than this batch. None of the six is in a WRITE path — the write surface and the runtime
+registry were confirmed again — and none of them changes what the suite does today.
+
+**The gates are green on the stopped bytes**, which is what makes them a coherent starting point:
+guard ✓, self-test 115 assertions over 75 fixtures, `eslint .` 0, typecheck 82/82 baseline, CI
+contract ✓, edge-pins/edge-config/legacy-key ✓, build ✓, unit 392 files / 3,956 tests,
+`d7ForwardChain` 38/38, the db suite 230/230 with eight of nine runs clean, 66 battery mutants with
+every anchor applying and all nineteen closure mutants discriminating, and an exact double re-pin.
+
+**One intermittent failure is recorded rather than hidden.** One db run in nine failed `barrier
+10b: the lifecycle writer consumes BEFORE its first product row lock`. It sits at line 19077 and
+runs BEFORE anything this batch changed; none of the 113 diff hunks touches its region; and it did
+not reproduce in the eight further runs, so its message was never captured and it is NOT
+characterised. It is not one of the three recorded load-sensitive controls, and nothing about it
+has been widened or hidden.
+
+## THE CERTIFIER-READER BATCH — a canonical parser instead of a sixth patch
+
+Approved as `D7_STAGE1_CERTIFIER_READER_PARSER_AUTHORITY_IMPLEMENTATION_V1`, scoped to the guard
+script, its self-test corpus, the census (extracted to a module), the factory's runtime test, the
+`package.json`/lockfile entry for the parser, and this record. The frozen migration
+(`05e04451f944cabf`, 20,633 lines), the `POST_ABC27_ALLOWED` span, the D7 convergence files and
+**`abc27SlotFixtures.ts` / `abc27TrainerAuthority.ts` in their entirety** are byte-exact
+throughout. Nothing is committed.
+
+### Why the shape of the work changed
+
+Four rounds in a row stopped on the same mode, and never in a write path: *a reader that answers a
+question it cannot actually decide, in a direction that certifies.* Each round patched the shape
+the reviewer used; the next round found the neighbouring shape. Every instance was a hand-written
+stand-in for PostgreSQL's grammar — `FROM (public.)?routine(` cannot see `FROM "public"."routine"(`;
+a `VERB`/`FROM_TARGET` pair over whitespace-squashed text reads a hole after a block-commented verb
+as verb-then-value; a positional column/value walk needs a new rule for every spelling the grammar
+admits.
+
+So the enumerations that stood in for the GRAMMAR are gone — every question about what a statement
+IS now goes to PostgreSQL's own parser. Two enumerations remain and are named as such rather than
+claimed away: which parse-tree fields carry a routine's name, and which PL/pgSQL statement kinds
+are entirely fixed. Neither has a grammar to ask; both fail closed and both are stated at their own
+site. **`libpg-query@18.1.4` — the real PostgreSQL parser (libpg_query), compiled to WASM — is now
+the single decoder**, asked by both readers through one shared module,
+`scripts/abc27ParseOracle.mjs`. Its raw parse needs no catalog, so the same call answers in the
+plain-node CLI, in the vitest unit project and in the db project. The grammar it reports (`180004`,
+the PG18 line) is the same server family the db suite boots (`embedded-postgres@18.4`), and the
+guard prints it on every run so a library bump is visible in the gate's own output.
+
+**Adoption was fail-closed and was measured first.** All twenty `SLOT_STATEMENTS` constants parse
+to exactly one statement each; the two plants parse as `CreateFunctionStmt`/`CreateTrigStmt`; the
+drift function's dollar-quoted body is read with `parsePlPgSQLSync` and its `UPDATE` comes back as
+its own text, audited by the same oracle. The named Plan B was not needed.
+
+### The invariant, stated once and now tested
+
+> Every classification returns decided-yes, decided-no, or UNREADABLE, and *unreadable* always
+> surfaces — as a violation, a pinned identity, or a red control. No reader maps "cannot read" onto
+> the certifying side.
+
+It is no longer a convention for the functions that ANSWER a classification: `abc27ApplyCensus.ts`
+tags each `@classifier`, `CLASSIFIER_PROBES` drives one genuinely undecidable input through each,
+and the control derives the list **from the module's own source**, so a tagged classifier without a
+probe is red rather than invisible.
+
+**And the honest limit of that control, which round 4 named**: it derives only what the author
+tagged. The helpers those classifiers are built from — `resolveNode`, `objectMember`,
+`literalMember`, `declarationFor` — are not tagged, and several P1s of rounds 2 and 4 lived in
+exactly those. The probes prove the top-level arms surface an undecidable input; they do not prove
+the helpers do, and the mutation battery rather than the probe derivation is what covers those.
+
+### The six P1s and the seventh, each with the control that proves it
+
+| # | The remedy | The control |
+|---|---|---|
+| A1 | The over-bound arm stops asking a question it cannot answer: exceeding `MAX_EXPANSIONS` is now an **unconditional refusal**, in the factory and outside it alike. `OVER_BOUND` is a distinct answer from "unresolved", which they were not before. | Measured first: **zero** over-bound literals exist in the five guarded files, so nothing legitimate pays. Three fixtures — an over-bound literal spelling the relation through a **JavaScript** escape (the shape `node.getText()` could not see); the same literal naming another relation, whose verdict **flipped from accept to refuse** and says so; and a 64-expansion composition at the bound, which is accepted, so what refuses is exceeding the bound and not composing. |
+| A2 | The `VERB`/`FROM_TARGET` pair is replaced by the **sentinel parse protocol**: every hole becomes one bare sentinel word, the text is parsed, and each sentinel is classified BY THE PATH THAT REACHES IT — a `funcname` (the hole decides which routine is invoked), a `DO`/`CREATE FUNCTION` body (text the server re-parses), or inert. A sentinel that is not in the tree at all was **erased** — a hole inside a `--` comment, whose runtime value can end the comment — and erased is unreadable, not harmless. | Three in-test mutants: a hole that is the whole statement behind a block-commented verb; a hole naming the routine behind a **quoted** schema; and a hole inside a line comment. |
+| A3 | `invokedBy` reads the parse tree. Quoting, case and schema are the parser's problem, and a routine name inside a string constant is not an invocation. | Two mutants: an unguarded invocation spelled `FROM "public"."rebook_round_apply_command_as_actor"(…)`, which the old anchor could not see at all; and the **near name** `…_lifecycle_command_as_actor`, which must stay unreported or every verdict above means nothing. |
+| B4 | `classifyStoredCallMap` is tri-state. A literal map — object **or array** — with any value this cannot resolve is `undecidable`, and a computed subscript into it is reported. The ARRAY half was narrower than that read for two more rounds: a numeric index was taken as a syntactic position, which is a runtime position only while no earlier element spreads. | A mutant storing an unresolvable call (`{ apply: getWritingSql() }`) behind a computed subscript. The acceptance half is measured on the real file: `rows[0]`-class subscripts stay unreported. |
+| B5 | `classifyGuardSlots` answers in three values — provably-empty (through parens, `as`, `satisfies`, spread-of-empty, and a `const` this can follow), ordinary (an array literal with elements, a property access, a **parameter**), and everything else, which gets its own label `(guarding an unprovable slot list)` **pinned to zero occurrences**. Choice forms (`??`, `||`, `? :`) are combined arm by arm. | Four mutants, one per defeating spelling. The `??` handling was found by measurement, not inspection: without it the file's healthiest guard — `(o.slots as string[]) ?? ser.slots` — read as unprovable. |
+| B6 | The id derivation keys each name to **all** its declarations and unions their members — interfaces, type aliases and, after round 4, classes, which merge with an interface of the same name; an unreadable member in any declaration makes the shape unreadable. The derivation is now a pure function of source text, so it runs against mutated copies while the factory stays byte-frozen. | Three mutants: a second declaration that hides the first; an unreadable member in the LATER declaration; and an id declared only in a later merged declaration, so the union reads every declaration rather than preferring one. |
+| §1 "7th" | The unreadable pin is keyed by **content identity** — `sha256(category \| normalized text with hole atoms)`, first 16 hex — and the control asserts exact SET equality plus a per-identity category. | A mutant that makes one pinned unreadable readable and introduces a NEW one of the same category, so the count and the reason strings are unchanged. Under the retired reason-count pin this was invisible. |
+
+### R5 — the structural reason none of the six was ever a live defect
+
+New checker rule, pinned in both directions: `abc27TrainerAuthority.ts` imports only `vitest`,
+`node:crypto` and `pg`; `abc27SlotFixtures.ts` only `pg` and the authority module. Neither may
+import the checker, the census or anything under `scripts/` — in any spelling, including
+`export … from`, `require`, and a **computed** `import()`, which cannot be shown not to be the
+checker. Eleven controls drive it, two of them against the real modules, so the acceptance half
+is a claim about the tree rather than about a fixture.
+
+### The measurement gate fired, and the protocol was reconsidered twice
+
+§4 of the envelope set its own tripwire: *if the pin list exceeds ~10 entries, stop and reconsider
+the protocol rather than shipping a pin-blanket.* The first form of the sentinel protocol — a
+string-literal pass, then a quoted-identifier pass, classified by whether every sentinel was a
+string constant — surfaced **ninety** unreadables on the real file. That is a blanket, so it was
+reconsidered:
+
+1. **One bare atom instead of a ladder of quoted attempts.** A plain lowercase word is legal
+   wherever an identifier is, wherever an expression is, inside a string constant, and as part of
+   a longer identifier — which covers `'\x${hex}'::bytea`, `abc27_drift_${suffix}` and
+   `ARRAY[${list}]` in one pass. 90 → 23.
+2. **Classify the POSITION, not the spelling**, and descend into PL/pgSQL bodies with the same
+   oracle rather than refusing at their edge. 23 → **16**.
+
+Sixteen is over the estimate and is recorded as such rather than argued away. Every one is a text
+a canonical PostgreSQL parse genuinely cannot fix — a hole in a keyword (`BEGIN ISOLATION LEVEL
+${…}`), in a whole clause (`ADD CONSTRAINT ${name} ${definition}`, `VALUES ${row}`,
+`EXPLAIN (…) ${stmt}`), in a routine name, or in a body the server re-parses — plus one text with
+no hole at all (`CREATE ROLE public NOLOGIN`, which PostgreSQL's own grammar refuses, agreeing
+with the server) and one computed subscript into a map of `pg_get_functiondef` results.
+**The predecessor certified thirteen of the sixteen.** Each carries a one-line rationale in the pin
+table, and the unit of justification is the SHAPE: nine `DO $abc27_owner_final_recheck$${body}$`
+occurrences are one identity and one rationale, and occurrence counts are deliberately not pinned
+so the control does not churn on unrelated edits elsewhere in a 30,000-line file.
+
+**One acceptance the envelope predicted did not survive measurement, and is recorded rather than
+worked around.** §3's B4 note listed `shippedDefs[which]` among the subscripts that stay
+unreported. It does not: `shippedDefs` is an object literal whose two values are `await`ed catalog
+reads, so under B4's own rule ("any property value unresolvable or COMPUTED ⇒ undecidable") the map
+is undecidable and the computed subscript is reported. Certifying it would be the exact collapse
+this batch removes, so it is pinned with its rationale instead.
+
+### What the hand lexer keeps, and why the two readers do not overlap
+
+The SQL lexer is **not** retained beside the oracle as a second certifier. It keeps exactly its
+tripwire duties over INCOMPLETE texts, where its claims already fail toward reporting: does a
+literal name the table beside a write verb, is there an exemption marker, does a sibling file
+obtain `query`. For a factory literal, the lexer's write count and the oracle's own write-set both
+DECIDE WHETHER TO AUDIT — either is enough — and only the oracle decides what the audit says. A
+detector that over-reports costs an audit that passes; a certifier that over-reports is a hole, and
+there is exactly one certifier.
+
+**Deleted, not retained beside the oracle** (a retained undecidable reader is future P1 surface):
+`auditFactoryWrite`, `trainerBindings`, `conflictBindings`, `classifyTrainerExpression`,
+`unnestBindings`, `writeRegion`, `depthAt`, `topLevelSplit`, `stripCasts`, `paramIndex`,
+`qualifiedRef` — 144 lines of re-implemented grammar.
+
+**One widening was written and then removed for lack of a sensor.** The unresolved-composition arm
+was changed to ask its question of COOKED literal parts as well as raw source; measurement showed
+it adds no discrimination, because every string operand of an unfoldable assembly is already
+visited and cooked on its own one node down. The arm keeps the raw question, and the comment now
+says precisely why that is the right question there — the assembled text was never formed, which is
+the folding residual the honest claim already names.
+
+### Review round 1 — the checker half, and what it found
+
+Round 1 ran `gpt-5.6-sol` at `ultra` over the oracle, the guard and the guard's unit suite. The
+MCP call timed out at 1800 s without returning; the findings were recovered from the session
+transcript, which is the recorded recipe for that failure and is not a review verdict. **Five
+findings, four of them P1, and every one reproduced before it was fixed.**
+
+| Finding | What it was | The remedy, and its sensor |
+|---|---|---|
+| P1 · a schema-qualified `unnest` lookalike | `unnestAliases` matched only the LAST element of the function name, so `FROM evil.unnest($1) WITH ORDINALITY AS t(id, i)` was read as PostgreSQL's built-in and `t.id` certified as a parameter-bound trainer. An arbitrary set-returning function supplied the trainer while the audit called it bound. **Reproduced: 0 violations.** | Only the unqualified spelling and `pg_catalog.unnest` are the built-in. Fixture `g2-unnest-lookalike-in-another-schema`, acceptance twin `g2-unnest-catalog-qualified`, battery mutant `M26`. |
+| P1 · a body that BUILDS its statement | `EXECUTE format('UPDATE public.availability_slots SET trainer_id = %L …', …)` inside a factory function body: every FIXED text in the body is harmless, the expression collected for the dynamic statement is `format(…)` whose write-set is empty, and both detectors saw nothing. **Reproduced: 0 violations for a real UPDATE with a literal trainer.** | The body's statement KINDS are read against an allow-list, so every dynamic form — `EXECUTE`, dynamic `FOR`, a dynamic cursor `OPEN`, `RETURN QUERY EXECUTE` — is refused without this file enumerating them. A listed kind carrying a `dynquery` is refused too, which is what separates `RETURN QUERY <fixed>` from `RETURN QUERY EXECUTE`. Fixture `g2-dynamic-execute-in-a-function-body`, mutant `M27`. |
+| P1 · hole-free bodies were never opened | The census descended into a body only when a substituted atom had landed in one, so `DO $$ BEGIN PERFORM rebook_round_apply_command_as_actor(); END $$` — no hole at all — was neither paired nor reported: a raw parse does not look inside a body. | The body is read whenever there is one. In-test mutant `an unguarded invocation inside a body that carries no hole`, battery mutant `M29`. |
+| P1/P2 · routine names outside `funcname` | PostgreSQL carries a routine's name as `ObjectWithArgs.objname` wherever a statement refers to a function rather than calling it, and inside a `DefElem` for `SFUNC`, `HANDLER`, `PROCEDURE`, a cast's or a transform's function. All read as inert. | `objname` names a routine; a `DefElem` is an option this tree does not interpret and is a nested source. In-test mutant `a hole naming the routine outside funcname` — deliberately an `objname`-ONLY shape (`DROP FUNCTION public.${hole}(int)`), because a `CREATE AGGREGATE … SFUNC` hole lands in a `DefElem` too and would let the `objname` rule be reverted with the mutant still passing. Battery mutant `M30`. |
+| P1 · a Node loader with no import spelling | `process.getBuiltinModule('node:module').createRequire(import.meta.url)('./abc27ApplyCensus.ts')` loads a module, and a rule that read import declarations and `require`/`import()` calls reported nothing. The TYPE position `import('…').T` was missed as well. | Both are read, and obtaining a LOADER is reported with an unreadable specifier. Two more R5 controls and battery mutants `M31`/`M32`. **And the claim is corrected rather than patched**: this is an enumeration of spellings, which is the shape this batch removed everywhere else, and there is no grammar to ask instead. R5 is therefore stated as DEFENCE IN DEPTH — what actually keeps a reader's verdict out of a runtime decision is that no runtime module consults one, since the checker and the census produce assertions and exit codes and never a file, an env var or a config. |
+| P3 | `expansionsOf`'s doc said `null` means over-bound; it has meant "could not be folded" since `OVER_BOUND` became its own answer. | Corrected. |
+
+**Two more defects surfaced while fixing those, and both are recorded because nothing else would
+have caught them.**
+
+- **A `LANGUAGE sql` body made the descent return zero statements, and zero was being read as
+  "nothing in the body".** `parsePlPgSQLSync` SUCCEEDS on `CREATE FUNCTION … LANGUAGE sql AS
+  'UPDATE …'` and returns no queries at all. The body is plain SQL, so it is now parsed directly
+  and audited like any other statement — read rather than refused, which also keeps the pin list
+  from filling with ordinary `LANGUAGE sql` probes. Fixture
+  `g2-sql-language-body-writes-the-relation`, mutant `M28`.
+- **The mutation harness was silently mangling its own mutants.** `String.replace` gives `$&`,
+  `` $` `` and `$'` special meaning IN THE REPLACEMENT, so any mutant carrying dollar-quoted SQL —
+  `DO $zz$ … $zz$'` — was spliced with a copy of the surrounding file instead of with itself. Two
+  of the new mutants were VACUOUS while still differing from the original, which is exactly what
+  the "the mutation must really apply" check was supposed to prevent. Every splice now goes
+  through a replacer FUNCTION, and every mutant carries the exact text that must be PRESENT
+  afterwards — or, for a deletion, must occur one time FEWER, because these mutants edit the very
+  file they live in.
+
+The pin list moved from 16 identities to **21**. All five additions are bodies that reach the
+server through `EXECUTE`, and every one of them was READABLE to the predecessor.
+
+### Review round 2 — the census half, and the eight wrong answers it found
+
+Round 2 ran the same model over `abc27ApplyCensus.ts`, the census region of the realpg suite, and
+the id derivation. It also timed out at the MCP boundary and was recovered from the transcript.
+**Its findings are the sharpest of the batch, because they are not "this reader cannot see X" but
+"this reader ANSWERS X, and the answer is wrong."** A missing text is a residual; a wrong text is a
+defect. Every counterexample below was reproduced before it was fixed, and re-run after.
+
+| Finding | The wrong answer | The remedy |
+|---|---|---|
+| P1 · a reassignable object map | `resolveBinding` demanded a `const` before believing a text; `resolveNode` — which follows a name to the OBJECT it denotes — did not. `let M = { sql: 'SELECT 1' }; M = { sql: <writing> }; c.query(M.sql)` answered with the harmless initializer. Census empty. | `resolveNode` is three-valued: a binding it cannot follow is `UNREADABLE_NODE`. Round 4 then found a caller that still read the sentinel as harmless — the loop resolver, where it fell through to `null` one line later — so "every caller" was a claim before it was true. |
+| P1 · a later spread overwrote the key | `{ sql: 'SELECT 1', ...{ sql: <writing> } }` denotes the WRITING text; `objectMember` returned the first match. Census empty. | A spread or a computed key makes the lookup undecidable, and a repeated key resolves to the LAST writer. |
+| P1 · `var` read as block-scoped | The resolver picks the declaration with the smallest enclosing scope. Giving a `var` the block it is written in makes its scope look smaller than it is, so a reader outside that block matched an OUTER `const` of the same name. Census empty. | `scopeOf` gives a `var` its enclosing function. And two declarations tying on span are no longer resolved by "first found" — a tie is undecidable. |
+| P1 · a loop's value set silently truncated | `const cases = [['safe', 'SELECT 1'], dynamic()]` yielded only the safe text: the unreadable element was SKIPPED. An incomplete set is a wrong one. | Any element this cannot fold makes the binding undecidable. `null` and `undefined` arms stay DECIDED — they carry no statement — which is what keeps the file's own `[['shipped', null], …]` off the pin list. |
+| P1 · a hole's JavaScript read as SQL | The residual "does the hole's own source name a routine" returned that SOURCE as the statement. `${SELECT('SELECT rebook_round_apply_normalized_core()')}` hands back `SELECT('SELECT …')`, which PostgreSQL reads as a SELECT of a string constant invoking nothing while JavaScript produces the writing statement. Census empty. | The hole becomes undecidable, and the residual question moved to where it belongs — the ARGUMENT's own source, in every branch, where a hit REPORTS the routine instead of being parsed. |
+| P1 · a wider residual than documented | `resolveNode` did not unwrap `satisfies`, `!` or a type assertion, and its depth limit returned "not a literal". All three certified. | All three unwrapped; the depth limit is undecidable. |
+| P1 · an empty guard arm that always wins | An array is truthy, so `empty \|\| [slot]` yields `empty` — and combining an empty arm with an ordinary one AS ORDINARY certified exactly the arm that is handed over. `({ slots: [] }).slots` and a parameter defaulting to `[]` were ordinary too. | A MIXED choice is `unprovable`; a property access is followed when its object is a literal; a parameter whose default is not ordinary is unprovable. |
+| P1 · the marker was prefix-free only against itself | A statement that already spells `abc27holeatom0end` lends its occurrence to a hole the parser erased. | A text containing the marker cannot be measured with it, and says so. Asserted directly. |
+
+**And four pin rationales were wrong, which matters as much as the code.** A pin whose prose
+misdescribes what it pins is a pin nobody can re-justify:
+
+- `83f6acb926d8b7ad` — the hole is `opts.extraSet ? \`, ${opts.extraSet}\` : ''`, an ARBITRARY
+  EXTRA `SET` FRAGMENT, not the `::type` cast the rationale claimed. The residual is now stated:
+  a caller supplying a writing subquery there would not move this identity.
+- `6aee4b252c7ba987` — said the encoding block "writes nothing". It is the SHIPPED migration's
+  encoding block run against a deliberately hostile `search_path` where a planted DOMAIN CHECK
+  writes `public.abc27_shadow_witness`, and the test MEASURES that write to prove the vector is
+  real. It writes. To a witness table on a disposable database, never to an apply relation.
+- `5fc5d72dfc31d38f` — said the script's last statements are the dynamic `DO` blocks; it ends with
+  two `RESET`s and merely CONTAINS them.
+- `523d8c12498aab26` — said the fact probe "rolls back"; one identity covers several call sites and
+  not all of them do. The rationale is now the shape, not a transaction claim.
+
+Two more prose errors were corrected: a comment naming `shippedDefs[which]` as an unreported
+residual when the code reports it and pins it, and a count that still said sixteen identities.
+
+### Review round 3 — the composed whole, and five more P1s
+
+Round 3 read both halves together, plus this record. It returned **five P1s and a cluster of
+record-parity P3s**, and every counterexample reproduced.
+
+| Finding | The wrong answer | The remedy |
+|---|---|---|
+| P1 · a body inside a body | The PL/pgSQL descent read what a body CONTAINS, not what those contain. `DO $outer$ BEGIN DO $inner$ BEGIN PERFORM writing(); END $inner$; END $outer$` hands the inner `DO` back as a text whose raw parse shows a `DoStmt` and no call at all. The census read it as clean, and the guard had the matching G2 escape — a literal-trainer `UPDATE` in the inner body, with the 19-site inventory unmoved. | The descent recurses, bounded, in the shared oracle so both readers get it. In-test mutant, an `ORACLE_CASES` control, and battery `M39`. |
+| P1 · handler positions read as inert | `CreateAmStmt.handler_name`, `CreatePLangStmt.plhandler` and `CreateConversionStmt.func_name` are neither `funcname` nor `objname`, and each binds a function the server will RUN. The round-1 comment claimed these were covered; they were not. | Five fields added, and the comment now says plainly that this is an enumeration over the PG18 node set with a named residual, because unlike the grammar questions elsewhere there is no parser to ask "is this field a routine name". Mutant `M40`. |
+| P1 · the walks truncated silently | Both shared walks simply RETURNED past their depth cap, turning "I did not look this far" into "there is nothing there". A hundred nested data-modifying CTEs parse fine and reported **zero writes**. | The cap throws, and both callers report it. |
+| P1 · `resolveText` still failed open | Round 2's fix went to `resolveNode`; the path query arguments actually take kept `null` past its depth bound and did not unwrap `satisfies` or a type assertion. A seven-alias chain and `Q satisfies string` both produced an entirely empty census. `resolveText` is now tagged `@classifier` and has a probe, which is also what the "every classification" claim needs to be true. | Mutants `M42`, `M43`. |
+| P1 · a subscripted empty slot list | The property arm followed an object literal; the subscript arm answered `ordinary` for everything, so `({ slots: [] })['slots']` kept the ordinary label. | Mutant `M44`. |
+
+**The depth cap had to be measured twice, and the first measurement was the interesting one.** The
+cap was first set to 20,000 — comfortably above the deepest real tree — and the control asserting
+that a deep walk throws FAILED. These walks exhaust the runtime's own stack at about 3,400 and
+4,000 frames, so the cap never fired: the walk died with a `RangeError` while a caller watching
+only for the cap's own error saw nothing. **A cap above the native limit is a cap that does not
+exist.** It is 1,024 now — measured against a 20,633-line migration whose tree is 26 deep and a
+pathological hundred-CTE nest that reaches 612 — and `isIncompleteWalk` treats a `RangeError` as
+the same fact arriving by another route, for a machine whose stack is shallower than this one's.
+The control that catches this is deliberately sized JUST above the cap and well below the native
+limit, so it tests the cap rather than the runtime.
+
+The P3 cluster was record parity: an "R5 has nine controls" that should have said eleven, two
+mutant counts that had not kept up, a `DB_RESULT` placeholder, and a comment in the runtime test
+still saying the guard reads four files when it reads five. All corrected — a record that
+overstates its evidence is a finding, and these understated and overstated in turn.
+
+### Review round 4 — the corrections themselves, and six more P1s
+
+Round 4 was pointed at the FIXES rather than at the code they fixed: are they right, complete, and
+honestly described? It found **six P1s, every one of them a defect introduced or left behind by a
+previous round's correction.** That is the most useful thing this batch's reviews did, and it is
+the reason a "corrections" round exists at all.
+
+| Finding | What the correction missed |
+|---|---|
+| P1 · the last-writer rule was learned once, not everywhere | Round 2 taught `objectMember` that the LAST writer of a key wins. `classifyGuardSlots` had its own walk and returned on the FIRST match, so `({ slots: serRev.slots, slots: [] }).slots` kept the ordinary label while the guard was handed the empty list. There is one `literalMember` now, and both readers ask it. |
+| P1 · a syntactic index is not a runtime index | `[...['x','y'], WRITING, 'SELECT 1'][2]` is `WRITING` at run time and `'SELECT 1'` to a reader that indexes the AST. A spread at or before the index makes the mapping undecidable. |
+| P1 · the sentinel was produced but not consumed | The loop resolver received `UNREADABLE_NODE` and fell through to `null` — harmless — one line later, so a reassignable collection read as clean. And the `for…of` binding itself was never required to be `const`, though every other binding was. |
+| P1 · the accessor check read only identifier names | `get 'sql'()` and `get ['sql']()` are the last writer of that key and walked straight past the round-2 fix. |
+| P1 · the declaration index held only variables | A `class M { static sql = … }` shadowing an outer `const M` was walked past to the outer, harmless binding. Classes and function declarations are indexed now — and a function declaration's own name is scoped to where it is WRITTEN, not to its body, which is a second bug the first fix would have hidden. |
+| P1 · `deriveIdTaking` unioned interfaces and aliases only | A `class Opts { id?: string }` merged with an `interface Opts { other?: number }` read as a shape carrying no id: the same last-declaration-wins defect the round-6 fix removed, one declaration KIND further out. |
+
+**And four P2s about the evidence rather than the code**, which matter as much:
+
+- The marker-collision rule refused `SELECT 'abc27holeatom'` — a hole-free statement that cannot be
+  substituted into and so can lend an occurrence to nothing. A plainly decidable text answered as
+  unreadable. It applies only where there is a hole now, with an acceptance twin.
+- `objectMember` was over-conservative in the other direction: `{ ...{ sql: W }, sql: 'SELECT 1' }`
+  is plainly `'SELECT 1'`, and a spread BEFORE the last explicit writer cannot overwrite it.
+- The depth-cap control accepted `isIncompleteWalk`, so on a machine with a smaller stack it would
+  pass via `RangeError` whether the cap existed or not — the exact state the cap was in when it was
+  20,000. It demands `WalkTooDeep` specifically now, over an input just above the cap.
+- `isIncompleteWalk` accepted EVERY `RangeError`, including `Invalid array length`. Narrowed to the
+  message that means a stack ran out.
+- The recursion's propagation of an inner body's `dynamic` findings was unsensed: deleting it left
+  both the nested-body control and the one-level `EXECUTE` fixture green. A nested-`EXECUTE`
+  control covers it now.
+
+Three runbook claims were also wider than the code and are corrected in place rather than
+defended: "every caller treats `UNREADABLE_NODE` as undecidable" (one did not), the B4 claim about
+array subscripts, and "the enumeration is gone" — two enumerations remain, and both are now named
+at their own site as things with no grammar to ask.
+
+### A lesson the battery taught about the corrections themselves
+
+Re-running the whole battery after round 2's fixes left **three survivors, and not one of them was
+a remedy that had stopped working.** Two were sensors that the corrections themselves had BLINDED,
+and that is worth writing down because it is the round-8 "a redundant gate hides its own mutation"
+lesson arriving from the other direction:
+
+- Round 2's fix asks the residual question — "does the ARGUMENT's own source name a writing
+  routine" — in every branch rather than only when nothing resolved. That is strictly more
+  reporting, and it is right. It also means the mutant that used to prove routines are read from
+  the PARSE TREE (`FROM "public"."rebook_round_apply_command_as_actor"(1)` written inline) is now
+  answered by the residual regex whether the tree is read or not. The remedy is fine; its sensor
+  had become vacuous. A new mutant reaches the same invocation through a `const`, so the
+  argument's own source is the bare name `QUOTED_CALL` and only the tree can see the call.
+- The same widening made the hole-source mutant's predicate pass either way, because both the
+  fixed and the broken reader end up reporting an unguarded invocation. Tightened to the one
+  outcome that separates them: whether the hole was REPORTED as unreadable or quietly parsed as
+  JavaScript.
+
+**Widening a reader can blind a mutant that was discriminating yesterday.** The only thing that
+catches it is re-running the whole battery after every widening, which is why the battery is run
+whole and not incrementally.
+
+The third survivor was a REPORTING defect in the harness, and it took TWO attempts to fix
+properly — which is the more useful half of the story. `expect(unnoticed).toEqual([])` prints a
+truncated array once it holds more than a couple of entries, so the name that reached the output
+was whichever sorted first. Joining the names into one string did not fix it: the reporter
+truncates a compared STRING at about forty characters, and a later full battery run again recorded
+two "survivors" that were nothing of the kind — the census had noticed, the assertion had failed,
+and the name of the remedy simply did not survive the ellipsis. Both killed cleanly when re-run
+alone, which is how the false report was caught.
+
+**An assertion MESSAGE is printed whole; a compared VALUE is not.** The names live in the message
+now and the value is a count. A THIRD false survivor then appeared with the message printing
+correctly, and the cause was the harness's own matching: it compared raw captured bytes, and a
+reporter writing to a pipe wraps and colours differently than one writing to a terminal, so a
+sensor name that spans a wrap is absent from a substring test while being plainly present on
+screen. The match is made on ANSI-stripped, whitespace-collapsed text now.
+
+A FOURTH class then appeared, and it is the one worth carrying forward. Every full battery run
+produced a different pair of survivors, and each of them killed cleanly when re-run alone. These
+sensors boot a real database; under the sustained load of a fifty-mutant run a sensor can time out
+in its hook, and **a timeout is `failed` without the assertion ever having been evaluated** — which
+the harness read as SURVIVED. The harness now separates the two: a run that did not reach its
+assertion is retried once, and if it is inconclusive twice it is reported as INCONCLUSIVE rather
+than as a survivor.
+
+A mutation battery whose evidence depends on a reporter's truncation and wrapping rules, or on how
+busy the machine was, is not evidence. **A battery that reports a survivor it does not have is
+worse than one that reports nothing**, because the next person spends a round chasing a remedy
+that was never broken — which is exactly what happened four times here before the harness was
+fixed, and none of the four was a defect in the batch under review.
+
+(The two findings above were the whole of that round's survivor list.)
+
+### The evidence, counted
+
+| Where | What |
+|---|---|
+| guard self-test corpus | **89 fixtures** (67 refusals / 22 acceptances, 43 of them analysed AS the factory) + 4 exemption fixtures, 148 assertions |
+| lexer boundary cases | 17, unchanged — the lexer keeps its tripwire duties and its boundary is still stated rather than inferred |
+| R5 import-surface controls | 11, two of them against the REAL runtime modules |
+| oracle boundary controls | 4 — a write a hundred CTEs deep is still found; both walks THROW past the cap; a body inside a body is descended |
+| census in-test mutants | **37 cases** — 34 written entries plus three generated empty-slot spellings. The 12 a prior round named, plus 25 this batch adds: three A2 hole positions, three A3 including the near-name control and the parse-tree-only one, one B4, four B5 spellings, the same-reason swap, three from review round 1, five from round 2 and five from round 3 |
+| id-derivation mutants | 3, run over mutated copies while the factory stays byte-frozen |
+| classifier probes | one per `@classifier`, with the list derived from the census module's own source |
+| ephemeral mutation battery | **50**, all killed, anchors all applying |
+| unreadable pins | 21 identities over 34 occurrences, each with a written rationale |
+
+### Gates, on the final bytes
+
+| Gate | Result |
+|---|---|
+| migration pin | `05e04451f944cabf` / 20,633 lines — double re-verified, byte-exact |
+| `abc27SlotFixtures.ts` / `abc27TrainerAuthority.ts` | byte-exact throughout, including after every battery mutation |
+| `npm run check:trainer-authority` | ✓ 19 fixed statements, 1 declared exemption, `libpg-query@18.1.4 (PostgreSQL grammar 180004)` |
+| `npm run check:trainer-authority:selftest` | ✓ 148 assertions over 93 fixtures, incl. the real repository |
+| CI workflow contract | ✓ |
+| `eslint .` | ✓ 0 findings (exit 0 captured directly, not through a pipe) |
+| typecheck (structured baseline, never bare `tsc`) | ✓ 82 pre-existing, baseline 82 — no new type errors |
+| `npm run build` | ✓ |
+| unit suite | ✓ 392 files / 3,977 tests |
+| full db suite | one run green (163 files / 2,961 tests, ~16.5 min) on the round-1 bytes; the three-consecutive-run protocol is the terminal gate and is run on the FINAL bytes, so it is not claimed here yet |
+| mutation battery | **50 mutants, 50 killed, 0 survived, 0 stale** — 47 reader, 3 runtime, partitioned per §5.3 |
+
+**The battery's partition is the point, not the count.** Every reader mutant names a READER sensor
+(a guard fixture by name, or a census in-test mutant by name) and every runtime mutant names a
+RUNTIME sensor (the refusal matrix, the id-capability matrix, the byte-equality control). No
+reader mutant is "proved" by a runtime control or the reverse.
+
+**A SECOND gap was found the same way, and it is the batch's own failure mode wearing a new hat.**
+`auditFactoryText` refused an unparseable factory literal only when the LEXER had counted a write
+in it — and "the lexer saw no write" is a claim about the lexer, not about the statement. A text
+that lexes cleanly with no write verb while the canonical grammar cannot read it at all was
+audited by neither detector and refused by neither. Measured before widening: the factory holds 56
+plain literals, 19 of which name the guarded relation, and **all 19 parse** — so naming the
+relation is now enough to demand a readable parse, and nothing legitimate pays. Two fixtures and
+two battery mutants: `M24` reverts the widening and is killed by the unparseable-literal fixture;
+`M25` makes the refusal unconditional and is killed by the readable-SELECT acceptance, so what
+refuses is unreadability rather than naming the relation.
+
+**One latent defect was found by re-reading this batch's own code, and is recorded because a
+reviewer did not find it and nothing else would have.** The occurrence search is a SUBSTRING
+search — an atom is often only part of the value the parser produced, as in `'\x${hex}'::bytea` —
+and the atoms were spelled `stem0`, `stem1`, … `stem11`, where the eleventh contains the second.
+In a text with eleven or more holes, a hole the parser had ERASED would find the longer-numbered
+hole's occurrence and be read as inert: the certifying direction, and invisible today because no
+text in this file carries eleven holes. Atoms now carry a terminator, the property is asserted
+directly on a synthetic twelve-hole text, and battery mutant `M23` reverts the terminator and is
+killed by that assertion by name. The pin table is unchanged by the fix — 16 identities, 29
+occurrences, before and after — which is the evidence that it closed a latent hole rather than
+moved a live verdict.
+
+**Three mutants initially survived and every one was the MUTANT being wrong, not the remedy** —
+recorded because that is the same lesson the round-5 remediation wrote down:
+
+- `M7` reverted the unreadable-body refusal by short-circuiting a branch whose `descended.queries`
+  the next line then dereferenced: it CRASHED rather than reverting, and a crash is not a
+  reversion. Rewritten to make the refusal unreachable while the code still runs.
+- `M8` reverted the projection-arity rule and nothing failed — the fixture aimed at it
+  (`SELECT * FROM …`) is refused by the VALUE rule as well, so the arity rule had no sensor of its
+  own. Rather than leave an unsensed gate (the round-8 lesson: a redundant gate hides its own
+  mutation), the fixture was re-aimed at a shape only arity catches — three projected values for
+  two columns — and two more were added, one for the VALUES arm and one that keeps the `SELECT *`
+  refusal attributed to the value rule.
+- `M13`/`M15`/`M3b` all failed their sensor's TEST while a different assertion's message reached
+  the output first. Two fixes: the census controls were split into three `it()` blocks so a
+  mutation to the reader cannot make the mutant battery unreachable, and the battery loop now
+  COLLECTS every unnoticed mutant instead of aborting at the first — so one run names every remedy
+  that lost its sensor. `M3b`'s stub was also made faithful: returning zero statements was caught
+  by the one-statement rule rather than by the audit, so it now returns a benign one-statement
+  parse, which is the permissive stub the envelope actually names.
+
+### The parser as a dependency
+
+`libpg-query@18.1.4`, **exact-pinned** as a devDependency — not a range, because a grammar that
+moves under the gate is a gate that changed silently. Pure WASM (`main: ./wasm/index.cjs`), one
+transitive dependency (`@pgsql/types`, types only), no postinstall script, and no network at load:
+it reads its `.wasm` off disk. `loadModule()` is async, so the guard script does it once at module
+scope with a top-level await, and the two suites do it in the tests that need it.
+
+`package.json` +1 line, `package-lock.json` +18. A clean checkout was proved rather than assumed:
+`npm ci --ignore-scripts` in an empty directory holding only those two files installs 796 packages
+and resolves `libpg-query@18.1.4`.
+
+### One recorded load-sensitive control fired, and it is finally characterised
+
+`the psql resolver spends one budget across all candidates, and fails loudly when none answers`
+(realpg ~13259) failed ONCE during this batch, immediately after a fifty-mutant battery had been
+hammering the machine, and passed on the next two runs. It is one of the three load-sensitive
+child-process controls the envelope names as recorded rather than repaired, and it touches nothing
+this batch changed — it is a pure function under a stopwatch, with no database and no reader in it.
+
+**Its message is captured here, which the prior record did not have:**
+
+```
+AssertionError: expected { invoked: false, …(17) } to deeply equal { invoked: true, …(17) }
+```
+
+That is the diagnostic half worth keeping. `invoked` is `existsSync(marker)`, and the marker is
+written by the fake `psql` scripts the control spawns — so the failure is not the resolver spending
+its budget wrongly, it is the fake **never having been executed at all** inside the 1,500 ms
+budget. Under enough load, `spawnSync` of a freshly-written shell script does not reach the
+script's first `echo` before the budget expires, and the control then reads a true statement about
+the machine as a false one about the resolver. That is a characterisation, not a repair: nothing is
+widened, no timeout is raised, and the control is left exactly as it was.
+
+**And a second interruption that was NOT a defect at all**, recorded so it is not re-diagnosed
+later: one realpg run failed to collect entirely, with `Unknown Error: undefined` and a teardown
+complaint. An embedded PostgreSQL abandoned by an earlier battery run still held port 54397, so the
+suite could not boot its own server. That residue is this batch's tooling, not the suite's — the
+battery runs the realpg file dozens of times and a killed run can leave a server behind. Cleared,
+and the run was green immediately afterwards.
+
+### Barrier 10b, still separated
+
+`barrier 10b: the lifecycle writer consumes BEFORE its first product row lock` (realpg ~19077)
+failed once in nine runs at the previous stop. It runs before anything this batch touches, its
+region is byte-untouched here, and it is **not repaired or hidden in this batch**. Its
+characterisation remains the separate follow-up item the envelope named: run it in isolation under
+load with full output persisted until captured once, then triage on its own record.
+
+## THE ROUND-5 STOP — the review budget is spent and four P1s are open
+
+**STATUS: `STOPPED_FOR_OWNER — 4 OPEN P1, NO POST-FINAL-ROUND EDITS MADE`.**
+
+Five fresh review rounds were budgeted and five were spent. The fifth returned **four P1s**, and
+the envelope's discipline is explicit about what happens next: *any open P1 after the final round
+is an owner stop, and there are no post-final-round edits.* That rule is the reason this envelope
+exists — the two previous stops followed it, and a batch that fixes findings after its last review
+is a batch whose last review no longer describes it.
+
+So nothing below is fixed. Each finding was **reproduced read-only** before being written down,
+because a stop record that hands the owner an invalid finding is worse than no record at all.
+
+### The four, with the input that produces them
+
+**P1-1 · an unqualified `unnest` is certified as the built-in, and cannot be.**
+`scripts/check-abc27-trainer-source-authority.mjs` accepts the unqualified spelling as PostgreSQL's
+built-in `unnest`. An unqualified function name resolves through `search_path`, so a schema ahead of
+`pg_catalog` that defines a competing `unnest(uuid[])` supplies the rows instead — and the trainer
+the audit calls "parameter-bound" is then whatever that function returns. Round 1 closed the
+SCHEMA-QUALIFIED lookalike (`evil.unnest($1)`); this is the same hole through the spelling the
+factory actually uses.
+
+**This one cannot be closed inside this envelope, and that is the point of stopping.** The frozen
+factory writes `FROM unnest($1::uuid[])` twice. Refusing the unqualified form turns the guard red
+on the real tree; accepting it is the certification above. The three ways out are all owner calls:
+change two byte-frozen statements to `pg_catalog.unnest`, add a RUNTIME control that pins
+`search_path` where those statements run, or narrow the stated claim to exclude it. The first two
+are material changes to a frozen runtime module; the third is a decision about what this gate
+promises.
+
+**P1-2 · a hole in an ordinary expression position can BE a call.** Reproduced:
+
+    async function send(sqlExpr: string) { await c.query(`SELECT ${sqlExpr}`, []); }
+    send('public.rebook_round_apply_command_as_actor()');
+
+The census returns `{ paired: [], unguarded: [], unreadable: [] }`. The substituted atom lands as a
+`ColumnRef`, which `occurrencePosition` calls inert. The sentinel protocol's stated assumption is
+that it does not model a hole whose value BREAKS OUT of its construct — and this value breaks out
+of nothing: it is a well-formed expression that happens to be an invocation. The assumption as
+written does not cover the case, so the protocol answers in the certifying direction.
+
+**P1-3 · a destructuring default in a `for…of` tuple.** Reproduced, census empty:
+
+    for (const [, sql = CALL.rebook_round_apply_command_as_actor] of [['case', undefined]]) {
+      await c.query(sql, []);
+    }
+
+JavaScript selects the default. The resolver treats an `undefined` arm as a decided non-text — a
+correction made in round 4 for `[['shipped', null], …]` — and never looks at the binding's own
+initializer, which is where the writing text is.
+
+**P1-4 · a constructor parameter property is a class member.** Reproduced:
+`deriveIdTaking` returns `{ idTaking: [], unreadable: [] }` for
+
+    export class Opts { constructor(public id?: string) {} }
+    export async function insertProbe(client: unknown, opts: Opts) { return opts; }
+
+`public id` declares an instance property; the class walk reads `members[*].name`, the constructor
+has no name, and its parameters are never visited. The shape is decided as carrying no id rather
+than reported as unreadable — the exact shape of the round-5 omission this control exists to close.
+
+### The P2 and P3 findings, also open
+
+- **Four pinned identities are over-refused** (`01b4e82ec671bc04`, `d20b3f57e4a84ac8`,
+  `d21549c177209028`, `95ad9610dc604170` — eight occurrences). The first three interpolate from
+  literal `for…of` loops the resolver could follow, and the fourth is hole-free text the PG18
+  grammar refuses, which is decided-no rather than unknowable. Four rounds of fail-closed
+  corrections have accumulated into a reader that pins things it could decide, and that is worth
+  correcting deliberately rather than in a hurry.
+- **The record's own arithmetic has drifted** and is corrected HERE rather than edited above,
+  because editing the reviewed prose after the final round is the thing the rule forbids. The
+  numbers as they stand on these bytes: **59 battery mutants** (not 50), **43 census mutant cases**
+  — 40 written plus three generated (not 37), **4** id-derivation mutants (not 3), and the section
+  above that says "four P2 evidence findings" lists five.
+- **Stale prose remains in two code comments**: `check-abc27-trainer-source-authority.mjs:1746`
+  still says the guard reads four named files (it reads five), and three comments in the realpg
+  census region still describe sixteen pins (the live census pins 21 identities over 34
+  occurrences). Both are wrong in the direction of understating the guard, and neither is edited.
+- One claim in this record is still wider than the code: it says both remaining enumerations fail
+  closed, and the routine-name-field enumeration does not — a field nobody has named reads as
+  inert, which the oracle's own comment says plainly.
+
+### What IS established on these bytes
+
+| Gate | Result |
+|---|---|
+| migration pin | `05e04451f944cabf` / 20,633 lines, re-verified |
+| `abc27SlotFixtures.ts` / `abc27TrainerAuthority.ts` | byte-exact against the preserved bytes, after every battery mutation |
+| `check:trainer-authority` | ✓ 19 fixed statements, 1 declared exemption, `libpg-query@18.1.4 (grammar 180004)` |
+| `check:trainer-authority:selftest` | ✓ 149 assertions over 93 fixtures |
+| `eslint .` · typecheck · build · CI contract | ✓ 0 · ✓ 82/82 · ✓ · ✓ |
+| unit suite | ✓ 392 files / 3,977 tests |
+| **full db suite, on THESE bytes** | ✓ **163 files / 2,961 tests, 0 failures**, 935 s |
+| mutation battery | ✓ **59 mutants, 59 killed, 0 survived, 0 stale** |
+
+The reviewer independently confirmed the live census still produces the recorded seven paired
+paths, zero unguarded calls, and 21 identities over 34 unreadable occurrences.
+
+**The three-consecutive-run repeatability protocol was deliberately NOT run.** Its terms are three
+green runs on the FINAL bytes, and these bytes are not final in that sense: they carry four open
+P1s and will move if the owner authorises any fix — most certainly for P1-1, which cannot be
+closed without touching a byte-frozen module or adding a runtime control. One full run is recorded
+above as evidence of the state as it stands; the protocol belongs after the owner's decision, not
+before it.
+
+The four open P1s share one shape with the seventeen already fixed — a reader answering a question
+it cannot decide, in the direction that certifies — which is the honest reading of this batch: the
+architecture removed the failure mode from the SQL-grammar questions, where a canonical parser now
+answers, and did not remove it from the JavaScript-resolution questions, where there is no oracle
+to ask and every answer is an enumeration. That is a true statement about what was bought and what was
+not, and it belongs in the owner's decision rather than in another round of patches.
+
+**The owner's decisions**: whether P1-1 is closed by editing two byte-frozen statements, by a new
+runtime control, or by narrowing the claim; and whether P1-2 through P1-4 and the P2/P3 items are
+authorised as a further batch under a fresh review budget.
+
+---
+
+## THE CLOSED-CATALOGUE BATCH — the JavaScript reader is deleted, not extended
+
+> **RECORD-AUTHORITY NOTICE (2026-09-04).** From this heading to the end of the
+> runtime-containment section below, every NUMBER is a historical snapshot of the round it was
+> written in — fixture, assertion, control, test and mutant counts, and the figures in every
+> "evidence" and "gates" table. None of them is current authority, and none of them is
+> machine-checked any more: the test that derived figures from this prose is retired, and a
+> machine-derived cardinality now lives only in an executable set-equality assertion or in a
+> gate's own runtime output. Likewise, every description in these sections of a caller-owned
+> `Buffer` at the fingerprint boundary — the intrinsic-`toString` renderer, the byte-snapshot
+> copy, the `ArrayBuffer.isView`/tag/`isBuffer` gate and the mutants written against them —
+> describes a design that has since been RETIRED; the boundary is a primitive string of
+> canonical hex. The current invariants, commands and pass criteria are stated once, in
+> `## CURRENT — the canonical hex boundary and record authority` at the end of this document,
+> and nothing in the sections between is edited to match them: this is a journal, and it is
+> left as written.
+
+**STATUS: implemented, and every gate in the table below measured green on the final bytes EXCEPT
+the terminal three-consecutive-run database protocol, which by construction runs after this
+document is final and whose result is deliberately NOT recorded here — see "why no run table lives
+here". "Every gate is green" would be a claim about a run this document cannot contain.
+Local only: nothing is committed, pushed, merged, deployed or applied, and no migration is
+touched.**
+
+The round-5 stop above ended with four open P1s that shared one shape: *a JavaScript reader
+answering a question it cannot decide, in the direction that certifies.* The previous batch had
+already removed that failure mode from every SQL-grammar question — PostgreSQL's own parser answers
+those now — and could not remove it from the JavaScript-resolution questions, because there is no
+oracle for JavaScript dataflow. Every answer there is an enumeration, and four consecutive rounds
+each found the neighbouring enumeration hole.
+
+The owner's decision was architectural rather than another patch round:
+
+- **P1-1 is closed by EDIT.** All THREE guarded `unnest` calls are qualified as
+  `pg_catalog.unnest` — the two in the slot factory (`abc27SlotFixtures.ts:215`, `:234`) and, by
+  owner amendment, the one in `ensureProfiles` (`abc27TrainerAuthority.ts:238`) that the stop
+  record had recorded as an owner-visible note. A `search_path` pin and a narrowed claim were both
+  REJECTED.
+- **The remaining work removes open-ended JavaScript source resolution from the certifying path
+  entirely**: the general JS text resolver is deleted rather than extended.
+
+### What replaced the census
+
+`src/test/abc27ApplyCatalogue.ts` is the apply-invocation analogue of the slot factory, one
+deliberate step stricter. Every statement that invokes `rebook_round_apply_normalized_core` or
+`rebook_round_apply_command_as_actor` is a module-private constant there, and each of the seven
+writing call paths the suite had is now a typed entrypoint of exactly four statements — the SEAL
+that reads the caller's argument record once, the ownership check, the target claim, and one
+`client.query`. There is no branch a guard can sit
+outside of, no second query, and no path from an argument to WHICH statement is sent.
+
+Behavioural preservation was the rule, not an aspiration: **every rendered text WAS byte-identical
+to what the suite sent before the conversion**, measured directly at the time.
+
+**That is a statement about the conversion, and it stopped being true of the CURRENT bytes.** A
+later round found the two array-input renderers losing values their validator accepts, and the fix
+— quoting each element — deliberately changes every multidimensional and zero-based rendered text.
+The conversion preserved them; a subsequent correction did not, on purpose, and saying so is the
+point of keeping the sentence rather than deleting it. A harness rendered all seven
+statements plus all thirteen non-default array presentations the replay-shape controls submit
+(multidimensional, zero-based, NULL-member, ragged, empty) through the catalogue and compared them
+character for character against the pre-conversion expressions; it was then shown to discriminate
+by corrupting one expected byte. No database outcome, digest pin or product assertion moved.
+
+| Pre-conversion call path | Catalogue entrypoint |
+|---|---|
+| `applyNormalized` (the shared driver) | `applyNormalizedCore` |
+| the receipt-privacy `as_actor` wrapper | `applyCommandAsActorReceiptPrivacy` |
+| the wrapper refusal matrix's `apply` arm | `applyCommandAsActorRefusalProbe` |
+| the replay-SHAPE driver (11 shapes, 5 mismatches) | `applyNormalizedCoreShaped` |
+| the extend shape control | `applyNormalizedCoreShapedExtend` |
+| the revoked-manager barrier | `applyCommandAsActorRenderedBarrier` |
+| the operator-reachability call | `applyCommandAsActorReachability` |
+
+**Four of the seven carry holes, and a hole here is not an interpolation.** `node-postgres` cannot
+express a non-one-based array from a JavaScript value, and that SHAPE is exactly what the
+replay-shape controls are about.
+
+**This record used to say "multidimensional or non-one-based", and two review rounds measured it
+and found BOTH halves wrong.** `pg`'s serializer recurses: `prepareValue([['a'],['b']])` returns
+`{{"a"},{"b"}}` and a NULL member returns `{"a",NULL}`, so multidimensional is expressible. And a
+bound parameter is not confined to a JavaScript `Array` — `prepareValue('[0:1]={a,b}')` returns
+the string untouched, so a non-one-based array CAN be bound, as text.
+
+**The true statement is narrower than either version**: a native JavaScript `Array` does not
+serialize a lower bound, because the bound is not part of the value. Rendering is what these
+statements use to get one; binding a hand-written text would be the alternative. **And "four
+cannot be parameterised" was one too many**: three carry the shapes, while the fourth — the
+refusal probe — renders a single academy UUID and could have been a bound parameter. It is a
+template because it was written beside the other three. Each hole is a direct call of one of three
+closed renderers over VALIDATED scalars — a canonical UUID, an ISO date, a letters-and-spaces
+label, hex taken from a `Buffer` by construction. None of those can contain a quote, a bracket, a
+comma or a paren, so no rendered value can change what the statement IS; a value that fails its
+shape is a THROW rather than a quoted rendering, because a validator that sanitises is a validator
+to defeat.
+
+**The raw texts are not exported.** The factory publishes `SLOT_STATEMENTS` so a control can
+compare what it sent against what it holds; this module publishes `APPLY_STATEMENT_DIGESTS`
+instead — the sha256 of each statement as it renders it from its own canonical example. A digest
+proves the same property and cannot be invoked.
+
+### The four P1s, each with the one control that proves it
+
+| Finding | Remediation | The control |
+|---|---|---|
+| **P1-1** an unqualified `unnest` certified as the built-in | All three guarded statements write `pg_catalog.unnest`; the checker accepts ONLY that spelling as the built-in, and a new rule refuses a bare `unnest` in every guarded SQL surface (factory, authority, catalogue), fail-closed on both sides of the parse and through a PL/pgSQL body | `g2-unqualified-unnest` — a factory statement whose trainer is a well-behaved bound parameter and whose `unnest` alias authorises nothing, so ONLY the qualification rule can refuse it (verified by disarming that rule alone: the fixture then produces zero violations). Battery `M01`/`M02` revert each qualification on the real tree |
+| **P1-2** a hole in an expression position can BE a call | The certifying census is deleted; the invocation text must now spell a writing routine in some decoded token, which **G4** refuses unless pinned | The exact reproduction as the named fixture `g4-invocation-through-a-hole`, refused by the STRING half of G4 and by nothing else |
+| **P1-3** a `for…of` destructuring default selects a stored call text | The stored call map's apply entry moved into the catalogue. The default's spelling is a property-access identifier — the `read` category, which has **no pin at all**, because the thing being read cannot exist outside the catalogue | `g4-stored-call-read-through-a-destructuring-default`, refused by the IDENTIFIER half and by nothing else |
+| **P1-4** a constructor parameter property is invisible to `deriveIdTaking` | `deriveIdTaking` and its four derivation mutants are DELETED. The completeness proof is a runtime **foreign-id sweep**: every entrypoint on the pinned export list is driven with a foreign id smuggled into its option shape (or, where it has none, as an extra argument), and the id must reach no sent text and no sent value — or the authority must refuse before anything is sent | The sweep itself, shown to discriminate: a factory mutation that reads `(s as any).id` into `insertSlotSeries`'s bound values is caught by the sweep and by nothing else (the ordinary matrix refuses on the foreign TRAINER first — the exact round-5 omission shape) |
+| **Four over-refused pins** (`01b4e82e…`, `d20b3f57…`, `d21549c1…`, `95ad9610…`) | Discharged by deletion. The pin table of certifying non-decisions no longer exists; the replacing question — "does this token spell a writing routine" — decides all four instantly as *no* | None of the four texts appears in the mention inventory, and the inventory is checked in BOTH directions on the real tree |
+
+### The checker: what is added, what is deleted
+
+**G3 — the catalogue audit.** Every statement constant is a plain literal or a template whose
+every hole is a direct call of a named private renderer (one syntactic level; nothing to resolve).
+With the holes filled by the CHECKER'S OWN canonical examples — not the module's, which would make
+the audit a function of the thing it audits — each is parsed and must be exactly one closed
+`SELECT … FROM public.<writing routine>(closed args)`: no `WHERE`, `WITH`, set operation, second
+`FROM` entry, `ROWS FROM`, `WITH ORDINALITY`, column definition list, lock, table reference or
+write anywhere in the tree, and no routine invoked beside its own except
+3 pinned value built-ins — compared by **full dotted name**, because reading only the last element is the
+`evil.unnest` hole wearing a new hat. Entrypoint structure, the one-entry no-slots entitlement, the
+renderers' privacy, and the export surface are all pinned.
+
+**G4 — writing-routine spelling containment.** Over every `src/test/abc27*` file except the
+catalogue — the guard's program AND the scope-drift set, so a sibling test cannot re-open the
+surface — any decoded string token, template part or identifier whose text names a writing routine
+is refused unless its content identity is in the pinned inventory. Comments are excluded: a
+JavaScript comment cannot reach a server, and the names appear in dozens of them explaining exactly
+this design. Matching folds case and demands identifier BOUNDARIES, so the shipped near-name
+`rebook_round_apply_lifecycle_command_as_actor` and any future longer name are different routines
+and do not ride the refusal — both stated as acceptance fixtures rather than left to be discovered.
+
+**The mention inventory: 12 identities over exactly 26 occurrences**, each identity carrying its
+own one-line rationale, its own category and its own count, and each a decided, NON-INVOKING
+mention. **The count is pinned, not descriptive** — this paragraph used to say the opposite. So is
+the category: a pin decides a text OF A GIVEN KIND, and the kind is compared with the kind the
+token is actually seen in rather than being a note beside it.
+
+| Class | Identities | What they are |
+|---|---|---|
+| catalog probes | `d088ed2e7e02fcbe`, `731d1255376ed092` | `has_function_privilege(<role>, p.oid, 'EXECUTE')` over a `proname IN (…)` list — the routines are catalog ROWS to be measured |
+| bare names in expectation lists and inventories | `823468e8c6b7f7a7`, `99ed2366d53d0afe` | a name in a JavaScript array is inert AS WRITTEN. It used to say such a name "reaches no server at all", which is not something this can know: the array element can be iterated, and the count is what keeps a SECOND spelling from inheriting the decision made about this one |
+| GRANT text | `ae676029a4e5ebec` | the deliberate improper grant control, planted and rolled back so the reachability probe is proved able to see one |
+| installed signatures | `ebbc80cb24f67303`, `a3b21fed2adf52f9` | the sorted signature inventory the Stage-0 surface pin is taken over |
+| runbook-parity fragments | `3a43178c3be886db`, `b2c0a477afd68058` | the transfer-manifest entry and row, compared as text against a file on disk |
+| splicing anchors | `b66f3c7273dcb54f`, `2183c9a88ae0efc8` | `String.prototype.indexOf` arguments that bracket the apply core's own body in the migration text |
+| expectation-map keys | `1b2a97ad431f22cf` | a KEY declares an entry; OBTAINING one under that name is the `read` category, which has no pin |
+
+**The oracle shrank.** `stringOccurrences` and `occurrencePosition` are deleted with their only
+consumer, and with them the one enumeration in that file that genuinely failed OPEN — a
+routine-name FIELD nobody had listed read as inert. It is deleted rather than extended, which is
+the point: no field enumeration carries certification weight anywhere any more.
+
+### Runtime evidence
+
+`src/test/abc27ApplyCatalogue.runtime.test.ts` (new, unit project, recording client, outside the
+guard's program like the factory's runtime test, and spelling neither routine name): every
+entrypoint is driven with the module's own canonical example and the sha256 of what it sent must be
+that entrypoint's own digest — asked in BOTH directions, so nothing is sent that is not in the
+inventory and no inventory entry goes unsent. Then, per entrypoint: a foreign SOURCE slot and a
+foreign TARGET slot each refused with `sent === []`; the one no-slot entitlement accepted and shown
+to claim nothing; ten hostile renderer inputs (a closing quote, a quote-and-second-member, a comma
+splice, both parens, a set operation, a closing bracket, a bare word, the empty string, a number)
+each refused with nothing sent — all ten are strings, the last being `'1'`, and a non-string
+element is refused by the seal rather than by a renderer; date and label shapes held to their own
+validators; three unrenderable array presentations refused; and a bytea literal refused from
+anything but a `Buffer`.
+
+`abc27SlotFixtures.runtime.test.ts` keeps its refusal matrix, its id-capability matrix and its
+byte-equality control, loses `deriveIdTaking` and its four derivation mutants, and gains the
+foreign-id sweep — which is TOTAL over the pinned export list rather than over a derived subset,
+so "the derivation went quiet" is not a failure mode it has.
+
+### Deletions, in full
+
+- `src/test/abc27ApplyCensus.ts` — the whole module (pre-edit sha256
+  `66001bb42f2b86ff2340f336a47e77044e813ab0edf1f46e938d91877309c388`, recorded here because the
+  file was untracked and the deletion is therefore only auditable against the preserved manifest).
+- realpg: the three census tests, the classifier-probe/prefix-free test, the census import block,
+  `enteringApplyWrite`, `APPLY_WRITE_PATHS`, and the apply-side `assertSourceSlotsOwned` uses at
+  every converted site — **718 lines**. `previewNormalized` is NOT one of them: it reads, so it
+  keeps its own source-slot check.
+- runtime test: `deriveIdTaking` and its four derivation mutants.
+- checker: every census reference; oracle: the sentinel-protocol support and its boundary control.
+
+### RECORD CORRECTIONS
+
+The round-5 stop recorded four documentation defects it was forbidden to edit. All four are
+corrected here rather than by rewriting the reviewed prose above.
+
+1. **The itemized arithmetic.** The numbers as they stood on the round-5 bytes were **59 battery
+   mutants** (the "The evidence, counted" table above says 50), **43 census mutant cases** — 40
+   written plus three generated (the table says 37), **4** id-derivation mutants (the table says 3),
+   and the section that says "four P2 evidence findings" lists five. Those corrections stand as
+   the record of THOSE bytes.
+2. **Those numbers are now RETIRED with their subject.** The census, its 43 in-test mutant cases,
+   its classifier probes, its 21 unreadable identities over 34 occurrences, and the four id-
+   derivation mutants no longer exist. They are not superseded by a larger number; the question
+   they answered was deleted.
+3. **The stale checker comment is fixed.** `check-abc27-trainer-source-authority.mjs` said the
+   guard "reads four named files" while its program held five; it now names all five (authority,
+   factory, catalogue, suite, guard unit suite) and says so in both places, with a sentence
+   recording that the prose was wrong for a whole round because nothing else notices that class of
+   drift.
+4. **The three realpg "sixteen pins" comments are deleted with their region** — they lived in the
+   census tests.
+5. **The fail-closed over-claim is corrected.** The record said both remaining enumerations fail
+   closed. The routine-name-field enumeration in the oracle did NOT — a field nobody had named read
+   as inert, which the function's own comment said plainly. That enumeration is now DELETED rather
+   than restated, so the claim is true because the thing that made it false is gone.
+
+### Expected evidence deltas, and the measured ones
+
+| Delta stated up front | Measured |
+|---|---|
+| realpg loses four tests | four census tests deleted; realpg −718 lines |
+| unit project gains one file | `abc27ApplyCatalogue.runtime.test.ts`, 16 tests |
+| the guard corpus grows by the G3/G4/`unnest` fixtures | 93 → 107 fixtures; 149 → 197 assertions |
+| `EXPECTED_FACTORY_STATEMENTS` stays 19 | 19 |
+| the grammar line is still printed on every guard run | `libpg-query@18.1.4 (PostgreSQL grammar 180004)` |
+
+
+### The review rounds, and what each one changed
+
+All five budgeted `gpt-5.6-sol` `ultra` read-only rounds have been spent. Rounds 3, 4 and 5 ran in fresh threads because the MCP session was lost twice — to a connection restart and to an idle timeout — which costs a thread, not a round; the round count is what the budget is over, and round 2's verdict was recovered from the session transcript rather than assumed. Every finding
+below was reproduced before being acted on, and every fix carries a control that fails without it.
+
+**Round 1 — the catalogue, its renderers, and the runtime evidence.** Six P1s, two P2s, three P3s,
+all valid, all fixed:
+
+- `RenderedArray.type` was interpolated into the cast without validation. A caller arriving through
+  `as never` — which is how every smuggling fixture gets there — could supply
+  `type: "uuid[] || ARRAY['<a foreign slot>'::uuid]::uuid"` with an EMPTY value list, validating
+  nothing and rendering a second array expression into the statement. Both discriminants are now
+  held to closed sets.
+- **The check and the send were two reads.** `assertSlotsNotForeign(a.slots …)` and
+  `client.query(…, [… a.slots …])` each evaluated the property, so an accessor answering `[]` first
+  and a foreign slot second satisfied one and fed the other. This is the getter shape the whole
+  batch exists to be immune to, one layer further in than where it had been closed.
+- **A non-string element was skipped by the check and serialized by the driver.**
+  `assertSlotsNotForeign` ignores a non-string on purpose (fixtures pass a deliberate `null`), while
+  `node-postgres` calls a value's own `toPostgres()`. `[{ toPostgres: () => <a foreign slot> }]` was
+  checked as nothing and sent as that slot — measured against the installed driver.
+- The runtime drive compared digests but never bound values, so swapping two parameters stayed
+  green. It now asserts the values too.
+- The foreign-id sweep matched one exact lower-case string, so a case-changed or nested form walked
+  past it; and it stopped at the writing entrypoints, leaving the one pure reader unpinned as such.
+  It now compares canonically and covers the whole function-export surface.
+- The foreign matrices drove the plain and the rendered list from ONE array, so removing either
+  half of the guard still refused. They are driven independently.
+
+The SECOND and THIRD share one answer — the first does not, and saying otherwise was itself a
+finding. Every entrypoint now OPENS BY SEALING ITS INPUT — `const <local> = sealed(<its argument
+record>)`, which is the invariant the guard actually enforces; the local is named `a` in four of
+them and `s` in the three that take a spec, and the guard refuses any name that collides with a
+module binding. The seal is a single read of the caller's
+record that also refuses a non-string identity element and any function value, taken with an index
+loop rather than the array's own `map`, and G3 refuses an entrypoint that reads its parameter again
+afterwards. A hostile `RenderedArray.type` survives sealing untouched — it is an ordinary string —
+and is refused by the renderer's own closed-set check instead.
+
+**Round 2 — the checker and the corpus.** Cut off by a connection loss before it delivered a
+consolidated list; it is counted as spent, and the two observations it did deliver were reproduced
+and fixed: a composed text whose identity deferred to a PINNED operand was never reported (the bare
+routine name is a pinned inventory element, so `'SELECT public.' + <that name> + '()'` had an
+operand that "already spelled it"), and the composition fixtures covered `+` but neither
+`[…].join(…)` nor `.concat(…)`, which are separately implemented.
+
+**Round 3 — the composed whole and the record.** Its largest findings were about the RECORD, which
+is the half a reviewer is best placed to judge:
+
+- Two real containment gaps, both the same shape and both closed the same way. G3 records the
+  statement and the renderers BY IDENTIFIER TEXT and then looks them up among the module's
+  constants — so a parameter of that name shadows the constant, and the audit reads one statement
+  while the runtime sends another. Rather than resolve the binding (resolution is the class of
+  question this design removed), shadowing is made unconstructible: an entrypoint takes exactly two
+  plain parameters and declares exactly one local, and a rendered statement is an arrow of exactly
+  one plain parameter.
+- **A rule with no control.** The "is this statement exported" branch could be deleted with nothing
+  noticing, because exporting a statement necessarily breaks the export-surface EQUALITY already.
+  A redundant gate hides its own mutation — the lesson two batches back — so the branch is deleted
+  and a comment stands where it was.
+- **The boundary class was ASCII.** `rebook_round_apply_normalized_coreé`, `…coreλ` and `…core中`
+  are ordinary identifiers naming no routine of ours, and all three were refused as if they named
+  the guarded one. The class is the Unicode one now, with an acceptance fixture.
+- **Nine stale numbers and one contradiction in this record**, every one corrected above: the
+  entrypoint statement count, the catalogue runtime test count, the fixture and assertion counts,
+  the G3 and G4 control counts, the sweep's membership, the hostile-input description, and the
+  composition-shape count. The status line claimed all gates green while the gate table marked the
+  database protocol pending; the two now say the same thing.
+- The ownership tests took their foreign slot from whichever test ran first, so running one alone
+  stopped testing a foreign identity at all. It is minted in a `beforeAll` under the BOOTSTRAP
+  identity — which no test can ever be — so every case sees it as foreign in any order, and a
+  control asserts exactly that.
+
+**Round 4 — verification of the round-3 corrections.** It found a defect the corrections had
+introduced and several the earlier rounds had not reached:
+
+- **The unit suite was RED.** Adding fixtures had moved the corpus split while the assertion that
+  pins it still named the old numbers, so `check:trainer-authority:selftest`'s fixture-count case
+  failed before it assessed anything else — while this record said every gate was green. That is
+  the plainest kind of record defect and it is why "count it yourself" is the first thing each
+  round is asked to do.
+- **Two containment gaps of one shape.** G3 records the statement and the renderers BY IDENTIFIER
+  TEXT and then looks them up among the module's bindings, so a name declared inside the
+  entrypoint means something else at run time: `const APPLY_NORMALIZED_CORE = sealed(args)` sends
+  the sealed RECORD while the audit reads the module's statement, and a rendered arrow whose sole
+  parameter is named `renderArray` shadows the renderer the checker substitutes for. Arity was not
+  the property; not colliding with a module binding is, and optional parameters are refused too.
+- **Deleting the statement-export check as "redundant" was wrong.** The export-surface equality
+  pins NAMES, not what those names hold: free the pinned `APPLY_STATEMENT_DIGESTS` name, give it
+  to a statement, and export it — the exported set is still exactly the pinned one while a raw
+  text has left the module. Restored, with a case of its own that the equality cannot answer.
+- **Five structural rules had no case that isolated them** (each was rejected earlier by arity or
+  by the export equality), and two sealing rules had none at all. Six G3 cases and three runtime
+  tests were added so each has one.
+- **Sealing called the caller's code.** `sealedValue` used the value's own `map`, which an array
+  may own — so it could hand back an object carrying `toPostgres()`, which the ownership check
+  skips as a non-string and the driver then serializes. It reads `length` and each index instead.
+- **The unicode-escape decoder was three global passes, not one scan.** `U&"a!!005Fb" UESCAPE '!'`
+  is a DOUBLED escape followed by ordinary characters — the identifier `a!005Fb` — and the
+  four-digit pass fired inside it and produced `a!_b`, an identifier the text never contained.
+  Rewritten as a single left-to-right scan, with four cases of its own.
+- **The identifier-boundary class was ASCII, then BMP-only.** `…coreé`, `…coreλ`, `…core中`,
+  `…core𐐀` and `core` + a combining mark are ordinary identifiers naming no routine of ours, and
+  each was refused as if it named the guarded one. The class is Unicode and the reads are by code
+  POINT; the acceptance fixture carries all five.
+- The sibling slot-fixture suite still took its cross-test identity from whichever test ran first.
+  Both suites now mint it in a `beforeAll` under the bootstrap identity.
+
+**Round 5 — the record against the code, counted.** Its P1s were all record defects, which is the
+half a reviewer is best placed to judge and the half that had drifted twice already: a "two shapes"
+that named three, a "19 fixed factory statements" that conflated the nineteen guarded WRITES with
+the twenty statement constants, and a "seven stale numbers" that listed nine. It also made one
+correction to a claim rather than a count, and it is the more useful of the two: **the mention
+inventory pins 12 IDENTITIES, and the "26 occurrences" beside them is a description, not a pin** —
+a duplicate occurrence can disappear without a failure. That is the deliberate design (the unit of
+justification is the SHAPE, exactly as the retired census's content pins had it), but the record
+had been stating it as though both numbers were held. Three further stale comments in the source
+went with it.
+
+Round 5 independently confirmed the figures **as they stood at round 5**: seven statements, seven
+entrypoints of four statements each, four of them carrying holes through three renderers, five
+files in the guard's program, 107 fixtures (103 verdict — 76 refusals, 27 acceptances, 44 factory —
+plus 4 exemption), 196 self-test assertions, 27 G3 controls, 13 G4 fixtures, 21 lexer cases, 4
+oracle cases, 12 import-surface controls, 15 scope-drift controls, 12 mention identities, 16
+catalogue runtime tests, 19 guarded factory write statements, 20,633 migration lines and the
+migration digest.
+
+**SEVERAL OF THOSE FIGURES HAVE SINCE MOVED, AND THE LIST ABOVE IS A ROUND-5 SNAPSHOT RATHER
+THAN THE CURRENT STATE.** Two later batches grew the corpus. The deterministic-resolver batch
+added the target-list duplicate control; the terminal-closure batch added three G4 containment
+reproductions, an isolating control for the guard-callee comparison, five controls that drive each
+loader accessor alone and four that drive R5's missing direction. **The current figures are in the evidence table below and NOWHERE ELSE.** A second copy used to
+stand here, and it drifted from the table in every round that touched either — twice while the
+round's whole purpose was correcting counts. A figure stated in two places is a figure that will
+disagree with itself; the derived-figure test reads every occurrence for exactly that reason, and
+the way to stop failing it is to state each number once.
+
+### The evidence, counted
+
+> **Historical snapshot.** The figures in this table are those of the round that wrote it;
+> they are not current authority and no test reads them — see the record-authority notice
+> above.
+
+| Where | What |
+|---|---|
+| guard self-test corpus | **123 SYNTHETIC fixtures** — 119 verdict fixtures (89 refusals / 30 acceptances, 44 of them analysed AS the factory) plus 4 exemption fixtures — **262 assertions**. The real repository is checked ALONGSIDE them, by its own assertions; it used to be counted as though it were one of the fixtures, which made the corpus sound one larger than it is |
+| G3 catalogue controls | **40** — one CLEAN control over the real catalogue unmodified, plus 39 drives that must each be refused: 29 splices into a copy of it, one that hands the audit a routine map with a row missing (because a comparison that is skipped when its mapping is absent is a rule that a deleted row removes silently), seven for the CONDITIONAL STORED-RESULT verification the six slot-creating entrypoints now carry — skipped entirely, reading the wrong sealed field, a return that recomputes instead of handing back the send's own result, a send-local colliding with a module binding, the verification running UNCONDITIONALLY with no refusal guard, the refusal check reading the wrong local, and the guard carrying an `else` branch — and two more a later adversarial review found: the three entrypoints with a second target-bearing field (`targetArray`) must verify the SAME set `noteSlotsOwned` claimed, not `targets` alone, so one mutant drops `targetArray` from the verify call and one drops it from the claim, each refused by shape — across entrypoint shape, parameter and local shadowing, the export surface, statement shape, holes, renderers and the `.query`-elsewhere rule. The guard-callee comparison NAMES the rule it drives instead of accepting any refusal — it could be deleted with every other splice still green, because every splice that reached it also broke a neighbour |
+| G4 fixtures | **29** — the round-5 reproductions, the inherited-pin family (template hole, subscript, tagged template, template segment, string binding element, whitespace-then-`trim`, private field), the encoded-text family (a `U&` spelling in a plain string, and `\u005f`/`\x5f`/`\u{5f}`/`&#95;`/`&#x5f;` each driven alone), the folded compositions, and the acceptances that keep every rule a SHAPE rather than a ban on a word. **The itemised arithmetic that used to sit here is gone**: it drifted out of step with its own total in three consecutive rounds, and when the list and the total disagreed the list was always wrong. The total is DERIVED from the corpus and matched against this sentence by a test; a hand-written tally never was |
+| mention inventory | **12 identities over exactly 26 pinned occurrences**, each identity carrying its own written rationale and its own count, checked in BOTH directions on the real tree. **The count is part of the pin** — see below; this table used to say the opposite, and the reason it gave was wrong |
+| mention-count controls | **5**, driving the totals comparison directly. It compares whole-tree totals, so no per-file fixture can reach it — a rule only the CLI could run is a rule only a green run exercises, and a green run cannot show what it would have refused |
+| lexer boundary cases | **21** — the 17 retained, plus four for the unicode-escape decoder rewritten as one left-to-right scan |
+| oracle boundary controls | 4 — three retained; the sentinel-protocol depth control is deleted with its subject and the nested-body pair remains |
+| R5 import-surface controls | **21**, three of them against the REAL runtime modules (authority, factory, catalogue), five driving each loader accessor ALONE, and four driving the MISSING direction the rule did not used to have |
+| scope-drift controls | **29** — the sibling-file tripwire, driven over a CLOSED executable-extension contract. `.ts`/`.tsx` were the whole sweep once; `.mts`/`.cts` were added when a round found them unread; `.js`, `.jsx`, `.mjs` and `.cjs` when the NEXT round found the same hole again. Guessing a third time would have been the same mistake, so the executable set and the inert set are both closed and an extension in neither is refused BY NAME — one case drives that, another drives an inert `.json` so the rule stays a contract about code and not a ban on files. Also here: a sibling that SPELLS a writing routine, one that spells the shipped lifecycle wrapper and is not refused, a `.tsx` carrier whose only fault is JSX element text, and a second hiding the underscores as JSX entities in an attribute |
+| catalogue runtime controls | **32 tests** — the digest inventory, the export pin, the both-directions drive of digests AND bound values, the sealed-argument controls, three ownership matrices, the renderer-hostility matrices, a STORED-ROW group of three (a read-back reporting a target id another identity already claimed, driven once directly and once across the full six-entrypoint verifying inventory; and a refused apply that never attempts the read-back at all, driven across that same inventory), and five more successive adversarial review findings required — a hostile `__proto__` own property retargeting the sealed copy's actual prototype, so a field never truly supplied could still answer through a stateful getter on every subsequent read; a `Buffer` carrying extra own properties disguised as a rendered array, surviving the seal's Buffer pass-through unchanged for the identical reason; and a three-control group over the byte copy that replaced it — an own `valueOf` returning an attacker-held `ArrayBuffer` (the arm that discriminates `Buffer.from` from `Buffer.copyBytesFrom`), an own `Symbol.toPrimitive` (named in place as a boundary control that does NOT discriminate today, since `Buffer.from` never consults it for a `Buffer`), and one proving the sealed value stops tracking both the source and its backing buffer — the export walk's own `constructor` special case is gone too, closing the own-data-property-named-`constructor` gap the walk used to skip unread |
+| slot-fixture runtime controls | **22 tests** — the refusal matrix, the id-capability matrix, the digest-based byte-equality control (raw texts are no longer exported to compare against), the export pin, the foreign-id sweep, a driver-level-coercion group (`toPostgres()`, `Symbol.toPrimitive`, a two-faced `toString`, and two-faced `get id()`/`get trainer()` getters, each proved refused or read exactly once by instrumenting the hostile method itself), and a STORED-ROW group proving the database's own answer is judged, not only the argument sent (a drifted stored trainer, a colliding stored id, and a drift-plant refusal when the server holds no row) |
+| factory export-surface controls | **4** — the control plus three mutants: the raw `SLOT_STATEMENTS` map re-exported (the direct bypass this design exists to close), an unrelated new export (the pin is an equality, not a deny-list of SQL-shaped names), and a pinned entrypoint dropped from the export list (the missing direction) |
+| foreign-id sweep | total over the whole function-export surface — the 19 writing entrypoints plus the pure reader — in both outcomes (refused before sending, or the id in no sent text and no sent value, compared canonically) |
+| ephemeral mutation battery | **109 mutants, 109 killed, 0 unnoticed, 0 stale, 0 restore failures**, each with ONE named sensor. Two of them exist because a rule can be right and its WIRING still absent: the count comparison is driven by its cases, and a separate mutant removes the CLI's call to it and is caught by an inverted sensor that appends one more occurrence to the real tree and requires a refusal |
+
+**The battery harness itself carried a defect, and it is recorded because it manufactured false
+results in both directions.** `execFileSync` defaults to a 1 MB `maxBuffer`; the database-backed
+sensor prints every PostgreSQL notice from a full lineage replay and exceeds it, at which point
+Node KILLS the child and throws with `killed: true` — which the harness could not tell from a real
+timeout. Before this batch the catch returned "not failed" for a kill, so an overflowing sensor was
+reported as a **SURVIVOR**; after the kill was given its own outcome it was reported as
+**INCONCLUSIVE**. Both were false: the two resolver mutants concerned are killed in thirteen
+seconds when run by hand. The buffer is now 512 MB, a kill is retried twice with a pause and only
+then reported inconclusive, and the lesson is the harness's own version of this batch's theme — a
+reader that cannot tell "I did not see" from "there was nothing to see" will report the second.
+
+**Two mutants were RETIRED rather than counted, and both were the mutant being wrong** — which is
+the same lesson the two previous batches wrote down, and it is recorded here because a battery that
+quietly drops its own failures is worth nothing:
+
+- **M03** (re-admit the bare `unnest` spelling to `unnestAliases`) is **UNREACHABLE**. The
+  qualification rule refuses a bare `unnest` in every guarded surface first, so no input
+  distinguishes the two states. The reachable half of that rule — a schema-qualified LOOKALIKE — is
+  sensed by `M29` and by `g2-unnest-lookalike-in-another-schema`.
+- **M13** (relax the entrypoint length rule) is **EQUIVALENT**. Recorded as it was measured, on a
+  tree where an entrypoint was three statements and the mutation was `!== 3` to `< 3`; the rule now
+  demands four and the equivalent mutation would be `< 4`. The argument is unchanged either way:
+  the pinned positions are read by index, so an extra statement can only stand after the return and
+  is dead code, and one that SENDS is caught by the `.query`-elsewhere rule.
+
+**And one mutant found a redundancy this batch had introduced, which is why the battery exists.**
+`M35` disarms G2's PL/pgSQL dynamic-statement detector, and it SURVIVED: the new qualification rule
+was refusing an unreadable function body too, so G2's own detector had lost its sensor — *a
+redundant gate hides its own mutation*, the round-8 lesson, reproduced by a rule written in this
+batch. Every DECIDED failure path of the qualification rule is now conditioned on the word
+`unnest` — the one exception is its walk-depth catch, which refuses a literal whose parse tree is
+deeper than the shared walk descends whether or not the word appears, because an unfinished read is
+not an empty one. That arm is fail-closed by construction and is stated here rather than implied,
+and
+`M35` is killed by `g2-dynamic-execute-in-a-function-body` again.
+
+**Three further gaps were found the same way and closed**: the catalogue's not-a-SELECT arm, its
+export-surface EQUALITY (as distinct from the statement-export rule that shadowed it), and G4 over
+the scope-drift set — which was dormant exactly as the write-side tripwire once was, and now has
+its own case in a throwaway tree with a near-name control beside it.
+
+**A real defect in this batch's own new file was caught by the shipped guard**, not by review: the
+catalogue's runtime test used a computed member access (`canonical[name](…)`), and `checkScopeDrift`
+refuses any `abc27*` file outside the program that obtains a member it cannot show is not `query`.
+It is written with an `Object.entries` walk and a `Map` instead, and the note lives beside the code.
+
+### Gates, on the final bytes
+
+> **Historical snapshot.** The figures in this table are those of the round that wrote it;
+> they are not current authority and no test reads them — see the record-authority notice
+> above.
+
+| Gate | Result |
+|---|---|
+| migration pin | `05e04451f944cabf` / 20,633 lines — re-verified, byte-exact; no file under `supabase/` is touched |
+| `abc27SlotFixtures.ts` | byte-exact against the preserved capture **except the two authorized `pg_catalog.` qualifications** — proved by reversing them and matching the preserved sha256 `83f3a33e…` exactly |
+| `abc27TrainerAuthority.ts` | byte-exact except **one line**, the owner-amended third qualification — proved by diffing this batch's patch against the preserved patch, which differ in that line and in the mechanical blob/hunk headers alone |
+| both, after every battery mutation | restored and sha256-verified per mutant and again at the end: 0 restore failures |
+| `npm run check:trainer-authority` | ✓ 19 guarded WRITE statements in the factory (its statement inventory is 20 constants — the trigger DEFINITION is not a write, and the two numbers are pinned separately on purpose), 1 declared exemption, 7 audited catalogue statements, 7 typed entrypoints, 12 pinned mentions over 12 identities seen, `libpg-query@18.1.4 (PostgreSQL grammar 180004)` |
+| `npm run check:trainer-authority:selftest` | ✓ 262 assertions over 123 SYNTHETIC fixtures, plus the real repository checked on its own — the two used to be added together, which made the corpus sound one larger than it is |
+| CI workflow contract | ✓ (`rehearsalSharding`, in the unit project) |
+| `eslint .` | ✓ 0 findings (exit captured directly, not through a pipe) |
+| typecheck (structured baseline, never bare `tsc`) | ✓ 82 pre-existing, baseline 82 — no new type errors |
+| `npm run build` | ✓ |
+| unit suite | ✓ 393 files / 4,155 tests — MEASURED, not derived: `npx vitest run --project unit` is its own CI step with its own multi-minute cost, and re-running it inside the guard's self-test to derive this number would make a bounded tripwire pay for a suite it does not otherwise need. The two prior batches' figures above are snapshots for the same reason and carry the same caveat. This snapshot is from the runtime-containment batch recorded below, on the same tree — the two batches share one unit run because they share one tree |
+| **full db suite — the three-consecutive-run protocol** | run AFTER this document is final, and its result is recorded OUTSIDE this repository — see "why no run table lives here" below |
+| mutation battery | ✓ 109 mutants, 109 killed, 0 unnoticed, 0 stale, 0 restore failures |
+
+### The terminal closure — what two review rounds found, and what each fix actually was
+
+Rounds 2 and 3 reported findings that were NOT this batch's resolver work: they were pre-existing
+claims and rules that had never been driven. They are closed here. Each one is stated with the
+thing that was wrong, because "hardened" is not a finding and "fixed" is not evidence.
+
+**G4 could be walked straight past, and the identity was why.** The mention identity was
+`(kind, text)`, so one text meant one decision wherever it appeared. It does not. The bare wrapper
+name as a CATALOG INVENTORY ELEMENT is inert and is pinned on that ground — identity
+`823468e8c6b7f7a7`, genuinely in the pinned set. The same characters in a TEMPLATE VALUE HOLE are
+a complete invocation:
+
+```
+client.query(`SELECT * FROM public.${"rebook_round_apply_command_as_actor"}()`, []);
+```
+
+That returned **zero violations**. The hole folds to a neutral atom so the composed text never
+spells the routine, and the string token inherited the inventory element's pin. A REGEXP literal
+was a second route — `/rebook_round_apply_command_as_actor/.source` is the same text with
+different punctuation, and the walk never visited a `RegularExpressionLiteral` at all. A subscript
+was a third: `CALL['…']` READS the stored call text under a pin written for an inventory entry.
+
+**Adding positions to the identity was necessary and NOT sufficient, and a further round proved
+it.** A pin still decided a TEXT, so every further occurrence of an already-justified text was
+accepted without anyone deciding anything — and an occurrence can be an entirely different act:
+
+```
+for (const routine of ['rebook_round_apply_command_as_actor'])
+  await c.query(`SELECT * FROM public.${routine}()`, []);
+```
+
+That inherits the inventory element's pin and reported nothing. So did the same shape through
+`Object.keys({<name>: true})` on the map-key pin. Three more were pure token-form gaps: a template
+SEGMENT (`` `<name>${''}` ``), a tagged template, and a binding element's quoted property name all
+reached the plain-string arm. And `' <name> '.trim()` hashed identically to the bare name, because
+the identity folded whitespace before hashing — folding belongs to display.
+
+**What closes the class is that the COUNT is pinned with the text.** Each of the twelve identities
+now pins how many occurrences were justified — 26 in total — and any change either way is refused.
+A new occurrence of an already-justified name is a new SPELLING nobody has looked at; a
+disappeared one is a rule that stopped being exercised.
+
+**What this does NOT close, said plainly.** The count is about spellings, not about uses. Code that
+reuses an existing binding — `WRAPPERS[0]` handed to a new query — writes no new occurrence of the
+name and the total does not move. That is the dataflow question this guard has always refused to
+answer, and it is the reason the guard's own summary line says it makes NO dataflow claim: what
+stops a reused binding from writing is the runtime ownership check, which asks about the value that
+actually arrives. This record previously argued against counting, on the
+grounds that it "would churn on every unrelated edit in a 30,000-line file". **That was simply
+wrong**: the number moves only when an occurrence of a writing routine name is added or removed,
+which is exactly the edit that should be looked at.
+
+Alongside it: the identity keeps the node KIND (a quoted string, a whole backtick template and a
+template segment were one category), keeps the POSITION as a sorted set of every matching ancestor
+rather than the first, no longer folds whitespace, and the walk visits regexp literals, private
+identifiers, JSX text and a binding element's literal property name. All eight shapes above are
+refused, each by its own fixture, and each rule has a mutant that names it.
+
+**A second load-sensitive control, of the class this batch exists to remove.** Described above:
+every settable timeout was written as `'1ms'`. Fixed, with a read-back that requires none to be
+left short enough to fire.
+
+**The seal accepted a third thing while documenting two.** The contract is strings or a deliberate
+`null`; `undefined` was accepted by the same arm as `null`. `node-postgres` sends an undefined
+array member as SQL `NULL`, so an element nobody decided on arrived indistinguishable from one
+somebody did. It is refused, with its own message and its own control.
+
+**"node-postgres cannot express a multidimensional array" was untrue, and so was its first
+replacement.** Measured against the installed driver: `prepareValue([['a'],['b']])` returns
+`{{"a"},{"b"}}`, so multidimensional is expressible; and `prepareValue('[0:1]={a,b}')` returns the
+string untouched, so a non-one-based array can be bound as TEXT. The true claim is that a native
+JavaScript `Array` does not serialize a lower bound. It was written in FIVE places, not four — a
+review round found the fifth, in the checker's own G3 header, still carrying the original wording
+after the others were corrected. The "four cannot be parameterised" count was also one too many:
+the refusal probe renders a single UUID.
+
+**Three rules had no case, so 56/56 did not mean what it sounded like.** A mutation score measures
+the mutants written, not the rules that exist. The guard-callee comparison could be deleted with
+all twenty-eight G3 controls still green, because every splice that reached it also broke a
+neighbour — it now has a control that requires the reported detail to be ITS message. Three of the
+five loader-accessor names had no case and the two that did shared one `>= 1` assertion, so either
+was individually removable — each is now driven alone and counted exactly. The renderer-local
+`.query` rule was **deleted**: `visitQuery` walks the whole module, so every input that could trip
+the renderer rule tripped the module-wide one first, and no fixture could ever distinguish them.
+An unsensed rule is not defence in depth, it is an untested claim.
+
+**R5 was half a pin.** It rejected unexpected imports and never required the expected ones, so a
+module that imported NOTHING passed — including one that quietly stopped obtaining
+`./abc27TrainerAuthority`, which is where the ownership check lives. It is an equality now, sensed
+in both directions.
+
+### The third and fourth rounds, which found defects rather than wording
+
+Rules that were right and unreachable, renderers that lost valid values, and a harness that
+measured the wrong thing. Each is stated with what was actually wrong.
+
+**Two array presentations did not preserve values the validator ACCEPTS.** `PLAIN_LABEL` is
+`/^[A-Za-z ]+$/`, and the multidimensional and zero-based renderers wrote their elements into
+PostgreSQL's array-INPUT syntax UNQUOTED. Three accepted labels did not survive: `NULL` — four
+ordinary letters — became the SQL null, so `{{NULL},{X}}` read back as `[[null],["X"]]`; leading
+and trailing spaces were stripped; an all-space label rendered `{   }`, which is not valid input.
+Almost every renderer case used UUIDs, which have none of these troubles — the one exception is a
+zero-based DATE in the realpg shape matrix, and a date carries no space, no `NULL` spelling and no
+all-blank form either, so nothing drove it. Elements
+are quoted now — lossless, since a label cannot contain a quote, a brace or a comma — and a control
+asserts the rendered text for all three.
+
+**`uuidLiteral` had no case at all.** Every hostile-value control goes through `renderArray`; the
+`academy` and `round` holes go through `uuidLiteral`, and replacing its body with plain quoting
+left the suite AND G3 green — G3 asks only that a hole be a direct call of a named private
+renderer, which is a question about shape and cannot be a question about what the renderer does.
+Four values now drive it: one that would close the literal and start an expression, one carrying a
+`--` sequence (which does NOT comment anything out on its own, since it stays inside the quotes —
+it is there as a shape that must still be refused), and two that are merely not canonical. Three
+acceptances go with them — a lower-case `randomUUID()`, an UPPER-CASE one and a mixed literal —
+because the validator documents either case and only the lower-case form was ever driven, so
+lower-casing the renderer would have stayed green.
+
+**G3 accepted either writing routine.** Each statement's entrypoint was recorded beside it and then
+never read, so a statement could keep every structural property — one plain `FROM` call, closed
+arguments, its own routine exactly once — and invoke the OTHER routine. The two have different
+privilege surfaces. Each entrypoint is now pinned to the routine it is entitled to, and swapping
+the core statement to the wrapper is refused with its own case.
+
+**The raw-text-export walk stopped at depth four and looked for one word.** Anything nested below
+the cut-off was not examined — the cut-off silently CERTIFIED what it declined to read — and the
+test searched for `select`, so a bare routine name or a `VALUES(public.<routine>(…))` was not
+statement-shaped by that definition. The walk is total now (cycles guarded rather than depth) and
+looks for every SQL verb that carries a call as well as either routine name, taken from the guard
+rather than spelled — spelling them was itself a mention outside the catalogue, and G4 said so.
+
+**The fourth round found the walk that replaced the depth cut-off was still not total, and that
+two validators were patterns where a pattern cannot decide.** `Object.values` reads neither KEYS
+nor `Map`/`Set` contents nor symbol-named properties, so a statement exported as a key satisfied
+every other pin; the walk now reads all of them, through a descriptor rather than a computed
+member — a computed member is the shape the scope rule cannot clear, and it refused this file for
+it, correctly. Its patterns were bare words, which over-reject the moment keys are read (`values`
+is an ordinary field name), so each verb is now required with the syntax that makes it a
+statement and each routine name with identifier boundaries. The ISO-date pattern accepted
+`2026-99-99`, leaving the refusal to PostgreSQL after the statement was built and sent; it asks
+the calendar now. `LOWER_HEX` accepted an ODD number of digits, which matters for precisely the
+input it exists for — a Buffer whose `toString` is overridden and can return `'a'`.
+
+**Two rules failed OPEN, which is worse than being wrong.** The entrypoint-to-routine binding
+skipped its comparison entirely when a mapping was missing, so deleting a row removed the rule
+silently; a missing row is a refusal now. And the identifier-boundary class was hand-assembled
+three times and was wrong all three: ASCII, then letters and numbers and marks, then those plus
+connector punctuation and the joiners — still missing U+00B7 MIDDLE DOT and the rest of Unicode's
+`Other_ID_Continue`. An incomplete class here does not over-report; it REFUSES code that names
+something else. It asks Unicode for `ID_Continue` now.
+
+**And one arm was deleted rather than kept untested.** A JSX-attribute arm was added in the second
+round; disarming it changed no case, because an attribute's value is an ordinary `StringLiteral`
+the first arm already visits and the entity decoding now applies to every token. It went the same
+way the renderer-local `.query` rule did.
+
+### The bounded closure — three defects, two fail-open rules, and a record that stops drifting
+
+**The bytea renderer trusted the one method it was written to distrust.** It exists because a
+`Buffer` SUBCLASS can override `toString` — `Buffer.isBuffer` accepts one — and it then called
+that override. Worse, it VALIDATED one coercion and RENDERED another: the result was not
+necessarily a string, and `LOWER_HEX.test(hex)` coerces while `${hex}` coerces again. Measured, a
+stateful `Symbol.toPrimitive` answered `aa` to the test and `aa'::bytea); …` to the template. The
+hex now comes from the intrinsic captured at module load and applied with `.call`, a non-string
+result is refused, and the value is rendered as `pg_catalog.decode('<hex>','hex')` — which
+contains no backslash, so it cannot mean different bytes under a different
+`standard_conforming_strings`. A real-server control evaluates the renderer's OWN output under
+both settings and requires the same bytes.
+
+**Two of those three guards are unreachable, and that is stated rather than implied.** With the
+intrinsic in place the hex is a lower-case, even-length string by construction, so the `typeof`
+test is reachable only if the intrinsic is bypassed (a mutant does exactly that, and it is what
+catches it) and the even-length test is reachable behind neither. It is kept because a renderer
+whose whole purpose is to distrust a caller-supplied method should not depend on the intrinsic
+never being edited away — but no mutant claims to sense it, because none can.
+
+**The entity decoder crashed the guard on ordinary text.** `String.fromCodePoint` raises
+`RangeError` above U+10FFFF, so a file containing `&#xFFFFFF;` stopped the analysis instead of
+being analysed. Out-of-range values and lone surrogates are now left exactly as written — which
+can under-decode but never mis-decode — and a fixture proves a text carrying BOTH an undecodable
+escape and a real spelling is still refused.
+
+**Two rules failed open.** The entrypoint-to-routine binding skipped its comparison when a mapping
+was missing, so deleting a row removed the rule silently; and the sibling sweep read `.ts`/`.tsx`,
+then `.mts`/`.cts`, while `.js`, `.jsx`, `.mjs` and `.cjs` stayed invisible — the same hole found
+twice. Both sets are CLOSED now and an extension in neither is refused by name, so a new
+executable kind is a decision rather than an omission.
+
+**The export walk certified what it declined to read.** Keys, `Map`/`Set` contents, symbol-named
+properties, function properties and accessors were all skipped. It reads them all now, through a
+descriptor — never a computed member, which is the one shape the sibling-scope rule cannot clear,
+and which it refused this very file for — and a property kind it cannot read is REPORTED rather
+than passed.
+
+**The record's figures are no longer maintained by hand.** They drifted in four consecutive rounds;
+each correction was followed by another drift — including, in the same round that closed the drift
+after this sentence, the COUNT of derived figures this sentence used to state: it said "eleven" when
+the list had grown to thirteen, and a hand-maintained count of hand-maintained counts is the same
+mistake one level up. So no count is stated here at all: every figure in the evidence table below
+is DERIVED from the corpus and matched against the sentence that states it, so the record cannot
+disagree with the code without a test going red. Two figures are deliberately not among them, each
+for a stated reason rather than an oversight: the mutation total, because the battery is ephemeral
+and not checked in, so nothing in the repository can derive it; and the unit-suite test count,
+because deriving it would mean re-running the whole suite — its own multi-minute CI step — inside
+this tripwire. Both are stated as MEASURED rather than DERIVED, and claiming otherwise for either
+would be the same kind of untruth the guard exists to prevent.
+
+**Superseded (2026-09-04).** The mechanism this paragraph describes — figures DERIVED from
+the corpus and matched against the sentences that state them — is retired: no test reads this
+document for a figure any more, and the figures above are historical. What holds now is
+stated in the current section at the end of this document.
+
+**Two lessons about the evidence itself, both learned the hard way here.** An expectation must not
+be derived from the thing it judges — the first version of the hole-to-field control read the
+declared order out of the module and checked the module against it, so swapping two holes swapped
+the expectation with them and the control passed. And a check that asks only whether a file was
+REPORTED passes for the wrong reason: dropping an extension moved those files into the undecided
+arm, where a different rule reported them and the assertion stayed green. Both now read the
+REASON, not the fact.
+
+### What the first closure review found, and what it cost to be wrong
+
+Every item below is a defect this batch INTRODUCED or left, found by a review of the batch itself.
+They are recorded because each one is a lesson about the evidence, not about the code.
+
+**The closed extension contract regressed the sweep it was meant to widen.** Folding "is this an
+`abc27` file" and "which extension" into one pattern — `^abc27[^.]*(\.[^.]+)$` — permits exactly
+ONE dot. Two files in this tree carry compound names (`abc27ApplyCatalogue.runtime.test.ts`,
+`abc27SlotFixtures.runtime.test.ts`), they are not in the analysed program either, and for the
+length of that regression they were checked by nothing at all. A file under an `abc27*` DIRECTORY
+was skipped for the same reason. The name and the extension are separate questions now, the name
+is asked of the whole path, and both shapes have a case.
+
+**Three renderer arms validated nothing that any test drove.** Every hostile-value case used
+`kind: 'literal'`, so the `with-null` arm and the shared `quoted` helper — the other three
+presentations — could have had their `scalar(...)` calls replaced by the raw value with the whole
+suite still green. Each presentation is now driven with a value that is not a UUID.
+
+**A fail-closed branch that nothing could reach is not evidence.** The missing-mapping refusal was
+guarded by a completeness test proving the map is whole — which says the branch cannot FIRE, not
+that it works. The audit now takes the routine map as a parameter, so a case can hand it a map
+with one row removed and drive the branch directly.
+
+**The export walk was still not total, twice over.** It read own keys but not the PROTOTYPE chain,
+so `Object.create({ sql: 'SELECT …' })` carried recoverable text past it; and it reconstructed
+identifier boundaries in ASCII, reintroducing exactly the false-positive class the checker's own
+boundary was fixed for — `…_core·suffix` is an ordinary longer identifier. It follows the chain
+now, bounded at the intrinsics, and uses the same `ID_Continue` class.
+
+**A figure stated twice will disagree with itself.** The derived-figure guard read only the FIRST
+occurrence of each pattern, and a second copy of the corpus figures lived in a paragraph above the
+evidence table — which had drifted from it in every round that touched either, twice while the
+round's whole purpose was correcting counts. The guard reads every occurrence now — several figures
+still are stated more than once, deliberately, once in a narrative sentence and again in the
+evidence table's own row, and both copies are checked against the same corpus figure rather than
+against each other, so a second copy left behind by an edit to the first is exactly what goes red.
+
+**And two rules were deleted rather than kept untested.** The CLI's stale-pin branch reported a
+pin nothing produces, which the occurrence-count comparison already refuses as `pinned N, found 0`
+— two rules for one condition means one of them is never the reason anything failed. The
+even-length hex test survives but is now labelled for what it is: unreachable behind the intrinsic
+and the non-string test, kept as a fail-closed second line, sensed by nothing and claiming nothing.
+
+### Why no run table lives here
+
+**THE DOCUMENT CANNOT RECORD A RUN OF THE SUITE THAT READS THE DOCUMENT.** The realpg suite reads
+this file, so a result written here after the runs makes the runs describe a file that no longer
+exists. Three review rounds circled this. The first version added the table afterwards and claimed
+it was "on the final bytes", which was untrue. The second finalised every paragraph, left a
+placeholder and filled it, and claimed "a single line, changing no assertion input" — also untrue:
+three rows are not one line, the placeholder was REPLACED rather than added to, and the rows do
+change the string `RUNBOOK()` returns, even though they change no assertion RESULT.
+
+Each attempt made the sentence narrower and each was still false, because the paradox is not in
+the wording. **So the REPEATED-RUN PROTOCOL RESULT is not written here at all.** Gate figures in
+the table above are measured and fixed BEFORE the final review and never revised after it; the
+three consecutive full-database runs happen after that review, on the exact reviewed bytes, with
+no repository edit of any kind following them, and their outcome is reported to the operator and
+to the durable session record instead.
+
+**That is a claim about the terminal protocol, not about every number on this page**, and an
+earlier wording said "no run result lives here" flatly while the two paragraphs below record a
+discarded run's duration and a failed test. Both of those are DIAGNOSES written before the final
+review and never revised after it, which is the property that matters; the thing that cannot be
+written here is a result the protocol produces after the document is frozen.
+
+**Two lessons the runs themselves taught, which are not run results and do belong here.**
+
+**The triple is a terminal gate and runs with nothing else on the host.** One run was discarded
+after `d7Performance.realpg.test.ts` — `measures materialize(N, 500) over N adverse rounds and
+picks the largest N under budget` — took **1,224,256 ms**. It had been started while four review
+sessions were working on the same repository, with the host at load average 21 and swap exhausted
+at 14.5 GB of 15.3 GB. That test is a BUDGET probe: under that load it measures the machine, and a
+green result would have been as worthless as the red one.
+
+**A SECOND LOAD-SENSITIVE CONTROL EXISTED, AND IT IS NOW FIXED.** A run failed one test —
+`the timeout vocabulary is the server's own, and the witness names a write of each` — with
+`Client has encountered a connection error and is not queryable`. The server log gave the cause
+without ambiguity:
+
+`2026-09-02 20:16:56.659 CEST [2767] FATAL: terminating connection due to idle-session timeout`
+
+That control set **every** settable timeout GUC to `'1ms'`, and the damage was never confined to
+one GUC: `settable` is ordered by name, so `idle_session_timeout` is written third — after which
+every remaining round trip had one millisecond to ARRIVE — and `statement_timeout` fifth, after
+which every remaining statement had one millisecond to COMPLETE. That the control ever passed was
+a statement about a loopback socket being faster than a millisecond. It is the same defect class as
+the psql-resolver control, found the same way.
+
+**The value was never the point.** What the control proves is that the vocabulary is derived from
+the server and that the witness can NAME a write of each entry, and the witness records
+`SET <name> = $1` whatever the value is. So every timeout is now written with a value that cannot
+fire inside the test, and the control additionally READS EACH ONE BACK and requires that none was
+left short enough to fire — because the witness proves a statement ran, not that the server kept
+its effect. Nothing was dropped: `idle_session_timeout` is still derived from the catalog, still
+written through `format('%s')`, and still required to be named by the witness.
+
+Measured on this host, seven of the eight hold 600000 ms and `tcp_user_timeout` holds 0 — the
+platform has no `TCP_USER_TIMEOUT`. **Zero is "disabled", not "immediate"**, so the read-back
+treats a short POSITIVE value as the danger and 0 as the safe outcome it is; an earlier version of
+this check called that 0 dangerous and was wrong.
+
+**THE LOAD-SENSITIVE RESOLVER CONTROL IS NOW DETERMINISTIC, AND THE ACCOUNT THIS RECORD GAVE OF IT
+WAS WRONG.** Both halves matter, and the wrong account is the more important one.
+
+**What this record said, and why it was false.** It said the failing test resolved `psql` from the
+pinned fallback list under a 15 s per-probe and 30 s aggregate budget, that `invoked: false` was
+that 30-second budget elapsing, and that the test was "a pure function under a stopwatch: no
+database, no reader". It also cited `:13380` and suggested the owner might widen the budget. A
+review round checked the source instead of the prose and found every one of those claims untrue:
+
+- The test never used the fallback list or the production budget. It wrote three fake shell scripts
+  into a temporary directory and called the resolver with **its own candidates and `budgetMs:
+  1_500`**.
+- `invoked` was `existsSync(marker)` — whether a spawned `/bin/sh` had been scheduled far enough to
+  append one line **inside 1.5 seconds**. Nothing to do with the real client.
+- It created files and spawned child processes, so "a pure function under a stopwatch" was wrong.
+- The 0.02 s measurement of the real binary, offered here as the decisive fact, was of a code path
+  the failing assertion never executed.
+- Consequently the remedy this record floated — widening the 30 s default — **would not have
+  changed the test at all.**
+
+That is a false causal claim in an evidence record, and it is recorded rather than quietly
+corrected because it is the second time this batch's prose drifted from its code and the first time
+it drifted in a way that would have misdirected an owner decision.
+
+**What the control does now.** The resolver takes two test-only seams — an injectable probe and an
+injectable clock — and the two BUDGET drives assert the DEADLINE ARITHMETIC instead of the
+operating system's scheduler. **No temporary file survives anywhere in the test, and no child
+process, wall clock or scheduling question enters either budget drive.** The production defaults
+are untouched and are not overridden by the main drive, so the arithmetic asserted is the
+arithmetic production performs:
+
+| Drive | Budget | What the ledger must show |
+|---|---|---|
+| full | the real 30 s, with the real 15 s per-probe bound | two probes — `psql-a` at 0, `psql-b` at 15 s, 15 s each — the third refused with `resolver budget spent`, and 30 s consumed in total |
+| partial | 20 s, which does **not** divide by 15 s | `p1` granted 15 s, then `p2` granted the **5 s that remain** — which only an implementation that subtracts can produce |
+
+The partial drive is what makes the ledger a sensor rather than a restatement: under the full
+budget both probes are granted the same amount, so a resolver that forgot to bound a probe by what
+is left would produce an identical ledger. **20 s is narrower than the 30 s default, not wider**;
+neither default moved.
+
+**The claim is about the budget drives, and the rest of the test is stated rather than glossed.**
+Two arms of the same test still call the real `spawnSync` on purpose, because they ARE the retained
+execution coverage the seams must not replace: a path that does not exist and a DIRECTORY. Both
+fail in the PARENT with ENOENT/EACCES — `spawnSync` returns without ever creating a child — so
+nothing is scheduled and the arms cannot race. They do read the real clock, though, and under the
+1.5 s budget they used to carry, a 1.5 s pause between the deadline and the probe would have
+returned `resolver budget spent` where the assertion demands `--version did not answer`. **That arm
+now takes the real 30 s default instead**, which removes the cliff and widens nothing — 30 s IS the
+production default, and declining to narrow it is not the same as raising it. The empty-candidate
+arm reaches no probe at all and so has no timing question to begin with.
+
+**Execution coverage did not move either.** The `\gset` control LATER IN THIS FILE drives this same
+resolver against the live cluster through eleven real psql invocations, and it is unchanged. What
+was removed is a scheduler race, not a real-client path.
+
+**Evidence.** Five mutants, each with one named sensor: budget reset per candidate, a probe not
+bounded by what remains, the spent-budget refusal removed, the injected clock ignored, and the
+injected probe ignored. The resolver's byte digest and the control callback's digest both moved
+with the change and were re-pinned, then verified twice — which is the envelope guard doing exactly
+what it exists for: no edit to that function is possible without re-pinning it deliberately.
+
+### Deviations from the implementation envelope, stated rather than absorbed
+
+- **The catalogue imports `node:crypto`.** The envelope pinned its imports to `pg` and the
+  authority module; publishing digests instead of texts requires a hash. R5 pins all three, and
+  the catalogue-imports-the-checker case is driven in both directions like the other two modules'.
+- **G3's controls are splices into a copy of the REAL catalogue, not fixtures.** G2's rules run
+  against any file the analysis is TOLD is the factory, so its adversarial cases can be fixtures;
+  G3's are about a whole MODULE, which a one-function fixture cannot be. Splicing the real source
+  is strictly better evidence and is the technique the retired census battery already used.
+- **The envelope's battery mutant 4 ("guard moved after `query`") is caught STATICALLY**, because
+  G3-c is stronger than the envelope anticipated: an entrypoint is exactly four statements, so a
+  hoisted send is a shape refusal. To keep the RUNTIME ownership controls sensed rather than
+  shadowed by a reader, a distinct runtime mutant was added instead — an entrypoint that guards its
+  TARGETS instead of its SOURCES, which is structurally clean and only the runtime foreign-slot
+  control can see.
+- **Step 0 of the envelope's sequence (a checkpoint commit) was NOT performed**, because the
+  authorisation for this batch forbids committing. The preserved round-5-stop bytes are captured
+  instead as a hashed patch plus a per-file sha256 manifest for the tracked and untracked sets, and
+  the deleted census module's digest is recorded above so its removal stays auditable.
+
+### Residuals, restated
+
+The honest claim has not widened. **G4 makes no dataflow claim of any kind**: a routine name
+assembled at run time out of fragments that never spell it is the named residual, and it is the
+same residual class the slot-write promise already carries. The composition detector folds the three
+shapes the retired scans were actually defeated by — `+`, `[…].join(…)` and `.concat(…)` — and
+reports what it can fold; over-reporting there is safe. What actually stops one test from writing into another's
+namespace is unchanged and is not static: `requireOwnedByCurrentIdentity`, `assertSlotsNotForeign`
+and `noteSlotsOwned`, at execution time, in every run, on the values that actually arrive — which
+is why every catalogue entrypoint calls two of them before it sends. Barrier 10b remains
+separated and untouched. The psql-resolver control does **not** — it was rewritten in the
+deterministic-resolver batch recorded ABOVE, which is the one deliberate exception to this
+paragraph's "untouched" claim.
+
+## THE RUNTIME CONTAINMENT BATCH — closing what the bounded-certifier closure left open
+
+**STATUS: implemented, and every evidence gate below measures green on the final bytes — guard,
+self-test, lint, typecheck (structured baseline), the certifier's own real-tree check, the full unit
+suite, build, edge pins, full-database repeatability and the mutation kills.** Three fresh review
+rounds were budgeted and three were spent; the third found one open P1 and one open P2 (both
+reproduced, fixed, mutation-verified, then DELIBERATELY REVERTED per the authorization's own rule —
+*any actionable finding after the final round stops, with no post-review edit* — the same
+discipline this document's own "## THE ROUND-5 STOP" section already established once; see
+"### The round-3 stop" near the end of this section for the full account). **A separate, explicit
+authorization then granted one exceptional fourth review, scoped only to these two findings**: both
+fixes were re-applied exactly as drafted the first time, re-verified by mutation kill, and this
+section's own evidence re-measured green. That fourth review returned NOT CLEAR on both — a
+coercion escape in the first fix's own copy primitive, and a universal claim the second fix had
+left standing one paragraph further down — and stopped without editing, as its rule required. A
+further authorization scoped exactly those two for closure and granted a fifth review, which closed
+one and returned NOT CLEAR on the other. Those remaining findings were then given their own bounded
+closure batch — the byte-snapshot primitive and its controls — rather than another round of the
+broad audit; "### The rounds after the third, and the batch that closed them" at the end of this
+section is the account, and no review outcome is written back here. Local only: nothing
+is committed, pushed, merged, deployed or applied, and no migration is touched. The frozen ABC-27
+migration (`05e04451f944cabf…`, 20,633 lines), the `POST_ABC27_ALLOWED` span and the D7 convergence
+files are byte-exact throughout.**
+
+The bounded-certifier closure batch stopped at a Review B that was not clear, and its own record
+named what it had deliberately left unfixed rather than pretending the batch covered more than it
+did: a `toPostgres()` object and a two-faced `get id()` skip the ownership check and still reach
+`pg`; `SLOT_STATEMENTS` was exported, so a caller outside the factory could import the raw texts
+and send one on a connection of its own; G1 does not follow `EXECUTE ('…')` composed with `||`, nor
+PostgreSQL's octal and hex string escapes; the R3 exemption was counted but not pinned to a
+location; and `rehearsalSharding`'s `spawnSync` budget had no real timeout. A sixth item survived
+from Review B itself: the export walk skipped any own property literally named `constructor`. This
+batch closes all six, plus one the first five made necessary: the factory's own stored-row
+verification had no counterpart in the apply catalogue, and DATABASE_AUTHORITATIVE_RESULT asks for
+one there too.
+
+### RUNTIME_AUTHORITY — one capture, one validation, one send
+
+`abc27TrainerAuthority.ts` gains `capturedId(value, what)`: it returns `value` unchanged when
+`typeof value === 'string'`, and throws otherwise — without ever reading a property, calling a
+method, or coercing anything. That is the whole fix. The two escapes named above are both cases of
+the SAME defect: `assertSlotsNotForeign` and `requireOwnedByCurrentIdentity` were written to accept
+a `string`, but under this repository's `strict: false` a `string`-typed parameter admits an
+object with no cast at all — so the registry SKIPPED a non-string on purpose (several fixtures
+deliberately pass a `null` or a ghost UUID) while `node-postgres` went on to call the object's own
+`toPostgres()` or `Symbol.toPrimitive` and serialize whatever it returned. The registry never made
+a wrong decision; it was asked about a value it correctly judged inapplicable, and a DIFFERENT
+value reached the wire.
+
+`capturedId` closes it by moving the type down to `unknown` at every boundary that used to say
+`string` on faith — `ownedSlot`, `owned`, `allOwned` in the slot factory; `capturedId` itself in the
+authority module — and refusing anything that is not ALREADY a primitive before either the check or
+the send touches it. A caller's PROPERTY is read exactly once, into a local, before validation: `s.id`
+and `s.trainer` in `insertSlot`/`insertTemplateSlot` used to be read two or three times each — once
+in a presence test, once in the check, once in the parameter list — and a getter answering
+differently each time is the two-faced-`get id()` shape by name. Every entrypoint now captures each
+field into a local in one pass and reads only the locals afterward, exactly the discipline the
+apply catalogue's `sealed()` already enforced one layer up.
+
+**Driven, not merely reasoned about.** `abc27SlotFixtures.runtime.test.ts` gained a dedicated group:
+an object carrying `toPostgres()`, one carrying `Symbol.toPrimitive`, and one with a two-faced
+`toString` are each handed as a slot id and as a trainer, and each is refused with its hostile
+method's own call counter left at zero — proving the object is refused WHOLESALE, never consulted.
+A two-faced `get id()` and `get trainer()` on `insertSlot`'s own options record are each proven read
+exactly once, with the bound value equal to the FIRST (and only) answer.
+
+**A THIRD way past "read once", found by adversarial review: the seal's own copy, attacked through
+its prototype.** The apply catalogue's `sealed()` does not capture named fields into locals one at a
+time the way the factory's entrypoints do — it copies every own enumerable key of the caller's
+record via `Object.keys` into a plain `{}`, and an entrypoint then reads NAMED fields off that
+copy repeatedly through its body (the claim, the render, the verify call). The copy step was meant
+to make that safe: whatever the caller supplied is read once, during the copy, and every later read
+is of inert data. But `Object.keys` does not distinguish an ordinary key from one literally named
+`__proto__` — reachable through `Object.defineProperty`, not the `{__proto__: x}` object-literal
+syntax, which sets a prototype instead of creating an own property — and assigning THAT key into an
+ordinary `{}` reaches `Object.prototype`'s own `__proto__` SETTER, retargeting the copy's actual
+prototype to whatever the caller supplied. A field the copy never held as an own property — because
+the caller's own record never held one either, relying entirely on the poisoned prototype to answer
+for it — then falls through to that prototype on every subsequent read, and a stateful getter there
+can answer the claim, the render and the verify calls three different ways. Measured directly: a
+hostile `applyNormalizedCoreShaped` spec with no own `targetArray`, a `__proto__` own property
+pointing at a `Buffer` carrying a `targetArray` getter, and nothing else changed, called that getter
+three times before the fix — once for the claim, once to render the statement, once for the stored
+row it never verified. **The fix is one line**: `sealed()`'s copy target is now `Object.create(null)`
+rather than `{}`, so there is no inherited setter for `__proto__` to hijack and no inherited getter
+for a missing field to fall through to — the copied `__proto__` key becomes inert data like any
+other, exactly as `id`, `trainer` or any other ordinary key already was. No new database object,
+trigger, schema, role or permission; the fix is which object the copy loop writes into. Driven, not
+merely reasoned about: the same hostile spec, reverted onto the pre-fix copy target, made the
+getter fire three times and is now confirmed to fire zero, in a dedicated
+`abc27ApplyCatalogue.runtime.test.ts` control.
+
+### STATEMENT_AUTHORITY — the factory's raw texts left the export surface
+
+`SLOT_STATEMENTS` is no longer exported. The factory now publishes `SLOT_STATEMENT_DIGESTS` — the
+sha256 of each of the twenty constants, keyed the same way — which is the identical move the apply
+catalogue already made for the identical reason: a digest cannot be invoked, and a raw text
+re-exported under any name is a write spelled from this file's own bytes that G1 has nothing to say
+about, because the bytes are exactly what G1 already audited. Every runtime control that used to
+compare against the raw text now hashes what was actually SENT and compares the digest, in both
+directions — nothing sent lacks a matching inventory entry, and no inventory entry goes unsent —
+matching the apply catalogue's own two-directional drive exactly.
+
+**The certifier gained a new rule to hold it: G1-e.** The factory's export surface is now pinned by
+name, the same move G3-e already made for the catalogue, narrower because the factory's entrypoints
+are not built to the catalogue's four-statement shape: it asks only which NAMES are exported, not
+how each one's body reads. `FACTORY_EXPORT_SURFACE_CASES` drives it over spliced copies of the real
+factory — the raw `SLOT_STATEMENTS` map re-exported, an unrelated new export (the pin is an
+equality, not a deny-list of SQL-shaped names), and a pinned entrypoint dropped from the surface
+(the missing direction) — each refused by shape.
+
+### DATABASE_AUTHORITATIVE_RESULT — the stored row is judged, not only the argument
+
+Every check described above happens before a statement is sent. None of it says anything about
+what comes BACK: a `BEFORE` trigger rewriting `NEW.trainer_id`, or a server that hands back an id
+another identity already holds, are both invisible to an argument-side check by construction — and
+the suite already plants exactly such a trigger, deliberately, to model P-layer drift. So every
+guarded write and every apply path that creates or changes slots now reads back what PostgreSQL
+actually stored and asks the registry to judge THAT.
+
+**In the factory**, every statement gained `RETURNING id, trainer_id` (`SLOT_UPDATE_CAPACITY`
+already returned `id`; it now returns the trainer alongside it), so the read-back is the write's
+own result — no second round trip, no second snapshot. `acceptStoredSlotRows` in the authority
+module judges each returned row: the stored id must not belong to another identity, the stored
+trainer must not belong to another identity, and — where the entrypoint named a specific trainer —
+the stored trainer must be EXACTLY the one that was sent, so a rewrite to any OTHER trainer this
+test does not own is caught even though a rewrite to a trainer nobody owns would not otherwise be.
+`plantSourceDriftTrigger` is the one write with no client round trip at all — its `UPDATE` runs
+later, inside somebody else's transaction — so it now reads the row back BEFORE planting, binds the
+trainer it found into a fourth session setting, and the planted trigger's own `WHERE` carries that
+trainer alongside the slot: the one guarded write with no per-call verification cannot move a row
+between namespaces even if the fixture that planted it were ever wrong about which row it named.
+
+**In the apply catalogue**, six of the seven entrypoints create or extend slots server-side and
+now read back the target ids they named, via the SAME authority function
+(`verifyStoredSlots`), immediately after the apply statement and on the same connection. This
+required extending G3-c, which is why it is documented as a deliberate widening rather than a
+quiet one: an entrypoint that creates or changes slots is now SIX statements — seal, the two
+guards, `const <local> = await client.query(…)`, `await verifyStoredSlots(client,
+<seal>.targets ?? [], '…')`, `return <local>` — checked structurally with the same rigour the
+original four-statement shape carries: the send's own local may not collide with a module binding,
+the seal's local, or the parameter; the verification must read the SEALED local's own `targets`,
+never the raw parameter; and the return must hand back the send's own result, unchanged, so a
+verified result cannot be swapped for an unverified one on the way out.
+`applyCommandAsActorRefusalProbe` — the one entrypoint entitled to guard no slots, because it mints
+every id server-side and names no client-controlled target at all — keeps the original four-statement
+shape; there is nothing for it to read back.
+
+**No new database object, trigger, schema, role or permission.** The mechanism is a `SELECT id,
+trainer_id FROM public.availability_slots WHERE id = ANY($1::uuid[])`, held once in the authority
+module, plus the registry's own in-memory `Map`s. A zero-row result is a pass and says so: several
+fixtures deliberately name an id that matches nothing at all, and an apply that was AUTHORIZED but
+matched nothing created no rows to judge.
+
+**AN UNAUTHORIZED APPLY DOES NOT REACH THE READ-BACK AT ALL — MEASURED, NOT ASSUMED, AND ONLY
+AFTER THE FIRST VERSION GOT IT WRONG.** The obvious first cut ran the read-back unconditionally,
+reasoning that a refused apply creates no rows, so the SELECT would just find none. Driving the
+real database suite refused that reasoning directly: `abc27RecipientSnapshot.realpg.test.ts`'s own
+operator-wrapper reachability negatives — a malformed subject, a wrong actor, a non-manager peer —
+turned a clean, uniform `status: 'refused'` row into a thrown `invalid input syntax for type uuid`
+for exactly one of the seven cases. The WRAPPER routine, `rebook_round_apply_command_as_actor`, is
+`SECURITY DEFINER` and catches a malformed `auth.uid()` internally (`BEGIN v_actor := auth.uid();
+EXCEPTION WHEN OTHERS THEN v_actor := NULL; END;`) before ever reaching its refusal branch — the
+CORE it calls, `rebook_round_apply_normalized_core`, takes its actor as a plain `uuid` parameter
+and never touches `auth.uid()` at all, so it has no session to be malformed in the first place; an
+adversarial review caught an earlier version of this paragraph attributing both routines the same
+protection, which was true only of the wrapper. But the read-back is an
+ORDINARY, unprivileged `SELECT`, subject to `availability_slots`'s own row-level security, whose
+policy evaluates `auth.uid()` again, uncaught. A malformed-subject caller would have received a
+JavaScript exception instead of the closed row every other unauthorized caller gets — a NEW,
+distinguishing failure mode the wire protocol's own "never zero and never an error: a raise would
+itself be an oracle" contract exists specifically not to have. The fix adds no privilege and no
+database object: each of the six entrypoints now reads the SEND's own trusted `status` field first
+— `wasRefused(result)`, a private, single-purpose predicate — and skips the read-back entirely
+when it says `'refused'` — narrowly, that ONE status, not a general "nothing was written" test:
+the writing routines answer several OTHER zero-mutation statuses too
+(`invalid_request`, `round_not_found`, `expected_version_mismatch`, and more), and neither route to
+one reproduces the malformed-session oracle — for two DIFFERENT reasons, which an adversarial review
+caught an earlier version of this paragraph collapsing into one false universal. A wrapper-mediated
+entrypoint reaches those statuses only past the wrapper's gate, so its read-back runs under an
+already-well-formed auth context; a direct-core entrypoint passes no wrapper gate at all, and the
+core resolves no session identity to be malformed in the first place. Running the read-back after
+one of those statuses is therefore redundant, not unsafe, and this predicate does not need to
+recognize them. The certifier's G3-c extension pins the guard's SHAPE exactly: the
+verification statement is now `if (!wasRefused(<send>)) { … }` with no `else`, the
+condition may read nothing but the send's own local through the one named check, and three more
+mutants (an unconditional read-back, a refusal check reading the sealed argument instead of the
+send, and a second branch) close the shape as tightly as the four that already covered the
+unconditional half.
+
+**Driven, not merely reasoned about.** Both runtime test files gained dedicated groups proving the
+mechanism discriminates rather than merely existing: a hand-written client whose read-back reports
+a STORED trainer different from what was sent is refused, in the factory; a hand-written client
+whose read-back reports a STORED id another identity already claimed is refused, in both the
+factory and — driven once per entrypoint, against the full seven-minus-one inventory — the apply
+catalogue; and `plantSourceDriftTrigger` refuses outright when the server holds no row at all for
+the slot it was asked to drift. The certifier's own G3-c extension is driven the same way G3 always
+has been: spliced copies of the real catalogue with the verification skipped, reading the wrong
+field, returning a recomputed value, and a colliding local name, each refused by shape.
+
+**A SECOND gap, found by adversarial review rather than this batch's own drive: the claim and the
+verification had drifted apart for the three RENDERED entrypoints.** `applyNormalizedCoreShaped`,
+`applyNormalizedCoreShapedExtend` and `applyCommandAsActorRenderedBarrier` each take a SECOND
+target-bearing field, `targetArray` — a rendered `uuid[]` presentation alongside the bound `targets`
+list — and `noteSlotsOwned` already claimed both: `[...(s.targets ?? []), ...uuidsOf(s.targetArray)]`.
+But the stored-row verifier that followed it read `s.targets` alone. A slot whose id came from
+`targetArray` and nowhere in `targets` was therefore claimed by this identity and never checked
+against what the database actually stored for it — the exact property DATABASE_AUTHORITATIVE_RESULT
+exists to close, open in three of the six entrypoints this batch had just finished closing it for.
+The fix widens all three verify calls to the identical combined expression `noteSlotsOwned` already
+used, so the claim and the check name the same set again. **The certifier now enforces this
+agreement structurally, not by convention**: `CATALOGUE_TARGET_ARRAY_ENTRYPOINTS` pins which three
+entrypoints carry the second field, and G3-c requires `noteSlotsOwned`'s argument and
+`verifyStoredSlots`'s second argument to be the SAME recognized shape — `<local>.targets ?? []` for
+the three plain entrypoints, the combined spread for these three — refusing either call alone
+drifting from the other. Two mutants drive it: the verify call narrowed back to `targets` alone
+(the exact regression), and the claim narrowed instead, leaving the verify wider than what was
+claimed.
+
+### CERTIFIER_TRUTHFULNESS — one fix, one narrowed claim kept honest, one pin sharpened
+
+**The export walk no longer treats every `constructor` as a back-reference.** `Reflect.ownKeys`
+returns OWN properties only, so the language's own INHERITED `constructor` — the one the walk's
+prototype-chain bound already keeps out of reach — never appears in this loop at all; only a
+genuine own data property spelled `constructor` does, and `{ constructor: { sql: 'SELECT 1' } }`
+is exactly that. The special case that skipped its VALUE unread is deleted; a case in
+`abc27ApplyCatalogue.runtime.test.ts` drives both directions — an own `constructor` carrying a
+statement is now found, and an ordinary object's inherited one still never surfaces as a text this
+walk visits.
+
+**G1's octal/hex-escape gap is narrowed by DOCUMENTATION, not by a fail-closed rewrite — measured,
+not assumed.** A version of this fix WAS tried: refuse to lex any `E'…'` string carrying a
+backslash-digit, `\x`, `\u` or `\U` escape, on the theory that an un-decodable numeric escape
+should surface as unreadable rather than be silently mis-decoded. It refused the real repository
+outright, because the realpg suite carries legitimate `E'\x…'::bytea` round trips inside literals
+that also happen to mention `availability_slots` elsewhere in the same large text, and G1 has no
+way to refuse only the write-shaped portion of a literal — refusing the escape refused reviewed
+content that names no write at all. That is a worse trade than the residual it would close, so the
+code is unchanged and the residual is named instead, in both the module's own header and in
+`readEscapeString`'s doc comment: a write whose verb or trainer is spelled through a numeric or
+unicode string escape, or through a PL/pgSQL `EXECUTE` argument assembled with `||` outside a
+function body this audits, is not decoded here. Both are narrower and more contrived paths past G1
+than any ordinary spelling needs, and the runtime ownership check — which reads values, not
+spellings — is what actually covers them, exactly as it already covers a routine name assembled
+from fragments that never spell it.
+
+**R3's one exemption is now pinned by file and by the exempted statement's own content digest, not
+only by count.** A count of one was satisfied by any single exempt write anywhere a marker was
+written; moving the marker to a different statement, or to a different file, changed nothing the
+old check saw. `EXPECTED_EXEMPTION_DIGEST` is the sha256 of the census control's own rendered text,
+computed the moment the exemption is recorded, and the CLI now refuses an exemption count of one
+whose file is not the realpg suite or whose digest is not this one — checked against the real
+repository directly, and against three mocked cases: the wrong file, the wrong digest, and the
+right file-and-digest at an arbitrary line number, which must still pass, because the line is
+deliberately not part of the pin — an edit anywhere above the census control in a 30,000-line file
+moves its line number for a reason that has nothing to do with the exemption.
+
+**`rehearsalSharding`'s CI-gate-contract control gained a real timeout, not only a stated budget.**
+`spawnSync` is fully synchronous: it blocks the whole thread until the child exits, so vitest's own
+per-test timeout — a timer on the event loop — cannot fire while the thread it would need to
+interrupt is parked inside that blocking call. The `180_000` beside the test was a label a hung
+child could not be stopped by. `spawnSync`'s own `timeout` option is what Node's child_process
+binding enforces natively, set at `170_000` — below the vitest budget, not at it, so spawnSync's own
+kill produces a diagnosable result before the outer timeout, which still cannot preempt a blocked
+thread, would otherwise leave the run simply hanging. A second, fast, isolated test proves the
+mechanism itself: a deliberately-hung child and a 200 ms timeout are killed with `signal: 'SIGTERM'`
+and an `ETIMEDOUT` error in well under a second, so a refactor that silently dropped the `timeout`
+option from the real call would still be caught without waiting out 170 real seconds to prove it.
+
+### RECORD_ACCURACY — two more figures derived, two more removed, two claims corrected
+
+The bounded-certifier closure's own record named the lesson: *a guard that covers most of a class
+licenses the rest.* Two figures were left hand-maintained because they were not cheaply derivable,
+and both drifted within the batch that wrote that sentence — the self-test's own assertion total
+(record said 239, actual was 249) and the unit suite's test count (record said 4,100, actual was
+4,117). Both are corrected here, and neither is corrected the same way twice.
+
+**The self-test assertion total is now DERIVED.** `selfTest()` gained an optional `onCount`
+callback, fired with the final count in both its pass and fail branches, without widening its
+public contract — the CLI's `process.exit(selfTest())` is unchanged. The runbook's derived-figure
+test now runs the self-test in-process, silenced, and reads its own count back through that
+callback, checked against both places the figure is stated (the corpus-description sentence and the
+gate table), in an explicit 180-second budget for the same reason the repository-clean test beside
+it carries one.
+
+**Superseded (2026-09-04).** The `onCount` callback and the derived-figure test are retired.
+The self-test's assertion total is RUNTIME OUTPUT — the summary line the CLI prints — and the
+unit test that used to match it against this prose now checks that line against the corpus it
+ran, never against a document. The figure stated above is historical.
+
+**The unit suite's test count is REMOVED as a hand-maintained exact figure**, not corrected to a
+new one that would drift again by the time this batch's own test additions finish landing. `npx
+vitest run --project unit` is its own CI step with its own multi-minute cost; deriving the number
+here would mean re-running the whole suite inside a tripwire that does not otherwise need it — the
+same reasoning that already keeps the ephemeral mutation total out of this record, applied to a
+second figure for the same reason. The gate table states it as MEASURED at the final run, not
+derived, and says so.
+
+**The claim that "each number is stated once, in the table" was false when written** — the bounded-
+certifier closure's own record said so, and it is corrected here rather than repeated: several
+figures are deliberately stated twice, once in a narrative sentence and again in the evidence
+table's own row, and the derived-figure guard checks every occurrence against the same corpus
+figure, which is what makes a second copy left behind by an edit to the first go red. And the
+sentence naming HOW MANY figures are derived is removed rather than corrected a second time: it
+said "eleven" when the list had grown to thirteen, which is a hand-maintained count of
+hand-maintained counts — the identical mistake one level up. No count is stated; every figure in
+the table below is derived, in full, or it says plainly that it is not.
+
+### The evidence, counted
+
+> **Historical snapshot.** The figures in this table are those of the round that wrote it;
+> they are not current authority and no test reads them — see the record-authority notice
+> above.
+
+| Where | What |
+|---|---|
+| driver-level coercion controls (factory) | **6 tests** — `toPostgres()` and `Symbol.toPrimitive` and a two-faced `toString`, each refused as a slot id with the hostile method's own call counter left at zero; `toPostgres()` refused as a trainer the same way; a two-faced `get id()` and `get trainer()` on `insertSlot`'s own options, each proved read exactly once |
+| stored-row controls (factory) | **3 tests** — a stored trainer that differs from what was sent, a stored id colliding with a slot another identity already claimed, and `plantSourceDriftTrigger` refusing a slot the server holds no row for |
+| stored-row controls (apply catalogue) | **3 tests** — a read-back reporting a target id another identity already claimed, driven once directly and once across the full six-entrypoint verifying inventory (compared against the pinned surface minus the one no-slot exception, so a seventh verifying entrypoint cannot arrive unexercised); and a third proving the inverse — a refused apply attempts no read-back at all, driven across that same inventory, catching the RLS permission-oracle regression the second test's own `wasRefused` guard exists to close |
+| G1-e factory export-surface controls | **4** — one CLEAN control over the real factory, plus three mutants: the raw `SLOT_STATEMENTS` map re-exported, an unrelated new export, and a pinned entrypoint dropped from the surface |
+| G3-c stored-result verification controls | **9** new mutants over the real catalogue: the verification skipped entirely, reading the wrong sealed field, a return that recomputes instead of handing back the send's own result, a send-local colliding with a module binding, the verification running UNCONDITIONALLY with no refusal guard, the refusal check reading the wrong local, the guard carrying an `else` branch, and two more an adversarial review's own P1 finding made necessary — a combined-shape entrypoint's verify call dropping `targetArray` (checking `targets` alone, the exact regression found), and its `noteSlotsOwned` claim narrowed to `targets` alone while the verify stays wide |
+| R3 exemption-location controls | **3** — the CLI refuses the one exemption at the wrong file, refuses it at the wrong digest, and accepts it at the pinned file and digest regardless of its line number (deliberately not part of the pin) — each driven through `main`'s own `analyzeFn` seam, plus an end-to-end check that the REAL repository's one exemption is the pinned file and digest |
+| `rehearsalSharding` timeout mechanism control | **1 test** — a deliberately-hung child and a 200 ms `spawnSync` timeout are killed with `signal: 'SIGTERM'` and an `ETIMEDOUT` error, proving the mechanism itself rather than only the happy path |
+| constructor export-walk control | **2 assertions** in the existing `abc27ApplyCatalogue.runtime.test.ts` completeness test — an own data property literally named `constructor` carrying a statement is now found, and an ordinary object's inherited `constructor` still never surfaces as a text the walk visits |
+| self-test assertion total | **262**, DERIVED — up from 253 (the bounded-certifier closure's own last count), counted by running the self-test in-process rather than restated by hand. NO ARITHMETIC BREAKDOWN IS STATED: an earlier version of this row itemized the delta as four G1-e cases plus seven plus two G3-c cases, and an adversarial review's own arithmetic caught that the itemized parts do not sum to the stated total — a hand-computed decomposition of a DERIVED figure is the identical mistake this document already corrected once elsewhere ("eleven" vs "thirteen"), one level up |
+
+### Gates, on the final bytes
+
+> **Historical snapshot.** The figures in this table are those of the round that wrote it;
+> they are not current authority and no test reads them — see the record-authority notice
+> above.
+
+| Gate | Result |
+|---|---|
+| `npm run check:trainer-authority` | ✓ 19 guarded WRITE statements in the factory, 1 declared exemption, 7 audited catalogue statements, 7 typed entrypoints, 12 pinned mentions over 12 identities seen, `libpg-query@18.1.4 (PostgreSQL grammar 180004)` |
+| `npm run check:trainer-authority:selftest` | ✓ 262 assertions over 123 SYNTHETIC fixtures, plus the real repository checked on its own |
+| `eslint .` | ✓ 0 findings, full repository, exit captured directly |
+| typecheck (structured baseline, never bare `tsc`) | ✓ 82 pre-existing, baseline 82 — no new type errors. Run under an explicit heap (`NODE_OPTIONS=--max-old-space-size=8192`) for this LOCAL verification only, after confirming a bare run OOMs and silently reports 0 errors on this host — see [[ci-typecheck-false-green]] in the operator's own memory; nothing in this batch's own diff touches the workflow contract that makes this unfixable in CI as it stands |
+| `npm run build` | ✓ |
+| `npm run check:edge-pins` | ✓ every external import in 281 edge-function files names an exact version |
+| unit suite | ✓ 393 files / 4,155 tests, run in full (not derived) |
+| `rehearsalSharding.test.ts` | ✓ 39 tests, including the new genuine-timeout-kill control |
+| full db suite, real PostgreSQL | three consecutive runs against the round-1/round-2 fixes, ✓ 230/230 each, and a focused pass after each later closure round — one for round 4's re-applied pair and one for round 5's byte-copy replacement and comment narrowing — ✓ 230/230 each. The repeatability protocol was not re-run for those: both later changes are confined to a JS-side object-copy helper and a comment, introducing no database-observable behaviour and no new timing, which is the condition under which the earlier three-run evidence still stands. The specific run figures are reported to the operator rather than written into a fifth place in this document, for the reason the earlier closure batch already found and named: this suite reads this file, so a result recorded here describes a tree that no longer matches what was run the moment it is added — see the earlier "Why no run table lives here" |
+| mutation kill, hand-applied on the real modules | ✓ — `capturedId`'s primitive gate relaxed to coerce instead of refuse (killed: 4 driver-level-coercion tests fail with a DIFFERENT, later error, proving the gate itself is load-bearing, not merely present); the STATEMENT-level `wasRefused` guard stripped at all six call sites (killed: the new "does not attempt the read-back" test fails, reproducing the exact RLS-oracle shape this guard exists to close); `applyNormalizedCoreShaped`'s verify call narrowed back to `s.targets ?? []` alone, the exact regression a review found, reintroduced directly on the real file (killed: the certifier itself refuses it by shape, not merely a unit test); `sealed()`'s copy target reverted from `Object.create(null)` to `{}`, reintroducing the `__proto__`-retargeting hole a review found (killed: the prototype-pollution control's getter-call-count assertion goes from 0 to 3); the Buffer branch reverted to a bare `v` pass-through (killed: the disguised-Buffer control's getter-call-count assertion goes from 0 to 5); the same branch reverted to the insufficient `Buffer.from(v)` (killed by the own-`valueOf` control: the hook is invoked once and the wire receives the attacker's 8 mutated bytes in place of the fixture's 5); the same branch reverted to `Buffer.copyBytesFrom(v)`, and separately to `Buffer.from(owned)`, each reintroducing shared-pool aliasing (each killed by exactly ONE sensor, the private-exact-size-backing-store control); the intrinsic typed-array tag conjunct dropped from the gate (killed by exactly TWO sensors and only those — the forged-`DataView` and forged-`Uint16Array` controls); and the `Buffer.isBuffer` conjunct dropped (killed by exactly ONE sensor, the genuine-non-Buffer-view control). The `ArrayBuffer.isView` conjunct was mutated too and SURVIVES, which is recorded rather than hidden: it is logically implied by the tag check, so no control can discriminate it. All of these mutants applied to the real files, run against the real checks, and reverted — confirmed byte-identical afterward by `git status`/`git diff` and a clean re-run |
+| mutation, self-test-registered (spliced against the real files, in-process) | ✓ G1-e: 4 cases (1 control + 3 mutants); G3-c: 9 new cases (7 for the `wasRefused` guard, 2 for the combined-shape claim/verify agreement a later adversarial review's P1 finding required) — all counted inside the 262-assertion self-test total above, not double-counted here |
+| leftover artifacts | none — no `.bak`/`.orig`/`.tmp` file under `src/test` or `scripts`, no repo file left in a mutated state |
+
+### The round-3 stop
+
+Three fresh adversarial review rounds were budgeted in one thread; three were spent. Round 1 found
+the `targetArray` verification gap (now fixed above, and re-confirmed by rounds 2 and 3 without
+complaint). Round 2 found the `__proto__` prototype-retargeting gap (now fixed above, and
+re-confirmed by round 3 without complaint) plus two wording corrections (applied and also
+re-confirmed clean). **Round 3, the final round, found one more of each.** Per the rule quoted in
+this section's own STATUS line, neither was left fixed at the time — a separate, explicit
+authorization has since granted one exceptional fourth round scoped only to these two findings, and
+both are re-applied below exactly as first drafted.
+
+**P1 — a `Buffer` carrying extra own properties survives the seal's Buffer branch unchanged, and
+can answer three call sites three different ways.** `sealedValue` (`src/test/abc27ApplyCatalogue.ts`,
+the `if (Buffer.isBuffer(v)) return v;` line, currently line 430) returns any `Buffer` UNCHANGED —
+reasonable for an opaque `fingerprint` byte string, but a `Buffer` is an ordinary object underneath,
+and `Object.defineProperty` can attach extra own properties to one regardless: a `kind`, a `type`,
+and a stateful `values` getter — the exact shape of a `RenderedArray` — handed where `targetArray`
+is expected. Returning the caller's Buffer unchanged hands back the SAME live object the caller
+still holds, so a field this seal never truly copied can still answer the `noteSlotsOwned` claim,
+the SQL render, and the `verifyStoredSlots` check three different ways. **Reproduced, not assumed**:
+a disguised `Buffer` built exactly this way, handed to `applyNormalizedCoreShaped` as `targetArray`
+with no other change, called its own `values` getter 5 times against the unpatched branch (once per
+read site, with one extra from the renderer touching it twice), and 0 times after the fix. **NOW
+FIXED — and it took three attempts, each defeated by something the previous one had not been asked
+about.** `Buffer.from(v)` was the first answer and round 4 showed it insufficient: `Buffer.from`
+resolves its overload by CONSULTING THE VALUE, so an own `valueOf()` returning an attacker-held
+`ArrayBuffer` selects the zero-copy ArrayBuffer view and the "copy" comes back as a live window onto
+memory the caller still owns — measured at 8 attacker bytes in place of the fixture's 5, still
+writable afterwards. `Buffer.copyBytesFrom(v)` was the second, and closed that: it reads the
+source's internal slots and consults no hook. Round 5 then found what neither had addressed —
+**small Buffers are cut from a shared 8 KiB pool**, so a pooled copy and a pooled source occupy one
+`ArrayBuffer` at different offsets, and `new Uint8Array(source.buffer).fill()`, reachable from any
+caller holding the source, rewrote the sealed bytes after the send (measured: `6162633237` became
+`ffffffffff`).
+
+**The branch now takes a dedicated byte snapshot.** `new Uint8Array(v)` allocates its OWN exact-size
+backing store rather than drawing from the pool and copies element-wise from internal slots;
+`Buffer.from(owned.buffer, owned.byteOffset, owned.byteLength)` then VIEWS that private store, which
+is what keeps the result out of the pool — `Buffer.from(owned)` would have gone straight back into
+it.
+
+**The gate around it needed a third question, and a review round is why.** `ArrayBuffer.isView` plus
+`Buffer.isBuffer` looked sufficient and was not: a `DataView` IS a view, and one given
+`Buffer.prototype` satisfies both, after which `new Uint8Array(v)` falls back to the
+array-like/iterable path and runs the caller's own `Symbol.iterator` — measured sealing two
+caller-chosen bytes. A `Uint16Array` wearing the same prototype passes both as well and is copied
+ELEMENT-wise, so four source bytes arrived as two. The gate now also asks the intrinsic
+`%TypedArray%.prototype[Symbol.toStringTag]` getter, captured at module load, which answers from an
+internal slot: `'Uint8Array'` for a genuine byte view, the family name for a `Uint16Array`,
+`undefined` for a `DataView`, a bare prototype object or a `Proxy` — and a `Proxy` answers without a
+single trap running. `Buffer.isBuffer` remains the last conjunct because a plain `Uint8Array` also
+answers `'Uint8Array'` and must keep falling through to the object branch. `ArrayBuffer.isView` is
+kept first as specified but is REDUNDANT given the tag check, and the record says so: no control
+discriminates it, and deleting it leaves the suite green.
+
+A refusal uses FIXED text that never formats or interpolates the value, since Node's own
+invalid-argument formatter reads a rejected value's `constructor` while describing it (measured at
+three reads). The earlier claim that the rejection "called nothing" is not restated, and the narrower
+replacement is bounded on purpose: for a genuine byte view nothing on this path reads a property or
+invokes a hook, but deciding that a value CLAIMS to be a Buffer means consulting its prototype chain,
+and a `Proxy` can trap that — measured, one trap through `Buffer.isBuffer`. That residual is named.
+All of this concerns INPUT COERCION only; it says nothing about database or registry effects, which
+the guards before the send and the read-back after it are what cover.
+
+The controls in `abc27ApplyCatalogue.runtime.test.ts` are the disguised-`Buffer` test above, an
+own-`valueOf` test, an own-`Symbol.toPrimitive` boundary control named as non-discriminating, one
+proving the sealed value sits on a private exact-size backing store AND survives a rewrite of the
+source's whole backing buffer, and three forgery controls — a bare prototype object, a `DataView`
+and a `Uint16Array` — plus one proving a genuine non-Buffer view is still not sealed as a Buffer.
+The structural half of the independence control is deliberately the primary assertion: a review
+round observed that mutating the source's pool only catches a pooled copy when both land in the SAME
+pool `ArrayBuffer`, which a rollover can defeat, whereas an exact-size private backing store is
+directly observable. Pooling itself is a property of SMALL allocations — a zero-length buffer and one
+larger than the pool do not draw from it — so the claim is about the small case the fixtures use.
+
+**P2 — the comment above `wasRefused` still attributes the wrapper's own protection to "both
+writing routines".** The opening of that comment block (`src/test/abc27ApplyCatalogue.ts`, starting
+"`'refused'` is the ONE status both writing routines return…", currently line 460) and one sentence
+inside the "MEASURED, NOT ASSUMED" paragraph beneath it ("unlike the writing routines, which are
+`SECURITY DEFINER` and catch a malformed `auth.uid()` internally…", currently line 470) both say
+this of BOTH writing routines. It is true only of the WRAPPER, `rebook_round_apply_command_as_actor`
+— the CORE, `rebook_round_apply_normalized_core`, takes its actor as a plain `uuid` parameter, never
+calls `auth.uid()` anywhere in its body (confirmed by reading the migration, not assumed), and never
+returns the literal string `'refused'` at all. The "A NAMED RESIDUAL" paragraph three paragraphs
+below already says this correctly — round 3 is pointing at an internal contradiction WITHIN the
+same comment block, not a fact that was never written down. This document's own matching passage
+(the paragraph beginning "for exactly one of the seven cases", in "### DATABASE_AUTHORITATIVE_RESULT"
+above) carries the identical claim and needs the identical correction. **NOW FIXED, in two steps.**
+The first pass attributed the wrapper's protection to the wrapper alone and described the core
+precisely — a plain `uuid` actor parameter, no `auth.uid()` call anywhere in its body, no literal
+`'refused'` return. Round 4 then found what that pass had left standing one paragraph further down:
+a UNIVERSAL sentence claiming every OTHER zero-mutation status is reached "only once the wrapper's
+own auth gate has already resolved a real, authorized actor" — true of the wrapper-mediated
+entrypoints and false of the three that call the core directly, which pass no wrapper gate at all.
+Both the comment and this document now split the claim in two rather than restating it wider: a
+wrapper-mediated entrypoint reaches those statuses past the gate, so its read-back runs under an
+already well-formed context; a direct-core entrypoint resolves no session identity in the first
+place. Neither reproduces the failure mode, for two different reasons, and neither sentence now
+implies the other route's premise.
+
+### The rounds after the third, and the batch that closed them
+
+Round 4 was a single exceptional round authorized to confirm the round-3 pair on exact final bytes.
+It returned NOT CLEAR — the `Buffer.from` coercion escape and a residual universal claim — and,
+under the same rule that governed round 3, neither was fixed at the time. A further authorization
+scoped exactly those two for closure and granted a fifth review, which closed the universal claim
+but returned NOT CLEAR again on the copy: `Buffer.copyBytesFrom` had left the shared-pool aliasing
+above untouched, and the fixed comment's "called nothing" claim did not survive contact with Node's
+own error formatter.
+
+Those two findings were then given their own bounded closure batch rather than a sixth round of the
+broad audit, and that batch is what the byte-snapshot primitive above, its five controls and the
+corrected prose belong to. Its mutation evidence is three targeted mutants, each killed by exactly
+ONE named sensor with no overlap between them, each restored byte-exact by sha256: restoring
+`Buffer.copyBytesFrom(v)` and, separately, using `Buffer.from(owned)` instead of the owned-buffer
+view each fail ONLY the whole-backing-buffer independence control, which is what shows the pool is
+the thing the snapshot removes; removing the `ArrayBuffer.isView` gate fails ONLY the
+prototype-forgery control. **No review outcome is written back into this document**; it is reported
+to the operator, for the same reason the run table is not kept here.
+
+## CURRENT — the canonical hex boundary and record authority (2026-09-04)
+
+**STATUS: local only. Nothing is committed, pushed, merged, deployed or applied; no migration,
+role, grant, schema or product runtime is touched. Terminal results and hashes are reported in
+the external terminal report, not written here.** This section states invariants, commands and
+pass criteria only. It carries no evidence total — no fixture, assertion, test, control or
+mutant count: such a cardinality lives in an executable set-equality assertion or in a gate's
+own runtime output, and nowhere in this document. The structural facts it names — which
+entrypoints exist, that one adapter exists — are pinned by NAME in the code, not counted here.
+
+### The invariants
+
+- **The fingerprint boundary is a primitive string of canonical hex.** `canonicalByteaHex` in
+  `src/test/abc27ApplyCatalogue.ts` accepts a value only if `typeof value === 'string'` and
+  the string matches lower-case hex in whole byte pairs; the empty string is an empty `bytea`
+  and is accepted. Binary argument shapes — a `Buffer`, typed array, `DataView`, `ArrayBuffer`
+  or `SharedArrayBuffer` — are refused first by the seal's internal-slot branch, before a byte
+  or property of that binary shape is read. An ordinary object takes the ordinary sealing path:
+  its own enumerable property values are read once, so an ordinary object accessor **can run
+  during sealing**; the sealed plain object is then refused by `canonicalByteaHex`'s `typeof`
+  branch, as are `undefined` and every other non-string. No refusal message formats the rejected
+  value. Case is not folded and an odd digit count is not padded: a value that is not already
+  canonical is refused, not repaired. The length is not pinned — the 32-byte product rule lives
+  in the database, which stays its authority.
+- **The database boundary is `pg_catalog.decode(…, 'hex')`, everywhere.** A bound fingerprint
+  travels as the validated string and the statement decodes it —
+  `pg_catalog.decode($n::text,'hex')`; a rendered one is `pg_catalog.decode('<hex>','hex')`
+  from `byteaHexLiteral`, over the validated hex itself. No statement carries a backslash
+  `bytea` literal, so the bytes do not depend on `standard_conforming_strings`. The refusal
+  probe names no client fingerprint at all; it mints one on the server with
+  `pg_catalog.sha256`.
+- **A byte view is converted in one place, for what the driver hands back — and an argument
+  that is one is refused unread.** The argument seal refuses any `ArrayBuffer`,
+  `SharedArrayBuffer`, typed array, `DataView` or `Buffer` by internal-slot check before reading
+  a byte or a property of it, so no byte view is read anywhere but the adapter.
+  `canonicalByteaHexFromBytes` converts a `bytea` column value into the boundary's currency
+  and asks internal-slot questions only: `isUint8Array` for the view, the captured
+  `%TypedArray%.prototype.buffer` getter for its backing store, `isArrayBuffer` (so shared
+  memory is refused), the captured `detached` and `resizable` getters (so a detached or
+  resizable store is refused), and then the `Buffer.prototype.toString` intrinsic captured at
+  module load, applied with `.call` to the view — no copy, no instance method, no iterator, no
+  `Buffer.from`, no `Buffer.copyBytesFrom`, no pool, no `instanceof`, no `ArrayBuffer.isView`,
+  no prototype or `Symbol.toStringTag` test. Its result is a primitive, so the source cannot
+  change it afterwards. A caller that holds a byte view coerces explicitly through this
+  adapter; the argument seal never converts on a caller's behalf.
+- **Every call path crosses the boundary by name.** Five fingerprint statements bind the
+  validated string: `applyNormalizedCore`, `applyCommandAsActorReceiptPrivacy`,
+  `applyNormalizedCoreShaped`, `applyNormalizedCoreShapedExtend` and
+  `applyCommandAsActorReachability`. `applyCommandAsActorRenderedBarrier` is the one fingerprint
+  statement that renders: its statement helper reaches `canonicalByteaHex` through
+  `byteaHexLiteral`. `applyCommandAsActorRefusalProbe` has no client fingerprint and does neither.
+  Together those named paths are the pinned `APPLY_ENTRYPOINTS` surface. The realpg suite reaches
+  the fingerprint-bearing paths through one adapter, `fingerprintHexOf`, which passes a string
+  through untouched and converts a driver byte view through `canonicalByteaHexFromBytes`. The
+  catalogue query arguments, rendered helper route, adapter body, and every realpg first-argument
+  expression and resolved local reference are pinned from TypeScript syntax trees.
+- **No test reads this document for a figure.** The corpus split is an executable equality in
+  `src/test/abc27TrainerSourceAuthority.test.ts`; both figures on the ONE summary line
+  `check:trainer-authority:selftest` prints — the assertion total and the fixture count — are
+  held to exact expectations computed from the corpus, by running that CLI as a child process.
+  `selfTest()` takes no count callback. The ABC-27 focused realpg reader extracts the operator SQL
+  fences it executes and checks exact installation-window wording. Its retired census/resolution
+  absence checks specifically police fenced `IS DISTINCT FROM`, the retired one-hop
+  prepared-transaction/lock association, copyable GID-variable assignment forms, unquoted
+  GID-variable interpolation, and instructions to hand-transcribe a GID as a SQL literal; it does not make every
+  unrelated insertion an ABC-27 focused obligation. The separate D7 prohibited-recall wording
+  control is selected with the focused `d7ForwardChain` command listed below.
+
+### The commands, and what passing means
+
+| Command | Passes when |
+|---|---|
+| `npm run check:trainer-authority` | exit 0, and its output names the parser (`libpg-query@…`) and its PostgreSQL grammar |
+| `npm run check:trainer-authority:selftest` | exit 0, and the summary line reads `✅ … assertions over … synthetic fixtures, plus the real repository checked on its own.` |
+| `npx vitest run --project unit src/test/abc27ApplyCatalogue.runtime.test.ts src/test/abc27TrainerSourceAuthority.test.ts src/test/abc27SlotFixtures.runtime.test.ts` | every test passes; none is skipped |
+| `npx vitest run --project db src/test/abc27RecipientSnapshot.realpg.test.ts` | every test passes against the embedded PostgreSQL, including the `standard_conforming_strings` control over the renderer's own output |
+| `npx vitest run --project db src/test/d7ForwardChain.realpg.test.ts -t 'THE RESIDUAL, STATED HONESTLY: the observation-to-commit interval, and nothing wider'` | the runbook and migration state the linearization point, say outright that an authorized send cannot be taken back, and carry no affirmative recall, retraction, unsend or cancellation claim |
+| `npx eslint .` | no findings |
+| `npm run typecheck:baseline` | no new type errors against the committed baseline |
+| `npm run build` | exit 0 |
+
+A mutation battery against this boundary is ephemeral and its result is reported to the
+operator; it is not recorded here, for the reason "Why no run table lives here" already gives.
+
+### The whole-source authorities (2026-09-04, closure of the terminal review)
+
+The function-local source pins the terminal review found non-total are retired in favour of
+whole-source authorities. Each is fail-closed, and each is a literal pin written down from the
+reviewed bytes — never computed, normalised or updated from the bytes it judges. Every pinned
+byte sequence is read by `vi.hoisted`, before any import of the reading test file executes, so a
+digest is over its subject as it was on disk before that subject or any other imported module ran.
+
+- **The catalogue module is pinned whole.** `src/test/abc27ApplyCatalogue.runtime.test.ts`
+  holds the literal SHA-256 of the complete raw bytes of `src/test/abc27ApplyCatalogue.ts`, the
+  complete top-level declaration and import/export surface as one closed list, and a
+  TypeScript-Program census in which every identifier the module reads resolves to a module
+  const, an import, a parameter, a local, a type parameter, a module type or interface, or one
+  of a listed set of unshadowed globals. A module-local shadow of `Buffer`, `Array`,
+  `Object`, `Reflect`, `Uint8Array`, `ArrayBuffer` or of a captured intrinsic fails the digest
+  and the surface list, and a shadow of a name the module reads also fails the census. That one
+  authority covers `sealed`, `sealedElement`, `LOWER_HEX`, every capture initializer and all
+  executable module code; the runtime and adversarial controls around it are kept, and the
+  function-local shape pins it supersedes are retired.
+- **The realpg suite and the checker are pinned whole, and their readings sit inside those
+  pins.** `src/test/abc27TrainerSourceAuthority.test.ts` holds the literal SHA-256 of the
+  complete raw bytes of `src/test/abc27RecipientSnapshot.realpg.test.ts` and of
+  `scripts/check-abc27-trainer-source-authority.mjs`. Within the pinned suite it finds each
+  direct call of a catalogue entrypoint by its resolved import symbol, requires the imported
+  value surface and the direct-invocation set to be equal in both directions, refuses any other
+  reference to an entrypoint, pins the complete text of each call and its argument object keyed
+  by the enclosing declaration and test rather than by line, refuses spread, computed, method,
+  accessor and duplicate keys and any shorthand `fingerprintHex` (a shorthand for another key
+  is admitted only as a resolved, explicit, non-computed key and is listed in the pin), requires
+  `fingerprintHex` exactly once where the entrypoint takes one with an initializer that
+  resolves to the single module-level `fingerprintHexOf`, and pins that adapter as one complete
+  declaration whose conversion resolves to the catalogue import. Within the pinned checker it
+  locates exactly one module-level declaration each of `analyzeFixtures` and `selfTest` and
+  holds the literal SHA-256 of each complete declaration's source slice. The whole-file pins are
+  what hold a module acquired by any route other than the static import, and a live binding
+  reassigned after its pinned declaration; the call catalogue and the slice pins are readings,
+  not authorities over them. The behavioural collision control drives several distinct collision
+  counts as a sample and is not the authority.
+
+**Change discipline.** Version control plus these exact whole-source pins are the change
+authority. A legitimate change to a pinned subject is made deliberately: edit the subject,
+replace the literal digest in the named test with the digest of the reviewed bytes, and obtain a
+fresh deep review of the change. No control derives, normalises or updates a digest from the
+bytes it judges, and no further certifier is layered over these authorities.

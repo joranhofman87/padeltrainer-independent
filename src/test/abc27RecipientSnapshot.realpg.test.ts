@@ -16,14 +16,28 @@ import pg from 'pg';
 import ts from 'typescript';
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
-  BOOTSTRAP_IDENTITY, currentIdentity, declareTrainer, declareTrainers,
-  installTrainerAuthorityHooks, mintTrainerRange, newTrainerId, sqlFragment, sqlUuid,
-  testTrainer, trainerOwner, type IsolatedTrainerId,
+  BOOTSTRAP_IDENTITY, assertSlotsNotForeign, currentIdentity, declareTrainer, declareTrainers,
+  installTrainerAuthorityHooks, mintTrainerRange, newTrainerId, noteSlotsOwned,
+  requireOwnedByCurrentIdentity, slotOwner, testTrainer, trainerOwner,
 } from './abc27TrainerAuthority';
+import {
+  insertSlot, insertSlotSeries, insertTemplateSlot, insertTemplateSlotSeries,
+  plantSourceDriftTrigger, setSlotBounds, setSlotCapacity, setSlotDuration, setSlotExtraCosts,
+  setSlotLocation, setSlotLocationAndShiftTimes, setSlotParticipants, setSlotPrice,
+  setSlotRatings, setSlotTrainer, setSlotTrainerAndLocation, shiftSlotTimes,
+  shiftSlotTimesAndSetTrainer, shiftSlotTimesAndSetVisibility, SLOT_STATEMENT_DIGESTS,
+  type SlotTime,
+} from './abc27SlotFixtures';
+import {
+  applyCommandAsActorReachability, applyCommandAsActorReceiptPrivacy,
+  applyCommandAsActorRefusalProbe, applyCommandAsActorRenderedBarrier, applyNormalizedCore,
+  applyNormalizedCoreShaped, applyNormalizedCoreShapedExtend, canonicalByteaHexFromBytes,
+  type CanonicalByteaHex, type RenderedArray,
+} from './abc27ApplyCatalogue';
 
 const { Client } = pg;
 const PORT = 54397;
@@ -60,6 +74,25 @@ const TRAINER = '55555555-5555-4555-8555-555555555555';
 // Every operator command receipt carries the actor that created it; only a machine `import` may
 // omit one. Fixtures that seed a `create` receipt directly must therefore name an actor.
 const FIXTURE_ACTOR = '88888888-8888-4888-8888-888888888888';
+
+/**
+ * The catalogue's binary boundary is CANONICAL HEX, not a `Buffer`, and this is where this suite
+ * meets that.
+ *
+ * `bytea` comes back from `node-postgres` as a byte view, so a reviewed fingerprint this suite
+ * hands straight back to an apply arrives as one. `canonicalByteaHexFromBytes` is the catalogue's
+ * own named adapter for exactly that direction — it asks internal-slot questions only, refuses a
+ * shared, detached or resizable backing store, and returns a primitive. Converting HERE, at the
+ * point the driver's value is used, is what keeps the mutable object out of the contract instead
+ * of carrying it one layer further in.
+ *
+ * A value that is ALREADY a string passes through untouched: the catalogue validates it as
+ * canonical hex when it binds or renders it, so this does not become a second, weaker validator.
+ */
+const fingerprintHexOf = (value: unknown, where: string): CanonicalByteaHex => (
+  typeof value === 'string'
+    ? value as CanonicalByteaHex
+    : canonicalByteaHexFromBytes(value, where));
 
 // ── THE PLATFORM SHIM: EVERYTHING THE REPOSITORY DOES NOT OWN, AND NOTHING ELSE ──────────────
 //
@@ -249,16 +282,21 @@ const nextSlotLane = () => (slotLaneSequence += 1);
 // namespace. Unrelated tests then collided whenever the calendar walked a relative slot onto a
 // fixed one — which is exactly what happened on 2026-08-29.
 //
-// The factories that fix that live in `abc27TrainerAuthority.ts`, not here, and what they return
-// is the branded `IsolatedTrainerId` rather than a `string`. That is the whole mechanism: a
-// fixture cannot OBTAIN a trainer it does not own, so it cannot write one — before any direct or
-// indirect `availability_slots` write, in every database and every clone. The predecessor of this
-// import block watched slot writes from the client instead and its terminal review refused the
-// approach outright; nothing of it survives, and none of its claims are re-made.
+// THIS FILE NO LONGER SPELLS A SLOT WRITE AT ALL. Every one of them lives in
+// `abc27SlotFixtures.ts`, as a complete fixed statement whose values are bound parameters, and
+// every entrypoint there asks `abc27TrainerAuthority.ts` whether THIS test owns the trainer
+// before it sends anything. That is the mechanism, and it runs in every invocation.
 //
-// `scripts/check-abc27-trainer-source-authority.mjs` proves from the TypeScript program that
-// every write site below binds `trainer_id` to a value of that type, and the tripwire describe at
-// the end of this file keeps the two facing each other.
+// TWO PREDECESSORS ARE GONE, NOT PATCHED. The first watched slot writes from the client and its
+// terminal review refused the approach outright. The second left the writes here and tried to
+// prove statically that each bound an authority-issued value — a general dataflow question, which
+// a review round answered three ways in one round (a containing type, an array widened by
+// annotation and mutated through its alias, and a getter no syntactic follower evaluates). None
+// of their claims are re-made.
+//
+// `scripts/check-abc27-trainer-source-authority.mjs` now proves something narrower and decidable:
+// that no slot write is spelled outside the factory, and that the factory's statements admit no
+// interpolation. The tripwire describe at the end of this file keeps the two facing each other.
 installTrainerAuthorityHooks();
 
 /**
@@ -482,6 +520,25 @@ async function mustRaiseWithCode(client: pg.Client, sql: string): Promise<{ mess
   throw new Error(`expected refusal, statement succeeded: ${sql}`);
 }
 
+/**
+ * The same, for a refusal produced by a WRITE THIS FILE MAY NOT SPELL.
+ *
+ * Every `availability_slots` write now goes through `abc27SlotFixtures`, so a case that expects
+ * one to be REFUSED can no longer hand this a SQL string — the statement it wants does not exist
+ * here to be written. It hands a thunk instead, and the refusal is read off whatever the factory
+ * call raised. `what` names the case, because a thunk has no text to quote back.
+ */
+async function mustRaiseFrom(what: string, run: () => Promise<unknown>):
+Promise<{ message: string; code: string }> {
+  try {
+    await run();
+  } catch (error) {
+    const e = error as Error & { code?: string };
+    return { message: e.message, code: e.code ?? '<none>' };
+  }
+  throw new Error(`expected refusal, ${what} succeeded`);
+}
+
 const quoteIdent = (value: string) => `"${value.replace(/"/g, '""')}"`;
 /**
  * A SQL string literal, for the two statements PostgreSQL will not take a parameter for.
@@ -544,6 +601,30 @@ const resolvePsql = (expectedMajor: string, options: {
   /** Overridden only by the control that measures this function's own budget. */
   candidates?: readonly string[];
   budgetMs?: number;
+  /**
+   * ── THE TWO TEST-ONLY SEAMS, AND WHY THEY EXIST ─────────────────────────────────────────────
+   *
+   * The control that measures this function's DEADLINE ARITHMETIC used to do it with a stopwatch
+   * and three fake shell scripts: it asserted that a spawned `/bin/sh` had appended to a marker
+   * file, and that the wall clock came in under a ceiling. Both are questions about the operating
+   * system's scheduler, not about this function — and on a machine running 163 embedded
+   * PostgreSQL servers the scheduler loses them. Measured: four failures in eleven full runs, and
+   * none when the machine was idle.
+   *
+   * So the control injects a probe and a clock instead, and asks the question it actually means:
+   * which candidates were probed, in what order, with what timeout each, and did they share ONE
+   * budget. That is arithmetic, and arithmetic is deterministic.
+   *
+   * THE DEFAULTS ARE UNCHANGED AND ARE STILL WHAT PRODUCTION RUNS. `PSQL_PROBE_MS` (15 s) and
+   * `PSQL_RESOLVE_MS` (30 s) are untouched, both seams default to the real thing, and the
+   * `\gset` control LATER IN THIS FILE still drives this resolver against the real cluster
+   * through eleven real psql invocations — so execution coverage is not what moved here. What
+   * moved is that the timing control no longer depends on a child process being scheduled.
+   */
+  probe?: (candidate: string, timeoutMs: number) => {
+    error?: Error | undefined; status?: number | null; stdout?: string;
+  };
+  now?: () => number;
 } = {}): PsqlChoice => {
   const named = process.env.ABC27_PSQL;
   const candidates = options.candidates ?? [
@@ -557,7 +638,11 @@ const resolvePsql = (expectedMajor: string, options: {
   // carrying the same directory many times — or many hanging candidates — would spend that bound
   // once per entry and could consume the whole control's deadline before the real work starts.
   const seen = new Set<string>();
-  const deadline = Date.now() + (options.budgetMs ?? PSQL_RESOLVE_MS);
+  const now = options.now ?? Date.now;
+  const runProbe = options.probe ?? ((candidate: string, timeoutMs: number) =>
+    spawnSync(candidate, ['--version'],
+      { encoding: 'utf8', timeout: timeoutMs, killSignal: 'SIGKILL' }));
+  const deadline = now() + (options.budgetMs ?? PSQL_RESOLVE_MS);
   let fallback: PsqlChoice | null = null;
   for (const candidate of candidates) {
     if (seen.has(candidate)) continue;
@@ -565,14 +650,13 @@ const resolvePsql = (expectedMajor: string, options: {
     // THE BUDGET IS MEASURED AT THE SPAWN, WITH NOTHING BLOCKING IN BETWEEN. It is read here, one
     // statement before the only call that can take time, so the allowance handed to that call is
     // the allowance that is actually left. Nothing synchronous and unbounded runs after this line.
-    const remaining = deadline - Date.now();
+    const remaining = deadline - now();
     if (remaining <= 0) { rejected.push(`${candidate}: resolver budget spent`); break; }
     // `killSignal` MATTERS AS MUCH AS `timeout`. Node's default is SIGTERM, which a child may
     // catch, ignore, or take its time over — and `spawnSync` then goes on WAITING, so the
     // 'deadline' is only a deadline for a cooperative child. SIGKILL cannot be caught, blocked or
     // handled, which is what makes this bound real.
-    const probe = spawnSync(candidate, ['--version'],
-      { encoding: 'utf8', timeout: Math.min(PSQL_PROBE_MS, remaining), killSignal: 'SIGKILL' });
+    const probe = runProbe(candidate, Math.min(PSQL_PROBE_MS, remaining));
     // A MISSING PATH, A DIRECTORY AND A NON-EXECUTABLE FILE ALL LAND HERE, which is why the stats
     // are gone: the spawn answers the same question they did, and answers it under the timeout.
     if (probe.error !== undefined || probe.status !== 0) {
@@ -682,7 +766,7 @@ interface ResolverEnvelope {
  * re-pinning this digest; that is the intended cost, and it is why the guard cannot be evaded.
  */
 const RESOLVER_ENVELOPE_SHA256 =
-  '27f686b0b90ed899f48e1c2106c33896a7b12cf1d1cfd8cba84439dab632548f';
+  '52c00aedc263b8b1cbd1dca21d2b2923a06a254afaf4502a7fbd051f09589640';
 /** The two `it(…)` callbacks that call the resolver, identified by their titles. */
 const RESOLVER_CONSUMER_TITLES = [
   "the runbook's `\\gset` capture runs in real psql: it binds one identity from the census, and every other outcome fails closed",
@@ -706,10 +790,11 @@ const RESOLVER_IMPORT_PROVENANCE = [
 ];
 const RESOLVER_CONSUMER_SHA256 = [
   'e24a99fda56729238dbca25e18db964000d38416e45d762f2d8fb0b61743c204',
-  'ae76c35e323bed7215e23bb74f40fd9c4b8e31fffa806ead8df68a3c124964b5',
+  '5d84abf95f23852eec531cae0f425199650e51008dd6e6ecc0d99afb4a1f3b8a',
 ];
 const RESOLVER_USES = [
   'call:audited:consumer0',
+  'call:audited:consumer1',
   'call:audited:consumer1',
   'call:audited:consumer1',
   'call:audited:consumer1',
@@ -2122,11 +2207,12 @@ async function makeEligible(round: string, cycle: string, profile: string) {
   // made the two bands collide whenever the calendar walked one onto the other. A fresh trainer
   // per call removes the collision by construction, and costs no timestamp change.
   const laneTrainer = await newTrainerId(c);
-  const slot = (await c.query(`INSERT INTO public.availability_slots
-    (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-    VALUES (gen_random_uuid(),$1,$2,$3,now()+interval '2 days'+make_interval(hours => ${lane}),
-            now()+interval '2 days 1 hour'+make_interval(hours => ${lane}),4,now()+interval '30 days')
-    RETURNING id`, [laneTrainer, ACADEMY, cycle])).rows[0].id;
+  const slot = await insertSlot(c, {
+    trainer: laneTrainer, academy: ACADEMY, sourceCycle: cycle,
+    start: { at: 'fromNow', days: 2, minutes: lane * 60 },
+    end: { at: 'fromNow', days: 2, minutes: (lane + 1) * 60 },
+    maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 30 },
+  });
   const claim = (await c.query(`INSERT INTO public.slot_priority_claims(slot_id,player_id,status)
     VALUES ($1,$2,'pending') RETURNING id`, [slot, profile])).rows[0].id;
   await c.query(`INSERT INTO public.rebook_round_recipient_claim_sources
@@ -2147,13 +2233,78 @@ async function makeEligible(round: string, cycle: string, profile: string) {
 // is the only writer, which is the property under test.
 const APPLY_LOCATION = '11111111-2222-4333-8444-555555555555';
 
+/**
+ * THE WEEKLY DEFAULT'S BASE, AND THE ZONE IT IS LOCAL TO.
+ *
+ * Series identity is (trainer, location, LOCAL weekday, LOCAL time, duration), so "a whole week
+ * later" is a CALENDAR step in the academy's zone — not 168 absolute hours. These two are bare
+ * `timestamp` texts precisely so the step happens BEFORE the conversion; see `SlotTime`'s `local`
+ * arm. Parity is preserved at the base: 1 September is CEST, so `19:00` local IS `17:00Z`, which
+ * every fixture pinning the pre-transition instant still means.
+ */
+const ACADEMY_ZONE = 'Europe/Amsterdam';
+const WEEKLY_BASE_START = '2026-09-01 19:00:00';
+const WEEKLY_BASE_END = '2026-09-01 20:00:00';
+
+/**
+ * EVERY COLUMN OF `availability_slots` THAT IS NOT PER-SLOT, in sorted order.
+ *
+ * The template sweep asserts this exact set, so the projection it takes cannot quietly stop
+ * covering a field. Five columns are removed before the comparison because two lanes are MEANT to
+ * differ in them: the identity, the creation instant, the two window bounds the lane allocator
+ * moves, and the cycle both lanes take by parameter.
+ *
+ * A COLUMN ADDED TO THE RELATION FAILS HERE, which is the point: joining the template vector then
+ * becomes a deliberate edit to the coherence matrix instead of a gap nobody notices.
+ */
+const TEMPLATE_SWEEP_KEYS = [
+  'academy_profile_id', 'allow_single_booking', 'court_type', 'cyclus_name', 'extra_costs',
+  'is_public', 'is_recurring', 'lesson_id', 'location_id', 'max_participants', 'max_rating',
+  'member_window_ends_at', 'member_window_starts_at', 'min_participants', 'min_rating',
+  'price_per_session', 'prices_include_vat', 'priority_source_slot_id',
+  'priority_window_ends_at', 'priority_window_starts_at', 'public_release_status',
+  'rating_system', 'recurrence_rule', 'source_cycle_id', 'split_payment', 'total_price',
+  'trainer_id', 'training_level', 'whole_slot_booking',
+];
+
+/**
+ * What a source-slot fixture may vary, as VALUES.
+ *
+ * This used to be `Record<string, string>` of SQL fragments. Two things were wrong with that and
+ * only one of them was the interpolation: a free-form record also admits any KEY, so a typo
+ * silently seeded a default instead of the field a case is about — and a coherence matrix that
+ * names seventeen fields is exactly where that goes unnoticed. Both are closed by naming them.
+ *
+ * `null` means the COLUMN is NULL, which two cases genuinely need: `count(DISTINCT x)` ignores
+ * NULLs, so "one source NULL, one not" is the case a naive coherence check calls coherent.
+ */
+interface MkSlotOverrides {
+  location?: string;
+  start?: SlotTime;
+  end?: SlotTime;
+  court?: string | null;
+  level?: string | null;
+  minp?: number | null;
+  maxp?: number | null;
+  rsys?: string | null;
+  minr?: string | null;
+  maxr?: string | null;
+  vat?: boolean;
+  split?: boolean;
+  single?: boolean;
+  whole?: boolean;
+  price?: string | null;
+  total?: string | null;
+  extra?: string | null;
+}
+
 /** Seed ONE coherent same-academy source series (= one child): `count` weekly slots sharing the
  *  template vector, with `cohortProfiles` account players and `cohortGuests` guests booked
  *  non-cancelled on the FIRST slot. Cohort identities are REAL `profiles`/`guest_players` rows,
  *  because the pending claims the apply writes carry genuine foreign keys to both. */
 async function seedApplySeries(client: pg.Client, o: {
   startIso: string; count?: number; cohortProfiles?: number; cohortGuests?: number;
-  court?: string; price?: string; total?: string; trainer?: IsolatedTrainerId;
+  court?: string; price?: string; total?: string; trainer?: string;
 }) {
   // ONE trainer PER TEST, not per call. `trainer` is part of the template vector that decides
   // whether two series are one child, and several fixtures seed two or three series in a single
@@ -2165,14 +2316,12 @@ async function seedApplySeries(client: pg.Client, o: {
   for (let i = 0; i < (o.count ?? 1); i += 1) {
     const start = new Date(Date.parse(o.startIso) + i * 7 * 24 * 3600 * 1000).toISOString();
     const end = new Date(Date.parse(start) + 3600 * 1000).toISOString();
-    slots.push((await client.query(`INSERT INTO public.availability_slots
-      (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-       min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-       split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-      VALUES (gen_random_uuid(),'${seriesTrainer}','${APPLY_LOCATION}',$1,$2,$3,
-              ${sqlFragment(o.court ?? `'indoor'`)},'B',2,4,'padel',1.0,3.0,true,
-              true,true,false,${sqlFragment(o.price ?? '12.50')},${sqlFragment(o.total ?? '50.00')},'[]'::jsonb)
-      RETURNING id`, [ACADEMY, start, end])).rows[0].id);
+    slots.push(await insertTemplateSlot(client, {
+      trainer: seriesTrainer, academy: ACADEMY, location: APPLY_LOCATION,
+      start: { at: 'instant', iso: start }, end: { at: 'instant', iso: end },
+      court: o.court ?? 'indoor',
+      pricePerSession: o.price ?? '12.50', totalPrice: o.total ?? '50.00',
+    }));
   }
   const profiles: string[] = [];
   const guests: string[] = [];
@@ -2210,8 +2359,56 @@ const normalizedIntentParams = (o: Record<string, unknown>) => ({
   slots: [] as string[], children: [] as string[], targets: [] as string[], ...o,
 });
 
+/**
+ * ══ THE INDIRECT PATH, CHECKED ON THE VALUES THAT ACTUALLY ARRIVE ════════════════════════════
+ *
+ * The apply and extend cores never take a trainer. They derive the TARGET trainer from the SOURCE
+ * SLOTS the caller hands them — `v_r_trainer`, aggregated from the locked source rows — so a
+ * fixture that passes ANOTHER TEST'S slot writes into that test's overlap namespace without ever
+ * naming a trainer. That is the whole indirect class, and no type can see it: a slot id is an
+ * ordinary `string`.
+ *
+ * WHY THIS IS RUNTIME AND NOT STATIC. A review round defeated the static follower this replaces
+ * with `{ get slots() { return SHARED } }` — a getter no syntactic reader evaluates. Asking the
+ * REGISTRY about the values that actually arrive is immune to how they got here: a getter, a
+ * spread, an aliased array mutated after the fact, a value laundered through `any`. All of them
+ * produce the same strings by the time this runs.
+ *
+ * OWNERSHIP IS CHECKED; EXISTENCE IS NOT. Cases deliberately pass a `randomUUID()` ghost, a
+ * `null`, or a foreign ACADEMY's slot, because "a caller who guesses a real UUID learns exactly
+ * what one who invents a UUID learns" is itself a property under test. An id no test owns cannot
+ * carry another test's namespace, so it is left alone; an id another test owns is refused.
+ */
+const assertSourceSlotsOwned = (slots: readonly unknown[] | undefined, driver: string) =>
+  assertSlotsNotForeign(slots ?? [], `the source slots handed to ${driver}`);
+
+/**
+ * THE WRITING APPLY PATHS ARE NOT SPELLED IN THIS FILE AT ALL.
+ *
+ * A round-1 review found the ownership check on the `applyNormalized` driver alone; a round-2
+ * review found the count pinned on ONE rendering of the call; and four further rounds each found
+ * the next hole in the READER that was supposed to prove the pairing — a hole in an expression
+ * position that IS a call, a `for…of` destructuring default, a computed subscript into a stored
+ * call map, a constructor parameter property. Every fix moved the hole, because "does this
+ * JavaScript reach that routine" is a dataflow question with no oracle to ask.
+ *
+ * So the question is gone. Every writing invocation lives in `src/test/abc27ApplyCatalogue.ts`,
+ * whose typed entrypoints bind the ownership check to the statement in one linear body, on the
+ * EVALUATED values, in every run. This file may not spell either writing routine's name outside
+ * the guard's pinned inventory of decided, non-invoking mentions — which is a question about
+ * TOKENS, not about dataflow, and is the containment the guard now enforces.
+ *
+ * `previewNormalized` below is NOT one of them: it reads, so it keeps its own source-slot check.
+ */
+
+/** An identity list in its ordinary presentation, for a catalogue argument that is rendered. */
+const renderedList = (
+  values: readonly string[], type: 'uuid' | 'date' | 'text' = 'uuid',
+): RenderedArray => ({ kind: 'literal', type, values });
+
 async function previewNormalized(client: pg.Client, o: Record<string, unknown> = {}) {
   const p = normalizedIntentParams(o);
+  assertSourceSlotsOwned(p.slots, 'previewNormalized');
   return (await client.query(
     `SELECT * FROM public.rebook_round_preview_normalized_core(
        $1,$2,$3,$4,$5,$6,$7,$8::date,$9::date,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
@@ -2223,17 +2420,28 @@ async function previewNormalized(client: pg.Client, o: Record<string, unknown> =
       p.hFrom, p.hTo, p.hLabel, p.slots, p.children, p.targets])).rows[0];
 }
 
+/**
+ * The shared apply driver. It computes VALUES and hands them to the catalogue, which holds the
+ * statement and performs the ownership check — including claiming the TARGETS.
+ *
+ * THE TARGETS BECOME THIS TEST'S SLOTS TOO. They are client-minted UUIDs (the contract is
+ * `..._PREVIEWED_TARGET_SLOT_UUIDS_ONLY`), so the apply writes rows this test named — and a later
+ * fixture handing one of them BACK as a source is the same indirect reuse, one hop further along.
+ * The catalogue claiming them is what lets the source check see it.
+ */
 async function applyNormalized(client: pg.Client, o: Record<string, unknown> = {}) {
   const p = normalizedIntentParams(o);
-  return (await client.query(
-    `SELECT * FROM public.rebook_round_apply_normalized_core(
-       $1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10::date,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,
-       $22,$23,$24,$25,$26,$27,$28::date[],$29::date[],$30::text[],$31::uuid[],$32::uuid[],$33::uuid[],$34)`,
-    [(o.actor as string) ?? FIXTURE_ACTOR, (o.academy as string) ?? ACADEMY,
-      p.version, p.kind, o.command, p.round, p.expected,
-      p.label, p.start, p.end, p.weeks, p.prio, p.member, p.pay, p.strict, p.mode, p.split,
-      p.review, p.price, p.auto, p.lead, p.isub, p.ibody, p.rsub, p.rbody, p.rules, p.claim,
-      p.hFrom, p.hTo, p.hLabel, p.slots, p.children, p.targets, o.fingerprint])).rows[0];
+  return (await applyNormalizedCore(client, {
+    actor: (o.actor as string) ?? FIXTURE_ACTOR, academy: (o.academy as string) ?? ACADEMY,
+    version: p.version, kind: p.kind, command: o.command, round: p.round, expected: p.expected,
+    label: p.label, start: p.start, end: p.end, weeks: p.weeks, prio: p.prio, member: p.member,
+    pay: p.pay, strict: p.strict, mode: p.mode, split: p.split,
+    review: p.review, price: p.price, auto: p.auto, lead: p.lead, isub: p.isub, ibody: p.ibody,
+    rsub: p.rsub, rbody: p.rbody, rules: p.rules, claim: p.claim,
+    hFrom: p.hFrom, hTo: p.hTo, hLabel: p.hLabel,
+    slots: p.slots, children: p.children, targets: p.targets,
+    fingerprintHex: fingerprintHexOf(o.fingerprint, 'the fingerprint applyNormalized presents'),
+  })).rows[0];
 }
 
 /** Preview → mint the exact identity pool → apply. When the caller has no pool yet, the first
@@ -3758,10 +3966,11 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
       [ACADEMY, round, FIXTURE_ACTOR]);
       const guest = (await c.query(`INSERT INTO public.guest_players
         (id,full_name,academy_profile_id) VALUES (gen_random_uuid(),'Round guest',$1) RETURNING id`, [ACADEMY])).rows[0].id;
-      const slot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        VALUES (gen_random_uuid(),$1,$2,$3,now()+interval '1 day',now()+interval '1 day 1 hour',4,now()+interval '7 days') RETURNING id`,
-      [await testTrainer(c), ACADEMY, cycle])).rows[0].id;
+      const slot = await insertSlot(c, {
+        trainer: await testTrainer(c), academy: ACADEMY, sourceCycle: cycle,
+        start: { at: 'fromNow', days: 1 }, end: { at: 'fromNow', days: 1, minutes: 60 },
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 7 },
+      });
       const claim = (await c.query(`INSERT INTO public.slot_priority_claims(slot_id,guest_player_id,status)
         VALUES ($1,$2,'pending') RETURNING id`, [slot, guest])).rows[0].id;
       const recipient = (await c.query(`INSERT INTO public.rebook_round_recipients
@@ -3812,10 +4021,11 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
                 pg_catalog.convert_to('{}','UTF8'),
                 pg_catalog.sha256(pg_catalog.convert_to('{}','UTF8')))`,
       [ACADEMY, round, FIXTURE_ACTOR]);
-      const slot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        VALUES (gen_random_uuid(),$1,$2,$3,now()+interval '1 day',now()+interval '1 day 1 hour',4,
-                now()+interval '7 days') RETURNING id`, [await testTrainer(c), ACADEMY, cycle])).rows[0].id;
+      const slot = await insertSlot(c, {
+        trainer: await testTrainer(c), academy: ACADEMY, sourceCycle: cycle,
+        start: { at: 'fromNow', days: 1 }, end: { at: 'fromNow', days: 1, minutes: 60 },
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 7 },
+      });
 
       await c.query(`CREATE TEMP TABLE abc27_scale_subjects ON COMMIT DROP AS
         SELECT n,gen_random_uuid() AS user_id,gen_random_uuid() AS profile_id,
@@ -3962,11 +4172,13 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
       ['70000000-0000-4000-8000-000000000009', profiles.mixedClaimed, 'claimed'],
     ];
     for (const [slot, profile, status] of claims) {
-      await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        VALUES ($1,$2,$3,$4,now()+interval '2 days'+make_interval(hours => $5),
-                now()+interval '2 days 1 hour'+make_interval(hours => $5),4,now()+interval '8 days')`,
-      [slot, await testTrainer(c), ACADEMY, CYCLE, nextSlotLane()]);
+      const lane = nextSlotLane();
+      await insertSlot(c, {
+        id: slot, trainer: await testTrainer(c), academy: ACADEMY, sourceCycle: CYCLE,
+        start: { at: 'fromNow', days: 2, minutes: lane * 60 },
+        end: { at: 'fromNow', days: 2, minutes: (lane + 1) * 60 },
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 8 },
+      });
       await c.query(`INSERT INTO public.slot_priority_claims(slot_id,player_id,status) VALUES ($1,$2,$3)`,
         [slot, profile, status]);
     }
@@ -4012,11 +4224,13 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
     await c.query('BEGIN');
     try {
       await c.query(`ALTER TABLE public.slot_priority_claims DROP CONSTRAINT ${quoteIdent(check.rows[0].conname)}`);
-      await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        VALUES ($1,$2,$3,$4,now()+interval '2 days'+make_interval(hours => $5),
-                now()+interval '2 days 1 hour'+make_interval(hours => $5),4,now()+interval '8 days')`,
-      [slot, await testTrainer(c), ACADEMY, CYCLE, nextSlotLane()]);
+      const lane = nextSlotLane();
+      await insertSlot(c, {
+        id: slot, trainer: await testTrainer(c), academy: ACADEMY, sourceCycle: CYCLE,
+        start: { at: 'fromNow', days: 2, minutes: lane * 60 },
+        end: { at: 'fromNow', days: 2, minutes: (lane + 1) * 60 },
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 8 },
+      });
       await c.query(`INSERT INTO public.slot_priority_claims(slot_id,player_id,status)
         VALUES ($1,$2,'future_sixth')`, [slot, profile]);
       await c.query(`INSERT INTO public.rebook_round_recipients
@@ -6034,15 +6248,18 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
         slots: ser.slots, children: ser.slots.map(() => child), targets,
       });
       expect(reviewed.status).toBe('previewed');
-      const applyAsActor = (o: Record<string, unknown>) => c.query(
-        `SELECT * FROM public.rebook_round_apply_command_as_actor(
-           $1,$2,'abc27.wire.v1','create',$3,NULL,'Receipt privacy','2026-10-05'::date,NULL::date,2,
-           7,0,'deferred_split',false,'inherit',false,false,NULL,true,NULL,
-           NULL,NULL,NULL,NULL,NULL,NULL,
-           '{}'::date[],'{}'::date[],'{}'::text[],$4::uuid[],$5::uuid[],$6::uuid[],$7)`,
-        [ACADEMY, cmd, round, o.slots ?? ser.slots,
-          o.children ?? ser.slots.map(() => child), o.targets ?? targets,
-          o.fingerprint ?? reviewed.review_fingerprint]);
+      // THE SAME CHECK THE NORMALIZED DRIVER MAKES, and for the same reason: this wrapper WRITES
+      // and derives its target trainer from these source slots. It is the catalogue's entrypoint
+      // that makes the check unskippable rather than a line somebody remembered to write.
+      const applyAsActor = (o: Record<string, unknown>) =>
+        applyCommandAsActorReceiptPrivacy(c, {
+          academy: ACADEMY, command: cmd, round,
+          slots: (o.slots as string[] | undefined) ?? ser.slots,
+          children: (o.children as string[] | undefined) ?? ser.slots.map(() => child),
+          targets: (o.targets as string[] | undefined) ?? targets,
+          fingerprintHex: fingerprintHexOf(o.fingerprint ?? reviewed.review_fingerprint,
+            'the fingerprint the receipt-privacy round presents'),
+        });
 
       // T-R2 THE OWNER APPLIES: bytes, digest and version come from the core, and they match the
       // stored authority byte for byte (the lifecycle wrapper's long-proven shape is the model).
@@ -6060,7 +6277,11 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
       // T-R1 THE PEER, first with the cheapest refused payload — a malformed review fingerprint,
       // refused before any derivation or lock — receives NULL bytes.
       await c.query(`SELECT set_config('request.jwt.claims','{"sub":"${peer}"}',true)`);
-      const invalid = (await applyAsActor({ fingerprint: Buffer.alloc(16) })).rows[0];
+      // SIXTEEN BYTES, WRITTEN AS THE THIRTY-TWO HEX CHARACTERS THEY ARE. The product rule that a
+      // review fingerprint is 32 bytes belongs to the database, and this case exists to watch
+      // PostgreSQL enforce it — so the value stays exactly as short as it was, in the boundary's
+      // own currency rather than as a mutable buffer.
+      const invalid = (await applyAsActor({ fingerprint: '0'.repeat(32) })).rows[0];
       expect(invalid.status).toBe('review_fingerprint_mismatch');
       expect([invalid.receipt_canonical, invalid.receipt_digest, invalid.round_version])
         .toEqual([null, null, null]);
@@ -6619,11 +6840,13 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
       const user = (await c.query(`INSERT INTO auth.users(id) VALUES (gen_random_uuid()) RETURNING id`)).rows[0].id;
       const profile = (await c.query(`UPDATE public.profiles SET preferred_language='en'
         WHERE user_id=$1 RETURNING id`, [user])).rows[0].id;
-      const slot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        VALUES (gen_random_uuid(),$1,$2,$3,now()+interval '2 days'+make_interval(hours => $4),
-                now()+interval '2 days 1 hour'+make_interval(hours => $4),4,now()+interval '8 days')
-        RETURNING id`, [await testTrainer(c), ACADEMY, cycle, nextSlotLane()])).rows[0].id;
+      const lane = nextSlotLane();
+      const slot = await insertSlot(c, {
+        trainer: await testTrainer(c), academy: ACADEMY, sourceCycle: cycle,
+        start: { at: 'fromNow', days: 2, minutes: lane * 60 },
+        end: { at: 'fromNow', days: 2, minutes: (lane + 1) * 60 },
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 8 },
+      });
       // A DECLINED claim: the freeze must still capture the person (capture is claim-backed
       // membership, not eligibility), the decision loop then terminally skips them, so ONE
       // materializer call reaches completion deterministically.
@@ -6681,12 +6904,18 @@ describe.sequential('ABC-27 D7 checkpoint 1 — real shipped predecessor chain',
         VALUES (gen_random_uuid(),$1,'academy','Bound sibling','open',current_date) RETURNING id`, [ACADEMY])).rows[0].id;
       await withCycleApplyGuardDisabled(c, () =>
         c.query(`UPDATE public.cycles SET rebook_round_id=$1 WHERE id=$2`, [round, cycle]));
-      const { rows: slots } = await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        SELECT gen_random_uuid(),$1,$2,$3,
-               now()+interval '2 days'+make_interval(hours => $4 + g),
-               now()+interval '2 days 1 hour'+make_interval(hours => $4 + g),4,now()+interval '8 days'
-          FROM generate_series(1,5) g RETURNING id`, [await testTrainer(c), ACADEMY, cycle, nextSlotLane() * 8]);
+      // FIVE SLOTS ON ONE TRAINER, an hour apart — the same lane the `generate_series` this
+      // replaces walked, with `WITH ORDINALITY` supplying the `g` it stepped by.
+      const laneBase = nextSlotLane() * 8;
+      const fiveTrainer = await testTrainer(c);
+      const slotIds5 = await insertSlotSeries(c, {
+        trainers: Array.from({ length: 5 }, () => fiveTrainer),
+        academy: ACADEMY, sourceCycle: cycle,
+        baseOffsetDays: 2,
+        startMinutes: (laneBase + 1) * 60, endMinutes: (laneBase + 2) * 60, stepMinutes: 60,
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 8 },
+      });
+      const slots = slotIds5.map((id) => ({ id }));
       // 2,000 people, each claiming all five slots: 10,000 sources over exactly 2,000
       // recipients — MATERIALLY over the ceiling while only the claim-source bound is exceeded
       // (review round 3): a gate that only fired when both ceilings tripped would fail this
@@ -11905,6 +12134,55 @@ ${DISPATCH}
   // exemplar loop below sets every settable timeout the server knows — each one interpolated into
   // its statement with `%s`, so nothing about the name is present in the text being executed — and
   // requires the witness to report every one of them by name.
+  // The control's own budget, named once so the read-back floor below and the timeout here
+  // cannot drift apart: a GUC shorter than the whole budget is one that can fire mid-control.
+  const VOCAB_BUDGET_MS = 120_000;
+  it('the rendered bytea means the same bytes whatever `standard_conforming_strings` says',
+    async () => {
+      // ══ AN AMBIENT SETTING USED TO DECIDE WHAT THE FINGERPRINT WAS ═══════════════════════════
+      //
+      // The renderer wrote `'\x<hex>'::bytea`, which is the hex INPUT form only while
+      // `standard_conforming_strings` is `on`. With it `off` the backslash is a string escape and
+      // the identical literal denotes different bytes — so the value depended on a GUC this file
+      // never set and a session could arrive with either. It renders `pg_catalog.decode(…,'hex')`
+      // now, which contains no backslash and so cannot be read two ways.
+      //
+      // THE PROOF IS THE RENDERER'S OWN OUTPUT, not a restatement of it: the fragment is taken
+      // out of a statement the catalogue actually built, and evaluated under BOTH settings.
+      const sent: string[] = [];
+      const recorder = {
+        query: (text: string) => { sent.push(text); return Promise.resolve({ rows: [] }); },
+      };
+      const fingerprint = Buffer.from('abc27-fingerprint', 'utf8');
+      await applyCommandAsActorRenderedBarrier(recorder as never, {
+        academy: randomUUID(), round: randomUUID(),
+        fingerprintHex: fingerprintHexOf(fingerprint, 'the barrier decode fingerprint'),
+        slots: [], targets: [],
+        sources: { kind: 'literal', type: 'uuid', values: [randomUUID()] },
+        children: { kind: 'literal', type: 'uuid', values: [randomUUID()] },
+        targetArray: { kind: 'literal', type: 'uuid', values: [randomUUID()] },
+      });
+      const fragment = /pg_catalog\.decode\('[0-9a-f]*','hex'\)/.exec(sent[0] ?? '')?.[0];
+      expect(fragment, 'the barrier must render its fingerprint through `decode`').toBeTruthy();
+      // ...and it carries no backslash, which is the whole reason it cannot be re-read.
+      expect(fragment).not.toContain('\\');
+
+      const bytesUnder = async (setting: 'on' | 'off') => {
+        await admin.query(`SET standard_conforming_strings = ${setting}`);
+        try {
+          const { rows } = await admin.query<{ b: Buffer }>(`SELECT ${fragment} AS b`);
+          return Buffer.from(rows[0].b);
+        } finally { await admin.query('RESET standard_conforming_strings'); }
+      };
+      const on = await bytesUnder('on');
+      const off = await bytesUnder('off');
+      expect({
+        onEqualsSource: on.equals(fingerprint),
+        offEqualsSource: off.equals(fingerprint),
+        settingCannotChangeIt: on.equals(off),
+      }).toEqual({ onEqualsSource: true, offEqualsSource: true, settingCannotChangeIt: true });
+    }, 60_000);
+
   it('the timeout vocabulary is the server\'s own, and the witness names a write of each', async () => {
     const named = (await admin.query<{ name: string }>(
       `SELECT name FROM pg_catalog.pg_settings WHERE name LIKE '%timeout%' ORDER BY name`)).rows
@@ -11923,6 +12201,9 @@ ${DISPATCH}
     }
 
     const VOCAB_DB = 'abc27_timeout_vocabulary';
+    // Read back INSIDE the probe session, reported OUT here, so the assertion below sees it.
+    let stillDangerous: string[] = [];
+    let unreadBack: string[] = ['<the read-back never ran>'];
     const { value: witnessed, cleanup } = await withProbeClients(
       { databases: [VOCAB_DB] }, async (open) => {
         await admin.query(`DROP DATABASE IF EXISTS ${VOCAB_DB} WITH (FORCE)`);
@@ -11930,11 +12211,64 @@ ${DISPATCH}
         // Opened BEFORE the window, so its own `SET search_path` is not in it.
         const client = await open(VOCAB_DB, { label: 'vocabulary' });
         await witnessReset();
+        // ── THE VALUE IS SAFE ON PURPOSE, AND `1ms` WAS NOT ──────────────────────────────
+        //
+        // THIS LOOP USED TO SET EVERY TIMEOUT TO `'1ms'`, AND THAT COST A FULL DATABASE RUN:
+        //
+        //   FATAL: terminating connection due to idle-session timeout
+        //
+        // `settable` is ordered by name, so the damage was never confined to one GUC.
+        // `idle_session_timeout` is third: from the moment it is written, every REMAINING round
+        // trip has one millisecond to arrive or the server closes the session.
+        // `statement_timeout` is fifth: after it, every remaining `DO` block has one millisecond
+        // to COMPLETE. That this control passed at all was a statement about a loopback socket
+        // being faster than a millisecond, and under load it stopped being true.
+        //
+        // The value was never the point. What this control proves is that the vocabulary comes
+        // from the server and that the witness can NAME a write of each entry — and the witness
+        // records `SET <name> = $1` whatever the value is, because PostgreSQL normalises the
+        // value and leaves the name alone. So the value is now one that cannot fire inside a
+        // 120-second test: ten minutes, in every timeout the server will sell us.
+        //
+        // NOTHING IS DROPPED AND NOTHING IS HIDDEN. `idle_session_timeout` is still derived from
+        // the catalog, still written through `format('%s')`, and still required below to be named
+        // by the witness. The only thing that changed is that the write can no longer terminate
+        // the connection that is being used to make it. A value out of range for some future
+        // timeout GUC fails this statement loudly, which is the correct outcome.
+        // THE FLOOR IS THE TEST'S OWN BUDGET, NOT AN ARBITRARY MINUTE. A first version
+        // called anything under 60 s safe while this control may run for 120 s, so an effective
+        // 90-second timeout passed the check and could still fire. Nothing shorter than the
+        // whole budget can be called unable to fire.
+        const SAFE_TIMEOUT = '600s';
         for (const name of settable) {
           const asLiteral = `'${name.replace(/'/g, "''")}'`;
           await client.query(
-            `DO $vocab$ BEGIN EXECUTE format('SET %s = %L', ${asLiteral}, '1ms'); END $vocab$;`);
+            `DO $vocab$ BEGIN EXECUTE format('SET %s = %L', ${asLiteral}, `
+            + `'${SAFE_TIMEOUT}'); END $vocab$;`);
         }
+        // …AND THE SETS ACTUALLY TOOK, which the witness alone does not establish: it records
+        // that a statement ran, not that the server kept its effect. Every settable timeout is
+        // read back through the session that wrote it, and none may still be short enough to
+        // fire. This is what makes "deterministic" a measured claim rather than an assurance.
+        const readBack = await client.query<{ name: string, ms: number }>(
+          `SELECT name, setting::bigint * CASE unit WHEN 'ms' THEN 1 WHEN 's' THEN 1000
+                    WHEN 'min' THEN 60000 ELSE 1 END AS ms
+             FROM pg_catalog.pg_settings
+            WHERE name = ANY(pg_catalog.string_to_array($1, ','))`, [settable.join(',')]);
+        //
+        // ZERO IS "DISABLED", NOT "IMMEDIATE", and reading it as danger was wrong. Measured on
+        // this host, seven of the eight hold 600000 ms and `tcp_user_timeout` holds 0: the
+        // platform has no `TCP_USER_TIMEOUT`, so the server keeps the GUC at 0 — which is
+        // PostgreSQL's spelling of "no timeout at all". A GUC that cannot fire is the outcome
+        // this control wants, so 0 is safe and only a SHORT POSITIVE value is not.
+        stillDangerous = readBack.rows
+          .filter((r) => Number(r.ms) !== 0 && Number(r.ms) < VOCAB_BUDGET_MS)
+          .map((r) => `${r.name}=${r.ms}ms`).sort();
+        // ...AND EVERY NAME CAME BACK. Without this the read-back proves nothing on its own: an
+        // empty result — a `WHERE` that matched nothing, a query that stopped being run at all —
+        // also yields an empty `stillDangerous`, so the whole read could be deleted and the
+        // control would stay green. Totality is what makes "reads each one back" a measurement.
+        unreadBack = settable.filter((n) => !readBack.rows.some((r) => r.name === n)).sort();
         return witnessSnapshot(VOCAB_DB);
       });
     // The witness's answer, reduced to the GUC each recorded operation actually named. PostgreSQL
@@ -11956,19 +12290,25 @@ ${DISPATCH}
       // …and it saw nothing else, so the loop above cannot be clearing the check by writing more
       // than it was asked to.
       witnessedButNotSettable: namedByTheWitness.filter((n) => !settable.includes(n)),
+      // …and no timeout was left short enough to fire during this control, which is the
+      // property that makes it deterministic rather than fast-machine-dependent.
+      stillDangerous,
+      // …and the read-back saw every settable timeout, so an empty read cannot pass for a clean
+      // one. It starts non-empty for the same reason: a control that never ran must not agree.
+      unreadBack,
       // …and this control gave back what it declared, like every other one. A cleanup record that
       // no caller reads is a record that can quietly stop being true.
       cleanup,
     }).toEqual({
       missingFromVocabulary: [], notSettableButClaimed: [], unwitnessed: [],
-      witnessedButNotSettable: [],
+      witnessedButNotSettable: [], stillDangerous: [], unreadBack: [],
       cleanup: {
         clientsClosed: ['vocabulary:closed'],
         socketsAlive: 0,
         databasesDropped: [`${VOCAB_DB}:dropped`],
       },
     });
-  }, 120_000);
+  }, VOCAB_BUDGET_MS);
 
   it("the runbook's census recovers a local gid and excludes a foreign OID collision", async () => {
     const GID = 'abc27_census_local';
@@ -13075,72 +13415,142 @@ ${DISPATCH}
   // remaining budget had been computed, so the deadline could be overrun and the eventual spawn
   // still handed a stale allowance. The stats are gone; the bounded invocation is the only test.
   //
-  // THE FIXTURE IS A psql THAT REFUSES TO DIE POLITELY. `trap "" TERM` makes the fake ignore
-  // SIGTERM, which is Node's DEFAULT kill signal for a `spawnSync` timeout — so this control also
-  // measures that `killSignal: 'SIGKILL'` is doing the work. Without it the first probe would hang
-  // for the fake's full sleep and this test would time out rather than fail.
+  // WHAT THIS CONTROL USED TO ASK, AND WHY IT WAS THE WRONG QUESTION. It wrote three fake shell
+  // scripts that appended to a marker file and then slept, ran the resolver against them under a
+  // 1.5-second budget, and asserted (a) that the marker existed and (b) that the wall clock came
+  // in under a ceiling. Both are questions about the OPERATING SYSTEM'S SCHEDULER: (a) is "was a
+  // `/bin/sh` child scheduled far enough to append one line inside 1.5 s", and on a machine
+  // booting 163 embedded PostgreSQL servers the answer is sometimes no. MEASURED: it failed four
+  // of eleven full database runs, always while the suite was running, never while it was idle.
   //
-  // NOTHING HERE TOUCHES THE DATABASE. It is a pure function under a stopwatch.
+  // A gate that requires three consecutive green runs cannot be built on that, and the fix is not
+  // more time — more time would only move the odds. The question the control MEANS is arithmetic:
+  // which candidates were probed, in what order, with what timeout each, and did they share ONE
+  // budget. So the resolver takes an injected probe and clock, and this asks exactly that, with
+  // no child process, no temporary file and no wall clock anywhere in the assertion.
+  //
+  // THE DEFAULTS ARE NOT WIDENED AND NOT OVERRIDDEN. This drive passes no `budgetMs` at all, so it
+  // runs on the real `PSQL_RESOLVE_MS` (30 s) and the real `PSQL_PROBE_MS` (15 s) — the arithmetic
+  // below is the arithmetic production does. And the real client is still exercised: the `\gset`
+  // control above drives this same resolver against the live cluster through eleven real psql
+  // invocations, which is where execution coverage lives and always did.
   it('the psql resolver spends one budget across all candidates, and fails loudly when none answers', () => {
-    const dir = rememberDisposable(mkdtempSync(join(tmpdir(), 'abc27-resolver-')));
-    try {
-      const marker = join(dir, 'invoked');
-      // THREE DISTINCT candidates, so deduplication cannot be what bounds this: each is a separate
-      // path, and each would cost a full probe if the budget were per-candidate rather than total.
-      const fakes = ['psql-a', 'psql-b', 'psql-c'].map((name) => {
-        const path = join(dir, name);
-        writeFileSync(path, `#!/bin/sh\ntrap "" TERM\necho ${name} >> ${JSON.stringify(marker)}\nsleep 30\n`);
-        chmodSync(path, 0o755);
-        return path;
-      });
-
+    {
       // Taken from the tree on the bytes as they are on disk right now, which is what lets a
       // mutant that edits the resolver be seen by this control at all.
       const envelope = auditResolverEnvelope();
-      const BUDGET_MS = 1_500;
-      const started = Date.now();
+
+      // ── A FAKE CLOCK AND A FAKE PROBE ────────────────────────────────────────────────────
+      //
+      // The probe records what it was asked and then CONSUMES exactly the timeout it was granted,
+      // which is what a hung candidate does to a real deadline. Nothing is scheduled and nothing
+      // is slept: the clock moves because the probe says so.
+      const probes: Array<{ candidate: string; timeoutMs: number; at: number }> = [];
+      let clock = 0;
+      const now = () => clock;
+      const hangingProbe = (candidate: string, timeoutMs: number) => {
+        probes.push({ candidate, timeoutMs, at: clock });
+        clock += timeoutMs;
+        return { error: Object.assign(new Error('killed'), { code: 'ETIMEDOUT' }),
+          status: null, stdout: '' };
+      };
+
+      // THREE DISTINCT candidates, so deduplication cannot be what bounds this: each is a separate
+      // path, and each would cost a full probe if the budget were per-candidate rather than total.
       let hung = '<returned without throwing>';
       try {
-        resolvePsql('18', { candidates: fakes, budgetMs: BUDGET_MS });
+        resolvePsql('18',
+          { candidates: ['/x/psql-a', '/x/psql-b', '/x/psql-c'], probe: hangingProbe, now });
       } catch (e) { hung = (e as Error).message; }
-      const elapsed = Date.now() - started;
+
+      // ── AND A BUDGET THAT DOES NOT DIVIDE EVENLY, WHICH IS WHERE THE SUBTRACTION SHOWS ──
+      //
+      // Under the full 30 s with a 15 s per-probe bound, both probes are granted the same amount —
+      // so a resolver that forgot to bound a probe by what is LEFT would produce an identical
+      // ledger above, and only the byte digest would notice. A 20 s budget does not divide: the
+      // second probe must be granted the 5 s that remain. Only an implementation that subtracts
+      // can say that, which is what makes this ledger a sensor rather than a restatement.
+      //
+      // NOT A WIDENING. 20 s is NARROWER than the 30 s default, which is untouched, as is the
+      // 15 s per-probe bound the first entry below still shows in full.
+      const partialLedger: Array<{ candidate: string; timeoutMs: number; at: number }> = [];
+      let partialClock = 0;
+      const partialProbe = (candidate: string, timeoutMs: number) => {
+        partialLedger.push({ candidate, timeoutMs, at: partialClock });
+        partialClock += timeoutMs;
+        return { error: Object.assign(new Error('killed'), { code: 'ETIMEDOUT' }),
+          status: null, stdout: '' };
+      };
+      try {
+        resolvePsql('18', {
+          candidates: ['/x/p1', '/x/p2', '/x/p3'], budgetMs: 20_000,
+          probe: partialProbe, now: () => partialClock,
+        });
+      } catch { /* every candidate hangs, so a refusal is the expected outcome here */ }
 
       // …and a candidate that cannot be executed at all is refused by the SPAWN, not by a stat.
+      // A path that does not exist and a DIRECTORY both fail in the PARENT — `spawnSync` returns
+      // ENOENT/EACCES without ever creating a child — so this arm needs no temporary file and no
+      // child is ever scheduled.
+      //
+      // THIS ARM DELIBERATELY INJECTS NEITHER SEAM: it is the retained real-`spawnSync` execution
+      // coverage, and injecting a fake probe here would test the fake instead of the spawn. It
+      // therefore reads the real clock, so it takes the REAL 30 s budget rather than a short one.
+      // Under the 1.5 s budget it used to pass, a 1.5 s pause between the deadline and the probe
+      // would have returned `resolver budget spent` instead of `--version did not answer` and
+      // failed the assertion below. Declining to narrow the default removes that cliff; it widens
+      // nothing, because 30 s IS the production default.
       let missing = '<returned without throwing>';
       try {
-        resolvePsql('18', { candidates: [join(dir, 'no-such-psql'), dir], budgetMs: BUDGET_MS });
+        resolvePsql('18', { candidates: ['/abc27-no-such-psql', '/'] });
       } catch (e) { missing = (e as Error).message; }
 
       // …and an empty candidate list is a loud failure too, not a silent one.
       let none = '<returned without throwing>';
-      try { resolvePsql('18', { candidates: [], budgetMs: BUDGET_MS }); } catch (e) {
+      try { resolvePsql('18', { candidates: [], budgetMs: 1_500 }); } catch (e) {
         none = (e as Error).message;
       }
 
       expect({
-        // The fake really ran: this is what makes the timing a measurement rather than a shortcut.
-        invoked: existsSync(marker),
-        // ONE BUDGET, NOT THREE — AND THE CEILING HAS TO BE ABLE TO SAY SO.
+        // ── ONE BUDGET, NOT THREE — SAID AS ARITHMETIC RATHER THAN AS A CEILING ────────────
         //
-        // THE PREVIOUS CEILING COULD NOT. It was 6 s, and the three implementations it had to tell
-        // apart take ~1.5 s (one shared deadline, correct), ~4.5 s (a budget RESET for each of the
-        // three candidates) and ~45 s (no total budget at all, each probe taking the full
-        // `PSQL_PROBE_MS`). Only the last of those exceeded 6 s, so the reset-per-candidate bug —
-        // the one this control is named for — would have passed every assertion here.
+        // THE PREVIOUS CEILING COULD NOT SAY IT, and a stopwatch cannot say it at all. The three
+        // implementations this has to tell apart are: ONE SHARED DEADLINE (correct), a budget
+        // RESET per candidate, and NO total budget. Under the real 15 s/30 s defaults they differ
+        // exactly here — and every difference is in this list, not in a duration:
         //
-        // The ceiling is therefore `BUDGET_MS * 2`: above the correct ~1.5 s by a full budget's
-        // worth of slack, and below the broken 4.5 s by more than a budget. `resolver-budget-reset-
-        // per-candidate` in the battery is the mutant that proves it discriminates.
-        boundedByOneSharedDeadline: elapsed < BUDGET_MS * 2,
+        //   correct  → probes `psql-a` then `psql-b`, 15 s each, and REFUSES `psql-c` because the
+        //              30 s aggregate is spent. Two probes, 30 s consumed, third never asked.
+        //   reset    → probes all THREE, because each gets a fresh 30 s. Three entries here.
+        //   no total → probes all THREE as well, and `remaining` never bounds anything.
+        //
+        // So the probe LEDGER is the discriminator: what was asked, in what order, with what
+        // timeout, starting at what point on the budget. `resolver-budget-reset-per-candidate` and
+        // `resolver-no-total-budget` in the battery are the mutants that prove it.
+        probeLedger: probes,
+        // …and the third candidate was refused for the budget specifically, not for an answer.
+        thirdRefusedForBudget: hung.includes('/x/psql-c: resolver budget spent'),
+        // …and the aggregate consumed is exactly one budget, not one per candidate.
+        clockConsumed: clock,
+        // …and a budget that does not divide evenly proves the SUBTRACTION, not just the sharing.
+        partialLedger,
+        partialClockConsumed: partialClock,
         // …and it did not return a client it never validated.
         hungCandidateRefused: hung.includes('no usable one was found'),
         // …and it names what it tried, so the failure is actionable.
-        namesWhatItTried: hung.includes('psql-a') && hung.includes('psql-b'),
+        namesWhatItTried: hung.includes('/x/psql-a') && hung.includes('/x/psql-b'),
         // A MISSING PATH AND A DIRECTORY both come back through the spawn, which is exactly the
         // question `existsSync`/`statSync`/`accessSync` used to answer — now answered under a
         // timeout instead of under none.
-        missingRefused: missing.includes('no usable one was found')
-          && missing.includes('--version did not answer'),
+        //
+        // EACH CANDIDATE IS NAMED SEPARATELY ON PURPOSE. A single `--version did not answer`
+        // matched either arm, so dropping one of the two candidates left the assertion passing
+        // and the ENOENT and EACCES routes were not independently sensed. Naming both means
+        // removing either one fails a DIFFERENT field.
+        missingRefused: missing.includes('no usable one was found'),
+        nonexistentPathRefusedBySpawn:
+          missing.includes('/abc27-no-such-psql: --version did not answer'),
+        directoryRefusedBySpawn: missing.includes('/: --version did not answer'),
         emptyRefused: none.includes('no usable one was found'),
         // ── AND THE SPAWN IS THE *ONLY* ROUTE A CANDIDATE IS TESTED BY ─────────────────────
         //
@@ -13203,11 +13613,25 @@ ${DISPATCH}
         // (That the REAL resolver still finds the real client is not restated here: the control
         // above runs it against this cluster and drives eleven psql invocations through it.)
       }).toEqual({
-        invoked: true,
-        boundedByOneSharedDeadline: true,
+        // TWO probes, in candidate order, each granted the full per-probe bound, the second
+        // starting exactly where the first finished — and no third, because 30 s is spent.
+        probeLedger: [
+          { candidate: '/x/psql-a', timeoutMs: 15_000, at: 0 },
+          { candidate: '/x/psql-b', timeoutMs: 15_000, at: 15_000 },
+        ],
+        thirdRefusedForBudget: true,
+        clockConsumed: 30_000,
+        // The second probe is granted the FIVE SECONDS THAT REMAIN, not another fifteen.
+        partialLedger: [
+          { candidate: '/x/p1', timeoutMs: 15_000, at: 0 },
+          { candidate: '/x/p2', timeoutMs: 5_000, at: 15_000 },
+        ],
+        partialClockConsumed: 20_000,
         hungCandidateRefused: true,
         namesWhatItTried: true,
         missingRefused: true,
+        nonexistentPathRefusedBySpawn: true,
+        directoryRefusedBySpawn: true,
         emptyRefused: true,
         resolverEnvelopeDigest: RESOLVER_ENVELOPE_SHA256,
         resolverBindingShape: 'const/direct-function',
@@ -13228,8 +13652,6 @@ ${DISPATCH}
         resolverUses: RESOLVER_USES,
         resolverTypeGraphLoaded: true,
       });
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
     }
   }, 120_000);
 
@@ -13302,15 +13724,15 @@ ${DISPATCH}
       const PRIORITY_ENDS = new Date(Date.now() + 20 * 24 * 3600 * 1000).toISOString();
       const MEMBER_ENDS = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
       const seedSlot = async (cycle: string, hours: number) => {
-        await seed.query(`INSERT INTO public.availability_slots
-          (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,
-           priority_window_ends_at,member_window_ends_at)
-          VALUES (gen_random_uuid(),$1,$2,$3,
-                  $5::timestamptz+make_interval(hours => $4::int),
-                  $5::timestamptz+make_interval(hours => $4::int)+interval '1 hour',4,
-                  $6::timestamptz, $7::timestamptz)`,
-        [await testTrainer(seed), ACADEMY, cycle, hours,
-          new Date(Date.now() + 40 * 24 * 3600 * 1000).toISOString(), PRIORITY_ENDS, MEMBER_ENDS]);
+        const base = new Date(Date.now() + 40 * 24 * 3600 * 1000).toISOString();
+        await insertSlot(seed, {
+          trainer: await testTrainer(seed), academy: ACADEMY, sourceCycle: cycle,
+          start: { at: 'instant', iso: base, offsetMinutes: hours * 60 },
+          end: { at: 'instant', iso: base, offsetMinutes: (hours + 1) * 60 },
+          maxParticipants: 4,
+          priorityWindowEnds: { at: 'instant', iso: PRIORITY_ENDS },
+          memberWindowEnds: { at: 'instant', iso: MEMBER_ENDS },
+        });
       };
       const REBOOK = '"rebook_payment_mode":"deferred_split"';
       await seedCycle('siblingA', 'abc27 preflight sibling A', '2026-10-05',
@@ -16147,34 +16569,33 @@ ${DISPATCH}
   // raise a SQL error instead, which both bypasses the isolation gate and tells the caller their
   // token was malformed rather than simply unauthorized.
   it('refuses on every wrapper under unsupported isolation and unusable JWT, with one closed row', async () => {
-    // Each entry: name, SQL call text, and the count of columns its envelope returns.
-    const calls: Array<[string, string]> = [
+    // Each entry: name, and a THUNK that performs that wrapper's own call. Four of them send
+    // their own text; the WRITING one goes through the apply catalogue, which is where every
+    // invocation of that routine in this suite is spelled and where its ownership check lives.
+    const calls: Array<[string, () => Promise<pg.QueryResult>]> = [
       // STAGE 7.4-B: the preview wrapper now speaks the normalized typed intent. The call is
       // deliberately a WELL-FORMED, in-bounds request — every refusal below must therefore come
       // from the wrapper's own gates, not from the core rejecting a malformed payload it never
       // got to see.
-      ['preview', `SELECT * FROM public.rebook_round_preview_command_as_actor(
+      ['preview', () => c.query(`SELECT * FROM public.rebook_round_preview_command_as_actor(
          '${ACADEMY}'::uuid,'abc27.wire.v1','create',NULL::uuid,NULL::int,'L',
          '2026-09-01'::date,NULL::date,4,7,0,'deferred_split',false,'inherit',false,false,
          NULL::numeric,true,NULL::int,NULL::text,NULL::text,NULL::text,NULL::text,
          NULL::text,NULL::text,ARRAY[]::date[],ARRAY[]::date[],ARRAY[]::text[],
-         ARRAY[gen_random_uuid()],ARRAY[gen_random_uuid()],ARRAY[]::uuid[])`],
+         ARRAY[gen_random_uuid()],ARRAY[gen_random_uuid()],ARRAY[]::uuid[])`)],
       // STAGE 7.4-C: the apply wrapper speaks the same normalized typed intent plus the
       // reviewed fingerprint and target lists. As with preview, the call is a well-formed
-      // in-bounds create so every refusal is the wrapper's own gate.
-      ['apply', `SELECT * FROM public.rebook_round_apply_command_as_actor(
-         '${ACADEMY}'::uuid,gen_random_uuid(),'abc27.wire.v1','create',gen_random_uuid(),
-         NULL::int,'L','2026-09-01'::date,NULL::date,4,7,0,'deferred_split',false,'inherit',
-         false,false,NULL::numeric,true,NULL::int,NULL::text,NULL::text,NULL::text,NULL::text,
-         NULL::text,NULL::text,ARRAY[]::date[],ARRAY[]::date[],ARRAY[]::text[],
-         ARRAY[gen_random_uuid()],ARRAY[gen_random_uuid()],ARRAY[gen_random_uuid()],
-         pg_catalog.sha256('x'::bytea))`],
-      ['lifecycle', `SELECT * FROM public.rebook_round_apply_lifecycle_command_as_actor(
-         '${ACADEMY}'::uuid,gen_random_uuid(),'abc27.wire.v1',gen_random_uuid(),0,'open','closed')`],
-      ['status', `SELECT * FROM public.rebook_round_command_status_as_actor(
-         '${ACADEMY}'::uuid,gen_random_uuid())`],
-      ['lookup', `SELECT * FROM public.rebook_round_command_lookup_by_review_as_actor(
-         '${ACADEMY}'::uuid,'abc27.wire.v1',pg_catalog.sha256('x'::bytea))`],
+      // in-bounds create so every refusal is the wrapper's own gate. Every array it submits is
+      // minted by the SERVER inside the statement, so this arm hands the core no client-minted
+      // slot id at all — which is why the catalogue's refusal-probe entrypoint is the ONE that
+      // takes no slots, pinned as a one-entry entitlement rather than left as a label.
+      ['apply', () => applyCommandAsActorRefusalProbe(c, { academy: ACADEMY })],
+      ['lifecycle', () => c.query(`SELECT * FROM public.rebook_round_apply_lifecycle_command_as_actor(
+         '${ACADEMY}'::uuid,gen_random_uuid(),'abc27.wire.v1',gen_random_uuid(),0,'open','closed')`)],
+      ['status', () => c.query(`SELECT * FROM public.rebook_round_command_status_as_actor(
+         '${ACADEMY}'::uuid,gen_random_uuid())`)],
+      ['lookup', () => c.query(`SELECT * FROM public.rebook_round_command_lookup_by_review_as_actor(
+         '${ACADEMY}'::uuid,'abc27.wire.v1',pg_catalog.sha256('x'::bytea))`)],
     ];
 
     // The four refusal causes. Isolation is set per transaction; the JWT cases run at the
@@ -16186,8 +16607,10 @@ ${DISPATCH}
       ['malformed subject', 'READ COMMITTED', '{"sub":"not-a-uuid"}'],
     ];
 
+    // THE APPLY WRAPPER IS AMONG THE FIVE, so this loop reaches a WRITING routine — through the
+    // catalogue, like every other writing invocation in this suite.
     for (const [causeName, isolation, claims] of causes) {
-      for (const [wrapper, sql] of calls) {
+      for (const [wrapper, send] of calls) {
         await c.query('BEGIN');
         try {
           await c.query(`SET TRANSACTION ISOLATION LEVEL ${isolation}`);
@@ -16196,7 +16619,7 @@ ${DISPATCH}
           } else {
             await c.query(`SELECT set_config('request.jwt.claims',$1,true)`, [claims]);
           }
-          const { rows } = await c.query(sql);
+          const { rows } = await send();
           // EXACTLY ONE ROW on every path — never zero, never an error.
           expect(rows, `${wrapper} / ${causeName}`).toHaveLength(1);
           expect(rows[0].status, `${wrapper} / ${causeName}`).toBe('refused');
@@ -18209,11 +18632,13 @@ describe.sequential('ABC-27 D7 — two-session concurrency barriers', () => {
         VALUES ($1,'email',$2,'b***@example.test',clock_timestamp(),'unknown','global',true)`,
       [user, `${user}@example.test`]);
 
-      const slot = (await s1.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        VALUES (gen_random_uuid(),$1,$2,$3,now()+interval '2 days'+make_interval(hours => $4),
-                now()+interval '2 days 1 hour'+make_interval(hours => $4),4,now()+interval '8 days')
-        RETURNING id`, [await newTrainerId(s1), ACADEMY, cycle, nextSlotLane()])).rows[0].id;
+      const lane = nextSlotLane();
+      const slot = await insertSlot(s1, {
+        trainer: await newTrainerId(s1), academy: ACADEMY, sourceCycle: cycle,
+        start: { at: 'fromNow', days: 2, minutes: lane * 60 },
+        end: { at: 'fromNow', days: 2, minutes: (lane + 1) * 60 },
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 8 },
+      });
       const claim = (await s1.query(`INSERT INTO public.slot_priority_claims(slot_id,player_id,status)
         VALUES ($1,$2,'pending') RETURNING id`, [slot, profile])).rows[0].id;
       await s1.query(`INSERT INTO public.rebook_round_recipient_claim_sources
@@ -18478,11 +18903,13 @@ describe.sequential('ABC-27 D7 — two-session concurrency barriers', () => {
       const user = (await s1.query(`INSERT INTO auth.users(id) VALUES (gen_random_uuid()) RETURNING id`)).rows[0].id;
       const profile = (await s1.query(`UPDATE public.profiles SET preferred_language='en'
         WHERE user_id=$1 RETURNING id`, [user])).rows[0].id;
-      const slot = (await s1.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,source_cycle_id,start_time,end_time,max_participants,member_window_ends_at)
-        VALUES (gen_random_uuid(),$1,$2,$3,now()+interval '2 days'+make_interval(hours => $4),
-                now()+interval '2 days 1 hour'+make_interval(hours => $4),4,now()+interval '8 days')
-        RETURNING id`, [await newTrainerId(s1), ACADEMY, cycle, nextSlotLane()])).rows[0].id;
+      const lane = nextSlotLane();
+      const slot = await insertSlot(s1, {
+        trainer: await newTrainerId(s1), academy: ACADEMY, sourceCycle: cycle,
+        start: { at: 'fromNow', days: 2, minutes: lane * 60 },
+        end: { at: 'fromNow', days: 2, minutes: (lane + 1) * 60 },
+        maxParticipants: 4, memberWindowEnds: { at: 'fromNow', days: 8 },
+      });
       await s1.query(`INSERT INTO public.slot_priority_claims(slot_id,player_id,status)
         VALUES ($1,$2,'pending')`, [slot, profile]);
       await s1.query('COMMIT');
@@ -19785,12 +20212,15 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the predecessor is the shipped l
       // `SELECT t.id … FROM public.trainer_profiles t … LIMIT 1` — an UNORDERED pick that could
       // return the module-wide `TRAINER` or another fixture's trainer, putting this slot in a
       // namespace it does not own. The location pick stays arbitrary; only the trainer is bound.
-      const slot = (await c.query(`
-        INSERT INTO public.availability_slots(trainer_id, academy_profile_id, location_id,
-          start_time, end_time, max_participants)
-        SELECT $2::uuid, $1, l.id, now() + interval '90 days', now() + interval '90 days 1 hour', 8
-          FROM public.locations l LIMIT 1 RETURNING id`,
-        [ACADEMY, await testTrainer(c)])).rows[0].id;
+      // THE LOCATION PICK STAYS ARBITRARY, and is now made in its own statement: the write goes
+      // through the factory, which takes a bound location rather than a server-chosen one.
+      const anyLocation = (await c.query(
+        `SELECT id FROM public.locations LIMIT 1`)).rows[0].id;
+      const slot = await insertSlot(c, {
+        trainer: await testTrainer(c), academy: ACADEMY, location: anyLocation,
+        start: { at: 'fromNow', days: 90 }, end: { at: 'fromNow', days: 90, minutes: 60 },
+        maxParticipants: 8,
+      });
       const guest = (await c.query(
         `INSERT INTO public.guest_players(full_name, academy_profile_id) VALUES ('dilution', $1) RETURNING id`,
         [ACADEMY])).rows[0].id;
@@ -20498,12 +20928,31 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
   // slots template-IDENTICAL (which the coherence cases depend on) while making their absolute
   // windows disjoint (which the shipped guard requires). A caller that needs a specific instant
   // still passes `start`/`end` explicitly.
-  /** ONE lane per slot, applied to BOTH bounds, so the window moves whole and stays an hour. */
+  /**
+   * ONE lane per slot, applied to BOTH bounds, so the window moves whole and stays an hour.
+   *
+   * THE ARITHMETIC IS ACADEMY-LOCAL, AND HAS TO BE. Series identity is (trainer, location, LOCAL
+   * WEEKDAY, LOCAL TIME, duration), so "a whole week later" is a CALENDAR step in the academy's
+   * zone — not 168 absolute hours. `timestamptz + interval` steps days in the SESSION zone, which
+   * here is UTC, so it pins the UTC clock and lets the LOCAL clock move: 17:00Z is 19:00 in
+   * Europe/Amsterdam before the last Sunday of October 2026 and 18:00 after it. Lanes reach past
+   * that date, so the comment above — that stepping a whole week keeps two default slots
+   * template-IDENTICAL — was false for any pair straddling the transition.
+   *
+   * Doing the addition on a bare `timestamp` and converting once at the end fixes it: the local
+   * wall-clock time is what is held constant, which is what the identity is about, and the UTC
+   * instant is allowed to move by the hour the zone actually moved.
+   *
+   * PARITY IS PRESERVED AT THE BASE. `timestamp '2026-09-01 19:00:00' AT TIME ZONE
+   * 'Europe/Amsterdam'` IS `2026-09-01T17:00:00Z` — 1 September is CEST (UTC+2) — so every
+   * fixture that pins the pre-transition instant still means the same instant. Nothing else in
+   * the suite's timebase moves, and no product time window or calendar rule is touched.
+   */
   const weeklyDefault = () => {
     const days = 7 * nextSlotLane();
     return {
-      start: `'2026-09-01T17:00:00Z'::timestamptz + make_interval(days => ${days})`,
-      end: `'2026-09-01T18:00:00Z'::timestamptz + make_interval(days => ${days})`,
+      start: { at: 'local' as const, base: WEEKLY_BASE_START, days, zone: ACADEMY_ZONE },
+      end: { at: 'local' as const, base: WEEKLY_BASE_END, days, zone: ACADEMY_ZONE },
     };
   };
 
@@ -20511,21 +20960,38 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
   // A `Record<string, string>` can carry any spelling at all, so a trainer threaded through it is
   // exactly the untyped source this file no longer has; `IsolatedTrainerId` cannot be produced
   // outside the authority, so this parameter can only ever hold a trainer THIS test owns.
-  const mkSlot = async (academy: string, cycle: string | null, o: Record<string, string> = {},
-    trainer?: IsolatedTrainerId) => {
+  /**
+   * THE OVERRIDE BAG CARRIES VALUES NOW, NOT SQL.
+   *
+   * It used to be a `Record<string, string>` of SQL FRAGMENTS, each interpolated into the
+   * statement through a validator. That validator is retired with the mechanism it served: a
+   * fragment is a text that becomes part of a statement, and the only way to be sure a text
+   * cannot change which expression lands in a column is for no text to be interpolated at all.
+   * Every field here is a bound parameter of the factory's fixed statement.
+   */
+  const mkSlot = async (academy: string, cycle: string | null, o: MkSlotOverrides = {},
+    trainer?: string) => {
     const w = weeklyDefault();
-    return (await c.query(`INSERT INTO public.availability_slots
-      (id,trainer_id,location_id,academy_profile_id,cyclus_id,start_time,end_time,
-       court_type,training_level,min_participants,max_participants,rating_system,
-       min_rating,max_rating,prices_include_vat,split_payment,allow_single_booking,
-       whole_slot_booking,price_per_session,total_price,extra_costs)
-      VALUES (gen_random_uuid(),'${trainer ?? await testTrainer(c)}',${sqlFragment(o.location ?? `'11111111-2222-4333-8444-555555555555'`)},
-              $1,$2,${sqlFragment(o.start ?? w.start)},${sqlFragment(o.end ?? w.end)},
-              ${sqlFragment(o.court ?? `'indoor'`)},${sqlFragment(o.level ?? `'B'`)},${sqlFragment(o.minp ?? '2')},${sqlFragment(o.maxp ?? '4')},
-              ${sqlFragment(o.rsys ?? `'padel'`)},${sqlFragment(o.minr ?? '1.0')},${sqlFragment(o.maxr ?? '3.0')},${sqlFragment(o.vat ?? 'true')},
-              ${sqlFragment(o.split ?? 'true')},${sqlFragment(o.single ?? 'true')},${sqlFragment(o.whole ?? 'false')},
-              ${sqlFragment(o.price ?? '12.50')},${sqlFragment(o.total ?? '50.00')},${sqlFragment(o.extra ?? `'[]'::jsonb`)})
-      RETURNING id`, [academy, cycle])).rows[0].id;
+    return insertTemplateSlot(c, {
+      trainer: trainer ?? await testTrainer(c),
+      academy, cyclus: cycle,
+      location: o.location ?? APPLY_LOCATION,
+      start: o.start ?? w.start, end: o.end ?? w.end,
+      // `??` WOULD ERASE AN EXPLICIT NULL, which two cases depend on being storable. Presence is
+      // what selects the override; only ABSENCE falls back to the default.
+      court: 'court' in o ? o.court : 'indoor',
+      level: 'level' in o ? o.level : 'B',
+      minParticipants: 'minp' in o ? o.minp : 2,
+      maxParticipants: 'maxp' in o ? o.maxp : 4,
+      ratingSystem: 'rsys' in o ? o.rsys : 'padel',
+      minRating: 'minr' in o ? o.minr : '1.0',
+      maxRating: 'maxr' in o ? o.maxr : '3.0',
+      pricesIncludeVat: o.vat ?? true, splitPayment: o.split ?? true,
+      allowSingleBooking: o.single ?? true, wholeSlotBooking: o.whole ?? false,
+      pricePerSession: 'price' in o ? o.price : '12.50',
+      totalPrice: 'total' in o ? o.total : '50.00',
+      extraCosts: 'extra' in o ? o.extra : '[]',
+    });
   };
 
   // The default settings carry split_payment=true: the SHIPPED inheritance trigger (live since
@@ -20545,6 +21011,175 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
     rows.find((r) => r.row_kind === 'facts') as Record<string, string>;
   const kind = (rows: Array<Record<string, unknown>>, k: string) => rows.filter((r) => r.row_kind === k);
 
+  // ── THE WEEKLY DEFAULT IS ACADEMY-LOCAL, MEASURED ACROSS THE TRANSITION ───────────────────
+  //
+  // Series identity is (trainer, location, LOCAL WEEKDAY, LOCAL TIME, duration). "A whole week
+  // later" therefore has to be a CALENDAR step in the academy's zone, and `timestamptz + interval`
+  // steps days in the SESSION zone — UTC here — which pins the UTC clock and lets the LOCAL clock
+  // move by an hour across the last Sunday of October. Two default slots straddling that date
+  // were NOT template-identical, which is the property the coherence cases below depend on.
+  //
+  // This measures the corrected arithmetic against the transition rather than asserting it: two
+  // occurrences on opposite sides, their local weekday and local time compared, and the UTC
+  // offsets compared to prove the transition was really crossed. The old expression is evaluated
+  // beside it, so the control discriminates rather than merely passing.
+  it('the weekly default holds the ACADEMY-LOCAL clock across the October transition, and the '
+    + 'replaced arithmetic drifts — measured under BOTH session zones', async () => {
+    await c.query('BEGIN');
+    try {
+      await c.query(`UPDATE public.academy_profiles SET timezone='Europe/Amsterdam' WHERE id=$1`,
+        [ACADEMY]);
+      // 2026-09-01 is CEST (UTC+2) and 2026-11-03 is CET (UTC+1); the change is 2026-10-25.
+      // Nine weeks apart, so the pair straddles it with a whole number of weeks between them.
+      //
+      // THE SESSION ZONE IS FORCED, TWICE, AND THAT IS THE POINT OF THE CONTROL.
+      //
+      // A previous round measured the replaced expression WITHOUT pinning the session zone and
+      // asserted that it drifts. That assertion was machine-dependent, and it failed here for the
+      // right reason: `initdb` takes the HOST zone, this host is Europe/Amsterdam, and
+      // `timestamptz + interval` steps days in the SESSION zone — so on a machine whose session
+      // zone already IS the academy's, the old expression does not drift at all. The control was
+      // asserting a property of the laptop.
+      //
+      // Both zones are measured instead. The corrected expression must give the SAME local clock
+      // under each, because its arithmetic happens on a bare `timestamp` before a single explicit
+      // conversion. The replaced one must drift under UTC and not drift under Europe/Amsterdam —
+      // which does not merely show that it is wrong, it shows exactly HOW: it is session-dependent,
+      // and a fixture whose meaning depends on the server's configured zone is not a fixture.
+      const measure = `
+        WITH local_step AS (
+          SELECT (timestamp '2026-09-01 19:00:00' + make_interval(days => 0))
+                   AT TIME ZONE 'Europe/Amsterdam' AS pre,
+                 (timestamp '2026-09-01 19:00:00' + make_interval(days => 63))
+                   AT TIME ZONE 'Europe/Amsterdam' AS post),
+             utc_step AS (
+          SELECT '2026-09-01T17:00:00Z'::timestamptz AS pre,
+                 '2026-09-01T17:00:00Z'::timestamptz + make_interval(days => 63) AS post)
+        SELECT
+          -- PARITY AT THE BASE: the corrected expression names the same instant the rest of the
+          -- suite pins, so nothing that depended on it moved.
+          (SELECT pre FROM local_step) = '2026-09-01T17:00:00Z'::timestamptz AS base_parity,
+          -- THE PROPERTY: local weekday and local time are identical on both sides.
+          to_char((SELECT pre FROM local_step) AT TIME ZONE 'Europe/Amsterdam', 'Dy HH24:MI')
+            AS local_pre,
+          to_char((SELECT post FROM local_step) AT TIME ZONE 'Europe/Amsterdam', 'Dy HH24:MI')
+            AS local_post,
+          -- THE PREMISE, WITHOUT THE OF PATTERN. to_char(timestamptz, 'OF') renders the offset in
+          -- the SESSION zone, so it answered a question about the server rather than about the
+          -- academy zone. Subtracting the same instant read in two NAMED zones is the offset
+          -- itself, and no session setting can move it.
+          (((SELECT pre FROM local_step) AT TIME ZONE 'Europe/Amsterdam')
+           - ((SELECT pre FROM local_step) AT TIME ZONE 'UTC'))::text  AS offset_pre,
+          (((SELECT post FROM local_step) AT TIME ZONE 'Europe/Amsterdam')
+           - ((SELECT post FROM local_step) AT TIME ZONE 'UTC'))::text AS offset_post,
+          -- THE CONTROL: the arithmetic this replaced steps days in the SESSION zone.
+          to_char((SELECT pre FROM utc_step) AT TIME ZONE 'Europe/Amsterdam', 'Dy HH24:MI')
+            AS utc_local_pre,
+          to_char((SELECT post FROM utc_step) AT TIME ZONE 'Europe/Amsterdam', 'Dy HH24:MI')
+            AS utc_local_post,
+          -- ...and the durations stay an hour on both sides, so the window moved whole.
+          ((timestamp '2026-09-01 20:00:00' + make_interval(days => 63))
+             AT TIME ZONE 'Europe/Amsterdam'
+           - (SELECT post FROM local_step)) = interval '1 hour' AS post_duration_is_an_hour,
+          ((timestamp '2026-09-01 20:00:00') AT TIME ZONE 'Europe/Amsterdam'
+           - (SELECT pre FROM local_step)) = interval '1 hour' AS pre_duration_is_an_hour`;
+
+      // `set_config('TimeZone', …, true)` IS `SET LOCAL TIME ZONE`, and it takes a parameter —
+      // `SET` is a utility statement that does not, so the zone would otherwise be interpolated.
+      const under = async (zone: string) => {
+        await c.query(`SELECT set_config('TimeZone', $1, true)`, [zone]);
+        return (await c.query(measure)).rows[0];
+      };
+      const inUtc = await under('UTC');
+      const inAmsterdam = await under('Europe/Amsterdam');
+
+      // THE FIXED FACTS, IDENTICAL IN BOTH SESSIONS. Everything the weekly default depends on is
+      // stated in named zones, so none of it moves with the server's own.
+      for (const [zone, row] of [['UTC', inUtc], ['Europe/Amsterdam', inAmsterdam]] as const) {
+        expect({ zone, ...row, utc_local_pre: undefined, utc_local_post: undefined }).toEqual({
+          zone,
+          base_parity: true,
+          // THE GEOMETRY, WRITTEN OUT: same weekday, same wall clock, on both sides.
+          local_pre: 'Tue 19:00', local_post: 'Tue 19:00',
+          // ...across a real offset change, measured as the zone's own offset.
+          offset_pre: '02:00:00', offset_post: '01:00:00',
+          post_duration_is_an_hour: true, pre_duration_is_an_hour: true,
+          utc_local_pre: undefined, utc_local_post: undefined,
+        });
+      }
+
+      // AND THE REPLACED ARITHMETIC IS THE ONE THAT MOVES — under a UTC session it drifts by
+      // exactly the hour the zone moved, and under the academy's own session zone it does not
+      // drift at all. Both readings are wrong for the same reason: the answer depends on a
+      // setting the fixture never states.
+      expect({
+        utc_session: { pre: inUtc.utc_local_pre, post: inUtc.utc_local_post },
+        academy_session: { pre: inAmsterdam.utc_local_pre, post: inAmsterdam.utc_local_post },
+      }).toEqual({
+        utc_session: { pre: 'Tue 19:00', post: 'Tue 18:00' },
+        academy_session: { pre: 'Tue 19:00', post: 'Tue 19:00' },
+      });
+    } finally { await c.query('ROLLBACK'); }
+  });
+
+  // ── AND THE TEMPLATE VECTOR THE IDENTITY IS TAKEN OVER IS SWEPT WHOLE ─────────────────────
+  //
+  // THE TITLE USED TO BE WIDER THAN THE EVIDENCE. It claimed to sweep every template field the
+  // coherence matrix names, and it read exactly three things: `extra_costs`, the local start, and
+  // the duration. A reviewer is entitled to read a title as a statement of coverage, so the
+  // measurement is widened to match rather than the title narrowed: the WHOLE stored row is
+  // projected with `to_jsonb`, the genuinely per-slot columns are removed, and what remains is
+  // asserted BOTH as an exact key set and as a value comparison between the two lanes.
+  //
+  // The key set is the load-bearing half. A column added to `availability_slots` joins this
+  // projection automatically and fails here — which is the tripwire that makes a new template
+  // field a deliberate edit to the coherence matrix rather than a silent gap in it.
+  //
+  // `extra_costs` remains the field the value half is about: it is jsonb, it is last in the
+  // column list, and it is the one the default writes as an empty array.
+  it('sweeps every template field the coherence matrix names, extra_costs included', async () => {
+    await c.query('BEGIN');
+    try {
+      const cyc = await mkCycle(ACADEMY);
+      const swept = await mkSlot(ACADEMY, cyc, { extra: '[{"a":1},{"b":2}]' });
+      const plain = await mkSlot(ACADEMY, cyc);
+      const { rows } = await c.query(`
+        SELECT s.id::text AS id,
+               -- PER-SLOT BY CONSTRUCTION, so these five are removed rather than compared: the
+               -- identity, the row's creation instant, the two window bounds the lane allocator
+               -- deliberately moves, and the cycle both lanes already share by parameter.
+               to_jsonb(s) - 'id' - 'created_at' - 'start_time' - 'end_time' - 'cyclus_id'
+                 AS vector,
+               to_char(s.start_time AT TIME ZONE 'Europe/Amsterdam', 'Dy HH24:MI') AS local_start,
+               (s.end_time - s.start_time) = interval '1 hour' AS hour_long
+          FROM public.availability_slots s WHERE s.id = ANY($1::uuid[]) ORDER BY s.start_time`,
+      [[swept, plain]]);
+      expect(rows).toHaveLength(2);
+      const vectors = rows.map((r: Record<string, unknown>) => r.vector as Record<string, unknown>);
+
+      // (1) THE EXACT SURFACE. Every column of the relation that is not per-slot, named.
+      expect(Object.keys(vectors[0]).sort()).toEqual(TEMPLATE_SWEEP_KEYS);
+      expect(Object.keys(vectors[1]).sort()).toEqual(TEMPLATE_SWEEP_KEYS);
+
+      // (2) THE TWO LANES AGREE ON ALL OF IT BUT THE ONE FIELD UNDER TEST. Comparing the whole
+      //     projection is what makes "the DST correction moved only the two time columns" a
+      //     measurement instead of a claim.
+      const withoutExtra = (v: Record<string, unknown>) => {
+        const { extra_costs: _dropped, ...rest } = v;
+        return rest;
+      };
+      expect(withoutExtra(vectors[0])).toEqual(withoutExtra(vectors[1]));
+      expect(vectors.map((v) => v.extra_costs)).toEqual([[{ a: 1 }, { b: 2 }], []]);
+
+      // (3) BOTH LANES LAND ON THE SAME LOCAL WEEKDAY AND CLOCK, which is what makes them one
+      //     series identity however many weeks apart the lane allocator put them.
+      expect(new Set(rows.map((r: Record<string, unknown>) => r.local_start)).size,
+        'every weekly-default lane shares one local weekday and time').toBe(1);
+      expect(rows.every((r: Record<string, unknown>) => r.hour_long),
+        'and every window is still an hour').toBe(true);
+    } finally { await c.query('ROLLBACK'); }
+  });
+
   it('anchors every source to the exact academy and is existence-neutral for anything else', async () => {
     await c.query('BEGIN');
     try {
@@ -20558,7 +21193,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
       // Its own window: only the ACADEMY differs between these two slots, and the shipped overlap
       // guard is keyed on the trainer, so a shared window would be refused before tenancy is asked.
       const theirs = await mkSlot(foreignAcademy, foreignCyc,
-        { start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'` });
+        { start: { at: 'instant', iso: '2026-09-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-08T18:00:00Z' } });
 
       // POSITIVE CONTROL FIRST, so the negatives below are about tenancy rather than about the
       // helper returning nothing in general.
@@ -20591,7 +21226,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
       // Refusing is the only answer that neither adopts nor hides it, and it is byte-identical
       // to an unknown slot id, so it discloses nothing about the foreign cycle either.
       const crossed = await mkSlot(ACADEMY, foreignCyc,
-        { start: `'2026-09-15T17:00:00Z'`, end: `'2026-09-15T18:00:00Z'` });
+        { start: { at: 'instant', iso: '2026-09-15T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-15T18:00:00Z' } });
       const crossRes = await call(ACADEMY, [crossed], [child]);
       expect(shape(crossRes)).toEqual({ matched: 0, child: 0, source: 0, cohort: 0 });
       expect(shape(crossRes)).toEqual(shape(unknownRes));
@@ -20599,7 +21234,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
       // pinned Edge handles hand-added agenda slots), so the refusal above is about the foreign
       // cycle and not about the join being broken.
       const noCycle = await mkSlot(ACADEMY, null,
-        { start: `'2026-09-22T17:00:00Z'`, end: `'2026-09-22T18:00:00Z'` });
+        { start: { at: 'instant', iso: '2026-09-22T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-22T18:00:00Z' } });
       expect((kind(await call(ACADEMY, [noCycle], [child]), 'source')[0] as Record<string, unknown>)
         .source_slot_id).toBe(noCycle);
       expect((kind(await call(ACADEMY, [noCycle], [child]), 'child')[0] as Record<string, unknown>)
@@ -20730,22 +21365,22 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
          RETURNING id`)).rows[0].id;
       // The trainer case carries its value in the THIRD slot, because the trainer is a branded
       // parameter rather than one more free-form override key.
-      const cases: Array<[string, Record<string, string>, IsolatedTrainerId?]> = [
+      const cases: Array<[string, MkSlotOverrides & { endPlusMinutes?: number }, string?]> = [
         ['trainer_id', {}, otherTrainer],
-        ['location_id', { location: `'${otherLocation}'` }],
-        ['duration_minutes', { endPlus: `interval '1 hour'` }],
-        ['court_type', { court: `'outdoor'` }],
-        ['training_level', { level: `'C'` }],
-        ['min_participants', { minp: '3' }],
-        ['max_participants', { maxp: '6' }],
-        ['extra_costs', { extra: `'[{"a":1}]'::jsonb` }],
-        ['rating_system', { rsys: `'other'` }],
+        ['location_id', { location: otherLocation }],
+        ['duration_minutes', { endPlusMinutes: 60 }],
+        ['court_type', { court: 'outdoor' }],
+        ['training_level', { level: 'C' }],
+        ['min_participants', { minp: 3 }],
+        ['max_participants', { maxp: 6 }],
+        ['extra_costs', { extra: '[{"a":1}]' }],
+        ['rating_system', { rsys: 'other' }],
         ['min_rating', { minr: '2.0' }],
         ['max_rating', { maxr: '4.0' }],
-        ['prices_include_vat', { vat: 'false' }],
-        ['split_payment', { split: 'false' }],
-        ['allow_single_booking', { single: 'false' }],
-        ['whole_slot_booking', { whole: 'true' }],
+        ['prices_include_vat', { vat: false }],
+        ['split_payment', { split: false }],
+        ['allow_single_booking', { single: false }],
+        ['whole_slot_booking', { whole: true }],
         ['price_per_session', { price: '15.00' }],
         ['total_price', { total: '60.00' }],
       ];
@@ -20760,10 +21395,12 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
         // The duration case lengthens ITS OWN window rather than naming a fixed timestamp: a fixed
         // end beside a shifted start would run backwards and be refused by
         // `availability_slots_time_order_check` before the coherence verdict could be asked.
-        const { endPlus, ...rest } = override;
+        const { endPlusMinutes, ...rest } = override;
         const w = weeklyDefault();
         const odd = await mkSlot(ACADEMY, null,
-          { start: w.start, end: endPlus ? `${w.end} + ${endPlus}` : w.end, ...rest }, caseTrainer);
+          { start: w.start,
+            end: endPlusMinutes ? { ...w.end, plusMinutes: endPlusMinutes } : w.end,
+            ...rest }, caseTrainer);
         const row = kind(await call(ACADEMY, [s1, odd], [childA, childA]), 'child')[0] as Record<string, unknown>;
         expect({ field, coherent: row.coherent, named: row.incoherent_field })
           .toEqual({ field, coherent: false, named: field });
@@ -20772,7 +21409,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
       // A MIXED NULL/VALUE FIELD IS INCOHERENT TOO. `count(DISTINCT x)` ignores NULLs, so a naive
       // check would call this coherent — the all-or-nothing NULL rule is what catches it.
       const nullish = await mkSlot(ACADEMY, null,
-        { start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'`, court: 'NULL' });
+        { start: { at: 'instant', iso: '2026-09-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-08T18:00:00Z' }, court: null });
       const mixed = kind(await call(ACADEMY, [s1, nullish], [childA, childA]), 'child')[0] as Record<string, unknown>;
       expect({ coherent: mixed.coherent, named: mixed.incoherent_field })
         .toEqual({ coherent: false, named: 'court_type' });
@@ -20783,16 +21420,16 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
       // second Sept-8 window before the coherence question could be asked) nor with any weekly
       // Tuesday lane.
       const nullA = await mkSlot(ACADEMY, null,
-        { start: `'2026-09-02T17:00:00Z'`, end: `'2026-09-02T18:00:00Z'`, court: 'NULL' });
+        { start: { at: 'instant', iso: '2026-09-02T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-02T18:00:00Z' }, court: null });
       const nullB = await mkSlot(ACADEMY, null,
-        { start: `'2026-09-09T17:00:00Z'`, end: `'2026-09-09T18:00:00Z'`, court: 'NULL' });
+        { start: { at: 'instant', iso: '2026-09-09T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-09T18:00:00Z' }, court: null });
       const bothNull = kind(await call(ACADEMY, [nullA, nullB], [childB, childB]), 'child')[0] as Record<string, unknown>;
       expect({ coherent: bothNull.coherent, court: bothNull.court_type })
         .toEqual({ coherent: true, court: null });
 
       // INTER-CHILD HETEROGENEITY IS ALLOWED, and must not be confused with within-child
       // incoherence: two children with genuinely different coherent vectors both pass.
-      const other = await mkSlot(ACADEMY, null, { court: `'outdoor'`, price: '20.00' });
+      const other = await mkSlot(ACADEMY, null, { court: 'outdoor', price: '20.00' });
       const two = kind(await call(ACADEMY, [s1, other], [childA, childB]), 'child') as Array<Record<string, unknown>>;
       expect(two.length).toBe(2);
       expect(two.every((r) => r.coherent === true)).toBe(true);
@@ -20811,9 +21448,9 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: normalized_preview_source', () =
       // different series; keyed on academy-local time they are one — and the pinned Edge's UTC
       // keying is exactly the defect the approval replaces.
       const before = await mkSlot(ACADEMY, null,
-        { start: `'2026-10-20T17:00:00Z'`, end: `'2026-10-20T18:00:00Z'` });
+        { start: { at: 'instant', iso: '2026-10-20T17:00:00Z' }, end: { at: 'instant', iso: '2026-10-20T18:00:00Z' } });
       const after = await mkSlot(ACADEMY, null,
-        { start: `'2026-10-27T18:00:00Z'`, end: `'2026-10-27T19:00:00Z'` });
+        { start: { at: 'instant', iso: '2026-10-27T18:00:00Z' }, end: { at: 'instant', iso: '2026-10-27T19:00:00Z' } });
 
       const res = await call(ACADEMY, [before, after], [child, child]);
       const row = kind(res, 'child')[0] as Record<string, unknown>;
@@ -21113,15 +21750,14 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
    *  is a branded parameter of its own rather than a key of the free-form override bag: a
    *  `Record<string, string>` admits any spelling, and a trainer threaded through one is exactly
    *  the untyped source this suite no longer has. */
-  const srcSlot = async (o: Record<string, string> = {}, trainer?: IsolatedTrainerId) =>
-    (await c.query(`INSERT INTO public.availability_slots
-      (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-       min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-       split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-      VALUES (gen_random_uuid(),'${trainer ?? await testTrainer(c)}','11111111-2222-4333-8444-555555555555',$1,
-              ${sqlFragment(o.start ?? `'2026-09-01T17:00:00Z'`)},${sqlFragment(o.end ?? `'2026-09-01T18:00:00Z'`)},
-              ${sqlFragment(o.court ?? `'indoor'`)},'B',2,4,'padel',1.0,3.0,true,true,true,false,12.50,50.00,'[]'::jsonb)
-      RETURNING id`, [ACADEMY])).rows[0].id;
+  const srcSlot = async (o: { start?: SlotTime; end?: SlotTime; court?: string } = {},
+    trainer?: string) =>
+    insertTemplateSlot(c, {
+      trainer: trainer ?? await testTrainer(c), academy: ACADEMY, location: APPLY_LOCATION,
+      start: o.start ?? { at: 'instant', iso: '2026-09-01T17:00:00Z' },
+      end: o.end ?? { at: 'instant', iso: '2026-09-01T18:00:00Z' },
+      court: o.court ?? 'indoor',
+    });
 
   /** Call the core with sensible defaults, overriding only what a case is about. */
   const preview = async (o: Record<string, unknown> = {}) => {
@@ -21152,7 +21788,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     try {
       await c.query(`UPDATE public.academy_profiles SET timezone='Europe/Amsterdam' WHERE id=$1`, [ACADEMY]);
       const s1 = await srcSlot();
-      const s2 = await srcSlot({ start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'` });
+      const s2 = await srcSlot({ start: { at: 'instant', iso: '2026-09-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-08T18:00:00Z' } });
       await c.query(`INSERT INTO public.bookings(slot_id,player_id,status)
                      VALUES ($1,$2,'confirmed')`, [s1, (await newProfileIds(c, 1))[0]]);
       // 4 weekly anchors x 1 child = 4 occurrences, so 4 caller-minted target identities.
@@ -21214,7 +21850,9 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
 
       // AN INCOHERENT SOURCE REFUSES WITH AN IDENTIFIER-ONLY DIAGNOSTIC — the field name, never
       // the differing values.
-      const odd = await srcSlot({ start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'`, court: `'outdoor'` });
+      const odd = await srcSlot({
+        start: { at: 'instant', iso: '2026-09-08T17:00:00Z' },
+        end: { at: 'instant', iso: '2026-09-08T18:00:00Z' }, court: 'outdoor' });
       const bad = await preview({ slots: [s1, odd], children: [CHILD, CHILD], targets });
       expect(bad.status).toBe('incoherent_source');
       expect(bad.diagnostic_field).toBe('court_type');
@@ -21287,7 +21925,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     try {
       await c.query(`UPDATE public.academy_profiles SET timezone='Europe/Amsterdam' WHERE id=$1`, [ACADEMY]);
       const s1 = await srcSlot();
-      const s2 = await srcSlot({ start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'` });
+      const s2 = await srcSlot({ start: { at: 'instant', iso: '2026-09-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-08T18:00:00Z' } });
       const targets = Array.from({ length: 4 }, () => randomUUID());
       const base = { slots: [s1], children: [CHILD], targets };
       // The control first: this exact request previews, so every refusal below is attributable.
@@ -21331,8 +21969,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       // Three source slots in three DISTINCT seven-day buckets — the shape the pinned Edge would
       // have turned into a three-week `suggestedWeeks` form default. Nothing here does.
       const s1 = await srcSlot();
-      const s2 = await srcSlot({ start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'` });
-      const s3 = await srcSlot({ start: `'2026-09-15T17:00:00Z'`, end: `'2026-09-15T18:00:00Z'` });
+      const s2 = await srcSlot({ start: { at: 'instant', iso: '2026-09-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-08T18:00:00Z' } });
+      const s3 = await srcSlot({ start: { at: 'instant', iso: '2026-09-15T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-15T18:00:00Z' } });
       const src3 = { slots: [s1, s2, s3], children: [CHILD, CHILD, CHILD] };
 
       // EXACTLY ONE LENGTH FORM, AND THE MANAGER SUPPLIES IT
@@ -21565,18 +22203,21 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       //     AGREE; these prove what they agree on fits `rebook_round_intent_children`'s own
       //     constraints. Each case mutates exactly one field of a single source slot, so the
       //     refusal is attributable — and each is a value the product column genuinely permits.
-      const unstorable: Array<[string, string]> = [
-        ['duration over 1440', `end_time = start_time + interval '25 hours'`],
+      // THE MUTATIONS ARE THUNKS, NOT SQL. Each names the factory entrypoint that performs it,
+      // so this file spells no slot write at all — and the case list still reads as the list of
+      // single-field mutations it always was.
+      const unstorable: Array<[string, () => Promise<void>]> = [
+        ['duration over 1440', () => setSlotDuration(c, s1, { minutes: 25 * 60 })],
         // NOT A WHOLE NUMBER OF MINUTES: the destination column is int minutes, so a 90.5-minute
         // source is not representable — and a plain cast would ROUND it, making two different
         // sources one reviewed template.
-        ['duration with seconds', `end_time = start_time + interval '90 minutes 30 seconds'`],
+        ['duration with seconds', () => setSlotDuration(c, s1, { minutes: 90, seconds: 30 })],
         // LARGER THAN AN INT NUMBER OF MINUTES: a plain cast would RAISE here, which is an error
         // instead of the closed refusal row.
         // LARGER THAN AN INT NUMBER OF MINUTES — genuinely so: 5,000,000 days is 7.2e9 minutes,
         // past the signed-int maximum of 2,147,483,647, so a mutant that cast before checking
         // would RAISE here rather than be caught by the ordinary over-1440 check.
-        ['duration beyond int',  `end_time = start_time + interval '5000000 days'`],
+        ['duration beyond int',  () => setSlotDuration(c, s1, { days: 5000000 })],
         // FAR ENOUGH APART THAT THE SUBTRACTION ITSELF OVERFLOWS (round 6). `timestamptz -
         // timestamptz` returns an interval whose time part is int64 MICROSECONDS — about 292,471
         // years — which is NARROWER than the `timestamptz` domain that produced the operands. So
@@ -21587,21 +22228,21 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
         // the 1,440-minute guard, which is the closed row. Restoring the interval route makes this
         // case throw instead of refusing.
         ['span beyond the interval domain',
-         `start_time = '4714-11-24 BC 00:00:00+00', end_time = '294276-12-31 00:00:00+00'`],
+         () => setSlotBounds(c, s1, '4714-11-24 BC 00:00:00+00', '294276-12-31 00:00:00+00')],
         // NOTE: "zero duration" is NOT in this list. The shipped
         // `availability_slots_time_order_check` refuses `end_time = start_time` outright, so the
         // preview can never be handed one — it is proved as a constraint control below instead of
         // being asserted against a row the product cannot store.
 
-        ['negative capacity',  `min_participants = -1`],
-        ['inverted capacity',  `min_participants = 9, max_participants = 2`],
-        ['inverted ratings',   `min_rating = 5.0, max_rating = 1.0`],
-        ['scalar extra_costs', `extra_costs = '7'::jsonb`],
-        ['3-decimal price',    `price_per_session = 12.501`],
+        ['negative capacity',  () => setSlotParticipants(c, s1, -1)],
+        ['inverted capacity',  () => setSlotParticipants(c, s1, 9, 2)],
+        ['inverted ratings',   () => setSlotRatings(c, s1, '5.0', '1.0')],
+        ['scalar extra_costs', () => setSlotExtraCosts(c, s1, '7')],
+        ['3-decimal price',    () => setSlotPrice(c, s1, '12.501')],
       ];
-      for (const [name, mutation] of unstorable) {
+      for (const [name, mutate] of unstorable) {
         await c.query('SAVEPOINT u');
-        await c.query(`UPDATE public.availability_slots SET ${mutation} WHERE id=$1`, [s1]);
+        await mutate();
         const res = await preview(base);
         expect({ name, status: res.status }).toEqual({ name, status: 'invalid_request' });
         await c.query('ROLLBACK TO SAVEPOINT u');
@@ -21615,8 +22256,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       //     Proved here rather than asserted as a preview refusal, so the claim is about the
       //     product's real boundary instead of about a row that cannot exist.
       await c.query('SAVEPOINT z');
-      const zero = await mustRaiseWithCode(c,
-        `UPDATE public.availability_slots SET end_time = start_time WHERE id='${sqlUuid(s1)}'`);
+      const zero = await mustRaiseFrom('a zero-length slot',
+        () => setSlotDuration(c, s1));
       expect(zero.code).toBe('23514');
       expect(zero.message).toContain('availability_slots_time_order_check');
       await c.query('ROLLBACK TO SAVEPOINT z');
@@ -21675,7 +22316,13 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
                      + interval '1440 minutes')::text                                                 AS e,
                   ((($1::date + ((want.dow - extract(dow FROM $1::date)::int + 7) % 7)) + 420))::text  AS last_anchor
              FROM d, want`, [targetStart])).rows[0];
-        return { id: await srcSlot({ start: `'${t.s}'`, end: `'${t.e}'` }), lastAnchor: t.last_anchor };
+        return {
+          id: await srcSlot({
+            start: { at: 'instant', iso: t.s as string },
+            end: { at: 'instant', iso: t.e as string },
+          }),
+          lastAnchor: t.last_anchor,
+        };
       };
 
       // The alignment really is the worst one: the furthest anchor is exactly start + 426.
@@ -21775,15 +22422,15 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       await c.query(`INSERT INTO public.locations(id,name,city,slug)
         VALUES ($1,'abc27 fingerprint court','abc27 city','abc27-fingerprint-court')
         ON CONFLICT DO NOTHING`, [other]);
-      for (const mutation of [
-        `location_id = '${other}'`,
-        `trainer_id = '${other}'`,
-        `start_time = start_time + interval '1 hour', end_time = end_time + interval '1 hour'`,
-        `start_time = start_time + interval '1 day', end_time = end_time + interval '1 day'`,
-      ]) {
+      for (const [moved, mutate] of [
+        ['location_id', () => setSlotLocation(c, s1, other)],
+        ['trainer_id', () => setSlotTrainer(c, s1, other)],
+        ['one hour later', () => shiftSlotTimes(c, s1, { minutes: 60 })],
+        ['one day later', () => shiftSlotTimes(c, s1, { minutes: 24 * 60 })],
+      ] as Array<[string, () => Promise<void>]>) {
         await c.query('SAVEPOINT k');
-        await c.query(`UPDATE public.availability_slots SET ${mutation} WHERE id=$1`, [s1]);
-        expect(await fp(), mutation).not.toEqual(withLabelA);
+        await mutate();
+        expect(await fp(), moved).not.toEqual(withLabelA);
         await c.query('ROLLBACK TO SAVEPOINT k');
       }
       // DETERMINISTIC: the same reviewed facts derive the same strings, so a retry fingerprints
@@ -21796,29 +22443,23 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       // THE TWIN SHARES THE TEMPLATE, NOT THE WINDOW. Series identity is (trainer, location,
       // LOCAL WEEKDAY, LOCAL TIME, duration), so one week later is the same identity — while the
       // shipped per-trainer overlap guard, which is about absolute time, is satisfied.
-      const twin = await srcSlot({ start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'` });
+      const twin = await srcSlot({ start: { at: 'instant', iso: '2026-09-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-08T18:00:00Z' } });
       const other2 = '7b7b7b7b-0000-4000-8000-00000000dddd';
       expect((await preview({ ...base, slots: [s1, twin], children: [CHILD, other2],
         targets: Array.from({ length: 8 }, () => randomUUID()) })).status).toBe('invalid_request');
       // ...while the same two children on genuinely different series preview cleanly.
-      await c.query(`UPDATE public.availability_slots
-        SET start_time = start_time + interval '2 hours', end_time = end_time + interval '2 hours'
-        WHERE id=$1`, [twin]);
+      await shiftSlotTimes(c, twin, { minutes: 120 });
       expect((await preview({ ...base, slots: [s1, twin], children: [CHILD, other2],
         targets: Array.from({ length: 8 }, () => randomUUID()) })).status).toBe('previewed');
 
       // THE SAME MINUTE, A DIFFERENT TRAINER, is the case a label+clock name could not separate:
       // two DISTINCT series identities that used to receive the SAME reviewed name, colliding
       // against the product's own (owner_type, owner_id, name, start_date) rebook-cycle index.
-      await c.query(`UPDATE public.availability_slots
-        SET start_time = start_time - interval '2 hours', end_time = end_time - interval '2 hours',
-            trainer_id = '${other}'
-        WHERE id=$1`, [twin]);
+      await shiftSlotTimesAndSetTrainer(c, twin, { minutes: -120 }, other);
       expect((await preview({ ...base, slots: [s1, twin], children: [CHILD, other2],
         targets: Array.from({ length: 8 }, () => randomUUID()) })).status).toBe('previewed');
       // ...and the same minute with the same trainer but a different LOCATION separates too.
-      await c.query(`UPDATE public.availability_slots
-        SET trainer_id = '${await testTrainer(c)}', location_id = '${other}' WHERE id=$1`, [twin]);
+      await setSlotTrainerAndLocation(c, twin, await testTrainer(c), other);
       expect((await preview({ ...base, slots: [s1, twin], children: [CHILD, other2],
         targets: Array.from({ length: 8 }, () => randomUUID()) })).status).toBe('previewed');
 
@@ -21828,20 +22469,13 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       // OWN_EXACT_COHERENT_TEMPLATE_VECTOR`. The rendering is now lossless over the whole series
       // identity, so distinct series always yield distinct names and the uniqueness verdict is a
       // backstop that never fires on a legitimate round.
-      await c.query(`UPDATE public.availability_slots
-        SET location_id = '11111111-2222-4333-8444-555555555555',
-            start_time = start_time + interval '30 seconds',
-            end_time = end_time + interval '30 seconds'
-        WHERE id=$1`, [twin]);
+      await setSlotLocationAndShiftTimes(c, twin, APPLY_LOCATION, { seconds: 30 });
       expect((await preview({ ...base, slots: [s1, twin], children: [CHILD, other2],
         targets: Array.from({ length: 8 }, () => randomUUID()) })).status).toBe('previewed');
 
       // ...and the backstop is still LIVE: two children whose sources are byte-identical resolve
       // to one series and one name, and that is refused.
-      await c.query(`UPDATE public.availability_slots
-        SET start_time = start_time - interval '30 seconds',
-            end_time = end_time - interval '30 seconds'
-        WHERE id=$1`, [twin]);
+      await shiftSlotTimes(c, twin, { seconds: -30 });
       expect((await preview({ ...base, slots: [s1, twin], children: [CHILD, other2],
         targets: Array.from({ length: 8 }, () => randomUUID()) })).status).toBe('invalid_request');
     } finally { await c.query('ROLLBACK'); }
@@ -21852,8 +22486,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     try {
       await c.query(`UPDATE public.academy_profiles SET timezone='Europe/Amsterdam' WHERE id=$1`, [ACADEMY]);
       const s1 = await srcSlot();
-      const s2 = await srcSlot({ start: `'2026-09-08T17:00:00Z'`, end: `'2026-09-08T18:00:00Z'` });
-      const s3 = await srcSlot({ start: `'2026-09-15T17:00:00Z'`, end: `'2026-09-15T18:00:00Z'` });
+      const s2 = await srcSlot({ start: { at: 'instant', iso: '2026-09-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-08T18:00:00Z' } });
+      const s3 = await srcSlot({ start: { at: 'instant', iso: '2026-09-15T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-15T18:00:00Z' } });
 
       // NO SOURCE-DERIVED LENGTH RESOLUTION EXISTS, OVER ANY POPULATION
       // (`TARGET_LENGTH_CREATE=..._NO_SERVER_SUGGESTION_OR_INCLUDED_ONLY_SUBSTITUTE`). These three
@@ -21875,8 +22509,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       // return would accept the last.
       await c.query('SAVEPOINT dup');
       {
-        const d1 = await srcSlot({ start: `'2026-09-22T17:00:00Z'`, end: `'2026-09-22T18:00:00Z'` });
-        const d2 = await srcSlot({ start: `'2026-09-29T17:00:00Z'`, end: `'2026-09-29T18:00:00Z'` });
+        const d1 = await srcSlot({ start: { at: 'instant', iso: '2026-09-22T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-22T18:00:00Z' } });
+        const d2 = await srcSlot({ start: { at: 'instant', iso: '2026-09-29T17:00:00Z' }, end: { at: 'instant', iso: '2026-09-29T18:00:00Z' } });
         const dupChild = { slots: [d1, d2], children: [CHILD, CHILD], weeks: 2,
           targets: () => Array.from({ length: 2 }, () => randomUUID()) };
         // (a) ONE subject, booked on both included slots AND twice on one of them: still one
@@ -21956,24 +22590,17 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       // trainer source in this statement for a type to be unable to reach. `WITH ORDINALITY`
       // reproduces `g.i` exactly, which is what keeps the minute offsets and the ids paired.
       const bulkTrainers = await mintTrainerRange(c, '9e0f9e0f-0000-4000-8000-', CH);
-      const { rows: bulk } = await c.query(`
-        WITH s AS (
-          INSERT INTO public.availability_slots
-            (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,
-             training_level,min_participants,max_participants,rating_system,min_rating,max_rating,
-             prices_include_vat,split_payment,allow_single_booking,whole_slot_booking,
-             price_per_session,total_price,extra_costs)
-          SELECT gen_random_uuid(),
-                 t.id,
-                 '11111111-2222-4333-8444-555555555555',$1,
-                 '2026-09-01T06:00:00Z'::timestamptz + (t.i::int * interval '1 minute'),
-                 '2026-09-01T07:00:00Z'::timestamptz + (t.i::int * interval '1 minute'),
-                 'indoor','B',2,4,'padel',1.0,3.0,true,true,true,false,12.50,50.00,'[]'::jsonb
-            FROM unnest($2::uuid[]) WITH ORDINALITY AS t(id, i) RETURNING id)
-        INSERT INTO public.bookings(slot_id,player_id,status)
-        SELECT s.id, u.id, 'confirmed' FROM s, unnest($3::uuid[]) AS u(id)
-        RETURNING slot_id`, [ACADEMY, bulkTrainers, await newProfileIds(c, 200)]);
-      const bulkSlots = [...new Set(bulk.map((r) => r.slot_id as string))];
+      // TWO STATEMENTS, NOT ONE CTE. The slot write lives in the factory, so the bookings that
+      // used to ride on its `RETURNING` are seeded from the ids it hands back. Nothing observes
+      // the pair atomically — this arm only previews — so the split changes no verdict.
+      const bulkSlots = await insertTemplateSlotSeries(c, {
+        trainers: bulkTrainers, academy: ACADEMY, location: APPLY_LOCATION,
+        startIso: '2026-09-01T06:00:00Z', endIso: '2026-09-01T07:00:00Z', stepMinutes: 1,
+      });
+      await c.query(`INSERT INTO public.bookings(slot_id,player_id,status)
+        SELECT s.id, u.id, 'confirmed'
+          FROM unnest($1::uuid[]) AS s(id), unnest($2::uuid[]) AS u(id)`,
+      [bulkSlots, await newProfileIds(c, 200)]);
       expect(bulkSlots).toHaveLength(CH);
       const over = await preview({ slots: bulkSlots, children: kids, weeks: 40,
         targets: Array.from({ length: CH * 40 }, (_, i) => `9a9a9a9a-0000-4000-8000-${String(i).padStart(12, '0')}`) });
@@ -22260,7 +22887,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     for (const n of [1_000, 10_000, 100_000]) {
       await c.query('BEGIN');
       try {
-        const slot = await srcSlot({ start: `'2026-10-06T17:00:00Z'`, end: `'2026-10-06T18:00:00Z'` });
+        const slot = await srcSlot({ start: { at: 'instant', iso: '2026-10-06T17:00:00Z' }, end: { at: 'instant', iso: '2026-10-06T18:00:00Z' } });
         dup[n] = await measure([slot], DUPLICATES, [slot, 201, n, await newProfileIds(c, 201)]);
       } finally { await c.query('ROLLBACK'); }
     }
@@ -22306,7 +22933,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       for (const [label, decoys] of [['none', 0], ['x20', 20]] as const) {
         await c.query('BEGIN');
         try {
-          const slot = await srcSlot({ start: `'2026-10-20T17:00:00Z'`, end: `'2026-10-20T18:00:00Z'` });
+          const slot = await srcSlot({ start: { at: 'instant', iso: '2026-10-20T17:00:00Z' }, end: { at: 'instant', iso: '2026-10-20T18:00:00Z' } });
           await c.query(DUPLICATES, [slot, 201, 1_000, await newProfileIds(c, 201)]);
           for (let i = 0; i < decoys; i += 1) {
             // Same academy, NOT submitted — the population an unselected slot contributes. Its
@@ -22315,8 +22942,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
             // Each decoy takes its own hour: they share this trainer and the shipped overlap guard
             // is live, so a common window would be refused before it could act as a decoy.
             const other = await srcSlot({
-              start: `'2026-10-27T17:00:00Z'::timestamptz + make_interval(hours => ${i})`,
-              end: `'2026-10-27T18:00:00Z'::timestamptz + make_interval(hours => ${i})` });
+              start: { at: 'instant', iso: '2026-10-27T17:00:00Z', offsetMinutes: i * 60 },
+              end: { at: 'instant', iso: '2026-10-27T18:00:00Z', offsetMinutes: i * 60 } });
             await c.query(`INSERT INTO public.bookings(slot_id,player_id,status)
               SELECT $1, u.id, 'confirmed' FROM unnest($2::uuid[]) AS u(id)`,
             [other, await newProfileIds(c, 2000)]);
@@ -22394,7 +23021,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     await c.query('BEGIN');
     try {
       await c.query(`UPDATE public.academy_profiles SET timezone='Europe/Amsterdam' WHERE id=$1`, [ACADEMY]);
-      const slot = await srcSlot({ start: `'2026-12-22T17:00:00Z'`, end: `'2026-12-22T18:00:00Z'` });
+      const slot = await srcSlot({ start: { at: 'instant', iso: '2026-12-22T17:00:00Z' }, end: { at: 'instant', iso: '2026-12-22T18:00:00Z' } });
       // 201 guests and 201 bare players, each duplicated ten times, so nothing below can come from
       // the row count either. The guest rows are DUAL-KEYED — a random `player_id` sits beside each
       // guest, exactly as the historical signup linker leaves them — so guest-first precedence is
@@ -22509,7 +23136,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     for (const [label, distinct] of [['200', 200], ['201', 201], ['dup5', 5]] as const) {
       await c.query('BEGIN');
       try {
-        const slot = await srcSlot({ start: `'2026-11-03T17:00:00Z'`, end: `'2026-11-03T18:00:00Z'` });
+        const slot = await srcSlot({ start: { at: 'instant', iso: '2026-11-03T17:00:00Z' }, end: { at: 'instant', iso: '2026-11-03T18:00:00Z' } });
         // STAGE 7.4-C: `DUPLICATES` takes the minted subject pool as its fourth parameter on
         // the real lineage (subjects are real accounts); this arm was unreachable while the
         // `both` assertion above still failed, so the conversion had not yet reached it.
@@ -22539,8 +23166,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     for (const [label, pool, emitted] of [['201', 201, 204], ['200', 200, 203]] as const) {
       await c.query('BEGIN');
       try {
-        const a = await srcSlot({ start: `'2026-11-10T17:00:00Z'`, end: `'2026-11-10T18:00:00Z'` });
-        const b = await srcSlot({ start: `'2026-11-17T17:00:00Z'`, end: `'2026-11-17T18:00:00Z'` });
+        const a = await srcSlot({ start: { at: 'instant', iso: '2026-11-10T17:00:00Z' }, end: { at: 'instant', iso: '2026-11-10T18:00:00Z' } });
+        const b = await srcSlot({ start: { at: 'instant', iso: '2026-11-17T17:00:00Z' }, end: { at: 'instant', iso: '2026-11-17T18:00:00Z' } });
         // ONE pool of real accounts, addressed by ordinal, so "subject 201" means the same person
         // to both slots — which is the whole point of the cross-slot merge.
         const subjects = await newProfileIds(c, pool);
@@ -22593,7 +23220,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     ] as const) {
       await c.query('BEGIN');
       try {
-        const slot = await srcSlot({ start: `'2026-11-24T17:00:00Z'`, end: `'2026-11-24T18:00:00Z'` });
+        const slot = await srcSlot({ start: { at: 'instant', iso: '2026-11-24T17:00:00Z' }, end: { at: 'instant', iso: '2026-11-24T18:00:00Z' } });
         // STAGE 7.4-C: same real-lineage pool parameter as the boundary arm above.
         await c.query(DUPLICATES, [slot, 201, POP, await newProfileIds(c, 201)]);
         for (const d of ddl) await c.query(d);
@@ -22677,7 +23304,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     await c.query('BEGIN');
     try {
       const { stmt } = await installedPreviewBody();
-      const slot = await srcSlot({ start: `'2026-12-01T17:00:00Z'`, end: `'2026-12-01T18:00:00Z'` });
+      const slot = await srcSlot({ start: { at: 'instant', iso: '2026-12-01T17:00:00Z' }, end: { at: 'instant', iso: '2026-12-01T18:00:00Z' } });
       // Duplicate-dominated on purpose: 100,000 eligible rows over 201 subjects is the input on
       // which a walk and a seek differ by three orders of magnitude. The subjects are real
       // accounts, and the status is `payment_pending` — ONE of the three cohort-eligible statuses
@@ -22716,7 +23343,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       // foreign entries between this slot's in subject order, which is exactly the arrangement a
       // subject-leading index has to walk past and a slot-leading one never enters.
       const decoySlot = await srcSlot({
-        start: `'2026-12-15T17:00:00Z'`, end: `'2026-12-15T18:00:00Z'` });
+        start: { at: 'instant', iso: '2026-12-15T17:00:00Z' },
+        end: { at: 'instant', iso: '2026-12-15T18:00:00Z' } });
       await c.query(`INSERT INTO public.bookings(slot_id,guest_player_id,status)
         SELECT $1, ('d0000000-0000-4000-8000-' || lpad((((g - 1) % 201) + 1)::text, 12, '0'))::uuid,
                'payment_pending'
@@ -22888,7 +23516,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
     // slot that itself holds eligible bookings, because that is where a wrong seek shows up.
     await c.query('BEGIN');
     try {
-      const slot = await srcSlot({ start: `'2026-12-08T17:00:00Z'`, end: `'2026-12-08T18:00:00Z'` });
+      const slot = await srcSlot({ start: { at: 'instant', iso: '2026-12-08T17:00:00Z' }, end: { at: 'instant', iso: '2026-12-08T18:00:00Z' } });
       const bk = (cols: string, vals: string) =>
         c.query(`INSERT INTO public.bookings(slot_id,${cols}) VALUES ($1,${vals})`, [slot]);
 
@@ -22951,14 +23579,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       // Its own trainer: only the ACADEMY is meant to differ here, and the shipped overlap guard
       // is keyed on the trainer — a shared window would refuse before tenancy could be asked.
       const foreignTrainer = await newTrainerId(c);
-      const foreignSlot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-         min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-         split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-        VALUES (gen_random_uuid(),$2,'11111111-2222-4333-8444-555555555555',$1,
-                '2026-12-08T17:00:00Z','2026-12-08T18:00:00Z','indoor','B',2,4,'padel',1.0,3.0,
-                true,true,true,false,12.50,50.00,'[]'::jsonb) RETURNING id`,
-      [foreignAcademy, foreignTrainer])).rows[0].id;
+      const foreignSlot = await insertTemplateSlot(c, {
+        trainer: foreignTrainer, academy: foreignAcademy, location: APPLY_LOCATION,
+        start: { at: 'instant', iso: '2026-12-08T17:00:00Z' },
+        end: { at: 'instant', iso: '2026-12-08T18:00:00Z' },
+      });
       const [theirSubject] = await newProfileIds(c, 1);
       await c.query(`INSERT INTO public.bookings(slot_id,player_id,status) VALUES ($1,$2,'confirmed')`,
         [foreignSlot, theirSubject]);
@@ -23042,13 +23667,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the normalized preview core', ()
       const SLOT = 'aa000000-0000-4000-8000-00000000aa01';
       const KID = 'aa000000-0000-4000-8000-00000000bb01';
       const TARGETS = Array.from({ length: 3 }, (_, i) => `aa000000-0000-4000-8000-00000000cc0${i}`);
-      await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-         min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-         split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-        VALUES ($1,'${PREIMAGE_TRAINER}','11111111-2222-4333-8444-555555555555',$2,
-                '2026-09-01T17:00:00Z','2026-09-01T18:00:00Z','indoor','B',2,4,'padel',1.0,3.0,
-                true,true,true,false,12.50,50.00,'[]'::jsonb)`, [SLOT, ACADEMY]);
+      await insertTemplateSlot(c, {
+        id: SLOT, trainer: PREIMAGE_TRAINER, academy: ACADEMY, location: APPLY_LOCATION,
+        start: { at: 'instant', iso: '2026-09-01T17:00:00Z' },
+        end: { at: 'instant', iso: '2026-09-01T18:00:00Z' },
+      });
       // The guest identity is a real row (the shipped referential edge joined the predecessor in
       // review-3); its UUID is still the fixed literal the pinned pre-image hashes.
       await c.query(`INSERT INTO public.guest_players(id, full_name, academy_profile_id)
@@ -23273,19 +23896,21 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the re-expressed preview wrapper
     return user;
   };
 
-  /** A same-academy source the normalized core can derive a coherent child from. */
-  // VALIDATED IN THE BODY, NOT TRUSTED AT THE PARAMETER. A branded parameter is satisfied by an
-  // `any` argument under this repository's `strict: false`, which would put an unvalidated fragment
-  // straight into the template; calling the validator here means every caller goes through it.
-  const srcSlot = async (academy: string, start = `'2026-09-01T17:00:00Z'`,
-    end = `'2026-09-01T18:00:00Z'`) =>
-    (await c.query(`INSERT INTO public.availability_slots
-      (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-       min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-       split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-      VALUES (gen_random_uuid(),'${await testTrainer(c)}','11111111-2222-4333-8444-555555555555',$1,
-              ${sqlFragment(start)},${sqlFragment(end)},'indoor','B',2,4,'padel',1.0,3.0,true,true,true,false,12.50,50.00,'[]'::jsonb)
-      RETURNING id`, [academy])).rows[0].id as string;
+  /**
+   * A same-academy source the normalized core can derive a coherent child from.
+   *
+   * PLAIN INSTANTS, NOT SQL LITERALS. These arguments used to be interpolated into the statement
+   * and so carried their own quotes; they are bound parameters now, and a round-2 review pointed
+   * out that the quotes had been left on — a value of `'2026-09-01T17:00:00Z'` INCLUDING the
+   * apostrophes, handed to a `::timestamptz` cast. The comment that used to sit here described a
+   * fragment validator that no longer exists either.
+   */
+  const srcSlot = async (academy: string, start = '2026-09-01T17:00:00Z',
+    end = '2026-09-01T18:00:00Z') =>
+    insertTemplateSlot(c, {
+      trainer: await testTrainer(c), academy, location: APPLY_LOCATION,
+      start: { at: 'instant', iso: start }, end: { at: 'instant', iso: end },
+    });
 
   it('is the exact normalized signature: one overload, 13 closed result fields, no legacy residue', async () => {
     // (1) THE IDENTITY, FROM THE CATALOG. `oidvectortypes` is what projection 1 compares the
@@ -23488,7 +24113,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-B: the re-expressed preview wrapper
       // Distinct windows: both slots belong to the SHARED trainer (only their academy differs),
       // and `check_trainer_slot_overlap` is keyed on the trainer, not on the tenant.
       const foreignSlot = await srcSlot(foreignAcademy);
-      const mySlot = await srcSlot(ACADEMY, `'2026-09-02T17:00:00Z'`, `'2026-09-02T18:00:00Z'`);
+      const mySlot = await srcSlot(ACADEMY, '2026-09-02T17:00:00Z', '2026-09-02T18:00:00Z');
 
       // A WELL-FORMED, IN-BOUNDS REQUEST naming REAL rows. If the payload were malformed the
       // refusals below would prove only that the core rejects garbage; naming a real same-academy
@@ -23881,29 +24506,22 @@ GRANT EXECUTE ON FUNCTION public.rebook_round_preview_command_alt_as_actor(uuid)
       await c.query(`INSERT INTO auth.users(id)
         SELECT ('9c9c9c9c-0000-4000-8000-' || lpad(g.i::text, 12, '0'))::uuid
           FROM generate_series(1, $1) AS g(i)`, [CHILDREN]);
-      const { rows: made } = await c.query(`
-        WITH s AS (
-          INSERT INTO public.availability_slots
-            (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,
-             training_level,min_participants,max_participants,rating_system,min_rating,max_rating,
-             prices_include_vat,split_payment,allow_single_booking,whole_slot_booking,
-             price_per_session,total_price,extra_costs)
-          SELECT gen_random_uuid(),
-                 t.id,
-                 '11111111-2222-4333-8444-555555555555',$1,
-                 '2026-09-01T06:00:00Z'::timestamptz + (t.i::int * interval '1 minute'),
-                 '2026-09-01T07:00:00Z'::timestamptz + (t.i::int * interval '1 minute'),
-                 'indoor','B',2,4,'padel',1.0,3.0,
-                 true,true,true,false,12.50,50.00,'[]'::jsonb
-            FROM unnest($2::uuid[]) WITH ORDINALITY AS t(id, i) RETURNING id)
+      // TWO STATEMENTS, NOT ONE CTE — same reason as the twenty-child ceiling above: the slot
+      // write belongs to the factory, and the one-booking-per-slot pairing is then made against
+      // the ids it returned. The `row_number()` join is preserved exactly, over `unnest`.
+      const slots = await insertTemplateSlotSeries(c, {
+        trainers: childTrainers, academy: ACADEMY, location: APPLY_LOCATION,
+        startIso: '2026-09-01T06:00:00Z', endIso: '2026-09-01T07:00:00Z', stepMinutes: 1,
+      });
+      await c.query(`
         INSERT INTO public.bookings(slot_id,player_id,status)
         SELECT s.id, p.id, 'confirmed'
-          FROM (SELECT id, row_number() OVER (ORDER BY id) AS rn FROM s) s
+          FROM (SELECT id, row_number() OVER (ORDER BY id) AS rn
+                  FROM unnest($1::uuid[]) AS u(id)) s
           JOIN (SELECT pr.id, row_number() OVER (ORDER BY pr.user_id) AS rn
                   FROM public.profiles pr
-                 WHERE pr.user_id::text LIKE '9c9c9c9c-0000-4000-8000-%') p ON p.rn = s.rn
-        RETURNING slot_id`, [ACADEMY, childTrainers]);
-      const slots = made.map((r) => r.slot_id as string);
+                 WHERE pr.user_id::text LIKE '9c9c9c9c-0000-4000-8000-%') p ON p.rn = s.rn`,
+      [slots]);
       expect(slots).toHaveLength(CHILDREN);
       const targets = Array.from({ length: CHILDREN * WEEKS },
         (_, i) => `9e9e9e9e-0000-4000-8000-${String(i).padStart(12, '0')}`);
@@ -24828,19 +25446,18 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
         RETURNING id`)).rows[0].id;
       await withCycleApplyGuardDisabled(c, () =>
         c.query(`UPDATE public.cycles SET rebook_round_id=$1 WHERE id=$2`, [round, attached]));
-      const extSlot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,cyclus_id,source_cycle_id,start_time,end_time,max_participants)
-        VALUES (gen_random_uuid(),'${await testTrainer(c)}','${ACADEMY}',$1,$1,
-                now()+interval '30 days',now()+interval '30 days 1 hour',4)
-        RETURNING id`, [attached])).rows[0].id;
+      const extSlot = await insertSlot(c, {
+        trainer: await testTrainer(c), academy: ACADEMY, cyclus: attached, sourceCycle: attached,
+        start: { at: 'fromNow', days: 30 }, end: { at: 'fromNow', days: 30, minutes: 60 },
+        maxParticipants: 4,
+      });
       const ordPlayer = await newProfileId(c);
       const ordBooking = (await c.query(`INSERT INTO public.bookings(slot_id,player_id,status)
         VALUES ($1,$2,'confirmed') RETURNING id`, [extSlot, ordPlayer])).rows[0].id;
       await c.query(`INSERT INTO public.slot_priority_claims(slot_id,player_id,status,booking_id)
         VALUES ($1,$2,'claimed',$3)`, [extSlot, ordPlayer, ordBooking]);
       await c.query(`UPDATE public.slot_priority_claims SET status='expired' WHERE slot_id=$1`, [extSlot]);
-      await c.query(`UPDATE public.availability_slots SET start_time=start_time+interval '1 hour',
-        end_time=end_time+interval '1 hour', is_public=false WHERE id=$1`, [extSlot]);
+      await shiftSlotTimesAndSetVisibility(c, extSlot, { minutes: 60 }, false);
       await c.query(`DELETE FROM public.slot_priority_claims WHERE slot_id=$1`, [extSlot]);
       await c.query(`DELETE FROM public.bookings WHERE id=$1`, [ordBooking]);
       await c.query(`DELETE FROM public.availability_slots WHERE id=$1`, [extSlot]);
@@ -24859,21 +25476,31 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
         [inChild])).rows[0].id;
       const boundTuple = (await c.query(
         `SELECT player_id FROM public.slot_priority_claims WHERE slot_id=$1`, [boundSlot])).rows[0];
-      const guardCases: Array<[string, string]> = [
-        ['an extra slot beyond the bound set', `INSERT INTO public.availability_slots
-          (id,trainer_id,academy_profile_id,start_time,end_time,max_participants)
-          VALUES (gen_random_uuid(),'${await testTrainer(c)}','${ACADEMY}',now()+interval '40 days',now()+interval '40 days 1 hour',4)`],
-        ['a claim outside the reviewed tuple set', `INSERT INTO public.slot_priority_claims
-          (slot_id,player_id,status) VALUES ('${boundSlot}','${ordPlayer}','pending')`],
-        ['a reviewed claim with a non-pending status', `INSERT INTO public.slot_priority_claims
-          (slot_id,player_id,status) VALUES ('${boundSlot}','${boundTuple.player_id}','claimed')`],
-        ['a reviewed claim carrying a booking', `INSERT INTO public.slot_priority_claims
-          (slot_id,player_id,status,booking_id) VALUES ('${boundSlot}','${boundTuple.player_id}','pending',
-           (SELECT b.id FROM public.bookings b LIMIT 1))`],
+      // THE SLOT CASE IS A THUNK, the three claim cases stay SQL. Only the first writes
+      // `availability_slots`, and that write now belongs to the factory — so the case that used
+      // to carry its statement carries the call instead, and `mustRaiseFrom` reads the refusal
+      // off whatever the call raised. The refusal asserted is the same 42501.
+      const guardTrainer = await testTrainer(c);
+      const guardCases: Array<[string, () => Promise<unknown>]> = [
+        ['an extra slot beyond the bound set', () => insertSlot(c, {
+          trainer: guardTrainer, academy: ACADEMY,
+          start: { at: 'fromNow', days: 40 }, end: { at: 'fromNow', days: 40, minutes: 60 },
+          maxParticipants: 4,
+        })],
+        ['a claim outside the reviewed tuple set', () => c.query(
+          `INSERT INTO public.slot_priority_claims (slot_id,player_id,status)
+           VALUES ($1,$2,'pending')`, [boundSlot, ordPlayer])],
+        ['a reviewed claim with a non-pending status', () => c.query(
+          `INSERT INTO public.slot_priority_claims (slot_id,player_id,status)
+           VALUES ($1,$2,'claimed')`, [boundSlot, boundTuple.player_id])],
+        ['a reviewed claim carrying a booking', () => c.query(
+          `INSERT INTO public.slot_priority_claims (slot_id,player_id,status,booking_id)
+           VALUES ($1,$2,'pending',(SELECT b.id FROM public.bookings b LIMIT 1))`,
+          [boundSlot, boundTuple.player_id])],
       ];
-      for (const [label, sql] of guardCases) {
+      for (const [label, attempt] of guardCases) {
         await c.query('SAVEPOINT g');
-        const refusal = await mustRaiseWithCode(c, sql);
+        const refusal = await mustRaiseFrom(label, attempt);
         expect(refusal.code, label).toBe('42501');
         expect(refusal.message, label).toMatch(/normalized-apply transaction/i);
         await c.query('ROLLBACK TO SAVEPOINT g');
@@ -24945,17 +25572,12 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       // SECURITY DEFINER, deliberately: the trigger fires inside the A core's execution, and
       // Domain A holds ZERO product privilege after 7.4-C — an invoker plant would refuse on
       // the slot UPDATE itself (the very containment under test) instead of modeling drift.
-      await c.query(`CREATE FUNCTION public.zz_c_pdrift() RETURNS trigger
-        LANGUAGE plpgsql SECURITY DEFINER AS $zz$
-        BEGIN
-          IF NEW.label = 'C drift P-layer' THEN
-            UPDATE public.availability_slots SET price_per_session = 33.10
-             WHERE id = '${sqlUuid(serP.slots[0])}';
-          END IF;
-          RETURN NEW;
-        END $zz$`);
-      await c.query(`CREATE TRIGGER zz_c_pdrift_trg BEFORE INSERT ON public.rebook_rounds
-        FOR EACH ROW EXECUTE FUNCTION public.zz_c_pdrift()`);
+      // THE BODY IS A FIXED LITERAL IN THE FACTORY, and its three facts arrive as SESSION
+      // SETTINGS. A PL/pgSQL body takes no bind parameters, so a slot id could only reach it by
+      // interpolation — which is the one thing this batch removed. `set_config` is the
+      // parameterised way to hand a value to code that runs on the server.
+      await plantSourceDriftTrigger(c,
+        { label: 'C drift P-layer', slot: serP.slots[0], price: '33.10' });
       const pRes = await pDrift.run();
       expect(pRes.row).toBeNull();
       expect(pRes.err!.code).toBe('40001');
@@ -25054,13 +25676,10 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
         const laneTrainer = await newTrainerId(c);
         const start = new Date(Date.parse('2026-09-01T06:00:00Z') + i * 61 * 60 * 1000).toISOString();
         const end = new Date(Date.parse(start) + 45 * 60 * 1000).toISOString();
-        slotIds.push((await c.query(`INSERT INTO public.availability_slots
-          (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-           min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-           split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-          VALUES (gen_random_uuid(),$3,'${APPLY_LOCATION}','${ACADEMY}',$1,$2,'indoor','B',2,4,
-                  'padel',1.0,3.0,true,true,true,false,12.50,50.00,'[]'::jsonb)
-          RETURNING id`, [start, end, laneTrainer])).rows[0].id);
+        slotIds.push(await insertTemplateSlot(c, {
+          trainer: laneTrainer, academy: ACADEMY, location: APPLY_LOCATION,
+          start: { at: 'instant', iso: start }, end: { at: 'instant', iso: end },
+        }));
         await c.query(`INSERT INTO public.bookings(slot_id,player_id,status) VALUES ($1,$2,'confirmed')`,
           [slotIds[i], player]);
       }
@@ -25159,10 +25778,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       // The overlap BLOCKER: an ordinary same-trainer slot sitting exactly on serOv's first
       // target occurrence instant (Sat... resp. weekday of Sep 10 = Thursday → first anchor
       // Thu 2026-10-08, same local time). Ordinary INSERT, no capability — the guards admit it.
-      await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,start_time,end_time,max_participants)
-        VALUES (gen_random_uuid(),'${await testTrainer(c)}','${ACADEMY}',
-                '2026-10-08T13:00:00Z','2026-10-08T14:00:00Z',4)`);
+      await insertSlot(c, {
+        trainer: await testTrainer(c), academy: ACADEMY,
+        start: { at: 'instant', iso: '2026-10-08T13:00:00Z' },
+        end: { at: 'instant', iso: '2026-10-08T14:00:00Z' }, maxParticipants: 4,
+      });
 
       // ── (a) THE RECOVERY SURFACE SEES v2. A normalized create's receipt is recoverable by its
       //    review fingerprint — exact command identity and byte-identical receipt bytes.
@@ -25344,11 +25964,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       // every later direct slot INSERT of this transaction to the bound target set.
       const foreignAcademy = randomUUID();
       await c.query(`INSERT INTO public.academy_profiles(id,name) VALUES ($1,'abc27 academy')`, [foreignAcademy]);
-      const foreignSlot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,start_time,end_time,max_participants)
-        VALUES (gen_random_uuid(), $2, $1,
-                '2027-03-01T10:00:00Z','2027-03-01T11:00:00Z',4)
-        RETURNING id`, [foreignAcademy, await newTrainerId(c)])).rows[0].id;
+      const foreignSlot = await insertSlot(c, {
+        trainer: await newTrainerId(c), academy: foreignAcademy,
+        start: { at: 'instant', iso: '2027-03-01T10:00:00Z' },
+        end: { at: 'instant', iso: '2027-03-01T11:00:00Z' }, maxParticipants: 4,
+      });
 
       // ── (a) REPLAY BINDS THE CORRELATIONS, NOT THE IDENTITY SETS (review-2 P2). A two-child
       //    round whose pairing, ordinals and positional target assignment are all load-bearing:
@@ -25556,30 +26176,34 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       expect(replayed.status).toBe('replayed');
       expect(Buffer.compare(replayed.receipt_canonical, first.receipt_canonical)).toBe(0);
 
-      // The raw driver: identical to the shared helper except the six array arguments arrive as
-      // SQL literals, because node-postgres cannot express a multidimensional or non-one-based
-      // array from a JS value — and those are exactly the shapes under test.
-      const lit = (values: readonly string[], type: string) =>
-        `ARRAY[${values.map((v) => `'${v}'`).join(',')}]::${type}[]`;
+      // The shape driver: identical to the shared helper except that the six array arguments are
+      // RENDERED rather than bound, because a native JavaScript `Array` does not serialize a
+      // lower bound — the bound is not part of the value. Measured, and narrower than this
+      // comment twice claimed: `pg` DOES express a multidimensional array (`[['a'],['b']]` →
+      // `{{"a"},{"b"}}`), and it passes a STRING through untouched, so `'[0:1]={a,b}'` could be
+      // bound as text. Rendering is how these statements get the bound; it is not the only way.
+      // Each
+      // presentation is a value of the catalogue's closed `RenderedArray` union, so a case states
+      // WHICH SHAPE it submits rather than writing SQL here.
       const applyShaped = async (o: {
-        src?: string; child?: string; target?: string;
-        hFrom?: string; hTo?: string; hLabel?: string; command?: string;
-      }) => (await c.query(
-        `SELECT * FROM public.rebook_round_apply_normalized_core(
-           $1,$2,'abc27.wire.v1','create',$3,$4,NULL::int,'C replay shape','2026-10-05'::date,
-           NULL::date,2,7,0,'deferred_split',false,'inherit',false,false,NULL::numeric,true,
-           NULL::int,NULL::text,NULL::text,NULL::text,NULL::text,NULL::text,NULL::text,
-           ${o.hFrom ?? lit(hol.hFrom, 'date')},
-           ${o.hTo ?? lit(hol.hTo, 'date')},
-           ${o.hLabel ?? lit(hol.hLabel, 'text')},
-           ${o.src ?? lit(ser.slots, 'uuid')},
-           ${o.child ?? lit(ser.slots.map(() => child), 'uuid')},
-           ${o.target ?? lit(targets, 'uuid')},
-           $5)`,
-        [FIXTURE_ACTOR, ACADEMY, o.command ?? cmd, round, fingerprint])).rows[0];
+        src?: RenderedArray; child?: RenderedArray; target?: RenderedArray;
+        hFrom?: RenderedArray; hTo?: RenderedArray; hLabel?: RenderedArray; command?: string;
+      }) => (await applyNormalizedCoreShaped(c, {
+        actor: FIXTURE_ACTOR, academy: ACADEMY, command: o.command ?? cmd, round,
+        fingerprintHex: fingerprintHexOf(fingerprint, 'the shaped replay fingerprint'),
+        slots: ser.slots, targets,
+        holidayFrom: o.hFrom ?? renderedList(hol.hFrom, 'date'),
+        holidayTo: o.hTo ?? renderedList(hol.hTo, 'date'),
+        holidayLabel: o.hLabel ?? renderedList(hol.hLabel, 'text'),
+        sources: o.src ?? renderedList(ser.slots),
+        children: o.child ?? renderedList(ser.slots.map(() => child)),
+        targetArray: o.target ?? renderedList(targets),
+      })).rows[0];
 
-      // The raw driver reproduces the control exactly, so a refusal below is the SHAPE and not
-      // an artefact of literal rendering.
+      // THE SHAPE DRIVER REPRODUCES THE CONTROL EXACTLY, so a refusal below is the SHAPE and
+      // not an artefact of rendering. It goes through the catalogue like every other writing
+      // invocation here — same ownership check, same statement — and differs from the shared
+      // helper only in that its six array arguments are rendered rather than bound.
       expect((await applyShaped({})).status).toBe('replayed');
 
       // ── THE SHAPE GRAMMAR, CASE BY CASE. Each must answer `invalid_request` — never
@@ -25589,28 +26213,31 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
         // MULTIDIMENSIONAL, flattening to the identical element list: `array_length(x,1)` sees 2
         // and `unnest` yields the same two ids, so every length and pairing test agrees.
         ['2x1 multidimensional sources',
-          { src: `'{{${ser.slots[0]}},{${ser.slots[1]}}}'::uuid[]` }],
+          { src: { kind: 'multidim-2x1', type: 'uuid', values: [ser.slots[0], ser.slots[1]] } }],
         ['2x1 multidimensional children',
-          { child: `'{{${child}},{${child}}}'::uuid[]` }],
+          { child: { kind: 'multidim-2x1', type: 'uuid', values: [child, child] } }],
         ['multidimensional targets',
-          { target: `'{{${targets[0]}},{${targets[1]}}}'::uuid[]` }],
+          { target: { kind: 'multidim-2x1', type: 'uuid', values: [targets[0], targets[1]] } }],
         // NON-ONE-BASED: same elements, same length, lower bound 0. Positional reads index from
         // one, so the first element goes unused and the last position reads NULL.
         ['zero-based sources',
-          { src: `'[0:1]={${ser.slots[0]},${ser.slots[1]}}'::uuid[]` }],
+          { src: { kind: 'zero-based', type: 'uuid', values: [ser.slots[0], ser.slots[1]] } }],
         ['zero-based targets',
-          { target: `'[0:${targets.length - 1}]={${targets.join(',')}}'::uuid[]` }],
+          { target: { kind: 'zero-based', type: 'uuid', values: targets } }],
         ['zero-based holiday from',
-          { hFrom: `'[0:0]={${hol.hFrom[0]}}'::date[]` }],
+          { hFrom: { kind: 'zero-based', type: 'date', values: [hol.hFrom[0]] } }],
         // NULL MEMBERS are not identities: no normalized identity column may store one.
-        ['null member in sources', { src: `ARRAY['${ser.slots[0]}',NULL]::uuid[]` }],
+        ['null member in sources',
+          { src: { kind: 'with-null', type: 'uuid', values: [ser.slots[0], null] } }],
         ['null member in targets',
-          { target: `ARRAY['${targets[0]}',NULL${targets.slice(2).map((t) => `,'${t}'`).join('')}]::uuid[]` }],
+          { target: { kind: 'with-null', type: 'uuid',
+            values: [targets[0], null, ...targets.slice(2)] } }],
         // RAGGED HOLIDAYS, judged on the SUBMISSION — before the extend reuse rule could
         // silently discard a malformed set as "omitted".
-        ['ragged holiday to', { hTo: `ARRAY['2026-12-22','2026-12-29']::date[]` }],
-        ['ragged holiday label', { hLabel: `ARRAY['Kerst','Oud']::text[]` }],
-        ['holiday from without to', { hTo: `ARRAY[]::date[]` }],
+        ['ragged holiday to',
+          { hTo: renderedList(['2026-12-22', '2026-12-29'], 'date') }],
+        ['ragged holiday label', { hLabel: renderedList(['Kerst', 'Oud'], 'text') }],
+        ['holiday from without to', { hTo: renderedList([], 'date') }],
       ];
       for (const [label, shape] of SHAPES) {
         const row = await applyShaped(shape);
@@ -25627,11 +26254,12 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       //    presentations with a different MEANING, so they must answer the mismatch status —
       //    proving the hoist did not swallow the comparison it precedes.
       const MISMATCHES: ReadonlyArray<readonly [string, Parameters<typeof applyShaped>[0]]> = [
-        ['reordered sources', { src: lit([ser.slots[1], ser.slots[0]], 'uuid') }],
-        ['permuted targets', { target: lit([...targets].reverse(), 'uuid') }],
-        ['holiday tuple tail changed', { hTo: `ARRAY['2026-12-23']::date[]` }],
-        ['holiday label changed', { hLabel: `ARRAY['Oud']::text[]` }],
-        ['holiday rows omitted on a create', { hFrom: `ARRAY[]::date[]`, hTo: `ARRAY[]::date[]`, hLabel: `ARRAY[]::text[]` }],
+        ['reordered sources', { src: renderedList([ser.slots[1], ser.slots[0]]) }],
+        ['permuted targets', { target: renderedList([...targets].reverse()) }],
+        ['holiday tuple tail changed', { hTo: renderedList(['2026-12-23'], 'date') }],
+        ['holiday label changed', { hLabel: renderedList(['Oud'], 'text') }],
+        ['holiday rows omitted on a create', { hFrom: renderedList([], 'date'),
+          hTo: renderedList([], 'date'), hLabel: renderedList([], 'text') }],
       ];
       for (const [label, shape] of MISMATCHES) {
         expect((await applyShaped(shape)).status, label).toBe('command_payload_mismatch');
@@ -25658,16 +26286,14 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       expect(eReplay.status).toBe('replayed');
       // ...a MALFORMED "empty" submission (from omitted, to supplied) is refused on shape rather
       // than being discarded as an omission...
-      expect((await c.query(
-        `SELECT * FROM public.rebook_round_apply_normalized_core(
-           $1,$2,'abc27.wire.v1','extend',$3,$4,1,'C replay shape','2026-10-05'::date,NULL::date,
-           2,7,0,'deferred_split',false,'inherit',false,false,NULL::numeric,true,
-           NULL::int,NULL::text,NULL::text,NULL::text,NULL::text,NULL::text,NULL::text,
-           ARRAY[]::date[], ARRAY['2026-12-22']::date[], ARRAY[]::text[],
-           ${lit(serE.slots, 'uuid')}, ${lit(serE.slots.map(() => eChild), 'uuid')},
-           ${lit(eTargets, 'uuid')}, $5)`,
-        [FIXTURE_ACTOR, ACADEMY, eCmd, round, e1.review_fingerprint])).rows[0].status)
-        .toBe('invalid_request');
+      expect((await applyNormalizedCoreShapedExtend(c, {
+        actor: FIXTURE_ACTOR, academy: ACADEMY, command: eCmd, round,
+        fingerprintHex: fingerprintHexOf(e1.review_fingerprint, 'the extend-shape fingerprint'),
+        slots: serE.slots, targets: eTargets,
+        sources: renderedList(serE.slots),
+        children: renderedList(serE.slots.map(() => eChild)),
+        targetArray: renderedList(eTargets),
+      })).rows[0].status).toBe('invalid_request');
       // ...and a well-shaped non-empty holiday submission that contradicts the stored round is a
       // different meaning, not a shape error.
       expect((await applyNormalized(c, {
@@ -25778,10 +26404,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
     try {
       await c.query(`INSERT INTO public.academy_profiles(id,name) VALUES ('${ACADEMY}','abc27 academy') ON CONFLICT DO NOTHING`);
       await c.query(`INSERT INTO public.trainer_profiles(id) VALUES ('${TRAINER}') ON CONFLICT DO NOTHING`);
-      const slot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,start_time,end_time,max_participants)
-        VALUES (gen_random_uuid(),'${fenceTrainer}','${ACADEMY}',
-                '2027-05-04T10:00:00Z','2027-05-04T11:00:00Z',4) RETURNING id`)).rows[0].id;
+      const slot = await insertSlot(c, {
+        trainer: fenceTrainer, academy: ACADEMY,
+        start: { at: 'instant', iso: '2027-05-04T10:00:00Z' },
+        end: { at: 'instant', iso: '2027-05-04T11:00:00Z' }, maxParticipants: 4,
+      });
       const player = await newProfileId(c);
       await c.query(`GRANT INSERT, UPDATE, DELETE, SELECT ON public.bookings TO service_role`);
       await c.query(`SET LOCAL ROLE service_role`);
@@ -25981,11 +26608,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       await c.query(`INSERT INTO public.bookings(slot_id,player_id,status)
         SELECT $1, u.id, 'cancelled' FROM unnest($2::uuid[]) AS u(id)`,
       [serHP.slots[0], await newProfileIds(c, 3000)]);
-      const foreignSlot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,start_time,end_time,max_participants)
-        VALUES (gen_random_uuid(),'${await testTrainer(c)}','${ACADEMY}',
-                '2027-03-08T10:00:00Z','2027-03-08T11:00:00Z',4)
-        RETURNING id`)).rows[0].id;
+      const foreignSlot = await insertSlot(c, {
+        trainer: await testTrainer(c), academy: ACADEMY,
+        start: { at: 'instant', iso: '2027-03-08T10:00:00Z' },
+        end: { at: 'instant', iso: '2027-03-08T11:00:00Z' }, maxParticipants: 4,
+      });
       await c.query(`INSERT INTO public.bookings(slot_id,player_id,status)
         SELECT $1, u.id, 'confirmed' FROM unnest($2::uuid[]) AS u(id)`,
       [foreignSlot, await newProfileIds(c, 1000)]);
@@ -26248,10 +26875,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
          VALUES (gen_random_uuid(), 'abc27 guest', '${ACADEMY}') RETURNING id`)).rows[0].id;
       // A second, UNRELATED slot: the parallelism controls write against it, so "ordinary writers
       // stay parallel" is not accidentally proved on rows nobody is contending for.
-      const otherSlot = (await db1.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,start_time,end_time,max_participants)
-        VALUES (gen_random_uuid(),'${await testTrainer(db1)}','${ACADEMY}',
-                '2027-04-06T10:00:00Z','2027-04-06T11:00:00Z',4) RETURNING id`)).rows[0].id;
+      const otherSlot = await insertSlot(db1, {
+        trainer: await testTrainer(db1), academy: ACADEMY,
+        start: { at: 'instant', iso: '2027-04-06T10:00:00Z' },
+        end: { at: 'instant', iso: '2027-04-06T11:00:00Z' }, maxParticipants: 4,
+      });
       // THE BLOCK OBSERVATION IS BACKEND-SPECIFIC, not a global "something is waiting" count:
       // `pg_blocking_pids` names the exact backend db2 is waiting FOR, so an unrelated wait
       // elsewhere in the cluster can neither satisfy nor mask this assertion.
@@ -26745,9 +27373,7 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
         `INSERT INTO public.bookings(slot_id,player_id,status) VALUES ($1,$2,'confirmed') RETURNING id`,
         [otherSlot, parWriter]);
       expect(par1.rows).toHaveLength(1);
-      const par2 = await db2.query(
-        `UPDATE public.availability_slots SET max_participants=6 WHERE id=$1 RETURNING id`,
-        [otherSlot]);
+      const par2 = await setSlotCapacity(db2, otherSlot, 6);
       expect(par2.rows).toHaveLength(1);
       const par3 = await db2.query(
         `UPDATE public.bookings SET status='cancelled' WHERE id=$1 RETURNING id`, [par1.rows[0].id]);
@@ -26782,10 +27408,8 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       await db1.query(`SELECT 1 FROM public.availability_slots WHERE id=$1 FOR UPDATE`, [otherSlot]);
       await db2.query('BEGIN');
       await db2.query(`SET LOCAL lock_timeout = '250ms'`);
-      const timedOut = await db2.query(
-        `UPDATE public.availability_slots SET max_participants=7 WHERE id=$1 RETURNING id`,
-        [otherSlot]).then(() => null as null | { code?: string },
-        (e: { code?: string }) => e);
+      const timedOut = await setSlotCapacity(db2, otherSlot, 7)
+        .then(() => null as null | { code?: string }, (e: { code?: string }) => e);
       expect(timedOut, 'an ordinary slot edit must genuinely wait for FOR UPDATE').not.toBeNull();
       expect(timedOut!.code).toBe('55P03');
       await db2.query('ROLLBACK');
@@ -26826,17 +27450,14 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
         WHERE academy_profile_id='${ACADEMY}' AND user_id='${FIXTURE_ACTOR}'`);
       await db1.query('BEGIN');
       await db1.query(`SELECT set_config('request.jwt.claims','{"sub":"${FIXTURE_ACTOR}"}',true)`);
-      const { rows: revoked } = await db1.query(`
-        SELECT status, round_id FROM public.rebook_round_apply_command_as_actor(
-          '${ACADEMY}'::uuid, gen_random_uuid(), 'abc27.wire.v1', 'create',
-          '${revRound}'::uuid, NULL::int, 'C barrier revoked', '2026-10-05'::date, NULL::date,
-          2, 7, 0, 'deferred_split', false, 'inherit', false, false, NULL::numeric, true,
-          NULL::int, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text,
-          ARRAY[]::date[], ARRAY[]::date[], ARRAY[]::text[],
-          ARRAY[${serRev.slots.map((s) => `'${s}'`).join(',')}]::uuid[],
-          ARRAY[${serRev.slots.map(() => `'${revChild}'`).join(',')}]::uuid[],
-          ARRAY[${revTargets.map((t) => `'${t}'`).join(',')}]::uuid[],
-          '\\x${(v1.review_fingerprint as Buffer).toString('hex')}'::bytea)`);
+      const { rows: revoked } = await applyCommandAsActorRenderedBarrier(db1, {
+        academy: ACADEMY, round: revRound,
+        fingerprintHex: fingerprintHexOf(v1.review_fingerprint, 'the revoked-manager barrier fingerprint'),
+        slots: serRev.slots, targets: revTargets,
+        sources: renderedList(serRev.slots),
+        children: renderedList(serRev.slots.map(() => revChild)),
+        targetArray: renderedList(revTargets),
+      });
       expect(revoked[0]).toEqual({ status: 'refused', round_id: null });
       await db1.query('ROLLBACK');
       const { rows: revProbe } = await db1.query(
@@ -27172,10 +27793,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       // on the advisory the apply session holds. Observed, so the construction cannot degenerate.
       await db2.query('BEGIN');
       await db2.query(`SET LOCAL deadlock_timeout = '20s'`);
-      const mintPending = db2.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,academy_profile_id,start_time,end_time,max_participants)
-        VALUES ($1,'${serDl.trainer}','${ACADEMY}','2027-05-04T10:00:00Z','2027-05-04T11:00:00Z',4)`,
-        [dlTargets[0]]);
+      const mintPending = insertSlot(db2, {
+        id: dlTargets[0], trainer: serDl.trainer, academy: ACADEMY,
+        start: { at: 'instant', iso: '2027-05-04T10:00:00Z' },
+        end: { at: 'instant', iso: '2027-05-04T11:00:00Z' }, maxParticipants: 4,
+      });
       expect(await blockedBy(db2Pid2, db1Pid2),
         'the minting client must park inside its own statement at the overlap advisory').toBe(true);
       // The apply now inserts its cycles, re-takes its own advisory (re-entrant, so it proceeds)
@@ -27441,10 +28063,11 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       const freshSlot = async (cap: number, startIso: string) => {
         const trainer = await newTrainerId(db1);
         const end = new Date(Date.parse(startIso) + 3600 * 1000).toISOString();
-        return (await db1.query(`INSERT INTO public.availability_slots
-          (id,trainer_id,location_id,academy_profile_id,start_time,end_time,max_participants)
-          VALUES (gen_random_uuid(),$1,'${APPLY_LOCATION}','${ACADEMY}',$2,$3,$4) RETURNING id`,
-        [trainer, startIso, end, cap])).rows[0].id as string;
+        return insertSlot(db1, {
+          trainer, academy: ACADEMY, location: APPLY_LOCATION,
+          start: { at: 'instant', iso: startIso }, end: { at: 'instant', iso: end },
+          maxParticipants: cap,
+        });
       };
       /** The membership-relevant state of one slot, read from the observer. */
       const residue = async (slot: string) => (await db3.query(
@@ -28542,15 +29165,12 @@ describe.sequential('ABC-27 D7 — Stage 7.4-C: the closed normalized apply path
       // handed back — a trainer source no type could reach, and one that wrote its rows before
       // ownership was decided. These are branded values this test owns before any row exists.
       const trainers = await declareTrainers(db1, Array.from({ length: 50 }, () => randomUUID()));
-      const { rows: slotRows } = await db1.query(`
-        INSERT INTO public.availability_slots
-          (id,trainer_id,location_id,academy_profile_id,start_time,end_time,max_participants)
-        SELECT gen_random_uuid(), t.id, '${APPLY_LOCATION}', '${ACADEMY}',
-               timestamptz '2026-09-07 08:00:00+00' + (t.k * interval '1 hour'),
-               timestamptz '2026-09-07 09:00:00+00' + (t.k * interval '1 hour'), 4
-          FROM unnest($1::uuid[]) WITH ORDINALITY AS t(id, k)
-        RETURNING id`, [trainers]);
-      const slots = slotRows.map((r) => r.id as string);
+      const slots = await insertSlotSeries(db1, {
+        trainers, academy: ACADEMY, location: APPLY_LOCATION,
+        base: '2026-09-07T08:00:00Z',
+        startMinutes: 60, endMinutes: 120, stepMinutes: 60,
+        maxParticipants: 4,
+      });
       expect(slots).toHaveLength(50);
       const subjects = await newProfileIds(db1, 10);
       await db1.query(`
@@ -28705,17 +29325,39 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
       'deferred_split',false,'inherit',false,false,NULL::numeric,true,NULL::int,NULL::text,NULL::text,
       NULL::text,NULL::text,NULL::text,NULL::text,ARRAY[]::date[],ARRAY[]::date[],ARRAY[]::text[],
       $3::uuid[],$4::uuid[],$5::uuid[])`,
-    rebook_round_apply_command_as_actor: `SELECT * FROM public.rebook_round_apply_command_as_actor(
-      $1::uuid,$2::uuid,'abc27.wire.v1','create',$3::uuid,NULL::int,'Reach','2026-09-01'::date,NULL::date,
-      4,7,0,'deferred_split',false,'inherit',false,false,NULL::numeric,true,NULL::int,NULL::text,NULL::text,
-      NULL::text,NULL::text,NULL::text,NULL::text,ARRAY[]::date[],ARRAY[]::date[],ARRAY[]::text[],
-      $4::uuid[],$5::uuid[],$6::uuid[],$7::bytea)`,
     rebook_round_apply_lifecycle_command_as_actor: `SELECT * FROM public.rebook_round_apply_lifecycle_command_as_actor(
       $1::uuid,$2::uuid,'abc27.wire.v1',$3::uuid,$4::int,'open','closed')`,
     rebook_round_command_status_as_actor: `SELECT * FROM public.rebook_round_command_status_as_actor(
       $1::uuid,$2::uuid)`,
     rebook_round_command_lookup_by_review_as_actor: `SELECT * FROM public.rebook_round_command_lookup_by_review_as_actor(
       $1::uuid,'abc27.wire.v1',$2::bytea)`,
+  };
+
+  /**
+   * ...AND THE FIFTH, WHICH IS THE ONE THAT WRITES, IS NOT A TEXT HERE AT ALL.
+   *
+   * The apply wrapper's call lives in `src/test/abc27ApplyCatalogue.ts` with every other writing
+   * invocation in this suite, so the four probes below reach it through the same entrypoint the
+   * product-shaped drivers use — same statement, same ownership check, one place to read. The
+   * adapter is the single place this file turns a positional argument list into that entrypoint's
+   * typed record, so `DRIVE` can be iterated exactly like the map above.
+   */
+  const applyReachability = (client: pg.Client, a: unknown[]) =>
+    applyCommandAsActorReachability(client, {
+      academy: a[0], command: a[1], round: a[2],
+      slots: a[3] as string[], children: a[4] as string[], targets: a[5] as string[],
+      fingerprintHex: fingerprintHexOf(a[6], 'the operator-reachability fingerprint'),
+    });
+  const DRIVE: Record<string, (client: pg.Client, a: unknown[]) => Promise<pg.QueryResult>> = {
+    rebook_round_preview_command_as_actor: (client, a) =>
+      client.query(CALL.rebook_round_preview_command_as_actor, a),
+    rebook_round_apply_command_as_actor: applyReachability,
+    rebook_round_apply_lifecycle_command_as_actor: (client, a) =>
+      client.query(CALL.rebook_round_apply_lifecycle_command_as_actor, a),
+    rebook_round_command_status_as_actor: (client, a) =>
+      client.query(CALL.rebook_round_command_status_as_actor, a),
+    rebook_round_command_lookup_by_review_as_actor: (client, a) =>
+      client.query(CALL.rebook_round_command_lookup_by_review_as_actor, a),
   };
 
   it('grants the EXACT installed signatures, non-grantable, to `authenticated` and to no other grantee', async () => {
@@ -28810,14 +29452,11 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
       // occurrence and the shipped check_trainer_slot_overlap trigger refuses. 2026-01-07 is the
       // same weekday and time as the occurrences, eight months clear of them.
       const trainer = await newTrainerId(c);
-      const slot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-         min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-         split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-        VALUES (gen_random_uuid(),$1,'11111111-2222-4333-8444-555555555555',$2,
-                '2026-01-07T17:00:00Z','2026-01-07T18:00:00Z','indoor','B',2,4,'padel',1.0,3.0,true,
-                true,true,false,12.50,50.00,'[]'::jsonb)
-        RETURNING id`, [trainer, ACADEMY])).rows[0].id as string;
+      const slot = await insertTemplateSlot(c, {
+        trainer, academy: ACADEMY, location: APPLY_LOCATION,
+        start: { at: 'instant', iso: '2026-01-07T17:00:00Z' },
+        end: { at: 'instant', iso: '2026-01-07T18:00:00Z' },
+      });
       const child = randomUUID();
       const targets = Array.from({ length: 4 }, () => randomUUID());
       // ONE caller-minted round identity for BOTH halves. The round id is part of the canonical
@@ -28861,7 +29500,7 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
       // (2) APPLY — presenting the fingerprint the preview just issued. This is the one wrapper
       //     that WRITES, so reaching its contract is proved by an applied receipt.
       const applyCmd = randomUUID();
-      const applied = (await c.query(CALL.rebook_round_apply_command_as_actor,
+      const applied = (await applyReachability(c,
         [ACADEMY, applyCmd, newRound, [slot], [child], targets, preview[0].review_fingerprint])).rows;
       expect(applied).toHaveLength(1);
       expect(applied[0].status).toBe('applied');
@@ -28915,14 +29554,11 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
       expect((await c.query(`SELECT public.is_admin($1) AS ok`, [admin_])).rows[0].ok).toBe(true);
 
       const trainer = await newTrainerId(c);
-      const slot = (await c.query(`INSERT INTO public.availability_slots
-        (id,trainer_id,location_id,academy_profile_id,start_time,end_time,court_type,training_level,
-         min_participants,max_participants,rating_system,min_rating,max_rating,prices_include_vat,
-         split_payment,allow_single_booking,whole_slot_booking,price_per_session,total_price,extra_costs)
-        VALUES (gen_random_uuid(),$1,'11111111-2222-4333-8444-555555555555',$2,
-                '2026-09-09T17:00:00Z','2026-09-09T18:00:00Z','indoor','B',2,4,'padel',1.0,3.0,true,
-                true,true,false,12.50,50.00,'[]'::jsonb)
-        RETURNING id`, [trainer, ACADEMY])).rows[0].id as string;
+      const slot = await insertTemplateSlot(c, {
+        trainer, academy: ACADEMY, location: APPLY_LOCATION,
+        start: { at: 'instant', iso: '2026-09-09T17:00:00Z' },
+        end: { at: 'instant', iso: '2026-09-09T18:00:00Z' },
+      });
       const child = randomUUID();
       const targets = Array.from({ length: 4 }, () => randomUUID());
 
@@ -28993,11 +29629,11 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
 
       for (const [label, sub, academy] of cases) {
         const args = argsFor(academy);
-        for (const [wrapper, sql] of Object.entries(CALL)) {
+        for (const [wrapper, drive] of Object.entries(DRIVE)) {
           await c.query('SAVEPOINT probe');
           try {
             await become('authenticated', sub);
-            const { rows } = await c.query(sql, args[wrapper]);
+            const { rows } = await drive(c, args[wrapper]);
             // EXACTLY ONE ROW, never zero and never an error: a raise would itself be an oracle,
             // and `permission denied` would say the surface exists but is not for you.
             expect(rows, `${wrapper} / ${label}`).toHaveLength(1);
@@ -29035,8 +29671,8 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
         await become('authenticated', manager);
         const args = argsFor(ACADEMY);
         const seen: Record<string, unknown> = {};
-        for (const [wrapper, sql] of Object.entries(CALL)) {
-          seen[wrapper] = (await c.query(sql, args[wrapper])).rows[0].status;
+        for (const [wrapper, drive] of Object.entries(DRIVE)) {
+          seen[wrapper] = (await drive(c, args[wrapper])).rows[0].status;
         }
         // `status`/`lookup` have no row of this actor's to find, and `apply` presents a
         // fingerprint no preview issued — so those three answer `refused` BY CONTRACT even when
@@ -29089,12 +29725,12 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
       const manager = await mkManager(ACADEMY);
 
       for (const role of ['anon', 'service_role', 'abc27_public_probe']) {
-        for (const [wrapper, sql] of Object.entries(CALL)) {
+        for (const [wrapper, drive] of Object.entries(DRIVE)) {
           await c.query('SAVEPOINT acl');
           try {
             await become(role, manager);
             let err: (Error & { code?: string }) | null = null;
-            try { await c.query(sql, args[wrapper]); } catch (e) { err = e as Error & { code?: string }; }
+            try { await drive(c, args[wrapper]); } catch (e) { err = e as Error & { code?: string }; }
             expect(err, `${role} / ${wrapper} must not succeed`).not.toBeNull();
             // THE ACL LAYER, NOT THE BODY: `42501` is raised before a single statement of the
             // wrapper executes, which is why nothing can be written and no tenant fact can leak.
@@ -29516,9 +30152,9 @@ describe.sequential('ABC-27 D7 — operator-wrapper reachability (receipt 745fa7
 // across the fixtures that commit (nothing truncates between tests; most, but not all, roll
 // back). Unrelated fixtures then collided whenever the calendar walked a relative slot onto a
 // fixed one. Three things keep that from silently returning, and none of them is a scan over
-// source text: the branded factory refuses reuse at ACQUISITION, the compiler-API guard proves
-// every write site binds a branded value, and the census below proves the running suite really
-// behaved that way.
+// source text: the factory asks the ownership registry before every write, the compiler-API guard
+// proves no slot write is spelled outside that factory, and the census below proves the running
+// suite really behaved that way.
 describe('TRAINER NAMESPACE — disjoint by construction', () => {
   /**
    * THE TWO-WAY INTERLOCK WITH THE CI GUARD.
@@ -29542,6 +30178,9 @@ describe('TRAINER NAMESPACE — disjoint by construction', () => {
       'IsolatedTrainerId',
       'availability_slots',
       'abc27TrainerAuthority',
+      // THE FACTORY IS NOW THE SUBJECT of the guard, so a guard that stopped naming it would be
+      // enforcing nothing this file depends on.
+      'abc27SlotFixtures',
       "createProgram",
       'SHARED_NAMESPACE_CONTROL',
     ]) {
@@ -29564,12 +30203,11 @@ describe('TRAINER NAMESPACE — disjoint by construction', () => {
       `SELECT count(*)::int AS n FROM public.availability_slots WHERE trainer_id=$1`, [TRAINER]);
     const all = await census();
     // WHAT THIS CENSUS DOES AND DOES NOT COVER. Most fixtures do their work inside a transaction
-    // they roll back, so only the committed residue is visible here — measured at 9 slots in 1
-    // namespace, NOT the whole suite's output. So this is not whole-suite coverage and must not be
-    // read as such; the SOURCE AUTHORITY is what covers every construction site — the brand makes
-    // a foreign trainer unobtainable and the compiler-API guard proves every write site binds one.
-    // What this adds is the end-to-end half: the shared namespace is provably empty after a real
-    // run, and the control below proves that query would have seen a row if one were there.
+    // they roll back, so only the committed residue is visible here — NOT the whole suite's
+    // output. So this is not whole-suite coverage and must not be read as such; the RUNTIME
+    // OWNERSHIP CHECK is what covers every write, on the value that actually arrives, in every
+    // run. What this adds is the end-to-end half: the shared namespace is provably empty after a
+    // real run, and the control below proves that query would have seen a row if one were there.
     expect(all.total, 'the census is reading a populated table').toBeGreaterThan(0);
     // ...and none of them is the shared one.
     expect(before.rows[0].n, 'slots left in the module-wide TRAINER namespace').toBe(0);
@@ -29671,5 +30309,129 @@ describe('TRAINER NAMESPACE — the source authority refuses reuse at acquisitio
     expect(currentIdentity()).toMatch(/^\d+:/);
     expect(currentIdentity()).toContain(expect.getState().currentTestName);
     expect(currentIdentity()).not.toBe(BOOTSTRAP_IDENTITY);
+  });
+});
+
+// ══ AND THE CHECK THAT ACTUALLY RUNS, AGAINST A REAL SERVER ══════════════════════════════════
+//
+// The registry above refuses at ACQUISITION. These are the other end: the capability check the
+// factory performs at the moment it writes, and the slot-ownership check the apply drivers
+// perform on the source slots they are handed. Both are asked about the VALUE that arrives, which
+// is why neither cares how the expression that produced it was written — the three brand escapes
+// a review round found (a containing type, an alias widened by annotation and mutated, a getter)
+// all deliver an ordinary string here.
+//
+// FORGE-FREE. Nothing below reaches into the registry to plant an owner: every refusal is
+// produced by the sequence a colliding fixture would really take.
+describe('TRAINER NAMESPACE — the write-time capability, on the real server', () => {
+  /** Acquired by the BOOTSTRAP identity, in a hook, so no test can ever own it. */
+  let bootstrapTrainer: string;
+  let bootstrapSlot: string;
+
+  beforeAll(async () => {
+    // A HOOK IS NOT A TEST, and that is the point: this id belongs to `BOOTSTRAP_IDENTITY`, so
+    // every test below meets the ownership refusal rather than an "unknown id" one. The two
+    // refusals have different messages, and asserting the right one is what makes this control
+    // about ownership instead of about existence.
+    expect(currentIdentity()).toBe(BOOTSTRAP_IDENTITY);
+    bootstrapTrainer = await declareTrainer(c, 'dddddddd-0000-4000-8000-00000000db01');
+    bootstrapSlot = await insertSlot(c, {
+      trainer: bootstrapTrainer, academy: ACADEMY,
+      start: { at: 'instant', iso: '2029-01-02T10:00:00Z' },
+      end: { at: 'instant', iso: '2029-01-02T11:00:00Z' }, maxParticipants: 4,
+    });
+    expect(slotOwner(bootstrapSlot)).toBe(BOOTSTRAP_IDENTITY);
+  });
+
+  it('refuses a trainer the bootstrap identity owns, and writes no row doing it', async () => {
+    const before = (await c.query(
+      `SELECT count(*)::int AS n FROM public.availability_slots WHERE trainer_id=$1`,
+      [bootstrapTrainer])).rows[0].n;
+    await expect(insertSlot(c, {
+      trainer: bootstrapTrainer, academy: ACADEMY,
+      start: { at: 'instant', iso: '2029-02-02T10:00:00Z' },
+      end: { at: 'instant', iso: '2029-02-02T11:00:00Z' }, maxParticipants: 4,
+    })).rejects.toThrow(/is owned by "<bootstrap: suite setup and hooks>"/);
+    expect((await c.query(
+      `SELECT count(*)::int AS n FROM public.availability_slots WHERE trainer_id=$1`,
+      [bootstrapTrainer])).rows[0].n,
+    'the refusal happened before the statement was sent').toBe(before);
+    // ...AND THE SAME CALL WITH THIS TEST'S OWN TRAINER SUCCEEDS, so the refusal above is about
+    // ownership and not about the window, the academy or the factory being broken.
+    expect(await insertSlot(c, {
+      trainer: await newTrainerId(c), academy: ACADEMY,
+      start: { at: 'instant', iso: '2029-02-02T10:00:00Z' },
+      end: { at: 'instant', iso: '2029-02-02T11:00:00Z' }, maxParticipants: 4,
+    })).toBeTruthy();
+  });
+
+  it('refuses a SOURCE SLOT another identity owns, which is the path that names no trainer', async () => {
+    // THE INDIRECT CLASS. `rebook_round_apply_normalized_core` derives the target trainer from the
+    // source slots it is handed (`v_r_trainer`, aggregated from the locked source rows), so a
+    // fixture that passes a foreign slot writes into that slot owner's overlap namespace without
+    // ever naming a trainer. No type can see this: a slot id is an ordinary string.
+    await expect(previewNormalized(c, { slots: [bootstrapSlot], children: [randomUUID()] }))
+      .rejects.toThrow(/names slot .* which is owned by "<bootstrap/);
+    // ...THROUGH A GETTER, TOO. This is the exact shape that defeated the static follower this
+    // replaces — `{ get slots() { … } }` is evaluated by the driver like any other property, and
+    // the check reads the value it produced rather than the expression that produced it.
+    const viaGetter = { get slots() { return [bootstrapSlot]; }, children: [randomUUID()] };
+    await expect(previewNormalized(c, viaGetter))
+      .rejects.toThrow(/names slot .* which is owned by "<bootstrap/);
+    // CONTROL: an id NOBODY owns passes the check and is answered by the PRODUCT, because "a
+    // caller who guesses a real UUID learns exactly what one who invents a UUID learns" is itself
+    // a property this suite tests — and a check that refused those would break it. What matters
+    // here is that a closed status row comes back at all rather than an ownership throw; the
+    // status itself is the core's business and is asserted where that contract lives.
+    const ghost = await previewNormalized(c, { slots: [randomUUID()], children: [randomUUID()] });
+    expect(typeof ghost.status).toBe('string');
+    expect(ghost.review_fingerprint).toBeNull();
+  });
+
+  it('gives the apply\'s TARGET slots to the test that applied, trainers included', async () => {
+    // THE INHERITANCE, MEASURED. Targets are client-minted UUIDs, and the apply writes their rows
+    // with a trainer taken from the source series — so "the target inherits an owned trainer" is
+    // a fact about the database, not only about the driver's bookkeeping. Both halves are asserted
+    // here: the registry claimed the target ids, and the rows really carry this test's trainer.
+    const ser = await seedApplySeries(c, { startIso: '2027-09-07T09:00:00Z', cohortProfiles: 1 });
+    const child = randomUUID();
+    const applied = await previewThenApply(c, {
+      kind: 'create', round: randomUUID(), label: 'Target inheritance', command: randomUUID(),
+      slots: ser.slots, children: ser.slots.map(() => child),
+    });
+    expect(applied.apply!.status).toBe('applied');
+    expect(applied.targets.length).toBeGreaterThan(0);
+    for (const target of applied.targets) expect(slotOwner(target)).toBe(currentIdentity());
+    const { rows } = await c.query(
+      `SELECT DISTINCT trainer_id::text AS t FROM public.availability_slots
+        WHERE id = ANY($1::uuid[])`, [applied.targets]);
+    expect(rows.map((r: Record<string, unknown>) => r.t),
+      'every target slot carries exactly the source series trainer').toEqual([ser.trainer]);
+    // ...and that trainer is this test's, which is what makes the inheritance safe rather than
+    // merely consistent.
+    expect(requireOwnedByCurrentIdentity(rows[0].t as string)).toBe(ser.trainer);
+  });
+
+  it('refuses a slot id a DIFFERENT identity already claimed, in either direction', () => {
+    // The registry is symmetric: claiming a foreign slot is refused exactly as reading one is.
+    expect(() => noteSlotsOwned([bootstrapSlot])).toThrow(/a slot belongs to one test/);
+    expect(() => assertSlotsNotForeign([bootstrapSlot], 'a control')).toThrow(/is owned by/);
+  });
+
+  it('publishes a fixed-statement digest per name, so the guard reads what the server runs', () => {
+    // THE TWO HALVES FACING EACH OTHER. The static guard proves the module's own constants are
+    // plain, by reading the source with PostgreSQL's own grammar — a stronger claim than a
+    // runtime re-check of the raw text could add. `SLOT_STATEMENTS` is no longer exported at
+    // all — a caller outside the factory could otherwise import the raw text and send it on a
+    // connection of its own, with no ownership check in between — so what this asserts is the
+    // shape of what IS published: a sha256 hex digest per name, not a statement.
+    for (const [name, digest] of Object.entries(SLOT_STATEMENT_DIGESTS)) {
+      expect(digest, `${name} must publish a sha256 hex digest, not a statement`)
+        .toMatch(/^[0-9a-f]{64}$/);
+    }
+    // TWENTY CONSTANTS, NINETEEN OF WHICH WRITE. `PLANT_DRIFT_TRIGGER` is a trigger definition,
+    // so the guard's write inventory does not count it while this record must — the two numbers
+    // are deliberately different and each is pinned where it means something.
+    expect(Object.keys(SLOT_STATEMENT_DIGESTS)).toHaveLength(20);
   });
 });

@@ -333,6 +333,7 @@
         "npm:ini@7",
         "npm:jsdom@^20.0.3",
         "npm:leaflet@^1.9.4",
+        "npm:libpg-query@18.1.4",
         "npm:lucide-react@0.462",
         "npm:pg@^8.21.0",
         "npm:postcss@^8.5.6",

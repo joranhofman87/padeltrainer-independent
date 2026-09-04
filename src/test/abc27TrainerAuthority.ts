@@ -8,31 +8,48 @@
 // namespace and collide whenever the calendar walks one onto the other — which is exactly what
 // happened on 2026-08-29.
 //
-// WHY THIS IS A SOURCE AUTHORITY AND NOT AN OBSERVER. The predecessor of this module watched the
-// property from the client: every statement was bracketed by an exact `slot_id → trainer_id` map
-// and the diff was the proof. Its terminal review refused it, and the core judgment was
-// structural rather than a list of bugs — a statement-boundary observer can only ever speak about
-// state that SURVIVES a statement, so the claim it made was wider than the mechanism could carry.
-// Patching the bracketing would have moved the hole, not closed it.
+// WHAT THIS IS, IN ONE LINE: the REGISTRY of who owns which trainer, and which slot, right now.
 //
-// The replacement does not observe writes at all. It makes the offending write UNCONSTRUCTIBLE:
+// TWO PREDECESSORS FAILED HERE, AND THEIR FAILURES SHAPED IT. The first watched writes from the
+// client, bracketing every statement with an exact `slot_id → trainer_id` map. Its review refused
+// it structurally: a statement-boundary observer can only speak about state that SURVIVES a
+// statement, so the claim was wider than the mechanism.
 //
-//   1. A trainer id that may reach `availability_slots` is a value of the branded type
-//      `IsolatedTrainerId`, and the brand can be minted only in this file.
-//   2. Minting registers the id against the CURRENT TEST in a process-wide, EXCLUSIVE registry.
-//      A second identity asking for the same id throws AT ACQUISITION — before any row exists,
-//      in every database and every clone, with no `database` key to lose across a rename or a
-//      DROP/CREATE cycle.
-//   3. `scripts/check-abc27-trainer-source-authority.mjs` proves, from the TypeScript program,
-//      that every write site in the ABC-27 suite binds `trainer_id` to a value of that type —
-//      and refuses, by default, anything it cannot classify.
+// The second — this module's own previous shape — made the claim STATIC instead: a trainer that
+// may reach `availability_slots` is a branded value, and a checker proves from the TypeScript
+// program that every write site binds `trainer_id` to one. That is a general dataflow question,
+// and a review round answered it three ways at once: a brand acquired through a CONTAINING type
+// (`{ t: IsolatedTrainerId }` annotated from an `any`); an array widened to `string[]` and then
+// mutated through the alias; and source slots delivered to an apply driver through a GETTER no
+// syntactic follower evaluates. Under `strict: false` none of those needs a cast.
 //
-// The honest claim, which is the reviewer's own narrowing adopted verbatim: reuse is IMPOSSIBLE
-// for every construction the type-checker and the guard can classify; unclassifiable
-// constructions are REFUSED at CI; the registry refuses reuse at acquisition in EVERY run; and
-// the suite's committed-residue census proves the end state clean. Nothing is claimed about
-// mid-statement transient states — with no obtainable foreign trainer id there is no source for
-// one to draw on.
+// SO THE LOAD-BEARING CHECK IS NOW A RUNTIME CAPABILITY, and this module is where it lives:
+//
+//   1. `requireOwnedByCurrentIdentity()` — asked by every factory entrypoint that NAMES A
+//      TRAINER, at the moment it writes. A forged brand is just a string by then, and a string
+//      this test does not own is refused.
+//   2. `assertSlotsNotForeign()` — asked by every factory entrypoint that names a SLOT, and by
+//      the six writing apply paths about the SOURCE SLOTS they were actually handed, because
+//      those cores derive the target trainer from them. That is the indirect path, and it is
+//      closed on values rather than on syntax.
+//   3. The registry itself refuses reuse AT ACQUISITION — before any row exists, in every
+//      database and every clone, with no `database` key to lose across a rename or a DROP/CREATE.
+//
+//   DELETE IS OUTSIDE ALL OF THIS, deliberately: removing a row cannot create an overlap
+//   namespace, which is the property these exist for. "Every slot write" below means every
+//   INSERT, UPDATE, MERGE or COPY.
+//
+// THE BRAND SURVIVES, WITH A SMALLER JOB. It documents which values came from here and keeps an
+// accidental raw string from reaching a fixture parameter. It is no longer asked to carry a
+// proof.
+//
+// THE HONEST CLAIM, narrowed to what actually executes: every INSERT, UPDATE, MERGE or COPY
+// against `availability_slots` in this suite goes through `src/test/abc27SlotFixtures.ts`, which
+// asks this registry first, so reuse is refused in EVERY run whatever the calling expression
+// looked like; the static guard (`scripts/check-abc27-trainer-source-authority.mjs`) refuses
+// DIRECT bypasses it can read, and makes no dataflow claim at all; and the suite's
+// committed-residue census proves the end state clean. Nothing is claimed about mid-statement
+// transient states, and nothing about DELETE, which cannot create an overlap namespace.
 //
 // NO DATABASE OBJECT, NO EXTRA CONNECTION, NO LOCK. That is not a preference. The frozen ABC-27
 // migration checks the Domain-P DML trigger inventory against a pinned baseline by SYMMETRIC
@@ -58,115 +75,25 @@ import type pg from 'pg';
 declare const isolatedTrainerBrand: unique symbol;
 export type IsolatedTrainerId = string & { readonly [isolatedTrainerBrand]: true };
 
-/**
- * ══ THE SECOND BRAND: A STRUCTURALLY INERT SQL FRAGMENT ══════════════════════════════════════
+/*
+ * ══ THE TWO RETIRED BRANDS, AND WHY THEY ARE NOT HERE ════════════════════════════════════════
  *
- * Three fixture helpers build one slot INSERT from a fixed column list and a bag of caller-supplied
- * SQL FRAGMENTS — `o.court ?? "'indoor'"`, `o.extra ?? "'[]'::jsonb"`, and so on. A fragment is a
- * SQL expression, not a value, so it cannot be a bound parameter; it is interpolated.
+ * This module used to export two more brands. `SqlFragment` marked a text that had been lexed and
+ * proved to be ONE SQL expression, so the static guard could admit it as an interpolation into a
+ * slot statement. `SqlQuotedLiteral` marked a canonical UUID, for interpolation INSIDE quotes,
+ * because a fragment that is one expression unquoted (`x', 'y`) is two expressions quoted.
  *
- * A REVIEW ROUND SHOWED WHY THAT MATTERS. The static reader models an interpolation it cannot
- * resolve as one inert token, and the argument for admitting one in a non-trainer VALUE was that
- * the separating commas are static text, so an atom can only ADD an expression and PostgreSQL
- * refuses a row with more expressions than columns. That argument is WRONG: a fragment can close
- * its own row and open another of exactly the right arity — `x), (foreign_trainer, …` — and the
- * second row's trainer is invisible to any reader looking at the first.
+ * Both existed only to make INTERPOLATION into slot SQL safe, and each was defeated in turn:
+ * a fragment closed one VALUES row and opened another (`x), (foreign_trainer, …`), and once
+ * commas inside parentheses were admitted to fix that, a fragment reached an `unnest` alias
+ * carrying `union all values (…)` — where the hole was a single word token, so the arm counter
+ * never saw the `union` at all.
  *
- * So the fragment is validated where it becomes SQL. `sqlFragment` accepts a SINGLE SQL EXPRESSION
- * and nothing else: balanced parentheses, no top-level comma, no statement separator, no comment
- * marker, no unterminated string or dollar-quote. Such a text cannot close a row, open a row, end
- * a statement, or comment away what follows — so it cannot move which expression lands in
- * `trainer_id`, which is the whole property. The brand is what lets the static reader KNOW the
- * value went through here, and the AST guard refuses casts to or from it exactly as it does for
- * `IsolatedTrainerId`.
+ * There is no interpolation into slot SQL any more. `src/test/abc27SlotFixtures.ts` holds every
+ * statement as a complete fixed literal and passes every value as a bound parameter, so nothing
+ * needs to say what a text may safely become. The brands are retired rather than repaired: a
+ * mechanism nothing uses is a mechanism that will be reached for again.
  */
-declare const sqlFragmentBrand: unique symbol;
-export type SqlFragment = string & { readonly [sqlFragmentBrand]: true };
-
-/**
- * Validate one SQL expression fragment, or throw. Returns the same text, branded.
- *
- * LEXED, NOT MATCHED. `--` inside `'…'` is not a comment and a `,` inside `'…'` is not a
- * separator, so the scan tracks single quotes (with the doubling rule), `E'…'` backslash escapes,
- * double-quoted identifiers and dollar quotes. Everything it cannot finish reading is a refusal.
- */
-export function sqlFragment(text: string): SqlFragment {
-  const refuse = (why: string): never => {
-    throw new Error(
-      `abc27 sql fragment: ${JSON.stringify(String(text).slice(0, 60))} ${why} — a fixture override `
-      + 'must be ONE SQL expression, so that it cannot change which expression lands in a column.');
-  };
-  if (typeof text !== 'string') refuse('is not a string');
-  let depth = 0;
-  let i = 0;
-  while (i < text.length) {
-    const ch = text[i];
-    if (ch === "'" || (/[Ee]/.test(ch) && text[i + 1] === "'")) {
-      const escaped = ch !== "'";
-      let j = i + (escaped ? 2 : 1);
-      for (;;) {
-        if (j >= text.length) refuse('carries an unterminated string');
-        if (escaped && text[j] === '\\') { j += 2; continue; }
-        if (text[j] === "'") {
-          if (text[j + 1] === "'") { j += 2; continue; }
-          break;
-        }
-        j += 1;
-      }
-      i = j + 1;
-      continue;
-    }
-    if (ch === '"') {
-      let j = i + 1;
-      for (;;) {
-        if (j >= text.length) refuse('carries an unterminated quoted identifier');
-        if (text[j] === '"') { if (text[j + 1] === '"') { j += 2; continue; } break; }
-        j += 1;
-      }
-      i = j + 1;
-      continue;
-    }
-    if (ch === '$') {
-      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(text.slice(i));
-      if (m) {
-        const end = text.indexOf(m[0], i + m[0].length);
-        if (end === -1) refuse('carries an unterminated dollar-quoted string');
-        i = end + m[0].length;
-        continue;
-      }
-    }
-    if (ch === '-' && text[i + 1] === '-') refuse('carries a line comment');
-    if (ch === '/' && text[i + 1] === '*') refuse('carries a block comment');
-    if (ch === ';') refuse('carries a statement separator');
-    if (ch === '(') depth += 1;
-    if (ch === ')') { depth -= 1; if (depth < 0) refuse('closes a parenthesis it did not open'); }
-    if (ch === ',' && depth === 0) refuse('carries a top-level comma, so it is more than one expression');
-    i += 1;
-  }
-  if (depth !== 0) refuse('leaves a parenthesis open');
-  return text as SqlFragment;
-}
-
-/**
- * ...AND A THIRD, FOR INTERPOLATION *INSIDE* QUOTES.
- *
- * `SqlFragment` guarantees ONE SQL EXPRESSION, which is the right invariant for an UNQUOTED
- * position — `VALUES (…, <fragment>, …)`. It is the wrong one inside static quotes. A review round
- * found the case exactly: `sqlFragment("x', 'y")` is a single valid expression, and dropping it
- * into `'…'` yields `'x', 'y'`, which is two. The guard now refuses a fragment inside a string
- * literal, and a value meant to sit there uses this instead.
- *
- * The invariant here is far narrower and needs no lexing at all: a canonical UUID. It contains
- * only hex digits and hyphens, so it cannot close a quote, open a comment, separate a statement or
- * add an expression — in a quoted position or an unquoted one.
- */
-declare const sqlQuotedBrand: unique symbol;
-export type SqlQuotedLiteral = string & { readonly [sqlQuotedBrand]: true };
-
-/** A UUID, canonicalised and branded for interpolation inside SQL quotes. Throws on anything else. */
-export function sqlUuid(id: string): SqlQuotedLiteral {
-  return canonicalTrainerId(id) as unknown as SqlQuotedLiteral;
-}
 
 /** Writes made before any test begins — suite setup and `beforeAll` hooks — belong to this. */
 export const BOOTSTRAP_IDENTITY = '<bootstrap: suite setup and hooks>';
@@ -243,6 +170,53 @@ export const trainerOwner = (id: string): string | undefined => {
  * series), and `testTrainer` is re-derived on every call.
  */
 /**
+ * What a refused value IS, said without ever consulting it.
+ *
+ * A message that interpolated the value would call the very method the refusal is about, so the
+ * value never reaches a template here: only `typeof` and the two nullish identities do.
+ */
+const describeCaptured = (v: unknown): string => {
+  if (v === null) return '`null`';
+  if (v === undefined) return '`undefined`';
+  const kind = typeof v;
+  return kind === 'object' ? 'an object' : `a ${kind}`;
+};
+
+/**
+ * ══ THE PRIMITIVE CAPTURE — ONE READ, ONE VALUE, AND NO SECOND COERCION ══════════════════════
+ *
+ * `assertSlotsNotForeign` SKIPS an element that is not a string, deliberately: several fixtures
+ * pass a `null` or a ghost UUID on purpose, and the registry's job is to refuse a foreign OWNER,
+ * not to police shapes. `node-postgres` does not skip those values. It calls a `toPostgres()` the
+ * value carries, and it coerces the rest — so an argument the registry ignored still reaches the
+ * server as a slot id. That was measured against the installed driver at the APPLY boundary, and
+ * closed there with a seal rather than by changing what the frozen registry ignores. This is the
+ * same move, made at the SLOT-FACTORY boundary, where it was still open:
+ * `ownedSlot(someObjectWithToPostgres)` checked nothing and returned the object, which the driver
+ * then serialized into `WHERE id = $1`.
+ *
+ * IT TAKES A VALUE, NOT A PROPERTY, AND THAT IS THE OTHER HALF. Reading `s.id` is where a getter
+ * answers; a getter that answers `<mine>` to the check and `<yours>` to the send needs the
+ * property to be read TWICE. Every caller here reads each caller-supplied property exactly once,
+ * into a local, and hands that local to this function — so there is no property access inside it
+ * at all, and the value it returns is the identical primitive its caller will send.
+ *
+ * WHAT IS REFUSED, AND WHY EACH MATTERS. An object (a `toPostgres`, a `Symbol.toPrimitive`, a
+ * two-faced `toString`, a boxed `String`), a number, a bigint, a boolean, a symbol, a function, a
+ * `Buffer` — every one is a value the ownership check skips and the driver still serializes.
+ * `null` and `undefined` are refused too: an absent id has an explicit spelling at every call
+ * site that admits one, and whether this call has an id is decided before it gets here.
+ */
+export function capturedId(value: unknown, what: string): string {
+  if (typeof value === 'string') return value;
+  throw new Error(
+    `abc27 slot namespace: ${what} was handed ${describeCaptured(value)}, and only a primitive `
+    + 'string may be validated and then sent. A value that is not one is SKIPPED by the ownership '
+    + 'check and may still be serialized by the driver — `toPostgres()`, `Symbol.toPrimitive` and '
+    + 'a two-faced `toString` are each a way to be checked as one thing and sent as another.');
+}
+
+/**
  * THE REGISTRY KEY IS THE UUID, NOT THE STRING THAT SPELLED IT.
  *
  * PostgreSQL accepts a `uuid` in several spellings — any case, with or without hyphens, and
@@ -256,7 +230,17 @@ export const trainerOwner = (id: string): string | undefined => {
  * with an error that says nothing about ownership.
  */
 export function canonicalTrainerId(id: string): string {
-  const bare = String(id).trim().replace(/^\{(.*)\}$/, '$1').replace(/-/g, '').toLowerCase();
+  // A NON-STRING IS REFUSED HERE RATHER THAN COERCED. This used to open with `String(id)`, which
+  // is a CALL into the value: an object answers it through `Symbol.toPrimitive`, `valueOf` or
+  // `toString`, and a stateful one answers the next call differently. Every caller now hands a
+  // primitive it captured once (see `capturedId` below), so the coercion has nothing left to do
+  // — and refusing it outright is what makes that true rather than merely intended.
+  if (typeof id !== 'string') {
+    throw new Error(
+      `abc27 trainer namespace: a ${describeCaptured(id)} is not a UUID and may not be coerced `
+      + 'into one — a value that decides what it becomes decides what is written.');
+  }
+  const bare = id.trim().replace(/^\{(.*)\}$/, '$1').replace(/-/g, '').toLowerCase();
   if (!/^[0-9a-f]{32}$/.test(bare)) {
     throw new Error(
       `abc27 trainer namespace: ${JSON.stringify(id)} is not a UUID, so it cannot be a trainer `
@@ -291,14 +275,24 @@ function declareTrainerFor(identity: string, id: string): IsolatedTrainerId {
  * handing the id out, and the next slot insert would fail its foreign key. `ON CONFLICT DO
  * NOTHING` makes the repeat free.
  *
+ * AND EXPORTED, BECAUSE ACQUISITION AND WRITING CAME APART. Every acquisition used to sit inline
+ * at its write site, so "on every call" and "before every write" were the same sentence. Fixtures
+ * now acquire a trainer once and hand it to the factory later — sometimes in a different
+ * transaction, sometimes after a rollback discarded the row. The factory therefore ensures the
+ * row itself, immediately before it writes, which is where the invariant actually has to hold.
+ * (Measured: a fixture that acquired inside a rolled-back transaction and wrote afterwards failed
+ * `availability_slots_trainer_id_fkey`, exactly as this note predicts.)
+ *
  * REGISTRATION HAPPENS FIRST, ALWAYS. Every factory below acquires before it writes, so a
  * refusal costs no row and leaves no residue — which is the whole difference between preventing
  * the collision and noticing it.
  */
-async function ensureProfiles(client: pg.Client, ids: readonly IsolatedTrainerId[]): Promise<void> {
+export async function ensureProfiles(
+  client: pg.Client, ids: readonly IsolatedTrainerId[],
+): Promise<void> {
   if (ids.length === 0) return;
   await client.query(
-    `INSERT INTO public.trainer_profiles(id) SELECT unnest($1::uuid[]) ON CONFLICT DO NOTHING`,
+    `INSERT INTO public.trainer_profiles(id) SELECT pg_catalog.unnest($1::uuid[]) ON CONFLICT DO NOTHING`,
     [ids]);
 }
 
@@ -367,6 +361,235 @@ export async function declareTrainers(
   const issued = ids.map((id) => declareTrainerFor(currentIdentity(), id));
   await ensureProfiles(client, issued);
   return issued;
+}
+
+/**
+ * ══ THE CAPABILITY CHECK: OWNED, BY THE IDENTITY THAT IS RUNNING, RIGHT NOW ══════════════════
+ *
+ * The brand says a value CAME FROM here. It does not say the value is still the current test's,
+ * and it does not survive contact with `any` — under this repository's `strict: false` an `any`
+ * satisfies a branded parameter with no cast at all, so a static reader that trusts the type has
+ * trusted an argument the compiler never checked.
+ *
+ * A REVIEW ROUND MADE THAT CONCRETE rather than theoretical. The static guard's brand rules were
+ * defeated three ways in one round — a containing type (`{ t: IsolatedTrainerId }` annotated from
+ * an `any`), an annotation-widening alias (`const a: string[] = brandedArray`, then mutate `a`),
+ * and a getter (`{ get slots() { return SHARED } }`) that no syntactic follower read. Each was
+ * patched, and patching them is the same losing game the regex guard lost: the hole moves.
+ *
+ * So the load-bearing check is no longer static. Every write surface asks THE REGISTRY, at the
+ * moment it writes, whether this exact id belongs to the identity now running. A forged brand
+ * buys nothing: an id the registry never issued is refused, and an id issued to another test is
+ * refused. This runs in EVERY invocation of the suite — there is no lane, no mode and no
+ * environment variable — which is the difference between a claim about constructions a reader
+ * could classify and a claim about what actually executes.
+ *
+ * The static guard keeps a narrower and honest job: it refuses DIRECT bypasses of the write
+ * surface. It no longer claims to prove a dataflow.
+ */
+export function requireOwnedByCurrentIdentity(id: string): IsolatedTrainerId {
+  const key = canonicalTrainerId(id);
+  const owner = owners.get(key);
+  const identity = currentIdentity();
+  if (owner === undefined) {
+    throw new Error(
+      `abc27 trainer namespace: ${key} was never acquired from the authority, so ${JSON.stringify(identity)} `
+      + 'may not write with it — a trainer that no test owns is a shared namespace by another name.');
+  }
+  if (owner !== identity) {
+    throw new Error(
+      `abc27 trainer namespace: ${key} is owned by ${JSON.stringify(owner)}, and `
+      + `${JSON.stringify(identity)} is writing — a trainer belongs to one test.`);
+  }
+  return key as IsolatedTrainerId;
+}
+
+/** The same capability check over a list, preserving order. */
+export const requireAllOwnedByCurrentIdentity = (
+  ids: readonly string[],
+): IsolatedTrainerId[] => ids.map((id) => requireOwnedByCurrentIdentity(id));
+
+/**
+ * ══ AND THE SAME OWNERSHIP, FOR SLOT ROWS ════════════════════════════════════════════════════
+ *
+ * A trainer registry alone leaves one path open, and a review round named it: the apply and
+ * extend cores derive the TARGET trainer from the SOURCE SLOTS the caller hands them. A test that
+ * passes another test's slot id therefore writes into that test's overlap namespace without ever
+ * naming a trainer — the value it supplied was a slot.
+ *
+ * WHY OWNERSHIP IS CHECKED AND ABSENCE IS NOT. Several cases deliberately pass ids that name no
+ * row at all — a `randomUUID()` ghost, a `null`, a slot belonging to a foreign ACADEMY — because
+ * "a caller who guesses a real UUID learns exactly what one who invents a UUID learns" is itself
+ * a property under test. Demanding that every id be owned would refuse those fixtures while
+ * proving nothing: an id no test holds cannot carry another test's namespace. So the rule is
+ * exactly the collision it exists to stop — an id owned by SOMEONE ELSE is refused, and an id
+ * nobody owns is left alone.
+ */
+const slotOwners = new Map<string, string>();
+
+/** Register slot ids as this identity's. Refuses an id another identity already holds. */
+export function noteSlotsOwned(ids: readonly string[]): void {
+  const identity = currentIdentity();
+  for (const id of ids) {
+    if (id === null || id === undefined) continue;
+    let key: string;
+    try { key = canonicalTrainerId(id); } catch { continue; }
+    const owner = slotOwners.get(key);
+    if (owner === undefined) { slotOwners.set(key, identity); continue; }
+    if (owner !== identity) {
+      throw new Error(
+        `abc27 slot namespace: slot ${key} is owned by ${JSON.stringify(owner)} and `
+        + `${JSON.stringify(identity)} is claiming it — a slot belongs to one test.`);
+    }
+  }
+}
+
+/** Refuse a slot id this identity does not own, while leaving unowned ids alone. */
+export function assertSlotsNotForeign(ids: readonly unknown[], what: string): void {
+  const identity = currentIdentity();
+  for (const id of ids) {
+    if (typeof id !== 'string') continue;
+    let key: string;
+    try { key = canonicalTrainerId(id); } catch { continue; }
+    const owner = slotOwners.get(key);
+    if (owner === undefined || owner === identity) continue;
+    throw new Error(
+      `abc27 slot namespace: ${what} names slot ${key}, which is owned by ${JSON.stringify(owner)} `
+      + `and not by ${JSON.stringify(identity)} — the apply and extend cores derive the TARGET `
+      + "trainer from the source slots, so a foreign source writes into another test's namespace.");
+  }
+}
+
+/** Who owns `slot`, or `undefined`. For the controls that measure the refusal. */
+export const slotOwner = (id: string): string | undefined => {
+  try { return slotOwners.get(canonicalTrainerId(id)); } catch { return undefined; }
+};
+
+/**
+ * ══ AND THE DATABASE'S OWN ANSWER, WHICH IS THE ONLY AUTHORITATIVE ONE ═══════════════════════
+ *
+ * Everything above judges the ARGUMENT — the value a caller handed the factory before anything
+ * was sent. That is necessary and it is not sufficient, and the gap has a name: between the
+ * argument and the stored row sits the SERVER, where a `BEFORE` trigger may rewrite
+ * `NEW.trainer_id`, a `SECURITY DEFINER` routine may run dynamic SQL, and a rule may redirect the
+ * write entirely. The suite PLANTS such a trigger itself, deliberately, so this is not a
+ * hypothetical class: it is one the fixtures already build.
+ *
+ * SO EVERY GUARDED WRITE READS BACK WHAT WAS ACTUALLY STORED, and the registry judges THAT. Two
+ * shapes, one rule:
+ *
+ *   · a direct slot write returns its own rows — `RETURNING id, trainer_id` — so the read is the
+ *     write's own statement and there is no second round trip and no second snapshot;
+ *   · an apply CREATES its target slots on the server, so its entrypoint reads those rows back on
+ *     THE SAME CONNECTION, inside whatever transaction the caller opened, immediately after the
+ *     call returns.
+ *
+ * WHAT THIS IS NOT. It is not an interpreter: nothing here reads the server's SQL, its triggers or
+ * its plans. It asks the one question a stored row can answer — *whose namespace is this row in?*
+ * — which is exactly the property the whole authority exists for, and it asks it of the value
+ * PostgreSQL actually holds rather than of the value JavaScript hoped it had sent.
+ *
+ * NO DATABASE OBJECT IS CREATED FOR IT. A `RETURNING` clause and one `SELECT` are the whole
+ * mechanism; there is no trigger, no schema, no role and no grant, for the same reason the
+ * registry itself owns nothing but a `Map`.
+ */
+const STORED_SLOT_ROWS = `SELECT id, trainer_id FROM public.availability_slots
+ WHERE id = ANY($1::uuid[])`;
+
+/** One row as the registry judged it: both values canonical, both proved to be primitive text. */
+export interface StoredSlot { readonly id: string; readonly trainer: string }
+
+/**
+ * The sha256 of the read-back statement, published so a runtime control can recognise it among
+ * what an entrypoint sent WITHOUT this module exporting a text anything could re-send.
+ */
+export const STORED_SLOT_ROWS_DIGEST =
+  createHash('sha256').update(STORED_SLOT_ROWS).digest('hex');
+
+/**
+ * Judge the rows the server actually stored.
+ *
+ * `trainers`, WHEN GIVEN, IS THE STRONGEST FORM OF THE QUESTION. A write that NAMED a trainer
+ * knows exactly which one it sent, so the stored value must be that one: a trigger that moved it
+ * anywhere at all — to another test's trainer, or to one nobody owns — is caught. A write that
+ * named no trainer cannot ask that, so it asks the property the registry exists for instead: the
+ * row may not sit in ANOTHER identity's namespace. Both are asked whenever both can be.
+ *
+ * `claim` SEPARATES THE TWO KINDS OF WRITE. An INSERT may have let the server mint the id, so the
+ * returned id is news and becomes this identity's. An UPDATE addressed a row that already
+ * existed, and several fixtures legitimately edit a row NOBODY owns — claiming it there would
+ * quietly annex it — so the stored id is held to the same not-foreign rule as the argument was.
+ */
+export function acceptStoredSlotRows(
+  rows: readonly unknown[], what: string,
+  o: { claim: boolean; trainers?: readonly string[] },
+): StoredSlot[] {
+  const identity = currentIdentity();
+  const expected = o.trainers === undefined ? null
+    : new Set(o.trainers.map((t) => canonicalTrainerId(capturedId(t, `${what}: a sent trainer`))));
+  const seen: StoredSlot[] = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows[i];
+    if (row === null || typeof row !== 'object') {
+      throw new Error(
+        `abc27 slot namespace: ${what} read back ${describeCaptured(row)} where the server's own `
+        + 'row belongs — a write whose result cannot be read is a write whose stored trainer '
+        + 'namespace is unknown, and unknown is not clean.');
+    }
+    const r = row as Record<string, unknown>;
+    const id = canonicalTrainerId(capturedId(r.id, `${what}: the stored id`));
+    const trainer = canonicalTrainerId(capturedId(r.trainer_id, `${what}: the stored trainer_id`));
+    if (expected !== null && !expected.has(trainer)) {
+      throw new Error(
+        `abc27 trainer namespace: ${what} stored slot ${id} under trainer ${trainer}, and this `
+        + `call sent [${[...expected].join(', ')}] — the value PostgreSQL holds is not the value `
+        + 'that was sent, which is what a BEFORE trigger rewriting `NEW.trainer_id` or a '
+        + 'server-side dynamic statement looks like from here.');
+    }
+    const owner = owners.get(trainer);
+    if (owner !== undefined && owner !== identity) {
+      throw new Error(
+        `abc27 trainer namespace: ${what} stored slot ${id} under trainer ${trainer}, which is `
+        + `owned by ${JSON.stringify(owner)} and not by ${JSON.stringify(identity)} — the row the `
+        + "server actually holds sits in another test's overlap namespace.");
+    }
+    if (o.claim) noteSlotsOwned([id]); else assertSlotsNotForeign([id], what);
+    seen.push({ id, trainer });
+  }
+  return seen;
+}
+
+/**
+ * Read back the slots an apply created or changed, on the caller's own connection, and judge them.
+ *
+ * THE ID LIST IS FILTERED EXACTLY AS `noteSlotsOwned` FILTERS ITS OWN. A deliberate `null` and a
+ * text that is no UUID name no row and are passed over here as they are there; anything else that
+ * is not a string is REFUSED, because that is the value class the driver serializes and the
+ * ownership check skips. Reading with a different rule than the claim used would leave a gap
+ * between what was claimed and what is verified, which is the only interesting kind of gap.
+ *
+ * AN EMPTY LIST SENDS NOTHING. An entrypoint that names no target — the wrapper refusal probe —
+ * has nothing to read back, and a query that could only return zero rows is a round trip that
+ * proves nothing.
+ */
+export async function verifyStoredSlots(
+  client: pg.Client, ids: readonly unknown[], what: string,
+): Promise<StoredSlot[]> {
+  const keys: string[] = [];
+  for (let i = 0; i < ids.length; i += 1) {
+    const value = ids[i];
+    if (value === null || value === undefined) continue;
+    const text = capturedId(value, `${what}: a target id`);
+    try { keys.push(canonicalTrainerId(text)); } catch { continue; }
+  }
+  if (keys.length === 0) return [];
+  const { rows } = await client.query(STORED_SLOT_ROWS, [keys]);
+  if (!Array.isArray(rows)) {
+    throw new Error(
+      `abc27 slot namespace: ${what} read back no row list at all, so the trainer namespace of `
+      + 'what the server stored is unknown — and unknown is not clean.');
+  }
+  return acceptStoredSlotRows(rows, what, { claim: false });
 }
 
 /**
