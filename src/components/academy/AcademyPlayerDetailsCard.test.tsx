@@ -114,7 +114,7 @@ describe('AcademyPlayerDetailsCard', () => {
     });
   });
 
-  it('saves registered player preferred location to metadata path without profiles.location', async () => {
+  it('keeps registered club and notes read-only, strips overlay writes, and preserves prior values on save', async () => {
     const onSaved = vi.fn();
 
     render(
@@ -130,6 +130,8 @@ describe('AcademyPlayerDetailsCard', () => {
     );
 
     fireEvent.click(screen.getByTestId('academy-player-details-edit'));
+    expect(screen.getByTestId('academy-player-details-club-readonly')).toHaveTextContent('Club A');
+    expect(screen.getByTestId('academy-player-details-notes-readonly')).toHaveTextContent('Some notes');
     fireEvent.change(screen.getByTestId('academy-player-details-name'), {
       target: { value: 'Updated Registered' },
     });
@@ -141,7 +143,8 @@ describe('AcademyPlayerDetailsCard', () => {
           kind: 'registered',
           form: expect.objectContaining({
             name: 'Updated Registered',
-            locationId: LOC_A,
+            locationId: '',
+            notes: '',
           }),
         }),
       );
@@ -150,6 +153,7 @@ describe('AcademyPlayerDetailsCard', () => {
     expect(onSaved).toHaveBeenCalledWith(
       expect.objectContaining({
         locationId: LOC_A,
+        notes: 'Some notes',
         email: 'registered@example.com',
       }),
     );

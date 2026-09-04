@@ -3,8 +3,6 @@ import {
   DEFAULT_PLAYER_TAG_COLOR,
   addTagIdToSelection,
   buildTagOwnerInsert,
-  getOwnerColumn,
-  getOwnerId,
   isPostgresUniqueViolation,
   findTagByName,
   normalizeTagName,
@@ -12,6 +10,21 @@ import {
   type PlayerTagRow,
   type TagOwnerScope,
 } from '@/lib/playerTags';
+import { OverlayWriteDisabledError } from '@/lib/overlayWriteContainment';
+
+/**
+ * ABC-16 H0: assigning a tag to a player writes `academy_player_metadata.tag_ids`, and that
+ * row was accepted as proof of the academy↔player relationship. Assignment is therefore
+ * contained until an H1 command derives the subject from canonical membership.
+ *
+ * This module reports failures by RETURNING an error rather than throwing, so the
+ * containment follows that contract instead of throwing past every caller. The message is
+ * the plain-language one from the shared error, never a Postgres permission string.
+ *
+ * Tag DEFINITIONS (`academy_player_tags`) are a different table with no player subject and
+ * no authority role, so creating and listing tags is deliberately still allowed.
+ */
+const TAG_ASSIGNMENT_DISABLED = new OverlayWriteDisabledError('tags').message;
 
 export async function createOwnerPlayerTag(
   client: SupabaseClient,
@@ -40,48 +53,17 @@ export async function createOwnerPlayerTag(
   return { tag: data as PlayerTagRow, error: null, isDuplicate: false };
 }
 
+/** ABC-16 H0 — the single choke point for tag assignment; no client writer exists. */
 export async function persistPlayerTagIds(
-  client: SupabaseClient,
-  scope: TagOwnerScope,
+  _client: SupabaseClient,
+  _scope: TagOwnerScope,
   playerKey: PlayerKey,
-  tagIds: string[],
+  _tagIds: string[],
 ): Promise<{ error: string | null }> {
   if (!playerKey.guest_player_id && !playerKey.profile_id) {
     return { error: 'Invalid player' };
   }
-
-  const ownerCol = getOwnerColumn(scope);
-  const ownerId = getOwnerId(scope);
-
-  const baseQuery = client
-    .from('academy_player_metadata')
-    .select('id')
-    .eq(ownerCol, ownerId);
-
-  const { data: existing } = await (playerKey.guest_player_id
-    ? baseQuery.eq('guest_player_id', playerKey.guest_player_id)
-    : baseQuery.eq('profile_id', playerKey.profile_id!)
-  ).maybeSingle();
-
-  if (existing) {
-    const { error } = await client
-      .from('academy_player_metadata')
-      .update({ tag_ids: tagIds })
-      .eq('id', existing.id);
-    return { error: error?.message ?? null };
-  }
-
-  // CHECK constraint: exactly one of guest_player_id/profile_id. A merged person's row carries
-  // BOTH ids since Phase 3.2 — the metadata row is guest-keyed when a guest side exists (the
-  // same guest-first row the overview reads back).
-  const { error } = await client.from('academy_player_metadata').insert({
-    ...buildTagOwnerInsert(scope),
-    guest_player_id: playerKey.guest_player_id,
-    profile_id: playerKey.guest_player_id ? null : playerKey.profile_id,
-    tag_ids: tagIds,
-  } as Record<string, unknown>);
-
-  return { error: error?.message ?? null };
+  return { error: TAG_ASSIGNMENT_DISABLED };
 }
 
 export async function assignExistingTagToPlayer(
@@ -134,33 +116,15 @@ export async function createTagAndAssignToPlayer(
     };
   }
 
-  const created = await createOwnerPlayerTag(client, scope, name);
-  if (created.isDuplicate) {
-    return { tag: null, tagIds: currentTagIds, catalogTags, error: null, isDuplicate: true };
-  }
-  if (created.error || !created.tag) {
-    return {
-      tag: null,
-      tagIds: currentTagIds,
-      catalogTags,
-      error: created.error ?? 'Failed to create tag',
-      isDuplicate: false,
-    };
-  }
-
-  const assignResult = await assignExistingTagToPlayer(
-    client,
-    scope,
-    playerKey,
-    created.tag.id,
-    currentTagIds,
-  );
-
+  // ABC-16 H0: refuse BEFORE creating the definition. Creating a tag still works (a tag
+  // definition has no player subject), so running the old create-then-assign flow would
+  // leave an orphan tag in the academy's catalogue on every attempt — a write the user
+  // never asked for, produced by an action that then failed.
   return {
-    tag: created.tag,
-    tagIds: assignResult.tagIds,
-    catalogTags: [...catalogTags, created.tag].sort((a, b) => a.name.localeCompare(b.name)),
-    error: assignResult.error,
+    tag: null,
+    tagIds: currentTagIds,
+    catalogTags,
+    error: TAG_ASSIGNMENT_DISABLED,
     isDuplicate: false,
   };
 }

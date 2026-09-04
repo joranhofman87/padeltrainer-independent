@@ -256,7 +256,10 @@ const handler = async (req: Request): Promise<Response> => {
     if (replyIdentity?.email) playerReplyTo = replyIdentity.email;
     // Historic fallback: some old rows stored a user_id in player_id (the RPC
     // keys on profiles.id).
-    if (!playerReplyTo && invoice.player_id) {
+    // ABC-18 Pass B §1b: the historic user_id-in-player_id fallback requires guest NULL. On a
+    // DUAL-KEY invoice the player column is legacy decoration, so following it here would mail
+    // a guest's invoice to the linked account.
+    if (!playerReplyTo && invoice.player_id && !invoice.guest_player_id) {
       const { data: byUserId } = await supabase
         .from("profiles")
         .select("email")

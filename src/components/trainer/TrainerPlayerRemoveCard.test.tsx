@@ -49,7 +49,10 @@ describe('TrainerPlayerRemoveCard', () => {
     removeMock.mockResolvedValue({ removed_at: '2026-05-30T12:00:00Z' });
   });
 
-  it('shows remove from trainer action with safe confirmation copy', async () => {
+  // ── ABC-16 H0 — see AcademyPlayerRemoveCard.test.tsx; the trainer arm closes with the
+  // academy arm because its policy proves only that the caller owns the ROW.
+
+  it('still shows the card and the action, but the action is disabled and explained', async () => {
     renderWithClient(
       <TrainerPlayerRemoveCard
         kind="registered"
@@ -62,17 +65,18 @@ describe('TrainerPlayerRemoveCard', () => {
     );
 
     expect(screen.getByTestId('trainer-player-remove-card')).toBeInTheDocument();
-    expect(screen.getByTestId('trainer-player-remove-button')).toHaveTextContent('Remove from trainer');
-    expect(screen.queryByText('Delete account')).not.toBeInTheDocument();
+    const button = screen.getByTestId('trainer-player-remove-button');
+    expect(button).toHaveTextContent('Remove from trainer');
+    expect(button).toBeDisabled();
 
-    fireEvent.click(screen.getByTestId('trainer-player-remove-button'));
-    expect(screen.getByText('Remove player from trainer?')).toBeInTheDocument();
-    expect(
-      screen.getByText(/will not delete their account or historical bookings\/invoices/i),
-    ).toBeInTheDocument();
+    const note = screen.getByTestId('trainer-player-remove-unavailable');
+    expect(note).toHaveTextContent(/temporarily unavailable/i);
+    expect(note.textContent).not.toMatch(/permission denied|row-level security|42501/i);
+
+    expect(screen.queryByText('Delete account')).not.toBeInTheDocument();
   });
 
-  it('calls trainer-scoped removal and navigates back', async () => {
+  it('cannot be triggered: no confirm dialog, no writer call, no navigation', async () => {
     renderWithClient(
       <TrainerPlayerRemoveCard
         kind="guest"
@@ -85,18 +89,12 @@ describe('TrainerPlayerRemoveCard', () => {
     );
 
     fireEvent.click(screen.getByTestId('trainer-player-remove-button'));
-    fireEvent.click(screen.getByTestId('trainer-player-remove-confirm'));
 
     await waitFor(() => {
-      expect(removeMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          trainerProfileId: 'trainer-1',
-          guestPlayerId: 'guest-1',
-          profileId: null,
-        }),
-      );
-      expect(navigateMock).toHaveBeenCalledWith('/app/trainer/players');
+      expect(screen.queryByTestId('trainer-player-remove-confirm')).toBeNull();
     });
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it('shows removed banner when player already removed', () => {

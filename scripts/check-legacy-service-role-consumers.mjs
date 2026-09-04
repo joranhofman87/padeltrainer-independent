@@ -153,6 +153,12 @@ const MANAGED = {
   'inbound-auth': [
     'supabase/functions/_shared/digest-worker-entry.ts',
     'supabase/functions/_shared/digest-worker-handler.ts',
+    // D7's three runtime policy modules. Each NAMES the env var through an injected `env()` to
+    // decide its own misconfigured branch; none holds, builds or forwards a client. Same shape as
+    // the digest entry/handler pair directly above.
+    'supabase/functions/_shared/rebook-member-open-janitor-core.ts',
+    'supabase/functions/_shared/rebook-member-open-worker-entry.ts',
+    'supabase/functions/_shared/rebook-round-materializer-core.ts',
     'supabase/functions/_shared/service-role-auth.ts',
     'supabase/functions/forward-invoice/index.ts',
     'supabase/functions/generate-cycle-commitment-invoices/index.ts',
@@ -161,7 +167,6 @@ const MANAGED = {
   'admin-client': [
     'supabase/functions/_shared/auth.ts',
     'supabase/functions/_shared/edge-slack.ts',
-    'supabase/functions/academy-update-player-email/index.ts',
     'supabase/functions/admin-academy-deletion/index.ts',
     'supabase/functions/admin-reset-password/index.ts',
     'supabase/functions/auto-rebook-reminder/index.ts',
@@ -209,7 +214,6 @@ const MANAGED = {
     'supabase/functions/notification-email-worker/index.ts',
     'supabase/functions/notification-whatsapp-worker/index.ts',
     'supabase/functions/notify-followers/index.ts',
-    'supabase/functions/notify-rebook-member-open/index.ts',
     'supabase/functions/process-blog-queue/index.ts',
     'supabase/functions/process-onboarding-emails/index.ts',
     'supabase/functions/public-api/index.ts',
@@ -242,6 +246,7 @@ const MANAGED = {
     'supabase/functions/twilio-whatsapp-webhook/index.ts',
     'supabase/functions/update-public-invoice-details/index.ts',
     'supabase/functions/update-user/index.ts',
+    'supabase/functions/settle-invoice-manual/index.ts',
     'supabase/functions/verify-mollie-payment/index.ts',
   ],
   'downstream-caller': [
@@ -274,6 +279,9 @@ const MANAGED = {
   ],
   'tests': [
     'supabase/functions/_shared/auth.test.ts',
+    'supabase/functions/_shared/rebook-member-open-janitor-core.test.ts',
+    'supabase/functions/_shared/rebook-member-open-worker-entry.test.ts',
+    'supabase/functions/_shared/rebook-round-materializer-core.test.ts',
     'supabase/functions/_shared/digest-worker-correlation.test.ts',
     'supabase/functions/_shared/digest-worker-entry.test.ts',
     'supabase/functions/_shared/digest-worker-handler.test.ts',
@@ -287,6 +295,14 @@ const MANAGED = {
     'supabase/functions/backup-database/index.ts',        // requireServiceRoleOrAdmin
     'supabase/functions/invoice-storage-gc/index.ts',     // requireServiceRoleOrAdmin
     'supabase/functions/notification-digest-worker/index.ts', // requireServiceRole + createClient(serviceKey)
+    // D7's three runtime workers. Same shape as the digest worker above: requireServiceRole for
+    // inbound auth, createClient(serviceKey) for the outbound service-role client, and no literal
+    // of their own. They REPLACE `notify-rebook-member-open/index.ts`, which this release deletes
+    // outright — its removal from this registry is mandatory, because a registered path that no
+    // longer exists fails the guard regardless of state.
+    'supabase/functions/rebook-member-open-janitor/index.ts',   // requireServiceRole + createClient(serviceKey)
+    'supabase/functions/rebook-member-open-worker/index.ts',    // requireServiceRole + createClient(serviceKey)
+    'supabase/functions/rebook-round-materializer/index.ts',    // requireServiceRole + createClient(serviceKey)
     // N7 3c external liveness endpoint. Uses the service-role key ONLY to read the
     // service_role-granted notif_digest_worker_liveness() RPC; its own callers authenticate with
     // NOTIF_LIVENESS_TOKEN, so the service-role key never leaves the platform.
@@ -307,7 +323,9 @@ const MANAGED = {
 // re-scheduled/removed the same job. `replacement` names the forward migration (or the Path-B cutover to come).
 const MANAGED_SQL = {
   'supabase/migrations/20260722100000_rebook_crons_use_vault.sql':
-    { status: 'active', note: 'Vault-based rebook crons (notify-rebook-member-open, auto-rebook-reminder); READS the Vault service_role_key secret at tick time (secret created out-of-band by the owner, not by this migration)', replacement: '(Path B) future sb_secret_ cutover migration' },
+    { status: 'active', note: 'Vault-based rebook crons. It scheduled TWO jobs; 20261119100000 retired the notify-rebook-member-open half (its edge function is deleted and ABC-27 revokes its first RPC from service_role), so this file is now the live definition of auto-rebook-reminder ONLY — and that half still READS the Vault service_role_key at tick time, which is why it stays active rather than superseded (secret created out-of-band by the owner, not by this migration)', replacement: '(Path B) future sb_secret_ cutover migration' },
+  'supabase/migrations/20261118115000_d7_runtime_crons.sql':
+    { status: 'active', note: 'D7 runtime crons (reissued at 20261118115000 so it sorts BEFORE ABC-27 and db push cannot apply ABC-27 while the legacy job is still armed): retires the notify-rebook-member-open job and installs rebook-member-open-worker (*/2), rebook-round-materializer (*/5) and rebook-member-open-janitor (*/10), ALL INSTALLED INACTIVE — arming each is an owner gate, and a re-run never re-arms or disarms an existing job. All three stored commands READ the Vault service_role_key at tick time, so Path B must see them', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260912110000_notification_email_worker_cron.sql':
     { status: 'active', note: 'Vault-based notification-email-worker cron', replacement: '(Path B) future sb_secret_ cutover migration' },
   'supabase/migrations/20260919110000_notification_whatsapp_worker_cron.sql':
@@ -351,8 +369,8 @@ const MANAGED_ANON = {
     'src/pages/marketing/Partner.tsx',
   ],
   'edge-anon': [
-    'supabase/functions/academy-update-player-email/index.ts',
     'supabase/functions/bulk-update-vat/index.ts',
+    'supabase/functions/settle-invoice-manual/index.ts',
     'supabase/functions/create-academy-trainer/index.ts',
     'supabase/functions/create-admin-trainer/index.ts',
     'supabase/functions/create-club-trainer/index.ts',
@@ -636,7 +654,30 @@ function checkSqlLifecycle(rootDir, registry = MANAGED_SQL) {
     const file = base(path);
     const jobs = jobsOf[file] || new Set();
     const laterTouchers = all.filter((f) => f > file && [...(jobsOf[f] || [])].some((j) => jobs.has(j)));
-    const supersededByFiles = laterTouchers.length > 0;
+    // SUPERSESSION IS PER-JOB, AND IT TAKES ALL OF THEM. A file that schedules two jobs is only
+    // superseded once EVERY job it owns has been rescheduled or removed by a later migration; while
+    // one of them is still live here, this file is still the live definition of that job — and,
+    // crucially, still the place its Vault read happens, so it must stay `active` and inside the
+    // Path-B `--require-migrated` gate (which only walks active/active-legacy entries).
+    //
+    // THIS WAS `laterTouchers.length > 0` — ANY job, not ALL. The case that exposed it:
+    // 20261119100000 retires ONE of 20260722100000's two jobs. Under the old rule that entry had to
+    // be relabelled `superseded`, and relabelling it would have silently dropped the STILL-LIVE
+    // auto-rebook-reminder Vault read out of the --require-migrated gate — which walks
+    // active/active-legacy entries only. ALL-semantics is strictly more accurate in both
+    // directions: a partially-retired file stays in the gate, and an entry registered `superseded`
+    // now has to have had every one of its jobs taken over.
+    //
+    // THIS IS LOAD-BEARING TODAY, not forward cover. 20261118115000 unschedules by the QUOTED job
+    // name — deliberately, so both this check and the clone-safety cron register can read it — and
+    // 20260722100000 is still the live definition of `auto-rebook-reminder`, whose Vault read the
+    // Path-B gate must keep seeing. Under the old ANY-job rule this file would have had to be
+    // relabelled `superseded` to stay green, and that relabelling is what would have dropped a live
+    // credential consumer out of the cutover gate.
+    const jobsSuperseded = [...jobs].filter(
+      (j) => all.some((f) => f > file && (jobsOf[f] || new Set()).has(j)),
+    );
+    const supersededByFiles = jobs.size > 0 && jobsSuperseded.length === jobs.size;
     if (meta.status === 'superseded') {
       if (!supersededByFiles) problems.push(`${path}: registered 'superseded' but NO later migration touches its job names ${[...jobs].join(',') || '(none found)'} — status is stale.`);
       else if (meta.replacement && !laterTouchers.some((f) => meta.replacement.includes(f))) {
@@ -863,6 +904,28 @@ function selfTest() {
     ok(checkSqlLifecycle(lc, staleReg).length > 0, 'lifecycle: an active entry superseded by a later migration is flagged');
     const okReg = { 'supabase/migrations/20260101000000_a.sql': { status: 'superseded', replacement: '20260202000000_b.sql' } };
     ok(checkSqlLifecycle(lc, okReg).length === 0, 'lifecycle: correctly-superseded entry passes');
+
+    // ── PARTIAL SUPERSESSION IS NOT SUPERSESSION ─────────────────────────────────────────────
+    // The real case this exists for: 20260722100000 schedules notify-rebook-member-open AND
+    // auto-rebook-reminder, and 20261119100000 retires only the first. The multi-job file is still
+    // the live definition of the second — and still the site of its Vault read — so it must stay
+    // `active` and inside the --require-migrated gate. Under the previous ANY-job rule it was
+    // flagged as superseded, and relabelling it would have dropped a live credential consumer out
+    // of the cutover gate entirely.
+    w('supabase/migrations/20260303000000_two_jobs.sql',
+      "select cron.schedule('job-p', '* * * * *', $$ ... $$); select cron.schedule('job-q', '* * * * *', $$ ... $$);");
+    w('supabase/migrations/20260404000000_retires_p.sql', "select cron.unschedule('job-p');");
+    const partial = 'supabase/migrations/20260303000000_two_jobs.sql';
+    ok(checkSqlLifecycle(lc, { [partial]: { status: 'active', replacement: '-' } }).length === 0,
+      'lifecycle: a file whose OTHER job is still live stays active (partial supersession)');
+    ok(checkSqlLifecycle(lc, { [partial]: { status: 'superseded', replacement: '20260404000000_retires_p.sql' } }).length > 0,
+      'lifecycle: MUTATION — calling a partially-retired file `superseded` is rejected');
+    // ...and once the LAST job is taken over too, it really is superseded.
+    w('supabase/migrations/20260505000000_retires_q.sql', "select cron.unschedule('job-q');");
+    ok(checkSqlLifecycle(lc, { [partial]: { status: 'active', replacement: '-' } }).length > 0,
+      'lifecycle: once EVERY job is taken over, an `active` registration is rejected');
+    ok(checkSqlLifecycle(lc, { [partial]: { status: 'superseded', replacement: '20260505000000_retires_q.sql' } }).length === 0,
+      'lifecycle: a fully-superseded multi-job file passes');
   } finally {
     rmSync(lc, { recursive: true, force: true });
   }

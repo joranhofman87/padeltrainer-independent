@@ -79,6 +79,17 @@ export function PlayerDetailsCard({
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => formFromValues(values));
 
+  // Pass B §4: for a REGISTERED player the academy-scoped overlay fields — notes and preferred
+  // club — are unavailable. saveAcademyPlayerDetails/saveTrainerPlayerDetails deliberately do
+  // not write them for a registered player (the overlay is caller-authored evidence, withdrawn
+  // in H0), so leaving the controls editable meant typing into a box, being told the player was
+  // updated, and losing the text on the next refetch. Rendering them read-only is the other half
+  // of that fix: nothing reaches the writer that the writer will drop.
+  //
+  // A LINKED GUEST is not registered here — the writer still writes that guest's own row, so
+  // directly owned guest editing is untouched.
+  const registeredOverlayReadOnly = kind === 'registered';
+
   // Linked guests behave like registered players: their profile owns the email.
   const emailReadOnly =
     (kind === 'registered' || isLinkedGuest(kind, guestPlayerId, profileId)) &&
@@ -111,7 +122,19 @@ export function PlayerDetailsCard({
   }
 
   async function handleSave() {
-    const validationError = validatePlayerDetailsForm(form, allowedLocationIds);
+    // Pass B §4: strip the unavailable overlay fields BEFORE validation and before the request is
+    // built, not after. Two reasons, both observed:
+    //  - the writer validates the preferred club and THROWS on one that is not in this academy's
+    //    list. A registered player can carry a stale stored location from before the narrowing,
+    //    and that stale value would block an unrelated, permitted edit to their name or level —
+    //    a field the operator cannot even see, failing a save they can.
+    //  - anything left on the form reaches the payload builder. Excluding it here is the only
+    //    place that keeps it out of the request, the cache and the success message at once.
+    const outboundForm = registeredOverlayReadOnly
+      ? { ...form, locationId: '', notes: '' }
+      : form;
+
+    const validationError = validatePlayerDetailsForm(outboundForm, allowedLocationIds);
     if (validationError === 'nameRequired') {
       toast({
         title: tCommon('error', 'Error'),
@@ -139,16 +162,19 @@ export function PlayerDetailsCard({
 
     setSaving(true);
     try {
-      await save({ form, allowedLocationIds });
+      await save({ form: outboundForm, allowedLocationIds });
 
       const nextValues: PlayerDetailsValues = {
         name: form.name.trim(),
         email: emailReadOnly ? values.email : form.email.trim() || null,
         phone: form.phone.trim() || null,
-        locationId: form.locationId || null,
         skillRating: form.skillRating.trim() ? parseFloat(form.skillRating) : null,
         ratingSystem: form.ratingSystem || 'knltb',
-        notes: form.notes.trim() || null,
+        // Overlay fields keep their PREVIOUS values for a registered player. Echoing the form
+        // back would put an unsaved edit into the card's own state and the query cache — a
+        // false success that survives until the next refetch contradicts it.
+        locationId: registeredOverlayReadOnly ? values.locationId : (form.locationId || null),
+        notes: registeredOverlayReadOnly ? values.notes : (form.notes.trim() || null),
       };
 
       onSaved(nextValues);
@@ -269,19 +295,35 @@ export function PlayerDetailsCard({
             )}
             <div className="space-y-2">
               <Label>{t('players.detail.preferredClub', 'Preferred club')}</Label>
-              <Select value={selectedLocationValue} onValueChange={handleLocationChange}>
-                <SelectTrigger data-testid={`${rolePrefix}-player-details-club`}>
-                  <SelectValue placeholder={t('scheduleOverview.selectLocation', 'Select location')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE_LOCATION}>—</SelectItem>
-                  {locations.map((loc) => (
-                    <SelectItem key={loc.id} value={loc.id}>
-                      {loc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {registeredOverlayReadOnly ? (
+                <p
+                  className="text-sm text-muted-foreground"
+                  data-testid={`${rolePrefix}-player-details-club-readonly`}
+                  data-field-available="false"
+                >
+                  {displayPreferredClub}
+                  <span className="block text-xs">
+                    {t(
+                      'players.detail.registeredOverlayUnavailable',
+                      'Not editable here at the moment.',
+                    )}
+                  </span>
+                </p>
+              ) : (
+                <Select value={selectedLocationValue} onValueChange={handleLocationChange}>
+                  <SelectTrigger data-testid={`${rolePrefix}-player-details-club`}>
+                    <SelectValue placeholder={t('scheduleOverview.selectLocation', 'Select location')} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE_LOCATION}>—</SelectItem>
+                    {locations.map((loc) => (
+                      <SelectItem key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${fieldIdBase}-rating`}>{t('players.detail.knltbLevel', 'KNLTB level')}</Label>
@@ -299,14 +341,30 @@ export function PlayerDetailsCard({
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor={`${fieldIdBase}-notes`}>{t('players.notes', 'Notes')}</Label>
-              <Textarea
-                id={`${fieldIdBase}-notes`}
-                data-testid={`${rolePrefix}-player-details-notes`}
-                rows={4}
-                value={form.notes}
-                onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
-                placeholder={t('players.notesPlaceholder', 'Any notes about this player...')}
-              />
+              {registeredOverlayReadOnly ? (
+                <p
+                  className="text-sm text-muted-foreground"
+                  data-testid={`${rolePrefix}-player-details-notes-readonly`}
+                  data-field-available="false"
+                >
+                  {values.notes?.trim() || '—'}
+                  <span className="block text-xs">
+                    {t(
+                      'players.detail.registeredOverlayUnavailable',
+                      'Not editable here at the moment.',
+                    )}
+                  </span>
+                </p>
+              ) : (
+                <Textarea
+                  id={`${fieldIdBase}-notes`}
+                  data-testid={`${rolePrefix}-player-details-notes`}
+                  rows={4}
+                  value={form.notes}
+                  onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
+                  placeholder={t('players.notesPlaceholder', 'Any notes about this player...')}
+                />
+              )}
             </div>
           </div>
         )}

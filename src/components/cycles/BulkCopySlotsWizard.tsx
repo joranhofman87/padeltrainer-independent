@@ -200,15 +200,37 @@ export default function BulkCopySlotsWizard({ ownerType, ownerId, backHref }: Pr
         publicReleaseStatus: requireAdminReview ? 'pending_admin_review' : 'auto_release_scheduled',
       });
 
-      let notified = 0;
+      let notified = { queued: 0, needsAttention: 0, failed: 0, unreachableSlots: 0 };
       if (createPriorityClaims && notifyPlayers && result.notifiableSlotIds.length > 0) {
         notified = await notifyPriorityClaimsForSlots(result.notifiableSlotIds);
       }
 
       const parts = [t('bulkCopy.successSlots', { count: result.copiedSlots, defaultValue: '{{count}} trainings copied' })];
       if (createPriorityClaims) parts.push(t('bulkCopy.successInvited', { count: result.createdClaims, defaultValue: '{{count}} players invited' }));
-      if (notified > 0) parts.push(t('bulkCopy.successEmails', { count: notified, defaultValue: '{{count}} emails sent' }));
+      // QUEUED, and counted per claim. Nothing here proves delivery — the D7 worker delivers.
+      if (notified.queued > 0) parts.push(t('bulkCopy.successEmails', { count: notified.queued, defaultValue: '{{count}} emails queued' }));
       toast.success(parts.join(' · '));
+      // ...and what did NOT queue is said out loud rather than folded into the success line. A
+      // bulk-copied claim carries no round provenance, so the enqueue can refuse the whole batch.
+      // "NEEDS ATTENTION", not "was not queued": a durable enqueue whose stamp failed counts in
+      // BOTH tallies, so the two are not disjoint and the wording must not imply they are.
+      const stuck = notified.needsAttention + notified.failed;
+      if (stuck > 0) {
+        toast.warning(t('bulkCopy.emailsNeedAttention', {
+          count: stuck,
+          defaultValue_one: '{{count}} invitation needs attention.',
+          defaultValue_other: '{{count}} invitations need attention.',
+        }));
+      }
+      // Slots whose invocation never returned are counted separately, because the number of claims
+      // behind them is genuinely unknown.
+      if (notified.unreachableSlots > 0) {
+        toast.warning(t('bulkCopy.slotsUnreachable', {
+          count: notified.unreachableSlots,
+          defaultValue_one: '{{count}} training could not be reached — its invitations may not be queued.',
+          defaultValue_other: '{{count}} trainings could not be reached — their invitations may not be queued.',
+        }));
+      }
       navigate(backHref);
     } catch (e) {
       toast.error(

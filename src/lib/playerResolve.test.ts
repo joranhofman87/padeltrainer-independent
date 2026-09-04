@@ -428,195 +428,97 @@ describe('resolveOrCreateGuestPlayer', () => {
   });
 });
 
-describe('resolveOrCreateGuestTwinForRegisteredPlayer (person-unification Phase 0)', () => {
-  it('normalizes email to lower(trim), CLAIMS the exact-email match, and reuses it', async () => {
+describe('resolveOrCreateGuestTwinForRegisteredPlayer — ABC-18: the twin bridge is retired', () => {
+  // This block previously pinned the find -> claim -> mint bridge: it asserted that the resolver
+  // CLAIMED an email match, stamped `twin_of_profile_id`, and reused a claimed row. Every one of
+  // those steps asserted "this guest row IS that registered person" from a mutable email plus a
+  // name, and downstream that stamp was read as identity. The expectations are inverted rather
+  // than deleted, so the same scenarios stay covered.
+
+  it('FAILS CLOSED for a registered player — no claim, no reuse, no surrogate', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    emailLookupResults = [[{ id: 'twin-existing', full_name: 'Mark Jan Alewijn' }]];
+    emailLookupResults = [[{ id: 'guest-existing', full_name: 'Mark Jan Alewijn' }]];
+
     const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: 'a1' },
       { profileId: 'p1', fullName: 'Mark Jan Alewijn', email: '  MarkJan@Test.COM ' },
     );
-    expect(id).toBe('twin-existing');
-    expect(insertMock).not.toHaveBeenCalled();
-    expect(claimMock).toHaveBeenCalledWith({
-      _academy_profile_id: 'a1',
-      _guest_player_id: 'twin-existing',
-      _profile_id: 'p1',
-    });
-  });
 
-  it('short-circuits on an EXISTING explicit twin — no email lookup, no claim, no insert', async () => {
-    twinLookupResults = ['stamped-twin'];
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Mark Jan Alewijn', email: 'markjan@test.com' },
-    );
-    expect(id).toBe('stamped-twin');
-    expect(emailLookupMock).not.toHaveBeenCalled();
+    // Reusing that email match would hand a registered person a guest surrogate on a mutable
+    // string, and the surrogate would flow into booking and invoicing as if it were the account.
+    expect(id).toBeNull();
     expect(claimMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('CREATES an academy-owned twin STAMPED with the profile id (no linked_profile_id)', async () => {
-    academyTrainersResult = [];
-    emailLookupResults = [[]]; // no existing match
-    insertResult = { data: { id: 'twin-new' }, error: null };
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Nieuwe Speler', email: 'NEW@test.com', phone: '06', skillRating: 3, ratingSystem: 'NGR', birthDate: '2000-01-01' },
-    );
-    expect(id).toBe('twin-new');
-    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.email).toBe('new@test.com');               // lowercased
-    expect(payload.academy_profile_id).toBe('a1');            // academy owner branch (RETURNING-safe)
-    expect(payload.trainer_id).toBeUndefined();
-    expect(payload.source).toBe('roster_registered_twin');
-    expect(payload.has_trained).toBe(true);
-    expect(payload.twin_of_profile_id).toBe('p1');            // the explicit bridge stamp
-    expect(payload.linked_profile_id).toBeUndefined();        // the DB trigger sets it, never us
-    expect(payload.skill_rating).toBe(3);
-    expect(payload.birth_date).toBe('2000-01-01');
-  });
+  it('creates nothing at all — repeated attempts cannot mint duplicate seats', async () => {
+    academyTrainersResult = [{ trainer_profile_id: 't1' }];
+    emailLookupResults = [[], [], []];
 
-  it('an emailless registered player mints ONE stamped twin — found by profile id on the next add', async () => {
-    insertResult = { data: { id: 'twin-emailless' }, error: null };
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Geen Email', email: null },
-    );
-    expect(id).toBe('twin-emailless');
-    expect(emailLookupMock).not.toHaveBeenCalled();
-    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.email).toBeUndefined();
-    expect(payload.twin_of_profile_id).toBe('p1');
-
-    // Second add: the twin lookup returns the stamped row — NO second mint.
-    vi.clearAllMocks();
-    twinLookupResults = ['twin-emailless'];
-    const again = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Geen Email', email: null },
-    );
-    expect(again).toBe('twin-emailless');
+    for (let i = 0; i < 3; i += 1) {
+      const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
+        { kind: 'academy', academyProfileId: 'a1' },
+        { profileId: 'p1', fullName: 'Nieuwe Speler', email: 'nieuw@test.com' },
+      );
+      expect(id).toBeNull();
+    }
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to the LEGACY email+name flow when the bridge RPCs are not deployed', async () => {
-    twinLookupError = true; // find_guest_twin_for_academy missing (old DB, new client)
+  it('an emailless registered player is refused too — ambiguity never mints a seat', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    emailLookupResults = [[{ id: 'legacy-twin', full_name: 'Mark Jan Alewijn' }]];
+
     const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Mark Jan Alewijn', email: 'markjan@test.com' },
+      { profileId: 'p1', fullName: 'Geen Mail' },
     );
-    expect(id).toBe('legacy-twin'); // pre-bridge behavior
+
+    expect(id).toBeNull();
     expect(claimMock).not.toHaveBeenCalled();
     expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('the LEGACY fallback keeps the wrong-person name gate (lone WRONG-NAME household match)', async () => {
-    // The exact new-client/old-DB deploy window: the bridge is missing AND the only guest with
-    // the shared family email is a DIFFERENT human — audit #1 must still hold on this path.
-    twinLookupError = true;
-    academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    emailLookupResults = [[{ id: 'child-sofie', full_name: 'Sofie de Vries' }]];
-    insertResult = { data: { id: 'new-twin-mark' }, error: null };
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
-    );
-    expect(id).toBe('new-twin-mark'); // fresh row, never the child's
-    expect(updateMock).not.toHaveBeenCalled();
-  });
-
-  it('a claim RPC ERROR degrades to unstamped reuse of the name-matched candidate (pre-bridge semantics)', async () => {
-    claimError = true;
-    academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    emailLookupResults = [[{ id: 'candidate', full_name: 'Mark de Vries' }]];
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
-    );
-    expect(id).toBe('candidate');
-    expect(insertMock).not.toHaveBeenCalled();
-  });
-
-  it('NEVER reuses a row claimed by ANOTHER profile — mints a fresh stamped twin instead', async () => {
-    academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    emailLookupResults = [[{ id: 'someones-twin', full_name: 'Mark de Vries' }]];
-    claimResult = 'p-other'; // the candidate is another profile's twin
-    insertResult = { data: { id: 'fresh-twin' }, error: null };
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
-    );
-    expect(id).toBe('fresh-twin');
-    expect(updateMock).not.toHaveBeenCalled(); // the other person's row is untouched
-    const payload = insertMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload.twin_of_profile_id).toBe('p-mark');
-  });
-
-  it('converges on a claim conflict: NULL claim → re-read finds OUR twin elsewhere → reuse it', async () => {
-    academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    emailLookupResults = [[{ id: 'candidate', full_name: 'Mark de Vries' }]];
-    claimResult = null; // unique conflict: our twin already exists on another row
-    twinLookupResults = [null, 'our-existing-twin']; // first lookup empty, re-read finds it
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
-    );
-    expect(id).toBe('our-existing-twin');
-    expect(insertMock).not.toHaveBeenCalled();
-  });
-
-  it('recovers a LOST MINT RACE (23505) by reusing the winner twin', async () => {
-    emailLookupResults = [[]]; // nobody to claim
-    insertResult = { data: null, error: { code: '23505', message: 'duplicate key value violates uniq_guest_twin_per_academy' } };
-    twinLookupResults = [null, 'race-winner']; // pre-insert lookup empty; recovery finds the winner
-    const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Racer', email: 'race@test.com' },
-    );
-    expect(id).toBe('race-winner');
-    expect(insertMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('returns null (HARD failure) when the twin insert fails', async () => {
+  it('a trainer scope is refused identically — and never uses an active-trainer union', async () => {
     emailLookupResults = [[]];
-    insertResult = { data: null, error: { code: '42501', message: 'denied' } };
     const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
-      { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p1', fullName: 'Faalt', email: 'x@test.com' },
+      { kind: 'trainer', trainerId: 't1' },
+      { profileId: 'p1', fullName: 'Trainer Scope', email: 'ts@test.com' },
     );
     expect(id).toBeNull();
+    expect(claimMock).not.toHaveBeenCalled();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 });
 
-describe('resolveOrCreateGuestTwinForRegisteredPlayer — wrong-person guard (audit #1)', () => {
-  it('does NOT reuse a lone household-email match whose NAME differs → mints a fresh twin for the right person', async () => {
+describe('resolveOrCreateGuestTwinForRegisteredPlayer — wrong-person guard, after ABC-18', () => {
+  // This block pinned the name-gating that stopped a shared household email reusing the WRONG
+  // guest row. That guard mattered while the resolver still reused rows on an email match. It no
+  // longer does — a registered player is refused outright — so both scenarios now converge on
+  // the same, stronger answer: nothing is reused and nothing is created.
+
+  it('a lone household-email match with a DIFFERENT name is refused, not reused', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
-    // The ONLY guest with this shared family email is the CHILD "Sofie de Vries" — the parent
-    // "Mark de Vries" is the registered player being added. Single match, but a different human.
     emailLookupResults = [[{ id: 'child-sofie', full_name: 'Sofie de Vries' }]];
-    insertResult = { data: { id: 'new-twin-mark' }, error: null };
+
     const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
+      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@test.com' },
     );
-    expect(id).toBe('new-twin-mark');          // fresh twin, NOT Sofie's guest
-    expect(insertMock).toHaveBeenCalled();
-    // And the child's PII is never patched (we never reused her row).
-    expect(updateMock).not.toHaveBeenCalled();
+
+    expect(id).toBeNull();
+    expect(insertMock).not.toHaveBeenCalled();
   });
 
-  it('reuses a lone email match when the NAME matches (the real twin)', async () => {
+  it('a lone email match with the SAME name is refused too — a name is not evidence either', async () => {
     academyTrainersResult = [{ trainer_profile_id: 't1' }];
     emailLookupResults = [[{ id: 'marks-twin', full_name: 'Mark de Vries' }]];
+
     const id = await resolveOrCreateGuestTwinForRegisteredPlayer(
       { kind: 'academy', academyProfileId: 'a1' },
-      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@x.nl' },
+      { profileId: 'p-mark', fullName: 'Mark de Vries', email: 'gezin@test.com' },
     );
-    expect(id).toBe('marks-twin');
-    expect(insertMock).not.toHaveBeenCalled();
+
+    expect(id).toBeNull();
+    expect(claimMock).not.toHaveBeenCalled();
   });
 });

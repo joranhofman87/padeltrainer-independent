@@ -6,6 +6,12 @@
 // genuine non-responders due for a reminder: claim still 'pending' (not booked), did NOT
 // decline, NOT already reminded, priority window closing within the lead time, has an email,
 // on a rebook round with auto-reminder not disabled — one representative row per invitee.
+//
+// HISTORICAL SCOPE NOTE (D7 runtime cutover). The fixture below `CREATE FUNCTION`s the member-open
+// shim signatures so this migration's own REVOKE/GRANT statements resolve when it is replayed in
+// isolation. Those stubs are PLATFORM SCAFFOLDING for a historical file, not a claim that the live
+// schema still carries the functions — 20261119110000 drops all four. The stubs must stay: without
+// them the replay of an immutable, shipped migration fails.
 import { describe, it, expect, beforeAll, afterAll, afterEach } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';

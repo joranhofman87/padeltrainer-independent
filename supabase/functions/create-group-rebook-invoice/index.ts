@@ -8,6 +8,7 @@
 // Token-gated (the claim_token is the capability) so it works for logged-OUT captains opening the
 // email link; everything DB-side runs as the service role after the token check.
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
+import { personKeyOf, personRefOf } from "../_shared/person-identity.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import { withTimeout } from "../_shared/edge-timeout.ts";
@@ -87,6 +88,21 @@ serve(async (req: Request) => {
     if (!claim) return json({ ok: false, error: "claim_not_found" }, 404);
     if (!claim.rebook_group_id) return json({ ok: false, reason: "not_a_group" });
 
+    // ABC-20 — GUEST-FIRST CAPTAIN, resolved ONCE, before any grouped branch.
+    //
+    // This endpoint runs as service_role, so RLS is not a boundary here: whatever it queries, it
+    // gets. Resolving the captain profile-first meant a DUAL-KEY captain was scoped by a stale
+    // player_id, and every downstream step inherited it — paid-booking checks, claim gathering,
+    // booking selection, existing-invoice lookup and invoice creation. Two concrete consequences:
+    // two DIFFERENT guests sharing that legacy column collapsed into one "member", and a
+    // PURE-PROFILE sibling was gathered and invoiced alongside the guest.
+    //
+    // `personRefOf` is the shared FAM-02 rule (the keep-in-sync twin of src/lib/personIdentity.ts),
+    // not a local normalizer. It is applied here so the public shim is NOT the only place the rule
+    // holds — direct invocation of this endpoint obeys it too.
+    const capRef = personRefOf(claim);
+    if (!capRef) return json({ ok: false, reason: "unscoped_claim" });   // fail closed
+
     // Authoritative strict flag = the cycle's own setting (settings.rebook_strict_mollie), NOT just the
     // accept RPC's per-row `strict`. If the RPC ever fails to stamp `strict` on a strict cycle, deriving
     // it from acc.strict alone would silently bypass pay-first enforcement and leave a group seat
@@ -139,10 +155,13 @@ serve(async (req: Request) => {
         .not("booking_id", "is", null);
       const { data: claimedRows, error: gqErr } = await gq;
       if (gqErr) return json({ ok: false, reason: "retry" }, 503);
-      const captainKey = claim.player_id ? `p:${claim.player_id}` : `g:${claim.guest_player_id}`;
+      // ABC-20 guest-first: a DUAL-KEY captain IS the guest. Keying profile-first merged a
+      // guest onto a stale player_id, so two DIFFERENT guests sharing that legacy column
+      // collapsed into one "member" and a pure-profile sibling was swept in with them.
+      const captainKey = personKeyOf(claim);
       const otherBookingIds = (claimedRows ?? [])
         .filter((r: { player_id: string | null; guest_player_id: string | null }) =>
-          (r.player_id ? `p:${r.player_id}` : `g:${r.guest_player_id}`) !== captainKey)
+          personKeyOf(r) !== captainKey)
         .map((r: { booking_id: string | null }) => r.booking_id)
         .filter(Boolean) as string[];
       if (otherBookingIds.length > 0) {
@@ -182,7 +201,9 @@ serve(async (req: Request) => {
       .eq("rebook_group_id", claim.rebook_group_id)
       .eq("status", "claimed")
       .not("booking_id", "is", null);
-    q = claim.player_id ? q.eq("player_id", claim.player_id) : q.eq("guest_player_id", claim.guest_player_id!);
+    q = capRef.guestPlayerId
+      ? q.eq("guest_player_id", capRef.guestPlayerId)
+      : q.eq("player_id", capRef.playerId!).is("guest_player_id", null);
     const { data: capClaims } = await q;
     const bookingIds = [...new Set((capClaims ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean))] as string[];
     if (bookingIds.length === 0) return json({ ok: false, reason: "nothing_booked" });
@@ -248,7 +269,9 @@ serve(async (req: Request) => {
       .neq("status", "cancelled")
       .order("created_at", { ascending: false })
       .limit(1);
-    rb = claim.player_id ? rb.eq("player_id", claim.player_id) : rb.eq("guest_player_id", claim.guest_player_id!);
+    rb = capRef.guestPlayerId
+      ? rb.eq("guest_player_id", capRef.guestPlayerId)
+      : rb.eq("player_id", capRef.playerId!).is("guest_player_id", null);
     const { data: invoice } = await rb.maybeSingle();
     if (!invoice?.public_token) return await failAfterMint(mintTimedOut ? "mint_timeout" : "no_invoice");
 

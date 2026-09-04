@@ -16,24 +16,26 @@ export function resolveAppBase(publicAppUrl: string | undefined | null): string 
   return trimmed || "https://padeltrainer.ai";
 }
 
-/** Shape of a guest_players embed carrying the linked profile's email as fallback contact:
- *  `guest_players:guest_player_id(..., email, linked_profile:linked_profile_id(email))`. */
+/** Shape of a guest_players embed: the guest's OWN address. Nothing else is contact. */
 export interface GuestEmailSource {
   email?: string | null;
-  linked_profile?: { email?: string | null } | null;
 }
 
 /**
- * A guest person's contact email — their OWN address first; the linked profile's email ONLY
- * when the guest has none on file. FAM-02 Level 1 keys rebook claims to the guest person, so
- * a linked guest (e.g. a child under a parent's account) no longer inherits the profile's
- * identity — but without an own email their invites/reminders would silently stop. The link
- * is deprecated as an identity, yet stays valid as a CONTACT fallback (a child with their own
- * email keeps receiving their own mail; guest-email-first deliberately diverges from the
- * profile-first ACCOUNT-contact rule in coalesceLinkedGuestIdentity).
+ * A guest person's contact email: their OWN address, or null.
+ *
+ * Pass B §2 removed the linked-profile fallback. The argument for it was that a guest without
+ * their own address would otherwise stop receiving invites — true, but the address it fell back
+ * to was chosen by a legacy email/name matcher, so "the child's mail goes to the parent" and
+ * "this stranger's mail goes to whoever once shared their address" were the SAME code path, and
+ * nothing in the row distinguished them. A claim token is a bearer credential for a seat; it
+ * cannot be sent to a maybe.
+ *
+ * A guest with no address is now unresolved, and the callers' existing explicit skip/no-contact
+ * outcome reports it.
  */
 export function effectiveGuestEmail(guest: GuestEmailSource | null | undefined): string | null {
-  return guest?.email?.trim() || guest?.linked_profile?.email?.trim() || null;
+  return guest?.email?.trim() || null;
 }
 
 /**
@@ -65,7 +67,7 @@ export function buildClaimUrl(
  * - real send: the claim's contact email under FAM-02 Level 1 — GUEST-FIRST, keyed on the row's
  *   ids (person-identity twin), NOT profile-first. A dual-key person (player_id = the linked
  *   parent profile, guest_player_id = the child) is the GUEST, so their OWN email (guestEmail,
- *   already resolved via effectiveGuestEmail = guest.email ?? linked_profile.email) wins; the
+ *   already resolved via effectiveGuestEmail = the guest's own address) wins; the
  *   linked profile's address (playerEmail) is the fallback ONLY when the guest has none. The old
  *   `playerEmail || guestEmail` was profile-first and mailed a child at the parent's inbox.
  */

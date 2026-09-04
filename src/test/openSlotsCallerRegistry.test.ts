@@ -186,13 +186,18 @@ describe('the notify-followers caller registry', () => {
   });
 
   it('the clone-safety cron inventory does not attribute this function to a cron job', () => {
-    // scripts/rollout/notif-10ca3/clone-safety/reviewed-cron-jobs.tsv claimed
-    // notify-rebook-member-open "invokes the notify-followers edge function". It does not — it
-    // sends its own mail through Resend. That review evidence is load-bearing for the clone
-    // quiesce, so pin the correction rather than trusting it to stay fixed.
+    // scripts/rollout/notif-10ca3/clone-safety/reviewed-cron-jobs.tsv once claimed
+    // notify-rebook-member-open "invokes the notify-followers edge function". It did not — it sent
+    // its own mail through Resend. That review evidence is load-bearing for the clone quiesce, so
+    // the correction stays pinned.
+    //
+    // THE SECOND HALF OF THIS PIN IS GONE WITH THE FUNCTION. It read
+    // `notify-rebook-member-open/index.ts` and asserted the file did not mention notify-followers;
+    // D7's runtime cutover deleted that file, and a `readFileSync` of a deleted path throws rather
+    // than failing for the reason the pin was written for. The TSV half — the actual review
+    // evidence — is what mattered and it is unchanged. `src/test/d7RuntimeWiring.test.ts` proves
+    // the row itself is gone from the inventory.
     const tsv = read('scripts/rollout/notif-10ca3/clone-safety/reviewed-cron-jobs.tsv');
     expect(tsv).not.toContain('invokes the notify-followers edge function');
-    const fn = read('supabase/functions/notify-rebook-member-open/index.ts');
-    expect(fn).not.toContain('notify-followers');
   });
 });

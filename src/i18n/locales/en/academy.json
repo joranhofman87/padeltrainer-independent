@@ -977,6 +977,7 @@
     "fixTitle": "This email is bouncing",
     "overrideHelp": "You can't change this player's login email, so set a billing email used only for their invoices.",
     "directHelp": "Enter a corrected email address.",
+    "selfServiceHelp": "This player signs in with this email address, so only they can change it. Ask them to update it in their own account settings. Setting a separate invoice email is temporarily unavailable.",
     "billingEmailPlaceholder": "Billing email",
     "newEmailPlaceholder": "New email address",
     "fixSave": "Save",

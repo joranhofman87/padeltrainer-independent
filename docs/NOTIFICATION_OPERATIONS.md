@@ -316,10 +316,43 @@ rather than the endpoint going open quietly.
 A worker that is never invoked is invisible from inside the database. The liveness read is the only
 detector, and it must be wired **before** the first canary, not after.
 
-**The admin surface shows the v2 pipeline, not every email this product sends.** Two legacy paths
-(`notify-rebook-member-open`, `send-digest-emails`) still send outside it and leave no outbox row —
-see [`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) FA-2. If a recipient says they got
-something the outbox does not show, that is where to look next.
+**The admin surface shows the v2 pipeline, not every email this product sends.** One legacy path
+(`send-digest-emails`) still sends outside it and leaves no outbox row — see
+[`NOTIFICATION_FOLLOWUPS.md`](NOTIFICATION_FOLLOWUPS.md) FA-2. If a recipient says they got something
+the outbox does not show, that is where to look next.
+
+`notify-rebook-member-open` was the second such path and is **retired**. Its replacement writes a
+real outbox row for every recipient, so rebook member-open invitations ARE visible here — but their
+lifecycle is the D7 transport state machine, not the generic one. Read the difference below before
+acting on one.
+
+### Stopping a D7 rebook member-open send — the kill DEFERS, it does not release
+
+The channel kill switch works, and it works differently. For the generic worker a kill releases
+claims. For D7 the pre-dispatch resolver sees the kill and parks the row in
+`channel_kill_deferred` with a bounded 15-minute re-poll: no decision is written, nothing is
+released, and no provider call is made. Clearing the kill lets the next dispatcher tick pick it up
+again from that state, which is a claim origin precisely so a deferral can never become a wedge.
+
+**Do not reach for `release_notification_claims_on_kill` on a D7 row.** It is not how this path
+stops, the D7 worker holds no grant for it, and the outbox guard refuses any D7 mutation that does
+not present a single-use, row-and-transition-bound grant — for the table owner as much as for
+anyone else.
+
+To stop D7 sending entirely and immediately, unset `REBOOK_MEMBER_OPEN_SEND_ENABLED` on the
+`rebook-member-open-worker` function, or disarm its cron job. Either one makes the next invocation a
+clean no-op with zero database calls; neither leaves a row leased.
+
+### Recovering a D7 rebook member-open row
+
+| What you see | What it means | What to do |
+|---|---|---|
+| `leased`, `locked_at` old | a dispatcher died or ran out of budget | nothing — the janitor recovers it within 15 minutes, to its exact origin if nothing was authorized |
+| `acceptance_uncertain` | a provider call MAY have crossed the boundary | nothing — the janitor closes it at the row's own write-once deadline as `dispatch_unknown`. Never re-send it by hand |
+| `channel_kill_deferred` | a kill is active | clear the kill; the next tick resumes it |
+| `quiet_hours_deferred` | outside the tenant's 09:00–20:00 window | nothing — `scheduled_for` carries its own release instant |
+| `configuration_hold` | something could not be read and the database failed closed | needs a human; the row is parked, not decided |
+| a terminal decision, no outbox row | the row was decided and DELETED (G-8) because nothing was ever authorized for it | nothing — the decision is the record, and it survives the row |
 
 ## 4. Diagnosing one notification without exposing anyone
 

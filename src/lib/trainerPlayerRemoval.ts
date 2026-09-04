@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabaseClient';
 import { isTrainerRegisteredPlayerVisible } from '@/lib/invoiceSelectablePlayers';
+import { refuseOverlayWrite } from '@/lib/overlayWriteContainment';
 
 export type TrainerPlayerRemovalKey = {
   guestPlayerId: string | null;
@@ -57,49 +58,18 @@ export async function removePlayerFromTrainer(params: {
   profileId: string | null;
   removedByProfileId?: string | null;
   removeReason?: string | null;
-}) {
+}): Promise<never> {
   if (!params.guestPlayerId && !params.profileId) {
     throw new Error('invalidPlayerKey');
   }
 
+  // The ownership assertion is kept and still runs FIRST, so a trainer acting on a player
+  // they do not own keeps getting that specific answer rather than the containment message.
   await assertTrainerCanRemovePlayer(params);
 
-  const removedAt = new Date().toISOString();
-  const baseQuery = supabase
-    .from('academy_player_metadata')
-    .select('id, tag_ids, notes')
-    .eq('trainer_profile_id', params.trainerProfileId);
-
-  const { data: existing } = await (params.guestPlayerId
-    ? baseQuery.eq('guest_player_id', params.guestPlayerId)
-    : baseQuery.eq('profile_id', params.profileId!)
-  ).maybeSingle();
-
-  const removalFields = {
-    removed_at: removedAt,
-    removed_by: params.removedByProfileId ?? null,
-    remove_reason: params.removeReason?.trim() || null,
-  };
-
-  if (existing) {
-    const { error } = await supabase
-      .from('academy_player_metadata')
-      .update(removalFields as Record<string, unknown>)
-      .eq('id', existing.id)
-      .eq('trainer_profile_id', params.trainerProfileId);
-    if (error) throw error;
-    return { removed_at: removedAt };
-  }
-
-  const { error } = await supabase.from('academy_player_metadata').insert({
-    trainer_profile_id: params.trainerProfileId,
-    guest_player_id: params.guestPlayerId,
-    profile_id: params.profileId,
-    tag_ids: [],
-    notes: null,
-    ...removalFields,
-  } as Record<string, unknown>);
-
-  if (error) throw error;
-  return { removed_at: removedAt };
+  // ABC-16 H0: no client writer. The trainer arm creates the same caller-authored
+  // `academy_player_metadata` row as the academy arm — its policy proves only that the
+  // caller owns the ROW, never that the subject trains with them. Existing removals still
+  // hide their players; no row was changed by H0.
+  refuseOverlayWrite('removal');
 }

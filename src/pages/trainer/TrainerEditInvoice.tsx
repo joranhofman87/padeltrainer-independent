@@ -14,7 +14,7 @@ import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/lib/supabaseClient';
 import { deleteOrCancelInvoices } from '@/lib/invoices';
 import { logger } from '@/lib/logger';
-import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
+import { requestManualInvoiceSettlement } from '@/lib/markInvoicePaid';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { Loader2, Trash2, ArrowLeft, Download, CheckCircle } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
@@ -166,10 +166,8 @@ export default function TrainerEditInvoice() {
 
   const handleMarkPaid = async () => {
     if (!invoice) return;
-    const { error, blockedCancelled } = await markInvoicePaidAndSyncBookings(
-      invoice.id,
-      invoice.booking_ids as string[] | null,
-    );
+    // ABC-23 §4: one authenticated server boundary; invoice and bookings settle together.
+    const { error, blockedCancelled } = await requestManualInvoiceSettlement(invoice.id);
     if (blockedCancelled) { toast.error(t('invoiceEdit.statusFailed', t('invoiceEdit.saveError'))); return; }
     if (error) { toast.error(t('invoiceEdit.saveError')); return; }
     toast.success(tTrainer('invoices.markedAsPaid', 'Marked as paid'));
