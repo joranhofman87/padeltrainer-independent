@@ -131,7 +131,7 @@ export default function AcademyPlayers() {
   // Column customization
   type ColumnKey =
     | 'email' | 'phone' | 'location' | 'addedOn'
-    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
+    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
   const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'internalNotes', 'email', 'phone', 'location', 'addedOn'];
   const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
     { key: 'tags', label: tTrainer('players.columns.tags', 'Tags'), isDefault: true },
@@ -144,7 +144,6 @@ export default function AcademyPlayers() {
     { key: 'skill', label: tTrainer('players.columns.skill', 'Skill rating'), isDefault: false },
     { key: 'status', label: tTrainer('players.columns.status', 'Status'), isDefault: false },
     { key: 'cyclus', label: tTrainer('players.columns.cyclus', 'In active cyclus'), isDefault: false },
-    { key: 'type', label: tTrainer('players.columns.type', 'Type'), isDefault: false },
     { key: 'notes', label: tTrainer('players.columns.notes', 'Notes (intake)'), isDefault: false },
     { key: 'source', label: tTrainer('players.columns.source', 'Source'), isDefault: false },
     { key: 'birthDate', label: tTrainer('players.columns.birthDate', 'Birth date'), isDefault: false },
@@ -424,10 +423,9 @@ export default function AcademyPlayers() {
       header: tTrainer('players.columns.status', 'Status'),
       headClassName: 'whitespace-nowrap',
       className: 'whitespace-nowrap',
+      // Business activity only (trained → Active, else Prospect) — never login/account state.
       renderCell: (player) =>
-        player.type === 'registered' ? (
-          <Badge variant="default" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.registered')}</Badge>
-        ) : player.has_trained ? (
+        player.has_trained ? (
           <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.active')}</Badge>
         ) : (
           <Badge variant="outline" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.prospect')}</Badge>
@@ -447,19 +445,6 @@ export default function AcademyPlayers() {
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
-    },
-    {
-      key: 'type',
-      header: tTrainer('players.columns.type', 'Type'),
-      headClassName: 'whitespace-nowrap',
-      className: 'whitespace-nowrap',
-      renderCell: (player) => (
-        <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-          {player.type === 'guest'
-            ? tTrainer('players.columns.typeGuest', 'Guest')
-            : tTrainer('players.columns.typeRegistered', 'Registered')}
-        </Badge>
-      ),
     },
     {
       key: 'notes',
@@ -740,7 +725,7 @@ export default function AcademyPlayers() {
                 selectAllAriaLabel: tTrainer('players.bulk.selectAll', 'Select all on page'),
               }}
               mobile={
-                <div className="md:hidden divide-y divide-border/60">
+                <div className="md:hidden divide-y divide-border/60" data-testid="academy-players-mobile-cards">
                   {sortedPlayers.map((player) => (
                     <div key={player.id} className="py-3 space-y-2 first:pt-1">
                       <div className="flex items-center justify-between">
@@ -751,9 +736,7 @@ export default function AcademyPlayers() {
                           )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {player.type === 'registered' ? (
-                            <Badge variant="default" className="text-xs">{tTrainer('players.statuses.registered')}</Badge>
-                          ) : player.has_trained ? (
+                          {player.has_trained ? (
                             <Badge variant="secondary" className="text-xs">{tTrainer('players.statuses.active')}</Badge>
                           ) : (
                             <Badge variant="outline" className="text-xs">{tTrainer('players.statuses.prospect')}</Badge>

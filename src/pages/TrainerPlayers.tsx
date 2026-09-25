@@ -110,7 +110,7 @@ export default function TrainerPlayers() {
   // Column customization
   type ColumnKey =
     | 'email' | 'phone' | 'location' | 'addedOn'
-    | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
+    | 'skill' | 'status' | 'cyclus' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
   const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'internalNotes', 'email', 'phone', 'location', 'addedOn'];
   const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
     { key: 'tags', label: t('players.columns.tags', 'Tags'), isDefault: true },
@@ -122,7 +122,6 @@ export default function TrainerPlayers() {
     { key: 'skill', label: t('players.columns.skill', 'Skill rating'), isDefault: false },
     { key: 'status', label: t('players.columns.status', 'Status'), isDefault: false },
     { key: 'cyclus', label: t('players.columns.cyclus', 'In active cyclus'), isDefault: false },
-    { key: 'type', label: t('players.columns.type', 'Type'), isDefault: false },
     { key: 'notes', label: t('players.columns.notes', 'Notes (intake)'), isDefault: false },
     { key: 'source', label: t('players.columns.source', 'Source'), isDefault: false },
     { key: 'birthDate', label: t('players.columns.birthDate', 'Birth date'), isDefault: false },
@@ -341,10 +340,9 @@ export default function TrainerPlayers() {
       header: t('players.columns.status', 'Status'),
       headClassName: 'whitespace-nowrap',
       className: 'whitespace-nowrap',
+      // Business activity only (trained → Active, else Prospect) — never login/account state.
       renderCell: (player) =>
-        player.type === 'registered' ? (
-          <Badge variant="default" className="h-5 px-1.5 text-[11px]">{t('players.statuses.registered')}</Badge>
-        ) : player.has_trained ? (
+        player.has_trained ? (
           <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{t('players.statuses.active')}</Badge>
         ) : (
           <Badge variant="outline" className="h-5 px-1.5 text-[11px]">{t('players.statuses.prospect')}</Badge>
@@ -364,19 +362,6 @@ export default function TrainerPlayers() {
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
-    },
-    {
-      key: 'type',
-      header: t('players.columns.type', 'Type'),
-      headClassName: 'whitespace-nowrap',
-      className: 'whitespace-nowrap',
-      renderCell: (player) => (
-        <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-          {player.type === 'guest'
-            ? t('players.columns.typeGuest', 'Guest')
-            : t('players.columns.typeRegistered', 'Registered')}
-        </Badge>
-      ),
     },
     {
       key: 'notes',
@@ -614,9 +599,7 @@ export default function TrainerPlayers() {
                           </Link>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {player.type === 'registered' ? (
-                            <Badge variant="default" className="text-xs">{t('players.statuses.registered')}</Badge>
-                          ) : player.has_trained ? (
+                          {player.has_trained ? (
                             <Badge variant="secondary" className="text-xs">{t('players.statuses.active')}</Badge>
                           ) : (
                             <Badge variant="outline" className="text-xs">{t('players.statuses.prospect')}</Badge>
