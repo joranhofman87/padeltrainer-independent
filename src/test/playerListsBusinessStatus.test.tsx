@@ -148,6 +148,7 @@ const SURFACES = [
     tableTestId: 'trainer-players-table-scroll',
     mobileTestId: 'trainer-players-mobile-cards',
     detailPrefix: '/app/trainer/players/',
+    source: '../pages/TrainerPlayers.tsx',
   },
   {
     name: 'AcademyPlayers',
@@ -156,6 +157,7 @@ const SURFACES = [
     tableTestId: 'academy-players-table-scroll',
     mobileTestId: 'academy-players-mobile-cards',
     detailPrefix: '/app/academy/players/',
+    source: '../pages/academy/AcademyPlayers.tsx',
   },
 ] as const;
 
@@ -228,6 +230,7 @@ describe.each(SURFACES)('$name list shows business state only', (s) => {
     expect(within(mobile).getAllByText(/^(Active|Prospect)$/)).toHaveLength(ROWS.length);
   });
 
+  // Preservation guard, not a discriminator: routes were already correct and must stay so.
   it('detail links still route by the unchanged guest/profile keys', async () => {
     renderPage(s.Page);
     const table = await screen.findByTestId(s.tableTestId);
@@ -265,5 +268,16 @@ describe.each(SURFACES)('$name list shows business state only', (s) => {
     ));
     expect(headers(table)).not.toContain('Type');
     expect(headers(table)).not.toContain('Status');
+  });
+
+  // Render checks can only see what the menu can switch on. This also rules out a dormant `type`
+  // ColumnDef or a Guest/Registered label lookup left in either page for a later edit to revive.
+  it('the page source has no Type column and no Guest/Registered label lookups', () => {
+    const src = readFileSync(resolve(__dirname, s.source), 'utf8');
+    expect(src).not.toMatch(/key:\s*'type'/);
+    expect(src).not.toMatch(/players\.columns\.(type|typeGuest|typeRegistered)\b/);
+    expect(src).not.toMatch(/players\.statuses\.registered\b/);
+    // the identity field itself is still carried through (email-campaign recipient data)
+    expect(src).toContain("type: row.player_type as 'guest' | 'registered'");
   });
 });
