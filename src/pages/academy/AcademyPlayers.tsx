@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Tags, MapPin, Tag, StickyNote, Trash2, X } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Tags, MapPin, Tag, StickyNote, Trash2, X, Download, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
@@ -49,6 +49,13 @@ import { bulkAddTag, bulkAddNote, bulkSetLocation, bulkRemovePlayers, type BulkP
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { PlayerTag, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
+import {
+  PlayerExportError,
+  buildContactsCsv,
+  downloadCsv,
+  fetchAllContactsForExport,
+  freezeExportInputs,
+} from '@/lib/playerContactExport';
 
 // Lazy: pulls in the heavy TipTap editor chunk — only load when the tab is opened
 const EmailCampaignTab = lazy(() =>
@@ -96,6 +103,9 @@ export default function AcademyPlayers() {
   const [selectedCyclus, setSelectedCyclus] = useState<string>('all');
   const [selectedTagId, setSelectedTagId] = useState<string>('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
+  // Current training (PTF option A): 'yes' | 'no' | 'all', and the club those sessions are at.
+  const [selectedTraining, setSelectedTraining] = useState<string>('all');
+  const [selectedTrainingClub, setSelectedTrainingClub] = useState<string>('all');
   const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
 
   // Server-side sort + pagination
@@ -243,7 +253,10 @@ export default function AcademyPlayers() {
     hasActiveCyclus: selectedCyclus === 'yes' ? true : selectedCyclus === 'no' ? false : null,
     tagId: selectedTagId !== 'all' ? selectedTagId : null,
     payment: selectedPaymentStatus !== 'all' ? (selectedPaymentStatus as 'overdue' | 'ok') : null,
-  }), [selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus]);
+    currentTraining: selectedTraining === 'yes' ? true : selectedTraining === 'no' ? false : null,
+    trainingLocationId: selectedTrainingClub !== 'all' ? selectedTrainingClub : null,
+  }), [selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus,
+    selectedTraining, selectedTrainingClub]);
 
   // Snap back to the first page whenever the result set changes shape.
   useEffect(() => {
@@ -289,6 +302,62 @@ export default function AcademyPlayers() {
     queryFn: () => fetchAllPlayersOverview({ kind: 'academy', id: activeAcademy!.id }),
     enabled: !!activeAcademy && activeTab === 'email-campaign',
   });
+
+  // ---- Contact export: every matching person across all pages (name / email / phone CSV) ----
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
+  const exportProgressLabel = exportProgress
+    ? tTrainer('players.export.progress', {
+        done: exportProgress.done, total: exportProgress.total, defaultValue: 'Exporting {{done}} / {{total}}…',
+      })
+    : '';
+  // A running export belongs to ONE academy: switching academies (or leaving the page) cancels it.
+  useEffect(() => () => exportAbortRef.current?.abort(), [activeAcademy?.id]);
+
+  const handleExport = async () => {
+    if (!activeAcademy || exportAbortRef.current) return;
+    const controller = new AbortController();
+    exportAbortRef.current = controller;
+    // Frozen at click time: filter/search edits made while it runs never reach this export.
+    const inputs = freezeExportInputs({ search: debouncedSearch, filters: overviewFilters, sort: rpcSort, sortDir });
+    setExportProgress({ done: 0, total: 0 });
+    try {
+      const contacts = await fetchAllContactsForExport({ kind: 'academy', id: activeAcademy.id }, inputs, {
+        signal: controller.signal,
+        onProgress: (done, total) => setExportProgress({ done, total }),
+      });
+      if (contacts.length === 0) {
+        sonnerToast.info(tTrainer('players.export.empty', 'No players match these filters, so nothing was exported.'));
+        return;
+      }
+      const csv = buildContactsCsv(contacts, {
+        name: tTrainer('players.export.headerName', 'Name'),
+        email: tTrainer('players.export.headerEmail', 'Email'),
+        phone: tTrainer('players.export.headerPhone', 'Phone'),
+      });
+      downloadCsv(`${tTrainer('players.export.filePrefix', 'players')}-${format(new Date(), 'yyyy-MM-dd')}.csv`, csv);
+      sonnerToast.success(
+        tTrainer('players.export.success', { count: contacts.length, defaultValue: '{{count}} players exported' }),
+      );
+    } catch (e) {
+      const reason = e instanceof PlayerExportError ? e.reason : 'failed';
+      if (reason === 'cancelled') {
+        sonnerToast.info(tTrainer('players.export.cancelled', 'Export cancelled, nothing was downloaded.'));
+      } else if (reason === 'over_limit' && e instanceof PlayerExportError) {
+        sonnerToast.error(tTrainer('players.export.overLimit', {
+          total: e.detail.total, max: e.detail.max,
+          defaultValue: '{{total}} players match, but an export can hold at most {{max}}. Narrow the filters and try again.',
+        }));
+      } else if (reason === 'changed') {
+        sonnerToast.error(tTrainer('players.export.changed', 'The player list changed while exporting, so nothing was downloaded. Please try again.'));
+      } else {
+        sonnerToast.error(tTrainer('players.export.failed', 'The export failed, nothing was downloaded. Please try again.'));
+      }
+    } finally {
+      if (exportAbortRef.current === controller) exportAbortRef.current = null;
+      setExportProgress(null);
+    }
+  };
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -515,6 +584,35 @@ export default function AcademyPlayers() {
               <Tags className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
             </Button>
+            {exportProgress ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  aria-live="polite"
+                  aria-label={exportProgressLabel}
+                  data-testid="academy-players-export-progress"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="hidden sm:inline">{exportProgressLabel}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => exportAbortRef.current?.abort()}
+                  aria-label={tTrainer('players.export.cancel', 'Cancel export')}
+                >
+                  <X className="h-4 w-4" />
+                  <span className="hidden sm:inline">{tTrainer('players.export.cancel', 'Cancel export')}</span>
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={handleExport} aria-label={tTrainer('players.export.button', 'Export')}>
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">{tTrainer('players.export.button', 'Export')}</span>
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)} aria-label={tTrainer('players.import.button', 'Import')}>
               <Upload className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
@@ -634,6 +732,31 @@ export default function AcademyPlayers() {
               triggerClassName="w-full sm:w-[160px]"
               placeholder={tTrainer('players.activeCyclus', 'Active Cyclus')}
             />
+
+            {/* Current training (PTF option A): ongoing cycles + upcoming standalone sessions, and the
+                club those sessions are at — NOT the location filter above, which keeps its meaning. */}
+            <SelectFilter
+              value={selectedTraining}
+              onValueChange={setSelectedTraining}
+              allLabel={tTrainer('players.training.filterAll', 'All players')}
+              ariaLabel={tTrainer('players.training.statusAria', 'Training status')}
+              options={[
+                { value: 'yes', label: tTrainer('players.training.yes', 'Currently training') },
+                { value: 'no', label: tTrainer('players.training.no', 'Not currently training') },
+              ]}
+              triggerClassName="w-full sm:w-[180px]"
+            />
+
+            {allLocations.length > 0 && (
+              <SelectFilter
+                value={selectedTrainingClub}
+                onValueChange={setSelectedTrainingClub}
+                allLabel={tTrainer('players.training.clubAll', 'All training clubs')}
+                ariaLabel={tTrainer('players.training.clubAria', 'Training club')}
+                options={allLocations.map((loc) => ({ value: loc.id, label: loc.name }))}
+                triggerClassName="w-full sm:w-[180px]"
+              />
+            )}
 
             <SelectFilter
               value={selectedTagId}

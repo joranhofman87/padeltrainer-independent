@@ -116,6 +116,10 @@ export interface PlayersOverviewFilters {
   hasActiveCyclus?: boolean | null;
   tagId?: string | null; // uuid or 'untagged'
   payment?: 'overdue' | 'ok' | null;
+  /** Academy scope only (PTF option A): has / has no qualifying academy-owned session now. */
+  currentTraining?: boolean | null;
+  /** Academy scope only: has a qualifying session at this club (not the location chip filter). */
+  trainingLocationId?: string | null;
 }
 
 export interface PlayersOverviewParams {
@@ -125,6 +129,8 @@ export interface PlayersOverviewParams {
   sortDir?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
+  /** Explicit row offset; overrides page * pageSize (the export overlaps page boundaries). */
+  offset?: number;
 }
 
 /** Half-open band encoding matching the page's getLevelBand exactly:
@@ -143,6 +149,8 @@ export function filtersToRpcJson(filters: PlayersOverviewFilters = {}): Record<s
   if (typeof filters.hasActiveCyclus === 'boolean') out.has_active_cyclus = filters.hasActiveCyclus;
   if (filters.tagId) out.tag_id = filters.tagId;
   if (filters.payment) out.payment = filters.payment;
+  if (typeof filters.currentTraining === 'boolean') out.current_training = filters.currentTraining;
+  if (filters.trainingLocationId) out.training_location_id = filters.trainingLocationId;
   return out;
 }
 
@@ -160,7 +168,7 @@ export async function fetchPlayersOverview(
     p_sort: params.sort ?? 'name',
     p_sort_dir: params.sortDir ?? 'asc',
     p_limit: pageSize,
-    p_offset: page * pageSize,
+    p_offset: params.offset ?? page * pageSize,
   });
   if (error) throw error;
   const rows = (data ?? []) as PlayersOverviewRow[];
