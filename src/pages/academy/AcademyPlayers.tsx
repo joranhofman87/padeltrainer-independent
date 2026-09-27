@@ -105,7 +105,14 @@ export default function AcademyPlayers() {
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
   // Current training (PTF option A): 'yes' | 'no' | 'all', and the club those sessions are at.
   const [selectedTraining, setSelectedTraining] = useState<string>('all');
-  const [selectedTrainingClub, setSelectedTrainingClub] = useState<string>('all');
+  // The training club is an academy-scoped id, so the choice remembers the academy it was made in and
+  // reads as 'all' anywhere else — derived, so not even one render/query after an academy switch
+  // carries the previous academy's club.
+  const [trainingClubChoice, setTrainingClubChoice] = useState<{ academyId: string | undefined; clubId: string }>(
+    { academyId: undefined, clubId: 'all' },
+  );
+  const selectedTrainingClub = trainingClubChoice.academyId === activeAcademy?.id ? trainingClubChoice.clubId : 'all';
+  const setSelectedTrainingClub = (clubId: string) => setTrainingClubChoice({ academyId: activeAcademy?.id, clubId });
   const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
 
   // Server-side sort + pagination
@@ -318,8 +325,9 @@ export default function AcademyPlayers() {
     if (!activeAcademy || exportAbortRef.current) return;
     const controller = new AbortController();
     exportAbortRef.current = controller;
-    // Frozen at click time: filter/search edits made while it runs never reach this export.
-    const inputs = freezeExportInputs({ search: debouncedSearch, filters: overviewFilters, sort: rpcSort, sortDir });
+    // Frozen at click time: filter/search edits made while it runs never reach this export. The search
+    // is the text visible in the box NOW, not the debounced copy that can lag the input by 300 ms.
+    const inputs = freezeExportInputs({ search: searchQuery, filters: overviewFilters, sort: rpcSort, sortDir });
     setExportProgress({ done: 0, total: 0 });
     try {
       const contacts = await fetchAllContactsForExport({ kind: 'academy', id: activeAcademy.id }, inputs, {

@@ -1,6 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { readFileSync } from 'node:fs';
@@ -45,7 +45,7 @@ vi.mock('@/components/academy/AcademyLayout', () => ({
   useAcademyContext: () => ({ activeAcademy: (academies[academyId] ??= { id: academyId, name: 'Academy' }) }),
 }));
 
-const overviewCalls: PlayersOverviewParams[] = [];
+const overviewCalls: Array<PlayersOverviewParams & { scopeId: string }> = [];
 const exportCalls: PlayersOverviewParams[] = [];
 let exportImpl: (p: PlayersOverviewParams) => Promise<{ rows: PlayersOverviewRow[]; total: number }>;
 
@@ -59,8 +59,8 @@ vi.mock('@/lib/playersOverview', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/playersOverview')>();
   return {
     ...actual,
-    usePlayersOverview: (_scope: unknown, params: PlayersOverviewParams) => {
-      overviewCalls.push(params);
+    usePlayersOverview: (scope: { id: string }, params: PlayersOverviewParams) => {
+      overviewCalls.push({ ...params, scopeId: scope.id });
       return { data: { rows: [listRow(1), listRow(2)], total: 2 }, isLoading: false };
     },
     fetchPlayersOverview: async (_scope: unknown, params: PlayersOverviewParams = {}) => {
@@ -101,11 +101,12 @@ function builder(result: Result) {
   return b;
 }
 vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: () => builder({ data: [], error: null }) } }));
+// acad-2 ALSO lists club id loc-1: a club id alone does not say which academy chose it.
 vi.mock('@/lib/academy', () => ({
-  getAcademyLocations: async () => [
-    { location: { id: 'loc-1', name: 'Club Noord' } },
-    { location: { id: 'loc-2', name: 'Club Zuid' } },
-  ],
+  getAcademyLocations: async (id: string) =>
+    id === 'acad-2'
+      ? [{ location: { id: 'loc-1', name: 'Club Noord' } }, { location: { id: 'loc-3', name: 'Club Oost' } }]
+      : [{ location: { id: 'loc-1', name: 'Club Noord' } }, { location: { id: 'loc-2', name: 'Club Zuid' } }],
 }));
 vi.mock('@/lib/trainerDisplayNames', () => ({ fetchTrainerDisplayNamesByProfileIds: async () => new Map() }));
 vi.mock('@/components/players/PlayerTagsCell', () => ({ PlayerTagsCell: () => null }));
@@ -167,6 +168,21 @@ describe('Academy Players — training filters', () => {
     expect(lastFilters()).toMatchObject({ currentTraining: null, trainingLocationId: null });
   });
 
+  it("an academy switch never carries the previous academy's training club — not even for one query", async () => {
+    const { rerenderPage } = renderPage();
+    await screen.findByLabelText('Training club');
+    choose('Training club', 'loc-1');
+    expect(lastFilters()).toMatchObject({ trainingLocationId: 'loc-1' });
+
+    academyId = 'acad-2';
+    rerenderPage();
+    await within(screen.getByLabelText('Training club')).findByRole('option', { name: 'Club Oost' }); // acad-2's clubs loaded
+    const acad2Calls = overviewCalls.filter((c) => c.scopeId === 'acad-2');
+    expect(acad2Calls.length).toBeGreaterThan(0);
+    for (const c of acad2Calls) expect(c.filters?.trainingLocationId ?? null).toBeNull();
+    expect((screen.getByLabelText('Training club') as HTMLSelectElement).value).toBe('all');
+  });
+
   it('the training club filter lists the academy clubs and leaves the location filter alone', async () => {
     renderPage();
     const club = await screen.findByLabelText('Training club');
@@ -203,6 +219,16 @@ describe('Academy Players — export', () => {
     expect(downloads[0].csv).toContain('"Ann";"ann@x.nl";"\'+31612345678"');
     expect(toasts.success).toHaveBeenCalledWith('2 players exported');
     expect(lastFilters()).toMatchObject({ currentTraining: false, trainingLocationId: null }); // the list stays live
+  });
+
+  it('exports the search text visible at click time, not the lagging debounced copy', async () => {
+    renderPage();
+    await screen.findByLabelText('Training club');
+    fireEvent.change(screen.getByPlaceholderText('Search by name, email or business name…'), { target: { value: 'ann' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Export' })); // well inside the 300 ms debounce
+    expect(overviewCalls[overviewCalls.length - 1].search).toBe(''); // the table has not caught up yet
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(exportCalls.map((c) => c.search)).toEqual(['ann']);
   });
 
   it('Cancel stops the export and downloads nothing', async () => {
