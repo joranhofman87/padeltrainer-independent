@@ -122,6 +122,16 @@ const TS = 'c1000000-0000-0000-0000-000000000071';
 const LOC = 'a1000000-0000-0000-0000-00000000e0a1';
 const CYC_ON = 'cc100000-0000-0000-0000-0000000000c1';
 const CYC_FU = 'cc100000-0000-0000-0000-0000000000c2';
+// A1 preservation (Tom, 2026-09-29): the academy id the capture and repair pin, with its own trainer, manager and
+// 34 trainer-owned manual guests (2 academy-invoiced, 1 linked to a canonical person).
+const RA = 'f5124b05-6c8b-40e4-9d67-36e2a41acd36';
+const MGR_RA = 'f5000000-0000-0000-0000-0000000000a1';
+const TR = 'f5000000-0000-0000-0000-000000000071';
+const P_R = 'f5000000-0000-0000-0000-0000000000e1';
+const PR_X = 'f5000000-0000-0000-0000-0000000000f1'; // another side (a profile) of P_R, for the person-wide refusals
+const RG = (i: number) => `f5${String(i).padStart(6, '0')}-0000-4000-8000-000000000000`;
+const RG_IDS = Array.from({ length: 34 }, (_, i) => RG(i + 1)).sort();
+const RG_NAME = (k: number) => `Preserve ${String(k).padStart(2, '0')}`;
 const G_ON = '9a100000-0000-0000-0000-000000000001';
 const G_FU = '9a100000-0000-0000-0000-000000000002';
 const G_T = '9a100000-0000-0000-0000-000000000003';   // TS's own guest: no academy, no A booking
@@ -160,10 +170,11 @@ async function startServer(): Promise<void> {
 }
 
 type Psql = { status: number | null; out: string; err: string; rec: Record<string, string> };
-function psql(file: string, opts: { vars?: Record<string, string>; single?: boolean; path?: string } = {}): Psql {
+function psql(file: string, opts: { vars?: Record<string, string>; single?: boolean; path?: string; pre?: string } = {}): Psql {
   const args = ['-X', '-v', 'ON_ERROR_STOP=1', '-h', HOST, '-p', String(PORT), '-U', 'postgres', '-d', 'postgres'];
   if (opts.single) args.push('-1');
   for (const [k, v] of Object.entries(opts.vars ?? {})) args.push('-v', `${k}=${v}`);
+  if (opts.pre) args.push('-f', opts.pre); // an include run first, in the same -1 transaction (the pinned set)
   args.push('-f', opts.path ?? join(PACKET, file));
   const r = spawnSync(PSQL, args, { encoding: 'utf8', env: { ...process.env, PGPASSWORD: 'postgres', PGCONNECT_TIMEOUT: '10' } });
   if (r.error) throw new Error(`psql could not run (${PSQL}): ${r.error.message}`);
@@ -175,6 +186,16 @@ function psql(file: string, opts: { vars?: Record<string, string>; single?: bool
   return { status: r.status, out: r.stdout, err: r.stderr, rec };
 }
 const apply = (vars?: Record<string, string>) => psql('apply.sql', { single: true, vars: vars ?? { expected_sysid: sysid } });
+// The A1 preservation include, exactly as the operator generates it from the CAPTURE record (never committed).
+let includeDir = '';
+const pinnedInclude = (ids: string[], sha = sha256([...ids].sort().join(',')), count = String(ids.length)) => {
+  includeDir ||= mkdtempSync(join(tmpdir(), 'ptf-a1p-'));
+  const f = join(includeDir, `pinned-${Math.random().toString(36).slice(2)}.psql`);
+  writeFileSync(f, `\\set pinned_count ${count}\n\\set pinned_sha256 ${sha}\n\\set pinned_ids '{${ids.join(',')}}'\n`);
+  return f;
+};
+const preserve = (include: string, sysidVar?: string) =>
+  psql('a1_preserve_repair.sql', { single: true, pre: include, vars: { expected_sysid: sysidVar ?? sysid } });
 const recovery = () => psql('recovery.sql', { single: true, vars: { expected_sysid: sysid } });
 
 async function state() {
@@ -227,7 +248,8 @@ beforeAll(async () => {
     CREATE TABLE public.academy_profiles (id uuid PRIMARY KEY, timezone text);
     CREATE TABLE public.academy_managers (academy_profile_id uuid, user_id uuid);
     CREATE TABLE public.trainer_profiles (id uuid PRIMARY KEY, user_id uuid);
-    CREATE TABLE public.academy_trainers (academy_profile_id uuid, trainer_profile_id uuid, status text);
+    CREATE TABLE public.academy_trainers (academy_profile_id uuid, trainer_profile_id uuid, status text, joined_at timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE public.profiles (id uuid PRIMARY KEY, user_id uuid, full_name text, email text, phone text,
       billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, birth_date date);
     CREATE TABLE public.guest_players (id uuid PRIMARY KEY, trainer_id uuid, academy_profile_id uuid, full_name text, email text,
@@ -245,8 +267,19 @@ beforeAll(async () => {
       person_id uuid, status text, payment_status text, paid_externally boolean, hold_expires_at timestamptz,
       created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE public.academy_player_metadata (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), academy_profile_id uuid,
-      trainer_profile_id uuid, guest_player_id uuid, profile_id uuid, notes text, tag_ids uuid[], preferred_location_id uuid,
-      removed_at timestamptz, created_at timestamptz NOT NULL DEFAULT now());
+      trainer_profile_id uuid, guest_player_id uuid, profile_id uuid, notes text, tag_ids uuid[] NOT NULL DEFAULT '{}',
+      preferred_location_id uuid, removed_at timestamptz, person_id uuid, created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT academy_player_metadata_owner_check
+        CHECK ((academy_profile_id IS NOT NULL)::int + (trainer_profile_id IS NOT NULL)::int = 1));
+    -- production's relationship keys (20260510090036 / 20260510102923)
+    CREATE UNIQUE INDEX idx_academy_player_metadata_guest ON public.academy_player_metadata (academy_profile_id, guest_player_id)
+      WHERE guest_player_id IS NOT NULL;
+    CREATE UNIQUE INDEX idx_academy_player_metadata_profile ON public.academy_player_metadata (academy_profile_id, profile_id)
+      WHERE profile_id IS NOT NULL;
+    CREATE TABLE public.slot_priority_claims (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), slot_id uuid, source_slot_id uuid,
+      guest_player_id uuid, booked_by_guest_player_id uuid);
+    CREATE TABLE public.notification_contacts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), guest_player_id uuid,
+      consent_academy_profile_id uuid);
     CREATE TABLE public.intake_requests (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), cycle_id uuid, player_id uuid,
       guest_player_id uuid, location_id uuid, status text);
     CREATE TABLE public.academy_player_locations (academy_profile_id uuid, profile_id uuid, guest_player_id uuid, location_id uuid, dismissed boolean);
@@ -284,6 +317,25 @@ beforeAll(async () => {
     CREATE OR REPLACE FUNCTION public.booking_occupies_seat(p_status text, p_hold_expires_at timestamptz) RETURNS boolean
       LANGUAGE sql STABLE AS $fn$ SELECT COALESCE(p_status, 'confirmed') IN ('confirmed', 'pending', 'pending_approval')
         OR (p_status = 'payment_pending' AND p_hold_expires_at IS NOT NULL AND p_hold_expires_at > now()) $fn$;`);
+
+  // production's person stamp on the relationship table (20260826260000_persons_expand.sql, verbatim body)
+  await db.query(`
+    CREATE OR REPLACE FUNCTION public.stamp_person_id_academy_player_metadata() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public' AS $fn$
+    BEGIN
+      IF NEW.profile_id IS NOT NULL OR NEW.guest_player_id IS NOT NULL
+         OR (TG_OP = 'UPDATE' AND (OLD.profile_id IS NOT NULL OR OLD.guest_player_id IS NOT NULL)) THEN
+        NEW.person_id := COALESCE(
+          (SELECT pl.person_id FROM public.person_links pl WHERE pl.guest_player_id = NEW.guest_player_id),
+          (SELECT pl.person_id FROM public.person_links pl WHERE pl.profile_id = NEW.profile_id)
+        );
+      END IF;
+      RETURN NEW;
+    END;
+    $fn$;
+    CREATE TRIGGER trg_stamp_person_id_academy_player_metadata
+      BEFORE INSERT OR UPDATE OF profile_id, guest_player_id, person_id ON public.academy_player_metadata
+      FOR EACH ROW EXECUTE FUNCTION public.stamp_person_id_academy_player_metadata();`);
 
   // The canonical chain for get_players_overview, grants and all (as production applied it).
   for (const f of ['20260827100000_phase32_players_overview_person_dedup.sql', '20260901110000_phase33e_overview_type_has_login.sql',
@@ -442,6 +494,113 @@ describe('PTF release packet on real PostgreSQL', () => {
     expect(before).toMatchObject({ ledger_rows: 620, digest: C_STATE_BASE });
   }, 120_000);
 
+  it('A1 preservation (pre-apply): capture pins the dropped set; the repair refuses every contradiction, then links exactly that set, once', async () => {
+    await db.query(`
+      INSERT INTO public.academy_profiles (id) VALUES ('${RA}');
+      INSERT INTO public.academy_managers VALUES ('${RA}', '${MGR_RA}');
+      INSERT INTO public.trainer_profiles VALUES ('${TR}', gen_random_uuid());
+      INSERT INTO public.academy_trainers (academy_profile_id, trainer_profile_id, status, joined_at)
+        VALUES ('${RA}', '${TR}', 'active', now() - interval '1 year');
+      INSERT INTO public.guest_players (id, trainer_id, full_name, source, created_at) VALUES
+        ${RG_IDS.map((id, k) => `('${id}', '${TR}', '${RG_NAME(k + 1)}', 'manual', now() - interval '1 day')`).join(', ')};
+      INSERT INTO public.invoices (academy_profile_id, guest_player_id, status) VALUES
+        ('${RA}', '${RG_IDS[0]}', 'paid'), ('${RA}', '${RG_IDS[1]}', 'sent');
+      INSERT INTO public.persons (id, full_name) VALUES ('${P_R}', '${RG_NAME(3)}');
+      INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${P_R}', '${RG_IDS[2]}');`);
+    const relRows = async () =>
+      (await db.query('SELECT count(*)::int AS n FROM public.academy_player_metadata WHERE academy_profile_id = $1', [RA])).rows[0].n as number;
+    const guestDigest = async () => (await db.query(
+      `SELECT md5(string_agg(row_to_json(g)::text, '|' ORDER BY g.id)) AS d FROM public.guest_players g WHERE g.id = ANY ($1::uuid[])`,
+      [RG_IDS])).rows[0].d as string;
+
+    // CAPTURE: exactly the 34, classified as decided (2 academy-invoiced, 32 without any signal), nothing refused.
+    const pinnedSha = sha256(RG_IDS.join(','));
+    const cap = psql('a1_preserve_capture.sql');
+    expect(cap.status, cap.err).toBe(0);
+    expect(cap.out).toContain('ROLLBACK');
+    expect(cap.rec).toMatchObject({
+      pinned_count: '34', pinned_sha256: pinnedSha, pinned_ids: `{${RG_IDS.join(',')}}`,
+      cat1_person_still_listed: '0', cat2_other_academy_owned: '0', cat3_academy_signal: '2', cat4_trained_other_academy: '0',
+      cat5_trainer_private: '0', cat6_no_booking_no_signal: '32', cat7_other: '0', signal_academy_invoice: '2',
+      signal_other_academy_signal: '0', origin_manual: '34', refuse_person_removed_side: '0', refuse_other_side_metadata: '0',
+    });
+
+    // Every refusal changes nothing.
+    const good = pinnedInclude(RG_IDS);
+    const before = { rows: await relRows(), guests: await guestDigest() };
+    expect(before.rows).toBe(0);
+    const unchanged = async () => {
+      expect(await relRows()).toBe(before.rows);
+      expect(await guestDigest()).toBe(before.guests);
+    };
+    const refused = (r: Psql, re: RegExp) => { expect(r.status).not.toBe(0); expect(r.err).toMatch(re); };
+    refused(preserve(good, '1'), /ptf a1 preserve guard: system identifier/);
+    await unchanged();
+    refused(preserve(pinnedInclude(RG_IDS, sha256('not the capture'))), /ptf a1 preserve guard: the pinned ids hash to/);
+    await unchanged();
+    refused(preserve(pinnedInclude(RG_IDS.slice(1))), /ptf a1 preserve guard: the pinned set must be 34 distinct ids/);
+    refused(preserve(pinnedInclude(RG_IDS, undefined, '33')), /ptf a1 preserve guard: the pinned set must be 34 distinct ids/);
+    refused(preserve(pinnedInclude([...RG_IDS.slice(1), RG_IDS[1]])), /ptf a1 preserve guard: the pinned set must be 34 distinct ids/);
+    await unchanged();
+    // the set moved since CAPTURE: a 35th dropped side
+    await db.query(`INSERT INTO public.guest_players (id, trainer_id, full_name, source) VALUES ('${RG(99)}', '${TR}', 'Preserve new', 'manual')`);
+    refused(preserve(good), /not the academy's current A1-dropped set \(35 dropped now, 34 pinned\)/);
+    await db.query(`DELETE FROM public.guest_players WHERE id = '${RG(99)}'`);
+    await unchanged();
+    // an academy owns a pinned guest: never reassigned, refused
+    await db.query(`UPDATE public.guest_players SET academy_profile_id = '${B}' WHERE id = '${RG_IDS[4]}'`);
+    refused(preserve(good), /refused, 1 owned by an academy, 0 not owned/);
+    await db.query(`UPDATE public.guest_players SET academy_profile_id = NULL WHERE id = '${RG_IDS[4]}'`);
+    // a pinned guest's trainer is no longer active here: not in the academy's universe, refused
+    await db.query(`UPDATE public.guest_players SET trainer_id = '${TS}' WHERE id = '${RG_IDS[5]}'`);
+    refused(preserve(good), /0 owned by an academy, 1 not owned by an active trainer of this academy/);
+    await db.query(`UPDATE public.guest_players SET trainer_id = '${TR}' WHERE id = '${RG_IDS[5]}'`);
+    await unchanged();
+    // person-wide rules: a removed side of the same person here, then an already-related other side
+    await db.query(`
+      INSERT INTO public.profiles (id, full_name) VALUES ('${PR_X}', 'Preserve profile side');
+      INSERT INTO public.person_links (person_id, profile_id) VALUES ('${P_R}', '${PR_X}');
+      INSERT INTO public.academy_player_metadata (academy_profile_id, profile_id, removed_at) VALUES ('${RA}', '${PR_X}', now());`);
+    refused(preserve(good), /1 with a removed side here, 0 with another side/);
+    await db.query(`UPDATE public.academy_player_metadata SET removed_at = NULL WHERE profile_id = '${PR_X}'`);
+    refused(preserve(good), /0 with a removed side here, 1 with another side already related here/);
+    await db.query(`
+      DELETE FROM public.academy_player_metadata WHERE profile_id = '${PR_X}';
+      DELETE FROM public.person_links WHERE profile_id = '${PR_X}';
+      DELETE FROM public.profiles WHERE id = '${PR_X}';`);
+    // an earlier partial run: one pinned guest already related
+    await db.query(`INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id) VALUES ('${RA}', '${RG_IDS[6]}')`);
+    refused(preserve(good), /mixed state, 1 of 34 pinned guests already related here/);
+    await db.query(`DELETE FROM public.academy_player_metadata WHERE guest_player_id = '${RG_IDS[6]}'`);
+    await unchanged();
+
+    // FIRST RUN: exactly the 34 rows, canonical person stamped, nothing else touched, ledger and state unchanged.
+    const first = preserve(good);
+    expect(first.status, first.err).toBe(0);
+    expect(first.out).toContain('inputs loaded');
+    expect(first.err).toContain(`ptf a1 preserve: inserted 34, linked 34/34 for academy ${RA}, pinned ${pinnedSha}, dropped now 0`);
+    const rows = (await db.query(`SELECT guest_player_id::text AS g, person_id::text AS p,
+        (notes IS NULL AND cardinality(tag_ids) = 0 AND removed_at IS NULL AND trainer_profile_id IS NULL AND profile_id IS NULL) AS clean
+        FROM public.academy_player_metadata WHERE academy_profile_id = $1 ORDER BY guest_player_id`, [RA])).rows;
+    expect(rows.map((r) => r.g)).toEqual(RG_IDS);
+    expect(rows.every((r) => r.clean)).toBe(true);
+    expect(rows.filter((r) => r.p !== null).map((r) => [r.g, r.p])).toEqual([[RG_IDS[2], P_R]]);
+    expect(await guestDigest()).toBe(before.guests);
+    expect((await db.query('SELECT count(*)::int AS n FROM public.invoices WHERE academy_profile_id = $1', [RA])).rows[0].n).toBe(2);
+    expect(await state()).toMatchObject({ ledger_rows: 620, digest: C_STATE_BASE });
+
+    // RE-RUN: a no-op success.
+    const again = preserve(good);
+    expect(again.status, again.err).toBe(0);
+    expect(again.err).toContain(`ptf a1 preserve: inserted 0, linked 34/34 for academy ${RA}`);
+    expect(await relRows()).toBe(34);
+
+    // CV: nothing of the academy is dropped any more.
+    const cv = psql('a1_preserve_capture.sql');
+    expect(cv.status, cv.err).toBe(0);
+    expect(cv.rec).toMatchObject({ pinned_count: '0', pinned_ids: '{}', pinned_sha256: sha256('') });
+  }, 120_000);
+
   it('apply does not wait on app reads, DML or autovacuum-strength locks, and commits the exact PTF state', async () => {
     const reader = await newClient();
     await reader.query('BEGIN');
@@ -493,6 +652,15 @@ describe('PTF release packet on real PostgreSQL', () => {
       prepared_xacts: '0', in_flight: '',
     });
     for (const line of PTF_STATE.split('\n')) expect(r.out).toContain(line);
+  });
+
+  it('after apply, the preserved academy lists all 34 through their relationship rows; the repair then refuses (pre-apply only)', async () => {
+    const listed = names(await overview(MGR_RA, RA, {}, 100));
+    expect(listed).toHaveLength(34);
+    for (let k = 1; k <= 34; k++) expect(listed).toContain(RG_NAME(k));
+    const late = preserve(pinnedInclude(RG_IDS));
+    expect(late.status).not.toBe(0);
+    expect(late.err).toMatch(/ptf a1 preserve guard: the ledger is not the reviewed 620 versions .*runs before apply.sql only/);
   });
 
   it('no client role reaches the private authority; the export runs for authenticated only', async () => {
@@ -718,6 +886,7 @@ describe('PTF release packet on real PostgreSQL', () => {
     }
     expect(copies).toBe(6);
     expect(readFileSync(join(PACKET, 'apply.sql'), 'utf8')).toContain(C_BASE);
+    expect(readFileSync(join(PACKET, 'a1_preserve_repair.sql'), 'utf8')).toContain(C_BASE); // its pre-apply-only ledger
     expect(readFileSync(join(PACKET, 'apply.sql'), 'utf8')).toContain(C_STATE_BASE);
     expect(readFileSync(join(PACKET, 'recovery.sql'), 'utf8')).toContain(C_RESTORED);
     expect(readFileSync(join(PACKET, 'recovery.sql'), 'utf8')).toContain(C_STATE_BASE);

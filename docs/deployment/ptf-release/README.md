@@ -15,7 +15,8 @@ go/no-go names this exact commit. It implements three owner decisions:
 | Frontend base | production deployment `HJ3eNSHPJ`: commit `edf299b5b735f2b5bfb17fd8b44bd658ede3760a` on `main` | `PTF_FRONTEND_BASELINE_RECEIPT_2026-09-29.md`: short SHA resolved locally; the provider deployment id and UTC time are still to be reconciled before execution |
 | Code | the reviewed PTF commits over that base (`claude/ptf-training-filter-export` at `20f90e38`, preserved), plus the candidate commits on `claude/ptf-release-candidate`: this packet, A1, E1 and the review fixes | the owner-approved player-list change (`b21c4f2e`, `73d145cd`) is deliberately included, since PTF is built on it |
 | Database | one migration, `20261208100000_players_overview_current_training.sql`: schema `players_private`, the private authority `players_private.players_overview_rows`, the list entry `public.get_players_overview` (same signature, return type and grantees) and the export entry `public.get_players_overview_export` | `PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md`: ledger 620 to `20261207100000`, after the verified ACL correction; which BASE fields are receipt values is stated below |
-| Excluded | ABC-16 (deferred; its rebase gate stands), ABC-17 and every booking writer, U2, U4, U7, the F0 UI, production data repair | — |
+| Data, pre-apply | **A1 preservation** (Tom's binding decision, 2026-09-29): academy `f5124b05-6c8b-40e4-9d67-36e2a41acd36` keeps all 34 guest sides that A1 would drop (2 academy-invoice-linked, 32 manual prospects). Each gets one explicit academy relationship: an `academy_player_metadata` row, which is the relationship A1 reads. No schema change. Guest ownership, invoices, bookings, person links and removals are untouched. | Tom's production classification (read-only; `ptf_a1_exclusion_classification.sql`, validated on PGlite). The exact set is pinned by row CAP at execution time. |
+| Excluded | ABC-16 (deferred; its rebase gate stands), ABC-17 and every booking writer, U2, U4, U7, the F0 UI, any production data repair other than the A1 preservation above | — |
 
 The packet's own files (`SHA256SUMS` in this directory):
 
@@ -26,6 +27,8 @@ The packet's own files (`SHA256SUMS` in this directory):
 | `postcheck.sql` | Read-only end-state check, the effective client-role privileges, and two refusal probes |
 | `recovery.sql` + `restore_canonical_get_players_overview.sql` | Forward recovery to the exact BASE state |
 | `state_descriptor.sql` | The CANONICAL state-descriptor query (read-only; prints the descriptor and its sha256). The six copies embedded in apply, recovery and post-check must equal it byte-for-byte; the local suite asserts that. |
+| `a1_preserve_capture.sql` | Read-only. It pins the academy's exact A1-dropped guest set (ids, count and sha256) with its classification, for rows CAP and CV. |
+| `a1_preserve_repair.sql` | The pre-apply relationship repair: guards, one relationship row per pinned guest, and in-transaction verification. It takes the pinned set from a three-line include generated from CAP. That include holds production ids and is never committed. |
 
 ## Expected object states
 
@@ -93,10 +96,20 @@ Run steps 1–3 from the repository root of a **clean checkout of the candidate 
 PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-release-state/prod-ca.crt /opt/homebrew/opt/libpq/bin/psql -X -W -h db.ficwbdrzefmblkbkomzw.supabase.co -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -f docs/deployment/ptf-release/preflight.sql
 ```
 
-Steps 1–3 and Recovery are judged ONLY by the **Operator outcome contract** below: one matrix and one
-escalation rule. No other document restates them.
+Steps 1–3 (1a–1c included) and Recovery are judged ONLY by the **Operator outcome contract** below: one
+matrix and one escalation rule. No other document restates them.
 
 1. **Preflight (read-only).** Use the command above. Contract row **PF**.
+   - **1a. A1 preservation: capture (read-only).** Use the same command with
+     `-f docs/deployment/ptf-release/a1_preserve_capture.sql`. Contract row **CAP**.
+     - From its record, generate the pinned include: exactly the three `\set` lines shown in
+       `a1_preserve_repair.sql`'s header, with `pinned_sha256` and `pinned_ids` copied verbatim.
+     - Record the include's sha256. Never commit it.
+   - **1b. A1 preservation: repair (a data write, before apply).** Use the same command with
+     `-1 -v expected_sysid=7642734024280108049 -f <the pinned include> -f docs/deployment/ptf-release/a1_preserve_repair.sql`.
+     - Contract row **PR1** (first run) or **PR2** (a deliberate replay).
+     - Keep the NOTICE's transaction time.
+   - **1c. A1 preservation: verify (read-only).** Run the capture again. Contract row **CV**.
 2. **Apply (the only write).** Use the same command with `-1 -v expected_sysid=7642734024280108049` and
    `-f docs/deployment/ptf-release/apply.sql`. Contract row **A1** (first run) or **A2** (a deliberate replay).
    Never run the migration on its own or through `supabase db push`.
@@ -112,7 +125,8 @@ escalation rule. No other document restates them.
    - **A1 changes who appears in academy lists at once** (list, campaign, booking and invoice pickers, rebook
      priority). Players reachable only through a shared trainer's other sessions, the trainer's own roster or
      unstamped sessions disappear from an academy; players linked only by the academy's metadata appear.
-     Quantify it before step 2 with `PTF_A1_IMPACT_OBSERVATION.md`.
+     The impact observation (Tom, 2026-09-29) found 34 such guest sides, all at one academy. Tom decided to keep
+     them all, and steps 1a–1c do that before apply.
 5. **Observe for 15–30 minutes:**
    - function errors, including `22023`, `42501` and `54000` rates;
    - overview and export latency;
@@ -124,7 +138,7 @@ escalation rule. No other document restates them.
 
 ## Operator outcome contract (canonical)
 
-This is the only operative contract for steps 1–3 and Recovery. Other documents cite this README by path,
+This is the only operative contract for steps 1–3 (1a–1c included) and Recovery. Other documents cite this README by path,
 commit and sha256; they do not restate it. psql adds `psql:<file>:<line>:` in front of each stderr line.
 
 **Reading a row.**
@@ -150,13 +164,17 @@ an ESCALATION. Then:
 
 | Row | Intended run and starting state | Required: every item | Other expected output (never decides) | Outcome, then | Local evidence (`src/test/ptfReleasePacket.realpg.test.ts`) |
 | --- | --- | --- | --- | --- | --- |
-| **PF** | Preflight before apply: ledger 620 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`. The record matches the receipt: `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres; `ledger_rows` 620, `ledger_head` 20261207100000, `ledger_is_reviewed_plus_acl` t, `versions_after_acl` empty; `fn_count` 1; `fn_identity_args`, `fn_arguments` (with the receipt's defaults) and `fn_result` as in the BASE block; `fn_language` plpgsql, `fn_volatility` s, `fn_security_definer` true, `fn_config` `search_path=public`, `fn_owner` postgres; `fn_acl` `{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}`; `fn_body_sha256` `0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4`, `fn_body_bytes` 29903 | `BEGIN`, `SET`, `SET`, `Expanded display is on.`, the record, `ROLLBACK` | MATCH (receipt-observed fields only, see BASE) → step 2 as A1 | exit status and every value except `db`, `sysid`, `connected_as` and `fn_arguments`: `:336-345` |
-| **A1** | Apply, first run: ledger 620, BASE state | Exit 0; stdout `INSERT 0 1`; stderr `NOTICE:  ptf apply: object state ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc, ledger 621 to 20261208100000`; no `ERROR:`/`FATAL:`/`WARNING:` | stdout: `SET` ×3, `LOCK TABLE`, a one-row `set_config` result showing `7642734024280108049`, `DO`; then the migration's `CREATE SCHEMA`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `GRANT`, `CREATE FUNCTION`, `REVOKE`, `GRANT`; then `INSERT 0 1`, `DO` | APPLIED → step 3 | exit status, `INSERT 0 1` and the NOTICE's digest: `:466-468` |
-| **A2** | Apply, deliberate replay: ledger 621, PTF state | Exit 0; stdout `INSERT 0 0`; the same NOTICE as A1; no `ERROR:`/`FATAL:`/`WARNING:` | The A1 stdout with `INSERT 0 0`; stderr also has `NOTICE:  schema "players_private" already exists, skipping` | NO-OP (nothing changed) → step 3 | exit status, `INSERT 0 0` and the state unchanged: `:578-582`. The NOTICE is raised unconditionally when the verification passes (`apply.sql:180`); it is not asserted on replay. |
-| **PC** | Post-check after A1 or A2 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`. The record: `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres; `ledger_rows` 621, `ledger_head` 20261208100000; `ledger_ok` t; `state_ok` t; `state_sha256` `ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc`; `client_roles_ok` t; `foreign_access` and `foreign_export` both `refused: not authorized`; `prepared_xacts` 0; `in_flight` empty. Then `object_state`: exactly the four PTF lines, in order. | `BEGIN`, `SET`, `SET`, `DO`, `Expanded display is on.`, the record, `Expanded display is off.`, the 4 rows, `ROLLBACK` | PASS → step 4 | exit status, every value except `db`, `sysid` and `connected_as`, and each PTF line: `:487-496` |
-| **R1** | Recovery, first run: ledger 621, PTF state | Exit 0; stdout `INSERT 0 1`; stderr `NOTICE:  ptf recovery: object state 24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b (the base), ledger 622 to 20261208110000`; no `ERROR:`/`FATAL:`/`WARNING:` | `SET` ×3, `LOCK TABLE`, the `set_config` row, `DO`, `CREATE FUNCTION`, `REVOKE`, `GRANT`, `DROP FUNCTION`, `DROP FUNCTION`, `DROP SCHEMA`, `INSERT 0 1`, `DO` | RECOVERED → Recovery step 3 | exit status, `INSERT 0 1` and the NOTICE's digest: `:675-678` |
-| **R2** | Recovery, deliberate replay: ledger 622, BASE state | Exit 0; stdout `INSERT 0 0`; the same NOTICE as R1; no `ERROR:`/`FATAL:`/`WARNING:` | The R1 stdout with `INSERT 0 0`; stderr also has three NOTICEs ending `does not exist, skipping` | NO-OP → Recovery step 3, if not already done | exit status and `INSERT 0 0`: `:689-691` |
-| **—** | Anything else, in any step | — | A guard refusal prints `ERROR:  ptf apply guard: …` or `ERROR:  ptf recovery guard: …` (the object-state case adds the descriptor in DETAIL); a verification failure prints `ptf … verify: end state wrong … rolled back`; a lock timeout prints `canceling statement due to lock timeout` | ESCALATION | Refusals (non-zero exit plus the guard or lock message) for the system identifier, ledger, object state, in-flight DDL and lock timeout: `:361-444`. Recovery before apply refuses: `:437-439`. |
+| **PF** | Preflight before apply: ledger 620 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`. The record matches the receipt: `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres; `ledger_rows` 620, `ledger_head` 20261207100000, `ledger_is_reviewed_plus_acl` t, `versions_after_acl` empty; `fn_count` 1; `fn_identity_args`, `fn_arguments` (with the receipt's defaults) and `fn_result` as in the BASE block; `fn_language` plpgsql, `fn_volatility` s, `fn_security_definer` true, `fn_config` `search_path=public`, `fn_owner` postgres; `fn_acl` `{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}`; `fn_body_sha256` `0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4`, `fn_body_bytes` 29903 | `BEGIN`, `SET`, `SET`, `Expanded display is on.`, the record, `ROLLBACK` | MATCH (receipt-observed fields only, see BASE) → step 1a as CAP | exit status and every value except `db`, `sysid`, `connected_as` and `fn_arguments`: `:388-396` |
+| **CAP** | A1 preservation capture, before the repair: ledger 620 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`. The record: `pinned_count` 34; `cat3_academy_signal` 2 with `signal_academy_invoice` 2 and `signal_other_academy_signal` 0; `cat6_no_booking_no_signal` 32; `cat1_person_still_listed`, `cat2_other_academy_owned`, `cat4_trained_other_academy`, `cat5_trainer_private`, `cat7_other` all 0; `origin_manual` 34; `refuse_person_removed_side` 0; `refuse_other_side_metadata` 0; `pinned_ids` holding 34 ids; `pinned_sha256` 64 hex characters | `Pager usage is off.`, `BEGIN`, `SET`, `SET`, `Expanded display is on.`, the record, `Expanded display is off.`, `ROLLBACK` | CAPTURED → generate the pinned include (`\set pinned_count 34`, `\set pinned_sha256 <pinned_sha256>`, `\set pinned_ids '<pinned_ids>'`) and record its sha256 → step 1b as PR1 | exit status and every value on a 34-guest fixture: `:518-526` |
+| **PR1** | A1 preservation repair, first run: ledger 620; no pinned guest has a row for the academy; the pinned set is the academy's current dropped set | Exit 0; stdout the one-row `a1_preserve` result `inputs loaded`; stderr `NOTICE:  ptf a1 preserve: inserted 34, linked 34/34 for academy f5124b05-6c8b-40e4-9d67-36e2a41acd36, pinned <CAP pinned_sha256>, dropped now 0, transaction time <timestamp>`; no `ERROR:`/`FATAL:`/`WARNING:` | `SET` ×3, the `a1_preserve` row, `LOCK TABLE`, `DO` | PRESERVED: 34 relationship rows; nothing else written → step 1c. Keep the transaction time: with the academy and the pinned ids, it identifies the 34 rows. | exit status and the NOTICE; the 34 rows (canonical person stamped, no notes or tags); guests, invoices, ledger and state unchanged: `:578-590`. Each refusal changes nothing: system identifier, digest, count, duplicate id, a moved set, academy-owned, inactive trainer, a removed side, an already-related other side, partial run: `:528-576` |
+| **PR2** | Repair, deliberate replay: every pinned guest already has its row | Exit 0; the PR1 NOTICE with `inserted 0, linked 34/34`; no `ERROR:`/`FATAL:`/`WARNING:` | As PR1 | NO-OP → step 1c | `:593-596` |
+| **CV** | Capture again, after PR1 or PR2 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`; `pinned_count` 0, `pinned_ids` `{}`, `pinned_sha256` `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` (the empty set) | As CAP | VERIFIED → step 2 as A1 | `:599-601`. After apply the academy lists all 34, and the repair refuses: `:657-664` |
+| **A1** | Apply, first run: ledger 620, BASE state | Exit 0; stdout `INSERT 0 1`; stderr `NOTICE:  ptf apply: object state ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc, ledger 621 to 20261208100000`; no `ERROR:`/`FATAL:`/`WARNING:` | stdout: `SET` ×3, `LOCK TABLE`, a one-row `set_config` result showing `7642734024280108049`, `DO`; then the migration's `CREATE SCHEMA`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `GRANT`, `CREATE FUNCTION`, `REVOKE`, `GRANT`; then `INSERT 0 1`, `DO` | APPLIED → step 3 | exit status, `INSERT 0 1` and the NOTICE's digest: `:625-627` |
+| **A2** | Apply, deliberate replay: ledger 621, PTF state | Exit 0; stdout `INSERT 0 0`; the same NOTICE as A1; no `ERROR:`/`FATAL:`/`WARNING:` | The A1 stdout with `INSERT 0 0`; stderr also has `NOTICE:  schema "players_private" already exists, skipping` | NO-OP (nothing changed) → step 3 | exit status, `INSERT 0 0` and the state unchanged: `:746-750`. The NOTICE is raised unconditionally when the verification passes (`apply.sql:180`); it is not asserted on replay. |
+| **PC** | Post-check after A1 or A2 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`. The record: `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres; `ledger_rows` 621, `ledger_head` 20261208100000; `ledger_ok` t; `state_ok` t; `state_sha256` `ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc`; `client_roles_ok` t; `foreign_access` and `foreign_export` both `refused: not authorized`; `prepared_xacts` 0; `in_flight` empty. Then `object_state`: exactly the four PTF lines, in order. | `BEGIN`, `SET`, `SET`, `DO`, `Expanded display is on.`, the record, `Expanded display is off.`, the 4 rows, `ROLLBACK` | PASS → step 4 | exit status, every value except `db`, `sysid` and `connected_as`, and each PTF line: `:646-655` |
+| **R1** | Recovery, first run: ledger 621, PTF state | Exit 0; stdout `INSERT 0 1`; stderr `NOTICE:  ptf recovery: object state 24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b (the base), ledger 622 to 20261208110000`; no `ERROR:`/`FATAL:`/`WARNING:` | `SET` ×3, `LOCK TABLE`, the `set_config` row, `DO`, `CREATE FUNCTION`, `REVOKE`, `GRANT`, `DROP FUNCTION`, `DROP FUNCTION`, `DROP SCHEMA`, `INSERT 0 1`, `DO` | RECOVERED → Recovery step 3 | exit status, `INSERT 0 1` and the NOTICE's digest: `:843-846` |
+| **R2** | Recovery, deliberate replay: ledger 622, BASE state | Exit 0; stdout `INSERT 0 0`; the same NOTICE as R1; no `ERROR:`/`FATAL:`/`WARNING:` | The R1 stdout with `INSERT 0 0`; stderr also has three NOTICEs ending `does not exist, skipping` | NO-OP → Recovery step 3, if not already done | exit status and `INSERT 0 0`: `:857-859` |
+| **—** | Anything else, in any step | — | A guard refusal prints `ERROR:  ptf apply guard: …`, `ERROR:  ptf recovery guard: …` or `ERROR:  ptf a1 preserve guard: …` (the object-state case adds the descriptor in DETAIL). A verification failure prints `ptf … verify: … rolled back`. A lock timeout prints `canceling statement due to lock timeout`. | ESCALATION | Refusals (non-zero exit plus the guard or lock message) for the system identifier, ledger, object state, in-flight DDL and lock timeout: `:413-495`. Recovery before apply refuses: `:489-491`. |
 
 ## Lock and compatibility behaviour (measured locally on real PostgreSQL)
 
@@ -199,6 +217,11 @@ an ESCALATION. Then:
      release.
    - Afterwards, `preflight.sql` shows the canonical body and ACL with 622 ledger rows. So reviewed+ACL is `f`,
      which is expected. `apply.sql` refuses until a new reviewed composition exists.
+   - The 34 A1-preservation rows (step 1b) are NOT undone by recovery:
+     - they are Tom's decided academy relationships;
+     - under the BASE body they change no membership, because those guests were listed there already.
+   - Removing them needs a separate decision. The academy, the pinned ids and PR1's transaction time identify
+     them exactly.
 
 ## Client export: trust boundary
 
@@ -244,7 +267,14 @@ It proves:
   discriminates;
 - exact recovery, including refusals on a drifted PTF object: a granted authority, and a STRICT authority.
   The STRICT one keeps `client_roles_ok` and BOTH refusal probes (`foreign_access`, `foreign_export`) green,
-  all asserted, yet empties the list; the post-check's `state_ok` catches it.
+  all asserted, yet empties the list; the post-check's `state_ok` catches it;
+- the A1 preservation (steps 1a–1c), on a 34-guest fixture for the pinned academy:
+  - the capture pins exactly the dropped set;
+  - the repair refuses every contradiction, changing nothing;
+  - it links exactly the 34 once, with the canonical person stamped and guests, invoices, ledger and state
+    unchanged;
+  - a replay is a no-op, and the capture then reads 0;
+  - after apply, the academy lists all 34, and the repair refuses.
 
 The semantic matrix is `playersOverviewCurrentTraining.pglite.test.ts` on the same migration bytes. It covers:
 - option A;
