@@ -43,16 +43,24 @@ replaces.
 - **Comparison:** the files compare the sha256 of the byte-sorted lines.
 
 **BASE** (sha256 `24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b`): production before PTF and
-after recovery.
-- **Receipt values** (`PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md`):
-  - signature, argument defaults (receipt line 11: search `NULL::text`, filters `'{}'::jsonb`, sort
-    `'name'::text`, direction `'asc'::text`, limit 50, offset 0);
-  - result, owner, language, volatility, SECURITY DEFINER, config, ACL and body.
+after recovery. The digest combines two kinds of content. Only the first was observed in production.
 
-  The fresh preflight prints `fn_arguments`; compare it with the `args=(…)` below.
-- **Not in the receipt:** the kind, STRICT, LEAKPROOF, parallel and support attributes. They are fixed by the
-  migration that created the function (`20261006120000`), and the apply guard enforces them fail-closed.
-- **Absent:** neither the export entry nor the schema exists.
+1. **Receipt-observed** (`PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md`; the preflight re-prints these):
+   - the signature and the argument defaults (receipt line 11: search `NULL::text`, filters `'{}'::jsonb`,
+     sort `'name'::text`, direction `'asc'::text`, limit 50, offset 0);
+   - the set-returning `TABLE(…)` result;
+   - owner, language, volatility, SECURITY DEFINER, config, ACL and body.
+
+   Compare the fresh preflight's `fn_arguments` with the `args=(…)` below.
+2. **Apply-guard expectations** (not in the receipt, and not printed by the preflight). Each is fixed by the
+   migrations, and `apply.sql` refuses fail-closed on any difference:
+   - the list function's kind, STRICT, LEAKPROOF, parallel and support attributes, as created by
+     `20261006120000`;
+   - the **absence** of `public.get_players_overview_export` and of schema `players_private`. No migration in
+     the 620-version ledger creates either.
+
+A preflight that matches the receipt therefore does not prove the whole BASE state. Only `apply.sql`'s
+descriptor check does.
 
 ```text
 function public.get_players_overview(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer) args=(p_scope text, p_scope_id uuid, p_search text DEFAULT NULL::text, p_filters jsonb DEFAULT '{}'::jsonb, p_sort text DEFAULT 'name'::text, p_sort_dir text DEFAULT 'asc'::text, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0) returns TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, email_undeliverable boolean, total_count bigint) kind=f owner=postgres language=plpgsql volatility=s strict=f returns_set=t security_definer=t leakproof=f parallel=u support=- config=search_path=public acl=authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres body_sha256=0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4
@@ -91,11 +99,36 @@ PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-releas
    - `fn_acl` `{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}`;
    - body `0f42f53c…`, 29,903 bytes.
 
-   Anything else: STOP.
+   Anything else: STOP. A match covers only the receipt-observed fields. The apply guard checks the
+   apply-guard expectations (see BASE above) when step 2 starts.
 2. **Apply (the only write).** Use the same command with `-1 -v expected_sysid=7642734024280108049` and
    `-f docs/deployment/ptf-release/apply.sql`.
-   - Success: exit 0, `NOTICE: ptf apply: object state ca0d9b03…, ledger 621 to 20261208100000`, and
-     `INSERT 0 1` (`INSERT 0 0` on a re-run).
+   - **Success requires all of the following.** The local real-PG suite asserts the exit status, the `INSERT`
+     tag and the NOTICE's object-state digest.
+     - psql exit status 0;
+     - on stdout, the command tag `INSERT 0 1` (the ledger row). A re-run over an already-applied state prints
+       `INSERT 0 0` instead;
+     - on stderr, the line `NOTICE:  ptf apply: object state
+       ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc, ledger 621 to 20261208100000` (psql
+       puts `psql:<file>:<line>:` in front of it);
+     - no stderr line containing `ERROR:`, `FATAL:` or `WARNING:`.
+   - **Other output is expected and never a reason to stop.** Derived from the files statement by statement,
+     stdout carries these tags in order:
+     1. `SET`, `SET`, `SET`, `LOCK TABLE`;
+     2. a one-row `set_config` result showing `7642734024280108049`;
+     3. `DO` (the guard);
+     4. the migration: `CREATE SCHEMA`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`,
+        `GRANT`, `CREATE FUNCTION`, `REVOKE`, `GRANT`;
+     5. `INSERT 0 1`;
+     6. `DO` (the in-transaction verification).
+
+     On a re-run, stderr also shows `NOTICE:  schema "players_private" already exists, skipping`.
+   - **Stop only if a success condition fails:**
+     - a non-zero exit;
+     - a missing or different `INSERT` tag or NOTICE;
+     - any `ERROR:`/`FATAL:`/`WARNING:` line.
+
+     A successful apply that printed the lines above is NOT a stop: go straight to step 3.
    - Refusal: psql exits 3, and nothing changes. The guard names the cause:
      - target, ledger;
      - the object state, with the full descriptor in DETAIL (any attribute of any of the objects: privileges,
@@ -107,13 +140,29 @@ PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-releas
 
      Fix the cause and preflight again.
    - Never run the migration on its own or through `supabase db push`.
-3. **Post-check (read-only), immediately.** Use the same command with `-f docs/deployment/ptf-release/postcheck.sql`.
-   Done only if:
-   - every `*_ok` column is `t`: `ledger_ok`, `state_ok` and `client_roles_ok`;
-   - `foreign_access` and `foreign_export` are both `refused: not authorized`;
-   - `prepared_xacts` is 0 and `in_flight` is empty.
+3. **Post-check (read-only), immediately.** Use the same command with `-f docs/deployment/ptf-release/postcheck.sql`
+   (no `-1`; it ends in ROLLBACK).
+   - **Done only if all of the following hold:**
+     - psql exit status 0, and no stderr line containing `ERROR:`, `FATAL:` or `WARNING:`;
+     - the first result (one expanded record) reads:
+       - `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres;
+       - `ledger_rows` 621, `ledger_head` 20261208100000;
+       - `ledger_ok` t, `state_ok` t, `state_sha256`
+         `ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc`, `client_roles_ok` t;
+       - `foreign_access` and `foreign_export` both `refused: not authorized`;
+       - `prepared_xacts` 0, and `in_flight` empty;
+     - the second result, `object_state`, has exactly the four lines of the PTF block above, in that order.
 
-   The second result lists the object state; it must equal the PTF block above.
+     The local suite asserts the exit status, every record value except `db`, `sysid` and `connected_as`, and
+     that each PTF line appears.
+   - **Expected stdout, in order** (derived from the file; these lines are never a reason to stop):
+     1. `BEGIN`, `SET`, `SET`;
+     2. `DO` (the two refusal probes);
+     3. `Expanded display is on.`, then the record, then `Expanded display is off.`;
+     4. the four `object_state` rows;
+     5. `ROLLBACK`.
+   - **If any "done" condition fails: stop.** Do not deploy the frontend. Keep the complete output. Recovery
+     (below) is a separate decision.
 4. **Frontend, only after step 3 passes.** Put the candidate's frontend live on production (a separately
    authorized merge to `main`, which Vercel deploys), then confirm the production deployment's commit.
    - **The order matters.** The old function body silently ignores unknown filter keys, and the export RPC
@@ -167,11 +216,45 @@ PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-releas
      and schema `players_private`, each by exact signature and without `CASCADE`. Any dependent object
      makes the DROP fail and the whole transaction roll back.
    - It verifies the BASE state and records ledger version `20261208110000`. A re-run writes `INSERT 0 0`.
+   - **Success requires all of the following.** The suite asserts the exit status, the `INSERT` tag and the
+     NOTICE's digest.
+     - psql exit status 0;
+     - `INSERT 0 1` on stdout (`INSERT 0 0` on a re-run);
+     - the stderr line `NOTICE:  ptf recovery: object state
+       24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b (the base), ledger 622 to
+       20261208110000`;
+     - no `ERROR:`, `FATAL:` or `WARNING:` line.
+   - **Expected stdout, in order** (derived from the files):
+     1. `SET`, `SET`, `SET`, `LOCK TABLE`;
+     2. the one-row `set_config` result;
+     3. `DO` (the guard);
+     4. `CREATE FUNCTION`, `REVOKE`, `GRANT` (the canonical restore);
+     5. `DROP FUNCTION`, `DROP FUNCTION`, `DROP SCHEMA`;
+     6. `INSERT 0 1`;
+     7. `DO` (the verification).
+
+     These lines, and on a re-run the three `… does not exist, skipping` NOTICEs, are never a reason to stop.
+     If any success condition fails: stop and keep the complete output.
    - After it: `preflight.sql` shows the canonical body and ACL, with 622 ledger rows (so reviewed+ACL is
      `f`, which is expected), and `apply.sql` refuses until a new reviewed composition exists.
    - No ledger rewind. If it is ever used, commit `restore_canonical_get_players_overview.sql` plus the
      three DROP statements as `supabase/migrations/20261208110000_players_overview_restore_canonical.sql`
      before any later release.
+
+## Client export: trust boundary
+
+`fetchContactsForExport` (`src/lib/playerContactExport.ts`) checks the export response before any file is
+written.
+- **What it guarantees:** its guarantee covers what the production transport can deliver.
+  - The only production caller, `AcademyPlayers`, passes no `rpc`, so the default
+    `supabase.rpc('get_players_overview_export')` is used.
+  - That payload is JSON decoded by the client: plain records and arrays with their own data properties.
+- **What it is not:** a validator for arbitrary hostile JavaScript objects.
+  - The injectable `rpc` option is a developer/test seam. No user input selects or shapes it.
+  - An injected transport that returns accessor properties, an index getter, or an array with an overridden
+    `map` can still pass (review 6, P3-6). Hardening against that is optional and outside this release.
+- **Authorization** is enforced by the database entry (`is_academy_manager`, before the authority is called),
+  not by this client check.
 
 ## Local evidence
 
@@ -256,6 +339,15 @@ bookings over four statuses, plus a second academy's noise):
   migration, every packet SQL file and the §3 fixture are byte-identical to `e4acc0ed`. The cleanup's only
   real-PG change is one added assertion in the STRICT drift case (`foreign_export`). That case runs on its own
   slot grant, and its result is recorded in the cleanup's review admission, not here.
+
+**Production build (review 6, P3-8).** One author-run `npm run build`, local, on 2026-09-29, finished 15:49 CEST:
+- **Tree:** the clean tree of commit `811dabecff03ed040ebc41a527471d4f6d758c5b`, before this documentation
+  was written.
+- **Outcome:** exit 0; 5,016 modules; the `AcademyPlayers` chunk is 33.13 kB.
+- **Carry-over:** the commit that adds this paragraph changes documentation only, and no build input
+  (`src/`, `index.html`, the Vite/TS configs, `package.json`, the lockfiles, `public/`). So the result stands
+  for it byte-for-byte on the runtime tree.
+- **Scope:** no earlier commit's build is claimed here.
 
 **Results, PRIOR HEAD.** These were measured before correction PTF-CORRECTION-94ED. They stay valid for that
 head and don't carry over to the corrected one, whose merged multi-academy 20,000-person check runs under
