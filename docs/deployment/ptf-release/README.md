@@ -44,11 +44,14 @@ replaces.
 
 **BASE** (sha256 `24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b`): production before PTF and
 after recovery.
-- **Receipt values:** the signature, result, owner, language, volatility, SECURITY DEFINER, config, ACL and
-  body.
-- **Not in the receipt:** the argument defaults and the STRICT, LEAKPROOF, parallel, support and kind flags.
-  They are fixed by the migration that created the function (`20261006120000`), and the apply guard enforces
-  them fail-closed. The fresh preflight prints `fn_arguments`; compare it with the `args=(…)` below.
+- **Receipt values** (`PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md`):
+  - signature, argument defaults (receipt line 11: search `NULL::text`, filters `'{}'::jsonb`, sort
+    `'name'::text`, direction `'asc'::text`, limit 50, offset 0);
+  - result, owner, language, volatility, SECURITY DEFINER, config, ACL and body.
+
+  The fresh preflight prints `fn_arguments`; compare it with the `args=(…)` below.
+- **Not in the receipt:** the kind, STRICT, LEAKPROOF, parallel and support attributes. They are fixed by the
+  migration that created the function (`20261006120000`), and the apply guard enforces them fail-closed.
 - **Absent:** neither the export entry nor the schema exists.
 
 ```text
@@ -198,8 +201,8 @@ It proves:
   call does. With the authority or the export made `VOLATILE`, the same commit becomes visible, so the test
   discriminates;
 - exact recovery, including refusals on a drifted PTF object: a granted authority, and a STRICT authority.
-  The STRICT one passes every grant and refusal probe but empties the list, and the post-check's `state_ok`
-  catches it.
+  The STRICT one keeps `client_roles_ok` and BOTH refusal probes (`foreign_access`, `foreign_export`) green,
+  all asserted, yet empties the list; the post-check's `state_ok` catches it.
 
 The semantic matrix is `playersOverviewCurrentTraining.pglite.test.ts` on the same migration bytes. It covers:
 - option A;
@@ -249,6 +252,10 @@ bookings over four statuses, plus a second academy's noise):
     18.4 (separate run).
 - **A first attempt failed:** it stopped in the test's own setup (untyped literals in a `UNION ALL`). Only
   two `::uuid` casts were then added to the fixture, and the run above is the one retry.
+- **Carried to the review-5 P3 cleanup:** these results still hold, because the cleanup changes no SQL. The
+  migration, every packet SQL file and the §3 fixture are byte-identical to `e4acc0ed`. The cleanup's only
+  real-PG change is one added assertion in the STRICT drift case (`foreign_export`). That case runs on its own
+  slot grant, and its result is recorded in the cleanup's review admission, not here.
 
 **Results, PRIOR HEAD.** These were measured before correction PTF-CORRECTION-94ED. They stay valid for that
 head and don't carry over to the corrected one, whose merged multi-academy 20,000-person check runs under

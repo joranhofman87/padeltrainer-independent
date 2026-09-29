@@ -165,16 +165,63 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     expect((await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).map((c) => c.personId)).toEqual([v7, nilVersion]);
   });
 
+  const refuses = async (result: ExportRpcResult) =>
+    expect(await reasonOf(fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc(result).rpc }))).toBe('failed');
+
+  // REGRESSORS against the validator before correction PTF-CORRECTION-94ED (commit 94ed2cec): each of
+  // these was ACCEPTED there and must be refused now.
   it.each([
-    // envelope: exactly ONE row in PostgREST's array
-    ['no row at all', { data: [], error: null }],
-    ['two envelopes (the second silently ignored before)', { data: [{ total: 1, rows: [person(1)] }, { total: 1, rows: [person(2)] }], error: null }],
-    ['an object instead of the one-row array', { data: { total: 1, rows: [person(3)] }, error: null }],
-    ['a non-object envelope', { data: ['x'], error: null }],
-    ['null data', { data: null, error: null }],
-    // total: a safe integer in [0, EXPORT_MAX_ROWS], never coerced
+    ['two envelopes (the second was silently ignored)', { data: [{ total: 1, rows: [person(1)] }, { total: 1, rows: [person(2)] }], error: null }],
+    ['an object instead of the one-row array (was accepted)', { data: { total: 1, rows: [person(3)] }, error: null }],
     ['a null total with no rows (was read as 0)', { data: [{ total: null, rows: [] }], error: null }],
     ['a string total (was coerced)', { data: [{ total: '1', rows: [person(1)] }], error: null }],
+    ['a person id that is not a uuid (was accepted)', ok([person(1, { person_id: 'p1' })])],
+    ['a non-canonical (upper-case) uuid (was accepted)', ok([person(1, { person_id: '0192D4E6-7C1A-7B3E-9F00-0A0B0C0D0E0F' })])],
+    ['a numeric name (was blanked)', ok([person(1, { full_name: 42 })])],
+    ['an object email (was blanked)', ok([person(1, { email: {} })])],
+    ['an array phone (was blanked)', ok([person(1, { phone: [] })])],
+    ['a missing contact field (was blanked)', ok([{ person_id: uid(1), full_name: 'A', email: 'a@x.nl' }])],
+  ] as Array<[string, ExportRpcResult]>)('refuses %s as `failed` — nothing is written', async (_label, result) => {
+    await refuses(result);
+  });
+
+  // REGRESSORS against e4acc0ed (review round 5, P3-2): an injected transport's NON-PLAIN objects —
+  // class instances, or records whose fields are only inherited — were accepted there. PostgREST's JSON
+  // never produces them; the contract is now literally "plain records with their own fields".
+  class EnvelopeLike { total = 1; rows = [person(1)]; }
+  class RowLike { person_id = uid(1); full_name = 'A'; email = 'a@x.nl'; phone = ''; }
+  const inheriting = <T extends object>(proto: T): T => Object.create(proto) as T;
+  it.each([
+    ['a class-instance envelope', { data: [new EnvelopeLike()], error: null }],
+    ['an envelope whose total and rows are only inherited', { data: [inheriting({ total: 1, rows: [person(1)] })], error: null }],
+    ['a class-instance row', { data: [{ total: 1, rows: [new RowLike()] }], error: null }],
+    ['a row whose fields are only inherited', { data: [{ total: 1, rows: [inheriting(person(1))] }], error: null }],
+  ] as Array<[string, ExportRpcResult]>)('refuses %s (injected transport) as `failed`', async (_label, result) => {
+    await refuses(result);
+  });
+
+  it('reads only OWN fields: a field polluted onto Object.prototype never fills a missing one', async () => {
+    const proto = Object.prototype as Record<string, unknown>;
+    proto.phone = '0612345678';
+    try {
+      await refuses(ok([{ person_id: uid(1), full_name: 'A', email: 'a@x.nl' }]));
+    } finally {
+      delete proto.phone;
+    }
+  });
+
+  it('a null-prototype record with its own fields is a plain record (accepted)', async () => {
+    const bare = <T extends object>(o: T): T => Object.assign(Object.create(null) as T, o);
+    const srv = fakeRpc({ data: [bare({ total: 1, rows: [bare(person(1))] })], error: null });
+    expect((await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).map((c) => c.personId)).toEqual([uid(1)]);
+  });
+
+  // RETAINED CONTRACT: already refused before the correction as well — kept as coverage, not claimed as
+  // evidence that the correction changed behaviour.
+  it.each([
+    ['no row at all', { data: [], error: null }],
+    ['a non-object envelope', { data: ['x'], error: null }],
+    ['null data', { data: null, error: null }],
     ['a fractional total', { data: [{ total: 1.5, rows: [person(1)] }], error: null }],
     ['a negative total', { data: [{ total: -1, rows: [] }], error: null }],
     ['a non-numeric total', { data: [{ total: 'many', rows: [] }], error: null }],
@@ -182,19 +229,12 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     ['more rows than the total', ok([person(1), person(2)], 1)],
     ['a "successful" response above the bound', ok(Array.from({ length: EXPORT_MAX_ROWS + 1 }, (_, i) => person(i)))],
     ['rows that are not an array', { data: [{ total: 0, rows: {} }], error: null }],
-    // rows: plain objects; person_id a canonical uuid, unique; contact fields text or NULL
     ['a row that is not an object', { data: [{ total: 1, rows: [null] }], error: null }],
     ['a duplicated person (one person must be one row)', ok([person(1), person(2, { person_id: uid(1) })])],
     ['a row without a canonical person id', ok([person(1), person(2, { person_id: null })])],
     ['a non-string person id', ok([person(1, { person_id: 42 })])],
-    ['a person id that is not a uuid', ok([person(1, { person_id: 'p1' })])],
-    ['a non-canonical (upper-case) uuid', ok([person(1, { person_id: '0192D4E6-7C1A-7B3E-9F00-0A0B0C0D0E0F' })])],
-    ['a numeric name (was blanked)', ok([person(1, { full_name: 42 })])],
-    ['an object email (was blanked)', ok([person(1, { email: {} })])],
-    ['an array phone (was blanked)', ok([person(1, { phone: [] })])],
-    ['a missing contact field', ok([{ person_id: uid(1), full_name: 'A', email: 'a@x.nl' }])],
-  ] as Array<[string, ExportRpcResult]>)('refuses %s as `failed` — nothing is written', async (_label, result) => {
-    expect(await reasonOf(fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc(result).rpc }))).toBe('failed');
+  ] as Array<[string, ExportRpcResult]>)('refuses %s as `failed` (retained contract)', async (_label, result) => {
+    await refuses(result);
   });
 
   it('any other RPC error or a rejected call is `failed`, with the cause kept', async () => {

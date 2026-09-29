@@ -106,10 +106,12 @@ export async function fetchContactsForExport(
   }
 
   // Exactly ONE envelope — PostgREST's array holding the single { total, rows } row — and every field of
-  // its declared type. Anything else is refused: a file is never written from a response that does
-  // not add up (no coercion, no silently blanked field, no second envelope ignored).
+  // its declared type, read only from plain records' OWN properties. Anything else is refused: a file is
+  // never written from a response that does not add up (no coercion, no silently blanked field, no second
+  // envelope ignored, no inherited field).
   if (!Array.isArray(data) || data.length !== 1 || !isPlainObject(data[0])) throw new ExportError('failed');
-  const { total, rows } = data[0];
+  const total = own(data[0], 'total');
+  const rows = own(data[0], 'rows');
   const validTotal = typeof total === 'number' && Number.isSafeInteger(total) && total >= 0 && total <= EXPORT_MAX_ROWS;
   if (!validTotal || !Array.isArray(rows) || rows.length !== total) {
     throw new ExportError('failed', { total: validTotal ? total : undefined });
@@ -117,16 +119,16 @@ export async function fetchContactsForExport(
   const seen = new Set<string>();
   return rows.map((r: unknown) => {
     if (!isPlainObject(r)) throw new ExportError('failed', { total });
-    const personId = r.person_id;
+    const personId = own(r, 'person_id');
     if (typeof personId !== 'string' || !PG_UUID_TEXT.test(personId) || seen.has(personId)) {
       throw new ExportError('failed', { total });
     }
     seen.add(personId);
     return {
       personId,
-      fullName: nullableText(r.full_name, total),
-      email: nullableText(r.email, total),
-      phone: nullableText(r.phone, total),
+      fullName: nullableText(own(r, 'full_name'), total),
+      email: nullableText(own(r, 'email'), total),
+      phone: nullableText(own(r, 'phone'), total),
     };
   });
 }
@@ -139,8 +141,19 @@ export async function fetchContactsForExport(
  */
 const PG_UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * A plain JSON-style record: an ordinary or null-prototype object. Not an array, and not a class instance
+ * or any other object with its own prototype chain (what JSON.parse of the PostgREST response yields).
+ */
 function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === 'object' && v !== null && !Array.isArray(v);
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
+/** A record's OWN property. An inherited or absent one reads as undefined, which no field accepts. */
+function own(v: Record<string, unknown>, key: string): unknown {
+  return Object.prototype.hasOwnProperty.call(v, key) ? v[key] : undefined;
 }
 
 /** A contact field is text or SQL NULL (an empty cell); any other type refuses the export. */

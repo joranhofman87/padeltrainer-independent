@@ -660,7 +660,10 @@ describe('PTF release packet on real PostgreSQL', () => {
       expect(await overview(MGR_A, A, {})).toEqual([]);  // why it matters
       const post = psql('postcheck.sql');
       expect(post.status, post.err).toBe(0);
-      expect(post.rec).toMatchObject({ state_ok: 'f', client_roles_ok: 't', foreign_access: 'refused: not authorized' });
+      expect(post.rec).toMatchObject({
+        state_ok: 'f', client_roles_ok: 't',
+        foreign_access: 'refused: not authorized', foreign_export: 'refused: not authorized', // both probes
+      });
       const strictRecovery = recovery();
       expect(strictRecovery.status).not.toBe(0);
       expect(strictRecovery.err).toMatch(/ptf recovery guard: the object state is not the one this ledger expects/);
