@@ -57,8 +57,8 @@ DECLARE
   c_academy           CONSTANT uuid    := 'f5124b05-6c8b-40e4-9d67-36e2a41acd36';
   c_decided           CONSTANT integer := 34;  -- Tom, 2026-09-29: keep all 34
   c_ledger            CONSTANT text    := '98015eddaccd8ef67297c172db67495f5ff11a881ea28e1f024fb82741c3bc72'; -- 620, to 20261207100000
-  c_pinned_sha256     CONSTANT text    := NULL;  -- PINNING DELTA: CAP's pinned_sha256
-  c_effective_persons CONSTANT integer := NULL;  -- PINNING DELTA: CAP's effective_persons
+  c_pinned_sha256     CONSTANT text    := '1c1c5b9acee05f690622547cf952ba468e3613a93b109e83d11ac1e779671b18';  -- PINNING DELTA: CAP's pinned_sha256
+  c_effective_persons CONSTANT integer := 34;  -- PINNING DELTA: CAP's effective_persons
   c_uuid              CONSTANT text    := '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
   v_sysid   text := (SELECT system_identifier::text FROM pg_control_system());
   v_ledger  text := (SELECT encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex')
