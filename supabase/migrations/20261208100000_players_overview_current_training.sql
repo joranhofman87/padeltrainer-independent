@@ -30,9 +30,13 @@
 --     registered side: a confirmed/completed booking on a session with academy_profile_id = A
 --                      (first_booking_at is derived from that same set).
 --   Every booking-derived filter and chip (trainer activity, trained clubs, active cycle) reads the
---   same academy-owned sessions (scope_slots). Unchanged: the person rollup, split-freeze, removal,
---   search, sort, paging, the metadata overlay, and TRAINER scope (the trainer's own guests and
---   sessions) in full. Unstamped sessions (academy_profile_id NULL) admit nobody to an academy;
+--   same academy-owned sessions (scope_slots). A merged academy row's NAME (display, search, sort,
+--   export) comes from its admitted sides only: the admitted profile's name, else the oldest admitted
+--   guest's — never the global persons row, which rederive derives from every linked side of every
+--   tenant (docs/INVARIANTS.md I-22). Trainer scope keeps persons.full_name (its exposure is a
+--   separately recorded follow-up). Unchanged apart from that name: the person rollup (canonical
+--   person ids, one row per person), split-freeze, removal, search and sort mechanics, paging, the
+--   metadata overlay, and TRAINER scope (the trainer's own guests and sessions) in full. Unstamped sessions (academy_profile_id NULL) admit nobody to an academy;
 --   nothing is repaired or inferred here.
 --   Residual: booking-derived admission is only as trustworthy as booking-subject integrity (ABC-17,
 --   a separate gate). A1 is strictly narrower than the trainer union: a forged booking can add a
@@ -288,7 +292,8 @@ BEGIN
       g.birth_date                                                AS s_birth_date,
       coalesce(g.has_trained, false)                              AS s_has_trained,
       g.created_at                                                AS s_created_at,
-      g.trainer_id                                                AS s_owner_trainer_id
+      g.trainer_id                                                AS s_owner_trainer_id,
+      g.full_name                                                 AS s_raw_full_name
     FROM guests g
     LEFT JOIN public.person_links pl ON pl.guest_player_id = g.id
     UNION ALL
@@ -298,7 +303,8 @@ BEGIN
       coalesce(p.email, ''), coalesce(p.phone, ''),
       p.billing_business_name, p.billing_address, p.billing_btw_number,
       p.skill_rating, coalesce(nullif(p.rating_system, ''), 'knltb'),
-      NULL, NULL, p.birth_date, true, rv.first_booking_at, NULL::uuid
+      NULL, NULL, p.birth_date, true, rv.first_booking_at, NULL::uuid,
+      p.full_name
     FROM registered_visible rv
     JOIN public.profiles p ON p.id = rv.pid
     LEFT JOIN public.person_links pl ON pl.profile_id = p.id
@@ -361,6 +367,13 @@ BEGIN
       (array_remove(array_agg(s.s_skill_rating)          FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_skill_rating,
       (array_remove(array_agg(nullif(s.s_rating_system, '')) FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_rating_system,
       (array_remove(array_agg(s.s_birth_date)            FILTER (WHERE s.s_profile_id IS NOT NULL), NULL))[1] AS b_prof_birth_date,
+      -- A1 SCOPED NAME: rederive_person's name rule — the profile's name, else the oldest guest's
+      -- non-NULL name — evaluated over the ADMITTED sides only (created_at ties broken by guest id).
+      -- Academy-scope merged rows use it instead of the global persons row, which rederive derives
+      -- from EVERY linked side system-wide (docs/INVARIANTS.md I-22). At most one profile per person.
+      (array_agg(s.s_raw_full_name) FILTER (WHERE s.s_profile_id IS NOT NULL))[1] AS b_scoped_prof_name,
+      (array_remove(array_agg(s.s_raw_full_name ORDER BY s.s_created_at, s.s_guest_player_id)
+         FILTER (WHERE s.s_guest_player_id IS NOT NULL), NULL))[1]         AS b_scoped_guest_name,
       -- every side identity stays SEARCHABLE (a trainer who only knows the roster-side
       -- name/email must still find the merged human) …
       string_agg(s.s_full_name || ' ' || s.s_email || ' ' || s.s_phone
@@ -372,12 +385,15 @@ BEGIN
     WHERE s.s_person_id NOT IN (SELECT rp.rp_person_id FROM removed_persons rp)
     GROUP BY s.s_person_id
   ),
-  -- Merged rows render the person's identity: full_name from persons (the rederive choke
-  -- point — the SAME name the cycle-detail roster shows since 3.1); all OTHER identity fields
-  -- prefer the IN-SCOPE profile side over the guest-first pick. Deliberately NOT the persons
-  -- row's contact/billing fields: persons aggregates sides SYSTEM-WIDE, and a reader keyed to
-  -- one academy's scope must never surface a profile's (or another tenant's guest's) contact
-  -- data that this scope could not already see on its own rows.
+  -- Merged rows render the person's identity. The name: in ACADEMY scope the scoped name above
+  -- (the admitted profile's name, else the oldest admitted guest's) — never the global persons row,
+  -- which can carry another tenant's name (A1, I-22); in TRAINER scope unchanged, full_name from
+  -- persons (its cross-tenant exposure is a separately recorded follow-up). A blank name falls
+  -- back to the side pick either way. All OTHER identity fields prefer the IN-SCOPE profile side
+  -- over the guest-first pick. Deliberately NOT the persons row's contact/billing fields: persons
+  -- aggregates sides SYSTEM-WIDE, and a reader keyed to one academy's scope must never surface a
+  -- profile's (or another tenant's guest's) contact data that this scope could not already see on
+  -- its own rows.
   base AS (
     SELECT
       r.b_person_id,
@@ -394,7 +410,10 @@ BEGIN
       r.b_guest_player_id,
       r.b_guest_ids,
       r.b_profile_id,
-      CASE WHEN r.b_merged THEN coalesce(nullif(btrim(pe.full_name), ''), r.b_full_name) ELSE r.b_full_name END AS b_full_name,
+      CASE WHEN NOT r.b_merged THEN r.b_full_name
+           WHEN p_scope = 'academy'
+             THEN coalesce(nullif(btrim(coalesce(r.b_scoped_prof_name, r.b_scoped_guest_name)), ''), r.b_full_name)
+           ELSE coalesce(nullif(btrim(pe.full_name), ''), r.b_full_name) END AS b_full_name,
       CASE WHEN r.b_merged THEN coalesce(r.b_prof_email, r.b_email)   ELSE r.b_email END  AS b_email,
       CASE WHEN r.b_merged THEN coalesce(r.b_prof_phone, r.b_phone)   ELSE r.b_phone END  AS b_phone,
       CASE WHEN r.b_merged THEN coalesce(r.b_prof_billing_business_name, r.b_billing_business_name) ELSE r.b_billing_business_name END AS b_billing_business_name,
@@ -412,7 +431,7 @@ BEGIN
       r.b_search_sides,
       r.b_all_emails
     FROM rolled r
-    LEFT JOIN public.persons pe ON r.b_merged AND pe.id = r.b_person_id
+    LEFT JOIN public.persons pe ON r.b_merged AND p_scope = 'trainer' AND pe.id = r.b_person_id
   ),
   -- metadata: ONE guest-side-first row per person supplies id + tags + notes TOGETHER.
   -- Read and write must target the same row — a union/other-row fallback here made tags and

@@ -62,25 +62,37 @@ function bodyOf(src: string, name: string): string {
   const open = src.indexOf('AS $$', at) + 'AS $$'.length;
   return src.slice(open, src.indexOf('\n$$;', open) + 1);
 }
-const fnLine = (sig: string, result: string, secdef: 't' | 'f', config: string, acl: string, body: string) =>
-  `function ${sig} returns ${result} owner=postgres language=plpgsql volatility=s security_definer=${secdef} `
-  + `config=${config} acl=${acl} body_sha256=${body}`;
+/**
+ * One descriptor line, in the canonical format of docs/deployment/ptf-release/state_descriptor.sql.
+ * Every function this release touches is plpgsql, owned by postgres, STABLE, not STRICT, set-returning,
+ * not LEAKPROOF, PARALLEL UNSAFE and without a support function — those are fixed here; the rest varies.
+ */
+const fnLine = (sig: string, args: string, result: string, secdef: 't' | 'f', config: string, acl: string, body: string) =>
+  `function ${sig} args=(${args}) returns ${result} kind=f owner=postgres language=plpgsql volatility=s strict=f `
+  + `returns_set=t security_definer=${secdef} leakproof=f parallel=u support=- config=${config} acl=${acl} body_sha256=${body}`;
 const PTF_SRC = MIG(MIGRATION);
 const PINNED = 'search_path=pg_catalog, pg_temp';
 const BODY_AUTHORITY = sha256(bodyOf(PTF_SRC, 'players_private.players_overview_rows'));
 const BODY_LIST = sha256(bodyOf(PTF_SRC, 'public.get_players_overview'));
 const BODY_EXPORT = sha256(bodyOf(PTF_SRC, 'public.get_players_overview_export'));
-const BASE_STATE = fnLine(`public.get_players_overview(${ARGS})`, LIST_RESULT, 't', 'search_path=public', LIST_ACL, BODY_LIVE);
+// Full arguments with defaults (pg_get_function_arguments), as the list's CREATE statement declares them.
+const LIST_ARGS_DEFAULTS = "p_scope text, p_scope_id uuid, p_search text DEFAULT NULL::text, p_filters jsonb DEFAULT '{}'::jsonb, "
+  + "p_sort text DEFAULT 'name'::text, p_sort_dir text DEFAULT 'asc'::text, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0";
+const EXPORT_IDENTITY = 'p_academy uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text';
+const EXPORT_ARGS_DEFAULTS = "p_academy uuid, p_search text DEFAULT NULL::text, p_filters jsonb DEFAULT '{}'::jsonb, "
+  + "p_sort text DEFAULT 'name'::text, p_sort_dir text DEFAULT 'asc'::text";
+const AUTHORITY_ARGS = `${ARGS}, p_enrich boolean`;
+const BASE_STATE = fnLine(`public.get_players_overview(${ARGS})`, LIST_ARGS_DEFAULTS, LIST_RESULT, 't', 'search_path=public', LIST_ACL, BODY_LIVE);
 const PTF_STATE = [
-  fnLine(`players_private.players_overview_rows(${ARGS}, p_enrich boolean)`, LIST_RESULT.replace(/\)$/, ', sort_ord bigint)'),
+  fnLine(`players_private.players_overview_rows(${AUTHORITY_ARGS})`, AUTHORITY_ARGS, LIST_RESULT.replace(/\)$/, ', sort_ord bigint)'),
     'f', PINNED, 'postgres=X/postgres', BODY_AUTHORITY),
-  fnLine(`public.get_players_overview(${ARGS})`, LIST_RESULT, 't', PINNED, LIST_ACL, BODY_LIST),
-  fnLine('public.get_players_overview_export(p_academy uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text)',
+  fnLine(`public.get_players_overview(${ARGS})`, LIST_ARGS_DEFAULTS, LIST_RESULT, 't', PINNED, LIST_ACL, BODY_LIST),
+  fnLine(`public.get_players_overview_export(${EXPORT_IDENTITY})`, EXPORT_ARGS_DEFAULTS,
     'TABLE(total bigint, rows jsonb)', 't', PINNED, 'authenticated=X/postgres,postgres=X/postgres', BODY_EXPORT),
   'schema players_private owner=postgres acl=postgres=UC/postgres relations=0 types=0',
 ].join('\n');
-const C_STATE_BASE = 'e6f1ccc592be54132684c36b8bf77611cbe686c4f4115c94d621f196aac32c91';
-const C_STATE_PTF = '8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b';
+const C_STATE_BASE = '24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b';
+const C_STATE_PTF = 'ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc';
 const AUTHORITY_SIG = 'players_private.players_overview_rows(text, uuid, text, jsonb, text, text, integer, integer, boolean)';
 const LIST_SIG = 'public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer)';
 const EXPORT_SIG = 'public.get_players_overview_export(uuid, text, jsonb, text, text)';
@@ -98,7 +110,8 @@ function blocks(file: string, marker: string): string[] {
     at = e;
   }
 }
-const DESCRIPTOR_SQL = blocks('apply.sql', 'STATE DESCRIPTOR')[0];
+/** The CANONICAL descriptor (state_descriptor.sql); the six embedded copies must equal it. */
+const DESCRIPTOR_SQL = blocks('state_descriptor.sql', 'STATE DESCRIPTOR')[0];
 
 // fixture ids (small behaviour fixture)
 const A = 'a1000000-0000-0000-0000-00000000000a';
@@ -357,14 +370,22 @@ describe('PTF release packet on real PostgreSQL', () => {
     refused(apply(), /ptf apply guard: the ledger is neither/);
     await db.query(`DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261209000000'`);
 
-    // P2-1: every attribute of the live function is part of the state — privileges, owner, config,
-    // volatility, SECURITY DEFINER — each drift refuses on its own.
+    // P2-1 / P2-4: every behaviour- or authority-affecting attribute of the live function is part of the
+    // state — privileges, owner, config, volatility, SECURITY DEFINER, strictness, parallel safety,
+    // leakproof, and the argument defaults — and each drift refuses on its own.
+    const canonical = readFileSync(join(PACKET, 'restore_canonical_get_players_overview.sql'), 'utf8');
+    const withLimitDefault = (n: number) => canonical.replace('p_limit integer DEFAULT 50,', `p_limit integer DEFAULT ${n},`);
+    expect(withLimitDefault(10)).not.toBe(canonical);
     for (const [drift, undo] of [
       [`GRANT EXECUTE ON FUNCTION ${LIST_SIG} TO anon`, `REVOKE EXECUTE ON FUNCTION ${LIST_SIG} FROM anon`],
       [`ALTER FUNCTION ${LIST_SIG} OWNER TO ptf_other`, `ALTER FUNCTION ${LIST_SIG} OWNER TO postgres`],
       [`ALTER FUNCTION ${LIST_SIG} SET search_path = public, pg_temp`, `ALTER FUNCTION ${LIST_SIG} SET search_path = public`],
       [`ALTER FUNCTION ${LIST_SIG} VOLATILE`, `ALTER FUNCTION ${LIST_SIG} STABLE`],
       [`ALTER FUNCTION ${LIST_SIG} SECURITY INVOKER`, `ALTER FUNCTION ${LIST_SIG} SECURITY DEFINER`],
+      [`ALTER FUNCTION ${LIST_SIG} STRICT`, `ALTER FUNCTION ${LIST_SIG} CALLED ON NULL INPUT`],
+      [`ALTER FUNCTION ${LIST_SIG} PARALLEL SAFE`, `ALTER FUNCTION ${LIST_SIG} PARALLEL UNSAFE`],
+      [`ALTER FUNCTION ${LIST_SIG} LEAKPROOF`, `ALTER FUNCTION ${LIST_SIG} NOT LEAKPROOF`],
+      [withLimitDefault(10), canonical], // a changed argument default: same signature, same body
       // stray objects this release would otherwise adopt
       ['CREATE SCHEMA players_private', 'DROP SCHEMA players_private'],
       [`CREATE FUNCTION public.get_players_overview_export(uuid) RETURNS int LANGUAGE sql AS 'SELECT 1'`,
@@ -631,6 +652,23 @@ describe('PTF release packet on real PostgreSQL', () => {
     await db.query(`REVOKE EXECUTE ON FUNCTION ${AUTHORITY_SIG} FROM authenticated`);
     expect((await state()).digest).toBe(C_STATE_PTF);
 
+    // P2-4: a STRICT authority passes every grant and refusal check yet silently empties the list (a NULL
+    // search reaches it on every normal call) — the state catches it: post-check fails, recovery refuses.
+    expect((await overview(MGR_A, A, {})).length).toBeGreaterThan(0);
+    await db.query(`ALTER FUNCTION ${AUTHORITY_SIG} STRICT`);
+    try {
+      expect(await overview(MGR_A, A, {})).toEqual([]);  // why it matters
+      const post = psql('postcheck.sql');
+      expect(post.status, post.err).toBe(0);
+      expect(post.rec).toMatchObject({ state_ok: 'f', client_roles_ok: 't', foreign_access: 'refused: not authorized' });
+      const strictRecovery = recovery();
+      expect(strictRecovery.status).not.toBe(0);
+      expect(strictRecovery.err).toMatch(/ptf recovery guard: the object state is not the one this ledger expects/);
+    } finally {
+      await db.query(`ALTER FUNCTION ${AUTHORITY_SIG} CALLED ON NULL INPUT`);
+    }
+    expect((await state()).digest).toBe(C_STATE_PTF);
+
     const r = recovery();
     expect(r.status, r.err).toBe(0);
     expect(r.out).toContain('INSERT 0 1');
@@ -656,17 +694,26 @@ describe('PTF release packet on real PostgreSQL', () => {
   }, 60_000);
 
   it('the packet constants are the ones this suite derives, and the shared blocks are identical', () => {
+    // the canonical descriptor carries every behaviour-affecting pg_proc attribute (P2-4)
+    for (const attr of ['pg_get_function_arguments(p.oid)', 'p.prokind', 'p.proisstrict', 'p.proretset', 'p.prosecdef',
+      'p.proleakproof', 'p.proparallel', 'p.prosupport', 'p.provolatile', 'p.proconfig', 'p.proacl', 'p.prosrc', 'l.lanname',
+      'p.proowner', 'pg_get_function_result(p.oid)']) {
+      expect(DESCRIPTOR_SQL, attr).toContain(attr);
+    }
+    let copies = 0;
     for (const f of ['apply.sql', 'recovery.sql', 'postcheck.sql']) {
       const text = readFileSync(join(PACKET, f), 'utf8');
       expect(text).toContain(C_PTF);
       expect(text).toContain(C_STATE_PTF);
       const desc = blocks(f, 'STATE DESCRIPTOR');
-      expect(desc.length, f).toBeGreaterThanOrEqual(2);
-      for (const d of desc) expect(d.trim(), f).toBe(DESCRIPTOR_SQL.trim());
+      expect(desc.length, f).toBe(2);
+      for (const d of desc) expect(d, f).toBe(DESCRIPTOR_SQL); // byte-for-byte, indentation included
+      copies += desc.length;
       const probe = blocks(f, 'IN-FLIGHT PROBE');
       expect(probe.length, f).toBeGreaterThanOrEqual(1);
       for (const p of probe) expect(p.trim(), f).toBe(blocks('apply.sql', 'IN-FLIGHT PROBE')[0].trim());
     }
+    expect(copies).toBe(6);
     expect(readFileSync(join(PACKET, 'apply.sql'), 'utf8')).toContain(C_BASE);
     expect(readFileSync(join(PACKET, 'apply.sql'), 'utf8')).toContain(C_STATE_BASE);
     expect(readFileSync(join(PACKET, 'recovery.sql'), 'utf8')).toContain(C_RESTORED);
@@ -734,6 +781,29 @@ async function measureAt20k(): Promise<void> {
         FROM (VALUES ('${R}'::uuid), ('${S}'::uuid)) v(a), generate_series(1, 5000) i, generate_series(1, 8) k
       UNION ALL
       SELECT md5('rs' || '${R}' || '-' || (1 + i % 1000))::uuid, md5('qg' || i)::uuid, 'completed' FROM generate_series(1, 20000) i;
+    -- MERGED MULTI-ACADEMY PEOPLE (P1-1): 5,000 Q people get a second Q guest side ("Q Twin"), linked to
+    -- the same person as an OLDER R guest (4,000, "R Secret") or an R-only account holder (1,000,
+    -- "R Account", booked only on R's sessions). Their global persons.full_name is R's — exactly what
+    -- rederive_person derives — so a leak would put R names in Q's list, search and export.
+    INSERT INTO public.guest_players (id, academy_profile_id, full_name, email, created_at)
+      SELECT md5('qtwin' || i)::uuid, '${Q}'::uuid, 'Q Twin ' || i, 'qtwin' || i || '@x.nl', now() - interval '1 day'
+        FROM generate_series(1, 5000) i
+      UNION ALL
+      SELECT md5('rsecret' || i)::uuid, '${R}'::uuid, 'R Secret ' || i, 'rsecret' || i || '@x.nl', now() - interval '60 days'
+        FROM generate_series(1, 4000) i;
+    INSERT INTO public.profiles (id, full_name, email)
+      SELECT md5('racct' || i)::uuid, 'R Account ' || i, 'racct' || i || '@x.nl' FROM generate_series(1, 1000) i;
+    INSERT INTO public.bookings (slot_id, player_id, status)
+      SELECT md5('rs' || '${R}' || '-' || (1 + i % 1000))::uuid, md5('racct' || i)::uuid, 'confirmed' FROM generate_series(1, 1000) i;
+    INSERT INTO public.person_links (person_id, guest_player_id)
+      SELECT md5('qg' || i)::uuid, md5('qg' || i)::uuid FROM generate_series(1, 5000) i
+      UNION ALL SELECT md5('qg' || i)::uuid, md5('qtwin' || i)::uuid FROM generate_series(1, 5000) i
+      UNION ALL SELECT md5('qg' || i)::uuid, md5('rsecret' || i)::uuid FROM generate_series(1, 4000) i;
+    INSERT INTO public.person_links (person_id, profile_id)
+      SELECT md5('qg' || (4000 + i))::uuid, md5('racct' || i)::uuid FROM generate_series(1, 1000) i;
+    INSERT INTO public.persons (id, full_name, user_id)
+      SELECT md5('qg' || i)::uuid, 'R Secret ' || i, NULL::uuid FROM generate_series(1, 4000) i
+      UNION ALL SELECT md5('qg' || (4000 + i))::uuid, 'R Account ' || i, gen_random_uuid() FROM generate_series(1, 1000) i;
     ANALYZE;`);
   const setupMs = performance.now() - t0;
   const counts = (await db.query(`SELECT
@@ -751,8 +821,16 @@ async function measureAt20k(): Promise<void> {
   const training = await median5(() => overview(MGR_Q, Q, { current_training: true }, 50));
   const club = await median5(() => overview(MGR_Q, Q, { training_location_id: clubQ }, 50));
   const exp = await median5(() => exportCall(MGR_Q, Q));
-  const [{ total, payload_bytes }] = await asUser(MGR_Q,
-    `SELECT total, octet_length(rows::text) AS payload_bytes FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [Q]);
+  const [{ total, payload_bytes, r_names, merged_named_q }] = await asUser(MGR_Q,
+    `SELECT e.total, octet_length(e.rows::text) AS payload_bytes,
+            (SELECT count(*) FROM jsonb_array_elements(e.rows) x WHERE x->>'full_name' LIKE 'R %')::int AS r_names,
+            (SELECT count(*) FROM jsonb_array_elements(e.rows) x
+              WHERE x->>'person_id' IN (SELECT md5('qg' || i)::uuid::text FROM generate_series(1, 5000) i)
+                AND x->>'full_name' LIKE 'Q Twin %')::int AS merged_named_q
+       FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc') e`, [Q]);
+  // the leak surfaces the P1-1 fix closes, at scale: no R name in search either
+  const [{ secret_hits }] = await asUser(MGR_Q,
+    `SELECT count(*)::int AS secret_hits FROM public.get_players_overview('academy', $1, 'Secret', '{}'::jsonb, 'name', 'asc', 50, 0)`, [Q]);
   const plan = async (sql: string, params: unknown[]) =>
     (await asUser(MGR_Q, `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${sql}`, params)).map((r) => r['QUERY PLAN']).join('\n');
   const topPlans = {
@@ -780,6 +858,8 @@ async function measureAt20k(): Promise<void> {
   const timeoutMs = 8000; // Supabase platform default for authenticated — UNVERIFIED until Tom's A1 observation
   const report = {
     server, setup_ms: Math.round(setupMs), ...counts, persons_exported: Number(total), payload_bytes: Number(payload_bytes),
+    merged_multi_academy_people: 5000, merged_named_from_oldest_q_side: Number(merged_named_q),
+    r_names_in_export: Number(r_names), search_secret_hits: Number(secret_hits),
     list_unfiltered_ms: unfiltered, list_training_ms: training, list_club_ms: club, export_ms: exp,
     budgets: {
       list_training_ok: training.median <= unfiltered.median * 1.5 + 100,
@@ -793,5 +873,8 @@ async function measureAt20k(): Promise<void> {
   console.log(`PTF §3 (${server}): unfiltered=${unfiltered.median.toFixed(0)}ms training=${training.median.toFixed(0)}ms `
     + `club=${club.median.toFixed(0)}ms export(${total})=${exp.median.toFixed(0)}ms payload=${payload_bytes}B`);
   expect(Number(total)).toBe(20000);
+  // P1-1 at scale: merged people keep their own Q name (the oldest admitted Q guest is the "Q Twin", a day
+  // older than the Q guest), and no R-derived name reaches Q's export or search
+  expect(report).toMatchObject({ r_names_in_export: 0, search_secret_hits: 0, merged_named_from_oldest_q_side: 5000 });
   expect(report.budgets).toEqual({ list_training_ok: true, list_club_ok: true, export_ok_vs_unverified_8s_timeout: true });
 }

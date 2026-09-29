@@ -24,8 +24,8 @@ DO $ptf_recovery_guard$
 DECLARE
   c_ptf        CONSTANT text := '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900'; -- 621, to 20261208100000
   c_restored   CONSTANT text := 'b312bf6a1dcc0fbc35c9f2c24e7f947daaf1d312b422534003deeb8ed90b302e'; -- + 20261208110000
-  c_state_base CONSTANT text := 'e6f1ccc592be54132684c36b8bf77611cbe686c4f4115c94d621f196aac32c91';
-  c_state_ptf  CONSTANT text := '8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b';
+  c_state_base CONSTANT text := '24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b';
+  c_state_ptf  CONSTANT text := 'ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc';
   v_sysid  text := (SELECT system_identifier::text FROM pg_control_system());
   v_rows   bigint := (SELECT count(*) FROM supabase_migrations.schema_migrations);
   v_odd    bigint := (SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version !~ '^[0-9]{14}$');
@@ -33,10 +33,15 @@ DECLARE
                       FROM supabase_migrations.schema_migrations);
   v_state  text := (
     -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    -- Functions: identity, full arguments (defaults included), result, and every pg_proc attribute that
+    -- changes behaviour or authority: kind, owner, language, volatility, strictness, set-returning,
+    -- SECURITY DEFINER, leakproof, parallel safety, planner support function, config, ACL and body.
+    -- procost/prorows are planner estimates only and deliberately excluded.
     SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
-      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
-               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
-               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+      SELECT format('function %s.%s(%s) args=(%s) returns %s kind=%s owner=%s language=%s volatility=%s strict=%s returns_set=%s security_definer=%s leakproof=%s parallel=%s support=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_arguments(p.oid),
+               pg_get_function_result(p.oid), p.prokind, pg_get_userbyid(p.proowner), l.lanname, p.provolatile,
+               p.proisstrict, p.proretset, p.prosecdef, p.proleakproof, p.proparallel, p.prosupport::text,
                coalesce(array_to_string(p.proconfig, ';'), ''),
                CASE WHEN p.proacl IS NULL THEN 'default'
                     ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,
@@ -124,15 +129,20 @@ SELECT '20261208110000', 'players_overview_restore_canonical'
 DO $ptf_recovery_verify$
 DECLARE
   c_restored   CONSTANT text := 'b312bf6a1dcc0fbc35c9f2c24e7f947daaf1d312b422534003deeb8ed90b302e';
-  c_state_base CONSTANT text := 'e6f1ccc592be54132684c36b8bf77611cbe686c4f4115c94d621f196aac32c91';
+  c_state_base CONSTANT text := '24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b';
   v_ledger text := (SELECT encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex')
                       FROM supabase_migrations.schema_migrations);
   v_state  text := (
     -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    -- Functions: identity, full arguments (defaults included), result, and every pg_proc attribute that
+    -- changes behaviour or authority: kind, owner, language, volatility, strictness, set-returning,
+    -- SECURITY DEFINER, leakproof, parallel safety, planner support function, config, ACL and body.
+    -- procost/prorows are planner estimates only and deliberately excluded.
     SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
-      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
-               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
-               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+      SELECT format('function %s.%s(%s) args=(%s) returns %s kind=%s owner=%s language=%s volatility=%s strict=%s returns_set=%s security_definer=%s leakproof=%s parallel=%s support=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_arguments(p.oid),
+               pg_get_function_result(p.oid), p.prokind, pg_get_userbyid(p.proowner), l.lanname, p.provolatile,
+               p.proisstrict, p.proretset, p.prosecdef, p.proleakproof, p.proparallel, p.prosupport::text,
                coalesce(array_to_string(p.proconfig, ';'), ''),
                CASE WHEN p.proacl IS NULL THEN 'default'
                     ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,

@@ -10,7 +10,8 @@
  * there is no client paging and no cross-call drift to detect. The file is either complete or not written:
  * - Inputs are frozen when the export starts; later filter edits never reach a running export.
  * - More than EXPORT_MAX_ROWS matches: the server refuses (SQLSTATE 54000) → `over_limit`.
- * - A response whose total, length or person ids disagree → `failed` (never a partial file).
+ * - A response that is not exactly one well-typed envelope, or whose total, length or person ids
+ *   disagree, or with any field of the wrong type → `failed` (never a partial file).
  * - An aborted signal (Cancel, academy switch, unmount) → `cancelled`; an RPC failure → `failed`.
  */
 import { supabase } from '@/lib/supabaseClient';
@@ -104,21 +105,49 @@ export async function fetchContactsForExport(
     throw new ExportError('failed', { cause: error });
   }
 
-  // One row { total, rows }. Anything that does not add up is refused, never written partially.
-  const row = (Array.isArray(data) ? data[0] : data) as { total?: unknown; rows?: unknown } | null | undefined;
-  const total = Number(row?.total);
-  const rows = row?.rows;
-  if (!Number.isSafeInteger(total) || !Array.isArray(rows) || rows.length !== total || total > EXPORT_MAX_ROWS) {
-    throw new ExportError('failed', { total: Number.isSafeInteger(total) ? total : undefined });
+  // Exactly ONE envelope — PostgREST's array holding the single { total, rows } row — and every field of
+  // its declared type. Anything else is refused: a file is never written from a response that does
+  // not add up (no coercion, no silently blanked field, no second envelope ignored).
+  if (!Array.isArray(data) || data.length !== 1 || !isPlainObject(data[0])) throw new ExportError('failed');
+  const { total, rows } = data[0];
+  const validTotal = typeof total === 'number' && Number.isSafeInteger(total) && total >= 0 && total <= EXPORT_MAX_ROWS;
+  if (!validTotal || !Array.isArray(rows) || rows.length !== total) {
+    throw new ExportError('failed', { total: validTotal ? total : undefined });
   }
-  const text = (v: unknown) => (typeof v === 'string' ? v : '');
   const seen = new Set<string>();
-  return rows.map((r: { person_id?: unknown; full_name?: unknown; email?: unknown; phone?: unknown }) => {
-    const personId = text(r?.person_id);
-    if (!personId || seen.has(personId)) throw new ExportError('failed', { total });
+  return rows.map((r: unknown) => {
+    if (!isPlainObject(r)) throw new ExportError('failed', { total });
+    const personId = r.person_id;
+    if (typeof personId !== 'string' || !PG_UUID_TEXT.test(personId) || seen.has(personId)) {
+      throw new ExportError('failed', { total });
+    }
     seen.add(personId);
-    return { personId, fullName: text(r.full_name), email: text(r.email), phone: text(r.phone) };
+    return {
+      personId,
+      fullName: nullableText(r.full_name, total),
+      email: nullableText(r.email, total),
+      phone: nullableText(r.phone, total),
+    };
   });
+}
+
+/**
+ * PostgreSQL's canonical uuid text (lower-case 8-4-4-4-12 hex, any version). Deliberately not
+ * `isUuid` from academyPlayerTrainingLocations: that one admits RFC versions 1–5 only, and the
+ * server's `uuid` column can hold any version (v7 is native in PostgreSQL 18; legacy ids vary) —
+ * a valid export must not be refused over the id's version nibble.
+ */
+const PG_UUID_TEXT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v);
+}
+
+/** A contact field is text or SQL NULL (an empty cell); any other type refuses the export. */
+function nullableText(v: unknown, total: number): string {
+  if (typeof v === 'string') return v;
+  if (v === null) return '';
+  throw new ExportError('failed', { total });
 }
 
 /** The contact file's columns: name, email, phone (kept as text). Headers come from the page (i18n). */

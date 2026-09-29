@@ -47,10 +47,15 @@ WITH ledger AS (
 state AS (
   SELECT (
     -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    -- Functions: identity, full arguments (defaults included), result, and every pg_proc attribute that
+    -- changes behaviour or authority: kind, owner, language, volatility, strictness, set-returning,
+    -- SECURITY DEFINER, leakproof, parallel safety, planner support function, config, ACL and body.
+    -- procost/prorows are planner estimates only and deliberately excluded.
     SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
-      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
-               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
-               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+      SELECT format('function %s.%s(%s) args=(%s) returns %s kind=%s owner=%s language=%s volatility=%s strict=%s returns_set=%s security_definer=%s leakproof=%s parallel=%s support=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_arguments(p.oid),
+               pg_get_function_result(p.oid), p.prokind, pg_get_userbyid(p.proowner), l.lanname, p.provolatile,
+               p.proisstrict, p.proretset, p.prosecdef, p.proleakproof, p.proparallel, p.prosupport::text,
                coalesce(array_to_string(p.proconfig, ';'), ''),
                CASE WHEN p.proacl IS NULL THEN 'default'
                     ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,
@@ -85,7 +90,7 @@ SELECT
           AND digest = '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900' FROM ledger)
                                                                          AS ledger_ok,
   (SELECT encode(sha256(convert_to(descriptor, 'UTF8')), 'hex') FROM state)
-    = '8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b'                                            AS state_ok,
+    = 'ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc'                                            AS state_ok,
   (SELECT encode(sha256(convert_to(descriptor, 'UTF8')), 'hex') FROM state) AS state_sha256,
   -- Effective privileges (role membership included): no client role reaches the private authority; the
   -- export runs for authenticated only; the list keeps its reviewed grantees.
@@ -134,10 +139,15 @@ SELECT
 -- The object state, one line per object (compare with the README's PTF descriptor).
 SELECT regexp_split_to_table((
     -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    -- Functions: identity, full arguments (defaults included), result, and every pg_proc attribute that
+    -- changes behaviour or authority: kind, owner, language, volatility, strictness, set-returning,
+    -- SECURITY DEFINER, leakproof, parallel safety, planner support function, config, ACL and body.
+    -- procost/prorows are planner estimates only and deliberately excluded.
     SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
-      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
-               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
-               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+      SELECT format('function %s.%s(%s) args=(%s) returns %s kind=%s owner=%s language=%s volatility=%s strict=%s returns_set=%s security_definer=%s leakproof=%s parallel=%s support=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_arguments(p.oid),
+               pg_get_function_result(p.oid), p.prokind, pg_get_userbyid(p.proowner), l.lanname, p.provolatile,
+               p.proisstrict, p.proretset, p.prosecdef, p.proleakproof, p.proparallel, p.prosupport::text,
                coalesce(array_to_string(p.proconfig, ';'), ''),
                CASE WHEN p.proacl IS NULL THEN 'default'
                     ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,

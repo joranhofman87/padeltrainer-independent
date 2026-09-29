@@ -98,6 +98,28 @@ const L12_PROFILE_ON_A = LP(12);   // 12. profile booked on an A session
 const L14_REMOVED_GUEST = LG(14);  // 14. soft-removed in A: still hidden
 const L14_REMOVED_PROFILE = LP(14);
 
+// ── Scoped merged-person NAME (review 01a0ecc9 P1-1). Each person below is merged in A (2+ admitted
+// sides); its global persons.full_name is what rederive_person derives from EVERY linked side. ──
+const NG = (n: number) => `7e000000-0000-0000-0000-${String(n).padStart(12, '0')}`; // guests
+const NP = (n: number) => `7f000000-0000-0000-0000-${String(n).padStart(12, '0')}`; // profiles (= person ids)
+const N1 = NG(2);      // guests only: two A guests + an OLDER B guest → persons name is B's
+const N2 = NP(1);      // two A guests + an account holder booked ONLY at B → persons name is the account's
+const N3 = NP(2);      // control: account holder booked at A + an A guest → persons name is admitted
+const N4 = NP(3);      // admitted account holder with a BLANK name + an A guest
+const N5 = NG(8);      // oldest A guest has an EMPTY name, the next one a real name
+const N6 = NG(10);     // oldest A guest has a NULL name, the next one a real name
+const N7 = NG(12);     // two A guests with IDENTICAL created_at (tie → guest id) + an older B guest
+const NAME_CASES: Array<[string, string, string]> = [
+  // [person, name A must show, the global persons name]
+  [N1, 'Anna One', 'Secret Bname'],
+  [N2, 'Bea One', 'Bprofile Name'],
+  [N3, 'Carla Account', 'Carla Account'],
+  [N4, 'Dora Guest', '   '],
+  [N5, 'Unknown', ''],
+  [N6, 'Finn Two', 'Finn Two'],
+  [N7, 'Tie Beta', 'Secret Tie'],
+];
+
 type Row = {
   player_key: string; person_id: string; guest_player_id: string | null; profile_id: string | null;
   full_name: string; email: string; phone: string; has_active_cyclus: boolean; email_undeliverable: boolean;
@@ -352,6 +374,47 @@ beforeAll(async () => {
       ('${S_ON_PAST}',  NULL,                    '${L12_PROFILE_ON_A}',    'completed'),
       ('${S_ON_PAST}',  NULL,                    '${L14_REMOVED_PROFILE}', 'completed'),
       ('${S_T2_B}',     '${G_ONGOING}',          NULL,                     'completed');
+  `);
+
+  // Scoped merged-person NAME fixture (NAME_CASES). persons.full_name is set to what rederive_person
+  // derives: the profile's name, else the oldest linked guest's non-NULL name — across ALL tenants.
+  await db.exec(`
+    INSERT INTO public.guest_players (id, trainer_id, academy_profile_id, full_name, email, created_at) VALUES
+      ('${NG(1)}',  NULL, '${B}', 'Secret Bname', 'secretb@b.nl', now() - interval '30 days'),
+      ('${NG(2)}',  NULL, '${A}', 'Anna One',     'anna1@a.nl',   now() - interval '10 days'),
+      ('${NG(3)}',  NULL, '${A}', 'Anna Two',     'anna2@a.nl',   now() - interval '5 days'),
+      ('${NG(4)}',  NULL, '${A}', 'Bea One',      'bea1@a.nl',    now() - interval '10 days'),
+      ('${NG(5)}',  NULL, '${A}', 'Bea Two',      'bea2@a.nl',    now() - interval '5 days'),
+      ('${NG(6)}',  NULL, '${A}', 'Carla Guest',  'carlag@a.nl',  now() - interval '20 days'),
+      ('${NG(7)}',  NULL, '${A}', 'Dora Guest',   'dora@a.nl',    now() - interval '20 days'),
+      ('${NG(8)}',  NULL, '${A}', '',             'evi1@a.nl',    now() - interval '10 days'),
+      ('${NG(9)}',  NULL, '${A}', 'Evi Two',      'evi2@a.nl',    now() - interval '5 days'),
+      ('${NG(10)}', NULL, '${A}', NULL,           'finn1@a.nl',   now() - interval '10 days'),
+      ('${NG(11)}', NULL, '${A}', 'Finn Two',     'finn2@a.nl',   now() - interval '5 days'),
+      ('${NG(12)}', NULL, '${A}', 'Tie Beta',     'tieb@a.nl',    '2026-01-01T10:00:00Z'),
+      ('${NG(13)}', NULL, '${A}', 'Tie Alpha',    'tiea@a.nl',    '2026-01-01T10:00:00Z'),
+      ('${NG(14)}', NULL, '${B}', 'Secret Tie',   'secrett@b.nl', '2025-01-01T10:00:00Z');
+    INSERT INTO public.profiles (id, full_name, email) VALUES
+      ('${NP(1)}', 'Bprofile Name', 'bprof@b.nl'),
+      ('${NP(2)}', 'Carla Account', 'carla@a.nl'),
+      ('${NP(3)}', '   ',           'blank@a.nl');
+    INSERT INTO public.bookings (slot_id, guest_player_id, player_id, status) VALUES
+      ('${S_B_PAST}',  NULL, '${NP(1)}', 'completed'),
+      ('${S_ON_PAST}', NULL, '${NP(2)}', 'completed'),
+      ('${S_ON_PAST}', NULL, '${NP(3)}', 'completed');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES
+      ('${N1}', '${NG(1)}'), ('${N1}', '${NG(2)}'), ('${N1}', '${NG(3)}'),
+      ('${N2}', '${NG(4)}'), ('${N2}', '${NG(5)}'),
+      ('${N3}', '${NG(6)}'),
+      ('${N4}', '${NG(7)}'),
+      ('${N5}', '${NG(8)}'), ('${N5}', '${NG(9)}'),
+      ('${N6}', '${NG(10)}'), ('${N6}', '${NG(11)}'),
+      ('${N7}', '${NG(12)}'), ('${N7}', '${NG(13)}'), ('${N7}', '${NG(14)}');
+    INSERT INTO public.person_links (person_id, profile_id) VALUES
+      ('${N2}', '${NP(1)}'), ('${N3}', '${NP(2)}'), ('${N4}', '${NP(3)}');
+    INSERT INTO public.persons (id, full_name, user_id) VALUES
+      ('${N1}', 'Secret Bname', NULL), ('${N2}', 'Bprofile Name', '${NP(1)}'), ('${N3}', 'Carla Account', '${NP(2)}'),
+      ('${N4}', '   ', '${NP(3)}'), ('${N5}', '', NULL), ('${N6}', 'Finn Two', NULL), ('${N7}', 'Secret Tie', NULL);
   `);
 
   const migration = (f: string) =>
@@ -664,7 +727,8 @@ describe('A1 — academy membership (decision packet §1.6)', () => {
 
   it("B's universe is B's own guests, sessions and metadata", async () => {
     expect(names(await call(MGR_B, {}, { scopeId: B }))).toEqual([
-      'Adv B Guest', 'Adv B Meta Guest', 'Adv Profile B Slot', 'B Own Guest', 'Ongoing Cycle', 'Secret B Side', 'Trains At B',
+      'Adv B Guest', 'Adv B Meta Guest', 'Adv Profile B Slot', 'B Own Guest', 'Bprofile Name', 'Ongoing Cycle',
+      'Secret B Side', 'Secret Bname', 'Secret Tie', 'Trains At B',
     ]);
   });
 
@@ -675,6 +739,73 @@ describe('A1 — academy membership (decision packet §1.6)', () => {
     expect(now.has_active_cyclus).toBe(false);
     expect(was.trainer_ids).toEqual([TS]);
     expect(now.trainer_ids).toEqual([]);
+  });
+});
+
+// ── A1: a merged person's NAME comes only from the academy's admitted sides (review 01a0ecc9 P1-1) ────
+describe("A1 — a merged person's name comes only from the academy's admitted sides", () => {
+  it('the canonical body named merged rows from the global persons row, putting B names in A (the defect)', () => {
+    const was = new Map(before.a.map((r) => [r.person_id, r.full_name]));
+    expect(was.get(N1)).toBe('Secret Bname');
+    expect(was.get(N2)).toBe('Bprofile Name');
+    expect(was.get(N7)).toBe('Secret Tie');
+  });
+
+  it('list: the admitted profile, else the oldest admitted guest; blanks fall back as before; ties by guest id', async () => {
+    const rows = await call(MGR_A, {});
+    for (const [person, expected] of NAME_CASES) {
+      const mine = rows.filter((r) => r.person_id === person);
+      expect(mine, person).toHaveLength(1); // one row per canonical person uuid
+      expect(mine[0].full_name, person).toBe(expected);
+    }
+  });
+
+  it('where every side is admitted the name equals the global one: no churn (N3 profile, N6 NULL-skip)', () => {
+    const was = new Map(before.a.map((r) => [r.person_id, r.full_name]));
+    expect(was.get(N3)).toBe('Carla Account');
+    expect(was.get(N4)).toBe('Dora Guest'); // blank admitted profile → side pick, before and after
+    expect(was.get(N5)).toBe('Unknown');    // empty oldest guest name → side pick, before and after
+    expect(was.get(N6)).toBe('Finn Two');
+  });
+
+  it('search: no B-derived name finds a row in A; the scoped name does', async () => {
+    for (const search of ['Secret', 'Bname', 'Bprofile', 'Secret Tie']) {
+      const hits = personIds(await call(MGR_A, {}, { search }));
+      for (const [person] of NAME_CASES) expect(hits, search).not.toContain(person);
+    }
+    expect(personIds(await call(MGR_A, {}, { search: 'Anna One' }))).toContain(N1);
+    expect(personIds(await call(MGR_A, {}, { search: 'Tie Beta' }))).toContain(N7);
+  });
+
+  it('sort: rows order by the scoped name, in both directions', async () => {
+    const order = [N1, N2, N3, N4, N6, N7, N5]; // anna one < bea one < carla < dora < finn < tie beta < unknown
+    const asc = personIds(await call(MGR_A, {}));
+    const desc = personIds(await call(MGR_A, {}, { dir: 'desc' }));
+    for (let i = 1; i < order.length; i++) {
+      expect(asc.indexOf(order[i - 1]), `${order[i - 1]} before ${order[i]}`).toBeLessThan(asc.indexOf(order[i]));
+      expect(desc.indexOf(order[i - 1]), `${order[i - 1]} after ${order[i]}`).toBeGreaterThan(desc.indexOf(order[i]));
+    }
+  });
+
+  it('export: the file carries the scoped names and no B-derived name', async () => {
+    const exp = await exportCall(MGR_A, {});
+    const byId = new Map(exp.rows.map((r) => [r.person_id, r.full_name]));
+    for (const [person, expected] of NAME_CASES) expect(byId.get(person), person).toBe(expected);
+    const text = JSON.stringify(exp.rows);
+    for (const leaked of ['Secret Bname', 'Bprofile Name', 'Secret Tie']) expect(text).not.toContain(leaked);
+  });
+
+  it('B still sees the same people under its own sides’ names', async () => {
+    const b = new Map((await call(MGR_B, {}, { scopeId: B })).map((r) => [r.person_id, r.full_name]));
+    expect(b.get(N1)).toBe('Secret Bname');
+    expect(b.get(N2)).toBe('Bprofile Name');
+    expect(b.get(N7)).toBe('Secret Tie');
+  });
+
+  it('trainer scope is unchanged: its merged rows keep the global persons name (a recorded follow-up)', async () => {
+    const x6 = (await call(TS_USER, {}, { scope: 'trainer', scopeId: TS })).find((r) => r.person_id === X6_PROFILE)!;
+    expect(x6.guest_player_id).toBe(X6_B_GUEST);    // merged in trainer scope: the profile + TS's own guest
+    expect(x6.full_name).toBe('Merged Person Six'); // persons.full_name — trainer output byte-for-byte as before
   });
 });
 

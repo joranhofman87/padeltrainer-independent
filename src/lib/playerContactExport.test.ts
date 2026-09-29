@@ -20,8 +20,10 @@ const ACADEMY = 'acad-1';
 const HEADERS = { name: 'Name', email: 'Email', phone: 'Phone' };
 
 type ServerRow = { person_id: unknown; full_name?: unknown; email?: unknown; phone?: unknown };
+/** A canonical person uuid, as PostgreSQL prints it. */
+const uid = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
 const person = (i: number, extra: Partial<ServerRow> = {}): ServerRow => ({
-  person_id: `p${i}`,
+  person_id: uid(i),
   full_name: `Player ${i}`,
   email: `p${i}@x.nl`,
   phone: '',
@@ -79,8 +81,8 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     const srv = fakeRpc(ok([person(2, { phone: '+31611' }), person(1)]));
     const contacts = await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc });
     expect(contacts).toEqual([
-      { personId: 'p2', fullName: 'Player 2', email: 'p2@x.nl', phone: '+31611' },
-      { personId: 'p1', fullName: 'Player 1', email: 'p1@x.nl', phone: '' },
+      { personId: uid(2), fullName: 'Player 2', email: 'p2@x.nl', phone: '+31611' },
+      { personId: uid(1), fullName: 'Player 1', email: 'p1@x.nl', phone: '' },
     ]);
     expect(srv.calls.map((c) => c.args)).toEqual([{
       p_academy: ACADEMY, p_search: 'an', p_filters: { current_training: true }, p_sort: 'email', p_sort_dir: 'desc',
@@ -104,7 +106,7 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     vi.mocked(supabase.rpc).mockReturnValueOnce(builder as never);
     const ctl = new AbortController();
     const contacts = await fetchContactsForExport(ACADEMY, inputs, { signal: ctl.signal });
-    expect(contacts.map((c) => c.personId)).toEqual(['p7']);
+    expect(contacts.map((c) => c.personId)).toEqual([uid(7)]);
     expect(supabase.rpc).toHaveBeenLastCalledWith('get_players_overview_export', {
       p_academy: ACADEMY, p_search: 'an', p_filters: { current_training: true }, p_sort: 'email', p_sort_dir: 'desc',
     });
@@ -149,29 +151,48 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc(ok([])).rpc })).toEqual([]);
   });
 
-  it('accepts the single row as an object too (.single()-style shape)', async () => {
-    const srv = fakeRpc({ data: { total: 1, rows: [person(3)] }, error: null });
-    expect((await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc }))[0].personId).toBe('p3');
-  });
-
-  it('missing name / email / phone become empty cells, never "null"', async () => {
-    const srv = fakeRpc(ok([person(1, { full_name: null, email: null, phone: undefined })]));
+  it('SQL NULL name / email / phone become empty cells, never "null"', async () => {
+    const srv = fakeRpc(ok([person(1, { full_name: null, email: null, phone: null })]));
     expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).toEqual([
-      { personId: 'p1', fullName: '', email: '', phone: '' },
+      { personId: uid(1), fullName: '', email: '', phone: '' },
     ]);
   });
 
+  it('any uuid version PostgreSQL can hold is a valid person id (v7 included)', async () => {
+    const v7 = '0192d4e6-7c1a-7b3e-9f00-0a0b0c0d0e0f';
+    const nilVersion = '9a000000-0000-0000-0000-000000000001';
+    const srv = fakeRpc(ok([person(1, { person_id: v7 }), person(2, { person_id: nilVersion })]));
+    expect((await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).map((c) => c.personId)).toEqual([v7, nilVersion]);
+  });
+
   it.each([
+    // envelope: exactly ONE row in PostgREST's array
+    ['no row at all', { data: [], error: null }],
+    ['two envelopes (the second silently ignored before)', { data: [{ total: 1, rows: [person(1)] }, { total: 1, rows: [person(2)] }], error: null }],
+    ['an object instead of the one-row array', { data: { total: 1, rows: [person(3)] }, error: null }],
+    ['a non-object envelope', { data: ['x'], error: null }],
+    ['null data', { data: null, error: null }],
+    // total: a safe integer in [0, EXPORT_MAX_ROWS], never coerced
+    ['a null total with no rows (was read as 0)', { data: [{ total: null, rows: [] }], error: null }],
+    ['a string total (was coerced)', { data: [{ total: '1', rows: [person(1)] }], error: null }],
+    ['a fractional total', { data: [{ total: 1.5, rows: [person(1)] }], error: null }],
+    ['a negative total', { data: [{ total: -1, rows: [] }], error: null }],
+    ['a non-numeric total', { data: [{ total: 'many', rows: [] }], error: null }],
     ['a total that disagrees with the rows', ok([person(1), person(2)], 3)],
     ['more rows than the total', ok([person(1), person(2)], 1)],
-    ['a duplicated person (one person must be one row)', ok([person(1), person(2, { person_id: 'p1' })])],
-    ['a row without a canonical person id', ok([person(1), person(2, { person_id: null })])],
-    ['a non-string person id', ok([person(1, { person_id: 42 })])],
     ['a "successful" response above the bound', ok(Array.from({ length: EXPORT_MAX_ROWS + 1 }, (_, i) => person(i)))],
     ['rows that are not an array', { data: [{ total: 0, rows: {} }], error: null }],
-    ['a non-numeric total', { data: [{ total: 'many', rows: [] }], error: null }],
-    ['no row at all', { data: [], error: null }],
-    ['null data', { data: null, error: null }],
+    // rows: plain objects; person_id a canonical uuid, unique; contact fields text or NULL
+    ['a row that is not an object', { data: [{ total: 1, rows: [null] }], error: null }],
+    ['a duplicated person (one person must be one row)', ok([person(1), person(2, { person_id: uid(1) })])],
+    ['a row without a canonical person id', ok([person(1), person(2, { person_id: null })])],
+    ['a non-string person id', ok([person(1, { person_id: 42 })])],
+    ['a person id that is not a uuid', ok([person(1, { person_id: 'p1' })])],
+    ['a non-canonical (upper-case) uuid', ok([person(1, { person_id: '0192D4E6-7C1A-7B3E-9F00-0A0B0C0D0E0F' })])],
+    ['a numeric name (was blanked)', ok([person(1, { full_name: 42 })])],
+    ['an object email (was blanked)', ok([person(1, { email: {} })])],
+    ['an array phone (was blanked)', ok([person(1, { phone: [] })])],
+    ['a missing contact field', ok([{ person_id: uid(1), full_name: 'A', email: 'a@x.nl' }])],
   ] as Array<[string, ExportRpcResult]>)('refuses %s as `failed` — nothing is written', async (_label, result) => {
     expect(await reasonOf(fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc(result).rpc }))).toBe('failed');
   });

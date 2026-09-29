@@ -14,7 +14,7 @@ go/no-go names this exact commit. It implements three owner decisions:
 | --- | --- | --- |
 | Frontend base | production deployment `HJ3eNSHPJ`: commit `edf299b5b735f2b5bfb17fd8b44bd658ede3760a` on `main` | `PTF_FRONTEND_BASELINE_RECEIPT_2026-09-29.md`: short SHA resolved locally; the provider deployment id and UTC time are still to be reconciled before execution |
 | Code | the reviewed PTF commits over that base (`claude/ptf-training-filter-export` at `20f90e38`, preserved), plus the candidate commits on `claude/ptf-release-candidate`: this packet, A1, E1 and the review fixes | the owner-approved player-list change (`b21c4f2e`, `73d145cd`) is deliberately included, since PTF is built on it |
-| Database | one migration, `20261208100000_players_overview_current_training.sql`: schema `players_private`, the private authority `players_private.players_overview_rows`, the list entry `public.get_players_overview` (same signature, return type and grantees) and the export entry `public.get_players_overview_export` | `PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md`: ledger 620 to `20261207100000`, after the verified ACL correction; every field of the BASE state below is a receipt value |
+| Database | one migration, `20261208100000_players_overview_current_training.sql`: schema `players_private`, the private authority `players_private.players_overview_rows`, the list entry `public.get_players_overview` (same signature, return type and grantees) and the export entry `public.get_players_overview_export` | `PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md`: ledger 620 to `20261207100000`, after the verified ACL correction; which BASE fields are receipt values is stated below |
 | Excluded | ABC-16 (deferred; its rebase gate stands), ABC-17 and every booking writer, U2, U4, U7, the F0 UI, production data repair | — |
 
 The packet's own files (`SHA256SUMS` in this directory):
@@ -25,29 +25,43 @@ The packet's own files (`SHA256SUMS` in this directory):
 | `apply.sql` | The only write: guard, migration, ledger row and in-transaction verification, all in one transaction |
 | `postcheck.sql` | Read-only end-state check, the effective client-role privileges, and two refusal probes |
 | `recovery.sql` + `restore_canonical_get_players_overview.sql` | Forward recovery to the exact BASE state |
+| `state_descriptor.sql` | The CANONICAL state-descriptor query (read-only; prints the descriptor and its sha256). The six copies embedded in apply, recovery and post-check must equal it byte-for-byte; the local suite asserts that. |
 
 ## Expected object states
 
-Apply, post-check and recovery compare one **state descriptor** (the same query text in every file): one
-line per object this release creates or replaces. It covers signature, return type, owner, language,
-volatility, SECURITY DEFINER, config, ACL and body sha256, plus schema `players_private` with its ACL and
-content counts. The files compare the sha256 of the byte-sorted lines.
+Apply, post-check and recovery compare one **state descriptor**: one line per object this release creates or
+replaces.
+- **Canonical source:** `state_descriptor.sql`, embedded identically in six places.
+- **Function lines:** signature and full arguments (defaults included), return type, and every `pg_proc`
+  attribute that changes behaviour or authority:
+  - kind, owner, language, volatility;
+  - STRICT, set-returning, SECURITY DEFINER, LEAKPROOF;
+  - parallel safety, planner support function;
+  - config, ACL, body sha256.
+- **Deliberately excluded:** `procost` and `prorows`, which are planner estimates only.
+- **Schema line:** `players_private`, with its ACL and content counts.
+- **Comparison:** the files compare the sha256 of the byte-sorted lines.
 
-**BASE** (sha256 `e6f1ccc592be54132684c36b8bf77611cbe686c4f4115c94d621f196aac32c91`): production before PTF
-and after recovery. Every field is a value in the database baseline receipt, and neither the export entry
-nor the schema exists:
+**BASE** (sha256 `24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b`): production before PTF and
+after recovery.
+- **Receipt values:** the signature, result, owner, language, volatility, SECURITY DEFINER, config, ACL and
+  body.
+- **Not in the receipt:** the argument defaults and the STRICT, LEAKPROOF, parallel, support and kind flags.
+  They are fixed by the migration that created the function (`20261006120000`), and the apply guard enforces
+  them fail-closed. The fresh preflight prints `fn_arguments`; compare it with the `args=(…)` below.
+- **Absent:** neither the export entry nor the schema exists.
 
 ```text
-function public.get_players_overview(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer) returns TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, email_undeliverable boolean, total_count bigint) owner=postgres language=plpgsql volatility=s security_definer=t config=search_path=public acl=authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres body_sha256=0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4
+function public.get_players_overview(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer) args=(p_scope text, p_scope_id uuid, p_search text DEFAULT NULL::text, p_filters jsonb DEFAULT '{}'::jsonb, p_sort text DEFAULT 'name'::text, p_sort_dir text DEFAULT 'asc'::text, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0) returns TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, email_undeliverable boolean, total_count bigint) kind=f owner=postgres language=plpgsql volatility=s strict=f returns_set=t security_definer=t leakproof=f parallel=u support=- config=search_path=public acl=authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres body_sha256=0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4
 ```
 
-**PTF** (sha256 `8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b`): after apply. The body
+**PTF** (sha256 `ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc`): after apply. The body
 hashes are those of the reviewed migration file's three `$$` bodies, and the local suite checks that.
 
 ```text
-function players_private.players_overview_rows(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer, p_enrich boolean) returns TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, email_undeliverable boolean, total_count bigint, sort_ord bigint) owner=postgres language=plpgsql volatility=s security_definer=f config=search_path=pg_catalog, pg_temp acl=postgres=X/postgres body_sha256=42120fc3e51ff7477e2167549c703ce781d8d101c01c801cc3e2c4e287aacb28
-function public.get_players_overview(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer) returns TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, email_undeliverable boolean, total_count bigint) owner=postgres language=plpgsql volatility=s security_definer=t config=search_path=pg_catalog, pg_temp acl=authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres body_sha256=1a17b7643486d5db0e9d415e567817e6108ec87f1d1b094208f0d79c101d0d2f
-function public.get_players_overview_export(p_academy uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text) returns TABLE(total bigint, rows jsonb) owner=postgres language=plpgsql volatility=s security_definer=t config=search_path=pg_catalog, pg_temp acl=authenticated=X/postgres,postgres=X/postgres body_sha256=a74a03ffc6595a5bce475432870754ef3058ee190acfbe63285299357abbdc24
+function players_private.players_overview_rows(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer, p_enrich boolean) args=(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer, p_enrich boolean) returns TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, email_undeliverable boolean, total_count bigint, sort_ord bigint) kind=f owner=postgres language=plpgsql volatility=s strict=f returns_set=t security_definer=f leakproof=f parallel=u support=- config=search_path=pg_catalog, pg_temp acl=postgres=X/postgres body_sha256=35214faa33ed144d3c06ebacaef3af915427f0b920e3471cb3e6acd25861d4b4
+function public.get_players_overview(p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer) args=(p_scope text, p_scope_id uuid, p_search text DEFAULT NULL::text, p_filters jsonb DEFAULT '{}'::jsonb, p_sort text DEFAULT 'name'::text, p_sort_dir text DEFAULT 'asc'::text, p_limit integer DEFAULT 50, p_offset integer DEFAULT 0) returns TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, email_undeliverable boolean, total_count bigint) kind=f owner=postgres language=plpgsql volatility=s strict=f returns_set=t security_definer=t leakproof=f parallel=u support=- config=search_path=pg_catalog, pg_temp acl=authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres body_sha256=1a17b7643486d5db0e9d415e567817e6108ec87f1d1b094208f0d79c101d0d2f
+function public.get_players_overview_export(p_academy uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text) args=(p_academy uuid, p_search text DEFAULT NULL::text, p_filters jsonb DEFAULT '{}'::jsonb, p_sort text DEFAULT 'name'::text, p_sort_dir text DEFAULT 'asc'::text) returns TABLE(total bigint, rows jsonb) kind=f owner=postgres language=plpgsql volatility=s strict=f returns_set=t security_definer=t leakproof=f parallel=u support=- config=search_path=pg_catalog, pg_temp acl=authenticated=X/postgres,postgres=X/postgres body_sha256=a74a03ffc6595a5bce475432870754ef3058ee190acfbe63285299357abbdc24
 schema players_private owner=postgres acl=postgres=UC/postgres relations=0 types=0
 ```
 
@@ -77,7 +91,7 @@ PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-releas
    Anything else: STOP.
 2. **Apply (the only write).** Use the same command with `-1 -v expected_sysid=7642734024280108049` and
    `-f docs/deployment/ptf-release/apply.sql`.
-   - Success: exit 0, `NOTICE: ptf apply: object state 8b9d2f98…, ledger 621 to 20261208100000`, and
+   - Success: exit 0, `NOTICE: ptf apply: object state ca0d9b03…, ledger 621 to 20261208100000`, and
      `INSERT 0 1` (`INSERT 0 0` on a re-run).
    - Refusal: psql exits 3, and nothing changes. The guard names the cause:
      - target, ledger;
@@ -168,8 +182,13 @@ embedded 18.4 by default, and `PTF_PGBIN` for production's 17.6. The harness mir
 
 It proves:
 - baseline parity with the receipt and the BASE state;
-- every refusal leaves the state unchanged: each attribute drift, stray objects, four kinds of DDL in
-  flight, a ledger lock, and recovery before apply;
+- every refusal leaves the state unchanged:
+  - each drift, applied one at a time to the live function: a grant to `anon`, the owner, `search_path`,
+    VOLATILE, SECURITY INVOKER, STRICT, PARALLEL SAFE, LEAKPROOF, and a changed argument default;
+  - a stray schema or export function, and the migration run on its own;
+  - four kinds of DDL in flight, and a ledger lock;
+  - recovery before apply;
+- the six embedded descriptor copies equal the canonical `state_descriptor.sql` byte-for-byte;
 - no blocking by readers, DML or vacuum-strength locks;
 - the exact PTF state, a no-op re-run, and a post-check that passes only after apply;
 - no client role reaching the private authority, and the export available to `authenticated` only;
@@ -178,11 +197,17 @@ It proves:
   authorization read, and at the authority's main statement). The call does not see the guest, and the next
   call does. With the authority or the export made `VOLATILE`, the same commit becomes visible, so the test
   discriminates;
-- exact recovery, including a refusal on a drifted PTF object.
+- exact recovery, including refusals on a drifted PTF object: a granted authority, and a STRICT authority.
+  The STRICT one passes every grant and refusal probe but empties the list, and the post-check's `state_ok`
+  catches it.
 
 The semantic matrix is `playersOverviewCurrentTraining.pglite.test.ts` on the same migration bytes. It covers:
 - option A;
 - the 16 A1 cases, including trainer scope byte-for-byte against the canonical body on the same data;
+- **merged-person names** (review 01a0ecc9 P1-1): list, search, sort (both directions) and export.
+  - Cases: guests-only with an older out-of-scope guest; an out-of-scope account holder; a fully in-scope
+    control; a blank admitted profile; an empty and a NULL oldest guest; an exact `created_at` tie.
+  - B keeps its own names; trainer scope keeps `persons.full_name` (a recorded follow-up);
 - export = list for every sort and several filters;
 - per-entry authorization with the authority's check stubbed out;
 - the 20,000 / 20,001 bound.
@@ -201,10 +226,37 @@ bookings over four statuses, plus a second academy's noise):
 - one 20,000-row export at or under 50% of the configured `authenticated` statement timeout. Until Tom's
   A1 observation reads it, that is the Supabase default of 8 s, **unverified**.
 
-**Results.** One author-run execution, local only, on 2026-09-29, at commit
+**Results, corrected tree (PTF-CORRECTION-94ED).** One author-run execution, local only, on 2026-09-29 at 13:42:
+- **Tree:** the working tree of the correction commit (HEAD `94ed2cec` plus the uncommitted correction). It
+  was identical to that commit except for this results paragraph, which was written afterwards.
+- **How:** `src/test/ptfReleasePacket.realpg.test.ts` with `PTF_MEASURE=1`, on PostgreSQL 17.6 server
+  binaries, driven by the same psql 18.4 (libpq) client.
+- **Outcome:** 13/13 tests and Vitest exit 0.
+- **The §3 fixture adds 5,000 merged multi-academy people** to Q's 20,000:
+  - each has a second Q guest record, plus either an older academy-R guest or an R-only account holder;
+  - each one's global `persons.full_name` is R's.
+- **Asserted:**
+  - 20,000 people exported;
+  - all 5,000 merged people named from their oldest admitted Q guest;
+  - 0 R-derived names in the export;
+  - 0 search hits for "Secret";
+  - the budgets met.
+- **Recorded:** 5,000 Q sessions, 200,000 Q bookings, 101,000 R/S bookings, payload 2,605,574 bytes.
+- **Medians of 5:**
+  - list pages: unfiltered 344.4 ms, "Currently training" 419.5 ms, training club 383.4 ms (budget ≤ 616.6 ms);
+  - one 20,000-row export: 421.0 ms (budget ≤ 4 s);
+  - 2,000-person fixture: 25 / 31 / 29 ms and a 30 ms export on 17.6; 24 / 31 / 30 ms and a 30 ms export on
+    18.4 (separate run).
+- **A first attempt failed:** it stopped in the test's own setup (untyped literals in a `UNION ALL`). Only
+  two `::uuid` casts were then added to the fixture, and the run above is the one retry.
+
+**Results, PRIOR HEAD.** These were measured before correction PTF-CORRECTION-94ED. They stay valid for that
+head and don't carry over to the corrected one, whose merged multi-academy 20,000-person check runs under
+its own slot grant. One author-run execution, local only, on 2026-09-29, at commit
 `235c33dffc82b49bb62cf74f093e487484a50044`:
-- **How:** `src/test/ptfReleasePacket.realpg.test.ts` with `PTF_MEASURE=1`, on PostgreSQL 17.6 binaries started
-  by the suite's harness, driven by psql 17.
+- **How:** `src/test/ptfReleasePacket.realpg.test.ts` with `PTF_MEASURE=1`, on PostgreSQL 17.6 server binaries
+  started by the suite's harness, driven by the psql 18.4 (libpq) client at `/opt/homebrew/opt/libpq/bin/psql`. That is
+  the same client path the operator commands above use.
 - **Outcome:** 13/13 tests and Vitest exit 0. The run records the counts below exactly: 5,000 sessions,
   200,000 bookings, 100,000 R/S bookings, 20,000 people exported.
 

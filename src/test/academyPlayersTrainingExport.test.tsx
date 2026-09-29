@@ -137,7 +137,7 @@ vi.mock('@/components/players/ManagePlayerTagsDialog', () => ({ ManagePlayerTags
 import AcademyPlayers from '@/pages/academy/AcademyPlayers';
 
 const person = (i: number, extra: Record<string, unknown> = {}) =>
-  ({ person_id: `per-${i}`, full_name: `Export ${i}`, email: `e${i}@x.nl`, phone: '', ...extra });
+  ({ person_id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, full_name: `Export ${i}`, email: `e${i}@x.nl`, phone: '', ...extra });
 
 function deferred<T>() {
   let resolveFn!: (v: T) => void;
@@ -316,7 +316,7 @@ describe('Academy Players — export (one server call)', () => {
   });
 
   it('an inconsistent response is refused with nothing downloaded', async () => {
-    exportImpl = async () => exportResponse([person(1), person(2, { person_id: 'per-1' })]);
+    exportImpl = async () => exportResponse([person(1), person(2, { person_id: person(1).person_id })]);
     renderPage();
     await screen.findByLabelText('Training club');
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
