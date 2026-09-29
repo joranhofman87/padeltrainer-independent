@@ -1,54 +1,9 @@
--- PTF-OPTION-A (2026-09-27) — Academy Players: "currently training" + "training club" filters.
---
--- WHAT: re-emits get_players_overview with two new p_filters keys. The signature, RETURNS TABLE,
---   every existing filter / sort / pagination / person-rollup rule and the ACL are byte-identical to
---   the latest definition (20261006120000_readers_canonical_is_suppressed.sql); the only additions are
---   the two DECLAREd keys, an academy-scope guard, the training_now CTE and two WHERE clauses.
---   CREATE OR REPLACE preserves privileges; the REVOKE/GRANT below re-assert the intended ACL.
---
--- THE QUALIFYING SESSION — one predicate (CTE training_now) drives BOTH keys, so the current-training
--- filter, the training-club filter and a client export built on them cannot disagree. A booking b on
--- slot s makes its person "currently training at this academy" iff ALL of:
---   (1) s.academy_profile_id = the academy. Direct session ownership only: a shared trainer's sessions
---       for another academy, or for their own practice, never count, and nothing is inferred from
---       trainer membership, preferred/intake/manual clubs, payments or registrations.
---   (2) b.status IN ('confirmed','completed') — the overview's own membership statuses. Pending,
---       cancelled and every other status never count.
---   (3) s.end_time >= now(): the session is in progress or still ahead. This is the overview's existing
---       "remaining" boundary (a session ending exactly now still counts). There is NO future horizon.
---   (4) s.cyclus_id IS NULL — a standalone session, upcoming or in progress — OR the session's cycle has
---       STARTED: some academy-owned session of that cycle has start_time < now(). The app's own
---       "not yet started" rule is start_time >= now() (CycleDetailView), so a cycle whose every session
---       still lies ahead does NOT count, even though the person is booked into it (Tom's option A:
---       ongoing cycles + upcoming standalone sessions; cycles that have not started are excluded).
---   Consequence of (3)+(4b): a person in a started cycle counts while they still hold a qualifying
---   booking on one of its remaining sessions; someone whose remaining bookings were all cancelled
---   (dropped out) does not.
---   Person matching uses the overview's REF-SET rule (the person's guest refs, or a pure-profile
---   booking), so the result stays one row per canonical person.
---
--- KEYS
---   current_training      boolean. NULL = no filter; true / false = has / has no qualifying session.
---   training_location_id  uuid. The person has a qualifying session whose slot location (a merged
---                         location resolved to its canonical club) is this club. This is NOT the
---                         existing location_id chip filter, which keeps its historical / preferred /
---                         intake semantics unchanged; has_active_cyclus is unchanged too.
---   Academy scope only: either key with p_scope = 'trainer' is refused (SQLSTATE 22023).
---
--- TIME: now() is the call's transaction time. A multi-page client export re-evaluates per page, so it
---   must detect membership drift itself (the client does: overlapping page boundaries + stable total);
---   this function makes no snapshot claim across calls.
---
--- COMPOSITION — a RELEASE gate, recorded here, not acted on here:
---   security/abc16-metadata-authority-containment (20261118110000, unmerged) also CREATE OR REPLACEs
---   this function, from the pre-person-unification body (no person_links / split-freeze / person
---   rollup) with direct-ownership-only membership. Whichever of the two lands second MUST be rebuilt on
---   the other's full body: final = this person-rollup body + ABC-16's ownership containment + this
---   training_now predicate. Shipping either body over the other silently reverts a security or product
---   rule. (Predicate (1) already uses the same ownership column ABC-16 adopts, so the rules agree.)
---
--- VERSION 20261208100000 IS PROVISIONAL: it must apply after the ACL correction (20261207100000) and
---   before any later-applied lane; it is re-allocated at release composition.
+-- PTF FORWARD RECOVERY BODY: the live canonical public.get_players_overview, byte-for-byte the
+-- definition in 20261006120000_readers_canonical_is_suppressed.sql (stored body sha256
+-- 0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4, 29903 bytes), i.e. what
+-- production ran before the PTF release (PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md).
+-- Included ONLY by recovery.sql, inside its guarded single transaction. Never run on its own.
+-- CREATE OR REPLACE preserves privileges; the REVOKE/GRANT re-assert the reviewed ACL.
 
 CREATE OR REPLACE FUNCTION public.get_players_overview(
   p_scope text,                       -- 'academy' | 'trainer'
@@ -105,8 +60,6 @@ DECLARE
   v_level_max numeric      := (p_filters->>'level_max')::numeric;  -- inclusive upper bound
   v_level_unrated boolean  := coalesce((p_filters->>'level_unrated')::boolean, false);
   v_has_cyclus boolean     := (p_filters->>'has_active_cyclus')::boolean;  -- NULL = no filter
-  v_current_training boolean := (p_filters->>'current_training')::boolean;   -- NULL = no filter
-  v_training_location uuid   := nullif(p_filters->>'training_location_id','')::uuid;
   v_tag text               := nullif(p_filters->>'tag_id','');             -- uuid text | 'untagged'
   v_payment text           := nullif(p_filters->>'payment','');            -- 'overdue' | 'ok'
   v_limit integer          := least(greatest(coalesce(p_limit, 50), 1), 500);
@@ -133,12 +86,6 @@ BEGIN
     RAISE EXCEPTION 'invalid scope: %', p_scope;
   END IF;
 
-  -- The training keys answer "trains at THIS academy" (academy-owned sessions); they have no
-  -- trainer-scope meaning, so asking for one there is refused rather than silently ignored.
-  IF p_scope <> 'academy' AND (v_current_training IS NOT NULL OR v_training_location IS NOT NULL) THEN
-    RAISE EXCEPTION 'current_training / training_location_id are academy-scope filters' USING ERRCODE = '22023';
-  END IF;
-
   IF coalesce(btrim(p_search), '') <> '' THEN
     v_tokens := regexp_split_to_array(public.fold_search_text(btrim(p_search)), '\s+');
   END IF;
@@ -148,29 +95,6 @@ BEGIN
     SELECT s.id, s.trainer_id, s.location_id, s.cyclus_id, s.end_time
     FROM public.availability_slots s
     WHERE s.trainer_id = ANY (v_trainer_ids)
-  ),
-  -- PTF-OPTION-A: the ONE qualifying-session predicate (see the header). Both training keys read
-  -- only this CTE, so the current-training filter, the training-club filter and any export built
-  -- on them cannot disagree. Computed only when a training key is set; bounded to the academy's
-  -- in-progress/remaining sessions. Columns are t_-prefixed: OUT params share the bare names.
-  training_now AS (
-    SELECT b.guest_player_id AS t_guest_id,
-           b.player_id       AS t_player_id,
-           coalesce(tl.merged_into, s.location_id) AS t_location_id
-    FROM public.availability_slots s
-    JOIN public.bookings b ON b.slot_id = s.id
-    LEFT JOIN public.locations tl ON tl.id = s.location_id
-    WHERE p_scope = 'academy'
-      AND (v_current_training IS NOT NULL OR v_training_location IS NOT NULL)
-      AND s.academy_profile_id = p_scope_id              -- (1) academy-owned session only
-      AND b.status IN ('confirmed','completed')          -- (2) qualifying booking
-      AND s.end_time >= now()                            -- (3) in progress or ahead, no horizon
-      AND (s.cyclus_id IS NULL                           -- (4a) standalone session
-        OR EXISTS (                                      -- (4b) its cycle has started
-             SELECT 1 FROM public.availability_slots s0
-             WHERE s0.cyclus_id = s.cyclus_id
-               AND s0.academy_profile_id = p_scope_id
-               AND s0.start_time < now()))
   ),
   removed_meta AS (
     SELECT m.guest_player_id AS gid, m.profile_id AS pid
@@ -372,21 +296,6 @@ BEGIN
       LIMIT 1
     ) md ON true
   ),
-  -- PTF-OPTION-A: the persons (and clubs) with a qualifying session, matched ONCE at set level with
-  -- the same REF-SET rule as every booking predicate below (a guest ref, or a pure-profile booking).
-  -- The two filters then test membership with an uncorrelated IN (a hashed lookup), instead of
-  -- re-scanning training_now for every row. Empty unless a training key is set (training_now is).
-  training_persons AS (
-    SELECT w.b_person_id AS tp_person_id, t.t_location_id AS tp_location_id
-      FROM with_meta w
-      CROSS JOIN LATERAL unnest(w.b_guest_ids) AS g(id)
-      JOIN training_now t ON t.t_guest_id = g.id
-    UNION
-    SELECT w.b_person_id, t.t_location_id
-      FROM with_meta w
-      JOIN training_now t ON t.t_player_id = w.b_profile_id AND t.t_guest_id IS NULL
-     WHERE w.b_profile_id IS NOT NULL
-  ),
   filtered AS (
     SELECT w.*
     FROM with_meta w
@@ -499,14 +408,6 @@ BEGIN
             AND (b.guest_player_id = ANY (w.b_guest_ids)
               OR (w.b_profile_id IS NOT NULL AND b.player_id = w.b_profile_id
                   AND b.guest_player_id IS NULL))))
-      -- PTF-OPTION-A current training / training club: both read training_persons, i.e. the one
-      -- training_now predicate matched by person. has_active_cyclus and the location chip filter
-      -- above keep their existing, different meanings.
-      AND (v_current_training IS NULL OR v_current_training = (
-          w.b_person_id IN (SELECT tp.tp_person_id FROM training_persons tp)))
-      AND (v_training_location IS NULL OR
-          w.b_person_id IN (SELECT tp.tp_person_id FROM training_persons tp
-                             WHERE tp.tp_location_id = v_training_location))
       -- payment status (parity with fetchOverduePayments). ADDRESSEE EXEMPTION: player_id-
       -- addressed invoices match WITHOUT the pure-profile guard — an invoice addressed to a
       -- profile is that person's to pay even when the seat it bills is a guest's (3.1 r3).
