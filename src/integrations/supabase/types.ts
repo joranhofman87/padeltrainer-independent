@@ -11642,6 +11642,19 @@ export type Database = {
           trainer_ids: string[]
         }[]
       }
+      get_players_overview_export: {
+        Args: {
+          p_academy: string
+          p_filters?: Json
+          p_search?: string
+          p_sort?: string
+          p_sort_dir?: string
+        }
+        Returns: {
+          rows: Json
+          total: number
+        }[]
+      }
       get_priority_claim_by_token: { Args: { _token: string }; Returns: Json }
       get_profile_id_for_user: { Args: { _user_id: string }; Returns: string }
       get_public_slot_booking_cutoff: {

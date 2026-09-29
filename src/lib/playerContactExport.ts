@@ -1,36 +1,24 @@
 /**
- * Academy Players contact export (PTF option A): EVERY person matching the list's search + filters,
- * across all pages, as a local Excel-compatible CSV of name / email / phone.
+ * Academy Players contact export (PTF option A, E1): EVERY person matching the list's search + filters
+ * as a local Excel-compatible CSV of name / email / phone. The PTF-specific parts live here — the
+ * academy-scoped server call and its response contract, the frozen list inputs and the contact column
+ * spec; the file mechanics (formatting, formula safety, download, failure vocabulary) are the shared
+ * @/lib/csvExport.
  *
- * Honesty contract — the file is either complete or not written:
+ * ONE call to get_players_overview_export. The server authorizes the academy and evaluates the list's
+ * own filter authority once, in one statement, so the total and the rows describe one database state:
+ * there is no client paging and no cross-call drift to detect. The file is either complete or not written:
  * - Inputs are frozen when the export starts; later filter edits never reach a running export.
- * - The RPC is offset-paged and re-evaluated per call (no snapshot across calls), so every page after
- *   the first OVERLAPS the previous one by one row. A shift anywhere before a boundary changes that
- *   overlap row, so a person who matched throughout can never be skipped silently; the per-row window
- *   total must stay constant, each page must have its expected length, and the canonical person ids
- *   must be unique and number exactly `total`. Any violation → `changed`, and nothing is downloaded.
- * - More than EXPORT_MAX_ROWS matches → `over_limit` before any further page is fetched.
+ * - More than EXPORT_MAX_ROWS matches: the server refuses (SQLSTATE 54000) → `over_limit`.
+ * - A response whose total, length or person ids disagree → `failed` (never a partial file).
  * - An aborted signal (Cancel, academy switch, unmount) → `cancelled`; an RPC failure → `failed`.
- * This is NOT a transactional snapshot and does not claim to be one.
  */
-import { fetchPlayersOverview, type PlayersOverviewParams, type PlayersOverviewRow } from '@/lib/playersOverview';
-import type { PlayerScope } from '@/lib/playerQueryKeys';
+import { supabase } from '@/lib/supabaseClient';
+import { filtersToRpcJson, type PlayersOverviewParams } from '@/lib/playersOverview';
+import { ExportError, buildCsv, type CsvColumn } from '@/lib/csvExport';
 
+/** The server's bound (get_players_overview_export refuses above it); used here for messages only. */
 export const EXPORT_MAX_ROWS = 20_000;
-/** get_players_overview clamps p_limit at 500; request that maximum. */
-export const EXPORT_PAGE_SIZE = 500;
-
-export type PlayerExportFailure = 'over_limit' | 'changed' | 'cancelled' | 'failed';
-
-export class PlayerExportError extends Error {
-  constructor(
-    readonly reason: PlayerExportFailure,
-    readonly detail: { total?: number; max?: number; cause?: unknown } = {},
-  ) {
-    super(`player export ${reason}`);
-    this.name = 'PlayerExportError';
-  }
-}
 
 export interface ExportContact {
   personId: string;
@@ -39,7 +27,7 @@ export interface ExportContact {
   phone: string;
 }
 
-/** What the list shows: search, filters and order. Paging is the exporter's own business. */
+/** What the list shows: search, filters and order. */
 export type ExportInputs = Readonly<Pick<PlayersOverviewParams, 'search' | 'filters' | 'sort' | 'sortDir'>>;
 
 /** A frozen copy: mutating the caller's objects after the export starts cannot change it. */
@@ -52,130 +40,99 @@ export function freezeExportInputs(inputs: ExportInputs): ExportInputs {
   });
 }
 
-export interface FetchAllContactsOptions {
+export interface ExportRpcArgs {
+  p_academy: string;
+  p_search?: string;
+  p_filters: Record<string, unknown>;
+  p_sort: string;
+  p_sort_dir: string;
+}
+export interface ExportRpcResult {
+  data: unknown;
+  error: { code?: string; details?: string; message?: string } | null;
+}
+export type ExportRpc = (args: ExportRpcArgs, signal?: AbortSignal) => Promise<ExportRpcResult>;
+
+const callExportRpc: ExportRpc = async (args, signal) => {
+  const query = supabase.rpc('get_players_overview_export', { ...args, p_filters: args.p_filters as never });
+  const { data, error } = await (signal ? query.abortSignal(signal) : query);
+  return { data, error };
+};
+
+export interface FetchContactsOptions {
   signal?: AbortSignal;
-  onProgress?: (fetched: number, total: number) => void;
-  /** Injectable page fetcher (tests); defaults to the real overview RPC client. */
-  fetchPage?: typeof fetchPlayersOverview;
+  /** Injectable RPC (tests); defaults to get_players_overview_export. */
+  rpc?: ExportRpc;
 }
 
-export async function fetchAllContactsForExport(
-  scope: PlayerScope,
+export async function fetchContactsForExport(
+  academyId: string,
   inputs: ExportInputs,
-  { signal, onProgress, fetchPage = fetchPlayersOverview }: FetchAllContactsOptions = {},
+  { signal, rpc = callExportRpc }: FetchContactsOptions = {},
 ): Promise<ExportContact[]> {
   const frozen = freezeExportInputs(inputs);
   const throwIfCancelled = () => {
-    if (signal?.aborted) throw new PlayerExportError('cancelled');
+    if (signal?.aborted) throw new ExportError('cancelled');
   };
+  throwIfCancelled();
 
-  const getPage = async (offset: number) => {
+  let result: ExportRpcResult;
+  try {
+    result = await rpc({
+      p_academy: academyId,
+      p_search: frozen.search?.trim() || undefined,
+      p_filters: filtersToRpcJson(frozen.filters),
+      p_sort: frozen.sort ?? 'name',
+      p_sort_dir: frozen.sortDir ?? 'asc',
+    }, signal);
+  } catch (cause) {
     throwIfCancelled();
-    let page: { rows: PlayersOverviewRow[]; total: number };
-    try {
-      page = await fetchPage(scope, { ...frozen, pageSize: EXPORT_PAGE_SIZE, offset });
-    } catch (cause) {
-      throwIfCancelled();
-      throw new PlayerExportError('failed', { cause });
+    throw new ExportError('failed', { cause });
+  }
+  throwIfCancelled();
+
+  const { data, error } = result;
+  if (error) {
+    if (error.code === '54000') {
+      const m = /total=(\d+) max=(\d+)/.exec(error.details ?? '');
+      throw new ExportError('over_limit', {
+        total: m ? Number(m[1]) : undefined,
+        max: m ? Number(m[2]) : EXPORT_MAX_ROWS,
+        cause: error,
+      });
     }
-    throwIfCancelled();
-    return page;
-  };
-
-  const first = await getPage(0);
-  const total = first.total;
-  if (total > EXPORT_MAX_ROWS) throw new PlayerExportError('over_limit', { total, max: EXPORT_MAX_ROWS });
-  if (total === 0) {
-    if (first.rows.length !== 0) throw new PlayerExportError('changed');
-    return [];
+    throw new ExportError('failed', { cause: error });
   }
 
-  const assertTotal = (rows: PlayersOverviewRow[]) => {
-    if (rows.some((r) => Number(r.total_count) !== total)) throw new PlayerExportError('changed', { total });
-  };
-  assertTotal(first.rows);
-
-  // The server may honour fewer than EXPORT_PAGE_SIZE rows; page by what it actually returned (the
-  // overlap/length/uniqueness checks below still verify every page). Overlap needs >= 2 rows a page.
-  const pageSize = first.rows.length;
-  if (pageSize > total) throw new PlayerExportError('changed', { total });
-  if (pageSize < total && pageSize < 2) throw new PlayerExportError('failed', { total });
-
-  const collected: PlayersOverviewRow[] = [...first.rows];
-  let covered = pageSize; // rows [0, covered) are collected
-  let previousLast = first.rows[first.rows.length - 1];
-  onProgress?.(covered, total);
-
-  while (covered < total) {
-    const offset = covered - 1; // overlap the previous page's last row
-    const page = await getPage(offset);
-    assertTotal(page.rows);
-    if (page.rows.length !== Math.min(pageSize, total - offset)) throw new PlayerExportError('changed', { total });
-    if (page.rows[0].player_key !== previousLast.player_key) throw new PlayerExportError('changed', { total });
-    collected.push(...page.rows.slice(1));
-    covered = offset + page.rows.length;
-    previousLast = page.rows[page.rows.length - 1];
-    onProgress?.(covered, total);
+  // One row { total, rows }. Anything that does not add up is refused, never written partially.
+  const row = (Array.isArray(data) ? data[0] : data) as { total?: unknown; rows?: unknown } | null | undefined;
+  const total = Number(row?.total);
+  const rows = row?.rows;
+  if (!Number.isSafeInteger(total) || !Array.isArray(rows) || rows.length !== total || total > EXPORT_MAX_ROWS) {
+    throw new ExportError('failed', { total: Number.isSafeInteger(total) ? total : undefined });
   }
-
+  const text = (v: unknown) => (typeof v === 'string' ? v : '');
   const seen = new Set<string>();
-  const contacts: ExportContact[] = [];
-  for (const row of collected) {
-    if (!row.person_id) throw new PlayerExportError('failed', { total });
-    if (seen.has(row.person_id)) throw new PlayerExportError('changed', { total });
-    seen.add(row.person_id);
-    contacts.push({
-      personId: row.person_id,
-      fullName: row.full_name ?? '',
-      email: row.email ?? '',
-      phone: row.phone ?? '',
-    });
-  }
-  // Every page had exactly its expected length, so the loop collected exactly `total` rows; with the
-  // uniqueness check above, contacts.length === total holds by construction.
-  return contacts;
+  return rows.map((r: { person_id?: unknown; full_name?: unknown; email?: unknown; phone?: unknown }) => {
+    const personId = text(r?.person_id);
+    if (!personId || seen.has(personId)) throw new ExportError('failed', { total });
+    seen.add(personId);
+    return { personId, fullName: text(r.full_name), email: text(r.email), phone: text(r.phone) };
+  });
 }
 
-// ---- CSV (Excel-compatible: UTF-8 BOM, `;` separators and CRLF, as the intake export uses) ----
-
-/** Leading characters a spreadsheet may evaluate (incl. full-width forms and leading blanks). */
-const FORMULA_START = /^[\t\r]|^\s*[=+\-@＝＋－＠]/;
-
-/** Prefix a cell that a spreadsheet would evaluate as a formula; the original text is kept whole. */
-export function neutralizeCell(value: string): string {
-  return FORMULA_START.test(value) ? `'${value}` : value;
+/** The contact file's columns: name, email, phone (kept as text). Headers come from the page (i18n). */
+export function contactCsvColumns(headers: { name: string; email: string; phone: string }): CsvColumn<ExportContact>[] {
+  return [
+    { header: headers.name, value: (c) => c.fullName },
+    { header: headers.email, value: (c) => c.email },
+    { header: headers.phone, value: (c) => c.phone, kind: 'phone' },
+  ];
 }
-
-/**
- * Phone numbers stay text: `+31…` is neutralised like any formula start, and an all-digit number gets
- * the same text marker so a spreadsheet keeps its leading zero instead of reading it as a number.
- */
-export function phoneCell(value: string): string {
-  return /^\d+$/.test(value) ? `'${value}` : neutralizeCell(value);
-}
-
-const quote = (value: string) => `"${value.replace(/"/g, '""')}"`;
 
 export function buildContactsCsv(
   contacts: readonly ExportContact[],
   headers: { name: string; email: string; phone: string },
 ): string {
-  const lines = [
-    [headers.name, headers.email, headers.phone].map(neutralizeCell),
-    ...contacts.map((c) => [neutralizeCell(c.fullName), neutralizeCell(c.email), phoneCell(c.phone)]),
-  ];
-  return '﻿' + lines.map((cells) => cells.map(quote).join(';')).join('\r\n') + '\r\n';
-}
-
-/** Local download through the browser; nothing is sent anywhere. */
-export function downloadCsv(filename: string, csv: string): void {
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+  return buildCsv(contacts, contactCsvColumns(headers));
 }

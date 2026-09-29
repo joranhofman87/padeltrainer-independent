@@ -1,15 +1,21 @@
--- APPLY — PTF release (PTF-OPTION-A-2026-09-27): the only write, and the only way the PTF migration is
--- applied to production. One transaction: guard, migration, ledger row and post-verification commit
--- together or not at all. Run from a clean checkout of the reviewed candidate commit, after a fresh
--- preflight, with the command in docs/deployment/ptf-release/README.md, Step 2:
+-- APPLY — PTF release (PTF-OPTION-A-2026-09-27, with A1 membership and the E1 export): the only write,
+-- and the only way the PTF migration is applied to production. One transaction: guard, migration, ledger
+-- row and post-verification commit together or not at all. Run from a clean checkout of the reviewed
+-- candidate commit, after a fresh preflight, with the command in docs/deployment/ptf-release/README.md,
+-- Step 2:
 --   psql -X -1 -v ON_ERROR_STOP=1 -v expected_sysid=<the production system identifier> -f this file
 -- Never run the migration file on its own, and never let supabase db push apply it.
 --
 -- Accepted starting states (anything else refuses; nothing changes):
 --   * FIRST APPLY: the 620-version ledger verified by the ACL post-check (to 20261207100000) with the
---     live canonical function body (PTF_DATABASE_BASELINE_RECEIPT_2026-09-29.md);
---   * RE-RUN: those 620 plus 20261208100000 with the PTF body. The migration re-installs the same body
---     and no ledger row is written (INSERT 0 0).
+--     BASE object state: the live canonical public.get_players_overview exactly as the baseline receipt
+--     records it, and neither public.get_players_overview_export nor schema players_private;
+--   * RE-RUN: those 620 plus 20261208100000 with the PTF object state. The migration re-installs the
+--     same three functions and no ledger row is written (INSERT 0 0).
+-- The object state is the STATE DESCRIPTOR below: one line per function this release creates or replaces
+-- (signature, return type, owner, language, volatility, SECURITY DEFINER, config, ACL, body sha256) and
+-- one for schema players_private. Its sha256 must equal c_state_base or c_state_ptf; the README lists
+-- both descriptors in full.
 -- A missing -v expected_sysid is a psql syntax error on the set_config line: nothing runs.
 
 -- 1. Read committed, bounded waits.
@@ -23,26 +29,47 @@ LOCK TABLE supabase_migrations.schema_migrations IN ACCESS EXCLUSIVE MODE;
 -- 3. The expected cluster.
 SELECT set_config('ptf_release.expected_sysid', :'expected_sysid', true);
 
--- 4. Re-establish target, ledger, function identity and a quiet database INSIDE this transaction.
+-- 4. Re-establish target, ledger, object state and a quiet database INSIDE this transaction.
 DO $ptf_apply_guard$
 DECLARE
   -- Ledger digests: sha256 of the versions sorted byte-wise and joined by newlines (the ACL packet's
-  -- method). src/test/ptfReleasePacket.realpg.test.ts derives both from the repository's versions.
-  c_base      CONSTANT text := '98015eddaccd8ef67297c172db67495f5ff11a881ea28e1f024fb82741c3bc72'; -- 620, to 20261207100000
-  c_ptf       CONSTANT text := '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900'; -- + 20261208100000
-  c_body_live CONSTANT text := '0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4';
-  c_body_ptf  CONSTANT text := '22695d9ce5ccd20617d98af9123712701d55c8198ee0d607bd08a62fd503b8b2';
-  c_args      CONSTANT text := 'p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer';
-  c_acl       CONSTANT text := 'authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres';
+  -- method). State digests: sha256 of the state descriptor. src/test/ptfReleasePacket.realpg.test.ts
+  -- derives all four.
+  c_base       CONSTANT text := '98015eddaccd8ef67297c172db67495f5ff11a881ea28e1f024fb82741c3bc72'; -- 620, to 20261207100000
+  c_ptf        CONSTANT text := '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900'; -- + 20261208100000
+  c_state_base CONSTANT text := 'e6f1ccc592be54132684c36b8bf77611cbe686c4f4115c94d621f196aac32c91';
+  c_state_ptf  CONSTANT text := '8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b';
   v_sysid  text := (SELECT system_identifier::text FROM pg_control_system());
   v_rows   bigint := (SELECT count(*) FROM supabase_migrations.schema_migrations);
   v_odd    bigint := (SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version !~ '^[0-9]{14}$');
   v_ledger text := (SELECT encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex')
                       FROM supabase_migrations.schema_migrations);
-  v_fns    bigint := (SELECT count(*) FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'get_players_overview');
-  v_args   text;
-  v_body   text;
-  v_acl    text;
+  v_state  text := (
+    -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
+      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
+               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+               coalesce(array_to_string(p.proconfig, ';'), ''),
+               CASE WHEN p.proacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,
+               encode(sha256(convert_to(p.prosrc, 'UTF8')), 'hex')) AS d
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        JOIN pg_language l ON l.oid = p.prolang
+       WHERE (n.nspname = 'public' AND p.proname IN ('get_players_overview', 'get_players_overview_export'))
+          OR n.nspname = 'players_private'
+      UNION ALL
+      SELECT format('schema %s owner=%s acl=%s relations=%s types=%s', n.nspname, pg_get_userbyid(n.nspowner),
+               CASE WHEN n.nspacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(n.nspacl::text[]) a) END,
+               (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid),
+               (SELECT count(*) FROM pg_type t WHERE t.typnamespace = n.oid))
+        FROM pg_namespace n WHERE n.nspname = 'players_private'
+    ) s
+    -- STATE DESCRIPTOR END
+  );
+  v_digest text := encode(sha256(convert_to(v_state, 'UTF8')), 'hex');
   v_busy   text;
 BEGIN
   IF current_database() <> 'postgres' THEN
@@ -58,37 +85,36 @@ BEGIN
     RAISE EXCEPTION 'ptf apply guard: the ledger is neither the 620 versions to 20261207100000 nor those plus 20261208100000 (% rows, % not 14 digits, digest %)',
       v_rows, v_odd, v_ledger;
   END IF;
-  IF v_fns <> 1 THEN
-    RAISE EXCEPTION 'ptf apply guard: expected exactly one public.get_players_overview, found %', v_fns;
-  END IF;
-  SELECT pg_get_function_identity_arguments(p.oid),
-         encode(sha256(convert_to(p.prosrc, 'UTF8')), 'hex'),
-         (SELECT string_agg(a, ',' ORDER BY a COLLATE "C") FROM unnest(coalesce(p.proacl, '{}'::aclitem[])::text[]) a)
-    INTO v_args, v_body, v_acl
-    FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'get_players_overview';
-  IF v_args IS DISTINCT FROM c_args THEN
-    RAISE EXCEPTION 'ptf apply guard: unexpected get_players_overview signature (%)', v_args;
-  END IF;
-  IF v_acl IS DISTINCT FROM c_acl THEN
-    RAISE EXCEPTION 'ptf apply guard: get_players_overview privileges drifted (%), expected %', v_acl, c_acl;
-  END IF;
-  IF NOT ((v_ledger = c_base AND v_body = c_body_live) OR (v_ledger = c_ptf AND v_body = c_body_ptf)) THEN
-    RAISE EXCEPTION 'ptf apply guard: ledger and function body disagree or the body is unknown (ledger %, body %)', v_ledger, v_body;
+  IF NOT ((v_ledger = c_base AND v_digest = c_state_base) OR (v_ledger = c_ptf AND v_digest = c_state_ptf)) THEN
+    RAISE EXCEPTION 'ptf apply guard: the object state is not the one this ledger expects (ledger %, state %)', v_ledger, v_digest
+      USING DETAIL = v_state;
   END IF;
   IF EXISTS (SELECT 1 FROM pg_prepared_xacts) THEN
     RAISE EXCEPTION 'ptf apply guard: a prepared transaction is open; it may hold migration work';
   END IF;
   v_busy := (
-    -- IN-FLIGHT PROBE BEGIN: another session holding or awaiting the ledger, or the lock every object
-    -- creation takes on schema public. App reads and DML do not match. Same text in the post-check.
+    -- IN-FLIGHT PROBE BEGIN: another session holding or awaiting (a) the migration ledger, (b) the schema lock
+    -- that creating a relation takes on public or players_private, (c) a DDL-strength lock (Share or stronger)
+    -- on any relation in schema public, or (d) any lock on one of this release's functions. App reads and
+    -- DML (AccessShare, RowShare, RowExclusive) do not match, and neither does ShareUpdateExclusive, which
+    -- autovacuum and ANALYZE hold. Same text in every packet file.
     SELECT string_agg(DISTINCT coalesce('pid ' || l.pid, 'prepared') || ' ' || l.mode
                       || CASE WHEN l.granted THEN '' ELSE ' (waiting)' END || ' on '
-                      || CASE WHEN l.locktype = 'object' THEN 'schema public' ELSE 'the migration ledger' END, '; ')
+                      || CASE WHEN l.locktype = 'relation' THEN 'relation ' || l.relation::regclass::text
+                              WHEN l.classid = 'pg_namespace'::regclass THEN 'schema ' || coalesce((SELECT n.nspname FROM pg_namespace n WHERE n.oid = l.objid), l.objid::text)
+                              ELSE 'function ' || coalesce((SELECT p.oid::regprocedure::text FROM pg_proc p WHERE p.oid = l.objid), l.objid::text) END, '; ')
       FROM pg_locks l
      WHERE l.pid IS DISTINCT FROM pg_backend_pid()
        AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
        AND ((l.locktype = 'relation' AND l.relation = 'supabase_migrations.schema_migrations'::regclass)
-         OR (l.locktype = 'object' AND l.classid = 'pg_namespace'::regclass AND l.objid = 'public'::regnamespace))
+         OR (l.locktype = 'relation' AND l.mode IN ('ShareLock', 'ShareRowExclusiveLock', 'ExclusiveLock', 'AccessExclusiveLock')
+             AND l.relation IN (SELECT c.oid FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace))
+         OR (l.locktype = 'object' AND l.classid = 'pg_namespace'::regclass
+             AND l.objid IN (SELECT n.oid FROM pg_namespace n WHERE n.nspname IN ('public', 'players_private')))
+         OR (l.locktype = 'object' AND l.classid = 'pg_proc'::regclass
+             AND l.objid IN (SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                              WHERE (n.nspname = 'public' AND p.proname IN ('get_players_overview', 'get_players_overview_export'))
+                                 OR n.nspname = 'players_private')))
     -- IN-FLIGHT PROBE END
   );
   IF v_busy IS NOT NULL THEN
@@ -106,25 +132,41 @@ SELECT '20261208100000', 'players_overview_current_training'
 -- 6. Verify the end state before commit; any mismatch raises and rolls back everything above.
 DO $ptf_apply_verify$
 DECLARE
-  c_ptf      CONSTANT text := '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900';
-  c_body_ptf CONSTANT text := '22695d9ce5ccd20617d98af9123712701d55c8198ee0d607bd08a62fd503b8b2';
-  c_args     CONSTANT text := 'p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer';
-  c_acl      CONSTANT text := 'authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres';
+  c_ptf       CONSTANT text := '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900';
+  c_state_ptf CONSTANT text := '8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b';
   v_ledger text := (SELECT encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex')
                       FROM supabase_migrations.schema_migrations);
-  v_args text;
-  v_body text;
-  v_acl  text;
+  v_state  text := (
+    -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
+      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
+               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+               coalesce(array_to_string(p.proconfig, ';'), ''),
+               CASE WHEN p.proacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,
+               encode(sha256(convert_to(p.prosrc, 'UTF8')), 'hex')) AS d
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        JOIN pg_language l ON l.oid = p.prolang
+       WHERE (n.nspname = 'public' AND p.proname IN ('get_players_overview', 'get_players_overview_export'))
+          OR n.nspname = 'players_private'
+      UNION ALL
+      SELECT format('schema %s owner=%s acl=%s relations=%s types=%s', n.nspname, pg_get_userbyid(n.nspowner),
+               CASE WHEN n.nspacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(n.nspacl::text[]) a) END,
+               (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid),
+               (SELECT count(*) FROM pg_type t WHERE t.typnamespace = n.oid))
+        FROM pg_namespace n WHERE n.nspname = 'players_private'
+    ) s
+    -- STATE DESCRIPTOR END
+  );
+  v_digest text := encode(sha256(convert_to(v_state, 'UTF8')), 'hex');
 BEGIN
-  SELECT pg_get_function_identity_arguments(p.oid),
-         encode(sha256(convert_to(p.prosrc, 'UTF8')), 'hex'),
-         (SELECT string_agg(a, ',' ORDER BY a COLLATE "C") FROM unnest(coalesce(p.proacl, '{}'::aclitem[])::text[]) a)
-    INTO v_args, v_body, v_acl
-    FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'get_players_overview';
-  IF v_ledger IS DISTINCT FROM c_ptf OR v_body IS DISTINCT FROM c_body_ptf
-     OR v_args IS DISTINCT FROM c_args OR v_acl IS DISTINCT FROM c_acl THEN
-    RAISE EXCEPTION 'ptf apply verify: end state wrong (ledger %, body %, args %, acl %); rolled back', v_ledger, v_body, v_args, v_acl;
+  IF v_ledger IS DISTINCT FROM c_ptf OR v_digest IS DISTINCT FROM c_state_ptf THEN
+    RAISE EXCEPTION 'ptf apply verify: end state wrong (ledger %, state %); rolled back', v_ledger, v_digest
+      USING DETAIL = v_state;
   END IF;
-  RAISE NOTICE 'ptf apply: get_players_overview body %, ledger 621 to 20261208100000, privileges unchanged', c_body_ptf;
+  RAISE NOTICE 'ptf apply: object state %, ledger 621 to 20261208100000', c_state_ptf;
 END
 $ptf_apply_verify$;

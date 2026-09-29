@@ -1,16 +1,21 @@
 // @vitest-environment node
 // PTF release packet (docs/deployment/ptf-release) on a REAL PostgreSQL server, driven by real psql.
 //
-// Harness: the function's production shape — Supabase's roles and default function privileges, the
-// overview's input tables (same shape as playersOverviewCurrentTraining.pglite.test.ts), the canonical
-// migration chain for get_players_overview, and a ledger holding exactly the 620 versions production
-// records after the ACL correction (the repository's versions minus PTF, plus the six F0 versions and
-// the ACL version). F0/ACL touch neither this function nor the tables it reads (release-prep record).
+// Harness: the functions' production shape — Supabase's roles and default privileges (schema-scoped AND
+// global, the worst case for a new schema and new functions), the overview's input tables (same shape as
+// playersOverviewCurrentTraining.pglite.test.ts), the canonical migration chain for get_players_overview,
+// and a ledger holding exactly the 620 versions production records after the ACL correction (the
+// repository's versions minus PTF, plus the six F0 versions and the ACL version). F0/ACL touch neither
+// these functions nor the tables they read (release-prep record).
 //
-// Proves: the harness reproduces the production baseline receipt; every apply guard refuses and changes
-// nothing; apply does not wait on open reader transactions; apply → exact end state; re-run is a no-op;
-// the post-check passes only after apply and the refusal probe refuses; the composed function behaves;
-// forward recovery restores the canonical body exactly; and a representative performance observation.
+// Proves: the harness reproduces the production baseline receipt and the BASE object state; every apply
+// guard refuses and changes nothing (ledger, sysid, every object attribute, stray objects, DDL in flight);
+// apply does not wait on app reads, DML or autovacuum-strength locks; apply → the exact PTF object state;
+// the post-check passes only after apply and both refusal probes refuse; no client role reaches the private
+// authority and the export runs for authenticated only; the composed functions behave (A1 + E1); ONE
+// export call reads ONE snapshot even when another session commits mid-call (with VOLATILE controls that
+// show the proof discriminates); re-run is a no-op; forward recovery returns the exact BASE state; and a
+// representative performance observation. PTF_MEASURE=1 adds the decision packet's §3 20,000-person run.
 //
 // Server: embedded PostgreSQL by default; PTF_PGBIN=<dir with initdb, pg_ctl, postgres> runs the same
 // suite on other binaries (production is 17.6). psql: PTF_PSQL, else `psql` on PATH.
@@ -19,7 +24,7 @@ import EmbeddedPostgres from 'embedded-postgres';
 import pg from 'pg';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -29,17 +34,71 @@ const HOST = '127.0.0.1';
 const PSQL = process.env.PTF_PSQL ?? 'psql';
 const PGBIN = process.env.PTF_PGBIN;
 const PACKET = join(process.cwd(), 'docs', 'deployment', 'ptf-release');
+const MIGRATION = '20261208100000_players_overview_current_training.sql';
 const MIG = (f: string) => readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8');
+const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
 
 const C_BASE = '98015eddaccd8ef67297c172db67495f5ff11a881ea28e1f024fb82741c3bc72';
 const C_PTF = '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900';
 const C_RESTORED = 'b312bf6a1dcc0fbc35c9f2c24e7f947daaf1d312b422534003deeb8ed90b302e';
 const BODY_LIVE = '0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4';
-const BODY_PTF = '22695d9ce5ccd20617d98af9123712701d55c8198ee0d607bd08a62fd503b8b2';
 const PROD_ACL = '{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}';
 const ARGS = 'p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer';
 const F0_ACL_VERSIONS = ['20261204100000', '20261204110000', '20261205100000', '20261206100000',
   '20261206110000', '20261206120000', '20261207100000'];
+
+// ── The expected object states, built from the receipt's values and the reviewed migration's bodies ──
+const LIST_RESULT = 'TABLE(player_key text, player_type text, guest_player_id uuid, profile_id uuid, person_id uuid, '
+  + 'full_name text, email text, phone text, billing_business_name text, billing_address text, billing_btw_number text, '
+  + 'skill_rating numeric, rating_system text, notes text, source text, birth_date date, has_trained boolean, '
+  + 'created_at timestamp with time zone, owner_trainer_id uuid, metadata_id uuid, tag_ids uuid[], academy_notes text, '
+  + 'trainer_ids uuid[], location_ids uuid[], location_names text[], has_active_cyclus boolean, has_overdue_payment boolean, '
+  + 'email_undeliverable boolean, total_count bigint)';
+const LIST_ACL = 'authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres';
+/** The stored body (prosrc) of `name` in a migration text: everything between `AS $$` and the closing `$$;`. */
+function bodyOf(src: string, name: string): string {
+  const at = src.indexOf(`CREATE OR REPLACE FUNCTION ${name}(`);
+  if (at < 0) throw new Error(`no ${name} in the migration`);
+  const open = src.indexOf('AS $$', at) + 'AS $$'.length;
+  return src.slice(open, src.indexOf('\n$$;', open) + 1);
+}
+const fnLine = (sig: string, result: string, secdef: 't' | 'f', config: string, acl: string, body: string) =>
+  `function ${sig} returns ${result} owner=postgres language=plpgsql volatility=s security_definer=${secdef} `
+  + `config=${config} acl=${acl} body_sha256=${body}`;
+const PTF_SRC = MIG(MIGRATION);
+const PINNED = 'search_path=pg_catalog, pg_temp';
+const BODY_AUTHORITY = sha256(bodyOf(PTF_SRC, 'players_private.players_overview_rows'));
+const BODY_LIST = sha256(bodyOf(PTF_SRC, 'public.get_players_overview'));
+const BODY_EXPORT = sha256(bodyOf(PTF_SRC, 'public.get_players_overview_export'));
+const BASE_STATE = fnLine(`public.get_players_overview(${ARGS})`, LIST_RESULT, 't', 'search_path=public', LIST_ACL, BODY_LIVE);
+const PTF_STATE = [
+  fnLine(`players_private.players_overview_rows(${ARGS}, p_enrich boolean)`, LIST_RESULT.replace(/\)$/, ', sort_ord bigint)'),
+    'f', PINNED, 'postgres=X/postgres', BODY_AUTHORITY),
+  fnLine(`public.get_players_overview(${ARGS})`, LIST_RESULT, 't', PINNED, LIST_ACL, BODY_LIST),
+  fnLine('public.get_players_overview_export(p_academy uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text)',
+    'TABLE(total bigint, rows jsonb)', 't', PINNED, 'authenticated=X/postgres,postgres=X/postgres', BODY_EXPORT),
+  'schema players_private owner=postgres acl=postgres=UC/postgres relations=0 types=0',
+].join('\n');
+const C_STATE_BASE = 'e6f1ccc592be54132684c36b8bf77611cbe686c4f4115c94d621f196aac32c91';
+const C_STATE_PTF = '8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b';
+const AUTHORITY_SIG = 'players_private.players_overview_rows(text, uuid, text, jsonb, text, text, integer, integer, boolean)';
+const LIST_SIG = 'public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer)';
+const EXPORT_SIG = 'public.get_players_overview_export(uuid, text, jsonb, text, text)';
+
+/** A marked block of a packet file (the STATE DESCRIPTOR or the IN-FLIGHT PROBE), exactly as written. */
+function blocks(file: string, marker: string): string[] {
+  const text = readFileSync(join(PACKET, file), 'utf8');
+  const out: string[] = [];
+  let at = 0;
+  for (;;) {
+    const b = text.indexOf(`-- ${marker} BEGIN`, at);
+    if (b < 0) return out;
+    const e = text.indexOf(`-- ${marker} END`, b);
+    out.push(text.slice(b, e));
+    at = e;
+  }
+}
+const DESCRIPTOR_SQL = blocks('apply.sql', 'STATE DESCRIPTOR')[0];
 
 // fixture ids (small behaviour fixture)
 const A = 'a1000000-0000-0000-0000-00000000000a';
@@ -52,6 +111,9 @@ const CYC_ON = 'cc100000-0000-0000-0000-0000000000c1';
 const CYC_FU = 'cc100000-0000-0000-0000-0000000000c2';
 const G_ON = '9a100000-0000-0000-0000-000000000001';
 const G_FU = '9a100000-0000-0000-0000-000000000002';
+const G_T = '9a100000-0000-0000-0000-000000000003';   // TS's own guest: no academy, no A booking
+const P_B = '9b100000-0000-0000-0000-000000000004';   // a profile booked only on B's session of TS
+const S_B = '5e100000-0000-0000-0000-000000000004';
 
 let stopServer: () => Promise<void> = async () => {};
 let db: pg.Client;
@@ -64,6 +126,7 @@ async function newClient(): Promise<pg.Client> {
   return c;
 }
 let sysid = '';
+let canonicalAList: string[] = [];
 
 async function startServer(): Promise<void> {
   const dir = mkdtempSync(join(tmpdir(), 'ptf-release-rp-'));
@@ -102,15 +165,15 @@ const apply = (vars?: Record<string, string>) => psql('apply.sql', { single: tru
 const recovery = () => psql('recovery.sql', { single: true, vars: { expected_sysid: sysid } });
 
 async function state() {
-  const { rows } = await db.query(`
-    SELECT (SELECT count(*)::int FROM supabase_migrations.schema_migrations) AS ledger_rows,
-           encode(sha256(convert_to(prosrc, 'UTF8')), 'hex') AS body, proacl::text AS acl
-      FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND proname = 'get_players_overview'`);
-  return rows[0] as { ledger_rows: number; body: string; acl: string };
+  const { rows } = await db.query(`SELECT (SELECT count(*)::int FROM supabase_migrations.schema_migrations) AS ledger_rows,
+    (${DESCRIPTOR_SQL}) AS descriptor`);
+  const { ledger_rows, descriptor } = rows[0] as { ledger_rows: number; descriptor: string };
+  return { ledger_rows, digest: sha256(descriptor), descriptor };
 }
-async function asUser(uid: string, sql: string, params: unknown[] = []) {
+async function asUser(uid: string, sql: string, params: unknown[] = [], role?: string) {
   await db.query('BEGIN');
   try {
+    if (role) await db.query(`SET LOCAL ROLE ${role}`);
     await db.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [uid]);
     return (await db.query(sql, params)).rows;
   } finally {
@@ -120,6 +183,12 @@ async function asUser(uid: string, sql: string, params: unknown[] = []) {
 const overview = (uid: string, academy: string, filters: object, limit = 50) =>
   asUser(uid, `SELECT full_name FROM public.get_players_overview('academy', $1, NULL, $2::jsonb, 'name', 'asc', $3, 0)`,
     [academy, JSON.stringify(filters), limit]);
+const exportCall = async (uid: string, academy: string, filters: object = {}) => {
+  const [row] = await asUser(uid, `SELECT total, rows FROM public.get_players_overview_export($1, NULL, $2::jsonb, 'name', 'asc')`,
+    [academy, JSON.stringify(filters)]);
+  return { total: Number(row.total), rows: row.rows as Array<{ person_id: string; full_name: string; email: string; phone: string }> };
+};
+const names = (rows: Array<{ full_name: string }>) => rows.map((x) => x.full_name);
 
 beforeAll(async () => {
   await startServer();
@@ -127,14 +196,16 @@ beforeAll(async () => {
   await db.connect();
   sysid = (await db.query('SELECT system_identifier::text AS s FROM pg_control_system()')).rows[0].s;
 
-  // Supabase roles, default function privileges and auth.uid() (claims-based, as the platform's).
-  await db.query(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;`);
+  // Supabase roles, schema-scoped default function privileges (as the platform's) and auth.uid()
+  // (claims-based, as the platform's). Global defaults follow the canonical chain below.
+  await db.query(`CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS; CREATE ROLE ptf_other;`);
   await db.query(`ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;`);
   await db.query(`
     CREATE SCHEMA auth;
     CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $fn$
       SELECT coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
                       (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'))::uuid $fn$;
+    GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
     CREATE SCHEMA supabase_migrations;
     CREATE TABLE supabase_migrations.schema_migrations (version text PRIMARY KEY, statements text[], name text);`);
 
@@ -206,6 +277,10 @@ beforeAll(async () => {
     '20261006120000_readers_canonical_is_suppressed.sql']) {
     await db.query(MIG(f));
   }
+  // The worst case for what PTF CREATES: global defaults that would hand every new schema and function
+  // to the client roles. The migration's explicit REVOKEs must win against them.
+  await db.query(`ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
+    ALTER DEFAULT PRIVILEGES GRANT USAGE ON SCHEMAS TO anon, authenticated, service_role;`);
 
   // The 620-version ledger: the repository's versions except PTF, plus the six F0 and the ACL version.
   const repo = readdirSync(join(process.cwd(), 'supabase', 'migrations'))
@@ -216,7 +291,7 @@ beforeAll(async () => {
   expect(createHash('sha256').update(sorted.join('\n')).digest('hex')).toBe(C_BASE);
   await db.query('INSERT INTO supabase_migrations.schema_migrations (version) SELECT unnest($1::text[])', [versions]);
 
-  // Small behaviour fixture: academy A (manager MGR_A), academy B, a trainer at both.
+  // Small behaviour fixture: academy A (manager MGR_A), academy B, a trainer at both with its own practice.
   await db.query(`
     INSERT INTO public.academy_profiles (id) VALUES ('${A}'), ('${B}');
     INSERT INTO public.academy_managers VALUES ('${A}', '${MGR_A}'), ('${B}', '${MGR_B}');
@@ -226,12 +301,16 @@ beforeAll(async () => {
     INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, location_id, cyclus_id, start_time, end_time) VALUES
       (gen_random_uuid(), '${TS}', '${A}', '${LOC}', '${CYC_ON}', now() - interval '7 days', now() - interval '7 days' + interval '1 hour'),
       ('5e100000-0000-0000-0000-000000000002', '${TS}', '${A}', '${LOC}', '${CYC_ON}', now() + interval '1 day', now() + interval '1 day 1 hour'),
-      ('5e100000-0000-0000-0000-000000000003', '${TS}', '${A}', '${LOC}', '${CYC_FU}', now() + interval '3 days', now() + interval '3 days 1 hour');
-    INSERT INTO public.guest_players (id, academy_profile_id, full_name, email) VALUES
-      ('${G_ON}', '${A}', 'Ongoing Guest', 'on@x.nl'), ('${G_FU}', '${A}', 'Future Guest', 'fu@x.nl');
-    INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
-      ('5e100000-0000-0000-0000-000000000002', '${G_ON}', 'confirmed'),
-      ('5e100000-0000-0000-0000-000000000003', '${G_FU}', 'confirmed');`);
+      ('5e100000-0000-0000-0000-000000000003', '${TS}', '${A}', '${LOC}', '${CYC_FU}', now() + interval '3 days', now() + interval '3 days 1 hour'),
+      ('${S_B}', '${TS}', '${B}', NULL, NULL, now() - interval '2 days', now() - interval '2 days' + interval '1 hour');
+    INSERT INTO public.guest_players (id, academy_profile_id, trainer_id, full_name, email) VALUES
+      ('${G_ON}', '${A}', NULL, 'Ongoing Guest', 'on@x.nl'), ('${G_FU}', '${A}', NULL, 'Future Guest', 'fu@x.nl'),
+      ('${G_T}', NULL, '${TS}', 'Trainer Own Guest', 'own@x.nl');
+    INSERT INTO public.profiles (id, full_name, email) VALUES ('${P_B}', 'B Slot Profile', 'bslot@x.nl');
+    INSERT INTO public.bookings (slot_id, guest_player_id, player_id, status) VALUES
+      ('5e100000-0000-0000-0000-000000000002', '${G_ON}', NULL, 'confirmed'),
+      ('5e100000-0000-0000-0000-000000000003', '${G_FU}', NULL, 'confirmed'),
+      ('${S_B}', NULL, '${P_B}', 'completed');`);
 }, 180_000);
 
 afterAll(async () => {
@@ -241,25 +320,35 @@ afterAll(async () => {
 });
 
 describe('PTF release packet on real PostgreSQL', () => {
-  it('the harness reproduces the production baseline receipt exactly (preflight.sql)', async () => {
+  it('the harness reproduces the production baseline receipt exactly, and the BASE object state', async () => {
     const r = psql('preflight.sql');
     expect(r.status, r.err).toBe(0);
     expect(r.rec).toMatchObject({
       ledger_rows: '620', ledger_head: '20261207100000', ledger_is_reviewed_plus_acl: 't', versions_after_acl: '',
-      fn_count: '1', fn_identity_args: ARGS, fn_language: 'plpgsql', fn_volatility: 's', fn_security_definer: 'true',
-      fn_config: 'search_path=public', fn_owner: 'postgres', fn_acl: PROD_ACL, fn_body_sha256: BODY_LIVE, fn_body_bytes: '29903',
+      fn_count: '1', fn_identity_args: ARGS, fn_result: LIST_RESULT, fn_language: 'plpgsql', fn_volatility: 's',
+      fn_security_definer: 'true', fn_config: 'search_path=public', fn_owner: 'postgres', fn_acl: PROD_ACL,
+      fn_body_sha256: BODY_LIVE, fn_body_bytes: '29903',
     });
+    const s = await state();
+    expect(s.descriptor).toBe(BASE_STATE);
+    expect(s.digest).toBe(C_STATE_BASE);
+    expect(sha256(BASE_STATE)).toBe(C_STATE_BASE);
+    expect(sha256(PTF_STATE)).toBe(C_STATE_PTF);
+    // the canonical universe: the shared trainer's other sessions and own guests leak into A (what A1 closes)
+    canonicalAList = names(await overview(MGR_A, A, {}));
+    expect(canonicalAList).toEqual(['B Slot Profile', 'Future Guest', 'Ongoing Guest', 'Trainer Own Guest']);
   });
 
   it('the post-check fails before apply', () => {
     const r = psql('postcheck.sql');
     expect(r.status, r.err).toBe(0);
-    expect(r.rec).toMatchObject({ ledger_ok: 'f', fn_body_ok: 'f' });
+    expect(r.rec).toMatchObject({ ledger_ok: 'f', state_ok: 'f', client_roles_ok: 'f' });
   });
 
   it('every guard refuses and changes nothing', async () => {
     const before = await state();
     const refused = (r: Psql, re: RegExp) => { expect(r.status).not.toBe(0); expect(r.err).toMatch(re); };
+    const STATE = /ptf apply guard: the object state is not the one this ledger expects/;
 
     refused(apply({}), /syntax error|expected_sysid/);                                  // no -v expected_sysid
     refused(apply({ expected_sysid: '123' }), /ptf apply guard: system identifier/);
@@ -268,14 +357,53 @@ describe('PTF release packet on real PostgreSQL', () => {
     refused(apply(), /ptf apply guard: the ledger is neither/);
     await db.query(`DELETE FROM supabase_migrations.schema_migrations WHERE version = '20261209000000'`);
 
-    await db.query('GRANT EXECUTE ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) TO anon');
-    refused(apply(), /ptf apply guard: get_players_overview privileges drifted/);
-    await db.query('REVOKE EXECUTE ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) FROM anon');
+    // P2-1: every attribute of the live function is part of the state — privileges, owner, config,
+    // volatility, SECURITY DEFINER — each drift refuses on its own.
+    for (const [drift, undo] of [
+      [`GRANT EXECUTE ON FUNCTION ${LIST_SIG} TO anon`, `REVOKE EXECUTE ON FUNCTION ${LIST_SIG} FROM anon`],
+      [`ALTER FUNCTION ${LIST_SIG} OWNER TO ptf_other`, `ALTER FUNCTION ${LIST_SIG} OWNER TO postgres`],
+      [`ALTER FUNCTION ${LIST_SIG} SET search_path = public, pg_temp`, `ALTER FUNCTION ${LIST_SIG} SET search_path = public`],
+      [`ALTER FUNCTION ${LIST_SIG} VOLATILE`, `ALTER FUNCTION ${LIST_SIG} STABLE`],
+      [`ALTER FUNCTION ${LIST_SIG} SECURITY INVOKER`, `ALTER FUNCTION ${LIST_SIG} SECURITY DEFINER`],
+      // stray objects this release would otherwise adopt
+      ['CREATE SCHEMA players_private', 'DROP SCHEMA players_private'],
+      [`CREATE FUNCTION public.get_players_overview_export(uuid) RETURNS int LANGUAGE sql AS 'SELECT 1'`,
+        'DROP FUNCTION public.get_players_overview_export(uuid)'],
+    ]) {
+      await db.query(drift);
+      refused(apply(), STATE);
+      await db.query(undo);
+      expect(await state(), drift).toEqual(before);
+    }
 
-    // PTF body with the pre-PTF ledger (the migration run on its own): body and ledger disagree.
-    expect(psql('', { path: join(process.cwd(), 'supabase', 'migrations', '20261208100000_players_overview_current_training.sql') }).status).toBe(0);
-    refused(apply(), /ptf apply guard: ledger and function body disagree/);
+    // The PTF migration run on its own (outside apply): PTF objects with the pre-PTF ledger.
+    expect(psql('', { path: join(process.cwd(), 'supabase', 'migrations', MIGRATION) }).status).toBe(0);
+    refused(apply(), STATE);
     expect(psql('restore_canonical_get_players_overview.sql').status).toBe(0);
+    await db.query(`DROP FUNCTION ${EXPORT_SIG}; DROP FUNCTION ${AUTHORITY_SIG}; DROP SCHEMA players_private;`);
+
+    // P2-2: DDL in flight in another session — a DDL-strength table lock, an uncommitted ALTER TABLE,
+    // a lock on the function itself, and a relation being created in schema public (the schema lock
+    // that relation creation takes; creating a FUNCTION takes none) — each refuses.
+    const busy = /ptf apply guard: other migration or DDL work is in flight/;
+    for (const [sql, what] of [
+      ['LOCK TABLE public.bookings IN SHARE MODE', /ShareLock on relation (public\.)?bookings/],
+      ['ALTER TABLE public.guest_players ADD COLUMN ptf_probe int', /AccessExclusiveLock on relation (public\.)?guest_players/],
+      [`DROP FUNCTION ${LIST_SIG}`, /AccessExclusiveLock on function (public\.)?get_players_overview\(/],
+      ['CREATE TABLE public.ptf_probe (x int)', /AccessShareLock on schema public/],
+    ] as const) {
+      const other = await newClient();
+      try {
+        await other.query('BEGIN');
+        await other.query(sql);
+        const r = apply();
+        refused(r, busy);
+        expect(r.err).toMatch(what);
+      } finally {
+        await other.query('ROLLBACK');
+        await other.end();
+      }
+    }
 
     // another migration run holds the ledger: apply's lock waits 5 s, then refuses
     const other = await newClient();
@@ -284,26 +412,42 @@ describe('PTF release packet on real PostgreSQL', () => {
     await other.query('ROLLBACK');
     await other.end();
 
-    expect(await state()).toEqual(before);
-    expect(before).toMatchObject({ ledger_rows: 620, body: BODY_LIVE, acl: PROD_ACL });
-  }, 60_000);
+    // recovery refuses a database that never received PTF
+    const rec = recovery();
+    expect(rec.status).not.toBe(0);
+    expect(rec.err).toMatch(/ptf recovery guard: the ledger is neither/);
 
-  it('apply does not wait on open reader transactions, and commits the exact end state', async () => {
+    expect(await state()).toEqual(before);
+    expect(before).toMatchObject({ ledger_rows: 620, digest: C_STATE_BASE });
+  }, 120_000);
+
+  it('apply does not wait on app reads, DML or autovacuum-strength locks, and commits the exact PTF state', async () => {
     const reader = await newClient();
     await reader.query('BEGIN');
     await reader.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [MGR_A]);
     await reader.query(`SELECT count(*) FROM public.get_players_overview('academy', $1, NULL, '{}'::jsonb, 'name', 'asc', 50, 0)`, [A]);
+    const writer = await newClient();          // uncommitted DML: RowExclusive on bookings
+    await writer.query('BEGIN');
+    await writer.query(`INSERT INTO public.bookings (slot_id, status) VALUES (gen_random_uuid(), 'pending')`);
+    const vacuumish = await newClient();       // what autovacuum / ANALYZE hold: ShareUpdateExclusive
+    await vacuumish.query('BEGIN; LOCK TABLE public.guest_players IN SHARE UPDATE EXCLUSIVE MODE');
 
-    const t0 = Date.now();
-    const r = apply();
-    const elapsed = Date.now() - t0;
+    let r: Psql;
+    let elapsed: number;
+    try {
+      const t0 = Date.now();
+      r = apply();
+      elapsed = Date.now() - t0;
+    } finally {
+      await writer.query('ROLLBACK');
+      await vacuumish.query('ROLLBACK');
+    }
     expect(r.status, r.err).toBe(0);
     expect(r.out).toContain('INSERT 0 1');
-    expect(r.err).toContain('ptf apply: get_players_overview body');
-    expect(elapsed).toBeLessThan(5000); // not blocked by the idle reader transaction
+    expect(r.err).toContain(`ptf apply: object state ${C_STATE_PTF}`);
+    expect(elapsed).toBeLessThan(5000); // not blocked by any of them
 
-    // The reader's already-open transaction keeps working without error (it may still run the old body
-    // until it processes the catalogue invalidation); a NEW transaction runs the new body.
+    // The reader's already-open transaction keeps working without error; a NEW transaction runs the new body.
     const during = await reader.query(`SELECT full_name FROM public.get_players_overview('academy', $1, NULL, '{"current_training": true}'::jsonb, 'name', 'asc', 50, 0)`, [A]);
     expect(during.rows.length).toBeGreaterThan(0);
     await reader.query('COMMIT');
@@ -312,33 +456,109 @@ describe('PTF release packet on real PostgreSQL', () => {
     const fresh = await reader.query(`SELECT full_name FROM public.get_players_overview('academy', $1, NULL, '{"current_training": true}'::jsonb, 'name', 'asc', 50, 0)`, [A]);
     expect(fresh.rows.map((x) => x.full_name)).toEqual(['Ongoing Guest']);
     await reader.query('COMMIT');
-    await reader.end();
+    for (const c of [reader, writer, vacuumish]) await c.end();
 
-    expect(await state()).toEqual({ ledger_rows: 621, body: BODY_PTF, acl: PROD_ACL });
+    const s = await state();
+    expect(s.descriptor).toBe(PTF_STATE);
+    expect(s).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
   }, 60_000);
 
-  it('the post-check passes after apply, and its probe refuses a foreign caller', () => {
+  it('the post-check passes after apply, and both refusal probes refuse a foreign caller', () => {
     const r = psql('postcheck.sql');
     expect(r.status, r.err).toBe(0);
     expect(r.rec).toMatchObject({
-      ledger_rows: '621', ledger_head: '20261208100000', ledger_ok: 't', fn_single_ok: 't', fn_signature_ok: 't',
-      fn_attributes_ok: 't', fn_privileges_ok: 't', fn_body_ok: 't', fn_body_sha256: BODY_PTF, fn_body_bytes: '33379',
-      fn_acl: PROD_ACL, foreign_access: 'refused: not authorized', prepared_xacts: '0', in_flight: '',
+      ledger_rows: '621', ledger_head: '20261208100000', ledger_ok: 't', state_ok: 't', state_sha256: C_STATE_PTF,
+      client_roles_ok: 't', foreign_access: 'refused: not authorized', foreign_export: 'refused: not authorized',
+      prepared_xacts: '0', in_flight: '',
     });
+    for (const line of PTF_STATE.split('\n')) expect(r.out).toContain(line);
   });
 
-  it('the composed function behaves (option A, tenant refusal) on real PostgreSQL', async () => {
-    expect((await overview(MGR_A, A, { current_training: true })).map((x) => x.full_name)).toEqual(['Ongoing Guest']);
-    expect((await overview(MGR_A, A, { current_training: false })).map((x) => x.full_name)).toEqual(['Future Guest']);
-    expect((await overview(MGR_A, A, { training_location_id: LOC })).map((x) => x.full_name)).toEqual(['Ongoing Guest']);
-    await expect(overview(MGR_B, A, { current_training: true })).rejects.toThrow(/not authorized for academy/);
+  it('no client role reaches the private authority; the export runs for authenticated only', async () => {
+    const code = (p: Promise<unknown>) => p.then(() => 'ok', (e: { code?: string; message?: string }) => `${e.code} ${e.message}`);
+    const authority = `SELECT * FROM ${AUTHORITY_SIG.replace(/\(.*/, '')}('academy', '${A}', NULL, '{}'::jsonb, 'name', 'asc', 10, 0, true)`;
+    for (const role of ['anon', 'authenticated', 'service_role']) {
+      expect(await code(asUser(MGR_A, authority, [], role))).toMatch(/^42501 permission denied for schema players_private/);
+    }
+    const exp = `SELECT total FROM public.get_players_overview_export('${A}', NULL, '{}'::jsonb, 'name', 'asc')`;
+    expect(await code(asUser(MGR_A, exp, [], 'authenticated'))).toBe('ok');
+    for (const role of ['anon', 'service_role']) {
+      expect(await code(asUser(MGR_A, exp, [], role))).toMatch(/^42501 permission denied for function get_players_overview_export/);
+    }
+    const list = `SELECT count(*) FROM public.get_players_overview('academy', '${A}', NULL, '{}'::jsonb, 'name', 'asc', 50, 0)`;
+    expect(await code(asUser(MGR_A, list, [], 'authenticated'))).toBe('ok'); // the definer reaches the authority
+    expect(await code(asUser(MGR_A, list, [], 'anon'))).toMatch(/^42501 permission denied for function get_players_overview/);
   });
+
+  it('the composed functions behave on real PostgreSQL (option A, A1, E1, tenant refusal)', async () => {
+    expect(names(await overview(MGR_A, A, { current_training: true }))).toEqual(['Ongoing Guest']);
+    expect(names(await overview(MGR_A, A, { current_training: false }))).toEqual(['Future Guest']);
+    expect(names(await overview(MGR_A, A, { training_location_id: LOC }))).toEqual(['Ongoing Guest']);
+    // A1: the shared trainer's B session and own guest no longer reach A
+    expect(names(await overview(MGR_A, A, {}))).toEqual(['Future Guest', 'Ongoing Guest']);
+    expect(names(await overview(MGR_B, B, {}))).toEqual(['B Slot Profile']);
+    // E1: one call, the list's rows and order
+    const exp = await exportCall(MGR_A, A);
+    expect(exp.total).toBe(2);
+    expect(exp.rows.map((x) => x.full_name)).toEqual(['Future Guest', 'Ongoing Guest']);
+    await expect(overview(MGR_B, A, { current_training: true })).rejects.toThrow(/not authorized for academy/);
+    await expect(exportCall(MGR_B, A)).rejects.toThrow(/not authorized for academy/);
+  });
+
+  it('ONE export call reads ONE snapshot: a commit made mid-call is invisible to it (STABLE chain)', async () => {
+    // The caller's statement takes its snapshot, then waits on a table the chain reads LATER (a lock held by
+    // a second session, which meanwhile adds an A guest and commits). A STABLE chain keeps the statement's
+    // snapshot, so the call cannot see that guest; the next call does.
+    const midCall = async (blockTable: string, guestName: string) => {
+      const caller = await newClient();
+      const blocker = await newClient();
+      await caller.query(`SELECT set_config('request.jwt.claim.sub', $1, false)`, [MGR_A]);
+      const pid = (await caller.query('SELECT pg_backend_pid() AS p')).rows[0].p as number;
+      await blocker.query(`SET lock_timeout = '10s'`); // a leftover session lock fails fast instead of hanging
+      await blocker.query('BEGIN');
+      await blocker.query(`INSERT INTO public.guest_players (id, academy_profile_id, full_name) VALUES (gen_random_uuid(), $1, $2)`, [A, guestName]);
+      await blocker.query(`LOCK TABLE ${blockTable} IN ACCESS EXCLUSIVE MODE`);
+      const call = caller.query(`SELECT total, rows FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [A]);
+      const deadline = Date.now() + 10_000; // bounded: the call must reach the blocked table
+      for (;;) {
+        const { rows } = await db.query('SELECT count(*)::int AS n FROM pg_locks WHERE pid = $1 AND NOT granted', [pid]);
+        if (rows[0].n > 0) break;
+        if (Date.now() > deadline) throw new Error(`the export call never waited on ${blockTable}`);
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      await blocker.query('COMMIT');
+      const { total, rows } = (await call).rows[0] as { total: string; rows: Array<{ full_name: string }> };
+      const next = (await caller.query(`SELECT rows FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [A])).rows[0].rows as Array<{ full_name: string }>;
+      await caller.end();
+      await blocker.end();
+      return { total: Number(total), seen: names(rows), next: names(next) };
+    };
+
+    // Two wait points: the entry's own authorization read, and the authority's main statement.
+    for (const table of ['public.academy_managers', 'public.academy_player_metadata']) {
+      const guest = `Mid Call ${table}`;
+      const r = await midCall(table, guest);
+      expect(r.seen, table).not.toContain(guest);
+      expect(r.total, table).toBe(r.seen.length);
+      expect(r.next, table).toContain(guest);
+    }
+
+    // Controls — the proof discriminates: make one link VOLATILE and the same commit becomes visible.
+    await db.query(`ALTER FUNCTION ${AUTHORITY_SIG} VOLATILE`);
+    expect((await midCall('public.academy_player_metadata', 'Control Authority')).seen).toContain('Control Authority');
+    await db.query(`ALTER FUNCTION ${AUTHORITY_SIG} STABLE`);
+    await db.query(`ALTER FUNCTION ${EXPORT_SIG} VOLATILE`);
+    expect((await midCall('public.academy_managers', 'Control Export')).seen).toContain('Control Export');
+    await db.query(`ALTER FUNCTION ${EXPORT_SIG} STABLE`);
+    expect((await state()).digest).toBe(C_STATE_PTF);
+    await db.query(`DELETE FROM public.guest_players WHERE full_name LIKE 'Mid Call %' OR full_name LIKE 'Control %'`);
+  }, 120_000);
 
   it('a re-run of apply is a no-op', async () => {
     const r = apply();
     expect(r.status, r.err).toBe(0);
     expect(r.out).toContain('INSERT 0 0');
-    expect(await state()).toEqual({ ledger_rows: 621, body: BODY_PTF, acl: PROD_ACL });
+    expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
   });
 
   it('a representative performance observation stays within the budget', async () => {
@@ -372,37 +592,58 @@ describe('PTF release packet on real PostgreSQL', () => {
     const bookings = (await db.query(`SELECT count(*)::int AS n FROM public.bookings b JOIN public.availability_slots s ON s.id = b.slot_id WHERE s.academy_profile_id = '${P}'`)).rows[0].n;
     expect(bookings).toBeGreaterThan(15_000);
 
-    const time = async (filters: object, limit: number) => {
+    const median5 = async (fn: () => Promise<unknown>) => {
       const ms: number[] = [];
       for (let i = 0; i < 5; i++) {
         const t = performance.now();
-        await overview(MGR_P, P, filters, limit);
+        await fn();
         ms.push(performance.now() - t);
       }
-      return ms.sort((x, y) => x - y)[2]; // median of 5
+      return ms.sort((x, y) => x - y)[2];
     };
-    const unfiltered50 = await time({}, 50);
-    const training50 = await time({ current_training: true }, 50);
-    const training500 = await time({ current_training: true }, 500);
-    const club500 = await time({ training_location_id: LOC }, 500);
-    console.log(`PTF perf (median of 5, ms): unfiltered/50=${unfiltered50.toFixed(0)} training/50=${training50.toFixed(0)} `
-      + `training/500=${training500.toFixed(0)} club/500=${club500.toFixed(0)} bookings=${bookings}`);
-    // Budget: the training filters may cost at most 50% + 100 ms over the unfiltered page, and no export
-    // page (500 rows) may exceed 2 s on this fixture.
+    const unfiltered50 = await median5(() => overview(MGR_P, P, {}, 50));
+    const training50 = await median5(() => overview(MGR_P, P, { current_training: true }, 50));
+    const club50 = await median5(() => overview(MGR_P, P, { training_location_id: LOC }, 50));
+    const export2000 = await median5(() => exportCall(MGR_P, P));
+    const exported = await exportCall(MGR_P, P);
+    const perf = `PTF perf (median of 5, ms): unfiltered/50=${unfiltered50.toFixed(0)} training/50=${training50.toFixed(0)} `
+      + `club/50=${club50.toFixed(0)} export/${exported.total}=${export2000.toFixed(0)} bookings=${bookings}`;
+    console.log(perf);
+    if (process.env.PTF_PERF_OUT) writeFileSync(process.env.PTF_PERF_OUT, `${perf}\n`);
+    expect(exported.total).toBe(2000);
+    // Budget: a filtered page costs at most 50% + 100 ms over the unfiltered page; the whole-academy
+    // export of this fixture stays under 2 s.
     expect(training50).toBeLessThanOrEqual(unfiltered50 * 1.5 + 100);
-    expect(training500).toBeLessThanOrEqual(2000);
-    expect(club500).toBeLessThanOrEqual(2000);
+    expect(club50).toBeLessThanOrEqual(unfiltered50 * 1.5 + 100);
+    expect(export2000).toBeLessThanOrEqual(2000);
   }, 180_000);
 
-  it('forward recovery restores the canonical body exactly; a re-run is a no-op; apply then refuses', async () => {
+  it.runIf(process.env.PTF_MEASURE === '1')('§3: the representative 20,000-person measurement (heavy; PTF_MEASURE=1)', async () => {
+    await measureAt20k();
+  }, 1_800_000);
+
+  it('forward recovery returns the exact BASE state; a re-run is a no-op; apply then refuses', async () => {
+    // P2-1 on the recovery side: a drifted PTF object refuses recovery too
+    await db.query(`GRANT EXECUTE ON FUNCTION ${AUTHORITY_SIG} TO authenticated`);
+    const drifted = recovery();
+    expect(drifted.status).not.toBe(0);
+    expect(drifted.err).toMatch(/ptf recovery guard: the object state is not the one this ledger expects/);
+    await db.query(`REVOKE EXECUTE ON FUNCTION ${AUTHORITY_SIG} FROM authenticated`);
+    expect((await state()).digest).toBe(C_STATE_PTF);
+
     const r = recovery();
     expect(r.status, r.err).toBe(0);
     expect(r.out).toContain('INSERT 0 1');
-    expect(await state()).toEqual({ ledger_rows: 622, body: BODY_LIVE, acl: PROD_ACL });
+    expect(r.err).toContain(`ptf recovery: object state ${C_STATE_BASE}`);
+    const s = await state();
+    expect(s.descriptor).toBe(BASE_STATE);
+    expect(s).toMatchObject({ ledger_rows: 622, digest: C_STATE_BASE });
     const ledger = (await db.query(`SELECT encode(sha256(convert_to(string_agg(version, E'\\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex') AS d FROM supabase_migrations.schema_migrations`)).rows[0].d;
     expect(ledger).toBe(C_RESTORED);
-    // the restored body is the canonical one: the new keys are gone again, has_active_cyclus still works
-    await expect(overview(MGR_A, A, { current_training: true })).resolves.toHaveLength(2);
+    expect((await db.query(`SELECT to_regnamespace('players_private') AS n`)).rows[0].n).toBeNull();
+    // the canonical body is back: the training key is ignored again, and the trainer-union universe returns
+    const restored = names(await overview(MGR_A, A, { current_training: true }));
+    for (const n of canonicalAList) expect(restored).toContain(n);
 
     const again = recovery();
     expect(again.status, again.err).toBe(0);
@@ -411,15 +652,146 @@ describe('PTF release packet on real PostgreSQL', () => {
     const reapply = apply();
     expect(reapply.status).not.toBe(0);
     expect(reapply.err).toMatch(/ptf apply guard: the ledger is neither/);
-    expect(await state()).toEqual({ ledger_rows: 622, body: BODY_LIVE, acl: PROD_ACL });
+    expect(await state()).toMatchObject({ ledger_rows: 622, digest: C_STATE_BASE });
   }, 60_000);
 
-  it('the packet constants are the ones this suite derives', () => {
+  it('the packet constants are the ones this suite derives, and the shared blocks are identical', () => {
     for (const f of ['apply.sql', 'recovery.sql', 'postcheck.sql']) {
       const text = readFileSync(join(PACKET, f), 'utf8');
-      for (const c of [C_PTF, BODY_PTF]) expect(text).toContain(c);
+      expect(text).toContain(C_PTF);
+      expect(text).toContain(C_STATE_PTF);
+      const desc = blocks(f, 'STATE DESCRIPTOR');
+      expect(desc.length, f).toBeGreaterThanOrEqual(2);
+      for (const d of desc) expect(d.trim(), f).toBe(DESCRIPTOR_SQL.trim());
+      const probe = blocks(f, 'IN-FLIGHT PROBE');
+      expect(probe.length, f).toBeGreaterThanOrEqual(1);
+      for (const p of probe) expect(p.trim(), f).toBe(blocks('apply.sql', 'IN-FLIGHT PROBE')[0].trim());
     }
     expect(readFileSync(join(PACKET, 'apply.sql'), 'utf8')).toContain(C_BASE);
+    expect(readFileSync(join(PACKET, 'apply.sql'), 'utf8')).toContain(C_STATE_BASE);
     expect(readFileSync(join(PACKET, 'recovery.sql'), 'utf8')).toContain(C_RESTORED);
+    expect(readFileSync(join(PACKET, 'recovery.sql'), 'utf8')).toContain(C_STATE_BASE);
+    const readme = readFileSync(join(PACKET, 'README.md'), 'utf8');
+    for (const line of [...BASE_STATE.split('\n'), ...PTF_STATE.split('\n')]) expect(readme).toContain(line);
   });
 });
+
+/**
+ * Decision packet §3: one academy (Q) with 20,000 people (16,000 guests + 4,000 registered); 5,000 sessions
+ * (a third in ongoing cycles, a third in cycles not yet started, a third standalone, half past / half
+ * ahead); ~200,000 bookings over all statuses; two other academies (R, S) share Q's ten trainers with
+ * ~100,000 bookings of history. Medians of 5; the top-level plan and buffers, and the authority's own plan
+ * (auto_explain, nested) of the export. Writes a JSON report to PTF_MEASURE_OUT when set.
+ */
+async function measureAt20k(): Promise<void> {
+  const Q = 'e1000000-0000-0000-0000-00000000000e', R = 'e2000000-0000-0000-0000-00000000000e', S = 'e3000000-0000-0000-0000-00000000000e';
+  const MGR_Q = 'e1000000-0000-0000-0000-0000000000e1';
+  const t0 = performance.now();
+  await db.query(`
+    INSERT INTO public.academy_profiles (id) VALUES ('${Q}'), ('${R}'), ('${S}');
+    INSERT INTO public.academy_managers VALUES ('${Q}', '${MGR_Q}');
+    INSERT INTO public.trainer_profiles SELECT md5('tq' || i)::uuid, gen_random_uuid() FROM generate_series(1, 10) i;
+    INSERT INTO public.academy_trainers SELECT a, md5('tq' || i)::uuid, 'active'
+      FROM (VALUES ('${Q}'::uuid), ('${R}'::uuid), ('${S}'::uuid)) v(a), generate_series(1, 10) i;
+    INSERT INTO public.locations (id, name) SELECT md5('lq' || i)::uuid, 'Q Club ' || i FROM generate_series(1, 5) i;
+    INSERT INTO public.academy_locations SELECT '${Q}', md5('lq' || i)::uuid, true FROM generate_series(1, 5) i;
+    INSERT INTO public.guest_players (id, academy_profile_id, trainer_id, full_name, email, phone)
+      SELECT md5('qg' || i)::uuid, '${Q}', md5('tq' || (1 + i % 10))::uuid, 'Q Guest ' || i, 'qg' || i || '@x.nl',
+             '06' || lpad(i::text, 8, '0') FROM generate_series(1, 16000) i;
+    INSERT INTO public.profiles (id, full_name, email) SELECT md5('qp' || i)::uuid, 'Q Profile ' || i, 'qp' || i || '@x.nl'
+      FROM generate_series(1, 4000) i;
+    INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, location_id, cyclus_id, start_time, end_time)
+      SELECT md5('qs-on' || c || '-' || s)::uuid, md5('tq' || (1 + c % 10))::uuid, '${Q}'::uuid, md5('lq' || (1 + c % 5))::uuid,
+             md5('qc-on' || c)::uuid, now() + (s - 7) * interval '7 days', now() + (s - 7) * interval '7 days' + interval '1 hour'
+        FROM generate_series(1, 139) c, generate_series(1, 12) s
+      UNION ALL
+      SELECT md5('qs-fu' || c || '-' || s)::uuid, md5('tq' || (1 + c % 10))::uuid, '${Q}'::uuid, md5('lq' || (1 + c % 5))::uuid,
+             md5('qc-fu' || c)::uuid, now() + s * interval '7 days', now() + s * interval '7 days' + interval '1 hour'
+        FROM generate_series(1, 139) c, generate_series(1, 12) s
+      UNION ALL
+      SELECT md5('qs-sa' || i)::uuid, md5('tq' || (1 + i % 10))::uuid, '${Q}'::uuid, md5('lq' || (1 + i % 5))::uuid, NULL::uuid,
+             now() + (i - 832) * interval '6 hours', now() + (i - 832) * interval '6 hours' + interval '1 hour'
+        FROM generate_series(1, 1664) i;
+    CREATE TEMP TABLE qs AS SELECT id, (row_number() OVER (ORDER BY id) - 1)::int AS n
+      FROM public.availability_slots WHERE academy_profile_id = '${Q}';
+    CREATE TEMP TABLE qppl AS
+      SELECT md5('qg' || i)::uuid AS gid, NULL::uuid AS pid, i AS n FROM generate_series(1, 16000) i
+      UNION ALL SELECT NULL::uuid, md5('qp' || i)::uuid, 16000 + i FROM generate_series(1, 4000) i;
+    INSERT INTO public.bookings (slot_id, guest_player_id, player_id, status)
+      SELECT qs.id, p.gid, p.pid,
+             CASE WHEN k = 1 THEN 'confirmed' ELSE (ARRAY['confirmed','completed','cancelled','pending'])[1 + ((p.n * 31 + k * 17) % 4)] END
+        FROM qppl p CROSS JOIN generate_series(1, 10) k JOIN qs ON qs.n = (p.n * 7 + k * 503) % 5000;
+    INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, location_id, start_time, end_time)
+      SELECT md5('rs' || a || '-' || i)::uuid, md5('tq' || (1 + i % 10))::uuid, a, NULL, now() - i * interval '1 day',
+             now() - i * interval '1 day' + interval '1 hour'
+        FROM (VALUES ('${R}'::uuid), ('${S}'::uuid)) v(a), generate_series(1, 1000) i;
+    INSERT INTO public.guest_players (id, academy_profile_id, trainer_id, full_name, email)
+      SELECT md5('rsg' || a || '-' || i)::uuid, a, md5('tq' || (1 + i % 10))::uuid, 'RS Guest ' || i, 'rs' || i || '@x.nl'
+        FROM (VALUES ('${R}'::uuid), ('${S}'::uuid)) v(a), generate_series(1, 5000) i;
+    INSERT INTO public.bookings (slot_id, guest_player_id, status)
+      SELECT md5('rs' || a || '-' || (1 + (i * 13 + k * 101) % 1000))::uuid, md5('rsg' || a || '-' || i)::uuid,
+             (ARRAY['confirmed','completed','cancelled'])[1 + ((i + k) % 3)]
+        FROM (VALUES ('${R}'::uuid), ('${S}'::uuid)) v(a), generate_series(1, 5000) i, generate_series(1, 8) k
+      UNION ALL
+      SELECT md5('rs' || '${R}' || '-' || (1 + i % 1000))::uuid, md5('qg' || i)::uuid, 'completed' FROM generate_series(1, 20000) i;
+    ANALYZE;`);
+  const setupMs = performance.now() - t0;
+  const counts = (await db.query(`SELECT
+      (SELECT count(*) FROM public.availability_slots WHERE academy_profile_id = '${Q}')::int AS q_sessions,
+      (SELECT count(*) FROM public.bookings b JOIN public.availability_slots s ON s.id = b.slot_id WHERE s.academy_profile_id = '${Q}')::int AS q_bookings,
+      (SELECT count(*) FROM public.bookings b JOIN public.availability_slots s ON s.id = b.slot_id WHERE s.academy_profile_id IN ('${R}', '${S}'))::int AS rs_bookings`)).rows[0];
+
+  const median5 = async (fn: () => Promise<unknown>) => {
+    const ms: number[] = [];
+    for (let i = 0; i < 5; i++) { const t = performance.now(); await fn(); ms.push(performance.now() - t); }
+    return { median: ms.sort((x, y) => x - y)[2], runs: ms };
+  };
+  const clubQ = (await db.query(`SELECT md5('lq1')::uuid AS id`)).rows[0].id as string;
+  const unfiltered = await median5(() => overview(MGR_Q, Q, {}, 50));
+  const training = await median5(() => overview(MGR_Q, Q, { current_training: true }, 50));
+  const club = await median5(() => overview(MGR_Q, Q, { training_location_id: clubQ }, 50));
+  const exp = await median5(() => exportCall(MGR_Q, Q));
+  const [{ total, payload_bytes }] = await asUser(MGR_Q,
+    `SELECT total, octet_length(rows::text) AS payload_bytes FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [Q]);
+  const plan = async (sql: string, params: unknown[]) =>
+    (await asUser(MGR_Q, `EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT) ${sql}`, params)).map((r) => r['QUERY PLAN']).join('\n');
+  const topPlans = {
+    list_unfiltered: await plan(`SELECT * FROM public.get_players_overview('academy', $1, NULL, '{}'::jsonb, 'name', 'asc', 50, 0)`, [Q]),
+    list_training: await plan(`SELECT * FROM public.get_players_overview('academy', $1, NULL, '{"current_training": true}'::jsonb, 'name', 'asc', 50, 0)`, [Q]),
+    export: await plan(`SELECT total FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [Q]),
+  };
+  // the authority's own plan inside the export, via auto_explain (nested statements), sent as NOTICEs
+  const notices: string[] = [];
+  const onNotice = (n: { message?: string }) => { if (n.message) notices.push(n.message); };
+  const autoExplain = await db.query(`LOAD 'auto_explain'`).then(() => true, (e: Error) => { notices.push(`auto_explain unavailable: ${e.message}`); return false; });
+  db.on('notice', onNotice);
+  try {
+    await db.query('BEGIN');
+    if (autoExplain) await db.query(`SET LOCAL auto_explain.log_min_duration = 0; SET LOCAL auto_explain.log_analyze = on;
+      SET LOCAL auto_explain.log_buffers = on; SET LOCAL auto_explain.log_nested_statements = on;
+      SET LOCAL auto_explain.log_level = notice; SET LOCAL client_min_messages = notice;`);
+    await db.query(`SELECT set_config('request.jwt.claim.sub', $1, true)`, [MGR_Q]);
+    await db.query(`SELECT total FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [Q]);
+  } finally {
+    await db.query('ROLLBACK');
+    db.off('notice', onNotice);
+  }
+  const server = (await db.query('SHOW server_version')).rows[0].server_version as string;
+  const timeoutMs = 8000; // Supabase platform default for authenticated — UNVERIFIED until Tom's A1 observation
+  const report = {
+    server, setup_ms: Math.round(setupMs), ...counts, persons_exported: Number(total), payload_bytes: Number(payload_bytes),
+    list_unfiltered_ms: unfiltered, list_training_ms: training, list_club_ms: club, export_ms: exp,
+    budgets: {
+      list_training_ok: training.median <= unfiltered.median * 1.5 + 100,
+      list_club_ok: club.median <= unfiltered.median * 1.5 + 100,
+      export_ok_vs_unverified_8s_timeout: exp.median <= timeoutMs * 0.5,
+    },
+    top_level_plans: topPlans,
+    authority_plan_notices: notices,
+  };
+  if (process.env.PTF_MEASURE_OUT) writeFileSync(process.env.PTF_MEASURE_OUT, JSON.stringify(report, null, 2));
+  console.log(`PTF §3 (${server}): unfiltered=${unfiltered.median.toFixed(0)}ms training=${training.median.toFixed(0)}ms `
+    + `club=${club.median.toFixed(0)}ms export(${total})=${exp.median.toFixed(0)}ms payload=${payload_bytes}B`);
+  expect(Number(total)).toBe(20000);
+  expect(report.budgets).toEqual({ list_training_ok: true, list_club_ok: true, export_ok_vs_unverified_8s_timeout: true });
+}

@@ -101,16 +101,6 @@ describe('fetchAllPlayersOverview — page-through', () => {
     expect(offsets).toEqual([0, 200, 400]);
   });
 
-  it('owns its paging: a caller offset (untyped) never pins the internal pages', async () => {
-    serveTotal(1200);
-    const all = await fetchAllPlayersOverview({ kind: 'academy', id: 'a1' }, { offset: 700, search: 'an' } as never);
-    expect(all).toHaveLength(1200);
-    expect(new Set(all.map((r) => r.player_key)).size).toBe(1200);
-    const calls = rpcMock.mock.calls.map((c) => c[1] as { p_offset: number; p_search?: string });
-    expect(calls.map((c) => c.p_offset).sort((a, b) => a - b)).toEqual([0, 500, 1000]);
-    expect(calls.every((c) => c.p_search === 'an')).toBe(true); // the list inputs still pass through
-  });
-
   it('throws past the safety cap instead of fetching unbounded pages', async () => {
     serveTotal(999999);
     await expect(fetchAllPlayersOverview({ kind: 'academy', id: 'a1' })).rejects.toThrow('safety cap');

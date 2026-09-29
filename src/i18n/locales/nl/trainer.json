@@ -777,12 +777,11 @@
     },
     "export": {
       "button": "Exporteren",
-      "progress": "Exporteren {{done}} / {{total}}…",
+      "progress": "Exporteren…",
       "cancel": "Export annuleren",
       "success": "{{count}} spelers geëxporteerd",
       "empty": "Geen spelers voldoen aan deze filters, er is niets geëxporteerd.",
       "overLimit": "{{total}} spelers voldoen, maar een export kan er maximaal {{max}} bevatten. Verfijn de filters en probeer het opnieuw.",
-      "changed": "De spelerslijst veranderde tijdens het exporteren, er is niets gedownload. Probeer het opnieuw.",
       "cancelled": "Export geannuleerd, er is niets gedownload.",
       "failed": "De export is mislukt, er is niets gedownload. Probeer het opnieuw.",
       "headerName": "Naam",

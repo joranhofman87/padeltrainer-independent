@@ -8,11 +8,13 @@ import { resolve } from 'node:path';
 import type { PlayersOverviewParams, PlayersOverviewRow } from '@/lib/playersOverview';
 
 /**
- * PTF option A on the Academy Players page: the two training filters reach the overview query, and the
- * export takes every matching person with the filters FROZEN at click time, downloads a local CSV with
- * the exported count, and downloads nothing on cancel, academy switch or a refused (changed / over-limit)
- * export. The qualifying-session semantics themselves are proven on the real function in
- * playersOverviewCurrentTraining.pglite.test.ts; this file only proves the page wiring.
+ * PTF option A on the Academy Players page: the two training filters reach the overview query; the
+ * export makes ONE get_players_overview_export call with the filters FROZEN at click time, downloads a
+ * local CSV with the exported count, and downloads nothing on cancel, academy switch or a refused
+ * (over-limit / inconsistent) export; and the club dropdowns never offer another academy's clubs, even
+ * when location responses arrive late or out of order. The membership / qualifying-session semantics are
+ * proven on the real functions in playersOverviewCurrentTraining.pglite.test.ts; this file only proves
+ * the page wiring.
  */
 
 const LOCALES = resolve(__dirname, '../i18n/locales/en');
@@ -46,8 +48,6 @@ vi.mock('@/components/academy/AcademyLayout', () => ({
 }));
 
 const overviewCalls: Array<PlayersOverviewParams & { scopeId: string }> = [];
-const exportCalls: PlayersOverviewParams[] = [];
-let exportImpl: (p: PlayersOverviewParams) => Promise<{ rows: PlayersOverviewRow[]; total: number }>;
 
 const listRow = (i: number) => ({
   player_key: `g_${i}`, player_type: 'guest', guest_player_id: `g${i}`, profile_id: null, person_id: `per-${i}`,
@@ -63,18 +63,14 @@ vi.mock('@/lib/playersOverview', async (importOriginal) => {
       overviewCalls.push({ ...params, scopeId: scope.id });
       return { data: { rows: [listRow(1), listRow(2)], total: 2 }, isLoading: false };
     },
-    fetchPlayersOverview: async (_scope: unknown, params: PlayersOverviewParams = {}) => {
-      if (params.pageSize === 1) return { rows: [], total: 2 }; // header count query
-      exportCalls.push(structuredClone(params));
-      return exportImpl(params);
-    },
+    fetchPlayersOverview: async () => ({ rows: [], total: 2 }), // header count query
     fetchAllPlayersOverview: async () => [],
   };
 });
 
 const downloads: Array<{ filename: string; csv: string }> = [];
-vi.mock('@/lib/playerContactExport', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/lib/playerContactExport')>();
+vi.mock('@/lib/csvExport', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/csvExport')>();
   return { ...actual, downloadCsv: (filename: string, csv: string) => downloads.push({ filename, csv }) };
 });
 
@@ -100,14 +96,36 @@ function builder(result: Result) {
   b.then = (ok: (r: Result) => unknown, fail: (e: unknown) => unknown) => Promise.resolve(result).then(ok, fail);
   return b;
 }
-vi.mock('@/lib/supabaseClient', () => ({ supabase: { from: () => builder({ data: [], error: null }) } }));
-// acad-2 ALSO lists club id loc-1: a club id alone does not say which academy chose it.
-vi.mock('@/lib/academy', () => ({
-  getAcademyLocations: async (id: string) =>
-    id === 'acad-2'
-      ? [{ location: { id: 'loc-1', name: 'Club Noord' } }, { location: { id: 'loc-3', name: 'Club Oost' } }]
-      : [{ location: { id: 'loc-1', name: 'Club Noord' } }, { location: { id: 'loc-2', name: 'Club Zuid' } }],
+
+// get_players_overview_export: recorded args, a controllable result, and the abort signal it was given.
+type ExportResult = { data: unknown; error: { code?: string; details?: string; message?: string } | null };
+const exportCalls: Array<Record<string, unknown>> = [];
+let exportImpl: (args: Record<string, unknown>) => Promise<ExportResult>;
+const exportResponse = (rows: Array<Record<string, unknown>>, total = rows.length): ExportResult =>
+  ({ data: [{ total, rows }], error: null });
+vi.mock('@/lib/supabaseClient', () => ({
+  supabase: {
+    from: () => builder({ data: [], error: null }),
+    rpc: (fn: string, args: Record<string, unknown>) => {
+      if (fn !== 'get_players_overview_export') throw new Error(`unexpected rpc ${fn}`);
+      exportCalls.push(structuredClone(args));
+      const result = exportImpl(args);
+      const rpcBuilder = {
+        abortSignal: () => rpcBuilder,
+        then: (ok: (r: ExportResult) => unknown, fail: (e: unknown) => unknown) => result.then(ok, fail),
+      };
+      return rpcBuilder;
+    },
+  },
 }));
+
+// Academy clubs: acad-2 ALSO lists club id loc-1 (a club id alone does not say which academy chose it).
+const CLUBS: Record<string, Array<{ location: { id: string; name: string } }>> = {
+  'acad-1': [{ location: { id: 'loc-1', name: 'Club Noord' } }, { location: { id: 'loc-2', name: 'Club Zuid' } }],
+  'acad-2': [{ location: { id: 'loc-1', name: 'Club Noord' } }, { location: { id: 'loc-3', name: 'Club Oost' } }],
+};
+let locationsImpl: (id: string) => Promise<Array<{ location: { id: string; name: string } }>>;
+vi.mock('@/lib/academy', () => ({ getAcademyLocations: (id: string) => locationsImpl(id) }));
 vi.mock('@/lib/trainerDisplayNames', () => ({ fetchTrainerDisplayNamesByProfileIds: async () => new Map() }));
 vi.mock('@/components/players/PlayerTagsCell', () => ({ PlayerTagsCell: () => null }));
 vi.mock('@/components/players/PlayerNotesCell', () => ({ PlayerNotesCell: () => null }));
@@ -118,10 +136,8 @@ vi.mock('@/components/players/ManagePlayerTagsDialog', () => ({ ManagePlayerTags
 
 import AcademyPlayers from '@/pages/academy/AcademyPlayers';
 
-const person = (i: number, total: number, extra: Record<string, unknown> = {}) => ({
-  player_key: `k${i}`, person_id: `per-${i}`, full_name: `Export ${i}`, email: `e${i}@x.nl`, phone: '', total_count: total, ...extra,
-}) as unknown as PlayersOverviewRow;
-const page = (rows: PlayersOverviewRow[]) => ({ rows, total: rows.length ? Number(rows[0].total_count) : 0 });
+const person = (i: number, extra: Record<string, unknown> = {}) =>
+  ({ person_id: `per-${i}`, full_name: `Export ${i}`, email: `e${i}@x.nl`, phone: '', ...extra });
 
 function deferred<T>() {
   let resolveFn!: (v: T) => void;
@@ -141,6 +157,8 @@ function renderPage(Page: ComponentType = AcademyPlayers) {
 }
 const choose = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label), { target: { value } });
 const lastFilters = () => overviewCalls[overviewCalls.length - 1].filters;
+const clubOptions = () =>
+  [...(screen.queryByLabelText('Training club')?.querySelectorAll('option') ?? [])].map((o) => o.textContent);
 
 beforeEach(() => {
   academyId = 'acad-1';
@@ -148,7 +166,9 @@ beforeEach(() => {
   exportCalls.length = 0;
   downloads.length = 0;
   Object.values(toasts).forEach((f) => f.mockReset());
-  exportImpl = async () => page([person(1, 2, { full_name: 'Ann', email: 'ann@x.nl', phone: '+31612345678' }), person(2, 2)]);
+  locationsImpl = async (id) => CLUBS[id] ?? [];
+  exportImpl = async () =>
+    exportResponse([person(1, { full_name: 'Ann', email: 'ann@x.nl', phone: '+31612345678' }), person(2)]);
 });
 
 describe('Academy Players — training filters', () => {
@@ -176,7 +196,7 @@ describe('Academy Players — training filters', () => {
 
     academyId = 'acad-2';
     rerenderPage();
-    await within(screen.getByLabelText('Training club')).findByRole('option', { name: 'Club Oost' }); // acad-2's clubs loaded
+    await within(await screen.findByLabelText('Training club')).findByRole('option', { name: 'Club Oost' }); // acad-2's clubs loaded
     const acad2Calls = overviewCalls.filter((c) => c.scopeId === 'acad-2');
     expect(acad2Calls.length).toBeGreaterThan(0);
     for (const c of acad2Calls) expect(c.filters?.trainingLocationId ?? null).toBeNull();
@@ -192,28 +212,65 @@ describe('Academy Players — training filters', () => {
   });
 });
 
-describe('Academy Players — export', () => {
+describe('Academy Players — club options across an academy switch (P2-3)', () => {
+  it("after a switch the previous academy's clubs are gone at once, and its late response is dropped", async () => {
+    const pending: Record<string, ReturnType<typeof deferred<(typeof CLUBS)[string]>>> = {};
+    locationsImpl = (id) => (pending[id] = deferred()).promise;
+    const { rerenderPage } = renderPage();
+    await act(async () => pending['acad-1'].resolve(CLUBS['acad-1']));
+    expect(clubOptions()).toEqual(['All training clubs', 'Club Noord', 'Club Zuid']);
+
+    academyId = 'acad-2';
+    rerenderPage();
+    expect(clubOptions()).toEqual([]); // acad-1's clubs are not offered while acad-2's are loading
+
+    // acad-2 answers first; then a LATE acad-1 answer (re-requested by nothing, but still in flight)
+    const lateAcad1 = deferred<(typeof CLUBS)[string]>();
+    await act(async () => pending['acad-2'].resolve(CLUBS['acad-2']));
+    expect(clubOptions()).toEqual(['All training clubs', 'Club Noord', 'Club Oost']);
+    await act(async () => lateAcad1.resolve(CLUBS['acad-1']));
+    expect(clubOptions()).toEqual(['All training clubs', 'Club Noord', 'Club Oost']);
+  });
+
+  it('out-of-order responses: only the latest request writes (switch away and back)', async () => {
+    const queue: Array<{ id: string; d: ReturnType<typeof deferred<(typeof CLUBS)[string]>> }> = [];
+    locationsImpl = (id) => { const d = deferred<(typeof CLUBS)[string]>(); queue.push({ id, d }); return d.promise; };
+    const { rerenderPage } = renderPage();          // request 1: acad-1
+    academyId = 'acad-2';
+    rerenderPage();                                 // request 2: acad-2
+    academyId = 'acad-1';
+    rerenderPage();                                 // request 3: acad-1 again
+    await waitFor(() => expect(queue.map((q) => q.id)).toEqual(['acad-1', 'acad-2', 'acad-1']));
+
+    await act(async () => queue[2].d.resolve(CLUBS['acad-1'])); // the latest answers first
+    expect(clubOptions()).toEqual(['All training clubs', 'Club Noord', 'Club Zuid']);
+    await act(async () => queue[1].d.resolve(CLUBS['acad-2'])); // a stale acad-2 answer must not win
+    await act(async () => queue[0].d.resolve([]));              // nor a stale acad-1 answer
+    expect(clubOptions()).toEqual(['All training clubs', 'Club Noord', 'Club Zuid']);
+  });
+});
+
+describe('Academy Players — export (one server call)', () => {
   it('exports every matching person with the filters frozen at click time, and reports the count', async () => {
     renderPage();
     await screen.findByLabelText('Training club');
     choose('Training status', 'yes');
     choose('Training club', 'loc-1');
 
-    const first = deferred<ReturnType<typeof page>>();
+    const first = deferred<ExportResult>();
     exportImpl = () => first.promise;
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     await screen.findByTestId('academy-players-export-progress');
 
     choose('Training status', 'no'); // edits while it runs must not reach the export
     choose('Training club', 'all');
-    await act(async () => first.resolve(page([person(1, 2, { full_name: 'Ann', email: 'ann@x.nl', phone: '+31612345678' }), person(2, 2)])));
+    await act(async () => first.resolve(exportResponse([person(1, { full_name: 'Ann', email: 'ann@x.nl', phone: '+31612345678' }), person(2)])));
 
     await waitFor(() => expect(downloads).toHaveLength(1));
-    for (const call of exportCalls) {
-      expect(call.filters).toMatchObject({ currentTraining: true, trainingLocationId: 'loc-1' });
-      expect(call.pageSize).toBe(500);
-    }
-    expect(exportCalls[0].offset).toBe(0);
+    expect(exportCalls).toEqual([{
+      p_academy: 'acad-1', p_search: undefined, p_filters: { current_training: true, training_location_id: 'loc-1' },
+      p_sort: 'name', p_sort_dir: 'asc',
+    }]);
     expect(downloads[0].filename).toMatch(/^players-\d{4}-\d{2}-\d{2}\.csv$/);
     expect(downloads[0].csv).toContain('"Name";"Email";"Phone"');
     expect(downloads[0].csv).toContain('"Ann";"ann@x.nl";"\'+31612345678"');
@@ -228,17 +285,17 @@ describe('Academy Players — export', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export' })); // well inside the 300 ms debounce
     expect(overviewCalls[overviewCalls.length - 1].search).toBe(''); // the table has not caught up yet
     await waitFor(() => expect(downloads).toHaveLength(1));
-    expect(exportCalls.map((c) => c.search)).toEqual(['ann']);
+    expect(exportCalls.map((c) => c.p_search)).toEqual(['ann']);
   });
 
   it('Cancel stops the export and downloads nothing', async () => {
     renderPage();
     await screen.findByLabelText('Training club');
-    const first = deferred<ReturnType<typeof page>>();
+    const first = deferred<ExportResult>();
     exportImpl = () => first.promise;
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Cancel export' }));
-    await act(async () => first.resolve(page([person(1, 1)])));
+    await act(async () => first.resolve(exportResponse([person(1)])));
     await waitFor(() => expect(toasts.info).toHaveBeenCalledWith('Export cancelled, nothing was downloaded.'));
     expect(downloads).toEqual([]);
     expect(screen.getByRole('button', { name: 'Export' })).toBeEnabled();
@@ -247,36 +304,36 @@ describe('Academy Players — export', () => {
   it('switching academy cancels a running export — a file never mixes academies', async () => {
     const { rerenderPage } = renderPage();
     await screen.findByLabelText('Training club');
-    const first = deferred<ReturnType<typeof page>>();
+    const first = deferred<ExportResult>();
     exportImpl = () => first.promise;
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     await screen.findByTestId('academy-players-export-progress');
     academyId = 'acad-2';
     rerenderPage();
-    await act(async () => first.resolve(page([person(1, 1)])));
+    await act(async () => first.resolve(exportResponse([person(1)])));
     await waitFor(() => expect(toasts.info).toHaveBeenCalledWith('Export cancelled, nothing was downloaded.'));
     expect(downloads).toEqual([]);
   });
 
-  it('a list that changes during export is refused with nothing downloaded', async () => {
-    exportImpl = async () => page([person(1, 2), person(2, 2, { person_id: 'per-1' })]);
+  it('an inconsistent response is refused with nothing downloaded', async () => {
+    exportImpl = async () => exportResponse([person(1), person(2, { person_id: 'per-1' })]);
     renderPage();
     await screen.findByLabelText('Training club');
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     await waitFor(() => expect(toasts.error).toHaveBeenCalledWith(
-      'The player list changed while exporting, so nothing was downloaded. Please try again.'));
+      'The export failed, nothing was downloaded. Please try again.'));
     expect(downloads).toEqual([]);
   });
 
-  it('over the limit is refused with the real numbers; an empty match downloads nothing', async () => {
-    exportImpl = async () => page([person(1, 20_001)]);
+  it("over the limit is the server's refusal, shown with its numbers; an empty match downloads nothing", async () => {
+    exportImpl = async () => ({ data: null, error: { code: '54000', details: 'total=20001 max=20000' } });
     renderPage();
     await screen.findByLabelText('Training club');
     fireEvent.click(screen.getByRole('button', { name: 'Export' }));
     await waitFor(() => expect(toasts.error).toHaveBeenCalledWith(
       '20001 players match, but an export can hold at most 20000. Narrow the filters and try again.'));
 
-    exportImpl = async () => page([]);
+    exportImpl = async () => exportResponse([]);
     fireEvent.click(await screen.findByRole('button', { name: 'Export' }));
     await waitFor(() => expect(toasts.info).toHaveBeenCalledWith('No players match these filters, so nothing was exported.'));
     expect(downloads).toEqual([]);

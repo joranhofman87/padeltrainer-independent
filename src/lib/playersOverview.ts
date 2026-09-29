@@ -129,8 +129,6 @@ export interface PlayersOverviewParams {
   sortDir?: 'asc' | 'desc';
   page?: number;
   pageSize?: number;
-  /** Explicit row offset; overrides page * pageSize (the export overlaps page boundaries). */
-  offset?: number;
 }
 
 /** Half-open band encoding matching the page's getLevelBand exactly:
@@ -168,7 +166,7 @@ export async function fetchPlayersOverview(
     p_sort: params.sort ?? 'name',
     p_sort_dir: params.sortDir ?? 'asc',
     p_limit: pageSize,
-    p_offset: params.offset ?? page * pageSize,
+    p_offset: page * pageSize,
   });
   if (error) throw error;
   const rows = (data ?? []) as PlayersOverviewRow[];
@@ -199,14 +197,9 @@ const FETCH_ALL_CONCURRENCY = 5;
  */
 export async function fetchAllPlayersOverview(
   scope: PlayerScope,
-  params: Omit<PlayersOverviewParams, 'page' | 'pageSize' | 'offset'> = {},
+  params: Omit<PlayersOverviewParams, 'page' | 'pageSize'> = {},
 ): Promise<PlayersOverviewRow[]> {
-  // This function owns the paging: only the list inputs pass through, so a caller's page/pageSize/
-  // offset (typed out above, and dropped here for untyped callers) can never pin every page.
-  const base: PlayersOverviewParams = {
-    search: params.search, filters: params.filters, sort: params.sort, sortDir: params.sortDir,
-  };
-  const first = await fetchPlayersOverview(scope, { ...base, page: 0, pageSize: FETCH_ALL_PAGE_SIZE });
+  const first = await fetchPlayersOverview(scope, { ...params, page: 0, pageSize: FETCH_ALL_PAGE_SIZE });
   if (first.total > FETCH_ALL_MAX_ROWS) {
     throw new Error('fetchAllPlayersOverview: exceeded safety cap (20k players)');
   }
@@ -220,7 +213,7 @@ export async function fetchAllPlayersOverview(
     const batch: Promise<void>[] = [];
     for (let page = batchStart; page < batchEnd; page++) {
       batch.push(
-        fetchPlayersOverview(scope, { ...base, page, pageSize: effectiveSize }).then(({ rows }) => {
+        fetchPlayersOverview(scope, { ...params, page, pageSize: effectiveSize }).then(({ rows }) => {
           pages[page] = rows;
         }),
       );

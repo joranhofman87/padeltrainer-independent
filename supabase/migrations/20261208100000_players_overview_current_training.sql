@@ -1,14 +1,46 @@
--- PTF-OPTION-A (2026-09-27) — Academy Players: "currently training" + "training club" filters.
+-- PTF-OPTION-A (2026-09-27) — Academy Players: "currently training" + "training club" filters and a
+-- contact export — with academy membership A1 and the one-call export E1 (Tom, 2026-09-29).
 --
--- WHAT: re-emits get_players_overview with two new p_filters keys. The signature, RETURNS TABLE,
---   every existing filter / sort / pagination / person-rollup rule and the ACL are byte-identical to
---   the latest definition (20261006120000_readers_canonical_is_suppressed.sql); the only additions are
---   the two DECLAREd keys, an academy-scope guard, the training_now CTE and two WHERE clauses.
---   CREATE OR REPLACE preserves privileges; the REVOKE/GRANT below re-assert the intended ACL.
+-- WHAT (three functions; nothing else changes):
+--   1. players_private.players_overview_rows — the ONE private filter authority. It computes the
+--      membership universe (A1 below), the person rollup, search, every filter (including the two
+--      PTF training keys), the sort and one window of rows. It is not reachable by any client role:
+--      the schema grants no USAGE and the function no EXECUTE to PUBLIC, anon, authenticated or
+--      service_role. SECURITY INVOKER (it runs with the rights of the public entry that calls it),
+--      STABLE, pinned search_path, every reference schema-qualified, and it re-checks the caller's
+--      authorization itself (defence in depth).
+--   2. public.get_players_overview — same signature, return type and ACL. It authorizes the caller,
+--      then returns one page of the authority's rows with the page-only enrichment (trainer / club
+--      chips, active cycle, overdue payment, undeliverable email).
+--   3. public.get_players_overview_export(p_academy, p_search, p_filters, p_sort, p_sort_dir) —
+--      academy scope only. One row: `total` and `rows`, a jsonb array of
+--      {person_id, full_name, email, phone} for EVERY matching person in list order, from ONE
+--      evaluation of the authority. More than 20,000 matches is refused (SQLSTATE 54000; DETAIL
+--      "total=<n> max=20000"). EXECUTE: owner + authenticated only.
+--   All three: STABLE; the entries are SECURITY DEFINER; search_path = pg_catalog, pg_temp.
 --
--- THE QUALIFYING SESSION — one predicate (CTE training_now) drives BOTH keys, so the current-training
--- filter, the training-club filter and a client export built on them cannot disagree. A booking b on
--- slot s makes its person "currently training at this academy" iff ALL of:
+-- A1 — ACADEMY MEMBERSHIP (academy scope only). The previous universe admitted people through the
+--   academy's active TRAINERS: every slot of a shared trainer (another academy's sessions, the
+--   trainer's own practice) and every guest a shared trainer owns. That is the cross-tenant path the
+--   owner closed on the RLS side in 20260706130100; this function never received the fix. Now a side
+--   is in academy A's universe iff:
+--     guest side:      guest_players.academy_profile_id = A, OR a confirmed/completed booking on a
+--                      session with availability_slots.academy_profile_id = A, OR an
+--                      academy_player_metadata row of A links the guest;
+--     registered side: a confirmed/completed booking on a session with academy_profile_id = A
+--                      (first_booking_at is derived from that same set).
+--   Every booking-derived filter and chip (trainer activity, trained clubs, active cycle) reads the
+--   same academy-owned sessions (scope_slots). Unchanged: the person rollup, split-freeze, removal,
+--   search, sort, paging, the metadata overlay, and TRAINER scope (the trainer's own guests and
+--   sessions) in full. Unstamped sessions (academy_profile_id NULL) admit nobody to an academy;
+--   nothing is repaired or inferred here.
+--   Residual: booking-derived admission is only as trustworthy as booking-subject integrity (ABC-17,
+--   a separate gate). A1 is strictly narrower than the trainer union: a forged booking can add a
+--   person only to the academy that owns the session.
+--
+-- THE QUALIFYING SESSION — one predicate (CTE training_now) drives BOTH training keys, so the
+-- current-training filter, the training-club filter and the export built on them cannot disagree.
+-- A booking b on slot s makes its person "currently training at this academy" iff ALL of:
 --   (1) s.academy_profile_id = the academy. Direct session ownership only: a shared trainer's sessions
 --       for another academy, or for their own practice, never count, and nothing is inferred from
 --       trainer membership, preferred/intake/manual clubs, payments or registrations.
@@ -32,33 +64,40 @@
 --   training_location_id  uuid. The person has a qualifying session whose slot location (a merged
 --                         location resolved to its canonical club) is this club. This is NOT the
 --                         existing location_id chip filter, which keeps its historical / preferred /
---                         intake semantics unchanged; has_active_cyclus is unchanged too.
+--                         intake semantics; has_active_cyclus keeps its meaning too.
 --   Academy scope only: either key with p_scope = 'trainer' is refused (SQLSTATE 22023).
 --
--- TIME: now() is the call's transaction time. A multi-page client export re-evaluates per page, so it
---   must detect membership drift itself (the client does: overlapping page boundaries + stable total);
---   this function makes no snapshot claim across calls.
+-- ORDER: the authority numbers its rows from ONE window definition (w_sort); a list page and the export
+--   are both read in that order, so they can never order differently.
+-- SNAPSHOT: every function in the chain is STABLE, so PostgreSQL runs each of them with the calling
+--   statement's snapshot, and the export is ONE client statement: its total and its rows describe one
+--   database state, whatever commits while it runs (src/test/ptfReleasePacket.realpg.test.ts proves it
+--   with a commit made mid-call). now() is the call's transaction time.
 --
 -- COMPOSITION — a RELEASE gate, recorded here, not acted on here:
 --   security/abc16-metadata-authority-containment (20261118110000, unmerged) also CREATE OR REPLACEs
---   this function, from the pre-person-unification body (no person_links / split-freeze / person
---   rollup) with direct-ownership-only membership. Whichever of the two lands second MUST be rebuilt on
---   the other's full body: final = this person-rollup body + ABC-16's ownership containment + this
---   training_now predicate. Shipping either body over the other silently reverts a security or product
---   rule. (Predicate (1) already uses the same ownership column ABC-16 adopts, so the rules agree.)
+--   get_players_overview, from the pre-person-unification body with direct-ownership-only membership
+--   and no registered/person admission. A1 adopts its containment invariants (no trainer-union
+--   admission; ownership by academy_profile_id) and keeps registered and canonical-person admission,
+--   which U2 and this feature require. Whichever lands second MUST be rebuilt on the other's full
+--   body, and ABC-16's "no registered admission" needs a fresh owner decision first.
 --
 -- VERSION 20261208100000 IS PROVISIONAL: it must apply after the ACL correction (20261207100000) and
 --   before any later-applied lane; it is re-allocated at release composition.
 
-CREATE OR REPLACE FUNCTION public.get_players_overview(
+CREATE SCHEMA IF NOT EXISTS players_private;
+REVOKE ALL ON SCHEMA players_private FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION players_private.players_overview_rows(
   p_scope text,                       -- 'academy' | 'trainer'
   p_scope_id uuid,
-  p_search text DEFAULT NULL,
-  p_filters jsonb DEFAULT '{}'::jsonb,
-  p_sort text DEFAULT 'name',         -- 'name' | 'email' | 'skill' | 'created_at'
-  p_sort_dir text DEFAULT 'asc',
-  p_limit integer DEFAULT 50,
-  p_offset integer DEFAULT 0
+  p_search text,
+  p_filters jsonb,
+  p_sort text,                        -- 'name' | 'email' | 'skill' | 'created_at'
+  p_sort_dir text,
+  p_limit integer,                    -- rows to return, >= 1 (each entry sets its own bound)
+  p_offset integer,                   -- rows to skip, >= 0
+  p_enrich boolean                    -- compute the page-only enrichment columns (the list) or not
 )
 RETURNS TABLE (
   player_key text,
@@ -89,15 +128,15 @@ RETURNS TABLE (
   has_active_cyclus boolean,
   has_overdue_payment boolean,
   email_undeliverable boolean,
-  total_count bigint
+  total_count bigint,
+  sort_ord bigint
 )
 LANGUAGE plpgsql
 STABLE
-SECURITY DEFINER
-SET search_path = public
+SECURITY INVOKER
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
-  v_trainer_ids uuid[];
   v_tokens text[];
   v_filter_trainer uuid    := nullif(p_filters->>'trainer_id','')::uuid;
   v_filter_location uuid   := nullif(p_filters->>'location_id','')::uuid;
@@ -109,18 +148,13 @@ DECLARE
   v_training_location uuid   := nullif(p_filters->>'training_location_id','')::uuid;
   v_tag text               := nullif(p_filters->>'tag_id','');             -- uuid text | 'untagged'
   v_payment text           := nullif(p_filters->>'payment','');            -- 'overdue' | 'ok'
-  v_limit integer          := least(greatest(coalesce(p_limit, 50), 1), 500);
-  v_offset integer         := greatest(coalesce(p_offset, 0), 0);
 BEGIN
-  -- ---- authorization (explicit; the function bypasses RLS below) ----
+  -- ---- authorization, re-checked here: each public entry has already checked it (defence in depth;
+  -- this function reads without RLS under its caller's owner rights) ----
   IF p_scope = 'academy' THEN
     IF NOT public.is_academy_manager(auth.uid(), p_scope_id) THEN
       RAISE EXCEPTION 'not authorized for academy %', p_scope_id USING ERRCODE = '42501';
     END IF;
-    SELECT coalesce(array_agg(at.trainer_profile_id), '{}'::uuid[])
-      INTO v_trainer_ids
-      FROM public.academy_trainers at
-     WHERE at.academy_profile_id = p_scope_id AND at.status = 'active';
   ELSIF p_scope = 'trainer' THEN
     IF NOT EXISTS (
       SELECT 1 FROM public.trainer_profiles tp
@@ -128,9 +162,13 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'not authorized for trainer %', p_scope_id USING ERRCODE = '42501';
     END IF;
-    v_trainer_ids := ARRAY[p_scope_id];
   ELSE
     RAISE EXCEPTION 'invalid scope: %', p_scope;
+  END IF;
+
+  IF p_limit IS NULL OR p_limit < 1 OR p_offset IS NULL OR p_offset < 0 OR p_enrich IS NULL THEN
+    RAISE EXCEPTION 'invalid window (limit %, offset %, enrich %)', p_limit, p_offset, p_enrich
+      USING ERRCODE = '22023';
   END IF;
 
   -- The training keys answer "trains at THIS academy" (academy-owned sessions); they have no
@@ -144,13 +182,19 @@ BEGIN
   END IF;
 
   RETURN QUERY
+  -- The sessions in scope. A1: an academy's own sessions only (never a shared trainer's other
+  -- sessions); trainer scope: the trainer's sessions, as before.
   WITH scope_slots AS (
     SELECT s.id, s.trainer_id, s.location_id, s.cyclus_id, s.end_time
     FROM public.availability_slots s
-    WHERE s.trainer_id = ANY (v_trainer_ids)
+    WHERE p_scope = 'academy' AND s.academy_profile_id = p_scope_id
+    UNION ALL
+    SELECT s.id, s.trainer_id, s.location_id, s.cyclus_id, s.end_time
+    FROM public.availability_slots s
+    WHERE p_scope = 'trainer' AND s.trainer_id = p_scope_id
   ),
   -- PTF-OPTION-A: the ONE qualifying-session predicate (see the header). Both training keys read
-  -- only this CTE, so the current-training filter, the training-club filter and any export built
+  -- only this CTE, so the current-training filter, the training-club filter and the export built
   -- on them cannot disagree. Computed only when a training key is set; bounded to the academy's
   -- in-progress/remaining sessions. Columns are t_-prefixed: OUT params share the bare names.
   training_now AS (
@@ -179,16 +223,36 @@ BEGIN
       AND ((p_scope = 'academy' AND m.academy_profile_id  = p_scope_id)
         OR (p_scope = 'trainer' AND m.trainer_profile_id = p_scope_id))
   ),
+  -- The guest sides in scope. A1 (academy): owned by the academy, OR a confirmed/completed booking on
+  -- one of its sessions, OR linked by one of its metadata rows — the owner's relationship rule
+  -- (20260706130100). Trainer scope: the trainer's own guests, as before.
+  guest_refs AS (
+    SELECT g.id AS gr_id
+    FROM public.guest_players g
+    WHERE p_scope = 'academy' AND g.academy_profile_id = p_scope_id
+    UNION
+    SELECT b.guest_player_id
+    FROM public.bookings b
+    JOIN scope_slots ss ON ss.id = b.slot_id
+    WHERE p_scope = 'academy' AND b.guest_player_id IS NOT NULL
+      AND b.status IN ('confirmed','completed')
+    UNION
+    SELECT m.guest_player_id
+    FROM public.academy_player_metadata m
+    WHERE p_scope = 'academy' AND m.academy_profile_id = p_scope_id AND m.guest_player_id IS NOT NULL
+    UNION
+    SELECT g.id
+    FROM public.guest_players g
+    WHERE p_scope = 'trainer' AND g.trainer_id = p_scope_id
+  ),
   guests AS (
     SELECT g.*
     FROM public.guest_players g
-    WHERE ((p_scope = 'academy'
-            AND (g.academy_profile_id = p_scope_id OR g.trainer_id = ANY (v_trainer_ids)))
-        OR (p_scope = 'trainer' AND g.trainer_id = p_scope_id))
-      AND NOT EXISTS (SELECT 1 FROM removed_meta rm WHERE rm.gid = g.id)
+    JOIN guest_refs gr ON gr.gr_id = g.id
+    WHERE NOT EXISTS (SELECT 1 FROM removed_meta rm WHERE rm.gid = g.id)
   ),
-  -- DELIBERATELY UNCHANGED membership predicate: any in-scope booking with player_id set
-  -- (dual-keyed included) — see the header. Only the DEDUP below is new in this phase.
+  -- Registered sides: any in-scope booking with player_id set (dual-keyed included); in scope = on a
+  -- scope_slots session (A1: the academy's own sessions).
   registered AS (
     SELECT b.player_id AS pid, min(b.created_at) AS first_booking_at
     FROM public.bookings b
@@ -521,10 +585,14 @@ BEGIN
                   AND i.paid_at IS NULL
                   AND lower(i.status) NOT IN ('paid','cancelled','draft','void')))))
   ),
-  page AS (
-    SELECT f.*, count(*) OVER () AS b_total_count
+  -- The ONE sort definition: every row's 1-based position in list order. The window is read by
+  -- ordinal, so a list page and the export can never order differently.
+  numbered AS (
+    SELECT f.*,
+           count(*) OVER ()         AS b_total_count,
+           row_number() OVER w_sort AS b_ord
     FROM filtered f
-    ORDER BY
+    WINDOW w_sort AS (ORDER BY
       CASE WHEN p_sort = 'name'       AND p_sort_dir = 'asc'  THEN lower(f.b_full_name) END ASC,
       CASE WHEN p_sort = 'name'       AND p_sort_dir = 'desc' THEN lower(f.b_full_name) END DESC,
       CASE WHEN p_sort = 'email'      AND p_sort_dir = 'asc'  THEN nullif(lower(f.b_email), '') END ASC NULLS LAST,
@@ -534,10 +602,15 @@ BEGIN
       CASE WHEN p_sort = 'created_at' AND p_sort_dir = 'asc'  THEN f.b_created_at END ASC,
       CASE WHEN p_sort = 'created_at' AND p_sort_dir = 'desc' THEN f.b_created_at END DESC,
       lower(f.b_full_name) ASC,
-      f.b_player_key ASC
-    LIMIT v_limit OFFSET v_offset
+      f.b_player_key ASC)
+  ),
+  page AS (
+    SELECT n.*
+    FROM numbered n
+    WHERE n.b_ord > p_offset AND n.b_ord <= p_offset::bigint + p_limit
   )
-  -- Expensive aggregates only for the page rows (bounded by v_limit).
+  -- Expensive aggregates only for the window rows, and only when asked (the export does not read them;
+  -- without p_enrich they keep their defaults).
   SELECT
     c.b_player_key, c.b_player_type, c.b_guest_player_id, c.b_profile_id, c.b_person_id,
     c.b_full_name, c.b_email, c.b_phone,
@@ -551,7 +624,8 @@ BEGIN
     coalesce(enr.has_active_cyclus, false),
     coalesce(pay.has_overdue_payment, false),
     coalesce(eb.email_undeliverable, false),
-    c.b_total_count
+    c.b_total_count,
+    c.b_ord
   FROM page c
   LEFT JOIN LATERAL (
     WITH pb AS (
@@ -627,6 +701,7 @@ BEGIN
                 AND (apl.guest_player_id = ANY (c.b_guest_ids)
                   OR (c.b_profile_id IS NOT NULL AND apl.profile_id = c.b_profile_id))))
     ) loc
+    WHERE p_enrich
   ) enr ON true
   LEFT JOIN LATERAL (
     SELECT EXISTS (
@@ -640,6 +715,7 @@ BEGIN
               AND i.paid_at IS NULL
               AND lower(i.status) NOT IN ('paid','cancelled','draft','void')))
     ) AS has_overdue_payment
+    WHERE p_enrich
   ) pay ON true
   LEFT JOIN LATERAL (
     -- deliverability across EVERY side email: invoices to a merged person's guest seat keep
@@ -650,8 +726,145 @@ BEGIN
       WHERE (s.email = lower(btrim(c.b_email)) OR s.email = ANY (c.b_all_emails))
         AND s.is_suppressed
     ) AS email_undeliverable
-  ) eb ON true;
+    WHERE p_enrich
+  ) eb ON true
+  ORDER BY c.b_ord;
+END;
+$$;
+REVOKE ALL ON FUNCTION players_private.players_overview_rows(text, uuid, text, jsonb, text, text, integer, integer, boolean) FROM PUBLIC, anon, authenticated, service_role;
+
+CREATE OR REPLACE FUNCTION public.get_players_overview(
+  p_scope text,                       -- 'academy' | 'trainer'
+  p_scope_id uuid,
+  p_search text DEFAULT NULL,
+  p_filters jsonb DEFAULT '{}'::jsonb,
+  p_sort text DEFAULT 'name',         -- 'name' | 'email' | 'skill' | 'created_at'
+  p_sort_dir text DEFAULT 'asc',
+  p_limit integer DEFAULT 50,
+  p_offset integer DEFAULT 0
+)
+RETURNS TABLE (
+  player_key text,
+  player_type text,
+  guest_player_id uuid,
+  profile_id uuid,
+  person_id uuid,
+  full_name text,
+  email text,
+  phone text,
+  billing_business_name text,
+  billing_address text,
+  billing_btw_number text,
+  skill_rating numeric,
+  rating_system text,
+  notes text,
+  source text,
+  birth_date date,
+  has_trained boolean,
+  created_at timestamptz,
+  owner_trainer_id uuid,
+  metadata_id uuid,
+  tag_ids uuid[],
+  academy_notes text,
+  trainer_ids uuid[],
+  location_ids uuid[],
+  location_names text[],
+  has_active_cyclus boolean,
+  has_overdue_payment boolean,
+  email_undeliverable boolean,
+  total_count bigint
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+BEGIN
+  -- ---- authorization at this public entry (the authority re-checks it) ----
+  IF p_scope = 'academy' THEN
+    IF NOT public.is_academy_manager(auth.uid(), p_scope_id) THEN
+      RAISE EXCEPTION 'not authorized for academy %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+  ELSIF p_scope = 'trainer' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM public.trainer_profiles tp
+       WHERE tp.id = p_scope_id AND tp.user_id = auth.uid()
+    ) THEN
+      RAISE EXCEPTION 'not authorized for trainer %', p_scope_id USING ERRCODE = '42501';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'invalid scope: %', p_scope;
+  END IF;
+
+  -- One page (at most 500 rows) in list order, with the page-only enrichment.
+  RETURN QUERY
+  SELECT r.player_key, r.player_type, r.guest_player_id, r.profile_id, r.person_id,
+         r.full_name, r.email, r.phone,
+         r.billing_business_name, r.billing_address, r.billing_btw_number,
+         r.skill_rating, r.rating_system, r.notes, r.source, r.birth_date,
+         r.has_trained, r.created_at, r.owner_trainer_id,
+         r.metadata_id, r.tag_ids, r.academy_notes,
+         r.trainer_ids, r.location_ids, r.location_names,
+         r.has_active_cyclus, r.has_overdue_payment, r.email_undeliverable,
+         r.total_count
+    FROM players_private.players_overview_rows(
+           p_scope, p_scope_id, p_search, p_filters, p_sort, p_sort_dir,
+           least(greatest(coalesce(p_limit, 50), 1), 500),
+           greatest(coalesce(p_offset, 0), 0),
+           true) r
+   ORDER BY r.sort_ord;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer) TO authenticated;
+
+CREATE OR REPLACE FUNCTION public.get_players_overview_export(
+  p_academy uuid,
+  p_search text DEFAULT NULL,
+  p_filters jsonb DEFAULT '{}'::jsonb,
+  p_sort text DEFAULT 'name',         -- as get_players_overview
+  p_sort_dir text DEFAULT 'asc'
+)
+RETURNS TABLE (
+  total bigint,
+  rows jsonb
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $$
+DECLARE
+  c_max CONSTANT integer := 20000;
+  v_total bigint;
+  v_rows jsonb;
+BEGIN
+  -- ---- authorization at this public entry (the authority re-checks it) ----
+  IF NOT public.is_academy_manager(auth.uid(), p_academy) THEN
+    RAISE EXCEPTION 'not authorized for academy %', p_academy USING ERRCODE = '42501';
+  END IF;
+
+  -- ONE statement, ONE evaluation of the authority: the total and the rows come from the same rows.
+  -- total_count is the window count of EVERY match (taken before the window), so at most c_max rows are
+  -- materialized and an oversized request costs no more than a full export.
+  SELECT coalesce(max(r.total_count), 0),
+         coalesce(jsonb_agg(jsonb_build_object(
+                    'person_id', r.person_id,
+                    'full_name', r.full_name,
+                    'email',     r.email,
+                    'phone',     r.phone)
+                  ORDER BY r.sort_ord), '[]'::jsonb)
+    INTO v_total, v_rows
+    FROM players_private.players_overview_rows(
+           'academy', p_academy, p_search, p_filters, p_sort, p_sort_dir, c_max, 0, false) r;
+
+  IF v_total > c_max THEN
+    RAISE EXCEPTION 'player export too large: % players match, at most % can be exported', v_total, c_max
+      USING ERRCODE = '54000', DETAIL = format('total=%s max=%s', v_total, c_max);
+  END IF;
+
+  RETURN QUERY SELECT v_total, v_rows;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.get_players_overview_export(uuid, text, jsonb, text, text) FROM PUBLIC, anon, service_role;
+GRANT EXECUTE ON FUNCTION public.get_players_overview_export(uuid, text, jsonb, text, text) TO authenticated;

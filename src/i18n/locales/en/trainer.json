@@ -774,12 +774,11 @@
     },
     "export": {
       "button": "Export",
-      "progress": "Exporting {{done}} / {{total}}…",
+      "progress": "Exporting…",
       "cancel": "Cancel export",
       "success": "{{count}} players exported",
       "empty": "No players match these filters, so nothing was exported.",
       "overLimit": "{{total}} players match, but an export can hold at most {{max}}. Narrow the filters and try again.",
-      "changed": "The player list changed while exporting, so nothing was downloaded. Please try again.",
       "cancelled": "Export cancelled, nothing was downloaded.",
       "failed": "The export failed, nothing was downloaded. Please try again.",
       "headerName": "Name",

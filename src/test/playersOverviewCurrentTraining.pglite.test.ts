@@ -1,10 +1,13 @@
 // @vitest-environment node
 // PGlite's WASM loader needs Node's fetch/fs, not jsdom — pin this file to the node env.
 //
-// PTF-OPTION-A — get_players_overview `current_training` / `training_location_id` keys, proven on the
-// REAL migration chain (the overview's existing harness + 20261208100000) against the effective
-// function, not the UI. Tom's option A: ongoing cycles + upcoming standalone sessions count; a cycle
-// that has not started does not. One qualifying-session predicate drives both keys.
+// PTF-OPTION-A — get_players_overview `current_training` / `training_location_id` keys, academy
+// membership A1 and the one-call export E1, proven on the REAL migration chain (the overview's existing
+// harness + 20261208100000) against the effective functions, not the UI. Tom's option A: ongoing cycles
+// + upcoming standalone sessions count; a cycle that has not started does not. One qualifying-session
+// predicate drives both keys. A1: an academy sees a side only through its own guests, its own sessions
+// and its own metadata — never through a shared trainer. The canonical body runs first on the same data,
+// so the A1 difference and the unchanged trainer scope are measured, not assumed.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
@@ -61,33 +64,79 @@ const G_OF_B = G(14);           // academy B's own guest, training at B
 // merged human: A's guest GM + profile PM → one person (person id = profile id)
 const GM = G(20);
 const PM = '9b000000-0000-0000-0000-000000000020';
-// registered-only profile seen by BOTH academies through shared trainer TS (pre-existing universe)
+// registered-only profile booked on an A session of shared trainer TS: the canonical body showed it to
+// BOTH academies (trainer union); under A1 only A sees it
 const PR = '9b000000-0000-0000-0000-000000000030';
 // unmerged family: parent profile books the child's guest seat (dual-keyed) — FAM-02: that session is
 // the CHILD's training, never the parent's (the parent is still listed via the dual-keyed booking)
 const P_PARENT = '9b000000-0000-0000-0000-000000000040';
 const G_CHILD = G(40);
 
+// ── A1 membership fixture (decision packet §1.6). T2 trains for A and B but has sessions only at B. ──
+const T2 = 'c0000000-0000-0000-0000-000000000072';
+const S_T2_B = S(20);                                  // T2's past session for academy B
+const XG = (n: number) => `7a000000-0000-0000-0000-${String(n).padStart(12, '0')}`; // adversarial guests
+const XP = (n: number) => `7b000000-0000-0000-0000-${String(n).padStart(12, '0')}`; // adversarial profiles
+const LG = (n: number) => `7c000000-0000-0000-0000-${String(n).padStart(12, '0')}`; // legitimate guests
+const LP = (n: number) => `7d000000-0000-0000-0000-${String(n).padStart(12, '0')}`; // legitimate profiles
+// adversarial — each must be ABSENT from A under every filter and from A's export
+const X1_PROFILE_B_SLOT = XP(1);   // 1. booked only on a B-owned session of shared trainer TS
+const X2_T_GUEST = XG(2);          // 2. TS's independent guest (no academy, no A booking/metadata)
+const X3_B_GUEST = XG(3);          // 3. B-owned guest of TS, booked on a B session
+const X4_B_META_GUEST = XG(4);     // 4. TS's guest linked only by a B metadata row
+const X5_PROFILE_INDEP = XP(5);    // 5. booked only on TS's independent (unstamped) session
+const X6_PROFILE = XP(6);          // 6. merged person: A-side profile (booked on an A session) …
+const X6_B_GUEST = XG(6);          //    … + a B-owned guest side with its own name / email / phone
+const X7_GUEST = XG(7);            // 7. only pending / cancelled bookings on A sessions
+const X7_PROFILE = XP(7);          //    only a cancelled booking on an A session
+const ADVERSARIAL = [X1_PROFILE_B_SLOT, X2_T_GUEST, X3_B_GUEST, X4_B_META_GUEST, X5_PROFILE_INDEP, X6_B_GUEST, X7_GUEST, X7_PROFILE];
+// legitimate — each must be PRESENT in A
+const L9_A_GUEST = LG(9);          // 9. A-owned guest, no bookings
+const L10_T_GUEST_ON_A = LG(10);   // 10. TS's guest booked (completed) on an A session
+const L11_META_GUEST = LG(11);     // 11. guest linked only by an A metadata row
+const L12_PROFILE_ON_A = LP(12);   // 12. profile booked on an A session
+const L14_REMOVED_GUEST = LG(14);  // 14. soft-removed in A: still hidden
+const L14_REMOVED_PROFILE = LP(14);
+
 type Row = {
   player_key: string; person_id: string; guest_player_id: string | null; profile_id: string | null;
-  full_name: string; has_active_cyclus: boolean; total_count: string | number;
+  full_name: string; email: string; phone: string; has_active_cyclus: boolean; email_undeliverable: boolean;
+  trainer_ids: string[]; total_count: string | number;
+};
+type CallOpts = {
+  scope?: 'academy' | 'trainer'; scopeId?: string; limit?: number; offset?: number;
+  search?: string | null; sort?: string; dir?: string;
 };
 
-async function call(
-  uid: string,
-  filters: Record<string, unknown>,
-  opts: { scope?: 'academy' | 'trainer'; scopeId?: string; limit?: number; offset?: number } = {},
-): Promise<Row[]> {
+async function asUser<T>(uid: string, fn: () => Promise<T>): Promise<T> {
   await db.exec(`SET test.uid = '${uid}';`);
   try {
-    const { rows } = await db.query<Row>(
-      `SELECT * FROM public.get_players_overview($1, $2, NULL, $3::jsonb, 'name', 'asc', $4, $5)`,
-      [opts.scope ?? 'academy', opts.scopeId ?? A, JSON.stringify(filters), opts.limit ?? 500, opts.offset ?? 0],
-    );
-    return rows;
+    return await fn();
   } finally {
     await db.exec(`SET test.uid = '';`);
   }
+}
+
+async function call(uid: string, filters: Record<string, unknown>, opts: CallOpts = {}): Promise<Row[]> {
+  return asUser(uid, async () => (await db.query<Row>(
+    `SELECT * FROM public.get_players_overview($1, $2, $3, $4::jsonb, $5, $6, $7, $8)`,
+    [opts.scope ?? 'academy', opts.scopeId ?? A, opts.search ?? null, JSON.stringify(filters),
+      opts.sort ?? 'name', opts.dir ?? 'asc', opts.limit ?? 500, opts.offset ?? 0],
+  )).rows);
+}
+
+type ExportRow = { person_id: string; full_name: string; email: string; phone: string };
+async function exportCall(
+  uid: string, filters: Record<string, unknown>, opts: { academy?: string; search?: string | null; sort?: string; dir?: string } = {},
+): Promise<{ total: number; rows: ExportRow[] }> {
+  return asUser(uid, async () => {
+    const { rows } = await db.query<{ total: string | number; rows: ExportRow[] }>(
+      `SELECT * FROM public.get_players_overview_export($1, $2, $3::jsonb, $4, $5)`,
+      [opts.academy ?? A, opts.search ?? null, JSON.stringify(filters), opts.sort ?? 'name', opts.dir ?? 'asc'],
+    );
+    expect(rows).toHaveLength(1); // always ONE row
+    return { total: Number(rows[0].total), rows: rows[0].rows };
+  });
 }
 const names = (rows: Row[]) => rows.map((r) => r.full_name).sort();
 const errCode = (p: Promise<unknown>) =>
@@ -251,23 +300,106 @@ beforeAll(async () => {
       -- merged person: a pure-profile booking AND a guest-seat booking → still ONE row
       ('${S_ON_NEXT}',  NULL,                   '${PM}', 'confirmed'),
       ('${S_SA_FAR}',   '${GM}',                NULL, 'confirmed'),
-      -- registered-only profile: an A-owned session via shared trainer TS → in BOTH universes
+      -- registered-only profile: an A-owned session of shared trainer TS
       ('${S_ON_NEXT}',  NULL,                   '${PR}', 'confirmed'),
       ('${S_ON_NEXT}',  '${G_CHILD}',           '${P_PARENT}', 'confirmed');
   `);
 
+  // A1 membership fixture (decision packet §1.6)
+  await db.exec(`
+    INSERT INTO public.trainer_profiles VALUES ('${T2}', NULL);
+    INSERT INTO public.academy_trainers VALUES ('${A}', '${T2}', 'active'), ('${B}', '${T2}', 'active');
+    INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, location_id, cyclus_id, start_time, end_time) VALUES
+      ('${S_T2_B}', '${T2}', '${B}', '${LOC_B}', NULL, now() - interval '3 days', now() - interval '3 days' + interval '1 hour');
+    INSERT INTO public.guest_players (id, trainer_id, academy_profile_id, full_name, email, phone) VALUES
+      ('${X2_T_GUEST}',          '${TS}', NULL,   'Adv Trainer Guest',   'adv2@x.nl',     NULL),
+      ('${X3_B_GUEST}',          '${TS}', '${B}', 'Adv B Guest',         'adv3@x.nl',     NULL),
+      ('${X4_B_META_GUEST}',     '${TS}', NULL,   'Adv B Meta Guest',    'adv4@x.nl',     NULL),
+      ('${X6_B_GUEST}',          '${TS}', '${B}', 'Secret B Side',       'secret-b@x.nl', '0699999999'),
+      ('${X7_GUEST}',            NULL,    NULL,   'Adv Pending Guest',   'adv7@x.nl',     NULL),
+      ('${L9_A_GUEST}',          NULL,    '${A}', 'Legit No Bookings',   'l9@x.nl',       NULL),
+      ('${L10_T_GUEST_ON_A}',    '${TS}', NULL,   'Legit T Guest On A',  'l10@x.nl',      NULL),
+      ('${L11_META_GUEST}',      NULL,    NULL,   'Legit Meta Guest',    'l11@x.nl',      NULL),
+      ('${L14_REMOVED_GUEST}',   NULL,    '${A}', 'Legit Removed Guest', 'l14@x.nl',      NULL);
+    INSERT INTO public.profiles (id, full_name, email) VALUES
+      ('${X1_PROFILE_B_SLOT}',   'Adv Profile B Slot',    'adv1@x.nl'),
+      ('${X5_PROFILE_INDEP}',    'Adv Profile Indep',     'adv5@x.nl'),
+      ('${X6_PROFILE}',          'Merged A Profile',      'p6@x.nl'),
+      ('${X7_PROFILE}',          'Adv Cancelled Profile', 'adv7p@x.nl'),
+      ('${L12_PROFILE_ON_A}',    'Legit Profile On A',    'l12@x.nl'),
+      ('${L14_REMOVED_PROFILE}', 'Legit Removed Profile', 'l14p@x.nl');
+    INSERT INTO public.persons (id, full_name, email, user_id) VALUES
+      ('${X6_PROFILE}', 'Merged Person Six', 'p6@x.nl', '${X6_PROFILE}');
+    INSERT INTO public.person_links (person_id, profile_id) VALUES ('${X6_PROFILE}', '${X6_PROFILE}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${X6_PROFILE}', '${X6_B_GUEST}');
+    INSERT INTO public.email_address_state (email, state) VALUES ('secret-b@x.nl', 'hard_bounced');
+    INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, profile_id, notes, removed_at) VALUES
+      ('${B}', '${X4_B_META_GUEST}',   NULL,                       'b note', NULL),
+      ('${A}', '${L11_META_GUEST}',    NULL,                       'a note', NULL),
+      ('${A}', '${L14_REMOVED_GUEST}', NULL,                       NULL,     now()),
+      ('${A}', NULL,                   '${L14_REMOVED_PROFILE}',   NULL,     now());
+    INSERT INTO public.bookings (slot_id, guest_player_id, player_id, status) VALUES
+      ('${S_B_PAST}',   NULL,                    '${X1_PROFILE_B_SLOT}',   'completed'),
+      ('${S_INDEP}',    '${X2_T_GUEST}',         NULL,                     'confirmed'),
+      ('${S_B_PAST}',   '${X3_B_GUEST}',         NULL,                     'completed'),
+      ('${S_INDEP}',    NULL,                    '${X5_PROFILE_INDEP}',    'confirmed'),
+      ('${S_ON_PAST}',  NULL,                    '${X6_PROFILE}',          'completed'),
+      ('${S_B_PAST}',   '${X6_B_GUEST}',         NULL,                     'completed'),
+      ('${S_ON_NEXT}',  '${X7_GUEST}',           NULL,                     'pending'),
+      ('${S_SA_FAR}',   '${X7_GUEST}',           NULL,                     'cancelled'),
+      ('${S_ON_NEXT}',  NULL,                    '${X7_PROFILE}',          'cancelled'),
+      ('${S_SA_ENDED}', '${L10_T_GUEST_ON_A}',   NULL,                     'completed'),
+      ('${S_ON_PAST}',  NULL,                    '${L12_PROFILE_ON_A}',    'completed'),
+      ('${S_ON_PAST}',  NULL,                    '${L14_REMOVED_PROFILE}', 'completed'),
+      ('${S_T2_B}',     '${G_ONGOING}',          NULL,                     'completed');
+  `);
+
+  const migration = (f: string) =>
+    readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8')
+      .split('\n').filter((l) => !/^(REVOKE|GRANT)\b/.test(l)).join('\n');
   for (const f of [
     '20260827100000_phase32_players_overview_person_dedup.sql',
     '20260901110000_phase33e_overview_type_has_login.sql',
     '20261006120000_readers_canonical_is_suppressed.sql',
-    '20261208100000_players_overview_current_training.sql', // under test
-  ]) {
-    await db.exec(
-      readFileSync(join(process.cwd(), 'supabase', 'migrations', f), 'utf8')
-        .split('\n').filter((l) => !/^(REVOKE|GRANT)\b/.test(l)).join('\n'),
-    );
-  }
+  ]) await db.exec(migration(f));
+  before = await snapshot(); // the canonical (live) body on the same data
+  await db.exec(migration('20261208100000_players_overview_current_training.sql')); // under test
 });
+
+// Trainer-scope calls compared byte-for-byte before/after (case 16): every sort, paging and filter.
+const TRAINER_CALLS: Array<[string, Record<string, unknown>, CallOpts]> = [
+  ['name asc', {}, {}],
+  ['name desc', {}, { dir: 'desc' }],
+  ['email asc', {}, { sort: 'email' }],
+  ['email desc', {}, { sort: 'email', dir: 'desc' }],
+  ['skill asc', {}, { sort: 'skill' }],
+  ['created desc', {}, { sort: 'created_at', dir: 'desc' }],
+  ['page 2 of 3', {}, { limit: 3, offset: 3 }],
+  ['trainer filter', { trainer_id: TS }, {}],
+  ['club chip', { location_id: LOC_A1 }, {}],
+  ['active cycle', { has_active_cyclus: true }, {}],
+  ['no active cycle', { has_active_cyclus: false }, {}],
+  ['payment ok', { payment: 'ok' }, {}],
+  ['untagged', { tag_id: 'untagged' }, {}],
+  ['unrated', { level_unrated: true }, {}],
+  ['search text', {}, { search: 'adv' }],
+  ['search digits', {}, { search: '0699' }],
+];
+async function snapshot() {
+  const trainer: Record<string, Row[]> = {};
+  for (const [label, filters, opts] of TRAINER_CALLS) {
+    trainer[label] = await call(TS_USER, filters, { ...opts, scope: 'trainer', scopeId: TS });
+  }
+  return {
+    trainer,
+    a: await call(MGR_A, {}),
+    b: await call(MGR_B, {}, { scopeId: B }),
+    aTrainerT2: await call(MGR_A, { trainer_id: T2 }),
+    aSearchSecret: await call(MGR_A, {}, { search: 'secret-b' }),
+  };
+}
+let before: Awaited<ReturnType<typeof snapshot>>;
+const ids = (rows: Row[]) => rows.flatMap((r) => [r.person_id, r.guest_player_id, r.profile_id]).filter(Boolean);
 
 const TRAINING_AT_A = [
   'Child Guest', 'Completed Ahead', 'Cycle Just Started', 'In Progress', 'Merged Person', 'Ongoing Cycle',
@@ -339,11 +471,13 @@ describe('tenant authority — shared trainer, shared person, other academies', 
     expect(training).not.toContain('Independent Only'); // TS's own practice, no academy
   });
 
-  it("B sees only B-owned training, even for a person A's session admits to B's universe", async () => {
+  it("B sees only B-owned training; A's session no longer admits a person to B (A1)", async () => {
+    expect(names(before.b)).toContain('Registered Shared'); // the canonical trainer-union leak …
     const bAll = names(await call(MGR_B, {}, { scopeId: B }));
-    expect(bAll).toContain('Registered Shared'); // pre-existing universe (shared trainer) — unchanged
+    expect(bAll).not.toContain('Registered Shared');       // … closed: PR only ever booked A's sessions
     const bTraining = names(await call(MGR_B, { current_training: true }, { scopeId: B }));
-    expect(bTraining).toEqual(['B Own Guest']);
+    // A's guest G_B_ONLY holds a confirmed booking on B's ongoing cycle, so B now sees it (A1 booking arm)
+    expect(bTraining).toEqual(['B Own Guest', 'Trains At B']);
   });
 
   it('the filtered set is always a subset of what the manager already sees (no new contacts)', async () => {
@@ -410,4 +544,273 @@ describe('multi-page correctness under the new filter', () => {
     expect(seen).toEqual(full.map((r) => r.person_id));
     expect(new Set(seen).size).toBe(seen.length);
   });
+});
+
+// ── A1: academy membership through the academy's own guests, sessions and metadata only ──────────────
+const EVERY_FILTER: Array<Record<string, unknown>> = [
+  {}, { current_training: false }, { current_training: true }, { training_location_id: LOC_A1 },
+  { location_id: LOC_A1 }, { location_id: LOC_B }, { trainer_id: TS }, { has_active_cyclus: true },
+  { has_active_cyclus: false }, { payment: 'ok' }, { payment: 'overdue' }, { tag_id: 'untagged' },
+  { level_unrated: true },
+];
+const personIds = (rows: Array<{ person_id: string }>) => rows.map((r) => r.person_id);
+
+describe('A1 — academy membership (decision packet §1.6)', () => {
+  it('the canonical body admitted every adversarial side to A through the shared trainer (the defect)', () => {
+    const leaked = new Set(ids(before.a));
+    for (const x of [X1_PROFILE_B_SLOT, X2_T_GUEST, X3_B_GUEST, X4_B_META_GUEST, X5_PROFILE_INDEP, X6_B_GUEST]) {
+      expect(leaked.has(x)).toBe(true);
+    }
+  });
+
+  it('cases 1–7: no adversarial side reaches A under any filter or search', async () => {
+    for (const filters of EVERY_FILTER) {
+      for (const search of [null, 'adv', 'secret', '0699']) {
+        const rows = await call(MGR_A, filters, { search });
+        const leaked = ids(rows).filter((id) => ADVERSARIAL.includes(id));
+        expect(leaked, `${JSON.stringify(filters)} search=${search}`).toEqual([]);
+      }
+    }
+  });
+
+  it("cases 1–7: nor A's export, under the complement filter and a search", async () => {
+    for (const filters of [{}, { current_training: false }]) {
+      for (const search of [null, 'adv']) {
+        const { rows } = await exportCall(MGR_A, filters, { search });
+        expect(personIds(rows).filter((id) => ADVERSARIAL.includes(id))).toEqual([]);
+      }
+    }
+  });
+
+  it('case 6: a merged person shows only its A side — no B name, email, phone or bounce', async () => {
+    const was = before.a.find((r) => r.person_id === X6_PROFILE)!;
+    expect(was.guest_player_id).toBe(X6_B_GUEST);        // canonical: B's guest side was folded in …
+    expect(was.email_undeliverable).toBe(true);          // … with B's bounce
+    expect(names(before.aSearchSecret)).toEqual(['Merged Person Six']); // … and B's email searchable
+
+    const rows = (await call(MGR_A, {})).filter((r) => r.person_id === X6_PROFILE);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      guest_player_id: null, profile_id: X6_PROFILE, full_name: 'Merged A Profile', email: 'p6@x.nl', phone: '',
+      email_undeliverable: false,
+    });
+    for (const search of ['secret-b', 'Secret B', '0699999999']) expect(await call(MGR_A, {}, { search })).toEqual([]);
+    const exported = (await exportCall(MGR_A, {})).rows.find((r) => r.person_id === X6_PROFILE);
+    expect(exported).toEqual({ person_id: X6_PROFILE, full_name: 'Merged A Profile', email: 'p6@x.nl', phone: '' });
+    // symmetric: B sees its own guest side of the same person and nothing of A's profile side
+    const inB = (await call(MGR_B, {}, { scopeId: B })).filter((r) => r.person_id === X6_PROFILE);
+    expect(inB).toHaveLength(1);
+    expect(inB[0]).toMatchObject({ guest_player_id: X6_B_GUEST, profile_id: null, email: 'secret-b@x.nl' });
+  });
+
+  it('case 7: pending and cancelled bookings on A sessions admit nobody', async () => {
+    const all = ids(await call(MGR_A, {}));
+    expect(all).not.toContain(X7_GUEST);
+    expect(all).not.toContain(X7_PROFILE);
+  });
+
+  it('case 8: callers — another academy, a stranger, anonymous (42501); trainer scope refuses training keys (22023)', async () => {
+    for (const uid of [MGR_B, STRANGER, '']) {
+      expect(await errCode(call(uid, {}))).toBe('42501');
+      expect(await errCode(exportCall(uid, {}))).toBe('42501');
+    }
+    expect(await errCode(call(TS_USER, { current_training: false }, { scope: 'trainer', scopeId: TS }))).toBe('22023');
+  });
+
+  it('cases 9–13: legitimate sides are present, in the list and the export', async () => {
+    const list = await call(MGR_A, {});
+    const exported = personIds((await exportCall(MGR_A, {})).rows);
+    for (const id of [L9_A_GUEST, L10_T_GUEST_ON_A, L11_META_GUEST, L12_PROFILE_ON_A, X6_PROFILE, PM]) {
+      expect(personIds(list)).toContain(id);
+      expect(exported).toContain(id);
+    }
+    // 13: the merged guest-A + profile is ONE row keyed by the canonical person
+    const merged = list.filter((r) => r.person_id === PM);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ guest_player_id: GM, profile_id: PM });
+  });
+
+  it('case 14: a soft-removed guest or profile stays hidden', async () => {
+    const all = [...ids(await call(MGR_A, {})), ...personIds((await exportCall(MGR_A, {})).rows)];
+    expect(all).not.toContain(L14_REMOVED_GUEST);
+    expect(all).not.toContain(L14_REMOVED_PROFILE);
+  });
+
+  it("case 15: the trainer filter asks for that trainer's activity inside A only", async () => {
+    expect(names(before.aTrainerT2)).toEqual(['Ongoing Cycle']); // canonical: T2's B session counted for A
+    expect(await call(MGR_A, { trainer_id: T2 })).toEqual([]);    // A1: T2 has no A session
+    const withTs = personIds(await call(MGR_A, { trainer_id: TS }));
+    expect(withTs).toEqual(expect.arrayContaining([L10_T_GUEST_ON_A, PR, L12_PROFILE_ON_A]));
+    for (const x of ADVERSARIAL) expect(withTs).not.toContain(x);
+  });
+
+  it('case 16: trainer scope is byte-for-byte unchanged (every sort, page and filter)', async () => {
+    for (const [label, filters, opts] of TRAINER_CALLS) {
+      const now = await call(TS_USER, filters, { ...opts, scope: 'trainer', scopeId: TS });
+      expect(now, label).toEqual(before.trainer[label]);
+      expect(now.length, label).toBeGreaterThan(0);
+    }
+  });
+
+  it("A's universe differs from the canonical one exactly by the A1 rule", async () => {
+    const was = new Set(personIds(before.a));
+    const now = new Set(personIds(await call(MGR_A, {})));
+    const dropped = [...was].filter((id) => !now.has(id)).sort();
+    const added = [...now].filter((id) => !was.has(id)).sort();
+    // X6's B guest side is folded into X6's profile person, which stays (with its A side only)
+    expect(dropped).toEqual([X1_PROFILE_B_SLOT, X2_T_GUEST, X3_B_GUEST, X4_B_META_GUEST, X5_PROFILE_INDEP].sort());
+    expect(added).toEqual([L11_META_GUEST]); // metadata link: a relationship the canonical body ignored
+  });
+
+  it("B's universe is B's own guests, sessions and metadata", async () => {
+    expect(names(await call(MGR_B, {}, { scopeId: B }))).toEqual([
+      'Adv B Guest', 'Adv B Meta Guest', 'Adv Profile B Slot', 'B Own Guest', 'Ongoing Cycle', 'Secret B Side', 'Trains At B',
+    ]);
+  });
+
+  it("booking-derived chips read A's own sessions (a B cycle is not A's active cycle)", async () => {
+    const was = before.a.find((r) => r.person_id === G_B_ONLY)!;
+    const now = (await call(MGR_A, {})).find((r) => r.person_id === G_B_ONLY)!;
+    expect(was.has_active_cyclus).toBe(true);   // canonical: B's cycle, via the shared trainer
+    expect(now.has_active_cyclus).toBe(false);
+    expect(was.trainer_ids).toEqual([TS]);
+    expect(now.trainer_ids).toEqual([]);
+  });
+});
+
+// ── E1: the export is the list's own authority, evaluated once ───────────────────────────────────────
+describe('E1 — get_players_overview_export', () => {
+  const COMBOS: Array<[Record<string, unknown>, CallOpts]> = [
+    [{}, {}], [{}, { dir: 'desc' }], [{}, { sort: 'email' }], [{}, { sort: 'email', dir: 'desc' }],
+    [{}, { sort: 'skill' }], [{}, { sort: 'created_at', dir: 'desc' }], [{ current_training: true }, {}],
+    [{ current_training: false }, { sort: 'email' }], [{ training_location_id: LOC_A1 }, {}],
+    [{ trainer_id: TS }, {}], [{}, { search: 'a' }], [{ current_training: true }, { search: 'cycle' }],
+  ];
+
+  it('returns exactly the list: same people, same order, same name / email / phone, same total', async () => {
+    for (const [filters, opts] of COMBOS) {
+      const list = await call(MGR_A, filters, { ...opts, limit: 500 });
+      const exp = await exportCall(MGR_A, filters, { search: opts.search, sort: opts.sort, dir: opts.dir });
+      const label = JSON.stringify([filters, opts]);
+      expect(exp.total, label).toBe(list.length);
+      expect(exp.rows, label).toEqual(list.map((r) => ({ person_id: r.person_id, full_name: r.full_name, email: r.email, phone: r.phone })));
+      if (list.length) expect(Number(list[0].total_count), label).toBe(exp.total);
+    }
+  });
+
+  it('list pages partition the export order exactly', async () => {
+    const exp = await exportCall(MGR_A, {}, { sort: 'email', dir: 'desc' });
+    const paged: string[] = [];
+    for (let offset = 0; offset < exp.total; offset += 3) {
+      paged.push(...personIds(await call(MGR_A, {}, { sort: 'email', dir: 'desc', limit: 3, offset })));
+    }
+    expect(paged).toEqual(personIds(exp.rows));
+  });
+
+  it('an empty match is still ONE row: total 0 and an empty array', async () => {
+    expect(await exportCall(MGR_A, {}, { search: 'nobody-matches-this' })).toEqual({ total: 0, rows: [] });
+  });
+
+  it('a NULL academy is refused, not treated as "all"', async () => {
+    expect(await errCode(asUser(MGR_A, () => db.query(
+      `SELECT * FROM public.get_players_overview_export(NULL, NULL, '{}'::jsonb, 'name', 'asc')`)))).toBe('42501');
+  });
+});
+
+describe('E1 — authorization at every entry, and the private authority', () => {
+  const authority = (scope: string, scopeId: string, limit = 10, offset = 0, enrich: boolean | null = true) =>
+    db.query(`SELECT * FROM players_private.players_overview_rows($1, $2, NULL, '{}'::jsonb, 'name', 'asc', $3, $4, $5)`,
+      [scope, scopeId, limit, offset, enrich]);
+
+  it('the authority re-checks authorization itself when called directly', async () => {
+    expect(await errCode(asUser(STRANGER, () => authority('academy', A)))).toBe('42501');
+    expect(await errCode(asUser(MGR_B, () => authority('academy', A)))).toBe('42501');
+    expect(await errCode(asUser(STRANGER, () => authority('trainer', TS)))).toBe('42501');
+    expect(await errCode(asUser(MGR_A, () => authority('nonsense', A)))).not.toBe('no error');
+    expect((await asUser(MGR_A, () => authority('academy', A))).rows.length).toBeGreaterThan(0);
+  });
+
+  it('the page-only enrichment runs only when asked (the export skips it; identity and order are the same)', async () => {
+    type AuthRow = { person_id: string; full_name: string; location_ids: string[]; trainer_ids: string[];
+      has_active_cyclus: boolean; email_undeliverable: boolean; sort_ord: string | number };
+    const run = async (enrich: boolean) => (await asUser(MGR_A, () => authority('academy', A, 500, 0, enrich))).rows as AuthRow[];
+    const on = await run(true);
+    const off = await run(false);
+    expect(off.map((r) => [r.person_id, r.full_name, Number(r.sort_ord)])).toEqual(on.map((r) => [r.person_id, r.full_name, Number(r.sort_ord)]));
+    const ongoingOn = on.find((r) => r.person_id === G_ONGOING)!;
+    const ongoingOff = off.find((r) => r.person_id === G_ONGOING)!;
+    expect(ongoingOn).toMatchObject({ location_ids: [LOC_A1], trainer_ids: [TS], has_active_cyclus: true });
+    expect(ongoingOff).toMatchObject({ location_ids: [], trainer_ids: [], has_active_cyclus: false });
+    expect(off.every((r) => r.location_ids.length === 0 && !r.has_active_cyclus && !r.email_undeliverable)).toBe(true);
+  });
+
+  it('the authority refuses a malformed window (22023)', async () => {
+    for (const [limit, offset, enrich] of [[0, 0, true], [10, -1, true], [10, 0, null]] as const) {
+      expect(await errCode(asUser(MGR_A, () => authority('academy', A, limit, offset, enrich)))).toBe('22023');
+    }
+  });
+
+  it("each public entry refuses on its own, even with the authority's check removed", async () => {
+    // Swap in a PERMISSIVE authority stub (same signature and return type) for this transaction only.
+    const src = readFileSync(join(process.cwd(), 'supabase', 'migrations', '20261208100000_players_overview_current_training.sql'), 'utf8');
+    const start = src.indexOf('CREATE OR REPLACE FUNCTION players_private.players_overview_rows(');
+    const header = src.slice(start, src.indexOf('\nLANGUAGE plpgsql', start));
+    const LIST = `SELECT person_id FROM public.get_players_overview($1, $2, NULL, '{}'::jsonb, 'name', 'asc', 50, 0)`;
+    const EXPORT = `SELECT total FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`;
+    // each probe in its own savepoint: an expected refusal must not abort the stub's transaction
+    const probe = async (uid: string, sql: string, params: unknown[]) => {
+      await db.exec('SAVEPOINT probe');
+      try {
+        await db.exec(`SET LOCAL test.uid = '${uid}'`);
+        return { code: 'no error', rows: (await db.query<{ person_id?: string }>(sql, params)).rows };
+      } catch (e) {
+        return { code: (e as { code?: string }).code ?? String(e), rows: [] };
+      } finally {
+        await db.exec('ROLLBACK TO SAVEPOINT probe');
+      }
+    };
+    await db.exec('BEGIN');
+    try {
+      await db.exec(`${header}
+        LANGUAGE plpgsql AS $stub$ BEGIN person_id := '${L9_A_GUEST}'; total_count := 1; sort_ord := 1; RETURN NEXT; END $stub$;`);
+      const managerSees = await probe(MGR_A, LIST, ['academy', A]);
+      expect(managerSees.rows.map((r) => r.person_id)).toEqual([L9_A_GUEST]); // the stub is what runs
+      for (const uid of [STRANGER, MGR_B, '']) {
+        expect((await probe(uid, LIST, ['academy', A])).code).toBe('42501');
+        expect((await probe(uid, EXPORT, [A])).code).toBe('42501');
+      }
+      expect((await probe(STRANGER, LIST, ['trainer', TS])).code).toBe('42501');
+    } finally {
+      await db.exec('ROLLBACK');
+    }
+    expect((await call(MGR_A, {})).length).toBeGreaterThan(1); // the real authority is back
+  });
+
+  it('the list keeps its paging bounds (limit clamped to 1..500, offset to >= 0)', async () => {
+    expect(await call(MGR_A, {}, { limit: 0 })).toHaveLength(1);
+    const first = await call(MGR_A, {}, { limit: 2, offset: -5 });
+    expect(personIds(first)).toEqual(personIds(await call(MGR_A, {}, { limit: 2, offset: 0 })));
+  });
+});
+
+describe('E1 — the 20,000-row bound', () => {
+  const C = 'cc0000aa-0000-0000-0000-00000000000c';
+  const MGR_C = 'cc0000aa-0000-0000-0000-0000000000c1';
+
+  it('more than 20,000 matches is refused (54000) with the real total; exactly 20,000 is exported', async () => {
+    await db.exec(`
+      INSERT INTO public.academy_profiles (id) VALUES ('${C}');
+      INSERT INTO public.academy_managers VALUES ('${C}', '${MGR_C}');
+      INSERT INTO public.guest_players (id, academy_profile_id, full_name, email)
+        SELECT gen_random_uuid(), '${C}', 'Bulk ' || i, 'bulk' || i || '@x.nl' FROM generate_series(1, 20001) i;
+    `);
+    const err = await exportCall(MGR_C, {}, { academy: C }).catch((e: { code?: string; detail?: string }) => e);
+    expect(err).toMatchObject({ code: '54000', detail: 'total=20001 max=20000' });
+
+    await db.exec(`DELETE FROM public.guest_players WHERE id = (SELECT id FROM public.guest_players WHERE academy_profile_id = '${C}' LIMIT 1)`);
+    const ok = await exportCall(MGR_C, {}, { academy: C });
+    expect(ok.total).toBe(20000);
+    expect(ok.rows).toHaveLength(20000);
+    expect(new Set(personIds(ok.rows)).size).toBe(20000);
+  }, 120_000);
 });

@@ -1,15 +1,17 @@
--- POST-CHECK — PTF release. Catalogue metadata plus ONE refusal probe (the function's own manager check,
--- which reads no player data); changes nothing (READ ONLY, ends in ROLLBACK). Run immediately after
--- apply.sql:
+-- POST-CHECK — PTF release. Catalogue metadata plus TWO refusal probes (each public entry's own
+-- academy-manager check, which reads no player data); changes nothing (READ ONLY, ends in ROLLBACK). Run
+-- immediately after apply.sql:
 --   psql -X -v ON_ERROR_STOP=1 -f this file
--- Done only if every *_ok column is t and foreign_access is 'refused: not authorized'.
+-- Done only if every *_ok column is t, foreign_access and foreign_export are both 'refused: not
+-- authorized', prepared_xacts is 0 and in_flight is empty. The second result lists the object state line
+-- by line (README, "Expected object states").
 BEGIN ISOLATION LEVEL READ COMMITTED, READ ONLY;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '30s';
 
--- The refusal probe: an unknown caller asking for an unknown academy, with the new training key, must be
--- refused by the function's own academy-manager check before it reads anything. The subject and academy
--- are fixed synthetic uuids that belong to nobody. Only the outcome text is kept.
+-- The refusal probes: an unknown caller asking for an unknown academy must be refused by each entry's own
+-- academy-manager check before it reads anything. The subject and academy are fixed synthetic uuids that
+-- belong to nobody. Only the outcome text is kept.
 DO $ptf_postcheck_probe$
 BEGIN
   PERFORM set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-00000000f7f1', true);
@@ -23,6 +25,15 @@ BEGIN
       CASE WHEN SQLSTATE = '42501' AND SQLERRM LIKE 'not authorized for academy %' THEN 'refused: not authorized'
            ELSE 'unexpected ' || SQLSTATE || ': ' || SQLERRM END, true);
   END;
+  BEGIN
+    PERFORM 1 FROM public.get_players_overview_export('00000000-0000-4000-8000-00000000f7f2'::uuid, NULL,
+                                                      '{}'::jsonb, 'name', 'asc');
+    PERFORM set_config('ptf_postcheck.foreign_export', 'ALLOWED', true);
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM set_config('ptf_postcheck.foreign_export',
+      CASE WHEN SQLSTATE = '42501' AND SQLERRM LIKE 'not authorized for academy %' THEN 'refused: not authorized'
+           ELSE 'unexpected ' || SQLSTATE || ': ' || SQLERRM END, true);
+  END;
 END
 $ptf_postcheck_probe$;
 
@@ -33,9 +44,37 @@ WITH ledger AS (
          count(*) FILTER (WHERE version !~ '^[0-9]{14}$') AS odd,
          encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex') AS digest
     FROM supabase_migrations.schema_migrations),
-fn AS (
-  SELECT p.oid, p.prosrc, p.proowner, p.proacl, p.prosecdef, p.provolatile, p.proconfig, p.prolang
-    FROM pg_proc p WHERE p.pronamespace = 'public'::regnamespace AND p.proname = 'get_players_overview')
+state AS (
+  SELECT (
+    -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
+      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
+               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+               coalesce(array_to_string(p.proconfig, ';'), ''),
+               CASE WHEN p.proacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,
+               encode(sha256(convert_to(p.prosrc, 'UTF8')), 'hex')) AS d
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        JOIN pg_language l ON l.oid = p.prolang
+       WHERE (n.nspname = 'public' AND p.proname IN ('get_players_overview', 'get_players_overview_export'))
+          OR n.nspname = 'players_private'
+      UNION ALL
+      SELECT format('schema %s owner=%s acl=%s relations=%s types=%s', n.nspname, pg_get_userbyid(n.nspowner),
+               CASE WHEN n.nspacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(n.nspacl::text[]) a) END,
+               (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid),
+               (SELECT count(*) FROM pg_type t WHERE t.typnamespace = n.oid))
+        FROM pg_namespace n WHERE n.nspname = 'players_private'
+    ) s
+    -- STATE DESCRIPTOR END
+  ) AS descriptor),
+objs AS (
+  SELECT to_regnamespace('players_private') AS private_schema,
+         to_regprocedure('players_private.players_overview_rows(text, uuid, text, jsonb, text, text, integer, integer, boolean)') AS authority,
+         to_regprocedure('public.get_players_overview(text, uuid, text, jsonb, text, text, integer, integer)') AS list_fn,
+         to_regprocedure('public.get_players_overview_export(uuid, text, jsonb, text, text)') AS export_fn)
 SELECT
   current_database()                                                     AS db,
   (SELECT system_identifier FROM pg_control_system())                    AS sysid,
@@ -45,33 +84,77 @@ SELECT
   (SELECT n = 621 AND odd = 0
           AND digest = '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900' FROM ledger)
                                                                          AS ledger_ok,
-  (SELECT count(*) FROM fn) = 1                                          AS fn_single_ok,
-  (SELECT pg_get_function_identity_arguments(oid) FROM fn)
-    = 'p_scope text, p_scope_id uuid, p_search text, p_filters jsonb, p_sort text, p_sort_dir text, p_limit integer, p_offset integer'
-                                                                         AS fn_signature_ok,
-  (SELECT l.lanname = 'plpgsql' AND fn.provolatile = 's' AND fn.prosecdef
-          AND fn.proconfig = ARRAY['search_path=public'] AND pg_get_userbyid(fn.proowner) = 'postgres'
-     FROM fn JOIN pg_language l ON l.oid = fn.prolang)                   AS fn_attributes_ok,
-  (SELECT string_agg(a, ',' ORDER BY a COLLATE "C") FROM fn, unnest(coalesce(fn.proacl, '{}'::aclitem[])::text[]) a)
-    = 'authenticated=X/postgres,postgres=X/postgres,service_role=X/postgres'
-                                                                         AS fn_privileges_ok,
-  (SELECT encode(sha256(convert_to(prosrc, 'UTF8')), 'hex') FROM fn)
-    = '22695d9ce5ccd20617d98af9123712701d55c8198ee0d607bd08a62fd503b8b2' AS fn_body_ok,
-  (SELECT encode(sha256(convert_to(prosrc, 'UTF8')), 'hex') FROM fn)     AS fn_body_sha256,
-  (SELECT octet_length(convert_to(prosrc, 'UTF8')) FROM fn)              AS fn_body_bytes,
-  (SELECT proacl::text FROM fn)                                          AS fn_acl,
+  (SELECT encode(sha256(convert_to(descriptor, 'UTF8')), 'hex') FROM state)
+    = '8b9d2f98127a66387234d6890f59117a516388c65fa776acf67742d619ff749b'                                            AS state_ok,
+  (SELECT encode(sha256(convert_to(descriptor, 'UTF8')), 'hex') FROM state) AS state_sha256,
+  -- Effective privileges (role membership included): no client role reaches the private authority; the
+  -- export runs for authenticated only; the list keeps its reviewed grantees.
+  (SELECT CASE WHEN private_schema IS NULL OR authority IS NULL OR list_fn IS NULL OR export_fn IS NULL THEN false ELSE
+            NOT has_schema_privilege('anon', private_schema, 'USAGE')
+        AND NOT has_schema_privilege('authenticated', private_schema, 'USAGE')
+        AND NOT has_schema_privilege('service_role', private_schema, 'USAGE')
+        AND NOT has_function_privilege('anon', authority, 'EXECUTE')
+        AND NOT has_function_privilege('authenticated', authority, 'EXECUTE')
+        AND NOT has_function_privilege('service_role', authority, 'EXECUTE')
+        AND has_function_privilege('authenticated', export_fn, 'EXECUTE')
+        AND NOT has_function_privilege('anon', export_fn, 'EXECUTE')
+        AND NOT has_function_privilege('service_role', export_fn, 'EXECUTE')
+        AND has_function_privilege('authenticated', list_fn, 'EXECUTE')
+        AND NOT has_function_privilege('anon', list_fn, 'EXECUTE') END
+     FROM objs)                                                          AS client_roles_ok,
   current_setting('ptf_postcheck.foreign_access', true)                  AS foreign_access,
+  current_setting('ptf_postcheck.foreign_export', true)                  AS foreign_export,
   (SELECT count(*) FROM pg_prepared_xacts)                               AS prepared_xacts,
   (
-    -- IN-FLIGHT PROBE BEGIN (same text as apply.sql)
+    -- IN-FLIGHT PROBE BEGIN: another session holding or awaiting (a) the migration ledger, (b) the schema lock
+    -- that creating a relation takes on public or players_private, (c) a DDL-strength lock (Share or stronger)
+    -- on any relation in schema public, or (d) any lock on one of this release's functions. App reads and
+    -- DML (AccessShare, RowShare, RowExclusive) do not match, and neither does ShareUpdateExclusive, which
+    -- autovacuum and ANALYZE hold. Same text in every packet file.
     SELECT string_agg(DISTINCT coalesce('pid ' || l.pid, 'prepared') || ' ' || l.mode
                       || CASE WHEN l.granted THEN '' ELSE ' (waiting)' END || ' on '
-                      || CASE WHEN l.locktype = 'object' THEN 'schema public' ELSE 'the migration ledger' END, '; ')
+                      || CASE WHEN l.locktype = 'relation' THEN 'relation ' || l.relation::regclass::text
+                              WHEN l.classid = 'pg_namespace'::regclass THEN 'schema ' || coalesce((SELECT n.nspname FROM pg_namespace n WHERE n.oid = l.objid), l.objid::text)
+                              ELSE 'function ' || coalesce((SELECT p.oid::regprocedure::text FROM pg_proc p WHERE p.oid = l.objid), l.objid::text) END, '; ')
       FROM pg_locks l
      WHERE l.pid IS DISTINCT FROM pg_backend_pid()
        AND l.database = (SELECT oid FROM pg_database WHERE datname = current_database())
        AND ((l.locktype = 'relation' AND l.relation = 'supabase_migrations.schema_migrations'::regclass)
-         OR (l.locktype = 'object' AND l.classid = 'pg_namespace'::regclass AND l.objid = 'public'::regnamespace))
+         OR (l.locktype = 'relation' AND l.mode IN ('ShareLock', 'ShareRowExclusiveLock', 'ExclusiveLock', 'AccessExclusiveLock')
+             AND l.relation IN (SELECT c.oid FROM pg_class c WHERE c.relnamespace = 'public'::regnamespace))
+         OR (l.locktype = 'object' AND l.classid = 'pg_namespace'::regclass
+             AND l.objid IN (SELECT n.oid FROM pg_namespace n WHERE n.nspname IN ('public', 'players_private')))
+         OR (l.locktype = 'object' AND l.classid = 'pg_proc'::regclass
+             AND l.objid IN (SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                              WHERE (n.nspname = 'public' AND p.proname IN ('get_players_overview', 'get_players_overview_export'))
+                                 OR n.nspname = 'players_private')))
     -- IN-FLIGHT PROBE END
   )                                                                      AS in_flight;
+\x off
+-- The object state, one line per object (compare with the README's PTF descriptor).
+SELECT regexp_split_to_table((
+    -- STATE DESCRIPTOR BEGIN: every object this release creates or replaces, one line each, byte-sorted.
+    SELECT coalesce(string_agg(d, E'\n' ORDER BY d COLLATE "C"), '') FROM (
+      SELECT format('function %s.%s(%s) returns %s owner=%s language=%s volatility=%s security_definer=%s config=%s acl=%s body_sha256=%s',
+               n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), pg_get_function_result(p.oid),
+               pg_get_userbyid(p.proowner), l.lanname, p.provolatile, p.prosecdef,
+               coalesce(array_to_string(p.proconfig, ';'), ''),
+               CASE WHEN p.proacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(p.proacl::text[]) a) END,
+               encode(sha256(convert_to(p.prosrc, 'UTF8')), 'hex')) AS d
+        FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        JOIN pg_language l ON l.oid = p.prolang
+       WHERE (n.nspname = 'public' AND p.proname IN ('get_players_overview', 'get_players_overview_export'))
+          OR n.nspname = 'players_private'
+      UNION ALL
+      SELECT format('schema %s owner=%s acl=%s relations=%s types=%s', n.nspname, pg_get_userbyid(n.nspowner),
+               CASE WHEN n.nspacl IS NULL THEN 'default'
+                    ELSE (SELECT coalesce(string_agg(a, ',' ORDER BY a COLLATE "C"), '') FROM unnest(n.nspacl::text[]) a) END,
+               (SELECT count(*) FROM pg_class c WHERE c.relnamespace = n.oid),
+               (SELECT count(*) FROM pg_type t WHERE t.typnamespace = n.oid))
+        FROM pg_namespace n WHERE n.nspname = 'players_private'
+    ) s
+    -- STATE DESCRIPTOR END
+  ), E'\n') AS object_state;
 ROLLBACK;

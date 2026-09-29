@@ -49,13 +49,9 @@ import { bulkAddTag, bulkAddNote, bulkSetLocation, bulkRemovePlayers, type BulkP
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { PlayerTag, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
-import {
-  PlayerExportError,
-  buildContactsCsv,
-  downloadCsv,
-  fetchAllContactsForExport,
-  freezeExportInputs,
-} from '@/lib/playerContactExport';
+import { buildContactsCsv, fetchContactsForExport, freezeExportInputs } from '@/lib/playerContactExport';
+import { ExportError, csvFilename, downloadCsv } from '@/lib/csvExport';
+import { useCancellableExport } from '@/hooks/useCancellableExport';
 
 // Lazy: pulls in the heavy TipTap editor chunk — only load when the tab is opened
 const EmailCampaignTab = lazy(() =>
@@ -113,7 +109,17 @@ export default function AcademyPlayers() {
   );
   const selectedTrainingClub = trainingClubChoice.academyId === activeAcademy?.id ? trainingClubChoice.clubId : 'all';
   const setSelectedTrainingClub = (clubId: string) => setTrainingClubChoice({ academyId: activeAcademy?.id, clubId });
-  const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
+  // The academy's clubs (every club dropdown), tagged with the academy they were fetched for: after an
+  // academy switch they read as empty until that academy's own list arrives, so a previous academy's
+  // club can never be offered (and then stamped with the new academy).
+  const [locationsFor, setLocationsFor] = useState<{ academyId: string | undefined; locations: { id: string; name: string }[] }>(
+    { academyId: undefined, locations: [] },
+  );
+  const allLocations = useMemo(
+    () => (locationsFor.academyId === activeAcademy?.id ? locationsFor.locations : []),
+    [locationsFor, activeAcademy?.id],
+  );
+  const locationsRequestRef = useRef(0);
 
   // Server-side sort + pagination
   const PAGE_SIZE = 50;
@@ -189,11 +195,16 @@ export default function AcademyPlayers() {
 
   const fetchLocations = async () => {
     if (!activeAcademy) return;
-    const rows = await getAcademyLocations(activeAcademy.id);
+    const academyId = activeAcademy.id;
+    const request = ++locationsRequestRef.current;
+    const rows = await getAcademyLocations(academyId);
+    // Only the latest request may write: a response that arrives after a newer one started (an
+    // earlier academy's, or out of order) is dropped.
+    if (request !== locationsRequestRef.current) return;
     const locs = rows
       .map((row: { location?: { id: string; name: string } }) => row.location)
       .filter((l): l is { id: string; name: string } => Boolean(l?.id && l?.name));
-    setAllLocations(locs.sort((a, b) => a.name.localeCompare(b.name)));
+    setLocationsFor({ academyId, locations: locs.sort((a, b) => a.name.localeCompare(b.name)) });
   };
 
   // Tag/notes edits refresh every player view through the central subtree.
@@ -310,61 +321,47 @@ export default function AcademyPlayers() {
     enabled: !!activeAcademy && activeTab === 'email-campaign',
   });
 
-  // ---- Contact export: every matching person across all pages (name / email / phone CSV) ----
-  const exportAbortRef = useRef<AbortController | null>(null);
-  const [exportProgress, setExportProgress] = useState<{ done: number; total: number } | null>(null);
-  const exportProgressLabel = exportProgress
-    ? tTrainer('players.export.progress', {
-        done: exportProgress.done, total: exportProgress.total, defaultValue: 'Exporting {{done}} / {{total}}…',
-      })
-    : '';
+  // ---- Contact export: every matching person, one server call (name / email / phone CSV) ----
   // A running export belongs to ONE academy: switching academies (or leaving the page) cancels it.
-  useEffect(() => () => exportAbortRef.current?.abort(), [activeAcademy?.id]);
+  const contactExport = useCancellableExport(activeAcademy?.id);
+  const exportProgressLabel = tTrainer('players.export.progress', 'Exporting…');
 
-  const handleExport = async () => {
-    if (!activeAcademy || exportAbortRef.current) return;
-    const controller = new AbortController();
-    exportAbortRef.current = controller;
+  const handleExport = () => {
+    if (!activeAcademy) return;
+    const academyId = activeAcademy.id;
     // Frozen at click time: filter/search edits made while it runs never reach this export. The search
     // is the text visible in the box NOW, not the debounced copy that can lag the input by 300 ms.
     const inputs = freezeExportInputs({ search: searchQuery, filters: overviewFilters, sort: rpcSort, sortDir });
-    setExportProgress({ done: 0, total: 0 });
-    try {
-      const contacts = await fetchAllContactsForExport({ kind: 'academy', id: activeAcademy.id }, inputs, {
-        signal: controller.signal,
-        onProgress: (done, total) => setExportProgress({ done, total }),
-      });
-      if (contacts.length === 0) {
-        sonnerToast.info(tTrainer('players.export.empty', 'No players match these filters, so nothing was exported.'));
-        return;
+    return contactExport.run(async (signal) => {
+      try {
+        const contacts = await fetchContactsForExport(academyId, inputs, { signal });
+        if (contacts.length === 0) {
+          sonnerToast.info(tTrainer('players.export.empty', 'No players match these filters, so nothing was exported.'));
+          return;
+        }
+        const csv = buildContactsCsv(contacts, {
+          name: tTrainer('players.export.headerName', 'Name'),
+          email: tTrainer('players.export.headerEmail', 'Email'),
+          phone: tTrainer('players.export.headerPhone', 'Phone'),
+        });
+        downloadCsv(csvFilename(tTrainer('players.export.filePrefix', 'players')), csv);
+        sonnerToast.success(
+          tTrainer('players.export.success', { count: contacts.length, defaultValue: '{{count}} players exported' }),
+        );
+      } catch (e) {
+        const reason = e instanceof ExportError ? e.reason : 'failed';
+        if (reason === 'cancelled') {
+          sonnerToast.info(tTrainer('players.export.cancelled', 'Export cancelled, nothing was downloaded.'));
+        } else if (reason === 'over_limit' && e instanceof ExportError) {
+          sonnerToast.error(tTrainer('players.export.overLimit', {
+            total: e.detail.total, max: e.detail.max,
+            defaultValue: '{{total}} players match, but an export can hold at most {{max}}. Narrow the filters and try again.',
+          }));
+        } else {
+          sonnerToast.error(tTrainer('players.export.failed', 'The export failed, nothing was downloaded. Please try again.'));
+        }
       }
-      const csv = buildContactsCsv(contacts, {
-        name: tTrainer('players.export.headerName', 'Name'),
-        email: tTrainer('players.export.headerEmail', 'Email'),
-        phone: tTrainer('players.export.headerPhone', 'Phone'),
-      });
-      downloadCsv(`${tTrainer('players.export.filePrefix', 'players')}-${format(new Date(), 'yyyy-MM-dd')}.csv`, csv);
-      sonnerToast.success(
-        tTrainer('players.export.success', { count: contacts.length, defaultValue: '{{count}} players exported' }),
-      );
-    } catch (e) {
-      const reason = e instanceof PlayerExportError ? e.reason : 'failed';
-      if (reason === 'cancelled') {
-        sonnerToast.info(tTrainer('players.export.cancelled', 'Export cancelled, nothing was downloaded.'));
-      } else if (reason === 'over_limit' && e instanceof PlayerExportError) {
-        sonnerToast.error(tTrainer('players.export.overLimit', {
-          total: e.detail.total, max: e.detail.max,
-          defaultValue: '{{total}} players match, but an export can hold at most {{max}}. Narrow the filters and try again.',
-        }));
-      } else if (reason === 'changed') {
-        sonnerToast.error(tTrainer('players.export.changed', 'The player list changed while exporting, so nothing was downloaded. Please try again.'));
-      } else {
-        sonnerToast.error(tTrainer('players.export.failed', 'The export failed, nothing was downloaded. Please try again.'));
-      }
-    } finally {
-      if (exportAbortRef.current === controller) exportAbortRef.current = null;
-      setExportProgress(null);
-    }
+    });
   };
 
   const fetchTrainers = async () => {
@@ -592,7 +589,7 @@ export default function AcademyPlayers() {
               <Tags className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
             </Button>
-            {exportProgress ? (
+            {contactExport.running ? (
               <>
                 <Button
                   variant="outline"
@@ -608,7 +605,7 @@ export default function AcademyPlayers() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => exportAbortRef.current?.abort()}
+                  onClick={contactExport.cancel}
                   aria-label={tTrainer('players.export.cancel', 'Cancel export')}
                 >
                   <X className="h-4 w-4" />

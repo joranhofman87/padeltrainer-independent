@@ -1,70 +1,46 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   EXPORT_MAX_ROWS,
-  EXPORT_PAGE_SIZE,
-  PlayerExportError,
   buildContactsCsv,
-  fetchAllContactsForExport,
+  contactCsvColumns,
+  fetchContactsForExport,
   freezeExportInputs,
-  neutralizeCell,
-  phoneCell,
   type ExportContact,
+  type ExportRpc,
+  type ExportRpcArgs,
+  type ExportRpcResult,
 } from './playerContactExport';
-import {
-  fetchPlayersOverview,
-  filtersToRpcJson,
-  type PlayersOverviewParams,
-  type PlayersOverviewRow,
-} from './playersOverview';
+import { ExportError } from './csvExport';
+import { filtersToRpcJson } from './playersOverview';
 import { supabase } from '@/lib/supabaseClient';
 
-vi.mock('@/lib/supabaseClient', () => ({ supabase: { rpc: vi.fn(async () => ({ data: [], error: null })) } }));
+vi.mock('@/lib/supabaseClient', () => ({ supabase: { rpc: vi.fn() } }));
 
-const SCOPE = { kind: 'academy' as const, id: 'acad-1' };
-
-describe('fetchPlayersOverview — explicit offset for overlapping export pages', () => {
-  it('sends offset as p_offset, and still defaults to page * pageSize', async () => {
-    const rpc = vi.mocked(supabase.rpc);
-    await fetchPlayersOverview(SCOPE, { pageSize: 500, offset: 499, filters: { currentTraining: true } });
-    expect(rpc).toHaveBeenLastCalledWith('get_players_overview', expect.objectContaining({
-      p_scope: 'academy', p_scope_id: 'acad-1', p_limit: 500, p_offset: 499, p_filters: { current_training: true },
-    }));
-    await fetchPlayersOverview(SCOPE, { pageSize: 50, page: 3 });
-    expect(rpc).toHaveBeenLastCalledWith('get_players_overview', expect.objectContaining({ p_limit: 50, p_offset: 150 }));
-  });
-});
+const ACADEMY = 'acad-1';
 const HEADERS = { name: 'Name', email: 'Email', phone: 'Phone' };
 
-type Fake = Pick<PlayersOverviewRow, 'player_key' | 'person_id' | 'full_name' | 'email' | 'phone'>;
-const person = (i: number, extra: Partial<Fake> = {}): Fake => ({
-  player_key: `k${String(i).padStart(6, '0')}`,
+type ServerRow = { person_id: unknown; full_name?: unknown; email?: unknown; phone?: unknown };
+const person = (i: number, extra: Partial<ServerRow> = {}): ServerRow => ({
   person_id: `p${i}`,
   full_name: `Player ${i}`,
   email: `p${i}@x.nl`,
   phone: '',
   ...extra,
 });
+/** get_players_overview_export's PostgREST shape: ONE row { total, rows }. */
+const ok = (rows: ServerRow[], total = rows.length): ExportRpcResult => ({ data: [{ total, rows }], error: null });
 
-/**
- * A fake paged RPC over a mutable list: returns the offset window and stamps every row with the
- * window total, exactly like get_players_overview. `beforeCall(n, list)` mutates between calls.
- */
-function fakeServer(initial: Fake[], opts: { honour?: number; beforeCall?: (n: number, list: Fake[]) => void } = {}) {
-  const list = [...initial];
-  const calls: PlayersOverviewParams[] = [];
-  const fetchPage = vi.fn(async (_scope: unknown, params: PlayersOverviewParams = {}) => {
-    opts.beforeCall?.(calls.length, list);
-    calls.push(structuredClone(params));
-    const size = Math.min(params.pageSize ?? 50, opts.honour ?? Infinity);
-    const offset = params.offset ?? 0;
-    const rows = list.slice(offset, offset + size).map((r) => ({ ...r, total_count: list.length }));
-    return { rows: rows as unknown as PlayersOverviewRow[], total: rows.length ? list.length : 0 };
+function fakeRpc(result: ExportRpcResult | (() => Promise<ExportRpcResult>)) {
+  const calls: Array<{ args: ExportRpcArgs; signal?: AbortSignal }> = [];
+  const rpc = vi.fn<ExportRpc>(async (args, signal) => {
+    calls.push({ args: structuredClone(args), signal });
+    return typeof result === 'function' ? result() : result;
   });
-  return { fetchPage, calls, list };
+  return { rpc, calls };
 }
 
 const reasonOf = (p: Promise<unknown>) =>
-  p.then(() => 'resolved', (e) => (e instanceof PlayerExportError ? e.reason : `other:${String(e)}`));
+  p.then(() => 'resolved', (e) => (e instanceof ExportError ? e.reason : `other:${String(e)}`));
 
 describe('filtersToRpcJson — the two training keys', () => {
   it('maps currentTraining true/false and trainingLocationId; omits them when unset', () => {
@@ -81,178 +57,150 @@ describe('filtersToRpcJson — the two training keys', () => {
   });
 });
 
-describe('buildContactsCsv — Excel-compatible, formula-safe', () => {
-  const csvOf = (contacts: Partial<ExportContact>[]) =>
-    buildContactsCsv(contacts.map((c, i) => ({ personId: `p${i}`, fullName: '', email: '', phone: '', ...c })), HEADERS);
+describe('the contact column spec (the shared mechanics are in csvExport.test.ts)', () => {
+  const contact = (c: Partial<ExportContact>): ExportContact => ({ personId: 'p', fullName: '', email: '', phone: '', ...c });
 
-  it('writes a UTF-8 BOM, `;` separators, CRLF records and a header row', () => {
-    const csv = csvOf([{ fullName: 'Ann', email: 'ann@x.nl', phone: '06 1234 5678' }]);
-    expect(csv.startsWith('﻿')).toBe(true);
-    expect(csv).toBe('﻿"Name";"Email";"Phone"\r\n"Ann";"ann@x.nl";"06 1234 5678"\r\n');
+  it('name, email, phone — in that order, with the page headers; the person id is never written', () => {
+    expect(contactCsvColumns(HEADERS).map((c) => c.header)).toEqual(['Name', 'Email', 'Phone']);
+    expect(buildContactsCsv([contact({ personId: 'secret-id', fullName: 'Ann', email: 'ann@x.nl', phone: '06 1234 5678' })], HEADERS))
+      .toBe('﻿"Name";"Email";"Phone"\r\n"Ann";"ann@x.nl";"06 1234 5678"\r\n');
   });
 
-  it('escapes quotes, and keeps separators and line breaks inside one quoted cell', () => {
-    const csv = csvOf([{ fullName: 'Jan "de" Vries;\r\nJr' }]);
-    expect(csv).toContain('"Jan ""de"" Vries;\r\nJr"');
-    expect(csv.split('\r\n').filter(Boolean)).toHaveLength(3); // header + one record spanning a break
-  });
-
-  it.each(['=SUM(A1)', '+cmd|x', '-2+3', '@SUM(1)', '\tx', '\rx', '  =1', '＝1', '＋1'])(
-    'neutralises a formula start: %j',
-    (value) => {
-      expect(neutralizeCell(value)).toBe(`'${value}`);
-      expect(csvOf([{ fullName: value }])).toContain(`"'${value}"`);
-    },
-  );
-
-  it('leaves ordinary text untouched, including international characters', () => {
-    for (const v of ['Zoë Łukasz-Øberg 😀', 'O\'Neill', 'ann@x.nl', 'a=b']) expect(neutralizeCell(v)).toBe(v);
-    expect(csvOf([{ fullName: 'Zoë Łukasz-Øberg 😀' }])).toContain('"Zoë Łukasz-Øberg 😀"');
-  });
-
-  it('keeps phone numbers as text: + and leading zeros survive, formatted numbers are untouched', () => {
-    expect(phoneCell('+31612345678')).toBe("'+31612345678");
-    expect(phoneCell('0612345678')).toBe("'0612345678");
-    expect(phoneCell('612345678')).toBe("'612345678");
-    expect(phoneCell('06 1234 5678')).toBe('06 1234 5678');
-    expect(phoneCell('')).toBe('');
-    expect(phoneCell('=1+1')).toBe("'=1+1");
-  });
-
-  it('neutralises every column, not only the name', () => {
-    const csv = csvOf([{ fullName: 'Ok', email: '=HYPERLINK("x")', phone: '@1' }]);
-    expect(csv).toContain('"\'=HYPERLINK(""x"")"');
-    expect(csv).toContain('"\'@1"');
+  it('the phone column keeps numbers as text; name and email are formula-safe text', () => {
+    const csv = buildContactsCsv([contact({ fullName: '=cmd', email: '@x', phone: '0612345678' })], HEADERS);
+    expect(csv).toContain('"\'=cmd";"\'@x";"\'0612345678"');
   });
 });
 
-describe('fetchAllContactsForExport — complete or refused', () => {
-  const inputs = freezeExportInputs({ search: 'an', filters: { currentTraining: true }, sort: 'name', sortDir: 'asc' });
+describe('fetchContactsForExport — one server call, complete or refused', () => {
+  const inputs = freezeExportInputs({ search: '  an ', filters: { currentTraining: true }, sort: 'email', sortDir: 'desc' });
 
-  it('one page: every person, canonical ids, one call with the frozen inputs', async () => {
-    const srv = fakeServer([person(1, { phone: '+31611' }), person(2)]);
-    const contacts = await fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage });
+  it('ONE call with the frozen list inputs; every person in server order, canonical ids', async () => {
+    const srv = fakeRpc(ok([person(2, { phone: '+31611' }), person(1)]));
+    const contacts = await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc });
     expect(contacts).toEqual([
-      { personId: 'p1', fullName: 'Player 1', email: 'p1@x.nl', phone: '+31611' },
-      { personId: 'p2', fullName: 'Player 2', email: 'p2@x.nl', phone: '' },
+      { personId: 'p2', fullName: 'Player 2', email: 'p2@x.nl', phone: '+31611' },
+      { personId: 'p1', fullName: 'Player 1', email: 'p1@x.nl', phone: '' },
     ]);
-    expect(srv.calls).toEqual([
-      { search: 'an', filters: { currentTraining: true }, sort: 'name', sortDir: 'asc', pageSize: EXPORT_PAGE_SIZE, offset: 0 },
-    ]);
+    expect(srv.calls.map((c) => c.args)).toEqual([{
+      p_academy: ACADEMY, p_search: 'an', p_filters: { current_training: true }, p_sort: 'email', p_sort_dir: 'desc',
+    }]);
   });
 
-  it('every page overlaps the previous one by one row and all people arrive once, in order', async () => {
-    const srv = fakeServer(Array.from({ length: 1200 }, (_, i) => person(i)));
-    const progress: Array<[number, number]> = [];
-    const contacts = await fetchAllContactsForExport(SCOPE, inputs, {
-      fetchPage: srv.fetchPage, onProgress: (d, t) => progress.push([d, t]),
+  it('defaults: no search is sent as undefined, sort name/asc, no filters {}', async () => {
+    const srv = fakeRpc(ok([]));
+    await fetchContactsForExport(ACADEMY, { search: '   ' }, { rpc: srv.rpc });
+    expect(srv.calls[0].args).toEqual({
+      p_academy: ACADEMY, p_search: undefined, p_filters: {}, p_sort: 'name', p_sort_dir: 'asc',
     });
-    expect(srv.calls.map((c) => c.offset)).toEqual([0, 499, 998]);
-    expect(contacts.map((c) => c.personId)).toEqual(Array.from({ length: 1200 }, (_, i) => `p${i}`));
-    expect(progress).toEqual([[500, 1200], [999, 1200], [1200, 1200]]);
   });
 
-  it('pages by what the server honours when it returns fewer rows than asked', async () => {
-    const srv = fakeServer(Array.from({ length: 450 }, (_, i) => person(i)), { honour: 200 });
-    const contacts = await fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage });
-    expect(srv.calls.map((c) => c.offset)).toEqual([0, 199, 398]);
-    expect(new Set(contacts.map((c) => c.personId)).size).toBe(450);
+  it('the default transport is get_players_overview_export, with the abort signal attached', async () => {
+    const builder = {
+      abortSignal: vi.fn(function (this: unknown) { return this; }),
+      then: (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+        Promise.resolve({ data: [{ total: 1, rows: [person(7)] }], error: null }).then(res, rej),
+    };
+    vi.mocked(supabase.rpc).mockReturnValueOnce(builder as never);
+    const ctl = new AbortController();
+    const contacts = await fetchContactsForExport(ACADEMY, inputs, { signal: ctl.signal });
+    expect(contacts.map((c) => c.personId)).toEqual(['p7']);
+    expect(supabase.rpc).toHaveBeenLastCalledWith('get_players_overview_export', {
+      p_academy: ACADEMY, p_search: 'an', p_filters: { current_training: true }, p_sort: 'email', p_sort_dir: 'desc',
+    });
+    expect(builder.abortSignal).toHaveBeenCalledWith(ctl.signal);
   });
 
-  it('inputs are frozen: mutating the caller objects mid-export never reaches later pages', async () => {
+  it('inputs are frozen: editing the caller objects while the call runs changes nothing', async () => {
     const filters = { currentTraining: true as boolean | null, trainingLocationId: 'loc-1' as string | null };
     const live = { search: 'an', filters, sort: 'name' as const, sortDir: 'asc' as const };
-    const srv = fakeServer(Array.from({ length: 700 }, (_, i) => person(i)), {
-      beforeCall: (n) => { if (n === 1) { filters.currentTraining = false; filters.trainingLocationId = null; live.search = 'zz'; } },
-    });
-    await fetchAllContactsForExport(SCOPE, live, { fetchPage: srv.fetchPage });
-    for (const c of srv.calls) {
-      expect(c.filters).toEqual({ currentTraining: true, trainingLocationId: 'loc-1' });
-      expect(c.search).toBe('an');
-    }
+    let release!: () => void;
+    const srv = fakeRpc(() => new Promise((r) => { release = () => r(ok([person(1)])); }));
+    const running = fetchContactsForExport(ACADEMY, live, { rpc: srv.rpc });
+    filters.currentTraining = false;
+    filters.trainingLocationId = null;
+    live.search = 'zz';
+    release();
+    expect(await running).toHaveLength(1);
+    expect(srv.calls[0].args.p_filters).toEqual({ current_training: true, training_location_id: 'loc-1' });
+    expect(srv.calls[0].args.p_search).toBe('an');
+    const frozen = freezeExportInputs(live);
+    expect(Object.isFrozen(frozen) && Object.isFrozen(frozen.filters)).toBe(true);
   });
 
-  it('refuses over the cap after the first page, before fetching any other page', async () => {
-    const srv = fakeServer(Array.from({ length: EXPORT_MAX_ROWS + 1 }, (_, i) => person(i)));
-    const err = await fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage }).catch((e) => e);
-    expect(err).toBeInstanceOf(PlayerExportError);
+  it('the server refusal above the bound is `over_limit`, with its total and max', async () => {
+    const srv = fakeRpc({ data: null, error: { code: '54000', details: 'total=20001 max=20000', message: 'too large' } });
+    const err = await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc }).catch((e) => e);
+    expect(err).toBeInstanceOf(ExportError);
     expect(err.reason).toBe('over_limit');
-    expect(err.detail).toEqual({ total: EXPORT_MAX_ROWS + 1, max: EXPORT_MAX_ROWS });
-    expect(srv.calls).toHaveLength(1);
+    expect(err.detail).toMatchObject({ total: 20001, max: 20000 });
   });
 
-  it('exactly the cap is still exported in full', async () => {
-    const srv = fakeServer(Array.from({ length: EXPORT_MAX_ROWS }, (_, i) => person(i)));
-    expect(await fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage })).toHaveLength(EXPORT_MAX_ROWS);
+  it('`over_limit` even when the refusal detail is missing (max falls back to the known bound)', async () => {
+    const srv = fakeRpc({ data: null, error: { code: '54000' } });
+    const err = await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc }).catch((e) => e);
+    expect(err.reason).toBe('over_limit');
+    expect(err.detail).toMatchObject({ total: undefined, max: EXPORT_MAX_ROWS });
   });
 
-  it('an empty match is an empty result, not an error', async () => {
-    const srv = fakeServer([]);
-    expect(await fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage })).toEqual([]);
+  it('exactly the bound is exported in full; an empty match is an empty result', async () => {
+    const full = Array.from({ length: EXPORT_MAX_ROWS }, (_, i) => person(i));
+    expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc(ok(full)).rpc })).toHaveLength(EXPORT_MAX_ROWS);
+    expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc(ok([])).rpc })).toEqual([]);
   });
 
-  it('refuses when the total changes between pages (someone left the filter)', async () => {
-    const srv = fakeServer(Array.from({ length: 700 }, (_, i) => person(i)), {
-      beforeCall: (n, list) => { if (n === 1) list.splice(10, 1); },
-    });
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage }))).toBe('changed');
+  it('accepts the single row as an object too (.single()-style shape)', async () => {
+    const srv = fakeRpc({ data: { total: 1, rows: [person(3)] }, error: null });
+    expect((await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc }))[0].personId).toBe('p3');
   });
 
-  it('refuses a join during export even when every page still looks full (only the total shows it)', async () => {
-    // 999 rows → pages [0..499] and [499..998]; the second page is exactly full whether or not
-    // someone joined at the end, so only the window total reveals the change.
-    const srv = fakeServer(Array.from({ length: 999 }, (_, i) => person(i)), {
-      beforeCall: (n, list) => { if (n === 1) list.push(person(5000)); },
-    });
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage }))).toBe('changed');
+  it('missing name / email / phone become empty cells, never "null"', async () => {
+    const srv = fakeRpc(ok([person(1, { full_name: null, email: null, phone: undefined })]));
+    expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).toEqual([
+      { personId: 'p1', fullName: '', email: '', phone: '' },
+    ]);
   });
 
-  it('refuses a shift that keeps the total equal (leave before + join after the boundary)', async () => {
-    // Without the overlap row this silently skips person 500 and still "adds up" to 700.
-    const srv = fakeServer(Array.from({ length: 700 }, (_, i) => person(i)), {
-      beforeCall: (n, list) => { if (n === 1) { list.splice(10, 1); list.push(person(9999)); } },
-    });
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage }))).toBe('changed');
+  it.each([
+    ['a total that disagrees with the rows', ok([person(1), person(2)], 3)],
+    ['more rows than the total', ok([person(1), person(2)], 1)],
+    ['a duplicated person (one person must be one row)', ok([person(1), person(2, { person_id: 'p1' })])],
+    ['a row without a canonical person id', ok([person(1), person(2, { person_id: null })])],
+    ['a non-string person id', ok([person(1, { person_id: 42 })])],
+    ['a "successful" response above the bound', ok(Array.from({ length: EXPORT_MAX_ROWS + 1 }, (_, i) => person(i)))],
+    ['rows that are not an array', { data: [{ total: 0, rows: {} }], error: null }],
+    ['a non-numeric total', { data: [{ total: 'many', rows: [] }], error: null }],
+    ['no row at all', { data: [], error: null }],
+    ['null data', { data: null, error: null }],
+  ] as Array<[string, ExportRpcResult]>)('refuses %s as `failed` — nothing is written', async (_label, result) => {
+    expect(await reasonOf(fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc(result).rpc }))).toBe('failed');
   });
 
-  it('refuses a duplicated person (one person must be one row)', async () => {
-    const srv = fakeServer([person(1), person(2, { person_id: 'p1' })]);
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage }))).toBe('changed');
-  });
-
-  it('refuses a row without a canonical person id', async () => {
-    const srv = fakeServer([person(1), person(2, { person_id: null as unknown as string })]);
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage }))).toBe('failed');
-  });
-
-  it('refuses a short page while the total claims more rows', async () => {
-    const srv = fakeServer(Array.from({ length: 700 }, (_, i) => person(i)), { honour: 500 });
-    const fetchPage = vi.fn(async (s: unknown, p: PlayersOverviewParams = {}) => {
-      const res = await srv.fetchPage(s, p);
-      return p.offset ? { ...res, rows: res.rows.slice(0, -1) } : res;
-    });
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage }))).toBe('changed');
-  });
-
-  it('an RPC failure is `failed`, with the cause kept', async () => {
-    const boom = new Error('rpc down');
-    const err = await fetchAllContactsForExport(SCOPE, inputs, { fetchPage: vi.fn().mockRejectedValue(boom) }).catch((e) => e);
+  it('any other RPC error or a rejected call is `failed`, with the cause kept', async () => {
+    const pgErr = { code: '42501', message: 'not authorized for academy acad-1' };
+    const err = await fetchContactsForExport(ACADEMY, inputs, { rpc: fakeRpc({ data: null, error: pgErr }).rpc }).catch((e) => e);
     expect(err.reason).toBe('failed');
-    expect(err.detail.cause).toBe(boom);
+    expect(err.detail.cause).toBe(pgErr);
+    const boom = new Error('network down');
+    const err2 = await fetchContactsForExport(ACADEMY, inputs, { rpc: vi.fn<ExportRpc>().mockRejectedValue(boom) }).catch((e) => e);
+    expect(err2.reason).toBe('failed');
+    expect(err2.detail.cause).toBe(boom);
   });
 
-  it('cancel before start fetches nothing; cancel mid-export stops before the next page', async () => {
+  it('cancel before start calls nothing; cancel during the call is `cancelled` whatever the call returns', async () => {
     const pre = new AbortController();
     pre.abort();
-    const srv0 = fakeServer([person(1)]);
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv0.fetchPage, signal: pre.signal }))).toBe('cancelled');
+    const srv0 = fakeRpc(ok([person(1)]));
+    expect(await reasonOf(fetchContactsForExport(ACADEMY, inputs, { rpc: srv0.rpc, signal: pre.signal }))).toBe('cancelled');
     expect(srv0.calls).toHaveLength(0);
 
     const ctl = new AbortController();
-    const srv = fakeServer(Array.from({ length: 1200 }, (_, i) => person(i)), {
-      beforeCall: (n) => { if (n === 1) ctl.abort(); },
-    });
-    expect(await reasonOf(fetchAllContactsForExport(SCOPE, inputs, { fetchPage: srv.fetchPage, signal: ctl.signal }))).toBe('cancelled');
-    expect(srv.calls).toHaveLength(2);
+    const srv = fakeRpc(async () => { ctl.abort(); return ok([person(1)]); });
+    expect(await reasonOf(fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc, signal: ctl.signal }))).toBe('cancelled');
+    expect(srv.calls[0].signal).toBe(ctl.signal);
+
+    const ctl2 = new AbortController();
+    const rejecting = vi.fn<ExportRpc>(async () => { ctl2.abort(); throw new DOMException('aborted', 'AbortError'); });
+    expect(await reasonOf(fetchContactsForExport(ACADEMY, inputs, { rpc: rejecting, signal: ctl2.signal }))).toBe('cancelled');
   });
 });
