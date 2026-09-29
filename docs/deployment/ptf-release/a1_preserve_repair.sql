@@ -227,7 +227,7 @@ BEGIN
   GET DIAGNOSTICS v_inserted = ROW_COUNT;
 
   -- Verification. Any mismatch raises, and psql -1 rolls everything back.
-  IF v_inserted <> CASE WHEN v_linked = 0 THEN c_decided ELSE 0 END THEN
+  IF v_inserted <> (CASE WHEN v_linked = 0 THEN c_decided ELSE 0 END) THEN
     RAISE EXCEPTION 'ptf a1 preserve verify: inserted %, expected %; rolled back', v_inserted, CASE WHEN v_linked = 0 THEN c_decided ELSE 0 END;
   END IF;
   SELECT count(*) INTO v_bad
