@@ -201,4 +201,25 @@ bookings over four statuses, plus a second academy's noise):
 - one 20,000-row export at or under 50% of the configured `authenticated` statement timeout. Until Tom's
   A1 observation reads it, that is the Supabase default of 8 s, **unverified**.
 
-Results: see `PTF_RELEASE_PREP_STATUS_2026-09-28.md` for the measured run.
+**Results.** One author-run execution, local only, on 2026-09-29, at commit
+`235c33dffc82b49bb62cf74f093e487484a50044`:
+- **How:** `src/test/ptfReleasePacket.realpg.test.ts` with `PTF_MEASURE=1`, on PostgreSQL 17.6 binaries started
+  by the suite's harness, driven by psql 17.
+- **Outcome:** 13/13 tests and Vitest exit 0. The run records the counts below exactly: 5,000 sessions,
+  200,000 bookings, 100,000 R/S bookings, 20,000 people exported.
+
+| Median of 5 | 2,000-person fixture | 20,000-person fixture (§3) | Budget |
+| --- | --- | --- | --- |
+| unfiltered 50-row page | 26 ms | 293.8 ms | reference |
+| "Currently training" 50-row page | 30 ms | 367.8 ms | ≤ 1.5 × unfiltered + 100 ms: met |
+| training-club 50-row page | 33 ms | 330.1 ms | ≤ 1.5 × unfiltered + 100 ms: met |
+| whole-academy export, one call | 32 ms (2,000 rows) | 373.8 ms (20,000 rows; payload 2,595,574 bytes) | ≤ 2 s (2k); ≤ 4 s = 50% of 8 s (§3): met |
+
+These are in-database timings of one call through a local `pg` client on a synthetic fixture.
+
+**Not measured and not claimed:**
+- wall-clock time and memory of the run; the run had no resource wrapper, so those are unavailable;
+- production latency, PostgREST, network or browser time;
+- production data distribution;
+- the configured `authenticated` statement timeout. The 8 s basis is the unverified platform default until
+  the A1 impact observation reads the real setting.
