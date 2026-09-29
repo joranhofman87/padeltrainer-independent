@@ -93,77 +93,16 @@ Run steps 1–3 from the repository root of a **clean checkout of the candidate 
 PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-release-state/prod-ca.crt /opt/homebrew/opt/libpq/bin/psql -X -W -h db.ficwbdrzefmblkbkomzw.supabase.co -p 5432 -U postgres -d postgres -v ON_ERROR_STOP=1 -f docs/deployment/ptf-release/preflight.sql
 ```
 
-1. **Preflight (read-only).** It must equal the database baseline receipt:
-   - 620 / `20261207100000`, reviewed+ACL `t`, no later versions;
-   - one function with the same signature and attributes;
-   - `fn_acl` `{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}`;
-   - body `0f42f53c…`, 29,903 bytes.
+Steps 1–3 and Recovery are judged ONLY by the **Operator outcome contract** below: one matrix and one
+escalation rule. No other document restates them.
 
-   Anything else: STOP. A match covers only the receipt-observed fields. The apply guard checks the
-   apply-guard expectations (see BASE above) when step 2 starts.
+1. **Preflight (read-only).** Use the command above. Contract row **PF**.
 2. **Apply (the only write).** Use the same command with `-1 -v expected_sysid=7642734024280108049` and
-   `-f docs/deployment/ptf-release/apply.sql`.
-   - **Success requires all of the following.** The local real-PG suite asserts the exit status, the `INSERT`
-     tag and the NOTICE's object-state digest.
-     - psql exit status 0;
-     - on stdout, the command tag `INSERT 0 1` (the ledger row). A re-run over an already-applied state prints
-       `INSERT 0 0` instead;
-     - on stderr, the line `NOTICE:  ptf apply: object state
-       ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc, ledger 621 to 20261208100000` (psql
-       puts `psql:<file>:<line>:` in front of it);
-     - no stderr line containing `ERROR:`, `FATAL:` or `WARNING:`.
-   - **Other output is expected and never a reason to stop.** Derived from the files statement by statement,
-     stdout carries these tags in order:
-     1. `SET`, `SET`, `SET`, `LOCK TABLE`;
-     2. a one-row `set_config` result showing `7642734024280108049`;
-     3. `DO` (the guard);
-     4. the migration: `CREATE SCHEMA`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`,
-        `GRANT`, `CREATE FUNCTION`, `REVOKE`, `GRANT`;
-     5. `INSERT 0 1`;
-     6. `DO` (the in-transaction verification).
-
-     On a re-run, stderr also shows `NOTICE:  schema "players_private" already exists, skipping`.
-   - **Stop only if a success condition fails:**
-     - a non-zero exit;
-     - a missing or different `INSERT` tag or NOTICE;
-     - any `ERROR:`/`FATAL:`/`WARNING:` line.
-
-     A successful apply that printed the lines above is NOT a stop: go straight to step 3.
-   - Refusal: psql exits 3, and nothing changes. The guard names the cause:
-     - target, ledger;
-     - the object state, with the full descriptor in DETAIL (any attribute of any of the objects: privileges,
-       owner, config, volatility, SECURITY DEFINER, body, or a stray `players_private` /
-       `get_players_overview_export`);
-     - a prepared transaction;
-     - migration/DDL work in flight;
-     - a lock timeout.
-
-     Fix the cause and preflight again.
-   - Never run the migration on its own or through `supabase db push`.
-3. **Post-check (read-only), immediately.** Use the same command with `-f docs/deployment/ptf-release/postcheck.sql`
-   (no `-1`; it ends in ROLLBACK).
-   - **Done only if all of the following hold:**
-     - psql exit status 0, and no stderr line containing `ERROR:`, `FATAL:` or `WARNING:`;
-     - the first result (one expanded record) reads:
-       - `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres;
-       - `ledger_rows` 621, `ledger_head` 20261208100000;
-       - `ledger_ok` t, `state_ok` t, `state_sha256`
-         `ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc`, `client_roles_ok` t;
-       - `foreign_access` and `foreign_export` both `refused: not authorized`;
-       - `prepared_xacts` 0, and `in_flight` empty;
-     - the second result, `object_state`, has exactly the four lines of the PTF block above, in that order.
-
-     The local suite asserts the exit status, every record value except `db`, `sysid` and `connected_as`, and
-     that each PTF line appears.
-   - **Expected stdout, in order** (derived from the file; these lines are never a reason to stop):
-     1. `BEGIN`, `SET`, `SET`;
-     2. `DO` (the two refusal probes);
-     3. `Expanded display is on.`, then the record, then `Expanded display is off.`;
-     4. the four `object_state` rows;
-     5. `ROLLBACK`.
-   - **If any "done" condition fails: stop.** Do not deploy the frontend. Keep the complete output. Recovery
-     (below) is a separate decision.
-4. **Frontend, only after step 3 passes.** Put the candidate's frontend live on production (a separately
+   `-f docs/deployment/ptf-release/apply.sql`. Contract row **A1** (first run) or **A2** (a deliberate replay).
+   Never run the migration on its own or through `supabase db push`.
+3. **Post-check (read-only), immediately.** Use the same command with
+   `-f docs/deployment/ptf-release/postcheck.sql`, with no `-1` (it ends in ROLLBACK). Contract row **PC**.
+4. **Frontend, only after row PC is met.** Put the candidate's frontend live on production (a separately
    authorized merge to `main`, which Vercel deploys), then confirm the production deployment's commit.
    - **The order matters.** The old function body silently ignores unknown filter keys, and the export RPC
      does not exist before apply. A new frontend on the old database would show everyone under "Currently
@@ -182,6 +121,42 @@ PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-releas
    - academy reports of missing players (A1).
 
    No player data in logs or chat.
+
+## Operator outcome contract (canonical)
+
+This is the only operative contract for steps 1–3 and Recovery. Other documents cite this README by path,
+commit and sha256; they do not restate it. psql adds `psql:<file>:<line>:` in front of each stderr line.
+
+**Reading a row.**
+- Judge each run by the row for the run you **intended**: a first run, or a replay deliberately chosen after an
+  escalation.
+- Only the "Required" cell decides the outcome. The "Other expected output" cell is derived statically from the
+  files, statement by statement, and it never decides anything.
+
+**The escalation rule (the only one).** A result that does not meet every "Required" item of the intended row is
+an ESCALATION. Then:
+- **Do:** keep the complete stdout, stderr and exit status, and hand them to Tom and the coordinator.
+- **Don't:** run anything further: no retry, no next step, no frontend, no bookkeeping.
+- **This covers:**
+  - a non-zero exit (psql uses 3 for a script error, which includes every guard refusal, and 2 for a lost
+    connection);
+  - any `ERROR:`, `FATAL:` or `WARNING:` line;
+  - a missing or different required line;
+  - a no-op result when a first run was intended (someone else has already changed the database);
+  - an unknown exit status, or a lost or partial transcript.
+- **What a refusal leaves behind:** nothing. A guard refusal changes nothing, because the transaction rolls back.
+- **What a lost connection leaves behind:** an unknown outcome during apply or recovery. It is resolved only by a
+  read-only step chosen at escalation.
+
+| Row | Intended run and starting state | Required: every item | Other expected output (never decides) | Outcome, then | Local evidence (`src/test/ptfReleasePacket.realpg.test.ts`) |
+| --- | --- | --- | --- | --- | --- |
+| **PF** | Preflight before apply: ledger 620 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`. The record matches the receipt: `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres; `ledger_rows` 620, `ledger_head` 20261207100000, `ledger_is_reviewed_plus_acl` t, `versions_after_acl` empty; `fn_count` 1; `fn_identity_args`, `fn_arguments` (with the receipt's defaults) and `fn_result` as in the BASE block; `fn_language` plpgsql, `fn_volatility` s, `fn_security_definer` true, `fn_config` `search_path=public`, `fn_owner` postgres; `fn_acl` `{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}`; `fn_body_sha256` `0f42f53cab95b897e10ee0295f9185de15056a0cd904252c84bb117e0b7003f4`, `fn_body_bytes` 29903 | `BEGIN`, `SET`, `SET`, `Expanded display is on.`, the record, `ROLLBACK` | MATCH (receipt-observed fields only, see BASE) → step 2 as A1 | exit status and every value except `db`, `sysid`, `connected_as` and `fn_arguments`: `:336-345` |
+| **A1** | Apply, first run: ledger 620, BASE state | Exit 0; stdout `INSERT 0 1`; stderr `NOTICE:  ptf apply: object state ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc, ledger 621 to 20261208100000`; no `ERROR:`/`FATAL:`/`WARNING:` | stdout: `SET` ×3, `LOCK TABLE`, a one-row `set_config` result showing `7642734024280108049`, `DO`; then the migration's `CREATE SCHEMA`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `CREATE FUNCTION`, `REVOKE`, `GRANT`, `CREATE FUNCTION`, `REVOKE`, `GRANT`; then `INSERT 0 1`, `DO` | APPLIED → step 3 | exit status, `INSERT 0 1` and the NOTICE's digest: `:466-468` |
+| **A2** | Apply, deliberate replay: ledger 621, PTF state | Exit 0; stdout `INSERT 0 0`; the same NOTICE as A1; no `ERROR:`/`FATAL:`/`WARNING:` | The A1 stdout with `INSERT 0 0`; stderr also has `NOTICE:  schema "players_private" already exists, skipping` | NO-OP (nothing changed) → step 3 | exit status, `INSERT 0 0` and the state unchanged: `:578-582`. The NOTICE is raised unconditionally when the verification passes (`apply.sql:180`); it is not asserted on replay. |
+| **PC** | Post-check after A1 or A2 | Exit 0; no `ERROR:`/`FATAL:`/`WARNING:`. The record: `db` postgres, `sysid` 7642734024280108049, `connected_as` postgres; `ledger_rows` 621, `ledger_head` 20261208100000; `ledger_ok` t; `state_ok` t; `state_sha256` `ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc`; `client_roles_ok` t; `foreign_access` and `foreign_export` both `refused: not authorized`; `prepared_xacts` 0; `in_flight` empty. Then `object_state`: exactly the four PTF lines, in order. | `BEGIN`, `SET`, `SET`, `DO`, `Expanded display is on.`, the record, `Expanded display is off.`, the 4 rows, `ROLLBACK` | PASS → step 4 | exit status, every value except `db`, `sysid` and `connected_as`, and each PTF line: `:487-496` |
+| **R1** | Recovery, first run: ledger 621, PTF state | Exit 0; stdout `INSERT 0 1`; stderr `NOTICE:  ptf recovery: object state 24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b (the base), ledger 622 to 20261208110000`; no `ERROR:`/`FATAL:`/`WARNING:` | `SET` ×3, `LOCK TABLE`, the `set_config` row, `DO`, `CREATE FUNCTION`, `REVOKE`, `GRANT`, `DROP FUNCTION`, `DROP FUNCTION`, `DROP SCHEMA`, `INSERT 0 1`, `DO` | RECOVERED → Recovery step 3 | exit status, `INSERT 0 1` and the NOTICE's digest: `:675-678` |
+| **R2** | Recovery, deliberate replay: ledger 622, BASE state | Exit 0; stdout `INSERT 0 0`; the same NOTICE as R1; no `ERROR:`/`FATAL:`/`WARNING:` | The R1 stdout with `INSERT 0 0`; stderr also has three NOTICEs ending `does not exist, skipping` | NO-OP → Recovery step 3, if not already done | exit status and `INSERT 0 0`: `:689-691` |
+| **—** | Anything else, in any step | — | A guard refusal prints `ERROR:  ptf apply guard: …` or `ERROR:  ptf recovery guard: …` (the object-state case adds the descriptor in DETAIL); a verification failure prints `ptf … verify: end state wrong … rolled back`; a lock timeout prints `canceling statement due to lock timeout` | ESCALATION | Refusals (non-zero exit plus the guard or lock message) for the system identifier, ledger, object state, in-flight DDL and lock timeout: `:361-444`. Recovery before apply refuses: `:437-439`. |
 
 ## Lock and compatibility behaviour (measured locally on real PostgreSQL)
 
@@ -208,38 +183,22 @@ PGCONNECT_TIMEOUT=10 PGSSLMODE=verify-full PGSSLROOTCERT=/Users/Shared/f0-releas
 
 1. **Frontend first:** revert production to the previous deployment (`HJ3eNSHPJ`, commit `edf299b5b`).
 2. **Only if the database must be restored:** run `recovery.sql`, with the same command form and
-   `-1 -v expected_sysid=…`. It accepts the 621 ledger with the PTF state, or its own re-run.
+   `-1 -v expected_sysid=7642734024280108049`. Contract row **R1** (first run) or **R2** (a deliberate
+   replay). Anything else falls under the escalation rule: stop, keep the complete output, and do NOT do
+   step 3.
    - It reinstalls the exact canonical list body (`0f42f53c…`, 29,903 bytes; the privileges are preserved,
      `search_path=public` is restored).
    - It then drops `public.get_players_overview_export(uuid, text, jsonb, text, text)`,
      `players_private.players_overview_rows(text, uuid, text, jsonb, text, text, integer, integer, boolean)`
      and schema `players_private`, each by exact signature and without `CASCADE`. Any dependent object
      makes the DROP fail and the whole transaction roll back.
-   - It verifies the BASE state and records ledger version `20261208110000`. A re-run writes `INSERT 0 0`.
-   - **Success requires all of the following.** The suite asserts the exit status, the `INSERT` tag and the
-     NOTICE's digest.
-     - psql exit status 0;
-     - `INSERT 0 1` on stdout (`INSERT 0 0` on a re-run);
-     - the stderr line `NOTICE:  ptf recovery: object state
-       24b71348940111025c9353b339b5eb8ce4b041922575e4dd9b8f900fa7f84d0b (the base), ledger 622 to
-       20261208110000`;
-     - no `ERROR:`, `FATAL:` or `WARNING:` line.
-   - **Expected stdout, in order** (derived from the files):
-     1. `SET`, `SET`, `SET`, `LOCK TABLE`;
-     2. the one-row `set_config` result;
-     3. `DO` (the guard);
-     4. `CREATE FUNCTION`, `REVOKE`, `GRANT` (the canonical restore);
-     5. `DROP FUNCTION`, `DROP FUNCTION`, `DROP SCHEMA`;
-     6. `INSERT 0 1`;
-     7. `DO` (the verification).
-
-     These lines, and on a re-run the three `… does not exist, skipping` NOTICEs, are never a reason to stop.
-     If any success condition fails: stop and keep the complete output.
-   - After it: `preflight.sql` shows the canonical body and ACL, with 622 ledger rows (so reviewed+ACL is
-     `f`, which is expected), and `apply.sql` refuses until a new reviewed composition exists.
-   - No ledger rewind. If it is ever used, commit `restore_canonical_get_players_overview.sql` plus the
-     three DROP statements as `supabase/migrations/20261208110000_players_overview_restore_canonical.sql`
-     before any later release.
+   - It verifies the BASE state and records ledger version `20261208110000`.
+3. **Bookkeeping, only after row R1 or R2 is met:**
+   - There is no ledger rewind. Commit `restore_canonical_get_players_overview.sql` plus the three DROP
+     statements as `supabase/migrations/20261208110000_players_overview_restore_canonical.sql` before any later
+     release.
+   - Afterwards, `preflight.sql` shows the canonical body and ACL with 622 ledger rows. So reviewed+ACL is `f`,
+     which is expected. `apply.sql` refuses until a new reviewed composition exists.
 
 ## Client export: trust boundary
 
