@@ -33,7 +33,9 @@ vi.mock('react-i18next', () => ({
     t: (key: string, def?: string | Record<string, unknown>) => {
       const vars = typeof def === 'object' && def ? def : {};
       const fallback = typeof def === 'string' ? def : (vars.defaultValue as string | undefined);
-      const template = lookup(ns, key) ?? fallback ?? key;
+      // i18next plural keys (`_one` / `_other`) when a numeric count is passed.
+      const plural = typeof vars.count === 'number' ? lookup(ns, `${key}_${vars.count === 1 ? 'one' : 'other'}`) : undefined;
+      const template = plural ?? lookup(ns, key) ?? fallback ?? key;
       return template.replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(vars[name] ?? ''));
     },
   }),
@@ -48,6 +50,9 @@ vi.mock('@/components/academy/AcademyLayout', () => ({
 }));
 
 const overviewCalls: Array<PlayersOverviewParams & { scopeId: string }> = [];
+// The overview RPC's total for the given query (the page's canonical totalFiltered).
+let overviewTotal: (params: PlayersOverviewParams) => number = () => 2;
+let overviewPlaceholderData: (params: PlayersOverviewParams) => boolean = () => false;
 
 const listRow = (i: number) => ({
   player_key: `g_${i}`, player_type: 'guest', guest_player_id: `g${i}`, profile_id: null, person_id: `per-${i}`,
@@ -61,7 +66,11 @@ vi.mock('@/lib/playersOverview', async (importOriginal) => {
     ...actual,
     usePlayersOverview: (scope: { id: string }, params: PlayersOverviewParams) => {
       overviewCalls.push({ ...params, scopeId: scope.id });
-      return { data: { rows: [listRow(1), listRow(2)], total: 2 }, isLoading: false };
+      return {
+        data: { rows: [listRow(1), listRow(2)], total: overviewTotal(params) },
+        isLoading: false,
+        isPlaceholderData: overviewPlaceholderData(params),
+      };
     },
     fetchPlayersOverview: async () => ({ rows: [], total: 2 }), // header count query
     fetchAllPlayersOverview: async () => [],
@@ -163,6 +172,8 @@ const clubOptions = () =>
 beforeEach(() => {
   academyId = 'acad-1';
   overviewCalls.length = 0;
+  overviewTotal = () => 2;
+  overviewPlaceholderData = () => false;
   exportCalls.length = 0;
   downloads.length = 0;
   Object.values(toasts).forEach((f) => f.mockReset());
@@ -209,6 +220,54 @@ describe('Academy Players — training filters', () => {
     expect([...club.querySelectorAll('option')].map((o) => o.textContent)).toEqual(['All training clubs', 'Club Noord', 'Club Zuid']);
     choose('Training club', 'loc-1');
     expect(lastFilters()).toMatchObject({ trainingLocationId: 'loc-1', locationId: null });
+  });
+});
+
+describe('Academy Players — visible filtered count', () => {
+  const filteredCount = () => screen.getByTestId('academy-players-filtered-count').textContent;
+
+  it("shows the overview RPC's total for the current filters, not the unfiltered header count", async () => {
+    // The header count query answers 2; the filtered overview answers 37, then 5 once filtered.
+    overviewTotal = (p) => (p.filters?.currentTraining === true ? 5 : 37);
+    renderPage();
+    await screen.findByLabelText('Training club');
+    expect(filteredCount()).toBe('37 matching players');
+
+    choose('Training status', 'yes');
+    expect(lastFilters()).toMatchObject({ currentTraining: true });
+    expect(filteredCount()).toBe('5 matching players');
+  });
+
+  it('uses the singular for one match and still shows a zero match', async () => {
+    overviewTotal = (p) => (p.filters?.trainingLocationId === 'loc-2' ? 1 : p.filters?.currentTraining === false ? 0 : 2);
+    renderPage();
+    await screen.findByLabelText('Training club');
+    expect(filteredCount()).toBe('2 matching players');
+
+    choose('Training club', 'loc-2');
+    expect(filteredCount()).toBe('1 matching player');
+
+    choose('Training club', 'all');
+    choose('Training status', 'no');
+    expect(filteredCount()).toBe('0 matching players');
+  });
+
+  it('does not announce a previous filter total while the next overview is pending', async () => {
+    overviewPlaceholderData = (p) => p.filters?.currentTraining === true;
+    overviewTotal = (p) => (p.filters?.currentTraining === true ? 37 : 37);
+    const { rerenderPage } = renderPage();
+    await screen.findByLabelText('Training club');
+    expect(filteredCount()).toBe('37 matching players');
+
+    choose('Training status', 'yes');
+    expect(filteredCount()).toBe('Updating matching players…');
+    expect(screen.getByTestId('academy-players-filtered-count')).toHaveAttribute('aria-busy', 'true');
+
+    overviewPlaceholderData = () => false;
+    overviewTotal = (p) => (p.filters?.currentTraining === true ? 5 : 37);
+    rerenderPage();
+    expect(filteredCount()).toBe('5 matching players');
+    expect(screen.getByTestId('academy-players-filtered-count')).toHaveAttribute('aria-busy', 'false');
   });
 });
 

@@ -282,7 +282,7 @@ export default function AcademyPlayers() {
   }, [debouncedSearch, overviewFilters]);
 
   const rpcSort = sortKey === 'addedOn' ? 'created_at' : sortKey;
-  const { data: overview, isLoading: loading } = usePlayersOverview(
+  const { data: overview, isLoading: loading, isPlaceholderData: overviewIsStale } = usePlayersOverview(
     { kind: 'academy', id: activeAcademy?.id },
     { search: debouncedSearch, filters: overviewFilters, sort: rpcSort, sortDir, page, pageSize: PAGE_SIZE },
   );
@@ -794,6 +794,14 @@ export default function AcademyPlayers() {
               placeholder={tTrainer('players.payment.filterAll', 'Payment status')}
             />
           </TableToolbar>
+
+          {/* Visible filtered count: the overview RPC's exact total for the current search and filters (the
+              same totalFiltered the pagination uses). The header count stays the unfiltered academy total. */}
+          <p className="text-sm text-muted-foreground" aria-live="polite" aria-busy={overviewIsStale} data-testid="academy-players-filtered-count">
+            {overviewIsStale
+              ? tTrainer('players.filteredCountUpdating', 'Updating matching players…')
+              : tTrainer('players.filteredCount', { count: totalFiltered, defaultValue: '{{count}} matching players' })}
+          </p>
 
           {/* Players Table */}
           {sortedPlayers.length === 0 ? (

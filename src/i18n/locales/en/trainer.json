@@ -786,6 +786,9 @@
       "headerPhone": "Phone",
       "filePrefix": "players"
     },
+    "filteredCount_one": "{{count}} matching player",
+    "filteredCount_other": "{{count}} matching players",
+    "filteredCountUpdating": "Updating matching players…",
     "playerPlural": "players",
     "playerSingular": "player",
     "subtitleShort": "Manage your players and contacts",

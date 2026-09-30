@@ -789,6 +789,9 @@
       "headerPhone": "Telefoon",
       "filePrefix": "spelers"
     },
+    "filteredCount_one": "{{count}} overeenkomende speler",
+    "filteredCount_other": "{{count}} overeenkomende spelers",
+    "filteredCountUpdating": "Overeenkomende spelers bijwerken…",
     "playerPlural": "spelers",
     "playerSingular": "speler",
     "subtitleShort": "Beheer je spelers en contacten",
