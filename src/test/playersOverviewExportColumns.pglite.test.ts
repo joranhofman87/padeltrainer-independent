@@ -1,12 +1,13 @@
 // @vitest-environment node
 // PGlite's WASM loader needs Node's fetch/fs, not jsdom — pin this file to the node env.
 //
-// PTF export follow-up — get_players_overview_export's training / profile columns
-// (20261208120000), proven on the REAL migration chain (the overview chain + 20261208100000 + the
-// follow-up): currently_training equals the list's own "Currently training" filter; last / next
-// training date and the past booking count read ONLY the academy's own confirmed/completed sessions,
-// per canonical person, each session once; birth date and the list's authorized club chips; blanks for
-// missing values; tenant isolation; and cost that grows proportionally with the data.
+// PTF export follow-ups — get_players_overview_export's training / profile columns (20261208120000)
+// and first training date (20261208130000), proven on the REAL migration chain as production applies
+// it (the overview chain + 20261208100000 + 20261208120000 + 20261208130000): currently_training equals
+// the list's own "Currently training" filter; first / last / next training date and the past booking
+// count read ONLY the academy's own confirmed/completed sessions, per canonical person, each session
+// once; birth date and the list's authorized club chips; blanks for missing values; tenant isolation;
+// and cost that grows proportionally with the data.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
@@ -63,7 +64,8 @@ const UNLINKED = PR(12);           // a profile with NO person link, pure-profil
 
 type ExportRow = {
   person_id: string; full_name: string; email: string; phone: string; currently_training: boolean;
-  last_training_date: string | null; next_training_date: string | null; past_bookings_count: number;
+  first_training_date: string | null; last_training_date: string | null; next_training_date: string | null;
+  past_bookings_count: number;
   birth_date: string | null; location_names: string[];
 };
 
@@ -275,7 +277,8 @@ beforeAll(async () => {
     '20260901110000_phase33e_overview_type_has_login.sql',
     '20261006120000_readers_canonical_is_suppressed.sql',
     '20261208100000_players_overview_current_training.sql',
-    '20261208120000_players_overview_export_training_columns.sql', // under test
+    '20261208120000_players_overview_export_training_columns.sql',
+    '20261208130000_players_overview_export_first_training.sql', // under test (on top of the applied follow-up)
   ]) await db.exec(migration(f));
 }, 120_000);
 
@@ -419,6 +422,97 @@ describe('get_players_overview_export — training and profile columns', () => {
       expect([odd, Number(res.total)]).toEqual([odd, all.total]); // no filter, as the authority reads it
       expect([odd, res.rows.filter((r) => r.currently_training).map((r) => r.person_id).sort()]).toEqual([odd, training]);
     }
+  });
+
+  it('first_training_date: the earliest ENDED qualifying academy session, with exactly last_training_date\'s rules', async () => {
+    const a = byId((await exportCall(MGR_A, A)).rows);
+    // HIST: ended A sessions 2025-12-01, 2026-01-05, 2026-03-11. Not the cancelled/rejected 03-20 one, not B's
+    // session, not the upcoming or pending ones.
+    expect(a.get(HIST)).toMatchObject({ first_training_date: '2025-12-01', last_training_date: '2026-03-11' });
+    // a merged person: both sides' sessions, each once
+    expect(a.get(PM)).toMatchObject({ first_training_date: '2026-01-05', last_training_date: '2026-03-11' });
+    // dual-keyed: the child's session, never the parent's
+    expect(a.get(CHILD)).toMatchObject({ first_training_date: '2026-01-05' });
+    expect(a.get(PARENT)).toMatchObject({ first_training_date: null });
+    // an in-progress session is not history; the ended one at the inactive club is
+    expect(a.get(NOW_G)).toMatchObject({ first_training_date: '2026-02-01', last_training_date: '2026-02-01' });
+    // the academy timezone: 2026-03-10 23:30 UTC is 2026-03-11 in Amsterdam (FROZEN's earliest A session)
+    expect(a.get(FROZEN)).toMatchObject({ first_training_date: '2026-03-11', last_training_date: '2026-03-20' });
+    expect(a.get(UNLINKED)).toMatchObject({ first_training_date: '2026-01-05' });
+    expect(a.get(LOCSRC)).toMatchObject({ first_training_date: '2026-02-01' });
+    // no qualifying history → blank: nothing booked, only cancelled/pending, only another academy's sessions,
+    // admitted by metadata only (registration/intake is not training history)
+    for (const id of [NO_DOB, CANC_ONLY, BOTH, META_ONLY]) {
+      expect([id, a.get(id)!.first_training_date]).toEqual([id, null]);
+    }
+    // tenant scope: seen from B, only B's ended session counts
+    const b = byId((await exportCall(MGR_B, B)).rows);
+    const bPastAt = new Date((await db.query<{ t: string }>(`SELECT start_time::text AS t FROM public.availability_slots WHERE id = '${S_B_PAST}'`)).rows[0].t);
+    expect(b.get(BOTH)).toMatchObject({ first_training_date: amsDate(bPastAt), last_training_date: amsDate(bPastAt) });
+    expect(b.get(HIST)).toMatchObject({ first_training_date: amsDate(bPastAt) });
+    // for every person in both academies: present iff last is present, never after it, a real date
+    for (const rows of [a, b]) {
+      for (const r of rows.values()) {
+        expect([r.person_id, r.first_training_date === null]).toEqual([r.person_id, r.last_training_date === null]);
+        if (r.first_training_date !== null) {
+          expect(r.first_training_date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+          expect(r.first_training_date <= r.last_training_date!).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('first_training_date equals an independent minimum over the same qualifying sessions, per person', async () => {
+    // Independent of the export body: the earliest ended A session start (Amsterdam date) over confirmed/completed
+    // bookings keyed by the authority's person key (guest side → its person unless split-frozen; pure profile → its person).
+    const { rows } = await db.query<{ person_id: string; first: string }>(`
+      WITH keyed AS (
+        SELECT CASE WHEN b.guest_player_id IS NOT NULL
+                    THEN CASE WHEN pl.person_id IS NOT NULL AND NOT public.is_guest_split_frozen(b.guest_player_id)
+                              THEN pl.person_id ELSE b.guest_player_id END
+                    ELSE coalesce(pp.person_id, b.player_id) END AS person_id,
+               s.start_time
+          FROM public.bookings b
+          JOIN public.availability_slots s ON s.id = b.slot_id
+          LEFT JOIN public.person_links pl ON pl.guest_player_id = b.guest_player_id
+          LEFT JOIN public.person_links pp ON pp.profile_id = b.player_id AND b.guest_player_id IS NULL
+         WHERE s.academy_profile_id = '${A}' AND b.status IN ('confirmed','completed') AND s.end_time < now())
+      SELECT person_id::text, to_char((min(start_time) AT TIME ZONE 'Europe/Amsterdam')::date, 'YYYY-MM-DD') AS first
+        FROM keyed GROUP BY person_id`);
+    const expected = new Map(rows.map((r) => [r.person_id, r.first]));
+    const exported = (await exportCall(MGR_A, A)).rows;
+    for (const r of exported) {
+      expect([r.person_id, r.first_training_date]).toEqual([r.person_id, expected.get(r.person_id) ?? null]);
+    }
+    expect(exported.filter((r) => r.first_training_date !== null).length).toBeGreaterThan(5);
+  });
+
+  it('first_training_date counts only ENDED sessions: in-progress and upcoming ones never start the history', async () => {
+    // NO_DOB has nothing booked; give it sessions here and remove them afterwards
+    const S_LONG = S(40), S_SHORT = S(41);
+    const noDob = async () => byId((await exportCall(MGR_A, A)).rows).get(NO_DOB)!;
+    const before = await noDob();
+    try {
+      // only an in-progress and an upcoming session: no history yet
+      await db.exec(`INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+        ('${S_INPROG}', '${NO_DOB}', 'confirmed'), ('${S_NEXT}', '${NO_DOB}', 'confirmed');`);
+      expect(await noDob()).toMatchObject({ first_training_date: null, last_training_date: null, past_bookings_count: 0 });
+      // a long session still in progress that STARTED before a short one that has ended: the ended one is the first
+      await db.exec(`
+        INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, location_id, cyclus_id, start_time, end_time) VALUES
+          ('${S_LONG}',  '${TS}', '${A}', '${LOC_A1}', NULL, now() - interval '3 days', now() + interval '1 day'),
+          ('${S_SHORT}', '${TS}', '${A}', '${LOC_A1}', NULL, now() - interval '2 days', now() - interval '2 days' + interval '1 hour');
+        INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+          ('${S_LONG}', '${NO_DOB}', 'confirmed'), ('${S_SHORT}', '${NO_DOB}', 'completed');`);
+      const shortAt = new Date((await db.query<{ t: string }>(`SELECT start_time::text AS t FROM public.availability_slots WHERE id = '${S_SHORT}'`)).rows[0].t);
+      const longAt = new Date((await db.query<{ t: string }>(`SELECT start_time::text AS t FROM public.availability_slots WHERE id = '${S_LONG}'`)).rows[0].t);
+      expect(amsDate(longAt)).not.toBe(amsDate(shortAt));
+      expect(await noDob()).toMatchObject({ first_training_date: amsDate(shortAt), last_training_date: amsDate(shortAt), past_bookings_count: 1 });
+    } finally {
+      await db.exec(`DELETE FROM public.bookings WHERE guest_player_id = '${NO_DOB}';
+        DELETE FROM public.availability_slots WHERE id IN ('${S_LONG}', '${S_SHORT}');`);
+    }
+    expect(await noDob()).toEqual(before);
   });
 
   it('the total and the rows still describe one evaluation, in list order', async () => {

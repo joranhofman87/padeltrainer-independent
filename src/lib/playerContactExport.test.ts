@@ -19,14 +19,15 @@ vi.mock('@/lib/supabaseClient', () => ({ supabase: { rpc: vi.fn() } }));
 const ACADEMY = 'acad-1';
 const HEADERS = {
   name: 'Name', email: 'Email', phone: 'Phone', currentlyTraining: 'Currently training',
-  lastTrainingDate: 'Last training date', nextTrainingDate: 'Next training date',
+  firstTrainingDate: 'First training date', lastTrainingDate: 'Last training date', nextTrainingDate: 'Next training date',
   pastBookingsCount: 'Past sessions booked (not attendance)', birthDate: 'Birth date', locations: 'Locations',
   yes: 'Yes', no: 'No',
 };
 
 type ServerRow = {
   person_id: unknown; full_name?: unknown; email?: unknown; phone?: unknown; currently_training?: unknown;
-  last_training_date?: unknown; next_training_date?: unknown; past_bookings_count?: unknown; birth_date?: unknown;
+  first_training_date?: unknown; last_training_date?: unknown; next_training_date?: unknown; past_bookings_count?: unknown;
+  birth_date?: unknown;
   location_names?: unknown;
 };
 /** A canonical person uuid, as PostgreSQL prints it. */
@@ -37,6 +38,7 @@ const person = (i: number, extra: Partial<ServerRow> = {}): ServerRow => ({
   email: `p${i}@x.nl`,
   phone: '',
   currently_training: false,
+  first_training_date: null,
   last_training_date: null,
   next_training_date: null,
   past_bookings_count: 0,
@@ -48,6 +50,12 @@ const person = (i: number, extra: Partial<ServerRow> = {}): ServerRow => ({
 const withoutPhone = (): ServerRow => {
   const r: ServerRow = person(1);
   delete r.phone;
+  return r;
+};
+/** A complete row except its own `first_training_date` field (a server before 20261208130000). */
+const withoutFirstTraining = (): ServerRow => {
+  const r: ServerRow = person(1);
+  delete r.first_training_date;
   return r;
 };
 /** get_players_overview_export's PostgREST shape: ONE row { total, rows }. */
@@ -82,27 +90,28 @@ describe('filtersToRpcJson — the two training keys', () => {
 
 describe('the contact column spec (the shared mechanics are in csvExport.test.ts)', () => {
   const contact = (c: Partial<ExportContact>): ExportContact => ({
-    personId: 'p', fullName: '', email: '', phone: '', currentlyTraining: false, lastTrainingDate: '',
+    personId: 'p', fullName: '', email: '', phone: '', currentlyTraining: false, firstTrainingDate: '', lastTrainingDate: '',
     nextTrainingDate: '', pastBookingsCount: 0, birthDate: '', locationNames: [], ...c,
   });
-  const HEAD = '"Name";"Email";"Phone";"Currently training";"Last training date";"Next training date";'
+  const HEAD = '"Name";"Email";"Phone";"Currently training";"First training date";"Last training date";"Next training date";'
     + '"Past sessions booked (not attendance)";"Birth date";"Locations"';
 
-  it('all nine columns in order, with the page headers; the person id is never written', () => {
+  it('all ten columns in order, with the page headers; the person id is never written', () => {
     expect(contactCsvColumns(HEADERS).map((c) => c.header)).toEqual([
-      'Name', 'Email', 'Phone', 'Currently training', 'Last training date', 'Next training date',
+      'Name', 'Email', 'Phone', 'Currently training', 'First training date', 'Last training date', 'Next training date',
       'Past sessions booked (not attendance)', 'Birth date', 'Locations',
     ]);
     expect(buildContactsCsv([contact({
       personId: 'secret-id', fullName: 'Ann', email: 'ann@x.nl', phone: '06 1234 5678', currentlyTraining: true,
-      lastTrainingDate: '2026-09-24', nextTrainingDate: '2026-10-08', pastBookingsCount: 12, birthDate: '2012-03-04',
+      firstTrainingDate: '2025-11-02', lastTrainingDate: '2026-09-24', nextTrainingDate: '2026-10-08', pastBookingsCount: 12,
+      birthDate: '2012-03-04',
       locationNames: ['Club A', 'Club B'],
-    })], HEADERS)).toBe(`\uFEFF${HEAD}\r\n"Ann";"ann@x.nl";"06 1234 5678";"Yes";"2026-09-24";"2026-10-08";"12";"2012-03-04";"Club A; Club B"\r\n`);
+    })], HEADERS)).toBe(`\uFEFF${HEAD}\r\n"Ann";"ann@x.nl";"06 1234 5678";"Yes";"2025-11-02";"2026-09-24";"2026-10-08";"12";"2012-03-04";"Club A; Club B"\r\n`);
   });
 
   it('missing dates, birth date and locations are empty cells; a zero count is written as 0; not training is No', () => {
     expect(buildContactsCsv([contact({ fullName: 'Bo' })], HEADERS))
-      .toBe(`\uFEFF${HEAD}\r\n"Bo";"";"";"No";"";"";"0";"";""\r\n`);
+      .toBe(`\uFEFF${HEAD}\r\n"Bo";"";"";"No";"";"";"";"0";"";""\r\n`);
   });
 
   it('a location name that looks like a formula is neutralised in its cell', () => {
@@ -196,7 +205,7 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     const srv = fakeRpc(ok([person(1, { full_name: null, email: null, phone: null })]));
     expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).toEqual([
       {
-        personId: uid(1), fullName: '', email: '', phone: '', currentlyTraining: false, lastTrainingDate: '',
+        personId: uid(1), fullName: '', email: '', phone: '', currentlyTraining: false, firstTrainingDate: '', lastTrainingDate: '',
         nextTrainingDate: '', pastBookingsCount: 0, birthDate: '', locationNames: [],
       },
     ]);
@@ -204,12 +213,13 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
 
   it('reads the training, birth-date and location fields; names are deduplicated in order', async () => {
     const srv = fakeRpc(ok([person(1, {
-      currently_training: true, last_training_date: '2026-09-24', next_training_date: '2026-10-08',
+      currently_training: true, first_training_date: '2025-11-02', last_training_date: '2026-09-24', next_training_date: '2026-10-08',
       past_bookings_count: 7, birth_date: '2012-03-04', location_names: ['Club B', 'Club A', 'Club B', 'Club A ', ' '],
     })]));
     expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).toEqual([{
       personId: uid(1), fullName: 'Player 1', email: 'p1@x.nl', phone: '', currentlyTraining: true,
-      lastTrainingDate: '2026-09-24', nextTrainingDate: '2026-10-08', pastBookingsCount: 7, birthDate: '2012-03-04',
+      firstTrainingDate: '2025-11-02', lastTrainingDate: '2026-09-24', nextTrainingDate: '2026-10-08', pastBookingsCount: 7,
+      birthDate: '2012-03-04',
       locationNames: ['Club B', 'Club A', 'Club A ', ' '], // verbatim; only exact duplicates removed
     }]);
   });
@@ -243,6 +253,10 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     ['a fractional booking count', ok([person(1, { past_bookings_count: 1.5 })])],
     ['a string booking count', ok([person(1, { past_bookings_count: '3' })])],
     ['a timestamp instead of a date', ok([person(1, { last_training_date: '2026-09-24T10:00:00Z' })])],
+    ['a missing first_training_date (a server before 20261208130000)', ok([withoutFirstTraining()])],
+    ['a timestamp first training date', ok([person(1, { first_training_date: '2025-11-02T10:00:00Z' })])],
+    ['an impossible first training date (2026-02-30)', ok([person(1, { first_training_date: '2026-02-30' })])],
+    ['a non-string first training date', ok([person(1, { first_training_date: 20251102 })])],
     ['an impossible day (2026-02-31)', ok([person(1, { next_training_date: '2026-02-31' })])],
     ['an impossible month (2026-13-01)', ok([person(1, { last_training_date: '2026-13-01' })])],
     ['a zero day (2012-03-00)', ok([person(1, { birth_date: '2012-03-00' })])],
@@ -262,7 +276,7 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
   class EnvelopeLike { total = 1; rows = [person(1)]; }
   class RowLike {
     person_id = uid(1); full_name = 'A'; email = 'a@x.nl'; phone = ''; currently_training = false;
-    last_training_date = null; next_training_date = null; past_bookings_count = 0; birth_date = null;
+    first_training_date = null; last_training_date = null; next_training_date = null; past_bookings_count = 0; birth_date = null;
     location_names: string[] = [];
   }
   const inheriting = <T extends object>(proto: T): T => Object.create(proto) as T;
