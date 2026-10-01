@@ -1074,12 +1074,30 @@ describe('PTF release packet on real PostgreSQL', () => {
       }
       return out;
     };
+    // ...and byte-identical to the APPLIED follow-up packet's, file by file and block by block: whole lines from the
+    // BEGIN line through the END line, both markers included, untrimmed
+    const wholeBlocks = (dir: string, f: string, marker: string) => {
+      const text = readFileSync(join(dir, f), 'utf8');
+      const out: string[] = [];
+      for (let at = text.indexOf(`-- ${marker} BEGIN`); at >= 0; at = text.indexOf(`-- ${marker} BEGIN`, at + 1)) {
+        const end = text.indexOf(`-- ${marker} END`, at);
+        expect([f, marker, end > at]).toEqual([f, marker, true]);
+        const eol = text.indexOf('\n', end);
+        out.push(text.slice(text.lastIndexOf('\n', at) + 1, eol < 0 ? text.length : eol + 1));
+      }
+      return out;
+    };
     for (const [f, descriptors, probes] of [['apply.sql', 2, 1], ['recovery.sql', 2, 1], ['postcheck.sql', 1, 0]] as const) {
       const d = ftBlocks(f, 'STATE DESCRIPTOR');
       const p = ftBlocks(f, 'IN-FLIGHT PROBE');
       expect([f, d.length, p.length]).toEqual([f, descriptors, probes]);
       for (const x of d) expect(x.trim()).toBe(DESCRIPTOR_SQL.trim());
       for (const x of p) expect(x.trim()).toBe(PROBE_SQL.trim());
+      for (const marker of ['STATE DESCRIPTOR', 'IN-FLIGHT PROBE']) {
+        const fu = wholeBlocks(FU, f, marker);
+        expect([f, marker, fu.length]).toEqual([f, marker, marker === 'STATE DESCRIPTOR' ? descriptors : probes]);
+        expect(wholeBlocks(FT, f, marker)).toEqual(fu);
+      }
     }
     // the migration is the APPLIED follow-up function plus exactly the two first-training lines
     const fnOf = (file: string) => {
