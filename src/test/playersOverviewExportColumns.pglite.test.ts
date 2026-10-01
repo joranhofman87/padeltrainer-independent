@@ -487,6 +487,34 @@ describe('get_players_overview_export — training and profile columns', () => {
     expect(exported.filter((r) => r.first_training_date !== null).length).toBeGreaterThan(5);
   });
 
+  it('first_training_date counts only ENDED sessions: in-progress and upcoming ones never start the history', async () => {
+    // NO_DOB has nothing booked; give it sessions here and remove them afterwards
+    const S_LONG = S(40), S_SHORT = S(41);
+    const noDob = async () => byId((await exportCall(MGR_A, A)).rows).get(NO_DOB)!;
+    const before = await noDob();
+    try {
+      // only an in-progress and an upcoming session: no history yet
+      await db.exec(`INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+        ('${S_INPROG}', '${NO_DOB}', 'confirmed'), ('${S_NEXT}', '${NO_DOB}', 'confirmed');`);
+      expect(await noDob()).toMatchObject({ first_training_date: null, last_training_date: null, past_bookings_count: 0 });
+      // a long session still in progress that STARTED before a short one that has ended: the ended one is the first
+      await db.exec(`
+        INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, location_id, cyclus_id, start_time, end_time) VALUES
+          ('${S_LONG}',  '${TS}', '${A}', '${LOC_A1}', NULL, now() - interval '3 days', now() + interval '1 day'),
+          ('${S_SHORT}', '${TS}', '${A}', '${LOC_A1}', NULL, now() - interval '2 days', now() - interval '2 days' + interval '1 hour');
+        INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+          ('${S_LONG}', '${NO_DOB}', 'confirmed'), ('${S_SHORT}', '${NO_DOB}', 'completed');`);
+      const shortAt = new Date((await db.query<{ t: string }>(`SELECT start_time::text AS t FROM public.availability_slots WHERE id = '${S_SHORT}'`)).rows[0].t);
+      const longAt = new Date((await db.query<{ t: string }>(`SELECT start_time::text AS t FROM public.availability_slots WHERE id = '${S_LONG}'`)).rows[0].t);
+      expect(amsDate(longAt)).not.toBe(amsDate(shortAt));
+      expect(await noDob()).toMatchObject({ first_training_date: amsDate(shortAt), last_training_date: amsDate(shortAt), past_bookings_count: 1 });
+    } finally {
+      await db.exec(`DELETE FROM public.bookings WHERE guest_player_id = '${NO_DOB}';
+        DELETE FROM public.availability_slots WHERE id IN ('${S_LONG}', '${S_SHORT}');`);
+    }
+    expect(await noDob()).toEqual(before);
+  });
+
   it('the total and the rows still describe one evaluation, in list order', async () => {
     const { total, rows } = await exportCall(MGR_A, A);
     expect(rows).toHaveLength(total);
