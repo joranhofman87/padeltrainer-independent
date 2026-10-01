@@ -344,6 +344,7 @@ export default function AcademyPlayers() {
           email: tTrainer('players.export.headerEmail', 'Email'),
           phone: tTrainer('players.export.headerPhone', 'Phone'),
           currentlyTraining: tTrainer('players.export.headerCurrentlyTraining', 'Currently training'),
+          firstTrainingDate: tTrainer('players.export.headerFirstTraining', 'First training date'),
           lastTrainingDate: tTrainer('players.export.headerLastTraining', 'Last training date'),
           nextTrainingDate: tTrainer('players.export.headerNextTraining', 'Next training date'),
           pastBookingsCount: tTrainer('players.export.headerPastBookings', 'Past sessions booked (not attendance)'),

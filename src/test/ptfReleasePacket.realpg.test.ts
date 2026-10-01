@@ -366,9 +366,9 @@ beforeAll(async () => {
   await db.query(`ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
     ALTER DEFAULT PRIVILEGES GRANT USAGE ON SCHEMAS TO anon, authenticated, service_role;`);
 
-  // The 620-version ledger: the repository's versions except PTF (and the later export follow-up
-  // 20261208120000, which applies after PTF), plus the six F0 and the ACL version.
-  const LATER_THAN_BASE = new Set(['20261208100000', '20261208120000']);
+  // The 620-version ledger: the repository's versions except PTF (and the later export follow-ups
+  // 20261208120000 and 20261208130000, which apply after PTF), plus the six F0 and the ACL version.
+  const LATER_THAN_BASE = new Set(['20261208100000', '20261208120000', '20261208130000']);
   const repo = readdirSync(join(process.cwd(), 'supabase', 'migrations'))
     .map((f) => /^(\d{14})_/.exec(f)?.[1]).filter((v): v is string => Boolean(v) && !LATER_THAN_BASE.has(v));
   const versions = [...repo, ...F0_ACL_VERSIONS];
@@ -1031,6 +1031,180 @@ describe('PTF release packet on real PostgreSQL', () => {
     for (const r of restored[0].rows as Array<Record<string, unknown>>) {
       expect(Object.keys(r).sort()).toEqual(['email', 'full_name', 'person_id', 'phone']);
     }
+  });
+
+  it('first-training packet (20261208130000): refuses off-state, applies once on the follow-up state, re-runs as a no-op, post-checks, and recovers to the exact follow-up state', async () => {
+    const FU = join(process.cwd(), 'docs', 'deployment', 'ptf-export-columns');
+    const FT = join(process.cwd(), 'docs', 'deployment', 'ptf-export-first-training');
+    const run = (dir: string, file: string, vars: Record<string, string> = { expected_sysid: sysid }) =>
+      psql('', { single: file !== 'postcheck.sql', path: join(dir, file), vars: file === 'postcheck.sql' ? { shape_academy: A } : vars });
+    const constant = (file: string, name: string) =>
+      new RegExp(`${name} +CONSTANT text := '([0-9a-f]{64})'`).exec(readFileSync(join(FT, file), 'utf8'))![1];
+    const ledgerDigest = async () => (await db.query(`SELECT encode(sha256(convert_to(string_agg(version, E'\\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex') AS d FROM supabase_migrations.schema_migrations`)).rows[0].d as string;
+    const exportRows = async () => (await asUser(MGR_A,
+      `SELECT rows FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [A]))[0].rows as Array<Record<string, unknown>>;
+    const FU_KEYS = ['birth_date', 'currently_training', 'email', 'full_name', 'last_training_date', 'location_names',
+      'next_training_date', 'past_bookings_count', 'person_id', 'phone'];
+    const FT_KEYS = [...FU_KEYS, 'first_training_date'].sort();
+
+    // the follow-up test left the PTF state: the first-training packet accepts only the follow-up state
+    expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
+    const offState = run(FT, 'apply.sql');
+    expect(offState.status).toBe(3);
+    expect(offState.err).toMatch(/ptff apply guard: the ledger\/object state is neither the export follow-up state nor the first-training state/);
+    expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
+
+    // production's current state: the follow-up packet applied (ledger 622)
+    const fuApply = run(FU, 'apply.sql');
+    expect(fuApply.status, fuApply.err).toBe(0);
+    const fuState = (await state()).digest;
+    const fuLedger = await ledgerDigest();
+    expect(await state()).toMatchObject({ ledger_rows: 622 });
+    for (const f of ['apply.sql', 'recovery.sql']) {
+      expect(constant(f, 'c_fu')).toBe(fuLedger);
+      expect(constant(f, 'c_state_fu')).toBe(fuState);
+    }
+    // the embedded descriptors and the in-flight probe are byte-identical to the reviewed PTF packet's
+    const PROBE_SQL = blocks('apply.sql', 'IN-FLIGHT PROBE')[0];
+    const ftBlocks = (f: string, marker: string) => {
+      const text = readFileSync(join(FT, f), 'utf8');
+      const out: string[] = [];
+      for (let at = text.indexOf(`-- ${marker} BEGIN`); at >= 0; at = text.indexOf(`-- ${marker} BEGIN`, at + 1)) {
+        out.push(text.slice(at, text.indexOf(`-- ${marker} END`, at)));
+      }
+      return out;
+    };
+    for (const [f, descriptors, probes] of [['apply.sql', 2, 1], ['recovery.sql', 2, 1], ['postcheck.sql', 1, 0]] as const) {
+      const d = ftBlocks(f, 'STATE DESCRIPTOR');
+      const p = ftBlocks(f, 'IN-FLIGHT PROBE');
+      expect([f, d.length, p.length]).toEqual([f, descriptors, probes]);
+      for (const x of d) expect(x.trim()).toBe(DESCRIPTOR_SQL.trim());
+      for (const x of p) expect(x.trim()).toBe(PROBE_SQL.trim());
+    }
+    // the migration is the APPLIED follow-up function plus exactly the two first-training lines
+    const fnOf = (file: string) => {
+      const text = readFileSync(join(process.cwd(), 'supabase', 'migrations', file), 'utf8');
+      return text.slice(text.indexOf('CREATE OR REPLACE FUNCTION public.get_players_overview_export('));
+    };
+    const fuFn = fnOf('20261208120000_players_overview_export_training_columns.sql').split('\n');
+    const ftFn = fnOf('20261208130000_players_overview_export_first_training.sql').split('\n');
+    const added = ftFn.filter((l) => !fuFn.includes(l));
+    expect(added.map((l) => l.trim())).toEqual([
+      'min(h.h_start) FILTER (WHERE h.h_end <  now())          AS h_first,',
+      "'first_training_date', to_char((h.h_first AT TIME ZONE v_tz)::date, 'YYYY-MM-DD'),",
+    ]);
+    expect(ftFn.filter((l) => !added.includes(l))).toEqual(fuFn);
+
+    // refusals change nothing: another cluster; a drifted export ACL
+    const wrong = run(FT, 'apply.sql', { expected_sysid: '1' });
+    expect(wrong.status).toBe(3);
+    expect(wrong.err).toMatch(/ptff apply guard: system identifier/);
+    await db.query(`GRANT EXECUTE ON FUNCTION ${EXPORT_SIG} TO anon`);
+    const drifted = run(FT, 'apply.sql');
+    expect(drifted.status).toBe(3);
+    expect(drifted.err).toMatch(/ptff apply guard: the ledger\/object state is neither/);
+    await db.query(`REVOKE EXECUTE ON FUNCTION ${EXPORT_SIG} FROM anon`);
+    expect(await state()).toMatchObject({ ledger_rows: 622, digest: fuState });
+
+    // first apply
+    const first = run(FT, 'apply.sql');
+    const ftState = (await state()).digest;
+    const ftLedger = await ledgerDigest();
+    expect(first.status, first.err).toBe(0);
+    expect(first.out).toContain('INSERT 0 1');
+    expect(first.err).toContain(`ptff apply: object state ${ftState}, ledger 623 to 20261208130000`);
+    expect(constant('apply.sql', 'c_ft')).toBe(ftLedger);
+    expect(constant('apply.sql', 'c_state_ft')).toBe(ftState);
+    expect(constant('recovery.sql', 'c_ft')).toBe(ftLedger);
+    expect(constant('recovery.sql', 'c_state_ft')).toBe(ftState);
+    expect(await state()).toMatchObject({ ledger_rows: 623 });
+    const rows = await exportRows();
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(Object.keys(r).sort()).toEqual(FT_KEYS);
+      // the same history as last_training_date: present together, and never after it
+      expect(r.first_training_date === null).toBe(r.last_training_date === null);
+      if (r.first_training_date !== null) expect(String(r.first_training_date) <= String(r.last_training_date)).toBe(true);
+    }
+    // the fixture has no ended academy-A booking, so give one person a short history on the installed body: an
+    // earlier CANCELLED session (never counts), a session at 00:30 academy-local time (its UTC date is the day
+    // before), and a later one; then remove it, so the post-check shape and later tests see the fixture unchanged
+    const H = ['5e1f0000-0000-0000-0000-000000000001', '5e1f0000-0000-0000-0000-000000000002', '5e1f0000-0000-0000-0000-000000000003'];
+    const localDay = (days: number) => `(date_trunc('day', now() AT TIME ZONE 'Europe/Amsterdam') - interval '${days} days')`;
+    await db.query(`
+      INSERT INTO public.availability_slots (id, trainer_id, academy_profile_id, start_time, end_time)
+      SELECT v.id::uuid, '${TS}', '${A}', v.s, v.s + interval '1 hour'
+        FROM (VALUES ('${H[0]}', (${localDay(60)} + interval '12 hours') AT TIME ZONE 'Europe/Amsterdam'),
+                     ('${H[1]}', (${localDay(30)} + interval '30 minutes') AT TIME ZONE 'Europe/Amsterdam'),
+                     ('${H[2]}', (${localDay(10)} + interval '12 hours') AT TIME ZONE 'Europe/Amsterdam')) v(id, s);
+      INSERT INTO public.bookings (slot_id, guest_player_id, status) VALUES
+        ('${H[0]}', '${G_ON}', 'cancelled'), ('${H[1]}', '${G_ON}', 'confirmed'), ('${H[2]}', '${G_ON}', 'completed');`);
+    const [exp] = (await db.query(`SELECT to_char(${localDay(30)}::date, 'YYYY-MM-DD') AS first, to_char(${localDay(10)}::date, 'YYYY-MM-DD') AS last,
+      to_char(((${localDay(30)} + interval '30 minutes') AT TIME ZONE 'Europe/Amsterdam' AT TIME ZONE 'UTC')::date, 'YYYY-MM-DD') AS utc_first`)).rows;
+    expect(exp.utc_first).not.toBe(exp.first);
+    const withHistory = await exportRows();
+    expect(withHistory.find((r) => r.full_name === 'Ongoing Guest')).toMatchObject({ first_training_date: exp.first, last_training_date: exp.last });
+    for (const r of withHistory) {
+      expect(r.first_training_date === null).toBe(r.last_training_date === null);
+      if (r.first_training_date !== null) expect(String(r.first_training_date) <= String(r.last_training_date)).toBe(true);
+    }
+    await db.query(`DELETE FROM public.bookings WHERE slot_id IN ('${H.join("', '")}');
+      DELETE FROM public.availability_slots WHERE id IN ('${H.join("', '")}');`);
+    expect(await exportRows()).toEqual(rows);
+    const [cfg] = await asUser(MGR_A, `SELECT array_to_string(proconfig, ';') AS c FROM pg_proc WHERE oid = '${EXPORT_SIG}'::regprocedure`);
+    expect(cfg.c).toBe('search_path=pg_catalog, pg_temp;plan_cache_mode=force_custom_plan');
+
+    // post-check
+    const pc = run(FT, 'postcheck.sql');
+    expect(pc.status, pc.err).toBe(0);
+    expect(pc.rec).toMatchObject({ db: 'postgres', sysid, ledger_rows: '623', ledger_head: '20261208130000', ledger_ok: 't', state_ok: 't',
+      state_sha256: ftState, export_config: 'search_path=pg_catalog, pg_temp;plan_cache_mode=force_custom_plan',
+      export_acl: 'authenticated=X/postgres,postgres=X/postgres', anon_can_execute: 'f', service_role_can_execute: 'f' });
+    const shapeExpected = rows.length;
+    expect(pc.rec).toMatchObject({ shape_manager_found: 't', shape_total: String(shapeExpected), shape_rows: String(shapeExpected),
+      rows_with_exact_keys: String(shapeExpected), distinct_persons: String(shapeExpected), malformed_dates: '0',
+      zero_count_with_last: '0', count_without_last: '0', first_last_presence_mismatch: '0', first_after_last: '0',
+      with_first_date: String(rows.filter((r) => r.first_training_date !== null).length) });
+    expect(pc.out.match(/-\[ RECORD 1 \]/g)).toHaveLength(3); // object state, manager found, shape
+    // exactly these fields are printed, and no personal data: no name, email, phone, id or date of the fixture
+    const printed = pc.out.split('\n').map((l) => /^(\w+)\s+\|/.exec(l)?.[1]).filter(Boolean).sort();
+    expect(printed).toEqual([
+      'anon_can_execute', 'count_without_last', 'currently_training', 'db', 'distinct_persons', 'export_acl',
+      'export_config', 'first_after_last', 'first_last_presence_mismatch', 'ledger_head', 'ledger_ok', 'ledger_rows',
+      'malformed_dates', 'max_locations', 'past_bookings_sum', 'rows_with_exact_keys', 'service_role_can_execute',
+      'shape_manager_found', 'shape_rows', 'shape_total', 'state_ok', 'state_sha256', 'sysid', 'with_birth_date',
+      'with_first_date', 'with_last_date', 'with_locations', 'with_next_date', 'zero_count_with_last',
+    ]);
+    for (const r of rows as Array<{ full_name: string; email: string; phone: string; person_id: string }>) {
+      for (const v of [r.full_name, r.email, r.phone, r.person_id].filter((x) => x && x.length > 3)) {
+        expect(pc.out.includes(v), v).toBe(false);
+      }
+    }
+    expect(pc.out).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+    expect(pc.out).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+
+    // re-run: no ledger row, same state
+    const again = run(FT, 'apply.sql');
+    expect(again.status, again.err).toBe(0);
+    expect(again.out).toContain('INSERT 0 0');
+    expect((await state()).digest).toBe(ftState);
+
+    // recovery: the exact follow-up state (ledger and objects); a re-run is a no-op
+    const rec = run(FT, 'recovery.sql');
+    expect(rec.status, rec.err).toBe(0);
+    expect(rec.out).toContain('DELETE 1');
+    expect(rec.err).toContain(`ptff recovery: object state ${fuState} (the export follow-up state), ledger 622 to 20261208120000`);
+    expect(await state()).toMatchObject({ ledger_rows: 622, digest: fuState });
+    expect(await ledgerDigest()).toBe(fuLedger);
+    const rec2 = run(FT, 'recovery.sql');
+    expect(rec2.status, rec2.err).toBe(0);
+    expect(rec2.out).toContain('DELETE 0');
+    for (const r of await exportRows()) expect(Object.keys(r).sort()).toEqual(FU_KEYS);
+
+    // leave the suite in the PTF state for the tests that follow
+    const back = run(FU, 'recovery.sql');
+    expect(back.status, back.err).toBe(0);
+    expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
   });
 
   it('a representative performance observation stays within the budget', async () => {

@@ -788,6 +788,7 @@
       "headerEmail": "E-mail",
       "headerPhone": "Telefoon",
       "headerCurrentlyTraining": "Traint momenteel",
+      "headerFirstTraining": "Eerste trainingsdatum",
       "headerLastTraining": "Laatste trainingsdatum",
       "headerNextTraining": "Volgende trainingsdatum",
       "headerPastBookings": "Geboekte sessies in het verleden (geen aanwezigheid)",

@@ -1,6 +1,6 @@
 /**
  * Academy Players contact export (PTF option A, E1): EVERY person matching the list's search + filters
- * as a local Excel-compatible CSV: name / email / phone, current training, last / next training date,
+ * as a local Excel-compatible CSV: name / email / phone, current training, first / last / next training date,
  * past booking count (bookings, not attendance), birth date and associated clubs. The PTF-specific parts live here — the
  * academy-scoped server call and its response contract, the frozen list inputs and the contact column
  * spec; the file mechanics (formatting, formula safety, download, failure vocabulary) are the shared
@@ -29,6 +29,8 @@ export interface ExportContact {
   phone: string;
   /** The list's own "Currently training" predicate, evaluated by the server for this person. */
   currentlyTraining: boolean;
+  /** Academy-local `YYYY-MM-DD` of the earliest ended academy session with a confirmed/completed booking; '' if none. */
+  firstTrainingDate: string;
   /** Academy-local `YYYY-MM-DD` of the latest ended academy session with a confirmed/completed booking; '' if none. */
   lastTrainingDate: string;
   /** Academy-local `YYYY-MM-DD` of the next in-progress/upcoming such session; '' if none. */
@@ -150,6 +152,7 @@ export async function fetchContactsForExport(
       email: nullableText(own(r, 'email'), total),
       phone: nullableText(own(r, 'phone'), total),
       currentlyTraining,
+      firstTrainingDate: nullableDate(own(r, 'first_training_date'), total),
       lastTrainingDate: nullableDate(own(r, 'last_training_date'), total),
       nextTrainingDate: nullableDate(own(r, 'next_training_date'), total),
       pastBookingsCount,
@@ -228,6 +231,7 @@ export interface ExportHeaders {
   email: string;
   phone: string;
   currentlyTraining: string;
+  firstTrainingDate: string;
   lastTrainingDate: string;
   nextTrainingDate: string;
   pastBookingsCount: string;
@@ -247,6 +251,7 @@ export function contactCsvColumns(headers: ExportHeaders): CsvColumn<ExportConta
     { header: headers.email, value: (c) => c.email },
     { header: headers.phone, value: (c) => c.phone, kind: 'phone' },
     { header: headers.currentlyTraining, value: (c) => (c.currentlyTraining ? headers.yes : headers.no) },
+    { header: headers.firstTrainingDate, value: (c) => c.firstTrainingDate },
     { header: headers.lastTrainingDate, value: (c) => c.lastTrainingDate },
     { header: headers.nextTrainingDate, value: (c) => c.nextTrainingDate },
     { header: headers.pastBookingsCount, value: (c) => String(c.pastBookingsCount) },

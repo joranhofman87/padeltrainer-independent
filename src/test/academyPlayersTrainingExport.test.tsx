@@ -148,7 +148,7 @@ import AcademyPlayers from '@/pages/academy/AcademyPlayers';
 const person = (i: number, extra: Record<string, unknown> = {}) =>
   ({
     person_id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`, full_name: `Export ${i}`, email: `e${i}@x.nl`, phone: '',
-    currently_training: false, last_training_date: null, next_training_date: null, past_bookings_count: 0,
+    currently_training: false, first_training_date: null, last_training_date: null, next_training_date: null, past_bookings_count: 0,
     birth_date: null, location_names: [], ...extra,
   });
 
@@ -327,7 +327,7 @@ describe('Academy Players — export (one server call)', () => {
 
     choose('Training status', 'no'); // edits while it runs must not reach the export
     choose('Training club', 'all');
-    await act(async () => first.resolve(exportResponse([person(1, { full_name: 'Ann', email: 'ann@x.nl', phone: '+31612345678', currently_training: true, last_training_date: '2026-09-24', next_training_date: '2026-10-08', past_bookings_count: 3, birth_date: '2012-03-04', location_names: ['Club A', 'Club B'] }), person(2)])));
+    await act(async () => first.resolve(exportResponse([person(1, { full_name: 'Ann', email: 'ann@x.nl', phone: '+31612345678', currently_training: true, first_training_date: '2025-11-02', last_training_date: '2026-09-24', next_training_date: '2026-10-08', past_bookings_count: 3, birth_date: '2012-03-04', location_names: ['Club A', 'Club B'] }), person(2)])));
 
     await waitFor(() => expect(downloads).toHaveLength(1));
     expect(exportCalls).toEqual([{
@@ -335,11 +335,11 @@ describe('Academy Players — export (one server call)', () => {
       p_sort: 'name', p_sort_dir: 'asc',
     }]);
     expect(downloads[0].filename).toMatch(/^players-\d{4}-\d{2}-\d{2}\.csv$/);
-    expect(downloads[0].csv).toContain('"Name";"Email";"Phone";"Currently training";"Last training date";"Next training date";'
+    expect(downloads[0].csv).toContain('"Name";"Email";"Phone";"Currently training";"First training date";"Last training date";"Next training date";'
       + '"Past sessions booked (not attendance)";"Birth date";"Locations"');
     expect(downloads[0].csv).toContain('"Ann";"ann@x.nl";"\'+31612345678"');
-    expect(downloads[0].csv).toContain('"Ann";"ann@x.nl";"\'+31612345678";"Yes";"2026-09-24";"2026-10-08";"3";"2012-03-04";"Club A; Club B"');
-    expect(downloads[0].csv).toContain('"Export 2";"e2@x.nl";"";"No";"";"";"0";"";""');
+    expect(downloads[0].csv).toContain('"Ann";"ann@x.nl";"\'+31612345678";"Yes";"2025-11-02";"2026-09-24";"2026-10-08";"3";"2012-03-04";"Club A; Club B"');
+    expect(downloads[0].csv).toContain('"Export 2";"e2@x.nl";"";"No";"";"";"";"0";"";""');
     expect(toasts.success).toHaveBeenCalledWith('2 players exported');
     expect(lastFilters()).toMatchObject({ currentTraining: false, trainingLocationId: null }); // the list stays live
   });

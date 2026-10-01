@@ -785,6 +785,7 @@
       "headerEmail": "Email",
       "headerPhone": "Phone",
       "headerCurrentlyTraining": "Currently training",
+      "headerFirstTraining": "First training date",
       "headerLastTraining": "Last training date",
       "headerNextTraining": "Next training date",
       "headerPastBookings": "Past sessions booked (not attendance)",
