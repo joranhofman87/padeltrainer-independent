@@ -932,11 +932,21 @@ describe('PTF release packet on real PostgreSQL', () => {
       expect(constant(f, 'c_state_ptf')).toBe(C_STATE_PTF);
     }
     // the embedded descriptors and the in-flight probe are byte-identical to the reviewed PTF packet's
-    for (const f of ['apply.sql', 'recovery.sql', 'postcheck.sql']) {
+    const PROBE_SQL = blocks('apply.sql', 'IN-FLIGHT PROBE')[0];
+    const fuBlocks = (f: string, marker: string) => {
       const text = readFileSync(join(FU, f), 'utf8');
-      for (const d of text.split('-- STATE DESCRIPTOR BEGIN').slice(1)) {
-        expect(('-- STATE DESCRIPTOR BEGIN' + d.slice(0, d.indexOf('-- STATE DESCRIPTOR END'))).trim()).toBe(DESCRIPTOR_SQL.trim());
+      const out: string[] = [];
+      for (let at = text.indexOf(`-- ${marker} BEGIN`); at >= 0; at = text.indexOf(`-- ${marker} BEGIN`, at + 1)) {
+        out.push(text.slice(at, text.indexOf(`-- ${marker} END`, at)));
       }
+      return out;
+    };
+    for (const [f, descriptors, probes] of [['apply.sql', 2, 1], ['recovery.sql', 2, 1], ['postcheck.sql', 1, 0]] as const) {
+      const d = fuBlocks(f, 'STATE DESCRIPTOR');
+      const p = fuBlocks(f, 'IN-FLIGHT PROBE');
+      expect([f, d.length, p.length]).toEqual([f, descriptors, probes]);
+      for (const x of d) expect(x.trim()).toBe(DESCRIPTOR_SQL.trim());
+      for (const x of p) expect(x.trim()).toBe(PROBE_SQL.trim());
     }
 
     // refusals change nothing: another cluster; a drifted export ACL
@@ -973,7 +983,7 @@ describe('PTF release packet on real PostgreSQL', () => {
     // post-check
     const pc = fu('postcheck.sql');
     expect(pc.status, pc.err).toBe(0);
-    expect(pc.rec).toMatchObject({ ledger_rows: '622', ledger_head: '20261208120000', ledger_ok: 't', state_ok: 't',
+    expect(pc.rec).toMatchObject({ db: 'postgres', sysid, ledger_rows: '622', ledger_head: '20261208120000', ledger_ok: 't', state_ok: 't',
       state_sha256: fuState, export_acl: 'authenticated=X/postgres,postgres=X/postgres',
       anon_can_execute: 'f', service_role_can_execute: 'f' });
     // the shape record: counts only, consistent with the export itself
@@ -983,7 +993,23 @@ describe('PTF release packet on real PostgreSQL', () => {
       zero_count_with_last: '0', count_without_last: '0' });
     expect(pc.out.match(/-\[ RECORD 1 \]/g)).toHaveLength(3); // object state, manager found, shape
     expect(Number(pc.rec.currently_training)).toBeGreaterThan(0);
-    expect(pc.out).not.toMatch(/@x\.nl|@example/); // no contact data in the output
+    // exactly these fields are printed, and no personal data: no name, email, phone, id or date of the fixture
+    const printed = pc.out.split('\n').map((l) => /^(\w+)\s+\|/.exec(l)?.[1]).filter(Boolean).sort();
+    expect(printed).toEqual([
+      'anon_can_execute', 'count_without_last', 'currently_training', 'db', 'distinct_persons', 'export_acl',
+      'export_config', 'ledger_head', 'ledger_ok', 'ledger_rows', 'malformed_dates', 'max_locations',
+      'past_bookings_sum', 'rows_with_exact_keys', 'service_role_can_execute', 'shape_manager_found', 'shape_ms',
+      'shape_rows', 'shape_total', 'state_ok', 'state_sha256', 'sysid', 'with_birth_date', 'with_last_date',
+      'with_locations', 'with_next_date', 'zero_count_with_last',
+    ]);
+    const exported = (after[0].rows as Array<{ full_name: string; email: string; phone: string; person_id: string }>);
+    for (const r of exported) {
+      for (const v of [r.full_name, r.email, r.phone, r.person_id].filter((x) => x && x.length > 3)) {
+        expect(pc.out.includes(v), v).toBe(false);
+      }
+    }
+    expect(pc.out).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
+    expect(pc.out).not.toMatch(/\d{4}-\d{2}-\d{2}/);
 
     // re-run: no ledger row, same state
     const again = fu('apply.sql');

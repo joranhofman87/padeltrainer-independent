@@ -38,7 +38,7 @@ of `docs/deployment/ptf-release/README.md`:
      `901dc2c8…`; object state `ca0d9b03…`) or already in the follow-up state (a re-run: `INSERT 0 0`).
 2. **Post-check** (read-only, ends in ROLLBACK; no `-1`):
    `-v shape_academy=<an academy id> -f docs/deployment/ptf-export-columns/postcheck.sql`.
-   - Record 1: `ledger_rows` 622, `ledger_head` 20261208120000, `ledger_ok` t, `state_ok` t,
+   - Record 1: `db` postgres, `sysid` 7642734024280108049, `ledger_rows` 622, `ledger_head` 20261208120000, `ledger_ok` t, `state_ok` t,
      `export_config` `search_path=pg_catalog, pg_temp;plan_cache_mode=force_custom_plan`,
      `export_acl` `authenticated=X/postgres,postgres=X/postgres`, `anon_can_execute` f,
      `service_role_can_execute` f.
