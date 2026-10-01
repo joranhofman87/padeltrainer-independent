@@ -49,7 +49,13 @@ describe('AcademyPlayerRemoveCard', () => {
     removeMock.mockResolvedValue({ removed_at: '2026-05-30T12:00:00Z' });
   });
 
-  it('shows remove from academy action with safe confirmation copy', async () => {
+  // ── ABC-16 H0 ────────────────────────────────────────────────────────────────────────────
+  // Soft removal wrote — and for a player with no prior overlay row, CREATED — the
+  // `academy_player_metadata` row that three authorization predicates accepted as proof of the
+  // academy↔player relationship. With no writer, the destructive-looking action is DISABLED
+  // rather than left to fail after the user has confirmed it.
+
+  it('still shows the card and the action, but the action is disabled and explained', async () => {
     renderWithClient(
       <AcademyPlayerRemoveCard
         kind="registered"
@@ -62,18 +68,21 @@ describe('AcademyPlayerRemoveCard', () => {
     );
 
     expect(screen.getByTestId('academy-player-remove-card')).toBeInTheDocument();
-    expect(screen.getByTestId('academy-player-remove-button')).toHaveTextContent('Remove from academy');
-    expect(screen.queryByText('Delete account')).not.toBeInTheDocument();
+    const button = screen.getByTestId('academy-player-remove-button');
+    expect(button).toHaveTextContent('Remove from academy');
+    expect(button).toBeDisabled();
 
-    fireEvent.click(screen.getByTestId('academy-player-remove-button'));
-    expect(screen.getByText('Remove player from academy?')).toBeInTheDocument();
-    expect(
-      screen.getByText(/will not delete their account or historical bookings\/invoices/i),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/delete account/i)).not.toBeInTheDocument();
+    // the user is told why, in non-technical language, and that nothing changed
+    const note = screen.getByTestId('academy-player-remove-unavailable');
+    expect(note).toHaveTextContent(/temporarily unavailable/i);
+    expect(note).toHaveTextContent(/nothing about this player has changed/i);
+    expect(note.textContent).not.toMatch(/permission denied|row-level security|42501/i);
+
+    // and the destructive vocabulary never appears
+    expect(screen.queryByText('Delete account')).not.toBeInTheDocument();
   });
 
-  it('calls academy-scoped removal and navigates back', async () => {
+  it('cannot be triggered: no confirm dialog, no writer call, no navigation', async () => {
     renderWithClient(
       <AcademyPlayerRemoveCard
         kind="guest"
@@ -86,18 +95,12 @@ describe('AcademyPlayerRemoveCard', () => {
     );
 
     fireEvent.click(screen.getByTestId('academy-player-remove-button'));
-    fireEvent.click(screen.getByTestId('academy-player-remove-confirm'));
 
     await waitFor(() => {
-      expect(removeMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          academyProfileId: 'academy-1',
-          guestPlayerId: 'guest-1',
-          profileId: null,
-        }),
-      );
-      expect(navigateMock).toHaveBeenCalledWith('/app/academy/players');
+      expect(screen.queryByTestId('academy-player-remove-confirm')).toBeNull();
     });
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
   it('shows removed banner when player already removed', () => {

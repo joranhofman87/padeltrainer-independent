@@ -13,7 +13,7 @@ import { deleteOrCancelInvoices } from '@/lib/invoices';
 import { logger } from '@/lib/logger';
 import { formatCurrency } from '@/lib/format';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
-import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
+import { requestManualInvoiceSettlement } from '@/lib/markInvoicePaid';
 import { deriveInvoiceStatus, type InvoiceStatus } from '@/lib/invoiceStatus';
 import { InvoiceStatusBadge } from '@/components/invoices/InvoiceStatusBadge';
 import { InvoiceDeliveryChip } from '@/components/email/InvoiceDeliveryChip';
@@ -147,12 +147,11 @@ export function InvoiceList({ trainerId, refreshTrigger, forwardEmails = [], isA
       return;
     }
     setActionLoading(invoice.id);
-    // Single source of truth: flips the invoice to paid AND syncs the linked
-    // bookings (payment_status='paid', status='confirmed', paid_at) so trainer,
-    // academy and player surfaces all agree.
-    const { error, blockedCancelled, invoicePaid } = await markInvoicePaidAndSyncBookings(
+    // ABC-23 §4: settlement is a SERVER act. The browser no longer writes the invoice and
+    // then the bookings — it asks one authenticated boundary, which settles both atomically
+    // under the same authorization this UI always required.
+    const { error, blockedCancelled, invoicePaid } = await requestManualInvoiceSettlement(
       invoice.id,
-      invoice.booking_ids,
     );
 
     if (blockedCancelled) {

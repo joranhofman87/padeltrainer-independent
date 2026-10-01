@@ -25,6 +25,7 @@ import { TrainerPlayerDetailsCard } from '@/components/trainer/TrainerPlayerDeta
 import { PlayerNotificationTimelineCard } from '@/components/notifications/NotificationTimelineCard';
 import { TrainerPlayerRemoveCard } from '@/components/trainer/TrainerPlayerRemoveCard';
 import { MergePlayersDialog } from '@/components/players/MergePlayersDialog';
+import { PLAYER_MERGE_UNAVAILABLE_I18N } from '@/lib/playerMergeAvailability';
 import { TagPicker } from '@/components/players/TagPicker';
 import { PlayerTag } from '@/components/players/playerTagColors';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -547,10 +548,19 @@ export default function TrainerPlayerDetail() {
                 <Button
                   variant="outline"
                   data-testid="trainer-player-merge-button"
-                  onClick={() => setMergeOpen(true)}
+                  disabled
+                  aria-disabled="true"
+                  data-merge-available="false"
+                  title={t(
+                    PLAYER_MERGE_UNAVAILABLE_I18N.bodyKey,
+                    PLAYER_MERGE_UNAVAILABLE_I18N.bodyDefault,
+                  )}
                 >
                   <Merge className="h-4 w-4 mr-2" />
-                  {t('players.merge.action', 'Merge with another player…')}
+                  {t(
+                    PLAYER_MERGE_UNAVAILABLE_I18N.titleKey,
+                    PLAYER_MERGE_UNAVAILABLE_I18N.titleDefault,
+                  )}
                 </Button>
               )}
             </div>

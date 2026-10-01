@@ -146,6 +146,12 @@
       "rebook_paid_staff": {
         "label": "Rebooking paid"
       },
+      "rebook_member_open_player": {
+        "label": "Rebooking opened for members"
+      },
+      "rebook_priority_claim_invite": {
+        "label": "Rebooking invitation (priority)"
+      },
       "review_received_trainer": {
         "label": "New review"
       },

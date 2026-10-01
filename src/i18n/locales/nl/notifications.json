@@ -146,6 +146,12 @@
       "rebook_paid_staff": {
         "label": "Herboeking betaald"
       },
+      "rebook_member_open_player": {
+        "label": "Herboeken geopend voor leden"
+      },
+      "rebook_priority_claim_invite": {
+        "label": "Uitnodiging herboeken (voorrang)"
+      },
       "review_received_trainer": {
         "label": "Nieuwe review"
       },

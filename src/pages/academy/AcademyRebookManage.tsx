@@ -274,9 +274,22 @@ export default function AcademyRebookManage() {
       // send 0 while the UI still shows N unsent (stranded on siblings). Drain across ALL round cycles,
       // exactly as the initial-blast wizard does.
       const res = await drainRebookRoundInvites(data?.cycleIds ?? [cycleId], {
+        // THE ROUND THIS PAGE IS MANAGING, passed explicitly. Review round 2: omitting it left the
+        // server to resolve the round from the claim's LATEST provenance, so resuming from an R1
+        // page could enqueue and stamp an R2-keyed invitation while this screen reported R1
+        // progress. The page already knows its round; it is not the server's to guess.
+        roundId: data?.roundId ?? undefined,
         onProgress: ({ totalSent, total: sendable }) => setSendProgress({ sent: totalSent, total: sendable || total }),
       });
-      if (res.stoppedReason === 'error' && res.totalSent === 0) {
+      // AN UNKNOWN REMAINDER IS NOT A SUCCESS. `leftover === null` means a send threw after the
+      // endpoint may already have queued messages, so the real remainder is UNKNOWABLE — and
+      // `null > 0` is false, so it used to fall through to the success line and report a clean
+      // finish for an interrupted drain (review round 3).
+      if (res.leftover === null && res.stoppedReason === 'error' && res.totalSent > 0) {
+        toast.warning(t('rebookManage.resumeInterrupted',
+          '{{sent}} uitnodiging(en) klaargezet, maar het klaarzetten is onderbroken — hoeveel er nog open staan is onbekend. Probeer het zo opnieuw.',
+          { sent: res.totalSent }));
+      } else if (res.stoppedReason === 'error' && res.totalSent === 0) {
         toast.error(t('rebookManage.resumeFailed', 'Kon de uitnodigingen niet versturen. Probeer het later opnieuw.'));
       } else if (res.leftover > 0) {
         toast.warning(t('rebookManage.resumePartial', '{{sent}} uitnodiging(en) verstuurd, {{left}} nog open. Probeer de rest zo opnieuw.', { sent: res.totalSent, left: res.leftover }));

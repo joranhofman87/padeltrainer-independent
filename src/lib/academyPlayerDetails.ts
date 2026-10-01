@@ -1,6 +1,7 @@
 import { supabase } from '@/lib/supabaseClient';
 import { buildGuestPlayerDbFields, splitFullName, buildFullName } from '@/lib/profileName';
 import { validatePreferredLocationId } from '@/lib/academyPlayerTrainingLocations';
+import { refuseOverlayWrite } from '@/lib/overlayWriteContainment';
 
 export type AcademyPlayerKind = 'guest' | 'registered';
 
@@ -198,47 +199,24 @@ export function formFromValues(values: AcademyPlayerDetailsValues): AcademyPlaye
   };
 }
 
-export async function saveAcademyPlayerMetadataFields(params: {
+/**
+ * ABC-16 H0: academy notes / tags / preferred club are temporarily read-only.
+ *
+ * This writer set `academy_player_metadata` for a caller-chosen subject, and that same row
+ * was what three authorization predicates accepted as proof of the academy↔player
+ * relationship. Until an H1 command derives the subject from canonical membership
+ * server-side there is no client writer — see `src/lib/overlayWriteContainment.ts`.
+ * Reads are untouched: the values still load and still render.
+ */
+export async function saveAcademyPlayerMetadataFields(_params: {
   academyProfileId: string;
   guestPlayerId: string | null;
   profileId: string | null;
   notes: string | null;
   preferredLocationId?: string | null;
   tagIds?: string[];
-}) {
-  const baseQuery = supabase
-    .from('academy_player_metadata')
-    .select('id')
-    .eq('academy_profile_id', params.academyProfileId);
-
-  const { data: existing } = await (params.guestPlayerId
-    ? baseQuery.eq('guest_player_id', params.guestPlayerId)
-    : baseQuery.eq('profile_id', params.profileId!)
-  ).maybeSingle();
-
-  const metadataFields = {
-    notes: params.notes,
-    preferred_location_id: params.preferredLocationId ?? null,
-    ...(params.tagIds ? { tag_ids: params.tagIds } : {}),
-  };
-
-  if (existing) {
-    const { error } = await supabase
-      .from('academy_player_metadata')
-      .update(metadataFields as any)
-      .eq('id', existing.id);
-    if (error) throw error;
-    return;
-  }
-
-  const { error } = await supabase.from('academy_player_metadata').insert({
-    academy_profile_id: params.academyProfileId,
-    guest_player_id: params.guestPlayerId,
-    profile_id: params.profileId,
-    tag_ids: params.tagIds ?? [],
-    ...metadataFields,
-  } as any);
-  if (error) throw error;
+}): Promise<never> {
+  refuseOverlayWrite('notes');
 }
 
 export async function saveAcademyPlayerDetails(params: {
@@ -249,16 +227,16 @@ export async function saveAcademyPlayerDetails(params: {
   form: AcademyPlayerDetailsForm;
   allowedLocationIds: ReadonlySet<string>;
   tagIds?: string[];
-}) {
+}): Promise<void> {
   const validationError = validatePlayerDetailsForm(params.form, params.allowedLocationIds);
   if (validationError) {
     throw new Error(validationError);
   }
 
-  const preferredLocationId = validatePreferredLocationId(
-    params.form.locationId,
-    params.allowedLocationIds,
-  );
+  // Still validated — it throws on a free-text or out-of-academy club, and a rejected
+  // value must not look accepted. H0 has no writer for the preferred club, so the result
+  // is not persisted for a registered player (see the registered branch below).
+  validatePreferredLocationId(params.form.locationId, params.allowedLocationIds);
 
   if (params.kind === 'guest' && params.guestPlayerId) {
     if (params.profileId) {
@@ -273,7 +251,7 @@ export async function saveAcademyPlayerDetails(params: {
         .update(guestPayload)
         .eq('id', params.guestPlayerId);
       if (guestError) throw guestError;
-      return { guestPayload };
+      return;
     }
 
     const payload = buildGuestPlayerUpdatePayload(params.form, params.allowedLocationIds);
@@ -282,7 +260,7 @@ export async function saveAcademyPlayerDetails(params: {
       .update(payload)
       .eq('id', params.guestPlayerId);
     if (error) throw error;
-    return payload;
+    return;
   }
 
   if (params.kind === 'registered' && params.profileId) {
@@ -296,16 +274,13 @@ export async function saveAcademyPlayerDetails(params: {
       .eq('id', params.profileId);
     if (profileError) throw profileError;
 
-    await saveAcademyPlayerMetadataFields({
-      academyProfileId: params.academyProfileId,
-      guestPlayerId: null,
-      profileId: params.profileId,
-      notes: params.form.notes.trim() || null,
-      preferredLocationId,
-      tagIds: params.tagIds,
-    });
-
-    return { profilePayload, preferredLocationId };
+    // ABC-16 H0: the academy-scoped overlay fields (notes, tags, preferred club) used to be
+    // written here, right after the profile. That call is removed rather than left to
+    // refuse: it runs AFTER a profile write that has already committed, so letting it throw
+    // would report the whole save as failed while the player's name and level really did
+    // change. The overlay controls are rendered read-only instead, so nothing that reaches
+    // this function is silently dropped.
+    return;
   }
 
   throw new Error('invalidPlayer');

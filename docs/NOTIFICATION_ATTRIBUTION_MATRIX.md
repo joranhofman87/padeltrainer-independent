@@ -1,6 +1,6 @@
 # Notification attribution matrix — which sends answer to academy caps
 
-Status: canonical (N3 M5, design-contract finding 2) | last updated 2026-08-05
+Status: canonical (N3 M5, design-contract finding 2) | last updated 2026-08-13
 Audience / AI-read: yes. **Pinned by `src/test/notificationAttributionMatrix.test.ts` — a
 producer changing its attribution arguments fails a test until this file is updated.**
 
@@ -26,6 +26,7 @@ are out of its reach — by design, not omission.
 | 3 | `supabase/functions/_shared/mollie-booking-paid-side-effects.ts:480` | `booking_confirmed_staff` | per-recipient staff scope: `scope.academy ?? null` / `scope.trainer ?? null` | **Yes** for academy-scoped staff copies; trainer-scoped copies are outside |
 | 4 | `supabase/functions/notify-followers/index.ts:320` (logic in `_shared/open-slots-notify.ts` — one producer, two files) | `open_slots_player` | **trainer only** | **No.** A follower follows a TRAINER; the send has no academy owner. An academy cap on `open_slots_player` therefore affects nothing today — M6's surface must say so rather than offer a dead control |
 | 5 | `supabase/migrations/20260913100000_notification_pilot_review_received.sql:63` | `review_received_trainer` | **trainer only** | **No** — same reasoning; the recipient is the trainer, reviews are trainer-owned |
+| 6 | `supabase/migrations/20261118120000_abc27_rebook_round_notification_authority.sql` (`rebook_round_materialize(int,int)`, exactly three calls) | `rebook_member_open_player` | **academy only, from the typed locked round** (`r.academy_profile_id`) | **Yes** — optional email event; the academy cap applies before contact lookup/rendering |
 
 ## Not governed by caps at all (outside the v2 resolver)
 

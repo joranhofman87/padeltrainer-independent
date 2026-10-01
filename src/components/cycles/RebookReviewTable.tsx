@@ -5,6 +5,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatPrice } from '@/lib/pricing';
+import { PriorityUnavailableExplanation } from './PriorityUnavailableNotice';
 import type { RebookPaymentMode } from '@/lib/priorityClaims';
 
 export interface RebookRosterEntry {
@@ -39,18 +40,30 @@ interface Props {
   ackNoEmail: boolean;
   onAckChange: (v: boolean) => void;
   /**
-   * Interactive mode (cohort wizard): render a keep/remove toggle per session + a
-   * per-removal "let these players rebook other freed seats" toggle. Omit the
-   * callbacks to keep the table READ-ONLY (new-round wizard).
+   * Interactive mode (cohort wizard): render a keep/remove toggle per session. Omit the
+   * callback to keep the table READ-ONLY (new-round wizard).
+   *
+   * ABC-26: there is no second per-removal toggle any more. The control it carried offered
+   * removed players a member-window seat — supplementary priority — which is unavailable for
+   * every class. It is REMOVED rather than disabled, and the standing explanation below the
+   * table says so once, persistently.
    */
   interactive?: boolean;
   excludedKeys?: Set<string>;
-  secondBucketKeys?: Set<string>;
   onToggleExcluded?: (seriesKey: string) => void;
-  onToggleSecondBucket?: (seriesKey: string) => void;
   /** Server-authoritative totals (interactive mode) — the distinct player count can't be
    *  re-summed client-side (a player in two series must count once). */
-  summary?: { groups: number; players: number; sessions: number };
+  /**
+   * Round-level totals from the SERVER, when the caller has them.
+   *
+   * OWNER DECISION OD6 (`USE_EXPLICIT_UNAMBIGUOUS_PARTICIPANT_SESSIONS_AND_COURT_SESSIONS_LABELS`).
+   * `sessions` here is PARTICIPANT-sessions — sessions x players, the quantity the legacy producer
+   * computed (`bulk-rebook-cycle:740`) and the server still returns as `total_sessions`. The table
+   * separately sums COURT sessions from the rows. Two different numbers were both being rendered
+   * as "sessies" — this wizard showed one, the other wizard showed the other — so both are now
+   * named for what they are.
+   */
+  summary?: { groups: number; players: number; participantSessions: number };
   /** Round-level payment mode. In 'upfront' one captain pays the whole court, so the per-group
    *  breakdown reads "P × S (whole group)" — never "× N". */
   paymentMode?: RebookPaymentMode;
@@ -61,7 +74,7 @@ interface Props {
  * + roster (names, with a warning on anyone missing an email), the holiday-adjusted
  * session count, and the projected invoice total. Falls back to plain counts when the
  * (not-yet-redeployed) edge function omits the rich fields. In interactive mode the
- * owner can drop sessions and choose whether the dropped players keep early-booking access.
+ * owner can drop sessions; dropping them grants nobody early-booking access (ABC-26).
  */
 export function RebookReviewTable({
   groups,
@@ -72,9 +85,7 @@ export function RebookReviewTable({
   onAckChange,
   interactive = false,
   excludedKeys,
-  secondBucketKeys,
   onToggleExcluded,
-  onToggleSecondBucket,
   summary,
   paymentMode,
 }: Props) {
@@ -85,7 +96,11 @@ export function RebookReviewTable({
   const isExcluded = (g: RebookGroupDetail) => !!(interactive && g.sourceSeriesKey && excludedKeys?.has(g.sourceSeriesKey));
   const included = groups.filter((g) => !isExcluded(g));
   const totalPlayers = included.reduce((s, g) => s + g.players, 0);
-  const totalSessions = included.reduce((s, g) => s + g.sessions, 0);
+  // COURT sessions: how many times each group meets, summed. What the table's own rows show.
+  const courtSessions = included.reduce((s, g) => s + g.sessions, 0);
+  // PARTICIPANT sessions: court sessions x the people in them. The server's `total_sessions`.
+  const participantSessions = summary?.participantSessions
+    ?? included.reduce((s, g) => s + g.sessions * g.players, 0);
   const noEmailPlayers = included.flatMap((g) =>
     (g.roster ?? [])
       .filter((r) => !r.hasEmail)
@@ -102,7 +117,10 @@ export function RebookReviewTable({
             <TableRow>
               {interactive && <TableHead className="w-10">{t('rebookReview.keep', 'Mee')}</TableHead>}
               <TableHead>{t('rebookReview.group', 'Groep & spelers')}</TableHead>
-              <TableHead className="text-center whitespace-nowrap">{t('rebookReview.sessions', 'Sessies')}</TableHead>
+              {/* OD6: the ROW value is court sessions — how often this group meets. The totals line
+                  names both quantities, so leaving the column generically "Sessies" was the one
+                  place the ambiguity survived. */}
+              <TableHead className="text-center whitespace-nowrap">{t('rebookReview.courtSessions', 'Sessies op de baan')}</TableHead>
               {detailed && (
                 <TableHead className="text-right whitespace-nowrap">{t('rebookReview.invoice', 'Factuur')}</TableHead>
               )}
@@ -113,7 +131,6 @@ export function RebookReviewTable({
               const loc = locationName?.(g.locationId);
               const excluded = isExcluded(g);
               const key = g.sourceSeriesKey;
-              const moved = !!(key && secondBucketKeys?.has(key));
               return (
                 <TableRow key={key ?? i} className={excluded ? 'opacity-50' : ''}>
                   {interactive && (
@@ -148,12 +165,6 @@ export function RebookReviewTable({
                         {t('rebookReview.playersCount', '{{n}} spelers', { n: g.players })}
                       </div>
                     )}
-                    {interactive && excluded && key && (
-                      <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs">
-                        <Checkbox checked={moved} onCheckedChange={() => onToggleSecondBucket?.(key)} />
-                        <span>{t('rebookReview.moveToSecondBucket', 'Deze spelers mogen andere vrijgekomen plekken boeken')}</span>
-                      </label>
-                    )}
                   </TableCell>
                   <TableCell className="text-center align-top tabular-nums">{g.sessions}</TableCell>
                   {detailed && (
@@ -183,13 +194,23 @@ export function RebookReviewTable({
         </Table>
       </DataTableCard>
 
+      {/* ABC-26: shown whenever removal is possible, and shown ALWAYS in that mode — not gated on a
+          server count or on anything currently being excluded. A message that appears only once
+          somebody is removed is not an explanation of the containment, it is a reaction to it, and
+          it disappears exactly when the operator undoes the removal to look again. */}
+      {interactive && (
+        <PriorityUnavailableExplanation testId="review-table-priority-unavailable" />
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <span className="text-muted-foreground">
-          {t('rebookReview.totals', '{{groups}} groepen · {{players}} spelers · {{sessions}} sessies', {
-            groups: summary?.groups ?? included.length,
-            players: summary?.players ?? totalPlayers,
-            sessions: summary?.sessions ?? totalSessions,
-          })}
+          {t('rebookReview.totalsExplicit',
+            '{{groups}} groepen · {{players}} spelers · {{courtSessions}} sessies op de baan · {{participantSessions}} deelnamesessies', {
+              groups: summary?.groups ?? included.length,
+              players: summary?.players ?? totalPlayers,
+              courtSessions,
+              participantSessions,
+            })}
         </span>
         {detailed && grandInvoiceTotal > 0 && (
           <span className="font-semibold">

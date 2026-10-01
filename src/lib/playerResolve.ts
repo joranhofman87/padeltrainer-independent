@@ -285,23 +285,6 @@ export type RegisteredPlayerSnapshot = {
   birthDate?: string | null;
 };
 
-/**
- * Look up the profile's EXPLICIT twin (guest_players.twin_of_profile_id) within the academy's
- * dedup scope, via the SECURITY DEFINER RPC (the scope may include trainer-owned rows the manager
- * cannot SELECT directly). `ok:false` means the bridge RPCs are not deployed (new client against a
- * not-yet-pushed DB) — callers fall back to the legacy email+name flow.
- */
-async function findGuestTwinByProfileId(
-  academyProfileId: string,
-  profileId: string,
-): Promise<{ ok: true; id: string | null } | { ok: false }> {
-  const { data, error } = await supabase.rpc('find_guest_twin_for_academy' as never, {
-    _academy_profile_id: academyProfileId,
-    _profile_id: profileId,
-  } as never);
-  if (error) return { ok: false };
-  return { ok: true, id: (data as string | null) ?? null };
-}
 
 /**
  * Phase 0 of person-unification (docs/PERSON_UNIFICATION_PLAN.md): resolve-or-create the GUEST TWIN
@@ -331,97 +314,35 @@ async function findGuestTwinByProfileId(
  */
 export async function resolveOrCreateGuestTwinForRegisteredPlayer(
   scope: GuestResolveScope,
-  snapshot: RegisteredPlayerSnapshot,
+  _snapshot: RegisteredPlayerSnapshot,
 ): Promise<string | null> {
-  const email = (snapshot.email ?? '').trim().toLowerCase() || null;
-  const legacyArgs: ResolveOrCreateGuestPlayerArgs = {
-    scope,
-    fullName: snapshot.fullName,
-    email,
-    phone: snapshot.phone ?? null,
-    skillRating: snapshot.skillRating ?? null,
-    ratingSystem: snapshot.ratingSystem ?? null,
-    birthDate: snapshot.birthDate ?? null,
-    source: 'roster_registered_twin',
-    hasTrained: true,
-    patchExistingEmptyFields: true,
-    requireNameMatch: true,
-  };
-
-  // Phase 0 only wires the academy flow; any future trainer-scope caller gets the legacy behavior.
-  if (scope.kind !== 'academy') return resolveOrCreateGuestPlayer(legacyArgs);
-  const academyProfileId = scope.academyProfileId;
-  const fullName = snapshot.fullName.trim();
-  if (!fullName) return null;
-
-  // (1) Explicit twin — deterministic, race-free, email-independent.
-  const twinLookup = await findGuestTwinByProfileId(academyProfileId, snapshot.profileId);
-  if (!twinLookup.ok) {
-    // Bridge RPCs not deployed yet → pre-bridge behavior (modulo the global name-gating
-    // hardenings in the shared helpers, which only ever narrow reuse — never widen it).
-    return resolveOrCreateGuestPlayer(legacyArgs);
-  }
-  if (twinLookup.id) {
-    await patchExistingGuestEmptyFields(twinLookup.id, legacyArgs);
-    return twinLookup.id;
-  }
-
-  // (2) Claim the person's pre-existing guest row (email + EXACT name, ambiguity ⇒ no candidate).
-  if (email) {
-    const candidateId = await findExistingGuestPlayerIdByEmail(email, scope, fullName, true);
-    if (candidateId) {
-      const { data: claimedBy, error: claimError } = await supabase.rpc(
-        'claim_guest_twin_for_academy' as never,
-        {
-          _academy_profile_id: academyProfileId,
-          _guest_player_id: candidateId,
-          _profile_id: snapshot.profileId,
-        } as never,
-      );
-      if (claimError) {
-        // Claim RPC unavailable (same migration as the lookup, so effectively unreachable) —
-        // degrade to the pre-bridge behavior: reuse the name-matched candidate unstamped.
-        await patchExistingGuestEmptyFields(candidateId, legacyArgs);
-        return candidateId;
-      }
-      if ((claimedBy as string | null) === snapshot.profileId) {
-        await patchExistingGuestEmptyFields(candidateId, legacyArgs);
-        return candidateId;
-      }
-      // Claimed by ANOTHER profile (someone else's twin — never reuse it), or NULL (unique
-      // conflict: OUR twin exists elsewhere / row went out of scope). Re-read and converge.
-      const retry = await findGuestTwinByProfileId(academyProfileId, snapshot.profileId);
-      if (retry.ok && retry.id) {
-        await patchExistingGuestEmptyFields(retry.id, legacyArgs);
-        return retry.id;
-      }
-      // Fall through: mint a fresh twin for THIS person.
-    }
-  }
-
-  // (3) Mint a fresh twin stamped with the profile id.
-  const insertPayload: TablesInsert<'guest_players'> = {
-    ...buildGuestInsertPayload(legacyArgs, fullName, email ?? ''),
-    twin_of_profile_id: snapshot.profileId,
-  };
-  const { data, error } = await supabase
-    .from('guest_players')
-    .insert(insertPayload)
-    .select('id')
-    .single();
-  if (!error) return data?.id ?? null;
-
-  if (error.code === '23505') {
-    // Lost a mint race on uniq_guest_twin_per_academy — reuse the winner's twin.
-    const winner = await findGuestTwinByProfileId(academyProfileId, snapshot.profileId);
-    if (winner.ok && winner.id) return winner.id;
-    // Some OTHER unique index: name-gated email recovery (never a blind reuse).
-    if (email) return findExistingGuestPlayerIdByEmail(email, scope, fullName, true);
-  }
-  logger.error(
-    'resolveOrCreateGuestTwinForRegisteredPlayer insert failed',
-    new Error(error.message),
-    { errorCode: error.code },
+  // No legacy args are built: the 'roster_registered_twin' source is itself part of the retired
+  // bridge, and constructing the payload would invite a future edit to "just" pass it on.
+  //
+  // ABC-18 — the find → claim → mint twin bridge is RETIRED.
+  //
+  // Every step asserted "this guest row IS that registered person" on evidence the caller
+  // supplied: `find_guest_twin_for_academy` matched a mutable email plus a name, the claim RPC
+  // stamped `twin_of_profile_id` from that match, and the mint wrote the stamp directly.
+  // Downstream that stamp was read as identity — profile visibility, invoices, rebooking,
+  // recipient routing.
+  //
+  // Both RPCs are revoked and the column is frozen, so the old path could only fail. What it
+  // did on failure was the real hazard: the claim-error branch reused the untrusted candidate
+  // anyway, and the mint retried by writing the stamp. A permission error must never become
+  // "reuse someone else's row".
+  //
+  // This now resolves the GUEST-ONLY, unverified path: a plain guest row for the scope, with no
+  // assertion about which account it belongs to.
+  //
+  // It does NOT fall back to the email+name guest resolver either. That would hand a registered
+  // person a guest SURROGATE on exactly the mutable-PII match this containment rejects, and the
+  // surrogate would then flow into cycle booking and invoicing as if it were that account.
+  // Admitting a registered player needs canonical membership or an attestation, and neither
+  // exists yet — so this fails closed and the caller surfaces it.
+  logger.warn(
+    'ABC-18: registered-player admission is unavailable until canonical membership exists',
+    { scopeKind: scope.kind },
   );
   return null;
 }

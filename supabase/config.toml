@@ -300,3 +300,22 @@ verify_jwt = false
 
 [functions.notif-manage]
 verify_jwt = false
+
+# D7 — the three `rebook_member_open_player` runtime workers, all cron-driven and all
+# self-authenticating: `requireServiceRole` byte-exact-compares the request's Bearer against
+# SUPABASE_SERVICE_ROLE_KEY (the LEGACY service-role JWT), which the pg_cron command reads from
+# Vault at tick time. verify_jwt=false so that JWT reaches each function's own guard instead of the
+# gateway's verifier — a missing block here inherits verify_jwt=true and the gateway 401s the cron
+# before the function ever runs.
+#
+# All three ship with their schedules INACTIVE, and the dispatcher additionally ships with its
+# REBOOK_MEMBER_OPEN_SEND_ENABLED flag ABSENT, so a deployed-but-unarmed function returns
+# 200 {"status":"disabled"} having made zero database calls.
+[functions.rebook-member-open-worker]
+verify_jwt = false
+
+[functions.rebook-member-open-janitor]
+verify_jwt = false
+
+[functions.rebook-round-materializer]
+verify_jwt = false

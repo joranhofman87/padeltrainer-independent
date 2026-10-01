@@ -979,6 +979,7 @@
     "fixTitle": "Dit e-mailadres komt niet aan",
     "overrideHelp": "Je kunt het login-e-mailadres van deze speler niet wijzigen. Stel een factuur-e-mailadres in dat alleen voor hun facturen wordt gebruikt.",
     "directHelp": "Voer een gecorrigeerd e-mailadres in.",
+    "selfServiceHelp": "Deze speler logt in met dit e-mailadres, dus alleen de speler kan het wijzigen. Vraag de speler om het in de eigen accountinstellingen bij te werken. Een apart factuur-e-mailadres instellen is tijdelijk niet beschikbaar.",
     "billingEmailPlaceholder": "Factuur-e-mailadres",
     "newEmailPlaceholder": "Nieuw e-mailadres",
     "fixSave": "Opslaan",

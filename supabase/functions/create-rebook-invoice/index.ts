@@ -52,10 +52,12 @@ serve(async (req: Request) => {
     // still payable (a paid/cancelled booking must never be re-invoiced here).
     const { data: bookings } = await admin
       .from("bookings")
-      .select("id, slot_id, player_id, payment_status, status")
+      .select("id, slot_id, player_id, guest_player_id, payment_status, status")
       .in("id", ids);
     if (!bookings || bookings.length === 0) return json({ ok: false, error: "Bookings not found" }, 404);
-    if (!bookings.every((b) => b.player_id === profile.id)) {
+    // ABC-20: PURE-PROFILE ownership only — a dual-key booking belongs to the GUEST, so a
+    // profile claimant may not invoice it. Same rule as create-mollie-payment.
+    if (!bookings.every((b) => b.player_id === profile.id && b.guest_player_id === null)) {
       return json({ ok: false, error: "Not your bookings" }, 403);
     }
     const payable = bookings.filter(

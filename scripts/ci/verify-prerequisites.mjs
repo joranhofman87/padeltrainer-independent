@@ -28,6 +28,12 @@ export const EXPECTED_PREREQUISITES = [
   'unit-tests',
   'db-tests',
   'db-rehearsals',
+  // NOTE the trainer-namespace property is NOT a prerequisite job any more. It used to be
+  // `db-trainer-guard`, which re-ran the whole database suite with a client-side observer armed;
+  // that observer's terminal review refused the approach, and the property is now established at
+  // the SOURCE (a branded factory plus a compiler-API guard) and proved by two `lint` steps that
+  // take about a second between them. `lint` is itself a required branch-protection context, so
+  // the property is still gated — by a check that cannot be satisfied by a lane running nothing.
   'i18n',
   'workflow-contract',
 ];

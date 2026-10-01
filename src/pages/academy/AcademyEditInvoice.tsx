@@ -28,7 +28,7 @@ import { InvoiceTotalsSummary } from '@/components/invoices/InvoiceTotalsSummary
 import { computeEditInvoiceTotals, type InvoiceFormLineItem } from '@/lib/invoiceFormTotals';
 import { useAcademyContext } from '@/components/academy/AcademyLayout';
 import { fetchPersonRefSet } from '@/lib/playerDetailData';
-import { markInvoicePaidAndSyncBookings } from '@/lib/markInvoicePaid';
+import { requestManualInvoiceSettlement } from '@/lib/markInvoicePaid';
 import { invalidateAllPlayerData } from '@/lib/playerQueryKeys';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
@@ -211,10 +211,8 @@ export default function AcademyEditInvoice() {
 
   const handleMarkPaid = async (reason?: string) => {
     if (!invoice) return;
-    const { error, blockedCancelled } = await markInvoicePaidAndSyncBookings(
-      invoice.id,
-      invoice.booking_ids as string[] | null,
-    );
+    // ABC-23 §4: one authenticated server boundary; invoice and bookings settle together.
+    const { error, blockedCancelled } = await requestManualInvoiceSettlement(invoice.id);
     if (blockedCancelled || error) {
       toast.error(t('invoiceEdit.statusFailed'));
       return;

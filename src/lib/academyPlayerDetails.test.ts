@@ -321,14 +321,49 @@ describe('academyPlayerDetails', () => {
     expect(profileUpdate?.[1]).not.toHaveProperty('email');
     expect(profileUpdate?.[1]).not.toHaveProperty('location');
 
-    expect(insertMock).toHaveBeenCalledWith(
-      'academy_player_metadata',
-      expect.objectContaining({
-        academy_profile_id: 'academy-1',
-        profile_id: 'profile-1',
-        notes: 'Team note',
-        preferred_location_id: LOC_A,
+    // ABC-16 H0: the overlay write that used to follow the profile update is GONE, not merely
+    // failing. It ran after a profile change that had already committed, so a refusal there
+    // would report the whole save as failed while the name and level really did change.
+    expect(insertMock).not.toHaveBeenCalledWith('academy_player_metadata', expect.anything());
+    expect(updateMock).not.toHaveBeenCalledWith('academy_player_metadata', expect.anything());
+  });
+
+  it('the profile fields still save — containment must not break the honest edit', async () => {
+    await saveAcademyPlayerDetails({
+      kind: 'registered',
+      academyProfileId: 'academy-1',
+      guestPlayerId: null,
+      profileId: 'profile-1',
+      allowedLocationIds,
+      form: {
+        name: 'Renamed Player',
+        email: '',
+        phone: '0612345678',
+        locationId: LOC_A,
+        skillRating: '4',
+        ratingSystem: 'knltb',
+        notes: '',
+      },
+    });
+
+    const profileUpdate = updateMock.mock.calls.find(([table]) => table === 'profiles')?.[1];
+    expect(profileUpdate).toMatchObject({ phone: '0612345678' });
+  });
+
+  it('an out-of-academy club is still rejected, even though it can no longer be stored', async () => {
+    await expect(
+      saveAcademyPlayerDetails({
+        kind: 'registered',
+        academyProfileId: 'academy-1',
+        guestPlayerId: null,
+        profileId: 'profile-1',
+        allowedLocationIds,
+        form: {
+          name: 'John Player', email: '', phone: '',
+          locationId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+          skillRating: '5', ratingSystem: 'knltb', notes: '',
+        },
       }),
-    );
+    ).rejects.toThrow('invalidLocationId');
   });
 });

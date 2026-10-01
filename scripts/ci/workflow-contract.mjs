@@ -24,6 +24,17 @@
  * by the `db` project (a narrowed include would drop 126 pglite files while
  * both shards stay green) and by no other project.
  *
+ *   4. WHAT THE DATABASE LANE RUNS ON. Two frozen ABC-27 real-Postgres
+ *      controls drive a REAL `psql` of the embedded server's own major and a
+ *      third asserts the evidence lineage's `C` collation, inherited from the
+ *      process locale at initdb. Neither is visible in the suite command: the
+ *      client comes from an install step and both are named through the suite
+ *      step's `env:` (ABC27_PSQL, LC_ALL, LANG). Dropping the step, moving it
+ *      below the suite, or losing one variable leaves every pinned command in
+ *      place while the lane fails closed — so the step order, the exact env and
+ *      the installer's own shape are pinned here, against package.json's
+ *      `embedded-postgres` major as the one source of the server major.
+ *
  * Run as a CLI (`node scripts/ci/workflow-contract.mjs`) by its own CI job AND
  * by `lint` — an independently required check that nothing aggregates, so a
  * weakening the aggregator could swallow still turns a required check red —
@@ -52,6 +63,7 @@ import { dirname, join, resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { parse as parseIni } from 'ini';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath as toPath } from 'node:url';
 import { EXPECTED_PREREQUISITES, NEEDS_ENV_VAR, validatePrerequisites } from './verify-prerequisites.mjs';
 
@@ -64,6 +76,169 @@ export const PREREQUISITE_RUNS = {
   'db-rehearsals': 'npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}',
   i18n: 'bun scripts/check-i18n-parity.ts',
   'workflow-contract': 'node scripts/ci/workflow-contract.mjs',
+};
+
+/**
+ * ── THE DATABASE LANE'S ENVIRONMENT ────────────────────────────────────────
+ *
+ * The frozen ABC-27 real-Postgres suite drives a REAL `psql` against the
+ * embedded server `embedded-postgres` bundles and refuses a client of any
+ * other major, and asserts the evidence lineage's deterministic `C` collation,
+ * which every embedded cluster inherits from the process locale at initdb.
+ * ubuntu-latest ships PostgreSQL 16's psql and a C.UTF-8 locale, so without
+ * the install step and this env the lane fails closed on two controls that
+ * are not allowed to change. The client major is NOT a free choice: it is
+ * package.json's `embedded-postgres` major, and the contract refuses any
+ * disagreement between that, the installer and the env the suite receives.
+ */
+export const PG_CLIENT_INSTALLER = 'scripts/ci/install-postgres-client.sh';
+export const PG_CLIENT_INSTALL_CMD = `bash ${PG_CLIENT_INSTALLER}`;
+/** The client major the installer pins. Must equal package.json's embedded-postgres major. */
+export const PG_CLIENT_MAJOR = '18';
+/** Where Debian's postgresql-client-<major> puts the real binary — never the /usr/bin wrapper. */
+export const PG_CLIENT_PSQL = `/usr/lib/postgresql/${PG_CLIENT_MAJOR}/bin/psql`;
+/** The suite step's exact environment: the client, and the locale the runbook runs the lane under. */
+export const DB_LANE_ENV = Object.freeze({ ABC27_PSQL: PG_CLIENT_PSQL, LC_ALL: 'C', LANG: 'C' });
+
+/** The declared embedded-postgres spec, whichever dependency block carries it. */
+export const embeddedPostgresSpec = (pkg) =>
+  pkg?.devDependencies?.['embedded-postgres'] ?? pkg?.dependencies?.['embedded-postgres'];
+
+/**
+ * The embedded server major package.json declares, or null unless the spec is
+ * ONE exact, caret or tilde version. A range that spans majors
+ * (`^18.4.0 || ^19.0.0`, `>=18`, `18.x`, `latest`) is refused rather than read
+ * by its first number: npm could resolve it to a server the pinned client
+ * cannot drive.
+ */
+export function embeddedPostgresMajor(pkg) {
+  const spec = embeddedPostgresSpec(pkg);
+  const match = typeof spec === 'string'
+    ? /^[~^]?(\d+)\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.exec(spec.trim())
+    : null;
+  return match ? match[1] : null;
+}
+
+/**
+ * Every embedded-postgres package the lockfile resolves — the `embedded-postgres`
+ * wrapper AND each `@embedded-postgres/<platform>` package, because the
+ * platform package is what ships the server binary the controls actually run
+ * against. An npm override can hold the wrapper at one major while a platform
+ * package resolves to another, so the wrapper alone proves nothing.
+ *
+ * Every install location counts, at ANY nesting depth: a scoped override or a
+ * direct platform dependency can place `node_modules/embedded-postgres/
+ * node_modules/@embedded-postgres/linux-x64` beneath the wrapper, and that
+ * nested copy is the one the wrapper would load.
+ *
+ * Returns `[{ path, name, major }]` with `major` null for an unparseable
+ * version — and for a `link: true` entry, whose `version` npm ignores in
+ * favour of the link target, so it proves nothing about what is installed.
+ * An empty array when the lock carries no embedded-postgres package.
+ */
+export function lockedEmbeddedPostgresMajors(lock) {
+  const out = [];
+  for (const [path, entry] of Object.entries(lock?.packages ?? {})) {
+    const name = /(?:^|\/)node_modules\/((?:@embedded-postgres\/[^/]+)|embedded-postgres)$/.exec(path)?.[1];
+    if (!name) continue;
+    // npm treats ANY truthy `link` as a link (`link: "true"` included), so so does this.
+    const version = entry?.link ? null : entry?.version;
+    const match = typeof version === 'string' ? /^(\d+)\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.exec(version.trim()) : null;
+    out.push({ path, name, major: match ? match[1] : null });
+  }
+  return out.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/**
+ * The platform package that ships the server binary on the runner the
+ * database lane uses (ubuntu-latest is x64). The wrapper alone installs no
+ * server: a lock that lost this optional-dependency node still satisfies
+ * `npm ci` and fails only when the first embedded cluster tries to start.
+ */
+export const CI_SERVER_PLATFORM_PACKAGE = 'node_modules/@embedded-postgres/linux-x64';
+export const CI_SERVER_PLATFORM_NAME = '@embedded-postgres/linux-x64';
+
+/**
+ * Whether the lock's wrapper entry still DEPENDS on the runner's platform
+ * package. `npm ci` installs what the graph reaches and prunes what it does
+ * not: a linux-x64 node left in the lock while the wrapper's optional edge to
+ * it was removed is extraneous, and the runner ends up with a wrapper and no
+ * server. The edge is recorded on the wrapper's own lock entry.
+ */
+export function wrapperReachesPlatformPackage(lock, wrapperPath = 'node_modules/embedded-postgres') {
+  const wrapper = lock?.packages?.[wrapperPath];
+  if (!wrapper) return false;
+  for (const key of ['optionalDependencies', 'dependencies']) {
+    const spec = wrapper[key]?.[CI_SERVER_PLATFORM_NAME];
+    if (typeof spec === 'string' && spec.length > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * Read a lock file the way npm does — a UTF-8 BOM is accepted — and tell an
+ * ABSENT file (fine) from an UNREADABLE one (not fine: it could still be the
+ * file npm ci installs from).
+ */
+export function readNpmLock(repoRoot, lockName) {
+  let raw;
+  try {
+    raw = readFileSync(join(repoRoot, lockName), 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { absent: true };
+    return { error: `cannot be read (${error?.code ?? error?.message ?? 'unknown error'})` };
+  }
+  try {
+    return { lock: JSON.parse(raw.replace(/^\uFEFF/, '')) };
+  } catch (error) {
+    return { error: `cannot be parsed as JSON (${error?.message ?? 'unknown error'})` };
+  }
+}
+
+/**
+ * The lock files `npm ci` can install from, in npm's own precedence: a shipped
+ * npm-shrinkwrap.json wins over package-lock.json when both exist. Both are
+ * checked when present — a stale package-lock beside an override-backed
+ * shrinkwrap is exactly the split a single read would miss.
+ */
+export const NPM_LOCK_FILES = ['npm-shrinkwrap.json', 'package-lock.json'];
+
+/**
+ * The installer's WHOLE bytes. The line pins below make a drift legible; this
+ * makes it total — a line inserted between them (`exit 0`, a `|| :` on a
+ * continuation, a second apt source) changes these bytes and nothing else.
+ * Editing the installer therefore means updating this value in the same
+ * reviewed change.
+ */
+export const PG_CLIENT_INSTALLER_SHA256 = '7da0edcc43ffefdd08d52f69f9f35eb960e53607370447bc0f1aa2d8f42faf9a';
+
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
+
+/**
+ * The installer's load-bearing lines, pinned as exact text. Each one is a
+ * requirement that could otherwise vanish while the step still exits 0: the
+ * fail-closed shell mode, the major and the path (which must be the ones the
+ * suite is told about), the signed PGDG source, the package that produces the
+ * path, and the re-read of the installed client's OWN version with both arms
+ * of its verdict.
+ */
+export const PG_CLIENT_INSTALLER_PINS = [
+  [/^set -euo pipefail$/m, '`set -euo pipefail` (a failed step must fail the install)'],
+  [new RegExp(`^PG_MAJOR=${PG_CLIENT_MAJOR}$`, 'm'), `\`PG_MAJOR=${PG_CLIENT_MAJOR}\``],
+  [new RegExp(`^PSQL=${escapeRegExp(PG_CLIENT_PSQL)}$`, 'm'), `\`PSQL=${PG_CLIENT_PSQL}\` (the path ABC27_PSQL names)`],
+  [/^gpg --batch --quiet --armor --export "\$PGDG_KEY_FINGERPRINT" > "\$tmp\/pgdg\.asc"$/m, 'the export of ONLY the pinned key into the keyring apt will trust'],
+  [/^\[ "\$key_summary" = "1:\$\{PGDG_KEY_FINGERPRINT\}" \] \|\| die "the exported PGDG keyring is '\$\{key_summary\}', expected exactly one key with fingerprint \$\{PGDG_KEY_FINGERPRINT\}"$/m, 'the signing-key check (exactly one key, the pinned fingerprint, fatal otherwise)'],
+  [/^echo "deb \[signed-by=\$PGDG_KEYRING\] https:\/\/apt\.postgresql\.org\/pub\/repos\/apt \$\{VERSION_CODENAME\}-pgdg main" \\$/m, 'the signed PGDG apt source'],
+  [/^\$SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "postgresql-client-\$\{PG_MAJOR\}"$/m, 'the postgresql-client-${PG_MAJOR} install'],
+  [/^version="\$\("\$PSQL" --version\)"$/m, 'the re-read of the installed client\'s own --version'],
+  [/^  \*"\(PostgreSQL\) \$\{PG_MAJOR\}\."\*\) ;;$/m, 'the major-parity acceptance arm'],
+  [/^  \*\) die "\$PSQL reports '\$version', not PostgreSQL \$\{PG_MAJOR\}\.x" ;;$/m, 'the wrong-major refusal arm'],
+];
+
+/** Two step environments are the same mapping, whatever order the keys were written in. */
+const sameEnv = (a, b) => {
+  const norm = (env) => JSON.stringify(Object.entries(env ?? {}).map(([k, v]) => [k, String(v)]).sort());
+  return norm(a) === norm(b);
 };
 
 /**
@@ -88,13 +263,16 @@ export const APPROVED_JOB_RUNS = {
     'npm run check:legacy-key',
     'npm run check:edge-pins:selftest',
     'npm run check:edge-pins',
+    'npm run check:trainer-authority:selftest',
+    'npm run check:trainer-authority',
     'node scripts/ci/workflow-contract.mjs',
   ],
   'unit-tests': ['npm ci', 'npm run test:unit'],
-  'db-tests': ['npm ci', 'npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}'],
+  'db-tests': ['npm ci', PG_CLIENT_INSTALL_CMD, 'npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}'],
   'db-rehearsals': ['npm ci', 'npm run db:rehearse:all -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}'],
   i18n: ['bun scripts/check-i18n-parity.ts'],
-  'workflow-contract': ['npm ci', 'node scripts/ci/workflow-contract.mjs'],
+  'workflow-contract': ['npm ci', 'npm run check:trainer-authority:selftest',
+    'npm run check:trainer-authority', 'node scripts/ci/workflow-contract.mjs'],
 };
 
 /**
@@ -225,6 +403,8 @@ export const APPROVED_JOB_STEPS = {
     { run: "npm run check:legacy-key" },
     { run: "npm run check:edge-pins:selftest" },
     { run: "npm run check:edge-pins" },
+    { run: "npm run check:trainer-authority:selftest" },
+    { run: "npm run check:trainer-authority" },
     { run: "node scripts/ci/workflow-contract.mjs" },
   ],
   typecheck: [
@@ -244,7 +424,10 @@ export const APPROVED_JOB_STEPS = {
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
     { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
     { run: "npm ci" },
-    { run: "npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}" },
+    // The client BEFORE the suite, and the suite told where it is and which
+    // locale to initdb under. Order is what the sequence pins.
+    { run: PG_CLIENT_INSTALL_CMD },
+    { run: "npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}", env: DB_LANE_ENV },
   ],
   "db-rehearsals": [
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
@@ -261,12 +444,14 @@ export const APPROVED_JOB_STEPS = {
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
     { uses: "actions/setup-node@v4", with: { "node-version": "24", cache: "npm" } },
     { run: "npm ci" },
+    { run: "npm run check:trainer-authority:selftest" },
+    { run: "npm run check:trainer-authority" },
     { run: "node scripts/ci/workflow-contract.mjs" },
   ],
   test: [
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
     { uses: "actions/setup-node@v4", with: { "node-version": "24" } },
-    { run: GATE_COMMAND },
+    { run: GATE_COMMAND, env: GATE_ENV },
   ],
   "edge-tests": [
     { uses: "actions/checkout@v4", with: { "persist-credentials": false } },
@@ -419,6 +604,15 @@ const PINNED_SCRIPTS = {
   // The local/ci-equivalent full gate stays unsharded — CI sharding must never
   // become the only way to run the suite.
   test: 'vitest run --project unit && vitest run --project db',
+  // THE TRAINER-NAMESPACE PROPERTY, PINNED AT ITS NEW ADDRESS. This used to pin a whole second
+  // run of the database suite with `ABC27_TRAINER_GUARD=1 ABC27_GUARD_LANE=1`, because the
+  // property was watched by a client-side observer that was off by default. That observer's
+  // terminal review refused the approach; the property is now established at the SOURCE and these
+  // two commands are what prove it. Both are pinned: the guard alone could be satisfied by a
+  // guard that refuses nothing, and the self-test is what makes it discriminate.
+  'check:trainer-authority': 'node scripts/check-abc27-trainer-source-authority.mjs',
+  'check:trainer-authority:selftest':
+    'node scripts/check-abc27-trainer-source-authority.mjs --self-test',
 };
 
 // `npm run test:db -- --shard=…` forwards the args to the SCRIPT only; a
@@ -428,6 +622,8 @@ const FORBIDDEN_LIFECYCLE_HOOKS = [
   'pretest:unit', 'posttest:unit',
   'pretest:db', 'posttest:db',
   'predb:rehearse:all', 'postdb:rehearse:all',
+  'precheck:trainer-authority', 'postcheck:trainer-authority',
+  'precheck:trainer-authority:selftest', 'postcheck:trainer-authority:selftest',
 ];
 
 /**
@@ -561,6 +757,14 @@ const MUST_PIN_BASH = { 'workflow-contract': 'the contract checker', lint: 'the 
  * from (a redirected HOME means a different .npmrc than the one checked above).
  */
 const NPM_ENV_NAMESPACE = 'npm_config_';
+/**
+ * bash imports any exported `BASH_FUNC_<name>%%` variable whose value starts
+ * with `() {` as a shell FUNCTION named <name>, and a function shadows the
+ * command of that name in every later bash step — `npm`, `node`, `bash`
+ * itself. A namespace rule, like npm's: the name after the prefix is the
+ * attacker's choice.
+ */
+const BASH_FUNCTION_NAMESPACE = 'bash_func_';
 const CONFIG_HOME_VARS = new Set(['home', 'userprofile', 'xdg_config_home', 'appdata', 'localappdata']);
 const SHELL_CONTROL_VARS = new Set(['shellopts', 'bash_env', 'node_options']);
 
@@ -571,6 +775,9 @@ function neuteringEnvVar(key) {
   const normalized = normalizeEnvKey(key);
   if (normalized.startsWith(NPM_ENV_NAMESPACE)) {
     return `it configures npm through the environment (${NPM_ENV_NAMESPACE}* is refused as a namespace, not key by key)`;
+  }
+  if (normalized.startsWith(BASH_FUNCTION_NAMESPACE)) {
+    return `it exports a bash FUNCTION that shadows the command of that name in every later bash step (${BASH_FUNCTION_NAMESPACE}* is refused as a namespace)`;
   }
   if (CONFIG_HOME_VARS.has(normalized)) {
     return 'it relocates the per-user config directory, so npm would read a different .npmrc than the approved one';
@@ -898,6 +1105,15 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
       } else if (String(step.run ?? '').trim() !== approved.run) {
         violations.push(`${jobName}: step ${i + 1} is \`${describe(step)}\`, but the approved step is \`run ${approved.run}\``);
       }
+      // A step's ENVIRONMENT is part of its identity. The db suite step that
+      // lost ABC27_PSQL or LC_ALL still runs the pinned command and still
+      // passes the neutering scan above, while the frozen controls it feeds
+      // fail closed; an ADDED variable can reshape what the command does. So
+      // every approved step's env is compared exactly — order-insensitive,
+      // and empty unless the table says otherwise.
+      if (!sameEnv(step.env, approved.env)) {
+        violations.push(`${jobName}: step ${i + 1} (${describe(step)}) env must be exactly ${JSON.stringify(approved.env ?? {})}, found ${JSON.stringify(step.env ?? {})} — the database lane's real client (ABC27_PSQL) and locale (LC_ALL/LANG) are requirements of the frozen ABC-27 controls, not conveniences`);
+      }
       // Every step of a required job — action or command — goes through the
       // SAME unweakened check, which also rejects a `shell:` override such as
       // `bash -n {0}` that syntax-checks a command instead of running it.
@@ -906,13 +1122,37 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
     checkJobIsUnweakened(jobs[jobName], jobName, violations, { allowIf: jobName === 'test' });
   }
 
-  // ── No approved job runs in a container ──
+  // ── No inherited environment: the per-step pin is only total if nothing sits above it ──
+  // A step's `env:` was compared exactly above. A variable declared at JOB or
+  // WORKFLOW level reaches every step of the job without appearing in any
+  // step's map — PATH pointed at a directory with a fake `npm`, or a
+  // `BASH_FUNC_npm%%` function — so the only sound rule is that those scopes
+  // are empty for every job that backs a required check. Declaring one is a
+  // reviewed edit, exactly like adding a step.
+  const workflowEnvKeys = Object.keys(workflow.env ?? {});
+  if (workflowEnvKeys.length > 0) {
+    violations.push(`workflow-level env must be empty (found ${workflowEnvKeys.join(', ')}) — it reaches every step of every job unseen by the per-step env pin`);
+  }
+  for (const jobName of Object.keys(APPROVED_JOB_STEPS)) {
+    const jobEnvKeys = Object.keys(jobs[jobName]?.env ?? {});
+    if (jobEnvKeys.length > 0) {
+      violations.push(`${jobName}: must declare no job-level env (found ${jobEnvKeys.join(', ')}) — every approved step's env is pinned exactly, and a job-level variable (PATH, BASH_FUNC_*, …) reaches every step of the job unseen by that pin`);
+    }
+  }
+
+  // ── No approved job runs in a container, and none starts a service ──
   // A container brings its own image, entrypoint and `options:` — including
-  // `--env`, which sets variables the env scan above never sees. No job needs
-  // one, so the whole surface is refused rather than pinned piece by piece.
+  // `--env`, which sets variables the env scan above never sees. A SERVICE is
+  // the same surface from the side: it starts before the first step, and its
+  // `volumes:` can bind-mount the runner's workspace read-write, so it can
+  // rewrite the installer or an npm script before the pinned steps run. No job
+  // needs either, so both surfaces are refused rather than pinned piece by piece.
   for (const jobName of Object.keys(APPROVED_JOB_STEPS)) {
     if (jobs[jobName]?.container !== undefined) {
       violations.push(`${jobName}: runs in a container — its image and \`options\` (e.g. \`--env NPM_CONFIG_SCRIPT_SHELL=…\`) sit outside every other boundary here`);
+    }
+    if (jobs[jobName]?.services !== undefined) {
+      violations.push(`${jobName}: declares \`services\` — a service container starts before the first step and its \`volumes\` can bind-mount the workspace read-write, rewriting the installer or an npm script outside the pinned step sequence`);
     }
   }
 
@@ -984,6 +1224,64 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
       : steps.filter((s) => (s.run ?? '').trim() === CONTRACT_CMD);
     if (critical.length === 0 || critical.some((s) => s.shell !== 'bash')) {
       violations.push(`${jobName}: ${description} must pin \`shell: bash\` explicitly, or a workflow-level defaults.run.shell could neuter it`);
+    }
+  }
+
+  // ── 3b. The database lane's real client: one major, three places, one source ──
+  // package.json's embedded-postgres major is the server the controls drive.
+  // The installer's major and path, and the ABC27_PSQL the suite step carries
+  // (pinned as DB_LANE_ENV in the step table above), must all agree with it —
+  // a bump of the server package without the client, or of the client without
+  // the env, turns this red instead of failing the lane nine minutes in.
+  const serverMajor = embeddedPostgresMajor(pkg);
+  if (serverMajor === null) {
+    violations.push(`package.json: embedded-postgres is not declared as a single exact, caret or tilde version (found ${JSON.stringify(embeddedPostgresSpec(pkg) ?? null)}) — the database lane cannot know which psql major its real-Postgres controls need, and a range spanning majors could resolve a server the pinned client cannot drive`);
+  } else if (serverMajor !== PG_CLIENT_MAJOR) {
+    violations.push(`package.json declares embedded-postgres major ${serverMajor}, but the database lane installs and names psql ${PG_CLIENT_MAJOR} (PG_CLIENT_MAJOR) — the real-Postgres controls refuse a client of another major, so the installer, the workflow env and this contract must move together`);
+  }
+  // The lock file is what `npm ci` actually installs, so every lock file
+  // present must agree too — a lock drifted from package.json is exactly the
+  // case the declaration check cannot see, and a shrinkwrap beside a stale
+  // package-lock is the case a single read would miss.
+  for (const lockName of NPM_LOCK_FILES) {
+    const read = readNpmLock(repoRoot, lockName);
+    if (read.absent) continue;
+    if (read.error) {
+      violations.push(`${lockName} ${read.error} — a lock file that exists but cannot be checked is not "absent"; it may still be the file npm ci installs from`);
+      continue;
+    }
+    const locked = lockedEmbeddedPostgresMajors(read.lock);
+    if (!locked.some((p) => p.name === 'embedded-postgres')) {
+      violations.push(`${lockName} resolves embedded-postgres to major none, but the database lane installs and names psql ${PG_CLIENT_MAJOR} — the lock file is what npm ci installs`);
+    }
+    if (!locked.some((p) => p.path === CI_SERVER_PLATFORM_PACKAGE)) {
+      violations.push(`${lockName} carries no ${CI_SERVER_PLATFORM_PACKAGE} entry — the wrapper installs no server binary of its own, so the database lane would have nothing to run against on ubuntu-latest`);
+    } else if (!wrapperReachesPlatformPackage(read.lock)) {
+      violations.push(`${lockName}: the embedded-postgres wrapper entry no longer depends on ${CI_SERVER_PLATFORM_NAME} — npm ci installs only what the graph reaches, so that entry is extraneous and the runner would get a wrapper without its server binary`);
+    }
+    for (const { path, major } of locked) {
+      if (major !== PG_CLIENT_MAJOR) {
+        violations.push(`${lockName} resolves ${path} to major ${major ?? 'none'}, but the database lane installs and names psql ${PG_CLIENT_MAJOR} — the lock file is what npm ci installs, and the @embedded-postgres/<platform> package is the server binary itself`);
+      }
+    }
+  }
+  let installer = null;
+  try {
+    installer = readFileSync(join(repoRoot, PG_CLIENT_INSTALLER), 'utf8');
+  } catch {
+    installer = null;
+  }
+  if (installer === null) {
+    violations.push(`${PG_CLIENT_INSTALLER} is missing — the db-tests job's client install step would fail, or run something other than the reviewed installer`);
+  } else {
+    const installerSha256 = createHash('sha256').update(installer).digest('hex');
+    if (installerSha256 !== PG_CLIENT_INSTALLER_SHA256) {
+      violations.push(`${PG_CLIENT_INSTALLER}: bytes changed (sha256 ${installerSha256}, pinned ${PG_CLIENT_INSTALLER_SHA256}) — the installer is pinned whole; review the edit and update PG_CLIENT_INSTALLER_SHA256 in the same change`);
+    }
+    for (const [pattern, what] of PG_CLIENT_INSTALLER_PINS) {
+      if (!pattern.test(installer)) {
+        violations.push(`${PG_CLIENT_INSTALLER}: ${what} is missing or changed — the installer must keep producing psql ${PG_CLIENT_MAJOR} at ${PG_CLIENT_PSQL} and verifying it, or the lane's controls fail closed on the runner`);
+      }
     }
   }
 
@@ -1090,12 +1388,55 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   // vitest will use — not a re-parse that could disagree with it. (A plain
   // `import` cannot: the config uses __dirname, which is CJS-only.)
   const { loadConfigFromFile } = await import('vite');
-  const loaded = await loadConfigFromFile(
+  const loadVitestConfig = async () => (await loadConfigFromFile(
     { command: 'serve', mode: 'test' },
     join(repoRoot, 'vitest.config.ts'),
     repoRoot,
-  );
-  const config = loaded?.config ?? {};
+  ))?.config ?? {};
+  const config = await loadVitestConfig();
+
+  // ...AND AGAIN UNDER VITEST'S OWN ENVIRONMENT. Vitest sets `VITEST=true` (and `MODE=test`)
+  // BEFORE it loads this config; a plain Node loader does not. A config that reads
+  // `process.env.VITEST` could therefore install a name filter that exists only during the real
+  // CI runs, while every check here inspected a different object. Both loads are checked, and the
+  // config file is additionally required to read no environment at all — so the two loads cannot
+  // legitimately differ in the first place.
+  // THE CONFIG MUST BE A CONSTANT, and the constraint is on TOKENS rather than on one spelling:
+  // `process.env.X`, `process['env']`, `import.meta.env`, `loadEnv(...)` and a helper imported
+  // from elsewhere are all ways for the config CI runs to differ from the config this reads.
+  const vitestConfigSource = readFileSync(join(repoRoot, 'vitest.config.ts'), 'utf8');
+  for (const [pattern, what] of [
+    [/\bprocess\b/, '`process`'],
+    [/\bimport\s*\.\s*meta\b/, '`import.meta`'],
+    [/\bloadEnv\b/, '`loadEnv`'],
+    [/\brequire\s*\(/, '`require(`'],
+  ]) {
+    if (pattern.test(vitestConfigSource)) {
+      violations.push(`vitest.config.ts references ${what} - the CI contract inspects the config it can load, and a config whose shape can depend on the environment is not provably the config CI runs`);
+    }
+  }
+  // ...and its imports are pinned, because a constant that calls into another module is only as
+  // constant as that module.
+  const APPROVED_VITEST_CONFIG_IMPORTS = ['vitest/config', '@vitejs/plugin-react-swc', 'path'];
+  const configImports = [...vitestConfigSource.matchAll(/^\s*import[^;]*?from\s+["']([^"']+)["']/gm)]
+    .map((m) => m[1]);
+  const unapprovedImports = configImports.filter((spec) => !APPROVED_VITEST_CONFIG_IMPORTS.includes(spec));
+  if (unapprovedImports.length > 0) {
+    violations.push(`vitest.config.ts imports ${unapprovedImports.join(', ')} - only ${APPROVED_VITEST_CONFIG_IMPORTS.join(', ')} are approved, because an imported helper can decide the config CI runs`);
+  }
+  const previousVitestEnv = process.env.VITEST;
+  const previousModeEnv = process.env.MODE;
+  let configUnderVitest;
+  try {
+    process.env.VITEST = 'true';
+    process.env.MODE = 'test';
+    configUnderVitest = await loadVitestConfig();
+  } finally {
+    if (previousVitestEnv === undefined) delete process.env.VITEST;
+    else process.env.VITEST = previousVitestEnv;
+    if (previousModeEnv === undefined) delete process.env.MODE;
+    else process.env.MODE = previousModeEnv;
+  }
   const projects = config.test?.projects ?? [];
   const byName = Object.fromEntries(projects.map((p) => [p.test?.name, p.test]));
   const db = byName.db;
@@ -1155,6 +1496,69 @@ export async function checkWorkflowContract({ repoRoot = REPO_ROOT } = {}) {
   const misfiled = databaseTestFilesOnDisk(repoRoot).filter((f) => unitSet.has(f) || !dbSelected.includes(f));
   if (misfiled.length > 0) {
     violations.push(`vitest.config.ts: ${misfiled.length} database test file(s) are not owned by the db project, e.g. ${misfiled.slice(0, 3).join(', ')}`);
+  }
+
+  // ── 8. NO NAME FILTER MAY NARROW A GATED SUITE ────────────────────────────
+  //
+  // Section 7 proves every FILE is selected. It says nothing about which TESTS
+  // inside those files run, and that is a whole second way to keep a suite green
+  // while it proves nothing: `vitest run --project db -t nothing-matches-this`
+  // selects all 142 files, runs zero tests, and exits 0. `passWithNoTests` is the
+  // same hole from the other side — it turns "this run found nothing" from a
+  // failure into a pass, which is exactly the verdict a filter produces.
+  //
+  // BOTH SPELLINGS, IN BOTH PLACES. The flag can sit in the workflow's `run:`
+  // text or inside the npm script the workflow invokes, and the config option can
+  // sit at the root or on a project; each is checked where it can actually be
+  // written. This is independent of any one suite: it closes the hole for every
+  // lane at once.
+  const NAME_FILTER_FLAG = /(^|\s)(-t(\s|=|$)|--testNamePattern(\s|=|$))/;
+  const filterSites = [];
+  for (const [job, steps] of Object.entries(workflow.jobs ?? {})) {
+    for (const step of steps.steps ?? []) {
+      if (typeof step.run === 'string' && NAME_FILTER_FLAG.test(step.run)) {
+        filterSites.push(`.github/workflows/test.yml job ${job}: \`${step.run.trim().slice(0, 80)}\``);
+      }
+    }
+  }
+  for (const [name, command] of Object.entries(pkg.scripts ?? {})) {
+    if (typeof command === 'string' && NAME_FILTER_FLAG.test(command)) {
+      filterSites.push(`package.json script ${name}: \`${command.slice(0, 80)}\``);
+    }
+  }
+  for (const site of filterSites) {
+    violations.push(`a vitest name filter (-t / --testNamePattern) appears in ${site} — a filter that matches nothing runs zero tests and still exits 0, so no CI invocation may carry one`);
+  }
+  // THE WHOLE OF SECTION 7, AGAIN, ON THE CONFIG VITEST ITSELF WOULD LOAD. Checking only the two
+  // name-filter options there left project SELECTION, the sequencer and `fileParallelism`
+  // verified on one object while CI ran another. The comparison is by VALUE: the two loads must
+  // agree on everything this contract depends on, which is a stronger and simpler statement than
+  // re-deriving each rule twice.
+  const projectShape = (cfg) => (cfg ? {
+    include: cfg.include, exclude: cfg.exclude, name: cfg.name,
+    fileParallelism: cfg.fileParallelism, sequencer: cfg.sequence?.sequencer,
+    testNamePattern: cfg.testNamePattern, passWithNoTests: cfg.passWithNoTests,
+  } : null);
+  const wholeShape = (cfg) => JSON.stringify({
+    root: projectShape(cfg.test),
+    projects: (cfg.test?.projects ?? []).map((p) => projectShape(p.test)),
+  });
+  if (wholeShape(config) !== wholeShape(configUnderVitest)) {
+    violations.push('vitest.config.ts resolves to a DIFFERENT shape under VITEST=true than under a plain load - every check in this section then describes an object CI does not run');
+  }
+  const vitestProjects = configUnderVitest.test?.projects ?? [];
+  const underVitest = Object.fromEntries(vitestProjects.map((p) => [p.test?.name, p.test]));
+  for (const [label, cfg] of [
+    ['root', config.test], ['unit', unit], ['db', db],
+    ['root (VITEST=true)', configUnderVitest.test],
+    ['unit (VITEST=true)', underVitest.unit], ['db (VITEST=true)', underVitest.db],
+  ]) {
+    if (cfg?.testNamePattern !== undefined) {
+      violations.push(`vitest.config.ts: ${label} defines testNamePattern — a name filter in the config narrows every invocation, including CI's`);
+    }
+    if (cfg?.passWithNoTests !== undefined && cfg.passWithNoTests !== false) {
+      violations.push(`vitest.config.ts: ${label} sets passWithNoTests — a run that selected nothing must FAIL, because "nothing matched" is what a hollowed-out lane looks like`);
+    }
   }
 
   return violations;

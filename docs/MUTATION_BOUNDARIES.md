@@ -2,7 +2,7 @@
 
 Purpose: the canonical map of every dangerous domain mutation — where it is *allowed* to happen, where it *actually* happens today (file:line), and what still writes the DB directly from the UI.
 Audience / AI-read: yes
-Status: canonical (source of truth) | last updated 2026-07-18
+Status: canonical (source of truth) | last updated 2026-08-13
 
 > Read this before touching any create/cancel/edit/delete path for bookings, slots, cycles,
 > invoices, priority claims, or player identity. If you are adding a new domain write, extend the
@@ -36,7 +36,7 @@ Source audits (do not re-derive — link): [`audits/MUTATION_BOUNDARY_AUDIT.md`]
 | 4 | **Delete slot** | RPC `apply_slot_delete_to_cycle` via `applySlotDeleteToCycle` | `src/lib/slotDeleteGuard.ts` → called from `src/components/slots/DeleteSlotDialog.tsx:303,385` | No — dialog delegates to the guard RPC (its 3 allowlisted writes are non-delete reads/co-occupant) | SECURITY INVOKER RPC, `FOR UPDATE` locks; protects booked slots from `ON DELETE CASCADE` booking loss | PGlite rehearsal | Low. TOCTOU cascade-destroy (the ADR-0003 bug) is closed by the atomic RPC. |
 | 5 | **Create cycle** | lib facade `createCycle` (+ registration RPCs for the form path) | `src/lib/cycleWrites.ts:85` (`createCycle`); registrations via `create_registration_with_cycle` RPC (`src/lib/registrations.ts`) | Low — orphan-cycle rollback `cycles.delete` cleanup is the residual (allowed, compensating) | FK `cyclus_id → cycles` NOT VALID + `SET NULL`; RLS owner | `src/test/registration-write` rehearsal | Low. |
 | 6 | **Edit cycle dates** | lib facade `applyCycleEndDate` / `extendCycleToEndDate` (+ `updateCycleSettings`) | `src/lib/cycleExtension.ts:269,225`; `src/lib/cycleWrites.ts:77` (`updateCycleSettings`); UI: `src/components/cycles/CycleEndDateFields.tsx`, `EditCycleEndDateDialog.tsx` | No for the CycleDetailView/dialog path. TSO's edit dialog still writes slots/cycle rows directly (see backlog) | `is_always_open` NULLifies dates; invoice resync after (`syncInvoicesAfterCycleEdit`) | `cycleExtension` unit tests | Med. TSO `handleSaveCycleEdit` is the largest residual page-write cluster (backlog P1/P2). |
-| 7 | **Rebook cycle** | edge fn `bulk-rebook-cycle` (draft cycle + `slot_priority_claims`) | `supabase/functions/bulk-rebook-cycle/index.ts` (auth `requireUser` L119; academy-member check L205-210) | No — UI invokes the edge fn | verify_jwt=false + `_shared/auth.ts requireUser` (real `auth.getUser`, not decode); partial-unique index + draft cleanup guard double-run | manual + logic (audit inv. 11/12) | Low. Dry-run has no side effects; execution can't double-run. |
+| 7 | **Rebook cycle** | edge fn `bulk-rebook-cycle` (draft cycle + `slot_priority_claims`; ABC-26: supplementary priority is unavailable — any non-empty `priorityPeople`/`priorityGuests`/`secondBucketSeriesKeys` is a typed no-write refusal parsed before the first write). **STILL THE LIVE CREATE PATH.** The ABC-27 actor-bound command surface and its browser driver (`src/lib/rebookRoundDriver.ts`) ship complete but the wizards are deliberately not cut over to them yet; that cutover is its own reviewed step | `supabase/functions/bulk-rebook-cycle/index.ts` (auth `requireUser` L119; academy-member check L205-210) | No — UI invokes the edge fn | verify_jwt=false + `_shared/auth.ts requireUser` (real `auth.getUser`, not decode); partial-unique index + draft cleanup guard double-run | manual + logic (audit inv. 11/12) | Low. Dry-run has no side effects; execution can't double-run. |
 | 8 | **Accept priority claim** | lib `acceptClaimWithToken` / `acceptClaimAndStartPayment` → edge `create-rebook-invoice(-public)` / `rebook_group_apply` | `src/lib/priorityClaims.ts:632,872`; group `applyRebookGroup:703` | No — token RPCs + edge fns | Token-scoped RPC (`get_priority_claim_by_token`); atomic claim; `mollie-webhook` flips all group invoice `booking_ids` on pay | `src/lib/priorityClaims` tests; audit inv. 13/18 | Low–med. Whole-group payment linchpin is the webhook; covered. |
 | 9 | **Decline priority claim** | lib `declineClaimAsManager` / `declineClaimWithToken` | `src/lib/priorityClaims.ts:551,602` | No | Token/RLS-scoped; `invited_at` atomic-claim send model | logic | Low. |
 | 10 | **Create invoice** | edge fn (`auto-create-invoice`, `create-registration-invoice`, `create-rebook-invoice`) with server pricing; dedup RPC `create_invoice_deduped` | `supabase/functions/auto-create-invoice/*`; custom via `src/components/invoices/CreateCustomInvoiceDialog.tsx` (allowlisted insert) | Partial — custom-invoice + create pages insert directly (server-trusted pricing helper + RLS) | Partial-unique `uniq_invoice_active_{player,guest}_bookings` + `create_invoice_deduped` — person-keyed guest-first via `person_links`, split-freeze-aware, advisory-locked per (trainer, person), service_role-only (P1-6 + Phase 3.4, migration `20260902100000`; amount-neutral, dedup only) | `invoiceCalc.test.ts`, `invoiceSync.test.ts`, `src/test/createInvoiceDeduped.pglite.test.ts` | Low–med. Create path is lower-risk; direct inserts documented (backlog P2). |
@@ -111,3 +111,76 @@ undo it — so the revoke names the roles, and a test pins it.
 ## Remaining direct-write backlog
 
 The still-direct dangerous writes are ranked in [`technical-debt/MUTATION_BOUNDARY_BACKLOG.md`](technical-debt/MUTATION_BOUNDARY_BACKLOG.md). None is a current P0; the cluster is TSO/AcademyCyclusOverview cycle-edit writes (P1/P2) plus low-risk create/cleanup inserts (P2).
+
+## ABC-27 / D5 — rebook round authority tables
+
+Authority tables: `rebook_rounds`, `rebook_round_commands`, `rebook_round_command_children`,
+`rebook_round_recipients`, `rebook_round_recipient_claim_sources`.
+
+**Zero effective runtime DML.** Each table has `ENABLE ROW LEVEL SECURITY`, `FORCE ROW LEVEL
+SECURITY` is **off**, and there are zero policies. More importantly, no runtime role (`anon`,
+`authenticated`, `service_role`) has effective table privileges, including privileges inherited
+through role membership. `service_role` carries platform-managed `BYPASSRLS` on Supabase, so the
+design records that observed property and does not pretend RLS contains it. The operative boundary
+is zero effective runtime table access plus the narrow same-owner definers and unconditional
+invariant triggers below.
+
+**The closed writer set** is `rebook_round_apply_normalized_core`, `rebook_round_materialize` and
+`rebook_round_freeze_and_snapshot`. (The actorless `rebook_round_apply_command` named here in an
+earlier revision is **dropped**: it wrote the command ledger with no accountable identity at all.
+Its successor is reached only through `rebook_round_apply_command_as_actor`, which derives the actor
+from the JWT and holds EXECUTE for `authenticated` alone — `service_role` holds none of the five
+operator wrappers, so no edge function can act as an operator on this surface.) Each is verified at install for exact identity, owner
+relationship, `SECURITY DEFINER`, and an exactly fixed `search_path=public`. The five
+service-callable entrypoints additionally have exact signatures, volatility, ACLs, PUBLIC/default
+closure, and recursive membership/`SET ROLE` reachability checks. Function-source/`prosrc` scans
+cover qualified and unqualified writes only as supplementary tripwires: source text cannot prove
+effective reachability or writes performed through a helper or trigger.
+
+**Immutability is a table property.** Unconditional triggers are bound at install to their exact
+trigger name, relation, trigger function, event mask, owner relationship, absent `WHEN` clause and
+ordinary/always enabled state. `rebook_round_recipients` and its claim sources therefore refuse
+`UPDATE` and `DELETE` even for the owner; a replica-only trigger is not accepted.
+
+**Shared surfaces this unit tightened.**
+
+| Surface | Before | After |
+|---|---|---|
+| `notification_outbox` | `SELECT, INSERT, UPDATE, DELETE` to `service_role` | `SELECT` only; every write is an owner-definer RPC |
+| `notification_event_types` | `SELECT, INSERT, UPDATE, DELETE` to `service_role` | `SELECT` only; the rebook event's **entire canonical row** is immutable by an unconditional trigger (only `updated_at` exempt), so delivery-disabling, channel-rerouting and future columns are all covered |
+
+Both are **shared** changes affecting every notification event, not only this one, and must be
+exercised by the full notification suite before they are trusted.
+
+
+## D7 runtime — the member-open transport boundary
+
+The rebook member-open invitation is the one notification event whose transport is a state machine
+of its own rather than the generic outbox drain, and its mutation boundary is correspondingly
+narrower.
+
+| | Boundary |
+|---|---|
+| Who may move a D7 outbox row | ONLY the eight granted machine functions, each of which issues a single-use, row-and-transition-bound grant and then performs exactly that transition |
+| What refuses everything else | an **unconditional** outbox guard: a D7 mutation that does not present its exact grant id and action is rejected — for the table owner and for every `SECURITY DEFINER` function, not only for runtime roles |
+| What the edge worker may do | call four RPCs (`claim_batch`, `pre_dispatch_resolve`, `begin_dispatch`, `record_dispatch_outcome`) and make at most ONE provider call per authorized generation. It classifies nothing, retries nothing and writes no table directly |
+| What the janitor may do | two RPCs (`recover_expired_leases`, `close_unresolved`) and nothing else |
+| What the materializer may do | one RPC (`rebook_round_materialize`) and nothing else |
+| Generic mutators | `release_notification_claims_on_kill`, `record_notification_send_result`, `defer_notification_outbox_row` and `claim_notification_outbox_batch` are unreachable from the D7 path, and the worker holds no grant for any of them |
+
+**ONE ABC-27 FUNCTION BODY IS REPLACED AFTER THE FACT, AND ONLY ONE.**
+`20261203120000_d7_paid_group_hold_safety.sql` re-issues `abc27_p_live_eligibility` to fold the
+canonical slot-level paid-group court hold into its freed-seat arm. It is a body change and nothing
+else: the migration captures the function's owner, ACL, `SECURITY DEFINER` flag, volatility,
+`search_path` and identity-argument list before the replacement and re-compares every one of them
+afterwards in the same transaction, so a drift is a migration failure rather than a discovery. It
+performs the replacement AS the Domain-P owner — resolved from `public.cycles`'s owner exactly as
+ABC-27 resolves it, never hardcoded — and refuses if the applying role may not act as that owner.
+The frozen ABC-27 evidence suite admits this one name, in that one file, with that one verb: a bare
+`CREATE FUNCTION`, a redefinition from any other file, a redefinition at a different signature, and
+any `GRANT`/`REVOKE`/`ALTER FUNCTION` on it all remain violations.
+
+`service_role` reaches exactly those eight machine functions and NONE of the authority surface — not
+the enqueue core, the classifier, the renderer, the five operator cores, the bare-UUID status read,
+the freeze, the recipient enumeration, the sibling page or the legacy review summary. That is proved
+in both directions on the replayed chain in `src/test/d7ForwardChain.realpg.test.ts`.

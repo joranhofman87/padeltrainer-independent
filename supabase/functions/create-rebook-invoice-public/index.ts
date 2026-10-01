@@ -48,7 +48,11 @@ Deno.serve(async (req: Request) => {
         .neq("status", "cancelled")
         .order("created_at", { ascending: false })
         .limit(1);
-      q = playerId ? q.eq("player_id", playerId) : q.eq("guest_player_id", guestId!);
+      // A pure-profile lookup must ALSO require guest_player_id IS NULL, or it matches the
+      // dual-key rows this normalization just excluded from the profile identity.
+      q = playerId
+        ? q.eq("player_id", playerId).is("guest_player_id", null)
+        : q.eq("guest_player_id", guestId!);
       const { data } = await q.maybeSingle();
       return (data as RebookInvoice | null)?.public_token ? (data as RebookInvoice) : null;
     };
@@ -117,7 +121,10 @@ Deno.serve(async (req: Request) => {
         .eq("rebook_group_id", claim.rebook_group_id);
       const distinctPlayers = new Set(
         (groupClaims ?? [])
-          .map((c: { player_id: string | null; guest_player_id: string | null }) => c.player_id ?? c.guest_player_id)
+          // guest-first, matching the claimant normalization below: a dual-key member IS the
+          // guest, so keying it by player_id would merge two distinct people into one identity
+          // and mis-size the group.
+          .map((c: { player_id: string | null; guest_player_id: string | null }) => c.guest_player_id ?? c.player_id)
           .filter(Boolean),
       );
       if (distinctPlayers.size > 1) return json({ ok: false, reason: "is_group" });
@@ -132,8 +139,19 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const pid = (claim.player_id as string | null) ?? null;
-    const gid = (claim.guest_player_id as string | null) ?? null;
+    // ABC-18 A3 — GUEST-FIRST NORMALIZATION. A DUAL-KEY claim carries both columns, and the
+    // person it is about is the GUEST; the profile column on such a row is a legacy artefact, not
+    // the claimant. Reading it profile-first meant a guest token resolved to the raw profile and
+    // then swept that profile's PURE sibling claims — accepting, booking and invoicing seats that
+    // belong to a different account. This service runs as service_role, so RLS is not a backstop:
+    // the normalization has to happen here, once, before any query is scoped by it.
+    //
+    // Everything downstream (existing-invoice lookup, claim gathering/acceptance, bookings,
+    // invoice creation and dedup) reads `pid`/`gid` and is therefore covered by this single point.
+    const rawPid = (claim.player_id as string | null) ?? null;
+    const rawGid = (claim.guest_player_id as string | null) ?? null;
+    const gid = rawGid;
+    const pid = rawGid ? null : rawPid;   // dual-key ⇒ the guest owns it; the profile column is inert
     if (!pid && !gid) return json({ ok: false, reason: "unscoped_claim" });
 
     // Resolve the cyclus the claim belongs to (its slot's cyclus).
@@ -182,7 +200,7 @@ Deno.serve(async (req: Request) => {
       .in("slot_id", cyclusSlotIds)
       .in("status", ["pending", "claimed"])
       .is("rebook_group_id", null); // single path only — never sweep the claimant's GROUP claims
-    mq = pid ? mq.eq("player_id", pid) : mq.eq("guest_player_id", gid!);
+    mq = pid ? mq.eq("player_id", pid).is("guest_player_id", null) : mq.eq("guest_player_id", gid!);
     const { data: myClaims } = await mq;
     if (!myClaims || myClaims.length === 0) return json({ ok: false, reason: "no_claims" });
 
@@ -211,7 +229,7 @@ Deno.serve(async (req: Request) => {
       .eq("status", "claimed")
       .not("booking_id", "is", null)
       .is("rebook_group_id", null);
-    bq = pid ? bq.eq("player_id", pid) : bq.eq("guest_player_id", gid!);
+    bq = pid ? bq.eq("player_id", pid).is("guest_player_id", null) : bq.eq("guest_player_id", gid!);
     const { data: booked } = await bq;
     const bookingIds = [...new Set((booked ?? []).map((r: { booking_id: string | null }) => r.booking_id).filter(Boolean))] as string[];
     if (bookingIds.length === 0) return json({ ok: false, reason: "nothing_booked" });
@@ -273,7 +291,7 @@ Deno.serve(async (req: Request) => {
       .neq("status", "cancelled")
       .order("created_at", { ascending: false })
       .limit(1);
-    rb = pid ? rb.eq("player_id", pid) : rb.eq("guest_player_id", gid!);
+    rb = pid ? rb.eq("player_id", pid).is("guest_player_id", null) : rb.eq("guest_player_id", gid!);
     const { data: invoice } = await rb.maybeSingle();
     if (!invoice?.public_token) return await failAfterAccept(mintTimedOut ? "mint_timeout" : "no_invoice");
 

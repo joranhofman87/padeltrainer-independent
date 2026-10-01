@@ -1,8 +1,29 @@
 import { supabase } from '@/lib/supabaseClient';
+import { personRefOf, type PersonIdRow } from '@/lib/personIdentity';
 import { resolveSplitDivisor } from '@/lib/splitDivisor';
 import { hasValidPaymentSetup } from '@/lib/academyTrainerPayments';
 import { isMissingRelation, reportDeployDriftFallback } from '@/lib/deployDrift';
 import { logger } from '@/lib/logger';
+
+/**
+ * ABC-18 A3 / ABC-20 — the guest-first identity of a priority claim.
+ *
+ * This is `personRefOf` under a claim-shaped name, deliberately NOT a second implementation.
+ * The FAM-02 rule it encodes — a row carrying BOTH columns belongs to the GUEST, and the
+ * player_id beside it is legacy link decoration — already had exactly one TS home in
+ * `personIdentity.ts`, and a parallel copy here would be free to drift from it.
+ *
+ * The claim case that matters: resolving profile-first let a guest token resolve to the raw
+ * profile and then sweep that profile's PURE sibling claims, accepting and paying for seats
+ * belonging to a different account.
+ */
+export function normalizeClaimIdentity(
+  claim: PersonIdRow | null | undefined,
+): { playerId: string | null; guestPlayerId: string | null } {
+  const ref = personRefOf(claim ?? {});
+  return { playerId: ref?.playerId ?? null, guestPlayerId: ref?.guestPlayerId ?? null };
+}
+
 
 export type ClaimStatus = 'pending' | 'claimed' | 'declined' | 'expired' | 'released';
 
@@ -402,21 +423,54 @@ export async function bulkCopySlotsToCycle(input: BulkCopyInput): Promise<BulkCo
   return { copiedSlots, createdClaims, notifiableSlotIds };
 }
 
+/** What a bulk notify actually achieved, per claim rather than per slot. */
+export interface NotifyClaimsResult {
+  /** claims durably enqueued — NOT delivered; the D7 worker delivers, and it is inactive */
+  queued: number;
+  /**
+   * claims that need a person. NOT disjoint from `queued`: the endpoint counts a durable enqueue
+   * whose `invited_at` stamp failed as BOTH — the message is queued and the claim is still
+   * un-stamped — so this is "needs attention", never "was not queued".
+   */
+  needsAttention: number;
+  /** claims the endpoint reported as outright failures */
+  failed: number;
+  /** SLOTS whose invocation never returned. The claim count behind them is unknown. */
+  unreachableSlots: number;
+}
+
 /**
  * Send priority-claim invitation emails for the given slots (one call per slot;
  * the edge function emails every pending, not-yet-invited claim on that slot).
- * Returns how many slots were notified. Failures per slot are swallowed so one
- * bad slot doesn't abort the rest.
+ *
+ * COUNTS CLAIMS, NOT SLOTS. This used to count a slot as "notified" whenever the HTTP invoke
+ * returned no error — but the endpoint answers 200 with a per-claim tally, so a slot whose every
+ * claim was REFUSED counted exactly like a slot that queued them all. Bulk-copied claims carry no
+ * round provenance, and the enqueue refuses a claim it cannot attribute to a round, so this is not
+ * a hypothetical: the whole batch could be refused and the wizard would report success (review
+ * round 2). Per-slot invoke failures are still swallowed so one bad slot cannot abort the rest —
+ * they surface as `failed`.
  */
-export async function notifyPriorityClaimsForSlots(slotIds: string[]): Promise<number> {
-  let notified = 0;
+export async function notifyPriorityClaimsForSlots(slotIds: string[]): Promise<NotifyClaimsResult> {
+  const out: NotifyClaimsResult = { queued: 0, needsAttention: 0, failed: 0, unreachableSlots: 0 };
   for (const slotId of slotIds) {
-    const { error } = await supabase.functions.invoke('send-priority-claim-invitation', {
+    const { data, error } = await supabase.functions.invoke('send-priority-claim-invitation', {
       body: { slotId },
     });
-    if (!error) notified++;
+    // A SLOT, not a claim. The invocation never returned, so how many claims it held is unknown —
+    // counting it as one failed invitation understated a slot holding five.
+    if (error) { out.unreachableSlots += 1; continue; }
+    const body = (data ?? {}) as {
+      queued?: number; suppressed?: number; held?: number; unstamped?: number; failed?: number;
+    };
+    // DISJOINT. `unstamped` is queued-but-unrecorded, so it counts in both figures on purpose —
+    // the message is on its way AND a person has to look at it.
+    out.queued += Number(body.queued ?? 0) + Number(body.unstamped ?? 0);
+    out.failed += Number(body.failed ?? 0);
+    out.needsAttention += Number(body.suppressed ?? 0) + Number(body.held ?? 0)
+      + Number(body.unstamped ?? 0);
   }
-  return notified;
+  return out;
 }
 
 export interface MyPendingClaim {
@@ -456,7 +510,7 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
   // academy/captain rebooking on behalf of a linked account-holder surfaces on their OWN
   // dashboard (a guest-keyed claim is invisible to a plain player_id read). Normalised into
   // the nested shape the group-collapse loop below already expects. Falls back to the legacy
-  // player_id-only direct read when the RPC isn't deployed yet (PGRST202) so the card keeps
+  // pure-profile direct read when the RPC isn't deployed yet (PGRST202) so the card keeps
   // working in the FE-deployed-migration-pending window.
   type NestedClaim = {
     id: string;
@@ -480,6 +534,9 @@ export async function getMyPendingPriorityClaims(profileId: string): Promise<MyP
       .from('slot_priority_claims')
       .select('id, claim_token, slot_id, rebook_group_id, availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, price_per_session, priority_window_ends_at)')
       .eq('player_id', profileId)
+      // ABC-18 A3: PURE-PROFILE only — a dual-key claim belongs to the guest, and this
+      // fallback selects claim_token, the bearer credential respond_to_priority_claim takes.
+      .is('guest_player_id', null)
       .eq('status', 'pending');
     if (fb.error) throw fb.error;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -983,7 +1040,14 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
   try {
     const claimData = await fetchClaimByToken(token);
     slot = (claimData?.slot ?? null) as ClaimSlotInfo | null;
-    playerId = ((claimData?.claim as { player_id?: string | null } | undefined)?.player_id) ?? null;
+    // ABC-18 A3 — GUEST-FIRST. A DUAL-KEY claim is about the GUEST; its profile column is a
+    // legacy artefact. Taking player_id raw made this token resolve to that profile and then
+    // sweep the profile's PURE sibling claims below — accepting and paying for seats belonging
+    // to a different account. A dual-key token therefore yields NO playerId, so the sibling
+    // sweep is skipped entirely and only this one claim is settled.
+    playerId = normalizeClaimIdentity(
+      claimData?.claim as { player_id?: string | null; guest_player_id?: string | null } | undefined,
+    ).playerId;
     // Prefer the status-independent mode from the token RPC (SECURITY DEFINER, so it resolves
     // even after the cycle leaves 'open' — otherwise an upfront cycle would silently fall back
     // to deferred and skip the pay-first gate). Fall back to the cycles_public read only when
@@ -1071,11 +1135,14 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
     const cycleSlotIds = (cycleSlots || []).map((s) => s.id);
 
     // Multi-slot cycles: the player may hold one claim per slot. Accept the
-    // remaining pending ones first so a single checkout covers the whole
-    // cycle. RLS scopes this select to the player's own claims; we also pin
-    // player_id explicitly (defense-in-depth) so a future RLS change can't
-    // widen it. Previously accepted ('claimed') siblings are picked up via
-    // their booking_id.
+    // remaining pending ones first so a single checkout covers the whole cycle.
+    //
+    // The sweep is PURE-PROFILE ONLY, and `playerId` is already null for a dual-key token
+    // (see the guest-first normalization above), so a guest token can never reach a profile's
+    // sibling claims. The explicit `player_id` + `guest_player_id IS NULL` pin is the
+    // defence-in-depth layer beneath that: the RLS policy now carries the same predicate
+    // (ABC-18 A3), and neither is relied on alone. Previously accepted ('claimed') siblings
+    // are picked up via their booking_id.
     //
     // NOTE: this is cycle-scoped (all slots sharing the target cyclus_id), not
     // rebook-group-scoped. For a cohort rebooked across several weekday/time
@@ -1090,7 +1157,8 @@ export async function acceptClaimAndStartPayment(token: string): Promise<AcceptA
         .from('slot_priority_claims')
         .select('claim_token, slot_id, status, booking_id')
         .in('slot_id', cycleSlotIds);
-      if (playerId) myClaimsQuery = myClaimsQuery.eq('player_id', playerId);
+      // ABC-18 A3: pure-profile only, for the same reason as the fallback above.
+      if (playerId) myClaimsQuery = myClaimsQuery.eq('player_id', playerId).is('guest_player_id', null);
       const { data: myClaims } = await myClaimsQuery;
       for (const mc of myClaims || []) {
         if (mc.claim_token === token) continue;

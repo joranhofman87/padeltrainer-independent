@@ -43,6 +43,11 @@ const MUST_VERIFY_JWT_FALSE = [
   // SUPABASE_SERVICE_ROLE_KEY (the LEGACY service-role JWT); the cron sends that JWT from Vault. verify_jwt=false
   // so the JWT reaches the function's own guard rather than the gateway's verifier.
   'notification-email-worker', 'notification-whatsapp-worker', 'notification-digest-worker',
+  // D7's three rebook member-open runtime workers — same self-authenticating shape, same Vault-sent
+  // legacy service-role JWT. They ship with INACTIVE schedules and (for the dispatcher) an absent
+  // send flag, but an inactive job that is later armed still reaches the gateway first, so the
+  // config must be right from the deploy rather than from the activation.
+  'rebook-member-open-worker', 'rebook-member-open-janitor', 'rebook-round-materializer',
   // N7 3c external liveness endpoint: an uptime provider carries no Supabase JWT, so
   // NOTIF_LIVENESS_TOKEN is the auth (constant-time, fails closed when unset). verify_jwt=false
   // so the token reaches the function's own guard rather than the gateway's JWT verifier.

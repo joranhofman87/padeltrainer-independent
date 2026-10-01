@@ -59,6 +59,10 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
   const [invitingClaimId, setInvitingClaimId] = useState<string | null>(null);
   const [sendingAll, setSendingAll] = useState(false);
   const [extending, setExtending] = useState(false);
+  // An unread deadline is not an absent deadline. See `reload`.
+  const [deadlineUnknown, setDeadlineUnknown] = useState(false);
+  // The cycle this session belongs to is not open — the enqueue would refuse (D3).
+  const [cycleClosed, setCycleClosed] = useState(false);
   // Both paths email the same claimants; block one while the other runs.
   const inviteBusy = invitingClaimId !== null || sendingAll;
 
@@ -67,11 +71,29 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
     try {
       const [claimsData, slot] = await Promise.all([
         getPriorityClaimsForSlot(slotId),
-        supabase.from('availability_slots').select('priority_window_ends_at').eq('id', slotId).maybeSingle(),
+        // The CYCLE STATUS travels with the deadline (D3). The enqueue refuses a claim whose cycle
+        // is not open, so offering the action at all would promise something the server must
+        // refuse — and before the refusal existed it queued a row that could only ever be held.
+        supabase.from('availability_slots')
+          .select('priority_window_ends_at, cyclus_id, cycles:cyclus_id(status)')
+          .eq('id', slotId).maybeSingle(),
       ]);
       setClaims(claimsData as unknown as ClaimRow[]);
+      // FAIL CLOSED ON THE DEADLINE. `slot.error` used to be dropped, so a failed read became a
+      // NULL deadline — and a null deadline reads as "the window has not ended", which re-enabled
+      // the Invite buttons past the real cutoff (review round 4). An unknown deadline is treated as
+      // a closed window: the enqueue would succeed and the verdict could only hold it.
+      if (slot.error) throw slot.error;
       setPriorityWindowEndsAt(slot.data?.priority_window_ends_at ?? null);
+      setDeadlineUnknown(false);
+      // A session naming a cycle that does not exist is NOT an open cycle — the same rule the
+      // enqueue applies, keyed on the id rather than on the status being non-null.
+      const cyc = slot.data as { cyclus_id: string | null; cycles: { status: string | null } | null } | null;
+      const embedded = Array.isArray(cyc?.cycles) ? cyc?.cycles[0] : cyc?.cycles;
+      setCycleClosed(!!cyc?.cyclus_id && (embedded?.status ?? null) !== 'open');
     } catch (e) {
+      setDeadlineUnknown(true);
+      setCycleClosed(true);
       toast.error((e as Error).message);
     } finally {
       setLoading(false);
@@ -80,10 +102,30 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
 
   useEffect(() => { reload(); }, [slotId]);
 
+  // THE CUTOFF ARRIVES ON ITS OWN, without a render to notice it.
+  //
+  // `windowEnded` was computed only while rendering, so a page opened a minute before the deadline
+  // and left idle kept its Invite buttons live indefinitely — the manager clicks after the window
+  // has closed, the row enqueues, and the verdict can only ever move it to `configuration_hold`
+  // (review round 2). A single timer set for the deadline re-renders exactly once, when it matters.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!priorityWindowEndsAt) return;
+    const msLeft = new Date(priorityWindowEndsAt).getTime() - Date.now();
+    if (msLeft <= 0) return;
+    // setTimeout clamps above ~24.8 days; re-arm rather than fire immediately.
+    const id = setTimeout(() => setNow(Date.now()), Math.min(msLeft + 1000, 2_000_000_000));
+    return () => clearTimeout(id);
+  }, [priorityWindowEndsAt, now]);
+
   if (loading) return null;
   if (claims.length === 0 && !priorityWindowEndsAt) return null;
 
-  const windowEnded = priorityWindowEndsAt && new Date(priorityWindowEndsAt) < new Date();
+  // ONE GATE for both send actions: the window has ended, the deadline could not be read, or the
+  // cycle is not open. Each is a state in which the server will refuse, so offering the action
+  // would be a promise the system cannot keep.
+  const windowEnded = deadlineUnknown || cycleClosed
+    || (priorityWindowEndsAt && new Date(priorityWindowEndsAt).getTime() < now);
 
   return (
     <Card>
@@ -117,6 +159,13 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                     <Badge variant={statusVariant[c.status]}>{t(statusLabel[c.status].key, statusLabel[c.status].defaultValue)}</Badge>
                     {c.status === 'pending' && (
                       <>
+                        {/* INVITE IS GATED BY THE WINDOW, exactly as Invite All is. The server
+                            deliberately allows an invitation to be BORN after the cutoff and holds
+                            it at verdict time, so an ungated button told the manager "Invitation
+                            queued" for a row that can only ever become `configuration_hold`.
+                            RELEASE stays available: closing the window does not stop a manager
+                            from letting a place go. */}
+                        {!windowEnded && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -129,11 +178,40 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                               // that are no longer pending.
                               const { data, error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { claimIds: [c.id], resend: true } });
                               if (error) throw error;
-                              const result = data as { sent?: number; skipped?: number } | null;
-                              if ((result?.sent ?? 0) > 0) {
-                                toast.success(t('priorityClaims.invitationSent', 'Invitation sent'));
-                              } else if ((result?.skipped ?? 0) > 0) {
-                                toast.info(t('priorityClaims.claimAlreadyResponded', 'This player has already responded — no invitation sent.'));
+                              const result = data as {
+                                queued?: number; already?: number; suppressed?: number;
+                                held?: number; unstamped?: number; failed?: number;
+                              } | null;
+                              // DISJOINT buckets, summed once. `unstamped` means the invitation IS
+                              // queued and only the record of it failed — so it appears here AND in
+                              // the success line, which is the truth rather than a contradiction.
+                              const needsAttention = (result?.suppressed ?? 0) + (result?.held ?? 0)
+                                + (result?.unstamped ?? 0) + (result?.failed ?? 0);
+                              const queued = (result?.queued ?? 0) + (result?.unstamped ?? 0);
+                              if (queued > 0) {
+                                // QUEUED, not sent. Since the cutover this button's success means a
+                                // durable enqueue; delivery is the D7 worker's, and it is inactive.
+                                toast.success(t('priorityClaims.invitationQueued', 'Invitation queued for delivery'));
+                                // ...and `sent` and `unresolved` are NOT disjoint: an enqueue whose
+                                // `invited_at` stamp failed returns BOTH, and the claim stays
+                                // un-stamped. Reporting only the success hid that (review round 4) —
+                                // but the round-4 wording then said the invitation "could not be
+                                // queued" about one that HAD been (round 5). It was queued; what
+                                // failed is the record of it, and that is what the manager is told.
+                                if (needsAttention > 0) {
+                                  toast.warning(t('priorityClaims.inviteQueuedNotRecorded', 'The invitation is queued, but recording it did not complete — it may be offered again. No duplicate email can be sent.'));
+                                }
+                              } else if (needsAttention > 0) {
+                                // The zero-send channel: a suppressed address, or an earlier
+                                // invitation for this claim sitting on hold. Both need a human, and
+                                // reporting either as "already invited" is how they stay invisible.
+                                toast.warning(t('priorityClaims.inviteNeedsAttention', 'This invitation could not be queued and needs attention — the address may be suppressed, or an earlier invitation for this player is on hold.'));
+                              } else if ((result?.already ?? 0) > 0) {
+                                // NOT NECESSARILY "already responded". Since the enqueue cutover a
+                                // skip also means the invitation is ALREADY QUEUED under its
+                                // permanent idempotency key — and for a still-pending claim the old
+                                // copy was simply false.
+                                toast.info(t('priorityClaims.claimNotResent', 'No new invitation was queued — this player has already been invited or has responded.'));
                               } else {
                                 toast.error(t('priorityClaims.inviteError', 'Could not send the invitation. Please try again.'));
                               }
@@ -149,6 +227,7 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                             ? <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                             : <Send className="h-4 w-4 mr-1" />} {t('priorityClaims.invite', 'Invite')}
                         </Button>
+                        )}
                         <Button
                           variant="ghost"
                           size="sm"
@@ -184,9 +263,35 @@ export default function PriorityClaimsSection({ slotId, onChange }: Props) {
                   // that were not invited before, so re-clicking is safe.
                   const { data, error } = await supabase.functions.invoke('send-priority-claim-invitation', { body: { slotId } });
                   if (error) throw error;
-                  const result = data as { sent?: number; skipped?: number } | null;
-                  if ((result?.sent ?? 0) > 0) {
-                    toast.success(t('priorityClaims.allInvited', 'Invitations sent'));
+                  const result = data as {
+                    queued?: number; already?: number; suppressed?: number;
+                    held?: number; unstamped?: number; failed?: number;
+                  } | null;
+                  // `failed` counts too. The endpoint answers 200 with a per-claim tally, so a batch
+                  // where every claim was REFUSED — no round provenance, for instance — arrives as
+                  // {sent:0, failed:N} and used to be reported as "everyone has already been
+                  // invited" (review round 3).
+                  const stuck = (result?.suppressed ?? 0) + (result?.held ?? 0)
+                    + (result?.unstamped ?? 0) + (result?.failed ?? 0);
+                  if (((result?.queued ?? 0) + (result?.unstamped ?? 0)) > 0) {
+                    toast.success(t('priorityClaims.allQueued', 'Invitations queued for delivery'));
+                    // A partial batch still has to name what did NOT queue, or the success toast
+                    // buries it.
+                    if (stuck > 0) {
+                      toast.warning(t('priorityClaims.someNeedAttention', {
+                        count: stuck,
+                        defaultValue_one: '{{count}} invitation could not be queued and needs attention.',
+                        defaultValue_other: '{{count}} invitations could not be queued and need attention.',
+                      }));
+                    }
+                  } else if (stuck > 0) {
+                    // Zero queued because every one of them is stuck is NOT "everyone has already
+                    // been invited"; that reading is what round 5 found reported as success.
+                    toast.warning(t('priorityClaims.someNeedAttention', {
+                      count: stuck,
+                      defaultValue_one: '{{count}} invitation could not be queued and needs attention.',
+                      defaultValue_other: '{{count}} invitations could not be queued and need attention.',
+                    }));
                   } else {
                     toast.info(t('priorityClaims.nothingToInvite', 'Everyone has already been invited or responded.'));
                   }

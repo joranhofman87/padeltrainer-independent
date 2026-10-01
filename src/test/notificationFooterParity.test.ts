@@ -24,6 +24,7 @@ const FOOTER_SOURCES = [
   'supabase/functions/send-digest-emails/index.ts',
   'supabase/functions/_shared/digest-render.ts',
 ] as const;
+const ABC27_MIGRATION = 'supabase/migrations/20261118120000_abc27_rebook_round_notification_authority.sql';
 
 describe('email footer ↔ app route parity', () => {
   it('the app constant is the value the footers are pinned to', () => {
@@ -48,6 +49,35 @@ describe('email footer ↔ app route parity', () => {
     expect(read('src/components/DomainRouter.tsx')).toContain(
       `path="${NOTIFICATION_SETTINGS_ENTRY_PATH}"`,
     );
+  });
+
+  it('the ABC27 resolver-time renderer owns the same manage-prefs route and a neutral player CTA', () => {
+    const src = read(ABC27_MIGRATION);
+    expect(src).toContain('https://padeltrainer.ai/app/settings/notifications');
+    expect(src).toContain('https://padeltrainer.ai/app/player');
+    expect(src.match(/>Open PadelTrainer<\/a>/g)).toHaveLength(2);
+    expect(src).not.toMatch(/\/app\/(academy|trainer|club|admin)\/settings\/notifications/);
+  });
+
+  it('ABC27 owns its catalog template and manage-prefs footer, with NO update arm', () => {
+    // THE UPDATE ARM THIS PIN USED TO REQUIRE IS THE ONE ABC-27 DELIBERATELY REMOVED, and leaving
+    // the pin red was an active hazard: the obvious way to make it green again is to put the
+    // upsert back. The unit says why it must not go back, in the line asserted below — every
+    // snapshot, trusted-copy and cap predicate in that unit READS this catalog row, so adopting a
+    // pre-existing one would switch those checks off invisibly. §0 has already proved the key is
+    // absent, which is what makes a bare INSERT both safe and loud.
+    const src = read(ABC27_MIGRATION);
+    expect(src).toContain("'rebook_member_open_player', 'manage_prefs', false, true, true");
+    expect(src, 'the seed must stay a bare INSERT')
+      .toContain('-- D7: NO `ON CONFLICT DO UPDATE`.');
+    const seed = src.slice(
+      src.indexOf('INSERT INTO public.notification_event_types'),
+      src.indexOf('-- D7: NO `ON CONFLICT DO UPDATE`.'));
+    expect(seed.length, 'the slice must contain the seed').toBeGreaterThan(200);
+    expect(seed, 'no conflict arm may adopt an unknown row').not.toMatch(/ON CONFLICT/);
+    // The event still declares the two facts this row exists to carry.
+    expect(seed).toContain('template_email');
+    expect(seed).toContain('email_footer_policy');
   });
 });
 

@@ -1,27 +1,25 @@
-// Phase 3.5a: the PLAYER-side invoice access decision for generate-invoice,
-// extracted so the exact arm set is unit-testable (the adversarial pass caught
-// three real bugs in the inline version: the player arm bypassed the split-
-// pending freeze, the reader's bridge arm had no counterpart, and the freeze
-// lookup failed open).
+// ABC-18 Pass B §1b — who may access an invoice AS THE PLAYER.
 //
-// ARM SET — mirrors get_my_invoices() (migration 20260903100000), with the
-// split-pending FREEZE applied OUTSIDE all arms:
-//   0. freeze: invoice has a guest with a pending twin-split/email-move review
-//      → NO player-side arm grants (the guest may be a DIFFERENT human; a
-//      both-keyed invoice's player_id came from the email linker). Fails
-//      CLOSED: a lookup error counts as frozen.
-//   1. player arm: invoice.player_id equals the caller's auth id or profile id.
-//   2. person arm: the guest's person_links person == the caller profile's.
-//   3. twin/linked bridge: guest.twin_of_profile_id = caller profile, or (no
-//      twin stamp AND guest.linked_profile_id = caller profile) — verbatim the
-//      reader's bridge.
-//   4. legacy email fallback: guest email == caller email. DELIBERATE EXCEPTION
-//      to the "same arms as the reader" doctrine — the reader does NOT have an
-//      email arm. Kept for the guest-paid-then-signed-up window before the
-//      linker runs (their invoice isn't LISTED yet, but their payment-link PDF
-//      keeps working). Freeze-gated like everything else.
+// THE RULE (FAM-02, the same one personRefOf encodes): an invoice carrying a guest_player_id
+// belongs to that GUEST. Any player_id beside it is legacy link decoration, not identity.
+//
+// Four arms used to grant access. Three are withdrawn and the fourth is narrowed:
+//
+//   1. player arm — RETAINED but PURE-PROFILE ONLY. It previously matched on invoice.player_id
+//      alone, so a DUAL-KEY invoice (a guest's invoice carrying some account's stale player_id)
+//      handed that account the guest's invoice: amounts, billing identity, payment page.
+//   2. person arm — WITHDRAWN. person_links equality descends from the legacy bridge.
+//   3. twin/linked bridge — WITHDRAWN. Both columns are caller-authored legacy values.
+//   4. legacy email fallback — WITHDRAWN. A mutable string is not identity; two people sharing a
+//      household address is ordinary, and matching on it hands one the other's invoice.
+//
+// The freeze check that guarded the person arm goes with it: it existed only to make bridge
+// traversal safe, and nothing traverses the bridge now. A guest invoice simply grants no account
+// access at all — GUEST-TOKEN authorization remains a SEPARATE, explicit boundary (the public
+// token path), and this helper never converts a token into account identity.
+//
+// Fails CLOSED on any lookup error.
 
-/** Minimal query surface (the service-role supabase client satisfies it). */
 export interface AuthzClient {
   from(table: string): {
     select(cols: string): {
@@ -47,86 +45,26 @@ export interface CallerIdentity {
   email: string | null;
 }
 
-/** True when the caller may access this invoice AS THE PLAYER. */
+/** True when the caller may access this invoice AS THE PLAYER (pure-profile self only). */
 export async function resolveInvoicePlayerAccess(
   invoice: InvoiceRefs,
   user: CallerIdentity,
   supabase: AuthzClient,
 ): Promise<boolean> {
-  // 0. Freeze OUTSIDE the arms — fail CLOSED on lookup error.
-  if (invoice.guest_player_id) {
-    const { data: frozen, error: frozenErr } = await supabase
-      .from('person_merge_review')
-      .select('id')
-      .eq('guest_player_id', invoice.guest_player_id)
-      .eq('status', 'pending')
-      .in('kind', ['twin_detached_needs_split', 'merged_guest_email_moved'])
-      .limit(1)
-      .maybeSingle();
-    if (frozen || frozenErr) return false;
-  }
+  // A guest invoice grants NO account access. This is checked first and unconditionally, so no
+  // later arm can be reached for a dual-key row.
+  if (invoice.guest_player_id) return false;
 
-  // 1. player arm.
-  if (invoice.player_id && user.id && invoice.player_id === user.id) return true;
-  if (invoice.player_id && user.id) {
-    const { data: playerProfile } = await supabase
-      .from('profiles')
-      .select('user_id')
-      .eq('id', invoice.player_id)
-      .single();
-    if (playerProfile?.user_id === user.id) return true;
-  }
+  if (!invoice.player_id || !user.id) return false;
 
-  if (!invoice.guest_player_id || !user.id) {
-    // No guest side (or anonymous caller): only the player arm could grant.
-    return false;
-  }
+  // pure-profile self: the invoice's profile is the caller's own.
+  if (invoice.player_id === user.id) return true;
 
-  const { data: callerProfile } = await supabase
+  const { data: playerProfile, error } = await supabase
     .from('profiles')
-    .select('id')
-    .eq('user_id', user.id)
-    .maybeSingle();
-  const { data: guestRow } = await supabase
-    .from('guest_players')
-    .select('email, twin_of_profile_id, linked_profile_id')
-    .eq('id', invoice.guest_player_id)
-    .maybeSingle();
-
-  // 2. person arm — service-role client reads the RLS-locked person_links.
-  if (callerProfile?.id) {
-    const { data: guestLink } = await supabase
-      .from('person_links')
-      .select('person_id')
-      .eq('guest_player_id', invoice.guest_player_id)
-      .maybeSingle();
-    if (guestLink?.person_id) {
-      const { data: profileLink } = await supabase
-        .from('person_links')
-        .select('person_id')
-        .eq('profile_id', callerProfile.id as string)
-        .maybeSingle();
-      if (profileLink?.person_id === guestLink.person_id) return true;
-    }
-  }
-
-  // 3. twin/linked bridge (verbatim the reader's bridge arm).
-  if (callerProfile?.id && guestRow) {
-    if (
-      guestRow.twin_of_profile_id === callerProfile.id ||
-      (guestRow.twin_of_profile_id === null && guestRow.linked_profile_id === callerProfile.id)
-    ) {
-      return true;
-    }
-  }
-
-  // 4. legacy email fallback (deliberate exception — see header).
-  if (
-    user.email && guestRow?.email &&
-    String(guestRow.email).toLowerCase() === user.email.toLowerCase()
-  ) {
-    return true;
-  }
-
-  return false;
+    .select('user_id')
+    .eq('id', invoice.player_id)
+    .single();
+  if (error) return false;          // fail closed on lookup error
+  return playerProfile?.user_id === user.id;
 }

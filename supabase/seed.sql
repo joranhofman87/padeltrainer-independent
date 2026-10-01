@@ -37,3 +37,25 @@ BEGIN
     EXECUTE 'REVOKE ALL ON public.membership_backfill_items FROM PUBLIC, anon, authenticated, service_role';
   END IF;
 END $$;
+
+-- ABC-16/ABC-17 overlays. These are NOT default-deny — `authenticated` keeps SELECT so the player
+-- pages stay readable — so the blanket grant above has to be undone selectively rather than wholesale:
+-- re-revoke everything, then restore exactly the read the containment allows
+-- (20261118110000_abc16_abc17_relationship_evidence_containment.sql, section 6).
+--
+-- service_role in particular must NOT regain direct access: both tables are in the backup catalogue
+-- but are read through the SECURITY DEFINER `backup_export_table`, which holds EXECUTE, so a direct
+-- grant is an unjustified standing privilege. Without this block the ACL assertions would hold on a
+-- freshly-pushed database and fail on every local reset and CI run — which is exactly where the tests
+-- that assert them execute.
+DO $$
+BEGIN
+  IF to_regclass('public.academy_player_metadata') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON public.academy_player_metadata FROM PUBLIC, anon, authenticated, service_role';
+    EXECUTE 'GRANT SELECT ON public.academy_player_metadata TO authenticated';
+  END IF;
+  IF to_regclass('public.academy_player_locations') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON public.academy_player_locations FROM PUBLIC, anon, authenticated, service_role';
+    EXECUTE 'GRANT SELECT ON public.academy_player_locations TO authenticated';
+  END IF;
+END $$;

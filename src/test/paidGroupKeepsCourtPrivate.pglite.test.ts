@@ -7,6 +7,15 @@
 // 'reserved_group', and the member-open notifier skips it — while an UNPAID group's slot keeps
 // today's per-booking behavior and the group's own raw-count fills still work. Runs the REAL
 // migration (20260817100000) against Postgres (PGlite).
+//
+// HISTORICAL SCOPE NOTE (D7 runtime cutover). The last describe reaches paid-group privacy
+// THROUGH `rebook_cycles_needing_member_open_notice`, which the live schema no longer carries
+// (20261119110000 drops it). The RPC is a PROBE here, not the subject: the subject is that a
+// paid-group-held court stays private, which is live behaviour of this migration and is asserted
+// against the migration in isolation. The D7 successor of the same containment — a paid-group
+// recipient must be ineligible under `abc27_p_live_eligibility` — is proved on the REAL chain in
+// `src/test/d7MemberOpenWorker.realpg.test.ts` (E-12), so the property has forward cover and this
+// file keeps the historical evidence rather than being rewritten.
 import { describe, it, expect, beforeAll } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';

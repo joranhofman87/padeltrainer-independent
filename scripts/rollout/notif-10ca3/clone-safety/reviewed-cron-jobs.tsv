@@ -18,11 +18,13 @@
 release-expired-rebook-holds	no	SQL-only: releases expired rebook holds
 release-expired-guest-slot-holds	no	SQL-only: releases expired guest slot holds
 expire-lapsed-priority-claims	no	SQL-only: expires lapsed priority claims
-notify-rebook-member-open	yes	sends rebook member-open emails directly via Resend (sendResendEmail)
 auto-rebook-reminder	yes	invokes the rebook reminder edge function
 notification-email-worker	yes	EVERY 2 MINUTES: drives real invoice/notification email sends
 notification-whatsapp-worker	yes	EVERY 2 MINUTES: drives real WhatsApp sends
 notification-digest-worker	yes	10c-b: EVERY 5 MINUTES once armed, drives real digest email sends via net.http_post. SHIPS INACTIVE — arming is an owner gate (scripts/rollout/notif-10cb)
+rebook-member-open-worker	yes	D7: EVERY 2 MINUTES once armed, drives real rebook member-open email sends via net.http_post. SHIPS INACTIVE, and the function itself also ships with REBOOK_MEMBER_OPEN_SEND_ENABLED absent — arming is two separate owner gates
+rebook-round-materializer	no	D7: EVERY 5 MINUTES once armed, freezes due rounds and writes per-recipient decisions. SQL-only via net.http_post to a function that makes no provider call. SHIPS INACTIVE
+rebook-member-open-janitor	no	D7: EVERY 10 MINUTES once armed, recovers expired transport leases and closes unresolved rows. SQL-only via net.http_post to a function that makes no provider call. SHIPS INACTIVE
 enrich-locations-background	yes	RUNTIME-SCHEDULED by public.schedule_enrichment_job
 fetch-location-logos-background	yes	RUNTIME-SCHEDULED by public.schedule_logo_fetch_job
 invoice-health-check-daily	yes	RUNTIME-SCHEDULED by public.schedule_invoice_health_check_job

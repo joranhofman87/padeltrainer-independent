@@ -110,9 +110,16 @@ describe('P2-2 guest_players academy SELECT scoping', () => {
   it('SEES a guest booked on the academy\'s slot', async () => {
     expect(await belongs(G_BOOKING)).toBe(true);
   });
-  it('SEES a guest linked via academy_player_metadata', async () => {
-    expect(await belongs(G_META)).toBe(true);
-  });
+  // SUPERSEDED: this suite used to assert "SEES a guest linked via academy_player_metadata".
+  // ABC-16 H0 (20261118110000_abc16_h0_metadata_authority_containment.sql) REMOVED that arm.
+  // The overlay row is written by the caller, for a caller-chosen subject, so accepting it as
+  // proof of the relationship let any authenticated user who created an academy mint read
+  // access to an arbitrary guest's name, email, phone and billing details.
+  //
+  // The assertion is not simply inverted here: this file applies ONLY the P2-2 migration, so
+  // an inverted expectation would describe a definition that main no longer has. The current
+  // contract is proved against the FULL effective chain — including the attack it used to
+  // allow — in src/test/abc16MetadataAuthority.pglite.test.ts.
   it('does NOT see an unrelated shared-trainer guest (the leak)', async () => {
     expect(await belongs(G_UNRELATED)).toBe(false);
   });

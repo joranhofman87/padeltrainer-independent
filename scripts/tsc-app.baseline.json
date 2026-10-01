@@ -1,6 +1,4 @@
 {
-  "src/components/academy/AcademyPlayerDetailsCard.tsx|TS2322|Type 'Promise<{ email: string; phone: string; preferred_location_id: string; skill_rating: number; rating_system: string; notes: string; first_name: string; last_name: string; full_name: string; } | { guestPayload: { ...; }; profilePayload?: undefined; preferredLocationId?: undefined; } | { ...; }>' is not assignable to type 'Promise<void>'.": 1,
-  "src/components/academy/AcademyPlayerRemoveCard.tsx|TS2322|Type 'Promise<{ removed_at: string; }>' is not assignable to type 'Promise<void>'.": 1,
   "src/components/academy/AcademySidebar.test.tsx|TS2322|Type '{ readonly id: \"academy-1\"; readonly name: \"RL Padel\"; readonly slug: \"rl-padel\"; readonly role: \"owner\"; readonly is_verified: true; readonly is_public: true; readonly logo_url: any; }' is not assignable to type 'AcademyProfile & { role: string; }'.": 1,
   "src/components/academy/SlotDetailDialog.tsx|TS2345|Argument of type 'unknown' is not assignable to parameter of type 'Error'.": 1,
   "src/components/booking/BookForPlayerDialog.tsx|TS2339|Property 'length' does not exist on type 'unknown'.": 2,
@@ -14,8 +12,6 @@
   "src/components/invoices/InvoiceSourceCard.tsx|TS2322|Type 'TFunction<\"common\", undefined>' is not assignable to type '(key: string, fallback?: string, opts?: { count?: number; }) => string'.": 1,
   "src/components/NavLink.tsx|TS2322|Type '{ slot?: string; style?: CSSProperties | ((props: NavLinkRenderProps) => CSSProperties); title?: string; mask?: To; type?: string; defaultChecked?: boolean; ... 293 more ...; className: ({ isActive: active, isPending }: NavLinkRenderProps) => string; }' is not assignable to type 'IntrinsicAttributes & NavLinkProps & RefAttributes<HTMLAnchorElement>'.": 1,
   "src/components/NavLink.tsx|TS2339|Property 'isActive' does not exist on type 'NavLinkCompatProps'.": 1,
-  "src/components/trainer/TrainerPlayerDetailsCard.tsx|TS2322|Type 'Promise<{ email: string; phone: string; preferred_location_id: string; skill_rating: number; rating_system: string; notes: string; first_name: string; last_name: string; full_name: string; } | { guestPayload: { ...; }; profilePayload?: undefined; preferredLocationId?: undefined; } | { ...; }>' is not assignable to type 'Promise<void>'.": 1,
-  "src/components/trainer/TrainerPlayerRemoveCard.tsx|TS2322|Type 'Promise<{ removed_at: string; }>' is not assignable to type 'Promise<void>'.": 1,
   "src/lib/agendaSlots.ts|TS2322|Type 'Map<string, string>' is not assignable to type 'Record<string, string>'.": 1,
   "src/lib/cycles.test.ts|TS2365|Operator '+' cannot be applied to types 'unknown' and 'unknown'.": 1,
   "src/lib/cycles.ts|TS2304|Cannot find name 'IntakeRequest'.": 5,

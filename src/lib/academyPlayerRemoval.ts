@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabaseClient';
+import { refuseOverlayWrite } from '@/lib/overlayWriteContainment';
 
 export type AcademyPlayerRemovalKey = {
   guestPlayerId: string | null;
@@ -23,61 +23,28 @@ export function shouldShowPlayerInAcademyOverview(
   return !isPlayerRemovedFromAcademy(meta);
 }
 
-/** Soft-remove: sets academy_player_metadata.removed_at only. Never deletes global player rows. */
+/**
+ * Soft-remove: sets academy_player_metadata.removed_at only. Never deletes global player rows.
+ *
+ * ABC-16 H0: temporarily has no client writer. Soft removal wrote — and for a player with no
+ * prior overlay row, CREATED — exactly the `academy_player_metadata` row that three
+ * authorization predicates then accepted as proof of the academy↔player relationship, for a
+ * caller-chosen subject. It is the clearest instance of the defect, so it closes with the
+ * rest; see `src/lib/overlayWriteContainment.ts`.
+ *
+ * Existing removals are unaffected and still hide their players: `removed_at` is read by
+ * `get_players_overview` exactly as before, and no row was changed by H0.
+ */
 export async function removePlayerFromAcademy(params: {
   academyProfileId: string;
   guestPlayerId: string | null;
   profileId: string | null;
   removedByProfileId?: string | null;
   removeReason?: string | null;
-}) {
+}): Promise<never> {
+  // Key validation first: an invalid call should still read as invalid, not as contained.
   if (!params.guestPlayerId && !params.profileId) {
     throw new Error('invalidPlayerKey');
   }
-
-  const removedAt = new Date().toISOString();
-  const removalFields = {
-    removed_at: removedAt,
-    removed_by: params.removedByProfileId ?? null,
-    remove_reason: params.removeReason?.trim() || null,
-  };
-
-  // A linked guest surfaces in the players overview via its GUEST id, and the overview
-  // hides the linked registered profile precisely because a guest points at it. So we must
-  // mark removed_at on EVERY identity the player has — guest AND linked profile — each in
-  // its own row (the table's CHECK allows only one id per row). Removing just the guest
-  // would un-hide the profile and the player would reappear as a registered player.
-  const targets: Array<{ col: 'guest_player_id' | 'profile_id'; val: string }> = [];
-  if (params.guestPlayerId) targets.push({ col: 'guest_player_id', val: params.guestPlayerId });
-  if (params.profileId) targets.push({ col: 'profile_id', val: params.profileId });
-
-  for (const target of targets) {
-    const { data: existing } = await supabase
-      .from('academy_player_metadata')
-      .select('id')
-      .eq('academy_profile_id', params.academyProfileId)
-      .eq(target.col, target.val)
-      .maybeSingle();
-
-    if (existing) {
-      const { error } = await supabase
-        .from('academy_player_metadata')
-        .update(removalFields as any)
-        .eq('id', existing.id)
-        .eq('academy_profile_id', params.academyProfileId);
-      if (error) throw error;
-    } else {
-      const { error } = await supabase.from('academy_player_metadata').insert({
-        academy_profile_id: params.academyProfileId,
-        guest_player_id: target.col === 'guest_player_id' ? target.val : null,
-        profile_id: target.col === 'profile_id' ? target.val : null,
-        tag_ids: [],
-        notes: null,
-        ...removalFields,
-      } as any);
-      if (error) throw error;
-    }
-  }
-
-  return { removed_at: removedAt };
+  refuseOverlayWrite('removal');
 }

@@ -51,37 +51,173 @@ const codeLines = (sql: string) =>
  * is a send. Only a COMMENT ON statement's text is dropped, because a docstring that describes
  * the pipeline is not the pipeline.
  */
+type DollarToken = { index: number; text: string };
+
+/**
+ * SQL with comments and quoted strings blanked, plus only the dollar tags that occurred in code.
+ *
+ * The blanked string has exactly the same length as the source. Keeping indexes stable lets the
+ * classifier inspect executable context without allowing prose such as
+ * `/* cron.schedule(... $do$ ...` or `'cron.schedule(... $do$ ...'` to manufacture delimiters or
+ * a cron call. Dollar bodies themselves are deliberately not skipped: a kept DO body executes at
+ * install time, and may contain a nested dollar-quoted cron command that really is deferred.
+ */
+function lexicalSql(sql: string): { code: string; dollars: DollarToken[] } {
+  const code = sql.split('');
+  const dollars: DollarToken[] = [];
+  const dollarAt = (at: number): string | null =>
+    sql.slice(at).match(/^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/)?.[0] ?? null;
+  const blank = (from: number, to: number) => {
+    for (let at = from; at < to; at += 1) {
+      if (code[at] !== '\n' && code[at] !== '\r') code[at] = ' ';
+    }
+  };
+
+  let i = 0;
+  while (i < sql.length) {
+    if (sql.startsWith('--', i)) {
+      const from = i;
+      const newline = sql.indexOf('\n', i + 2);
+      i = newline < 0 ? sql.length : newline;
+      blank(from, i);
+      continue;
+    }
+    if (sql.startsWith('/*', i)) {
+      const from = i;
+      let depth = 1;
+      i += 2;
+      while (i < sql.length && depth > 0) {
+        if (sql.startsWith('/*', i)) { depth += 1; i += 2; }
+        else if (sql.startsWith('*/', i)) { depth -= 1; i += 2; }
+        else i += 1;
+      }
+      blank(from, i);
+      continue;
+    }
+    if (sql[i] === "'") {
+      const from = i;
+      const escapeString = i > 0 && /[eE]/.test(sql[i - 1])
+        && (i < 2 || !/[A-Za-z0-9_$]/.test(sql[i - 2]));
+      i += 1;
+      while (i < sql.length) {
+        if (escapeString && sql[i] === '\\') { i = Math.min(sql.length, i + 2); continue; }
+        if (sql[i] === "'" && sql[i + 1] === "'") { i += 2; continue; }
+        if (sql[i] === "'") { i += 1; break; }
+        i += 1;
+      }
+      blank(from, i);
+      continue;
+    }
+    if (sql[i] === '"') {
+      const from = i;
+      i += 1;
+      while (i < sql.length) {
+        if (sql[i] === '"' && sql[i + 1] === '"') { i += 2; continue; }
+        if (sql[i] === '"') { i += 1; break; }
+        i += 1;
+      }
+      blank(from, i);
+      continue;
+    }
+    if (sql[i] === '$') {
+      const text = dollarAt(i);
+      if (text) {
+        dollars.push({ index: i, text });
+        i += text.length;
+        continue;
+      }
+    }
+    i += 1;
+  }
+  return { code: code.join(''), dollars };
+}
+
+const matchingDollarClose = (dollars: DollarToken[], opener: number): number => {
+  for (let candidate = opener + 1; candidate < dollars.length; candidate += 1) {
+    if (dollars[candidate].text === dollars[opener].text) return candidate;
+  }
+  return -1;
+};
+
+/**
+ * Dollar openers that belong to CREATE FUNCTION / PROCEDURE bodies.
+ *
+ * This is deliberately a forward lexical statement scan. Statement boundaries exist only in
+ * executable SQL: semicolons inside strings, quoted identifiers, comments and dollar bodies do
+ * not reset the statement start. That makes the CREATE anchor the actual executable start rather
+ * than "whatever happened to occur in the previous 400 characters".
+ */
+function deferredRoutineBodyOpeners(
+  sql: string,
+  lexical: ReturnType<typeof lexicalSql>,
+): Set<number> {
+  const openers = new Set<number>();
+  let statementCode = '';
+  const tokenAt = new Map(lexical.dollars.map((token, index) => [token.index, index]));
+  let i = 0;
+
+  while (i < sql.length) {
+    const opener = tokenAt.get(i);
+    if (opener !== undefined) {
+      const close = matchingDollarClose(lexical.dollars, opener);
+      if (close >= 0) {
+        if (/^\s*CREATE\s+(?:OR\s+REPLACE\s+)?(?:FUNCTION|PROCEDURE)\b[\s\S]*\bAS\s*$/i.test(statementCode)) {
+          openers.add(i);
+        }
+        statementCode += ' ';
+        i = lexical.dollars[close].index + lexical.dollars[close].text.length;
+        continue;
+      }
+    }
+    if (lexical.code[i] === ';') {
+      statementCode = '';
+      i += 1;
+      continue;
+    }
+    statementCode += lexical.code[i];
+    i += 1;
+  }
+  return openers;
+}
+
 function installStatements(sql: string): string[] {
   const deferred: [number, number][] = [];
   const closers = new Set<number>();      // closing tags of blocks we KEPT — never re-open them
-  const tag = /\$([a-z_]*)\$/gi;
-  let m: RegExpExecArray | null;
-  while ((m = tag.exec(sql))) {
-    if (closers.has(m.index)) continue;   // this is the end of a kept block, not a new one
-    const close = sql.indexOf(m[0], m.index + m[0].length);
-    if (close < 0) break;
-    const before = sql.slice(Math.max(0, m.index - 400), m.index);
+  const lexical = lexicalSql(sql);
+  const routineBodies = deferredRoutineBodyOpeners(sql, lexical);
+  for (let opener = 0; opener < lexical.dollars.length; opener += 1) {
+    const current = lexical.dollars[opener];
+    if (closers.has(current.index)) continue;   // end of a kept block, not a new opener
+    const closeToken = matchingDollarClose(lexical.dollars, opener);
+    if (closeToken < 0) continue;               // uncertain input stays visible: fail closed
+    const close = lexical.dollars[closeToken];
+    const prefix = lexical.code.slice(0, current.index);
+    const statementBefore = prefix.slice(prefix.lastIndexOf(';') + 1);
     // a cron COMMAND: either the literal is syntactically an argument of the schedule/alter call,
     // or it is assigned to a variable this file hands to one — but in the second case ONLY if that
     // variable is never EXECUTEd. "It is later scheduled" does not prove the block did not also
     // run it during installation, which is exactly how a send could hide:
     //   cmd := format($cmd$SELECT net.http_post(…)$cmd$);  EXECUTE cmd;  PERFORM cron.schedule(…, cmd);
-    const assignedTo = before.match(/(\w+)\s*(?:text\s*)?:=\s*(?:format\s*\(\s*)?$/i)?.[1];
+    const assignedTo = statementBefore.match(/(\w+)\s*(?:text\s*)?:=\s*(?:format\s*\(\s*)?$/i)?.[1];
+    let containerEnd = sql.length;
+    for (const keptClose of closers) {
+      if (keptClose > close.index && keptClose < containerEnd) containerEnd = keptClose;
+    }
+    const after = lexical.code.slice(close.index + close.text.length, containerEnd);
     const scheduledLater = !!assignedTo
-      && new RegExp(`cron\\.(schedule|alter_job)\\s*\\([^;]*\\b${assignedTo}\\b`, 'i').test(sql);
-    const executedHere = !!assignedTo && new RegExp(`\\bEXECUTE\\s+${assignedTo}\\b`, 'i').test(sql);
-    const isCronCommand = /cron\.(schedule|alter_job)\s*\([^;]*$/i.test(before)
+      && new RegExp(`cron\\.(schedule|alter_job)\\s*\\([^;]*\\b${assignedTo}\\b`, 'i').test(after);
+    const executedHere = !!assignedTo && new RegExp(`\\bEXECUTE\\s+${assignedTo}\\b`, 'i').test(after);
+    const isCronCommand = /cron\.(schedule|alter_job)\s*\([^;]*$/i.test(statementBefore)
       || (scheduledLater && !executedHere);
-    const isFunctionBody = /CREATE\s+(OR\s+REPLACE\s+)?(FUNCTION|PROCEDURE)\b[\s\S]*\bAS\s*$/i.test(before);
+    const isFunctionBody = routineBodies.has(current.index);
     if (isFunctionBody || isCronCommand) {
-      deferred.push([m.index, close + m[0].length]);
-      tag.lastIndex = close + m[0].length;        // its contents are deferred; skip them whole
+      deferred.push([current.index, close.index + close.text.length]);
+      opener = closeToken;                       // its contents are deferred; skip them whole
     } else {
       // KEPT — a DO block runs at install, so keep scanning INSIDE it: the digest cron's command
       // literal lives inside one, and a naive skip-to-close would leave that literal in the scan
       // (and, worse, could pair the block's closing tag with the next block's opening one).
-      closers.add(close);
-      tag.lastIndex = m.index + m[0].length;
+      closers.add(close.index);
     }
   }
   let out = '';
@@ -96,6 +232,67 @@ function installStatements(sql: string): string[] {
   out = out.replace(/COMMENT ON [\s\S]*?;\s*\n/gi, ' <comment> \n');
   return codeLines(out);
 }
+
+describe('install-time SQL classification regressions', () => {
+  it('defers a routine body whose declaration is longer than the old 400-character lookbehind', () => {
+    const args = Array.from({ length: 45 }, (_, i) => `p_${i} text DEFAULT 'value;${i}'`).join(',\n');
+    const sql = `CREATE OR REPLACE FUNCTION public.long_header(${args}) RETURNS void LANGUAGE plpgsql AS $body$
+      BEGIN PERFORM public.enqueue_notification('deferred'); END
+    $body$;`;
+    expect(installStatements(sql).join('\n')).not.toContain("enqueue_notification('deferred')");
+  });
+
+  it('keeps DO blocks, dynamic SQL and ordinary install-time calls visible', () => {
+    const sql = `
+      DO $tag$ BEGIN PERFORM public.enqueue_notification('do'); END $tag$;
+      EXECUTE 'SELECT public.enqueue_notification(''dynamic'')';
+      SELECT public.enqueue_notification('ordinary');
+    `;
+    const visible = installStatements(sql).join('\n');
+    expect(visible).toContain("enqueue_notification('do')");
+    expect(visible).toContain("enqueue_notification(''dynamic'')");
+    expect(visible).toContain("enqueue_notification('ordinary')");
+  });
+
+  it('fake CREATE text and semicolons in strings/comments cannot hide an install-time call', () => {
+    const sql = `
+      SELECT 'CREATE FUNCTION public.fake() AS $x$ ; $x$;';
+      /* CREATE PROCEDURE public.fake_two() AS $y$ ; $y$; */
+      -- CREATE FUNCTION public.fake_three() AS $z$ ; $z$;
+      PERFORM public.enqueue_notification('still-visible');
+    `;
+    expect(installStatements(sql).join('\n')).toContain("enqueue_notification('still-visible')");
+  });
+
+  it('fake cron syntax and dollar tags in prose cannot defer a real DO block', () => {
+    const commentSql = `
+      /* cron.schedule('not-code', '* * * * *', $do$ SELECT 1 $do$) */
+      DO $do$
+        BEGIN PERFORM public.enqueue_notification('comment-visible'); END
+      $do$;
+    `;
+    expect(installStatements(commentSql).join('\n'))
+      .toContain("enqueue_notification('comment-visible')");
+
+    const stringSql = `
+      DO $outer$
+      BEGIN
+        IF 'cron.schedule(''not-code'', ''* * * * *'', $do$ SELECT 1 $do$)' IS NOT NULL THEN
+          EXECUTE $sql$
+            DO $do$
+            BEGIN
+              PERFORM public.enqueue_notification('string-visible');
+            END
+            $do$;
+          $sql$;
+        END IF;
+      END
+      $outer$;
+    `;
+    expect(installStatements(stringSql).join('\n'))
+      .toContain("enqueue_notification('string-visible')");
+  });
+});
 
 describe('the notification release unit is INERT', () => {
   it('scans a chain that actually contains the pipeline (the scan itself is not vacuous)', () => {

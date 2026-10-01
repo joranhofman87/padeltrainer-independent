@@ -1,3 +1,9 @@
+import {
+  settlePaidBookings,
+  settlementLogContext,
+  isHardRefusal,
+  type SettlementOutcome,
+} from "../_shared/settlement.ts";
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { refreshTokenIfNeeded as sharedRefreshTokenIfNeeded, resolveAccessToken as sharedResolveAccessToken } from "../_shared/mollie-token-resolution.ts";
@@ -361,26 +367,76 @@ serve(async (req) => {
         // to bookkeeping. The status predicates also close the read-then-act
         // race of the cancelled/already-paid checks above with a concurrent
         // cancel or duplicate delivery.
-        const { data: claimedInvoiceRows, error: invUpdateError } = await supabase
+        // ABC-23 §3: the invoice is NO LONGER claimed first. Claiming it here and syncing the
+        // bookings hundreds of lines later meant a failure in between left a PAID invoice whose
+        // seats were never settled — money recorded as received against unpaid bookings, and the
+        // notify/forward side-effects already fired. Invoice and bookings now settle in ONE
+        // transaction: either both land or neither does.
+        const { data: invoiceData, error: linkedReadErr } = await supabase
           .from("invoices")
-          .update({ status: "paid", paid_at: new Date().toISOString(), mollie_payment_id: paymentId })
+          .select("booking_ids, rebook_cyclus_id, rebook_group_id")
           .eq("id", invoiceIdFromMetadata)
-          .neq("status", "paid")
-          .neq("status", "cancelled")
-          .select("id, invoice_number, total");
-        if (invUpdateError) {
-          logStep("Failed to update invoice", { error: invUpdateError.message, invoiceId: invoiceIdFromMetadata });
-          await notifySlackError(
-            "mollie-webhook",
-            "Invoice paid webhook: DB update failed",
-            { paymentId, invoiceId: invoiceIdFromMetadata, error: invUpdateError.message },
-          );
-          // M-25: transient DB failure and the invoice was NOT marked paid —
-          // 500 so Mollie retries with a full, safe reprocess.
+          .single();
+        if (linkedReadErr) {
+          logStep("Failed to read linked bookings", { error: linkedReadErr.message, invoiceId: invoiceIdFromMetadata });
           return new Response("Internal Server Error", { status: 500 });
         }
+        const linkedBookingIds = ((invoiceData?.booking_ids ?? []) as string[]).filter(Boolean);
 
-        const claimedPaidTransition = (claimedInvoiceRows?.length ?? 0) > 0;
+        let invoiceSettlement: SettlementOutcome;
+        try {
+          invoiceSettlement = await settlePaidBookings(supabase, {
+            // An invoice with no bookings takes the command's invoice-only path; one WITH
+            // bookings settles both together. Neither is a browser- or caller-chosen subset.
+            source: "webhook_invoice",
+            bookingIds: linkedBookingIds,
+            providerPaymentId: paymentId,
+            providerTransactionId: paymentId,
+            invoiceId: invoiceIdFromMetadata,
+          });
+        } catch (settleErr) {
+          const msg = settleErr instanceof Error ? settleErr.message : String(settleErr);
+          logStep("Invoice settlement failed", { error: msg, invoiceId: invoiceIdFromMetadata });
+          await notifySlackError(
+            "mollie-webhook",
+            "Invoice paid webhook: atomic settlement failed",
+            { paymentId, invoiceId: invoiceIdFromMetadata, error: msg },
+          );
+          // M-25: nothing was marked paid — 500 so Mollie retries with a full, safe reprocess.
+          return new Response("Internal Server Error", { status: 500 });
+        }
+        logStep("Invoice settlement applied", settlementLogContext(invoiceSettlement));
+
+        if (invoiceSettlement.refusalReason) {
+          const terminal = isHardRefusal(invoiceSettlement.refusalReason);
+          await notifySlackError(
+            "mollie-webhook",
+            terminal
+              ? "Invoice paid webhook: settlement refused — manual review (money captured)"
+              : "Invoice paid webhook: settlement refused (retryable)",
+            { paymentId, invoiceId: invoiceIdFromMetadata, reason: invoiceSettlement.refusalReason },
+          );
+          await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paymentForCancelledInvoice, mollie_payment_id: paymentId, invoice_id: invoiceIdFromMetadata, metadata: { reason: invoiceSettlement.refusalReason } });
+          // Terminal refusals are accepted so Mollie stops retrying; the rest retry.
+          return new Response(terminal ? "OK" : "Internal Server Error", { status: terminal ? 200 : 500 });
+        }
+
+        if (invoiceSettlement.paidNoSeat.length > 0) {
+          // Was previously "invoice paid on a CANCELLED booking" — now an explicit settlement
+          // outcome rather than a pre-read, and reported at most once (first observation only).
+          logStep("Invoice paid with NO seat — manual refund needed", { paidNoSeat: invoiceSettlement.paidNoSeat, invoiceId: invoiceIdFromMetadata });
+          await notifySlackError(
+            "mollie-webhook",
+            "Invoice paid webhook: payment landed on booking(s) with no seat — manual refund/review",
+            { paymentId, invoiceId: invoiceIdFromMetadata, bookingIds: invoiceSettlement.paidNoSeat },
+          );
+        }
+
+        // The invoice claim is the command's, not a local UPDATE: exactly one request sees true.
+        const claimedPaidTransition = invoiceSettlement.invoicePaidNow;
+        const { data: claimedInvoiceRows } = claimedPaidTransition
+          ? await supabase.from("invoices").select("id, invoice_number, total").eq("id", invoiceIdFromMetadata)
+          : { data: null };
 
         if (claimedPaidTransition) {
           logStep("Invoice marked as paid via payment link", { invoiceId: invoiceIdFromMetadata });
@@ -413,78 +469,10 @@ serve(async (req) => {
           await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.duplicateWebhookIgnored, mollie_payment_id: paymentId, invoice_id: invoiceIdFromMetadata });
         }
 
-        // Also sync linked bookings so dashboard shows correct payment status.
-        // A transient failure here is retryable (flagged → 500 below): the
-        // notify/forward side effects are claim-gated, so a Mollie retry only
-        // re-runs this idempotent sync.
-        let linkedBookingsSyncFailed = false;
-        const { data: invoiceData, error: invoiceDataError } = await supabase
-          .from("invoices")
-          .select("booking_ids, rebook_cyclus_id, rebook_group_id")
-          .eq("id", invoiceIdFromMetadata)
-          .single();
-
-        if (invoiceDataError) {
-          logStep("Failed to read linked bookings", { error: invoiceDataError.message, invoiceId: invoiceIdFromMetadata });
-          linkedBookingsSyncFailed = true;
-        }
-
-        if (invoiceData?.booking_ids && invoiceData.booking_ids.length > 0) {
-          try {
-            // Detect a paid invoice landing on a CANCELLED booking before the
-            // guarded write-back skips it: the money was received but the seat
-            // is gone → alert for a manual refund (mirrors the booking-pay branch).
-            const { data: linkedRows } = await supabase
-              .from("bookings")
-              .select("id, status, payment_status")
-              .in("id", invoiceData.booking_ids);
-            const cancelledPaid = findCancelledPaidBookings(linkedRows || []);
-            if (cancelledPaid.length > 0) {
-              logStep("Invoice paid on CANCELLED booking(s) — manual refund needed", {
-                cancelledPaid,
-                invoiceId: invoiceIdFromMetadata,
-              });
-              await notifySlackError(
-                "mollie-webhook",
-                "Invoice paid webhook: payment landed on cancelled booking(s) — manual refund/review",
-                { paymentId, invoiceId: invoiceIdFromMetadata, bookingIds: cancelledPaid },
-              );
-            }
-
-            // Guarded write-back: NEVER resurrect a cancelled booking, never
-            // downgrade an already-paid one. Routes through the same helper the
-            // booking-pay branch uses — previously this branch did a RAW
-            // unguarded .update(), which could flip a cancelled booking back to
-            // paid/confirmed (the no-resurrection invariant held for the booking
-            // branch but not here).
-            const updated = await applyBookingPaymentWriteback(supabase, invoiceData.booking_ids, {
-              payment_status: "paid",
-              status: "confirmed",
-              paid_at: new Date().toISOString(),
-              hold_expires_at: null, // (A5) a committed strict GROUP hold is no longer a hold
-            });
-            logStep("Linked bookings updated to paid (guarded)", {
-              requested: invoiceData.booking_ids.length,
-              transitioned: updated.length,
-            });
-          } catch (bookingUpdateError) {
-            const msg = bookingUpdateError instanceof Error
-              ? bookingUpdateError.message
-              : String(bookingUpdateError);
-            logStep("Failed to update linked bookings", { error: msg });
-            await notifySlackError(
-              "mollie-webhook",
-              "Invoice paid webhook: linked bookings sync failed",
-              {
-                paymentId,
-                invoiceId: invoiceIdFromMetadata,
-                bookingCount: invoiceData.booking_ids.length,
-                error: msg,
-              },
-            );
-            linkedBookingsSyncFailed = true;
-          }
-        }
+        // The linked bookings were settled ATOMICALLY with the invoice above. The former
+        // "also sync linked bookings" block — a second, separately-failing write that could
+        // leave a paid invoice with unpaid seats — is gone by design.
+        const linkedBookingsSyncFailed = false;
 
         // Forward invoice to bookkeeping emails (non-fatal — paid status already saved).
         // E-15: only on the first paid transition —
@@ -693,14 +681,32 @@ serve(async (req) => {
                     // 2) Cover the members' unpaid seats (guarded: never resurrects a cancelled
                     //    booking, never overwrites an already-paid one).
                     const captainIdent = capClaim as { player_id?: string | null; guest_player_id?: string | null } | null;
-                    const covered = await applyBookingPaymentWriteback(supabase, memberBookingIds, {
-                      payment_status: "paid",
-                      status: "confirmed",
-                      paid_at: new Date().toISOString(),
-                      hold_expires_at: null,
-                      paid_by_player_id: captainIdent?.player_id ?? null,
-                      paid_by_guest_player_id: captainIdent?.guest_player_id ?? null,
+                    // ABC-23 §3: the covered set is derived from STORED relationships — the
+                    // group's own 'claimed' claims minus the captain's own invoice bookings
+                    // (memberSettlementBookingIds) — never a caller-supplied union. It settles
+                    // through the single authority, with the captain's identity stamped inside
+                    // the same transaction rather than by a second, separately-failing write.
+                    const memberSettlement = await settlePaidBookings(supabase, {
+                      source: "webhook_rebook_member",
+                      bookingIds: memberBookingIds,
+                      providerPaymentId: paymentId,
+                      providerTransactionId: paymentId,
+                      paidByPlayerId: captainIdent?.player_id ?? null,
+                      paidByGuestPlayerId: captainIdent?.guest_player_id ?? null,
                     });
+                    logStep("Member coverage settled", settlementLogContext(memberSettlement));
+                    if (memberSettlement.refusalReason && !isHardRefusal(memberSettlement.refusalReason)) {
+                      throw new Error(`Member coverage refused (retryable): ${memberSettlement.refusalReason}`);
+                    }
+                    if (memberSettlement.paidNoSeat.length > 0) {
+                      await notifySlackError(
+                        "mollie-webhook",
+                        "Rebook group paid: a member's covered seat was already gone — recorded as cancelled+paid, manual refund/review",
+                        { paymentId, groupId, bookingIds: memberSettlement.paidNoSeat },
+                      );
+                    }
+                    // Only FIRST transitions count as newly covered seats.
+                    const covered = memberSettlement.confirmedPaid.map((id) => ({ id }));
 
                     // 3) Expire the members' own open BOOKING checkouts (their invoice checkouts
                     //    were handled in step 1) so a stale hosted-checkout link can no longer
@@ -954,30 +960,12 @@ serve(async (req) => {
       }
     }
 
-    // Batch 3 (§4.1) oversell guard: a payment arriving on an EXPIRED hold must not be confirmed if
-    // the seat was taken while the hold lapsed (a padel court can't seat a 5th). Ask the DB which of
-    // these bookings are expired holds on a now-full slot and DON'T confirm those — alert for a manual
-    // refund instead. On-time (live-hold) payments are never returned, so a legit payment is never
-    // dropped. confirmBookingIds is what the writeback below actually transitions.
-    let confirmBookingIds = bookingIds;
-    if (payment.status === "paid") {
-      const { data: oversoldRows } = await supabase.rpc("expired_holds_over_capacity", {
-        _booking_ids: bookingIds,
-      });
-      const oversoldIds = ((oversoldRows ?? []) as Array<{ booking_id: string }>).map(
-        (r) => r.booking_id,
-      );
-      if (oversoldIds.length > 0) {
-        confirmBookingIds = bookingIds.filter((id) => !oversoldIds.includes(id));
-        logStep("Paid payment on EXPIRED hold(s) whose slot is now FULL — NOT confirming (oversell guard)", { oversoldIds, paymentId: payment.id });
-        await notifySlackError(
-          "mollie-webhook",
-          "Paid Mollie payment landed on an EXPIRED hold whose seat was taken while it lapsed — NOT confirmed, to avoid overselling the court. Manual refund / review needed.",
-          { oversoldIds, paymentId: payment.id },
-        );
-        await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paidHoldOverCapacity, mollie_payment_id: payment.id, booking_id: oversoldIds[0], metadata: { oversoldIds } });
-      }
-    }
+    // ABC-23 §3: the oversell decision is NO LONGER made here. `expired_holds_over_capacity`
+    // is STABLE and takes no locks, so its answer could be stale by the time the write happened —
+    // two concurrent settlements could both read "fits" and both confirm. Capacity is now decided
+    // inside settle_paid_bookings, under the slot and per-booking locks, and the authoritative
+    // paid_no_seat set comes back in the outcome below. The classifier remains in the database
+    // for diagnostics; nothing in the settlement path reads it.
 
     // (A4 strict rebook) For a failed/canceled/expired payment, a payment_pending HOLD must
     // release its seat AND re-offer its claim. Capture the holds BEFORE the write-back cancels
@@ -998,10 +986,8 @@ serve(async (req) => {
       mollie_transaction_id: payment.id,
     };
 
-    if (payment.status === "paid") {
-      updateData.paid_at = new Date().toISOString();
-      updateData.hold_expires_at = null; // (A4) a committed strict hold is no longer a hold
-    }
+    // NOTE: no paid fields here. The paid transition (paid_at, hold_expires_at, provider ids,
+    // capacity, survivors, invoice) belongs to settle_paid_bookings alone.
 
     // Never un-confirm or downgrade a booking that's already PAID — for ANY
     // webhook status. A stale `open`/`pending` delivery arriving after the paid
@@ -1013,11 +999,58 @@ serve(async (req) => {
     // transition — duplicate concurrent deliveries (or a verify-mollie-payment
     // race) then cannot double-run the side effects below. The guard now lives
     // in applyBookingPaymentWriteback so it is unconditional + unit-tested.
-    const transitionedRows = await applyBookingPaymentWriteback(
-      supabase,
-      confirmBookingIds,
-      updateData,
-    );
+    // A PAID delivery is a SETTLEMENT: it must be atomic, locked and capacity-aware, so it goes
+    // through the one command with the COMPLETE stored booking set — never a caller-filtered
+    // subset. Any other status (open/pending/failed/expired, including late or out-of-order
+    // deliveries) is NOT a settlement: it never writes `paid` and cannot seat anyone, so it keeps
+    // using the guarded write-back whose job is only to refuse downgrades and resurrections.
+    let transitionedRows: { id: string }[] = [];
+    let settlement: SettlementOutcome | null = null;
+    if (payment.status === "paid") {
+      settlement = await settlePaidBookings(supabase, {
+        source: "webhook_direct",
+        bookingIds,
+        providerPaymentId: payment.id,
+        providerTransactionId: payment.id,
+      });
+      logStep("Settlement command applied", settlementLogContext(settlement));
+
+      if (settlement.refusalReason && isHardRefusal(settlement.refusalReason)) {
+        // Terminal: a retry can never change the answer, and money is already captured. Accept
+        // the delivery so Mollie stops retrying, and raise it for manual review.
+        logStep("Settlement REFUSED (terminal)", settlementLogContext(settlement));
+        await notifySlackError("mollie-webhook", "Paid Mollie payment refused by settlement — manual review", {
+          paymentId: payment.id,
+          reason: settlement.refusalReason,
+          bookingIds: settlement.refused,
+        });
+        await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paidHoldOverCapacity, mollie_payment_id: payment.id, booking_id: settlement.refused[0] ?? bookingIds[0], metadata: { reason: settlement.refusalReason, refused: settlement.refused } });
+        return new Response("OK", { status: 200 });
+      }
+      if (settlement.refusalReason) {
+        // Transient: let Mollie retry.
+        throw new Error(`Settlement refused (retryable): ${settlement.refusalReason}`);
+      }
+
+      // ONLY first paid transitions may drive customer-facing confirmation. Replays, survivor
+      // replays and paid_no_seat must not re-notify anyone.
+      transitionedRows = settlement.confirmedPaid.map((id) => ({ id }));
+
+      // Money captured with no seat. Best-effort, at most once per booking: `paidNoSeat` is the
+      // FIRST observation (a repeat delivery returns the same ids under replayedPaidNoSeat), so
+      // this alert cannot repeat — and settlement correctness does not depend on it firing.
+      if (settlement.paidNoSeat.length > 0) {
+        logStep("Paid payment recorded WITHOUT a seat — manual refund/review", { paidNoSeat: settlement.paidNoSeat, paymentId: payment.id });
+        await notifySlackError(
+          "mollie-webhook",
+          "Paid Mollie payment landed on a hold whose seat was gone — recorded as cancelled+paid, NOT confirmed. Manual refund / review needed.",
+          { oversoldIds: settlement.paidNoSeat, paymentId: payment.id },
+        );
+        await auditLog(supabase, { function_name: "mollie-webhook", status: AUDIT.paidHoldOverCapacity, mollie_payment_id: payment.id, booking_id: settlement.paidNoSeat[0], metadata: { oversoldIds: settlement.paidNoSeat } });
+      }
+    } else {
+      transitionedRows = await applyBookingPaymentWriteback(supabase, bookingIds, updateData);
+    }
 
     logStep("Bookings updated successfully", {
       count: bookingIds.length,

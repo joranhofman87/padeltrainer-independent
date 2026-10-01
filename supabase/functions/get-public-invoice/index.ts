@@ -85,17 +85,25 @@ serve(async (req) => {
       });
     }
 
-    // Look up guest player email if no registered player. Resolve via the shared
-    // recipient identity so a linked guest's email comes from the parent profile
-    // first (FAM-02) instead of the stale guest row.
+    // ABC-18 Pass B §1b — resolve through the shared recipient identity WHENEVER a guest exists,
+    // not only when the profile column happens to be empty. The old `!invoice.player_id &&`
+    // guard meant a DUAL-KEY invoice skipped this branch entirely and fell back to the row's
+    // profile-derived fields, so a guest's public invoice page showed and mailed the linked
+    // ACCOUNT's address. The resolver is now guest-first internally, so passing both ids is
+    // correct and a guest wins.
+    //
+    // A resolver ERROR is a refusal: leave the email unresolved rather than substituting
+    // anything joined or stale.
     let playerEmail: string | null = null;
-    if (!invoice.player_id && invoice.guest_player_id) {
-      const { data: idRows } = await supabase.rpc("get_invoice_recipient_identity", {
-        _player_id: null,
-        _guest_player_id: invoice.guest_player_id,
+    if (invoice.guest_player_id || invoice.player_id) {
+      const { data: idRows, error: idErr } = await supabase.rpc("get_invoice_recipient_identity", {
+        _player_id: invoice.player_id ?? null,
+        _guest_player_id: invoice.guest_player_id ?? null,
       });
-      const identity = Array.isArray(idRows) ? idRows[0] : idRows;
-      playerEmail = identity?.email || null;
+      if (!idErr) {
+        const identity = Array.isArray(idRows) ? idRows[0] : idRows;
+        playerEmail = identity?.email || null;
+      }
     }
 
     let academy = null;

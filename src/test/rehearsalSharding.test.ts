@@ -37,8 +37,16 @@ import {
   parseNpmrcEntries,
   isNpmConfigMutation,
   isSuiteInvocation,
+  embeddedPostgresMajor,
+  lockedEmbeddedPostgresMajors,
+  CI_SERVER_PLATFORM_PACKAGE,
+  wrapperReachesPlatformPackage,
   PREREQUISITE_RUNS,
   CONTRACT_JOBS,
+  DB_LANE_ENV,
+  PG_CLIENT_INSTALL_CMD,
+  PG_CLIENT_MAJOR,
+  PG_CLIENT_PSQL,
 } from '../../scripts/ci/workflow-contract.mjs';
 import {
   REHEARSAL_PATTERN,
@@ -391,13 +399,54 @@ describe('the CI gate contract (scripts/ci/workflow-contract.mjs)', () => {
     ]);
   });
 
+  // AN EXPLICIT BUDGET, because this spawns the whole checker as a CHILD PROCESS. It now loads
+  // vitest.config.ts TWICE — plainly and again under VITEST=true — which is the point (a config
+  // whose shape depends on the environment is not the config CI runs), and it roughly doubled
+  // this control's cost. Under load the 15 s default was observed to expire. The double load is
+  // kept and the budget is stated, rather than the reverse.
+  //
+  // ── AND THE `180_000` ABOVE WAS A LABEL, NOT AN ENFORCED BOUND ──────────────────────────────
+  //
+  // `spawnSync` is exactly that — SYNCHRONOUS. It blocks the whole thread until the child exits,
+  // and vitest's own per-test timeout is a timer on the EVENT LOOP: it cannot fire while the
+  // thread it would need to interrupt is parked inside a blocking native call. A `contractCli`
+  // that hung — deadlocked on a resource, waiting on stdin it will never receive — would leave
+  // this test blocked FOREVER, unwatched by the very budget stated beside it. `spawnSync`'s own
+  // `timeout` option is the only thing that can actually bound this call, because Node's
+  // child_process binding enforces it natively rather than through JavaScript's timers. It is set
+  // BELOW the vitest budget, not at it or above: the point is for spawnSync's own kill to fire
+  // and produce a diagnosable "signal: SIGTERM" result before vitest's outer timeout — which
+  // still cannot preempt a blocked thread — would otherwise leave the run simply hanging with no
+  // report at all.
   it('the CLI its CI job runs exits 0 and says so', () => {
     // The workflow calls the CLI, not the module: a checker that computed
     // violations but never exited nonzero would gate nothing.
-    const res = spawnSync(process.execPath, [contractCli], { encoding: 'utf8' });
+    const res = spawnSync(process.execPath, [contractCli], { encoding: 'utf8', timeout: 170_000 });
+    expect(res.error, 'the CLI must not be killed for exceeding its own timeout').toBeUndefined();
     expect(res.status, res.stderr).toBe(0);
     expect(res.stdout).toContain('CI gate contract holds.');
-  });
+  }, 180_000);
+
+  // ══ THE MECHANISM ITSELF, SENSORED — CHEAPLY ═══════════════════════════════════════════════
+  //
+  // The test above proves the CLI finishes well inside its budget today; it cannot also prove
+  // that `spawnSync`'s `timeout` option would actually intervene if the CLI ever hung, without
+  // waiting out that timeout — 170 s this file does not have to spend proving a fact about
+  // Node's child_process binding rather than about the CI gate contract. So the MECHANISM is
+  // proved separately, on a deliberately-hung child and a timeout two orders of magnitude
+  // smaller: a genuine kill reports `signal: 'SIGTERM'` and populates `error` with an `ETIMEDOUT`
+  // code, in well under a second, on any platform this suite runs on. If `timeout` were silently
+  // dropped from the real call above — a refactor that hoisted the options object and lost a key,
+  // say — this is the control that would still say so.
+  it('spawnSync\'s own `timeout` genuinely kills a hung child, not merely a documented option',
+    () => {
+      const res = spawnSync(process.execPath, ['-e', 'setTimeout(() => {}, 60_000)'],
+        { encoding: 'utf8', timeout: 200 });
+      expect(res.signal, 'a child that outlives its timeout must be killed, not merely reported')
+        .toBe('SIGTERM');
+      expect(res.error?.message, 'and the failure must be diagnosable as a timeout, not a crash')
+        .toMatch(/ETIMEDOUT/);
+    });
 });
 
 describe('npm config parsing and detection (the shared primitives)', () => {
@@ -607,7 +656,12 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     mkdirSync(join(root, 'src/test'), { recursive: true });
     copyFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), join(root, '.github/workflows/test.yml'));
     const realPkg = JSON.parse(readFileSync(resolve(dbDir, '../../package.json'), 'utf8'));
-    writeFileSync(join(root, 'package.json'), JSON.stringify({ scripts: realPkg.scripts }, null, 2));
+    // The scripts, and the ONE dependency the contract reads: embedded-postgres,
+    // whose major is the server the database lane's real client must match.
+    writeFileSync(join(root, 'package.json'), JSON.stringify({
+      scripts: realPkg.scripts,
+      devDependencies: { 'embedded-postgres': realPkg.devDependencies['embedded-postgres'] },
+    }, null, 2));
     // A minimal config with the same project shape and no imports, so vite can
     // load it from a temp dir with no node_modules.
     writeFileSync(
@@ -625,6 +679,8 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     // needs the real one — copied, never re-implemented.
     mkdirSync(join(root, 'scripts/ci'), { recursive: true });
     cpSync(resolve(dbDir, '../ci/verify-prerequisites.mjs'), join(root, 'scripts/ci/verify-prerequisites.mjs'));
+    // ...and the real installer, whose load-bearing lines the contract pins.
+    cpSync(resolve(dbDir, '../ci/install-postgres-client.sh'), join(root, 'scripts/ci/install-postgres-client.sh'));
     mkdirSync(join(root, 'scripts/db'), { recursive: true });
     for (const f of ['scripts/db/rehearse-alpha.mjs', 'scripts/db/rehearse-beta.ts']) {
       writeFileSync(join(root, f), '// fixture rehearsal\n');
@@ -642,6 +698,21 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
     edit(o);
     writeFileSync(p, JSON.stringify(o, null, 2));
   };
+  const editInstaller = (root: string, edit: (src: string) => string) => {
+    const p = join(root, 'scripts/ci/install-postgres-client.sh');
+    writeFileSync(p, edit(readFileSync(p, 'utf8')));
+  };
+  // A mutation whose needle is ABSENT would leave the fixture faithful and the
+  // case green for the wrong reason, so these replacements insist on hitting.
+  const replaceOnce = (src: string, needle: string, replacement: string) => {
+    if (src.split(needle).length !== 2) throw new Error(`fixture text does not contain exactly one \`${needle.trim().split('\n')[0]}\``);
+    return src.replace(needle, () => replacement);
+  };
+
+  // ── the database lane's exact text in the real workflow and installer ──
+  const INSTALL_STEP = '      - name: Install the PostgreSQL 18 client for the real-Postgres controls\n        run: bash scripts/ci/install-postgres-client.sh\n';
+  const DB_SUITE_RUN = '        run: npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}\n';
+  const DB_ENV = '        env:\n          ABC27_PSQL: /usr/lib/postgresql/18/bin/psql\n          LC_ALL: C\n          LANG: C\n';
 
   // Same reason: this builds a fresh fixture repo per case and runs vite's
   // config loader against each, which is well past 15s under parallel load.
@@ -697,6 +768,26 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['workflow-level env redirects script-shell', /npm_config_script_shell|NPM_CONFIG/, (r) => editWorkflow(r, (s) => s.replace('\njobs:\n', '\nenv:\n  npm_config_script_shell: /bin/true\n\njobs:\n'))],
       ['hyphenated NPM_CONFIG_SCRIPT-SHELL spelling', /npm_config_\* is refused as a namespace/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          NPM_CONFIG_SCRIPT-SHELL: /bin/true\n'))],
       ['extra full-suite `npm test` step', /unexpected suite invocation/, (r) => editWorkflow(r, (s) => s.replace('      - name: Run unit tests\n', '      - name: Sneaky full gate\n        run: npm test\n\n      - name: Run unit tests\n'))],
+      // ── the NAME-FILTER hole: every file selected, zero tests run, exit 0
+      ['a name filter in the db workflow step', /name filter \(-t \/ --testNamePattern\)/,
+        (r) => editWorkflow(r, (s) => s.replace(
+          'run: npm run test:db -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}',
+          'run: npm run test:db -- -t "" --shard=${{ matrix.shard }}/${{ strategy.job-total }}'))],
+      ['a name filter inside the db npm script', /name filter \(-t \/ --testNamePattern\)/,
+        (r) => editJson(r, 'package.json', (o) => {
+          (o.scripts as Record<string, string>)['test:db'] =
+            'vitest run --project db --testNamePattern=nothing';
+        })],
+      ['a testNamePattern in the vitest config', /defines testNamePattern/, (r) => {
+        const p2 = join(r, 'vitest.config.ts');
+        writeFileSync(p2, readFileSync(p2, 'utf8')
+          .replace("name: 'db',", "name: 'db',\n          testNamePattern: 'nothing',"));
+      }],
+      ['passWithNoTests turning an empty run green', /sets passWithNoTests/, (r) => {
+        const p2 = join(r, 'vitest.config.ts');
+        writeFileSync(p2, readFileSync(p2, 'utf8')
+          .replace("name: 'db',", "name: 'db',\n          passWithNoTests: true,"));
+      }],
       ['the real-pg integration file drifts into unit', /not owned by the db project/, (r) => {
         const p = join(r, 'vitest.config.ts');
         writeFileSync(p, readFileSync(p, 'utf8')
@@ -731,7 +822,7 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       ['the gate\'s JSON input renamed', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS: ${{ toJSON(needs) }}\n'))],
       ['the gate\'s input narrowed to one job', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS_JSON: ${{ toJSON(needs.i18n) }}\n'))],
       ['an extra env var smuggled into the gate', /env must be exactly/, (r) => editWorkflow(r, (s) => s.replace('          NEEDS_JSON: ${{ toJSON(needs) }}\n', '          NEEDS_JSON: ${{ toJSON(needs) }}\n          SKIP: "1"\n'))],
-      ['the gate losing a prerequisite from needs', /needs must be exactly|does not match the gate's needs/, (r) => editWorkflow(r, (s) => s.replace('    needs: [unit-tests, db-tests, db-rehearsals, i18n, workflow-contract]', '    needs: [unit-tests, db-tests, db-rehearsals, i18n]'))],
+      ['the gate losing a prerequisite from needs', /needs must be exactly|does not match the gate's needs/, (r) => editWorkflow(r, (s) => s.replace('    needs: [unit-tests, db-tests, db-rehearsals, i18n, workflow-contract]', '    needs: [unit-tests, db-tests, db-rehearsals]'))],
       // ── every approved step, run steps included, must be unweakened
       ['`shell: bash -n {0}` on an approved run step', /overrides `shell/, (r) => editWorkflow(r, (s) => s.replace('      - name: Lint (ratcheted)\n        run: npm run lint\n', '      - name: Lint (ratcheted)\n        shell: bash -n {0}\n        run: npm run lint\n'))],
       ['`shell: bash -n {0}` on the gate itself', /overrides `shell/, (r) => editWorkflow(r, (s) => s.replace('        shell: bash\n        env:\n          NEEDS_JSON:', '        shell: bash -n {0}\n        env:\n          NEEDS_JSON:'))],
@@ -826,6 +917,57 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
         const p = join(r, 'vitest.config.ts');
         writeFileSync(p, readFileSync(p, 'utf8').replace("exclude: ['**/*.realpg.test.ts', '**/*.pglite.test.ts', 'src/test/notificationDigestRealPg.integration.test.ts']", "exclude: []"));
       }],
+
+      // ── the database lane: the real client and the locale cannot silently disappear ──
+      ['db lane: the client install step dropped', /db-tests: has 4 steps, but the approved sequence has 5/, (r) => editWorkflow(r, (s) => replaceOnce(s, INSTALL_STEP + '\n', ''))],
+      ['db lane: the client installed only AFTER the suite ran', /db-tests: step 4 is `run npm run test:db/, (r) => editWorkflow(r, (s) => replaceOnce(replaceOnce(s, INSTALL_STEP + '\n', ''), DB_SUITE_RUN, DB_SUITE_RUN + '\n' + INSTALL_STEP))],
+      ['db lane: ABC27_PSQL dropped from the suite env', /db-tests: step 5 .*env must be exactly/, (r) => editWorkflow(r, (s) => replaceOnce(s, '          ABC27_PSQL: /usr/lib/postgresql/18/bin/psql\n', ''))],
+      ["db lane: ABC27_PSQL pointed at the runner's own psql", /env must be exactly/, (r) => editWorkflow(r, (s) => replaceOnce(s, '          ABC27_PSQL: /usr/lib/postgresql/18/bin/psql\n', '          ABC27_PSQL: /usr/bin/psql\n'))],
+      ['db lane: LC_ALL dropped', /env must be exactly/, (r) => editWorkflow(r, (s) => replaceOnce(s, '          LC_ALL: C\n', ''))],
+      ['db lane: LANG dropped', /env must be exactly/, (r) => editWorkflow(r, (s) => replaceOnce(s, '          LANG: C\n', ''))],
+      ['db lane: LC_ALL widened to the runner default C.UTF-8', /env must be exactly/, (r) => editWorkflow(r, (s) => replaceOnce(s, '          LC_ALL: C\n', '          LC_ALL: C.UTF-8\n'))],
+      ['db lane: an extra variable smuggled into the suite env', /env must be exactly/, (r) => editWorkflow(r, (s) => replaceOnce(s, '          LANG: C\n', '          LANG: C\n          ABC27_SKIP_GSET: "1"\n'))],
+      ['db lane: the env moved from the suite step to the job', /env must be exactly/, (r) => editWorkflow(r, (s) => replaceOnce(replaceOnce(s, DB_ENV, ''), '  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    env:\n      ABC27_PSQL: /usr/lib/postgresql/18/bin/psql\n      LC_ALL: C\n      LANG: C\n'))],
+      ['db lane: the installer pins a different major', /`PG_MAJOR=18` is missing or changed/, (r) => editInstaller(r, (s) => replaceOnce(s, 'PG_MAJOR=18\n', 'PG_MAJOR=16\n'))],
+      ['db lane: the installer produces psql somewhere else', /`PSQL=\/usr\/lib\/postgresql\/18\/bin\/psql` \(the path ABC27_PSQL names\) is missing or changed/, (r) => editInstaller(r, (s) => replaceOnce(s, 'PSQL=/usr/lib/postgresql/18/bin/psql\n', 'PSQL=/usr/bin/psql\n'))],
+      ['db lane: the installer stops accepting only the matching major', /major-parity acceptance arm is missing/, (r) => editInstaller(r, (s) => replaceOnce(s, '  *"(PostgreSQL) ${PG_MAJOR}."*) ;;\n', '  *) ;;\n'))],
+      ['db lane: the installer stops refusing a wrong major', /wrong-major refusal arm is missing/, (r) => editInstaller(r, (s) => replaceOnce(s, "  *) die \"$PSQL reports '$version', not PostgreSQL ${PG_MAJOR}.x\" ;;\n", '  *) echo "warning only" ;;\n'))],
+      ['db lane: the installer no longer re-reads the installed version', /re-read of the installed client's own --version is missing/, (r) => editInstaller(r, (s) => replaceOnce(s, 'version="$("$PSQL" --version)"\n', 'version="(PostgreSQL) ${PG_MAJOR}.0"\n'))],
+      ['db lane: the installer no longer fails closed', /`set -euo pipefail`/, (r) => editInstaller(r, (s) => replaceOnce(s, 'set -euo pipefail\n', 'set -u\n'))],
+      ['db lane: the installer skips the signing-key check', /signing-key check \(exactly one key, the pinned fingerprint, fatal otherwise\) is missing/, (r) => editInstaller(r, (s) => replaceOnce(s, '[ "$key_summary" = "1:${PGDG_KEY_FINGERPRINT}" ] || die', 'true || die'))],
+      ['db lane: the signing-key refusal made non-fatal', /signing-key check \(exactly one key, the pinned fingerprint, fatal otherwise\) is missing/, (r) => editInstaller(r, (s) => replaceOnce(s, '[ "$key_summary" = "1:${PGDG_KEY_FINGERPRINT}" ] || die "the exported', '[ "$key_summary" = "1:${PGDG_KEY_FINGERPRINT}" ] || : "the exported'))],
+      ['db lane: the downloaded bundle installed as-is instead of the one exported key', /export of ONLY the pinned key/, (r) => editInstaller(r, (s) => replaceOnce(s, 'gpg --batch --quiet --armor --export "$PGDG_KEY_FINGERPRINT" > "$tmp/pgdg.asc"\n', 'cp "$tmp/pgdg-download.asc" "$tmp/pgdg.asc"\n'))],
+      ['db lane: an `exit 0` slipped in between the pinned lines', /install-postgres-client\.sh: bytes changed/, (r) => editInstaller(r, (s) => replaceOnce(s, 'set -euo pipefail\n', 'set -euo pipefail\nexit 0\n'))],
+      ['db lane: a second apt source added between the pinned lines', /install-postgres-client\.sh: bytes changed/, (r) => editInstaller(r, (s) => replaceOnce(s, '$SUDO apt-get update \\\n', 'echo "deb [trusted=yes] http://example.invalid/apt noble main" | $SUDO tee -a "$PGDG_LIST" > /dev/null\n$SUDO apt-get update \\\n'))],
+      ['db lane: a job-level env on db-tests (a bash function shadowing npm)', /db-tests: must declare no job-level env/, (r) => editWorkflow(r, (s) => replaceOnce(s, '  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    env:\n      "BASH_FUNC_npm%%": "() { exit 0; }"\n'))],
+      ['db lane: a bash function exported on the suite step itself', /exports a bash FUNCTION/, (r) => editWorkflow(r, (s) => replaceOnce(s, '      - name: Run unit tests\n', '      - name: Run unit tests\n        env:\n          "BASH_FUNC_npm%%": "() { exit 0; }"\n'))],
+      ['db lane: a workflow-level PATH', /workflow-level env must be empty/, (r) => editWorkflow(r, (s) => replaceOnce(s, '\njobs:\n', '\nenv:\n  PATH: /tmp/fake-bin:/usr/bin:/bin\n\njobs:\n'))],
+      ['db lane: a job-level PATH on the aggregator', /test: must declare no job-level env/, (r) => editWorkflow(r, (s) => replaceOnce(s, '  test:\n    runs-on: ubuntu-latest\n', '  test:\n    runs-on: ubuntu-latest\n    env:\n      PATH: /tmp/fake-bin:/usr/bin:/bin\n'))],
+      ['db lane: embedded-postgres declared as a range spanning majors', /not declared as a single exact, caret or tilde version/, (r) => editJson(r, 'package.json', (o) => { (o.devDependencies as Record<string, string>)['embedded-postgres'] = '^18.4.0-beta.17 || ^19.0.0'; })],
+      ['db lane: the lockfile resolves embedded-postgres to another major', /package-lock\.json resolves node_modules\/embedded-postgres to major 19/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '19.0.0' }, 'node_modules/@embedded-postgres/linux-x64': { version: '19.0.0' } } }))],
+      ['db lane: the lockfile lost the runner platform package (no server binary for ubuntu-latest)', /package-lock\.json carries no node_modules\/@embedded-postgres\/linux-x64 entry/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/darwin-arm64': { version: '18.4.0-beta.17' } } }))],
+      ['db lane: the platform package is a workspace LINK whose advertised version npm ignores', /package-lock\.json resolves node_modules\/@embedded-postgres\/linux-x64 to major none/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17', link: true, resolved: '../vendor/pg19' } } }))],
+      ['db lane: a BOM-prefixed shrinkwrap resolving 19 beside an all-18 package-lock', /npm-shrinkwrap\.json resolves node_modules\/@embedded-postgres\/linux-x64 to major 19/, (r) => {
+        writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17' } } }));
+        writeFileSync(join(r, 'npm-shrinkwrap.json'), '\uFEFF' + JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/linux-x64': { version: '19.0.0' } } }));
+      }],
+      ['db lane: a lock file that exists but cannot be parsed', /npm-shrinkwrap\.json cannot be parsed as JSON/, (r) => writeFileSync(join(r, 'npm-shrinkwrap.json'), '{ not json')],
+      ['db lane: the platform package is a link spelled as the string "true"', /package-lock\.json resolves node_modules\/@embedded-postgres\/linux-x64 to major none/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17', optionalDependencies: { '@embedded-postgres/linux-x64': '18.4.0-beta.17' } }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17', link: 'true', resolved: '../vendor/pg19' } } }))],
+      ['db lane: the wrapper lost its optional edge to linux-x64 (the node is extraneous, npm ci prunes it)', /wrapper entry no longer depends on @embedded-postgres\/linux-x64/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17', optionalDependencies: { '@embedded-postgres/darwin-arm64': '18.4.0-beta.17' } }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17', optional: true } } }))],
+      ['db lane: the lockfile lost embedded-postgres entirely', /package-lock\.json resolves embedded-postgres to major none/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: {} }))],
+      ['db lane: an override holds the wrapper at 18 while a platform package (the server binary) resolves to 19', /package-lock\.json resolves node_modules\/@embedded-postgres\/linux-x64 to major 19/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/linux-x64': { version: '19.0.0' } } }))],
+      ['db lane: a major-19 platform package NESTED beneath the wrapper', /package-lock\.json resolves node_modules\/embedded-postgres\/node_modules\/@embedded-postgres\/linux-x64 to major 19/, (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17' }, 'node_modules/embedded-postgres/node_modules/@embedded-postgres/linux-x64': { version: '19.0.0' } } }))],
+      ['db lane: a shrinkwrap (which npm ci prefers) resolves 19 beside an all-18 package-lock', /npm-shrinkwrap\.json resolves node_modules\/@embedded-postgres\/linux-x64 to major 19/, (r) => {
+        writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17' } } }));
+        writeFileSync(join(r, 'npm-shrinkwrap.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17' }, 'node_modules/@embedded-postgres/linux-x64': { version: '19.0.0' } } }));
+      }],
+      ['db lane: a service container bind-mounting the workspace on db-tests', /db-tests: declares `services`/, (r) => editWorkflow(r, (s) => replaceOnce(s, '  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    services:\n      rewriter:\n        image: alpine\n        volumes:\n          - /home/runner/work:/work\n'))],
+      ['db lane: a service container on the aggregator', /test: declares `services`/, (r) => editWorkflow(r, (s) => replaceOnce(s, '  test:\n    runs-on: ubuntu-latest\n', '  test:\n    runs-on: ubuntu-latest\n    services:\n      rewriter:\n        image: alpine\n'))],
+      ['db lane: the installer takes packages from an unsigned source', /signed PGDG apt source is missing/, (r) => editInstaller(r, (s) => replaceOnce(s, 'echo "deb [signed-by=$PGDG_KEYRING] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \\\n', 'echo "deb [trusted=yes] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \\\n'))],
+      ['db lane: the installer installs a different package', /postgresql-client-\$\{PG_MAJOR\} install is missing/, (r) => editInstaller(r, (s) => replaceOnce(s, '"postgresql-client-${PG_MAJOR}"\n', '"postgresql-client"\n'))],
+      ['db lane: the installer deleted', /install-postgres-client\.sh is missing/, (r) => rmSync(join(r, 'scripts/ci/install-postgres-client.sh'))],
+      ['db lane: embedded-postgres bumped without the client following', /embedded-postgres major 19, but the database lane installs and names psql 18/, (r) => editJson(r, 'package.json', (o) => { (o.devDependencies as Record<string, string>)['embedded-postgres'] = '^19.0.0'; })],
+      ['db lane: embedded-postgres no longer declared', /not declared as a single exact, caret or tilde version/, (r) => editJson(r, 'package.json', (o) => { delete (o.devDependencies as Record<string, string>)['embedded-postgres']; })],
     ];
 
     for (const [label, pattern, mutate] of cases) {
@@ -856,6 +998,11 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
 
       ['a job concurrency group that really varies per shard', (r) => editWorkflow(r, (s) => s.replace('  db-tests:\n    runs-on: ubuntu-latest\n', '  db-tests:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: db-${{ github.run_id }}-${{ matrix.shard }}\n'))],
       ["a shard group using bracket syntax matrix['shard'], run-isolated", (r) => editWorkflow(r, (s) => s.replace('  db-rehearsals:\n    runs-on: ubuntu-latest\n', "  db-rehearsals:\n    runs-on: ubuntu-latest\n    concurrency:\n      group: reh-${{ github.run_id }}-${{ matrix['shard'] }}\n"))],
+      // The env comparison is a MAPPING comparison: the same three variables in
+      // another order are the same environment, not a drift.
+      ['the db-lane env written in another key order', (r) => editWorkflow(r, (s) => replaceOnce(s, DB_ENV, '        env:\n          LANG: C\n          LC_ALL: C\n          ABC27_PSQL: /usr/lib/postgresql/18/bin/psql\n'))],
+      ['a lockfile that resolves embedded-postgres and the runner platform package to the pinned major', (r) => writeFileSync(join(r, 'package-lock.json'), JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17', optionalDependencies: { '@embedded-postgres/linux-x64': '18.4.0-beta.17' } }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17', optional: true } } }))],
+      ['a BOM-prefixed lock file that agrees (npm accepts the BOM)', (r) => writeFileSync(join(r, 'package-lock.json'), '\uFEFF' + JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17', optionalDependencies: { '@embedded-postgres/linux-x64': '18.4.0-beta.17' } }, 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17' } } }))],
     ];
     for (const [label, mutate] of allowed) {
       const root = makeFixture();
@@ -867,6 +1014,63 @@ describe('the contract checker detects each weakening (fixture repos)', () => {
       }
     }
   }, 180_000);
+
+  it('the database lane names one client, for the server package.json declares, in every place it is written', () => {
+    // The fixture cases above rewrite literal text; if the real workflow or
+    // installer were re-worded, every one of them would throw on an absent
+    // needle rather than pass vacuously — and this pins the same literals to
+    // the contract's own constants so the two cannot drift apart either.
+    const workflow = readFileSync(resolve(dbDir, '../../.github/workflows/test.yml'), 'utf8');
+    const installer = readFileSync(resolve(dbDir, '../ci/install-postgres-client.sh'), 'utf8');
+    const realPkg = JSON.parse(readFileSync(resolve(dbDir, '../../package.json'), 'utf8'));
+    expect(workflow).toContain(INSTALL_STEP);
+    expect(workflow).toContain(DB_ENV + DB_SUITE_RUN);
+    expect(INSTALL_STEP).toContain(`run: ${PG_CLIENT_INSTALL_CMD}\n`);
+    expect(DB_ENV).toContain(`ABC27_PSQL: ${PG_CLIENT_PSQL}\n`);
+    expect(DB_LANE_ENV).toEqual({ ABC27_PSQL: PG_CLIENT_PSQL, LC_ALL: 'C', LANG: 'C' });
+    expect(installer).toContain(`\nPG_MAJOR=${PG_CLIENT_MAJOR}\n`);
+    expect(installer).toContain(`\nPSQL=${PG_CLIENT_PSQL}\n`);
+    expect(embeddedPostgresMajor(realPkg)).toBe(PG_CLIENT_MAJOR);
+    // ...and the parser reads the spellings a version range can take, nothing looser.
+    expect(embeddedPostgresMajor({ devDependencies: { 'embedded-postgres': '^18.4.0-beta.17' } })).toBe('18');
+    expect(embeddedPostgresMajor({ dependencies: { 'embedded-postgres': '~19.0.0' } })).toBe('19');
+    expect(embeddedPostgresMajor({ devDependencies: { 'embedded-postgres': '18.4.0' } })).toBe('18');
+    expect(embeddedPostgresMajor({ devDependencies: { 'embedded-postgres': 'latest' } })).toBeNull();
+    expect(embeddedPostgresMajor({ devDependencies: { 'embedded-postgres': '^18.4.0-beta.17 || ^19.0.0' } })).toBeNull();
+    expect(embeddedPostgresMajor({ devDependencies: { 'embedded-postgres': '>=18.0.0' } })).toBeNull();
+    expect(embeddedPostgresMajor({ devDependencies: { 'embedded-postgres': '18.x' } })).toBeNull();
+    expect(embeddedPostgresMajor({ devDependencies: {} })).toBeNull();
+    expect(embeddedPostgresMajor(undefined)).toBeNull();
+    // The real lock: the wrapper AND every platform package (the server binary itself) agree.
+    const realLock = JSON.parse(readFileSync(resolve(dbDir, '../../package-lock.json'), 'utf8'));
+    const locked = lockedEmbeddedPostgresMajors(realLock);
+    expect(locked.map((p) => p.name)).toContain('embedded-postgres');
+    expect(locked.filter((p) => p.name.startsWith('@embedded-postgres/')).length).toBeGreaterThan(0);
+    expect(locked.every((p) => p.major === PG_CLIENT_MAJOR)).toBe(true);
+    expect(lockedEmbeddedPostgresMajors({ packages: {
+      'node_modules/embedded-postgres': { version: '19.0.0' },
+      'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17' },
+      'node_modules/embedded-postgres/node_modules/@embedded-postgres/linux-x64': { version: '20.0.0' },
+      'node_modules/not-embedded-postgres': { version: '1.0.0' },
+    } })).toEqual([
+      { path: 'node_modules/@embedded-postgres/linux-x64', name: '@embedded-postgres/linux-x64', major: '18' },
+      { path: 'node_modules/embedded-postgres', name: 'embedded-postgres', major: '19' },
+      { path: 'node_modules/embedded-postgres/node_modules/@embedded-postgres/linux-x64', name: '@embedded-postgres/linux-x64', major: '20' },
+    ]);
+    expect(lockedEmbeddedPostgresMajors({ packages: { 'node_modules/embedded-postgres': { version: 'file:../x' } } }))
+      .toEqual([{ path: 'node_modules/embedded-postgres', name: 'embedded-postgres', major: null }]);
+    expect(lockedEmbeddedPostgresMajors({ packages: { 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17', link: true, resolved: '../vendor/pg19' } } }))
+      .toEqual([{ path: 'node_modules/@embedded-postgres/linux-x64', name: '@embedded-postgres/linux-x64', major: null }]);
+    expect(locked.some((p) => p.path === CI_SERVER_PLATFORM_PACKAGE && p.major === PG_CLIENT_MAJOR)).toBe(true);
+    expect(wrapperReachesPlatformPackage(realLock)).toBe(true);
+    expect(wrapperReachesPlatformPackage({ packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17', dependencies: { '@embedded-postgres/linux-x64': '18.4.0-beta.17' } } } })).toBe(true);
+    expect(wrapperReachesPlatformPackage({ packages: { 'node_modules/embedded-postgres': { version: '18.4.0-beta.17', optionalDependencies: { '@embedded-postgres/darwin-arm64': '18.4.0-beta.17' } } } })).toBe(false);
+    expect(wrapperReachesPlatformPackage({ packages: {} })).toBe(false);
+    expect(lockedEmbeddedPostgresMajors({ packages: { 'node_modules/@embedded-postgres/linux-x64': { version: '18.4.0-beta.17', link: 'true' } } }))
+      .toEqual([{ path: 'node_modules/@embedded-postgres/linux-x64', name: '@embedded-postgres/linux-x64', major: null }]);
+    expect(lockedEmbeddedPostgresMajors({ packages: {} })).toEqual([]);
+    expect(lockedEmbeddedPostgresMajors(undefined)).toEqual([]);
+  });
 
   it('the CLI exits 1 and prints the violations for a broken fixture', () => {
     const root = makeFixture();

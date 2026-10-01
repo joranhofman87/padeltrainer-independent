@@ -30,12 +30,19 @@ describe('mollie-webhook invoice branch alerts', () => {
     expect(source).toContain('type: "invoice"');
   });
 
-  it('sends Slack when invoice DB update fails', () => {
-    expect(source).toContain('Invoice paid webhook: DB update failed');
+  // ABC-23 §3: the invoice is no longer flipped by its own UPDATE and the bookings are no
+  // longer synced afterwards — both happen in one atomic settlement, so there is one failure
+  // to alert on instead of two independent ones.
+  it('sends Slack when the atomic settlement fails', () => {
+    expect(source).toContain('Invoice paid webhook: atomic settlement failed');
   });
 
-  it('sends Slack when linked bookings sync fails', () => {
-    expect(source).toContain('Invoice paid webhook: linked bookings sync failed');
+  it('sends Slack when the settlement is refused with money captured', () => {
+    expect(source).toContain('settlement refused — manual review (money captured)');
+  });
+
+  it('sends Slack when a paid invoice lands on bookings with no seat', () => {
+    expect(source).toContain('payment landed on booking(s) with no seat');
   });
 
   it('evaluates forward-invoice response for Slack warnings', () => {

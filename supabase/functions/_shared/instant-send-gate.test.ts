@@ -121,9 +121,13 @@ Deno.test("EVERY live stop reason blocks the send and is reported verbatim", asy
       "no_destination",
       "destination_changed",
       "suppressed",
+      "marketing_unsubscribed",
       "preference_off",
+      "tenant_restricted",
       "follow_revoked",
       "missing_member",
+      "member_window_closed",
+      "rebook_member_open_ineligible",
     ]
   ) {
     const { deps: d } = deps({ stopReason: reason });

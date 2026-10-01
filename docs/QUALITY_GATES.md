@@ -38,7 +38,7 @@ Before you change code, know which gate will catch a mistake — and which gates
   - `lint`: `npm run lint` + `check:edge-config` + `check:legacy-key`(+selftest) + `check:edge-pins`(+selftest)
   - `typecheck`: `typecheck:baseline` + `vite build`
   - `unit-tests`: `vitest run --project unit`
-  - `db-tests` ×2 shards: `vitest run --project db --shard=i/2` (exact partition; `fileParallelism: false` per runner)
+  - `db-tests` ×2 shards: `vitest run --project db --shard=i/2` (exact partition; `fileParallelism: false` per runner). Each shard first runs `scripts/ci/install-postgres-client.sh` (the PostgreSQL 18 client from the PGDG repository, signing-key fingerprint checked, the installed client's own `--version` re-read) and runs the suite under `ABC27_PSQL=/usr/lib/postgresql/18/bin/psql LC_ALL=C LANG=C`: the frozen ABC-27 real-Postgres controls drive a real psql of the embedded server's major and assert the evidence lineage's `C` collation by inheritance, and ubuntu-latest ships psql 16 under C.UTF-8. The contract pins the step order, the exact env and the installer's shape against package.json's `embedded-postgres` major.
   - `db-rehearsals` ×2 shards: `db:rehearse:all -- --shard=i/2` (round-robin over the discovered inventory)
   - `i18n`: bun en/nl parity
   - `workflow-contract`: `node scripts/ci/workflow-contract.mjs` — the split gate's own contract (every prerequisite really runs its suite once and unweakened; shard matrices stay single-dimension 1..N; the required check keeps the id `test`; npm aliases and the db-project inventory are intact)

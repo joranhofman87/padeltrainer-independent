@@ -220,7 +220,7 @@ serve(async (req) => {
       const { data: existingBookings, error: bookingsError } = await supabase
         .from("bookings")
         .select(`
-          id, player_id, payment_status, status, slot_id,
+          id, player_id, guest_player_id, payment_status, status, slot_id,
           availability_slots!inner(
             id, trainer_id, academy_profile_id, cyclus_id, price_per_session, start_time, end_time,
             max_participants, allow_single_booking, extra_costs
@@ -243,7 +243,12 @@ serve(async (req) => {
       }
 
       for (const b of existingBookings) {
-        if (b.player_id !== playerProfile.id) {
+        // ABC-20: PURE-PROFILE ownership only. A DUAL-KEY booking (this profile's player_id
+        // beside someone else's guest_player_id) belongs to the GUEST — the player_id is legacy
+        // link decoration. Without the guest-null check the account holder could pay for, and
+        // take payment control of, a seat that is not theirs. The column had to be SELECTed for
+        // this check to be possible at all.
+        if (b.player_id !== playerProfile.id || b.guest_player_id !== null) {
           return new Response(
             JSON.stringify({ error: "Forbidden: booking does not belong to player" }),
             { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },

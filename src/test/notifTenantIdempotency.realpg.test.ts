@@ -170,6 +170,25 @@ beforeAll(async () => {
     await c.query(upToOnboarding);
   }
 
+  // Later catalog-event mirror only. This older N3 fixture intentionally does NOT apply the
+  // D6/ABC27 round-authority chain; the ABC27 structural/config and effective-chain behavior are
+  // proved in abc27RecipientSnapshot.realpg.test.ts. Completeness here needs only the exact
+  // cap-relevant post-ABC27 truth: optional, email-supported, WhatsApp-unsupported.
+  await c.query(`
+    INSERT INTO public.notification_event_types
+      (key, category, audience, priority, required_delivery,
+       supports_email, supports_whatsapp, supports_push, supports_digest,
+       default_email_frequency, default_whatsapp_frequency, default_push_frequency,
+       collapse_window_minutes, quiet_hours_respect, visibility_scope,
+       template_email, email_footer_policy)
+    VALUES
+      ('rebook_member_open_player','rebook','player','actionable',false,
+       true,false,false,false,'instant','off','off',0,true,'private_user_only',
+       'rebook_member_open_player','manage_prefs')
+    ON CONFLICT (key) DO UPDATE SET
+      required_delivery=false, supports_email=true, supports_whatsapp=false;
+  `);
+
   await c.query(`
     INSERT INTO auth.users (id) VALUES ('${U1}'), ('${MGR}');
     INSERT INTO public.persons (id, user_id, email) VALUES ('${P1}','${U1}','p1@example.com');
@@ -824,7 +843,10 @@ describe('the CAPPABLE list against the POST-catalog truth (N3 round-4)', () => 
     // Soundness alone (each listed arm supported) stays green when a future template commit
     // restores an arm the UI forgot — completeness fails until the UI adds it.
     const { CAPPABLE_EVENTS } = await import('@/lib/academyNotificationCappable');
-    const MATRIX_ACADEMY_EVENTS = ['booking_request_staff', 'booking_confirmed_staff', 'booking_cancelled_player'];
+    const MATRIX_ACADEMY_EVENTS = [
+      'booking_request_staff', 'booking_confirmed_staff', 'booking_cancelled_player',
+      'rebook_member_open_player',
+    ];
     const expected: string[] = [];
     for (const ev of MATRIX_ACADEMY_EVENTS) {
       const row = (await c.query(

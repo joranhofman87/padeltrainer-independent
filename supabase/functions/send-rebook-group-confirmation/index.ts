@@ -53,7 +53,7 @@ const sha256Hex = async (s: string): Promise<string> => {
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
 };
 
-interface NameEmail { full_name?: string | null; first_name?: string | null; email?: string | null; linked_profile?: { email?: string | null } | null }
+interface NameEmail { full_name?: string | null; first_name?: string | null; email?: string | null }
 interface SlotJoin { start_time: string; end_time: string; cyclus_id: string | null; cyclus_name: string | null; academy_profile_id: string | null }
 interface ClaimRow {
   id: string;
@@ -136,7 +136,7 @@ serve(async (req: Request) => {
               .from("slot_priority_claims")
               .select(
                 "id, invited_at, slot_id, player_id, guest_player_id, " +
-                "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email, linked_profile:linked_profile_id(email)), " +
+                "profiles:player_id(full_name, email), guest_players:guest_player_id(full_name, first_name, email), " +
                 "availability_slots:slot_id(start_time, end_time, cyclus_id, cyclus_name, academy_profile_id)",
               )
               .eq("rebook_group_id", groupId)

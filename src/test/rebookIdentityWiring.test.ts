@@ -14,7 +14,6 @@ import { join } from 'node:path';
 
 const read = (...p: string[]) => readFileSync(join(process.cwd(), ...p), 'utf8');
 const fn = (name: string) => read('supabase', 'functions', name, 'index.ts');
-const shared = (name: string) => read('supabase', 'functions', '_shared', name);
 
 describe('PR 10d wiring — manual flows deliver independently to parent + dual-key child (proof #3)', () => {
   // Codex round-3 #1: all THREE manual senders resolve a guest's email via the VERIFIED account
@@ -56,13 +55,29 @@ describe('PR 10d wiring — manual flows deliver independently to parent + dual-
     expect(s).toMatch(/if \(!outcome\.ok\) return "send_failed";[\s\S]*return "unresolved";[\s\S]*return "sent";/); // send first, then stamp
   });
 
-  it('send-priority-claim-invitation keys guest-first', () => {
+  it('send-priority-claim-invitation keys the SERIES pair-exactly, and identity guest-first', () => {
+    // `OWNER_DECISION_D7_RUNTIME_PRIORITY_INVITE_SEMANTICS_V1` split this into two questions.
+    //
+    // WHICH SERIES a claim belongs to is pair-exact, because `respond_to_priority_claim` books the
+    // exact `(player_id, guest_player_id)` pair. Guest-first grouping collapsed `(P, G)` with
+    // `(NULL, G)`, so only one of the two was ever invited and later drains reported nothing
+    // remaining while the other stayed pending (review round 2).
+    //
+    // WHO a person is stays guest-first: dedup of a dual-key child against their linked parent,
+    // display names, and contact resolution are all unchanged, and FAM-02 is still pinned below.
     const s = fn('send-priority-claim-invitation');
     expect(s).toContain('from "../_shared/person-identity.ts"');
-    expect(s).toContain('const pkey = personKeyOf(c);');       // representative dedup
-    // group aggregation moved into _shared/rebook-invitation-context.ts (loadInvitationMetadata) and
-    // is now RUNTIME-tested there (a 1500-session series aggregates under `grp1|p:p1`, not the parent).
-    expect(s).toContain('const playerKey = personKeyOf(c);');  // main-loop lookup
+    // The SERIES keys — representative discovery and the main-loop lookup — carry both columns.
+    expect(s).toMatch(/const k = `\$\{gkey\}\|p:\$\{c\.player_id \?\? ""\}\|g:\$\{c\.guest_player_id \?\? ""\}`/);
+    expect(s).toContain('groupInfo.get(groupSeriesKey(c))');
+    // ...and the aggregation it looks into is built with the SAME key, or the lookup misses and the
+    // mail silently describes a plain session.
+    const ctx = readFileSync(
+      join(process.cwd(), 'supabase', 'functions', '_shared', 'rebook-invitation-context.ts'), 'utf8');
+    expect(ctx).toContain('const key = groupSeriesKey(gc);');
+    expect(ctx).toMatch(/export function groupSeriesKey[\s\S]{0,400}?p:\$\{row\.player_id \?\? ""\}\|g:\$\{row\.guest_player_id \?\? ""\}/);
+    // IDENTITY is still guest-first.
+    expect(s).toContain('const playerKey = personKeyOf(c);');  // dedup/display identity
     expect(s).toContain('guestContactName(c.guest_player_id, guestMap)'); // verified name (never player_id)
     expect(s).not.toMatch(/c\.player_id \?\? `g:\$\{c\.guest_player_id\}`/); // old key gone
   });
@@ -71,8 +86,21 @@ describe('PR 10d wiring — manual flows deliver independently to parent + dual-
 describe('PR 10d wiring — upstream producers preserve both people (proofs #1, #2)', () => {
   it('bulk-rebook-cycle representative selection is guest-first (proof #2)', () => {
     const s = fn('bulk-rebook-cycle');
-    expect(s).toContain('import { personKeyOf } from "../_shared/person-identity.ts";');
-    expect(s).toContain('const pkey = personKeyOf(cl);');
+    // The guest-first identity helper is no longer imported here at all: this producer's ONLY use
+    // of a person key was its representative rule, and that is now the pair-exact series key. An
+    // import that is gone cannot drift back into a second leader rule (D2).
+    expect(s, 'no guest-first key survives in this producer')
+      .not.toContain('personKeyOf');
+    // PAIR-EXACT, PER SERIES (`APPROVE_D7_RUNTIME_FINAL_CONVERGENCE_V1`, D2). This producer keyed
+    // its representative GUEST-FIRST and CYCLE-WIDE — collapsing `(P, G)` with `(NULL, G)`, and
+    // picking one claim per PERSON rather than one per series. It was the third leader rule in the
+    // system, and two rules disagreeing is what produced duplicate invitations. It now uses the key
+    // the offer, the sender and the accept all use.
+    expect(s).toMatch(/const k = `\$\{rebookGroupId \?\? cl\.slot_id\}\|p:\$\{cl\.player_id \?\? ""\}\|g:\$\{cl\.guest_player_id \?\? ""\}`/);
+    expect(s, 'and it breaks ties the way the offer does')
+      .toContain('(start === cur.start && cl.id < cur.claimId)');
+    expect(s, 'the guest-first representative key is gone')
+      .not.toContain('const pkey = personKeyOf(cl);');
     expect(s).not.toMatch(/const pkey = cl\.player_id \?\? `g:\$\{cl\.guest_player_id\}`/); // old collapse gone
   });
 
@@ -87,50 +115,31 @@ describe('PR 10d wiring — upstream producers preserve both people (proofs #1, 
     const s = read('src', 'lib', 'rebookManage.ts');
     expect(s).toContain("import { personKeyOf } from '@/lib/personIdentity';");
     expect(s).toContain('personKeyOf(c) ?? ');                              // keyOf → guest-first key
+    // ...and the INVITATION count is keyed PAIR-EXACTLY, because the sender enqueues and stamps one
+    // representative per exact (player, guest) pair. Counted guest-first, a row covering two pairs
+    // reported "1/1" and drove `uninvitedCount` to zero as soon as either was stamped — hiding the
+    // Resume control while an invitation was still unqueued (review round 3).
+    expect(s).toMatch(/const invitePairOf = [\s\S]{0,160}?p:\$\{c\.player_id \?\? ''\}\|g:\$\{c\.guest_player_id \?\? ''\}/);
+    expect(s).toContain('if (c.status === \'pending\') pendingPairs.add(pairKey);');
+    // The three figures are computed over ONE set so they cannot disagree: `total` is every
+    // invitation the round has or still needs, `sent` counts the stamped ones INCLUDING answered
+    // claims (the invitation was still queued), and `uninvited` is what Resume has left.
+    expect(s).toContain('const allPairs = new Set([...pendingPairs, ...invitedKeys]);');
+    expect(s).toContain('for (const k of allPairs) if (invitedKeys.has(k)) invitesSent += 1;');
+    expect(s).toContain('for (const k of pendingPairs) if (!invitedKeys.has(k)) uninvitedCount += 1;');
+    expect(s).toContain('const invitesTotal = allPairs.size;');
     expect(s).toContain('nameByKey.set(`p:${p.id}`');                       // profile names renamespaced to match
     expect(s).not.toContain('c.player_id ?? `g:${c.guest_player_id}`;');    // the old player-first keyOf body
   });
 
-  it('notify-rebook-member-open keys recipients/stamp guest-first (helper) and resolves contact guest-first', () => {
-    const h = shared('rebook-member-open.ts');
-    // recipientKey is guest-first but format-preserving (pure profile bare id, guest g:<id>)
-    expect(h).toContain('r.guest_player_id ? `g:${r.guest_player_id}` : (r.player_id ?? null);');
-    expect(h).not.toContain('r.player_id ?? (r.guest_player_id ? `g:${r.guest_player_id}` : null);'); // old player-first
-    expect(h).toContain('export function resolveMemberOpenContact(');       // guest-first name/email + parent fallback
-    const s = fn('notify-rebook-member-open');
-    expect(s).toContain('resolveMemberOpenContact(a, maps)');
-    expect(s).toContain('needsSignup: contact.needsSignup');               // linked accounts don't get a signup CTA
-    expect(s).not.toContain('key.startsWith("g:")'); // isGuest now derived from the id, not the (moved) key format
-  });
-
-  it('notify-rebook-member-open fails loud on recipient-discovery reads + releases the claim on failure', () => {
-    const s = fn('notify-rebook-member-open');
-    // load-bearing reads throw instead of masquerading as empty (→ no permanent claim / silent drop)
-    for (const m of ['cycle read failed', 'slots read failed', 'claims read failed', 'profiles read failed',
-                     'guest contact resolution failed', 'round lookup failed']) {
-      expect(s, `must fail loud on: ${m}`).toContain(m);
-    }
-    // recovery is the shared, tested runClaimedCycle (release on partial/throw + surface unclaim errors)
-    expect(s).toContain('runClaimedCycle(supabase, cycleId, (id) => notifyCycle(supabase, resendApiKey, id))');
-    const h = shared('rebook-member-open.ts');
-    expect(h).toContain('export async function runClaimedCycle(');
-    expect(h).toContain('export async function releaseMemberOpenClaim('); // catches a thrown unclaim too
-  });
-
-  it('member-open account resolution mirrors booking authorization + is crash-safe (findings #1/#3)', () => {
-    const s = fn('notify-rebook-member-open');
-    // #3: a guest's account/email come from the guest's OWN verified relationships (SQL RPC), not player_id
-    expect(s).toContain('resolve_guest_member_contacts');
-    // #1: deterministic idempotency key + ATOMIC per-recipient checkpoint (no whole-settings rewrite)
-    expect(s).toContain('idempotencyKey: `member-open:${cycleId}:${r.key}`');
-    expect(s).toContain('append_rebook_member_open_notified');
-    expect(s).not.toContain('rebook_member_open_notified_recipients: merged'); // the old read-modify-write is gone
-    // the migration provides the guest account resolver matching can_book_member_window
-    const mig = read('supabase', 'migrations', '20260927100000_rebook_identity_guest_first.sql');
-    expect(mig).toContain('guest_verified_account_profile');
-    expect(mig).toContain('is_guest_split_frozen'); // split-freeze respected
-  });
-
+  // THE THREE `notify-rebook-member-open` PINS ARE GONE WITH THE FUNCTION. D7's runtime cutover
+  // hard-retired the notifier and `_shared/rebook-member-open.ts`, so the guest-first recipient
+  // keying, the fail-loud reads and the `runClaimedCycle` recovery they pinned no longer have a
+  // call site to be wired to. Their SUBSTANCE moved into the database: the recipient universe is
+  // frozen per round, contact is re-resolved at dispatch, and recovery is
+  // `rebook_member_open_recover_expired_leases`. Deleting the pins rather than repointing them is
+  // deliberate — a pin that reads a deleted file cannot fail for the right reason.
+  // `src/test/d7RuntimeWiring.test.ts` holds the absence control.
   it('the other three senders fail loud on their load-bearing reads', () => {
     expect(fn('send-rebook-reminder')).toContain('claims read failed');
     expect(fn('send-rebook-reminder')).toContain('slot read failed');

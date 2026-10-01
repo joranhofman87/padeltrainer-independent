@@ -1,12 +1,18 @@
-// Verified guest contact resolution for the rebook senders (FAM-02 + person-unification).
+// Guest contact resolution for the rebook senders (FAM-02, Pass B §2).
 //
-// A guest's identity + account resolve from the GUEST's OWN verified relationships — curated
-// person_links → twin_of_profile_id → linked_profile_id, split-freeze — via the SQL RPC
-// resolve_guest_member_contacts, which mirrors can_book_member_window. The raw dual-key
-// claim.player_id is NEVER an input: it is not proof of the guest's account, so it must never route
-// a claim token / reminder to the linked parent or a stale account. Delivery is the guest's OWN email
-// then the VERIFIED account profile's email; if neither exists the recipient is SKIPPED (never the
-// raw player_id). Batched — one RPC per sender run, no per-recipient queries.
+// A guest is addressed at the guest's OWN email. There is no account fallback: the "account" a
+// guest used to resolve to came from the legacy bridge, which was written by an email/name
+// matcher and joins two different people who once shared an address. A claim token or reminder
+// sent to that address reaches the wrong person, so the arm is gone.
+//
+// The dual-key claim.player_id is likewise never an input — on a row carrying a guest, the
+// profile id is decoration, not proof.
+//
+// If the guest has no address of their own the recipient is SKIPPED. That is the intended
+// outcome and it is explicit; it is never an inherited account address.
+//
+// The account_* columns still arrive from the RPC (its result shape is unchanged) and are
+// deliberately NOT consulted here. Batched — one RPC per sender run.
 
 export interface GuestContactRow {
   guest_id: string;
@@ -30,16 +36,14 @@ export async function fetchGuestContacts(supabase: RpcOnly, guestIds: Array<stri
   return new Map(((data ?? []) as GuestContactRow[]).map((g) => [g.guest_id, g]));
 }
 
-/** Guest-first VERIFIED delivery email: own → verified account, else null (skip). Never player_id. */
+/** The guest's OWN delivery email, or null so the caller skips them. No account fallback. */
 export function guestContactEmail(guestId: string | null | undefined, map: GuestContactMap): string | null {
   if (!guestId) return null;
-  const g = map.get(guestId);
-  return (g?.own_email?.trim() || g?.account_email?.trim()) || null;
+  return map.get(guestId)?.own_email?.trim() || null;
 }
 
-/** Guest-first VERIFIED display name: own → verified account name, else "". */
+/** The guest's OWN display name, or "". A blank name is not filled in from an account. */
 export function guestContactName(guestId: string | null | undefined, map: GuestContactMap): string {
   if (!guestId) return "";
-  const g = map.get(guestId);
-  return (g?.own_name?.trim() || g?.account_name?.trim()) || "";
+  return map.get(guestId)?.own_name?.trim() || "";
 }
