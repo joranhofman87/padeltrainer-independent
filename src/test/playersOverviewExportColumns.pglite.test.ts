@@ -56,6 +56,8 @@ const CANC_ONLY = G(5);            // only cancelled / pending A bookings (still
 const BOTH = G(6);                 // A-owned guest also booked at B
 const NOW_G = G(7);                // in an in-progress session
 const REMOVED = G(8);              // soft-removed in A
+const META_ONLY = G(9);            // admitted to A ONLY by an A metadata row (not A-owned, no A booking)
+const FROZEN = G(10);              // linked to PM's person, but split-frozen: keys as ITSELF
 
 type ExportRow = {
   person_id: string; full_name: string; email: string; phone: string; currently_training: boolean;
@@ -210,12 +212,17 @@ beforeAll(async () => {
       ('${CANC_ONLY}', '${A}', 'Cancelled Only','c@x.nl',     NULL,         '${LOC_INACT}'),
       ('${BOTH}',      '${A}', 'Both Academies','both@x.nl',  NULL,         NULL),
       ('${NOW_G}',     '${A}', 'Now Training',  'now@x.nl',   NULL,         NULL),
-      ('${REMOVED}',   '${A}', 'Removed One',   'rem@x.nl',   NULL,         NULL);
+      ('${REMOVED}',   '${A}', 'Removed One',   'rem@x.nl',   NULL,         NULL),
+      ('${META_ONLY}', NULL,   'Meta Only',     'meta@x.nl',  '2010-01-02', '${LOC_A2}'),
+      ('${FROZEN}',    '${A}', 'Frozen Side',   'frozen@x.nl', NULL,        NULL);
     INSERT INTO public.profiles (id, full_name, email, birth_date) VALUES
       ('${PM}', 'Merged Person', 'm@x.nl', '2001-02-03'), ('${PARENT}', 'Parent', 'kid@x.nl', NULL);
     INSERT INTO public.persons (id, full_name, email, user_id) VALUES ('${PM}', 'Merged Person', 'm@x.nl', '${PM}');
     INSERT INTO public.person_links (person_id, profile_id) VALUES ('${PM}', '${PM}');
-    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PM}', '${GM}');
+    INSERT INTO public.person_links (person_id, guest_player_id) VALUES ('${PM}', '${GM}'), ('${PM}', '${FROZEN}');
+    INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id)
+      VALUES ('twin_detached_needs_split', 'pending', '${FROZEN}', '${PM}');
+    INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id) VALUES ('${A}', '${META_ONLY}');
     INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, removed_at) VALUES ('${A}', '${REMOVED}', now());
     INSERT INTO public.bookings (slot_id, guest_player_id, player_id, status) VALUES
       ('${S_PAST_TZ}',     '${HIST}', NULL, 'completed'),
@@ -240,7 +247,12 @@ beforeAll(async () => {
       ('${S_B_NEXT}',      '${BOTH}', NULL, 'confirmed'),
       ('${S_INPROG}',      '${NOW_G}', NULL, 'confirmed'),
       ('${S_INACT}',       '${NOW_G}', NULL, 'completed'),
-      ('${S_PAST_TZ}',     '${REMOVED}', NULL, 'completed');
+      ('${S_PAST_TZ}',     '${REMOVED}', NULL, 'completed'),
+      -- META_ONLY trains only at B: listed in A (metadata) with no A history
+      ('${S_B_PAST}',      '${META_ONLY}', NULL, 'completed'),
+      -- FROZEN's sessions are its OWN, never the linked person's
+      ('${S_PAST_CANC}',   '${FROZEN}', NULL, 'completed'),
+      ('${S_PAST_TZ}',     '${FROZEN}', NULL, 'completed');
   `);
   nextAt = new Date((await db.query<{ t: string }>(`SELECT start_time::text AS t FROM public.availability_slots WHERE id = '${S_NEXT}'`)).rows[0].t);
 
@@ -353,6 +365,34 @@ describe('get_players_overview_export — training and profile columns', () => {
     expect(a.get(PM)!.location_names).toEqual(['Club A1', 'Club A2']);          // trained A1 + OLD→A1, metadata A2; intake at B dropped
     expect(a.get(CANC_ONLY)!.location_names).toEqual(['Club Inactive']);        // preferred inactive club is kept
     expect(a.get(NOW_G)!.location_names).toEqual(['Club A1']);                  // a trained inactive club is not
+  });
+
+  it('admission by an academy metadata row only: listed with its birth date and preferred club, no A history', async () => {
+    const r = byId((await exportCall(MGR_A, A)).rows).get(META_ONLY)!;
+    expect(r).toMatchObject({ past_bookings_count: 0, last_training_date: null, next_training_date: null,
+      birth_date: '2010-01-02', location_names: ['Club A2'], currently_training: false });
+  });
+
+  it('a split-frozen guest keys as itself: its sessions never count for the linked person', async () => {
+    const rows = byId((await exportCall(MGR_A, A)).rows);
+    expect(rows.get(FROZEN)).toMatchObject({ past_bookings_count: 2, last_training_date: '2026-03-20' });
+    expect(rows.get(PM)).toMatchObject({ past_bookings_count: 2, last_training_date: '2026-03-11' }); // unchanged
+  });
+
+  it('currently_training under training_location_id and under a non-object filters argument', async () => {
+    const atA2 = await exportCall(MGR_A, A, { training_location_id: LOC_A2 });
+    expect(atA2.rows.map((r) => r.person_id).sort()).toEqual(
+      (await listPersons(MGR_A, A, { training_location_id: LOC_A2 })));
+    expect(atA2.total).toBeGreaterThan(0);
+    expect(atA2.rows.every((r) => r.currently_training)).toBe(true);
+    const all = await exportCall(MGR_A, A);
+    const training = await listPersons(MGR_A, A, { current_training: true });
+    for (const odd of ['null', '[]', '"x"', '7']) {
+      const res = await asUser(MGR_A, async () => (await db.query<{ total: string; rows: ExportRow[] }>(
+        `SELECT * FROM public.get_players_overview_export($1, NULL, $2::jsonb, 'name', 'asc')`, [A, odd])).rows[0]);
+      expect([odd, Number(res.total)]).toEqual([odd, all.total]); // no filter, as the authority reads it
+      expect([odd, res.rows.filter((r) => r.currently_training).map((r) => r.person_id).sort()]).toEqual([odd, training]);
+    }
   });
 
   it('the total and the rows still describe one evaluation, in list order', async () => {

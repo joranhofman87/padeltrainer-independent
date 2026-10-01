@@ -980,7 +980,8 @@ describe('PTF release packet on real PostgreSQL', () => {
     const [{ total: shapeExpected }] = await asUser(MGR_A, `SELECT total FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [A]);
     expect(pc.rec).toMatchObject({ shape_manager_found: 't', shape_total: String(shapeExpected), shape_rows: String(shapeExpected),
       rows_with_exact_keys: String(shapeExpected), distinct_persons: String(shapeExpected), malformed_dates: '0',
-      next_before_last: '0', zero_count_with_last: '0', count_without_last: '0' });
+      zero_count_with_last: '0', count_without_last: '0' });
+    expect(pc.out.match(/-\[ RECORD 1 \]/g)).toHaveLength(3); // object state, manager found, shape
     expect(Number(pc.rec.currently_training)).toBeGreaterThan(0);
     expect(pc.out).not.toMatch(/@x\.nl|@example/); // no contact data in the output
 

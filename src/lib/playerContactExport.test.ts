@@ -205,12 +205,12 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
   it('reads the training, birth-date and location fields; names are deduplicated in order', async () => {
     const srv = fakeRpc(ok([person(1, {
       currently_training: true, last_training_date: '2026-09-24', next_training_date: '2026-10-08',
-      past_bookings_count: 7, birth_date: '2012-03-04', location_names: ['Club B', 'Club A', 'Club B', ' '],
+      past_bookings_count: 7, birth_date: '2012-03-04', location_names: ['Club B', 'Club A', 'Club B', 'Club A ', ' '],
     })]));
     expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).toEqual([{
       personId: uid(1), fullName: 'Player 1', email: 'p1@x.nl', phone: '', currentlyTraining: true,
       lastTrainingDate: '2026-09-24', nextTrainingDate: '2026-10-08', pastBookingsCount: 7, birthDate: '2012-03-04',
-      locationNames: ['Club B', 'Club A'],
+      locationNames: ['Club B', 'Club A', 'Club A ', ' '], // verbatim; only exact duplicates removed
     }]);
   });
 
@@ -243,6 +243,9 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     ['a fractional booking count', ok([person(1, { past_bookings_count: 1.5 })])],
     ['a string booking count', ok([person(1, { past_bookings_count: '3' })])],
     ['a timestamp instead of a date', ok([person(1, { last_training_date: '2026-09-24T10:00:00Z' })])],
+    ['an impossible day (2026-02-31)', ok([person(1, { next_training_date: '2026-02-31' })])],
+    ['an impossible month (2026-13-01)', ok([person(1, { last_training_date: '2026-13-01' })])],
+    ['a zero day (2012-03-00)', ok([person(1, { birth_date: '2012-03-00' })])],
     ['a non-string birth date', ok([person(1, { birth_date: 20120304 })])],
     ['location names that are not an array', ok([person(1, { location_names: 'Club A' })])],
     ['a non-text location name', ok([person(1, { location_names: ['Club A', 7] })])],
@@ -254,7 +257,11 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
   // class instances, or records whose fields are only inherited — were accepted there. PostgREST's JSON
   // never produces them; the contract is now literally "plain records with their own fields".
   class EnvelopeLike { total = 1; rows = [person(1)]; }
-  class RowLike { person_id = uid(1); full_name = 'A'; email = 'a@x.nl'; phone = ''; }
+  class RowLike {
+    person_id = uid(1); full_name = 'A'; email = 'a@x.nl'; phone = ''; currently_training = false;
+    last_training_date = null; next_training_date = null; past_bookings_count = 0; birth_date = null;
+    location_names: string[] = [];
+  }
   const inheriting = <T extends object>(proto: T): T => Object.create(proto) as T;
   it.each([
     ['a class-instance envelope', { data: [new EnvelopeLike()], error: null }],
@@ -263,6 +270,11 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     ['a row whose fields are only inherited', { data: [{ total: 1, rows: [inheriting(person(1))] }], error: null }],
   ] as Array<[string, ExportRpcResult]>)('refuses %s (injected transport) as `failed`', async (_label, result) => {
     await refuses(result);
+  });
+
+  it('a plain copy of the class-instance row is accepted (so its rejection above is about the class alone)', async () => {
+    const srv = fakeRpc(ok([{ ...new RowLike() } as ServerRow]));
+    expect((await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).map((c) => c.personId)).toEqual([uid(1)]);
   });
 
   it('reads only OWN fields: a field polluted onto Object.prototype never fills a missing one', async () => {

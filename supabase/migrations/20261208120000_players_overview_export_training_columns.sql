@@ -22,8 +22,8 @@
 --                        academy session; the club must be an ACTIVE academy club), preferred (guest and
 --                        academy metadata), intake, and kept associations (academy_player_locations,
 --                        not dismissed); merged clubs resolved to the canonical club; the club must be one
---                        of the academy's clubs; a dismissed association removes it. Names deduplicated
---                        and sorted. The location semantics are not changed (src/test/
+--                        of the academy's clubs; a dismissed association removes it. Names kept verbatim
+--                        (as the list shows them), exact duplicates removed, sorted. The location semantics are not changed (src/test/
 --                        playersOverviewExportColumns.pglite.test.ts proves equality with the list chips).
 --
 -- STATUS: "booked, not cancelled" is the overview's own membership status set ('confirmed','completed');
@@ -77,6 +77,10 @@ DECLARE
   v_base jsonb;
   v_rows jsonb;
   v_tz text;
+  -- The authority reads keys with ->>, so a non-object p_filters (JSON null, an array, a scalar) applies no
+  -- filter. Both authority calls get the SAME normalized object, so the training subset can never drift
+  -- from the export rows (`||` on a non-object would build an array, not set current_training).
+  v_filters jsonb := CASE WHEN jsonb_typeof(p_filters) = 'object' THEN p_filters ELSE '{}'::jsonb END;
 BEGIN
   -- ---- authorization at this public entry (the authority re-checks it) ----
   IF NOT public.is_academy_manager(auth.uid(), p_academy) THEN
@@ -97,7 +101,7 @@ BEGIN
                   ORDER BY r.sort_ord), '[]'::jsonb)
     INTO v_total, v_base
     FROM players_private.players_overview_rows(
-           'academy', p_academy, p_search, p_filters, p_sort, p_sort_dir, c_max, 0, false) r;
+           'academy', p_academy, p_search, v_filters, p_sort, p_sort_dir, c_max, 0, false) r;
 
   IF v_total > c_max THEN
     RAISE EXCEPTION 'player export too large: % players match, at most % can be exported', v_total, c_max
@@ -115,7 +119,7 @@ BEGIN
     SELECT t.person_id
       FROM players_private.players_overview_rows(
              'academy', p_academy, p_search,
-             coalesce(p_filters, '{}'::jsonb) || jsonb_build_object('current_training', true),
+             v_filters || jsonb_build_object('current_training', true),
              p_sort, p_sort_dir, c_max, 0, false) t
   ),
   -- the academy's own sessions with a qualifying booking (scanned once)
@@ -205,7 +209,7 @@ BEGIN
   ),
   locs AS (
     SELECT d.lc_person_id AS l_person_id,
-           array_agg(DISTINCT l.name ORDER BY l.name) FILTER (WHERE nullif(btrim(l.name), '') IS NOT NULL) AS l_names
+           array_agg(DISTINCT l.name ORDER BY l.name) FILTER (WHERE l.name IS NOT NULL) AS l_names
       FROM (SELECT c.lc_person_id, coalesce(lm.merged_into, c.lc_location_id) AS lc_canon,
                    bool_and(c.lc_requires_active) AS lc_req_active
               FROM loc_cand c

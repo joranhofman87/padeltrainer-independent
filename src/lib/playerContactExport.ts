@@ -188,17 +188,25 @@ function nullableText(v: unknown, total: number): string {
   throw new ExportError('failed', { total });
 }
 
-/** A calendar date is `YYYY-MM-DD` text or SQL NULL (an empty cell); anything else refuses the export. */
+/** A real calendar date as `YYYY-MM-DD` text, or SQL NULL (an empty cell); anything else refuses the export. */
 function nullableDate(v: unknown, total: number): string {
   if (v === null) return '';
-  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const m = typeof v === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(v) : null;
+  if (m) {
+    const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+    const t = new Date(Date.UTC(y, mo - 1, d));
+    if (t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d) return v as string;
+  }
   throw new ExportError('failed', { total });
 }
 
-/** A list of names: an array of text only; deduplicated, order kept. Anything else refuses the export. */
+/**
+ * A list of names: an array of text only. Names are kept VERBATIM (as the list shows them); only exact
+ * duplicates are removed, order kept. Anything else refuses the export.
+ */
 function textList(v: unknown, total: number): string[] {
   if (!Array.isArray(v) || !v.every((n) => typeof n === 'string')) throw new ExportError('failed', { total });
-  return [...new Set((v as string[]).map((n) => n.trim()).filter(Boolean))];
+  return [...new Set(v as string[])];
 }
 
 /** Column headers and the two training-status words; all come from the page (i18n). */

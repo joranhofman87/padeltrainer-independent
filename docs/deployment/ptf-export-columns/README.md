@@ -14,7 +14,7 @@ top of `supabase/migrations/20261208120000_players_overview_export_training_colu
 | Next training date | Earliest in-progress or upcoming academy-owned session with such a booking; blank if none |
 | Past sessions booked (not attendance) | Distinct ended academy-owned sessions with such a booking; 0 if none |
 | Birth date | The list's person birth date; blank if unknown |
-| Locations | The list's own club chips for the person, deduplicated, joined by `; `; blank if none |
+| Locations | The list's own club chips for the person, names verbatim, exact duplicates removed, joined by `; `; blank if none |
 
 Cancelled, rejected, pending and pending-approval bookings never count. Another academy's sessions, a shared
 trainer's other sessions and unstamped sessions never count. A person's sides booked on one session count it
@@ -33,7 +33,7 @@ From the repository root of a clean checkout of the reviewed commit, after
 of `docs/deployment/ptf-release/README.md`:
 
 1. **Apply** (one transaction): `-1 -v expected_sysid=7642734024280108049 -f docs/deployment/ptf-export-columns/apply.sql`.
-   - Required: exit 0; `INSERT 0 1`; `NOTICE:  ptfx apply: object state 1e78f4db9ccdc09b0dde56679a34e559f2485c2ffb227cf54410eb91e6757f74, ledger 622 to 20261208120000`; no `ERROR:`/`FATAL:`/`WARNING:`.
+   - Required: exit 0; `INSERT 0 1`; `NOTICE:  ptfx apply: object state 60b714039c0da0106b46b8f5e77766c5975ead008a9c02d1820cbca383593c20, ledger 622 to 20261208120000`; no `ERROR:`/`FATAL:`/`WARNING:`.
    - It refuses, changing nothing, unless production is exactly in the PTF state (ledger 621, digest
      `901dc2c8…`; object state `ca0d9b03…`) or already in the follow-up state (a re-run: `INSERT 0 0`).
 2. **Post-check** (read-only, ends in ROLLBACK; no `-1`):
@@ -42,9 +42,12 @@ of `docs/deployment/ptf-release/README.md`:
      `export_config` `search_path=pg_catalog, pg_temp;plan_cache_mode=force_custom_plan`,
      `export_acl` `authenticated=X/postgres,postgres=X/postgres`, `anon_can_execute` f,
      `service_role_can_execute` f.
-   - Record 2 (counts only, no personal data): `shape_manager_found` t; `shape_total` = `shape_rows` =
-     `rows_with_exact_keys` = `distinct_persons`; `malformed_dates`, `next_before_last`,
-     `zero_count_with_last` and `count_without_last` all 0; `shape_ms` is the export's server time.
+   - Record 2: `shape_manager_found` t.
+   - Record 3 (counts only, no personal data): `shape_total` = `shape_rows` = `rows_with_exact_keys` =
+     `distinct_persons`; `malformed_dates`, `zero_count_with_last` and `count_without_last` all 0;
+     `shape_ms` is the export's server time. (A next date before the last date is valid: last/next split
+     sessions by END time and show the START date, so an ongoing long session can start before a later,
+     already ended one.)
 
 Anything else is an escalation: keep the complete output, run nothing further.
 

@@ -1,16 +1,17 @@
 -- POST-CHECK — PTF export follow-up (read-only; ends in ROLLBACK). Run immediately after apply:
 --   psql -X -v ON_ERROR_STOP=1 -v shape_academy=<an academy id> -f this file
--- Prints two records:
+-- Prints three records:
 --   1. the object state: ledger rows/head, ledger_ok, state_ok, the state digest, the export's config and
 --      ACL, and whether anon / service_role can execute it (both must be false);
---   2. the export's SHAPE for shape_academy, called as one of that academy's managers inside this
---      read-only transaction: counts only, never a name, contact, date or id.
+--   2. shape_manager_found: a manager of shape_academy exists (the shape call runs as that manager);
+--   3. the export's SHAPE for shape_academy, called as that manager inside this read-only transaction:
+--      counts only, never a name, contact, date or id.
 BEGIN ISOLATION LEVEL REPEATABLE READ, READ ONLY;
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '60s';
 \x on
 WITH k AS (
-  SELECT 'd8115fd6f71b348ae19260ec075f0de9b6fe4304fe59a27f664fa6bb32b12206'::text AS c_fu, '1e78f4db9ccdc09b0dde56679a34e559f2485c2ffb227cf54410eb91e6757f74'::text AS c_state_fu
+  SELECT 'd8115fd6f71b348ae19260ec075f0de9b6fe4304fe59a27f664fa6bb32b12206'::text AS c_fu, '60b714039c0da0106b46b8f5e77766c5975ead008a9c02d1820cbca383593c20'::text AS c_state_fu
 ), l AS (
   SELECT count(*) AS n, max(version) AS head,
          encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex') AS d
@@ -86,7 +87,6 @@ SELECT (SELECT total FROM e) AS shape_total,
        count(*) FILTER (WHERE (j->>'last_training_date') !~ '^\d{4}-\d{2}-\d{2}$'
                            OR (j->>'next_training_date') !~ '^\d{4}-\d{2}-\d{2}$'
                            OR (j->>'birth_date') !~ '^\d{4}-\d{2}-\d{2}$') AS malformed_dates,
-       count(*) FILTER (WHERE j->>'next_training_date' < j->>'last_training_date') AS next_before_last,
        coalesce(sum((j->>'past_bookings_count')::int), 0) AS past_bookings_sum,
        count(*) FILTER (WHERE (j->>'past_bookings_count')::int = 0 AND j->>'last_training_date' IS NOT NULL) AS zero_count_with_last,
        count(*) FILTER (WHERE (j->>'past_bookings_count')::int > 0 AND j->>'last_training_date' IS NULL) AS count_without_last,

@@ -33,7 +33,7 @@ DECLARE
   c_ptf      CONSTANT text := '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900'; -- 621, to 20261208100000
   c_fu       CONSTANT text := 'd8115fd6f71b348ae19260ec075f0de9b6fe4304fe59a27f664fa6bb32b12206'; -- + 20261208120000
   c_state_ptf CONSTANT text := 'ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc';
-  c_state_fu  CONSTANT text := '1e78f4db9ccdc09b0dde56679a34e559f2485c2ffb227cf54410eb91e6757f74';
+  c_state_fu  CONSTANT text := '60b714039c0da0106b46b8f5e77766c5975ead008a9c02d1820cbca383593c20';
   v_sysid  text := (SELECT system_identifier::text FROM pg_control_system());
   v_rows   bigint := (SELECT count(*) FROM supabase_migrations.schema_migrations);
   v_ledger text := (SELECT encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex')
@@ -130,7 +130,7 @@ DECLARE
   c_ptf      CONSTANT text := '901dc2c86de75066075c12e9da19e277d372da66c31b84433911b0e3cc07f900'; -- 621, to 20261208100000
   c_fu       CONSTANT text := 'd8115fd6f71b348ae19260ec075f0de9b6fe4304fe59a27f664fa6bb32b12206'; -- + 20261208120000
   c_state_ptf CONSTANT text := 'ca0d9b031804fb8a5d9f5858b6d5959af0343ac7f8fc3d3efcea0539e435d5dc';
-  c_state_fu  CONSTANT text := '1e78f4db9ccdc09b0dde56679a34e559f2485c2ffb227cf54410eb91e6757f74';
+  c_state_fu  CONSTANT text := '60b714039c0da0106b46b8f5e77766c5975ead008a9c02d1820cbca383593c20';
   v_ledger text := (SELECT encode(sha256(convert_to(string_agg(version, E'\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex')
                       FROM supabase_migrations.schema_migrations);
   v_state  text := (
