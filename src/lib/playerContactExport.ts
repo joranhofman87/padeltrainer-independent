@@ -1,6 +1,7 @@
 /**
  * Academy Players contact export (PTF option A, E1): EVERY person matching the list's search + filters
- * as a local Excel-compatible CSV of name / email / phone. The PTF-specific parts live here — the
+ * as a local Excel-compatible CSV: name / email / phone, current training, last / next training date,
+ * past booking count (bookings, not attendance), birth date and associated clubs. The PTF-specific parts live here — the
  * academy-scoped server call and its response contract, the frozen list inputs and the contact column
  * spec; the file mechanics (formatting, formula safety, download, failure vocabulary) are the shared
  * @/lib/csvExport.
@@ -26,6 +27,18 @@ export interface ExportContact {
   fullName: string;
   email: string;
   phone: string;
+  /** The list's own "Currently training" predicate, evaluated by the server for this person. */
+  currentlyTraining: boolean;
+  /** Academy-local `YYYY-MM-DD` of the latest ended academy session with a confirmed/completed booking; '' if none. */
+  lastTrainingDate: string;
+  /** Academy-local `YYYY-MM-DD` of the next in-progress/upcoming such session; '' if none. */
+  nextTrainingDate: string;
+  /** Distinct ended academy sessions with a confirmed/completed booking — bookings, not attendance. */
+  pastBookingsCount: number;
+  /** `YYYY-MM-DD` or ''. */
+  birthDate: string;
+  /** The person's authorized associated club names (the list's chips), deduplicated. */
+  locationNames: string[];
 }
 
 /** What the list shows: search, filters and order. */
@@ -124,11 +137,23 @@ export async function fetchContactsForExport(
       throw new ExportError('failed', { total });
     }
     seen.add(personId);
+    const currentlyTraining = own(r, 'currently_training');
+    const pastBookingsCount = own(r, 'past_bookings_count');
+    if (typeof currentlyTraining !== 'boolean'
+      || typeof pastBookingsCount !== 'number' || !Number.isSafeInteger(pastBookingsCount) || pastBookingsCount < 0) {
+      throw new ExportError('failed', { total });
+    }
     return {
       personId,
       fullName: nullableText(own(r, 'full_name'), total),
       email: nullableText(own(r, 'email'), total),
       phone: nullableText(own(r, 'phone'), total),
+      currentlyTraining,
+      lastTrainingDate: nullableDate(own(r, 'last_training_date'), total),
+      nextTrainingDate: nullableDate(own(r, 'next_training_date'), total),
+      pastBookingsCount,
+      birthDate: nullableDate(own(r, 'birth_date'), total),
+      locationNames: textList(own(r, 'location_names'), total),
     };
   });
 }
@@ -163,18 +188,55 @@ function nullableText(v: unknown, total: number): string {
   throw new ExportError('failed', { total });
 }
 
-/** The contact file's columns: name, email, phone (kept as text). Headers come from the page (i18n). */
-export function contactCsvColumns(headers: { name: string; email: string; phone: string }): CsvColumn<ExportContact>[] {
+/** A calendar date is `YYYY-MM-DD` text or SQL NULL (an empty cell); anything else refuses the export. */
+function nullableDate(v: unknown, total: number): string {
+  if (v === null) return '';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  throw new ExportError('failed', { total });
+}
+
+/** A list of names: an array of text only; deduplicated, order kept. Anything else refuses the export. */
+function textList(v: unknown, total: number): string[] {
+  if (!Array.isArray(v) || !v.every((n) => typeof n === 'string')) throw new ExportError('failed', { total });
+  return [...new Set((v as string[]).map((n) => n.trim()).filter(Boolean))];
+}
+
+/** Column headers and the two training-status words; all come from the page (i18n). */
+export interface ExportHeaders {
+  name: string;
+  email: string;
+  phone: string;
+  currentlyTraining: string;
+  lastTrainingDate: string;
+  nextTrainingDate: string;
+  pastBookingsCount: string;
+  birthDate: string;
+  locations: string;
+  yes: string;
+  no: string;
+}
+
+/** Locations in one cell are separated by `; ` (the cell is quoted, so the file's `;` delimiter is safe). */
+export const LOCATION_SEPARATOR = '; ';
+
+/** The export file's columns. Phones stay text; dates are `YYYY-MM-DD`; a missing date is an empty cell. */
+export function contactCsvColumns(headers: ExportHeaders): CsvColumn<ExportContact>[] {
   return [
     { header: headers.name, value: (c) => c.fullName },
     { header: headers.email, value: (c) => c.email },
     { header: headers.phone, value: (c) => c.phone, kind: 'phone' },
+    { header: headers.currentlyTraining, value: (c) => (c.currentlyTraining ? headers.yes : headers.no) },
+    { header: headers.lastTrainingDate, value: (c) => c.lastTrainingDate },
+    { header: headers.nextTrainingDate, value: (c) => c.nextTrainingDate },
+    { header: headers.pastBookingsCount, value: (c) => String(c.pastBookingsCount) },
+    { header: headers.birthDate, value: (c) => c.birthDate },
+    { header: headers.locations, value: (c) => c.locationNames.join(LOCATION_SEPARATOR) },
   ];
 }
 
 export function buildContactsCsv(
   contacts: readonly ExportContact[],
-  headers: { name: string; email: string; phone: string },
+  headers: ExportHeaders,
 ): string {
   return buildCsv(contacts, contactCsvColumns(headers));
 }

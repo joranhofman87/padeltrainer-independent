@@ -366,9 +366,11 @@ beforeAll(async () => {
   await db.query(`ALTER DEFAULT PRIVILEGES GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
     ALTER DEFAULT PRIVILEGES GRANT USAGE ON SCHEMAS TO anon, authenticated, service_role;`);
 
-  // The 620-version ledger: the repository's versions except PTF, plus the six F0 and the ACL version.
+  // The 620-version ledger: the repository's versions except PTF (and the later export follow-up
+  // 20261208120000, which applies after PTF), plus the six F0 and the ACL version.
+  const LATER_THAN_BASE = new Set(['20261208100000', '20261208120000']);
   const repo = readdirSync(join(process.cwd(), 'supabase', 'migrations'))
-    .map((f) => /^(\d{14})_/.exec(f)?.[1]).filter((v): v is string => Boolean(v) && v !== '20261208100000');
+    .map((f) => /^(\d{14})_/.exec(f)?.[1]).filter((v): v is string => Boolean(v) && !LATER_THAN_BASE.has(v));
   const versions = [...repo, ...F0_ACL_VERSIONS];
   expect(versions).toHaveLength(620);
   const sorted = [...versions].sort((x, y) => (x < y ? -1 : x > y ? 1 : 0));
@@ -916,6 +918,94 @@ describe('PTF release packet on real PostgreSQL', () => {
     expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
   });
 
+  it('export follow-up packet (20261208120000): refuses off-state, applies once, re-runs as a no-op, post-checks, and recovers to the exact PTF state', async () => {
+    const FU = join(process.cwd(), 'docs', 'deployment', 'ptf-export-columns');
+    const fu = (file: string, vars: Record<string, string> = { expected_sysid: sysid }) =>
+      psql('', { single: file !== 'postcheck.sql', path: join(FU, file), vars: file === 'postcheck.sql' ? { shape_academy: A } : vars });
+    const constant = (file: string, name: string) =>
+      new RegExp(`${name} +CONSTANT text := '([0-9a-f]{64})'`).exec(readFileSync(join(FU, file), 'utf8'))![1];
+    const ledgerDigest = async () => (await db.query(`SELECT encode(sha256(convert_to(string_agg(version, E'\\n' ORDER BY version COLLATE "C"), 'UTF8')), 'hex') AS d FROM supabase_migrations.schema_migrations`)).rows[0].d as string;
+    expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
+    expect(await ledgerDigest()).toBe(C_PTF);
+    for (const f of ['apply.sql', 'recovery.sql']) {
+      expect(constant(f, 'c_ptf')).toBe(C_PTF);
+      expect(constant(f, 'c_state_ptf')).toBe(C_STATE_PTF);
+    }
+    // the embedded descriptors and the in-flight probe are byte-identical to the reviewed PTF packet's
+    for (const f of ['apply.sql', 'recovery.sql', 'postcheck.sql']) {
+      const text = readFileSync(join(FU, f), 'utf8');
+      for (const d of text.split('-- STATE DESCRIPTOR BEGIN').slice(1)) {
+        expect(('-- STATE DESCRIPTOR BEGIN' + d.slice(0, d.indexOf('-- STATE DESCRIPTOR END'))).trim()).toBe(DESCRIPTOR_SQL.trim());
+      }
+    }
+
+    // refusals change nothing: another cluster; a drifted export ACL
+    const wrong = fu('apply.sql', { expected_sysid: '1' });
+    expect(wrong.status).toBe(3);
+    expect(wrong.err).toMatch(/ptfx apply guard: system identifier/);
+    await db.query(`GRANT EXECUTE ON FUNCTION ${EXPORT_SIG} TO anon`);
+    const drifted = fu('apply.sql');
+    expect(drifted.status).toBe(3);
+    expect(drifted.err).toMatch(/ptfx apply guard: the ledger\/object state is neither/);
+    await db.query(`REVOKE EXECUTE ON FUNCTION ${EXPORT_SIG} FROM anon`);
+    expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
+
+    // first apply
+    const first = fu('apply.sql');
+    const fuState = (await state()).digest;
+    const fuLedger = await ledgerDigest();
+    expect(first.status, first.err).toBe(0);
+    expect(first.out).toContain('INSERT 0 1');
+    expect(first.err).toContain(`ptfx apply: object state ${fuState}, ledger 622 to 20261208120000`);
+    expect(constant('apply.sql', 'c_fu')).toBe(fuLedger);
+    expect(constant('apply.sql', 'c_state_fu')).toBe(fuState);
+    expect(await state()).toMatchObject({ ledger_rows: 622 });
+    const after = await asUser(MGR_A, `SELECT rows FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [A]);
+    const rows = after[0].rows as Array<Record<string, unknown>>;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(Object.keys(r).sort()).toEqual(['birth_date', 'currently_training', 'email', 'full_name', 'last_training_date',
+        'location_names', 'next_training_date', 'past_bookings_count', 'person_id', 'phone']);
+    }
+    const [cfg] = await asUser(MGR_A, `SELECT array_to_string(proconfig, ';') AS c FROM pg_proc WHERE oid = '${EXPORT_SIG}'::regprocedure`);
+    expect(cfg.c).toBe('search_path=pg_catalog, pg_temp;plan_cache_mode=force_custom_plan');
+
+    // post-check
+    const pc = fu('postcheck.sql');
+    expect(pc.status, pc.err).toBe(0);
+    expect(pc.rec).toMatchObject({ ledger_rows: '622', ledger_head: '20261208120000', ledger_ok: 't', state_ok: 't',
+      state_sha256: fuState, export_acl: 'authenticated=X/postgres,postgres=X/postgres',
+      anon_can_execute: 'f', service_role_can_execute: 'f' });
+    // the shape record: counts only, consistent with the export itself
+    const [{ total: shapeExpected }] = await asUser(MGR_A, `SELECT total FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [A]);
+    expect(pc.rec).toMatchObject({ shape_manager_found: 't', shape_total: String(shapeExpected), shape_rows: String(shapeExpected),
+      rows_with_exact_keys: String(shapeExpected), distinct_persons: String(shapeExpected), malformed_dates: '0',
+      next_before_last: '0', zero_count_with_last: '0', count_without_last: '0' });
+    expect(Number(pc.rec.currently_training)).toBeGreaterThan(0);
+    expect(pc.out).not.toMatch(/@x\.nl|@example/); // no contact data in the output
+
+    // re-run: no ledger row, same state
+    const again = fu('apply.sql');
+    expect(again.status, again.err).toBe(0);
+    expect(again.out).toContain('INSERT 0 0');
+    expect((await state()).digest).toBe(fuState);
+
+    // recovery: the exact PTF state; a re-run is a no-op
+    const rec = fu('recovery.sql');
+    expect(rec.status, rec.err).toBe(0);
+    expect(rec.out).toContain('DELETE 1');
+    expect(rec.err).toContain(`ptfx recovery: object state ${C_STATE_PTF} (the PTF state), ledger 621 to 20261208100000`);
+    expect(await state()).toMatchObject({ ledger_rows: 621, digest: C_STATE_PTF });
+    expect(await ledgerDigest()).toBe(C_PTF);
+    const rec2 = fu('recovery.sql');
+    expect(rec2.status, rec2.err).toBe(0);
+    expect(rec2.out).toContain('DELETE 0');
+    const restored = await asUser(MGR_A, `SELECT rows FROM public.get_players_overview_export($1, NULL, '{}'::jsonb, 'name', 'asc')`, [A]);
+    for (const r of restored[0].rows as Array<Record<string, unknown>>) {
+      expect(Object.keys(r).sort()).toEqual(['email', 'full_name', 'person_id', 'phone']);
+    }
+  });
+
   it('a representative performance observation stays within the budget', async () => {
     // One large academy (P): 2,000 guests; 20 cycles x 12 weekly sessions (10 ongoing, 10 not yet
     // started) + 80 standalone sessions (half past, half ahead); ~20,000 bookings over all four statuses;
@@ -974,7 +1064,21 @@ describe('PTF release packet on real PostgreSQL', () => {
   }, 180_000);
 
   it.runIf(process.env.PTF_MEASURE === '1')('§3: the representative 20,000-person measurement (heavy; PTF_MEASURE=1)', async () => {
-    await measureAt20k();
+    // PTF_MEASURE_FOLLOWUP=1 measures the export follow-up (20261208120000) on the same fixture instead,
+    // then puts the reviewed PTF export body back, so the recovery test below still sees the PTF state.
+    const followUp = process.env.PTF_MEASURE_FOLLOWUP === '1';
+    const ptfExportDef = followUp
+      ? (await db.query(`SELECT pg_get_functiondef('${EXPORT_SIG}'::regprocedure) AS d`)).rows[0].d as string
+      : '';
+    if (followUp) {
+      await db.query(readFileSync(join(process.cwd(), 'supabase', 'migrations',
+        '20261208120000_players_overview_export_training_columns.sql'), 'utf8'));
+    }
+    try {
+      await measureAt20k();
+    } finally {
+      if (followUp) await db.query(ptfExportDef);
+    }
   }, 1_800_000);
 
   it('forward recovery returns the exact BASE state; a re-run is a no-op; apply then refuses', async () => {
