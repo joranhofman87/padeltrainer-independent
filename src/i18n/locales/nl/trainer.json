@@ -767,6 +767,31 @@
       "ok": "Geen achterstand",
       "overdue": "Achterstallig"
     },
+    "training": {
+      "filterAll": "Alle spelers",
+      "yes": "Traint nu",
+      "no": "Traint nu niet",
+      "clubAll": "Alle trainingsclubs",
+      "statusAria": "Trainingsstatus",
+      "clubAria": "Trainingsclub"
+    },
+    "export": {
+      "button": "Exporteren",
+      "progress": "Exporteren…",
+      "cancel": "Export annuleren",
+      "success": "{{count}} spelers geëxporteerd",
+      "empty": "Geen spelers voldoen aan deze filters, er is niets geëxporteerd.",
+      "overLimit": "{{total}} spelers voldoen, maar een export kan er maximaal {{max}} bevatten. Verfijn de filters en probeer het opnieuw.",
+      "cancelled": "Export geannuleerd, er is niets gedownload.",
+      "failed": "De export is mislukt, er is niets gedownload. Probeer het opnieuw.",
+      "headerName": "Naam",
+      "headerEmail": "E-mail",
+      "headerPhone": "Telefoon",
+      "filePrefix": "spelers"
+    },
+    "filteredCount_one": "{{count}} overeenkomende speler",
+    "filteredCount_other": "{{count}} overeenkomende spelers",
+    "filteredCountUpdating": "Overeenkomende spelers bijwerken…",
     "playerPlural": "spelers",
     "playerSingular": "speler",
     "subtitleShort": "Beheer je spelers en contacten",

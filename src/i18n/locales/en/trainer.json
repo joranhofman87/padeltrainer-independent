@@ -764,6 +764,31 @@
       "ok": "No overdue",
       "overdue": "Overdue"
     },
+    "training": {
+      "filterAll": "All players",
+      "yes": "Currently training",
+      "no": "Not currently training",
+      "clubAll": "All training clubs",
+      "statusAria": "Training status",
+      "clubAria": "Training club"
+    },
+    "export": {
+      "button": "Export",
+      "progress": "Exporting…",
+      "cancel": "Cancel export",
+      "success": "{{count}} players exported",
+      "empty": "No players match these filters, so nothing was exported.",
+      "overLimit": "{{total}} players match, but an export can hold at most {{max}}. Narrow the filters and try again.",
+      "cancelled": "Export cancelled, nothing was downloaded.",
+      "failed": "The export failed, nothing was downloaded. Please try again.",
+      "headerName": "Name",
+      "headerEmail": "Email",
+      "headerPhone": "Phone",
+      "filePrefix": "players"
+    },
+    "filteredCount_one": "{{count}} matching player",
+    "filteredCount_other": "{{count}} matching players",
+    "filteredCountUpdating": "Updating matching players…",
     "playerPlural": "players",
     "playerSingular": "player",
     "subtitleShort": "Manage your players and contacts",

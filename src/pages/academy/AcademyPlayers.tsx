@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useRef, lazy, Suspense } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Tags, MapPin, Tag, StickyNote, Trash2, X } from 'lucide-react';
+import { Users, UserPlus, Upload, Mail, Phone, RefreshCw, Tags, MapPin, Tag, StickyNote, Trash2, X, Download, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { EmailBounceBadge } from '@/components/email/EmailBounceBadge';
@@ -49,6 +49,9 @@ import { bulkAddTag, bulkAddNote, bulkSetLocation, bulkRemovePlayers, type BulkP
 import { getFriendlyErrorMessage } from '@/lib/friendlyError';
 import { PlayerTag, getTagColorClass } from '@/components/players/playerTagColors';
 import { cn } from '@/lib/utils';
+import { buildContactsCsv, fetchContactsForExport, freezeExportInputs } from '@/lib/playerContactExport';
+import { ExportError, csvFilename, downloadCsv } from '@/lib/csvExport';
+import { useCancellableExport } from '@/hooks/useCancellableExport';
 
 // Lazy: pulls in the heavy TipTap editor chunk — only load when the tab is opened
 const EmailCampaignTab = lazy(() =>
@@ -96,7 +99,27 @@ export default function AcademyPlayers() {
   const [selectedCyclus, setSelectedCyclus] = useState<string>('all');
   const [selectedTagId, setSelectedTagId] = useState<string>('all');
   const [selectedPaymentStatus, setSelectedPaymentStatus] = useState<string>('all');
-  const [allLocations, setAllLocations] = useState<{ id: string; name: string }[]>([]);
+  // Current training (PTF option A): 'yes' | 'no' | 'all', and the club those sessions are at.
+  const [selectedTraining, setSelectedTraining] = useState<string>('all');
+  // The training club is an academy-scoped id, so the choice remembers the academy it was made in and
+  // reads as 'all' anywhere else — derived, so not even one render/query after an academy switch
+  // carries the previous academy's club.
+  const [trainingClubChoice, setTrainingClubChoice] = useState<{ academyId: string | undefined; clubId: string }>(
+    { academyId: undefined, clubId: 'all' },
+  );
+  const selectedTrainingClub = trainingClubChoice.academyId === activeAcademy?.id ? trainingClubChoice.clubId : 'all';
+  const setSelectedTrainingClub = (clubId: string) => setTrainingClubChoice({ academyId: activeAcademy?.id, clubId });
+  // The academy's clubs (every club dropdown), tagged with the academy they were fetched for: after an
+  // academy switch they read as empty until that academy's own list arrives, so a previous academy's
+  // club can never be offered (and then stamped with the new academy).
+  const [locationsFor, setLocationsFor] = useState<{ academyId: string | undefined; locations: { id: string; name: string }[] }>(
+    { academyId: undefined, locations: [] },
+  );
+  const allLocations = useMemo(
+    () => (locationsFor.academyId === activeAcademy?.id ? locationsFor.locations : []),
+    [locationsFor, activeAcademy?.id],
+  );
+  const locationsRequestRef = useRef(0);
 
   // Server-side sort + pagination
   const PAGE_SIZE = 50;
@@ -131,7 +154,7 @@ export default function AcademyPlayers() {
   // Column customization
   type ColumnKey =
     | 'email' | 'phone' | 'location' | 'addedOn'
-    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'type' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
+    | 'trainer' | 'skill' | 'status' | 'cyclus' | 'notes' | 'source' | 'birthDate' | 'tags' | 'internalNotes';
   const DEFAULT_COLUMNS: ColumnKey[] = ['tags', 'internalNotes', 'email', 'phone', 'location', 'addedOn'];
   const ALL_COLUMNS: { key: ColumnKey; label: string; isDefault: boolean }[] = [
     { key: 'tags', label: tTrainer('players.columns.tags', 'Tags'), isDefault: true },
@@ -144,7 +167,6 @@ export default function AcademyPlayers() {
     { key: 'skill', label: tTrainer('players.columns.skill', 'Skill rating'), isDefault: false },
     { key: 'status', label: tTrainer('players.columns.status', 'Status'), isDefault: false },
     { key: 'cyclus', label: tTrainer('players.columns.cyclus', 'In active cyclus'), isDefault: false },
-    { key: 'type', label: tTrainer('players.columns.type', 'Type'), isDefault: false },
     { key: 'notes', label: tTrainer('players.columns.notes', 'Notes (intake)'), isDefault: false },
     { key: 'source', label: tTrainer('players.columns.source', 'Source'), isDefault: false },
     { key: 'birthDate', label: tTrainer('players.columns.birthDate', 'Birth date'), isDefault: false },
@@ -173,11 +195,16 @@ export default function AcademyPlayers() {
 
   const fetchLocations = async () => {
     if (!activeAcademy) return;
-    const rows = await getAcademyLocations(activeAcademy.id);
+    const academyId = activeAcademy.id;
+    const request = ++locationsRequestRef.current;
+    const rows = await getAcademyLocations(academyId);
+    // Only the latest request may write: a response that arrives after a newer one started (an
+    // earlier academy's, or out of order) is dropped.
+    if (request !== locationsRequestRef.current) return;
     const locs = rows
       .map((row: { location?: { id: string; name: string } }) => row.location)
       .filter((l): l is { id: string; name: string } => Boolean(l?.id && l?.name));
-    setAllLocations(locs.sort((a, b) => a.name.localeCompare(b.name)));
+    setLocationsFor({ academyId, locations: locs.sort((a, b) => a.name.localeCompare(b.name)) });
   };
 
   // Tag/notes edits refresh every player view through the central subtree.
@@ -244,7 +271,10 @@ export default function AcademyPlayers() {
     hasActiveCyclus: selectedCyclus === 'yes' ? true : selectedCyclus === 'no' ? false : null,
     tagId: selectedTagId !== 'all' ? selectedTagId : null,
     payment: selectedPaymentStatus !== 'all' ? (selectedPaymentStatus as 'overdue' | 'ok') : null,
-  }), [selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus]);
+    currentTraining: selectedTraining === 'yes' ? true : selectedTraining === 'no' ? false : null,
+    trainingLocationId: selectedTrainingClub !== 'all' ? selectedTrainingClub : null,
+  }), [selectedTrainerId, selectedLocation, selectedLevel, selectedCyclus, selectedTagId, selectedPaymentStatus,
+    selectedTraining, selectedTrainingClub]);
 
   // Snap back to the first page whenever the result set changes shape.
   useEffect(() => {
@@ -252,7 +282,7 @@ export default function AcademyPlayers() {
   }, [debouncedSearch, overviewFilters]);
 
   const rpcSort = sortKey === 'addedOn' ? 'created_at' : sortKey;
-  const { data: overview, isLoading: loading } = usePlayersOverview(
+  const { data: overview, isLoading: loading, isPlaceholderData: overviewIsStale } = usePlayersOverview(
     { kind: 'academy', id: activeAcademy?.id },
     { search: debouncedSearch, filters: overviewFilters, sort: rpcSort, sortDir, page, pageSize: PAGE_SIZE },
   );
@@ -290,6 +320,49 @@ export default function AcademyPlayers() {
     queryFn: () => fetchAllPlayersOverview({ kind: 'academy', id: activeAcademy!.id }),
     enabled: !!activeAcademy && activeTab === 'email-campaign',
   });
+
+  // ---- Contact export: every matching person, one server call (name / email / phone CSV) ----
+  // A running export belongs to ONE academy: switching academies (or leaving the page) cancels it.
+  const contactExport = useCancellableExport(activeAcademy?.id);
+  const exportProgressLabel = tTrainer('players.export.progress', 'Exporting…');
+
+  const handleExport = () => {
+    if (!activeAcademy) return;
+    const academyId = activeAcademy.id;
+    // Frozen at click time: filter/search edits made while it runs never reach this export. The search
+    // is the text visible in the box NOW, not the debounced copy that can lag the input by 300 ms.
+    const inputs = freezeExportInputs({ search: searchQuery, filters: overviewFilters, sort: rpcSort, sortDir });
+    return contactExport.run(async (signal) => {
+      try {
+        const contacts = await fetchContactsForExport(academyId, inputs, { signal });
+        if (contacts.length === 0) {
+          sonnerToast.info(tTrainer('players.export.empty', 'No players match these filters, so nothing was exported.'));
+          return;
+        }
+        const csv = buildContactsCsv(contacts, {
+          name: tTrainer('players.export.headerName', 'Name'),
+          email: tTrainer('players.export.headerEmail', 'Email'),
+          phone: tTrainer('players.export.headerPhone', 'Phone'),
+        });
+        downloadCsv(csvFilename(tTrainer('players.export.filePrefix', 'players')), csv);
+        sonnerToast.success(
+          tTrainer('players.export.success', { count: contacts.length, defaultValue: '{{count}} players exported' }),
+        );
+      } catch (e) {
+        const reason = e instanceof ExportError ? e.reason : 'failed';
+        if (reason === 'cancelled') {
+          sonnerToast.info(tTrainer('players.export.cancelled', 'Export cancelled, nothing was downloaded.'));
+        } else if (reason === 'over_limit' && e instanceof ExportError) {
+          sonnerToast.error(tTrainer('players.export.overLimit', {
+            total: e.detail.total, max: e.detail.max,
+            defaultValue: '{{total}} players match, but an export can hold at most {{max}}. Narrow the filters and try again.',
+          }));
+        } else {
+          sonnerToast.error(tTrainer('players.export.failed', 'The export failed, nothing was downloaded. Please try again.'));
+        }
+      }
+    });
+  };
 
   const fetchTrainers = async () => {
     if (!activeAcademy) return;
@@ -424,10 +497,9 @@ export default function AcademyPlayers() {
       header: tTrainer('players.columns.status', 'Status'),
       headClassName: 'whitespace-nowrap',
       className: 'whitespace-nowrap',
+      // Business activity only (trained → Active, else Prospect) — never login/account state.
       renderCell: (player) =>
-        player.type === 'registered' ? (
-          <Badge variant="default" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.registered')}</Badge>
-        ) : player.has_trained ? (
+        player.has_trained ? (
           <Badge variant="secondary" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.active')}</Badge>
         ) : (
           <Badge variant="outline" className="h-5 px-1.5 text-[11px]">{tTrainer('players.statuses.prospect')}</Badge>
@@ -447,19 +519,6 @@ export default function AcademyPlayers() {
         ) : (
           <span className="text-muted-foreground">—</span>
         ),
-    },
-    {
-      key: 'type',
-      header: tTrainer('players.columns.type', 'Type'),
-      headClassName: 'whitespace-nowrap',
-      className: 'whitespace-nowrap',
-      renderCell: (player) => (
-        <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-          {player.type === 'guest'
-            ? tTrainer('players.columns.typeGuest', 'Guest')
-            : tTrainer('players.columns.typeRegistered', 'Registered')}
-        </Badge>
-      ),
     },
     {
       key: 'notes',
@@ -530,6 +589,35 @@ export default function AcademyPlayers() {
               <Tags className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.tags.manageButton', 'Tags')}</span>
             </Button>
+            {contactExport.running ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled
+                  aria-live="polite"
+                  aria-label={exportProgressLabel}
+                  data-testid="academy-players-export-progress"
+                >
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span className="hidden sm:inline">{exportProgressLabel}</span>
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={contactExport.cancel}
+                  aria-label={tTrainer('players.export.cancel', 'Cancel export')}
+                >
+                  <X className="h-4 w-4" />
+                  <span className="hidden sm:inline">{tTrainer('players.export.cancel', 'Cancel export')}</span>
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={handleExport} aria-label={tTrainer('players.export.button', 'Export')}>
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">{tTrainer('players.export.button', 'Export')}</span>
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={() => setShowImportPlayers(true)} aria-label={tTrainer('players.import.button', 'Import')}>
               <Upload className="h-4 w-4" />
               <span className="hidden sm:inline">{tTrainer('players.import.button')}</span>
@@ -650,6 +738,31 @@ export default function AcademyPlayers() {
               placeholder={tTrainer('players.activeCyclus', 'Active Cyclus')}
             />
 
+            {/* Current training (PTF option A): ongoing cycles + upcoming standalone sessions, and the
+                club those sessions are at — NOT the location filter above, which keeps its meaning. */}
+            <SelectFilter
+              value={selectedTraining}
+              onValueChange={setSelectedTraining}
+              allLabel={tTrainer('players.training.filterAll', 'All players')}
+              ariaLabel={tTrainer('players.training.statusAria', 'Training status')}
+              options={[
+                { value: 'yes', label: tTrainer('players.training.yes', 'Currently training') },
+                { value: 'no', label: tTrainer('players.training.no', 'Not currently training') },
+              ]}
+              triggerClassName="w-full sm:w-[180px]"
+            />
+
+            {allLocations.length > 0 && (
+              <SelectFilter
+                value={selectedTrainingClub}
+                onValueChange={setSelectedTrainingClub}
+                allLabel={tTrainer('players.training.clubAll', 'All training clubs')}
+                ariaLabel={tTrainer('players.training.clubAria', 'Training club')}
+                options={allLocations.map((loc) => ({ value: loc.id, label: loc.name }))}
+                triggerClassName="w-full sm:w-[180px]"
+              />
+            )}
+
             <SelectFilter
               value={selectedTagId}
               onValueChange={setSelectedTagId}
@@ -681,6 +794,14 @@ export default function AcademyPlayers() {
               placeholder={tTrainer('players.payment.filterAll', 'Payment status')}
             />
           </TableToolbar>
+
+          {/* Visible filtered count: the overview RPC's exact total for the current search and filters (the
+              same totalFiltered the pagination uses). The header count stays the unfiltered academy total. */}
+          <p className="text-sm text-muted-foreground" aria-live="polite" aria-busy={overviewIsStale} data-testid="academy-players-filtered-count">
+            {overviewIsStale
+              ? tTrainer('players.filteredCountUpdating', 'Updating matching players…')
+              : tTrainer('players.filteredCount', { count: totalFiltered, defaultValue: '{{count}} matching players' })}
+          </p>
 
           {/* Players Table */}
           {sortedPlayers.length === 0 ? (
@@ -740,7 +861,7 @@ export default function AcademyPlayers() {
                 selectAllAriaLabel: tTrainer('players.bulk.selectAll', 'Select all on page'),
               }}
               mobile={
-                <div className="md:hidden divide-y divide-border/60">
+                <div className="md:hidden divide-y divide-border/60" data-testid="academy-players-mobile-cards">
                   {sortedPlayers.map((player) => (
                     <div key={player.id} className="py-3 space-y-2 first:pt-1">
                       <div className="flex items-center justify-between">
@@ -751,9 +872,7 @@ export default function AcademyPlayers() {
                           )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          {player.type === 'registered' ? (
-                            <Badge variant="default" className="text-xs">{tTrainer('players.statuses.registered')}</Badge>
-                          ) : player.has_trained ? (
+                          {player.has_trained ? (
                             <Badge variant="secondary" className="text-xs">{tTrainer('players.statuses.active')}</Badge>
                           ) : (
                             <Badge variant="outline" className="text-xs">{tTrainer('players.statuses.prospect')}</Badge>
