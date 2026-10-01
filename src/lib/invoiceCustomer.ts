@@ -17,6 +17,9 @@ export type InvoiceReceiverFormFields = {
 export type InvoicePlayerLink = {
   profileId: string | null;
   guestPlayerId: string | null;
+  /** Canonical Player identity (U2). The id the invoice write actually keys on — the two legacy
+   * ids above remain only as picker/prefill display keys until the pickers are person-keyed. */
+  personId: string | null;
   linkedDisplayName: string | null;
 };
 

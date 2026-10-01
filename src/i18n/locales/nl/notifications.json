@@ -157,6 +157,9 @@
       },
       "marketing_updates": {
         "label": "Productupdates"
+      },
+      "identity_verification_requested": {
+        "label": "Bevestig dat jij het bent"
       }
     },
     "sections": {

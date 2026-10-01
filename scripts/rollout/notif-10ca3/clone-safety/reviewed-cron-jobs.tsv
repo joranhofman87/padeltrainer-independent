@@ -21,6 +21,7 @@ expire-lapsed-priority-claims	no	SQL-only: expires lapsed priority claims
 notify-rebook-member-open	yes	sends rebook member-open emails directly via Resend (sendResendEmail)
 auto-rebook-reminder	yes	invokes the rebook reminder edge function
 notification-email-worker	yes	EVERY 2 MINUTES: drives real invoice/notification email sends
+notification-identity-worker	yes	EVERY 2 MINUTES when activated: sends identity-verification capability email. INSTALLED INACTIVE (U2 slice A) — activation is an owner gate. Marked outbound=yes because the column classifies the stored command (net.http_post), not whether the job is currently armed
 notification-whatsapp-worker	yes	EVERY 2 MINUTES: drives real WhatsApp sends
 notification-digest-worker	yes	10c-b: EVERY 5 MINUTES once armed, drives real digest email sends via net.http_post. SHIPS INACTIVE — arming is an owner gate (scripts/rollout/notif-10cb)
 enrich-locations-background	yes	RUNTIME-SCHEDULED by public.schedule_enrichment_job

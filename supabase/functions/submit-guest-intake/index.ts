@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 import { resolveRegistrationNameFields } from "../_shared/profileName.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
+import { resolveAnonymousIdentity } from "../_shared/identity-continuity.ts";
+import { buildIntentKey } from "../_shared/identity-intent.ts";
 import { sendRegistrationConfirmationEmail } from "../_shared/registration-confirmation-email.ts";
 import { notifySlackEdgeError } from "../_shared/edge-slack.ts";
 import {
@@ -16,6 +18,7 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 const MAX_SHORT_FIELD_LENGTH = 320;
 const MAX_ARRAY_ITEMS = 50;
 const MAX_NOTES_METADATA_BYTES = 10 * 1024;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const invalidPayload = (message: string, corsHeaders: Record<string, string>) =>
   new Response(
@@ -65,7 +68,15 @@ async function throttle(
   }
 }
 
-Deno.serve(async (req) => {
+/**
+ * Exported so the identity decisions below can be driven through the REAL handler by tests. The
+ * previous version of those decisions was covered only by a source grep, and a grep cannot tell you
+ * that a returning registrant is now attributed to the account whose address they happen to share.
+ */
+export async function handleRequest(
+  req: Request,
+  deps: { adminClient?: SupabaseClient } = {},
+): Promise<Response> {
   // E-25: origin allow-list (defense in depth on this email-driving endpoint).
   // The intake form is an SPA route on the main domains — no custom academy
   // domains exist (DomainRouter: "No more hostname detection").
@@ -102,6 +113,7 @@ Deno.serve(async (req) => {
       language,
       metadata,
       paymentMethod,
+      creationRequestId,
     } = body;
 
     // Type guards: a public caller can send any JSON shape; non-string name/email
@@ -147,6 +159,10 @@ Deno.serve(async (req) => {
       fullName,
     });
 
+    // CONTACT, not identity (U2, owner 2026-08-09). A registration confirmation and, for a paid
+    // form, a pay link both go to this address, so the FLOW requires one. The PLAYER may still have
+    // none — the create command below takes NULL — and no address selects, merges or reuses an
+    // identity here: this endpoint resolves nobody, it creates.
     if (!email || !cycleId || !nameFields.full_name) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
@@ -161,7 +177,21 @@ Deno.serve(async (req) => {
       return invalidPayload("Field 'phone' is required", corsHeaders);
     }
 
-    const adminClient = createClient(supabaseUrl, supabaseServiceKey);
+    // The submitter's own id for THIS attempt, and the only thing that can make the Player create
+    // idempotent. Required rather than minted here — see the create call below.
+    if (typeof creationRequestId !== "string" || !UUID_RE.test(creationRequestId)) {
+      // A page loaded before this shipped will not send one. Say what fixes it, rather than
+      // "invalid payload" — the registrant did nothing wrong and a refresh is the whole remedy.
+      return new Response(
+        JSON.stringify({
+          error: "stale_client",
+          message: "Ververs de pagina en probeer het opnieuw.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    const adminClient = deps.adminClient ?? createClient(supabaseUrl, supabaseServiceKey);
 
     // Resolve the FORM (registrations is standalone post-decouple). `cycleId` is the registration's
     // own id; fall back to the legacy source_cycle_id alias so old /register links + QR codes work.
@@ -202,7 +232,27 @@ Deno.serve(async (req) => {
     }
     const registrationId = regRow.id;
 
-    // Duplicate check: reject same email + form within 60 seconds (prevents double-clicks)
+    // An EXACT-attempt replay (same creation_request_id already recorded an intake) is idempotent,
+    // not abuse — answer already_submitted and bypass the address heuristic below (Codex r4 f5),
+    // which would otherwise return 429 for a legitimate lost-response retry and make replay look
+    // like a failure.
+    if (creationRequestId) {
+      const { data: priorAttempt } = await adminClient
+        .from("intake_requests")
+        .select("id")
+        .eq("registration_id", registrationId)
+        .eq("creation_request_id", creationRequestId)
+        .maybeSingle();
+      if (priorAttempt) {
+        return new Response(
+          JSON.stringify({ success: true, already_submitted: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+
+    // Duplicate check: reject same email + form within 60 seconds (prevents double-clicks). A
+    // DIFFERENT-attempt rapid resubmission (different creation_request_id) is still throttled.
     const sixtySecondsAgo = new Date(Date.now() - 60 * 1000).toISOString();
     const { count: dupeCount } = await adminClient
       .from("intake_requests")
@@ -250,105 +300,170 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if user already has a profile (existing user)
-    let playerId: string | null = null;
+    // ── WHO IS REGISTERING ───────────────────────────────────────────────────────────────────────
+    //
+    // This block used to answer that question by looking the submitted address up in `profiles` and
+    // attributing the registration to whatever account came back, provided the name agreed. Two
+    // mutable attributes, typed by an anonymous stranger into a public form, deciding which existing
+    // human a registration — and the invoice minted from it — belongs to. It then did the same thing
+    // a second time against `guest_players`, overwriting the matched row's details with whatever had
+    // just been typed. U2 removes both (owner, 2026-08-09): attributes may propose a candidate for a
+    // human to judge; they may never select, merge or reuse an identity.
+    //
+    // Nothing replaces them, because nothing here can. This endpoint has no trustworthy signal
+    // about WHICH existing Player a submission belongs to, and the flow is built so it never needs
+    // one: a signed-in person registering THEMSELF does not arrive here at all — the form calls
+    // `submitIntakeRequest` with their own profile id, which is the carried UUID. What arrives here
+    // is an anonymous submission, or a signed-in person registering SOMEBODY ELSE (a parent filling
+    // it in for a child). Both are a Player this endpoint has no id for, so both create one through
+    // the UUID-keyed command, which files a duplicate proposal when the new Player looks like one
+    // the owner already has. A returning registrant with an account is proposed for a claim by
+    // `mint_person_for_guest`, and joins their records by making that claim — a decision, made by
+    // them, instead of a guess made here.
+    //
+    // Deliberately NOT done: reading the caller's token and attributing the registration to that
+    // account. It would be wrong precisely in the case the form routes here for — the parent — and
+    // it is the same bug in a new costume: attribution decided by the submitter's identity rather
+    // than the registrant's.
+    // Always NULL from here on. This endpoint attributes a submission to no existing account,
+    // because it has no id for one — see the block above. The spelling stays so every row this
+    // function writes still says explicitly which column it is not filling.
+    const playerId: string | null = null;
     let guestPlayerId: string | null = null;
 
-    const { data: existingProfile } = await adminClient
-      .from("profiles")
-      .select("id, full_name")
-      .eq("email", email.toLowerCase())
-      .maybeSingle();
+    {
+      // The form's owner comes from the registration, never from the submission. Typed as a plain
+      // string and narrowed by the guard below, so the narrowing stays local — narrowing
+      // `regRow.owner_type` itself would tell the compiler the club branches further down are dead,
+      // and they are not: a club-owned form still notifies its managers and resolves its location.
+      const ownerType: string = regRow.owner_type;
 
-    // Family rule: an email can be shared (a parent registering a child uses
-    // the parent's address). Only attribute the intake to the existing account
-    // when the NAME matches that account; a different name is a different
-    // person and gets their own guest record instead.
-    const normalizeName = (s: string | null | undefined) =>
-      (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-    const matchesExistingProfile = existingProfile &&
-      (!existingProfile.full_name ||
-        normalizeName(existingProfile.full_name) === normalizeName(nameFields.full_name));
+      // A CLUB-owned form has no Player to create: `guest_players` requires a trainer or an academy
+      // (`guest_players_owner_check`, 2026-02) and has no club column. This endpoint has therefore
+      // never been able to register a guest on one — the insert violated the constraint and came
+      // back as a generic 500. That is a real product gap, not something this change introduces;
+      // what changes is that it is now named, and that the academy hears about it instead of the
+      // registrant seeing "something went wrong".
+      if (ownerType !== "academy" && ownerType !== "trainer") {
+        console.error(`Registration ${registrationId} is owned by ${ownerType}: no Player can be created for it`);
+        await notifySlackEdgeError(
+          "submit-guest-intake",
+          `registration ${registrationId} is ${ownerType}-owned; guest_players has no such scope, so the sign-up cannot be recorded`,
+          { registrationId },
+        );
+        return new Response(
+          JSON.stringify({
+            error: "registration_unsupported",
+            message: "This registration form cannot accept sign-ups. Please contact the organiser.",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
 
-    if (existingProfile && matchesExistingProfile) {
-      // Existing user with profile — use their profile ID
-      playerId = existingProfile.id;
-    } else {
-      // Guest: create or find a guest_players record. The form's owner comes from the registration.
-      const cycleForOwner = { owner_type: regRow.owner_type, owner_id: regRow.owner_id };
-
-      const guestData: Record<string, unknown> = {
-        first_name: nameFields.first_name,
-        last_name: nameFields.last_name,
-        full_name: nameFields.full_name,
+      // Identity — before the Player is created or any intake row is written, resolve or demand
+      // verification (U2 identity continuity). A returning address that collides with existing
+      // candidates must prove control of the address first; we return here with NO side effect and
+      // the form shows a generic "check your email". Only a proven, explicitly chosen person (or
+      // "someone new") carries on.
+      const identity = await resolveAnonymousIdentity(adminClient, {
+        creationRequestId,
+        owner: ownerType === "academy"
+          ? { academyProfileId: regRow.owner_id }
+          : { trainerId: regRow.owner_id },
+        workflow: "intake",
         email: email.toLowerCase(),
-        phone: phone || null,
-        skill_rating: rating || null,
-        rating_system: ratingSystem || "knltb",
-        source: "intake_form",
-      };
-
-      // Link to academy or trainer based on cycle owner
-      if (cycleForOwner) {
-        if (cycleForOwner.owner_type === "academy") {
-          guestData.academy_profile_id = cycleForOwner.owner_id;
-        } else if (cycleForOwner.owner_type === "trainer") {
-          guestData.trainer_id = cycleForOwner.owner_id;
-        }
+        // the COMPLETE material intent (Codex r3 f1): intake carries far more than contact — birth
+        // date, rating, lesson/day/time/duration/frequency preferences, trainer/location, notes,
+        // consent, payment method and price-driving metadata are all written or invoiced after the
+        // selection, so all are bound. A verified selection cannot be reused with a changed
+        // application under a kept creation_request_id.
+        payloadKey: buildIntentKey("intake", {
+          registrationId,
+          email: email.toLowerCase(),
+          name: nameFields.full_name,
+          phone: phone || "",
+          birthDate: birthDate || null,
+          rating: rating ?? null,
+          ratingSystem: ratingSystem || null,
+          lessonTypes: lessonTypes || [],
+          preferredDays: preferredDays || [],
+          preferredTimeWindows: preferredTimeWindows || [],
+          preferredDurationMinutes: preferredDurationMinutes || null,
+          sessionsPerWeek: sessionsPerWeek || null,
+          preferredTrainerIds: preferredTrainerIds || [],
+          locationId: locationId || null,
+          notes: notes || null,
+          consentGiven: consentGiven ?? null,
+          paymentMethod: paymentMethod || null,
+          metadata: metadata || null,
+        }),
+      });
+      if (identity.status === "verify_required") {
+        return new Response(
+          JSON.stringify({ status: "verification_required" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
       }
 
-      // Try to find existing guest by email + owner context. Emails are shared
-      // within families (unique indexes were dropped for that), so there can be
-      // several guests on one address — only reuse the one whose NAME matches;
-      // a different name (sibling) gets a new record instead of overwriting.
-      let guestQuery = adminClient
-        .from("guest_players")
-        .select("id, full_name")
-        .eq("email", email.toLowerCase());
-      if (guestData.academy_profile_id) {
-        guestQuery = guestQuery.eq("academy_profile_id", guestData.academy_profile_id as string);
-      } else if (guestData.trainer_id) {
-        guestQuery = guestQuery.eq("trainer_id", guestData.trainer_id as string);
+      let personId: string | null;
+      if (identity.status === "proceed_person") {
+        // A verified returning Player: use their canonical id, create nothing.
+        personId = identity.personId;
       } else {
-        guestQuery = guestQuery.is("academy_profile_id", null).is("trainer_id", null);
-      }
-      const { data: guestCandidates } = await guestQuery;
-      const existingGuest = (guestCandidates ?? []).find((g) =>
-        normalizeName(g.full_name) === normalizeName(nameFields.full_name)
-      ) ?? null;
+        const { data: created, error: createError } = await adminClient.rpc("player_create_command", {
+          // The client mints one id per submission attempt, so a retry is the SAME attempt. Minting
+          // one here instead would make every retry a NEW attempt — the first request creates the
+          // Player, its response is lost, and the resubmission creates a second one. The 60-second
+          // duplicate window above is keyed on the address, which is exactly the kind of key U2 says
+          // may not stand in for identity or for idempotency; it suppresses a double-click and
+          // nothing beyond its window.
+          _creation_request_id: creationRequestId,
+          _owner_type: ownerType,
+          _owner_id: regRow.owner_id,
+          _full_name: nameFields.full_name,
+          _email: email.toLowerCase(),
+          _phone: phone || null,
+          _first_name: nameFields.first_name,
+          _last_name: nameFields.last_name,
+          _skill_rating: rating ?? null,
+          _rating_system: ratingSystem || null,
+          _birth_date: birthDate || null,
+          _source: "intake_form",
+          _select_person_id: null,
+          // A self-signup has no operator: the registrant is the only party present, and this
+          // endpoint's own gates (form open, CORS allow-list, per-IP and per-recipient throttles) are
+          // what stand in for one.
+          _actor_user_id: null,
+          _origin: "self_signup",
+        });
 
-      if (existingGuest) {
-        guestPlayerId = existingGuest.id;
-        // Update guest record with latest info
-        await adminClient
-          .from("guest_players")
-          .update({
-            first_name: nameFields.first_name,
-            last_name: nameFields.last_name,
-            full_name: nameFields.full_name,
-            phone: phone || null,
-            skill_rating: rating || null,
-            rating_system: ratingSystem || "knltb",
-          })
-          .eq("id", guestPlayerId);
-      } else {
-        const { data: newGuest, error: guestError } = await adminClient
-          .from("guest_players")
-          .insert(guestData)
-          .select("id")
-          .single();
-
-        if (guestError) {
-          // PII hygiene (E-22): Postgres error `details` can embed inserted values
-          // (e.g. the email in a unique-key violation) — log code + message only.
-          console.error("Error creating guest player:", guestError.code, guestError.message);
+        if (createError) {
+          // PII hygiene (E-22): Postgres error `details` can embed submitted values — code + message.
+          console.error("Error creating player:", createError.code, createError.message);
           return new Response(
             JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
             { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
-        guestPlayerId = newGuest.id;
+        personId = (created as { person_id: string | null }).person_id;
       }
+      // `intake_requests` still physically carries the legacy columns, so the row this endpoint
+      // writes derives them from the canonical person through the authorized adapter — the only
+      // place in this function where a legacy id exists.
+      const { data: legacyRef, error: refError } = await adminClient.rpc("player_legacy_ref", {
+        _person_id: personId,
+        _owner_type: ownerType,
+        _owner_id: regRow.owner_id,
+      });
+      if (refError) {
+        console.error("Error deriving the legacy player reference:", refError.code, refError.message);
+        return new Response(
+          JSON.stringify({ error: "registration_failed", message: "Could not process your registration. Please try again later." }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const ref = legacyRef as { player_id: string | null; guest_player_id: string | null } | null;
+      guestPlayerId = ref?.guest_player_id ?? null;
     }
 
     // Resolve effective location: prefer explicit form value, fall back to the form's location,
@@ -364,7 +479,7 @@ Deno.serve(async (req) => {
     }
 
     // Insert intake request
-    const { data: intakeData, error: intakeError } = await adminClient
+    const { data: insertedIntake, error: intakeError } = await adminClient
       .from("intake_requests")
       .insert({
         registration_id: registrationId,
@@ -388,11 +503,30 @@ Deno.serve(async (req) => {
         consent_given: consentGiven ?? true,
         metadata: { ...(metadata || {}), client_ip: clientIp },
         status: "new",
+        // Idempotency key for this submission attempt (U2): a resumed submission now resolves to a
+        // STABLE person, so without this a replay after the 60s window would write a second intake
+        // and mint a second invoice. The partial unique index (registration_id, creation_request_id)
+        // makes the duplicate impossible; the conflict below is treated as "already submitted".
+        creation_request_id: creationRequestId,
       })
       .select()
       .single();
 
+    const intakeData = insertedIntake;
     if (intakeError) {
+      // A unique-violation on (registration_id, creation_request_id) is a REPLAY of this exact
+      // attempt (Codex r1 f9). Answer idempotently and DO NOTHING ELSE — the run that won the intake
+      // index is the one that mints the invoice and sends the confirmation, exactly once. A previous
+      // revision "continued" here to complete a missing invoice, but that let a CONCURRENT loser
+      // reach invoice minting and produce a SECOND payable invoice (Codex r3 f2). Completing an
+      // invoice that failed to mint on a partial first run is the pre-existing best-effort
+      // invoice-repair concern, not this endpoint's job, and is out of scope here.
+      if (intakeError.code === "23505") {
+        return new Response(
+          JSON.stringify({ success: true, already_submitted: true }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
       // PII hygiene (E-22): same as above — never log Postgres error `details`.
       console.error("Intake insert error:", intakeError.code, intakeError.message);
       return new Response(
@@ -409,28 +543,11 @@ Deno.serve(async (req) => {
       owner_type: regRow.owner_type,
       owner_id: regRow.owner_id,
     };
-    try {
-      if (playerId) {
-        if (regRow.owner_type === "trainer") {
-          await adminClient.from("trainer_followers").upsert(
-            { player_id: playerId, trainer_id: regRow.owner_id, notify_new_availability: true },
-            { onConflict: "player_id,trainer_id" }
-          );
-        } else if (regRow.owner_type === "club") {
-          await adminClient.from("club_followers").upsert(
-            { player_id: playerId, club_profile_id: regRow.owner_id, notify_new_availability: true },
-            { onConflict: "player_id,club_profile_id" }
-          );
-        } else if (regRow.owner_type === "academy") {
-          await adminClient.from("academy_followers").upsert(
-            { player_id: playerId, academy_profile_id: regRow.owner_id, notify_new_availability: true },
-            { onConflict: "player_id,academy_profile_id" }
-          );
-        }
-      }
-    } catch (followErr) {
-      console.error("Auto-follow failed (non-blocking):", followErr);
-    }
+    // The auto-follow that stood here upserted a `*_followers` row for `playerId`. It was reachable
+    // only through the email-and-name attribution this change removed, so it is not a feature being
+    // dropped — it is a branch that can no longer be entered, and leaving it would read as though a
+    // public form still resolves accounts. Signed-in players registering themselves never reach
+    // this endpoint; that flow keeps whatever following it already does.
 
     const registration = regRow;
     // The object the payment path reads pricing + payment_methods from — the standalone form.
@@ -644,7 +761,7 @@ Deno.serve(async (req) => {
             email,
             cycle: cycleData?.name || cycleId,
             flow: "guest",
-            is_new_user: playerId ? "no" : "yes (guest)",
+            is_new_user: "yes (guest)",
           },
         }),
       });
@@ -652,8 +769,12 @@ Deno.serve(async (req) => {
       // Non-blocking
     }
 
+    // A SAFE projection, not the row. Echoing `intakeData` handed an anonymous caller the whole
+    // inserted record — `guest_player_id`, `player_id` and the metadata (client IP included). The
+    // form reads `payment.payUrl` and nothing else; the id is kept for support correlation. No
+    // legacy id may appear in an HTTP response (U2, owner correction 2026-08-09).
     return new Response(
-      JSON.stringify({ success: true, intakeRequest: intakeData, payment: paymentInfo }),
+      JSON.stringify({ success: true, intakeRequestId: intakeData.id, payment: paymentInfo }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
@@ -688,4 +809,7 @@ Deno.serve(async (req) => {
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
-});
+}
+
+// Only bind a port when run as the entrypoint — importing for tests must not serve.
+if (import.meta.main) Deno.serve((req) => handleRequest(req));

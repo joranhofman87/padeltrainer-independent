@@ -1727,27 +1727,49 @@ export function BulkCreateContent({
           }}
           trainerId={trainerId || undefined}
           academyId={academyId}
-          onPlayerCreated={(player) => {
-            setPlayers((prev) => {
-              if (prev.some((p) => p.id === player.id)) {
-                return prev;
-              }
-              return [...prev, player].sort((a, b) => a.full_name.localeCompare(b.full_name));
-            });
-            if (academyId) {
-              void fetchPlayers();
-            }
-            // Auto-fill the player in the slot that triggered the dialog
-            if (addPlayerContext) {
-              const { slotIndex, playerIndex } = addPlayerContext;
-              setBulkSlots((prev) =>
-                prev.map((slot, i) => {
-                  if (i !== slotIndex) return slot;
-                  const newPlayers = [...slot.selectedPlayers];
-                  newPlayers[playerIndex] = player.id;
-                  return { ...slot, selectedPlayers: newPlayers };
-                })
+          onPlayerCreated={async (player) => {
+            // The create flow answers with the canonical person and nothing else (U2, owner
+            // correction 2026-08-09). Re-read the list this dialog already books from and locate
+            // the new Player by person_id — the slot then holds the LIST's key, which never
+            // travelled through the create contract.
+            try {
+              const data = await fetchBookableGuestPlayers(
+                academyId
+                  ? { kind: 'academy', id: academyId }
+                  : { kind: 'trainer', id: trainerId! },
               );
+              setPlayers(data as GuestPlayer[]);
+              const created = data.find((p) => p.person_id === player.personId);
+              // Auto-fill the player in the slot that triggered the dialog
+              if (created && addPlayerContext) {
+                const { slotIndex, playerIndex } = addPlayerContext;
+                setBulkSlots((prev) =>
+                  prev.map((slot, i) => {
+                    if (i !== slotIndex) return slot;
+                    const newPlayers = [...slot.selectedPlayers];
+                    newPlayers[playerIndex] = created.id;
+                    return { ...slot, selectedPlayers: newPlayers };
+                  })
+                );
+              } else if (!created) {
+                // The create SUCCEEDED — say that the slot fill did not (Codex r1 f9).
+                logger.error("Created player not found in the refreshed list", undefined, {
+                  component: "BulkCreateContent",
+                });
+                toast({
+                  title: t("players.createdNotSelected", "Player created — select them manually"),
+                  description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
+                });
+              }
+            } catch (error) {
+              logger.error("Failed to refresh players after a create", error as Error, {
+                component: "BulkCreateContent",
+              });
+              toast({
+                title: t("players.createdNotSelected", "Player created — select them manually"),
+                description: t("players.createdNotSelectedDescription", "The player was created but could not be selected automatically. Find them in the list."),
+              });
+            } finally {
               setAddPlayerContext(null);
             }
           }}

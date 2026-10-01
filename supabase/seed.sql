@@ -37,3 +37,17 @@ BEGIN
     EXECUTE 'REVOKE ALL ON public.membership_backfill_items FROM PUBLIC, anon, authenticated, service_role';
   END IF;
 END $$;
+
+-- And U2's erasure ledger (20261203100000_u2_account_scrub_operations.sql), which is default-deny for
+-- a stronger reason than the tables above: it has no authorized caller AT ALL yet. Access will arrive
+-- as narrow SECURITY DEFINER RPCs, and until they exist the only privilege anything should hold is
+-- the owner's. The blanket grant above would hand service_role — which also carries BYPASSRLS — full
+-- read/write on an append-only erasure record, locally and in CI, i.e. exactly where the ACL tests
+-- run. `supabase db push` never applies this file, so production takes the migration's REVOKE and is
+-- already correct; without this block only the environments that TEST the property would lack it.
+DO $$
+BEGIN
+  IF to_regclass('public.account_scrub_operations') IS NOT NULL THEN
+    EXECUTE 'REVOKE ALL ON public.account_scrub_operations FROM PUBLIC, anon, authenticated, service_role';
+  END IF;
+END $$;

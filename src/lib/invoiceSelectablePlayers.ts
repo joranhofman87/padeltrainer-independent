@@ -10,6 +10,8 @@ export type InvoiceSelectablePlayer = {
   type: 'guest' | 'registered';
   profileId: string | null;
   guestPlayerId: string | null;
+  /** Canonical Player identity (U2) — what a pick hands to the invoice write. */
+  personId: string | null;
   billing_business_name: string | null;
   billing_address: string | null;
   billing_btw_number: string | null;
@@ -24,6 +26,7 @@ export function overviewRowToInvoiceSelectablePlayer(row: PlayersOverviewRow): I
     type: row.player_type as 'guest' | 'registered',
     profileId: row.profile_id ?? null,
     guestPlayerId: row.guest_player_id ?? null,
+    personId: row.person_id ?? null,
     billing_business_name: row.billing_business_name ?? null,
     billing_address: row.billing_address ?? null,
     billing_btw_number: row.billing_btw_number ?? null,

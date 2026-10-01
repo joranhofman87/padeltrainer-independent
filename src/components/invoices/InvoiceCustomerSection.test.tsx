@@ -37,6 +37,7 @@ const samplePlayer: InvoiceSelectablePlayer = {
   type: 'registered',
   profileId: 'profile-1',
   guestPlayerId: null,
+  personId: 'person-1',
   billing_business_name: 'Acme',
   billing_address: 'Street 1\n1234 AB City',
   billing_btw_number: 'NL999',
@@ -50,6 +51,7 @@ describe('InvoiceCustomerSection', () => {
         playerLink={{
           profileId: 'profile-1',
           guestPlayerId: null,
+          personId: 'person-1',
           linkedDisplayName: 'Jane Doe',
         }}
         onPlayerLinkChange={vi.fn()}
@@ -79,6 +81,7 @@ describe('InvoiceCustomerSection', () => {
         playerLink={{
           profileId: 'profile-1',
           guestPlayerId: null,
+          personId: 'person-1',
           linkedDisplayName: 'Jane Doe',
         }}
         onPlayerLinkChange={vi.fn()}
@@ -111,6 +114,7 @@ describe('InvoiceCustomerSection', () => {
         playerLink={{
           profileId: 'profile-1',
           guestPlayerId: null,
+          personId: 'person-1',
           linkedDisplayName: 'Jane Doe',
         }}
         onPlayerLinkChange={onPlayerLinkChange}
@@ -133,6 +137,7 @@ describe('InvoiceCustomerSection', () => {
     expect(onPlayerLinkChange).toHaveBeenCalledWith({
       profileId: null,
       guestPlayerId: null,
+      personId: null,
       linkedDisplayName: null,
     });
     expect(onOneTimeModeChange).toHaveBeenCalledWith(true);

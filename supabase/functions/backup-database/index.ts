@@ -25,14 +25,48 @@
  *    schema instead of trusting this list to stay current.
  *
  * A backup that silently saves less than it claims is worse than no backup, because it is trusted.
+ *
+ * WHAT THIS IS NOT. It is a SCOPED recovery snapshot — a declared set of tables, as JSON, with a
+ * best-effort 14-day cleanup pass — and it must never be described as disaster recovery. Read
+ * "kept 14 days" as an intention, not a guarantee: the cleanup at the end of this function runs
+ * only after a COMPLETE backup, skips entirely otherwise, and does not inspect the result of the
+ * list or remove calls it makes. Snapshots older than the window can therefore survive, and nothing
+ * here detects it. Whether that is acceptable — and whether the retention should instead be
+ * enforced and its failures surfaced — is an open privacy/retention decision for the owner, not a
+ * property this function currently provides. It contains no auth schema, no Storage
+ * object bytes, no project configuration, no extensions or secrets, and by deliberate decision no
+ * `account_deletion_audit` (that table carries subject_email, subject_name, ip_address, user_agent
+ * and raw failure_reason, and none of it is needed for the recovery this artifact exists to serve —
+ * so copying it here would widen the personal data held for no recovery benefit. That is a
+ * data-minimisation decision about ONE table, not a claim about the snapshot as a whole: `profiles`,
+ * `persons`, `guest_players`, `trainer_profiles`, `invoices` and `notification_contacts` are all in
+ * the list and all carry direct identifiers, because a restore genuinely needs them).
+ * Full-database recovery INCLUDING all required PII is Supabase physical backup / PITR, which
+ * necessarily holds the personal data present at each restore point. Storage-object recovery,
+ * configuration/secret recovery, a portable off-site dump, and an erasure ledger retained outside
+ * and beyond every restorable backup are all real requirements and all belong to a separate reviewed
+ * DR slice — not to this function.
+ *
+ * WHAT IT CONTAINS, stated plainly: personal data. Rows keyed by UUIDs that remain linkable to a
+ * person are pseudonymous personal data, not anonymous data, and several of these tables hold direct
+ * identifiers outright. The snapshots inherit every access, encryption and retention obligation that
+ * follows from that.
+ *
+ * A NOTE ON WHAT BACKING UP AN ERASURE RECORD DOES AND DOES NOT BUY. Preserving evidence is not the
+ * same as acting on it. Restoring a database to a point before an erasure still reinstates the erased
+ * account: nothing here replays erasures after a restore, and no restore-replay protocol exists yet.
+ * What the export buys is that the evidence such a protocol would need still exists when it is built.
  */
 import { corsHeaders, requireServiceRoleOrAdmin } from "../_shared/auth.ts";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.108.2";
 
 /**
- * Every table is keyset-paged on a single uuid `id` primary key, and every one must also appear in
- * `backup_export_tables()` — both asserted by `scripts/db/backup-coverage.mjs`, so this list and the
- * database's allow-list cannot drift apart.
+ * Every table has a single uuid `id` primary key and must also appear in `backup_export_tables()` —
+ * both asserted by `scripts/db/backup-coverage.mjs`, so this list and the database's allow-list
+ * cannot drift apart. The `id` requirement is about DETERMINISM, not paging: `backup_export_table`
+ * aggregates a whole table in one statement, ordered by `t.id`
+ * (`20261118100000_u1c_prereq_backup_export.sql:149-152`), which is what makes two exports of an
+ * unchanged table byte-identical and therefore diffable.
  */
 export const TABLES_TO_BACKUP = [
   "profiles",
@@ -41,6 +75,18 @@ export const TABLES_TO_BACKUP = [
   "persons",
   "person_links",
   "person_merge_review",
+  // U2: the durable create receipt (creation_request_id → the canonical person it produced). Losing
+  // it does not lose an audit trail — it loses the thing that stops a REPLAYED create from minting a
+  // second Player for a request that already had one.
+  "player_create_commands",
+  // U2: the erasure record, and the mirror image of the line above. Restore the database to a point
+  // before an account was erased and nothing in the restored state says the erasure happened — and
+  // no later query can derive it. Kept so a future restore-replay protocol has the evidence it will
+  // need; it is not that protocol, and on its own it prevents nothing. Its columns are UUIDs, one
+  // boolean, one attempt counter, a state, a controlled code and timestamps, so including it adds no
+  // direct identifier — though the UUIDs are still pseudonymous personal data. The legacy
+  // PII-bearing account_deletion_audit is deliberately NOT here — see the header note.
+  "account_scrub_operations",
   // U1a/U1b: the canonical academy↔Player relation and the backfill's own checkpoint state. The
   // U1c rollback is "delete only the backfilled membership rows", which is not something you can
   // do from a backup that never contained them.
@@ -143,7 +189,7 @@ export async function handleRequest(
     const results: TableResult[] = [];
     const failedQueries: string[] = [];
     const failedUploads: string[] = [];
-    /** Tables whose page walk disagreed with the database's own count. */
+    /** Tables whose exported row count disagreed with the count the same scan reported. */
     const incomplete: string[] = [];
 
     // Grouped, so the tables that have to agree with each other come from one snapshot. Everything

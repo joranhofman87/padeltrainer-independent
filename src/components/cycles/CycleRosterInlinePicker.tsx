@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   GuestPlayerSlotCombobox,
   type GuestPlayerSlotComboboxPlayer,
 } from "@/components/players/GuestPlayerSlotCombobox";
-import { AddPlayerDialog, type GuestPlayer } from "@/components/players/AddPlayerDialog";
+import { AddPlayerDialog, type CreatedPlayer } from "@/components/players/AddPlayerDialog";
 import { fetchBookablePersons, type BookablePerson } from "@/lib/playersOverview";
 import { logger } from "@/lib/logger";
 
@@ -101,24 +102,35 @@ export function CycleRosterInlinePicker({
     [persons, academyProfileId],
   );
 
-  const handlePlayerCreated = (player: GuestPlayer) => {
-    // AddPlayerDialog always creates a GUEST → key it as g_<id> and select it.
-    const created: BookablePerson = {
-      comboboxId: `g_${player.id}`,
-      guestPlayerId: player.id,
-      profileId: null,
-      // deterministic person ids: a fresh guest's person IS its own uuid
-      personId: player.id,
-      full_name: player.full_name,
-      email: player.email,
-      phone: player.phone,
-      skill_rating: player.skill_rating,
-      rating_system: player.rating_system,
-      birth_date: null,
-    };
-    setPersons((prev) => [...prev, created].sort((a, b) => a.full_name.localeCompare(b.full_name)));
-    onSelect(created);
+  const handlePlayerCreated = async (player: CreatedPlayer) => {
+    // The create flow answers with the canonical person and nothing else (U2, owner correction
+    // 2026-08-09). The picker re-reads its own list — the same overview surface every other row
+    // came from — and selects the row whose person_id matches. No legacy id passes through here:
+    // the row's guest key belongs to the list, not to the create contract.
     setShowAddPlayer(false);
+    if (!academyProfileId) return;
+    try {
+      const data = await fetchBookablePersons({ kind: "academy", id: academyProfileId });
+      setPersons(data);
+      const created = data.find((p) => p.personId === player.personId) ?? null;
+      if (created) {
+        onSelect(created);
+      } else {
+        // The create SUCCEEDED — the operator must hear that the selection did not (Codex r2 f8),
+        // or the next click quietly mints a second attempt for a player who already exists.
+        logger.error("Created player not found in the refreshed roster picker", undefined, {
+          component: "CycleRosterInlinePicker",
+        });
+        toast.info(t("detail.roster.picker.createdNotSelected",
+          "Speler aangemaakt — selecteer ze handmatig in de lijst."));
+      }
+    } catch (error) {
+      logger.error("Failed to refresh the roster picker after a create", error as Error, {
+        component: "CycleRosterInlinePicker",
+      });
+      toast.info(t("detail.roster.picker.createdNotSelected",
+        "Speler aangemaakt — selecteer ze handmatig in de lijst."));
+    }
   };
 
   return (

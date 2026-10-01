@@ -75,7 +75,7 @@ export function InvoiceCustomerSection({
 
   const handleSelectPlayer = (comboboxId: string) => {
     if (!comboboxId) {
-      onPlayerLinkChange({ profileId: null, guestPlayerId: null, linkedDisplayName: null });
+      onPlayerLinkChange({ profileId: null, guestPlayerId: null, personId: null, linkedDisplayName: null });
       return;
     }
     const player = players.find((p) => p.comboboxId === comboboxId);
@@ -83,6 +83,7 @@ export function InvoiceCustomerSection({
     onPlayerLinkChange({
       profileId: player.profileId,
       guestPlayerId: player.guestPlayerId,
+      personId: player.personId,
       linkedDisplayName: player.full_name,
     });
     onReceiverChange(billingToReceiverFields(player));
@@ -165,6 +166,7 @@ export function InvoiceCustomerSection({
                   onPlayerLinkChange({
                     profileId: null,
                     guestPlayerId: null,
+                    personId: null,
                     linkedDisplayName: null,
                   });
                   onOneTimeModeChange(true);

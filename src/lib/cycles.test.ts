@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { CycleSettings, ScoringWeights, CycleInput, IntakeRequestInput } from './cycles';
 import { DEFAULT_SCORING_WEIGHTS, submitIntakeRequest } from './cycles';
 
-const resolveOrCreateGuestPlayerMock = vi.fn();
+const ensureRosterTwinMock = vi.fn();
 
 vi.mock('@/lib/playerResolve', () => ({
-  resolveOrCreateGuestPlayer: (...args: unknown[]) => resolveOrCreateGuestPlayerMock(...args),
+  ensureRosterTwinForRegisteredPlayer: (...args: unknown[]) => ensureRosterTwinMock(...args),
 }));
 
 let cycleOwnerRow: { owner_type: string; owner_id: string } = {
@@ -203,7 +203,7 @@ describe('submitIntakeRequest -> addToStudentList', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    resolveOrCreateGuestPlayerMock.mockResolvedValue('guest-1');
+    ensureRosterTwinMock.mockResolvedValue({ personId: 'person-1' });
   });
 
   // FAM-02 (Batch 4, Level 1): a logged-in registrant is NOT shadowed as a guest — they already
@@ -212,13 +212,13 @@ describe('submitIntakeRequest -> addToStudentList', () => {
     cycleOwnerRow = { owner_type: 'academy', owner_id: 'academy-1' };
     const result = await submitIntakeRequest(baseInput);
     expect(result.id).toBe('req-1');
-    expect(resolveOrCreateGuestPlayerMock).not.toHaveBeenCalled();
+    expect(ensureRosterTwinMock).not.toHaveBeenCalled();
   });
 
   it('trainer cycle does NOT mint a self-shadow guest for a logged-in registrant', async () => {
     cycleOwnerRow = { owner_type: 'trainer', owner_id: 'trainer-1' };
     await submitIntakeRequest(baseInput);
-    expect(resolveOrCreateGuestPlayerMock).not.toHaveBeenCalled();
+    expect(ensureRosterTwinMock).not.toHaveBeenCalled();
   });
 
   it('registration succeeds (guest creation skipped, non-blocking)', async () => {

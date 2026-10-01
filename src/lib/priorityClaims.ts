@@ -743,10 +743,18 @@ export async function fetchRebookGroupByToken(token: string): Promise<RebookGrou
   return (data as RebookGroup | null) ?? null;
 }
 
-/** Token-gated mint of a new guest player for the group (the anon captain can't write
- *  guest_players directly). Returns the guest_players.id to pass to applyRebookGroup. */
+/** Token-gated mint of a new group member (the anon captain can't write player rows directly).
+ *  Returns the member's CANONICAL person id — the only identity a browser holds (U2, owner
+ *  correction 2026-08-09). The legacy booking keys are derived inside rebook_group_apply/_manage. */
 export async function createRebookGroupGuest(token: string, input: {
   firstName: string; lastName: string; email: string; phone: string;
+  /**
+   * The captain's own id for THIS add-a-member attempt. Since U2 the member is CREATED rather than
+   * looked up by address, so this is the only thing that keeps a resubmitted group from minting the
+   * same person twice — and it must be minted ONCE per member, not once per submit, or a retry
+   * after a partial failure makes duplicates of everyone who already landed.
+   */
+  creationRequestId: string;
 }): Promise<string> {
   const { data, error } = await supabase.rpc('create_rebook_group_guest', {
     _token: token,
@@ -754,20 +762,23 @@ export async function createRebookGroupGuest(token: string, input: {
     _last_name: input.lastName,
     _email: input.email,
     _phone: input.phone,
+    _creation_request_id: input.creationRequestId,
   });
   if (error) throw error;
   return data as string;
 }
 
 /** Re-book the whole group: keep the listed members, decline the rest (pending only), and add
- *  the given new guest ids — all capacity-guarded + atomic. */
+ *  the new members by the CAPTAIN'S OWN create-attempt ids — capabilities this browser minted, not
+ *  identities (U2). The definer resolves each attempt's receipt, binds it to the slot's owner and
+ *  derives the legacy booking keys internally; capacity-guarded + atomic. */
 export async function applyRebookGroup(token: string, args: {
-  keepKeys: string[]; newGuestIds?: string[];
+  keepKeys: string[]; newCreationRequestIds?: string[];
 }): Promise<RebookGroupApplyResult> {
   const { data, error } = await supabase.rpc('rebook_group_apply', {
     _token: token,
     _keep_keys: args.keepKeys,
-    _new_guest_ids: args.newGuestIds ?? [],
+    _new_creation_request_ids: args.newCreationRequestIds ?? [],
   });
   if (error) throw error;
   return (data as RebookGroupApplyResult) ?? { ok: false };
@@ -798,12 +809,12 @@ export async function createGroupRebookInvoice(token: string): Promise<GroupRebo
 /** UPFRONT post-payment roster management: assign/change players who are COVERED by the
  *  captain's group payment (booked already-paid, paid_by the captain). */
 export async function manageRebookGroup(token: string, args: {
-  keepKeys: string[]; newGuestIds?: string[]; invoiceId?: string;
+  keepKeys: string[]; newCreationRequestIds?: string[]; invoiceId?: string;
 }): Promise<RebookGroupApplyResult> {
   const { data, error } = await supabase.rpc('rebook_group_manage', {
     _token: token,
     _keep_keys: args.keepKeys,
-    _new_guest_ids: args.newGuestIds ?? [],
+    _new_creation_request_ids: args.newCreationRequestIds ?? [],
     _invoice_id: args.invoiceId ?? null,
   });
   if (error) throw error;

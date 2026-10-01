@@ -49,7 +49,8 @@ export interface GuestOptInInput {
   optIn: boolean | undefined;
   /** The number the guest typed, free-text; the RPC normalizes and rejects what it cannot. */
   phone: string | null | undefined;
-  /** guest_players.id returned by resolveOrCreateGuestPlayer. */
+  /** guest_players.id, derived server-side from the canonical person by the service adapter
+   * (legacyGuestRefForCheckout) — never taken from a client or a create-contract answer. */
   guestPlayerId: string;
   /** Derived SERVER-SIDE from the slot / registration. Exactly one is expected to be set. */
   academyProfileId?: string | null;

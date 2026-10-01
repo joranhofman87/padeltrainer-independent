@@ -93,10 +93,15 @@ const handler = async (req: Request): Promise<Response> => {
     // write no-ops. (The old comment here already conceded the claim was the real guard.)
 
     // 1. atomically claim due (or stale-orphaned) email rows under our lock token
+    // p_worker_kind: null is the DEFAULT, so this worker is already correct without the argument —
+    // that default is what makes the deployed version safe the moment the migration lands. It is
+    // passed explicitly anyway, so that "this worker takes only generic events" is stated here
+    // rather than inferred from a default someone could later change.
     const { data: claimed, error: claimErr } = await supabase.rpc("claim_notification_outbox_batch", {
       p_channel: "email",
       p_worker: workerToken,
       p_limit: BATCH_LIMIT,
+      p_worker_kind: null,
     });
     if (claimErr) throw new Error(`claim failed: ${claimErr.message}`);
 

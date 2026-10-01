@@ -1,4 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import {
+  clearCreationAttempt,
+  creationRequestIdFor,
+  type CreationAttempt,
+} from '@/lib/creationRequestId';
 import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -68,6 +73,13 @@ export default function AddIntakeRequestDialog({
 }: AddIntakeRequestDialogProps) {
   const { t } = useTranslation('cycles');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  /**
+   * The create attempt currently in flight, KEYED on the identity fields the server fingerprints.
+   * A raw id held across every failure was wrong in one direction: correcting a typo in the name or
+   * the address and saving again reused the old id, and the command answers a changed payload with
+   * PLAYER_CREATE_IDEMPOTENCY_CONFLICT — so the correction could not be saved at all.
+   */
+  const creationAttemptRef = useRef<CreationAttempt>(null);
   const [ratingSystems, setRatingSystems] = useState<Array<{
     code: string;
     name: string;
@@ -84,7 +96,12 @@ export default function AddIntakeRequestDialog({
     cycle_id: z.string().min(1, 'Please select a cycle'),
     first_name: z.string().trim().min(1, 'First name is required').max(50),
     last_name: z.string().trim().max(50).optional().default(''),
-    email: z.string().trim().email('Invalid email').max(255),
+    // OPTIONAL. Children, walk-ins and people who decline to give an address are real players, and
+    // requiring one here is what pushed staff into typing placeholder addresses that then look, to
+    // every matcher downstream, like a shared household email (U2, owner 2026-08-09).
+    email: z.union([z.literal(''), z.string().trim().email('Invalid email').max(255)])
+      .optional()
+      .default(''),
     phone: createOptionalPhoneSchema(t('application.form.validation.phoneInvalid')),
     rating_system: z.string().default('knltb'),
     rating: z.coerce.number().optional(),
@@ -240,6 +257,14 @@ export default function AddIntakeRequestDialog({
     }
 
     setIsSubmitting(true);
+    const nameForCreate = buildGuestPlayerDbFields(data.first_name, data.last_name).full_name;
+    // One id for this create ATTEMPT, reused by every retry of it — a double submit, a network
+    // retry, a second click — and minted afresh the moment the operator changes who they are
+    // adding, because that is a different attempt.
+    const creationRequestId = creationRequestIdFor(
+      creationAttemptRef,
+      JSON.stringify([data.cycle_id, nameForCreate, data.email.trim().toLowerCase(), (data.phone ?? '').trim()]),
+    );
     try {
       // Step 1: Create or find the player account
       const { data: playerData, error: playerError } = await supabase.functions.invoke(
@@ -254,6 +279,16 @@ export default function AddIntakeRequestDialog({
             ratingSystem: data.rating_system,
             rating: data.rating,
             cycleName: cycles.find(c => c.id === data.cycle_id)?.name || '',
+            creationRequestId,
+            // The owner the cycle already names. Without it the player is created ownerless — it
+            // never appears in the academy's players list, and it misses the scoped, idempotent
+            // create path entirely (U2).
+            ...(() => {
+              const c = cycles.find((x) => x.id === data.cycle_id);
+              if (c?.owner_type === 'academy') return { academyProfileId: c.owner_id };
+              if (c?.owner_type === 'trainer') return { trainerProfileId: c.owner_id };
+              return {};
+            })(),
           },
         }
       );
@@ -266,13 +301,19 @@ export default function AddIntakeRequestDialog({
         throw new Error(playerData.error);
       }
 
-      // Step 2: Create the intake request with the real player_id
+      // Step 2: the intake request carries the Player the command answered with — by CANONICAL id.
+      // It is no longer possible for this step to be handed a profile the previous one guessed from
+      // an address, because that guess no longer happens anywhere; and it is no longer possible for
+      // a legacy guest id to pass through here, because the endpoint stopped returning one (U2,
+      // owner correction 2026-08-09) — the server command derives the legacy columns itself.
+      if (!playerData?.personId) {
+        throw new Error('player_create_no_person');
+      }
       const preferredDays = [...new Set(timeWindows.map((tw) => tw.day!))];
 
       await createManualIntakeRequest({
         cycle_id: data.cycle_id,
-        player_id: playerData.profileId || null,
-        guest_player_id: playerData.guestPlayerId || null,
+        person_id: playerData.personId,
         full_name: buildGuestPlayerDbFields(data.first_name, data.last_name).full_name,
         email: data.email,
         phone: data.phone || undefined,
@@ -297,6 +338,8 @@ export default function AddIntakeRequestDialog({
       
       form.reset();
       setDayAvailability({});
+      // the attempt is finished: the next player is a NEW attempt with a new id
+      clearCreationAttempt(creationAttemptRef);
       onSuccess();
     } catch (error: any) {
       logger.error('Error creating intake request', error as Error, { component: 'AddIntakeRequestDialog' });

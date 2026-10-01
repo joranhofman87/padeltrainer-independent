@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
+      # `db reset` applies this, and its blanket GRANT + deny-list is what makes the post-seed ACL
+      # property true locally and in CI. A change here can hand service_role a table the migration
+      # revoked, which only backup-coverage.mjs notices — so it must trigger this workflow.
+      - 'supabase/seed.sql'
       - 'src/integrations/supabase/types.ts'
       - 'scripts/check-types-drift.ts'
       - 'scripts/db/**'
@@ -14,6 +18,10 @@ on:
     branches: [main]
     paths:
       - 'supabase/migrations/**'
+      # `db reset` applies this, and its blanket GRANT + deny-list is what makes the post-seed ACL
+      # property true locally and in CI. A change here can hand service_role a table the migration
+      # revoked, which only backup-coverage.mjs notices — so it must trigger this workflow.
+      - 'supabase/seed.sql'
       - 'src/integrations/supabase/types.ts'
       - 'scripts/check-types-drift.ts'
       - 'scripts/db/**'
@@ -41,10 +49,11 @@ jobs:
       - name: Reset database from migrations
         run: supabase db reset --yes
 
-      # The academy-deletion flow cannot be proven anywhere else. Its catalogue-drift guard pins a
-      # fingerprint of the REAL schema, so a PGlite fixture would only ever refuse; and its lock plan
-      # exists to make a concurrent writer WAIT, which needs two sessions PGlite cannot provide. This
-      # step runs against the local stack started above — never a remote database.
+      # The real-Postgres suites below cannot be proven anywhere else. The academy-deletion
+      # catalogue-drift guard pins a fingerprint of the REAL schema, so a PGlite fixture would only
+      # ever refuse; and its lock plan exists to make a concurrent writer WAIT, which needs two
+      # sessions PGlite cannot provide. They run against the local stack started above — never a
+      # remote database.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -58,9 +67,39 @@ jobs:
         run: node scripts/db/academy-deletion-integration.mjs
 
       # Fails when an identity/Player table is not in the backup's table list, or when a backed-up
-      # table's primary key is not the single `id` column the page walk keysets on.
+      # table's primary key is not the single uuid `id` column the export orders by.
       - name: Backup coverage (derived from the live schema)
         run: node scripts/db/backup-coverage.mjs
+
+      # Fails if any shipped function still merges identity on an email match alone, or if a new
+      # identity writer appears that nobody has reviewed. Runs in THIS job because it needs the
+      # database the reset above just built.
+      - name: U2 — email alone never merges (local Postgres)
+        run: node scripts/db/u2-no-email-alone-merge.mjs
+
+      # Anonymous returning-Player identity continuity: verification-gated candidate selection,
+      # single-use capability, drift/expiry/cross-owner refusals, grant boundary. Same DB.
+      - name: U2 — identity verification continuity (local Postgres)
+        run: node scripts/db/u2-identity-verification.mjs
+
+      # Slice A: the generic email worker and the dedicated identity sender must claim DISJOINT
+      # rows. Real Postgres because the claim is a concurrency boundary, not a predicate.
+      - name: U2 — identity worker routing partition (local Postgres)
+        run: node scripts/db/u2-identity-worker-routing.mjs
+
+      # Slice B1: two real sessions race through claim and reclaim on one operation. PGlite is a
+      # single connection and cannot express it. Adding `supabase/seed.sql` to the path filters
+      # above makes this workflow RUN on a relevant change; it does not make any suite execute —
+      # that is what this step is for, and scripts/ci/workflow-contract.mjs pins its presence.
+      - name: U2 — scrub claim/reclaim race (two sessions, local Postgres)
+        run: node scripts/db/u2-scrub-claim-race.mjs
+
+      # ...and the recovery contract of that harness: it disables the guard trigger and opens three
+      # sessions to stage a race, so a leak would poison every later assertion while staying green.
+      # Drives the harness with a failure injected at each stage and inspects the database from an
+      # independent connection.
+      - name: U2 — scrub race recovery (fault injection, local Postgres)
+        run: node scripts/db/u2-scrub-claim-race-recovery.mjs
 
   types-drift:
     name: generated types drift
@@ -83,6 +122,7 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
 
       - name: Start Supabase and check types drift
         # The script prefers the setup-cli `supabase` binary on PATH (no platform

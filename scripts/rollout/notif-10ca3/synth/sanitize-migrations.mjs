@@ -136,9 +136,23 @@ if (process.argv.includes('--write-pin')) {
     console.error('\nFix or explicitly neutralise each of these first. Pinning is a record that\nthe chain was reviewed and found inert — it is not a way to silence the sweep.');
     process.exit(5);
   }
+  // PRESERVE the human review history. `reviews[]` is where a reviewer records WHAT they read in
+  // the diff and why the sanitized clone is still inert — the reasoning the next person to hit this
+  // guard needs. The sanitizer itself reads only sha256/files, so the array is documentation rather
+  // than authorization; rewriting the object wholesale would silently delete it on the very command
+  // a reviewer runs at the end of doing the review.
+  // `JSON.parse('null')` succeeds, so a null/array/scalar pin file would sail past a try/catch and
+  // then throw on property access. Only an object is usable, and only an ARRAY of reviews is carried
+  // forward — a truthy non-array would otherwise be preserved as-is and quietly corrupt the record.
+  let previous = {};
+  try {
+    const parsed = JSON.parse(readFileSync(PIN_FILE, 'utf8'));
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) previous = parsed;
+  } catch { /* first pin, or an unreadable file we are about to replace anyway */ }
   writeFileSync(PIN_FILE, JSON.stringify({
     _comment: 'Digest of the migration chain reviewed for outbound behaviour. Re-pin only after reviewing the diff.',
     sha256: chainDigest, files: scanned, pinned_at: new Date().toISOString().slice(0, 10),
+    ...(Array.isArray(previous.reviews) ? { reviews: previous.reviews } : {}),
   }, null, 2) + '\n');
   console.log(`PINNED sha256=${chainDigest} files=${scanned}`);
   process.exit(0);

@@ -21,13 +21,13 @@ describe('parseInvoicePlayerIdParam', () => {
 
 describe('toInvoicePlayerIdParam', () => {
   it('encodes link ids', () => {
-    expect(toInvoicePlayerIdParam({ profileId: 'p1', guestPlayerId: null, linkedDisplayName: null })).toBe(
+    expect(toInvoicePlayerIdParam({ profileId: 'p1', guestPlayerId: null, personId: 'person-p1', linkedDisplayName: null })).toBe(
       'p_p1',
     );
-    expect(toInvoicePlayerIdParam({ profileId: null, guestPlayerId: 'g1', linkedDisplayName: null })).toBe(
+    expect(toInvoicePlayerIdParam({ profileId: null, guestPlayerId: 'g1', personId: 'person-g1', linkedDisplayName: null })).toBe(
       'g_g1',
     );
-    expect(toInvoicePlayerIdParam({ profileId: null, guestPlayerId: null, linkedDisplayName: null })).toBeNull();
+    expect(toInvoicePlayerIdParam({ profileId: null, guestPlayerId: null, personId: null, linkedDisplayName: null })).toBeNull();
   });
 });
 
