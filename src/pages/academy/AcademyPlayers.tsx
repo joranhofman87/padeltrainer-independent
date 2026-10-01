@@ -343,6 +343,14 @@ export default function AcademyPlayers() {
           name: tTrainer('players.export.headerName', 'Name'),
           email: tTrainer('players.export.headerEmail', 'Email'),
           phone: tTrainer('players.export.headerPhone', 'Phone'),
+          currentlyTraining: tTrainer('players.export.headerCurrentlyTraining', 'Currently training'),
+          lastTrainingDate: tTrainer('players.export.headerLastTraining', 'Last training date'),
+          nextTrainingDate: tTrainer('players.export.headerNextTraining', 'Next training date'),
+          pastBookingsCount: tTrainer('players.export.headerPastBookings', 'Past sessions booked (not attendance)'),
+          birthDate: tTrainer('players.export.headerBirthDate', 'Birth date'),
+          locations: tTrainer('players.export.headerLocations', 'Locations'),
+          yes: tTrainer('players.export.yes', 'Yes'),
+          no: tTrainer('players.export.no', 'No'),
         });
         downloadCsv(csvFilename(tTrainer('players.export.filePrefix', 'players')), csv);
         sonnerToast.success(

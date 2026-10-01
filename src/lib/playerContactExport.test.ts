@@ -17,9 +17,18 @@ import { supabase } from '@/lib/supabaseClient';
 vi.mock('@/lib/supabaseClient', () => ({ supabase: { rpc: vi.fn() } }));
 
 const ACADEMY = 'acad-1';
-const HEADERS = { name: 'Name', email: 'Email', phone: 'Phone' };
+const HEADERS = {
+  name: 'Name', email: 'Email', phone: 'Phone', currentlyTraining: 'Currently training',
+  lastTrainingDate: 'Last training date', nextTrainingDate: 'Next training date',
+  pastBookingsCount: 'Past sessions booked (not attendance)', birthDate: 'Birth date', locations: 'Locations',
+  yes: 'Yes', no: 'No',
+};
 
-type ServerRow = { person_id: unknown; full_name?: unknown; email?: unknown; phone?: unknown };
+type ServerRow = {
+  person_id: unknown; full_name?: unknown; email?: unknown; phone?: unknown; currently_training?: unknown;
+  last_training_date?: unknown; next_training_date?: unknown; past_bookings_count?: unknown; birth_date?: unknown;
+  location_names?: unknown;
+};
 /** A canonical person uuid, as PostgreSQL prints it. */
 const uid = (i: number) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`;
 const person = (i: number, extra: Partial<ServerRow> = {}): ServerRow => ({
@@ -27,8 +36,20 @@ const person = (i: number, extra: Partial<ServerRow> = {}): ServerRow => ({
   full_name: `Player ${i}`,
   email: `p${i}@x.nl`,
   phone: '',
+  currently_training: false,
+  last_training_date: null,
+  next_training_date: null,
+  past_bookings_count: 0,
+  birth_date: null,
+  location_names: [],
   ...extra,
 });
+/** A complete row except its own `phone` field. */
+const withoutPhone = (): ServerRow => {
+  const r: ServerRow = person(1);
+  delete r.phone;
+  return r;
+};
 /** get_players_overview_export's PostgREST shape: ONE row { total, rows }. */
 const ok = (rows: ServerRow[], total = rows.length): ExportRpcResult => ({ data: [{ total, rows }], error: null });
 
@@ -60,12 +81,32 @@ describe('filtersToRpcJson — the two training keys', () => {
 });
 
 describe('the contact column spec (the shared mechanics are in csvExport.test.ts)', () => {
-  const contact = (c: Partial<ExportContact>): ExportContact => ({ personId: 'p', fullName: '', email: '', phone: '', ...c });
+  const contact = (c: Partial<ExportContact>): ExportContact => ({
+    personId: 'p', fullName: '', email: '', phone: '', currentlyTraining: false, lastTrainingDate: '',
+    nextTrainingDate: '', pastBookingsCount: 0, birthDate: '', locationNames: [], ...c,
+  });
+  const HEAD = '"Name";"Email";"Phone";"Currently training";"Last training date";"Next training date";'
+    + '"Past sessions booked (not attendance)";"Birth date";"Locations"';
 
-  it('name, email, phone — in that order, with the page headers; the person id is never written', () => {
-    expect(contactCsvColumns(HEADERS).map((c) => c.header)).toEqual(['Name', 'Email', 'Phone']);
-    expect(buildContactsCsv([contact({ personId: 'secret-id', fullName: 'Ann', email: 'ann@x.nl', phone: '06 1234 5678' })], HEADERS))
-      .toBe('﻿"Name";"Email";"Phone"\r\n"Ann";"ann@x.nl";"06 1234 5678"\r\n');
+  it('all nine columns in order, with the page headers; the person id is never written', () => {
+    expect(contactCsvColumns(HEADERS).map((c) => c.header)).toEqual([
+      'Name', 'Email', 'Phone', 'Currently training', 'Last training date', 'Next training date',
+      'Past sessions booked (not attendance)', 'Birth date', 'Locations',
+    ]);
+    expect(buildContactsCsv([contact({
+      personId: 'secret-id', fullName: 'Ann', email: 'ann@x.nl', phone: '06 1234 5678', currentlyTraining: true,
+      lastTrainingDate: '2026-09-24', nextTrainingDate: '2026-10-08', pastBookingsCount: 12, birthDate: '2012-03-04',
+      locationNames: ['Club A', 'Club B'],
+    })], HEADERS)).toBe(`\uFEFF${HEAD}\r\n"Ann";"ann@x.nl";"06 1234 5678";"Yes";"2026-09-24";"2026-10-08";"12";"2012-03-04";"Club A; Club B"\r\n`);
+  });
+
+  it('missing dates, birth date and locations are empty cells; a zero count is written as 0; not training is No', () => {
+    expect(buildContactsCsv([contact({ fullName: 'Bo' })], HEADERS))
+      .toBe(`\uFEFF${HEAD}\r\n"Bo";"";"";"No";"";"";"0";"";""\r\n`);
+  });
+
+  it('a location name that looks like a formula is neutralised in its cell', () => {
+    expect(buildContactsCsv([contact({ locationNames: ['=Club'] })], HEADERS)).toContain('"\'=Club"');
   });
 
   it('the phone column keeps numbers as text; name and email are formula-safe text', () => {
@@ -81,8 +122,8 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     const srv = fakeRpc(ok([person(2, { phone: '+31611' }), person(1)]));
     const contacts = await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc });
     expect(contacts).toEqual([
-      { personId: uid(2), fullName: 'Player 2', email: 'p2@x.nl', phone: '+31611' },
-      { personId: uid(1), fullName: 'Player 1', email: 'p1@x.nl', phone: '' },
+      expect.objectContaining({ personId: uid(2), fullName: 'Player 2', email: 'p2@x.nl', phone: '+31611' }),
+      expect.objectContaining({ personId: uid(1), fullName: 'Player 1', email: 'p1@x.nl', phone: '' }),
     ]);
     expect(srv.calls.map((c) => c.args)).toEqual([{
       p_academy: ACADEMY, p_search: 'an', p_filters: { current_training: true }, p_sort: 'email', p_sort_dir: 'desc',
@@ -154,8 +195,23 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
   it('SQL NULL name / email / phone become empty cells, never "null"', async () => {
     const srv = fakeRpc(ok([person(1, { full_name: null, email: null, phone: null })]));
     expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).toEqual([
-      { personId: uid(1), fullName: '', email: '', phone: '' },
+      {
+        personId: uid(1), fullName: '', email: '', phone: '', currentlyTraining: false, lastTrainingDate: '',
+        nextTrainingDate: '', pastBookingsCount: 0, birthDate: '', locationNames: [],
+      },
     ]);
+  });
+
+  it('reads the training, birth-date and location fields; names are deduplicated in order', async () => {
+    const srv = fakeRpc(ok([person(1, {
+      currently_training: true, last_training_date: '2026-09-24', next_training_date: '2026-10-08',
+      past_bookings_count: 7, birth_date: '2012-03-04', location_names: ['Club B', 'Club A', 'Club B', 'Club A ', ' '],
+    })]));
+    expect(await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).toEqual([{
+      personId: uid(1), fullName: 'Player 1', email: 'p1@x.nl', phone: '', currentlyTraining: true,
+      lastTrainingDate: '2026-09-24', nextTrainingDate: '2026-10-08', pastBookingsCount: 7, birthDate: '2012-03-04',
+      locationNames: ['Club B', 'Club A', 'Club A ', ' '], // verbatim; only exact duplicates removed
+    }]);
   });
 
   it('any uuid version PostgreSQL can hold is a valid person id (v7 included)', async () => {
@@ -180,7 +236,22 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     ['a numeric name (was blanked)', ok([person(1, { full_name: 42 })])],
     ['an object email (was blanked)', ok([person(1, { email: {} })])],
     ['an array phone (was blanked)', ok([person(1, { phone: [] })])],
-    ['a missing contact field (was blanked)', ok([{ person_id: uid(1), full_name: 'A', email: 'a@x.nl' }])],
+    ['a missing contact field (was blanked)', ok([withoutPhone()])],
+    ['a missing training field (an older server)', ok([{ person_id: uid(1), full_name: 'A', email: 'a@x.nl', phone: '' }])],
+    ['a non-boolean currently_training', ok([person(1, { currently_training: 'true' })])],
+    ['a negative booking count', ok([person(1, { past_bookings_count: -1 })])],
+    ['a fractional booking count', ok([person(1, { past_bookings_count: 1.5 })])],
+    ['a string booking count', ok([person(1, { past_bookings_count: '3' })])],
+    ['a timestamp instead of a date', ok([person(1, { last_training_date: '2026-09-24T10:00:00Z' })])],
+    ['an impossible day (2026-02-31)', ok([person(1, { next_training_date: '2026-02-31' })])],
+    ['an impossible month (2026-13-01)', ok([person(1, { last_training_date: '2026-13-01' })])],
+    ['a zero day (2012-03-00)', ok([person(1, { birth_date: '2012-03-00' })])],
+    ['a non-string birth date', ok([person(1, { birth_date: 20120304 })])],
+    ['location names that are not an array', ok([person(1, { location_names: 'Club A' })])],
+    ['a non-text location name', ok([person(1, { location_names: ['Club A', 7] })])],
+    // eslint-disable-next-line no-sparse-arrays
+    ['a sparse location list (a hole would become a blank name)', ok([person(1, { location_names: ['Club A', , 'Club B'] })])],
+    ['a sparse rows array (a hole would hide a row)', { data: [{ total: 2, rows: Object.assign(new Array(2), { 0: person(1) }) }], error: null }],
   ] as Array<[string, ExportRpcResult]>)('refuses %s as `failed` — nothing is written', async (_label, result) => {
     await refuses(result);
   });
@@ -189,7 +260,11 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
   // class instances, or records whose fields are only inherited — were accepted there. PostgREST's JSON
   // never produces them; the contract is now literally "plain records with their own fields".
   class EnvelopeLike { total = 1; rows = [person(1)]; }
-  class RowLike { person_id = uid(1); full_name = 'A'; email = 'a@x.nl'; phone = ''; }
+  class RowLike {
+    person_id = uid(1); full_name = 'A'; email = 'a@x.nl'; phone = ''; currently_training = false;
+    last_training_date = null; next_training_date = null; past_bookings_count = 0; birth_date = null;
+    location_names: string[] = [];
+  }
   const inheriting = <T extends object>(proto: T): T => Object.create(proto) as T;
   it.each([
     ['a class-instance envelope', { data: [new EnvelopeLike()], error: null }],
@@ -200,11 +275,16 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     await refuses(result);
   });
 
+  it('a plain copy of the class-instance row is accepted (so its rejection above is about the class alone)', async () => {
+    const srv = fakeRpc(ok([{ ...new RowLike() } as ServerRow]));
+    expect((await fetchContactsForExport(ACADEMY, inputs, { rpc: srv.rpc })).map((c) => c.personId)).toEqual([uid(1)]);
+  });
+
   it('reads only OWN fields: a field polluted onto Object.prototype never fills a missing one', async () => {
     const proto = Object.prototype as Record<string, unknown>;
     proto.phone = '0612345678';
     try {
-      await refuses(ok([{ person_id: uid(1), full_name: 'A', email: 'a@x.nl' }]));
+      await refuses(ok([withoutPhone()])); // every other field present: only the phone is missing
     } finally {
       delete proto.phone;
     }
