@@ -58,6 +58,8 @@ const NOW_G = G(7);                // in an in-progress session
 const REMOVED = G(8);              // soft-removed in A
 const META_ONLY = G(9);            // admitted to A ONLY by an A metadata row (not A-owned, no A booking)
 const FROZEN = G(10);              // linked to PM's person, but split-frozen: keys as ITSELF
+const LOCSRC = G(11);              // every non-trained chip source positive: guest intake, guest metadata pref
+const UNLINKED = PR(12);           // a profile with NO person link, pure-profile bookings only
 
 type ExportRow = {
   person_id: string; full_name: string; email: string; phone: string; currently_training: boolean;
@@ -214,7 +216,10 @@ beforeAll(async () => {
       ('${NOW_G}',     '${A}', 'Now Training',  'now@x.nl',   NULL,         NULL),
       ('${REMOVED}',   '${A}', 'Removed One',   'rem@x.nl',   NULL,         NULL),
       ('${META_ONLY}', NULL,   'Meta Only',     'meta@x.nl',  '2010-01-02', '${LOC_A2}'),
-      ('${FROZEN}',    '${A}', 'Frozen Side',   'frozen@x.nl', NULL,        NULL);
+      ('${FROZEN}',    '${A}', 'Frozen Side',   'frozen@x.nl', NULL,        NULL),
+      -- preferred = the INACTIVE club it also trained at: one non-trained source keeps the club (bool_and)
+      ('${LOCSRC}',    '${A}', 'Loc Sources',   'loc@x.nl',   NULL,         '${LOC_INACT}');
+    INSERT INTO public.profiles (id, full_name, email, birth_date) VALUES ('${UNLINKED}', 'Unlinked Profile', 'u@x.nl', '1999-09-09');
     INSERT INTO public.profiles (id, full_name, email, birth_date) VALUES
       ('${PM}', 'Merged Person', 'm@x.nl', '2001-02-03'), ('${PARENT}', 'Parent', 'kid@x.nl', NULL);
     INSERT INTO public.persons (id, full_name, email, user_id) VALUES ('${PM}', 'Merged Person', 'm@x.nl', '${PM}');
@@ -223,6 +228,9 @@ beforeAll(async () => {
     INSERT INTO public.person_merge_review (kind, status, guest_player_id, person_id)
       VALUES ('twin_detached_needs_split', 'pending', '${FROZEN}', '${PM}');
     INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id) VALUES ('${A}', '${META_ONLY}');
+    INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, preferred_location_id)
+      VALUES ('${A}', '${LOCSRC}', '${LOC_A1}');                         -- guest-side metadata preference
+    INSERT INTO public.intake_requests (guest_player_id, location_id, status) VALUES ('${LOCSRC}', '${LOC_A2}', 'new'); -- guest intake
     INSERT INTO public.academy_player_metadata (academy_profile_id, guest_player_id, removed_at) VALUES ('${A}', '${REMOVED}', now());
     INSERT INTO public.bookings (slot_id, guest_player_id, player_id, status) VALUES
       ('${S_PAST_TZ}',     '${HIST}', NULL, 'completed'),
@@ -252,7 +260,10 @@ beforeAll(async () => {
       ('${S_B_PAST}',      '${META_ONLY}', NULL, 'completed'),
       -- FROZEN's sessions are its OWN, never the linked person's
       ('${S_PAST_CANC}',   '${FROZEN}', NULL, 'completed'),
-      ('${S_PAST_TZ}',     '${FROZEN}', NULL, 'completed');
+      ('${S_PAST_TZ}',     '${FROZEN}', NULL, 'completed'),
+      ('${S_INACT}',       '${LOCSRC}', NULL, 'completed'),
+      ('${S_PAST_OLD}',    NULL, '${UNLINKED}', 'completed'),
+      ('${S_NEXT}',        NULL, '${UNLINKED}', 'confirmed');
   `);
   nextAt = new Date((await db.query<{ t: string }>(`SELECT start_time::text AS t FROM public.availability_slots WHERE id = '${S_NEXT}'`)).rows[0].t);
 
@@ -371,6 +382,21 @@ describe('get_players_overview_export — training and profile columns', () => {
     const r = byId((await exportCall(MGR_A, A)).rows).get(META_ONLY)!;
     expect(r).toMatchObject({ past_bookings_count: 0, last_training_date: null, next_training_date: null,
       birth_date: '2010-01-02', location_names: ['Club A2'], currently_training: false });
+  });
+
+  it('each non-trained chip source contributes on its own; a club with any non-trained source survives inactivity', async () => {
+    // A1 only via the guest metadata preference, A2 only via the guest intake, Inactive trained AND preferred
+    const r = byId((await exportCall(MGR_A, A)).rows).get(LOCSRC)!;
+    expect(r.location_names).toEqual(['Club A1', 'Club A2', 'Club Inactive']);
+    expect(r).toMatchObject({ past_bookings_count: 1, last_training_date: '2026-02-01' });
+  });
+
+  it('an unlinked profile with pure-profile bookings only is keyed as itself', async () => {
+    const r = byId((await exportCall(MGR_A, A)).rows).get(UNLINKED)!;
+    expect(r).toMatchObject({
+      past_bookings_count: 1, last_training_date: '2026-01-05', next_training_date: amsDate(nextAt),
+      currently_training: true, birth_date: '1999-09-09', location_names: ['Club A1', 'Club A2'],
+    });
   });
 
   it('a split-frozen guest keys as itself: its sessions never count for the linked person', async () => {

@@ -44,8 +44,7 @@ of `docs/deployment/ptf-release/README.md`:
      `service_role_can_execute` f.
    - Record 2: `shape_manager_found` t.
    - Record 3 (counts only, no personal data): `shape_total` = `shape_rows` = `rows_with_exact_keys` =
-     `distinct_persons`; `malformed_dates`, `zero_count_with_last` and `count_without_last` all 0;
-     `shape_ms` is the export's server time. (A next date before the last date is valid: last/next split
+     `distinct_persons`; `malformed_dates`, `zero_count_with_last` and `count_without_last` all 0. (A next date before the last date is valid: last/next split
      sessions by END time and show the START date, so an ongoing long session can start before a later,
      already ended one.)
 

@@ -130,7 +130,8 @@ export async function fetchContactsForExport(
     throw new ExportError('failed', { total: validTotal ? total : undefined });
   }
   const seen = new Set<string>();
-  return rows.map((r: unknown) => {
+  // Every index, holes included: map/every skip the holes of a sparse array, which would hide a missing row.
+  return denseItems(rows, total).map((r: unknown) => {
     if (!isPlainObject(r)) throw new ExportError('failed', { total });
     const personId = own(r, 'person_id');
     if (typeof personId !== 'string' || !PG_UUID_TEXT.test(personId) || seen.has(personId)) {
@@ -205,8 +206,20 @@ function nullableDate(v: unknown, total: number): string {
  * duplicates are removed, order kept. Anything else refuses the export.
  */
 function textList(v: unknown, total: number): string[] {
-  if (!Array.isArray(v) || !v.every((n) => typeof n === 'string')) throw new ExportError('failed', { total });
-  return [...new Set(v as string[])];
+  if (!Array.isArray(v)) throw new ExportError('failed', { total });
+  const names = denseItems(v, total);
+  if (!names.every((n) => typeof n === 'string')) throw new ExportError('failed', { total });
+  return [...new Set(names as string[])];
+}
+
+/** An array's items read index by index; a hole (a missing OWN index) refuses the export. */
+function denseItems(v: unknown[], total: number): unknown[] {
+  const out: unknown[] = [];
+  for (let i = 0; i < v.length; i += 1) {
+    if (!Object.prototype.hasOwnProperty.call(v, i)) throw new ExportError('failed', { total });
+    out.push(v[i]);
+  }
+  return out;
 }
 
 /** Column headers and the two training-status words; all come from the page (i18n). */

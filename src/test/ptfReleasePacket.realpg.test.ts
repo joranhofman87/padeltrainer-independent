@@ -998,7 +998,7 @@ describe('PTF release packet on real PostgreSQL', () => {
     expect(printed).toEqual([
       'anon_can_execute', 'count_without_last', 'currently_training', 'db', 'distinct_persons', 'export_acl',
       'export_config', 'ledger_head', 'ledger_ok', 'ledger_rows', 'malformed_dates', 'max_locations',
-      'past_bookings_sum', 'rows_with_exact_keys', 'service_role_can_execute', 'shape_manager_found', 'shape_ms',
+      'past_bookings_sum', 'rows_with_exact_keys', 'service_role_can_execute', 'shape_manager_found',
       'shape_rows', 'shape_total', 'state_ok', 'state_sha256', 'sysid', 'with_birth_date', 'with_last_date',
       'with_locations', 'with_next_date', 'zero_count_with_last',
     ]);

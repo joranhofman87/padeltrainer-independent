@@ -67,16 +67,14 @@ SELECT set_config('request.jwt.claim.sub',
          (SELECT m.user_id::text FROM public.academy_managers m
            WHERE m.academy_profile_id = :'shape_academy'::uuid ORDER BY m.user_id LIMIT 1), true) IS NOT NULL
        AS shape_manager_found;
-WITH t0 AS (SELECT clock_timestamp() AS t),
-e AS (
-  SELECT x.total, x.rows, (SELECT clock_timestamp() - t0.t FROM t0) AS took
+WITH e AS (
+  SELECT x.total, x.rows
     FROM public.get_players_overview_export(:'shape_academy'::uuid, NULL, '{}'::jsonb, 'name', 'asc') x
 ), r AS (
   SELECT j FROM e, jsonb_array_elements(e.rows) j
 )
 SELECT (SELECT total FROM e) AS shape_total,
        (SELECT jsonb_array_length(rows) FROM e) AS shape_rows,
-       (SELECT round(extract(epoch FROM took) * 1000) FROM e) AS shape_ms,
        count(*) FILTER (WHERE (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys(j) k)
          = ARRAY['birth_date','currently_training','email','full_name','last_training_date','location_names',
                  'next_training_date','past_bookings_count','person_id','phone']) AS rows_with_exact_keys,

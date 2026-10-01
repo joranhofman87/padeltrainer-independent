@@ -249,6 +249,9 @@ describe('fetchContactsForExport — one server call, complete or refused', () =
     ['a non-string birth date', ok([person(1, { birth_date: 20120304 })])],
     ['location names that are not an array', ok([person(1, { location_names: 'Club A' })])],
     ['a non-text location name', ok([person(1, { location_names: ['Club A', 7] })])],
+    // eslint-disable-next-line no-sparse-arrays
+    ['a sparse location list (a hole would become a blank name)', ok([person(1, { location_names: ['Club A', , 'Club B'] })])],
+    ['a sparse rows array (a hole would hide a row)', { data: [{ total: 2, rows: Object.assign(new Array(2), { 0: person(1) }) }], error: null }],
   ] as Array<[string, ExportRpcResult]>)('refuses %s as `failed` — nothing is written', async (_label, result) => {
     await refuses(result);
   });
